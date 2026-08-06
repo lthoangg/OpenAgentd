@@ -59,6 +59,7 @@ export type StreamSlice = Pick<
   TeamStore,
   | 'agentStreams'
   | 'isTeamWorking'
+  | 'pendingQuestion'
   | 'isContinuing'
   | 'isConnected'
   | 'error'
@@ -74,6 +75,7 @@ export type StreamSlice = Pick<
   | 'redoTeam'
   | 'stopTeam'
   | 'connectStream'
+  | 'clearPendingQuestion'
   | 'dismissSetupRequired'
   | '_drainCacheInvalidations'
   | '_handleSSEEvent'
@@ -87,6 +89,7 @@ export const createStreamSlice: StateCreator<
 > = (set, get) => ({
   agentStreams: {},
   isTeamWorking: false,
+  pendingQuestion: null,
   isContinuing: false,
   isConnected: false,
   error: null,
@@ -277,6 +280,13 @@ export const createStreamSlice: StateCreator<
         enqueueWorkspaceInvalidation(set, get, sessionId)
       }
     }
+  },
+
+  clearPendingQuestion: (questionId: string) => {
+    set((draft) => {
+      if (draft.pendingQuestion?.id !== questionId) return
+      draft.pendingQuestion = null
+    })
   },
 
   stopTeam: async () => {

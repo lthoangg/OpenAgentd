@@ -166,6 +166,43 @@ class TestListTeamSessionsWithData:
             await memory_stream_store.clear(str(running_id))
 
     @pytest.mark.asyncio
+    async def test_list_sessions_marks_sessions_awaiting_input(self, app_with_team):
+        """The 'needs input' badge comes from one query for the whole page."""
+        import app.core.db as _db
+        from app.services import question_service
+
+        waiting_id = uuid.uuid7()
+        normal_id = uuid.uuid7()
+        async with _db.async_session_factory() as db:
+            async with db.begin():
+                await _create_team_session(db, waiting_id)
+                await _create_team_session(db, normal_id)
+
+        async with _db.async_session_factory() as db:
+            await question_service.create_pending_question(
+                db,
+                session_id=waiting_id,
+                tool_call_id="call_needs_input",
+                questions=[
+                    {
+                        "question": "Which?",
+                        "header": "Pick",
+                        "options": [],
+                        "custom": True,
+                    }
+                ],
+            )
+            await db.commit()
+
+        client = TestClient(app_with_team)
+        resp = client.get("/api/team/sessions")
+        assert resp.status_code == 200
+        by_id = {s["id"]: s for s in resp.json()["data"]}
+
+        assert by_id[str(waiting_id)]["needs_input"] is True
+        assert by_id[str(normal_id)]["needs_input"] is False
+
+    @pytest.mark.asyncio
     async def test_list_sessions_filters_coding_workspace(self, app_with_team):
         import app.core.db as _db
 

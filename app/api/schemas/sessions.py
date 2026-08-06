@@ -67,6 +67,9 @@ class SessionResponse(_ExcludeNoneModel):
     thinking_level: str | None = None
     revert: dict | None = None
     running: bool = False
+    # True when the lead suspended its turn on an ask_user_question and is
+    # still waiting — drives the "needs input" badge in session lists.
+    needs_input: bool = False
     created_at: datetime | None = None
     updated_at: datetime | None = None
 

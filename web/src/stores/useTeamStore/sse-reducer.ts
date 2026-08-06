@@ -15,15 +15,71 @@ import {
   FS_MUTATING_TOOLS,
   SCHEDULER_MUTATING_TOOLS,
   TODO_MUTATING_TOOLS,
+  anyAgentLive,
   appendLocalBlocks,
   applyLocalBlockTransform,
   extractToolPaths,
 } from './helpers'
 import type { CacheInvalidation, TeamStore } from './types'
-import type { ContentBlock } from '@/api/types'
+import type { ContentBlock, PendingQuestion, QuestionItem } from '@/api/types'
 
 type Setter = (fn: (draft: TeamStore) => void) => void
 type Getter = () => TeamStore
+
+/**
+ * Coerce the ``question_asked`` payload into ``QuestionItem[]``.
+ *
+ * The event carries the tool's already-validated args, but they cross the wire
+ * as untyped ``dict[str, Any]``. Normalising here means the dock can render
+ * without defensive checks at every field, and a malformed entry degrades to an
+ * open-text question instead of throwing inside a render.
+ */
+export function normalizeQuestions(raw: unknown): QuestionItem[] {
+  if (!Array.isArray(raw)) return []
+  return raw.map((entry) => {
+    const q = (entry ?? {}) as Record<string, unknown>
+    const options = Array.isArray(q.options) ? q.options : []
+    return {
+      question: typeof q.question === 'string' ? q.question : '',
+      header: typeof q.header === 'string' ? q.header : '',
+      multiple: q.multiple === true,
+      custom: q.custom === true,
+      options: options.map((opt) => {
+        const o = (opt ?? {}) as Record<string, unknown>
+        return {
+          label: typeof o.label === 'string' ? o.label : '',
+          description: typeof o.description === 'string' ? o.description : null,
+          recommended: o.recommended === true,
+        }
+      }),
+    }
+  })
+}
+
+/**
+ * Map a wire question (SSE event or history row) to store shape.
+ *
+ * Returns ``null`` for a payload with nothing to render, so callers never put a
+ * card on screen that the user cannot act on. Single source of truth for the
+ * mapping — the SSE path and the cold-load path must agree exactly, or a reload
+ * would silently change the card.
+ */
+export function toPendingQuestion(raw: {
+  id?: unknown
+  session_id?: unknown
+  tool_call_id?: unknown
+  questions?: unknown
+}): PendingQuestion | null {
+  const id = typeof raw.id === 'string' ? raw.id : ''
+  const questions = normalizeQuestions(raw.questions)
+  if (!id || questions.length === 0) return null
+  return {
+    id,
+    sessionId: typeof raw.session_id === 'string' ? raw.session_id : '',
+    toolCallId: typeof raw.tool_call_id === 'string' ? raw.tool_call_id : '',
+    questions,
+  }
+}
 
 function ensureAgent(draft: TeamStore, agent: string) {
   if (!draft.agentStreams[agent]) draft.agentStreams[agent] = createDefaultAgentStream()
@@ -173,7 +229,12 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
 
     switch (type) {
       case 'session': {
-        set((draft) => { draft.sessionId = d.session_id as string })
+        set((draft) => {
+          draft.sessionId = d.session_id as string
+          // A fresh turn is starting: any card still on screen belongs to the
+          // turn that just ended (the backend supersedes it server-side).
+          draft.pendingQuestion = null
+        })
         break
       }
 
@@ -471,6 +532,14 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
                 running: true,
               })
             }
+          } else if (status === 'waiting_input') {
+            // Suspended on ask_user_question: still live, but no tokens are
+            // coming, so drop the completion estimate that drives the progress
+            // readout instead of letting it tick against a stalled turn.
+            draft.agentStreams[agent].status = 'waiting_input'
+            draft.agentStreams[agent]._completionEstimated = 0
+            draft.isTeamWorking = true
+            if (draft.liveAgentNames && !draft.liveAgentNames.includes(agent)) draft.liveAgentNames.push(agent)
           } else if (status === 'idle') {
             draft.agentStreams[agent].status = 'idle'
             if (draft.liveAgentNames && !draft.liveAgentNames.includes(agent)) draft.liveAgentNames.push(agent)
@@ -483,11 +552,34 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
               (d.metadata as Record<string, unknown>)?.message as string ?? null
             if (draft.liveAgentNames && !draft.liveAgentNames.includes(agent)) draft.liveAgentNames.push(agent)
           }
-          if (status !== 'working') {
-            draft.isTeamWorking = Object.values(draft.agentStreams).some(
-              (s) => s.status === 'working',
-            )
+          if (status !== 'working' && status !== 'waiting_input') {
+            draft.isTeamWorking = anyAgentLive(draft.agentStreams)
           }
+        })
+        break
+      }
+
+      case 'question_asked': {
+        // The event names the row ``question_id``; every other carrier calls it
+        // ``id``. Normalise before the shared mapper sees it.
+        const question = toPendingQuestion({ ...d, id: d.question_id })
+        if (!question) break
+        set((draft) => { draft.pendingQuestion = question })
+        break
+      }
+
+      // Both resolutions are also delivered to the client that triggered them,
+      // so this is the single place the card is closed. That keeps a second
+      // device (or a second tab) in sync with no extra round-trip, and makes
+      // the local optimistic path unnecessary.
+      case 'question_answered':
+      case 'question_dismissed': {
+        const questionId = d.question_id as string
+        set((draft) => {
+          // Ignore a resolution for a question we are not showing: a late event
+          // for a superseded question must not close the current card.
+          if (draft.pendingQuestion?.id !== questionId) return
+          draft.pendingQuestion = null
         })
         break
       }
@@ -495,6 +587,9 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
       case 'done': {
         set((draft) => {
           draft.isTeamWorking = false
+          // A turn that reaches `done` is over; nothing can answer a question
+          // from it any more. Normally already cleared by its resolution event.
+          draft.pendingQuestion = null
           draft.isContinuing = false
           const completedAtMs = Date.now()
           const completedAt = new Date(completedAtMs)

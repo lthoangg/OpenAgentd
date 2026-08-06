@@ -14,6 +14,8 @@ import type {
   SessionResponse,
   TeamHistoryResponse,
   TeamAgentsResponse,
+  PendingQuestionEnvelope,
+  QuestionResolveResult,
   WorkspaceValidationResponse,
   WorktreeCreateResponse,
   WorktreeInfo,
@@ -435,6 +437,63 @@ export async function teamHistorySince(
     `${apiBaseUrl()}/team/${encodeURIComponent(sessionId)}/history?${params}`,
   )
   if (!res.ok) await parseDetailOrThrow(res, 'teamHistorySince')
+  return res.json()
+}
+
+// ── ask_user_question ────────────────────────────────────────────────────────
+
+/**
+ * Cold-load the open question for a session.
+ *
+ * Rarely needed: a live client gets the question from the replayed
+ * ``question_asked`` SSE event, and a cold load gets it from ``teamHistory``.
+ * This exists for a client that wants to re-check without reloading history.
+ */
+export async function getPendingQuestion(
+  sessionId: string,
+): Promise<PendingQuestionEnvelope> {
+  const res = await fetch(
+    `${apiBaseUrl()}/team/${encodeURIComponent(sessionId)}/question`,
+  )
+  if (!res.ok) await parseDetailOrThrow(res, 'getPendingQuestion')
+  return res.json()
+}
+
+/**
+ * Answer a pending question and resume the suspended turn.
+ *
+ * ``answers`` is index-matched to the questions that were asked; an empty entry
+ * skips that question. A ``resumed: false`` response means the answer was saved
+ * but the turn did not restart — the caller should surface that rather than
+ * assume the agent is working.
+ */
+export async function answerQuestion(
+  sessionId: string,
+  questionId: string,
+  answers: string[][],
+): Promise<QuestionResolveResult> {
+  const res = await fetch(
+    `${apiBaseUrl()}/team/${encodeURIComponent(sessionId)}/question/${encodeURIComponent(questionId)}/answer`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ answers }),
+    },
+  )
+  if (!res.ok) await parseDetailOrThrow(res, 'answerQuestion')
+  return res.json()
+}
+
+/** Close a question without answering. Ends the lead's turn; members keep working. */
+export async function dismissQuestion(
+  sessionId: string,
+  questionId: string,
+): Promise<QuestionResolveResult> {
+  const res = await fetch(
+    `${apiBaseUrl()}/team/${encodeURIComponent(sessionId)}/question/${encodeURIComponent(questionId)}/dismiss`,
+    { method: 'POST' },
+  )
+  if (!res.ok) await parseDetailOrThrow(res, 'dismissQuestion')
   return res.json()
 }
 

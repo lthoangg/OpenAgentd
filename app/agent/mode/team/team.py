@@ -36,8 +36,10 @@ from app.agent.mode.team.member import (
     TeamLead,
     TeamMember,
     TeamMemberBase,
+    is_busy,
 )
 from app.agent.mode.team.manage import make_team_manage_tool
+from app.agent.mode.team.question import make_ask_user_question_tool
 from app.agent.mode.team.tools import make_team_message_tool
 from app.agent.schemas.chat import AssistantMessage, HumanMessage, ToolMessage
 from app.agent.schemas.events import DoneEvent
@@ -62,6 +64,7 @@ from app.services.chat_service import (
 if TYPE_CHECKING:
     from app.agent.agent_loop import Agent
     from app.agent.providers.factory import ProviderFactory
+    from app.services import question_service
 
 
 # ---------------------------------------------------------------------------
@@ -117,6 +120,22 @@ def parse_instance_handle(handle: str) -> tuple[str, int] | None:
 def make_instance_handle(blueprint: str, n: int) -> str:
     """Format an instance handle from a blueprint name + counter."""
     return f"{blueprint}#{n}"
+
+
+class QuestionPendingError(Exception):
+    """Raised when a machine-originated message arrives during a live question.
+
+    A scheduled task must not answer — or silently cancel — a question the user
+    has not seen yet, so the fire is refused and rescheduled. The scheduler
+    already skips while a turn is active; this covers the case where the team
+    was rebuilt (restart) and its in-memory ``waiting_input`` state was lost.
+    """
+
+    def __init__(self, session_id: str) -> None:
+        super().__init__(
+            f"Session {session_id} is waiting on a user answer; try again later."
+        )
+        self.session_id = session_id
 
 
 class ContinuePreconditionError(Exception):
@@ -265,11 +284,25 @@ class AgentTeam:
 
     def has_active_user_turn(self) -> bool:
         """Return whether the team is still handling a user turn."""
-        return self._has_active_turn or self.lead.state == "working"
+        return self._has_active_turn or is_busy(self.lead.state)
 
     def has_active_lead_turn(self) -> bool:
-        """Return whether the lead itself is currently processing messages."""
-        return self.lead.state == "working"
+        """Return whether the lead itself owns an open turn.
+
+        Includes a lead suspended on a question: the turn is unfinished even
+        though nothing is running.
+        """
+        return is_busy(self.lead.state)
+
+    def is_awaiting_question_answer(self) -> bool:
+        """Whether the lead is parked on a question the user has not resolved.
+
+        Distinguishes "busy, will finish on its own" from "busy, and only the
+        user can move it". Callers that would otherwise queue behind an active
+        turn need the difference: nothing drains a queue while a question owns
+        the turn, so a message queued here would be stranded.
+        """
+        return self.lead.state == "waiting_input"
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -320,7 +353,8 @@ class AgentTeam:
         self,
         agent: str,
         event: str,
-        status: Literal["idle", "working", "offline", "error"] | None = None,
+        status: Literal["idle", "working", "waiting_input", "offline", "error"]
+        | None = None,
         extra: dict | None = None,
     ) -> None:
         """Push a lifecycle event to the stream store for the current session."""
@@ -456,9 +490,8 @@ class AgentTeam:
         # If sending to the mailbox did not spawn a new lead activation because
         # the lead was still marked working by its finally block, start it after
         # returning to idle.
-        if (
-            not self.mailbox.inbox_empty(self.lead.name)
-            and self.lead.state != "working"
+        if not self.mailbox.inbox_empty(self.lead.name) and not is_busy(
+            self.lead.state
         ):
             self.lead._maybe_activate()
 
@@ -533,6 +566,7 @@ class AgentTeam:
         thinking_level_provided: bool = False,
         service_tier: str | None = None,
         mentions: list[str] | None = None,
+        origin: str = "user",
     ) -> tuple[str, str]:
         """Deliver a user message to the team lead. Returns ``(session_id, message_id)``.
 
@@ -584,8 +618,21 @@ class AgentTeam:
             # roster (the lead can re-spawn at will).
             await self._restore_or_drop_members_for_lead(session_id)
 
+        # A question on screen owns the turn. A person typing instead of
+        # answering has moved on, so the question is superseded. A machine
+        # (scheduler) must not make that call for them — it defers.
+        if await self._has_open_question():
+            if origin != "user":
+                logger.info(
+                    "question_deferred_machine_message session_id={} origin={}",
+                    session_id,
+                    origin,
+                )
+                raise QuestionPendingError(session_id)
+            await self.dismiss_pending_question(reason="superseded")
+
         if interrupt:
-            cancelled = [m for m in self.all_members if m.state == "working"]
+            cancelled = [m for m in self.all_members if is_busy(m.state)]
             for member in cancelled:
                 member._cancel_event.set()
 
@@ -593,6 +640,10 @@ class AgentTeam:
                 "team_interrupted cancelled={}",
                 [m.name for m in cancelled],
             )
+            # Stop is team-wide and outranks a pending question: leaving the
+            # row open would keep the session badged "needs input" with no turn
+            # left to resume.
+            await self.dismiss_pending_question(reason="dismissed")
         # Persist the user message before any turn state or mailbox delivery.
         db_factory = resolve_db_factory(self.lead.db_factory)
         lead_uuid = UUID(session_id)
@@ -617,6 +668,11 @@ class AgentTeam:
                     lead_row.thinking_level = thinking_level
                 effective_model = lead_row.model or self.lead.agent.model_id
                 effective_thinking_level = lead_row.thinking_level
+                # A scheduler-owned session has no human watching it, so the
+                # lead must not be offered ``ask_user_question``.
+                self.lead.is_scheduler_session = (
+                    lead_row.scheduled_task_name is not None
+                )
                 db.add(lead_row)
             else:
                 effective_model = model or self.lead.agent.model_id
@@ -833,7 +889,7 @@ class AgentTeam:
 
         self._has_active_turn = True
 
-        if self.lead.state == "working":
+        if is_busy(self.lead.state):
             self._has_active_turn = False
             raise ContinuePreconditionError(
                 f"Agent '{self.lead.name}' is already working."
@@ -945,7 +1001,7 @@ class AgentTeam:
         # orphans the in-flight assistant tokens on the client, so
         # require the team to be fully quiescent first.
         busy = next(
-            (m for m in self.all_members if m.state == "working"),
+            (m for m in self.all_members if is_busy(m.state)),
             None,
         )
         if busy is not None:
@@ -1026,6 +1082,42 @@ class AgentTeam:
             "team_redo_applied session_id={} agent={}", session_id, self.lead.name
         )
         return session_id, shift
+
+    async def hydrate_pending_question(self) -> bool:
+        """Re-park the lead in ``waiting_input`` if the DB says it is waiting.
+
+        ``waiting_input`` lives in memory; a rebuilt team or a restarted daemon
+        starts at ``idle``.  Re-reading it here keeps ``has_active_user_turn()``
+        honest — which is what makes the scheduler defer a fire instead of
+        superseding a question the user has not seen yet.
+        """
+        from app.services import question_service
+
+        try:
+            db_factory = resolve_db_factory(self.lead.db_factory)
+            async with db_factory() as db:
+                pending = await question_service.get_pending_question(
+                    db, UUID(self.lead.session_id)
+                )
+        except Exception as exc:
+            logger.warning(
+                "question_hydrate_failed session_id={} error={}",
+                self.lead.session_id,
+                exc,
+            )
+            return False
+
+        if pending is None:
+            return False
+        if self.lead.state == "idle":
+            self.lead.state = "waiting_input"
+            self._has_active_turn = True
+            logger.info(
+                "question_state_hydrated session_id={} question_id={}",
+                self.lead.session_id,
+                pending.id,
+            )
+        return True
 
     async def _restore_or_drop_members_for_lead(self, lead_session_id: str) -> None:
         """Realign live spawned instances to child sessions of *lead_session_id*.
@@ -1540,8 +1632,82 @@ class AgentTeam:
 
         if agent_name == self.lead.name:
             tools.append(make_team_manage_tool(self))
+            if self._question_tool_enabled():
+                tools.append(make_ask_user_question_tool(self))
 
         return tools
+
+    async def _has_open_question(self) -> bool:
+        """Cheap existence check for an unanswered question on the lead session."""
+        from app.services import question_service
+
+        try:
+            db_factory = resolve_db_factory(self.lead.db_factory)
+            async with db_factory() as db:
+                return (
+                    await question_service.get_pending_question(
+                        db, UUID(self.lead.session_id)
+                    )
+                    is not None
+                )
+        except Exception as exc:
+            logger.warning(
+                "question_lookup_failed session_id={} error={}",
+                self.lead.session_id,
+                exc,
+            )
+            return False
+
+    async def dismiss_pending_question(
+        self, *, reason: "question_service.ResolvedStatus"
+    ) -> bool:
+        """Close any open question on the lead session and free the lead.
+
+        Used by Stop (team-wide interrupt) and by a superseding user message.
+        Returns ``True`` when a question was actually closed.
+        """
+        from app.services import question_service
+
+        try:
+            db_factory = resolve_db_factory(self.lead.db_factory)
+            async with db_factory() as db:
+                pending = await question_service.get_pending_question(
+                    db, UUID(self.lead.session_id)
+                )
+                if pending is None:
+                    return False
+                await question_service.resolve_pending_question(
+                    db, question_id=pending.id, status=reason
+                )
+                await db.commit()
+        except Exception as exc:
+            logger.warning(
+                "question_dismiss_failed session_id={} error={}",
+                self.lead.session_id,
+                exc,
+            )
+            return False
+
+        if self.lead.state == "waiting_input":
+            self.lead.state = "idle"
+        self.lead._question_suspended = None
+        logger.info(
+            "question_dismissed session_id={} reason={}", self.lead.session_id, reason
+        )
+        return True
+
+    def _question_tool_enabled(self) -> bool:
+        """Whether the lead may interrupt the user with ``ask_user_question``.
+
+        Coding mode only (that is where a wrong guess costs real work), lead
+        only (members escalate through ``team_message``), and never on a
+        scheduler-owned session — a cron job has no one to answer, and a tool
+        the model cannot usefully call is better left out of the schema than
+        offered and refused.
+        """
+        if self.mode != "coding":
+            return False
+        return not getattr(self.lead, "is_scheduler_session", False)
 
     # ------------------------------------------------------------------
     # Introspection

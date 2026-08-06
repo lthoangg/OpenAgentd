@@ -65,7 +65,10 @@ export function WorkspaceSessionList({
       )}
       {workspaceSessions.map((session) => {
         const isCurrent = session.id === currentSessionId
-        const isRunning = session.running === true
+        // `needs_input` implies `running`, so it has to be checked first — a
+        // suspended turn is busy waiting for this user, not busy working.
+        const needsInput = session.needs_input === true
+        const isRunning = session.running === true && !needsInput
         const sessionTitle = session.title || 'Untitled'
         const sessionDate = formatRelativeDate(session.created_at)
         return (
@@ -98,7 +101,17 @@ export function WorkspaceSessionList({
                   : 'text-(--color-text-2) hover:text-(--color-text)'
               }`}
             >
-              <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${isRunning ? 'session-title-breathe bg-(--color-accent)' : 'border border-(--color-text-subtle)'}`} aria-label={isRunning ? 'Session running' : undefined} aria-hidden={isRunning ? undefined : true} />
+              <span
+                className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+                  needsInput
+                    ? 'animate-pulse bg-(--color-warning)'
+                    : isRunning
+                      ? 'session-title-breathe bg-(--color-accent)'
+                      : 'border border-(--color-text-subtle)'
+                }`}
+                aria-label={needsInput ? 'Session needs your input' : isRunning ? 'Session running' : undefined}
+                aria-hidden={needsInput || isRunning ? undefined : true}
+              />
               <span className={`min-w-0 flex-1 truncate ${isCurrent ? 'font-semibold text-(--color-text)' : 'font-medium'} ${isRunning ? 'session-title-breathe text-(--color-text)' : ''}`}>{sessionTitle}</span>
 
             </LongPressButton>

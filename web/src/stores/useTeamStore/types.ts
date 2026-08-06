@@ -1,4 +1,10 @@
-import type { ContentBlock, AgentUsage, MessageAttachment, TeamCommandResponse } from '@/api/types'
+import type {
+  ContentBlock,
+  AgentUsage,
+  MessageAttachment,
+  PendingQuestion,
+  TeamCommandResponse,
+} from '@/api/types'
 
 export interface PendingMessage {
   id: string
@@ -37,7 +43,13 @@ export interface AgentStream {
   currentBlocks: ContentBlock[]
   currentText: string
   currentThinking: string
-  status: 'idle' | 'working' | 'offline' | 'error'
+  /**
+   * ``waiting_input`` mirrors the backend's ``waiting_input`` member state: the
+   * agent is suspended on an ``ask_user_question`` call. It is *live* (the turn
+   * has not ended) but not *working* (no tokens are coming), so spinners should
+   * treat it as busy while progress indicators should not.
+   */
+  status: 'idle' | 'working' | 'waiting_input' | 'offline' | 'error'
   usage: AgentUsage
   _completionBase: number
   _completionEstimated?: number
@@ -84,6 +96,14 @@ export interface TeamStoreState {
   sessionThinkingLevel: string | null
   sessionFastMode: boolean
   isTeamWorking: boolean
+  /**
+   * The question the lead is currently suspended on, or ``null``.
+   *
+   * At most one is open per session (enforced by a partial unique index
+   * server-side), so this is a single slot rather than a queue — a second
+   * ``question_asked`` replaces the first instead of stacking cards.
+   */
+  pendingQuestion: PendingQuestion | null
   isContinuing: boolean
   isConnected: boolean
   error: string | null
@@ -118,6 +138,15 @@ export interface TeamStoreActions {
   redoTeam: () => Promise<void>
   stopTeam: () => Promise<void>
   connectStream: () => AbortController
+  /**
+   * Close the question card for ``questionId``, ignoring a stale id.
+   *
+   * Normally driven by the ``question_answered`` / ``question_dismissed`` SSE
+   * events (which every connected client receives). The component that resolved
+   * it also calls this directly, so the card closes even when this client's
+   * stream is mid-reconnect and would never see its own resolution.
+   */
+  clearPendingQuestion: (questionId: string) => void
   loadTeamStatus: (workspace?: string | null, expectedGeneration?: number) => Promise<void>
   loadSession: (sessionId: string, workspace?: string | null) => Promise<void>
   /**

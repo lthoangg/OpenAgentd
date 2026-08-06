@@ -5,9 +5,14 @@ Covers: history, workspace files, todos, and permission requests.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from pydantic import BaseModel, Field
 
 from app.api.schemas.sessions import MessageResponse, SessionDetailResponse
+
+if TYPE_CHECKING:
+    from app.models.chat import PendingQuestion
 
 
 # ── History ──────────────────────────────────────────────────────────────────
@@ -30,6 +35,13 @@ class TeamHistoryResponse(BaseModel):
     #: caller must fall back to a full page instead of stitching an incomplete
     #: tail onto its local state.  Always ``False`` for full pages.
     truncated: bool = False
+    #: The question the lead is suspended on, if any.  Lets a cold load render
+    #: the card and mark the lead ``waiting_input`` in one pass — the SSE replay
+    #: buffer is in-memory, so it no longer carries ``question_asked`` after a
+    #: daemon restart even though the row is still open.  Always ``None`` on a
+    #: delta response (``?since=``), which callers only issue for a finished
+    #: turn; absence there does not mean the question was resolved.
+    pending_question: "PendingQuestionResponse | None" = None
 
 
 # ── Workspace files ──────────────────────────────────────────────────────────
@@ -143,6 +155,79 @@ class PermissionReplyResponse(BaseModel):
     status: str
     request_id: str
     reply: str
+
+
+# ── Questions (ask_user_question) ─────────────────────────────────────────────
+
+#: Cap on a single free-text answer. Answers land in the transcript and in the
+#: model's context, so an unbounded paste is both a cost and a context problem.
+MAX_ANSWER_CHARS = 2000
+
+
+class QuestionAnswerRequest(BaseModel):
+    """Body for answering a pending question.
+
+    ``answers`` is index-matched to the question list that was asked. Each entry
+    holds the labels selected for that question — empty means "skipped", which
+    is a legitimate reply. Values are validated against the stored question
+    payload by the route, since anything else is client-supplied text.
+    """
+
+    answers: list[list[str]] = Field(
+        description=(
+            "Selected labels per question, in the order the questions were "
+            "asked. Use an empty list to skip a question."
+        )
+    )
+
+
+class PendingQuestionResponse(BaseModel):
+    """A question awaiting the user's reply."""
+
+    id: str
+    session_id: str
+    tool_call_id: str
+    questions: list[dict]
+    created_at: str
+
+    @classmethod
+    def from_row(cls, row: "PendingQuestion") -> "PendingQuestionResponse":
+        """Serialise a ``pending_questions`` row.
+
+        Shared by the dedicated question endpoint and the history response so
+        the two never drift into different shapes for the same card.
+        """
+        return cls(
+            id=str(row.id),
+            session_id=str(row.session_id),
+            tool_call_id=row.tool_call_id,
+            questions=row.payload.get("questions", []),
+            created_at=row.created_at.isoformat(),
+        )
+
+
+# ``TeamHistoryResponse`` references ``PendingQuestionResponse`` before it is
+# defined (history is the first section in this module). Resolve the forward ref
+# now rather than leaving the model to be completed lazily on first validation.
+TeamHistoryResponse.model_rebuild()
+
+
+class PendingQuestionEnvelope(BaseModel):
+    """``question`` is ``None`` when the session is not waiting on anything."""
+
+    question: PendingQuestionResponse | None = None
+
+
+class QuestionResolveResponse(BaseModel):
+    """Outcome of answering or dismissing a question.
+
+    ``resumed`` reports whether the suspended turn actually restarted. The
+    answer is saved either way — a ``False`` here means the client should offer
+    a manual resume rather than assume the agent is working.
+    """
+
+    status: str
+    resumed: bool
 
 
 class CodingWorkspaceGitDiffResponse(BaseModel):

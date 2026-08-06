@@ -33,17 +33,19 @@ export function invalidateGlobalEventQueries(queryClient: QueryClient): void {
 }
 
 /**
- * A turn started/finished somewhere — possibly in another window or a scheduled
- * task. ``running`` is the only turn-dependent field on a session row, so patch
- * it in place; only fall back to a list refetch when the session is not in any
- * cached page yet (a scheduled task may have just created it).
+ * A turn started/finished/suspended somewhere — possibly in another window or a
+ * scheduled task. ``running`` and ``needs_input`` are the only turn-dependent
+ * fields on a session row, so patch them in place; only fall back to a list
+ * refetch when the session is not in any cached page yet (a scheduled task may
+ * have just created it).
  */
 function markSessionRunning(
   queryClient: QueryClient,
   sessionId: string,
   running: boolean,
+  needsInput: boolean = false,
 ): void {
-  if (!patchSessionRunning(queryClient, sessionId, running)) {
+  if (!patchSessionRunning(queryClient, sessionId, running, needsInput)) {
     queryClient.invalidateQueries({ queryKey: queryKeys.team.sessions.all() })
   }
 }
@@ -136,7 +138,10 @@ export async function handleGlobalEvent(
   if (type === 'desktop_notification') {
     const id = typeof event.notification_id === 'string' ? event.notification_id : null
     const kind = event.kind
-    if (!id || (kind !== 'assistant_done' && kind !== 'reminder_fired')) return false
+    if (
+      !id ||
+      (kind !== 'assistant_done' && kind !== 'reminder_fired' && kind !== 'input_needed')
+    ) return false
     if (!rememberNotification(id)) return true
     if (typeof event.title !== 'string' || typeof event.body !== 'string') return false
     const sessionId = typeof event.session_id === 'string' ? event.session_id : undefined
@@ -144,7 +149,23 @@ export async function handleGlobalEvent(
       && (event.metadata as Record<string, unknown>).mode === 'coding'
       ? 'coding'
       : 'normal'
-    await sendDesktopNotification({ kind, sessionId, mode, title: event.title, body: event.body })
+    // A question stops the agent until it is answered, so it must reach the user
+    // even in a focused window — unless they are already looking at the session
+    // that asked, where the card itself is the notification. ``force`` skips the
+    // window-focus check only; the user's notification setting still applies.
+    // Badge the row in every window's session list. The question card itself
+    // only reaches clients attached to that session's stream; this is what tells
+    // someone working elsewhere that a session is stopped and waiting on them.
+    if (kind === 'input_needed' && sessionId) {
+      markSessionRunning(queryClient, sessionId, true, true)
+    }
+    const viewingAskingSession =
+      kind === 'input_needed' && sessionId !== undefined
+      && useTeamStore.getState().sessionId === sessionId
+    await sendDesktopNotification(
+      { kind, sessionId, mode, title: event.title, body: event.body },
+      { force: kind === 'input_needed' && !viewingAskingSession },
+    )
     return true
   }
 

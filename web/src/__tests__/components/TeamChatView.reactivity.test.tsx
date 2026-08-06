@@ -4,8 +4,11 @@ import { forwardRef, useImperativeHandle } from 'react'
 import { useTeamStore } from '@/stores/useTeamStore'
 import type { ContentBlock } from '@/api/types'
 
-const Icon = () => null
-mock.module('lucide-react', () => ({ AlertCircle: Icon, FileUp: Icon, FolderCode: Icon, X: Icon }))
+// lucide-react is deliberately NOT mocked here. Bun validates every static
+// named import in the tree against the mock's own keys, so an explicit icon map
+// fails the moment any component in this (large) tree adopts another icon —
+// which surfaces as an unrelated module-resolution error rather than a test
+// failure. The real icons render fine and cost nothing measurable.
 mock.module('@tanstack/react-router', () => ({ useNavigate: () => () => Promise.resolve() }))
 mock.module('@tanstack/react-query', () => ({ useQueryClient: () => ({}) }))
 mock.module('@/queries/useTodosQuery', () => ({ useTodosQuery: () => ({ data: { todos: [] } }) }))

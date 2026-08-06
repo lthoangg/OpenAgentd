@@ -48,6 +48,7 @@ from app.api.schemas.team import (
     CodingWorkspaceBrowseResponse,
     CodingWorkspaceFolder,
     CodingWorkspaceValidateResponse,
+    PendingQuestionResponse,
     TeamAgentsResponse,
     TeamChatResponse,
     TeamCommandResponse,
@@ -63,6 +64,7 @@ from app.models.chat import ChatSession
 from app.services import (
     agent_service,
     memory_stream_store as stream_store,
+    question_service,
     team_manager,
 )
 from app.services.agent_service import AttachmentError, RawAttachment
@@ -332,7 +334,17 @@ async def team_chat(
             async with db.begin():
                 await cleanup_reverted_tail(db, session_uuid)
 
-        if session_uuid is not None and team_obj.has_active_user_turn():
+        # A question on screen owns the turn but cannot drain a queue: resolving
+        # it resumes the suspended turn, and dismissing it just frees the lead.
+        # Queueing behind one would strand this message with nothing to carry
+        # it, so dispatch instead and let ``handle_user_message`` supersede the
+        # question — which is also the documented behaviour for a person who
+        # types instead of answering.
+        if (
+            session_uuid is not None
+            and team_obj.has_active_user_turn()
+            and not team_obj.is_awaiting_question_answer()
+        ):
             queued_result = await persist_queued_user_message(
                 db,
                 team=team_obj,
@@ -684,10 +696,15 @@ async def list_team_sessions(
         )
 
     running_session_ids = stream_store.running_session_ids()
+    # One query for the whole page rather than a lookup per row.
+    awaiting = await question_service.sessions_awaiting_input(db)
     return SessionPageResponse(
         data=[
             SessionResponse.model_validate(s).model_copy(
-                update={"running": str(s.id) in running_session_ids}
+                update={
+                    "running": str(s.id) in running_session_ids,
+                    "needs_input": s.id in awaiting,
+                }
             )
             for s in sessions
         ],
@@ -1002,11 +1019,22 @@ async def team_history(
         if history.next_cursor and history.next_cursor_id
         else None
     )
+    # Only a first page can be a cold load, and only a cold load needs to learn
+    # about an open question — paging backwards through history never does.
+    pending_row = (
+        None
+        if before_dt is not None
+        else await question_service.get_pending_question(db, session_id)
+    )
+
     return TeamHistoryResponse(
         lead=lead_detail,
         members=member_histories,
         has_more=history.has_more,
         next_cursor=next_cursor,
+        pending_question=(
+            PendingQuestionResponse.from_row(pending_row) if pending_row else None
+        ),
     )
 
 

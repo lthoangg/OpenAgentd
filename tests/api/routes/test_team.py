@@ -406,6 +406,42 @@ class TestTeamChatRoute:
         test_team._activate_queued_user_messages.assert_awaited_once_with(session_id)
         test_team.handle_user_message.assert_not_awaited()
 
+    def test_team_chat_supersedes_pending_question_instead_of_queueing(
+        self, app_with_team, test_team
+    ):
+        """A person typing instead of answering must reach the supersede path.
+
+        ``waiting_input`` is a busy state, so ``has_active_user_turn()`` is True
+        and the naive reading is "queue it". That strands the message: the
+        question owns the turn, and dismissing it never drains the queue, so the
+        text the user typed disappears with no turn to carry it.
+        """
+        session_id = str(uuid.uuid7())
+        test_team.lead.state = "waiting_input"
+        test_team._has_active_turn = True  # a member kept working past the ask
+        test_team._activate_queued_user_messages = AsyncMock(return_value=True)
+        test_team.handle_user_message = AsyncMock(
+            return_value=(session_id, str(uuid.uuid7()))
+        )
+
+        client = TestClient(app_with_team)
+        try:
+            response = client.post(
+                "/api/team/chat",
+                data={
+                    "message": "actually, do it differently",
+                    "session_id": session_id,
+                },
+            )
+        finally:
+            test_team._has_active_turn = False
+            test_team.lead.state = "idle"
+
+        assert response.status_code == 202
+        assert response.json()["status"] == "accepted"
+        test_team.handle_user_message.assert_awaited_once()
+        test_team._activate_queued_user_messages.assert_not_awaited()
+
     def test_team_chat_queued_message_persists_explicit_uploads(
         self, app_with_team, test_team
     ):

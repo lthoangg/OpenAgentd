@@ -1,6 +1,12 @@
 import { getPlatform } from '@/hooks/use-platform'
 
-export type DesktopNotificationKind = 'assistant_done' | 'reminder_fired'
+/**
+ * ``input_needed`` — the lead is suspended on ``ask_user_question`` and cannot
+ * continue until the user answers. Unlike the others it is sent with
+ * ``force: true`` when the asking session is not the one on screen, so a
+ * blocked agent is not silently waiting behind a focused window.
+ */
+export type DesktopNotificationKind = 'assistant_done' | 'reminder_fired' | 'input_needed'
 export type DesktopNotificationStatus = 'sent' | 'disabled' | 'unsupported' | 'permission-denied' | 'error'
 
 export interface DesktopNotificationPayload {

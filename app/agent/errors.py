@@ -20,7 +20,8 @@ Hierarchy::
     ├── SessionError
     │   └── SessionNotFoundError
     ├── AgentConfigError
-    └── RoutingError
+    ├── RoutingError
+    └── QuestionSuspended (control flow, not a failure)
 """
 
 from __future__ import annotations
@@ -28,6 +29,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from uuid import UUID
+
     from pydantic import ValidationError
 
 
@@ -139,6 +142,25 @@ class ToolArgumentError(ToolError):
 
 class ToolExecutionError(ToolError):
     """Tool execution failed at runtime."""
+
+
+class QuestionSuspended(OpenAgentdError):
+    """Control flow: ``ask_user_question`` handed the turn to the user.
+
+    Not a failure — the question and a placeholder tool result are already
+    persisted, so the conversation is in a resumable state.  Raising unwinds
+    the tool call and the agent loop so the activation can exit cleanly; the
+    turn continues from the same point once the user answers.
+
+    Every broad ``except Exception`` between the tool and the loop must let
+    this through explicitly (see ``Tool.arun`` and the tool executor) —
+    swallowing it would turn a suspension into a silent error result.
+    """
+
+    def __init__(self, question_id: "UUID", session_id: "UUID") -> None:
+        self.question_id = question_id
+        self.session_id = session_id
+        super().__init__(f"Turn suspended awaiting user answer ({question_id})")
 
 
 # ── Sandbox errors ────────────────────────────────────────────────────────

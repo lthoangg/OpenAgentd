@@ -595,6 +595,36 @@ class TaskScheduler:
             if task.id not in self._pending_fire_counts:
                 self._fire_versions.pop(task.id, None)
 
+    async def _reschedule_without_firing(
+        self, task: ScheduledTask, fire_version: int
+    ) -> None:
+        """Return a claimed task to ``pending`` and pick the next fire time.
+
+        Used when the target session is busy — an active turn, or a lead waiting
+        on a user answer. The run is not attempted and not counted as an error.
+        """
+        async with self._state_lock:
+            async with self._db() as session:
+                db_task = await session.get(ScheduledTask, task.id)
+                if (
+                    db_task is not None
+                    and db_task.enabled
+                    and db_task.status != "paused"
+                    and self._fire_versions.get(task.id, 0) == fire_version
+                ):
+                    db_task.status = "pending"
+                    db_task.next_fire_at = next_fire(
+                        db_task.schedule_type,
+                        cron_expression=db_task.cron_expression,
+                        every_seconds=db_task.every_seconds,
+                        at_datetime=db_task.at_datetime,
+                        timezone=db_task.timezone,
+                        after=datetime.now(_utc),
+                        run_count=db_task.run_count,
+                    )
+                    session.add(db_task)
+                    await session.commit()
+
     async def _mark_fire_cancelled(self, task_id: UUID) -> None:
         """Restore a firing row interrupted by scheduler shutdown."""
         async with self._state_lock:
@@ -620,6 +650,7 @@ class TaskScheduler:
     async def _fire_task_locked(self, task: ScheduledTask, fire_version: int) -> None:
         """Execute the dispatch and bookkeeping for one firing."""
         from app.services import team_manager
+        from app.agent.mode.team.team import QuestionPendingError
         from app.services.agent_service import NoTeamConfigured, dispatch_user_message
 
         now = datetime.now(_utc)
@@ -671,27 +702,7 @@ class TaskScheduler:
             if self._fire_versions.get(task.id, 0) != fire_version:
                 return
             if resolved_sid is not None and team.has_active_user_turn() is True:
-                async with self._state_lock:
-                    async with self._db() as session:
-                        db_task = await session.get(ScheduledTask, task.id)
-                        if (
-                            db_task is not None
-                            and db_task.enabled
-                            and db_task.status != "paused"
-                            and self._fire_versions.get(task.id, 0) == fire_version
-                        ):
-                            db_task.status = "pending"
-                            db_task.next_fire_at = next_fire(
-                                db_task.schedule_type,
-                                cron_expression=db_task.cron_expression,
-                                every_seconds=db_task.every_seconds,
-                                at_datetime=db_task.at_datetime,
-                                timezone=db_task.timezone,
-                                after=datetime.now(_utc),
-                                run_count=db_task.run_count,
-                            )
-                            session.add(db_task)
-                            await session.commit()
+                await self._reschedule_without_firing(task, fire_version)
                 logger.info(
                     "scheduler_skip_active_session task_slug={} name={} session_id={}",
                     task.slug,
@@ -706,6 +717,8 @@ class TaskScheduler:
                 session_id=resolved_sid,
                 mode=task.mode,
                 workspace=task.workspace,
+                # Machine origin: a live question is deferred, never superseded.
+                origin="scheduler",
             )
             if fired_sid:
                 await event_broadcaster.publish(
@@ -720,6 +733,17 @@ class TaskScheduler:
                         "started_at": datetime.now(_utc).isoformat(),
                     },
                 )
+        except QuestionPendingError:
+            # The lead is holding an unanswered question. Treat it exactly like
+            # an active turn: reschedule, no error, no superseded question.
+            await self._reschedule_without_firing(task, fire_version)
+            logger.info(
+                "scheduler_skip_pending_question task_slug={} name={} session_id={}",
+                task.slug,
+                task.name,
+                resolved_sid,
+            )
+            return
         except NoTeamConfigured as exc:
             error = str(exc)
             logger.warning(

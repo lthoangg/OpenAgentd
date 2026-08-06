@@ -239,6 +239,57 @@ function TeamMessageResult({ result }: { result: string }) {
   )
 }
 
+// ---------------------------------------------------------------------------
+// ask_user_question renderer
+// ---------------------------------------------------------------------------
+
+/** Matches one `"question"="answer"` pair from `format_answers_for_model`. */
+const ANSWER_PAIR = /"([^"]*)"="([^"]*)"/g
+
+/** Marker the backend uses for a question the user chose not to answer. */
+const UNANSWERED = 'Unanswered'
+
+/**
+ * Show what the user actually chose.
+ *
+ * The stored result is a sentence written *for the model* ("User has answered
+ * your questions: … Continue with the user's answers in mind."). Someone
+ * scrolling the transcript wants the decisions, not the instructions, so the
+ * pairs are pulled out and the framing is dropped.
+ *
+ * Anything that is not that sentence — a dismissal, a supersede, or the
+ * still-pending placeholder — has no pairs to extract and is shown verbatim.
+ */
+function AskUserQuestionResult({ result }: { result: string }) {
+  const pairs = [...result.matchAll(ANSWER_PAIR)].map(([, question, answer]) => ({
+    question,
+    answer,
+  }))
+
+  if (pairs.length === 0) return <GenericResult result={result} />
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      {pairs.map(({ question, answer }, index) => (
+        <div key={index} className="flex flex-col gap-0.5">
+          <span className="text-[11px] leading-relaxed text-(--color-text-muted)">
+            {question}
+          </span>
+          {answer === UNANSWERED ? (
+            <span className="text-[11px] leading-relaxed text-(--color-text-subtle) italic">
+              Skipped
+            </span>
+          ) : (
+            <span className="text-[11px] leading-relaxed font-medium break-words text-(--color-text)">
+              {answer}
+            </span>
+          )}
+        </div>
+      ))}
+    </div>
+  )
+}
+
 function TeamManageResult({ result }: { result: string }) {
   const cleanValue = (value: string) => {
     if (value.startsWith('[') && value.endsWith(']')) {
@@ -935,6 +986,9 @@ function ToolResultInner({ toolName, result, headerAction, onCollapse }: { toolN
   }
   if (toolName === 'todo_manage') {
     return <TodoListResult result={result} />
+  }
+  if (toolName === 'ask_user_question') {
+    return <AskUserQuestionResult result={result} />
   }
   // web_fetch, date, math, skill, etc.
   return <GenericResult result={result} />

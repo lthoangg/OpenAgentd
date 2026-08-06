@@ -145,6 +145,20 @@ MEMBER_PROTOCOL = """\
 
 # -- Helpers -------------------------------------------------------------------
 
+#: Agent states that mean "this agent owns an open turn — do not start another".
+#:
+#: ``waiting_input`` is a suspended lead: no coroutine is running, but the turn
+#: is half-finished and its conversation ends in a placeholder tool result. Any
+#: activation started on top of it would feed that placeholder to the model.
+#: Every busy-check goes through :func:`is_busy` so adding a state here reaches
+#: all of them at once, rather than a dozen scattered ``== "working"`` literals.
+BUSY_STATES: frozenset[str] = frozenset({"working", "waiting_input"})
+
+
+def is_busy(state: str) -> bool:
+    """Return whether *state* means the agent already owns an open turn."""
+    return state in BUSY_STATES
+
 
 class AlreadyWorkingError(Exception):
     """Raised by :meth:`TeamMemberBase.activate_for_continuation` when the
@@ -259,7 +273,14 @@ class TeamMemberBase(abc.ABC):
         self.session_id: str = session_id or str(uuid7())
         self.db_factory = db_factory
 
-        self.state: Literal["idle", "working", "error"] = "idle"
+        self.state: Literal["idle", "working", "waiting_input", "error"] = "idle"
+        # Set by ``_handle_messages`` when ``ask_user_question`` suspended the
+        # turn; read by ``_run_activation``'s finally block so the agent parks
+        # in ``waiting_input`` instead of going idle.
+        self._question_suspended: dict | None = None
+        # True when this session belongs to the scheduler — nobody is there to
+        # answer a question, so the tool is never injected.
+        self.is_scheduler_session: bool = False
         self._cancel_event = asyncio.Event()
         self._active_task: asyncio.Task | None = None
 
@@ -373,8 +394,11 @@ class TeamMemberBase(abc.ABC):
             )
             return
 
-        if self.state == "working":
-            return  # already active — inbox hook will drain the new message
+        if is_busy(self.state):
+            # Working: the inbox hook drains the new message before the next
+            # model call.  Suspended: it waits in the inbox until the user
+            # answers, and is drained into the resumed turn.
+            return
 
         # Me: set state synchronously before create_task so that any
         # _try_emit_done() call that follows in the same coroutine sees
@@ -403,7 +427,7 @@ class TeamMemberBase(abc.ABC):
         Raises:
             AlreadyWorkingError: if the agent is already working.
         """
-        if self.state == "working":
+        if is_busy(self.state):
             raise AlreadyWorkingError(self.name)
         self.state = "working"
         self._active_task = asyncio.create_task(
@@ -413,12 +437,37 @@ class TeamMemberBase(abc.ABC):
 
     def activate_for_compaction(self) -> None:
         """Spawn an activation task that forces summarization before the model call."""
-        if self.state == "working":
+        if is_busy(self.state):
             raise AlreadyWorkingError(self.name)
         self.state = "working"
         self._active_task = asyncio.create_task(
             self._run_activation(force_compaction=True),
             name=f"compact:{self.name}",
+        )
+
+    def activate_for_question_answer(self) -> None:
+        """Resume a turn that was suspended by ``ask_user_question``.
+
+        Runs on existing DB history exactly like ``/continue``: by the time
+        this is called the placeholder tool result has been rewritten with the
+        user's answer, so the conversation ends in a complete
+        ``assistant(tool_calls) → tool results`` tail and the next model call
+        picks up precisely where the question interrupted it.
+
+        The run is flagged ``question_resume`` so the loop refuses a second
+        interruption — one question per turn, however many activations that
+        turn happens to span.
+
+        Raises:
+            AlreadyWorkingError: if the agent is already running a turn.
+        """
+        if self.state == "working":
+            raise AlreadyWorkingError(self.name)
+        self.state = "working"
+        self._question_suspended = None
+        self._active_task = asyncio.create_task(
+            self._run_activation(question_resume=True),
+            name=f"answer:{self.name}",
         )
 
     # ── Live-config drift ──────────────────────────────────────────────
@@ -511,7 +560,11 @@ class TeamMemberBase(abc.ABC):
             )
 
     async def _run_activation(
-        self, *, is_continuation: bool = False, force_compaction: bool = False
+        self,
+        *,
+        is_continuation: bool = False,
+        force_compaction: bool = False,
+        question_resume: bool = False,
     ) -> None:
         """One-shot activation: drain inbox, process, return to idle.
 
@@ -520,13 +573,24 @@ class TeamMemberBase(abc.ABC):
         verbatim, which (for /continue) ends in the prior assistant turn so
         the provider continues from there.  The resulting first assistant
         message is stamped via :class:`ContinuationHook`.
+
+        ``question_resume`` is the same history-only path, used after the user
+        answered an ``ask_user_question``.
         """
         assert self._mailbox is not None
         assert self._team is not None
 
+        # Guard of last resort. ``waiting_input`` already blocks the known wake
+        # paths, but it lives in memory: a rebuilt team, a restarted daemon, or
+        # a path neither of us thought of would otherwise start a turn whose
+        # history ends in an unanswered placeholder tool result. The DB is the
+        # only source of truth that survives all three.
+        if not question_resume and await self._abort_for_pending_question():
+            return
+
         self._cancel_event.clear()
 
-        if is_continuation or force_compaction:
+        if is_continuation or force_compaction or question_resume:
             # Control-command path — no inbox messages; run on DB history.
             pending: list[Message] = []
         else:
@@ -563,7 +627,7 @@ class TeamMemberBase(abc.ABC):
         # Let subclass reset bookkeeping
         self._on_wake(pending)
 
-        if not is_continuation:
+        if not is_continuation and not question_resume:
             # Format + persist inbox RIGHT AFTER receiving (one row per message)
             inbox_msgs = await self._persist_inbox(pending)
 
@@ -583,6 +647,7 @@ class TeamMemberBase(abc.ABC):
             await self._handle_messages(
                 is_continuation=is_continuation,
                 force_compaction=force_compaction,
+                question_resume=question_resume,
             )
             await self._on_turn_success()
 
@@ -625,7 +690,23 @@ class TeamMemberBase(abc.ABC):
 
         finally:
             self._on_turn_finally()
-            if self.state != "error":
+            if self.state != "error" and self._question_suspended is not None:
+                # Turn handed to the user. Not idle — the turn is still open and
+                # `_try_emit_done` must not close it — and not working, because
+                # nothing is running. Held until the answer or a dismissal.
+                self.state = "waiting_input"
+                await self._team._emit(
+                    agent=self.name,
+                    event="agent_status",
+                    status="waiting_input",
+                    extra={"question_id": str(self._question_suspended["question_id"])},
+                )
+                logger.info(
+                    "team_member_waiting_input name={} question_id={}",
+                    self.name,
+                    self._question_suspended["question_id"],
+                )
+            elif self.state != "error":
                 self.state = "idle"
                 await self._team._emit(
                     agent=self.name,
@@ -772,7 +853,11 @@ class TeamMemberBase(abc.ABC):
     # ------------------------------------------------------------------
 
     async def _handle_messages(
-        self, *, is_continuation: bool = False, force_compaction: bool = False
+        self,
+        *,
+        is_continuation: bool = False,
+        force_compaction: bool = False,
+        question_resume: bool = False,
     ) -> None:
         """Load full history from DB and call agent.run().
 
@@ -952,6 +1037,11 @@ class TeamMemberBase(abc.ABC):
             "team_mode": self._team.mode,
             "lead_session_id": lead_session_id,
         }
+        if question_resume:
+            # Spends this turn's one interruption up-front: the loop refuses a
+            # second ask_user_question, so answering can never loop back into
+            # another question.
+            run_metadata["question_resume"] = True
         if force_compaction:
             run_metadata["force_summarization"] = True
             run_metadata["stop_after_before_model"] = True
@@ -984,6 +1074,14 @@ class TeamMemberBase(abc.ABC):
                 model_id=runtime_model,
             )
 
+            # ``ask_user_question`` suspended the turn: the loop reports it
+            # through the run config rather than raising, because the turn is
+            # complete-and-resumable, not failed.
+            suspended = run_metadata.get("question_suspended")
+            self._question_suspended = (
+                suspended if isinstance(suspended, dict) else None
+            )
+
             await self._maybe_inject_open_task_nudge()
         finally:
             if runtime_provider is not None:
@@ -997,6 +1095,56 @@ class TeamMemberBase(abc.ABC):
             await _mark_last_assistant_interrupted(
                 self.db_factory, uuid.UUID(self.session_id)
             )
+
+    async def _abort_for_pending_question(self) -> bool:
+        """Refuse to start a turn while an unanswered question is on record.
+
+        The in-memory ``waiting_input`` state covers the normal wake paths, but
+        it does not survive a team rebuild or a daemon restart — and the DB row
+        does.  Starting a turn here would hand the model the placeholder tool
+        result standing in for the user's answer.
+
+        Returns ``True`` when the activation must not proceed.
+        """
+        if self._role_label != "lead" or self.db_factory is None:
+            return False
+        from app.services import question_service
+
+        try:
+            db_factory = resolve_db_factory(self.db_factory)
+            async with db_factory() as db:
+                pending = await question_service.get_pending_question(
+                    db, uuid.UUID(self.session_id)
+                )
+        except Exception as exc:
+            # A lookup failure must not wedge the session — the state flag and
+            # the tool's own guards still apply.
+            logger.warning(
+                "pending_question_check_failed session_id={} error={}",
+                self.session_id,
+                exc,
+            )
+            return False
+
+        if pending is None:
+            return False
+
+        self.state = "waiting_input"
+        logger.info(
+            "activation_blocked_pending_question name={} question_id={}",
+            self.name,
+            pending.id,
+        )
+        # Re-announce so a client that missed (or lost) the original event
+        # re-renders the card instead of showing a session stuck mid-turn.
+        assert self._team is not None
+        await self._team._emit(
+            agent=self.name,
+            event="agent_status",
+            status="waiting_input",
+            extra={"question_id": str(pending.id)},
+        )
+        return True
 
     async def _maybe_inject_open_task_nudge(self) -> None:
         """Wake members that ended normally while assigned todos remain open."""

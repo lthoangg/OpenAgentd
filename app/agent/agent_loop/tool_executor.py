@@ -22,7 +22,11 @@ from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 
-from app.agent.errors import ToolArgumentError, ToolNotFoundError
+from app.agent.errors import (
+    QuestionSuspended,
+    ToolArgumentError,
+    ToolNotFoundError,
+)
 from app.agent.schemas.chat import ContentBlock, TextBlock, ToolResult
 
 TOOL_TIMEOUT_SECONDS = 300.0
@@ -120,6 +124,7 @@ def make_tool_executor(
             arun_coro = run_tools[tc.function.name].arun(
                 _injected={
                     "_state": s,
+                    "_tool_call_id": tc.id,
                     "_mode": injected_mode,
                     "_workspace": injected_workspace,
                     "_tool_output": s.metadata.get("_tool_output_callbacks", {}).get(
@@ -175,6 +180,11 @@ def make_tool_executor(
                 result[:_RESULT_PREVIEW_CHARS],
             )
 
+        except QuestionSuspended:
+            # Control flow, not a failure: the turn is being handed to the user.
+            # Swallowing it into an "Error: ..." result would strand the
+            # already-persisted question with nothing waiting on the answer.
+            raise
         except TimeoutError as e:
             msg = str(e)
             if not msg:

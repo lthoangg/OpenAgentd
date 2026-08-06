@@ -140,13 +140,18 @@ function isInfiniteSessionData(value: unknown): value is InfiniteData<SessionPag
 }
 
 /**
- * Flip the ``running`` flag of one session row in place.
+ * Flip the turn-state flags of one session row in place.
  *
- * ``running`` is the *only* turn-dependent field on a session row (the backend
- * derives it from ``stream_store.running_session_ids()``), so a turn starting or
- * finishing does not need a list refetch — and must not trigger one: the list is
- * an infinite query, and TanStack refetches every loaded page **sequentially**,
- * so flipping one boolean cost N serial round trips per turn.
+ * ``running`` and ``needs_input`` are the only turn-dependent fields on a session
+ * row (the backend derives them from ``stream_store.running_session_ids()`` and
+ * the open ``pending_questions`` rows), so a turn starting or finishing does not
+ * need a list refetch — and must not trigger one: the list is an infinite query,
+ * and TanStack refetches every loaded page **sequentially**, so flipping one
+ * boolean cost N serial round trips per turn.
+ *
+ * ``needsInput`` defaults to ``false``: every caller other than the
+ * question-asked path is reporting a turn that is running or finished, and in
+ * both cases nothing is waiting on the user.
  *
  * Returns ``true`` when the session was found in a cached page, so callers can
  * fall back to invalidation for a session that is not in the list yet (e.g. one
@@ -156,6 +161,7 @@ export function patchSessionRunning(
   queryClient: Pick<QueryClient, 'setQueriesData' | 'setQueryData'>,
   sessionId: string,
   running: boolean,
+  needsInput: boolean = false,
 ): boolean {
   let found = false
 
@@ -169,9 +175,11 @@ export function patchSessionRunning(
         const data = page.data.map((session) => {
           if (session.id !== sessionId) return session
           found = true
-          if (session.running === running) return session
+          if (session.running === running && (session.needs_input ?? false) === needsInput) {
+            return session
+          }
           pageChanged = true
-          return { ...session, running }
+          return { ...session, running, needs_input: needsInput }
         })
         if (!pageChanged) return page
         changed = true
@@ -185,7 +193,10 @@ export function patchSessionRunning(
 
   queryClient.setQueryData<SessionResponse>(
     queryKeys.team.sessions.detail(sessionId),
-    (old) => (old && old.running !== running ? { ...old, running } : old),
+    (old) =>
+      old && (old.running !== running || (old.needs_input ?? false) !== needsInput)
+        ? { ...old, running, needs_input: needsInput }
+        : old,
   )
 
   return found

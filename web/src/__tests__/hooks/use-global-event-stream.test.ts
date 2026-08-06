@@ -318,6 +318,78 @@ describe('handleGlobalEvent', () => {
     expect(sendDesktopNotification).toHaveBeenCalledTimes(1)
   })
 
+  /**
+   * ``input_needed`` is the one notification the user cannot afford to miss —
+   * the agent is stopped until they answer — but it is also the one most likely
+   * to be redundant, because the card is already on screen. So it is suppressed
+   * only when the user is actually looking at the session that asked.
+   *
+   * ``force`` bypasses the Tauri window-focus check (not the user's
+   * notifications setting), which is what lets a question on a *different*
+   * session reach a user who is busy in a focused window.
+   */
+  it('notifies for a question on a session the user is not viewing', async () => {
+    const client = new QueryClient()
+    useTeamStore.setState({ sessionId: 'other-session' })
+    const payload = {
+      notification_id: 'notice-q1', session_id: 'asking-session', kind: 'input_needed',
+      title: 'Input needed', body: 'Which package manager?',
+    }
+
+    const handled = await handleGlobalEvent(client, 'desktop_notification', payload, 1, () => 1)
+
+    expect(handled).toBe(true)
+    expect(sendDesktopNotification).toHaveBeenCalledTimes(1)
+    expect(sendDesktopNotification.mock.calls[0][1]).toEqual({ force: true })
+  })
+
+  it('leaves the focus check in charge when the asking session is open', async () => {
+    const client = new QueryClient()
+    useTeamStore.setState({ sessionId: 'asking-session' })
+    const payload = {
+      notification_id: 'notice-q2', session_id: 'asking-session', kind: 'input_needed',
+      title: 'Input needed', body: 'Which package manager?',
+    }
+
+    await handleGlobalEvent(client, 'desktop_notification', payload, 1, () => 1)
+
+    // Not forced: a focused, visible window suppresses it (the card is right
+    // there), while a backgrounded window still gets it.
+    expect(sendDesktopNotification.mock.calls[0][1]).toEqual({ force: false })
+  })
+
+  it('badges the session row so another window sees the stopped session', async () => {
+    const client = new QueryClient()
+    client.setQueryData(queryKeys.team.sessions.all(), {
+      pages: [{ data: [{ id: 'asking-session', running: true }], next_cursor: null }],
+      pageParams: [undefined],
+    })
+    const payload = {
+      notification_id: 'notice-q4', session_id: 'asking-session', kind: 'input_needed',
+      title: 'Input needed', body: 'Which package manager?',
+    }
+
+    await handleGlobalEvent(client, 'desktop_notification', payload, 1, () => 1)
+
+    const row = (client.getQueryData(queryKeys.team.sessions.all()) as {
+      pages: { data: { needs_input?: boolean }[] }[]
+    }).pages[0].data[0]
+    expect(row.needs_input).toBe(true)
+  })
+
+  it('deduplicates a replayed question notification', async () => {
+    const client = new QueryClient()
+    const payload = {
+      notification_id: 'notice-q3', session_id: 'asking-session', kind: 'input_needed',
+      title: 'Input needed', body: 'Which package manager?',
+    }
+
+    await handleGlobalEvent(client, 'desktop_notification', payload, 1, () => 1)
+    await handleGlobalEvent(client, 'desktop_notification', payload, 1, () => 1)
+
+    expect(sendDesktopNotification).toHaveBeenCalledTimes(1)
+  })
+
   it('ignores background task completion notifications', async () => {
     const client = new QueryClient()
     const payload = { notification_id: 'notice-2', session_id: 'current', kind: 'background_done', title: 'Background task completed', body: 'Task done' }

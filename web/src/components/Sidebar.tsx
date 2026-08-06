@@ -773,7 +773,10 @@ const SessionRow = memo(function SessionRow({ session, isActive, onSelect, onDel
   // per row costs one useState each, not one subscription each.
   const reduceMotion = useReducedMotion()
   const isScheduled = Boolean(session.scheduled_task_name)
-  const isRunning = session.running === true
+  // `needs_input` implies `running`; checked first so a turn suspended on a
+  // question reads as "your turn", not as "still working".
+  const needsInput = session.needs_input === true
+  const isRunning = session.running === true && !needsInput
 
   return (
     <div className="group relative">
@@ -829,6 +832,14 @@ const SessionRow = memo(function SessionRow({ session, isActive, onSelect, onDel
             {isRunning && (
               <span className="shrink-0 text-(--color-accent)" aria-label="Session running">
                 <Loader2 size={11} className="animate-spin" aria-hidden="true" />
+              </span>
+            )}
+            {needsInput && (
+              <span
+                className="shrink-0 rounded px-1 py-px text-[10px] leading-tight bg-(--color-warning)/15 text-(--color-warning)"
+                aria-label="Session needs your input"
+              >
+                asks
               </span>
             )}
           </div>

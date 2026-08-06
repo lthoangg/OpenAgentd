@@ -35,7 +35,7 @@ from app.agent.agent_loop.tool_dispatch import gather_or_cancel
 from app.agent.agent_loop.tool_executor import make_tool_executor
 from app.agent.usage import usage_to_dict
 from app.agent.checkpointer import Checkpointer
-from app.agent.errors import ProviderRequestError
+from app.agent.errors import ProviderRequestError, QuestionSuspended
 from app.agent.hooks import BaseAgentHook
 from app.agent.providers.base import LLMProviderBase
 from app.agent.providers.capabilities import ModelCapabilities, get_capabilities
@@ -72,6 +72,48 @@ MAX_CONCURRENT_TOOLS = 10
 MAX_PROVIDER_RESUME_ATTEMPTS = 3
 # Base backoff (seconds) between in-loop resume attempts; grows linearly.
 PROVIDER_RESUME_BASE_DELAY = 2.0
+
+# Tool names that may only be supplied via ``run(injected_tools=...)``.  The
+# injection site is where their scoping rules live (e.g. ``ask_user_question``
+# is coding-mode-lead-only), so a same-named constructor tool coming from a
+# plugin or MCP server is dropped rather than allowed to impersonate it.
+ASK_USER_QUESTION = "ask_user_question"
+RESERVED_INJECTED_TOOL_NAMES = frozenset({ASK_USER_QUESTION})
+
+# Returned to the model in place of a second interruption. Phrased as a nudge
+# rather than a failure so the model proceeds instead of retrying.
+ASK_BUDGET_EXHAUSTED = (
+    "You already used your one interruption for this turn. Continue with your "
+    "best judgment, or finish and raise anything outstanding in your reply."
+)
+ASK_MERGED_INTO_PRIMARY = (
+    "Merged into your other ask_user_question call — the user sees a single card "
+    "with every question."
+)
+
+
+def _merge_question_calls(primary, duplicates: list) -> None:
+    """Fold *duplicates*' questions into *primary*'s arguments, in place.
+
+    Models occasionally split one clarification into several parallel calls.
+    Showing three separate cards for what is one decision point is hostile, so
+    the questions are concatenated (capped, matching the tool's own limit) and
+    the extra calls settle with a note.  Unparseable arguments are left alone —
+    the tool's schema validation will produce a better error than we can here.
+    """
+    import json as _json
+
+    try:
+        merged = _json.loads(primary.function.arguments or "{}")
+        questions = list(merged.get("questions") or [])
+        for tc in duplicates:
+            extra = _json.loads(tc.function.arguments or "{}")
+            questions.extend(extra.get("questions") or [])
+        merged["questions"] = questions[:4]
+        primary.function.arguments = _json.dumps(merged)
+    except (ValueError, AttributeError, TypeError) as exc:
+        logger.warning("question_merge_failed error={}", exc)
+
 
 TContext = TypeVar("TContext", bound=AgentContext)
 
@@ -186,6 +228,14 @@ class Agent(Generic[TContext]):
         self._tools: dict[str, Tool] = {}
         for fn in tools or []:
             t = fn if isinstance(fn, Tool) else Tool(fn)
+            if t.name in RESERVED_INJECTED_TOOL_NAMES:
+                # Runtime injection is what scopes this tool to the coding-mode
+                # lead; accepting a same-named constructor tool from a plugin or
+                # MCP server would hand every agent a look-alike.
+                logger.warning(
+                    "reserved_tool_name_rejected agent={} tool={}", self.name, t.name
+                )
+                continue
             self._tools[t.name] = t
 
         # Drift tracking (set by loader._build_agent for disk-loaded agents).
@@ -488,13 +538,24 @@ class Agent(Generic[TContext]):
                 self._skip_tool_dispatch_for_interrupt(messages, tc_list)
                 break
 
-            cancelled = await self._dispatch_tools(
+            dispatch = await self._dispatch_tools(
                 env=env,
                 messages=messages,
                 tc_list=tc_list,
                 interrupt_event=interrupt_event,
+                checkpointer=checkpointer,
+                config=config,
             )
-            if cancelled:
+            if dispatch == "cancelled":
+                break
+            if dispatch == "suspended":
+                # Turn handed to the user. Everything is persisted and the
+                # conversation is resumable — not an interrupt, not an error.
+                logger.info(
+                    "agent_iteration_done agent={} iteration={} action=question_suspended",
+                    self.name,
+                    bk.iteration,
+                )
                 break
 
             # Me sync after tool execution — captures tool results
@@ -919,11 +980,26 @@ class Agent(Generic[TContext]):
         messages: list[ChatMessage],
         tc_list: list,
         interrupt_event: asyncio.Event | None,
-    ) -> bool:
-        """Run every tool call in ``tc_list`` in parallel and append results.
+        checkpointer: Checkpointer | None = None,
+        config: RunConfig | None = None,
+    ) -> str:
+        """Run every tool call in ``tc_list`` and append their results.
 
-        Returns ``True`` when the dispatch was cancelled mid-flight by
-        ``interrupt_event`` (caller should break the loop after this).
+        Ordinary calls run in parallel.  ``ask_user_question`` is held back and
+        run last, alone, because it does not return — it hands the turn to the
+        user.  Running it after its siblings means their results are complete
+        and persisted before the turn stops, so the resumed turn sees the work
+        that was already done.
+
+        Returns the dispatch outcome:
+
+        ``"ok"``
+            All results appended; the loop should continue.
+        ``"cancelled"``
+            ``interrupt_event`` fired mid-flight; the loop should break.
+        ``"suspended"``
+            The turn is waiting on the user; the loop should break *without*
+            marking anything interrupted.
         """
         ctx = env.ctx
         state = env.state
@@ -934,21 +1010,42 @@ class Agent(Generic[TContext]):
             ", ".join(tc.function.name for tc in tc_list),
         )
 
+        ask_calls = [tc for tc in tc_list if tc.function.name == ASK_USER_QUESTION]
+        other_calls = [tc for tc in tc_list if tc.function.name != ASK_USER_QUESTION]
+
         # Execute tool calls in parallel, cancelling on interrupt
         results = await gather_or_cancel(
-            [self._run_tool(ctx, state, tc, env.tool_chain) for tc in tc_list],
+            [self._run_tool(ctx, state, tc, env.tool_chain) for tc in other_calls],
             interrupt_event,
-            tc_list,
+            other_calls,
             self.name,
         )
+        self._append_tool_results(messages, state, results)
 
+        cancelled = interrupt_event is not None and interrupt_event.is_set()
+        if cancelled or not ask_calls:
+            return "cancelled" if cancelled else "ok"
+
+        return await self._dispatch_question(
+            env=env,
+            messages=messages,
+            ask_calls=ask_calls,
+            checkpointer=checkpointer,
+            config=config,
+        )
+
+    def _append_tool_results(
+        self,
+        messages: list[ChatMessage],
+        state: AgentState,
+        results: list,
+    ) -> None:
+        """Turn gathered tool outcomes into ``ToolMessage`` rows on *messages*."""
         # Retrieve any multimodal parts stashed by ToolResult-returning tools
         multimodal_parts: dict[str, list[ContentBlock]] = state.metadata.pop(
             "_multimodal_tool_parts", {}
         )
         mcp_apps: dict[str, dict[str, Any]] = state.metadata.pop("_mcp_apps", {})
-
-        cancelled = interrupt_event is not None and interrupt_event.is_set()
         tool_durations = state.metadata.pop("_tool_duration_ms", {})
         for item in results:
             if isinstance(item, BaseException):
@@ -969,7 +1066,84 @@ class Agent(Generic[TContext]):
                 tool_msg.extra["mcp_app"] = mcp_apps[tc.id]
             messages.append(tool_msg)
 
-        return cancelled
+    async def _dispatch_question(
+        self,
+        *,
+        env: _RunEnv,
+        messages: list[ChatMessage],
+        ask_calls: list,
+        checkpointer: Checkpointer | None,
+        config: RunConfig | None,
+    ) -> str:
+        """Run the batch's ``ask_user_question`` call and suspend the turn.
+
+        Enforces the one-interruption-per-turn budget, folds a duplicated call
+        into a single card, and persists everything the batch already produced
+        before handing control to the user.
+        """
+        ctx = env.ctx
+        state = env.state
+        primary, duplicates = ask_calls[0], ask_calls[1:]
+
+        if state.metadata.get("question_resume") is True:
+            # A turn resumed from an answer has already spent its interruption.
+            # Refusing here is what stops an answer → ask → answer loop.
+            for tc in ask_calls:
+                messages.append(
+                    ToolMessage(
+                        content=ASK_BUDGET_EXHAUSTED,
+                        tool_call_id=tc.id,
+                        name=tc.function.name,
+                    )
+                )
+            logger.info("question_refused_budget agent={}", self.name)
+            return "ok"
+
+        if duplicates:
+            # The model split its questions across parallel calls; show one card.
+            _merge_question_calls(primary, duplicates)
+            for tc in duplicates:
+                messages.append(
+                    ToolMessage(
+                        content=ASK_MERGED_INTO_PRIMARY,
+                        tool_call_id=tc.id,
+                        name=tc.function.name,
+                    )
+                )
+
+        # Persist the siblings *before* suspending: the tool writes its own
+        # pending row straight to the DB, and a crash between the two would
+        # otherwise discard completed tool work that the resumed turn needs.
+        await self._sync(checkpointer, ctx, state)
+
+        try:
+            _, result = await self._run_tool(ctx, state, primary, env.tool_chain)
+        except QuestionSuspended as suspension:
+            suspended = {
+                "question_id": suspension.question_id,
+                "session_id": suspension.session_id,
+                "tool_call_id": primary.id,
+            }
+            state.metadata["question_suspended"] = suspended
+            # Hand the suspension back to the caller (``TeamMemberBase``) so it
+            # can park the agent in ``waiting_input``; ``state`` is run-local.
+            if config is not None:
+                config.metadata["question_suspended"] = suspended
+            logger.info(
+                "question_suspended agent={} question_id={}",
+                self.name,
+                suspension.question_id,
+            )
+            return "suspended"
+
+        # The tool declined to suspend (e.g. it could not resolve a call id) —
+        # treat its return value as an ordinary result and keep going.
+        messages.append(
+            ToolMessage(
+                content=result, tool_call_id=primary.id, name=primary.function.name
+            )
+        )
+        return "ok"
 
     async def _finalize_run(
         self,

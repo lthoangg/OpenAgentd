@@ -647,7 +647,24 @@ MCP.
 | Scheduling | `schedule_task` (reminders + self-scheduling agentic loops) `[v1.70.0]` |
 | Tasks | `todo_manage` |
 | Team coordination | `team_message`, `team_manage` |
+| Ask the user | `ask_user_question` (coding-mode lead only) `[v1.131.0]` |
 | Utility | `date`, `skill` |
+
+- **`ask_user_question` — durable suspend and resume** `[v1.131.0]` — in
+  **coding mode**, the lead can stop mid-turn and ask you 1–4 questions rather
+  than guessing on a decision that would cost real work to undo. Each question
+  carries up to 5 options with optional descriptions, single- or multi-select,
+  the agent's own recommendation ("Accept all recommended" fills them in one
+  click), and an optional free-text answer. The cockpit shows a card in the
+  composer's place — a bottom sheet on mobile — and the transcript keeps the
+  resolved question → answer pairs.
+  The suspension is **durable, not in-memory**: the pending question and the
+  interrupted tool call live in the database, so the turn survives an app
+  reload, a daemon restart, and a switch to another device, then resumes from
+  exactly where it stopped. Answering, dismissing, or simply typing something
+  else are the only ways to move it — there is no timeout. Members keep working
+  throughout and are never interrupted by an answer. One question per turn;
+  scheduled sessions never get the tool, because a cron job has nobody to ask.
 
 - **Real-time LSP diagnostics injection** `[v1.89.0, v1.105.0]` — in **coding mode**, after a
   `write`, `edit`, or `patch` tool modifies one or more files, OpenAgentd runs the

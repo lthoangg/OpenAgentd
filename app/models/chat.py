@@ -170,6 +170,67 @@ class CodingWorkspace(SQLModel, table=True):
     )
 
 
+class PendingQuestion(SQLModel, table=True):
+    """A question the lead agent asked the user, and the turn waiting on it.
+
+    Written when ``ask_user_question`` suspends a turn and resolved when the
+    user answers or dismisses.  The row is what makes the suspension durable:
+    it outlives the process, so a restarted daemon can re-render the question
+    and resume the turn from the tool call that raised it.
+
+    ``payload`` holds the validated tool input (``{"questions": [...]}``) and
+    ``answers`` the user's reply — a list of selected-label lists, index-matched
+    to ``payload["questions"]``.
+    """
+
+    __tablename__: str = "pending_questions"  # type: ignore[reportIncompatibleVariableOverride]
+    __table_args__ = (
+        # At most one *open* question per session. The agent loop already caps
+        # asks per turn, but a partial unique index makes a double-suspend
+        # impossible even under a race, and keeps "is this session waiting on
+        # me?" a single-row lookup.
+        sa.Index(
+            "uq_pending_questions_open_per_session",
+            "session_id",
+            unique=True,
+            sqlite_where=sa.text("status = 'pending'"),
+        ),
+        # Session-list badges and startup reconciliation both scan by status.
+        sa.Index("ix_pending_questions_status", "status"),
+    )
+
+    id: UUID = Field(default_factory=uuid7, primary_key=True)
+    session_id: UUID = Field(
+        sa_column=Column(
+            sa.Uuid(),
+            ForeignKey("chat_sessions.id", ondelete="CASCADE"),
+            index=True,
+            nullable=False,
+        ),
+    )
+    # The suspended tool call. Its placeholder ToolMessage row is rewritten in
+    # place on resolution, which is also what keeps heal_orphaned_tool_calls
+    # from treating the suspended call as an orphan.
+    tool_call_id: str = Field(
+        sa_column=Column(sa.String(100), nullable=False, unique=True),
+    )
+    payload: dict = Field(sa_column=Column(JSON(), nullable=False))
+    # pending → answered | dismissed | superseded | expired
+    status: str = Field(
+        default="pending",
+        max_length=20,
+        sa_column=Column(sa.String(20), nullable=False, server_default="pending"),
+    )
+    answers: list | None = Field(default=None, sa_column=Column(JSON(), nullable=True))
+    created_at: datetime = Field(
+        default_factory=_utcnow,
+        sa_column=Column(TZDateTime(), nullable=False),
+    )
+    answered_at: datetime | None = Field(
+        default=None, sa_column=Column(TZDateTime(), nullable=True)
+    )
+
+
 class SessionMessage(SQLModel, table=True):
     __tablename__: str = "session_messages"  # type: ignore[reportIncompatibleVariableOverride]
     __table_args__ = (

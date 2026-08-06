@@ -1,0 +1,401 @@
+"""Team behaviour while the lead is suspended on a question.
+
+A suspended lead is neither working nor idle: the turn is still open, but no
+coroutine is running it.  Everything that asks "is this agent busy?" has to
+agree on that, or a member's report will spawn a second activation on top of a
+half-finished turn and feed the model a placeholder tool result.
+"""
+
+from __future__ import annotations
+
+import uuid
+from contextlib import asynccontextmanager
+from unittest.mock import AsyncMock, MagicMock
+
+import pytest
+
+from app.agent.agent_loop import Agent
+from app.agent.mode.team.mailbox import Message
+from app.agent.mode.team.member import (
+    AlreadyWorkingError,
+    TeamLead,
+    TeamMember,
+    is_busy,
+)
+from app.agent.mode.team.team import AgentTeam
+from tests.agent.mode.team.conftest import MockTeamProvider
+
+LEAD_SESSION = "018f0000-0000-7000-8000-000000000001"
+
+
+def _make_db_factory():
+    mock_db = MagicMock()
+    mock_db.commit = AsyncMock()
+    mock_db.flush = AsyncMock()
+    mock_db.get = AsyncMock(return_value=None)
+    mock_db.add = MagicMock()
+    mock_db.exec = AsyncMock(
+        return_value=MagicMock(
+            all=MagicMock(return_value=[]),
+            first=MagicMock(return_value=None),
+        )
+    )
+
+    @asynccontextmanager
+    async def factory():
+        yield mock_db
+
+    return factory
+
+
+def _make_team(mode: str = "coding") -> AgentTeam:
+    db_factory = _make_db_factory()
+    lead = TeamLead(
+        Agent(name="openagentd", llm_provider=MockTeamProvider()),
+        session_id=LEAD_SESSION,
+        db_factory=db_factory,
+    )
+    member = TeamMember(
+        Agent(name="coder", llm_provider=MockTeamProvider()),
+        session_id="018f0000-0000-7000-8000-000000000002",
+        db_factory=db_factory,
+    )
+    team = AgentTeam(lead=lead, members={"coder#1": member}, mode=mode)
+    lead.register(team)
+    member.register(team)
+    return team
+
+
+# ---------------------------------------------------------------------------
+# is_busy predicate
+# ---------------------------------------------------------------------------
+
+
+def test_waiting_input_counts_as_busy():
+    assert is_busy("working") is True
+    assert is_busy("waiting_input") is True
+    assert is_busy("idle") is False
+    assert is_busy("error") is False
+
+
+# ---------------------------------------------------------------------------
+# Activation guards
+# ---------------------------------------------------------------------------
+
+
+def test_member_message_does_not_activate_a_suspended_lead():
+    team = _make_team()
+    team.lead.state = "waiting_input"
+
+    team.lead._maybe_activate()
+
+    assert team.lead.state == "waiting_input"
+    assert team.lead._active_task is None
+
+
+async def test_member_message_stays_queued_while_the_lead_is_suspended():
+    """Held, not dropped — TeamInboxHook drains it into the resumed turn."""
+    team = _make_team()
+    team.lead.state = "waiting_input"
+    assert team.mailbox is not None
+
+    await team.mailbox.send(
+        to="openagentd",
+        message=Message(from_agent="coder#1", to_agent="openagentd", content="done"),
+    )
+
+    assert team.mailbox.inbox_empty("openagentd") is False
+    assert team.lead._active_task is None
+
+
+def test_continue_is_refused_while_suspended():
+    team = _make_team()
+    team.lead.state = "waiting_input"
+
+    with pytest.raises(AlreadyWorkingError):
+        team.lead.activate_for_continuation()
+
+
+def test_compaction_is_refused_while_suspended():
+    team = _make_team()
+    team.lead.state = "waiting_input"
+
+    with pytest.raises(AlreadyWorkingError):
+        team.lead.activate_for_compaction()
+
+
+# ---------------------------------------------------------------------------
+# Turn completion
+# ---------------------------------------------------------------------------
+
+
+async def test_done_is_not_emitted_while_the_lead_is_suspended():
+    team = _make_team()
+    team._has_active_turn = True
+    team.lead.state = "waiting_input"
+    for member in team.members.values():
+        member.state = "idle"
+
+    emitted: list[str] = []
+    team._emit = AsyncMock(side_effect=lambda **kw: emitted.append(kw.get("event", "")))
+
+    await team._try_emit_done()
+
+    assert team._has_active_turn is True
+
+
+def test_a_suspended_lead_still_counts_as_an_active_user_turn():
+    """The scheduler skips a fire while a turn is open — including a suspended one."""
+    team = _make_team()
+    team._has_active_turn = False
+    team.lead.state = "waiting_input"
+
+    assert team.has_active_user_turn() is True
+
+
+# ---------------------------------------------------------------------------
+# Tool injection gate
+# ---------------------------------------------------------------------------
+
+
+def test_coding_lead_gets_the_question_tool():
+    team = _make_team(mode="coding")
+
+    names = {tool.name for tool in team.get_injected_tools("openagentd")}
+
+    assert "ask_user_question" in names
+
+
+def test_members_never_get_the_question_tool():
+    team = _make_team(mode="coding")
+
+    names = {tool.name for tool in team.get_injected_tools("coder#1")}
+
+    assert "ask_user_question" not in names
+
+
+def test_normal_mode_lead_does_not_get_the_question_tool():
+    team = _make_team(mode="normal")
+
+    names = {tool.name for tool in team.get_injected_tools("openagentd")}
+
+    assert "ask_user_question" not in names
+
+
+def test_scheduler_owned_session_does_not_get_the_question_tool():
+    """Nobody is there to answer a cron job's question."""
+    team = _make_team(mode="coding")
+    team.lead.is_scheduler_session = True
+
+    names = {tool.name for tool in team.get_injected_tools("openagentd")}
+
+    assert "ask_user_question" not in names
+
+
+# ---------------------------------------------------------------------------
+# Resume
+# ---------------------------------------------------------------------------
+
+
+async def test_activate_for_question_answer_marks_the_run_as_a_resume():
+    """The resumed turn must not be able to ask again."""
+    team = _make_team()
+    team.lead.state = "waiting_input"
+    captured: dict = {}
+
+    async def fake_handle_messages(**kwargs):
+        captured.update(kwargs)
+
+    team.lead._handle_messages = fake_handle_messages  # type: ignore[method-assign]
+
+    team.lead.activate_for_question_answer()
+    assert team.lead._active_task is not None
+    await team.lead._active_task
+
+    assert captured.get("question_resume") is True
+    assert team.lead.state == "idle"
+
+
+def test_answer_activation_is_refused_when_already_working():
+    team = _make_team()
+    team.lead.state = "working"
+
+    with pytest.raises(AlreadyWorkingError):
+        team.lead.activate_for_question_answer()
+
+
+# ---------------------------------------------------------------------------
+# Guard of last resort
+# ---------------------------------------------------------------------------
+
+
+async def test_activation_aborts_when_a_question_is_still_pending(monkeypatch):
+    """Catches every wake path, including ones the state flag missed."""
+    team = _make_team()
+    team.lead.state = "working"
+
+    row = MagicMock()
+    row.id = uuid.uuid4()
+    row.payload = {"questions": []}
+
+    async def fake_get_pending(db, session_id):
+        return row
+
+    monkeypatch.setattr(
+        "app.services.question_service.get_pending_question", fake_get_pending
+    )
+    called = False
+
+    async def fake_handle_messages(**kwargs):
+        nonlocal called
+        called = True
+
+    team.lead._handle_messages = fake_handle_messages  # type: ignore[method-assign]
+    assert team.mailbox is not None
+    await team.mailbox.send(
+        to="openagentd",
+        message=Message(from_agent="coder#1", to_agent="openagentd", content="hi"),
+    )
+
+    await team.lead._run_activation()
+
+    assert called is False
+    assert team.lead.state == "waiting_input"
+
+
+# ---------------------------------------------------------------------------
+# Dismissal + rehydration
+# ---------------------------------------------------------------------------
+
+
+async def test_stop_dismisses_a_pending_question(monkeypatch):
+    """Otherwise the session stays badged 'needs input' with no turn to resume."""
+    team = _make_team()
+    team.lead.state = "waiting_input"
+    team.lead._question_suspended = {"question_id": uuid.uuid4()}
+
+    row = MagicMock()
+    row.id = uuid.uuid4()
+    resolved: dict = {}
+
+    async def fake_get_pending(db, session_id):
+        return row
+
+    async def fake_resolve(db, *, question_id, status, answers=None):
+        resolved["status"] = status
+        return row
+
+    monkeypatch.setattr(
+        "app.services.question_service.get_pending_question", fake_get_pending
+    )
+    monkeypatch.setattr(
+        "app.services.question_service.resolve_pending_question", fake_resolve
+    )
+
+    assert await team.dismiss_pending_question(reason="dismissed") is True
+    assert resolved["status"] == "dismissed"
+    assert team.lead.state == "idle"
+    assert team.lead._question_suspended is None
+
+
+async def test_dismiss_is_a_noop_without_a_pending_question(monkeypatch):
+    team = _make_team()
+
+    async def fake_get_pending(db, session_id):
+        return None
+
+    monkeypatch.setattr(
+        "app.services.question_service.get_pending_question", fake_get_pending
+    )
+
+    assert await team.dismiss_pending_question(reason="dismissed") is False
+
+
+async def test_hydration_reparks_a_rebuilt_team(monkeypatch):
+    """A restarted daemon must not look idle while a question is unanswered."""
+    team = _make_team()
+    assert team.lead.state == "idle"
+
+    row = MagicMock()
+    row.id = uuid.uuid4()
+
+    async def fake_get_pending(db, session_id):
+        return row
+
+    monkeypatch.setattr(
+        "app.services.question_service.get_pending_question", fake_get_pending
+    )
+
+    assert await team.hydrate_pending_question() is True
+    assert team.lead.state == "waiting_input"
+    assert team.has_active_user_turn() is True
+
+
+# ---------------------------------------------------------------------------
+# Supersede vs defer
+# ---------------------------------------------------------------------------
+
+
+async def test_a_typed_user_message_supersedes_the_question(monkeypatch):
+    """Typing instead of answering means the user moved on."""
+    team = _make_team()
+    team.lead.state = "waiting_input"
+    resolved: dict = {}
+
+    row = MagicMock()
+    row.id = uuid.uuid4()
+
+    async def fake_get_pending(db, session_id):
+        return None if resolved else row
+
+    async def fake_resolve(db, *, question_id, status, answers=None):
+        resolved["status"] = status
+        return row
+
+    monkeypatch.setattr(
+        "app.services.question_service.get_pending_question", fake_get_pending
+    )
+    monkeypatch.setattr(
+        "app.services.question_service.resolve_pending_question", fake_resolve
+    )
+    monkeypatch.setattr(
+        team.lead, "_persist_inbox", AsyncMock(return_value=[]), raising=False
+    )
+
+    await team.handle_user_message("forget it, fix the tests", session_id=LEAD_SESSION)
+
+    assert resolved["status"] == "superseded"
+
+
+async def test_a_scheduled_message_defers_instead_of_superseding(monkeypatch):
+    """A cron job must not cancel a question the user has not seen."""
+    from app.agent.mode.team.team import QuestionPendingError
+
+    team = _make_team()
+    team.lead.state = "waiting_input"
+    resolved: dict = {}
+
+    row = MagicMock()
+    row.id = uuid.uuid4()
+
+    async def fake_get_pending(db, session_id):
+        return row
+
+    async def fake_resolve(db, *, question_id, status, answers=None):
+        resolved["status"] = status
+        return row
+
+    monkeypatch.setattr(
+        "app.services.question_service.get_pending_question", fake_get_pending
+    )
+    monkeypatch.setattr(
+        "app.services.question_service.resolve_pending_question", fake_resolve
+    )
+
+    with pytest.raises(QuestionPendingError):
+        await team.handle_user_message(
+            "[Scheduled Task: nightly]", session_id=LEAD_SESSION, origin="scheduler"
+        )
+
+    assert resolved == {}
+    assert team.lead.state == "waiting_input"

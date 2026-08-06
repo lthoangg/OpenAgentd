@@ -3,6 +3,7 @@ import { teamStatus, teamHistory, teamHistorySince } from '@/api/client'
 import { parseTeamBlocks, sumUsageFromMessages } from '@/utils/messages'
 import { createDefaultAgentStream } from './defaults'
 import { applyRevertBoundary, revokeBlobUrlsFromBlocks } from './helpers'
+import { toPendingQuestion } from './sse-reducer'
 import { clearReconnectTimer } from './stream-slice'
 import type { AgentStream, TeamStore } from './types'
 import type { ContentBlock, MessageResponse } from '@/api/types'
@@ -302,6 +303,7 @@ export function resetSessionState(
   state.sessionThinkingLevel = options.thinkingLevel ?? null
   state.sessionFastMode = options.fastMode ?? false
   state.isTeamWorking = false
+  state.pendingQuestion = null
   state.isContinuing = false
   state.isConnected = false
   state.error = null
@@ -447,11 +449,23 @@ async function loadSessionImpl(
 
       // Computed against the stream identified by the *resolved* leadName,
       // before anything below overwrites it — see hasLiveContent.
+      // Durable, so it outranks whatever the client last saw: a card the user
+      // has not resolved is still on the table after a reload, an app restart,
+      // or a switch to another device.
+      const restoredQuestion = history.pending_question
+        ? toPendingQuestion(history.pending_question)
+        : null
+      const awaitingAnswer = restoredQuestion !== null
+      draft.pendingQuestion = restoredQuestion
+
       const leadHadNewerActivity = leadName
         ? hasLiveContent(draft.agentStreams[leadName], draft.isTeamWorking, fetchStartedAt)
         : false
       if (!leadHadNewerActivity) {
-        draft.isTeamWorking = history.lead.running === true
+        // After a daemon restart the stream store has forgotten the turn, so
+        // ``running`` is false while the question row says otherwise. The row is
+        // the durable half, so it wins.
+        draft.isTeamWorking = history.lead.running === true || awaitingAnswer
         draft.isContinuing = false
       }
 
@@ -480,8 +494,14 @@ async function loadSessionImpl(
           leadStream.currentBlocks = []
           leadStream.currentText = ''
           leadStream.currentThinking = ''
-          leadStream.status = history.lead.running === true ? 'working' : 'idle'
-          leadStream._turnStartedAt = history.lead.running === true ? Date.now() : null
+          // A suspended lead is still "running" to the stream store (the turn
+          // never closed), but it is waiting, not working — so the question is
+          // what distinguishes the two here, not the ``running`` flag.
+          leadStream.status = awaitingAnswer
+            ? 'waiting_input'
+            : history.lead.running === true ? 'working' : 'idle'
+          leadStream._turnStartedAt =
+            history.lead.running === true && !awaitingAnswer ? Date.now() : null
         }
         const leadVisibleMsgs = messagesBeforeRevert(history.lead)
         const leadUsage = sumUsageFromMessages(leadVisibleMsgs)

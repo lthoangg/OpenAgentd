@@ -619,6 +619,7 @@ async def test_dispatch_passes_session_model_settings():
         thinking_level_provided=True,
         service_tier=None,
         mentions=None,
+        origin="user",
     )
 
 

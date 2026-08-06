@@ -509,6 +509,36 @@ describe('patchSessionRunning', () => {
     expect(after.pages[0].data[0].running).toBeUndefined()
   })
 
+  it('clears needs_input by default, because a patched turn is not waiting', () => {
+    const client = new QueryClient()
+    seedInfinite(client, [[{ ...makeSession('s1', 'A'), running: true, needs_input: true }]])
+
+    // The answer resumed the turn: still running, no longer waiting.
+    patchSessionRunning(client, 's1', true)
+
+    expect(readInfinite(client)!.pages[0].data[0].needs_input).toBe(false)
+  })
+
+  it('marks a session as waiting when asked to', () => {
+    const client = new QueryClient()
+    seedInfinite(client, [[{ ...makeSession('s1', 'A'), running: true }]])
+
+    patchSessionRunning(client, 's1', true, true)
+
+    const row = readInfinite(client)!.pages[0].data[0]
+    expect(row.needs_input).toBe(true)
+    expect(row.running).toBe(true)
+  })
+
+  it('returns the identical cache object when running and needs_input both match', () => {
+    const client = new QueryClient()
+    seedInfinite(client, [[{ ...makeSession('s1', 'A'), running: true, needs_input: true }]])
+    const first = readInfinite(client)
+
+    expect(patchSessionRunning(client, 's1', true, true)).toBe(true)
+    expect(readInfinite(client)).toBe(first)
+  })
+
   it('reports not-found when the session is absent, so callers can refetch', () => {
     const client = new QueryClient()
     seedInfinite(client, [[makeSession('s1', 'A')]])

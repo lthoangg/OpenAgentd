@@ -191,6 +191,14 @@ export interface SessionResponse {
   model?: string | null
   thinking_level?: string | null
   running?: boolean
+  /**
+   * The lead of this session is suspended on `ask_user_question`.
+   *
+   * Implies `running` — the turn never closed — so a session list must check
+   * this first, or a session waiting for the user is indistinguishable from one
+   * that is busy working.
+   */
+  needs_input?: boolean
 }
 
 export interface SessionDetailResponse extends SessionResponse {
@@ -237,6 +245,12 @@ export interface TeamHistoryResponse {
    * tail onto local state. Always `false`/absent for full pages.
    */
   truncated?: boolean
+  /**
+   * Set when the lead is suspended on `ask_user_question`. Present on full
+   * pages only — a delta (`?since=`) always omits it, so absence there must not
+   * be read as "the question was resolved".
+   */
+  pending_question?: PendingQuestionResponse | null
 }
 
 // SSE Event Types
@@ -261,6 +275,9 @@ export type SSEEventType =
   | 'summarization_start'
   | 'summarization_content'
   | 'summarization_end'
+  | 'question_asked'
+  | 'question_answered'
+  | 'question_dismissed'
 
 export interface SSEEvent {
   type: SSEEventType
@@ -594,4 +611,51 @@ export interface TaskTriggerResponse {
 
 export interface WorktreeRemoveResponse {
   removed: boolean
+}
+
+
+// ── ask_user_question ────────────────────────────────────────────────────────
+
+export interface QuestionOption {
+  label: string
+  description?: string | null
+  /** The agent's preferred choice. Drives "Accept all recommended". */
+  recommended: boolean
+}
+
+export interface QuestionItem {
+  question: string
+  /** Very short label (<=30 chars) for the stepper tab. */
+  header: string
+  options: QuestionOption[]
+  multiple: boolean
+  /** When true the UI appends a "Type your own answer" option. */
+  custom: boolean
+}
+
+/** Wire shape of a `pending_questions` row (history + `GET /{sid}/question`). */
+export interface PendingQuestionResponse {
+  id: string
+  session_id: string
+  tool_call_id: string
+  questions: QuestionItem[]
+  created_at: string
+}
+
+export interface PendingQuestionEnvelope {
+  question: PendingQuestionResponse | null
+}
+
+/** A question the lead is suspended on, awaiting the user's reply. */
+export interface PendingQuestion {
+  id: string
+  sessionId: string
+  toolCallId: string
+  questions: QuestionItem[]
+}
+
+export interface QuestionResolveResult {
+  status: string
+  /** False when the answer was saved but the turn could not be restarted. */
+  resumed: boolean
 }

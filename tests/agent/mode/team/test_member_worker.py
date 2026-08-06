@@ -117,7 +117,12 @@ def _make_mock_db_factory():
     mock_db.flush = AsyncMock()
     mock_db.refresh = AsyncMock()
     mock_db.get = AsyncMock(return_value=None)
-    mock_db.exec = AsyncMock(return_value=MagicMock(all=MagicMock(return_value=[])))
+    mock_db.exec = AsyncMock(
+        return_value=MagicMock(
+            all=MagicMock(return_value=[]),
+            first=MagicMock(return_value=None),
+        )
+    )
     mock_db.add = MagicMock()
 
     @asynccontextmanager
@@ -133,7 +138,12 @@ def _make_mock_db_factory_with_session(session_row: ChatSession):
     mock_db.flush = AsyncMock()
     mock_db.refresh = AsyncMock()
     mock_db.get = AsyncMock(return_value=session_row)
-    mock_db.exec = AsyncMock(return_value=MagicMock(all=MagicMock(return_value=[])))
+    mock_db.exec = AsyncMock(
+        return_value=MagicMock(
+            all=MagicMock(return_value=[]),
+            first=MagicMock(return_value=None),
+        )
+    )
     mock_db.add = MagicMock()
 
     @asynccontextmanager

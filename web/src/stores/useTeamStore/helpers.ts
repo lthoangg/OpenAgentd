@@ -2,6 +2,24 @@ import type { ContentBlock } from '@/api/types'
 import type { AgentStream } from './types'
 
 /**
+ * Statuses that mean "this agent's turn has not ended yet".
+ *
+ * Mirrors ``BUSY_STATES`` in ``app/agent/mode/team/member.py``: a lead suspended
+ * on ``ask_user_question`` emits no tokens but must still read as live, or the
+ * UI would look finished with a question card still on screen.
+ */
+const LIVE_STATUSES: ReadonlySet<AgentStream['status']> = new Set(['working', 'waiting_input'])
+
+export function isLiveStatus(status: AgentStream['status']): boolean {
+  return LIVE_STATUSES.has(status)
+}
+
+/** True when any agent in the map is still mid-turn. */
+export function anyAgentLive(streams: Record<string, AgentStream>): boolean {
+  return Object.values(streams).some((s) => isLiveStatus(s.status))
+}
+
+/**
  * Append locally-produced blocks to ``stream.blocks`` and tag them unsynced so
  * ``reconcileTurnTail`` swaps exactly these for the server's canonical rows
  * instead of appending them a second time.

@@ -79,6 +79,7 @@ from pydantic import BaseModel, ValidationError, create_model
 from loguru import logger
 
 from app.agent.errors import (
+    QuestionSuspended,
     ToolArgumentError,
     ToolExecutionError,
     format_validation_error,
@@ -351,6 +352,10 @@ class Tool:
             return self._func(**validated)
         except (ToolArgumentError, ToolExecutionError):
             raise  # already domain errors — let them propagate unchanged
+        except QuestionSuspended:
+            # Control flow, not a failure: the turn is handing off to the user
+            # and the loop needs to see this, not an "Error: ..." string.
+            raise
         except (
             FileNotFoundError,
             FileExistsError,

@@ -178,7 +178,7 @@ class AgentStatusEvent(BaseModel):
 
     type: Literal["agent_status"] = "agent_status"
     agent: str
-    status: Literal["idle", "working", "offline", "error"]
+    status: Literal["idle", "working", "waiting_input", "offline", "error"]
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -204,6 +204,51 @@ class PermissionRepliedEvent(BaseModel):
     request_id: str
     session_id: str
     reply: str  # "once" | "always" | "reject"
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class QuestionAskedEvent(BaseModel):
+    """The lead agent suspended its turn to ask the user something.
+
+    The frontend renders the question dock and POSTs to
+    ``/team/{session_id}/question/{question_id}/answer`` (or ``/dismiss``).
+    Carries the full question payload so a client that just connected can
+    render from the replayed event without an extra fetch.
+    """
+
+    type: Literal["question_asked"] = "question_asked"
+    question_id: str
+    session_id: str
+    tool_call_id: str
+    questions: list[dict[str, Any]]
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class QuestionAnsweredEvent(BaseModel):
+    """A question was answered — other connected clients close their card.
+
+    ``answers`` is index-matched to the asked ``questions``; each entry is the
+    list of labels (or free text) the user selected for that question.
+    """
+
+    type: Literal["question_answered"] = "question_answered"
+    question_id: str
+    session_id: str
+    answers: list[list[str]]
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class QuestionDismissedEvent(BaseModel):
+    """A question was closed without an answer.
+
+    ``reason`` is ``"dismissed"`` (user declined), ``"superseded"`` (they sent a
+    new instruction instead), or ``"expired"`` (the turn was reverted away).
+    """
+
+    type: Literal["question_dismissed"] = "question_dismissed"
+    question_id: str
+    session_id: str
+    reason: str
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 

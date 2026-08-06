@@ -399,6 +399,9 @@ export const AgentPane = memo(function AgentPane({
   const isWorking = stream.status === 'working'
   const isError   = stream.status === 'error'
   const isOffline = stream.status === 'offline'
+  // Suspended on `ask_user_question`: the turn is open but nothing is running,
+  // so this reads as neither working nor idle.
+  const isWaiting = stream.status === 'waiting_input'
   // Me show waiting indicator when a user message exists but the agent hasn't woken yet
   const isPending = !isWorking && !isError && !isOffline && stream.currentBlocks.some(isDirectUserBlock)
 
@@ -634,8 +637,8 @@ export const AgentPane = memo(function AgentPane({
                cached={stream.usage.cachedTokens}
              />
            )}
-            <span aria-label={`Agent status: ${stream.status}`} className={`h-1.5 w-1.5 rounded-full ${
-             isError ? 'bg-(--color-error)' : isWorking ? 'bg-(--color-accent)' : isOffline ? 'bg-(--color-text-subtle) opacity-50' : 'bg-(--color-success)'
+            <span aria-label={isWaiting ? 'Agent status: waiting for your input' : `Agent status: ${stream.status}`} className={`h-1.5 w-1.5 rounded-full ${
+             isError ? 'bg-(--color-error)' : isWorking ? 'bg-(--color-accent)' : isWaiting ? 'animate-pulse bg-(--color-warning)' : isOffline ? 'bg-(--color-text-subtle) opacity-50' : 'bg-(--color-success)'
            }`} />
          </div>
        </div>

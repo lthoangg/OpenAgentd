@@ -82,6 +82,7 @@ type TestSession = {
   mode?: string
   workspace?: string | null
   running?: boolean
+  needs_input?: boolean
 }
 
 let sessionsData: TestSession[] = []
@@ -1081,6 +1082,33 @@ describe('CodingSidebar workspace trust flow', () => {
 
     await renderCodingSidebarForSessions('session-1')
 
+    expect(screen.queryByLabelText('Session running')).toBeNull()
+  })
+
+  /**
+   * A session suspended on `ask_user_question` is still "running", so without a
+   * distinct marker it is indistinguishable from one that is busy working — and
+   * the whole point is that it is busy waiting for *this* user.
+   */
+  it('badges a session that is waiting for the user to answer a question', async () => {
+    sessionsData = [
+      {
+        id: 'session-1',
+        title: 'Waiting session',
+        agent_name: 'lead',
+        created_at: '2026-05-13T00:00:00Z',
+        updated_at: '2026-05-13T00:00:00Z',
+        mode: 'coding',
+        workspace: '/repo/project',
+        running: true,
+        needs_input: true,
+      },
+    ]
+    workspaceSessionsData = sessionsData
+
+    await renderCodingSidebarForSessions(undefined)
+
+    expect(screen.getByLabelText('Session needs your input')).toBeTruthy()
     expect(screen.queryByLabelText('Session running')).toBeNull()
   })
 

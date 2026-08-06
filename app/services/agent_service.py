@@ -24,6 +24,7 @@ from uuid import uuid7
 from loguru import logger
 
 from app.core.paths import session_uploads_dir
+from app.agent.mode.team.member import is_busy
 from app.agent.schemas.events import DoneEvent, ErrorEvent
 from app.services import memory_stream_store as stream_store
 from app.services.shell_service import dispatch_shell_command
@@ -506,6 +507,7 @@ async def dispatch_user_message(
     thinking_level_provided: bool = False,
     service_tier: str | None = None,
     mentions: list[str] | None = None,
+    origin: str = "user",
 ) -> tuple[str, int, str]:
     """Send a user message through the team.
 
@@ -547,6 +549,7 @@ async def dispatch_user_message(
         thinking_level_provided=thinking_level_provided or thinking_level is not None,
         service_tier=service_tier,
         mentions=mentions,
+        origin=origin,
     )
     logger.info(
         "agent_service_dispatched session_id={} attachments={}",
@@ -659,7 +662,7 @@ async def interrupt_team(team: "AgentTeam", session_id: str | None) -> list[str]
                 exc,
             )
 
-    working_members = [m for m in team.all_members if m.state == "working"]
+    working_members = [m for m in team.all_members if is_busy(m.state)]
     working_ids = {id(member) for member in working_members}
     names = [member.name for member in working_members]
     active_tasks = [

@@ -56,6 +56,7 @@ from typing import TYPE_CHECKING
 from loguru import logger
 
 from app.agent.loader import load_team_from_dir
+from app.agent.mode.team.member import is_busy
 from app.core.config import settings
 
 if TYPE_CHECKING:
@@ -210,7 +211,7 @@ def validate_workspace(workspace: str) -> str:
 
 
 def _team_is_idle(team: "AgentTeam") -> bool:
-    return all(member.state != "working" for member in team.all_members)
+    return all(not is_busy(member.state) for member in team.all_members)
 
 
 # Back-compat alias — older call sites (tests) may import the coding-specific name.
@@ -518,6 +519,25 @@ async def stop() -> None:
         _coding_team_last_used.clear()
 
 
+def find_live_team_for_lead_session(session_id: str) -> "AgentTeam | None":
+    """Return an already-running team whose lead owns *session_id*.
+
+    Never starts one.  Used by endpoints that act on an in-flight turn (e.g.
+    answering a suspended question): booting a fresh team there would produce a
+    lead with no suspended turn to resume, and pay a cold start to do it.
+
+    Both registries hold a handful of live teams, and the session-keyed one is
+    a direct hit, so the coding scan is a short fallback rather than the norm.
+    """
+    direct = _session_teams.get(session_id)
+    if direct is not None:
+        return direct
+    for (_workspace, owner_session), team in _coding_teams.items():
+        if owner_session == session_id or team.lead.session_id == session_id:
+            return team
+    return None
+
+
 async def get_or_start_coding_team(workspace: str, session_id: str) -> "AgentTeam":
     resolved_workspace = validate_workspace(workspace)
     key = (resolved_workspace, session_id)
@@ -662,7 +682,7 @@ def refresh_idle_agents(team: "AgentTeam") -> None:
     breaks the listing endpoint.
     """
     for member in [team.lead, *team.members.values()]:
-        if member.state == "working":
+        if is_busy(member.state):
             continue
         try:
             member.refresh_if_dirty()

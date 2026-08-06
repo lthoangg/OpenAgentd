@@ -462,3 +462,61 @@ describe("ToolResult — todo_manage", () => {
     expect(screen.getByText("something unexpected")).toBeTruthy()
   })
 })
+
+// ---------------------------------------------------------------------------
+// ask_user_question renderer
+// ---------------------------------------------------------------------------
+
+describe("ToolResult — ask_user_question", () => {
+  /**
+   * The stored result is the sentence the *model* reads
+   * (``question_service.format_answers_for_model``). Replaying that sentence
+   * verbatim in the transcript buries the one thing a person scrolling back
+   * wants — what they chose — inside instructions addressed to the agent.
+   */
+  const answered =
+    'User has answered your questions: "Which package manager?"="pnpm", ' +
+    '"Which checks should run?"="lint, test". Continue with the user\'s answers in mind.'
+
+  it("renders each question with the answer the user gave", () => {
+    render(<ToolResult toolName="ask_user_question" result={answered} />)
+
+    expect(screen.getByText("Which package manager?")).toBeTruthy()
+    expect(screen.getByText("pnpm")).toBeTruthy()
+    expect(screen.getByText("Which checks should run?")).toBeTruthy()
+    expect(screen.getByText("lint, test")).toBeTruthy()
+  })
+
+  it("drops the instructions addressed to the model", () => {
+    const { container } = render(<ToolResult toolName="ask_user_question" result={answered} />)
+
+    expect(container.textContent).not.toContain("Continue with the user's answers in mind")
+    expect(container.textContent).not.toContain("User has answered your questions")
+  })
+
+  it("marks a question the user skipped", () => {
+    render(
+      <ToolResult
+        toolName="ask_user_question"
+        result={'User has answered your questions: "Pick one"="Unanswered". Continue with the user\'s answers in mind.'}
+      />,
+    )
+
+    expect(screen.getByText(/skipped/i)).toBeTruthy()
+  })
+
+  it("falls back to the raw text for a dismissal", () => {
+    const dismissed =
+      "The user dismissed this question without answering. Stop and wait for their next instruction."
+    render(<ToolResult toolName="ask_user_question" result={dismissed} />)
+
+    expect(screen.getByText(/dismissed this question/)).toBeTruthy()
+  })
+
+  it("falls back to the raw text while the answer is still pending", () => {
+    const pending = "Waiting for the user to answer. Do not continue until their reply arrives."
+    render(<ToolResult toolName="ask_user_question" result={pending} />)
+
+    expect(screen.getByText(/Waiting for the user to answer/)).toBeTruthy()
+  })
+})

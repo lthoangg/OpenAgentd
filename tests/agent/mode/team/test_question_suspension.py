@@ -311,26 +311,6 @@ async def test_dismiss_is_a_noop_without_a_pending_question(monkeypatch):
     assert await team.dismiss_pending_question(reason="dismissed") is False
 
 
-async def test_hydration_reparks_a_rebuilt_team(monkeypatch):
-    """A restarted daemon must not look idle while a question is unanswered."""
-    team = _make_team()
-    assert team.lead.state == "idle"
-
-    row = MagicMock()
-    row.id = uuid.uuid4()
-
-    async def fake_get_pending(db, session_id):
-        return row
-
-    monkeypatch.setattr(
-        "app.services.question_service.get_pending_question", fake_get_pending
-    )
-
-    assert await team.hydrate_pending_question() is True
-    assert team.lead.state == "waiting_input"
-    assert team.has_active_user_turn() is True
-
-
 async def test_the_lead_parks_in_waiting_input_when_the_loop_suspends(
     monkeypatch, mock_stream_store
 ):

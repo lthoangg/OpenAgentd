@@ -1083,42 +1083,6 @@ class AgentTeam:
         )
         return session_id, shift
 
-    async def hydrate_pending_question(self) -> bool:
-        """Re-park the lead in ``waiting_input`` if the DB says it is waiting.
-
-        ``waiting_input`` lives in memory; a rebuilt team or a restarted daemon
-        starts at ``idle``.  Re-reading it here keeps ``has_active_user_turn()``
-        honest — which is what makes the scheduler defer a fire instead of
-        superseding a question the user has not seen yet.
-        """
-        from app.services import question_service
-
-        try:
-            db_factory = resolve_db_factory(self.lead.db_factory)
-            async with db_factory() as db:
-                pending = await question_service.get_pending_question(
-                    db, UUID(self.lead.session_id)
-                )
-        except Exception as exc:
-            logger.warning(
-                "question_hydrate_failed session_id={} error={}",
-                self.lead.session_id,
-                exc,
-            )
-            return False
-
-        if pending is None:
-            return False
-        if self.lead.state == "idle":
-            self.lead.state = "waiting_input"
-            self._has_active_turn = True
-            logger.info(
-                "question_state_hydrated session_id={} question_id={}",
-                self.lead.session_id,
-                pending.id,
-            )
-        return True
-
     async def _restore_or_drop_members_for_lead(self, lead_session_id: str) -> None:
         """Realign live spawned instances to child sessions of *lead_session_id*.
 

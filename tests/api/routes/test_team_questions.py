@@ -13,6 +13,7 @@ question id) are covered as carefully as the happy path.
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from unittest.mock import AsyncMock
 
@@ -848,3 +849,60 @@ async def test_dismiss_delivers_its_events_when_the_turn_state_is_gone(
     assert str(session_id) in turn_state
     # ``mark_done`` ran on real state, so the whole close reached the store.
     assert turn_state[str(session_id)].is_streaming is False
+
+
+async def test_stream_holds_open_while_a_question_is_unanswered(turn_state):
+    """End-to-end: the SSE connection must park, not close instantly.
+
+    This is the behaviour the reconnect storm came from. With no turn state the
+    generator finishes immediately, the client sees a *clean* close (so no error
+    to trigger its backoff), and — because an open question correctly counts as
+    a live turn — it reopens at once, over and over. Asserting on the wire is
+    the only way to catch that; a unit test on the helper cannot see it.
+    """
+    from fastapi import FastAPI
+    from app.api.routes.team.chat import router as chat_router
+
+    session_id = uuid.uuid4()
+    await _seed(session_id)
+
+    application = FastAPI()
+    application.include_router(chat_router)
+    transport = ASGITransport(app=application)
+
+    async def read_first_bytes() -> None:
+        async with AsyncClient(transport=transport, base_url="http://test") as ac:
+            async with ac.stream("GET", f"/{session_id}/stream") as resp:
+                async for _ in resp.aiter_bytes():
+                    return
+
+    # Parked on the question: nothing to send, and the connection stays up.
+    with pytest.raises(asyncio.TimeoutError):
+        await asyncio.wait_for(read_first_bytes(), timeout=0.4)
+
+    assert str(session_id) in turn_state
+
+
+async def test_stream_closes_immediately_for_a_session_with_no_question(turn_state):
+    """The counterpart: an idle session must not be held open by the repair."""
+    from fastapi import FastAPI
+    from app.api.routes.team.chat import router as chat_router
+    from app.core import db as core_db
+
+    session_id = uuid.uuid4()
+    async with core_db.async_session_factory() as db:
+        db.add(ChatSession(id=session_id, agent_name="openagentd", mode="coding"))
+        await db.commit()
+
+    application = FastAPI()
+    application.include_router(chat_router)
+    transport = ASGITransport(app=application)
+
+    async def drain() -> None:
+        async with AsyncClient(transport=transport, base_url="http://test") as ac:
+            async with ac.stream("GET", f"/{session_id}/stream") as resp:
+                async for _ in resp.aiter_bytes():
+                    pass
+
+    await asyncio.wait_for(drain(), timeout=5)
+    assert str(session_id) not in turn_state

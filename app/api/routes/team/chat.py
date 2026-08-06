@@ -527,13 +527,40 @@ async def team_command(
     raise HTTPException(status_code=400, detail=f"Unknown command: {body.command}")
 
 
+async def _ensure_turn_for_open_question(session_id: str, db: DbSession) -> None:
+    """Give a durably-suspended turn somewhere to stream, if it has none.
+
+    Best-effort: a failure here must not stop the client from attaching, it
+    just leaves the connection behaving as it did before.
+    """
+    try:
+        sid = UUID(session_id)
+    except ValueError:
+        return
+    try:
+        if await question_service.get_pending_question(db, sid) is not None:
+            await stream_store.ensure_turn(session_id)
+    except Exception as exc:
+        logger.warning(
+            "stream_ensure_turn_failed session_id={} error={}", session_id, exc
+        )
+
+
 @router.get("/{session_id}/stream")
-async def team_stream(session_id: str, request: Request):
+async def team_stream(session_id: str, request: Request, db: DbSession):
     """SSE stream for all team agent events.
 
     Replays buffered events from the current turn then delivers live events.
     Safe to reconnect — resumes from where you left off within the TTL window.
     """
+    # A turn suspended on `ask_user` is still open, but the in-memory state
+    # proving it can be gone: a restart drops it, and so does the sliding TTL,
+    # since a parked turn emits nothing to refresh it. `attach` returns at once
+    # without it, and the client — which correctly treats an open question as a
+    # live turn — reopens immediately on that clean close, in a tight loop.
+    # Re-establishing the state here parks the connection instead, and leaves it
+    # already attached when the answer restarts the turn.
+    await _ensure_turn_for_open_question(session_id, db)
 
     async def _gen() -> AsyncGenerator[dict, None]:
         try:

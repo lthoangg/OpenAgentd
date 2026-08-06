@@ -603,6 +603,74 @@ class TestTeamStreamRoute:
                 assert response.status_code == 200
                 assert "text/event-stream" in response.headers.get("content-type", "")
 
+    @pytest.mark.asyncio
+    async def test_stream_reopens_the_turn_for_an_open_question(self):
+        """A durably-suspended turn needs somewhere to stream before attach.
+
+        Without turn state ``attach`` returns immediately, and the client — which
+        correctly treats an open question as a live turn — reopens on that clean
+        close with no backoff, spinning for as long as the card is unanswered.
+        """
+        from app.core import db as core_db
+        from app.models.chat import ChatSession
+        from app.services import question_service
+        from app.api.routes.team.chat import _ensure_turn_for_open_question
+        from app.services.memory_stream_store import _turns
+
+        session_id = uuid.uuid7()
+        async with core_db.async_session_factory() as db:
+            db.add(ChatSession(id=session_id, agent_name="openagentd", mode="coding"))
+            await db.commit()
+            await question_service.create_pending_question(
+                db,
+                session_id=session_id,
+                tool_call_id="call-stream-open",
+                questions=[
+                    {
+                        "question": "Which?",
+                        "header": "Pick",
+                        "multiple": False,
+                        "custom": False,
+                        "options": [{"label": "a"}, {"label": "b"}],
+                    }
+                ],
+            )
+            await db.commit()
+        _turns.pop(str(session_id), None)
+
+        try:
+            async with core_db.async_session_factory() as db:
+                await _ensure_turn_for_open_question(str(session_id), db)
+
+            assert str(session_id) in _turns
+            # Attachable, or the connection is turned away exactly as before.
+            assert _turns[str(session_id)].is_streaming is True
+        finally:
+            _turns.pop(str(session_id), None)
+
+    @pytest.mark.asyncio
+    async def test_stream_does_not_open_a_turn_for_a_quiet_session(self):
+        """No open question means no turn to hold — leave the session alone.
+
+        Creating state here would mark an idle session as running and keep an
+        SSE connection parked on a turn that does not exist.
+        """
+        from app.core import db as core_db
+        from app.models.chat import ChatSession
+        from app.api.routes.team.chat import _ensure_turn_for_open_question
+        from app.services.memory_stream_store import _turns
+
+        session_id = uuid.uuid7()
+        async with core_db.async_session_factory() as db:
+            db.add(ChatSession(id=session_id, agent_name="openagentd", mode="coding"))
+            await db.commit()
+        _turns.pop(str(session_id), None)
+
+        async with core_db.async_session_factory() as db:
+            await _ensure_turn_for_open_question(str(session_id), db)
+
+        assert str(session_id) not in _turns
+
 
 class TestTeamAgentsRoute:
     """Test GET /team/agents endpoint."""

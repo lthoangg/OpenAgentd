@@ -66,6 +66,13 @@ interface AgentViewProps {
   currentBlocks: ContentBlock[]
   /** True while the agent is actively streaming. */
   isWorking: boolean
+  /**
+   * True while the turn has not ended — a superset of ``isWorking`` that also
+   * covers a lead suspended on ``ask_user``. Nothing streams then, but the turn
+   * is open, so it must not show a duration, a Continue, or "about to respond"
+   * dots. Defaults to ``isWorking``.
+   */
+  isTurnOpen?: boolean
   /** True when the agent is in error state. */
   isError?: boolean
   /** Error message to display when isError is true. */
@@ -170,7 +177,7 @@ const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionI
   }
 })
 
-export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError, onContinue, emptyState, onMentionFileOpen }: AgentViewProps) {
+export function AgentView({ blocks, currentBlocks, isWorking, isTurnOpen = isWorking, isError, lastError, onContinue, emptyState, onMentionFileOpen }: AgentViewProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
   // attachedRef: true = follow the stream.
@@ -510,6 +517,7 @@ export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError
                      startIndex={item.startIndex}
                      finalizedCount={blocks.length}
                      isWorking={isWorking}
+                     isTurnOpen={isTurnOpen}
                      isTrailingTurn={isTrailingTurn}
                       totalBlocks={allBlocks.length}
                       size="roomy"
@@ -533,7 +541,7 @@ export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError
              *   2. working with no visible agent content yet (user bubbles don't count).
              * Covers the POST to first SSE event gap so the user always gets immediate feedback.
              */}
-            {((!isWorking && !isError && currentBlocks.some(isDirectUserBlock)) ||
+            {((!isTurnOpen && !isError && currentBlocks.some(isDirectUserBlock)) ||
               (isWorking && currentBlocks.every((b) => b.type === 'user' || isBlankContentBlock(b)))) && (
               <div className="flex items-center gap-1.5 py-1" role="status" aria-label="Agent is preparing a response">
                 <span aria-hidden="true" className="h-1.5 w-1.5 animate-bounce rounded-full bg-(--color-accent)" style={{ animationDelay: '0ms' }} />

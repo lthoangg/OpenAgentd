@@ -403,8 +403,10 @@ export const AgentPane = memo(function AgentPane({
   // Suspended on `ask_user`: the turn is open but nothing is running,
   // so this reads as neither working nor idle.
   const isWaiting = stream.status === 'waiting_input'
-  // Me show waiting indicator when a user message exists but the agent hasn't woken yet
-  const isPending = !isWorking && !isError && !isOffline && stream.currentBlocks.some(isDirectUserBlock)
+  // Me show waiting indicator when a user message exists but the agent hasn't woken yet.
+  // Excludes `isWaiting`: a lead parked on a question is not "about to respond",
+  // and bouncing dots under its own question card read as work in progress.
+  const isPending = !isWorking && !isWaiting && !isError && !isOffline && stream.currentBlocks.some(isDirectUserBlock)
 
   const attachedRef = useRef(true)
   const isProgrammaticScrollRef = useRef(false)
@@ -677,6 +679,7 @@ export const AgentPane = memo(function AgentPane({
                        startIndex={item.startIndex}
                        finalizedCount={stream.blocks.length}
                        isWorking={isWorking}
+                        isTurnOpen={isWorking || isWaiting}
                         isTrailingTurn={isTrailingTurn}
                         totalBlocks={allBlocks.length}
                         onContinue={onContinue}

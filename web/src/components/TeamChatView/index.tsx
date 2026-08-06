@@ -563,6 +563,9 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
               blocks={activeBlocks}
               currentBlocks={activeCurrentBlocks}
               isWorking={activeStatus === 'working'}
+              // A lead suspended on `ask_user` is not streaming, but its turn
+              // is still open — no duration, no Continue, no pending dots.
+              isTurnOpen={activeStatus === 'working' || activeStatus === 'waiting_input'}
               isError={activeStatus === 'error'}
               lastError={activeLastError}
               isContinuing={isContinuing && activeAgent === leadName}

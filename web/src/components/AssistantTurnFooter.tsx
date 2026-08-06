@@ -126,8 +126,19 @@ export interface AssistantTurnProps {
   /** Number of finalized blocks (i.e. `stream.blocks.length`); blocks at or
    *  past this index are still in-flight when `isWorking` is true. */
   finalizedCount: number
-  /** True while the agent is actively streaming. */
+  /** True while the agent is actively streaming. Drives the per-block cursor. */
   isWorking: boolean
+  /**
+   * True while this pane's turn has not ended — a superset of ``isWorking``
+   * that also covers a lead suspended on ``ask_user``, where nothing streams
+   * but the turn is still open.
+   *
+   * Kept separate from ``isWorking`` because the two answer different
+   * questions: ``isWorking`` decides whether a *block* is mid-stream, this
+   * decides whether the *turn* is over and may show a duration and a Continue.
+   * Defaults to ``isWorking`` for callers with no suspendable turn.
+   */
+  isTurnOpen?: boolean
   /** True when this turn has no user block after it (i.e. trailing). Only
    *  trailing turns can be "live"; any turn followed by a user message is
    *  finalized regardless of `isWorking`. */
@@ -147,14 +158,17 @@ export const AssistantTurn = memo(function AssistantTurn({
   startIndex,
   finalizedCount,
   isWorking,
+  isTurnOpen = isWorking,
   isTrailingTurn,
   totalBlocks,
   renderBlock,
   size = 'compact',
   onContinue,
 }: AssistantTurnProps) {
-  const turnIsStreaming = isWorking && isTrailingTurn
-  const canContinue = isTrailingTurn && !isWorking ? onContinue : undefined
+  // The footer reports on a *finished* turn, so it waits for the turn to close
+  // rather than merely for the stream to stop.
+  const turnIsOpen = isTurnOpen && isTrailingTurn
+  const canContinue = isTrailingTurn && !isTurnOpen ? onContinue : undefined
 
   return (
     <div className="space-y-2">
@@ -171,7 +185,7 @@ export const AssistantTurn = memo(function AssistantTurn({
           </div>
         )
       })}
-      {!turnIsStreaming && <AssistantTurnFooter turnBlocks={blocks} size={size} onContinue={canContinue} />}
+      {!turnIsOpen && <AssistantTurnFooter turnBlocks={blocks} size={size} onContinue={canContinue} />}
     </div>
   )
 })

@@ -173,7 +173,7 @@ class CodingWorkspace(SQLModel, table=True):
 class PendingQuestion(SQLModel, table=True):
     """A question the lead agent asked the user, and the turn waiting on it.
 
-    Written when ``ask_user_question`` suspends a turn and resolved when the
+    Written when ``ask_user`` suspends a turn and resolved when the
     user answers or dismisses.  The row is what makes the suspension durable:
     it outlives the process, so a restarted daemon can re-render the question
     and resume the turn from the tool call that raised it.

@@ -74,11 +74,11 @@ MAX_PROVIDER_RESUME_ATTEMPTS = 3
 PROVIDER_RESUME_BASE_DELAY = 2.0
 
 # Tool names that may only be supplied via ``run(injected_tools=...)``.  The
-# injection site is where their scoping rules live (e.g. ``ask_user_question``
-# is coding-mode-lead-only), so a same-named constructor tool coming from a
-# plugin or MCP server is dropped rather than allowed to impersonate it.
-ASK_USER_QUESTION = "ask_user_question"
-RESERVED_INJECTED_TOOL_NAMES = frozenset({ASK_USER_QUESTION})
+# injection site is where their scoping rules live (e.g. ``ask_user`` is
+# coding-mode-lead-only), so a same-named constructor tool coming from a plugin
+# or MCP server is dropped rather than allowed to impersonate it.
+ASK_USER = "ask_user"
+RESERVED_INJECTED_TOOL_NAMES = frozenset({ASK_USER})
 
 # Returned to the model in place of a second interruption. Phrased as a nudge
 # rather than a failure so the model proceeds instead of retrying.
@@ -87,7 +87,7 @@ ASK_BUDGET_EXHAUSTED = (
     "best judgment, or finish and raise anything outstanding in your reply."
 )
 ASK_MERGED_INTO_PRIMARY = (
-    "Merged into your other ask_user_question call — the user sees a single card "
+    "Merged into your other ask_user call — the user sees a single card "
     "with every question."
 )
 
@@ -985,7 +985,7 @@ class Agent(Generic[TContext]):
     ) -> str:
         """Run every tool call in ``tc_list`` and append their results.
 
-        Ordinary calls run in parallel.  ``ask_user_question`` is held back and
+        Ordinary calls run in parallel.  ``ask_user`` is held back and
         run last, alone, because it does not return — it hands the turn to the
         user.  Running it after its siblings means their results are complete
         and persisted before the turn stops, so the resumed turn sees the work
@@ -1010,8 +1010,8 @@ class Agent(Generic[TContext]):
             ", ".join(tc.function.name for tc in tc_list),
         )
 
-        ask_calls = [tc for tc in tc_list if tc.function.name == ASK_USER_QUESTION]
-        other_calls = [tc for tc in tc_list if tc.function.name != ASK_USER_QUESTION]
+        ask_calls = [tc for tc in tc_list if tc.function.name == ASK_USER]
+        other_calls = [tc for tc in tc_list if tc.function.name != ASK_USER]
 
         # Execute tool calls in parallel, cancelling on interrupt
         results = await gather_or_cancel(
@@ -1075,7 +1075,7 @@ class Agent(Generic[TContext]):
         checkpointer: Checkpointer | None,
         config: RunConfig | None,
     ) -> str:
-        """Run the batch's ``ask_user_question`` call and suspend the turn.
+        """Run the batch's ``ask_user`` call and suspend the turn.
 
         Enforces the one-interruption-per-turn budget, folds a duplicated call
         into a single card, and persists everything the batch already produced

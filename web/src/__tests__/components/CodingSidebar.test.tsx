@@ -1086,7 +1086,7 @@ describe('CodingSidebar workspace trust flow', () => {
   })
 
   /**
-   * A session suspended on `ask_user_question` is still "running", so without a
+   * A session suspended on `ask_user` is still "running", so without a
    * distinct marker it is indistinguishable from one that is busy working — and
    * the whole point is that it is busy waiting for *this* user.
    */

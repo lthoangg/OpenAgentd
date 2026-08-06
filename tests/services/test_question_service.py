@@ -1,6 +1,6 @@
 """Tests for :mod:`app.services.question_service`.
 
-The service owns the durable half of ``ask_user_question``: it writes the
+The service owns the durable half of ``ask_user``: it writes the
 ``pending_questions`` row *and* the placeholder ``ToolMessage`` in one
 transaction, then rewrites that placeholder in place when the user answers or
 dismisses.  The placeholder is load-bearing — it is what stops
@@ -47,7 +47,7 @@ async def _session_with_tool_call(db, session_id: uuid.UUID, call_id: str) -> No
                 {
                     "id": call_id,
                     "type": "function",
-                    "function": {"name": "ask_user_question", "arguments": "{}"},
+                    "function": {"name": "ask_user", "arguments": "{}"},
                 }
             ],
         ),
@@ -75,7 +75,7 @@ async def test_create_writes_row_and_placeholder_tool_result():
         ).one()
 
     assert placeholder.role == "tool"
-    assert placeholder.name == "ask_user_question"
+    assert placeholder.name == "ask_user"
     assert placeholder.content == question_service.PLACEHOLDER_RESULT
 
 

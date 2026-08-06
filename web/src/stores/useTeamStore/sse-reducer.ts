@@ -533,7 +533,7 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
               })
             }
           } else if (status === 'waiting_input') {
-            // Suspended on ask_user_question: still live, but no tokens are
+            // Suspended on ask_user: still live, but no tokens are
             // coming, so drop the completion estimate that drives the progress
             // readout instead of letting it tick against a stalled turn.
             draft.agentStreams[agent].status = 'waiting_input'
@@ -588,6 +588,7 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
           draft.resolvedQuestions[draft.pendingQuestion.toolCallId] = {
             questions: draft.pendingQuestion.questions,
             answers,
+            reason: answers === null ? ((d.reason as string) ?? 'dismissed') : null,
           }
           draft.pendingQuestion = null
         })

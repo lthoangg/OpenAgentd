@@ -614,7 +614,7 @@ async def list_team_agents(
                     custom_threshold=custom_threshold,
                     # Per-agent, not per-team: the injected set is role- and
                     # mode-dependent (only a coding-mode lead on a human-owned
-                    # session gets ``ask_user_question``), so the listing has to
+                    # session gets ``ask_user``), so the listing has to
                     # ask for each member rather than share one list.
                     injected_tools=team_obj.get_injected_tools(m.name),
                 )

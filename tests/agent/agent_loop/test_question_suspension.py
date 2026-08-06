@@ -1,4 +1,4 @@
-"""Loop-level behaviour of ``ask_user_question``.
+"""Loop-level behaviour of ``ask_user``.
 
 The tool hands the turn to the user instead of returning a result, so the loop
 has to treat it unlike every other tool:
@@ -92,7 +92,7 @@ def _ask_tool(order: list[str], captured: list[dict]) -> Tool:
     """Stand-in for the real tool: records its args, then suspends."""
     import uuid
 
-    async def ask_user_question(
+    async def ask_user(
         questions: list,
         _tool_call_id: Annotated[str | None, InjectedArg()] = None,
     ) -> str:
@@ -103,7 +103,7 @@ def _ask_tool(order: list[str], captured: list[dict]) -> Tool:
             question_id=uuid.UUID(QUESTION_ID), session_id=uuid.UUID(SESSION_ID)
         )
 
-    return Tool(ask_user_question, name="ask_user_question")
+    return Tool(ask_user, name="ask_user")
 
 
 def _slow_tool(order: list[str]) -> Tool:
@@ -139,7 +139,7 @@ async def test_ask_runs_after_its_siblings_even_when_listed_first():
             [
                 make_multi_tool_chunk(
                     [
-                        ("ask_user_question", "call-ask", ONE_QUESTION),
+                        ("ask_user", "call-ask", ONE_QUESTION),
                         ("read", "call-read", '{"path": "a.py"}'),
                     ]
                 )
@@ -165,7 +165,7 @@ async def test_sibling_results_are_kept_when_the_turn_suspends():
                 make_multi_tool_chunk(
                     [
                         ("read", "call-read", '{"path": "a.py"}'),
-                        ("ask_user_question", "call-ask", ONE_QUESTION),
+                        ("ask_user", "call-ask", ONE_QUESTION),
                     ]
                 )
             ]
@@ -188,7 +188,7 @@ async def test_suspension_is_reported_on_state_metadata():
     order: list[str] = []
     captured: list[dict] = []
     provider = ScriptedProvider(
-        [[make_tool_chunk("ask_user_question", "call-ask", ONE_QUESTION)]]
+        [[make_tool_chunk("ask_user", "call-ask", ONE_QUESTION)]]
     )
     agent = Agent(name="lead", llm_provider=provider)
     config = RunConfig(session_id=SESSION_ID)
@@ -209,7 +209,7 @@ async def test_tool_call_id_is_injected_into_the_tool():
     order: list[str] = []
     captured: list[dict] = []
     provider = ScriptedProvider(
-        [[make_tool_chunk("ask_user_question", "call-ask", ONE_QUESTION)]]
+        [[make_tool_chunk("ask_user", "call-ask", ONE_QUESTION)]]
     )
     agent = Agent(name="lead", llm_provider=provider)
 
@@ -228,8 +228,8 @@ async def test_two_asks_in_one_batch_merge_into_a_single_question_set():
             [
                 make_multi_tool_chunk(
                     [
-                        ("ask_user_question", "call-a", ONE_QUESTION),
-                        ("ask_user_question", "call-b", OTHER_QUESTION),
+                        ("ask_user", "call-a", ONE_QUESTION),
+                        ("ask_user", "call-b", OTHER_QUESTION),
                     ]
                 )
             ]
@@ -252,7 +252,7 @@ async def test_a_resumed_activation_may_not_ask_again():
     captured: list[dict] = []
     provider = ScriptedProvider(
         [
-            [make_tool_chunk("ask_user_question", "call-ask", ONE_QUESTION)],
+            [make_tool_chunk("ask_user", "call-ask", ONE_QUESTION)],
             [make_text_chunk("fine, proceeding")],
         ]
     )
@@ -279,7 +279,7 @@ async def test_asking_twice_in_one_turn_is_refused_on_the_second_call():
     provider = ScriptedProvider(
         [
             [make_tool_chunk("read", "call-read", '{"path": "a.py"}')],
-            [make_tool_chunk("ask_user_question", "call-ask", ONE_QUESTION)],
+            [make_tool_chunk("ask_user", "call-ask", ONE_QUESTION)],
             [make_text_chunk("proceeding without asking")],
         ]
     )

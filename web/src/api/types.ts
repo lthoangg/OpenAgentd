@@ -192,7 +192,7 @@ export interface SessionResponse {
   thinking_level?: string | null
   running?: boolean
   /**
-   * The lead of this session is suspended on `ask_user_question`.
+   * The lead of this session is suspended on `ask_user`.
    *
    * Implies `running` — the turn never closed — so a session list must check
    * this first, or a session waiting for the user is indistinguishable from one
@@ -246,7 +246,7 @@ export interface TeamHistoryResponse {
    */
   truncated?: boolean
   /**
-   * Set when the lead is suspended on `ask_user_question`. Present on full
+   * Set when the lead is suspended on `ask_user`. Present on full
    * pages only — a delta (`?since=`) always omits it, so absence there must not
    * be read as "the question was resolved".
    */
@@ -614,7 +614,7 @@ export interface WorktreeRemoveResponse {
 }
 
 
-// ── ask_user_question ────────────────────────────────────────────────────────
+// ── ask_user ────────────────────────────────────────────────────────
 
 export interface QuestionOption {
   label: string

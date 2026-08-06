@@ -1,4 +1,4 @@
-"""Tests for the ``ask_user_question`` tool (``app.agent.mode.team.question``).
+"""Tests for the ``ask_user`` tool (``app.agent.mode.team.question``).
 
 The tool never returns a value: it persists the suspension and raises
 :class:`QuestionSuspended`, which the agent loop unwinds into a clean end of
@@ -16,8 +16,8 @@ from sqlmodel import select
 
 from app.agent.errors import QuestionSuspended
 from app.agent.mode.team.question import (
-    AskUserQuestionArgs,
-    make_ask_user_question_tool,
+    AskUserArgs,
+    make_ask_user_tool,
 )
 from app.models.chat import ChatSession, PendingQuestion
 
@@ -41,7 +41,7 @@ def _question(**overrides) -> dict:
 
 
 def test_accepts_a_well_formed_question():
-    args = AskUserQuestionArgs(questions=[_question()])
+    args = AskUserArgs(questions=[_question()])
 
     assert args.questions[0].header == "Package manager"
     assert args.questions[0].options[0].recommended is True
@@ -51,23 +51,23 @@ def test_accepts_a_well_formed_question():
 
 def test_rejects_more_than_four_questions():
     with pytest.raises(ValidationError):
-        AskUserQuestionArgs(questions=[_question() for _ in range(5)])
+        AskUserArgs(questions=[_question() for _ in range(5)])
 
 
 def test_rejects_an_empty_question_list():
     with pytest.raises(ValidationError):
-        AskUserQuestionArgs(questions=[])
+        AskUserArgs(questions=[])
 
 
 def test_rejects_an_over_long_header():
     with pytest.raises(ValidationError):
-        AskUserQuestionArgs(questions=[_question(header="x" * 31)])
+        AskUserArgs(questions=[_question(header="x" * 31)])
 
 
 def test_rejects_more_than_five_options():
     options = [{"label": f"opt-{index}"} for index in range(6)]
     with pytest.raises(ValidationError):
-        AskUserQuestionArgs(questions=[_question(options=options)])
+        AskUserArgs(questions=[_question(options=options)])
 
 
 def test_rejects_two_recommendations_on_a_single_select_question():
@@ -77,7 +77,7 @@ def test_rejects_two_recommendations_on_a_single_select_question():
         {"label": "bun", "recommended": True},
     ]
     with pytest.raises(ValidationError):
-        AskUserQuestionArgs(questions=[_question(options=options, multiple=False)])
+        AskUserArgs(questions=[_question(options=options, multiple=False)])
 
 
 def test_allows_two_recommendations_on_a_multi_select_question():
@@ -86,7 +86,7 @@ def test_allows_two_recommendations_on_a_multi_select_question():
         {"label": "test", "recommended": True},
         {"label": "build"},
     ]
-    args = AskUserQuestionArgs(questions=[_question(options=options, multiple=True)])
+    args = AskUserArgs(questions=[_question(options=options, multiple=True)])
 
     assert sum(option.recommended for option in args.questions[0].options) == 2
 
@@ -94,17 +94,17 @@ def test_allows_two_recommendations_on_a_multi_select_question():
 def test_rejects_duplicate_option_labels():
     options = [{"label": "pnpm"}, {"label": "pnpm"}]
     with pytest.raises(ValidationError):
-        AskUserQuestionArgs(questions=[_question(options=options)])
+        AskUserArgs(questions=[_question(options=options)])
 
 
 def test_rejects_a_question_with_no_options_and_no_free_text():
     """Otherwise the card renders with nothing the user can do."""
     with pytest.raises(ValidationError):
-        AskUserQuestionArgs(questions=[_question(options=[], custom=False)])
+        AskUserArgs(questions=[_question(options=[], custom=False)])
 
 
 def test_allows_a_free_text_only_question():
-    args = AskUserQuestionArgs(questions=[_question(options=[], custom=True)])
+    args = AskUserArgs(questions=[_question(options=[], custom=True)])
 
     assert args.questions[0].options == []
 
@@ -128,10 +128,10 @@ class _FakeTeam:
 
 
 def test_tool_definition_hides_injected_arguments():
-    tool = make_ask_user_question_tool(_FakeTeam(str(uuid.uuid4())))  # type: ignore[arg-type]
+    tool = make_ask_user_tool(_FakeTeam(str(uuid.uuid4())))  # type: ignore[arg-type]
     properties = tool.definition["function"]["parameters"]["properties"]
 
-    assert tool.name == "ask_user_question"
+    assert tool.name == "ask_user"
     assert set(properties) == {"questions"}
 
 
@@ -143,7 +143,7 @@ async def test_calling_the_tool_persists_the_question_and_suspends():
         db.add(ChatSession(id=session_id, agent_name="openagentd", mode="coding"))
         await db.commit()
 
-    tool = make_ask_user_question_tool(_FakeTeam(str(session_id)))  # type: ignore[arg-type]
+    tool = make_ask_user_tool(_FakeTeam(str(session_id)))  # type: ignore[arg-type]
 
     with pytest.raises(QuestionSuspended) as excinfo:
         await tool.arun(
@@ -172,7 +172,7 @@ async def test_tool_refuses_without_a_resolvable_tool_call_id():
         db.add(ChatSession(id=session_id, agent_name="openagentd", mode="coding"))
         await db.commit()
 
-    tool = make_ask_user_question_tool(_FakeTeam(str(session_id)))  # type: ignore[arg-type]
+    tool = make_ask_user_tool(_FakeTeam(str(session_id)))  # type: ignore[arg-type]
 
     result = await tool.arun(_injected={"_tool_call_id": None}, questions=[_question()])
 
@@ -211,7 +211,7 @@ async def test_asking_emits_the_event_and_a_notification(
 
     monkeypatch.setattr("app.services.event_broadcaster.publish", fake_publish)
 
-    tool = make_ask_user_question_tool(_FakeTeam(str(session_id)))  # type: ignore[arg-type]
+    tool = make_ask_user_tool(_FakeTeam(str(session_id)))  # type: ignore[arg-type]
     with pytest.raises(QuestionSuspended):
         await tool.arun(
             _injected={"_tool_call_id": "call_evt"}, questions=[_question()]
@@ -253,7 +253,7 @@ async def test_a_failed_event_fanout_does_not_break_the_suspension(
     mock_stream_store.side_effect = boom
     monkeypatch.setattr("app.services.event_broadcaster.publish", boom)
 
-    tool = make_ask_user_question_tool(_FakeTeam(str(session_id)))  # type: ignore[arg-type]
+    tool = make_ask_user_tool(_FakeTeam(str(session_id)))  # type: ignore[arg-type]
 
     with pytest.raises(QuestionSuspended):
         await tool.arun(

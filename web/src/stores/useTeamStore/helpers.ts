@@ -5,7 +5,7 @@ import type { AgentStream } from './types'
  * Statuses that mean "this agent's turn has not ended yet".
  *
  * Mirrors ``BUSY_STATES`` in ``app/agent/mode/team/member.py``: a lead suspended
- * on ``ask_user_question`` emits no tokens but must still read as live, or the
+ * on ``ask_user`` emits no tokens but must still read as live, or the
  * UI would look finished with a question card still on screen.
  */
 const LIVE_STATUSES: ReadonlySet<AgentStream['status']> = new Set(['working', 'waiting_input'])

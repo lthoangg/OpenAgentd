@@ -163,7 +163,7 @@ def test_coding_lead_gets_the_question_tool():
 
     names = {tool.name for tool in team.get_injected_tools("openagentd")}
 
-    assert "ask_user_question" in names
+    assert "ask_user" in names
 
 
 def test_members_never_get_the_question_tool():
@@ -171,7 +171,7 @@ def test_members_never_get_the_question_tool():
 
     names = {tool.name for tool in team.get_injected_tools("coder#1")}
 
-    assert "ask_user_question" not in names
+    assert "ask_user" not in names
 
 
 def test_normal_mode_lead_does_not_get_the_question_tool():
@@ -179,7 +179,7 @@ def test_normal_mode_lead_does_not_get_the_question_tool():
 
     names = {tool.name for tool in team.get_injected_tools("openagentd")}
 
-    assert "ask_user_question" not in names
+    assert "ask_user" not in names
 
 
 def test_scheduler_owned_session_does_not_get_the_question_tool():
@@ -189,7 +189,7 @@ def test_scheduler_owned_session_does_not_get_the_question_tool():
 
     names = {tool.name for tool in team.get_injected_tools("openagentd")}
 
-    assert "ask_user_question" not in names
+    assert "ask_user" not in names
 
 
 # ---------------------------------------------------------------------------

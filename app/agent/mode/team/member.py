@@ -274,7 +274,7 @@ class TeamMemberBase(abc.ABC):
         self.db_factory = db_factory
 
         self.state: Literal["idle", "working", "waiting_input", "error"] = "idle"
-        # Set by ``_handle_messages`` when ``ask_user_question`` suspended the
+        # Set by ``_handle_messages`` when ``ask_user`` suspended the
         # turn; read by ``_run_activation``'s finally block so the agent parks
         # in ``waiting_input`` instead of going idle.
         self._question_suspended: dict | None = None
@@ -446,7 +446,7 @@ class TeamMemberBase(abc.ABC):
         )
 
     def activate_for_question_answer(self) -> None:
-        """Resume a turn that was suspended by ``ask_user_question``.
+        """Resume a turn that was suspended by ``ask_user``.
 
         Runs on existing DB history exactly like ``/continue``: by the time
         this is called the placeholder tool result has been rewritten with the
@@ -575,7 +575,7 @@ class TeamMemberBase(abc.ABC):
         message is stamped via :class:`ContinuationHook`.
 
         ``question_resume`` is the same history-only path, used after the user
-        answered an ``ask_user_question``.
+        answered an ``ask_user``.
         """
         assert self._mailbox is not None
         assert self._team is not None
@@ -1039,7 +1039,7 @@ class TeamMemberBase(abc.ABC):
         }
         if question_resume:
             # Spends this turn's one interruption up-front: the loop refuses a
-            # second ask_user_question, so answering can never loop back into
+            # second ask_user, so answering can never loop back into
             # another question.
             run_metadata["question_resume"] = True
         if force_compaction:
@@ -1074,7 +1074,7 @@ class TeamMemberBase(abc.ABC):
                 model_id=runtime_model,
             )
 
-            # ``ask_user_question`` suspended the turn: the loop reports it
+            # ``ask_user`` suspended the turn: the loop reports it
             # through the run config rather than raising, because the turn is
             # complete-and-resumable, not failed.
             suspended = run_metadata.get("question_suspended")

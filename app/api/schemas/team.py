@@ -157,7 +157,7 @@ class PermissionReplyResponse(BaseModel):
     reply: str
 
 
-# ── Questions (ask_user_question) ─────────────────────────────────────────────
+# ── Questions (ask_user) ─────────────────────────────────────────────
 
 #: Cap on a single free-text answer. Answers land in the transcript and in the
 #: model's context, so an unbounded paste is both a cost and a context problem.

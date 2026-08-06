@@ -1,4 +1,4 @@
-"""Tests for the ``pending_questions`` table backing ``ask_user_question``.
+"""Tests for the ``pending_questions`` table backing ``ask_user``.
 
 The table is the durability anchor for a suspended lead turn: the row
 survives a daemon restart so the question can be re-rendered and the turn

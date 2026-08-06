@@ -663,7 +663,7 @@ class TestTeamAgentsRoute:
     ):
         """Session Settings claims to show "what this session can actually do".
 
-        ``team_message``, ``team_manage`` and ``ask_user_question`` are built
+        ``team_message``, ``team_manage`` and ``ask_user`` are built
         per-run by ``get_injected_tools`` and never registered on the agent, so
         the listing omitted three working tools. (``todo_manage`` was already
         there — it is also a static builtin.)
@@ -677,7 +677,7 @@ class TestTeamAgentsRoute:
             t["name"]
             for t in next(a for a in data["agents"] if a["name"] == "lead")["tools"]
         }
-        assert {"team_message", "team_manage", "ask_user_question"} <= lead_tools
+        assert {"team_message", "team_manage", "ask_user"} <= lead_tools
 
     def test_team_agents_shows_the_injected_todo_manage_not_the_static_one(
         self, app_with_team, test_team
@@ -714,9 +714,7 @@ class TestTeamAgentsRoute:
         # Exactly one entry — the merge replaces, it does not append a duplicate.
         assert sum(t["name"] == "todo_manage" for t in lead_entry["tools"]) == 1
 
-    def test_team_agents_omits_ask_user_question_for_members(
-        self, app_with_team, test_team
-    ):
+    def test_team_agents_omits_ask_user_for_members(self, app_with_team, test_team):
         """The listing must mirror injection, not advertise what a member cannot call."""
         test_team.mode = "coding"
 
@@ -728,10 +726,10 @@ class TestTeamAgentsRoute:
             for t in next(a for a in data["agents"] if a["name"] == "worker")["tools"]
         }
         assert "team_message" in worker_tools
-        assert "ask_user_question" not in worker_tools
+        assert "ask_user" not in worker_tools
         assert "team_manage" not in worker_tools
 
-    def test_team_agents_omits_ask_user_question_outside_coding_mode(
+    def test_team_agents_omits_ask_user_outside_coding_mode(
         self, app_with_team, test_team
     ):
         test_team.mode = "normal"
@@ -744,7 +742,7 @@ class TestTeamAgentsRoute:
             for t in next(a for a in data["agents"] if a["name"] == "lead")["tools"]
         }
         assert "team_message" in lead_tools
-        assert "ask_user_question" not in lead_tools
+        assert "ask_user" not in lead_tools
 
     def test_team_agents_tool_descriptions_are_not_empty_for_injected_tools(
         self, app_with_team, test_team
@@ -756,7 +754,7 @@ class TestTeamAgentsRoute:
         data = client.get("/api/team/agents").json()
 
         lead_entry = next(a for a in data["agents"] if a["name"] == "lead")
-        ask = next(t for t in lead_entry["tools"] if t["name"] == "ask_user_question")
+        ask = next(t for t in lead_entry["tools"] if t["name"] == "ask_user")
         assert ask["description"].strip()
 
 

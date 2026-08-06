@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from "bun:test"
 import { useTeamStore } from "@/stores/useTeamStore"
 
 /**
- * ``ask_user_question`` store behaviour.
+ * ``ask_user`` store behaviour.
  *
  * A suspended lead is neither working nor idle, and the question that suspended
  * it is durable server-side. The store therefore has to:
@@ -57,7 +57,7 @@ function ask(overrides: Record<string, unknown> = {}) {
   })
 }
 
-describe("useTeamStore — ask_user_question", () => {
+describe("useTeamStore — ask_user", () => {
   beforeEach(resetStore)
 
   it("stores the question payload on question_asked", () => {
@@ -121,6 +121,34 @@ describe("useTeamStore — ask_user_question", () => {
     })
 
     expect(useTeamStore.getState().resolvedQuestions["call-1"].answers).toBeNull()
+  })
+
+  it("records why a question ended without an answer", () => {
+    ask()
+
+    useTeamStore.getState()._handleSSEEvent("question_dismissed", {
+      question_id: QUESTION_ID,
+      session_id: SESSION_ID,
+      reason: "superseded",
+    })
+
+    // "Dismissed" and "superseded" are different stories to tell the user, and
+    // the card cannot tell them apart from a null answer list alone.
+    const resolved = useTeamStore.getState().resolvedQuestions["call-1"]
+    expect(resolved.reason).toBe("superseded")
+    expect(resolved.questions[0].header).toBe("Package manager")
+  })
+
+  it("keeps the reason null when the question was answered", () => {
+    ask()
+
+    useTeamStore.getState()._handleSSEEvent("question_answered", {
+      question_id: QUESTION_ID,
+      session_id: SESSION_ID,
+      answers: [["pnpm"]],
+    })
+
+    expect(useTeamStore.getState().resolvedQuestions["call-1"].reason).toBeNull()
   })
 
   it("clears the question when it is dismissed", () => {

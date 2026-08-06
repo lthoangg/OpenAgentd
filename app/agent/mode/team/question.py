@@ -1,4 +1,4 @@
-"""``ask_user_question`` — hand the turn to the user, then resume where it left off.
+"""``ask_user`` — hand the turn to the user, then resume where it left off.
 
 Unlike every other tool, this one never returns a result to the model. It
 persists the question plus a placeholder tool result (see
@@ -30,7 +30,7 @@ if TYPE_CHECKING:
     from app.agent.mode.team.team import AgentTeam
 
 
-TOOL_NAME = "ask_user_question"
+TOOL_NAME = "ask_user"
 
 DESCRIPTION = (
     "Ask the user 1-4 questions and pause the turn until they answer. "
@@ -126,8 +126,8 @@ class Question(BaseModel):
         return self
 
 
-class AskUserQuestionArgs(BaseModel):
-    """Arguments for ``ask_user_question``."""
+class AskUserArgs(BaseModel):
+    """Arguments for ``ask_user``."""
 
     model_config = ConfigDict(json_schema_extra=_lean_schema)
 
@@ -204,14 +204,14 @@ async def _announce(
         logger.warning("question_notify_failed session_id={} error={}", sid, exc)
 
 
-def make_ask_user_question_tool(team: "AgentTeam") -> Tool:
-    """Return the ``ask_user_question`` tool bound to *team*'s lead session.
+def make_ask_user_tool(team: "AgentTeam") -> Tool:
+    """Return the ``ask_user`` tool bound to *team*'s lead session.
 
     The session is bound at construction rather than taken from the model, so
     a question can only ever suspend the turn it was asked in.
     """
 
-    async def ask_user_question(
+    async def ask_user(
         questions: list[Question],
         _tool_call_id: Annotated[str | None, InjectedArg()] = None,
         _state: Annotated[Any, InjectedArg()] = None,
@@ -261,8 +261,8 @@ def make_ask_user_question_tool(team: "AgentTeam") -> Tool:
         raise QuestionSuspended(question_id=question_id, session_id=session_id)
 
     return Tool(
-        ask_user_question,
+        ask_user,
         name=TOOL_NAME,
         description=DESCRIPTION,
-        args_schema=AskUserQuestionArgs,
+        args_schema=AskUserArgs,
     )

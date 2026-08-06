@@ -440,7 +440,7 @@ export async function teamHistorySince(
   return res.json()
 }
 
-// ── ask_user_question ────────────────────────────────────────────────────────
+// ── ask_user ────────────────────────────────────────────────────────
 
 /**
  * Cold-load the open question for a session.

@@ -1,4 +1,4 @@
-"""Question fetch/answer/dismiss endpoints for ``ask_user_question``.
+"""Question fetch/answer/dismiss endpoints for ``ask_user``.
 
 A suspended turn lives in the DB, not in a coroutine, so these routes work
 after a reload, from a second device, and across a daemon restart:

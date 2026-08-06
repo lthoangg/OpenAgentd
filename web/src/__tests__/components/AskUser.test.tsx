@@ -1,5 +1,5 @@
 /**
- * AskUserQuestion — the inline transcript card.
+ * AskUser — the inline transcript card.
  *
  * It renders in the tool call's place, so which of its two states it shows is
  * decided per *tool call*, not per session: an old question further up the
@@ -26,8 +26,8 @@ mock.module('@/stores/useToastStore', () => ({
   useToastStore: { getState: () => ({ push: pushToast }) },
 }))
 
-import { AskUserQuestion } from '@/components/AskUserQuestion'
-import { clearQuestionDrafts } from '@/components/AskUserQuestion/draft-cache'
+import { AskUser } from '@/components/AskUser'
+import { clearQuestionDrafts } from '@/components/AskUser/draft-cache'
 import { useTeamStore } from '@/stores/useTeamStore'
 import type { PendingQuestion } from '@/api/types'
 
@@ -71,37 +71,37 @@ afterEach(() => {
   useTeamStore.setState({ pendingQuestion: null, resolvedQuestions: {} })
 })
 
-describe('AskUserQuestion — waiting state', () => {
+describe('AskUser — waiting state', () => {
   it('shows the form for the tool call that owns the open question', () => {
-    render(<AskUserQuestion toolCallId="call-1" result={PLACEHOLDER} />)
+    render(<AskUser toolCallId="call-1" result={PLACEHOLDER} />)
 
     expect(screen.getByRole('radio', { name: /pnpm/ })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /send answer/i })).toBeInTheDocument()
   })
 
   it('does not show the form on a different tool call', () => {
-    render(<AskUserQuestion toolCallId="call-OTHER" result={PLACEHOLDER} />)
+    render(<AskUser toolCallId="call-OTHER" result={PLACEHOLDER} />)
 
     expect(screen.queryByRole('radio', { name: /pnpm/ })).toBeNull()
   })
 
   it('never renders the placeholder written for the model', () => {
     const { container } = render(
-      <AskUserQuestion toolCallId="call-1" result={PLACEHOLDER} />,
+      <AskUser toolCallId="call-1" result={PLACEHOLDER} />,
     )
 
     expect(container.textContent).not.toContain('Do not continue')
   })
 
   it('offers no collapse control — an open question must not be hideable', () => {
-    render(<AskUserQuestion toolCallId="call-1" result={PLACEHOLDER} />)
+    render(<AskUser toolCallId="call-1" result={PLACEHOLDER} />)
 
     const buttons = screen.getAllByRole('button').map((b) => b.textContent ?? '')
     expect(buttons.some((label) => /expand|collapse|show more/i.test(label))).toBe(false)
   })
 
   it('posts the answer for the open question', async () => {
-    render(<AskUserQuestion toolCallId="call-1" result={PLACEHOLDER} />)
+    render(<AskUser toolCallId="call-1" result={PLACEHOLDER} />)
 
     fireEvent.click(screen.getByRole('radio', { name: /bun/ }))
     fireEvent.click(screen.getByRole('button', { name: /send answer/i }))
@@ -112,7 +112,7 @@ describe('AskUserQuestion — waiting state', () => {
   })
 
   it('dismisses without sending an answer', async () => {
-    render(<AskUserQuestion toolCallId="call-1" result={PLACEHOLDER} />)
+    render(<AskUser toolCallId="call-1" result={PLACEHOLDER} />)
 
     fireEvent.click(screen.getByRole('button', { name: /dismiss/i }))
 
@@ -123,7 +123,7 @@ describe('AskUserQuestion — waiting state', () => {
 
   it('warns when the answer saved but the turn did not restart', async () => {
     answerQuestion.mockImplementation(async () => ({ status: 'answered', resumed: false }))
-    render(<AskUserQuestion toolCallId="call-1" result={PLACEHOLDER} />)
+    render(<AskUser toolCallId="call-1" result={PLACEHOLDER} />)
 
     fireEvent.click(screen.getByRole('button', { name: /send answer/i }))
 
@@ -132,7 +132,7 @@ describe('AskUserQuestion — waiting state', () => {
 
   it('keeps the form and the selection when the answer fails to send', async () => {
     answerQuestion.mockImplementation(async () => { throw new Error('Network unreachable') })
-    render(<AskUserQuestion toolCallId="call-1" result={PLACEHOLDER} />)
+    render(<AskUser toolCallId="call-1" result={PLACEHOLDER} />)
 
     fireEvent.click(screen.getByRole('radio', { name: /bun/ }))
     fireEvent.click(screen.getByRole('button', { name: /send answer/i }))
@@ -142,18 +142,18 @@ describe('AskUserQuestion — waiting state', () => {
   })
 })
 
-describe('AskUserQuestion — resolved state', () => {
+describe('AskUser — resolved state', () => {
   it('shows the answer immediately, before the tool result is rewritten', () => {
     useTeamStore.setState({
       pendingQuestion: null,
       resolvedQuestions: {
-        'call-1': { questions: QUESTION.questions, answers: [['bun']] },
+        'call-1': { questions: QUESTION.questions, answers: [['bun']], reason: null },
       },
     })
 
     const { container } = render(
       // Still the placeholder: the server rewrites it only when the turn ends.
-      <AskUserQuestion toolCallId="call-1" result={PLACEHOLDER} />,
+      <AskUser toolCallId="call-1" result={PLACEHOLDER} />,
     )
 
     expect(screen.getByText('Which package manager?')).toBeInTheDocument()
@@ -165,11 +165,11 @@ describe('AskUserQuestion — resolved state', () => {
     useTeamStore.setState({
       pendingQuestion: null,
       resolvedQuestions: {
-        'call-1': { questions: QUESTION.questions, answers: null },
+        'call-1': { questions: QUESTION.questions, answers: null, reason: 'dismissed' },
       },
     })
 
-    render(<AskUserQuestion toolCallId="call-1" result={PLACEHOLDER} />)
+    render(<AskUser toolCallId="call-1" result={PLACEHOLDER} />)
 
     expect(screen.getByText(/dismissed/i)).toBeInTheDocument()
   })
@@ -178,11 +178,11 @@ describe('AskUserQuestion — resolved state', () => {
     useTeamStore.setState({
       pendingQuestion: null,
       resolvedQuestions: {
-        'call-1': { questions: QUESTION.questions, answers: [[]] },
+        'call-1': { questions: QUESTION.questions, answers: [[]], reason: null },
       },
     })
 
-    render(<AskUserQuestion toolCallId="call-1" result={PLACEHOLDER} />)
+    render(<AskUser toolCallId="call-1" result={PLACEHOLDER} />)
 
     expect(screen.getByText(/skipped/i)).toBeInTheDocument()
   })
@@ -191,7 +191,7 @@ describe('AskUserQuestion — resolved state', () => {
     useTeamStore.setState({ pendingQuestion: null, resolvedQuestions: {} })
 
     const { container } = render(
-      <AskUserQuestion
+      <AskUser
         toolCallId="call-1"
         result={
           'User has answered your questions: "Which package manager?"="pnpm". ' +
@@ -208,7 +208,7 @@ describe('AskUserQuestion — resolved state', () => {
   it('says it is waiting when a cold load lands mid-question', () => {
     useTeamStore.setState({ pendingQuestion: null, resolvedQuestions: {} })
 
-    render(<AskUserQuestion toolCallId="call-1" result={PLACEHOLDER} />)
+    render(<AskUser toolCallId="call-1" result={PLACEHOLDER} />)
 
     expect(screen.getByText(/waiting for an answer/i)).toBeInTheDocument()
   })
@@ -217,7 +217,104 @@ describe('AskUserQuestion — resolved state', () => {
     useTeamStore.setState({ pendingQuestion: null, resolvedQuestions: {} })
 
     render(
-      <AskUserQuestion toolCallId="call-1" result="Question(s) being dismissed." />,
+      <AskUser toolCallId="call-1" result="Question(s) being dismissed." />,
+    )
+
+    expect(screen.getByText(/dismissed/i)).toBeInTheDocument()
+  })
+})
+
+/**
+ * A question that ended without an answer still has to say *what was asked*.
+ * "Dismissed" on its own is unreadable weeks later, and it is the one case
+ * where the transcript holds no answer text to infer the question from.
+ * Minimised: the question lines only, no options and no controls.
+ */
+describe('AskUser — closed without an answer', () => {
+  it('still lists the questions it asked when dismissed', () => {
+    useTeamStore.setState({
+      pendingQuestion: null,
+      resolvedQuestions: {
+        'call-1': { questions: QUESTION.questions, answers: null, reason: 'dismissed' },
+      },
+    })
+
+    render(<AskUser toolCallId="call-1" result={PLACEHOLDER} />)
+
+    expect(screen.getByText('Which package manager?')).toBeInTheDocument()
+    expect(screen.getByText(/dismissed/i)).toBeInTheDocument()
+  })
+
+  it('distinguishes a superseded question from a dismissal', () => {
+    useTeamStore.setState({
+      pendingQuestion: null,
+      resolvedQuestions: {
+        'call-1': { questions: QUESTION.questions, answers: null, reason: 'superseded' },
+      },
+    })
+
+    render(<AskUser toolCallId="call-1" result={PLACEHOLDER} />)
+
+    expect(screen.getByText('Which package manager?')).toBeInTheDocument()
+    expect(screen.getByText(/superseded/i)).toBeInTheDocument()
+  })
+
+  it('stays minimised — no options and no controls survive the resolution', () => {
+    useTeamStore.setState({
+      pendingQuestion: null,
+      resolvedQuestions: {
+        'call-1': { questions: QUESTION.questions, answers: null, reason: 'dismissed' },
+      },
+    })
+
+    render(<AskUser toolCallId="call-1" result={PLACEHOLDER} />)
+
+    expect(screen.queryByRole('radio')).toBeNull()
+    expect(screen.queryByRole('button')).toBeNull()
+    expect(screen.queryByText('pnpm')).toBeNull()
+  })
+
+  it('recovers the questions from the tool call args on a cold load', () => {
+    // Nothing in the store and nothing in the result sentence: the args are the
+    // only surviving record of what was asked.
+    useTeamStore.setState({ pendingQuestion: null, resolvedQuestions: {} })
+
+    render(
+      <AskUser
+        toolCallId="call-1"
+        args={JSON.stringify({ questions: QUESTION.questions })}
+        result="Question(s) being dismissed."
+      />,
+    )
+
+    expect(screen.getByText('Which package manager?')).toBeInTheDocument()
+    expect(screen.getByText(/dismissed/i)).toBeInTheDocument()
+  })
+
+  it('reads a superseded resolution back from the persisted sentence', () => {
+    useTeamStore.setState({ pendingQuestion: null, resolvedQuestions: {} })
+
+    render(
+      <AskUser
+        toolCallId="call-1"
+        args={JSON.stringify({ questions: QUESTION.questions })}
+        result="Superseded — the user sent a new instruction instead of answering."
+      />,
+    )
+
+    expect(screen.getByText(/superseded/i)).toBeInTheDocument()
+    expect(screen.getByText('Which package manager?')).toBeInTheDocument()
+  })
+
+  it('survives unparseable tool call args', () => {
+    useTeamStore.setState({ pendingQuestion: null, resolvedQuestions: {} })
+
+    render(
+      <AskUser
+        toolCallId="call-1"
+        args="{not json"
+        result="Question(s) being dismissed."
+      />,
     )
 
     expect(screen.getByText(/dismissed/i)).toBeInTheDocument()
@@ -229,9 +326,9 @@ describe('AskUserQuestion — resolved state', () => {
  * resolved question still headed "Needs your input" reads as an outstanding
  * request the user has to act on.
  */
-describe('AskUserQuestion — card label', () => {
+describe('AskUser — card label', () => {
   it('asks for input while the question is open', () => {
-    render(<AskUserQuestion toolCallId="call-1" result={PLACEHOLDER} />)
+    render(<AskUser toolCallId="call-1" result={PLACEHOLDER} />)
 
     expect(screen.getByText(/needs your input/i)).toBeInTheDocument()
   })
@@ -240,11 +337,11 @@ describe('AskUserQuestion — card label', () => {
     useTeamStore.setState({
       pendingQuestion: null,
       resolvedQuestions: {
-        'call-1': { questions: QUESTION.questions, answers: [['bun']] },
+        'call-1': { questions: QUESTION.questions, answers: [['bun']], reason: null },
       },
     })
 
-    render(<AskUserQuestion toolCallId="call-1" result={PLACEHOLDER} />)
+    render(<AskUser toolCallId="call-1" result={PLACEHOLDER} />)
 
     expect(screen.queryByText(/needs your input/i)).toBeNull()
     expect(screen.getByText(/your input/i)).toBeInTheDocument()
@@ -254,11 +351,11 @@ describe('AskUserQuestion — card label', () => {
     useTeamStore.setState({
       pendingQuestion: null,
       resolvedQuestions: {
-        'call-1': { questions: QUESTION.questions, answers: null },
+        'call-1': { questions: QUESTION.questions, answers: null, reason: 'dismissed' },
       },
     })
 
-    render(<AskUserQuestion toolCallId="call-1" result={PLACEHOLDER} />)
+    render(<AskUser toolCallId="call-1" result={PLACEHOLDER} />)
 
     expect(screen.queryByText(/needs your input/i)).toBeNull()
   })
@@ -266,7 +363,7 @@ describe('AskUserQuestion — card label', () => {
   it('still asks for input when a cold load lands mid-question', () => {
     useTeamStore.setState({ pendingQuestion: null, resolvedQuestions: {} })
 
-    render(<AskUserQuestion toolCallId="call-1" result={PLACEHOLDER} />)
+    render(<AskUser toolCallId="call-1" result={PLACEHOLDER} />)
 
     expect(screen.getByText(/needs your input/i)).toBeInTheDocument()
   })

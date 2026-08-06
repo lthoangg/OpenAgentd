@@ -36,8 +36,14 @@ export type CacheInvalidation =
 /** How a question ended, with enough context to render it without the wire text. */
 export interface ResolvedQuestion {
   questions: QuestionItem[]
-  /** Index-matched selections, or ``null`` when the question was dismissed. */
+  /** Index-matched selections, or ``null`` when it closed without an answer. */
   answers: string[][] | null
+  /**
+   * Why it closed without an answer — ``dismissed``, ``superseded`` or
+   * ``expired``; ``null`` when answered. A null answer list alone cannot tell
+   * "I decided not to say" from "I typed something else instead".
+   */
+  reason: string | null
 }
 
 export interface SetupRequiredNotice {
@@ -53,7 +59,7 @@ export interface AgentStream {
   currentThinking: string
   /**
    * ``waiting_input`` mirrors the backend's ``waiting_input`` member state: the
-   * agent is suspended on an ``ask_user_question`` call. It is *live* (the turn
+   * agent is suspended on an ``ask_user`` call. It is *live* (the turn
    * has not ended) but not *working* (no tokens are coming), so spinners should
    * treat it as busy while progress indicators should not.
    */

@@ -1,6 +1,6 @@
-"""Durable storage for ``ask_user_question`` suspensions.
+"""Durable storage for ``ask_user`` suspensions.
 
-When the lead agent calls ``ask_user_question`` its turn is suspended rather
+When the lead agent calls ``ask_user`` its turn is suspended rather
 than blocked: the loop stops, the activation exits, and *the conversation is
 left in a resumable state on disk*.  Two rows make that work, written together
 in one transaction by :func:`create_pending_question`:
@@ -35,7 +35,7 @@ from app.agent.schemas.chat import ToolMessage
 from app.models.chat import PendingQuestion, SessionMessage
 from app.services.chat_service import save_message
 
-TOOL_NAME = "ask_user_question"
+TOOL_NAME = "ask_user"
 
 #: Stand-in tool result held while the user has not replied.  Only reaches a
 #: model if a resume path bypasses the pending-question guard, so it reads as

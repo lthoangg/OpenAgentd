@@ -1,5 +1,5 @@
 /**
- * QuestionCard — the form the user answers ``ask_user_question`` with.
+ * QuestionCard — the form the user answers ``ask_user`` with.
  *
  * Pure and props-driven: it owns selection state and the draft cache, and knows
  * nothing about the store, the API, or which shell (dock or sheet) it sits in.

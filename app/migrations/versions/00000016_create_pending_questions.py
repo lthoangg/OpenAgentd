@@ -1,4 +1,4 @@
-"""create pending questions table for ask_user_question
+"""create pending questions table for ask_user
 
 Revision ID: 00000016
 Revises: 00000015

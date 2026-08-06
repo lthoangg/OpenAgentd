@@ -400,7 +400,7 @@ export const AgentPane = memo(function AgentPane({
   const isWorking = stream.status === 'working'
   const isError   = stream.status === 'error'
   const isOffline = stream.status === 'offline'
-  // Suspended on `ask_user_question`: the turn is open but nothing is running,
+  // Suspended on `ask_user`: the turn is open but nothing is running,
   // so this reads as neither working nor idle.
   const isWaiting = stream.status === 'waiting_input'
   // Me show waiting indicator when a user message exists but the agent hasn't woken yet

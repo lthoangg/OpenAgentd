@@ -71,7 +71,7 @@ function tokenizeInline(text: string, variant: 'full' | 'code'): React.ReactNode
 /**
  * Render a short, model-authored string with inline formatting only.
  *
- * Used for ``ask_user_question`` text, where the agent writes prose the user
+ * Used for ``ask_user`` text, where the agent writes prose the user
  * reads before choosing — inline code carries most of the meaning (flags, file
  * names, commands) and anything block-level would break the card's layout.
  *

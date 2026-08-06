@@ -1,4 +1,4 @@
-"""Tests for the ``ask_user_question`` HTTP routes.
+"""Tests for the ``ask_user`` HTTP routes.
 
 Covers the full resolution round-trip against a real DB row:
 
@@ -104,7 +104,7 @@ async def _seed(
                     {
                         "id": call_id,
                         "type": "function",
-                        "function": {"name": "ask_user_question", "arguments": "{}"},
+                        "function": {"name": "ask_user", "arguments": "{}"},
                     }
                 ],
             ),

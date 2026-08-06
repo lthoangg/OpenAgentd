@@ -647,10 +647,10 @@ MCP.
 | Scheduling | `schedule_task` (reminders + self-scheduling agentic loops) `[v1.70.0]` |
 | Tasks | `todo_manage` |
 | Team coordination | `team_message`, `team_manage` |
-| Ask the user | `ask_user_question` (coding-mode lead only) `[v1.131.0]` |
+| Ask the user | `ask_user` (coding-mode lead only) `[v1.131.0]` |
 | Utility | `date`, `skill` |
 
-- **`ask_user_question` — durable suspend and resume** `[v1.131.0]` — in
+- **`ask_user` — durable suspend and resume** `[v1.131.0]` — in
   **coding mode**, the lead can stop mid-turn and ask you 1–4 questions rather
   than guessing on a decision that would cost real work to undo. Each question
   carries up to 5 options with optional descriptions, single- or multi-select,

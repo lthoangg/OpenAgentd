@@ -1,5 +1,5 @@
 /**
- * The `ask_user_question` tool card, rendered inline in the transcript.
+ * The `ask_user` tool card, rendered inline in the transcript.
  *
  * It sits where the tool call happened rather than floating over the chat: the
  * question is part of the turn's narrative, and answering it later reads back
@@ -29,21 +29,43 @@ import { answerQuestion, dismissQuestion } from '@/api/client'
 import { useTeamStore } from '@/stores/useTeamStore'
 import { useToastStore } from '@/stores/useToastStore'
 import type { ResolvedQuestion } from '@/stores/useTeamStore'
+import type { QuestionItem } from '@/api/types'
 import { QuestionCard } from './QuestionCard'
 import { forgetQuestionDraft } from './draft-cache'
 
 /** Mirrors ``question_service.PLACEHOLDER_RESULT``. */
 const PLACEHOLDER_PREFIX = 'Waiting for the user to answer'
 
+/**
+ * Recovers the reason from the persisted sentence, which is all a cold load
+ * has. Mirrors the non-answer entries of ``question_service._RESOLUTION_TEXT``;
+ * an unrecognised sentence still resolves, just without a specific reason.
+ */
+const RESOLUTION_PREFIXES: readonly (readonly [string, string])[] = [
+  ['Question(s) being dismissed', 'dismissed'],
+  ['Superseded', 'superseded'],
+  ['This question is no longer relevant', 'expired'],
+]
+
+const REASON_LABEL: Record<string, string> = {
+  dismissed: 'Dismissed',
+  superseded: 'Superseded by your next message',
+  expired: 'No longer relevant',
+}
+
 function errorMessage(cause: unknown, fallback: string): string {
   return cause instanceof Error && cause.message ? cause.message : fallback
 }
 
-export function AskUserQuestion({
+export function AskUser({
   toolCallId,
+  args,
   result,
 }: {
   toolCallId?: string
+  /** Raw tool-call arguments — the only record of what was asked once a
+   *  question closes without an answer and the store has been reloaded. */
+  args?: string
   result?: string
 }) {
   const pendingQuestion = useTeamStore((state) => state.pendingQuestion)
@@ -62,7 +84,7 @@ export function AskUserQuestion({
     pendingQuestion.toolCallId === toolCallId
 
   if (!isOpen) {
-    const { waiting, body } = describeResolution(resolved, result)
+    const { waiting, body } = describeResolution(resolved, result, args)
     return <QuestionShell waiting={waiting}>{body}</QuestionShell>
   }
 
@@ -154,10 +176,14 @@ function QuestionShell({
 function describeResolution(
   resolved: ResolvedQuestion | undefined,
   result: string | undefined,
+  args: string | undefined,
 ): { waiting: boolean; body: ReactNode } {
   if (resolved) {
     if (resolved.answers === null) {
-      return { waiting: false, body: <QuestionNote text="Dismissed" /> }
+      return {
+        waiting: false,
+        body: <ClosedQuestions reason={resolved.reason} questions={resolved.questions} />,
+      }
     }
     return {
       waiting: false,
@@ -184,8 +210,58 @@ function describeResolution(
     question,
     answer,
   }))
-  if (pairs.length === 0) return { waiting: false, body: <QuestionNote text={text} /> }
-  return { waiting: false, body: <AnswerList pairs={pairs} /> }
+  if (pairs.length > 0) return { waiting: false, body: <AnswerList pairs={pairs} /> }
+
+  // No answer pairs: it closed without one. The sentence carries the reason but
+  // not the questions, so those come back from the call arguments.
+  const reason = RESOLUTION_PREFIXES.find(([prefix]) => text.startsWith(prefix))?.[1] ?? null
+  return {
+    waiting: false,
+    body: <ClosedQuestions reason={reason} questions={parseAskedQuestions(args)} />,
+  }
+}
+
+/** Recover the asked questions from the raw tool-call arguments. */
+function parseAskedQuestions(args: string | undefined): QuestionItem[] {
+  if (!args) return []
+  try {
+    const parsed: unknown = JSON.parse(args)
+    const questions = (parsed as { questions?: unknown })?.questions
+    return Array.isArray(questions) ? (questions as QuestionItem[]) : []
+  } catch {
+    // Truncated or streaming-partial arguments: the reason alone still renders.
+    return []
+  }
+}
+
+/**
+ * A question that ended without an answer.
+ *
+ * Minimised on purpose: the outcome plus what was asked, and nothing else. The
+ * options are no longer actionable, so showing them would only invite a click.
+ */
+function ClosedQuestions({
+  reason,
+  questions,
+}: {
+  reason: string | null
+  questions: QuestionItem[]
+}) {
+  return (
+    <div className="flex flex-col gap-1 px-3 py-2">
+      <span className="text-[11px] leading-relaxed font-medium text-(--color-text-muted)">
+        {(reason && REASON_LABEL[reason]) ?? 'Closed without an answer'}
+      </span>
+      {questions.map((item, index) => (
+        <span
+          key={index}
+          className="truncate text-[11px] leading-relaxed text-(--color-text-subtle)"
+        >
+          {item.question}
+        </span>
+      ))}
+    </div>
+  )
 }
 
 function AnswerList({ pairs }: { pairs: { question: string; answer: string }[] }) {

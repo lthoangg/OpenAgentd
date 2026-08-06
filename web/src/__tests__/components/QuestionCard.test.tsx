@@ -1,5 +1,5 @@
 /**
- * QuestionCard — the interactive body of ``ask_user_question``.
+ * QuestionCard — the interactive body of ``ask_user``.
  *
  * The lead is stopped until this form resolves, so the behaviours under test are
  * the ones that decide whether the user can answer at all: selection semantics
@@ -12,8 +12,8 @@ import { render, screen, cleanup, fireEvent } from '@testing-library/react'
 
 mock.module('lucide-react', () => new Proxy({}, { get: () => () => null }))
 
-import { QuestionCard } from '@/components/AskUserQuestion/QuestionCard'
-import { clearQuestionDrafts } from '@/components/AskUserQuestion/draft-cache'
+import { QuestionCard } from '@/components/AskUser/QuestionCard'
+import { clearQuestionDrafts } from '@/components/AskUser/draft-cache'
 import type { PendingQuestion } from '@/api/types'
 
 afterEach(() => {

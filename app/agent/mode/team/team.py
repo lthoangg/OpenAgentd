@@ -39,7 +39,7 @@ from app.agent.mode.team.member import (
     is_busy,
 )
 from app.agent.mode.team.manage import make_team_manage_tool
-from app.agent.mode.team.question import make_ask_user_question_tool
+from app.agent.mode.team.question import make_ask_user_tool
 from app.agent.mode.team.tools import make_team_message_tool
 from app.agent.schemas.chat import AssistantMessage, HumanMessage, ToolMessage
 from app.agent.schemas.events import DoneEvent
@@ -669,7 +669,7 @@ class AgentTeam:
                 effective_model = lead_row.model or self.lead.agent.model_id
                 effective_thinking_level = lead_row.thinking_level
                 # A scheduler-owned session has no human watching it, so the
-                # lead must not be offered ``ask_user_question``.
+                # lead must not be offered ``ask_user``.
                 self.lead.is_scheduler_session = (
                     lead_row.scheduled_task_name is not None
                 )
@@ -1633,7 +1633,7 @@ class AgentTeam:
         if agent_name == self.lead.name:
             tools.append(make_team_manage_tool(self))
             if self._question_tool_enabled():
-                tools.append(make_ask_user_question_tool(self))
+                tools.append(make_ask_user_tool(self))
 
         return tools
 
@@ -1697,7 +1697,7 @@ class AgentTeam:
         return True
 
     def _question_tool_enabled(self) -> bool:
-        """Whether the lead may interrupt the user with ``ask_user_question``.
+        """Whether the lead may interrupt the user with ``ask_user``.
 
         Coding mode only (that is where a wrong guess costs real work), lead
         only (members escalate through ``team_message``), and never on a

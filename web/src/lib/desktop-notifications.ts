@@ -1,7 +1,7 @@
 import { getPlatform } from '@/hooks/use-platform'
 
 /**
- * ``input_needed`` — the lead is suspended on ``ask_user_question`` and cannot
+ * ``input_needed`` — the lead is suspended on ``ask_user`` and cannot
  * continue until the user answers. Unlike the others it is sent with
  * ``force: true`` when the asking session is not the one on screen, so a
  * blocked agent is not silently waiting behind a focused window.

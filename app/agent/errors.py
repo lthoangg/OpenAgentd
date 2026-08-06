@@ -145,7 +145,7 @@ class ToolExecutionError(ToolError):
 
 
 class QuestionSuspended(OpenAgentdError):
-    """Control flow: ``ask_user_question`` handed the turn to the user.
+    """Control flow: ``ask_user`` handed the turn to the user.
 
     Not a failure — the question and a placeholder tool result are already
     persisted, so the conversation is in a resumable state.  Raising unwinds

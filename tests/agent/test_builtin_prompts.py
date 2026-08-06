@@ -41,7 +41,7 @@ def test_coding_lead_prompt_constrains_when_to_interrupt_the_user():
 def test_prompts_stay_tool_agnostic():
     """Runtime capabilities change; prompt bodies must not name specific tools.
 
-    ``ask_user_question`` in particular is injected per-run, so a prompt that
+    ``ask_user`` in particular is injected per-run, so a prompt that
     names it would be wrong for every session that does not receive it.
     """
     from app.agent.builtin_prompts import (
@@ -49,12 +49,12 @@ def test_prompts_stay_tool_agnostic():
         NORMAL_OPENAGENTD_PROMPT,
     )
 
-    assert "ask_user_question" not in CODING_OPENAGENTD_PROMPT
-    assert "ask_user_question" not in NORMAL_OPENAGENTD_PROMPT
+    assert "ask_user" not in CODING_OPENAGENTD_PROMPT
+    assert "ask_user" not in NORMAL_OPENAGENTD_PROMPT
 
 
 def test_question_tool_is_not_a_constructor_tool_for_the_coding_lead():
     """It is injected at runtime; listing it here would bypass the lead gate."""
     from app.agent.builtin_prompts import CODING_OPENAGENTD_TOOLS
 
-    assert "ask_user_question" not in CODING_OPENAGENTD_TOOLS
+    assert "ask_user" not in CODING_OPENAGENTD_TOOLS

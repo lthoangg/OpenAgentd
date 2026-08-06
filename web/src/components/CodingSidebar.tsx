@@ -106,6 +106,7 @@ import {
   sessionWindowErrorDescription,
   shouldOpenSessionInNewWindow,
 } from './CodingSidebar.window'
+import { EASINGS } from '@/lib/motion'
 
 interface CodingSidebarProps {
   currentSessionId?: string
@@ -639,7 +640,7 @@ export function CodingSidebar({
       transition={
         mobileDragOffset !== null
           ? { duration: 0 }
-          : { duration: resizable.isResizing || prefersReducedMotion ? 0.01 : 0.22, ease: [0.4, 0, 0.2, 1] }
+          : { duration: resizable.isResizing || prefersReducedMotion ? 0.01 : 0.22, ease: EASINGS.inOut }
       }
       className={
         isMobile

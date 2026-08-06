@@ -46,6 +46,7 @@ import { type ReactNode } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useModalFocus } from '@/hooks/useModalFocus'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
+import { DURATIONS_S, EASINGS } from '@/lib/motion'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -125,7 +126,7 @@ export function AppOverlay({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 0.15 }}
+            transition={{ duration: DURATIONS_S.fast }}
             className="fixed inset-0 z-40 bg-black/40"
             onClick={onClose}
             aria-hidden="true"
@@ -146,7 +147,7 @@ export function AppOverlay({
             exit={panelVariants.exit}
             transition={{
               duration: reduced ? 0.01 : 0.18,
-              ease: [0.4, 0, 0.2, 1],
+              ease: EASINGS.inOut,
             }}
             className={[
               // ── Shared ──────────────────────────────────────────────────────

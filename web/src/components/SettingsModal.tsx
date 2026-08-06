@@ -49,6 +49,7 @@ import { SandboxSettingsPage } from '@/components/settings/pages/settings.sandbo
 import { AutomationSettingsPage } from '@/components/settings/pages/settings.automation'
 import { NotificationSettingsPage } from '@/components/settings/pages/settings.notifications'
 import { TerminalSettingsPage } from '@/components/settings/pages/settings.terminal'
+import { DURATIONS_S, EASINGS } from '@/lib/motion'
 
 // ── Sidebar ───────────────────────────────────────────────────────────────
 
@@ -337,7 +338,7 @@ export function SettingsModal() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 0.15 }}
+            transition={{ duration: DURATIONS_S.fast }}
             className="fixed inset-0 z-50 bg-black/40 backdrop-blur-[1px]"
             onClick={closeSettings}
             aria-hidden="true"
@@ -354,7 +355,7 @@ export function SettingsModal() {
             initial={panel.hidden}
             animate={panel.visible}
             exit={panel.hidden}
-            transition={{ duration: prefersReducedMotion ? 0 : 0.15, ease: [0.16, 1, 0.3, 1] }}
+            transition={{ duration: prefersReducedMotion ? 0 : DURATIONS_S.fast, ease: EASINGS.out }}
             data-swipe-ignore
             className={cn(
               'settings-modal-shell z-50 flex flex-col overflow-hidden rounded-lg',

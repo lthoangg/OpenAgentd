@@ -6,18 +6,10 @@
  * inline styles computed at render time, animation delays). For static CSS
  * or Tailwind arbitrary values, prefer `var(--motion-*)` directly.
  *
- * Keep these values in sync with the `web/src/index.css` token block.
+ * Parity with the CSS token block is enforced by
+ * `src/__tests__/lib/motion.test.ts` — it parses `index.css` and fails if the
+ * two drift, so these values do not have to be kept in sync by hand.
  */
-
-/** Durations in milliseconds. */
-export const DURATIONS = {
-  instant: 80,
-  fast: 150,
-  base: 240,
-  slow: 400,
-  glacial: 800,
-} as const
-export type DurationName = keyof typeof DURATIONS
 
 /** Durations in seconds — framer-motion takes seconds. */
 export const DURATIONS_S = {
@@ -36,19 +28,3 @@ export const EASINGS = {
   springSnappy: [0.22, 1.4, 0.36, 1],
   linear: [0, 0, 1, 1],
 } as const satisfies Record<string, [number, number, number, number]>
-export type EasingName = keyof typeof EASINGS
-
-/**
- * Spring presets matching the Fluid Functionalism vocabulary.
- * Use these names verbatim in UI copy when letting users pick a preference.
- */
-export const SPRINGS = {
-  fast: { type: 'spring', stiffness: 380, damping: 28 },
-  moderate: { type: 'spring', stiffness: 220, damping: 26 },
-  slow: { type: 'spring', stiffness: 140, damping: 24 },
-  comfortable: { type: 'spring', stiffness: 180, damping: 30 },
-} as const
-export type SpringName = keyof typeof SPRINGS
-
-/** Default spring — `moderate` unless the user overrides it. */
-export const DEFAULT_SPRING = SPRINGS.moderate

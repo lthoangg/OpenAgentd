@@ -47,6 +47,7 @@ import { ImageLightbox } from './ImageLightbox'
 import { isVideoSrc } from '@/utils/workspace'
 import { EmptyState } from '@/components/ui/empty-state'
 import type { WorkspaceFileInfo } from '@/api/types'
+import { DURATIONS_S, EASINGS } from '@/lib/motion'
 
 // ── File-type helpers ─────────────────────────────────────────────────────────
 
@@ -911,7 +912,7 @@ export function WorkspaceFilesPanel({ open, sessionId, onClose }: WorkspaceFiles
             initial={prefersReducedMotion ? { opacity: 0 } : { width: 0, opacity: 0 }}
             animate={prefersReducedMotion ? { opacity: 1 } : { width: resizable.width, opacity: 1 }}
             exit={prefersReducedMotion ? { opacity: 0 } : { width: 0, opacity: 0 }}
-            transition={{ duration: resizable.isResizing || prefersReducedMotion ? 0.01 : 0.22, ease: [0.4, 0, 0.2, 1] }}
+            transition={{ duration: resizable.isResizing || prefersReducedMotion ? 0.01 : 0.22, ease: EASINGS.inOut }}
             className="h-full shrink-0 overflow-hidden border-l border-(--color-border) bg-(--bg-page)"
           >
             {panelContent}
@@ -933,7 +934,7 @@ export function WorkspaceFilesPanel({ open, sessionId, onClose }: WorkspaceFiles
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 0.15 }}
+            transition={{ duration: DURATIONS_S.fast }}
             className="mobile-safe-top fixed inset-x-0 bottom-0 z-40 bg-black/30"
             onClick={onClose}
             aria-hidden="true"
@@ -952,7 +953,7 @@ export function WorkspaceFilesPanel({ open, sessionId, onClose }: WorkspaceFiles
             initial={prefersReducedMotion ? { opacity: 0 } : { x: '100%' }}
             animate={prefersReducedMotion ? { opacity: 1 } : { x: 0 }}
             exit={prefersReducedMotion ? { opacity: 0 } : { x: '100%' }}
-            transition={{ duration: prefersReducedMotion ? 0.01 : 0.22, ease: [0.4, 0, 0.2, 1] }}
+            transition={{ duration: prefersReducedMotion ? 0.01 : 0.22, ease: EASINGS.inOut }}
             className="mobile-safe-top fixed inset-x-0 bottom-0 z-50 overflow-hidden border-t border-(--color-border) bg-(--bg-page) shadow-xl"
             data-swipe-ignore
           >

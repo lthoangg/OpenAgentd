@@ -33,6 +33,7 @@ import { useResizableWidth } from '@/hooks/use-resizable-width'
 import { isVideoSrc } from '@/utils/workspace'
 import { PdfThumbnail } from './PdfThumbnail'
 import type { WorkspaceFileInfo } from '@/api/types'
+import { EASINGS } from '@/lib/motion'
 
 const TEXT_EXTENSIONS = new Set([
   'txt', 'md', 'markdown', 'rst',
@@ -693,7 +694,7 @@ export function CodingFileViewerPanel({
       initial={prefersReducedMotion ? { opacity: 0 } : mobile ? { opacity: 0 } : { width: 0 }}
       animate={prefersReducedMotion ? { opacity: 1 } : mobile ? { opacity: 1 } : { width: resizable.width }}
       exit={prefersReducedMotion ? { opacity: 0 } : mobile ? { opacity: 0 } : { width: 0 }}
-      transition={{ duration: resizable.isResizing || prefersReducedMotion ? 0.01 : 0.22, ease: [0.4, 0, 0.2, 1] }}
+      transition={{ duration: resizable.isResizing || prefersReducedMotion ? 0.01 : 0.22, ease: EASINGS.inOut }}
       className={cn(
         'fixed bottom-0 right-0 z-40 min-h-0 w-full overflow-hidden border-l border-(--color-border) bg-(--bg-page) shadow-xl md:relative md:inset-y-auto md:right-auto md:z-auto md:w-auto md:shrink-0 md:shadow-none',
         mobile ? 'mobile-safe-top max-w-none' : '',

@@ -38,6 +38,7 @@ import { isPrimaryShortcut, formatShortcut } from '@/lib/keyboard-shortcut'
 import { useResizableWidth } from '@/hooks/use-resizable-width'
 import type { SessionResponse } from '@/api/types'
 import { useToastStore } from '@/stores/useToastStore'
+import { DURATIONS_S, EASINGS } from '@/lib/motion'
 
 interface DateGroup {
   label: string
@@ -380,7 +381,7 @@ export function Sidebar({
         // tween so motion tracks 1:1. Otherwise use the open/close spring.
         mobileDragOffset !== null
           ? { duration: 0 }
-          : { duration: resizable.isResizing || prefersReducedMotion ? 0.01 : 0.22, ease: [0.4, 0, 0.2, 1] }
+          : { duration: resizable.isResizing || prefersReducedMotion ? 0.01 : 0.22, ease: EASINGS.inOut }
       }
       className={
         isMobile
@@ -464,7 +465,7 @@ export function Sidebar({
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
-                  transition={{ duration: prefersReducedMotion ? 0.01 : 0.15 }}
+                  transition={{ duration: prefersReducedMotion ? 0.01 : DURATIONS_S.fast }}
                   className="flex min-h-0 flex-1 flex-col overflow-hidden"
                 >
                   <div className="flex items-center justify-between px-3 pb-1 pt-2">

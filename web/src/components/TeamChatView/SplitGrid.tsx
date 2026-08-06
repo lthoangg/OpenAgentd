@@ -21,6 +21,7 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import { AgentPane } from '../AgentPane'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
+import { DURATIONS_S, EASINGS } from '@/lib/motion'
 import { useTeamStore, type AgentStream } from '@/stores/useTeamStore'
 
 interface SplitGridProps {
@@ -31,13 +32,8 @@ interface SplitGridProps {
   onContinue?: () => void
 }
 
-// Easing + durations mirror tokens in index.css so the motion matches sibling
-// animations (tool-row-enter, done-pulse, etc.). Exit is faster than enter so dismissal stays
-// readable without delaying the next interaction.
-const SPRING_SOFT = [0.34, 1.2, 0.64, 1] as const
-const MOTION_BASE_S = 0.24 // matches --motion-base (240ms)
-const MOTION_FAST_S = 0.15 // matches --motion-fast (150ms)
-
+// Exit is faster than enter so dismissal stays readable without delaying the
+// next interaction.
 export function SplitGrid({
   agentNames, leadName, agentStreams: streamsProp, isContinuing = false, onContinue,
 }: SplitGridProps) {
@@ -54,10 +50,10 @@ export function SplitGrid({
 
   const enterTransition = prefersReducedMotion
     ? { duration: 0 }
-    : { duration: MOTION_BASE_S, ease: SPRING_SOFT }
+    : { duration: DURATIONS_S.base, ease: EASINGS.springSoft }
   const exitTransition = prefersReducedMotion
     ? { duration: 0 }
-    : { duration: MOTION_FAST_S, ease: SPRING_SOFT }
+    : { duration: DURATIONS_S.fast, ease: EASINGS.springSoft }
 
   const renderPanel = (name: string) => {
     const stream = agentStreams[name]

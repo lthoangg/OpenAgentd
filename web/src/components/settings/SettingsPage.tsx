@@ -21,6 +21,7 @@ import { cn } from '@/lib/utils'
 import { ICON_SIZE, TEXT } from '@/components/settings/tokens'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 import type { DraftControls } from '@/components/settings/useSettingsDraft'
+import { EASINGS } from '@/lib/motion'
 
 interface SettingsPageProps {
   /** Section title shown in the sticky header. */
@@ -125,7 +126,7 @@ function SaveBar({ draft }: { draft: DraftControls }) {
           initial={slide.initial}
           animate={slide.animate}
           exit={slide.exit}
-          transition={{ duration: prefersReducedMotion ? 0 : 0.16, ease: [0.16, 1, 0.3, 1] }}
+          transition={{ duration: prefersReducedMotion ? 0 : 0.16, ease: EASINGS.out }}
           className={cn(
             'sticky bottom-0 z-20 flex shrink-0 items-center gap-3',
             'border-t border-(--color-border) bg-(--bg-sidebar) px-4 py-2',

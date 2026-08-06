@@ -4,6 +4,7 @@ import { useTeamStore, type AgentStream } from '@/stores/useTeamStore'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { workspaceLabel } from '@/utils/workspace'
 import { dotClassFor } from './agentDots'
+import { EASINGS } from '@/lib/motion'
 
 export interface MobileChatActionsProps {
   open: boolean
@@ -74,7 +75,7 @@ export function MobileChatActions({
               transition={
                 dragOffset !== null || prefersReducedMotion
                   ? { duration: 0 }
-                  : { duration: 0.22, ease: [0.4, 0, 0.2, 1] }
+                  : { duration: 0.22, ease: EASINGS.inOut }
               }
               className="mobile-safe-top fixed bottom-0 right-0 z-40 flex w-[min(272px,calc(100vw-2rem))] flex-col overflow-hidden border-l border-(--color-border) bg-(--bg-page) shadow-xl md:hidden"
               role="dialog"

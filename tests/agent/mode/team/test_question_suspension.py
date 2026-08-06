@@ -409,6 +409,40 @@ async def test_superseding_a_question_tells_the_clients(monkeypatch, mock_stream
     assert dismissals[0].data["question_id"] == str(row.id)
 
 
+async def test_dismissal_targets_the_named_session_not_the_lead_binding(monkeypatch):
+    """Stop names the session; the lead's own binding may be stale.
+
+    A coding team is cached per (workspace, session) and rebuilt after the idle
+    window with a freshly minted lead session id. Only ``handle_user_message``
+    rebinds it, so an interrupt-only request can reach a lead pointing at a
+    session that never had a question.
+    """
+    team = _make_team()
+    team.lead.session_id = "019fd000-0000-7000-8000-00000000dead"
+    looked_up: list = []
+    row = MagicMock()
+    row.id = uuid.uuid4()
+
+    async def fake_get_pending(db, session_id):
+        looked_up.append(session_id)
+        return row
+
+    monkeypatch.setattr(
+        "app.services.question_service.get_pending_question", fake_get_pending
+    )
+    monkeypatch.setattr(
+        "app.services.question_service.resolve_pending_question",
+        AsyncMock(return_value=row),
+    )
+
+    closed = await team.dismiss_pending_question(
+        reason="dismissed", session_id=LEAD_SESSION
+    )
+
+    assert closed is True
+    assert looked_up == [uuid.UUID(LEAD_SESSION)]
+
+
 async def test_a_scheduled_message_defers_instead_of_superseding(monkeypatch):
     """A cron job must not cancel a question the user has not seen."""
     from app.agent.mode.team.team import QuestionPendingError

@@ -668,8 +668,12 @@ async def interrupt_team(team: "AgentTeam", session_id: str | None) -> list[str]
     # input" with no turn left to resume, and hold the lead in ``waiting_input``
     # — busy to everything that asks. Done before the sweep below so a freed
     # lead is not reported as a cancelled member; it had no task running.
+    # Named explicitly: the lead's own binding is stale on a team rebuilt after
+    # the idle window, and would search a session that never had a question.
     try:
-        await team.dismiss_pending_question(reason="dismissed")
+        await team.dismiss_pending_question(
+            reason="dismissed", session_id=effective_session_id
+        )
     except Exception as exc:
         # Cancelling the run matters more than closing the card.
         logger.warning(

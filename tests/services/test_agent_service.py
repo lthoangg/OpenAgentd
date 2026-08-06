@@ -692,12 +692,20 @@ async def test_interrupt_team_dismisses_an_open_question():
     team = MagicMock()
     team.members = {}
     team.all_members = []
-    team.lead.session_id = None
+    # The lead is bound to a *different* session than the one being stopped.
+    # A coding team is cached per (workspace, session) and rebuilt after the
+    # idle window with a freshly minted lead session id; only
+    # ``handle_user_message`` rebinds it, and an interrupt-only request returns
+    # before that runs. Dismissing "the lead's" question would search a session
+    # that has no questions and silently close nothing.
+    team.lead.session_id = "019fd000-0000-7000-8000-00000000dead"
     team.dismiss_pending_question = AsyncMock(return_value=True)
 
-    await interrupt_team(team, session_id=None)
+    await interrupt_team(team, session_id="019fd791-93ed-753d-8615-799b456708b7")
 
-    team.dismiss_pending_question.assert_awaited_once_with(reason="dismissed")
+    team.dismiss_pending_question.assert_awaited_once_with(
+        reason="dismissed", session_id="019fd791-93ed-753d-8615-799b456708b7"
+    )
 
 
 async def test_interrupt_team_survives_a_failed_question_dismissal():

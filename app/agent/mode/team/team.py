@@ -1659,22 +1659,42 @@ class AgentTeam:
             return False
 
     async def dismiss_pending_question(
-        self, *, reason: "question_service.ResolvedStatus"
+        self,
+        *,
+        reason: "question_service.ResolvedStatus",
+        session_id: str | None = None,
     ) -> bool:
-        """Close any open question on the lead session and free the lead.
+        """Close any open question on *session_id* and free the lead.
 
         Used by Stop (team-wide interrupt) and by a superseding user message.
         Returns ``True`` when a question was actually closed.
+
+        ``session_id`` defaults to the lead's own binding, but callers that
+        already know which session they are acting on should pass it. A coding
+        team is cached per (workspace, session) and rebuilt after the idle
+        window with a *freshly minted* lead session id — only
+        ``handle_user_message`` rebinds it. An interrupt-only request returns
+        before that runs, so trusting the lead's binding there searches a
+        session that never had a question and closes nothing.
         """
         from app.services import question_service
 
+        target_session = session_id or self.lead.session_id
         try:
             db_factory = resolve_db_factory(self.lead.db_factory)
             async with db_factory() as db:
                 pending = await question_service.get_pending_question(
-                    db, UUID(self.lead.session_id)
+                    db, UUID(target_session)
                 )
                 if pending is None:
+                    # Not an error — most interrupts have no question open. Logged
+                    # because a silent ``False`` here is indistinguishable from a
+                    # dismissal that targeted the wrong session.
+                    logger.debug(
+                        "question_dismiss_nothing_pending session_id={} reason={}",
+                        target_session,
+                        reason,
+                    )
                     return False
                 question_id = pending.id
                 await question_service.resolve_pending_question(
@@ -1684,14 +1704,17 @@ class AgentTeam:
         except Exception as exc:
             logger.warning(
                 "question_dismiss_failed session_id={} error={}",
-                self.lead.session_id,
+                target_session,
                 exc,
             )
             return False
 
-        if self.lead.state == "waiting_input":
-            self.lead.state = "idle"
-        self.lead._question_suspended = None
+        # Only free the lead when the question was actually its own; a stale
+        # binding means this suspension belongs to some other session's turn.
+        if target_session == self.lead.session_id:
+            if self.lead.state == "waiting_input":
+                self.lead.state = "idle"
+            self.lead._question_suspended = None
 
         # The card is only on screen. Every other resolution path broadcasts;
         # without this one a client that typed instead of answering keeps an
@@ -1703,11 +1726,11 @@ class AgentTeam:
 
         try:
             await stream_store.push_event(
-                self.lead.session_id,
+                target_session,
                 StreamEnvelope.from_event(
                     QuestionDismissedEvent(
                         question_id=str(question_id),
-                        session_id=self.lead.session_id,
+                        session_id=target_session,
                         reason=reason,
                     )
                 ),
@@ -1717,12 +1740,12 @@ class AgentTeam:
             # a refetch on reconnect.
             logger.warning(
                 "question_dismiss_event_failed session_id={} error={}",
-                self.lead.session_id,
+                target_session,
                 exc,
             )
 
         logger.info(
-            "question_dismissed session_id={} reason={}", self.lead.session_id, reason
+            "question_dismissed session_id={} reason={}", target_session, reason
         )
         return True
 

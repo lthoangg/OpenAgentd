@@ -1,6 +1,9 @@
 """
 Manual scenario tests for the ``ask_user`` durable suspension.
 Run with: uv run python tests/manual/question_scenarios.py
+Or against a snapshot of a real database (a copy — it writes):
+    sqlite3 .openagentd/dev/data/openagentd.db ".backup /tmp/dev.db"
+    uv run python tests/manual/question_scenarios.py /tmp/dev.db
 
 The suspension is the feature's whole safety net: the turn survives an app
 reload, a daemon restart and a device switch because the pending row *and* the
@@ -29,6 +32,8 @@ from app.services.chat_service import (
     heal_orphaned_tool_calls,
     save_message,
 )
+from app.services import memory_stream_store as stream_store
+from app.services.stream_envelope import StreamEnvelope
 from app.services.question_service import (
     PLACEHOLDER_RESULT,
     answer_question,
@@ -309,6 +314,108 @@ async def run(engine):
         await s.commit()
         check("G4: healing still finds nothing to repair", healed, 0)
 
+    # ── Scenario H: the resume re-establishes its own stream ────────────────
+    print("\n── Scenario H: A resume survives the loss of the stream state ──")
+    async with factory() as s:
+        sess, row = await _suspend(s)
+        sid = str(sess.id)
+
+        # The seam this scenario exists for: the question is durable, the
+        # stream that carries its answer is not. A daemon restart empties the
+        # store's turn table — and so does simply waiting, because the sliding
+        # TTL is refreshed by events and a turn parked on a question emits
+        # none. Both leave the row below perfectly answerable with nowhere to
+        # broadcast the result.
+        stream_store._turns.clear()
+
+        check(
+            "H1: the question outlives the stream state",
+            (await get_pending_question(s, sess.id)).id,
+            row.id,
+        )
+
+        await stream_store.push_event(
+            sid, StreamEnvelope.from_parts(event="done", data={})
+        )
+        check(
+            "H2: without turn state the event is dropped",
+            sid in stream_store._turns,
+            False,
+        )
+
+        await stream_store.ensure_turn(sid)
+        check("H3: the resume re-creates the state", sid in stream_store._turns, True)
+        check(
+            "H4: and it is attachable, so a client can reconnect",
+            stream_store._turns[sid].is_streaming,
+            True,
+        )
+
+        q: asyncio.Queue = asyncio.Queue()
+        stream_store._turns[sid].subscribers.append(q)
+        await stream_store.push_event(
+            sid, StreamEnvelope.from_parts(event="done", data={})
+        )
+        check(
+            "H5: events on the resumed turn now reach a client",
+            q.get_nowait()["event"],
+            "done",
+        )
+
+        resolved = await answer_question(
+            s, question_id=row.id, answers=[["pnpm"], ["lint"]]
+        )
+        await s.commit()
+        check("H6: the durable row still resolves", resolved.status, "answered")
+        check(
+            "H7: the placeholder was rewritten in place",
+            '"Which package manager?"="pnpm"'
+            in (await _tool_result(s, sess.id, row.tool_call_id)),
+            True,
+        )
+
+    # ── Scenario I: the repair never disturbs a live suspension ─────────────
+    print("\n── Scenario I: A suspension still in memory is left alone ──")
+    async with factory() as s:
+        sess, row = await _suspend(s)
+        sid = str(sess.id)
+        stream_store._turns.clear()
+
+        # The warm path: everything the turn produced *before* the question is
+        # what a mid-turn reconnect replays out of this blob. Re-initialising
+        # instead of ensuring would blank it and the card would come back alone.
+        await stream_store.init_turn(sid)
+        stream_store._turns[sid].content = {"lead": ["before the question"]}
+        stream_store._turns[sid].tool_calls = [
+            {"tool_call_id": row.tool_call_id, "name": "ask_user"}
+        ]
+        live = stream_store._turns[sid]
+        q: asyncio.Queue = asyncio.Queue()
+        live.subscribers.append(q)
+
+        await stream_store.ensure_turn(sid)
+
+        check(
+            "I1: the same state object is kept", stream_store._turns[sid] is live, True
+        )
+        check(
+            "I2: the text before the question survives",
+            stream_store._turns[sid].content,
+            {"lead": ["before the question"]},
+        )
+        check(
+            "I3: the question's own tool card survives",
+            [t["tool_call_id"] for t in stream_store._turns[sid].tool_calls],
+            [row.tool_call_id],
+        )
+        check(
+            "I4: already-attached clients are kept",
+            stream_store._turns[sid].subscribers,
+            [q],
+        )
+
+    stream_store._turns.clear()
+
     # ── Summary ─────────────────────────────────────────────────────────────
     print("\n" + "═" * 55)
     passed = sum(1 for s, _ in results if s == PASS)
@@ -319,7 +426,16 @@ async def run(engine):
 
 
 async def main():
-    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    # Optional path to a real database file, so these can be run against a
+    # snapshot of a dev database instead of an empty schema. It WRITES (each
+    # scenario creates its own session), so point it at a copy — never at a
+    # database something else is using.
+    db_url = (
+        f"sqlite+aiosqlite:///{sys.argv[1]}"
+        if len(sys.argv) > 1
+        else "sqlite+aiosqlite:///:memory:"
+    )
+    engine = create_async_engine(db_url)
     async with engine.begin() as conn:
         await conn.run_sync(SQLModel.metadata.create_all)
     failed = await run(engine)

@@ -80,6 +80,10 @@ class _FakeTeam:
         self.lead = _FakeLead()
         self.lead.session_id = session_id  # type: ignore[attr-defined]
         self.mode = "coding"
+        self.turns_ended = 0
+
+    async def _try_emit_done(self) -> None:
+        self.turns_ended += 1
 
 
 async def _seed(
@@ -461,3 +465,23 @@ async def test_dismiss_resolves_without_resuming(client, team):
 
     async with core_db.async_session_factory() as db:
         assert await question_service.get_pending_question(db, session_id) is None
+
+
+async def test_dismiss_ends_the_turn(client, team):
+    """Dismissing has to close the turn, not just free the lead.
+
+    A suspended lead holds an *open* turn: `waiting_input` counts as busy and
+    the client is showing a live turn. Every other ending — Stop, a superseding
+    message, a resumed turn running to completion — emits `done`. Without it
+    here the pane stays live forever and the session list keeps the session
+    marked running, with nothing left to finish it.
+    """
+    session_id = uuid.uuid4()
+    question_id = await _seed(session_id)
+    fake_team = _FakeTeam(str(session_id))
+    team["team"] = fake_team
+
+    resp = await client.post(f"/{session_id}/question/{question_id}/dismiss")
+
+    assert resp.status_code == 200
+    assert fake_team.turns_ended == 1

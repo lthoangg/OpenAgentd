@@ -371,6 +371,90 @@ async def test_the_lead_parks_in_waiting_input_when_the_loop_suspends(
     assert "done" not in events
 
 
+async def test_answering_resumes_the_turn_and_then_completes_it(
+    monkeypatch, mock_stream_store
+):
+    """The whole round trip, across the seams that unit tests each half of.
+
+    Suspend, park, resume on the answer, and finish. Every bug in this feature
+    so far has lived between two layers that were each correct on their own, so
+    this walks the full path: the loop reports a suspension, the member parks,
+    the resume spends the turn's one interruption, and the team emits exactly
+    one ``done`` — at the end, not at the suspension.
+    """
+    team = _make_team()
+    resume_flags: list = []
+
+    async def fake_run(messages, *, config=None, **kwargs):
+        resume_flags.append(config.metadata.get("question_resume"))
+        if len(resume_flags) == 1:
+            config.metadata["question_suspended"] = {
+                "question_id": uuid.uuid4(),
+                "session_id": uuid.UUID(LEAD_SESSION),
+                "tool_call_id": "call-1",
+            }
+        return []
+
+    monkeypatch.setattr(team.lead.agent, "run", fake_run)
+    monkeypatch.setattr(
+        team.lead, "_persist_inbox", AsyncMock(return_value=[]), raising=False
+    )
+
+    await team.handle_user_message("ask me something", session_id=LEAD_SESSION)
+    if team.lead._active_task is not None:
+        await team.lead._active_task
+
+    assert team.lead.state == "waiting_input"
+    assert "done" not in [c.args[1].event for c in mock_stream_store.call_args_list]
+
+    team.lead.activate_for_question_answer()
+    assert team.lead._active_task is not None
+    await team.lead._active_task
+
+    assert team.lead.state == "idle"
+    # The resumed activation spends the turn's one interruption up front, so a
+    # second question cannot be asked on the way back.
+    assert resume_flags == [None, True]
+
+    events = [c.args[1].event for c in mock_stream_store.call_args_list]
+    assert events.count("done") == 1
+
+
+async def test_a_question_cannot_be_answered_twice(monkeypatch):
+    """Two devices race; the loser must not start a second turn.
+
+    The guarded UPDATE in ``resolve_pending_question`` is what makes this
+    atomic, and a second resume on the same turn would replay the tail.
+    """
+    team = _make_team()
+    team.lead.state = "waiting_input"
+    row = MagicMock()
+    row.id = uuid.uuid4()
+    resolved: dict = {}
+
+    async def fake_get_pending(db, session_id):
+        return None if resolved else row
+
+    async def fake_resolve(db, *, question_id, status, answers=None):
+        if resolved:
+            return None
+        resolved["status"] = status
+        return row
+
+    monkeypatch.setattr(
+        "app.services.question_service.get_pending_question", fake_get_pending
+    )
+    monkeypatch.setattr(
+        "app.services.question_service.resolve_pending_question", fake_resolve
+    )
+
+    first = await team.dismiss_pending_question(reason="dismissed")
+    second = await team.dismiss_pending_question(reason="dismissed")
+
+    assert first is True
+    assert second is False
+
+
 # ---------------------------------------------------------------------------
 # Supersede vs defer
 # ---------------------------------------------------------------------------

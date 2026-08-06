@@ -209,6 +209,21 @@ async def dismiss_question(
             team.lead.state = "idle"
         team.lead._question_suspended = None
 
+        # The suspended lead was holding an *open* turn, and no model call is
+        # coming to finish it. Every other ending emits ``done`` (Stop, a
+        # superseding message, a resumed turn completing); without it here the
+        # pane stays live forever and the session list keeps the session marked
+        # running. ``_try_emit_done`` is the canonical closer — it also drains
+        # anything the user queued while the question was up.
+        try:
+            await team._try_emit_done()
+        except Exception as exc:
+            logger.warning(
+                "question_dismiss_turn_end_failed session_id={} error={}",
+                session_id,
+                exc,
+            )
+
     await stream_store.push_event(
         session_id,
         StreamEnvelope.from_event(

@@ -768,6 +768,9 @@ interface SessionRowProps {
  * hover affordance. Active rows keep the solid ``--bg-key`` background.
  */
 const SessionRow = memo(function SessionRow({ session, isActive, onSelect, onDelete, onEdit, mobileLongPressActions = false, onLongPress, onContextActions }: SessionRowProps) {
+  // Cheap: framer keeps a single module-level media listener, so calling this
+  // per row costs one useState each, not one subscription each.
+  const reduceMotion = useReducedMotion()
   const isScheduled = Boolean(session.scheduled_task_name)
   const isRunning = session.running === true
 
@@ -804,10 +807,10 @@ const SessionRow = memo(function SessionRow({ session, isActive, onSelect, onDel
             <AnimatePresence mode="wait" initial={false}>
               <motion.p
                 key={session.title ?? 'untitled'}
-                initial={{ opacity: 0, y: -6 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: 6 }}
-                transition={{ duration: 0.18, ease: 'easeOut' }}
+                initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: -6 }}
+                animate={reduceMotion ? { opacity: 1 } : { opacity: 1, y: 0 }}
+                exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 6 }}
+                transition={{ duration: reduceMotion ? 0 : 0.18, ease: 'easeOut' }}
                 className={`min-w-0 truncate text-xs transition-colors ${
                   isActive
                     ? 'font-medium text-(--color-text)'

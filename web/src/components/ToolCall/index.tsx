@@ -23,6 +23,7 @@ import hljs from 'highlight.js/lib/core'
 import bash from 'highlight.js/lib/languages/bash'
 import { ToolResult } from '../ToolResult'
 import { DURATIONS_S, EASINGS } from '@/lib/motion'
+import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { getToolDisplay } from './display'
 import { DiffView } from './DiffView'
 import { ReadView } from './ReadView'
@@ -147,6 +148,10 @@ function ShellCommand({ command }: { command: string }) {
 export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, result, durationMs, startedAt }: ToolCallProps) {
   // Hooks must be called unconditionally — before any early returns
   const [manualExpanded, setManualExpanded] = useState<boolean | null>(null)
+  // Reduced motion: snap the disclosure open/closed instead of animating
+  // height. Also skips framer's per-frame height measurement of the details
+  // subtree, which can be a large diff.
+  const prefersReducedMotion = useReducedMotion()
   const [copiedArgs, setCopiedArgs] = useState(false)
   const [copiedResult, setCopiedResult] = useState(false)
   const liveOutputRef = useRef<HTMLPreElement>(null)
@@ -330,7 +335,7 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: DURATIONS_S.base, ease: EASINGS.out }}
+            transition={{ duration: prefersReducedMotion ? 0 : DURATIONS_S.base, ease: EASINGS.out }}
             className="overflow-hidden"
           >
             <section className="surface-raised group relative mt-1 overflow-hidden rounded-sm border border-(--color-border) bg-(--bg-input)">

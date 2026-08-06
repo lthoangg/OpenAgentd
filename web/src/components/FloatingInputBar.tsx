@@ -557,6 +557,12 @@ export const FloatingInputBar = memo(
           dragElastic={0}
           onDragEnd={handleDragEnd}
           animate={{ x: offset.x, y: offset.y }}
+          // Deliberately not gated on `prefers-reduced-motion`: this settle is
+          // direct-manipulation feedback for a drag the user just performed,
+          // and the spring's overshoot measures 1.1% of travel (1.1px per
+          // 100px, peaking at 283ms) — imperceptible, not a bounce worth
+          // suppressing. Re-derive with `spring()` from framer-motion before
+          // flagging this again.
           transition={{ type: 'spring', stiffness: 380, damping: 32 }}
           className="pointer-events-auto w-full"
           style={{ touchAction: 'none' }}

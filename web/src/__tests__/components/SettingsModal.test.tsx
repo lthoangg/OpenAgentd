@@ -11,11 +11,43 @@
  * shell (backdrop + panel), not section content.
  */
 import { describe, it, expect, afterEach, mock } from 'bun:test'
+import React from 'react'
 import { render, screen, cleanup } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import '@testing-library/jest-dom'
 
 mock.module('lucide-react', () => new Proxy({}, { get: () => () => null }))
+
+// Toggled per test. Default false so the edge-swipe tests below keep running
+// in the normal-motion environment they were written for.
+let reduceMotion = false
+mock.module('@/hooks/useReducedMotion', () => ({ useReducedMotion: () => reduceMotion }))
+
+// Prop-capturing framer stub — setup.ts's global stub strips the animation
+// props these tests need to inspect. `data-*` still reaches the DOM so the
+// edge-swipe assertions keep working.
+const captured: Array<Record<string, unknown>> = []
+const motionCache: Record<string, React.FC> = {}
+mock.module('framer-motion', () => ({
+  AnimatePresence: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
+  motion: new Proxy({}, {
+    get: (_t, tag: string) => {
+      if (!motionCache[tag]) {
+        motionCache[tag] = ({ children, ...props }: { children?: React.ReactNode } & Record<string, unknown>) => {
+          captured.push({ __tag: tag, ...props })
+          const domProps: Record<string, unknown> = {}
+          for (const [k, v] of Object.entries(props)) {
+            if (k === 'className' || k === 'style' || k === 'role' || k.startsWith('data-') || k.startsWith('aria-')) {
+              domProps[k] = v
+            }
+          }
+          return React.createElement(tag, domProps, children)
+        }
+      }
+      return motionCache[tag]
+    },
+  }),
+}))
 
 mock.module('@/components/settings/pages/settings.index', () => ({ SettingsHubPage: () => <div>hub</div> }))
 mock.module('@/components/settings/pages/settings.agents', () => ({ AgentsListPage: () => <div>agents</div> }))
@@ -41,6 +73,8 @@ import { useSettingsStore } from '@/stores/useSettingsStore'
 afterEach(() => {
   cleanup()
   useSettingsStore.setState({ open: false, section: 'about', selectedName: null })
+  captured.length = 0
+  reduceMotion = false
 })
 
 function renderModal() {
@@ -71,5 +105,31 @@ describe('SettingsModal — mobile edge-swipe exclusion', () => {
     const backdrop = document.querySelector('[aria-hidden="true"]')
     expect(backdrop).not.toBeNull()
     expect(backdrop).toHaveAttribute('data-swipe-ignore')
+  })
+})
+
+describe('SettingsModal — prefers-reduced-motion', () => {
+  /** The panel is the motion element carrying the dialog role. */
+  function findPanel() {
+    return captured.find((p) => p.role === 'dialog')
+  }
+
+  it('scales and lifts the panel in by default', () => {
+    useSettingsStore.setState({ open: true, section: 'about', selectedName: null })
+    renderModal()
+
+    expect(findPanel()!.initial).toEqual({ opacity: 0, scale: 0.98, y: 4 })
+  })
+
+  it('fades the panel in with no scale or translate when reduced motion is set', () => {
+    reduceMotion = true
+    useSettingsStore.setState({ open: true, section: 'about', selectedName: null })
+    renderModal()
+
+    const panel = findPanel()!
+    expect(panel.initial).toEqual({ opacity: 0 })
+    expect(panel.animate).toEqual({ opacity: 1 })
+    expect(panel.exit).toEqual({ opacity: 0 })
+    expect(panel.transition).toMatchObject({ duration: 0 })
   })
 })

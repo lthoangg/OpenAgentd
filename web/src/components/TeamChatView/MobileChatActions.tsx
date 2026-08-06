@@ -1,6 +1,7 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import { CalendarClock, Check, MoreHorizontal, X } from 'lucide-react'
 import { useTeamStore, type AgentStream } from '@/stores/useTeamStore'
+import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { workspaceLabel } from '@/utils/workspace'
 import { dotClassFor } from './agentDots'
 
@@ -32,6 +33,13 @@ export function MobileChatActions({
 }: MobileChatActionsProps) {
   const storeStreams = useTeamStore((s) => s.agentStreams)
   const streams = streamsProp ?? storeStreams
+  // Reduced motion: fade the drawer instead of sliding it 280px. `x` is still
+  // applied while a drag is in flight — the drawer has to track the finger,
+  // and direct manipulation is not the kind of motion the preference targets.
+  const prefersReducedMotion = useReducedMotion()
+  const drawerMotion = prefersReducedMotion
+    ? { initial: { opacity: 0 }, animate: { opacity: 1, x: dragOffset ?? 0 }, exit: { opacity: 0 } }
+    : { initial: { x: 280 }, animate: { x: dragOffset ?? 0 }, exit: { x: 280 } }
   return (
     <>
       <button
@@ -60,10 +68,14 @@ export function MobileChatActions({
             />
             <motion.aside
               key="mobile-actions-drawer"
-              initial={{ x: 280 }}
-              animate={{ x: dragOffset ?? 0 }}
-              exit={{ x: 280 }}
-              transition={dragOffset !== null ? { duration: 0 } : { duration: 0.22, ease: [0.4, 0, 0.2, 1] }}
+              initial={drawerMotion.initial}
+              animate={drawerMotion.animate}
+              exit={drawerMotion.exit}
+              transition={
+                dragOffset !== null || prefersReducedMotion
+                  ? { duration: 0 }
+                  : { duration: 0.22, ease: [0.4, 0, 0.2, 1] }
+              }
               className="mobile-safe-top fixed bottom-0 right-0 z-40 flex w-[min(272px,calc(100vw-2rem))] flex-col overflow-hidden border-l border-(--color-border) bg-(--bg-page) shadow-xl md:hidden"
               role="dialog"
               aria-modal="true"

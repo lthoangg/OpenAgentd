@@ -95,7 +95,19 @@ mock.module('framer-motion', () => ({
       void transition
       return <div {...props}>{children}</div>
     },
-    p: ({ children, ...props }: React.ComponentProps<'p'>) => <p {...props}>{children}</p>,
+    // Session titles animate through motion.p. Surface the targets as data-*
+    // (same trick as motion.aside above) so the reduced-motion test can read
+    // what was requested instead of guessing from rendered styles.
+    p: ({ children, initial, animate, transition, exit: _exit, ...props }: React.ComponentProps<'p'> & { initial?: unknown; animate?: unknown; exit?: unknown; transition?: unknown }) => (
+      <p
+        data-initial={JSON.stringify(initial)}
+        data-animate={JSON.stringify(animate)}
+        data-transition={JSON.stringify(transition)}
+        {...props}
+      >
+        {children}
+      </p>
+    ),
   },
 }))
 
@@ -310,5 +322,27 @@ describe('Sidebar session title editing', () => {
 
     expect(screen.getByText('Normal session')).toBeTruthy()
     expect(screen.queryByText('No sessions yet')).toBeNull()
+  })
+
+  // useReducedMotion is mocked to `true` at the top of this file, so session
+  // rows render their reduced branch here.
+  it('crossfades session titles without translating them under reduced motion', async () => {
+    sessionsData = [
+      {
+        id: 'session-1',
+        title: 'Normal session',
+        agent_name: 'lead',
+        created_at: '2026-05-13T00:00:00Z',
+        updated_at: '2026-05-13T00:00:00Z',
+        mode: 'normal',
+      },
+    ]
+
+    await renderSidebar()
+
+    const title = screen.getByText('Normal session')
+    expect(JSON.parse(title.getAttribute('data-initial')!)).toEqual({ opacity: 0 })
+    expect(JSON.parse(title.getAttribute('data-animate')!)).toEqual({ opacity: 1 })
+    expect(JSON.parse(title.getAttribute('data-transition')!).duration).toBe(0)
   })
 })

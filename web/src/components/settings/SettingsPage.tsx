@@ -19,6 +19,7 @@ import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
 import { ICON_SIZE, TEXT } from '@/components/settings/tokens'
+import { useReducedMotion } from '@/hooks/useReducedMotion'
 import type { DraftControls } from '@/components/settings/useSettingsDraft'
 
 interface SettingsPageProps {
@@ -99,15 +100,32 @@ export function SettingsPage({
 
 // ── Save bar ──────────────────────────────────────────────────────────────
 
+/** Save-bar enter/exit. Module scope so framer sees a stable target
+ *  reference. Reduced motion fades instead of sliding: the global CSS guard in
+ *  index.css only covers CSS transitions, not framer's JS-driven transforms. */
+const SAVE_BAR_MOTION = {
+  initial: { y: '100%' },
+  animate: { y: 0 },
+  exit: { y: '100%' },
+} as const
+const SAVE_BAR_MOTION_REDUCED = {
+  initial: { opacity: 0 },
+  animate: { opacity: 1 },
+  exit: { opacity: 0 },
+} as const
+
 function SaveBar({ draft }: { draft: DraftControls }) {
+  const prefersReducedMotion = useReducedMotion()
+  const slide = prefersReducedMotion ? SAVE_BAR_MOTION_REDUCED : SAVE_BAR_MOTION
+
   return (
     <AnimatePresence>
       {draft.dirty && (
         <motion.div
-          initial={{ y: '100%' }}
-          animate={{ y: 0 }}
-          exit={{ y: '100%' }}
-          transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
+          initial={slide.initial}
+          animate={slide.animate}
+          exit={slide.exit}
+          transition={{ duration: prefersReducedMotion ? 0 : 0.16, ease: [0.16, 1, 0.3, 1] }}
           className={cn(
             'sticky bottom-0 z-20 flex shrink-0 items-center gap-3',
             'border-t border-(--color-border) bg-(--bg-sidebar) px-4 py-2',

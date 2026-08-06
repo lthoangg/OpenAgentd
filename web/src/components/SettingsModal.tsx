@@ -15,6 +15,7 @@ import { ArrowLeft, X, type LucideIcon } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
+import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { useSettingsStore, type SettingsSection } from '@/stores/useSettingsStore'
 import {
   useAgentFilesQuery,
@@ -297,12 +298,27 @@ function SectionContent({
 
 // ── Modal ─────────────────────────────────────────────────────────────────
 
+/** Panel enter/exit. Module scope so framer sees a stable target reference.
+ *  Mirrors MODAL_VARIANTS / MODAL_VARIANTS_REDUCED in ui/app-overlay.tsx —
+ *  reduced motion keeps the fade and drops the scale/translate. */
+const PANEL_VARIANTS = {
+  hidden: { opacity: 0, scale: 0.98, y: 4 },
+  visible: { opacity: 1, scale: 1, y: 0 },
+} as const
+const PANEL_VARIANTS_REDUCED = {
+  hidden: { opacity: 0 },
+  visible: { opacity: 1 },
+} as const
+
 export function SettingsModal() {
   const open = useSettingsStore((s) => s.open)
   const section = useSettingsStore((s) => s.section)
   const selectedName = useSettingsStore((s) => s.selectedName)
   const setSection = useSettingsStore((s) => s.setSection)
   const closeSettings = useSettingsStore((s) => s.closeSettings)
+
+  const prefersReducedMotion = useReducedMotion()
+  const panel = prefersReducedMotion ? PANEL_VARIANTS_REDUCED : PANEL_VARIANTS
 
   // Escape to close.
   useEffect(() => {
@@ -335,10 +351,10 @@ export function SettingsModal() {
             role="dialog"
             aria-modal="true"
             aria-label="Settings"
-            initial={{ opacity: 0, scale: 0.98, y: 4 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.98, y: 4 }}
-            transition={{ duration: 0.15, ease: [0.16, 1, 0.3, 1] }}
+            initial={panel.hidden}
+            animate={panel.visible}
+            exit={panel.hidden}
+            transition={{ duration: prefersReducedMotion ? 0 : 0.15, ease: [0.16, 1, 0.3, 1] }}
             data-swipe-ignore
             className={cn(
               'settings-modal-shell z-50 flex flex-col overflow-hidden rounded-lg',

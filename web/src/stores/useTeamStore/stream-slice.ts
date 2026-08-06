@@ -377,6 +377,33 @@ export const createStreamSlice: StateCreator<
     // safely discards them during a session switch.
     abort.signal.addEventListener('abort', flushBufferedDeltas, { once: true })
 
+    // Reopening the moment the backend closes is right when the connection was
+    // doing something — but a stream that closes having delivered nothing will
+    // do it again, so an immediate retry becomes a request storm with no error
+    // to trigger the backoff below.
+    let receivedAnyEvent = false
+    const scheduleReconnect = () => {
+      set((draft) => {
+        draft.isConnected = false
+        clearReconnectTimer(draft)
+        // Retry quickly for brief Wi-Fi switches, then back off while a
+        // mobile device remains offline so background wakeups do not run
+        // an unbounded 1.5-second polling loop. Any received SSE event
+        // resets the attempt counter.
+        const delay = Math.min(30_000, 1_500 * 2 ** draft._reconnectAttempts)
+        draft._reconnectAttempts += 1
+        draft._reconnectTimer = setTimeout(() => {
+          set((timerDraft) => {
+            if (timerDraft._reconnectTimer !== null) timerDraft._reconnectTimer = null
+          })
+          const s = get()
+          if (s.sessionId !== sessionId || s._sessionGeneration !== generation) return
+          if (s._unloading || s.isConnected) return
+          get().connectStream()
+        }, delay)
+      })
+    }
+
     teamStream(
       sessionId,
       {
@@ -391,6 +418,7 @@ export const createStreamSlice: StateCreator<
           const current = get()
           if (current._unloading && type === 'error') return
           if (current.sessionId !== sessionId || current._sessionGeneration !== generation) return
+          receivedAnyEvent = true
           if (current._reconnectAttempts > 0) {
             set((draft) => { draft._reconnectAttempts = 0 })
           }
@@ -411,25 +439,7 @@ export const createStreamSlice: StateCreator<
           if (current.sessionId !== sessionId || current._sessionGeneration !== generation) return
           if (current._unloading || abort.signal.aborted) return
           if (isTransientNetworkError(err)) {
-            set((draft) => {
-              draft.isConnected = false
-              clearReconnectTimer(draft)
-              // Retry quickly for brief Wi-Fi switches, then back off while a
-              // mobile device remains offline so background wakeups do not run
-              // an unbounded 1.5-second polling loop. Any received SSE event
-              // resets the attempt counter above.
-              const delay = Math.min(30_000, 1_500 * 2 ** draft._reconnectAttempts)
-              draft._reconnectAttempts += 1
-              draft._reconnectTimer = setTimeout(() => {
-                set((timerDraft) => {
-                  if (timerDraft._reconnectTimer !== null) timerDraft._reconnectTimer = null
-                })
-                const s = get()
-                if (s.sessionId !== sessionId || s._sessionGeneration !== generation) return
-                if (s._unloading || s.isConnected) return
-                get().connectStream()
-              }, delay)
-            })
+            scheduleReconnect()
             return
           }
           if (!current.isTeamWorking) {
@@ -455,8 +465,17 @@ export const createStreamSlice: StateCreator<
           // still running (e.g. server restart / idle keepalive timeout),
           // reopen the stream immediately so we don't miss events.
           if (current.isTeamWorking && !current._unloading) {
-            set((draft) => { draft.isConnected = false })
-            get().connectStream()
+            // A stream that closed having delivered nothing is a stream that
+            // will close again — most often the backend has no turn state for
+            // this session, so `attach` returns at once. Reopening immediately
+            // spins as fast as round trips complete, and a clean close raises
+            // no error to reach the backoff in `onError`.
+            if (receivedAnyEvent) {
+              set((draft) => { draft.isConnected = false })
+              get().connectStream()
+            } else {
+              scheduleReconnect()
+            }
             return
           }
           set((draft) => {

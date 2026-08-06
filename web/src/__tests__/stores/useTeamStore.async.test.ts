@@ -1515,14 +1515,23 @@ describe("connectStream", () => {
   })
 
   it("onDone reopens the stream immediately when the session is still working", () => {
-    // Simulates a server restart or idle-keepalive close mid-run:
-    // backend closes the SSE channel cleanly while isTeamWorking is true.
+    // Simulates an idle-keepalive close mid-run: the backend cleanly closes a
+    // channel that had been delivering events, while isTeamWorking is true.
     let callCount = 0
     mockTeamStream.mockImplementation(
-      (_sid: string, cbs: { onDone?: () => void }) => {
+      (
+        _sid: string,
+        cbs: {
+          onDone?: () => void
+          onEvent?: (type: string, data: unknown) => void
+        },
+      ) => {
         callCount++
         // Only fire onDone on the first call to avoid an infinite loop in the test.
-        if (callCount === 1) cbs.onDone?.()
+        if (callCount === 1) {
+          cbs.onEvent?.("agent_status", { agent: "lead", status: "working" })
+          cbs.onDone?.()
+        }
       }
     )
     useTeamStore.setState({ sessionId: "stream-sid", isTeamWorking: true })
@@ -1533,6 +1542,29 @@ describe("connectStream", () => {
     expect(useTeamStore.getState().isConnected).toBe(true)
     // No cache invalidation pushed — session is still in-flight.
     expect(useTeamStore.getState().cacheInvalidations).not.toContainEqual({ kind: "team_sessions" })
+  })
+
+  it("backs off instead of reopening when the stream closed having delivered nothing", () => {
+    // A backend holding no turn state for this session returns from `attach`
+    // straight away. That is a *clean* close, so it raises no error to reach
+    // the backoff in onError — and reopening at once turns a suspended
+    // question into a request storm for as long as the card is unanswered.
+    let callCount = 0
+    mockTeamStream.mockImplementation(
+      (_sid: string, cbs: { onDone?: () => void }) => {
+        callCount++
+        if (callCount === 1) cbs.onDone?.()
+      }
+    )
+    useTeamStore.setState({ sessionId: "stream-sid", isTeamWorking: true })
+    useTeamStore.getState().connectStream()
+
+    expect(mockTeamStream).toHaveBeenCalledTimes(1)
+    expect(useTeamStore.getState()._reconnectAttempts).toBe(1)
+    expect(useTeamStore.getState()._reconnectTimer).not.toBeNull()
+
+    clearTimeout(useTeamStore.getState()._reconnectTimer as ReturnType<typeof setTimeout>)
+    useTeamStore.setState({ _reconnectTimer: null, _reconnectAttempts: 0 })
   })
 
   it("does not reopen a second time when a superseded connection's onDone fires after its own abort", () => {

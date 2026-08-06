@@ -296,6 +296,17 @@ describe('Coding workspace two-layer file preview', () => {
     expect(videoEl?.src).toContain('clip.mp4')
   })
 
+  it('previews a .ts source as text even when the MIME says video/mp2t', async () => {
+    // Regression test: stdlib MIME tables map `.ts` to `video/mp2t` (MPEG
+    // transport stream), which used to route TypeScript files into the
+    // <video> branch of kindOf().
+    const tsFile: WorkspaceFileInfo = { path: 'src/main.ts', name: 'main.ts', size: 24, mtime: 1, mime: 'video/mp2t' }
+    await renderViewer(tsFile)
+
+    expect(document.querySelector('video')).toBeNull()
+    await waitFor(() => expect(screen.getByText('const')).toBeTruthy())
+  })
+
   it('opens video previews in a lightbox from the separate file viewer panel', async () => {
     const user = userEvent.setup()
     const video: WorkspaceFileInfo = { path: 'assets/clip.mp4', name: 'clip.mp4', size: 1000, mtime: 1, mime: 'video/mp4' }

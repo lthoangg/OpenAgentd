@@ -99,7 +99,22 @@ def _safe_resolve(root: Path, rel: str) -> Path:
     return resolved
 
 
-def _guess_media_type(path: Path) -> str:
+# The stdlib table maps ``.ts``/``.mts`` to ``video/mp2t`` (MPEG transport
+# stream), so TypeScript sources were reported as video and the UI rendered
+# them in a <video> player instead of the text viewer. In an agent workspace
+# these extensions are always source code.
+_MIME_OVERRIDES: dict[str, str] = {
+    ".ts": "text/typescript",
+    ".mts": "text/typescript",
+    ".cts": "text/typescript",
+    ".tsx": "text/typescript",
+}
+
+
+def _guess_mime(path: Path) -> str:
+    override = _MIME_OVERRIDES.get(path.suffix.lower())
+    if override is not None:
+        return override
     mime, _ = mimetypes.guess_type(str(path))
     return mime or "application/octet-stream"
 
@@ -153,7 +168,7 @@ async def get_uploaded_file(session_id: str, filename: str) -> FileResponse:
     )
     return FileResponse(
         path=str(resolved),
-        media_type=_guess_media_type(resolved),
+        media_type=_guess_mime(resolved),
         filename=resolved.name,
     )
 
@@ -183,7 +198,7 @@ async def get_workspace_media(
 
     return FileResponse(
         path=str(resolved),
-        media_type=_guess_media_type(resolved),
+        media_type=_guess_mime(resolved),
         filename=resolved.name,
         content_disposition_type="attachment" if download else "inline",
     )
@@ -306,14 +321,13 @@ def _list_workspace_files(root: Path, session_id: str) -> WorkspaceFilesResponse
                     continue
             elif not stat.S_ISREG(entry_stat.st_mode):
                 continue
-            mime, _ = mimetypes.guess_type(str(entry))
             files.append(
                 WorkspaceFileInfo(
                     path=rel,
                     name=entry.name,
                     size=entry_stat.st_size,
                     mtime=entry_stat.st_mtime,
-                    mime=mime or "application/octet-stream",
+                    mime=_guess_mime(entry),
                 )
             )
         if truncated:
@@ -349,10 +363,9 @@ async def read_coding_workspace_file(
     if not target.is_file():
         raise HTTPException(status_code=404, detail="File not found.")
 
-    mime, _ = mimetypes.guess_type(str(target))
     return FileResponse(
         path=str(target),
-        media_type=mime or "application/octet-stream",
+        media_type=_guess_mime(target),
         filename=target.name if download else None,
     )
 

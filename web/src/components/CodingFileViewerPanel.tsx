@@ -70,6 +70,10 @@ type FileKind = 'image' | 'video' | 'pdf' | 'text' | 'binary'
 function kindOf(file: WorkspaceFileInfo): FileKind {
   const ext = extOf(file.name)
   if (IMAGE_EXTENSIONS.has(ext) || file.mime.startsWith('image/')) return 'image'
+  // Known source extensions win over the reported MIME: `.ts` maps to
+  // `video/mp2t` (MPEG transport stream) in every stdlib MIME table, which
+  // otherwise routes TypeScript files into the <video> branch below.
+  if (TEXT_EXTENSIONS.has(ext)) return 'text'
   if (file.mime.startsWith('video/') || isVideoSrc(file.name)) return 'video'
   if (file.mime.startsWith('audio/')) return 'binary'
   // Must be checked before the generic small-file text fallback below —

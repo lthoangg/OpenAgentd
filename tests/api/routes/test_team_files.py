@@ -162,6 +162,41 @@ class TestWorkspaceFilesListing:
         # Unknown extension falls back to the octet-stream default.
         assert by_name["blob.bin"]["mime"] == "application/octet-stream"
 
+    def test_typescript_sources_are_not_reported_as_video(
+        self, client, session_id, tmp_path, monkeypatch
+    ):
+        """``.ts`` is MPEG transport stream in the stdlib MIME table — the
+        workspace listing must report TypeScript source instead, otherwise the
+        UI previews the file in a <video> player."""
+        fake_root = tmp_path / "ws"
+        fake_root.mkdir()
+        (fake_root / "main.ts").write_text("export const a = 1\n")
+        (fake_root / "mod.mts").write_text("export const b = 2\n")
+
+        from app.api.routes.team import files as team_routes
+
+        monkeypatch.setattr(team_routes, "workspace_dir", lambda sid: fake_root)
+
+        resp = client.get(f"/api/team/{session_id}/files")
+        by_name = {f["name"]: f for f in resp.json()["files"]}
+        assert by_name["main.ts"]["mime"] == "text/typescript"
+        assert by_name["mod.mts"]["mime"] == "text/typescript"
+
+    def test_media_serves_typescript_as_text(
+        self, client, session_id, tmp_path, monkeypatch
+    ):
+        fake_root = tmp_path / "ws"
+        fake_root.mkdir()
+        (fake_root / "main.ts").write_text("export const a = 1\n")
+
+        from app.api.routes.team import files as team_routes
+
+        monkeypatch.setattr(team_routes, "workspace_dir", lambda sid: fake_root)
+
+        resp = client.get(f"/api/team/{session_id}/media/main.ts")
+        assert resp.status_code == 200
+        assert resp.headers["content-type"].startswith("text/typescript")
+
     def test_generated_dirs_excluded_other_dotentries_allowed(
         self, client, session_id, tmp_path, monkeypatch
     ):

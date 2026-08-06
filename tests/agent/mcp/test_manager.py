@@ -555,6 +555,57 @@ class TestMCPManagerOAuth:
             assert "client ID/secret" in (status.error or "")
 
     @pytest.mark.asyncio
+    async def test_wrapped_oauth_required_is_auth_required(self) -> None:
+        """A cached-but-stale grant re-triggers the browser flow deep inside the
+        SDK's anyio task group, so ``OAuthRequiredError`` arrives wrapped in an
+        ``ExceptionGroup``. It must still land in ``auth_required`` with the
+        plain message — not ``error`` with the group wrapper printed."""
+        from app.agent.mcp.oauth import OAuthRequiredError
+
+        manager = MCPManager()
+        message = (
+            "MCP server 'notion' needs OAuth. Use Settings -> MCP -> Connect OAuth."
+        )
+
+        class FailingStreamableHttpClient:
+            async def __aenter__(self):
+                raise ExceptionGroup(
+                    "unhandled errors in a TaskGroup", [OAuthRequiredError(message)]
+                )
+
+            async def __aexit__(self, exc_type, exc, tb):
+                return False
+
+        with patch("app.agent.mcp.manager.load_config") as mock_load:
+            cfg = MCPConfig(
+                servers={
+                    "notion": HttpServerConfig(
+                        url="https://mcp.notion.com/mcp",
+                        oauth=OAuthConfig(),
+                    )
+                }
+            )
+            mock_load.return_value = cfg
+
+            with (
+                patch(
+                    "app.agent.mcp.manager.has_cached_oauth_tokens", return_value=True
+                ),
+                patch(
+                    "app.agent.mcp.manager.streamable_http_client",
+                    return_value=FailingStreamableHttpClient(),
+                ),
+            ):
+                await manager.start()
+                runner = manager._runners["notion"]
+                await asyncio.wait_for(runner.ready.wait(), timeout=1.0)
+
+            status = manager.get_status("notion")
+            assert status is not None
+            assert status.state == "auth_required"
+            assert status.error == message
+
+    @pytest.mark.asyncio
     async def test_oauth_without_client_credentials_attempts_connection(self) -> None:
         manager = MCPManager()
 
@@ -917,6 +968,13 @@ class TestWaitUntilReady:
         assert (
             _format_exception(eg)
             == "ExceptionGroup (ValueError: child 1; TypeError: child 2)"
+        )
+
+        # A single-child group is the anyio task-group wrapper — it carries no
+        # information, so the child speaks for itself.
+        assert (
+            _format_exception(ExceptionGroup("unhandled errors in a TaskGroup", [exc]))
+            == "ValueError: simple error"
         )
 
         # Nested ExceptionGroup

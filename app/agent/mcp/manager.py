@@ -80,6 +80,11 @@ def _find_exception(
 
 def _format_exception(exc: BaseException) -> str:
     if isinstance(exc, BaseExceptionGroup):
+        # anyio wraps every transport failure in a task group. A lone child
+        # carries the whole story, so surfacing the wrapper only shows the
+        # reader "ExceptionGroup (...)" noise around the real message.
+        if len(exc.exceptions) == 1:
+            return _format_exception(exc.exceptions[0])
         child_msgs = [_format_exception(child) for child in exc.exceptions]
         return f"{type(exc).__name__} ({'; '.join(child_msgs)})"
     return f"{type(exc).__name__}: {exc}"
@@ -248,6 +253,25 @@ class _ServerRunner:
         )
     )
     tools: list[MCPTool] = field(default_factory=list)
+
+
+def _mark_auth_required(
+    runner: _ServerRunner, name: str, transport: str, message: str
+) -> None:
+    """Park a runner in ``auth_required`` — the one state the UI offers a
+    Connect button for, and the one it deliberately hides the error text of."""
+    logger.warning(
+        "mcp_server_auth_required name={} transport={} err={}",
+        name,
+        transport,
+        message,
+    )
+    runner.session = None
+    runner.tools = []
+    runner.status.state = "auth_required"
+    runner.status.error = message
+    runner.status.tool_names = []
+    runner.ready.set()
 
 
 class MCPManager:
@@ -641,37 +665,26 @@ class MCPManager:
             runner.ready.set()
             raise
         except OAuthRequiredError as exc:
-            logger.warning(
-                "mcp_server_auth_required name={} transport={} err={}",
-                name,
-                server_cfg.transport,
-                exc,
-            )
-            runner.session = None
-            runner.tools = []
-            runner.status.state = "auth_required"
-            runner.status.error = str(exc)
-            runner.status.tool_names = []
-            runner.ready.set()
+            _mark_auth_required(runner, name, server_cfg.transport, str(exc))
         except Exception as exc:
+            # The SDK calls the OAuth redirect handler from inside its anyio
+            # task group, so a cached-but-stale grant raises OAuthRequiredError
+            # wrapped in an ExceptionGroup — which `except OAuthRequiredError`
+            # above cannot match.
+            if (oauth_exc := _find_exception(exc, OAuthRequiredError)) is not None:
+                _mark_auth_required(runner, name, server_cfg.transport, str(oauth_exc))
+                return
             if (
                 isinstance(server_cfg, HttpServerConfig)
                 and server_cfg.oauth is None
                 and _is_http_auth_failure(exc)
             ):
-                message = _oauth_config_required_message(name)
-                logger.warning(
-                    "mcp_server_auth_required name={} transport={} err={}",
+                _mark_auth_required(
+                    runner,
                     name,
                     server_cfg.transport,
-                    message,
+                    _oauth_config_required_message(name),
                 )
-                runner.session = None
-                runner.tools = []
-                runner.status.state = "auth_required"
-                runner.status.error = message
-                runner.status.tool_names = []
-                runner.ready.set()
                 return
             if _is_oauth_registration_failure(exc) or (
                 isinstance(server_cfg, HttpServerConfig)
@@ -679,19 +692,12 @@ class MCPManager:
                 and server_cfg.oauth.client_id
                 and not has_resolved_client_id(server_cfg)
             ):
-                message = _oauth_credentials_required_message(name)
-                logger.warning(
-                    "mcp_server_auth_required name={} transport={} err={}",
+                _mark_auth_required(
+                    runner,
                     name,
                     server_cfg.transport,
-                    message,
+                    _oauth_credentials_required_message(name),
                 )
-                runner.session = None
-                runner.tools = []
-                runner.status.state = "auth_required"
-                runner.status.error = message
-                runner.status.tool_names = []
-                runner.ready.set()
                 return
             logger.error(
                 "mcp_server_failed name={} transport={} err={}",

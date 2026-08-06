@@ -507,6 +507,14 @@ async function loadSessionImpl(
           leadStream._turnStartedAt =
             history.lead.running === true && !awaitingAnswer ? Date.now() : null
         }
+        // A restart is only still pending if the server agrees the turn is open.
+        // The snapshot is authoritative here: after a daemon restart the client
+        // can miss every live event of the resumed turn and learn the outcome
+        // only from this fetch, which would otherwise strand the dots forever.
+        leadStream._awaitingRestartOutput =
+          leadStream._awaitingRestartOutput === true &&
+          history.lead.running === true &&
+          !awaitingAnswer
         const leadVisibleMsgs = messagesBeforeRevert(history.lead)
         const leadUsage = sumUsageFromMessages(leadVisibleMsgs)
         leadStream.usage = leadUsage

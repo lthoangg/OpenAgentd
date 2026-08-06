@@ -262,6 +262,52 @@ describe("useTeamStore — ask_user", () => {
       ).toBe(false)
     })
 
+    it("stops awaiting the restart when the agent reports it went idle", () => {
+      // After a daemon restart the reconnecting client can miss the resumed
+      // turn's deltas and its `done` entirely; the status snapshot is then the
+      // only signal left that the turn is over.
+      suspend()
+      useTeamStore.getState().markTurnResuming()
+
+      useTeamStore.getState()._handleSSEEvent("agent_status", {
+        agent: "openagentd",
+        status: "idle",
+      })
+
+      expect(
+        useTeamStore.getState().agentStreams.openagentd._awaitingRestartOutput,
+      ).toBe(false)
+    })
+
+    it("stops awaiting the restart when the resumed turn parks on another question", () => {
+      suspend()
+      useTeamStore.getState().markTurnResuming()
+
+      useTeamStore.getState()._handleSSEEvent("agent_status", {
+        agent: "openagentd",
+        status: "waiting_input",
+      })
+
+      expect(
+        useTeamStore.getState().agentStreams.openagentd._awaitingRestartOutput,
+      ).toBe(false)
+    })
+
+    it("keeps awaiting the restart while the agent is only reported working", () => {
+      // `working` with nothing produced yet is precisely when the dots belong.
+      suspend()
+      useTeamStore.getState().markTurnResuming()
+
+      useTeamStore.getState()._handleSSEEvent("agent_status", {
+        agent: "openagentd",
+        status: "working",
+      })
+
+      expect(
+        useTeamStore.getState().agentStreams.openagentd._awaitingRestartOutput,
+      ).toBe(true)
+    })
+
     it("stops awaiting the restart when the turn ends without output", () => {
       // Backstop: a resume that dies before emitting anything must not leave
       // the dots bouncing forever.

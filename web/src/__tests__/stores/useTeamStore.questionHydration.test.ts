@@ -117,6 +117,56 @@ describe('loadSession — pending question hydration', () => {
     expect(useTeamStore.getState().agentStreams.lead.status).toBe('idle')
   })
 
+  /**
+   * Reproduces the reported sequence: ask -> daemon restart -> answer. The
+   * restart kills the SSE connection, so the reconnecting client misses the
+   * resumed turn's deltas *and* its ``done``, and learns the outcome only from
+   * this fetch. Nothing else is left to stop the dots.
+   */
+  describe('a restart pending across the reload', () => {
+    function suspendAndResume() {
+      useTeamStore.getState()._handleSSEEvent('agent_status', {
+        agent: 'lead',
+        status: 'waiting_input',
+      })
+      useTeamStore.getState().markTurnResuming()
+      expect(useTeamStore.getState().agentStreams.lead._awaitingRestartOutput).toBe(true)
+    }
+
+    it('stops awaiting the restart when the fetch says the turn ended', async () => {
+      suspendAndResume()
+      mockTeamHistory.mockImplementation(() =>
+        Promise.resolve(historyWithQuestion({ pending_question: null, lead: { ...historyWithQuestion().lead, running: false } })),
+      )
+
+      await useTeamStore.getState().loadSession('lead-sess')
+
+      expect(useTeamStore.getState().agentStreams.lead._awaitingRestartOutput).toBe(false)
+    })
+
+    it('keeps awaiting the restart while the fetch says the turn is still open', async () => {
+      // An incidental reload mid-resume must not kill the dots — the turn is
+      // genuinely still working, it just has not produced anything yet.
+      suspendAndResume()
+      mockTeamHistory.mockImplementation(() =>
+        Promise.resolve(historyWithQuestion({ pending_question: null, lead: { ...historyWithQuestion().lead, running: true } })),
+      )
+
+      await useTeamStore.getState().loadSession('lead-sess')
+
+      expect(useTeamStore.getState().agentStreams.lead._awaitingRestartOutput).toBe(true)
+    })
+
+    it('stops awaiting the restart when the turn parks on another question', async () => {
+      suspendAndResume()
+
+      await useTeamStore.getState().loadSession('lead-sess')
+
+      expect(useTeamStore.getState().agentStreams.lead._awaitingRestartOutput).toBe(false)
+      expect(useTeamStore.getState().agentStreams.lead.status).toBe('waiting_input')
+    })
+  })
+
   it('ignores a question payload with no answerable questions', async () => {
     mockTeamHistory.mockImplementation(() =>
       Promise.resolve(

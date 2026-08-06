@@ -524,6 +524,12 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
         const status = d.status as string
         set((draft) => {
           ensureAgent(draft, agent)
+          // Only a `working` agent can still be "about to respond". Every other
+          // status means the restarted turn already ended, failed, or parked on
+          // another question — and after a daemon restart this is often the
+          // only clearing signal that survives, because the reconnecting client
+          // misses the resumed turn's deltas and its `done`.
+          if (status !== 'working') draft.agentStreams[agent]._awaitingRestartOutput = false
           if (status === 'working') {
             draft.agentStreams[agent].status = 'working'
             draft.agentStreams[agent]._completionEstimated = 0

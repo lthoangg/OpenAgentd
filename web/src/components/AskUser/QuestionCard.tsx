@@ -120,8 +120,17 @@ export function QuestionCard({
     [questions, draft],
   )
 
+  // On any step but the last, submitting is the wrong default: it would
+  // silently skip the questions the user has not been shown yet. The label
+  // tracks the step they are on, not how they reached it.
+  const isLastStep = step === questions.length - 1
+
   const handleSubmit = () => {
     if (submitting) return
+    if (!isLastStep) {
+      update({ step: step + 1 })
+      return
+    }
     onSubmit(toAnswers(questions, draft))
   }
 
@@ -246,7 +255,7 @@ export function QuestionCard({
             onClick={handleSubmit}
             disabled={submitting}
           >
-            {submitting ? 'Sending…' : 'Send answer'}
+            {submitting ? 'Sending…' : isLastStep ? 'Send answer' : 'Next question'}
           </Button>
         </div>
       </div>

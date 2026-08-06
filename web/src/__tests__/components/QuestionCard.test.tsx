@@ -112,6 +112,51 @@ describe('QuestionCard', () => {
     expect(onSubmit).toHaveBeenCalledWith([['bun']])
   })
 
+  it('offers a single question straight to submit', () => {
+    renderCard()
+
+    expect(screen.getByRole('button', { name: /send answer/i })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /next question/i })).toBeNull()
+  })
+
+  it('walks through the questions before offering to submit', () => {
+    // With more to answer, submitting is the wrong default: it silently skips
+    // the questions the user has not seen yet.
+    const { onSubmit } = renderCard({ question: TWO_QUESTIONS })
+
+    expect(screen.getByRole('button', { name: /next question/i })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /send answer/i })).toBeNull()
+
+    fireEvent.click(screen.getByRole('radio', { name: /pnpm/ }))
+    fireEvent.click(screen.getByRole('button', { name: /next question/i }))
+
+    expect(screen.getByText('Which checks should run?')).toBeInTheDocument()
+    expect(onSubmit).not.toHaveBeenCalled()
+  })
+
+  it('submits from the last question', () => {
+    const { onSubmit } = renderCard({ question: TWO_QUESTIONS })
+
+    fireEvent.click(screen.getByRole('radio', { name: /pnpm/ }))
+    fireEvent.click(screen.getByRole('button', { name: /next question/i }))
+    fireEvent.click(screen.getByRole('checkbox', { name: /lint/ }))
+    fireEvent.click(screen.getByRole('button', { name: /send answer/i }))
+
+    expect(onSubmit).toHaveBeenCalledWith([['pnpm'], ['lint']])
+  })
+
+  it('submits from the last question reached through the stepper', () => {
+    // Jumping straight to the end is still a submit — the label tracks the
+    // step the user is on, not how they got there.
+    const { onSubmit } = renderCard({ question: TWO_QUESTIONS })
+
+    fireEvent.click(screen.getByRole('button', { name: /Checks/ }))
+
+    expect(screen.getByRole('button', { name: /send answer/i })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /send answer/i }))
+    expect(onSubmit).toHaveBeenCalledWith([[], []])
+  })
+
   it('accumulates selections for a multi-answer question', () => {
     const { onSubmit } = renderCard({ question: TWO_QUESTIONS })
 
@@ -171,8 +216,12 @@ describe('QuestionCard', () => {
   })
 
   it('sends an empty group for every unanswered question', () => {
+    // Walking to the end without choosing anything is a valid reply: the
+    // backend index-matches answers to questions, so a skipped question has to
+    // arrive as an empty group rather than be dropped.
     const { onSubmit } = renderCard({ question: TWO_QUESTIONS })
 
+    fireEvent.click(screen.getByRole('button', { name: /next question/i }))
     fireEvent.click(screen.getByRole('button', { name: /send answer/i }))
 
     expect(onSubmit).toHaveBeenCalledWith([[], []])

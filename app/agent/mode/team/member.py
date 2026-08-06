@@ -1077,7 +1077,13 @@ class TeamMemberBase(abc.ABC):
             # ``ask_user`` suspended the turn: the loop reports it
             # through the run config rather than raising, because the turn is
             # complete-and-resumable, not failed.
-            suspended = run_metadata.get("question_suspended")
+            #
+            # Read ``config.metadata``, never the ``run_metadata`` dict passed
+            # in: ``RunConfig`` is a Pydantic model, so validation *copies* the
+            # mapping. The loop writes to the copy, and the original never sees
+            # the flag — the lead would go ``idle`` on a turn that is still
+            # waiting on the user, and the team would emit ``done``.
+            suspended = config.metadata.get("question_suspended")
             self._question_suspended = (
                 suspended if isinstance(suspended, dict) else None
             )

@@ -331,6 +331,46 @@ async def test_hydration_reparks_a_rebuilt_team(monkeypatch):
     assert team.has_active_user_turn() is True
 
 
+async def test_the_lead_parks_in_waiting_input_when_the_loop_suspends(
+    monkeypatch, mock_stream_store
+):
+    """The suspension has to survive the trip back from ``Agent.run``.
+
+    The loop reports it by writing into ``config.metadata``. ``RunConfig`` is a
+    Pydantic model, so that dict is a *copy* of the one the caller passed —
+    reading the caller's original never sees the flag, the lead goes ``idle``
+    instead of ``waiting_input``, and the team emits ``done`` on a turn that is
+    actually still waiting on the user.
+    """
+    team = _make_team()
+    question_id = uuid.uuid4()
+
+    async def fake_run(messages, *, config=None, **kwargs):
+        config.metadata["question_suspended"] = {
+            "question_id": question_id,
+            "session_id": uuid.UUID(LEAD_SESSION),
+            "tool_call_id": "call-1",
+        }
+        return []
+
+    monkeypatch.setattr(team.lead.agent, "run", fake_run)
+    monkeypatch.setattr(
+        team.lead, "_persist_inbox", AsyncMock(return_value=[]), raising=False
+    )
+
+    await team.handle_user_message("ask me something", session_id=LEAD_SESSION)
+    if team.lead._active_task is not None:
+        await team.lead._active_task
+
+    assert team.lead.state == "waiting_input"
+    assert is_busy(team.lead.state) is True
+
+    events = [call.args[1].event for call in mock_stream_store.call_args_list]
+    # A suspended turn is not a finished turn: `done` would tell every client to
+    # close the turn out from under the question card.
+    assert "done" not in events
+
+
 # ---------------------------------------------------------------------------
 # Supersede vs defer
 # ---------------------------------------------------------------------------

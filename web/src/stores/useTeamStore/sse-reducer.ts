@@ -598,11 +598,11 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
       case 'done': {
         set((draft) => {
           draft.isTeamWorking = false
-          // A turn that reaches `done` is over; nothing can answer a question
-          // from it any more. Normally already closed by its resolution event —
-          // this is the fallback, and it still has to record an outcome so the
-          // card does not sit on "waiting" forever.
-          applyQuestionResolution(draft, null, null, 'expired')
+          // An open question deliberately survives `done`. The suspension is
+          // durable: the row stays `pending`, and a reload brings the card back
+          // fully answerable, so closing it here would show a resolution the
+          // server never made. Real endings (answer, dismiss, supersede, stop)
+          // all broadcast their own resolution.
           draft.isContinuing = false
           const completedAtMs = Date.now()
           const completedAt = new Date(completedAtMs)

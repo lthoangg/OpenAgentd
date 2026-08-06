@@ -177,14 +177,18 @@ describe("useTeamStore — ask_user", () => {
     expect(state.resolvedQuestions["call-1"].answers).toBeNull()
   })
 
-  it("records an unanswered question left open when the turn ends", () => {
+  it("keeps an open question when a done event arrives", () => {
     ask()
 
     useTeamStore.getState()._handleSSEEvent("done", { session_id: SESSION_ID })
 
+    // `done` says the turn stopped running, not that the question is void: the
+    // row stays `pending` in the database and a reload brings the card back
+    // fully answerable. Closing it here would show "No longer relevant" for a
+    // question the server is still waiting on.
     const state = useTeamStore.getState()
-    expect(state.pendingQuestion).toBeNull()
-    expect(state.resolvedQuestions["call-1"].reason).toBe("expired")
+    expect(state.pendingQuestion?.id).toBe(QUESTION_ID)
+    expect(state.resolvedQuestions["call-1"]).toBeUndefined()
   })
 
   it("ignores a resolution for a question it is not showing", () => {

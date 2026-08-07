@@ -189,6 +189,22 @@ describe('QuestionCard', () => {
     expect(onSubmit).toHaveBeenCalledWith([['yarn, actually']])
   })
 
+  it('scrolls the free-text textarea into view when chosen', () => {
+    const original = HTMLElement.prototype.scrollIntoView
+    const scrollIntoViewMock = mock(() => {})
+    HTMLElement.prototype.scrollIntoView = scrollIntoViewMock
+
+    try {
+      renderCard()
+      fireEvent.click(screen.getByRole('radio', { name: /type your own answer/i }))
+
+      expect(screen.getByRole('textbox')).toBeInTheDocument()
+      expect(scrollIntoViewMock).toHaveBeenCalledWith({ block: 'nearest', behavior: 'smooth' })
+    } finally {
+      HTMLElement.prototype.scrollIntoView = original
+    }
+  })
+
   it('does not offer free text when the question disallows it', () => {
     renderCard({ question: TWO_QUESTIONS })
 

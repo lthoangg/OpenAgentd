@@ -78,6 +78,26 @@ export function QuestionCard({
   const step = Math.min(draft.step, questions.length - 1)
   const current = questions[step]
 
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const isCustomActive = Boolean(current?.custom && draft.customActive[step])
+
+  useEffect(() => {
+    if (isCustomActive && textareaRef.current) {
+      const el = textareaRef.current
+      if (typeof el.scrollIntoView === 'function') {
+        el.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+      }
+      // Mobile viewports (Tauri mobile app / mobile browser) shrink when the soft
+      // keyboard slides up (~300ms). Re-scroll to ensure the placeholder remains visible.
+      const timer = setTimeout(() => {
+        if (typeof el.scrollIntoView === 'function') {
+          el.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+        }
+      }, 300)
+      return () => clearTimeout(timer)
+    }
+  }, [isCustomActive, step])
+
   const update = useCallback((patch: Partial<QuestionDraft>) => {
     setDraft((prev) => ({ ...prev, ...patch }))
   }, [])
@@ -211,6 +231,7 @@ export function QuestionCard({
 
           {current.custom && draft.customActive[step] && (
             <Textarea
+              ref={textareaRef}
               autoFocus
               value={draft.customText[step] ?? ''}
               maxLength={MAX_ANSWER_CHARS}

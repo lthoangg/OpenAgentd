@@ -2,7 +2,7 @@
 title: Features
 description: Canonical, version-cited catalogue of shipped user-visible OpenAgentd features.
 status: stable
-updated: 2026-08-05
+updated: 2026-08-07
 ---
 
 # Features
@@ -14,7 +14,7 @@ release that introduced it (where known). When you ship something new, **add it 
 > double-clickable app that runs a team of AI agents on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 16 providers. Your keys.
 
-**Latest release:** v1.130.0 · August 5, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v1.130.0)
+**Latest release:** v1.131.0 · August 7, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v1.131.0)
 
 ---
 
@@ -217,7 +217,14 @@ run from the terminal.
   and session interrupt stays bounded even when an orphaned child still holds
   the output pipe; foreground output memory is bounded, with oversized output
   streamed incrementally to a session spill file `[v1.120.1]`.
-- **Drag-and-drop files into chat** `[since v1.0, v1.82.0]` — drag files (images, PDFs, text, etc.) anywhere onto the chat area (both cockpit and coding views) to show a drop overlay and attach them to the composer. Supports multi-file drops, file-type filtering, and cancellation.
+- **Drag-and-drop files into chat** `[since v1.0, v1.82.0, v1.131.0]` — drag files (images, PDFs, text, etc.) anywhere onto the chat area (both cockpit and coding views) to show a drop overlay and attach them to the composer. Supports multi-file drops, file-type filtering, and cancellation. A drop no longer attaches the same file twice, folders dropped onto the chat are ignored instead of silently swallowed, and a file dropped outside the chat area no longer navigates the app away from the session `[v1.131.0]`.
+- **50 MB attachments with in-composer rejection** `[v1.131.0]` — every attachment
+  type shares one 50 MB per-message ceiling instead of the previous mix of
+  tighter per-category rules behind a smaller request-body cap. Oversize files
+  are refused in the composer, by name, with the rest of the batch still
+  attached and the draft intact — no more accepting a file and then losing the
+  whole message to a bare upload error. `@mention` context keeps its own
+  500 KB limit, since mentioned files are read inline rather than uploaded.
 - **Composer history navigation** `[v1.32.0]` — when the input is empty, `↑` / `↓`
   walks previous user prompts from the current chat plus local submissions.
 - **Clickable URLs in user message bubbles** `[v1.77.0]` — plain-text URLs typed
@@ -658,7 +665,9 @@ MCP.
   than guessing on a decision that would cost real work to undo. Each question
   carries up to 5 options with optional descriptions, single- or multi-select,
   a "Recommended" badge on the agent's preferred choice, and an optional
-  free-text answer. The card renders **inline in the transcript**, in place of
+  free-text answer. Multi-question cards are stepped through one at a time —
+  **Back** replaces **Dismiss** past the first question — and the whole set is
+  submitted together at the end. The card renders **inline in the transcript**, in place of
   the tool call that raised it, with exactly two states: waiting (the questions
   and their suggested answers) and resolved (your answer, or the dismissal).
   The suspension is **durable, not in-memory**: the pending question and the

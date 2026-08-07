@@ -367,7 +367,7 @@ export function resetSessionState(
     state.agentStreams[name]._turnStartedAt = null
     // The lead stream object is reused across sessions — a restart pending in
     // the session being left would otherwise show dots on the one being opened.
-    state.agentStreams[name]._awaitingRestartOutput = false
+    state.agentStreams[name]._restartedAtBlockCount = null
       state.agentStreams[name].revertedCount = 0
       state.agentStreams[name].revertedMessages = []
       state.agentStreams[name]._revertedSuffix = []
@@ -531,14 +531,12 @@ async function loadSessionImpl(
           leadStream._turnStartedAt =
             history.lead.running === true && !awaitingAnswer ? Date.now() : null
         }
-        // A restart is only still pending if the server agrees the turn is open.
-        // The snapshot is authoritative here: after a daemon restart the client
-        // can miss every live event of the resumed turn and learn the outcome
-        // only from this fetch, which would otherwise strand the dots forever.
-        leadStream._awaitingRestartOutput =
-          leadStream._awaitingRestartOutput === true &&
-          history.lead.running === true &&
-          !awaitingAnswer
+        // No restart bookkeeping needed here: the status assigned above is the
+        // snapshot's verdict, and `isAwaitingRestartOutput` only reports a
+        // pending restart for a `working` stream. A turn the server says has
+        // ended (`idle`) or parked on another question (`waiting_input`) stops
+        // matching on its own — which is what keeps the dots from stranding
+        // when a reconnecting client missed the whole resumed turn.
         const leadVisibleMsgs = messagesBeforeRevert(history.lead)
         const leadUsage = sumUsageFromMessages(leadVisibleMsgs)
         leadStream.usage = leadUsage

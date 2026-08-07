@@ -69,16 +69,23 @@ export interface AgentStream {
   _completionEstimated?: number
   _turnStartedAt?: number | null
   /**
-   * The turn was restarted with no new user message — an answered `ask_user`,
-   * or `/continue` — and nothing has come back yet.
+   * `currentBlocks.length` at the moment the turn was restarted with no new
+   * user message — an answered `ask_user`, or `/continue` — or `null` when no
+   * restart is outstanding.
    *
    * A normal send shows "about to respond" dots because its optimistic user
    * block is the only thing in `currentBlocks`. A restart adds no block and
    * `currentBlocks` still holds the turn it is resuming, so neither dots
-   * condition fires and the UI looks frozen until the first token. Cleared by
-   * the first content of the resumed turn, and by `done` as a backstop.
+   * condition fires and the UI looks frozen until the first token.
+   *
+   * Stored as a mark rather than a boolean so that "still waiting" is
+   * *derived* — see {@link isAwaitingRestartOutput}. Any content arriving moves
+   * `currentBlocks.length` off the mark and the condition goes false on its
+   * own, so there is no clear-the-flag path to forget on the half-dozen ways a
+   * restarted turn can end (first token, buffered delta, status change, `done`,
+   * or a reconcile that is the only surviving signal after a daemon restart).
    */
-  _awaitingRestartOutput?: boolean
+  _restartedAtBlockCount?: number | null
   model: string | null
   lastError: string | null
   revertedCount?: number

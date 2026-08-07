@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "bun:test"
-import { useTeamStore } from "@/stores/useTeamStore"
+import { useTeamStore, isAwaitingRestartOutput } from "@/stores/useTeamStore"
 
 /**
  * ``ask_user`` store behaviour.
@@ -212,6 +212,17 @@ describe("useTeamStore — ask_user", () => {
   })
 
   describe("resuming after an answer", () => {
+    /**
+     * Read the dots decision the way the components do.
+     *
+     * Asserted through the selector rather than a stored flag on purpose: the
+     * cases below are the exit paths a restarted turn can take, and the point
+     * of deriving the answer is that none of them needs its own bookkeeping.
+     */
+    function awaitingRestart(): boolean {
+      return isAwaitingRestartOutput(useTeamStore.getState().agentStreams.openagentd)
+    }
+
     function suspend() {
       useTeamStore.getState()._handleSSEEvent("agent_status", {
         agent: "openagentd",
@@ -229,7 +240,7 @@ describe("useTeamStore — ask_user", () => {
 
       const stream = useTeamStore.getState().agentStreams.openagentd
       expect(stream.status).toBe("working")
-      expect(stream._awaitingRestartOutput).toBe(true)
+      expect(awaitingRestart()).toBe(true)
       expect(useTeamStore.getState().isTeamWorking).toBe(true)
     })
 
@@ -242,9 +253,7 @@ describe("useTeamStore — ask_user", () => {
         content: "Using pnpm.",
       })
 
-      expect(
-        useTeamStore.getState().agentStreams.openagentd._awaitingRestartOutput,
-      ).toBe(false)
+      expect(awaitingRestart()).toBe(false)
     })
 
     it("stops awaiting the restart once the turn calls a tool", () => {
@@ -257,9 +266,7 @@ describe("useTeamStore — ask_user", () => {
         tool_call_id: "call-2",
       })
 
-      expect(
-        useTeamStore.getState().agentStreams.openagentd._awaitingRestartOutput,
-      ).toBe(false)
+      expect(awaitingRestart()).toBe(false)
     })
 
     it("stops awaiting the restart when the agent reports it went idle", () => {
@@ -274,9 +281,7 @@ describe("useTeamStore — ask_user", () => {
         status: "idle",
       })
 
-      expect(
-        useTeamStore.getState().agentStreams.openagentd._awaitingRestartOutput,
-      ).toBe(false)
+      expect(awaitingRestart()).toBe(false)
     })
 
     it("stops awaiting the restart when the resumed turn parks on another question", () => {
@@ -288,9 +293,7 @@ describe("useTeamStore — ask_user", () => {
         status: "waiting_input",
       })
 
-      expect(
-        useTeamStore.getState().agentStreams.openagentd._awaitingRestartOutput,
-      ).toBe(false)
+      expect(awaitingRestart()).toBe(false)
     })
 
     it("keeps awaiting the restart while the agent is only reported working", () => {
@@ -303,9 +306,7 @@ describe("useTeamStore — ask_user", () => {
         status: "working",
       })
 
-      expect(
-        useTeamStore.getState().agentStreams.openagentd._awaitingRestartOutput,
-      ).toBe(true)
+      expect(awaitingRestart()).toBe(true)
     })
 
     it("stops awaiting the restart when the turn ends without output", () => {
@@ -316,9 +317,7 @@ describe("useTeamStore — ask_user", () => {
 
       useTeamStore.getState()._handleSSEEvent("done", { session_id: SESSION_ID })
 
-      expect(
-        useTeamStore.getState().agentStreams.openagentd._awaitingRestartOutput,
-      ).toBe(false)
+      expect(awaitingRestart()).toBe(false)
     })
 
     it("does not strand the flag on the next session opened", () => {
@@ -327,9 +326,7 @@ describe("useTeamStore — ask_user", () => {
 
       useTeamStore.getState().beginResolvedSession(null)
 
-      expect(
-        useTeamStore.getState().agentStreams.openagentd?._awaitingRestartOutput,
-      ).toBe(false)
+      expect(awaitingRestart()).toBe(false)
     })
   })
 

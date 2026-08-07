@@ -28,7 +28,7 @@ import { appendCurrentTurns, partitionTurns } from '@/utils/turns'
 import { latestDirectUserBlockIdFromParts, mergeBlocks } from '@/utils/blocks'
 import { extractSleepPrefix, formatTime } from '@/utils/format'
 import { latestMCPAppResourceBlockIdsFromParts, latestMCPAppResources, mcpAppResourceUri } from '@/utils/mcp-app-artifacts'
-import { useTeamStore } from '@/stores/useTeamStore'
+import { useTeamStore, isAwaitingRestartOutput } from '@/stores/useTeamStore'
 import { findCommittedMentions } from './InputBar.mentions'
 import type { AgentStream } from '@/stores/useTeamStore'
 import { resolveApiUrl } from '@/api/client'
@@ -700,7 +700,7 @@ export const AgentPane = memo(function AgentPane({
               after an answered question (no new user block, blocks still hold
               the suspended turn), or working with no visible agent content yet. */}
           {(isPending ||
-            stream._awaitingRestartOutput === true ||
+            isAwaitingRestartOutput(stream) ||
             (isWorking && stream.currentBlocks.every((b) => b.type === 'user' || isBlankContentBlock(b)))) && (
             <div className="flex items-center gap-1.5 px-3 pt-3" role="status" aria-label={`${name} is preparing a response`}>
               <span aria-hidden="true" className="h-1.5 w-1.5 animate-bounce rounded-full bg-(--color-accent)" style={{ animationDelay: '0ms' }} />

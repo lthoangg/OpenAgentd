@@ -7,6 +7,8 @@ import { createPendingSlice } from './pending-slice'
 import { createUISlice } from './ui-slice'
 import type { TeamStore } from './types'
 
+export { isAwaitingRestartOutput } from './helpers'
+
 export type {
   AgentStream,
   CacheInvalidation,

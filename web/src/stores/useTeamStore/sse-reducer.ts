@@ -123,8 +123,6 @@ function markTurnStarted(draft: TeamStore, agent: string, startedAt = Date.now()
   ensureAgent(draft, agent)
   const stream = draft.agentStreams[agent]
   if (stream._turnStartedAt === undefined || stream._turnStartedAt === null) stream._turnStartedAt = startedAt
-  // Output has started, so a restarted turn is no longer waiting to produce.
-  stream._awaitingRestartOutput = false
 }
 
 function appendStreamingText(
@@ -185,9 +183,6 @@ function findConfirmedTool(draft: TeamStore, agent: string, toolCallId: string |
 
 function applyBufferedSSEDelta(draft: TeamStore, event: BufferedSSEDelta) {
   const d = event.data
-  // Any content at all means the restarted turn is producing again.
-  const producing = draft.agentStreams[d.agent as string]
-  if (producing) producing._awaitingRestartOutput = false
   if (event.type === 'message' || event.type === 'thinking') {
     appendStreamingText(
       draft,
@@ -524,12 +519,6 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
         const status = d.status as string
         set((draft) => {
           ensureAgent(draft, agent)
-          // Only a `working` agent can still be "about to respond". Every other
-          // status means the restarted turn already ended, failed, or parked on
-          // another question — and after a daemon restart this is often the
-          // only clearing signal that survives, because the reconnecting client
-          // misses the resumed turn's deltas and its `done`.
-          if (status !== 'working') draft.agentStreams[agent]._awaitingRestartOutput = false
           if (status === 'working') {
             draft.agentStreams[agent].status = 'working'
             draft.agentStreams[agent]._completionEstimated = 0
@@ -637,8 +626,6 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
             stream._completionBase = stream.usage.completionTokens
             stream._completionEstimated = 0
             stream._turnStartedAt = null
-            // Backstop: a turn that produced nothing at all still ends here.
-            stream._awaitingRestartOutput = false
             if (stream.status !== 'error' && stream.status !== 'offline') {
               stream.status = 'idle'
             }

@@ -87,7 +87,7 @@ const mockSendDesktopNotification = mock(() => Promise.resolve()) as any
 
 // ── Store import (AFTER mock.module) ──────────────────────────────────────────
 
-import { useTeamStore } from "@/stores/useTeamStore"
+import { useTeamStore, isAwaitingRestartOutput } from "@/stores/useTeamStore"
 import type { ContentBlock } from "@/api/types"
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -264,7 +264,7 @@ describe("continueTeam", () => {
     } as never)
 
     const promise = useTeamStore.getState().continueTeam()
-    expect(useTeamStore.getState().agentStreams.lead._awaitingRestartOutput).toBe(true)
+    expect(isAwaitingRestartOutput(useTeamStore.getState().agentStreams.lead)).toBe(true)
 
     resolveCommand()
     await promise

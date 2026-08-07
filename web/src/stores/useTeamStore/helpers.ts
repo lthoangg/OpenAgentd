@@ -53,6 +53,31 @@ export function anyAgentLive(streams: Record<string, AgentStream>): boolean {
 }
 
 /**
+ * True when a restarted turn (answered ``ask_user``, or ``/continue``) has not
+ * produced anything yet, so the UI should show "about to respond" dots.
+ *
+ * Derived, never stored. Content arriving grows ``currentBlocks`` past the mark
+ * taken at restart, so this falls false by itself — no clearing code, and
+ * therefore no exit path that can strand the dots on screen. ``status`` carries
+ * the rest: only a ``working`` agent can still be about to respond, so a turn
+ * that ended, failed, or parked on another question stops matching whether or
+ * not any event announced it. That also covers the cold-reconcile case, where a
+ * client that missed the whole resumed turn learns the outcome only from the
+ * status in a history fetch.
+ */
+export function isAwaitingRestartOutput(stream: AgentStream | undefined): boolean {
+  if (!stream) return false
+  if (stream.status !== 'working') return false
+  if (stream._restartedAtBlockCount == null) return false
+  return stream.currentBlocks.length <= stream._restartedAtBlockCount
+}
+
+/** Mark a turn as restarted with no new user message. */
+export function markRestartPending(stream: AgentStream): void {
+  stream._restartedAtBlockCount = stream.currentBlocks.length
+}
+
+/**
  * Append locally-produced blocks to ``stream.blocks`` and tag them unsynced so
  * ``reconcileTurnTail`` swaps exactly these for the server's canonical rows
  * instead of appending them a second time.

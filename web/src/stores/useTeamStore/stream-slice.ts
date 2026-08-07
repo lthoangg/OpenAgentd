@@ -1,6 +1,6 @@
 import type { StateCreator } from 'zustand'
 import { postTeamChat, postTeamCommand, teamStream } from '@/api/client'
-import { applyQuestionResolution, applyRevertBoundary } from './helpers'
+import { applyQuestionResolution, applyRevertBoundary, isLiveStatus, markRestartPending } from './helpers'
 import {
   applySSEDeltaBatch,
   createSSEHandler,
@@ -117,11 +117,16 @@ export const createStreamSlice: StateCreator<
         draft.isContinuing = true
         draft.error = null
         if (draft.leadName && draft.agentStreams[draft.leadName]) {
-          draft.agentStreams[draft.leadName]._turnStartedAt = submittedAt
+          const lead = draft.agentStreams[draft.leadName]
+          lead._turnStartedAt = submittedAt
           // Continue restarts the turn with no new user message, exactly like
           // an answered question: without this nothing marks it live until the
           // first token, and the turn reads as finished while it spins up.
-          draft.agentStreams[draft.leadName]._awaitingRestartOutput = true
+          // Mark the lead working optimistically too — `isTeamWorking` above
+          // already assumes the turn started, and leaving the lead `idle` until
+          // the server's `agent_status` lands contradicts it.
+          markRestartPending(lead)
+          if (!isLiveStatus(lead.status)) lead.status = 'working'
         }
       })
       await postTeamCommand('continue', sessionId)
@@ -306,7 +311,7 @@ export const createStreamSlice: StateCreator<
       // The answer restarts the turn with no new user message, so nothing else
       // marks it live until the first token — which can be seconds away.
       draft.isTeamWorking = true
-      lead._awaitingRestartOutput = true
+      markRestartPending(lead)
       if (lead.status === 'waiting_input') lead.status = 'working'
     })
   },

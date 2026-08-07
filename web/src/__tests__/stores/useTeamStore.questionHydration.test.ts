@@ -69,7 +69,7 @@ function historyWithQuestion(overrides: object = {}) {
 }))
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
-import { useTeamStore } from '@/stores/useTeamStore'
+import { useTeamStore, isAwaitingRestartOutput } from '@/stores/useTeamStore'
 
 beforeEach(() => {
   mockTeamHistory.mockClear()
@@ -130,7 +130,7 @@ describe('loadSession — pending question hydration', () => {
         status: 'waiting_input',
       })
       useTeamStore.getState().markTurnResuming()
-      expect(useTeamStore.getState().agentStreams.lead._awaitingRestartOutput).toBe(true)
+      expect(isAwaitingRestartOutput(useTeamStore.getState().agentStreams.lead)).toBe(true)
     }
 
     it('stops awaiting the restart when the fetch says the turn ended', async () => {
@@ -141,7 +141,7 @@ describe('loadSession — pending question hydration', () => {
 
       await useTeamStore.getState().loadSession('lead-sess')
 
-      expect(useTeamStore.getState().agentStreams.lead._awaitingRestartOutput).toBe(false)
+      expect(isAwaitingRestartOutput(useTeamStore.getState().agentStreams.lead)).toBe(false)
     })
 
     it('keeps awaiting the restart while the fetch says the turn is still open', async () => {
@@ -154,7 +154,7 @@ describe('loadSession — pending question hydration', () => {
 
       await useTeamStore.getState().loadSession('lead-sess')
 
-      expect(useTeamStore.getState().agentStreams.lead._awaitingRestartOutput).toBe(true)
+      expect(isAwaitingRestartOutput(useTeamStore.getState().agentStreams.lead)).toBe(true)
     })
 
     it('stops awaiting the restart when the turn parks on another question', async () => {
@@ -162,7 +162,7 @@ describe('loadSession — pending question hydration', () => {
 
       await useTeamStore.getState().loadSession('lead-sess')
 
-      expect(useTeamStore.getState().agentStreams.lead._awaitingRestartOutput).toBe(false)
+      expect(isAwaitingRestartOutput(useTeamStore.getState().agentStreams.lead)).toBe(false)
       expect(useTeamStore.getState().agentStreams.lead.status).toBe('waiting_input')
     })
   })

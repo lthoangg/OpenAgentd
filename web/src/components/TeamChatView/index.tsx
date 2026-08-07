@@ -32,7 +32,7 @@ import { WorkspaceFilesPanel } from '../WorkspaceFilesPanel'
 import { Sidebar } from '../Sidebar'
 import { useTodosQuery } from '@/queries/useTodosQuery'
 import { useProvidersQuery } from '@/queries'
-import { useTeamStore } from '@/stores/useTeamStore'
+import { useTeamStore, isAwaitingRestartOutput } from '@/stores/useTeamStore'
 import { useShallow } from 'zustand/react/shallow'
 import { useUIStore } from '@/stores/useUIStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
@@ -123,7 +123,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
         activeCurrentBlocks: activeStream?.currentBlocks ?? EMPTY_BLOCKS,
         activeStatus: activeStream?.status ?? 'idle',
         activeLastError: activeStream?.lastError ?? null,
-        activeAwaitingRestart: activeStream?._awaitingRestartOutput === true,
+        activeAwaitingRestart: isAwaitingRestartOutput(activeStream),
 
         leadRevertedCount: leadStream?.revertedCount ?? 0,
         leadRevertedMessages: leadStream?.revertedMessages ?? EMPTY_REVERTED_MESSAGES,

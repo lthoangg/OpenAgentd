@@ -147,6 +147,26 @@ class ProviderUsageCredits(BaseModel):
     balance: str | None = None
 
 
+class ProviderUsageSpend(BaseModel):
+    """A spend cap, independent of any rate-limit window.
+
+    ``reached`` is the authoritative "am I blocked" signal: a provider can
+    report available credits while the cap is already exhausted. Amounts
+    are in the cap's own unit.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    reached: bool
+    source: str | None = None
+    limit: float | None = None
+    used: float | None = None
+    remaining: float | None = None
+    # Can exceed 100 once the cap is breached — clamp at render time.
+    used_percent: float | None = None
+    resets_at: int | None = None
+
+
 class ProviderUsageLimit(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -155,6 +175,7 @@ class ProviderUsageLimit(BaseModel):
     primary: ProviderUsageWindow | None = None
     secondary: ProviderUsageWindow | None = None
     credits: ProviderUsageCredits | None = None
+    spend: ProviderUsageSpend | None = None
     plan_type: str | None = None
     rate_limit_reached_type: str | None = None
     # Some subscription providers expose a billing period but no measurable

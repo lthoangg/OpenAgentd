@@ -11,6 +11,7 @@ from app.api.schemas.settings import (
     ProviderUsageCredits,
     ProviderUsageLimit,
     ProviderUsageResponse,
+    ProviderUsageSpend,
     ProviderUsageWindow,
 )
 
@@ -56,6 +57,46 @@ def _usage_credits(data: object) -> ProviderUsageCredits | None:
     )
 
 
+def _as_float(value: object) -> float | None:
+    """Coerce an upstream number to float — amounts arrive as strings."""
+    # bool is an int subclass; it must not become 1.0.
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int | float):
+        return float(value)
+    if isinstance(value, str):
+        try:
+            return float(value)
+        except ValueError:
+            return None
+    return None
+
+
+def _usage_spend(data: object) -> ProviderUsageSpend | None:
+    if not isinstance(data, dict):
+        return None
+    values = cast("dict[str, object]", data)
+    reached = values.get("reached")
+    if not isinstance(reached, bool):
+        return None
+    raw_limit = values.get("individual_limit")
+    if not isinstance(raw_limit, dict):
+        # No cap configured — keep the flag.
+        return ProviderUsageSpend(reached=reached)
+    limit_values = cast("dict[str, object]", raw_limit)
+    source = limit_values.get("source")
+    resets_at = limit_values.get("reset_at")
+    return ProviderUsageSpend(
+        reached=reached,
+        source=source if isinstance(source, str) else None,
+        limit=_as_float(limit_values.get("limit")),
+        used=_as_float(limit_values.get("used")),
+        remaining=_as_float(limit_values.get("remaining")),
+        used_percent=_as_float(limit_values.get("used_percent")),
+        resets_at=resets_at if isinstance(resets_at, int) else None,
+    )
+
+
 def _usage_limit(
     data: object,
     *,
@@ -63,6 +104,7 @@ def _usage_limit(
     limit_name: str | None = None,
     plan_type: str | None = None,
     rate_limit_reached_type: str | None = None,
+    spend: ProviderUsageSpend | None = None,
 ) -> ProviderUsageLimit | None:
     if not isinstance(data, dict):
         return None
@@ -76,7 +118,7 @@ def _usage_limit(
     primary = _usage_window(rate_limit_values.get("primary_window"))
     secondary = _usage_window(rate_limit_values.get("secondary_window"))
     credits = _usage_credits(values.get("credits"))
-    if primary is None and secondary is None and credits is None:
+    if primary is None and secondary is None and credits is None and spend is None:
         return None
     return ProviderUsageLimit(
         limit_id=limit_id,
@@ -84,6 +126,7 @@ def _usage_limit(
         primary=primary,
         secondary=secondary,
         credits=credits,
+        spend=spend,
         plan_type=plan_type,
         rate_limit_reached_type=rate_limit_reached_type,
     )
@@ -139,11 +182,13 @@ async def get_usage() -> ProviderUsageResponse:
 
     common_plan = plan_type if isinstance(plan_type, str) else None
     limits: list[ProviderUsageLimit] = []
+    # Spend control is account-wide, not per-metered-feature.
     primary = _usage_limit(
         values,
         limit_id="codex",
         plan_type=common_plan,
         rate_limit_reached_type=reached_type,
+        spend=_usage_spend(values.get("spend_control")),
     )
     if primary is not None:
         limits.append(primary)

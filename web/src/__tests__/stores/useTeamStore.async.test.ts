@@ -6,7 +6,7 @@
  * These tests therefore live in a separate file from the synchronous store tests.
  */
 
-import { mock, describe, it, expect, beforeEach, spyOn } from "bun:test"
+import { mock, describe, it, expect, beforeEach, afterEach, spyOn } from "bun:test"
 
 // NOTE on isolation: ``mock.module("@/api/client", …)`` below patches
 // Bun's global module registry and ``mock.restore()`` does NOT undo
@@ -1254,6 +1254,20 @@ describe("stopTeam", () => {
 // ── connectStream ─────────────────────────────────────────────────────────────
 
 describe("connectStream", () => {
+  // Reconnect back-off is timer-driven, so most tests below stub the global
+  // timers to run callbacks synchronously. Restore them here rather than at the
+  // end of each test: a stub that escapes this file replaces `setTimeout`
+  // process-wide, and because Bun runs files sequentially in one process
+  // without `--parallel`, every later file that awaits a timer hangs until the
+  // 5s test timeout. One forgotten restore is enough, so no test owns its own.
+  const REAL_SET_TIMEOUT = globalThis.setTimeout
+  const REAL_CLEAR_TIMEOUT = globalThis.clearTimeout
+
+  afterEach(() => {
+    globalThis.setTimeout = REAL_SET_TIMEOUT
+    globalThis.clearTimeout = REAL_CLEAR_TIMEOUT
+  })
+
   it("calls teamStream with the current sessionId", () => {
     useTeamStore.setState({ sessionId: "stream-sid", isTeamWorking: true })
     useTeamStore.getState().connectStream()
@@ -1262,8 +1276,6 @@ describe("connectStream", () => {
   })
 
   it("coalesces streaming text deltas into one store update per frame window", () => {
-    const realSetTimeout = globalThis.setTimeout
-    const realClearTimeout = globalThis.clearTimeout
     let scheduled: (() => void) | null = null
     globalThis.setTimeout = ((callback: TimerHandler) => {
       scheduled = callback as () => void
@@ -1271,39 +1283,34 @@ describe("connectStream", () => {
     }) as unknown as typeof setTimeout
     globalThis.clearTimeout = (() => { scheduled = null }) as typeof clearTimeout
 
-    try {
-      useTeamStore.setState({ sessionId: "stream-sid" })
-      let callbacks!: { onEvent: (type: string, data: unknown) => void }
-      mockTeamStream.mockImplementation((_sid: string, cbs: typeof callbacks) => { callbacks = cbs })
-      useTeamStore.getState().connectStream()
+    useTeamStore.setState({ sessionId: "stream-sid" })
+    let callbacks!: { onEvent: (type: string, data: unknown) => void }
+    mockTeamStream.mockImplementation((_sid: string, cbs: typeof callbacks) => { callbacks = cbs })
+    useTeamStore.getState().connectStream()
 
-      let notifications = 0
-      const unsubscribe = useTeamStore.subscribe(() => { notifications += 1 })
-      callbacks.onEvent("message", { agent: "lead", text: "one " })
-      callbacks.onEvent("message", { agent: "lead", text: "two " })
-      callbacks.onEvent("message", { agent: "lead", text: "three" })
+    let notifications = 0
+    const unsubscribe = useTeamStore.subscribe(() => { notifications += 1 })
+    callbacks.onEvent("message", { agent: "lead", text: "one " })
+    callbacks.onEvent("message", { agent: "lead", text: "two " })
+    callbacks.onEvent("message", { agent: "lead", text: "three" })
 
-      // Deltas received in the same frame window should not produce one
-      // immer snapshot + subscriber notification each.
-      expect(notifications).toBe(0)
-      expect(scheduled).not.toBeNull()
-      ;(scheduled as unknown as () => void)()
-      expect(notifications).toBe(1)
-      expect(useTeamStore.getState().agentStreams.lead.currentBlocks[0].content).toBe("one two three")
+    // Deltas received in the same frame window should not produce one
+    // immer snapshot + subscriber notification each.
+    expect(notifications).toBe(0)
+    expect(scheduled).not.toBeNull()
+    ;(scheduled as unknown as () => void)()
+    expect(notifications).toBe(1)
+    expect(useTeamStore.getState().agentStreams.lead.currentBlocks[0].content).toBe("one two three")
 
-      // A structural event must flush pending text synchronously first, so
-      // `done` commits every preceding byte instead of finalising early.
-      callbacks.onEvent("message", { agent: "lead", text: " done" })
-      callbacks.onEvent("done", {})
-      expect(scheduled).toBeNull()
-      expect(useTeamStore.getState().agentStreams.lead.currentBlocks).toHaveLength(0)
-      expect(useTeamStore.getState().agentStreams.lead.blocks[0].content).toBe("one two three done")
-      expect(notifications).toBe(3) // one delta flush + one delta flush + done
-      unsubscribe()
-    } finally {
-      globalThis.setTimeout = realSetTimeout
-      globalThis.clearTimeout = realClearTimeout
-    }
+    // A structural event must flush pending text synchronously first, so
+    // `done` commits every preceding byte instead of finalising early.
+    callbacks.onEvent("message", { agent: "lead", text: " done" })
+    callbacks.onEvent("done", {})
+    expect(scheduled).toBeNull()
+    expect(useTeamStore.getState().agentStreams.lead.currentBlocks).toHaveLength(0)
+    expect(useTeamStore.getState().agentStreams.lead.blocks[0].content).toBe("one two three done")
+    expect(notifications).toBe(3) // one delta flush + one delta flush + done
+    unsubscribe()
   })
 
   it("sets isConnected=true", () => {
@@ -1364,7 +1371,6 @@ describe("connectStream", () => {
   it("schedules a reconnect after a transient network error while working", () => {
     // Capture the setTimeout callback so we can fire it synchronously.
     let timerCb!: () => void
-    const origSetTimeout = globalThis.setTimeout
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     spyOn(globalThis, "setTimeout").mockImplementation((cb: any) => {
       timerCb = cb
@@ -1387,7 +1393,6 @@ describe("connectStream", () => {
     expect(mockTeamStream).toHaveBeenCalledTimes(2)
     expect(useTeamStore.getState().isConnected).toBe(true)
 
-    globalThis.setTimeout = origSetTimeout
   })
 
   it("backs off repeated transient reconnects and resets after an event", () => {
@@ -1417,7 +1422,6 @@ describe("connectStream", () => {
 
   it("clears a pending reconnect timer when starting a new session", () => {
     let timerCb!: () => void
-    const origSetTimeout = globalThis.setTimeout
     const clearTimeoutSpy = spyOn(globalThis, "clearTimeout")
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     spyOn(globalThis, "setTimeout").mockImplementation((cb: any) => {
@@ -1442,12 +1446,10 @@ describe("connectStream", () => {
     timerCb()
     expect(mockTeamStream).toHaveBeenCalledTimes(1)
 
-    globalThis.setTimeout = origSetTimeout
   })
 
   it("does not reconnect from the timer if the session changed", () => {
     let timerCb!: () => void
-    const origSetTimeout = globalThis.setTimeout
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     spyOn(globalThis, "setTimeout").mockImplementation((cb: any) => {
       timerCb = cb
@@ -1468,12 +1470,10 @@ describe("connectStream", () => {
     // teamStream called only once (the original connect), not again.
     expect(mockTeamStream).toHaveBeenCalledTimes(1)
 
-    globalThis.setTimeout = origSetTimeout
   })
 
   it("does not reconnect from the timer if already reconnected", () => {
     let timerCb!: () => void
-    const origSetTimeout = globalThis.setTimeout
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     spyOn(globalThis, "setTimeout").mockImplementation((cb: any) => {
       timerCb = cb
@@ -1493,7 +1493,6 @@ describe("connectStream", () => {
     // Still only one teamStream call — isConnected guard prevents the extra one.
     expect(mockTeamStream).toHaveBeenCalledTimes(1)
 
-    globalThis.setTimeout = origSetTimeout
   })
 
   it("ignores stream errors while the page is unloading", () => {

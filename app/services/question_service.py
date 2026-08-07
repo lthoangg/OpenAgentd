@@ -221,15 +221,3 @@ async def _rewrite_placeholder(
     extra.pop("pending_question", None)
     placeholder.extra = extra or None
     db.add(placeholder)
-
-
-async def answer_question(
-    db: AsyncSession,
-    *,
-    question_id: UUID,
-    answers: Sequence[Sequence[str]],
-) -> PendingQuestion | None:
-    """Resolve *question_id* with the user's selections."""
-    return await resolve_pending_question(
-        db, question_id=question_id, status="answered", answers=answers
-    )

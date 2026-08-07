@@ -24,6 +24,7 @@ from loguru import logger
 
 from app.agent.mode.team.member import is_busy
 from app.agent.schemas.events import QuestionAnsweredEvent, QuestionDismissedEvent
+from app.models.chat import PendingQuestion
 from app.api.schemas.team import (
     MAX_ANSWER_CHARS,
     PendingQuestionEnvelope,
@@ -40,18 +41,44 @@ from app.services.team_manager import find_live_team_serving_session
 router = APIRouter()
 
 
-def _parse_session_id(session_id: str) -> UUID:
-    try:
-        return UUID(session_id)
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail="Invalid session id") from exc
+async def _open_question_or_conflict(
+    db: DbSession, session_id: UUID, question_id: UUID
+) -> PendingQuestion:
+    """Return *session_id*'s open question, or raise the right 4xx.
+
+    Shared by both resolution routes so the answer/dismiss distinction lives in
+    one place: nothing pending is a ``409`` (a second device already resolved
+    it, so the client should close its card), while a pending row under a
+    *different* id is a ``404``. Neither is a hard error to surface.
+    """
+    row = await question_service.get_pending_question(db, session_id)
+    if row is None or row.id != question_id:
+        raise HTTPException(
+            status_code=409 if row is None else 404,
+            detail="Question is not open.",
+        )
+    return row
 
 
-def _parse_question_id(question_id: str) -> UUID:
-    try:
-        return UUID(question_id)
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail="Invalid question id") from exc
+async def _resolve_or_conflict(
+    db: DbSession,
+    *,
+    question_id: UUID,
+    status: question_service.ResolvedStatus,
+    answers: list[list[str]] | None = None,
+) -> None:
+    """Close the question and commit, or raise ``409`` if it lost the race.
+
+    ``resolve_pending_question`` guards its ``UPDATE`` on ``status='pending'``,
+    so a concurrent resolution returns ``None`` here rather than resuming the
+    turn twice.
+    """
+    resolved = await question_service.resolve_pending_question(
+        db, question_id=question_id, status=status, answers=answers
+    )
+    if resolved is None:
+        raise HTTPException(status_code=409, detail="Question already resolved.")
+    await db.commit()
 
 
 async def get_team_for_session(session_id: str):
@@ -119,11 +146,10 @@ def _validate_answers(questions: list[dict], answers: list[list[str]]) -> None:
 
 @router.get("/{session_id}/question")
 async def get_pending_question(
-    session_id: str, db: DbSession
+    session_id: UUID, db: DbSession
 ) -> PendingQuestionEnvelope:
     """Return the open question for *session_id*, if the lead is waiting."""
-    session_uuid = _parse_session_id(session_id)
-    row = await question_service.get_pending_question(db, session_uuid)
+    row = await question_service.get_pending_question(db, session_id)
 
     if row is None:
         return PendingQuestionEnvelope(question=None)
@@ -133,57 +159,43 @@ async def get_pending_question(
 
 @router.post("/{session_id}/question/{question_id}/answer")
 async def answer_question(
-    session_id: str,
-    question_id: str,
+    session_id: UUID,
+    question_id: UUID,
     body: QuestionAnswerRequest,
     db: DbSession,
 ) -> QuestionResolveResponse:
     """Record the user's answer and resume the suspended turn."""
-    session_uuid = _parse_session_id(session_id)
-    question_uuid = _parse_question_id(question_id)
-
-    row = await question_service.get_pending_question(db, session_uuid)
-    if row is None or row.id != question_uuid:
-        # Either nothing is pending, or this id is stale — a second device
-        # already resolved it. Distinguish so the client can close its card
-        # instead of showing a hard error.
-        raise HTTPException(
-            status_code=409 if row is None else 404,
-            detail="Question is not open.",
-        )
+    sid = str(session_id)
+    row = await _open_question_or_conflict(db, session_id, question_id)
 
     _validate_answers(row.payload.get("questions", []), body.answers)
-
-    resolved = await question_service.answer_question(
-        db, question_id=question_uuid, answers=body.answers
+    answers = [list(answer) for answer in body.answers]
+    await _resolve_or_conflict(
+        db, question_id=question_id, status="answered", answers=answers
     )
-    if resolved is None:
-        raise HTTPException(status_code=409, detail="Question already resolved.")
-    await db.commit()
 
     # The suspension outlives the stream state that carried it: a restart drops
     # the table, and the sliding TTL expires a turn that emits nothing while it
-    # waits. Both leave every event below — and the whole resumed turn — with
-    # nowhere to go, since push_event and attach no-op without turn state.
-    await stream_store.ensure_turn(session_id)
-
+    # waits. Both leave this event — and the whole resumed turn — with nowhere
+    # to go, hence `create_if_missing`.
     await stream_store.push_event(
-        session_id,
+        sid,
         StreamEnvelope.from_event(
             QuestionAnsweredEvent(
-                question_id=question_id,
-                session_id=session_id,
-                answers=[list(answer) for answer in body.answers],
+                question_id=str(question_id),
+                session_id=sid,
+                answers=answers,
             )
         ),
+        create_if_missing=True,
     )
 
-    resumed = await _resume_lead(session_id, db)
+    resumed = await _resume_lead(sid, db)
     if not resumed:
         # Nothing is going to run this turn, and the client is still showing it
         # as live. Close it so the session stops reading as busy; the answer is
         # saved and the user is told to send a message to continue.
-        await _end_turn(session_id)
+        await _end_turn(sid)
     logger.info(
         "question_answered session_id={} question_id={} resumed={}",
         session_id,
@@ -195,51 +207,36 @@ async def answer_question(
 
 @router.post("/{session_id}/question/{question_id}/dismiss")
 async def dismiss_question(
-    session_id: str, question_id: str, db: DbSession
+    session_id: UUID, question_id: UUID, db: DbSession
 ) -> QuestionResolveResponse:
     """Close the question without answering; the turn stays ended."""
-    session_uuid = _parse_session_id(session_id)
-    question_uuid = _parse_question_id(question_id)
-
-    row = await question_service.get_pending_question(db, session_uuid)
-    if row is None or row.id != question_uuid:
-        raise HTTPException(
-            status_code=409 if row is None else 404,
-            detail="Question is not open.",
-        )
-    resolved = await question_service.resolve_pending_question(
-        db, question_id=question_uuid, status="dismissed"
-    )
-    if resolved is None:
-        raise HTTPException(status_code=409, detail="Question already resolved.")
-    await db.commit()
+    sid = str(session_id)
+    await _open_question_or_conflict(db, session_id, question_id)
+    await _resolve_or_conflict(db, question_id=question_id, status="dismissed")
 
     # Same reason as the answer path: without turn state this broadcast and the
     # `done` that follows it are dropped, and other devices keep showing an open
     # card on a session that reads as running.
-    await stream_store.ensure_turn(session_id)
-
     await stream_store.push_event(
-        session_id,
+        sid,
         StreamEnvelope.from_event(
             QuestionDismissedEvent(
-                question_id=question_id,
-                session_id=session_id,
+                question_id=str(question_id),
+                session_id=sid,
                 reason="dismissed",
             )
         ),
+        create_if_missing=True,
     )
 
-    team = await get_team_for_session(session_id)
+    team = await get_team_for_session(sid)
     # The team may be a registry-key match whose lead is bound elsewhere, so it
     # decides whether it can close this turn; ``False`` means nothing live owns
     # the session (restarted daemon, or evicted and rebuilt) and the client is
     # still showing an open turn, so close it on the stream directly.
-    handled = team is not None and await team.end_turn_after_question_dismissed(
-        session_id
-    )
+    handled = team is not None and await team.end_turn_after_question_dismissed(sid)
     if not handled:
-        await _end_turn(session_id)
+        await _end_turn(sid)
 
     logger.info(
         "question_dismissed_by_user session_id={} question_id={}",

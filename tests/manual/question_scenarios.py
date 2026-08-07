@@ -36,7 +36,6 @@ from app.services import memory_stream_store as stream_store
 from app.services.stream_envelope import StreamEnvelope
 from app.services.question_service import (
     PLACEHOLDER_RESULT,
-    answer_question,
     create_pending_question,
     format_answers_for_model,
     get_pending_question,
@@ -171,8 +170,11 @@ async def run(engine):
         sess, row = await _suspend(s)
         before = len(await get_messages_for_llm(s, sess.id))
 
-        resolved = await answer_question(
-            s, question_id=row.id, answers=[["pnpm"], ["lint", "test"]]
+        resolved = await resolve_pending_question(
+            s,
+            question_id=row.id,
+            status="answered",
+            answers=[["pnpm"], ["lint", "test"]],
         )
         await s.commit()
 
@@ -208,8 +210,12 @@ async def run(engine):
     async with factory() as s:
         sess, row = await _suspend(s)
 
-        first = await answer_question(s, question_id=row.id, answers=[["pnpm"], []])
-        second = await answer_question(s, question_id=row.id, answers=[["bun"], []])
+        first = await resolve_pending_question(
+            s, question_id=row.id, status="answered", answers=[["pnpm"], []]
+        )
+        second = await resolve_pending_question(
+            s, question_id=row.id, status="answered", answers=[["bun"], []]
+        )
         await s.commit()
 
         check("D1: the first answer wins", first is not None, True)
@@ -254,7 +260,9 @@ async def run(engine):
     print("\n── Scenario F: A question the user skipped ──")
     async with factory() as s:
         sess, row = await _suspend(s)
-        await answer_question(s, question_id=row.id, answers=[[], ["lint"]])
+        await resolve_pending_question(
+            s, question_id=row.id, status="answered", answers=[[], ["lint"]]
+        )
         await s.commit()
 
         content = await _tool_result(s, sess.id, row.tool_call_id)
@@ -273,7 +281,9 @@ async def run(engine):
     print("\n── Scenario G: A second question later in the same session ──")
     async with factory() as s:
         sess, first_row = await _suspend(s)
-        await answer_question(s, question_id=first_row.id, answers=[["pnpm"], []])
+        await resolve_pending_question(
+            s, question_id=first_row.id, status="answered", answers=[["pnpm"], []]
+        )
         await s.commit()
 
         second_call = f"call_{next(_call_ids)}"
@@ -362,8 +372,8 @@ async def run(engine):
             "done",
         )
 
-        resolved = await answer_question(
-            s, question_id=row.id, answers=[["pnpm"], ["lint"]]
+        resolved = await resolve_pending_question(
+            s, question_id=row.id, status="answered", answers=[["pnpm"], ["lint"]]
         )
         await s.commit()
         check("H6: the durable row still resolves", resolved.status, "answered")

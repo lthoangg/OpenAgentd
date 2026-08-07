@@ -784,12 +784,13 @@ async def interrupt_team(team: "AgentTeam", session_id: str | None) -> list[str]
                 )
     if effective_session_id:
         # A turn parked on `ask_user` emits nothing, so the store's sliding TTL
-        # can expire its state while the team is still live. Without this the
-        # `done` below is dropped and the client keeps showing an open turn.
-        await stream_store.ensure_turn(effective_session_id)
+        # can expire its state while the team is still live. Without
+        # `create_if_missing` this `done` is dropped and the client keeps showing
+        # an open turn.
         await stream_store.push_event(
             effective_session_id,
             StreamEnvelope.from_parts(event="done", data={}),
+            create_if_missing=True,
         )
         await stream_store.mark_done(effective_session_id)
         try:

@@ -199,8 +199,13 @@ async def ensure_turn(session_id: str) -> None:
     A turn suspended on ``ask_user`` can be resumed long after the state that
     carried it was lost: the daemon restarts, or the sliding ``STREAM_TTL``
     expires because a waiting turn emits nothing to refresh it. Both leave
-    ``_turns`` without an entry, and both ``push_event`` and ``attach`` drop
-    everything in that case — so the resumed turn would stream to nobody.
+    ``_turns`` without an entry, and ``attach`` then returns immediately — so a
+    client that correctly treats an open question as a live turn reconnects in a
+    tight loop.
+
+    Only needed before :func:`attach`; to *send* into a turn whose state may be
+    gone, pass ``create_if_missing=True`` to :func:`push_event` instead of
+    calling this first.
 
     Deliberately *not* ``init_turn``: when the suspension is still in memory,
     its accumulated content, tool calls and subscribers are what a mid-turn
@@ -212,17 +217,37 @@ async def ensure_turn(session_id: str) -> None:
     await init_turn(session_id)
 
 
-async def push_event(session_id: str, envelope: StreamEnvelope) -> None:
+async def push_event(
+    session_id: str, envelope: StreamEnvelope, *, create_if_missing: bool = False
+) -> None:
     """Update state and fan-out event to all live subscribers.
 
     ``envelope`` must be a :class:`StreamEnvelope` — raw dicts are rejected
     at the type boundary.  Producers build envelopes via
     :meth:`StreamEnvelope.from_event` (for typed ``*Event`` payloads) or
     :meth:`StreamEnvelope.from_parts` (for ad-hoc lifecycle events).
+
+    Events for a session with no live turn are dropped by default: nobody is
+    attached and there is no turn to replay them into, and creating state here
+    would make a long-finished session read as running (see
+    :func:`running_session_ids`, which treats any fresh state as streaming)
+    until the TTL expired it.
+
+    ``create_if_missing=True`` opts out, for the one case where the turn really
+    is still open but the state proving it is gone — resolving a durable
+    ``ask_user`` suspension, or closing a parked turn whose sliding TTL lapsed
+    because it emitted nothing while it waited. Replaces having to call
+    :func:`ensure_turn` first, which was easy to forget and silently dropped the
+    event when it was.
     """
     try:
         state = _turns.get(session_id)
         if state is None:
+            if not create_if_missing:
+                return
+            await ensure_turn(session_id)
+            state = _turns.get(session_id)
+        if state is None:  # pragma: no cover — init_turn swallowed a failure
             return
 
         event_type = envelope.event

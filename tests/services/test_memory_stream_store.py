@@ -13,6 +13,7 @@ import pytest
 
 from app.services import memory_stream_store as store
 from app.services.memory_stream_store import _turns, _SENTINEL
+from app.agent.schemas.events import MessageEvent
 from app.services.stream_envelope import StreamEnvelope
 
 
@@ -1315,6 +1316,92 @@ class TestSummarizationPushAndReplay:
 
         end = next(e for e in events if e["event"] == "summarization_end")
         assert json.loads(end["data"])["metadata"]["error"] is True
+
+
+# ---------------------------------------------------------------------------
+# push_event — create_if_missing
+# ---------------------------------------------------------------------------
+
+
+class TestPushEventCreateIfMissing:
+    """The default must stay "drop", because creating state has a visible cost.
+
+    ``running_session_ids`` reports any state with ``is_streaming`` set, and a
+    fresh ``_TurnState`` starts streaming — so silently creating one here would
+    make a long-finished session read as *running* in the session list until the
+    TTL expired it. Only a caller that knows the turn is genuinely still open
+    (a durable ``ask_user`` suspension) may opt in.
+    """
+
+    @pytest.mark.asyncio
+    async def test_drops_the_event_when_no_turn_is_live(self):
+        await store.push_event(
+            "sid-gone", StreamEnvelope.from_parts(event="done", data={})
+        )
+
+        assert "sid-gone" not in _turns
+        assert store.running_session_ids() == set()
+
+    @pytest.mark.asyncio
+    async def test_creates_the_turn_when_asked(self):
+        await store.push_event(
+            "sid-gone",
+            StreamEnvelope.from_parts(event="done", data={}),
+            create_if_missing=True,
+        )
+
+        assert "sid-gone" in _turns
+
+    @pytest.mark.asyncio
+    async def test_recreated_state_is_attachable_and_streams_the_resumed_turn(self):
+        """The point of opting in: the resumed turn has somewhere to go.
+
+        A turn parked on ``ask_user`` past the TTL loses its state, and both
+        ``push_event`` and ``attach`` no-op without it — so the answer's
+        broadcast went nowhere *and* the reconnecting client was turned away.
+        Re-creating it on the push means the client can attach and receive
+        everything the resumed turn produces.
+        """
+        await store.push_event(
+            "sid-1",
+            StreamEnvelope.from_parts(event="question_answered", data={"a": 1}),
+            create_if_missing=True,
+        )
+        assert _turns["sid-1"].is_streaming is True
+
+        async def _resumed_turn():
+            await asyncio.sleep(0.05)
+            await store.push_event(
+                "sid-1",
+                StreamEnvelope.from_event(
+                    MessageEvent(agent="lead", text="resumed output")
+                ),
+            )
+            await store.mark_done("sid-1")
+
+        task = asyncio.create_task(_resumed_turn())
+        events = [e async for e in store.attach("sid-1")]
+        await task
+
+        assert any(
+            e["event"] == "message" and "resumed output" in e["data"] for e in events
+        )
+
+    @pytest.mark.asyncio
+    async def test_leaves_an_existing_turn_and_its_content_alone(self):
+        """Opting in must not reset a suspension that is still in memory."""
+        await store.init_turn("sid-1")
+        _turns["sid-1"].content.setdefault("lead", []).append("before the question")
+        state_before = _turns["sid-1"]
+
+        await store.push_event(
+            "sid-1",
+            StreamEnvelope.from_parts(event="question_answered", data={}),
+            create_if_missing=True,
+        )
+
+        assert _turns["sid-1"] is state_before
+        assert _turns["sid-1"].content["lead"] == ["before the question"]
 
 
 # ---------------------------------------------------------------------------

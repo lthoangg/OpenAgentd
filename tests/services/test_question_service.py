@@ -116,8 +116,8 @@ async def test_answer_rewrites_placeholder_and_resolves_row():
         )
         await db.commit()
 
-        resolved = await question_service.answer_question(
-            db, question_id=row.id, answers=[["pnpm"]]
+        resolved = await question_service.resolve_pending_question(
+            db, question_id=row.id, status="answered", answers=[["pnpm"]]
         )
         await db.commit()
 
@@ -148,12 +148,12 @@ async def test_second_answer_is_rejected():
         )
         await db.commit()
 
-        first = await question_service.answer_question(
-            db, question_id=row.id, answers=[["pnpm"]]
+        first = await question_service.resolve_pending_question(
+            db, question_id=row.id, status="answered", answers=[["pnpm"]]
         )
         await db.commit()
-        second = await question_service.answer_question(
-            db, question_id=row.id, answers=[["bun"]]
+        second = await question_service.resolve_pending_question(
+            db, question_id=row.id, status="answered", answers=[["bun"]]
         )
         await db.commit()
 

@@ -525,7 +525,7 @@ async def test_dismiss_ends_the_turn_on_the_named_session(client, team, monkeypa
 
     pushed: list = []
 
-    async def capture(sid, envelope):
+    async def capture(sid, envelope, **_kwargs):
         pushed.append((sid, envelope.event))
 
     monkeypatch.setattr(
@@ -556,7 +556,7 @@ async def test_dismiss_ends_the_turn_with_no_live_team(client, team, monkeypatch
 
     pushed: list = []
 
-    async def capture(sid, envelope):
+    async def capture(sid, envelope, **_kwargs):
         pushed.append((sid, envelope.event))
 
     monkeypatch.setattr(
@@ -723,7 +723,7 @@ async def test_a_failed_resume_closes_the_turn(client, team, monkeypatch):
 
     pushed: list = []
 
-    async def capture(sid, envelope):
+    async def capture(sid, envelope, **_kwargs):
         pushed.append((sid, envelope.event))
 
     monkeypatch.setattr(
@@ -751,7 +751,7 @@ async def test_a_successful_resume_leaves_the_turn_open(client, team, monkeypatc
 
     pushed: list = []
 
-    async def capture(sid, envelope):
+    async def capture(sid, envelope, **_kwargs):
         pushed.append((sid, envelope.event))
 
     monkeypatch.setattr(

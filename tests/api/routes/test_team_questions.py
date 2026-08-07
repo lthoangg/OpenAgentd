@@ -76,6 +76,11 @@ class _FakeLead:
         self.resumed += 1
         self.state = "working"
 
+    def clear_question_suspension(self) -> None:
+        if self.state == "waiting_input":
+            self.state = "idle"
+        self._question_suspended = None
+
 
 class _FakeTeam:
     def __init__(self, session_id: str) -> None:
@@ -85,6 +90,14 @@ class _FakeTeam:
         self.turns_ended = 0
         self.attached: list[str] = []
         self.started_with = None
+
+    async def end_turn_after_question_dismissed(self, session_id: str) -> bool:
+        """Mirrors ``AgentTeam``: refuse a session the lead is not bound to."""
+        if self.lead.session_id != session_id:
+            return False
+        self.lead.clear_question_suspension()
+        await self._try_emit_done()
+        return True
 
     async def _try_emit_done(self) -> None:
         self.turns_ended += 1
@@ -498,7 +511,7 @@ async def test_dismiss_ends_the_turn(client, team):
 async def test_dismiss_ends_the_turn_on_the_named_session(client, team, monkeypatch):
     """The closer must target the session being dismissed.
 
-    ``find_live_team_for_lead_session`` matches on the coding registry *key* as
+    ``find_live_team_serving_session`` matches on the coding registry *key* as
     well as the lead binding, so it can hand back a team whose lead points
     somewhere else — a team evicted after the idle window and rebuilt gets a
     freshly minted lead session id. ``_try_emit_done`` closes

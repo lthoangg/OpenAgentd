@@ -418,6 +418,38 @@ class AgentTeam:
         except Exception as exc:
             logger.warning("team_emit_failed event={} error={}", event, exc)
 
+    async def end_turn_after_question_dismissed(self, session_id: str) -> bool:
+        """Close the turn a dismissed ``ask_user`` left open. ``True`` if handled.
+
+        Dismissing means "stop", so there is deliberately no further model
+        call — but the turn itself never closed, and something has to say so or
+        the session keeps reading as busy on every client.
+
+        Returns ``False`` when this team's lead is not bound to *session_id*,
+        which happens whenever a team is looked up by its coding-registry key:
+        an evicted team is rebuilt with a freshly minted lead session. Driving
+        the lead then would end a turn on the wrong stream, so the caller must
+        close the stream directly instead.
+        """
+        if self.lead.session_id != session_id:
+            return False
+
+        # Free the lead without starting a turn.
+        self.lead.clear_question_suspension()
+        # A pending row means the turn never closed, so let the canonical closer
+        # close it: it drains a message queued while the lead was still working,
+        # which a bare ``done`` would strand.
+        self._has_active_turn = True
+        try:
+            await self._try_emit_done()
+        except Exception as exc:
+            logger.warning(
+                "question_dismiss_turn_end_failed session_id={} error={}",
+                session_id,
+                exc,
+            )
+        return True
+
     async def _try_emit_done(self) -> None:
         """Emit 'done' when lead + all live members are idle.
 
@@ -1691,9 +1723,7 @@ class AgentTeam:
         # Only free the lead when the question was actually its own; a stale
         # binding means this suspension belongs to some other session's turn.
         if target_session == self.lead.session_id:
-            if self.lead.state == "waiting_input":
-                self.lead.state = "idle"
-            self.lead._question_suspended = None
+            self.lead.clear_question_suspension()
 
         # The card is only on screen. Every other resolution path broadcasts;
         # without this one a client that typed instead of answering keeps an

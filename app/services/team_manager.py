@@ -519,12 +519,22 @@ async def stop() -> None:
         _coding_team_last_used.clear()
 
 
-def find_live_team_for_lead_session(session_id: str) -> "AgentTeam | None":
-    """Return an already-running team whose lead owns *session_id*.
+def find_live_team_serving_session(session_id: str) -> "AgentTeam | None":
+    """Return an already-running team associated with *session_id*.
 
     Never starts one.  Used by endpoints that act on an in-flight turn (e.g.
     answering a suspended question): booting a fresh team there would produce a
     lead with no suspended turn to resume, and pay a cold start to do it.
+
+    **The returned team's lead is not guaranteed to be bound to *session_id*.**
+    The coding registry is keyed by ``(workspace, owner_session)``, and a team
+    evicted after the idle window is rebuilt with a freshly minted lead session,
+    so a match on that key can carry a lead that is mid-turn on a *different*
+    conversation. Anything that then drives the lead — emitting ``done``,
+    resuming a turn — must either check ``team.lead.session_id`` first or
+    re-bind with ``attach_lead_to_session``, or it will act on the wrong stream.
+    Hence the deliberately vague "serving": this is the team that *could* serve
+    the session, not one that currently owns it.
 
     Both registries hold a handful of live teams, and the session-keyed one is
     a direct hit, so the coding scan is a short fallback rather than the norm.

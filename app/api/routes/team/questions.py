@@ -35,7 +35,7 @@ from app.api.deps import DbSession
 from app.services import memory_stream_store as stream_store
 from app.services import question_service
 from app.services.stream_envelope import StreamEnvelope
-from app.services.team_manager import find_live_team_for_lead_session
+from app.services.team_manager import find_live_team_serving_session
 
 router = APIRouter()
 
@@ -55,12 +55,13 @@ def _parse_question_id(question_id: str) -> UUID:
 
 
 async def get_team_for_session(session_id: str):
-    """Return the live team owning *session_id*, or ``None``.
+    """Return the live team serving *session_id*, or ``None``.
 
-    Indirection kept module-level so tests can substitute a lead without
-    booting a real team.
+    Its lead may be bound to another session — see
+    :func:`find_live_team_serving_session`. Indirection kept module-level so
+    tests can substitute a lead without booting a real team.
     """
-    return find_live_team_for_lead_session(session_id)
+    return find_live_team_serving_session(session_id)
 
 
 def _validate_answers(questions: list[dict], answers: list[list[str]]) -> None:
@@ -230,34 +231,14 @@ async def dismiss_question(
     )
 
     team = await get_team_for_session(session_id)
-    # ``find_live_team_for_lead_session`` also matches on the coding registry
-    # key, so the team it returns may have a lead bound to a *different*
-    # session — a team evicted after the idle window is rebuilt with a freshly
-    # minted lead session id. Only drive the lead when it really owns this
-    # session; ``_try_emit_done`` closes ``self.lead.session_id`` and would
-    # otherwise end a turn on the wrong stream.
-    if team is not None and team.lead.session_id == session_id:
-        # Free the lead without starting a turn — dismissing means "stop", so
-        # there is deliberately no further model call.
-        if team.lead.state == "waiting_input":
-            team.lead.state = "idle"
-        team.lead._question_suspended = None
-        # A pending row means the turn never closed, so let the canonical
-        # closer close it: it drains a message queued while the lead was still
-        # working, which a bare ``done`` would strand.
-        team._has_active_turn = True
-        try:
-            await team._try_emit_done()
-        except Exception as exc:
-            logger.warning(
-                "question_dismiss_turn_end_failed session_id={} error={}",
-                session_id,
-                exc,
-            )
-    else:
-        # No live team owns this session (restarted daemon, or evicted and
-        # rebuilt). The client is still showing an open turn, so close it on
-        # the stream directly.
+    # The team may be a registry-key match whose lead is bound elsewhere, so it
+    # decides whether it can close this turn; ``False`` means nothing live owns
+    # the session (restarted daemon, or evicted and rebuilt) and the client is
+    # still showing an open turn, so close it on the stream directly.
+    handled = team is not None and await team.end_turn_after_question_dismissed(
+        session_id
+    )
+    if not handled:
         await _end_turn(session_id)
 
     logger.info(
@@ -361,10 +342,6 @@ async def _resume_lead(session_id: str, db: DbSession) -> bool:
     except Exception as exc:
         logger.warning("question_resume_failed session_id={} error={}", session_id, exc)
         # Never leave the lead parked with no question to wake it.
-        # ``waiting_input`` counts as busy, so ``_maybe_activate`` would refuse
-        # to start a turn and the next message would sit undelivered.
-        if team.lead.state == "waiting_input":
-            team.lead.state = "idle"
-        team.lead._question_suspended = None
+        team.lead.clear_question_suspension()
         return False
     return True

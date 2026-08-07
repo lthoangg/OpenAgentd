@@ -470,6 +470,23 @@ class TeamMemberBase(abc.ABC):
             name=f"answer:{self.name}",
         )
 
+    def clear_question_suspension(self) -> None:
+        """Free an agent parked on ``ask_user`` without resuming its turn.
+
+        The state reset and the flag clear must always happen together, and
+        this is the only place that pairing lives. ``waiting_input`` counts as
+        busy (see :func:`is_busy`), so dropping the state half leaves
+        ``_maybe_activate`` refusing to start a turn and the next message
+        sitting undelivered; dropping the flag half leaves ``_run_activation``
+        parking the agent right back in ``waiting_input``.
+
+        Idempotent, and deliberately does not touch an ``error`` state — a
+        failed turn's status is more informative than ``idle``.
+        """
+        if self.state == "waiting_input":
+            self.state = "idle"
+        self._question_suspended = None
+
     # ── Live-config drift ──────────────────────────────────────────────
 
     def refresh_if_dirty(self) -> bool:

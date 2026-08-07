@@ -1,10 +1,20 @@
 /**
  * Inline-only markdown for short, model-authored strings.
  *
- * Deliberately its own module: the full ``markdown.tsx`` renderer pulls in
- * react-markdown, KaTeX, highlight.js and Mermaid, none of which a one-line
- * question label needs. Importing this from a component must not drag that
- * graph into the bundle (or into every test that renders the component).
+ * Deliberately its own module rather than a call to ``LazyMarkdownBlock``,
+ * which already code-splits the full ``markdown.tsx`` graph (react-markdown,
+ * KaTeX, highlight.js, Mermaid) into an on-demand chunk. So the reason is *not*
+ * initial bundle size — that chunk is never in the eager path. It is:
+ *
+ * - **No async boundary for one line.** Going through the lazy renderer means a
+ *   ~134 kB gzip chunk fetch plus a Suspense fallback to draw a question label;
+ *   the card would visibly reflow on open.
+ * - **Block markup is wrong here.** That renderer emits an ``oa-prose``
+ *   wrapper and ``<p>`` elements, which break a compact card's layout.
+ * - **No links, by design.** See ``INLINE_MARKERS`` below: these strings are
+ *   model-authored and sit in a card the user is being asked to act on, so a
+ *   clickable target the model chose is a phishing surface.
+ * - **Cheap tests.** Components rendering this need no markdown graph loaded.
  */
 import { useMemo } from 'react'
 

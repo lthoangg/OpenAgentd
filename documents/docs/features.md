@@ -606,8 +606,11 @@ agnostic by design.
   available in Settings, the native usage tray, and the manual provider smoke
   script; billing periods with no measurable allowance stay period-only and
   zero values are not treated as unlimited.
-- **Codex usage monitor** `[v1.32.0]` — Settings → Providers shows live Codex
+- **Codex usage monitor** `[v1.32.0, v1.131.0]` — Settings → Providers shows live Codex
   OAuth usage windows, resets, credits, unlimited plans, and spend-cap/limit states.
+  Workspace spend caps report used/limit/remaining amounts and a reset time — the only
+  usage signal once a cap is reached and Codex stops returning rate-limit windows — and
+  a reached cap drives the panel copy instead of the credits flag `[v1.131.0]`.
 - **Priority / Fast mode** `[v1.90.0, v1.92.0]` *(deprecated)* — opt new messages into Fast/Priority mode. Supported on models and providers that implement service/latency tiers (Anthropic maps to `auto`, Google Gemini maps to `priority`, OpenAI maps to `auto`, and ChatGPT Codex maps to `priority`). Availability is driven by a `supports_fast_mode` registry flag instead of a hard-coded provider-prefix list, so plugin providers can opt in without frontend changes `[v1.92.0]`. The web Session Settings control was removed in `v1.125.0`; the session field, API parameter, and provider mapping still work, so sessions that set it elsewhere (TUI, API) are unaffected.
 - **Disconnect a provider** `[v1.92.0]` — Settings → Providers lets you
   temporarily disconnect a configured provider; its models disappear from

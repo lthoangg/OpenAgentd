@@ -117,18 +117,86 @@ function UsageRow({
   )
 }
 
+function formatAmount(value: number): string {
+  return new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 }).format(value)
+}
+
+function SpendRow({
+  label,
+  spend,
+}: {
+  label: string
+  spend: NonNullable<ProviderUsageLimit['spend']>
+}) {
+  const rawPercent =
+    typeof spend.used_percent === 'number'
+      ? spend.used_percent
+      : typeof spend.used === 'number' && typeof spend.limit === 'number' && spend.limit > 0
+        ? (spend.used / spend.limit) * 100
+        : 0
+  const percent = Math.max(0, Math.min(100, rawPercent))
+  const reset = formatResetIn(spend.resets_at)
+  const color = spend.reached ? 'bg-(--color-error)' : barColor(percent)
+  const detail =
+    typeof spend.used === 'number' && typeof spend.limit === 'number'
+      ? `${formatAmount(spend.used)} of ${formatAmount(spend.limit)} used${
+          typeof spend.remaining === 'number' ? ` \u00B7 ${formatAmount(spend.remaining)} left` : ''
+        }`
+      : null
+
+  return (
+    <div className="px-3 py-1.5 space-y-1">
+      <div className="flex items-center justify-between text-xs gap-2 min-w-0">
+        <span className="font-medium truncate text-(--color-text)">{label}</span>
+        <div className="flex items-center gap-1.5 shrink-0 text-[11px] text-(--color-text-muted) tabular-nums">
+          {/* Unclamped — an overage is the whole point of this row. */}
+          <span>{Math.round(rawPercent)}% used</span>
+          {reset && (
+            <>
+              <span className="text-(--color-text-subtle)">·</span>
+              <span>{reset}</span>
+            </>
+          )}
+        </div>
+      </div>
+      <div className="relative h-1 rounded-full bg-(--bg-key)">
+        {percent > 0 && (
+          <div
+            className={cn('absolute inset-y-0 left-0 rounded-full', color)}
+            style={{ width: `${percent}%` }}
+          />
+        )}
+        <div
+          className="absolute inset-0"
+          role="progressbar"
+          aria-valuenow={Math.round(percent)}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-label={label}
+        />
+      </div>
+      {detail && <p className="text-[11px] text-(--color-text-subtle) tabular-nums">{detail}</p>}
+    </div>
+  )
+}
+
 function CreditsRow({
   label,
   credits,
+  spend,
 }: {
   label: string
   credits: NonNullable<ProviderUsageLimit['credits']>
+  spend?: ProviderUsageLimit['spend']
 }) {
-  const text = credits.unlimited
-    ? 'Unlimited usage'
-    : credits.has_credits
-      ? 'Credits available'
-      : 'No usage credits left'
+  // A reached cap outranks has_credits, which stays true while blocked.
+  const text = spend?.reached
+    ? 'Usage limit reached'
+    : credits.unlimited
+      ? 'Unlimited usage'
+      : credits.has_credits
+        ? 'Credits available'
+        : 'No usage credits left'
   return (
     <div className="px-3 py-1.5 space-y-1">
       <div className="flex items-center justify-between text-xs gap-2 min-w-0">
@@ -173,6 +241,8 @@ function LimitSections({ limit }: { limit: ProviderUsageLimit }) {
   const base = usageLabel(limit)
   const primaryDuration = formatWindowDuration(limit.primary?.window_minutes)
   const secondaryDuration = formatWindowDuration(limit.secondary?.window_minutes)
+  const spend = limit.spend
+  const hasSpendFigures = typeof spend?.limit === 'number' || typeof spend?.used === 'number'
   return (
     <>
       {limit.primary && (
@@ -181,8 +251,11 @@ function LimitSections({ limit }: { limit: ProviderUsageLimit }) {
       {limit.secondary && (
         <UsageRow label={secondaryDuration ? `${base} \u00B7 ${secondaryDuration}` : base} window={limit.secondary} />
       )}
-      {limit.credits && !limit.primary && !limit.secondary && <CreditsRow label={base} credits={limit.credits} />}
-      {!limit.primary && !limit.secondary && !limit.credits &&
+      {spend && hasSpendFigures && <SpendRow label={`${base} \u00B7 Spend cap`} spend={spend} />}
+      {limit.credits && !hasSpendFigures && !limit.primary && !limit.secondary && (
+        <CreditsRow label={base} credits={limit.credits} spend={spend} />
+      )}
+      {!limit.primary && !limit.secondary && !limit.credits && !hasSpendFigures &&
         (typeof limit.period_start_at === 'number' || typeof limit.period_end_at === 'number') && (
           <PeriodRow label={base} periodEndAt={limit.period_end_at} />
         )}

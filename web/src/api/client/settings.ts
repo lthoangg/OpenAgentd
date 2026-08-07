@@ -186,6 +186,16 @@ export type ProviderUsageLimit = {
     unlimited: boolean
     balance?: string | null
   } | null
+  /** A spend cap. `reached` is authoritative over `credits.has_credits`. */
+  spend?: {
+    reached: boolean
+    source?: string | null
+    limit?: number | null
+    used?: number | null
+    remaining?: number | null
+    used_percent?: number | null
+    resets_at?: number | null
+  } | null
   plan_type?: string | null
   rate_limit_reached_type?: string | null
   period_start_at?: number | null

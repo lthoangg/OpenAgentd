@@ -13,6 +13,7 @@ function makeLimit(overrides: Partial<ProviderUsageLimit> = {}): ProviderUsageLi
     primary: { used_percent: 42, window_minutes: 300, resets_at: null },
     secondary: null,
     credits: null,
+    spend: null,
     plan_type: null,
     rate_limit_reached_type: null,
     ...overrides,
@@ -143,6 +144,85 @@ describe('UsagePanel', () => {
     expect(screen.getByText('Usage period available')).toBeTruthy()
     expect(screen.getByText('Ends in 6d')).toBeTruthy()
     expect(screen.queryByText('Unlimited usage')).toBeNull()
+  })
+
+  it('renders spend cap figures for a limit with no rate-limit windows', () => {
+    render(
+      <UsagePanel
+        limits={[
+          makeLimit({
+            limit_id: 'codex',
+            limit_name: null,
+            primary: null,
+            secondary: null,
+            credits: { has_credits: true, unlimited: false, balance: null },
+            spend: {
+              reached: true,
+              source: 'workspace_spend_controls',
+              limit: 700,
+              used: 1811.965924501419,
+              remaining: 0,
+              used_percent: 259,
+              resets_at: null,
+            },
+          }),
+        ]}
+      />,
+    )
+    expect(screen.getByText('Codex \u00B7 Spend cap')).toBeTruthy()
+    expect(screen.getByText('1,811.97 of 700 used \u00B7 0 left')).toBeTruthy()
+    // The true overage is the point — do not clamp it out of the copy.
+    expect(screen.getByText('259% used')).toBeTruthy()
+    expect(screen.queryByText('Credits available')).toBeNull()
+  })
+
+  it('clamps the spend bar at 100 while still reporting the real percent', () => {
+    render(
+      <UsagePanel
+        limits={[
+          makeLimit({
+            primary: null,
+            secondary: null,
+            spend: { reached: true, source: null, limit: 700, used: 1812, remaining: 0, used_percent: 259, resets_at: null },
+          }),
+        ]}
+      />,
+    )
+    expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe('100')
+    expect(screen.getByText('259% used')).toBeTruthy()
+  })
+
+  it('renders an unbreached spend cap with its remaining amount', () => {
+    render(
+      <UsagePanel
+        limits={[
+          makeLimit({
+            primary: null,
+            secondary: null,
+            spend: { reached: false, source: null, limit: 700, used: 250.5, remaining: 449.5, used_percent: 36, resets_at: null },
+          }),
+        ]}
+      />,
+    )
+    expect(screen.getByText('36% used')).toBeTruthy()
+    expect(screen.getByText('250.5 of 700 used \u00B7 449.5 left')).toBeTruthy()
+  })
+
+  it('does not claim credits are available when the spend cap is reached', () => {
+    render(
+      <UsagePanel
+        limits={[
+          makeLimit({
+            primary: null,
+            secondary: null,
+            credits: { has_credits: true, unlimited: false, balance: null },
+            spend: { reached: true, source: null, limit: null, used: null, remaining: null, used_percent: null, resets_at: null },
+          }),
+        ]}
+      />,
+    )
+    expect(screen.getByText('Usage limit reached')).toBeTruthy()
+    expect(screen.queryByText('Credits available')).toBeNull()
   })
 
   it('shows the plan type badge from the first limit', () => {

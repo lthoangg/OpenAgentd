@@ -34,6 +34,29 @@ pub struct UsageCredits {
     pub balance: Option<String>,
 }
 
+/// A spend cap, independent of any rate-limit window. ``reached`` is the
+/// authoritative "am I blocked" signal — a provider can keep reporting
+/// available credits while the cap is already exhausted.
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+pub struct UsageSpend {
+    pub reached: bool,
+    /// Mirrors the backend schema; the tray has no room for it.
+    #[allow(dead_code)]
+    #[serde(default)]
+    pub source: Option<String>,
+    #[serde(default)]
+    pub limit: Option<f64>,
+    #[serde(default)]
+    pub used: Option<f64>,
+    #[serde(default)]
+    pub remaining: Option<f64>,
+    /// Can exceed 100 once the cap is breached — clamp the bar, not the text.
+    #[serde(default)]
+    pub used_percent: Option<f64>,
+    #[serde(default)]
+    pub resets_at: Option<i64>,
+}
+
 #[derive(Debug, Clone, Deserialize, PartialEq)]
 pub struct UsageLimit {
     #[serde(default)]
@@ -46,6 +69,8 @@ pub struct UsageLimit {
     pub secondary: Option<UsageWindow>,
     #[serde(default)]
     pub credits: Option<UsageCredits>,
+    #[serde(default)]
+    pub spend: Option<UsageSpend>,
     #[serde(default)]
     pub plan_type: Option<String>,
     #[serde(default)]
@@ -284,26 +309,172 @@ fn format_limit_suffix(limit: &UsageLimit, now_unix: i64) -> Option<(&'static st
     Some((glyph, format!("{percent}% {bar}{reset_suffix}{reached_suffix}")))
 }
 
-/// Render a provider with exactly one limit window as a single row that
+/// Row name given to a spend cap, appended to the limit's own name when
+/// it has one so ``Codex · Spend cap`` stays self-explanatory.
+const SPEND_LABEL: &str = "Spend cap";
+
+/// A spend cap only earns its own row once it carries amounts. A bare
+/// ``reached`` flag has nothing to measure — it steers the credits line
+/// (see [`format_credits_line`]) instead of rendering an empty meter.
+fn spend_figures(limit: &UsageLimit) -> Option<&UsageSpend> {
+    limit
+        .spend
+        .as_ref()
+        .filter(|spend| spend.limit.is_some() || spend.used.is_some())
+}
+
+/// Percent of the cap consumed. Prefers the upstream figure and falls
+/// back to used/limit; can exceed 100 on a breached cap.
+fn spend_percent(spend: &UsageSpend) -> f64 {
+    if let Some(percent) = spend.used_percent {
+        return percent;
+    }
+    match (spend.used, spend.limit) {
+        (Some(used), Some(limit)) if limit > 0.0 => used / limit * 100.0,
+        _ => 0.0,
+    }
+}
+
+/// Group an amount the way the web panel's en-US `Intl.NumberFormat`
+/// does (at most 2 fraction digits, no trailing zeros): `1811.965…` →
+/// `1,811.97`, `700` → `700`.
+fn format_amount(value: f64) -> String {
+    let rounded = ((value * 100.0).round() / 100.0).abs();
+    let whole = rounded.trunc() as i64;
+    let cents = ((rounded - whole as f64) * 100.0).round() as i64;
+    let digits = whole.to_string();
+    let mut out = String::with_capacity(digits.len() + 4);
+    if value.is_sign_negative() && (whole != 0 || cents != 0) {
+        out.push('-');
+    }
+    for (idx, ch) in digits.char_indices() {
+        if idx > 0 && (digits.len() - idx) % 3 == 0 {
+            out.push(',');
+        }
+        out.push(ch);
+    }
+    if cents != 0 {
+        out.push('.');
+        out.push_str(format!("{cents:02}").trim_end_matches('0'));
+    }
+    out
+}
+
+/// The measurable tail of a spend-cap row: ``259% ██████████ · resets 24d
+/// · 1,811.97 of 700 used``. The bar clamps at 100 but the percent does
+/// not — hiding the overage is what makes a breached cap unreadable.
+fn format_spend_suffix(spend: &UsageSpend, now_unix: i64) -> (&'static str, String) {
+    let percent = spend_percent(spend);
+    let glyph = if spend.reached {
+        "\u{1F534}" // 🔴 — blocked, whatever the percent says.
+    } else {
+        status_glyph(percent)
+    };
+    let reset_suffix = spend
+        .resets_at
+        .map(|resets_at| format!(" \u{00B7} {}", format_reset_in(resets_at, now_unix)))
+        .unwrap_or_default();
+    // Amounts answer "how much is left"; `remaining` is left to Settings
+    // → Providers so the row still fits a native menu.
+    let amounts = match (spend.used, spend.limit) {
+        (Some(used), Some(limit)) => format!(
+            " \u{00B7} {} of {} used",
+            format_amount(used),
+            format_amount(limit)
+        ),
+        (Some(used), None) => format!(" \u{00B7} {} used", format_amount(used)),
+        (None, Some(limit)) => format!(" \u{00B7} {} cap", format_amount(limit)),
+        (None, None) => String::new(),
+    };
+    (
+        glyph,
+        format!(
+            "{}% {}{reset_suffix}{amounts}",
+            percent.round() as i64,
+            render_bar(percent)
+        ),
+    )
+}
+
+/// One renderable measurement inside a provider: a rate-limit window or a
+/// spend cap. A limit can yield both — a cap is orthogonal to a rolling
+/// window, so neither hides the other.
+struct LimitEntry {
+    glyph: &'static str,
+    /// Row name in the grouped rendering; `None` falls back to the
+    /// provider label.
+    name: Option<String>,
+    suffix: String,
+    /// Percent used for the provider header's worst-case glyph.
+    percent: f64,
+}
+
+fn limit_entries(limit: &UsageLimit, now_unix: i64) -> Vec<LimitEntry> {
+    let mut entries = Vec::new();
+    if let Some((glyph, suffix)) = format_limit_suffix(limit, now_unix) {
+        let percent = limit
+            .primary
+            .as_ref()
+            .or(limit.secondary.as_ref())
+            .map(|window| window.used_percent)
+            .unwrap_or_default();
+        entries.push(LimitEntry {
+            glyph,
+            name: limit.limit_name.clone(),
+            suffix,
+            percent,
+        });
+    }
+    if let Some(spend) = spend_figures(limit) {
+        let (glyph, suffix) = format_spend_suffix(spend, now_unix);
+        let name = match limit.limit_name.as_deref() {
+            Some(limit_name) if !limit_name.is_empty() => {
+                format!("{limit_name} \u{00B7} {SPEND_LABEL}")
+            }
+            _ => SPEND_LABEL.to_string(),
+        };
+        let percent = spend_percent(spend);
+        entries.push(LimitEntry {
+            glyph,
+            name: Some(name),
+            suffix,
+            // A reached cap must colour the provider header red even when
+            // upstream reports a modest percent.
+            percent: if spend.reached {
+                percent.max(CRITICAL_USAGE_PERCENT)
+            } else {
+                percent
+            },
+        });
+    }
+    entries
+}
+
+/// Render a provider with exactly one measurement as a single row that
 /// always leads with the provider label — ``🟢 GitHub Copilot · Premium
-/// requests · 0%`` — so the provider is identifiable even when the limit
-/// has its own name.
-fn format_single_limit_line(label: &str, limit: &UsageLimit, now_unix: i64) -> Option<String> {
-    let (glyph, suffix) = format_limit_suffix(limit, now_unix)?;
-    let name_part = limit
-        .limit_name
+/// requests · 0%`` — so the provider is identifiable even when the
+/// measurement has its own name.
+fn format_flat_line(label: &str, entry: &LimitEntry) -> String {
+    let name_part = entry
+        .name
         .as_deref()
         .filter(|name| !name.is_empty() && *name != label)
         .map(|name| format!(" \u{00B7} {name}"))
         .unwrap_or_default();
-    Some(format!("{glyph} {label}{name_part} \u{00B7} {suffix}"))
+    format!(
+        "{} {label}{name_part} \u{00B7} {}",
+        entry.glyph, entry.suffix
+    )
 }
 
 /// Indentation for grouped limit rows under a provider header.
 const GROUP_INDENT: &str = "      ";
 
-fn format_credits_line(label: &str, credits: &UsageCredits) -> String {
-    let text = if credits.unlimited {
+fn format_credits_line(label: &str, credits: &UsageCredits, spend: Option<&UsageSpend>) -> String {
+    // A reached cap outranks has_credits, which stays true while blocked.
+    let text = if spend.is_some_and(|spend| spend.reached) {
+        format!("\u{1F534} {label} \u{00B7} usage limit reached")
+    } else if credits.unlimited {
         format!("\u{1F7E2} {label} \u{00B7} unlimited usage")
     } else if credits.has_credits {
         let balance = credits
@@ -362,17 +533,16 @@ fn format_item_rows(item: &UsageSummaryItem, now_unix: i64, max_limits: usize) -
             // Backend substituted last-known-good data for a transient
             // failure — keep the numbers visible but mark them, compactly.
             let stale_suffix = if item.stale { " (old)" } else { "" };
-            let measurable: Vec<&UsageLimit> = usage
+            let measurable: Vec<LimitEntry> = usage
                 .limits
                 .iter()
-                .filter(|limit| format_limit_suffix(limit, now_unix).is_some())
+                .flat_map(|limit| limit_entries(limit, now_unix))
                 .collect();
 
             if measurable.is_empty() {
-                let text = if let Some(credits) =
-                    usage.limits.first().and_then(|l| l.credits.as_ref())
-                {
-                    format_credits_line(&item.label, credits)
+                let first = usage.limits.first();
+                let text = if let Some(credits) = first.and_then(|l| l.credits.as_ref()) {
+                    format_credits_line(&item.label, credits, first.and_then(|l| l.spend.as_ref()))
                 } else if let Some(period_limit) = usage
                     .limits
                     .iter()
@@ -388,24 +558,23 @@ fn format_item_rows(item: &UsageSummaryItem, now_unix: i64, max_limits: usize) -
                 }];
             }
 
-            // Single limit: one flat row leading with the provider label.
+            // Single measurement: one flat row leading with the provider label.
             if measurable.len() == 1 {
-                let line = format_single_limit_line(&item.label, measurable[0], now_unix)
-                    .unwrap_or_default();
+                let line = format_flat_line(&item.label, &measurable[0]);
                 return vec![UsageRow {
                     id_suffix: format!("{}:0", item.provider),
                     text: truncate_row(format!("{line}{stale_suffix}")),
                 }];
             }
 
-            // Multiple limits (per-model providers, or multi-window
-            // providers): one provider header carrying the *worst* glyph,
-            // then indented per-limit rows so limit names aren't each
-            // prefixed with the (repetitive) provider label.
+            // Multiple measurements (per-model providers, multi-window
+            // providers, or a window plus a spend cap): one provider
+            // header carrying the *worst* glyph, then indented rows so
+            // names aren't each prefixed with the (repetitive) provider
+            // label.
             let worst = measurable
                 .iter()
-                .filter_map(|l| l.primary.as_ref().or(l.secondary.as_ref()))
-                .map(|w| w.used_percent)
+                .map(|entry| entry.percent)
                 .fold(0.0_f64, f64::max);
             let mut rows = vec![UsageRow {
                 id_suffix: format!("{}:header", item.provider),
@@ -416,15 +585,13 @@ fn format_item_rows(item: &UsageSummaryItem, now_unix: i64, max_limits: usize) -
                 )),
             }];
             let truncated = measurable.len() > max_limits;
-            for (idx, limit) in measurable.iter().take(max_limits).enumerate() {
-                let Some((glyph, suffix)) = format_limit_suffix(limit, now_unix) else {
-                    continue;
-                };
-                let name = limit.limit_name.as_deref().unwrap_or(&item.label);
+            for (idx, entry) in measurable.iter().take(max_limits).enumerate() {
+                let name = entry.name.as_deref().unwrap_or(&item.label);
                 rows.push(UsageRow {
                     id_suffix: format!("{}:{idx}", item.provider),
                     text: truncate_row(format!(
-                        "{GROUP_INDENT}{glyph} {name} \u{00B7} {suffix}"
+                        "{GROUP_INDENT}{} {name} \u{00B7} {}",
+                        entry.glyph, entry.suffix
                     )),
                 });
             }
@@ -506,10 +673,17 @@ pub const CRITICAL_USAGE_PERCENT: f64 = 90.0;
 fn item_is_critical(item: &UsageSummaryItem) -> bool {
     item.usage.as_ref().is_some_and(|usage| {
         usage.limits.iter().any(|limit| {
-            [limit.primary.as_ref(), limit.secondary.as_ref()]
+            let window_hot = [limit.primary.as_ref(), limit.secondary.as_ref()]
                 .into_iter()
                 .flatten()
-                .any(|window| window.used_percent >= CRITICAL_USAGE_PERCENT)
+                .any(|window| window.used_percent >= CRITICAL_USAGE_PERCENT);
+            // A spend cap blocks requests just as hard as an exhausted
+            // rate-limit window — and on a capped account it is often the
+            // only signal, since upstream stops sending windows entirely.
+            let spend_hot = limit.spend.as_ref().is_some_and(|spend| {
+                spend.reached || spend_percent(spend) >= CRITICAL_USAGE_PERCENT
+            });
+            window_hot || spend_hot
         })
     })
 }
@@ -606,6 +780,7 @@ mod tests {
                     }),
                     secondary: None,
                     credits: None,
+                    spend: None,
                     plan_type: None,
                     rate_limit_reached_type: None,
                     period_start_at: None,
@@ -655,6 +830,7 @@ mod tests {
             }),
             secondary: None,
             credits: None,
+            spend: None,
             plan_type: None,
             rate_limit_reached_type: None,
             period_start_at: None,
@@ -697,6 +873,7 @@ mod tests {
                     primary: None,
                     secondary: None,
                     credits: None,
+                    spend: None,
                     plan_type: None,
                     rate_limit_reached_type: None,
                     period_start_at: Some(1_000),
@@ -922,6 +1099,7 @@ mod tests {
                     }),
                     secondary: None,
                     credits: None,
+                    spend: None,
                     plan_type: None,
                     rate_limit_reached_type: Some(
                         "workspace_member_usage_limit_reached".to_string(),
@@ -960,6 +1138,7 @@ mod tests {
                     }),
                     secondary: None,
                     credits: None,
+                    spend: None,
                     plan_type: None,
                     rate_limit_reached_type: None,
                     period_start_at: None,
@@ -986,6 +1165,7 @@ mod tests {
                 }),
                 secondary: None,
                 credits: None,
+                spend: None,
                 plan_type: None,
                 rate_limit_reached_type: None,
                 period_start_at: None,
@@ -1050,6 +1230,7 @@ mod tests {
             }),
             secondary: None,
             credits: None,
+            spend: None,
             plan_type: None,
             rate_limit_reached_type: None,
             period_start_at: None,
@@ -1098,5 +1279,161 @@ mod tests {
             "indented rows should not repeat it: {}",
             rows[1].text
         );
+    }
+
+    /// The captured shape of a business account over its workspace spend
+    /// cap: Codex stops sending rate-limit windows entirely, so the cap is
+    /// the only usage signal left (see
+    /// `tests/agent/providers/codex/test_usage.py`).
+    fn codex_spend_capped_item() -> UsageSummaryItem {
+        UsageSummaryItem {
+            provider: "codex".to_string(),
+            label: "OpenAI Codex".to_string(),
+            status: "ok".to_string(),
+            error: None,
+            stale: false,
+            usage: Some(UsageResponse {
+                provider: "codex".to_string(),
+                limits: vec![UsageLimit {
+                    limit_id: Some("codex".to_string()),
+                    limit_name: None,
+                    primary: None,
+                    secondary: None,
+                    credits: Some(UsageCredits {
+                        // Still true while the account is hard-blocked.
+                        has_credits: true,
+                        unlimited: false,
+                        balance: None,
+                    }),
+                    spend: Some(UsageSpend {
+                        reached: true,
+                        source: Some("workspace_spend_controls".to_string()),
+                        limit: Some(700.0),
+                        used: Some(1811.965924501419),
+                        remaining: Some(0.0),
+                        used_percent: Some(259.0),
+                        resets_at: Some(1_000 + 2 * 86_400),
+                    }),
+                    plan_type: Some("business".to_string()),
+                    rate_limit_reached_type: Some(
+                        "workspace_member_usage_limit_reached".to_string(),
+                    ),
+                    period_start_at: None,
+                    period_end_at: None,
+                }],
+            }),
+        }
+    }
+
+    #[test]
+    fn format_amount_groups_thousands_and_trims_trailing_zeros() {
+        assert_eq!(format_amount(1811.965924501419), "1,811.97");
+        assert_eq!(format_amount(700.0), "700");
+        assert_eq!(format_amount(0.0), "0");
+        assert_eq!(format_amount(12.5), "12.5");
+        assert_eq!(format_amount(1_234_567.0), "1,234,567");
+    }
+
+    #[test]
+    fn spend_capped_provider_shows_the_cap_instead_of_claiming_credits() {
+        let rows = format_item_rows(&codex_spend_capped_item(), 1_000, 3);
+        assert_eq!(rows.len(), 1, "one measurement, one flat row: {rows:?}");
+        let text = &rows[0].text;
+        assert_eq!(
+            *text,
+            format!(
+                "\u{1F534} OpenAI Codex \u{00B7} Spend cap \u{00B7} 259% {} \u{00B7} resets 2d \u{00B7} 1,811.97 of 700 used",
+                render_bar(259.0)
+            )
+        );
+        // The old rendering advertised credits on a blocked account.
+        assert!(!text.contains("credits available"), "{text}");
+        // The bar clamps, the percent does not.
+        assert!(text.contains(&"\u{2588}".repeat(BAR_WIDTH)), "{text}");
+        assert!(text.chars().count() <= MAX_ROW_LEN, "{text}");
+    }
+
+    #[test]
+    fn a_reached_spend_cap_is_critical_for_the_badge_and_notification() {
+        let body = UsageSummaryBody {
+            items: vec![codex_spend_capped_item()],
+            checked_at: 1_000,
+            cached: false,
+        };
+        assert!(has_critical_usage(&body));
+        assert!(critical_providers(&body).contains("codex"));
+    }
+
+    #[test]
+    fn a_spend_cap_renders_alongside_a_rate_limit_window() {
+        let mut item = codex_spend_capped_item();
+        {
+            let limit = &mut item.usage.as_mut().unwrap().limits[0];
+            limit.primary = Some(UsageWindow {
+                used_percent: 12.0,
+                window_minutes: Some(300),
+                resets_at: None,
+            });
+            limit.limit_name = Some("Codex".to_string());
+        }
+        let rows = format_item_rows(&item, 1_000, 3);
+        assert_eq!(rows.len(), 3, "header + window + spend cap: {rows:?}");
+        // A cap is orthogonal to the window: the header takes the cap's
+        // red even though the window sits at 12%.
+        assert!(rows[0].text.starts_with("\u{1F534} OpenAI Codex"), "{}", rows[0].text);
+        assert!(rows[1].text.contains("Codex \u{00B7} 12%"), "{}", rows[1].text);
+        assert!(
+            rows[2].text.contains("Codex \u{00B7} Spend cap \u{00B7} 259%"),
+            "{}",
+            rows[2].text
+        );
+    }
+
+    #[test]
+    fn a_reached_cap_without_amounts_corrects_the_credits_row() {
+        let mut item = codex_spend_capped_item();
+        // `reached` with no configured individual limit: nothing to meter,
+        // so the credits row must carry the truth instead.
+        item.usage.as_mut().unwrap().limits[0].spend = Some(UsageSpend {
+            reached: true,
+            source: None,
+            limit: None,
+            used: None,
+            remaining: None,
+            used_percent: None,
+            resets_at: None,
+        });
+        let rows = format_item_rows(&item, 1_000, 3);
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].text, "\u{1F534} OpenAI Codex \u{00B7} usage limit reached");
+    }
+
+    #[test]
+    fn an_unbreached_cap_reports_headroom_without_a_red_glyph() {
+        let mut item = codex_spend_capped_item();
+        item.usage.as_mut().unwrap().limits[0].rate_limit_reached_type = None;
+        item.usage.as_mut().unwrap().limits[0].spend = Some(UsageSpend {
+            reached: false,
+            source: Some("workspace_spend_controls".to_string()),
+            limit: Some(700.0),
+            used: Some(84.0),
+            remaining: Some(616.0),
+            used_percent: Some(12.0),
+            resets_at: None,
+        });
+        let rows = format_item_rows(&item, 1_000, 3);
+        assert_eq!(rows.len(), 1);
+        assert!(rows[0].text.starts_with("\u{1F7E2}"), "{}", rows[0].text);
+        assert!(rows[0].text.contains("12% "), "{}", rows[0].text);
+        assert!(rows[0].text.contains("84 of 700 used"), "{}", rows[0].text);
+    }
+
+    #[test]
+    fn providers_without_spend_data_render_unchanged() {
+        // Guardrail for the entry refactor: a plain window provider must
+        // still collapse to one flat row with no spend wording.
+        let rows = format_item_rows(&item_ok("codex", "OpenAI Codex", 42.0, Some(2_000)), 1_000, 3);
+        assert_eq!(rows.len(), 1);
+        assert!(!rows[0].text.contains(SPEND_LABEL), "{}", rows[0].text);
     }
 }

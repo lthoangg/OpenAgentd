@@ -157,7 +157,14 @@ run from the terminal.
     Settings → Providers. Each measurable row also carries a compact
     block-character meter (`████░░░░░░`) between the percent and reset
     countdown — a CodexBar-style bar rendered in plain text, since native
-    tray `MenuItem`s can't host custom widgets `[v1.94.0]`.
+    tray `MenuItem`s can't host custom widgets `[v1.94.0]`. Workspace spend
+    caps get their own metered row next to any rate-limit window
+    (`🔴 OpenAI Codex · Spend cap · 259% ██████████ · resets 24d · 1,811.97
+    of 700 used`) — the bar clamps at 100% but the percent reports the real
+    overage — a reached cap reads "usage limit reached" instead of
+    advertising credits, and it counts toward the critical badge and
+    notification even when the provider stops returning quota windows
+    `[v1.132.0]`.
   - **Settings → Providers usage panel redesign** `[v1.94.0]` — the
     per-provider "Usage" card in Settings → Providers (`UsagePanel.tsx`)
     was restyled after CodexBar's menu-bar popover: a bold label per limit
@@ -613,11 +620,12 @@ agnostic by design.
   available in Settings, the native usage tray, and the manual provider smoke
   script; billing periods with no measurable allowance stay period-only and
   zero values are not treated as unlimited.
-- **Codex usage monitor** `[v1.32.0, v1.131.0]` — Settings → Providers shows live Codex
+- **Codex usage monitor** `[v1.32.0, v1.131.0, v1.132.0]` — Settings → Providers shows live Codex
   OAuth usage windows, resets, credits, unlimited plans, and spend-cap/limit states.
   Workspace spend caps report used/limit/remaining amounts and a reset time — the only
   usage signal once a cap is reached and Codex stops returning rate-limit windows — and
-  a reached cap drives the panel copy instead of the credits flag `[v1.131.0]`.
+  a reached cap drives the panel copy instead of the credits flag `[v1.131.0]`. The
+  desktop tray's "Usage Limits" submenu renders the same cap `[v1.132.0]`.
 - **Priority / Fast mode** `[v1.90.0, v1.92.0]` *(deprecated)* — opt new messages into Fast/Priority mode. Supported on models and providers that implement service/latency tiers (Anthropic maps to `auto`, Google Gemini maps to `priority`, OpenAI maps to `auto`, and ChatGPT Codex maps to `priority`). Availability is driven by a `supports_fast_mode` registry flag instead of a hard-coded provider-prefix list, so plugin providers can opt in without frontend changes `[v1.92.0]`. The web Session Settings control was removed in `v1.125.0`; the session field, API parameter, and provider mapping still work, so sessions that set it elsewhere (TUI, API) are unaffected.
 - **Disconnect a provider** `[v1.92.0]` — Settings → Providers lets you
   temporarily disconnect a configured provider; its models disappear from

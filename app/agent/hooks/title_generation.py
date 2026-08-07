@@ -214,7 +214,15 @@ def build_title_generation_hook(
 
     provider = default_provider
     if cfg.model:
-        provider = build_provider(cfg.model)
+        try:
+            provider = build_provider(cfg.model)
+        except Exception as exc:
+            logger.warning(
+                "title_generation_disabled reason=provider_build_failed model={} error={}",
+                cfg.model,
+                exc,
+            )
+            return None
 
     wait_timeout = cfg.wait_timeout_seconds or DEFAULT_WAIT_TIMEOUT_SECONDS
 

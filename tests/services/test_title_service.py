@@ -519,6 +519,49 @@ class TestGenerateAndSaveTitle:
         assert chat_session.title == "Recovered Title"
 
     @pytest.mark.asyncio
+    async def test_terminal_error_does_not_retry(self, engine, session, mock_provider):
+        """Terminal provider error (e.g. Rate limit 429) → log error and return without retrying."""
+        import httpx
+        from app.agent.errors import ProviderRateLimitError
+
+        chat_session = ChatSession(title="")
+        session.add(chat_session)
+        await session.commit()
+
+        db_factory = async_sessionmaker(
+            engine, class_=AsyncSession, expire_on_commit=False
+        )
+
+        for error in [
+            ProviderRateLimitError("Rate limit reached"),
+            httpx.HTTPStatusError(
+                "429 Too Many Requests",
+                request=MagicMock(),
+                response=MagicMock(status_code=429),
+            ),
+            httpx.HTTPStatusError(
+                "500 Internal Server Error",
+                request=MagicMock(),
+                response=MagicMock(status_code=500),
+            ),
+        ]:
+            mock_provider.chat.reset_mock()
+            mock_provider.chat.side_effect = error
+
+            with patch("app.services.title_service.event_broadcaster.publish"):
+                await generate_and_save_title(
+                    session_id=chat_session.id,
+                    user_message="test message",
+                    provider=mock_provider,
+                    db_factory=db_factory,
+                    system_prompt="test title prompt",
+                )
+
+            assert mock_provider.chat.await_count == 1
+            await session.refresh(chat_session)
+            assert chat_session.title == ""  # unchanged
+
+    @pytest.mark.asyncio
     async def test_event_payload_structure(self, engine, session, mock_provider):
         """Verify the event payload has correct structure."""
         # Arrange

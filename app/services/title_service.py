@@ -44,6 +44,39 @@ def _clean_title(raw: str) -> str:
     return raw.strip().strip("\"'").rstrip(".").strip()[:255]
 
 
+def _is_terminal_llm_error(exc: Exception) -> bool:
+    """Return True if the error is terminal (rate limit, auth, network, unconfigured) and should not retry."""
+    import httpx
+
+    from app.agent.errors import (
+        ProviderAuthenticationError,
+        ProviderConnectionError,
+        ProviderRateLimitError,
+    )
+    from app.agent.providers.unconfigured import UnconfiguredProviderError
+
+    if isinstance(
+        exc,
+        ProviderRateLimitError
+        | ProviderAuthenticationError
+        | ProviderConnectionError
+        | UnconfiguredProviderError,
+    ):
+        return True
+
+    if isinstance(exc, httpx.HTTPStatusError):
+        if (
+            exc.response.status_code in (401, 403, 429)
+            or exc.response.status_code >= 500
+        ):
+            return True
+
+    if isinstance(exc, httpx.RequestError | TimeoutError):
+        return True
+
+    return False
+
+
 # ── Public API ────────────────────────────────────────────────────────────────
 
 
@@ -106,6 +139,15 @@ async def generate_and_save_title(
                 span.set_status(StatusCode.ERROR, "timeout")
                 return
             except Exception as first_exc:
+                if _is_terminal_llm_error(first_exc):
+                    logger.warning(
+                        "title_generation_llm_error session_id={}", session_id_str
+                    )
+                    logger.warning("LLM error details: {}", first_exc)
+                    span.set_attribute("error.type", type(first_exc).__name__)
+                    span.set_status(StatusCode.ERROR, str(first_exc))
+                    return
+
                 logger.info(
                     "title_generation_retry_without_thinking_override "
                     "session_id={} first_error={}",

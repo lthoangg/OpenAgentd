@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from app.agent.hooks.title_generation import (
     TITLE_GENERATION_PROMPT,
     TitleGenerationHook,
+    build_title_generation_hook,
 )
 from app.agent.schemas.chat import AssistantMessage, HumanMessage, SystemMessage
 from app.agent.state import AgentState, RunContext
@@ -324,3 +325,39 @@ class TestAfterAgent:
         await hook.after_agent(ctx, state, response)
 
         assert hook._task is None
+
+
+# ---------------------------------------------------------------------------
+# build_title_generation_hook
+# ---------------------------------------------------------------------------
+
+
+class TestBuildTitleGenerationHook:
+    """Test build_title_generation_hook factory function."""
+
+    def test_returns_none_when_configured_provider_fails_to_build(self):
+        """When cfg.model is set but build_provider raises UnconfiguredProviderError or Exception, return None gracefully."""
+        from app.agent.providers.unconfigured import UnconfiguredProviderError
+
+        mock_cfg = MagicMock()
+        mock_cfg.enabled = True
+        mock_cfg.model = "claude:claude-sonnet-5"
+
+        mock_settings = MagicMock()
+        mock_settings.title_generation = mock_cfg
+
+        with (
+            patch(
+                "app.agent.hooks.title_generation.load_runtime_settings",
+                return_value=mock_settings,
+            ),
+            patch(
+                "app.agent.hooks.title_generation.build_provider",
+                side_effect=UnconfiguredProviderError("claude"),
+            ),
+        ):
+            hook = build_title_generation_hook(
+                default_provider=MagicMock(),
+                db_factory=MagicMock(),
+            )
+            assert hook is None

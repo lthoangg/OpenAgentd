@@ -38,6 +38,22 @@ function trunc(s: string, maxLen = 60): string {
   return s.length > maxLen ? s.slice(0, maxLen) + '…' : s
 }
 
+/**
+ * Render a URL as `host/path?query#hash` — scheme, `www.` and a bare trailing
+ * slash dropped, everything else kept so the header identifies the exact page
+ * rather than just the site. Unparseable input is returned as-is.
+ */
+function shortUrl(url: string): string {
+  try {
+    const parsed = new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(url) ? url : `https://${url}`)
+    const host = parsed.host.replace(/^www\./, '')
+    const path = parsed.pathname === '/' ? '' : parsed.pathname
+    return `${host}${path}${parsed.search}${parsed.hash}`
+  } catch {
+    return url
+  }
+}
+
 function patchPaths(patchText: string): string[] {
   const paths = parsePatchText(patchText).flatMap((diff) => (
     diff.moveTo ? [diff.path, diff.moveTo] : [diff.path]
@@ -189,22 +205,14 @@ function getToolDisplayInternal(name: string, parsed: Record<string, unknown>): 
     }
   }
 
-  // ── web_fetch: conversational header with domain ───────────────────
+  // ── web_fetch: conversational header with domain + path ────────────
   if (name === 'web_fetch') {
     const url = str(parsed, 'url')
-    let domain: string | null = null
-    if (url) {
-      try {
-        domain = new URL(url.startsWith('http') ? url : `https://${url}`)
-          .hostname.replace(/^www\./, '')
-      } catch {
-        domain = url
-      }
-    }
-    const truncated = domain ? trunc(domain) : null
+    const label = url ? shortUrl(url) : null
     return {
-      header: truncated ? <Arg>{truncated}</Arg> : null,
-      headerTitle: truncated ? truncated : null,
+      header: label ? <Arg>{trunc(label)}</Arg> : null,
+      // Tooltip keeps the untruncated location so long paths stay readable.
+      headerTitle: label,
       formattedArgs: null,
     }
   }

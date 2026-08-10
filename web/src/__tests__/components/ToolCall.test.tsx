@@ -374,19 +374,57 @@ describe("ToolCall — file search display", () => {
 // ---------------------------------------------------------------------------
 
 describe("ToolCall — web_fetch display", () => {
-  it("shows conversational header with domain", () => {
+  it("shows conversational header with domain and full path", () => {
     const args = JSON.stringify({ url: "https://docs.python.org/3/library/asyncio.html" })
     render(<ToolCall name="web_fetch" args={args} done={false} />)
-    const header = getHeader("docs.python.org")
-    expectPlainArg(header, "docs.python.org")
+    const header = getHeader("docs.python.org/3/library/asyncio.html")
+    expectPlainArg(header, "docs.python.org/3/library/asyncio.html")
     expect(screen.queryByText("web_fetch")).toBeNull()
   })
 
-  it("strips www from domain", () => {
+  it("strips www from domain but keeps the path", () => {
     const args = JSON.stringify({ url: "https://www.example.com/page" })
     render(<ToolCall name="web_fetch" args={args} done={false} />)
-    const header = getHeader("example.com")
-    expectPlainArg(header, "example.com")
+    const header = getHeader("example.com/page")
+    expectPlainArg(header, "example.com/page")
+  })
+
+  it("keeps the query string", () => {
+    const args = JSON.stringify({ url: "https://example.com/search?q=asyncio" })
+    render(<ToolCall name="web_fetch" args={args} done={false} />)
+    expectPlainArg(getHeader("example.com/search?q=asyncio"), "example.com/search?q=asyncio")
+  })
+
+  it("elides a bare trailing slash", () => {
+    const args = JSON.stringify({ url: "https://example.com/" })
+    render(<ToolCall name="web_fetch" args={args} done={false} />)
+    expectPlainArg(getHeader("example.com"), "example.com")
+  })
+
+  it("truncates a long path at 60 chars but keeps the full URL in the tooltip", () => {
+    const url = "https://www.nytimes.com/2024/03/15/technology/artificial-intelligence-regulation-europe.html"
+    render(<ToolCall name="web_fetch" args={JSON.stringify({ url })} done={false} />)
+    // Tooltip carries the untruncated location (80 chars, www stripped)…
+    const header = getHeader("nytimes.com/2024/03/15/technology/artificial-intelligence-regulation-europe.html")
+    // …while the visible text is capped at 60 chars + ellipsis.
+    expectPlainArg(header, "nytimes.com/2024/03/15/technology/artificial-intelligence-re…")
+    expect(header.textContent).not.toContain("regulation-europe")
+  })
+
+  it("truncates a long URL carrying a fragment", () => {
+    const url = "https://github.com/lthoangg/openagentd/blob/main/web/src/components/ToolCall/display.tsx#L193"
+    render(<ToolCall name="web_fetch" args={JSON.stringify({ url })} done={false} />)
+    const header = getHeader("github.com/lthoangg/openagentd/blob/main/web/src/components/ToolCall/display.tsx#L193")
+    expectPlainArg(header, "github.com/lthoangg/openagentd/blob/main/web/src/components/…")
+  })
+
+  it("does not truncate a long URL that fits within the cap", () => {
+    // 59 chars once the scheme is stripped — exercises the boundary below 60.
+    const url = "https://example.com/docs/guides/getting-started/installation"
+    render(<ToolCall name="web_fetch" args={JSON.stringify({ url })} done={false} />)
+    const header = getHeader("example.com/docs/guides/getting-started/installation")
+    expectPlainArg(header, "example.com/docs/guides/getting-started/installation")
+    expect(header.textContent).not.toContain("…")
   })
 
   it("hides redundant URL args", async () => {

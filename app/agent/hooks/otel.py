@@ -66,6 +66,7 @@ from opentelemetry import trace
 from opentelemetry.context import Context as OtelContext
 from opentelemetry.trace import SpanKind, StatusCode
 
+from app.agent.errors import QuestionSuspended
 from app.agent.usage import set_usage_span_attributes
 from app.agent.hooks.base import BaseAgentHook
 from app.core.otel import get_meter, get_tracer
@@ -320,6 +321,14 @@ class OpenTelemetryHook(BaseAgentHook):
         ) as span:
             try:
                 result = await handler(ctx, state, tool_call)
+            except QuestionSuspended:
+                # Control flow, not a failure: ``ask_user`` handed the turn to
+                # the user and the turn resumes from here once they answer.
+                # Recording it as an error span made suspensions the single
+                # largest "error" category in production telemetry.
+                span.set_attribute("tool.suspended", True)
+                span.set_status(StatusCode.OK)
+                raise
             except Exception as exc:
                 span.set_attribute("error.type", type(exc).__name__)
                 span.set_status(StatusCode.ERROR, str(exc))

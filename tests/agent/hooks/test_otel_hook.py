@@ -8,6 +8,7 @@ emitted by the hook without writing to disk or relying on the global
 from __future__ import annotations
 
 from unittest.mock import AsyncMock
+from uuid import uuid4
 
 import pytest
 from opentelemetry.sdk.trace import TracerProvider
@@ -17,6 +18,7 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
 )
 from opentelemetry.trace.status import StatusCode
 
+from app.agent.errors import QuestionSuspended
 from app.agent.hooks import otel as otel_module
 from app.agent.hooks.otel import OpenTelemetryHook, _parse_model_id
 from app.agent.schemas.chat import (
@@ -302,6 +304,39 @@ class TestWrapToolCall:
         ][0]
         assert tool.status.status_code == StatusCode.ERROR
         assert tool.attributes["error.type"] == "ValueError"
+
+    async def test_question_suspension_is_not_an_error(self, span_exporter):
+        """``ask_user`` handing the turn to the user is control flow.
+
+        Marking the span ERROR inflated the production error-span count by
+        ~2.5x (27 of 44 error spans over 7 days), which made any alert built
+        on span status a measure of user-interaction volume instead of health.
+        """
+        hook = OpenTelemetryHook(agent_name="bot", model_id="openai:gpt-4o")
+        ctx = make_ctx()
+        state = make_state()
+        tool_call = ToolCall(
+            id="t_2",
+            function=FunctionCall(name="ask_user", arguments="{}"),
+        )
+        question_id = uuid4()
+        session_id = uuid4()
+
+        async def handler(_ctx, _state, _tc):
+            raise QuestionSuspended(question_id=question_id, session_id=session_id)
+
+        # Still propagates — the agent loop needs it to unwind cleanly.
+        with pytest.raises(QuestionSuspended):
+            await hook.wrap_tool_call(ctx, state, tool_call, handler)
+
+        tool = [
+            s
+            for s in span_exporter.get_finished_spans()
+            if s.name == "execute_tool ask_user"
+        ][0]
+        assert tool.status.status_code != StatusCode.ERROR
+        assert "error.type" not in tool.attributes
+        assert tool.attributes["tool.suspended"] is True
 
 
 # ---------------------------------------------------------------------------

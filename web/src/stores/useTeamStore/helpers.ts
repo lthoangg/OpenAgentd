@@ -174,6 +174,21 @@ export function revokeBlobUrlsFromBlocks(blocks: ContentBlock[]) {
   }
 }
 
+/**
+ * True for a ``user`` block the human actually typed.
+ *
+ * Team traffic (lead→member handoffs, member→lead reports, interrupt notices)
+ * is persisted with ``role='user'`` and an ``extra.from_agent`` naming the
+ * sender, so it parses into ``user`` blocks too. The backend's
+ * ``is_undo_target`` skips exactly those rows, so anything counting "how many
+ * of my messages did /undo take back?" has to skip them as well.
+ */
+function isDirectUserBlock(block: ContentBlock): boolean {
+  if (block.type !== 'user') return false
+  const fromAgent = block.extra?.from_agent
+  return !fromAgent || fromAgent === 'user'
+}
+
 export function applyRevertBoundary(
   stream: AgentStream,
   boundaryTime: number | null,
@@ -257,7 +272,7 @@ export function applyRevertBoundary(
   stream._revertedSuffix = reverted
 
   const userBlocks = reverted.filter(
-    (b) => b.type === 'user' || b.type === 'compaction',
+    (b) => isDirectUserBlock(b) || b.type === 'compaction',
   )
   stream.revertedCount = userBlocks.length
   stream.revertedMessages = userBlocks

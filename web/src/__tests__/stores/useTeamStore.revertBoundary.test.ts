@@ -224,6 +224,60 @@ describe("applyRevertBoundary", () => {
     expect(s.revertedCount).toBe(3)
   })
 
+  // Regression: "/undo reverted more than one message". The backend targets
+  // exactly one *direct* user message (``is_undo_target`` skips rows whose
+  // ``extra.from_agent`` is another agent), so the notice must not count the
+  // member→lead inbox rows that share the reverted suffix.
+  it("excludes agent-origin user blocks from revertedCount and the preview", () => {
+    const handoff = (
+      id: string,
+      content: string,
+      isoTime: string,
+      fromAgent: string,
+    ): ContentBlock => ({
+      ...block(id, "user", content, isoTime),
+      extra: { from_agent: fromAgent },
+    })
+
+    const s = makeStream({
+      blocks: [
+        block("u1", "user", "first", "2024-01-01T00:00:00Z"),
+        block("a1", "text", "answer", "2024-01-01T00:00:01Z"),
+        block("u2", "user", "second", "2024-01-01T00:00:02Z"),
+        handoff("h1", "[lead]: do the thing", "2024-01-01T00:00:03Z", "lead"),
+        handoff("h2", "[worker]: done", "2024-01-01T00:00:04Z", "worker"),
+        block("a2", "text", "wrap up", "2024-01-01T00:00:05Z"),
+      ],
+    })
+
+    applyRevertBoundary(s, new Date("2024-01-01T00:00:02Z").getTime(), {
+      boundaryId: "u2",
+      boundaryContent: "second",
+    })
+
+    expect(s.blocks.map((b) => b.id)).toEqual(["u1", "a1"])
+    expect(s._revertedSuffix?.map((b) => b.id)).toEqual(["u2", "h1", "h2", "a2"])
+    expect(s.revertedCount).toBe(1)
+    expect(s.revertedMessages).toEqual([{ role: "user", content: "second" }])
+  })
+
+  it("counts a user block whose from_agent is the user itself", () => {
+    const s = makeStream({
+      blocks: [
+        block("u1", "user", "kept", "2024-01-01T00:00:00Z"),
+        {
+          ...block("u2", "user", "undone", "2024-01-01T00:00:02Z"),
+          extra: { from_agent: "user" },
+        },
+      ],
+    })
+
+    applyRevertBoundary(s, new Date("2024-01-01T00:00:02Z").getTime())
+
+    expect(s.revertedCount).toBe(1)
+    expect(s.revertedMessages).toEqual([{ role: "user", content: "undone" }])
+  })
+
   it("populates revertedMessages preview with content and compaction label", () => {
     const s = makeStream({
       blocks: [

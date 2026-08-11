@@ -32,11 +32,17 @@ interface CommandPaletteProps {
   onClose: () => void
   /** Raw workspace files (coding mode only). Filtered + capped inside. */
   workspaceFiles?: WorkspaceFileInfo[]
+  /**
+   * The backend listing hit its own cap, so files the user knows exist may be
+   * absent from ``workspaceFiles`` entirely. Say so rather than letting a
+   * "my file isn't in the palette" mystery repeat.
+   */
+  filesTruncated?: boolean
   /** Called when the user selects a file row. */
   onFileOpen?: (file: WorkspaceFileInfo) => void
 }
 
-export function CommandPalette({ commands, onClose, workspaceFiles = [], onFileOpen }: CommandPaletteProps) {
+export function CommandPalette({ commands, onClose, workspaceFiles = [], filesTruncated = false, onFileOpen }: CommandPaletteProps) {
   const [query, setQuery] = useState('')
   const [activeIdx, setActiveIdx] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -244,6 +250,11 @@ export function CommandPalette({ commands, onClose, workspaceFiles = [], onFileO
             <span className="text-xs text-(--color-text-muted)">run</span>
             <kbd className="rounded-xs border border-(--color-border) bg-(--bg-card) px-1 py-0.5 font-mono text-[10px] text-(--color-text-muted)">Esc</kbd>
             <span className="text-xs text-(--color-text-muted)">close</span>
+            {hasFiles && filesTruncated && (
+              <span className="ml-auto truncate text-xs text-(--color-warning)" title="The workspace has more files than the listing cap, so some files are not searchable here.">
+                file list truncated
+              </span>
+            )}
           </div>
       </div>
     </AppOverlay>

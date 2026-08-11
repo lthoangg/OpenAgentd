@@ -1,11 +1,11 @@
 /**
  * Shared query options for the two workspace file-listing endpoints.
  *
- * Both listings are served by a **recursive `os.walk` + per-file stat +
- * gitignore match** on the backend (capped at 500 entries and offloaded to a
- * worker thread precisely because it is slow). Every consumer must therefore
- * share one cache entry per workspace/session rather than fetching its own
- * copy.
+ * Both listings are served by the same backend walk: `git ls-files` when the
+ * workspace is a git work tree, otherwise `os.walk` + a `.gitignore` match
+ * (capped at 5,000 entries and offloaded to a worker thread because it stats
+ * every entry). Every consumer must therefore share one cache entry per
+ * workspace/session rather than fetching its own copy.
  *
  * Consumers: `WorkspaceFilesPanel` (artifacts tree), `CodingWorkspacePanel`
  * (coding file tree), the InputBar `@`-mention picker (`useFileRefsQuery`), and

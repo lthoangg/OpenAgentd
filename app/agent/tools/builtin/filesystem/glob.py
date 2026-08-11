@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import fnmatch
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -58,6 +58,58 @@ class GlobArgs(BaseModel):
     )
 
 
+def _validate_pattern(pattern: str) -> None:
+    """Reject patterns the traversal cannot honour, with an actionable message.
+
+    ``Path.glob`` accepted ``../outside/*`` and happily reported matches from
+    outside the search root; the walk below simply cannot see them, and silently
+    returning "no files" would be a worse answer than saying why.
+    """
+    if os.path.isabs(pattern) or PurePosixPath(pattern).is_absolute():
+        raise ValueError(
+            f"Pattern must be relative to the search directory: {pattern!r}"
+        )
+    if ".." in PurePosixPath(pattern).parts:
+        raise ValueError(
+            f"'..' is not allowed in a pattern: {pattern!r} — pass the "
+            "'directory' argument to search somewhere else."
+        )
+
+
+def _visible_files(root: Path, rules: list[tuple[str, bool]]) -> list[tuple[str, Path]]:
+    """Every file under ``root`` this tool may report, as ``(rel_posix, path)``.
+
+    Pruning happens *during* traversal, which is the whole point of not using
+    ``Path.glob``: pathlib has no way to skip a subtree, so it enumerated
+    ``node_modules``, ``.venv`` and ``.git`` in full and then threw the results
+    away in a post-filter — ~3s at this repo's root, most of it wasted.
+
+    Directories are visited with ordinary names before dot-prefixed ones so the
+    natural traversal order already approximates :func:`_rank`.
+    """
+    found: list[tuple[str, Path]] = []
+    for dirpath, dirnames, filenames in os.walk(root):
+        current = Path(dirpath)
+        rel_dir = current.relative_to(root)
+        dirnames[:] = sorted(
+            (
+                name
+                for name in dirnames
+                if name not in NOISE_DIR_NAMES
+                and not is_gitignored(
+                    (rel_dir / name).as_posix(), is_dir=True, rules=rules
+                )
+            ),
+            key=lambda name: (name.startswith("."), name),
+        )
+        for fname in sorted(filenames):
+            rel = (rel_dir / fname).as_posix()
+            if is_gitignored(rel, is_dir=False, rules=rules):
+                continue
+            found.append((rel, current / fname))
+    return found
+
+
 async def _glob_files(
     pattern: str,
     directory: str = ".",
@@ -69,64 +121,48 @@ async def _glob_files(
     resolved = sandbox.validate_path(directory)
     if not resolved.is_dir():
         raise NotADirectoryError(f"Not a directory: {sandbox.display_path(resolved)}")
+    if match == "path":
+        _validate_pattern(pattern)
     gitignore_rules = load_gitignore_rules(resolved)
 
-    if match == "name":
+    def _scan() -> list[str]:
+        candidates = _visible_files(resolved, gitignore_rules)
+        # Match on cheap string operations first; stat only what matched.
+        #
+        # ``PurePath.full_match`` is pathlib's own glob matcher, so ``*`` stays
+        # within a path component, ``**`` spans directories, and character
+        # classes keep working — the semantics callers already rely on.
+        if match == "name":
+            matched = [
+                (rel, path)
+                for rel, path in candidates
+                if fnmatch.fnmatchcase(path.name, pattern)
+            ]
+        elif pattern.endswith("/"):
+            # A trailing slash restricts the pattern to directories, and this
+            # tool reports files. ``PurePath`` normalises the slash away, which
+            # would turn ``**/`` into ``**`` and match the entire tree.
+            matched = []
+        else:
+            matched = [
+                (rel, path)
+                for rel, path in candidates
+                if PurePosixPath(rel).full_match(pattern)
+            ]
+        matched.sort(key=lambda item: _rank(item[0]))
 
-        def _scan_name() -> list[str]:
-            hits: list[str] = []
-            for root, dirs, files in os.walk(resolved):
-                current = Path(root)
-                # See grep: dot entries are in scope, generated trees are not.
-                # Walking ordinary directories first keeps `_rank`'s ordering
-                # intact under the early exit at `max_results`.
-                dirs[:] = [
-                    d
-                    for d in dirs
-                    if d not in NOISE_DIR_NAMES
-                    and not is_gitignored(
-                        (current / d).relative_to(resolved).as_posix(),
-                        is_dir=True,
-                        rules=gitignore_rules,
-                    )
-                ]
-                dirs.sort(key=lambda d: (d.startswith("."), d))
-                for fname in sorted(files, key=lambda f: (f.startswith("."), f)):
-                    rel = (current / fname).relative_to(resolved).as_posix()
-                    if is_gitignored(rel, is_dir=False, rules=gitignore_rules):
-                        continue
-                    if sandbox.is_denied_path(current / fname):
-                        continue
-                    if fnmatch.fnmatch(fname, pattern):
-                        hits.append(sandbox.display_path(current / fname))
-                        if len(hits) >= max_results:
-                            return hits
-            return hits
+        hits: list[str] = []
+        for _rel, path in matched:
+            # Symlinks to directories and dangling links are not results, and a
+            # sandbox-denied file must never be named in the output.
+            if not path.is_file() or sandbox.is_denied_path(path):
+                continue
+            hits.append(sandbox.display_path(path))
+            if len(hits) >= max_results:
+                break
+        return hits
 
-        matches = await asyncio.to_thread(_scan_name)
-    else:
-
-        def _scan_path() -> list[str]:
-            hits: list[str] = []
-            for m in sorted(
-                resolved.glob(pattern),
-                key=lambda p: _rank(p.relative_to(resolved).as_posix()),
-            ):
-                if not m.is_file():
-                    continue
-                rel = m.relative_to(resolved)
-                if any(part in NOISE_DIR_NAMES for part in rel.parts[:-1]):
-                    continue
-                if is_gitignored(rel.as_posix(), is_dir=False, rules=gitignore_rules):
-                    continue
-                if sandbox.is_denied_path(m):
-                    continue
-                hits.append(sandbox.display_path(m))
-                if len(hits) >= max_results:
-                    break
-            return hits
-
-        matches = await asyncio.to_thread(_scan_path)
+    matches = await asyncio.to_thread(_scan)
 
     if not matches:
         return f"No files matching '{pattern}' in {sandbox.display_path(resolved)}"

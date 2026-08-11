@@ -2639,7 +2639,7 @@ dependencies = [
 
 [[package]]
 name = "openagentd-desktop"
-version = "1.131.2"
+version = "1.131.3"
 dependencies = [
  "anyhow",
  "block2",

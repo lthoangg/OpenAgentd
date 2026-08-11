@@ -41,7 +41,9 @@ class GlobArgs(BaseModel):
     pattern: str = Field(
         description=(
             "Glob pattern. Use '**/*.py' or 'src/**/*.ts' to match by full path, "
-            "or '*.py' with match='name' to match filename only."
+            "or '*.py' with match='name' to match filename only. Brace "
+            "alternation works: 'src/**/*.{ts,tsx}'. A pattern with no '/' is "
+            "retried at any depth if nothing matches at the top level."
         )
     )
     directory: str = Field(
@@ -56,6 +58,73 @@ class GlobArgs(BaseModel):
         ge=1,
         description="Maximum number of results to return.",
     )
+
+
+_MAX_BRACE_VARIANTS = 64
+
+
+def expand_braces(pattern: str) -> list[str]:
+    """Expand shell-style ``{a,b}`` alternations into concrete patterns.
+
+    Neither ``Path.glob`` nor ``PurePath.full_match`` understands braces, so
+    ``web/src/**/*.{ts,tsx}`` used to return "no files" for a pattern every shell
+    accepts. Production telemetry had these as the largest attributable share of
+    `glob`'s 31% no-hit rate.
+
+    Handles nesting (``{a,{b,c}}``) and empty alternatives (``b{.py,}``). A stray
+    or unbalanced brace is left alone and matched literally, and the expansion is
+    capped so a pathological pattern cannot explode combinatorially.
+    """
+    start = pattern.find("{")
+    if start == -1:
+        return [pattern]
+
+    depth = 0
+    for index in range(start, len(pattern)):
+        char = pattern[index]
+        if char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                break
+    else:
+        return [pattern]  # unbalanced — treat literally
+
+    prefix, body, suffix = (
+        pattern[:start],
+        pattern[start + 1 : index],
+        pattern[index + 1 :],
+    )
+
+    # Split on top-level commas only, so nested braces stay intact.
+    options: list[str] = []
+    current: list[str] = []
+    depth = 0
+    for char in body:
+        if char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+        if char == "," and depth == 0:
+            options.append("".join(current))
+            current = []
+            continue
+        current.append(char)
+    options.append("".join(current))
+
+    if len(options) == 1:
+        # `{foo}` carries no alternation; keep the braces literal.
+        return [pattern]
+
+    out: list[str] = []
+    for option in options:
+        for expanded in expand_braces(f"{prefix}{option}{suffix}"):
+            if expanded not in out:
+                out.append(expanded)
+            if len(out) >= _MAX_BRACE_VARIANTS:
+                return out
+    return out
 
 
 def _validate_pattern(pattern: str) -> None:
@@ -125,31 +194,54 @@ async def _glob_files(
         _validate_pattern(pattern)
     gitignore_rules = load_gitignore_rules(resolved)
 
-    def _scan() -> list[str]:
-        candidates = _visible_files(resolved, gitignore_rules)
-        # Match on cheap string operations first; stat only what matched.
-        #
-        # ``PurePath.full_match`` is pathlib's own glob matcher, so ``*`` stays
-        # within a path component, ``**`` spans directories, and character
-        # classes keep working — the semantics callers already rely on.
+    variants = expand_braces(pattern)
+
+    def _select(
+        candidates: list[tuple[str, Path]], patterns: list[str]
+    ) -> list[tuple[str, Path]]:
+        """Candidates matching any of ``patterns``, deduplicated, rank-ordered.
+
+        Match on cheap string operations only; ``stat`` is left to the caller so
+        it is paid per hit rather than per file in the tree.
+
+        ``PurePath.full_match`` is pathlib's own glob matcher, so ``*`` stays
+        within a path component, ``**`` spans directories, and character classes
+        keep working: the semantics callers already rely on.
+        """
         if match == "name":
-            matched = [
+            hit = [
                 (rel, path)
                 for rel, path in candidates
-                if fnmatch.fnmatchcase(path.name, pattern)
+                if any(fnmatch.fnmatchcase(path.name, p) for p in patterns)
             ]
-        elif pattern.endswith("/"):
+        elif any(p.endswith("/") for p in patterns):
             # A trailing slash restricts the pattern to directories, and this
             # tool reports files. ``PurePath`` normalises the slash away, which
             # would turn ``**/`` into ``**`` and match the entire tree.
-            matched = []
+            hit = []
         else:
-            matched = [
+            hit = [
                 (rel, path)
                 for rel, path in candidates
-                if PurePosixPath(rel).full_match(pattern)
+                if any(PurePosixPath(rel).full_match(p) for p in patterns)
             ]
-        matched.sort(key=lambda item: _rank(item[0]))
+        hit.sort(key=lambda item: _rank(item[0]))
+        return hit
+
+    def _scan() -> list[str]:
+        candidates = _visible_files(resolved, gitignore_rules)
+        matched = _select(candidates, variants)
+
+        # A pattern with no separator only matches the top level, so `*title*`
+        # answered "no files" while the file sat two directories down. Retry once
+        # at any depth rather than reporting a miss. Anchored patterns are left
+        # alone: the caller was explicit about where to look.
+        if not matched:
+            widened = [
+                f"**/{p}" for p in variants if "/" not in p and not p.startswith("**")
+            ]
+            if widened:
+                matched = _select(candidates, widened)
 
         hits: list[str] = []
         for _rel, path in matched:

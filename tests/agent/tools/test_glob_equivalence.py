@@ -87,6 +87,125 @@ async def test_path_matching_matches_the_documented_contract(pattern, tree):
     assert _results(result) == EXPECTED[pattern]
 
 
+class TestExpandBraces:
+    """Unit-level cover for the expansion itself, including the blast radius cap."""
+
+    def test_single_group(self):
+        from app.agent.tools.builtin.filesystem.glob import expand_braces
+
+        assert expand_braces("*.{ts,tsx}") == ["*.ts", "*.tsx"]
+
+    def test_no_braces_is_identity(self):
+        from app.agent.tools.builtin.filesystem.glob import expand_braces
+
+        assert expand_braces("src/**/*.py") == ["src/**/*.py"]
+
+    def test_nested_groups(self):
+        from app.agent.tools.builtin.filesystem.glob import expand_braces
+
+        assert expand_braces("{a,{b,c}}.py") == ["a.py", "b.py", "c.py"]
+
+    def test_two_groups_multiply(self):
+        from app.agent.tools.builtin.filesystem.glob import expand_braces
+
+        assert expand_braces("{src,pkg}/*.{py,ts}") == [
+            "src/*.py",
+            "src/*.ts",
+            "pkg/*.py",
+            "pkg/*.ts",
+        ]
+
+    def test_unbalanced_brace_is_literal(self):
+        from app.agent.tools.builtin.filesystem.glob import expand_braces
+
+        assert expand_braces("src/{b.py") == ["src/{b.py"]
+
+    def test_group_without_comma_stays_literal(self):
+        from app.agent.tools.builtin.filesystem.glob import expand_braces
+
+        assert expand_braces("{foo}.py") == ["{foo}.py"]
+
+    def test_expansion_is_capped(self):
+        """A pathological pattern must not explode combinatorially."""
+        from app.agent.tools.builtin.filesystem.glob import (
+            _MAX_BRACE_VARIANTS,
+            expand_braces,
+        )
+
+        pattern = "".join("{a,b,c,d}" for _ in range(8))  # 65k variants uncapped
+        assert len(expand_braces(pattern)) <= _MAX_BRACE_VARIANTS
+
+
+@pytest.fixture
+def brace_tree(tmp_path):
+    """Separate tree so the captured ``EXPECTED`` baseline above stays untouched."""
+    for rel in ("src/b.py", "src/b.ts", "pkg/sub/e.py", "pkg/mod.pyi"):
+        path = tmp_path / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("x")
+    token = set_sandbox(SandboxConfig(workspace=str(tmp_path), denied_patterns=[]))
+    yield tmp_path
+    _sandbox_ctx.reset(token)
+
+
+class TestBraceExpansion:
+    """Production telemetry: 3 of the 8 attributable `glob` misses in a week were
+    brace patterns like ``web/src/**/*.{ts,tsx}``. Neither ``Path.glob`` nor
+    ``PurePath.full_match`` has ever supported braces, so the tool answered "no
+    files" for a pattern every shell accepts.
+    """
+
+    @pytest.mark.asyncio
+    async def test_extension_alternation(self, brace_tree):
+        result = await glob_files.arun(pattern="src/*.{py,ts}", directory=".")
+        assert sorted(_results(result)) == ["src/b.py", "src/b.ts"]
+
+    @pytest.mark.asyncio
+    async def test_directory_alternation(self, brace_tree):
+        result = await glob_files.arun(pattern="{src,pkg}/**/*.py", directory=".")
+        assert sorted(_results(result)) == ["pkg/sub/e.py", "src/b.py"]
+
+    @pytest.mark.asyncio
+    async def test_empty_alternative(self, brace_tree):
+        result = await glob_files.arun(pattern="src/b{.py,}", directory=".")
+        assert _results(result) == ["src/b.py"]
+
+    @pytest.mark.asyncio
+    async def test_unmatched_brace_is_treated_literally(self, brace_tree):
+        """A stray ``{`` must not explode; it is just a character."""
+        assert _results(await glob_files.arun(pattern="src/{b.py", directory=".")) == []
+
+    @pytest.mark.asyncio
+    async def test_name_mode_supports_braces_too(self, brace_tree):
+        result = await glob_files.arun(
+            pattern="*.{ts,tsx}", directory=".", match="name"
+        )
+        assert _results(result) == ["src/b.ts"]
+
+
+class TestRecursiveFallback:
+    """A slash-less path pattern only matches the top level, so ``*title*``
+    returned nothing while the file sat two directories down. Rather than
+    silently answering "no files", retry once as ``**/pattern``.
+    """
+
+    @pytest.mark.asyncio
+    async def test_bare_pattern_falls_back_to_any_depth(self, tree):
+        result = await glob_files.arun(pattern="*.txt", directory=".")
+        assert _results(result) == ["src/deep/notes.txt"]
+
+    @pytest.mark.asyncio
+    async def test_top_level_match_wins_without_fallback(self, tree):
+        """When the anchored pattern matches, the fallback must not widen it."""
+        result = await glob_files.arun(pattern="*.py", directory=".")
+        assert _results(result) == ["a.py"]
+
+    @pytest.mark.asyncio
+    async def test_anchored_pattern_is_never_widened(self, tree):
+        """``src/*.py`` missing must stay a miss: the caller was explicit."""
+        assert _results(await glob_files.arun(pattern="pkg/*.py", directory=".")) == []
+
+
 @pytest.mark.asyncio
 async def test_ordinary_paths_are_ranked_before_dot_paths(tree):
     """Ranking, not raw alphabetical order — a dot directory must never crowd

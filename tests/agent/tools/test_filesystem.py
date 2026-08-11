@@ -410,12 +410,101 @@ class TestGrepFiles:
         result = await grep_files.arun(pattern=".", directory=".", max_results=2)
         assert len(result.strip().split("\n")) == 2
 
-    async def test_grep_skips_hidden_dirs(self, workspace):
-        hidden = workspace / ".hidden"
-        hidden.mkdir()
-        (hidden / "secret.py").write_text("SECRET_KEY = 'abc'\n")
-        result = await grep_files.arun(pattern="SECRET_KEY", directory=".")
+    async def test_grep_searches_dot_directories_except_vcs_and_caches(self, workspace):
+        """Dot-prefixed does not mean uninteresting.
+
+        Blanket-skipping every dot entry made ``.github/workflows``,
+        ``.openagentd/skills`` and ``.eslintrc.json`` unsearchable — the agent
+        could not find files the user was asking about. Only VCS internals and
+        generated caches are skipped now; ``.gitignore`` decides the rest.
+        """
+        github = workspace / ".github" / "workflows"
+        github.mkdir(parents=True)
+        (github / "ci.yml").write_text("run: MARKER\n")
+        (workspace / ".eslintrc.json").write_text('{"rules": "MARKER"}\n')
+        git_dir = workspace / ".git"
+        git_dir.mkdir()
+        (git_dir / "COMMIT_EDITMSG").write_text("MARKER\n")
+
+        result = await grep_files.arun(pattern="MARKER", directory=".")
+        assert "ci.yml" in result
+        assert ".eslintrc.json" in result
+        assert "COMMIT_EDITMSG" not in result
+
+    async def test_grep_never_reads_sandbox_denied_files(self, tmp_path):
+        """Dot files are searchable now, so the sandbox denylist — not the dot
+        prefix — is what keeps ``.env`` secrets out of grep output."""
+        from app.agent.sandbox import _sandbox_ctx
+
+        sb = SandboxConfig(
+            workspace=str(tmp_path), denied_patterns=["**/.env", "**/.env.*"]
+        )
+        token = set_sandbox(sb)
+        try:
+            (tmp_path / ".env").write_text("API_KEY=super-secret\n")
+            (tmp_path / ".env.local").write_text("API_KEY=also-secret\n")
+            (tmp_path / "config.py").write_text("API_KEY = os.environ['API_KEY']\n")
+
+            result = await grep_files.arun(pattern="API_KEY", directory=".")
+            assert "config.py" in result
+            assert "super-secret" not in result
+            assert "also-secret" not in result
+            hit_files = {line.split(":", 1)[0] for line in result.splitlines()}
+            assert not any(path.endswith((".env", ".env.local")) for path in hit_files)
+        finally:
+            _sandbox_ctx.reset(token)
+
+    async def test_grep_does_not_leak_denied_files_through_a_symlink(self, tmp_path):
+        """A symlink with an innocuous name must not smuggle ``.env`` contents
+        into the transcript — the denylist follows the link."""
+        from app.agent.sandbox import _sandbox_ctx
+
+        sb = SandboxConfig(workspace=str(tmp_path), denied_patterns=["**/.env"])
+        token = set_sandbox(sb)
+        try:
+            (tmp_path / ".env").write_text("API_KEY=super-secret\n")
+            try:
+                (tmp_path / "notes.txt").symlink_to(tmp_path / ".env")
+            except (OSError, NotImplementedError):
+                pytest.skip("symlink creation not supported on this platform")
+
+            result = await grep_files.arun(pattern="API_KEY", directory=".")
+            assert "super-secret" not in result
+        finally:
+            _sandbox_ctx.reset(token)
+
+    async def test_grep_searches_build_output_unless_gitignored(self, workspace):
+        """``dist/``/``build/`` hold real content often enough that pruning them
+        outright hid tracked files; ``.gitignore`` is the authority."""
+        (workspace / "dist").mkdir()
+        (workspace / "dist" / "app.js").write_text("var MARKER = 1\n")
+        (workspace / "build").mkdir()
+        (workspace / "build" / "Dockerfile").write_text("# MARKER\n")
+
+        result = await grep_files.arun(pattern="MARKER", directory=".")
+        assert "app.js" in result
+        assert "Dockerfile" in result
+
+    async def test_grep_skips_gitignored_build_output(self, workspace):
+        (workspace / ".gitignore").write_text("dist/\n", encoding="utf-8")
+        (workspace / "dist").mkdir()
+        (workspace / "dist" / "app.js").write_text("var MARKER = 1\n")
+
+        result = await grep_files.arun(pattern="MARKER", directory=".")
         assert "No matches" in result
+
+    async def test_grep_finds_nested_files_a_single_star_cannot_match(self, workspace):
+        """``docs/*.tmp`` ignores one level; the matcher used to let ``*`` cross
+        ``/`` and swallow the whole subtree."""
+        (workspace / ".gitignore").write_text("docs/*.tmp\n", encoding="utf-8")
+        deep = workspace / "docs" / "guide" / "deep"
+        deep.mkdir(parents=True)
+        (deep / "notes.tmp").write_text("MARKER\n")
+        (workspace / "docs" / "scratch.tmp").write_text("MARKER\n")
+
+        result = await grep_files.arun(pattern="MARKER", directory=".")
+        assert "notes.tmp" in result
+        assert "scratch.tmp" not in result
 
     async def test_grep_respects_gitignore_and_common_generated_dirs(self, workspace):
         (workspace / ".gitignore").write_text("ignored.py\n", encoding="utf-8")
@@ -501,12 +590,70 @@ class TestGlobFiles:
         with pytest.raises(ToolExecutionError):
             await glob_files.arun(pattern="*", directory="hello.py")
 
-    async def test_glob_skips_hidden_dirs(self, workspace):
-        hidden = workspace / ".hidden"
-        hidden.mkdir()
-        (hidden / "secret.txt").write_text("secret")
-        result = await glob_files.arun(pattern="**/*.txt", directory=".")
-        assert "secret.txt" not in result
+    async def test_glob_matches_dot_directories_except_vcs_and_caches(self, workspace):
+        """Same policy as grep: only VCS internals and caches are hidden."""
+        github = workspace / ".github" / "workflows"
+        github.mkdir(parents=True)
+        (github / "ci.yml").write_text("jobs: {}")
+        git_dir = workspace / ".git"
+        git_dir.mkdir()
+        (git_dir / "config.yml").write_text("x")
+
+        result = await glob_files.arun(pattern="**/*.yml", directory=".")
+        assert "ci.yml" in result
+        assert ".git/config.yml" not in result
+
+    async def test_glob_ranks_dot_paths_after_ordinary_ones(self, workspace):
+        """Dot directories are searchable, but they must not eat the result cap.
+
+        Sorting purely alphabetically put `.openagentd/skills/...` ahead of
+        `app/...` in this repo, so `**/*.py` returned tooling instead of source.
+        """
+        (workspace / ".openagentd" / "skills").mkdir(parents=True)
+        (workspace / ".openagentd" / "skills" / "helper.py").write_text("x")
+        (workspace / "app").mkdir()
+        (workspace / "app" / "main.py").write_text("x")
+
+        result = await glob_files.arun(pattern="**/*.py", directory=".")
+        lines = result.splitlines()
+        assert any("helper.py" in line for line in lines)
+        first_dot = next(i for i, line in enumerate(lines) if line.startswith("."))
+        last_plain = max(i for i, line in enumerate(lines) if not line.startswith("."))
+        assert last_plain < first_dot
+
+    async def test_glob_matches_dotfiles_by_name(self, workspace):
+        (workspace / ".eslintrc.json").write_text("{}")
+        result = await glob_files.arun(
+            pattern=".eslintrc.json", directory=".", match="name"
+        )
+        assert ".eslintrc.json" in result
+
+    async def test_glob_never_lists_sandbox_denied_files(self, tmp_path):
+        from app.agent.sandbox import _sandbox_ctx
+
+        sb = SandboxConfig(workspace=str(tmp_path), denied_patterns=["**/.env"])
+        token = set_sandbox(sb)
+        try:
+            (tmp_path / ".env").write_text("API_KEY=secret\n")
+            (tmp_path / "app.py").write_text("x")
+            result = await glob_files.arun(pattern="*", directory=".")
+            assert "app.py" in result
+            assert ".env" not in result
+        finally:
+            _sandbox_ctx.reset(token)
+
+    async def test_glob_matches_build_output_unless_gitignored(self, workspace):
+        (workspace / "dist").mkdir()
+        (workspace / "dist" / "app.js").write_text("x")
+        result = await glob_files.arun(pattern="**/*.js", directory=".")
+        assert "app.js" in result
+
+    async def test_glob_skips_gitignored_build_output(self, workspace):
+        (workspace / ".gitignore").write_text("dist/\n", encoding="utf-8")
+        (workspace / "dist").mkdir()
+        (workspace / "dist" / "app.js").write_text("x")
+        result = await glob_files.arun(pattern="**/*.js", directory=".")
+        assert "No files matching" in result
 
     async def test_glob_max_results(self, workspace):
         for i in range(10):

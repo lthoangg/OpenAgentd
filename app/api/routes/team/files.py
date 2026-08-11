@@ -28,6 +28,7 @@ import uuid
 from pathlib import Path
 
 from app.agent.tools.builtin.filesystem._ignore import (
+    NOISE_DIR_NAMES,
     is_gitignored as _shared_is_gitignored,
     load_gitignore_rules as _shared_load_gitignore_rules,
     matches_gitignore_pattern as _shared_matches_gitignore_pattern,
@@ -225,24 +226,6 @@ async def get_workspace_media(
 # coding tree, @-mention picker, command palette).
 _MAX_FILES_LISTED = 5_000
 
-# Dependency / cache directories that are noise in a *file picker*.
-#
-# Deliberately narrower than the agent tools' ``_SKIPPED_DIR_NAMES``: ``dist/``
-# and ``build/`` regularly hold real content (a site the agent just built into
-# ``dist/``, a tracked ``build/Dockerfile``), and pruning them unconditionally
-# made those files impossible to @-mention or open from the command palette.
-# Whether they are noise is left to git / ``.gitignore``; only dependency and
-# compiler-cache trees — never authored by hand — are dropped outright.
-_NOISE_DIR_NAMES = frozenset(
-    {
-        "node_modules",
-        ".venv",
-        "venv",
-        "__pycache__",
-        ".ruff_cache",
-        ".pytest_cache",
-    }
-)
 _MAX_GIT_DIFF_CHARS = 512 * 1024
 _MAX_UNTRACKED_DIFF_BYTES = 256 * 1024
 
@@ -364,7 +347,7 @@ def _git_listed_paths(base: Path) -> list[str] | None:
 
 def _has_noise_component(rel: str) -> bool:
     """True when any *directory* component of ``rel`` is a dependency/cache dir."""
-    return any(part in _NOISE_DIR_NAMES for part in rel.rstrip("/").split("/")[:-1])
+    return any(part in NOISE_DIR_NAMES for part in rel.rstrip("/").split("/")[:-1])
 
 
 def _stat_listed_paths(
@@ -440,8 +423,8 @@ def _walk_files(root: Path, base: Path, out: list[WorkspaceFileInfo]) -> bool:
     truncated = False
 
     # InputBar @-mention picker policy:
-    #   - Always skip ``.git/`` — VCS internals are huge and never useful to
-    #     reference from a chat composer.
+    #   - Skip the generated trees in ``NOISE_DIR_NAMES`` (``.git/``, caches,
+    #     dependencies) — huge and never worth referencing from a composer.
     #   - Otherwise allow dot-prefixed entries (``.openagentd/``, ``.github/``,
     #     ``.env.example``, …) and defer the actual filtering to ``.gitignore``.
     #     This matches what users see in their editor and honours the project's
@@ -463,8 +446,7 @@ def _walk_files(root: Path, base: Path, out: list[WorkspaceFileInfo]) -> bool:
         dirnames[:] = sorted(
             name
             for name in dirnames
-            if name != ".git"
-            and name not in _NOISE_DIR_NAMES
+            if name not in NOISE_DIR_NAMES
             and not _is_gitignored(
                 (current / name).relative_to(base).as_posix(),
                 is_dir=True,

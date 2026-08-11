@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 
 from app.agent.sandbox import get_sandbox
 from app.agent.tools.builtin.filesystem._ignore import (
-    _SKIPPED_DIR_NAMES,
+    NOISE_DIR_NAMES,
     is_gitignored,
     load_gitignore_rules,
 )
@@ -22,6 +22,17 @@ _DESCRIPTION = (
     "Find files by glob pattern. Use match='path' for full paths or match='name' "
     "for filenames only."
 )
+
+
+def _rank(rel: str) -> tuple[int, str]:
+    """Sort key placing dot-prefixed paths last.
+
+    Dot directories are searchable (`.github/`, `.openagentd/skills/`), but a
+    plain alphabetical sort put them ahead of everything — `**/*.py` filled its
+    whole result cap with tooling before reaching `app/`. Ordinary paths first,
+    alphabetical within each group.
+    """
+    return (1 if any(part.startswith(".") for part in rel.split("/")) else 0, rel)
 
 
 class GlobArgs(BaseModel):
@@ -66,22 +77,25 @@ async def _glob_files(
             hits: list[str] = []
             for root, dirs, files in os.walk(resolved):
                 current = Path(root)
+                # See grep: dot entries are in scope, generated trees are not.
+                # Walking ordinary directories first keeps `_rank`'s ordering
+                # intact under the early exit at `max_results`.
                 dirs[:] = [
                     d
                     for d in dirs
-                    if not d.startswith(".")
-                    and d not in _SKIPPED_DIR_NAMES
+                    if d not in NOISE_DIR_NAMES
                     and not is_gitignored(
                         (current / d).relative_to(resolved).as_posix(),
                         is_dir=True,
                         rules=gitignore_rules,
                     )
                 ]
-                for fname in files:
-                    if fname.startswith("."):
-                        continue
+                dirs.sort(key=lambda d: (d.startswith("."), d))
+                for fname in sorted(files, key=lambda f: (f.startswith("."), f)):
                     rel = (current / fname).relative_to(resolved).as_posix()
                     if is_gitignored(rel, is_dir=False, rules=gitignore_rules):
+                        continue
+                    if sandbox.is_denied_path(current / fname):
                         continue
                     if fnmatch.fnmatch(fname, pattern):
                         hits.append(sandbox.display_path(current / fname))
@@ -94,15 +108,18 @@ async def _glob_files(
 
         def _scan_path() -> list[str]:
             hits: list[str] = []
-            for m in sorted(resolved.glob(pattern)):
+            for m in sorted(
+                resolved.glob(pattern),
+                key=lambda p: _rank(p.relative_to(resolved).as_posix()),
+            ):
                 if not m.is_file():
                     continue
                 rel = m.relative_to(resolved)
-                if any(part.startswith(".") for part in rel.parts):
-                    continue
-                if any(part in _SKIPPED_DIR_NAMES for part in rel.parts[:-1]):
+                if any(part in NOISE_DIR_NAMES for part in rel.parts[:-1]):
                     continue
                 if is_gitignored(rel.as_posix(), is_dir=False, rules=gitignore_rules):
+                    continue
+                if sandbox.is_denied_path(m):
                     continue
                 hits.append(sandbox.display_path(m))
                 if len(hits) >= max_results:

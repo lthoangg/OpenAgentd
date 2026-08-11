@@ -225,6 +225,31 @@ class SandboxConfig:
 
         return resolved
 
+    def is_denied_path(self, path: Path) -> bool:
+        """True when ``path`` is off-limits (denied root or deny-pattern).
+
+        The cheap, non-raising counterpart to :meth:`validate_path`, for callers
+        that enumerate many paths and must filter rather than fail: ``grep`` and
+        ``glob`` walk whole trees, and without this a file the user protected
+        with ``**/.env`` would have its contents echoed straight back into the
+        transcript.
+
+        Symlinks are judged by their target as well as their own name, so an
+        innocuous-looking ``notes.txt -> .env`` cannot smuggle a denied file
+        past a pattern. Only one ``lstat`` is spent per call, and only for the
+        link case is the target resolved — callers are about to read or stat the
+        file anyway.
+        """
+        if self._is_denied(path) is not None:
+            return True
+        try:
+            if not path.is_symlink():
+                return False
+            return self._is_denied(path.resolve()) is not None
+        except OSError:
+            # Broken or unreadable link: refuse rather than guess.
+            return True
+
     # ── Command validation (best-effort) ─────────────────────────────────
 
     def check_command(self, command: str) -> tuple[Path, str] | None:

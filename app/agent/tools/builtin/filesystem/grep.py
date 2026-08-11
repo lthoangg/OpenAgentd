@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from app.agent.sandbox import get_sandbox
 from app.agent.tools.builtin.filesystem._ignore import (
-    _SKIPPED_DIR_NAMES,
+    NOISE_DIR_NAMES,
     is_gitignored,
     load_gitignore_rules,
 )
@@ -109,11 +109,14 @@ async def _grep_files(
         hits: list[str] = []
         for root, dirs, files in os.walk(resolved):
             current = Path(root)
+            # Dot-prefixed entries are searched: `.github/workflows`,
+            # `.openagentd/skills` and `.eslintrc.json` are things users ask
+            # about. Only generated trees (`.git`, caches, dependencies) are
+            # pruned outright; `.gitignore` decides the rest.
             dirs[:] = [
                 d
                 for d in dirs
-                if not d.startswith(".")
-                and d not in _SKIPPED_DIR_NAMES
+                if d not in NOISE_DIR_NAMES
                 and not is_gitignored(
                     (current / d).relative_to(resolved).as_posix(),
                     is_dir=True,
@@ -121,13 +124,16 @@ async def _grep_files(
                 )
             ]
             for fname in files:
-                if fname.startswith("."):
-                    continue
                 if not fnmatch.fnmatch(fname, include):
                     continue
                 fpath = current / fname
                 rel = fpath.relative_to(resolved).as_posix()
                 if is_gitignored(rel, is_dir=False, rules=gitignore_rules):
+                    continue
+                # Secrets stay secret: with dotfiles in scope, the sandbox
+                # denylist is the only thing standing between `**/.env` and the
+                # model's context.
+                if sandbox.is_denied_path(fpath):
                     continue
                 try:
                     text = fpath.read_text(encoding="utf-8")

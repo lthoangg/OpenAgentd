@@ -737,52 +737,27 @@ async def test_background_process_output_and_status(sandbox_workspace, fast_bg):
 
 
 @pytest.mark.asyncio
-async def test_background_process_wait(sandbox_workspace, fast_bg):
-    """wait returns final output and keeps the record for follow-up actions."""
-    await shell_tool.arun(
-        command="printf 'start\\n' && sleep 0.05 && printf 'done\\n'",
-        background=True,
-        timeout_seconds=1,
-    )
-    pid = next(iter(_bg_processes))
-
-    result = await background_process.arun(action="wait", pid=pid)
-
-    assert f"PID {pid}: exited (code 0)" in result
-    assert "start" in result
-    assert "done" in result
-    # Retained until TTL pruning — output/status still work after wait.
-    assert pid in _bg_processes
-    followup = await background_process.arun(action="output", pid=pid)
-    assert "done" in followup
+async def test_bg_rejects_the_removed_wait_action(sandbox_workspace, fast_bg):
+    """`wait` is gone: blocking on a background process is what foreground
+    shell already does, without the 300s cap the action carried."""
+    with pytest.raises((ToolArgumentError, ValueError)):
+        await background_process.arun(action="wait", pid=1234)
 
 
 @pytest.mark.asyncio
-async def test_background_process_wait_is_bounded(sandbox_workspace, fast_bg):
-    """wait returns control when a process is still running after its timeout."""
-    await shell_tool.arun(command="sleep 30", background=True, timeout_seconds=1)
-    pid = next(iter(_bg_processes))
-
-    result = await shell_module._background_process(
-        action="wait", pid=pid, timeout_seconds=0.01
-    )
-
-    assert f"PID {pid}: still running after 0.01 seconds" in result
-    assert pid in _bg_processes
-    assert _bg_processes[pid].alive
-
-
-@pytest.mark.asyncio
-async def test_background_process_wait_limits_final_output(sandbox_workspace, fast_bg):
-    """wait caps final output to the same inline limits as shell."""
+async def test_background_process_output_limits_final_output(
+    sandbox_workspace, fast_bg
+):
+    """bg output caps content to the same inline limits as shell."""
     await shell_tool.arun(
         command="python3 - <<'PY'\nfor i in range(400):\n    print(f'line{i:03d}-' + 'x' * 1000)\nPY\nsleep 0.05",
         background=True,
         timeout_seconds=1,
     )
     pid = next(iter(_bg_processes))
+    await asyncio.sleep(0.3)  # let the writer finish before reading its output
 
-    result = await background_process.arun(action="wait", pid=pid)
+    result = await background_process.arun(action="output", pid=pid)
 
     assert "...output truncated..." in result
     assert "line399" in result  # newest output always retained
@@ -936,37 +911,13 @@ async def test_background_child_exit_with_escaped_grandchild_reports_success(
     if "[Background" in result:
         pid = next(iter(_bg_processes))
         result = await asyncio.wait_for(
-            shell_module._background_process(action="wait", pid=pid, timeout_seconds=5),
+            shell_module._background_process(action="stop", pid=pid),
             timeout=10,
         )
-        assert "exited (code 0)" in result
+        assert "exit code 0" in result
     else:
         assert "[Succeeded]" in result
         assert len(_bg_processes) == 0
-    assert "started" in result
-
-
-@pytest.mark.asyncio
-async def test_bg_wait_is_bounded_when_child_keeps_stdout_open(
-    sandbox_workspace, fast_bg, monkeypatch
-):
-    """bg wait returns within its bound even when a `cmd &` child holds the pipe."""
-    monkeypatch.setattr(shell_module, "_READER_DRAIN_TIMEOUT_SECONDS", 0.2)
-    # The trailing `sleep 0.3` keeps the leader alive past warmup, so the
-    # record registers; the `sleep 30` child then outlives the leader.
-    await shell_tool.arun(
-        command="sleep 30 & echo started; sleep 0.3",
-        background=True,
-        timeout_seconds=1,
-    )
-    pid = next(iter(_bg_processes))
-
-    result = await asyncio.wait_for(
-        shell_module._background_process(action="wait", pid=pid, timeout_seconds=1),
-        timeout=5,
-    )
-
-    assert f"PID {pid}: exited (code 0)" in result
     assert "started" in result
 
 

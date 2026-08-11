@@ -22,15 +22,42 @@ def test_read_description_says_html_comes_back_verbatim():
 
 
 def test_shell_timeout_description_matches_runtime_default():
+    from app.agent.tools.builtin.shell import _DEFAULT_TIMEOUT_SECONDS
+
     timeout = shell_tool.definition["function"]["parameters"]["properties"][
         "timeout_seconds"
     ]["description"]
-    assert "omitted uses 60" in timeout
+    assert f"omitted uses {_DEFAULT_TIMEOUT_SECONDS}" in timeout
+    # No ceiling: the model must know foreground is the right place for a slow
+    # suite, instead of backgrounding it to dodge the timeout.
+    assert "no ceiling" in timeout
+
+
+def test_background_flag_description_steers_away_from_one_shot_commands():
+    """25 of 29 observed background launches were one-shot builds, then blocked
+    on a capped `bg wait`. The flag must read as "for things that outlive the
+    call", not as a generic runner."""
+    background = shell_tool.definition["function"]["parameters"]["properties"][
+        "background"
+    ]["description"]
+    assert "outlive" in background
+    assert "timeout_seconds" in background
 
 
 def test_background_pid_description_lists_every_pid_action():
     pid = background_process.definition["function"]["parameters"]["properties"]["pid"]
-    assert "status/output/stop/wait" in pid["description"]
+    assert "status/output/stop" in pid["description"]
+    assert "wait" not in pid["description"]
+
+
+def test_bg_description_no_longer_advertises_wait():
+    """`wait` was removed: it duplicated foreground shell while capping at 300s."""
+    action = background_process.definition["function"]["parameters"]["properties"][
+        "action"
+    ]
+    assert action["enum"] == ["list", "status", "output", "stop"]
+    assert "wait" not in background_process.description
+    assert "foreground" in background_process.description
 
 
 def test_todo_descriptions_explain_assignment_claim_handoff():

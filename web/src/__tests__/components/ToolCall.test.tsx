@@ -1012,10 +1012,13 @@ describe("ToolCall — bg display", () => {
     expect(header.querySelector("em")).toBeNull()
   })
 
-  it("shows 'Waiting for process {pid}…' for action=wait with pid", () => {
+  // `wait` was removed from the bg tool (it duplicated foreground shell while
+  // capping at 300s). Stored transcripts still contain it, so the generic
+  // fallback has to stay readable rather than render blank.
+  it("falls back to a generic header for the retired wait action", () => {
     const args = JSON.stringify({ action: "wait", pid: 2468 })
     render(<ToolCall name="bg" args={args} done={false} />)
-    expectPlainArg(getHeader("Waiting for process 2468…"), "2468")
+    expectPlainArg(getHeader("bg: wait"), "wait")
   })
 
   it("shows 'Stopping process {pid}…' for action=stop with pid", () => {

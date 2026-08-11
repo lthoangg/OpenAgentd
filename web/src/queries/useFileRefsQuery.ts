@@ -5,7 +5,7 @@
  *   - coding:  GET /api/team/workspace/files/list?workspace=...
  *   - normal:  GET /api/team/{session_id}/files
  *
- * Both return a flat list of files (max 500, gitignore-aware). Folder entries
+ * Both return a flat list of files (max 5,000, gitignore-aware). Folder entries
  * are derived client-side from the path prefixes so the user can also reference
  * directories with `@some/dir/`.
  *

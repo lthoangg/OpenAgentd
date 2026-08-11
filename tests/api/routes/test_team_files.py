@@ -351,12 +351,277 @@ class TestWorkspaceFilesListing:
         assert body["truncated"] is True
         assert len(body["files"]) == cap
 
-    # NB: The previous mtime-based "revert boundary" filter is gone. After
-    # the move to the Git snapshot service (see app/services/snapshot_service.py),
-    # the workspace filesystem is authoritative — restoring a snapshot
-    # physically removes files added after that point, so the listing
-    # and media endpoints simply report what's on disk. The snapshot
-    # round-trip is covered by tests/services/test_snapshot_service.py.
+
+class TestGitBackedListing:
+    """A git work tree is listed through git itself, not the naive matcher.
+
+    The hand-rolled ``.gitignore`` matcher used for non-git workspaces only
+    reads the *root* ``.gitignore`` and matches with ``fnmatch``, whose ``*``
+    crosses ``/``. That silently hid files the user can plainly see in their
+    editor — and they went missing from *both* the ``@``-mention picker and the
+    command palette, which share this listing. When the workspace is the top
+    level of a git work tree, ``git ls-files`` is the source of truth.
+    """
+
+    @staticmethod
+    def _init_repo(root: Path) -> None:
+        import subprocess
+
+        root.mkdir(parents=True, exist_ok=True)
+        subprocess.run(
+            ["git", "init", "-q", "."], cwd=root, check=True, capture_output=True
+        )
+
+    @staticmethod
+    def _commit_all(root: Path) -> None:
+        import subprocess
+
+        subprocess.run(["git", "add", "-A"], cwd=root, check=True, capture_output=True)
+        subprocess.run(
+            [
+                "git",
+                "-c",
+                "user.email=t@t",
+                "-c",
+                "user.name=t",
+                "commit",
+                "-qm",
+                "init",
+            ],
+            cwd=root,
+            check=True,
+            capture_output=True,
+        )
+
+    def test_nested_paths_under_single_level_ignore_pattern_are_listed(
+        self, client, session_id, tmp_path, monkeypatch
+    ):
+        """``docs/*.tmp`` ignores one level only — git shows deeper matches.
+
+        The fnmatch matcher treated ``*`` as crossing ``/``, so
+        ``docs/guide/deep/notes.tmp`` disappeared even though ``git status``
+        lists it.
+        """
+        from app.api.routes.team import files as team_routes
+
+        fake_root = tmp_path / "ws"
+        self._init_repo(fake_root)
+        (fake_root / ".gitignore").write_text("docs/*.tmp\n", encoding="utf-8")
+        deep = fake_root / "docs" / "guide" / "deep"
+        deep.mkdir(parents=True)
+        (deep / "notes.tmp").write_text("keep me")
+        (fake_root / "docs" / "scratch.tmp").write_text("ignored")
+
+        monkeypatch.setattr(team_routes, "workspace_dir", lambda sid: fake_root)
+
+        paths = sorted(
+            f["path"]
+            for f in client.get(f"/api/team/{session_id}/files").json()["files"]
+        )
+        assert "docs/guide/deep/notes.tmp" in paths
+        assert "docs/scratch.tmp" not in paths
+
+    def test_tracked_build_and_dist_files_are_listed(
+        self, client, session_id, tmp_path, monkeypatch
+    ):
+        """``build/`` and ``dist/`` are only noise when git says so.
+
+        They were pruned unconditionally by the agent tools' skip list, so a
+        tracked ``build/Dockerfile`` or a committed ``dist/`` bundle could
+        never be tagged or opened from the palette.
+        """
+        from app.api.routes.team import files as team_routes
+
+        fake_root = tmp_path / "ws"
+        self._init_repo(fake_root)
+        (fake_root / "build").mkdir()
+        (fake_root / "build" / "Dockerfile").write_text("FROM scratch\n")
+        (fake_root / "dist" / "assets").mkdir(parents=True)
+        (fake_root / "dist" / "assets" / "logo.svg").write_text("<svg/>")
+        (fake_root / "main.py").write_text("x = 1\n")
+        self._commit_all(fake_root)
+
+        monkeypatch.setattr(team_routes, "workspace_dir", lambda sid: fake_root)
+
+        paths = sorted(
+            f["path"]
+            for f in client.get(f"/api/team/{session_id}/files").json()["files"]
+        )
+        assert paths == ["build/Dockerfile", "dist/assets/logo.svg", "main.py"]
+
+    def test_nested_gitignore_files_are_honoured(
+        self, client, session_id, tmp_path, monkeypatch
+    ):
+        """Only the root ``.gitignore`` was ever read; git honours all of them."""
+        from app.api.routes.team import files as team_routes
+
+        fake_root = tmp_path / "ws"
+        self._init_repo(fake_root)
+        pkg = fake_root / "pkg"
+        pkg.mkdir()
+        (pkg / ".gitignore").write_text("secret.txt\n", encoding="utf-8")
+        (pkg / "secret.txt").write_text("hide")
+        (pkg / "app.py").write_text("ok")
+
+        monkeypatch.setattr(team_routes, "workspace_dir", lambda sid: fake_root)
+
+        paths = sorted(
+            f["path"]
+            for f in client.get(f"/api/team/{session_id}/files").json()["files"]
+        )
+        assert "pkg/app.py" in paths
+        assert "pkg/secret.txt" not in paths
+
+    def test_untracked_dependency_dirs_are_still_skipped(
+        self, client, session_id, tmp_path, monkeypatch
+    ):
+        """A repo that forgot to ignore ``node_modules`` must not flood the
+        picker (and burn the file cap) with dependency files."""
+        from app.api.routes.team import files as team_routes
+
+        fake_root = tmp_path / "ws"
+        self._init_repo(fake_root)
+        (fake_root / "node_modules" / "pkg").mkdir(parents=True)
+        (fake_root / "node_modules" / "pkg" / "index.js").write_text("x")
+        (fake_root / "app.js").write_text("x")
+
+        monkeypatch.setattr(team_routes, "workspace_dir", lambda sid: fake_root)
+
+        paths = sorted(
+            f["path"]
+            for f in client.get(f"/api/team/{session_id}/files").json()["files"]
+        )
+        assert paths == ["app.js"]
+
+    def test_workspace_nested_inside_an_ignored_repo_dir_falls_back_to_walk(
+        self, client, session_id, tmp_path, monkeypatch
+    ):
+        """Session workspaces live under a gitignored ``.openagentd/`` dir of
+        the *host* repo. ``git ls-files`` there returns nothing, so the git
+        path must only apply when the workspace is the work tree's top level.
+        """
+        from app.api.routes.team import files as team_routes
+
+        repo = tmp_path / "host-repo"
+        self._init_repo(repo)
+        (repo / ".gitignore").write_text(".openagentd/\n", encoding="utf-8")
+        fake_root = repo / ".openagentd" / "workspace" / "sess"
+        fake_root.mkdir(parents=True)
+        (fake_root / "report.md").write_text("# hi")
+
+        monkeypatch.setattr(team_routes, "workspace_dir", lambda sid: fake_root)
+
+        paths = sorted(
+            f["path"]
+            for f in client.get(f"/api/team/{session_id}/files").json()["files"]
+        )
+        assert paths == ["report.md"]
+
+    def test_submodule_contents_are_listed(
+        self, client, session_id, tmp_path, monkeypatch
+    ):
+        """``git ls-files`` reports a submodule as one gitlink entry; its files
+        must still be reachable from the picker."""
+        import subprocess
+
+        from app.api.routes.team import files as team_routes
+
+        dep = tmp_path / "dep"
+        self._init_repo(dep)
+        (dep / "lib.py").write_text("lib")
+        self._commit_all(dep)
+
+        fake_root = tmp_path / "ws"
+        self._init_repo(fake_root)
+        (fake_root / "main.py").write_text("main")
+        self._commit_all(fake_root)
+        added = subprocess.run(
+            [
+                "git",
+                "-c",
+                "protocol.file.allow=always",
+                "-c",
+                "user.email=t@t",
+                "-c",
+                "user.name=t",
+                "submodule",
+                "add",
+                "-q",
+                str(dep),
+                "vendor/dep",
+            ],
+            cwd=fake_root,
+            capture_output=True,
+        )
+        if added.returncode != 0:
+            pytest.skip("submodule creation unsupported in this environment")
+
+        monkeypatch.setattr(team_routes, "workspace_dir", lambda sid: fake_root)
+
+        paths = sorted(
+            f["path"]
+            for f in client.get(f"/api/team/{session_id}/files").json()["files"]
+        )
+        assert "vendor/dep/lib.py" in paths
+        assert "main.py" in paths
+
+    def test_cap_truncates_git_listing(self, client, session_id, tmp_path, monkeypatch):
+        """The cap applies to the git path too, and only flips ``truncated``
+        when entries were genuinely left out."""
+        from app.api.routes.team import files as team_routes
+
+        fake_root = tmp_path / "ws"
+        self._init_repo(fake_root)
+        for i in range(6):
+            (fake_root / f"f{i}.txt").write_text("x")
+
+        monkeypatch.setattr(team_routes, "workspace_dir", lambda sid: fake_root)
+
+        monkeypatch.setattr(team_routes, "_MAX_FILES_LISTED", 4)
+        body = client.get(f"/api/team/{session_id}/files").json()
+        assert body["truncated"] is True
+        assert len(body["files"]) == 4
+
+        monkeypatch.setattr(team_routes, "_MAX_FILES_LISTED", 6)
+        body = client.get(f"/api/team/{session_id}/files").json()
+        assert body["truncated"] is False
+        assert len(body["files"]) == 6
+
+    def test_non_git_workspace_lists_generated_output_dirs(
+        self, client, session_id, tmp_path, monkeypatch
+    ):
+        """Agent session workspaces are not repos: a site the agent built into
+        ``dist/`` is real user content and must be listable, while dependency
+        and cache dirs stay hidden."""
+        from app.api.routes.team import files as team_routes
+
+        fake_root = tmp_path / "ws"
+        fake_root.mkdir()
+        (fake_root / "dist").mkdir()
+        (fake_root / "dist" / "index.html").write_text("<html/>")
+        (fake_root / "build").mkdir()
+        (fake_root / "build" / "bundle.js").write_text("x")
+        (fake_root / "node_modules" / "pkg").mkdir(parents=True)
+        (fake_root / "node_modules" / "pkg" / "index.js").write_text("x")
+        (fake_root / "__pycache__").mkdir()
+        (fake_root / "__pycache__" / "m.pyc").write_bytes(b"\x00")
+        (fake_root / "app.py").write_text("x")
+
+        monkeypatch.setattr(team_routes, "workspace_dir", lambda sid: fake_root)
+
+        paths = sorted(
+            f["path"]
+            for f in client.get(f"/api/team/{session_id}/files").json()["files"]
+        )
+        assert paths == ["app.py", "build/bundle.js", "dist/index.html"]
+
+
+# NB: The previous mtime-based "revert boundary" filter is gone. After
+# the move to the Git snapshot service (see app/services/snapshot_service.py),
+# the workspace filesystem is authoritative — restoring a snapshot
+# physically removes files added after that point, so the listing
+# and media endpoints simply report what's on disk. The snapshot
+# round-trip is covered by tests/services/test_snapshot_service.py.
 
 
 class TestCodingWorkspaceGit:

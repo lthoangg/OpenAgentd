@@ -28,7 +28,6 @@ import uuid
 from pathlib import Path
 
 from app.agent.tools.builtin.filesystem._ignore import (
-    _SKIPPED_DIR_NAMES,
     is_gitignored as _shared_is_gitignored,
     load_gitignore_rules as _shared_load_gitignore_rules,
     matches_gitignore_pattern as _shared_matches_gitignore_pattern,
@@ -213,8 +212,37 @@ async def get_workspace_media(
 #   - Paths are relative (POSIX separators) — safe to pass back to ``/media/``.
 #   - Size cap on the walk to avoid pathological workspaces blowing up the
 #     response.  Beyond the cap we truncate and flag it.
+#   - Which files are *visible* comes from git whenever the workspace is the
+#     top level of a work tree (see ``_git_listed_paths``); the os.walk +
+#     root-``.gitignore`` heuristic below is the fallback for plain folders
+#     such as agent session workspaces.
 
-_MAX_FILES_LISTED = 2_000
+# Ceiling on entries returned. Truncation is silent to the user, so it doubles
+# as a "files are missing from the picker" bug: at 2_000 a 9k-file repo hid 78%
+# of itself. Sourcing the list from ``git ls-files`` made enumeration cheap
+# enough to raise it — measured on a 9k-file repo: 124ms and ~590KB of JSON at
+# 5_000 entries, for one response shared by every consumer (artifacts tree,
+# coding tree, @-mention picker, command palette).
+_MAX_FILES_LISTED = 5_000
+
+# Dependency / cache directories that are noise in a *file picker*.
+#
+# Deliberately narrower than the agent tools' ``_SKIPPED_DIR_NAMES``: ``dist/``
+# and ``build/`` regularly hold real content (a site the agent just built into
+# ``dist/``, a tracked ``build/Dockerfile``), and pruning them unconditionally
+# made those files impossible to @-mention or open from the command palette.
+# Whether they are noise is left to git / ``.gitignore``; only dependency and
+# compiler-cache trees — never authored by hand — are dropped outright.
+_NOISE_DIR_NAMES = frozenset(
+    {
+        "node_modules",
+        ".venv",
+        "venv",
+        "__pycache__",
+        ".ruff_cache",
+        ".pytest_cache",
+    }
+)
 _MAX_GIT_DIFF_CHARS = 512 * 1024
 _MAX_UNTRACKED_DIFF_BYTES = 256 * 1024
 
@@ -236,8 +264,9 @@ async def list_workspace_files(session_id: str) -> WorkspaceFilesResponse:
     """List every file under the session's agent workspace, recursively.
 
     Returns an empty list when the workspace directory does not yet exist
-    (fresh session — no tool has written anything).  Hidden dotfiles are
-    skipped; symlinks pointing outside the workspace root are skipped.
+    (fresh session — no tool has written anything).  Dot-prefixed entries are
+    included (except ``.git/``) so ``.github/`` or ``.env.example`` can be
+    tagged; symlinks pointing outside the workspace root are skipped.
     """
     try:
         uuid.UUID(session_id)
@@ -260,9 +289,154 @@ def _list_workspace_files(root: Path, session_id: str) -> WorkspaceFilesResponse
     if not root.exists() or not root.is_dir():
         return WorkspaceFilesResponse(session_id=session_id, files=[], truncated=False)
 
-    root_resolved = root.resolve(strict=False)
-    gitignore_rules = _load_gitignore_rules(root)
     files: list[WorkspaceFileInfo] = []
+    truncated = _collect_files(root, root, files)
+    return WorkspaceFilesResponse(
+        session_id=session_id, files=files, truncated=truncated
+    )
+
+
+def _collect_files(root: Path, base: Path, out: list[WorkspaceFileInfo]) -> bool:
+    """Append the visible files under ``base`` to ``out``, relative to ``root``.
+
+    Prefers git's own answer for what is visible and falls back to the walk
+    heuristic. Returns ``True`` when the ``_MAX_FILES_LISTED`` cap was hit.
+    """
+    listed = _git_listed_paths(base)
+    if listed is None:
+        return _walk_files(root, base, out)
+    return _stat_listed_paths(root, base, listed, out)
+
+
+def _git_stdout(cwd: Path, *args: str, timeout: float = 10.0) -> str | None:
+    """Synchronous ``git`` runner for the threaded listing; None on any failure."""
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(cwd), *args],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    return str(result.stdout) if result.returncode == 0 else None
+
+
+def _git_listed_paths(base: Path) -> list[str] | None:
+    """Paths git shows in ``base``: tracked + untracked-but-not-ignored.
+
+    ``None`` means "not answerable by git" — no git binary, not a work tree, or
+    ``base`` is not the work tree's **top level** — and the caller falls back to
+    the os.walk heuristic.
+
+    The top-level check is not a nicety. Agent session workspaces live under the
+    host repo's gitignored ``.openagentd/`` directory, where ``git ls-files``
+    correctly reports *nothing*; using that answer would render every session
+    workspace as empty.
+
+    Delegating to git is what makes the listing match the user's editor: it
+    honours nested ``.gitignore`` files, ``!`` re-includes, ``.git/info/exclude``
+    and ``core.excludesFile``, and git's rule that ``*`` never crosses ``/`` —
+    all things the fallback matcher gets wrong.
+    """
+    toplevel = _git_stdout(base, "rev-parse", "--show-toplevel")
+    if toplevel is None:
+        return None
+    if os.path.realpath(toplevel.strip()) != os.path.realpath(base):
+        return None
+
+    tracked = _git_stdout(base, "ls-files", "-z", "--cached")
+    untracked = _git_stdout(base, "ls-files", "-z", "--others", "--exclude-standard")
+    if tracked is None or untracked is None:
+        return None
+
+    # Conflicted files appear once per merge stage in --cached, hence the dedupe.
+    paths = {rel for rel in tracked.split("\0") if rel}
+    # Untracked noise is dropped: a repo that forgot to ignore ``node_modules``
+    # would otherwise flood the picker and burn the whole file cap. Tracked
+    # files are never filtered — if it is committed, the user wants to see it.
+    paths.update(
+        rel for rel in untracked.split("\0") if rel and not _has_noise_component(rel)
+    )
+    return sorted(paths)
+
+
+def _has_noise_component(rel: str) -> bool:
+    """True when any *directory* component of ``rel`` is a dependency/cache dir."""
+    return any(part in _NOISE_DIR_NAMES for part in rel.rstrip("/").split("/")[:-1])
+
+
+def _stat_listed_paths(
+    root: Path, base: Path, listed: list[str], out: list[WorkspaceFileInfo]
+) -> bool:
+    """Turn git's path list into entries, recursing into nested repos.
+
+    ``git ls-files`` reports a submodule as a single gitlink entry and an
+    untracked nested repository as a bare ``dir/``; both stat as directories, so
+    each is listed by asking *its* git the same question.
+    """
+    root_resolved = root.resolve(strict=False)
+    for rel in listed:
+        if len(out) >= _MAX_FILES_LISTED:
+            return True
+        entry = base / rel.rstrip("/")
+        try:
+            entry_stat = entry.lstat()
+        except (OSError, ValueError):
+            continue
+        if stat.S_ISDIR(entry_stat.st_mode):
+            if _collect_files(root, entry, out):
+                return True
+            continue
+        info = _file_info(entry, root, root_resolved, entry_stat)
+        if info is not None:
+            out.append(info)
+    # Every listed path was consumed — a cap hit is reported only when entries
+    # were actually left out, so a workspace of exactly the cap size is exact.
+    return False
+
+
+def _file_info(
+    entry: Path, root: Path, root_resolved: Path, entry_stat: os.stat_result
+) -> WorkspaceFileInfo | None:
+    """Build one listing entry, or ``None`` for anything that must not be shown.
+
+    Symlinks are followed only while they stay inside the workspace root — a
+    link pointing outside must not leak the external file's metadata.
+    """
+    if stat.S_ISLNK(entry_stat.st_mode):
+        try:
+            resolved = entry.resolve(strict=False)
+            resolved.relative_to(root_resolved)
+            if not resolved.is_file():
+                return None
+            entry_stat = resolved.stat()
+        except (OSError, ValueError):
+            return None
+    elif not stat.S_ISREG(entry_stat.st_mode):
+        return None
+    try:
+        rel = entry.relative_to(root).as_posix()
+    except ValueError:
+        return None
+    return WorkspaceFileInfo(
+        path=rel,
+        name=entry.name,
+        size=entry_stat.st_size,
+        mtime=entry_stat.st_mtime,
+        mime=_guess_mime(entry),
+    )
+
+
+def _walk_files(root: Path, base: Path, out: list[WorkspaceFileInfo]) -> bool:
+    """os.walk fallback for folders git cannot answer for (plain workspaces).
+
+    Honours only ``base``'s own ``.gitignore`` via the shared fnmatch matcher —
+    an approximation, which is exactly why the git path above is preferred.
+    """
+    root_resolved = root.resolve(strict=False)
+    gitignore_rules = _load_gitignore_rules(base)
     truncated = False
 
     # InputBar @-mention picker policy:
@@ -273,7 +447,7 @@ def _list_workspace_files(root: Path, session_id: str) -> WorkspaceFilesResponse
     #     This matches what users see in their editor and honours the project's
     #     ``!`` re-include rules (e.g. ``.openagentd/commands/`` is tracked even
     #     though ``.openagentd/*`` is ignored).
-    for dirpath, dirnames, filenames in os.walk(root):
+    for dirpath, dirnames, filenames in os.walk(base):
         current = Path(dirpath)
         try:
             # os.walk does not follow directory symlinks, so checking each
@@ -290,52 +464,34 @@ def _list_workspace_files(root: Path, session_id: str) -> WorkspaceFilesResponse
             name
             for name in dirnames
             if name != ".git"
-            and name not in _SKIPPED_DIR_NAMES
+            and name not in _NOISE_DIR_NAMES
             and not _is_gitignored(
-                (current / name).relative_to(root).as_posix(),
+                (current / name).relative_to(base).as_posix(),
                 is_dir=True,
                 rules=gitignore_rules,
             )
         )
 
         for filename in sorted(filenames):
-            if len(files) >= _MAX_FILES_LISTED:
+            if len(out) >= _MAX_FILES_LISTED:
                 truncated = True
                 break
             entry = current / filename
-            rel = entry.relative_to(root).as_posix()
-            if _is_gitignored(rel, is_dir=False, rules=gitignore_rules):
+            if _is_gitignored(
+                entry.relative_to(base).as_posix(), is_dir=False, rules=gitignore_rules
+            ):
                 continue
             try:
                 entry_stat = entry.lstat()
             except (OSError, ValueError):
                 continue
-            if stat.S_ISLNK(entry_stat.st_mode):
-                try:
-                    resolved = entry.resolve(strict=False)
-                    resolved.relative_to(root_resolved)
-                    if not resolved.is_file():
-                        continue
-                    entry_stat = resolved.stat()
-                except (OSError, ValueError):
-                    continue
-            elif not stat.S_ISREG(entry_stat.st_mode):
-                continue
-            files.append(
-                WorkspaceFileInfo(
-                    path=rel,
-                    name=entry.name,
-                    size=entry_stat.st_size,
-                    mtime=entry_stat.st_mtime,
-                    mime=_guess_mime(entry),
-                )
-            )
+            info = _file_info(entry, root, root_resolved, entry_stat)
+            if info is not None:
+                out.append(info)
         if truncated:
             break
 
-    return WorkspaceFilesResponse(
-        session_id=session_id, files=files, truncated=truncated
-    )
+    return truncated
 
 
 @router.get("/workspace/files/read")

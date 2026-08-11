@@ -51,6 +51,8 @@ export interface UseCommandPaletteResult {
   cycleViewMode: () => void
   paletteCommands: Command[]
   paletteWorkspaceFiles: WorkspaceFileInfo[]
+  /** The backend listing hit its file cap — surfaced in the palette footer. */
+  paletteFilesTruncated: boolean
   handlePaletteFileOpen: (file: WorkspaceFileInfo) => void
 }
 
@@ -111,6 +113,7 @@ export function useCommandPalette({
   })
 
   const paletteWorkspaceFiles = isCodingPaletteOpen ? (paletteFilesData?.files ?? []) : []
+  const paletteFilesTruncated = isCodingPaletteOpen && Boolean(paletteFilesData?.truncated)
 
   const handlePaletteFileOpen = useCallback((file: WorkspaceFileInfo) => {
     setCodingFileViewer(file)
@@ -147,6 +150,7 @@ export function useCommandPalette({
     cycleViewMode,
     paletteCommands,
     paletteWorkspaceFiles,
+    paletteFilesTruncated,
     handlePaletteFileOpen,
   }
 }

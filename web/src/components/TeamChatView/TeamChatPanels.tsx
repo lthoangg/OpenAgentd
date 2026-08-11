@@ -24,6 +24,8 @@ interface TeamChatPanelsProps {
   showPalette: boolean
   paletteCommands: Command[]
   paletteWorkspaceFiles: WorkspaceFileInfo[]
+  /** Backend hit its file cap — the palette says so instead of silently hiding. */
+  paletteFilesTruncated?: boolean
   onPaletteFileOpen: (file: WorkspaceFileInfo) => void
   onClosePalette: () => void
 }
@@ -47,6 +49,7 @@ export function TeamChatPanels({
   showPalette,
   paletteCommands,
   paletteWorkspaceFiles,
+  paletteFilesTruncated,
   onPaletteFileOpen,
   onClosePalette,
 }: TeamChatPanelsProps) {
@@ -74,7 +77,7 @@ export function TeamChatPanels({
         contextWorkspace={workspace ?? null}
       />
       {showPalette && (
-        <CommandPalette commands={paletteCommands} workspaceFiles={paletteWorkspaceFiles} onFileOpen={onPaletteFileOpen} onClose={onClosePalette} />
+        <CommandPalette commands={paletteCommands} workspaceFiles={paletteWorkspaceFiles} filesTruncated={paletteFilesTruncated} onFileOpen={onPaletteFileOpen} onClose={onClosePalette} />
       )}
     </>
   )

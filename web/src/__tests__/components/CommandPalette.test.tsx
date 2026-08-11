@@ -416,4 +416,33 @@ describe("CommandPalette", () => {
     await user.type(screen.getByPlaceholderText("Search files and commands…"), "xyznotfound")
     expect(screen.getByText(/No files or commands match/)).toBeTruthy()
   })
+
+  // ── truncated listing ───────────────────────────────────────────────────────
+  //
+  // The backend caps its file listing. Without a hint, a capped workspace looks
+  // like "the palette can't find my file" — the exact bug report this guards.
+  it("warns when the workspace file listing was truncated", () => {
+    render(
+      <CommandPalette
+        commands={makeCommands()}
+        workspaceFiles={makeFiles(['App.tsx'])}
+        filesTruncated
+        onFileOpen={() => {}}
+        onClose={() => {}}
+      />,
+    )
+    expect(screen.getByText("file list truncated")).toBeTruthy()
+  })
+
+  it("stays quiet when the listing is complete", () => {
+    render(
+      <CommandPalette
+        commands={makeCommands()}
+        workspaceFiles={makeFiles(['App.tsx'])}
+        onFileOpen={() => {}}
+        onClose={() => {}}
+      />,
+    )
+    expect(screen.queryByText("file list truncated")).toBeNull()
+  })
 })

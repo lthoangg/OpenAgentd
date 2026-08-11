@@ -352,6 +352,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
   const {
     paletteCommands,
     paletteWorkspaceFiles,
+    paletteFilesTruncated,
     handlePaletteFileOpen,
   } = useCommandPalette({
     mode,
@@ -701,6 +702,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
         showPalette={paletteOpen}
         paletteCommands={paletteCommands}
         paletteWorkspaceFiles={paletteWorkspaceFiles}
+        paletteFilesTruncated={paletteFilesTruncated}
         onPaletteFileOpen={handlePaletteFileOpen}
         onClosePalette={closePalette}
       />    </div>

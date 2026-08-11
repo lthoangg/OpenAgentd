@@ -51,6 +51,26 @@ Script location: `.openagentd/skills/oad/debug-prod/scripts/query_otel.py`
 
 ---
 
+## 3b. Tool Usage & Usefulness Audit
+
+Answers "is any tool underused, slow, failing, or not earning its context?" by joining spans (volume, latency, result bytes) to loguru records (arguments, result text) per tool-call id:
+
+```bash
+uv run python .openagentd/skills/oad/debug-prod/scripts/tool_usage.py --days 7
+```
+
+Script location: `.openagentd/skills/oad/debug-prod/scripts/tool_usage.py`
+
+Reports volume/cost, outcome quality (no-hit and error rates), a FIXED-OR-LIVE error-date table, unknown tool names the model guessed, repeated identical calls per run, and what `shell` is standing in for.
+
+Three measurement traps it encodes — re-read these before trusting any similar analysis:
+
+1. **Never divide errors by calls across different windows.** `tool_error` records outlive `tool_start` records, which once read as "grep fails 44% of calls" for a bug fixed weeks earlier. The FIXED-OR-LIVE table prints first/last error dates per tool so history cannot pose as a live regression.
+2. **Redundant work is only redundant within a run.** Attribute duplicate calls per `run_id`; counting across sessions turned legitimate reuse into 111 fake duplicate `skill` loads.
+3. **Logged `args=` are truncated at 500 chars** (`tool_executor.py`), so strict `json.loads` silently drops the longest ~16% of shell calls — exactly the heredocs and inline python. That skew reported "shell is used to read files 78%" when the real leaders are tests/build 30% and git 18%. Likewise, `tool_result_preview` carries no call id and parallel calls interleave, so pair previews to tools in aggregate, never to the most recent start (that undercounted glob's no-hit rate as 14% instead of 32%).
+
+---
+
 ## 4. Common Production Patterns & Diagnostic Checklists
 
 ### A. Tool Execution & Sandbox Failures

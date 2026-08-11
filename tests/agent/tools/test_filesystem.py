@@ -220,6 +220,33 @@ async def test_glob_name_match_no_match(sandbox_workspace):
     assert "No files matching" in result
 
 
+@pytest.mark.asyncio
+async def test_glob_miss_points_at_matching_directory(sandbox_workspace):
+    """A pattern matching a directory dead-ended: this tool reports files only.
+
+    Production telemetry showed `components/ToolCall*` returning a bare miss
+    twice in a row while `components/ToolCall/` existed, so the miss now names
+    the directory and the pattern that would list it.
+    """
+    nested = sandbox_workspace / "components" / "ToolCall"
+    nested.mkdir(parents=True)
+    (nested / "display.tsx").write_text("x")
+
+    result = await glob_files.arun(pattern="components/ToolCall*")
+
+    assert "No files matching" in result
+    assert "components/ToolCall" in result
+    assert "components/ToolCall/**" in result
+
+
+@pytest.mark.asyncio
+async def test_glob_miss_without_matching_directory_stays_terse(sandbox_workspace):
+    (sandbox_workspace / "other.txt").write_text("hello")
+    result = await glob_files.arun(pattern="nothing/here*")
+    assert result.startswith("No files matching")
+    assert "use" not in result
+
+
 # ---------------------------------------------------------------------------
 # Sandbox path validation
 # ---------------------------------------------------------------------------

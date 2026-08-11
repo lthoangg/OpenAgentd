@@ -210,20 +210,21 @@ run from the terminal.
   remainder directly through the shell tool without a model turn; history stores
   the run as structured shell tool output. Stop terminates active direct and
   foreground shell process groups; acknowledged background PIDs remain managed
-  through `bg`. Background waits are session-scoped and bounded to 30 seconds by
-  default (300 seconds maximum), returning a still-running result without
-  terminating the process `[v1.105.0]`. Background process lists, status, wait
-  metadata, and final output render as compact structured cards with bounded
-  scroll regions on mobile and desktop `[v1.113.0]`. Raw ANSI/CSI/OSC escape
+  through `bg`. Background process lists, status, and final output render as
+  compact structured cards with bounded scroll regions on mobile and desktop
+  `[v1.113.0]`. Raw ANSI/CSI/OSC escape
   sequences (colors, cursor movement, hyperlinks) from color-forcing CLIs are
   stripped from foreground results, live streamed output, and background
   process buffers before reaching the LLM or the UI `[v1.120.0]`. Background
   starts return as soon as the process exits or its first output settles
   (previously a fixed 3-second wait); exited background processes stay
-  inspectable via `bg` for ~10 minutes after `wait`/`stop`; every `bg` action
+  inspectable via `bg` for ~10 minutes after they stop; every `bg` action
   and session interrupt stays bounded even when an orphaned child still holds
   the output pipe; foreground output memory is bounded, with oversized output
-  streamed incrementally to a session spill file `[v1.120.1]`.
+  streamed incrementally to a session spill file `[v1.120.1]`. The blocking
+  `bg wait` action is gone and foreground commands default to a 120-second
+  timeout instead of 60: agents poll `bg output` rather than parking a turn on
+  a wait that usually timed out anyway `[v1.131.3]`.
 - **Drag-and-drop files into chat** `[since v1.0, v1.82.0, v1.131.0]` — drag files (images, PDFs, text, etc.) anywhere onto the chat area (both cockpit and coding views) to show a drop overlay and attach them to the composer. Supports multi-file drops, file-type filtering, and cancellation. A drop no longer attaches the same file twice, folders dropped onto the chat are ignored instead of silently swallowed, and a file dropped outside the chat area no longer navigates the app away from the session `[v1.131.0]`.
 - **50 MB attachments with in-composer rejection** `[v1.131.0]` — every attachment
   type shares one 50 MB per-message ceiling instead of the previous mix of
@@ -732,8 +733,16 @@ MCP.
 - **Tool result offload** `[since v1.0]` — bulky tool outputs (large file
   reads, shell spills) move to `{OPENAGENTD_DATA_DIR}/sessions/{id}/.tool_results/` and the inspector
   links to them.
-- **`.gitignore`-aware file tools** `[v1.20.1]` — `glob`, `grep`, and workspace
-  file browsing respect `.gitignore` and skip generated directories.
+- **`.gitignore`-aware file tools** `[v1.20.1, v1.131.3]` — `glob`, `grep`, and
+  workspace file browsing respect `.gitignore` and skip dependency and cache
+  directories. Workspace file listings (file tagging, the command palette, the
+  files sidebar) come from git itself in a git work tree, so tracked files no
+  longer disappear because their directory name looked generated, and the
+  palette says when a listing hit its cap. Dot-directories other than `.git`
+  and caches are searchable, `.env`-style secrets stay excluded, and `glob`
+  understands `{ts,tsx}` brace patterns, finds bare patterns at any depth, and
+  names the directory when a pattern matched one instead of dead-ending
+  `[v1.131.3]`.
 
 ---
 

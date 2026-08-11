@@ -81,11 +81,12 @@ _SHELL_DESCRIPTION = (
 )
 
 _BG_DESCRIPTION = (
-    "Manage background processes started with shell(background=true). "
-    "Actions: list, status, output, stop, wait. Wait is bounded and returns "
-    "control if the process is still running. Exited processes stay "
-    "inspectable for ~10 minutes, so output/status keep working after "
-    "wait or stop."
+    "Inspect and stop long-lived processes started with shell(background=true) "
+    "— servers, watchers, tunnels. Actions: list, status, output, stop. "
+    "Exited processes stay inspectable for ~10 minutes, so output/status keep "
+    "working after a process ends or is stopped. To run a command and use its "
+    "result, call shell in the foreground with a large timeout_seconds instead; "
+    "the foreground path has no duration limit."
 )
 
 
@@ -112,40 +113,39 @@ class ShellArgs(BaseModel):
         default=None,
         ge=1,
         description=(
-            "Timeout in seconds; omitted uses 60. Increase it for known long commands."
+            "Timeout in seconds; omitted uses 120. There is no ceiling — pass a "
+            "large value for slow suites or builds rather than backgrounding them."
         ),
     )
     background: bool = Field(
         default=False,
-        description=("Run without waiting and return a PID for the bg tool."),
+        description=(
+            "Only for processes meant to outlive the call (servers, watchers): "
+            "returns a PID for the bg tool. For a command whose result you need, "
+            "stay in the foreground and raise timeout_seconds."
+        ),
     )
 
 
 class BgArgs(BaseModel):
     """Arguments for the bg tool."""
 
-    action: Literal["list", "status", "output", "stop", "wait"] = Field(
-        description="list all processes, or status/output/stop/wait for one PID."
+    action: Literal["list", "status", "output", "stop"] = Field(
+        description="list all processes, or status/output/stop for one PID."
     )
     pid: int | None = Field(
-        default=None, description="PID (required for status/output/stop/wait)."
+        default=None, description="PID (required for status/output/stop)."
     )
     last_n_lines: int | None = Field(
         default=None,
         ge=1,
         le=200,
-        description="Lines to return for output/wait (maximum 200); omit for all retained lines.",
-    )
-    timeout_seconds: int = Field(
-        default=30,
-        ge=1,
-        le=300,
-        description="Maximum seconds for wait (default 30, maximum 300).",
+        description="Lines to return for output (maximum 200); omit for all retained lines.",
     )
 
     @model_validator(mode="after")
     def _validate_pid(self) -> BgArgs:
-        if self.action in ("status", "output", "stop", "wait"):
+        if self.action in ("status", "output", "stop"):
             if self.pid is None:
                 raise ValueError(f"pid is required for action='{self.action}'")
         return self
@@ -153,9 +153,11 @@ class BgArgs(BaseModel):
 
 # ── Constants ────────────────────────────────────────────────────────────────
 
-_DEFAULT_TIMEOUT_SECONDS = (
-    60  # 60 s default; background mode handles long-running processes
-)
+# 60 s pushed models to background test suites just to dodge the timeout (25 of
+# 29 observed background launches were one-shot builds), then block on a capped
+# `bg wait`. The foreground path has no ceiling, so a roomier default plus an
+# explicit `timeout_seconds` hint removes the incentive.
+_DEFAULT_TIMEOUT_SECONDS = 120
 _BG_OUTPUT_MAX_LINES = 200  # ring-buffer per background process
 _BG_OUTPUT_MAX_LINE_BYTES = 24_000
 _BG_OUTPUT_MAX_BYTES = 262_144  # total byte budget across buffered lines (256 KB)
@@ -333,13 +335,6 @@ class _BgProcess:
             _signal_posix_group(self.pid, _FORCE_KILL_SIGNAL)
         if not await self.drain():
             self.close()  # pipe still held by an unkillable process — stop reading
-        if self.completed_at is None:
-            self.completed_at = time.monotonic()
-        return self.proc.returncode
-
-    async def wait(self, timeout_seconds: float) -> int | None:
-        await _wait_exit(self.proc, timeout_seconds)
-        await self.drain()
         if self.completed_at is None:
             self.completed_at = time.monotonic()
         return self.proc.returncode
@@ -1095,10 +1090,9 @@ shell_tool = Tool(
 
 
 async def _background_process(
-    action: Literal["list", "status", "output", "stop", "wait"],
+    action: Literal["list", "status", "output", "stop"],
     pid: int | None = None,
     last_n_lines: int | None = None,
-    timeout_seconds: float = 30,
 ) -> str:
     """Manage background processes started with shell(background=true)."""
     _prune_completed_bg_processes()
@@ -1137,21 +1131,8 @@ async def _background_process(
             return f"PID {pid}: no output captured yet."
         return f"PID {pid} output:\n{_limited_bg_output(text)}"
 
-    # Exited records stay registered after wait/stop so follow-up
-    # output/status calls keep working; TTL pruning collects them.
-    if action == "wait":
-        try:
-            exit_code = await bg.wait(timeout_seconds)
-        except asyncio.TimeoutError:
-            return (
-                f"PID {pid}: still running after {timeout_seconds:g} seconds.\n"
-                "Use status or output to inspect it, wait again, or stop it."
-            )
-        text = bg.read_output(last_n=last_n_lines)
-        if not text:
-            return f"PID {pid}: exited (code {exit_code})\nNo output captured."
-        return f"PID {pid}: exited (code {exit_code})\nFinal output:\n{_limited_bg_output(text)}"
-
+    # Exited records stay registered after stop so follow-up output/status calls
+    # keep working; TTL pruning collects them.
     # action == "stop"
     exit_code = await bg.stop()
     text = bg.read_output(last_n=last_n_lines)

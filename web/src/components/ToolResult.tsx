@@ -425,56 +425,6 @@ function BackgroundProcessResult({ result, headerAction, onCollapse }: { result:
     )
   }
 
-  // Some tool transports wrap `bg wait` with an orchestration summary before
-  // the process output. Promote that wrapper to compact metadata instead of
-  // rendering it as the first four lines of a giant raw terminal block.
-  const waitedOutputMatch = result.match(
-    /^Waited on background process (\d+)(?: for ([\d.]+) seconds)?\.\n(?:\n)?Process ([^\n]+)\nFinal output:\n([\s\S]*)$/,
-  )
-  if (waitedOutputMatch) {
-    const [, pid, seconds, status, body] = waitedOutputMatch
-    return (
-      <BackgroundOutputBlock
-        pid={pid}
-        status={status}
-        detail={seconds ? `waited ${seconds} seconds` : undefined}
-        body={body}
-        headerAction={headerAction}
-        onCollapse={onCollapse}
-        outputLabel={false}
-      />
-    )
-  }
-
-  const waitedStatusMatch = result.match(
-    /^Waited on background process (\d+)(?: for ([\d.]+) seconds)?\.\n(?:\n)?Process ([^\n]+)(?:\n([\s\S]*))?$/,
-  )
-  if (waitedStatusMatch) {
-    const [, pid, seconds, rawStatus, body] = waitedStatusMatch
-    const cleanStatus = rawStatus.endsWith('.') ? rawStatus.slice(0, -1) : rawStatus
-    const statusPart = cleanStatus.match(/^(still running)(?: after (.*))?$/)
-    const status = statusPart ? statusPart[1] : cleanStatus
-    const detail = statusPart?.[2] ? `after ${statusPart[2]}` : (seconds ? `waited ${seconds} seconds` : undefined)
-
-    return (
-      <div className="min-w-0 overflow-hidden">
-        <div className="flex min-h-8 min-w-0 items-center justify-between gap-2 border-b border-(--color-border) bg-(--bg-sidebar) py-0 pr-2 pl-3 font-mono text-[10px]">
-          <button type="button" onClick={onCollapse} className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-0.5 text-left transition-colors hover:text-(--color-text)">
-            <span className="text-(--color-text)">PID {pid}</span>
-            <span className={statusColor(status)}>{status}</span>
-            {detail && <span className="text-(--color-text-muted)">{detail}</span>}
-          </button>
-          {headerAction}
-        </div>
-        {body && (
-          <p className="px-3 py-2.5 font-mono text-[11px] leading-relaxed text-(--color-text-2)">
-            {body}
-          </p>
-        )}
-      </div>
-    )
-  }
-
   const outputMatch = result.match(/^PID (\d+) output:\n([\s\S]*)$/)
   const finalOutputMatch = result.match(/^PID (\d+): ([^\n]+)\nFinal output:\n([\s\S]*)$/)
   const output = outputMatch ?? finalOutputMatch

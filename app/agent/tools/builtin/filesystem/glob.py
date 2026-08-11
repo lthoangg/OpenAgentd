@@ -228,7 +228,25 @@ async def _glob_files(
         hit.sort(key=lambda item: _rank(item[0]))
         return hit
 
-    def _scan() -> list[str]:
+    def _matched_dirs(
+        candidates: list[tuple[str, Path]], patterns: list[str]
+    ) -> list[str]:
+        """Visible directories matching ``patterns``, for the miss message only.
+
+        Ancestors of the visible files, so no second walk is needed. Empty
+        directories are therefore invisible here — a fair trade for a hint that
+        is computed only when there is nothing to report.
+        """
+        dirs: set[str] = set()
+        for rel, _path in candidates:
+            for parent in PurePosixPath(rel).parents:
+                if parent.name:
+                    dirs.add(parent.as_posix())
+        return sorted(
+            d for d in dirs if any(PurePosixPath(d).full_match(p) for p in patterns)
+        )
+
+    def _scan() -> tuple[list[str], list[str]]:
         candidates = _visible_files(resolved, gitignore_rules)
         matched = _select(candidates, variants)
 
@@ -252,12 +270,20 @@ async def _glob_files(
             hits.append(sandbox.display_path(path))
             if len(hits) >= max_results:
                 break
-        return hits
+        if hits or match == "name":
+            return hits, []
+        return hits, _matched_dirs(candidates, variants)
 
-    matches = await asyncio.to_thread(_scan)
+    matches, dir_hints = await asyncio.to_thread(_scan)
 
     if not matches:
-        return f"No files matching '{pattern}' in {sandbox.display_path(resolved)}"
+        miss = f"No files matching '{pattern}' in {sandbox.display_path(resolved)}"
+        if dir_hints:
+            # This tool reports files, so a pattern that names a directory looks
+            # identical to a typo. Say which, and how to list it.
+            named = ", ".join(dir_hints[:3])
+            return f"{miss}; it matches directories ({named}) — use '{dir_hints[0]}/**' to list files inside"
+        return miss
     return "\n".join(matches)
 
 

@@ -929,6 +929,40 @@ describe("sendMessage: queue behaviour", () => {
     ])
   })
 
+  it("keeps message_ids order even when only some ids resolved locally (fallback content interleaved)", () => {
+    // pm-b's own POST response has not resolved into _pendingMessages yet
+    // (or was submitted from another client), so it can only be recovered
+    // from the event's own `messages` payload — while pm-a and pm-c did
+    // resolve locally. All three must still render in `message_ids` order.
+    useTeamStore.setState({
+      sessionId: "session-a",
+      leadName: "lead",
+      agentStreams: {
+        lead: makeStream({ status: "working" as const }),
+      },
+      _pendingMessages: [
+        { id: "pm-a", sessionId: "session-a", content: "a queued" },
+        { id: "pm-c", sessionId: "session-a", content: "c queued" },
+      ],
+    })
+
+    useTeamStore.getState()._handleSSEEvent("queued_turn_start", {
+      agent: "lead",
+      message_ids: ["pm-a", "pm-b", "pm-c"],
+      messages: [
+        { id: "pm-a", content: "a queued" },
+        { id: "pm-b", content: "b queued" },
+        { id: "pm-c", content: "c queued" },
+      ],
+    })
+
+    expect(useTeamStore.getState().agentStreams.lead.currentBlocks.map((block) => block.content)).toEqual([
+      "a queued",
+      "b queued",
+      "c queued",
+    ])
+  })
+
   it("moves only queued ids named by queued_turn_start", () => {
     useTeamStore.setState({
       sessionId: "session-a",

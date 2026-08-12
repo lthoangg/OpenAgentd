@@ -467,27 +467,42 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
             queued.map((msg) => [msg.id, msg]),
           )
           const queuedIds = new Set(queuedById.keys())
-          const orderedQueued = messageIds === null
-            ? queued
+          const eventById = new Map(eventMessages.map((msg) => [msg.id, msg]))
+          // `message_ids` is the single authoritative order (it is built
+          // server-side from the same query, in the same order, as
+          // `messages`). Resolve each id against the locally-tracked pending
+          // message first — it carries the real `submittedAt`/attachments —
+          // falling back to the event's own content only for ids this client
+          // never optimistically tracked (e.g. injected by another client, or
+          // a POST response that hadn't resolved yet). Concatenating the two
+          // groups instead of merging on `message_ids` would silently
+          // reorder a message whenever it fell into the fallback group while
+          // an earlier id resolved locally.
+          const messages = messageIds === null
+            ? [
+                ...queued.map((msg) => ({
+                  id: msg.id,
+                  content: msg.content,
+                  submittedAt: msg.submittedAt,
+                  attachments: msg.attachments,
+                })),
+                ...eventMessages
+                  .filter((msg) => !queuedIds.has(msg.id))
+                  .map((msg) => ({ ...msg, submittedAt: Date.now(), attachments: undefined })),
+              ]
             : Array.from(messageIds).flatMap((id) => {
-                const msg = queuedById.get(id)
-                return msg ? [msg] : []
+                const pending = queuedById.get(id)
+                if (pending) {
+                  return [{
+                    id: pending.id,
+                    content: pending.content,
+                    submittedAt: pending.submittedAt,
+                    attachments: pending.attachments,
+                  }]
+                }
+                const ev = eventById.get(id)
+                return ev ? [{ ...ev, submittedAt: Date.now(), attachments: undefined }] : []
               })
-          const messages = [
-            ...orderedQueued.map((msg) => ({
-              id: msg.id,
-              content: msg.content,
-              submittedAt: msg.submittedAt,
-              attachments: msg.attachments,
-            })),
-            ...eventMessages
-              .filter((msg) => !queuedIds.has(msg.id))
-              .map((msg) => ({
-                ...msg,
-                submittedAt: Date.now(),
-                attachments: undefined,
-              })),
-          ]
           if (messages.length === 0) return
           const now = Date.now()
           const stream = draft.agentStreams[agent]

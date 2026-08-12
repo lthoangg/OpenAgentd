@@ -903,6 +903,32 @@ describe("sendMessage: queue behaviour", () => {
     ])
   })
 
+  it("preserves the backend queue order when pending responses arrived out of order", () => {
+    useTeamStore.setState({
+      sessionId: "session-a",
+      leadName: "lead",
+      agentStreams: {
+        lead: makeStream({ status: "working" as const }),
+      },
+      // POST responses can resolve in a different order than their serialized
+      // server writes. The event is the authoritative queue order.
+      _pendingMessages: [
+        { id: "pm-second", sessionId: "session-a", content: "second queued" },
+        { id: "pm-first", sessionId: "session-a", content: "first queued" },
+      ],
+    })
+
+    useTeamStore.getState()._handleSSEEvent("queued_turn_start", {
+      agent: "lead",
+      message_ids: ["pm-first", "pm-second"],
+    })
+
+    expect(useTeamStore.getState().agentStreams.lead.currentBlocks.map((block) => block.content)).toEqual([
+      "first queued",
+      "second queued",
+    ])
+  })
+
   it("moves only queued ids named by queued_turn_start", () => {
     useTeamStore.setState({
       sessionId: "session-a",

@@ -463,9 +463,18 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
             if (msg.sessionId !== draft.sessionId) return false
             return messageIds === null || messageIds.has(msg.id)
           })
-          const queuedIds = new Set(queued.map((msg) => msg.id))
+          const queuedById = new Map<string, (typeof queued)[number]>(
+            queued.map((msg) => [msg.id, msg]),
+          )
+          const queuedIds = new Set(queuedById.keys())
+          const orderedQueued = messageIds === null
+            ? queued
+            : Array.from(messageIds).flatMap((id) => {
+                const msg = queuedById.get(id)
+                return msg ? [msg] : []
+              })
           const messages = [
-            ...queued.map((msg) => ({
+            ...orderedQueued.map((msg) => ({
               id: msg.id,
               content: msg.content,
               submittedAt: msg.submittedAt,

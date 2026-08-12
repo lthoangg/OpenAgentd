@@ -29,11 +29,15 @@ from app.services.chat_service import (
     hide_messages_before_summary,
     redo_session_messages,
     pop_queued_user_messages,
+    release_queued_user_messages,
     save_queued_user_message,
     undo_session_messages,
     save_message,
 )
-from app.services.chat_service_revert import llm_history_messages_stmt
+from app.services.chat_service_revert import (
+    history_messages_stmt,
+    llm_history_messages_stmt,
+)
 
 
 @pytest_asyncio.fixture
@@ -1576,34 +1580,115 @@ async def test_get_messages_for_llm_preserves_skill_tool_pair_after_summary(sess
     assert skill_result.content == "Guideline instructions body"
 
 
+async def _add_tied_message(
+    session, chat_session_id, message_id, content, created_at, **kwargs
+):
+    row = SessionMessage(
+        id=message_id,
+        session_id=chat_session_id,
+        role=kwargs.pop("role", "user"),
+        content=content,
+        created_at=created_at,
+        **kwargs,
+    )
+    session.add(row)
+    return row
+
+
 @pytest.mark.asyncio
 async def test_queued_messages_with_same_timestamp_keep_id_order_when_activated(
     session,
 ):
-    """Queue activation must keep a deterministic FIFO order for timestamp ties."""
+    """Queue activation must keep a deterministic FIFO order for timestamp ties.
+
+    Rows are inserted in *descending* id order on purpose: id-ascending is the
+    opposite of insertion order here, so a query that fell back to SQLite's
+    incidental (insertion/rowid) order on a timestamp tie would return
+    ``["second", "first"]`` and fail this assertion.
+    """
     chat_session = await create_chat_session(session)
     queued_at = datetime.now(UTC)
     second_id = UUID("00000000-0000-0000-0000-000000000002")
     first_id = UUID("00000000-0000-0000-0000-000000000001")
-    # Insert newest first: the queue must resolve this timestamp tie by UUIDv7,
-    # not SQLite's incidental insertion order.
-    for message_id, content in ((first_id, "first"), (second_id, "second")):
-        row = SessionMessage(
-            id=message_id,
-            session_id=chat_session.id,
-            role="user",
-            content=content,
+    for message_id, content in ((second_id, "second"), (first_id, "first")):
+        await _add_tied_message(
+            session,
+            chat_session.id,
+            message_id,
+            content,
+            queued_at,
             exclude_from_context=True,
             extra={"queue_status": "queued"},
-            created_at=queued_at,
         )
-        session.add(row)
     await session.commit()
 
     activated = await pop_queued_user_messages(session, chat_session.id)
 
     assert [row.id for row in activated] == sorted((first_id, second_id))
     assert [row.content for row in activated] == ["first", "second"]
+
+
+@pytest.mark.asyncio
+async def test_release_queued_messages_with_same_timestamp_keep_id_order(session):
+    """``release_queued_user_messages`` must break timestamp ties by id too.
+
+    Same insertion-order-vs-id-order inversion as the ``pop`` regression above.
+    """
+    chat_session = await create_chat_session(session)
+    queued_at = datetime.now(UTC)
+    second_id = UUID("00000000-0000-0000-0000-000000000002")
+    first_id = UUID("00000000-0000-0000-0000-000000000001")
+    for message_id, content in ((second_id, "second"), (first_id, "first")):
+        await _add_tied_message(
+            session,
+            chat_session.id,
+            message_id,
+            content,
+            queued_at,
+            exclude_from_context=True,
+            extra={"queue_status": "queued"},
+        )
+    await session.commit()
+
+    released = await release_queued_user_messages(session, chat_session.id)
+
+    assert [row.id for row in released] == sorted((first_id, second_id))
+    assert [row.content for row in released] == ["first", "second"]
+
+
+@pytest.mark.asyncio
+async def test_llm_history_query_with_same_timestamp_keeps_id_order(session):
+    """``llm_history_messages_stmt`` must break timestamp ties by id too."""
+    chat_session = await create_chat_session(session)
+    tied_at = datetime.now(UTC)
+    second_id = UUID("00000000-0000-0000-0000-000000000002")
+    first_id = UUID("00000000-0000-0000-0000-000000000001")
+    for message_id, content in ((second_id, "second"), (first_id, "first")):
+        await _add_tied_message(session, chat_session.id, message_id, content, tied_at)
+    await session.commit()
+
+    rows = (await session.exec(llm_history_messages_stmt(chat_session.id))).all()
+
+    assert [row.id for row in rows] == sorted((first_id, second_id))
+    assert [row.content for row in rows] == ["first", "second"]
+
+
+@pytest.mark.asyncio
+async def test_history_messages_stmt_with_same_timestamp_keeps_id_order(session):
+    """``history_messages_stmt`` (visible history / get_messages) must break
+    timestamp ties by id too."""
+    chat_session = await create_chat_session(session)
+    tied_at = datetime.now(UTC)
+    second_id = UUID("00000000-0000-0000-0000-000000000002")
+    first_id = UUID("00000000-0000-0000-0000-000000000001")
+    for message_id, content in ((second_id, "second"), (first_id, "first")):
+        await _add_tied_message(session, chat_session.id, message_id, content, tied_at)
+    await session.commit()
+
+    rows = (await session.exec(history_messages_stmt(chat_session.id))).all()
+
+    assert [row.id for row in rows] == sorted((first_id, second_id))
+    assert [row.content for row in rows] == ["first", "second"]
 
 
 @pytest.mark.asyncio

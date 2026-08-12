@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { createRef } from 'react'
+import type { RefObject } from 'react'
 import { cleanup, render, waitFor } from '@testing-library/react'
 import { QueryClient } from '@tanstack/react-query'
 import { useSessionBootstrap } from '@/components/TeamChatView/useSessionBootstrap'
@@ -13,11 +14,13 @@ function Harness({
   connectStream,
   sessionId = 'session-1',
   beginResolvedSession = mock(() => {}),
+  inputRef,
 }: {
   loadSession: (sessionId: string, workspace?: string | null) => Promise<void>
   connectStream: () => AbortController
   sessionId?: string
   beginResolvedSession?: UseSessionBootstrapArgs['beginResolvedSession']
+  inputRef?: RefObject<InputBarHandle | null>
 }) {
   useSessionBootstrap({
     sessionId,
@@ -33,7 +36,7 @@ function Harness({
     sessionThinkingLevel: null,
     sessionTitle: null,
     isTeamWorking: true,
-    inputRef: createRef<InputBarHandle>(),
+    inputRef: inputRef ?? createRef<InputBarHandle>(),
     navigate: mock(() => {}) as never,
     queryClient: new QueryClient(),
     connectStream,
@@ -112,5 +115,70 @@ describe('useSessionBootstrap session switch', () => {
     expect(state.agentStreams.lead.currentBlocks).toHaveLength(0)
     expect(state.agentStreams.lead.currentText).toBe('')
     expect(state.agentStreams.lead.status).toBe('idle')
+  })
+})
+
+describe('useSessionBootstrap undo draft-restore', () => {
+  // Regression: `revertedMessages` is a *display* preview where every entry
+  // (including a reverted `compaction` block) is normalized to
+  // `role: 'user'` for RevertNotice's rendering — so `.find(m => m.role ===
+  // 'user')` always matches the first entry regardless of its real type. If
+  // an undo boundary lands right before a compaction, that first entry is
+  // the "Session compacted" placeholder, and the composer must not be
+  // pre-filled with it instead of the human's actual undone text.
+  it('skips a leading reverted compaction block and restores the real undone user text', async () => {
+    const inputRef = createRef<InputBarHandle>()
+    const setValueMock = mock(() => {})
+    const setFilesMock = mock(() => {})
+    inputRef.current = {
+      focus: () => {},
+      setValue: setValueMock,
+      appendValue: () => {},
+      insertText: () => {},
+      setFiles: setFilesMock,
+      addFiles: () => {},
+      restoreLastSubmission: () => {},
+    }
+
+    const loadSession = mock(async () => {
+      useTeamStore.setState({
+        leadName: 'lead',
+        agentStreams: {
+          lead: {
+            ...createDefaultAgentStream(),
+            revertedCount: 2,
+            revertedMessages: [
+              { role: 'user', content: 'Session compacted' },
+              { role: 'user', content: 'the real undone message' },
+            ],
+            _revertedSuffix: [
+              { id: 'c1', type: 'compaction', content: 'ignored body' },
+              { id: 'u2', type: 'user', content: 'the real undone message' },
+            ],
+          },
+        },
+      })
+    })
+    const connectStream = mock(() => new AbortController())
+
+    // Use a session id distinct from the `beforeEach` seed so the bootstrap
+    // effect takes the "switching sessions" branch (which awaits
+    // `loadSession` before restoring the draft) instead of bailing out early
+    // because the store already thinks it is connected to this session.
+    render(
+      <Harness
+        sessionId="session-2"
+        loadSession={loadSession}
+        connectStream={connectStream}
+        inputRef={inputRef}
+        beginResolvedSession={useTeamStore.getState().beginResolvedSession}
+      />,
+    )
+
+    await waitFor(() => expect(loadSession).toHaveBeenCalledWith('session-2', null))
+    await waitFor(() => expect(setValueMock).toHaveBeenCalledWith('the real undone message'))
+
+    expect(setValueMock).toHaveBeenCalledWith('the real undone message')
+    expect(setValueMock).not.toHaveBeenCalledWith('Session compacted')
   })
 })

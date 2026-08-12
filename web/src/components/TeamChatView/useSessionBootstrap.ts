@@ -28,6 +28,7 @@ import { saveLastCodingWorkspace, workspaceLabel } from '@/utils/workspace'
 import { setTraySession } from '@/lib/tray'
 import { isEditableTarget } from '@/lib/is-editable-target'
 import { attachmentToFile } from './helpers'
+import { isDirectUserBlock } from '@/stores/useTeamStore/helpers'
 import type { InputBarHandle } from '../InputBar'
 import type { MessageAttachment } from '@/api/types'
 
@@ -148,11 +149,19 @@ export function useSessionBootstrap({
         inputRef.current &&
         !hasDraft
       ) {
-        const undoneMsg = leadStream.revertedMessages.find((m) => m.role === 'user')
-        if (undoneMsg?.content || (undoneMsg?.attachments && undoneMsg.attachments.length > 0)) {
-          inputRef.current.setValue(undoneMsg.content ?? '')
-          if (undoneMsg.attachments && undoneMsg.attachments.length > 0) {
-            void Promise.all(undoneMsg.attachments.map((att) => attachmentToFile(att)))
+        // `revertedMessages` is a display-only preview: every entry (including
+        // a reverted `compaction` block) is normalized to `role: 'user'` so
+        // RevertNotice can render it as a plain bubble — so it cannot be used
+        // to find "the human's actual undone text" here. Read the raw reverted
+        // blocks instead and use the same direct-user predicate the backend's
+        // undo target and the revert count use, so a compaction block that
+        // lands first in the reverted tail can't get restored into the
+        // composer as if it were the user's draft.
+        const undoneBlock = leadStream._revertedSuffix?.find(isDirectUserBlock)
+        if (undoneBlock?.content || (undoneBlock?.attachments && undoneBlock.attachments.length > 0)) {
+          inputRef.current.setValue(undoneBlock.content ?? '')
+          if (undoneBlock.attachments && undoneBlock.attachments.length > 0) {
+            void Promise.all(undoneBlock.attachments.map((att) => attachmentToFile(att)))
               .then((files) => {
                 inputRef.current?.setFiles(files.filter((f): f is File => f !== null))
               })

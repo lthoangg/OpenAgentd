@@ -183,7 +183,7 @@ export function revokeBlobUrlsFromBlocks(blocks: ContentBlock[]) {
  * ``is_undo_target`` skips exactly those rows, so anything counting "how many
  * of my messages did /undo take back?" has to skip them as well.
  */
-function isDirectUserBlock(block: ContentBlock): boolean {
+export function isDirectUserBlock(block: ContentBlock): boolean {
   if (block.type !== 'user') return false
   const fromAgent = block.extra?.from_agent
   return !fromAgent || fromAgent === 'user'

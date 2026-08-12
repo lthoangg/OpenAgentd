@@ -501,10 +501,16 @@ async def read_coding_workspace_file(
     if not target.is_file():
         raise HTTPException(status_code=404, detail="File not found.")
 
+    # Workspace source files are edited by the agent between reads. Browsers
+    # otherwise apply heuristic freshness (no Cache-Control) or trust a
+    # stat-based ETag (mtime + size) that can collide across quick edits,
+    # both of which can serve pre-edit bytes back to the coding panel even
+    # though the file changed on disk — force revalidation on every request.
     return FileResponse(
         path=str(target),
         media_type=_guess_mime(target),
         filename=target.name if download else None,
+        headers={"Cache-Control": "no-store"},
     )
 
 

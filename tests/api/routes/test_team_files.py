@@ -77,6 +77,34 @@ class TestWorkspaceMedia:
         assert resp.headers["content-disposition"].startswith("attachment;")
 
 
+class TestCodingWorkspaceFileRead:
+    """GET /api/team/workspace/files/read serves live, frequently-edited
+    workspace source files. Without an explicit no-store directive, browsers
+    apply heuristic caching (or 304 via a stat-based ETag) and can keep
+    serving a version of the file that predates an agent edit — the file
+    changes on disk, but reopening it in the coding panel shows stale bytes.
+    """
+
+    def test_read_response_disables_caching(self, tmp_path):
+        from app.api.app import create_app
+        from app.services.team_manager import set_team
+
+        app = create_app()
+        set_team(None)
+        client = TestClient(app)
+
+        (tmp_path / "app.py").write_text("print('v1')", encoding="utf-8")
+
+        resp = client.get(
+            "/api/team/workspace/files/read",
+            params={"workspace": str(tmp_path), "path": "app.py"},
+        )
+
+        assert resp.status_code == 200
+        assert resp.headers.get("cache-control") == "no-store"
+        set_team(None)
+
+
 class TestWorkspaceFilesListing:
     def test_invalid_session_id_returns_400(self, client):
         resp = client.get("/api/team/not-a-uuid/files")

@@ -639,11 +639,11 @@ class TestCodexResponsesHandlerBuildRequest:
         assert body["instructions"] == "You are helpful"
 
     def test_build_request_sets_instructions_to_space_when_no_system_message(self):
-        """build_request() sets instructions to space when no SystemMessage."""
+        """build_request() omits instructions when no SystemMessage is present."""
         handler = _CodexResponsesHandler("gpt-5.4", "https://api.example.com", {})
         messages = [HumanMessage(content="Hello")]
         body = handler.build_request(messages, None, False, {})
-        assert body["instructions"] == ""
+        assert "instructions" not in body
 
     def test_build_request_joins_multiple_system_messages(self):
         """build_request() joins multiple SystemMessages with newlines."""
@@ -673,7 +673,11 @@ class TestCodexResponsesHandlerBuildRequest:
         messages = [HumanMessage(content=None)]
         body = handler.build_request(messages, None, False, {})
         assert body["input"] == [
-            {"role": "user", "content": [{"type": "input_text", "text": ""}]}
+            {
+                "type": "message",
+                "role": "user",
+                "content": [{"type": "input_text", "text": ""}],
+            }
         ]
 
     def test_build_request_human_message_with_text_uses_input_text_item(self):
@@ -682,7 +686,11 @@ class TestCodexResponsesHandlerBuildRequest:
         messages = [HumanMessage(content="Hello")]
         body = handler.build_request(messages, None, False, {})
         assert body["input"] == [
-            {"role": "user", "content": [{"type": "input_text", "text": "Hello"}]}
+            {
+                "type": "message",
+                "role": "user",
+                "content": [{"type": "input_text", "text": "Hello"}],
+            }
         ]
 
     def test_build_request_assistant_text_uses_output_text_content_item(self):
@@ -692,6 +700,7 @@ class TestCodexResponsesHandlerBuildRequest:
         body = handler.build_request(messages, None, False, {})
         assert body["input"] == [
             {
+                "type": "message",
                 "role": "assistant",
                 "content": [{"type": "output_text", "text": "Prior answer"}],
             }
@@ -820,7 +829,7 @@ class TestCodexResponsesHandlerBuildRequest:
         ]
         body = handler.build_request(messages, None, False, {})
         # Empty string is falsy, so it should not be included
-        assert body["instructions"] == ""
+        assert "instructions" not in body
 
     @pytest.mark.asyncio
     async def test_chat_uses_streaming_endpoint(self):
@@ -1176,3 +1185,116 @@ class TestCodexProviderIntegration:
         assert body["model"] == "gpt-5.4"
         # Should have 3 non-system messages
         assert len(body["input"]) == 3
+
+
+class TestCodexPromptCachingAndReasoning:
+    """Tests verifying prompt caching prefix matching and reasoning continuity."""
+
+    def test_assistant_message_reasoning_extra_sync_and_roundtrip(self):
+        """AssistantMessage syncs reasoning_encrypted_content to extra and roundtrips via model_dump_full."""
+        msg = AssistantMessage(
+            content="Answer",
+            reasoning_content="Thinking",
+            reasoning_item_id="rs_123",
+            reasoning_encrypted_content="enc_cipher",
+        )
+        assert msg.extra["reasoning_encrypted_content"] == "enc_cipher"
+        assert msg.extra["reasoning_item_id"] == "rs_123"
+
+        # Model dump excludes top-level reasoning_encrypted_content, but model_dump_full preserves extra for DB.
+        dumped_full = msg.model_dump_full()
+        assert dumped_full["extra"]["reasoning_encrypted_content"] == "enc_cipher"
+
+        # Restoring from dump populates instance fields back from extra.
+        restored = AssistantMessage.model_validate(dumped_full)
+        assert restored.reasoning_encrypted_content == "enc_cipher"
+        assert restored.reasoning_item_id == "rs_123"
+
+    def test_convert_messages_omits_id_when_reasoning_item_id_none(self):
+        """Reasoning items without a reasoning_item_id omit the 'id' key entirely."""
+        handler = _CodexResponsesHandler("gpt-5.4", "https://api.example.com", {})
+        msg = AssistantMessage(
+            content="Done",
+            reasoning_content="Reasoning text",
+            reasoning_item_id=None,
+            reasoning_encrypted_content="encrypted_blob",
+        )
+        items = handler.convert_messages([msg])
+        reasoning_item = items[0]
+        assert reasoning_item["type"] == "reasoning"
+        assert "id" not in reasoning_item
+        assert reasoning_item["encrypted_content"] == "encrypted_blob"
+
+    def test_build_request_adds_type_message_to_user_and_assistant_items(self):
+        """User and assistant message items are tagged with type: 'message' for Codex."""
+        handler = _CodexResponsesHandler("gpt-5.4", "https://api.example.com", {})
+        messages = [
+            HumanMessage(content="Question"),
+            AssistantMessage(content="Answer"),
+        ]
+        body = handler.build_request(messages, None, False, {})
+        assert body["input"][0]["type"] == "message"
+        assert body["input"][1]["type"] == "message"
+
+    def test_build_request_defaults_reasoning_effort_to_medium(self):
+        """When thinking_level is omitted, reasoning effort defaults to 'medium'."""
+        handler = _CodexResponsesHandler("gpt-5.4", "https://api.example.com", {})
+        messages = [HumanMessage(content="Hi")]
+        body = handler.build_request(messages, None, False, {})
+        assert body["reasoning"] == {"effort": "medium", "summary": "auto"}
+
+    def test_multiturn_prompt_cache_prefix_and_reasoning_continuity(self):
+        """Turn 2 preserves Turn 1 prefix in input and replays reasoning item correctly."""
+        handler = _CodexResponsesHandler("gpt-5.4", "https://api.example.com", {})
+
+        # Turn 1
+        turn1_messages = [
+            SystemMessage(content="Instructions"),
+            HumanMessage(content="Turn 1 user"),
+        ]
+        body1 = handler.build_request(turn1_messages, None, False, {})
+
+        # Model responds with AssistantMessage carrying reasoning_encrypted_content
+        turn1_assistant = AssistantMessage(
+            content="Turn 1 response",
+            reasoning_content="Turn 1 thinking",
+            reasoning_item_id="rs_1",
+            reasoning_encrypted_content="enc_turn_1",
+        )
+
+        # Turn 2
+        turn2_messages = [
+            SystemMessage(content="Instructions"),
+            HumanMessage(content="Turn 1 user"),
+            turn1_assistant,
+            HumanMessage(content="Turn 2 user"),
+        ]
+        body2 = handler.build_request(turn2_messages, None, False, {})
+
+        # Instructions match across turns
+        assert body1["instructions"] == body2["instructions"] == "Instructions"
+
+        # Reasoning config matches across turns
+        assert (
+            body1["reasoning"]
+            == body2["reasoning"]
+            == {"effort": "medium", "summary": "auto"}
+        )
+
+        # Input item 0 in turn 2 matches turn 1 input item 0 exactly
+        assert body2["input"][0] == body1["input"][0]
+
+        # Input item 1 in turn 2 is the replayed reasoning item
+        assert body2["input"][1] == {
+            "type": "reasoning",
+            "id": "rs_1",
+            "summary": [{"type": "summary_text", "text": "Turn 1 thinking"}],
+            "encrypted_content": "enc_turn_1",
+        }
+
+        # Input item 2 is the assistant message
+        assert body2["input"][2] == {
+            "type": "message",
+            "role": "assistant",
+            "content": [{"type": "output_text", "text": "Turn 1 response"}],
+        }

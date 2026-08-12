@@ -7,10 +7,10 @@ They are NOT part of the public API — see app/schemas/events.py for that.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Annotated, Any, Literal, Union
+from typing import Annotated, Any, Literal, Self, Union
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 # ── Multimodal content blocks ─────────────────────────────────────────────────
@@ -208,6 +208,23 @@ class AssistantMessage(BaseMessage):
     # Me: agent tracking — internal only, never sent to provider
     agent_id: str | None = Field(default=None, exclude=True)
     agent_name: str | None = Field(default=None, exclude=True)
+
+    @model_validator(mode="after")
+    def _sync_reasoning_extra(self) -> Self:
+        if self.reasoning_encrypted_content:
+            if self.extra is None:
+                self.extra = {}
+            self.extra["reasoning_encrypted_content"] = self.reasoning_encrypted_content
+            if self.reasoning_item_id:
+                self.extra["reasoning_item_id"] = self.reasoning_item_id
+        elif self.extra and "reasoning_encrypted_content" in self.extra:
+            encrypted = self.extra["reasoning_encrypted_content"]
+            if isinstance(encrypted, str) and encrypted:
+                self.reasoning_encrypted_content = encrypted
+            item_id = self.extra.get("reasoning_item_id")
+            if isinstance(item_id, str) and item_id:
+                self.reasoning_item_id = item_id
+        return self
 
 
 class ToolMessage(BaseMessage):

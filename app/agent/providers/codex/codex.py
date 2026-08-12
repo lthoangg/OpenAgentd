@@ -55,25 +55,29 @@ class _CodexResponsesHandler(ResponsesHandler):
         Upstream Codex models message content as ``Vec<ContentItem>``. The
         ChatGPT Codex endpoint can intermittently reject plain string content,
         so text-only user turns are sent as explicit ``input_text`` items.
+        User and assistant message items are tagged with ``type: "message"``.
         """
         items = super().convert_messages(messages)
         for item in items:
+            role = item.get("role")
+            if role in ("user", "assistant") and "type" not in item:
+                item["type"] = "message"
             content = item.get("content")
-            if item.get("role") == "user" and isinstance(content, str):
+            if role == "user" and isinstance(content, str):
                 item["content"] = [{"type": "input_text", "text": content}]
         return items
 
     def customize_thinking(self, merged: dict[str, Any], body: dict[str, Any]) -> None:
         """Send effort and request readable summaries on supported Codex models."""
         thinking_level = merged.get("thinking_level")
-        if thinking_level and thinking_level != "off":
-            reasoning = {"effort": thinking_level}
-            if (
-                thinking_level != "none"
-                and self.model not in _NO_REASONING_SUMMARY_MODELS
-            ):
-                reasoning["summary"] = "auto"
-            body["reasoning"] = reasoning
+        if thinking_level == "off":
+            return
+        if not thinking_level:
+            thinking_level = "medium"
+        reasoning: dict[str, Any] = {"effort": thinking_level}
+        if thinking_level != "none" and self.model not in _NO_REASONING_SUMMARY_MODELS:
+            reasoning["summary"] = "auto"
+        body["reasoning"] = reasoning
 
     def build_request(
         self,
@@ -97,7 +101,12 @@ class _CodexResponsesHandler(ResponsesHandler):
         # has no token-cap field; the endpoint stalls when sent one.
         body.pop("max_output_tokens", None)
 
-        body["instructions"] = "\n\n".join(system_parts)
+        instructions = "\n\n".join(system_parts)
+        if instructions:
+            body["instructions"] = instructions
+        else:
+            body.pop("instructions", None)
+
         body["store"] = False
         # Me: upstream Codex CLI sends this unconditionally on every request
         # (codex-rs/core/src/client.rs: `let include = vec!["reasoning.encrypted_content"...]`)
@@ -143,16 +152,19 @@ class _CodexResponsesHandler(ResponsesHandler):
             if delta.reasoning_encrypted_content:
                 reasoning_item_id = delta.reasoning_item_id
                 reasoning_encrypted_content = delta.reasoning_encrypted_content
+        extra: dict[str, Any] = {}
+        if usage is not None:
+            extra["usage"] = usage_to_dict(usage, self.model)
+        if reasoning_encrypted_content:
+            extra["reasoning_item_id"] = reasoning_item_id
+            extra["reasoning_encrypted_content"] = reasoning_encrypted_content
+
         return AssistantMessage(
             content=content or None,
             reasoning_content=reasoning or None,
             reasoning_item_id=reasoning_item_id,
             reasoning_encrypted_content=reasoning_encrypted_content,
-            extra=(
-                {"usage": usage_to_dict(usage, self.model)}
-                if usage is not None
-                else None
-            ),
+            extra=extra or None,
         )
 
 

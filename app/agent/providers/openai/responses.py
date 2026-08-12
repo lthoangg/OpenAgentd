@@ -130,14 +130,14 @@ class ResponsesHandler:
                         if msg.reasoning_content
                         else []
                     )
-                    input_items.append(
-                        {
-                            "type": "reasoning",
-                            "id": msg.reasoning_item_id,
-                            "summary": summary,
-                            "encrypted_content": msg.reasoning_encrypted_content,
-                        }
-                    )
+                    reasoning_item: dict[str, Any] = {
+                        "type": "reasoning",
+                        "summary": summary,
+                        "encrypted_content": msg.reasoning_encrypted_content,
+                    }
+                    if msg.reasoning_item_id:
+                        reasoning_item["id"] = msg.reasoning_item_id
+                    input_items.append(reasoning_item)
                 if msg.content:
                     input_items.append(
                         {
@@ -326,6 +326,10 @@ class ResponsesHandler:
                 )
 
         usage_dict = self._usage_dict(data.get("usage") or {})
+        extra: dict[str, Any] = {"usage": usage_dict} if usage_dict is not None else {}
+        if reasoning_encrypted_content:
+            extra["reasoning_item_id"] = reasoning_item_id
+            extra["reasoning_encrypted_content"] = reasoning_encrypted_content
         return AssistantMessage(
             content="\n".join(content_parts) if content_parts else None,
             # Me: reasoning parts each carry their own bold header
@@ -337,7 +341,7 @@ class ResponsesHandler:
             reasoning_item_id=reasoning_item_id,
             reasoning_encrypted_content=reasoning_encrypted_content,
             tool_calls=tool_calls if tool_calls else None,
-            extra={"usage": usage_dict} if usage_dict is not None else None,
+            extra=extra or None,
         )
 
     def _usage_dict(self, usage_data: dict[str, Any]) -> dict[str, Any] | None:

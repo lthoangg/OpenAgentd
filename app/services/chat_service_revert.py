@@ -62,7 +62,9 @@ def history_messages_stmt(session_id: UUID, boundary: datetime | None = None):
     stmt = select(SessionMessage).where(col(SessionMessage.session_id) == session_id)
     if boundary is not None:
         stmt = before_boundary(stmt, boundary)
-    return stmt.order_by(col(SessionMessage.created_at).asc())
+    return stmt.order_by(
+        col(SessionMessage.created_at).asc(), col(SessionMessage.id).asc()
+    )
 
 
 def llm_history_messages_stmt(session_id: UUID):
@@ -78,7 +80,7 @@ def llm_history_messages_stmt(session_id: UUID):
                 queued,
             )
         )
-        .order_by(col(SessionMessage.created_at).asc())
+        .order_by(col(SessionMessage.created_at).asc(), col(SessionMessage.id).asc())
     )
 
 

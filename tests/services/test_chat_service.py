@@ -1,3 +1,6 @@
+from datetime import UTC, datetime
+from uuid import UUID
+
 import pytest
 import pytest_asyncio
 from sqlalchemy import event
@@ -1571,6 +1574,36 @@ async def test_get_messages_for_llm_preserves_skill_tool_pair_after_summary(sess
     assert skill_call.tool_calls[0].id == "call_skill_1"
     assert skill_result.tool_call_id == "call_skill_1"
     assert skill_result.content == "Guideline instructions body"
+
+
+@pytest.mark.asyncio
+async def test_queued_messages_with_same_timestamp_keep_id_order_when_activated(
+    session,
+):
+    """Queue activation must keep a deterministic FIFO order for timestamp ties."""
+    chat_session = await create_chat_session(session)
+    queued_at = datetime.now(UTC)
+    second_id = UUID("00000000-0000-0000-0000-000000000002")
+    first_id = UUID("00000000-0000-0000-0000-000000000001")
+    # Insert newest first: the queue must resolve this timestamp tie by UUIDv7,
+    # not SQLite's incidental insertion order.
+    for message_id, content in ((first_id, "first"), (second_id, "second")):
+        row = SessionMessage(
+            id=message_id,
+            session_id=chat_session.id,
+            role="user",
+            content=content,
+            exclude_from_context=True,
+            extra={"queue_status": "queued"},
+            created_at=queued_at,
+        )
+        session.add(row)
+    await session.commit()
+
+    activated = await pop_queued_user_messages(session, chat_session.id)
+
+    assert [row.id for row in activated] == sorted((first_id, second_id))
+    assert [row.content for row in activated] == ["first", "second"]
 
 
 @pytest.mark.asyncio

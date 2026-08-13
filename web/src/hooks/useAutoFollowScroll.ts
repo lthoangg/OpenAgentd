@@ -1,0 +1,214 @@
+import { useCallback, useEffect, useRef, useState } from 'react'
+
+const SCROLL_THRESHOLD = 40
+const USER_SCROLL_INTENT_MS = 250
+const SCROLL_UP_KEYS = new Set(['PageUp', 'Home', 'ArrowUp'])
+const EDITABLE_TAGS = new Set(['INPUT', 'TEXTAREA', 'SELECT'])
+
+export interface UseAutoFollowScrollOptions {
+  totalLen?: number
+  lastContent?: string
+  sessionId?: string
+  isUserMessage?: boolean
+  isEmpty?: boolean
+  onLoadOlderTop?: () => void
+}
+
+export function useAutoFollowScroll(options: UseAutoFollowScrollOptions = {}) {
+  const { totalLen, lastContent, sessionId, isUserMessage, isEmpty, onLoadOlderTop } = options
+
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const contentRef = useRef<HTMLDivElement>(null)
+  const attachedRef = useRef(true)
+  const isProgrammaticScrollRef = useRef(false)
+  const lastScrollTopRef = useRef(0)
+  const userScrollIntentUntilRef = useRef(0)
+  const pointerDownRef = useRef(false)
+  const [showScrollBtn, setShowScrollBtn] = useState(false)
+
+  const onLoadOlderTopRef = useRef(onLoadOlderTop)
+  useEffect(() => {
+    onLoadOlderTopRef.current = onLoadOlderTop
+  }, [onLoadOlderTop])
+
+  const scrollToBottom = useCallback((behavior: ScrollBehavior = 'auto') => {
+    const el = scrollRef.current
+    if (!el) return
+    const bottom = Math.max(0, el.scrollHeight - el.clientHeight)
+    attachedRef.current = true
+    userScrollIntentUntilRef.current = 0
+    setShowScrollBtn(false)
+    if (behavior === 'smooth' && typeof el.scrollTo === 'function') {
+      isProgrammaticScrollRef.current = true
+      el.scrollTo({ top: bottom, behavior: 'smooth' })
+      let finished = false
+      const finish = () => {
+        if (finished) return
+        finished = true
+        isProgrammaticScrollRef.current = false
+        el.removeEventListener('scrollend', finish)
+        const target = Math.max(0, el.scrollHeight - el.clientHeight)
+        if (Math.abs(el.scrollTop - target) > 1) {
+          el.scrollTop = target
+          lastScrollTopRef.current = el.scrollTop
+        }
+      }
+      el.addEventListener('scrollend', finish)
+      setTimeout(finish, 500)
+    } else {
+      el.scrollTop = bottom
+      lastScrollTopRef.current = el.scrollTop
+    }
+  }, [])
+
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+    lastScrollTopRef.current = el.scrollTop
+
+    const onScroll = () => {
+      const currentScrollTop = el.scrollTop
+      const prevScrollTop = lastScrollTopRef.current
+      lastScrollTopRef.current = currentScrollTop
+
+      if (isProgrammaticScrollRef.current) return
+      const dist = el.scrollHeight - currentScrollTop - el.clientHeight
+      const atBottom = dist <= SCROLL_THRESHOLD
+
+      if (atBottom) {
+        if (Date.now() >= userScrollIntentUntilRef.current) {
+          attachedRef.current = true
+          setShowScrollBtn(false)
+        }
+      } else if (attachedRef.current) {
+        if (!document.documentElement.hasAttribute('data-keyboard-open')) {
+          const isScrollUp = currentScrollTop < prevScrollTop
+          if (isScrollUp) {
+            attachedRef.current = false
+            setShowScrollBtn(true)
+          }
+        }
+      }
+
+      if (currentScrollTop <= 300) {
+        onLoadOlderTopRef.current?.()
+      }
+    }
+
+    const detachForUserScrollUp = () => {
+      userScrollIntentUntilRef.current = Date.now() + USER_SCROLL_INTENT_MS
+      if (!attachedRef.current) return
+      if (el.scrollHeight - el.clientHeight <= 1) return
+      attachedRef.current = false
+      setShowScrollBtn(true)
+    }
+
+    const onWheel = (e: WheelEvent) => {
+      if (e.deltaY < 0) detachForUserScrollUp()
+    }
+    let lastTouchY: number | null = null
+    const onTouchStart = (e: TouchEvent) => {
+      lastTouchY = e.touches[0]?.clientY ?? null
+    }
+    const onTouchMove = (e: TouchEvent) => {
+      const y = e.touches[0]?.clientY
+      if (y === undefined) return
+      if (lastTouchY !== null && y > lastTouchY) detachForUserScrollUp()
+      lastTouchY = y
+    }
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (!SCROLL_UP_KEYS.has(e.key)) return
+      const target = e.target as HTMLElement | null
+      if (target && target !== document.body && !el.contains(target)) return
+      if (target && (target.isContentEditable || EDITABLE_TAGS.has(target.tagName))) return
+      detachForUserScrollUp()
+    }
+
+    const onPointerDown = () => { pointerDownRef.current = true }
+    const onPointerUp = () => {
+      if (!pointerDownRef.current) return
+      pointerDownRef.current = false
+      if (!attachedRef.current) return
+      el.scrollTop = Math.max(0, el.scrollHeight - el.clientHeight)
+      lastScrollTopRef.current = el.scrollTop
+    }
+
+    el.addEventListener('scroll', onScroll, { passive: true })
+    el.addEventListener('wheel', onWheel, { passive: true })
+    el.addEventListener('touchstart', onTouchStart, { passive: true })
+    el.addEventListener('touchmove', onTouchMove, { passive: true })
+    el.addEventListener('pointerdown', onPointerDown, { passive: true })
+    window.addEventListener('pointerup', onPointerUp, { passive: true })
+    window.addEventListener('pointercancel', onPointerUp, { passive: true })
+    document.addEventListener('keydown', onKeyDown)
+
+    return () => {
+      el.removeEventListener('scroll', onScroll)
+      el.removeEventListener('wheel', onWheel)
+      el.removeEventListener('touchstart', onTouchStart)
+      el.removeEventListener('touchmove', onTouchMove)
+      el.removeEventListener('pointerdown', onPointerDown)
+      window.removeEventListener('pointerup', onPointerUp)
+      window.removeEventListener('pointercancel', onPointerUp)
+      document.removeEventListener('keydown', onKeyDown)
+    }
+  }, [])
+
+  useEffect(() => {
+    attachedRef.current = true
+    setShowScrollBtn(false)
+    scrollToBottom()
+  }, [sessionId, scrollToBottom])
+
+  useEffect(() => {
+    if (isUserMessage) {
+      attachedRef.current = true
+    }
+    if (attachedRef.current) scrollToBottom()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [totalLen, lastContent])
+
+  useEffect(() => {
+    if (!isEmpty) return
+    attachedRef.current = true
+    setShowScrollBtn(false)
+    if (scrollRef.current) scrollRef.current.scrollTop = 0
+  }, [isEmpty])
+
+  const hasContent = !isEmpty
+  useEffect(() => {
+    const el = scrollRef.current
+    const content = contentRef.current
+    if (!el || !content || typeof ResizeObserver === 'undefined') return
+    let lastContentHeight = content.getBoundingClientRect().height
+    let lastClientHeight = el.clientHeight
+    const ro = new ResizeObserver((entries) => {
+      if (!attachedRef.current) return
+      if (pointerDownRef.current) return
+      const nextContentHeight = content.getBoundingClientRect().height
+      const nextClientHeight = el.clientHeight
+      const contentGrew = nextContentHeight > lastContentHeight
+      const viewportChanged = nextClientHeight !== lastClientHeight
+      const contentChanged = entries.some((entry) => entry.target === content)
+
+      lastContentHeight = nextContentHeight
+      lastClientHeight = nextClientHeight
+      if (document.documentElement.hasAttribute('data-keyboard-open') && viewportChanged && !contentGrew && !contentChanged) return
+      el.scrollTop = Math.max(0, el.scrollHeight - el.clientHeight)
+      lastScrollTopRef.current = el.scrollTop
+    })
+    ro.observe(content)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [hasContent])
+
+  return {
+    scrollRef,
+    contentRef,
+    attachedRef,
+    showScrollBtn,
+    setShowScrollBtn,
+    scrollToBottom,
+  }
+}

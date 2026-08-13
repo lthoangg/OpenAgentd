@@ -48,6 +48,7 @@ export function McpServerForm({
             label="Name"
             required
             error={errors?.name}
+            errorId="mcp-name-error"
             hint={
               !isNew
                 ? 'Persisted key in mcp.json; cannot be renamed.'
@@ -60,6 +61,7 @@ export function McpServerForm({
               disabled={disabled || !isNew}
               placeholder="filesystem"
               aria-invalid={!!errors?.name || undefined}
+              aria-describedby={errors?.name ? 'mcp-name-error' : undefined}
               className="min-h-11 font-mono md:min-h-9"
             />
           </SettingsField>
@@ -100,6 +102,7 @@ export function McpServerForm({
                 label="Command"
                 required
                 error={errors?.command}
+                errorId="mcp-command-error"
                 hint="Executable to launch (looked up on PATH)."
               >
                 <Input
@@ -108,6 +111,7 @@ export function McpServerForm({
                   disabled={disabled}
                   placeholder="npx"
                   aria-invalid={!!errors?.command || undefined}
+                  aria-describedby={errors?.command ? 'mcp-command-error' : undefined}
                   className="min-h-11 font-mono md:min-h-9"
                 />
               </SettingsField>
@@ -129,6 +133,7 @@ export function McpServerForm({
                 keyPlaceholder="KEY"
                 valuePlaceholder="value"
                 error={errors?.env}
+                errorId="mcp-env-error"
                 pairs={value.envPairs}
                 onChange={(envPairs) => set({ envPairs })}
                 disabled={disabled}
@@ -143,6 +148,7 @@ export function McpServerForm({
                 label="URL"
                 required
                 error={errors?.url}
+                errorId="mcp-url-error"
                 hint="Streamable HTTP endpoint (full URL incl. scheme)."
               >
                 <Input
@@ -151,6 +157,7 @@ export function McpServerForm({
                   disabled={disabled}
                   placeholder="https://mcp.example.com/v1"
                   aria-invalid={!!errors?.url || undefined}
+                  aria-describedby={errors?.url ? 'mcp-url-error' : undefined}
                   className="min-h-11 font-mono md:min-h-9"
                 />
               </SettingsField>
@@ -160,6 +167,7 @@ export function McpServerForm({
                 keyPlaceholder="Header-Name"
                 valuePlaceholder="value"
                 error={errors?.headers}
+                errorId="mcp-headers-error"
                 pairs={value.headerPairs}
                 onChange={(headerPairs) => set({ headerPairs })}
                 disabled={disabled}
@@ -345,6 +353,7 @@ function PairListField({
   keyPlaceholder,
   valuePlaceholder,
   error,
+  errorId,
   pairs,
   onChange,
   disabled,
@@ -353,6 +362,7 @@ function PairListField({
   keyPlaceholder: string
   valuePlaceholder: string
   error?: string | null
+  errorId: string
   pairs: KeyValuePair[]
   onChange: (next: KeyValuePair[]) => void
   disabled?: boolean
@@ -388,6 +398,8 @@ function PairListField({
               <Input
                 value={pair.key}
                 onChange={(e) => setAt(idx, { key: e.target.value })}
+                aria-invalid={!!error || undefined}
+                aria-describedby={error ? errorId : undefined}
                 disabled={disabled}
                 placeholder={keyPlaceholder}
                 className="min-h-11 font-mono md:min-h-9"
@@ -395,6 +407,8 @@ function PairListField({
               <Input
                 value={pair.value}
                 onChange={(e) => setAt(idx, { value: e.target.value })}
+                aria-invalid={!!error || undefined}
+                aria-describedby={error ? errorId : undefined}
                 disabled={disabled}
                 placeholder={valuePlaceholder}
                 className="min-h-11 font-mono md:min-h-9"
@@ -414,7 +428,7 @@ function PairListField({
         </div>
       )}
 
-      {error && <p className="text-[11px] text-(--color-error)">{error}</p>}
+      {error && <p id={errorId} className="text-[11px] text-(--color-error)">{error}</p>}
     </div>
   )
 }

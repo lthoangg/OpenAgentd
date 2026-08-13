@@ -93,11 +93,15 @@ describe('McpServerForm — Identity section', () => {
     expect(onChange).toHaveBeenCalled()
   })
 
-  it('displays name error when provided', () => {
+  it('associates the name control with its authoritative error', () => {
     const draft = emptyDraft()
     const onChange = mock(() => {})
     renderForm(draft, onChange, { errors: { name: 'Name is required.' } })
-    expect(screen.getByText('Name is required.')).toBeTruthy()
+    const input = screen.getByPlaceholderText('filesystem') as HTMLInputElement
+    const error = screen.getByText('Name is required.')
+    expect(input.getAttribute('aria-invalid')).toBe('true')
+    expect(input.getAttribute('aria-describedby')).toBe(error.id)
+    expect(error.id).toBeTruthy()
   })
 })
 
@@ -186,11 +190,15 @@ describe('McpServerForm — Stdio section', () => {
     expect(onChange).toHaveBeenCalled()
   })
 
-  it('displays command error when provided', () => {
+  it('associates the command control with its authoritative error', () => {
     const draft = { ...emptyDraft(), transport: 'stdio' as const }
     const onChange = mock(() => {})
     renderForm(draft, onChange, { errors: { command: 'Command is required.' } })
-    expect(screen.getByText('Command is required.')).toBeTruthy()
+    const input = screen.getByPlaceholderText('npx') as HTMLInputElement
+    const error = screen.getByText('Command is required.')
+    expect(input.getAttribute('aria-invalid')).toBe('true')
+    expect(input.getAttribute('aria-describedby')).toBe(error.id)
+    expect(error.id).toBeTruthy()
   })
 
   it('renders arguments textarea with value', () => {
@@ -221,11 +229,20 @@ describe('McpServerForm — Stdio section', () => {
     expect(screen.getByText(/Environment variables/i)).toBeTruthy()
   })
 
-  it('displays env error when provided', () => {
-    const draft = { ...emptyDraft(), transport: 'stdio' as const }
+  it('associates environment inputs with their authoritative error', () => {
+    const draft = {
+      ...emptyDraft(),
+      transport: 'stdio' as const,
+      envPairs: [{ key: 'KEY', value: 'value' }],
+    }
     const onChange = mock(() => {})
     renderForm(draft, onChange, { errors: { env: 'Duplicate environment variable: KEY' } })
-    expect(screen.getByText(/Duplicate environment variable/)).toBeTruthy()
+    const keyInput = screen.getByDisplayValue('KEY') as HTMLInputElement
+    const valueInput = screen.getByDisplayValue('value') as HTMLInputElement
+    const error = screen.getByText(/Duplicate environment variable/)
+    expect(keyInput.getAttribute('aria-describedby')).toBe(error.id)
+    expect(valueInput.getAttribute('aria-describedby')).toBe(error.id)
+    expect(error.id).toBeTruthy()
   })
 })
 
@@ -249,11 +266,15 @@ describe('McpServerForm — HTTP section', () => {
     expect(onChange).toHaveBeenCalled()
   })
 
-  it('displays url error when provided', () => {
+  it('associates the URL control with its authoritative error', () => {
     const draft = { ...emptyDraft(), transport: 'http' as const }
     const onChange = mock(() => {})
     renderForm(draft, onChange, { errors: { url: 'URL is required.' } })
-    expect(screen.getByText('URL is required.')).toBeTruthy()
+    const input = screen.getByPlaceholderText(/https:\/\/mcp/) as HTMLInputElement
+    const error = screen.getByText('URL is required.')
+    expect(input.getAttribute('aria-invalid')).toBe('true')
+    expect(input.getAttribute('aria-describedby')).toBe(error.id)
+    expect(error.id).toBeTruthy()
   })
 
   it('renders headers section', () => {
@@ -263,11 +284,20 @@ describe('McpServerForm — HTTP section', () => {
     expect(screen.getByText(/Headers/i)).toBeTruthy()
   })
 
-  it('displays headers error when provided', () => {
-    const draft = { ...emptyDraft(), transport: 'http' as const }
+  it('associates header inputs with their authoritative error', () => {
+    const draft = {
+      ...emptyDraft(),
+      transport: 'http' as const,
+      headerPairs: [{ key: 'X-Custom', value: 'value' }],
+    }
     const onChange = mock(() => {})
     renderForm(draft, onChange, { errors: { headers: 'Duplicate header: X-Custom' } })
-    expect(screen.getByText(/Duplicate header/)).toBeTruthy()
+    const keyInput = screen.getByDisplayValue('X-Custom') as HTMLInputElement
+    const valueInput = screen.getByDisplayValue('value') as HTMLInputElement
+    const error = screen.getByText(/Duplicate header/)
+    expect(keyInput.getAttribute('aria-describedby')).toBe(error.id)
+    expect(valueInput.getAttribute('aria-describedby')).toBe(error.id)
+    expect(error.id).toBeTruthy()
   })
 })
 

@@ -28,6 +28,8 @@ interface SettingsFieldProps {
   error?: string | null
   /** Helper text shown when there is no error. */
   hint?: string | null
+  /** Stable id used to associate the control with its error text. */
+  errorId?: string
 }
 
 function SettingsField({
@@ -37,6 +39,7 @@ function SettingsField({
   children,
   error,
   hint,
+  errorId,
 }: SettingsFieldProps) {
   // Intentionally a <div>, not a <label>. A <label> wrapper causes any
   // click inside it to activate the first focusable control in DOM order —
@@ -49,7 +52,7 @@ function SettingsField({
       </span>
       {children}
       {error ? (
-        <p className="text-[11px] text-(--color-error)">{error}</p>
+        <p id={errorId} className="text-[11px] text-(--color-error)">{error}</p>
       ) : hint ? (
         <p className="text-[11px] text-(--color-text-muted)">{hint}</p>
       ) : null}

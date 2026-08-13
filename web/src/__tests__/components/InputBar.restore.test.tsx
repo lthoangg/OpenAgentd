@@ -25,9 +25,7 @@ function setup() {
 }
 
 function textarea(): HTMLTextAreaElement {
-  const el =
-    screen.queryByLabelText("Message input") ?? screen.getByLabelText("Shell command input")
-  return el as HTMLTextAreaElement
+  return screen.getByLabelText("Message input") as HTMLTextAreaElement
 }
 
 function type(text: string) {
@@ -73,20 +71,6 @@ describe("InputBar draft restore after a failed send", () => {
     act(() => ref.current!.restoreLastSubmission())
 
     expect(screen.getByText("notes.md")).not.toBeNull()
-  })
-
-  it("restores a shell command back into shell mode", () => {
-    const { ref } = setup()
-    // Shell mode arms when "!" is the first character typed; the bang itself
-    // is consumed, so the draft holds only the command.
-    type("!")
-    type("ls -la")
-    expect(screen.getByLabelText("Shell command input")).not.toBeNull()
-    submit()
-
-    act(() => ref.current!.restoreLastSubmission())
-
-    expect(screen.getByLabelText("Shell command input")).not.toBeNull()
   })
 
   it("does not clobber a draft the user already started typing", () => {

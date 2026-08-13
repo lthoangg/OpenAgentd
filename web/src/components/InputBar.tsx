@@ -1,5 +1,5 @@
 import { useRef, useState, useCallback, useImperativeHandle, forwardRef, useEffect, useMemo } from 'react'
-import { ArrowUp, Loader2, MessageCircle, Paperclip, Square, Terminal } from 'lucide-react'
+import { ArrowUp, Loader2, MessageCircle, Paperclip, Square } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { FilePreviewStrip } from './FilePreviewStrip'
 import { findActiveMention, getExplicitMentionRanges, type FileRef } from './InputBar.mentions'
@@ -197,7 +197,6 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
   } = useInputBarAttachments({ capabilities })
   const [localHistory, setLocalHistory] = useState<string[]>([])
   const [historyIndex, setHistoryIndex] = useState(-1)
-  const [shellMode, setShellMode] = useState(false)
   const [mentions, setMentions] = useState<string[]>([])
 
   /** Last submitted draft, held only until the send is confirmed or restored. */
@@ -205,7 +204,6 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
     value: string
     files: File[]
     mentions: string[]
-    shellMode: boolean
   } | null>(null)
 
   // Single source of truth for where committed ``@mention`` tokens live in
@@ -259,8 +257,6 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
   } = useInputBarSuggestionEngine({
     value,
     setValue,
-    shellMode,
-    setShellMode,
     textareaRef,
     resize,
     slashCommands,
@@ -300,8 +296,8 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
       }
     }
 
-    const next = shellMode ? null : findActiveMention(el.value, caret)
-    setSnippetRange((next !== null || shellMode) ? null : findActiveSnippet(el.value, caret))
+    const next = findActiveMention(el.value, caret)
+    setSnippetRange(next !== null ? null : findActiveSnippet(el.value, caret))
     setMentionRange((prev) => {
       if (!prev && !next) return prev
       if (
@@ -312,7 +308,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
       ) return prev
       return next
     })
-  }, [shellMode, value, mentionRanges, mentions, setMentionRange, setSnippetRange])
+  }, [value, mentionRanges, mentions, setMentionRange, setSnippetRange])
 
   const navigateHistory = useCallback((dir: 'up' | 'down') => {
     if (history.length === 0) return false
@@ -325,7 +321,6 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
       if (nextIndex < 0) {
         setHistoryIndex(-1)
         setValue('')
-        setShellMode(false)
         setMentionRange(null)
         setSnippetRange(null)
         requestAnimationFrame(resize)
@@ -333,16 +328,13 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
       }
       if (nextIndex >= history.length) return true
       const next = history[nextIndex]
-      const shellHistoryEntry = next.startsWith('!')
-      const nextValue = shellHistoryEntry ? next.slice(1) : next
       setHistoryIndex(nextIndex)
-      setShellMode(shellHistoryEntry)
-      setValue(nextValue)
+      setValue(next)
       setMentionRange(null)
       setSnippetRange(null)
       requestAnimationFrame(() => {
         const el = textareaRef.current
-        el?.setSelectionRange(nextValue.length, nextValue.length)
+        el?.setSelectionRange(next.length, next.length)
         resize()
       })
       return true
@@ -363,39 +355,24 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
     focus: () => textareaRef.current?.focus(),
     setValue: (text: string) => {
       setValue(text)
-      setShellMode(false)
       resetDraftState()
       // Recalculate height after injecting text programmatically — see
       // ``resizeAfterLayout`` for why this must wait two frames.
       resizeAfterLayout()
     },
     appendValue: (text: string) => {
-      // Mirrors the textarea's own paste handling: appending "!command" to
-      // an empty draft (the FloatingInputBar's paste-while-minimized path
-      // forwards clipboard text here) should land in shell mode with the
-      // bang stripped, not insert a literal "!" into a normal chat message.
-      // Only applies when the draft is empty — a mid-sentence append (e.g.
-      // voice transcript, @mention comment) keeps "!" as plain text.
-      const shouldEnterShellMode = !shellMode && value.length === 0 && text.startsWith('!')
       setValue((prev) => {
-        if (shouldEnterShellMode) return text.slice(1)
         const spacer = prev && !/\s$/.test(prev) ? ' ' : ''
         return `${prev}${spacer}${text}`
       })
-      setShellMode(shouldEnterShellMode)
       resetDraftState()
       resizeAfterLayout()
     },
     insertText: (text: string) => {
       const el = textareaRef.current
-      const shouldEnterShellMode = !shellMode && value.length === 0 && text === '!'
       setValue((prev) => {
         const start = el?.selectionStart ?? prev.length
         const end = el?.selectionEnd ?? start
-        if (shouldEnterShellMode && prev.length === 0 && start === 0 && end === 0) {
-          requestAnimationFrame(resize)
-          return ''
-        }
         const next = prev.slice(0, start) + text + prev.slice(end)
         // Single rAF (not ``resizeAfterLayout``): this path forwards live
         // keystrokes, so the caret must land as soon as React has painted.
@@ -405,7 +382,6 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
         })
         return next
       })
-      setShellMode(shouldEnterShellMode)
       resetDraftState()
     },
     setFiles: (nextFiles: File[]) => {
@@ -428,7 +404,6 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
       setValue(snapshot.value)
       setFiles(snapshot.files)
       setMentions(snapshot.mentions)
-      setShellMode(snapshot.shellMode)
       resetDraftState()
       resizeAfterLayout(() => textareaRef.current?.focus())
     },
@@ -462,28 +437,26 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
 
     // Snapshot everything the clear below is about to throw away, so a
     // failed send can hand it back (see ``restoreLastSubmission``).
-    lastSubmissionRef.current = { value: trimmed, files, mentions, shellMode }
+    lastSubmissionRef.current = { value: trimmed, files, mentions }
 
-    const submitted = shellMode ? `!${trimmed}` : trimmed
     onSubmit(
-      submitted,
+      trimmed,
       files.length > 0 ? files : undefined,
       mentions.length > 0 ? mentions : undefined
     )
     setLocalHistory((prev) =>
-      prev[0] === submitted ? prev : [submitted, ...prev].slice(0, 100),
+      prev[0] === trimmed ? prev : [trimmed, ...prev].slice(0, 100),
     )
     setValue('')
     setFiles([])
     setMentions([])
-    setShellMode(false)
     resetDraftState()
     setMenuIndex(0)
 
     // Reset the visible height synchronously — see ``resetHeightNow`` for
     // why this can't wait for the next animation frame.
     resetHeightNow()
-  }, [disabled, value, files, isStreaming, shellMode, onSubmit, mentions, resetDraftState, resetHeightNow, setFiles, setMenuIndex])
+  }, [disabled, value, files, isStreaming, onSubmit, mentions, resetDraftState, resetHeightNow, setFiles, setMenuIndex])
 
   const handlePaste = useCallback((e: React.ClipboardEvent<HTMLTextAreaElement>) => {
     const items = e.clipboardData?.items
@@ -496,23 +469,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
       addAllowedFiles(pastedFiles)
       return
     }
-
-    const el = e.currentTarget
-    const text = e.clipboardData?.getData('text/plain') ?? ''
-    const replacesEntireDraft = el.selectionStart === 0 && el.selectionEnd === value.length
-    if (!shellMode && replacesEntireDraft && text.startsWith('!')) {
-      e.preventDefault()
-      const command = text.slice(1)
-      setValue(command)
-      setShellMode(true)
-      resetDraftState()
-      requestAnimationFrame(() => {
-        el.focus()
-        el.setSelectionRange(command.length, command.length)
-        resize()
-      })
-    }
-  }, [extractPastedFiles, addAllowedFiles, resetDraftState, resize, shellMode, value])
+  }, [extractPastedFiles, addAllowedFiles])
 
   const handleAtomicMentionDeletion = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>): boolean => {
     if (e.key !== 'Backspace' && e.key !== 'Delete') return false
@@ -538,24 +495,6 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
     })
     return true
   }, [mentionRanges, resize, value])
-
-  const handleShellKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>): boolean => {
-    if (e.key === '!' && !shellMode && value.length === 0) {
-      e.preventDefault()
-      setShellMode(true)
-      setMentionRange(null)
-      setSnippetRange(null)
-      return true
-    }
-    if (shellMode) {
-      if ((e.key === 'Backspace' && value.length === 0) || e.key === 'Escape') {
-        e.preventDefault()
-        setShellMode(false)
-        return true
-      }
-    }
-    return false
-  }, [setMentionRange, setShellMode, setSnippetRange, shellMode, value.length])
 
   const handlePickerMenuKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>): boolean => {
     if (!menu || menu.selectable.length === 0) return false
@@ -601,7 +540,6 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
     // Word-by-word caret movement (Alt/Ctrl+Arrow) is native textarea
     // behaviour; `onSelect` keeps the mention picker in sync afterwards.
     if (handleAtomicMentionDeletion(e)) return
-    if (handleShellKeyDown(e)) return
     if (handlePickerMenuKeyDown(e)) return
     if (handleHistoryKeyDown(e)) return
 
@@ -621,24 +559,16 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
 
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const nextValue = e.target.value
-    if (!shellMode && nextValue === '!') {
-      setShellMode(true)
-      setValue('')
-      resetDraftState()
-      setMenuIndex(0)
-      scheduleResize()
-      return
-    }
     setValue(nextValue)
     setHistoryIndex(-1)
     setMenuIndex(0)
     // ``selectionStart`` is already at the post-change caret position by the
     // time React fires onChange.
     const caret = e.target.selectionStart ?? nextValue.length
-    const next = shellMode ? null : findActiveMention(nextValue, caret)
+    const next = findActiveMention(nextValue, caret)
     if (next) onFileRefsNeeded?.()
     setMentionRange(next)
-    setSnippetRange((next !== null || shellMode) ? null : findActiveSnippet(nextValue, caret))
+    setSnippetRange(next !== null ? null : findActiveSnippet(nextValue, caret))
     scheduleResize()
   }
 
@@ -656,7 +586,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
   // can re-expand when the user attaches a file via the slim strip.
   // Edge-triggered on the boolean — not on the underlying length values —
   // so we only re-render the parent when crossing 0↔1.
-  const hasContent = hasText || shellMode || files.length > 0
+  const hasContent = hasText || files.length > 0
   const lastHasContentRef = useRef(hasContent)
   useEffect(() => {
     if (lastHasContentRef.current !== hasContent) {
@@ -685,9 +615,6 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
   // GPU-cheap, no layout.
   const actionBtnClass =
     'flex h-7 w-7 shrink-0 items-center justify-center rounded-[10px] border border-(--color-border) bg-(--bg-card) text-(--color-text-2) transition duration-100 hover:bg-(--bg-key) hover:text-(--color-text) active:scale-90 active:bg-(--bg-key) motion-reduce:transition-none motion-reduce:active:scale-100 disabled:cursor-not-allowed disabled:opacity-50'
-  const shellBtnClass = shellMode
-    ? 'flex h-7 shrink-0 items-center gap-1 rounded-[10px] border border-(--color-accent) bg-(--bg-key) px-2 font-mono text-xs text-(--color-text) transition duration-100 hover:bg-(--bg-card) active:scale-95 motion-reduce:transition-none motion-reduce:active:scale-100 disabled:cursor-not-allowed disabled:opacity-50'
-    : actionBtnClass
 
   // Two states share one DOM tree: minimized, and expanded. Expanded always
   // puts the textarea on its own full-width row (the slot's flex-basis:100%)
@@ -711,35 +638,6 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
     </button>
   )
 
-  const shellEl = !minimized ? (
-    <button
-      type="button"
-      // ``preventDefault`` on the press stops the button from stealing focus,
-      // so in the common case the textarea keeps focus and the keyboard never
-      // drops — avoiding the blur→refocus round-trip that blipped the visual
-      // viewport and flickered the shell on iOS. The guarded refocus in
-      // ``onClick`` is a safety net: it only re-focuses if focus actually left
-      // the textarea, so it doesn't reintroduce the blip when focus was held.
-      onPointerDown={(e) => e.preventDefault()}
-      onClick={(e) => {
-        stopClick(e)
-        setShellMode((next) => !next)
-        setMentionRange(null)
-        setSnippetRange(null)
-        const el = textareaRef.current
-        if (el && document.activeElement !== el) el.focus({ preventScroll: true })
-      }}
-      disabled={disabled}
-      aria-label={shellMode ? 'Exit shell mode' : 'Use shell mode'}
-      aria-pressed={shellMode}
-      title={shellMode ? 'Exit shell mode (Esc)' : 'Run a shell command'}
-      className={shellBtnClass}
-    >
-      <Terminal size={13} aria-hidden="true" />
-      {shellMode && <span>Shell</span>}
-    </button>
-  ) : null
-
   const chatEl = minimized ? (
     <button
       type="button"
@@ -752,13 +650,11 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
     </button>
   ) : null
 
-  const effectivePlaceholder = shellMode
-    ? 'Enter shell command... git status'
-    : disabled
-      ? 'Waiting for response…'
-      : isStreaming
-        ? 'Queue a follow-up or /stop…'
-        : placeholder
+  const effectivePlaceholder = disabled
+    ? 'Waiting for response…'
+    : isStreaming
+      ? 'Queue a follow-up or /stop…'
+      : placeholder
 
   const activePopupId = menu?.id
   const activeOptionId = menu ? `${menu.id}-option-${activeIndex}` : undefined
@@ -839,7 +735,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
         onPaste={handlePaste}
         onFocus={(e) => {
           onFocus?.()
-          if (!shellMode && findActiveMention(value, e.currentTarget.selectionStart ?? value.length)) onFileRefsNeeded?.()
+          if (findActiveMention(value, e.currentTarget.selectionStart ?? value.length)) onFileRefsNeeded?.()
         }}
         onBlur={() => {
           const canMinimize = value.trim().length === 0 && files.length === 0
@@ -888,7 +784,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
         // text-layout paths drift by 1–2px, leaving the squiggle a word
         // off. Same call Discord/Slack/ChatGPT make for the same reason.
         spellCheck={false}
-        aria-label={shellMode ? 'Shell command input' : 'Message input'}
+        aria-label="Message input"
         aria-expanded={menu !== null}
         aria-controls={activePopupId}
         aria-activedescendant={activeOptionId}
@@ -900,11 +796,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
   const pillClassName = `relative block rounded-[14px] border bg-(--color-surface) transition-[border-color,box-shadow,background-color] duration-200 ${
     minimized
       ? 'w-fit border-(--color-border) shadow-sm hover:bg-(--bg-key)'
-      : shellMode
-        // Shell mode: accent ring instantly signals the distinct "running a
-        // command" state — a clear, animation-free UX cue.
-        ? 'w-full border-(--color-accent) shadow-md ring-1 ring-(--color-accent)/40'
-        : 'w-full border-(--color-border-strong) shadow-md focus-within:ring-1 focus-within:ring-(--color-accent)'
+      : 'w-full border-(--color-border-strong) shadow-md focus-within:ring-1 focus-within:ring-(--color-accent)'
   }`
 
   const pillInner = (
@@ -915,13 +807,8 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
       onClick={minimized ? handleExpand : undefined}
       className={`flex w-full flex-wrap items-center gap-2 ${minimized ? 'cursor-text' : ''}`}
     >
-      {shellEl}
-      {!shellMode && (
-        <>
-          {attachEl}
-          {chatEl}
-        </>
-      )}
+      {attachEl}
+      {chatEl}
       {/* Slot snaps w-0 ↔ flex-1 in lockstep with the card's w-fit ↔ w-full.
           ``-ml-2`` absorbs the parent gap-2 when collapsed. Expanded always
           takes the full row (flex-basis:100%, order:-1) so the textarea sits
@@ -950,7 +837,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
   // Mobile renders a plain ``div`` — no framer-motion. The pill has no
   // animation on mobile (no ``layout``, static padding), and rendering it
   // through ``motion.div`` still made framer reconcile inline styles on every
-  // shell-mode toggle, which flickered in the WebView. A bare div makes the
+  // minimize toggle, which flickered in the WebView. A bare div makes the
   // toggle a pure, cheap class swap. Desktop keeps the polished morph.
   //
   // Desktop deliberately omits ``layout``. ``value`` is local state, so the

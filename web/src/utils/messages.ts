@@ -18,14 +18,6 @@ function continuationSeparator(left: string, right: string): string {
   return ' '
 }
 
-function shellDisplayContent(msg: MessageResponse): string {
-  const command = msg.extra?.command
-  if (msg.extra?.kind === 'user_shell' && typeof command === 'string' && command.trim()) {
-    return command.trim().startsWith('!') ? command.trim() : `!${command.trim()}`
-  }
-  return msg.content || ''
-}
-
 function sortMessages(msgs: MessageResponse[]): MessageResponse[] {
   const indexed = msgs.map((m, i) => ({ m, i }))
   indexed.sort((a, b) => {
@@ -159,7 +151,7 @@ export function parseTeamBlocks(msgs: MessageResponse[]): ContentBlock[] {
       result.push({
         id: msg.id,
         type: 'user',
-        content: shellDisplayContent(msg),
+        content: msg.content || '',
         extra: Object.keys(extra).length > 0 ? extra : undefined,
         timestamp,
         attachments: msg.attachments ?? undefined,

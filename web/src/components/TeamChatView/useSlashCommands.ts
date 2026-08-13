@@ -52,7 +52,6 @@ export function useSlashCommands({
 }: UseSlashCommandsArgs): UseSlashCommandsResult {
   const pushToast = useToastStore((s) => s.push)
 
-  // Shell shortcut: start a message with `!` to run the rest as a shell command.
   // Slash commands for the input bar (type / to trigger).
   // Built-ins execute immediately on pick; user-defined commands are inserted
   // into the textarea (``keepInputOpen``) so the user can append

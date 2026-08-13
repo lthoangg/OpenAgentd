@@ -154,23 +154,6 @@ describe("parseTeamBlocks", () => {
     expect(blocks[0].extra).toBeUndefined();
   });
 
-  it("renders shell user messages from command metadata instead of synthetic LLM text", () => {
-    const msgs = [makeMsg({
-      role: "user",
-      content: "The following tool was executed by the user",
-      extra: {
-        kind: "user_shell",
-        command: "pwd",
-      },
-    })];
-
-    const blocks = parseTeamBlocks(msgs);
-
-    expect(blocks).toHaveLength(1);
-    expect(blocks[0].type).toBe("user");
-    expect(blocks[0].content).toBe("!pwd");
-  });
-
   it("converts assistant message to text block", () => {
     const msgs = [makeMsg({ role: "assistant", content: "here is my answer" })];
     const blocks = parseTeamBlocks(msgs);

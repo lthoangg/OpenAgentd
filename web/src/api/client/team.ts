@@ -46,7 +46,6 @@ export async function postTeamChat(
   workspace?: string | null,
   model?: string | null,
   thinkingLevel?: string | null,
-  shell = false,
   fastMode = false,
   mentions?: string[],
 ): Promise<TeamChatResponse> {
@@ -74,9 +73,6 @@ export async function postTeamChat(
   }
   if (fastMode) {
     formData.append('fast_mode', 'true')
-  }
-  if (shell) {
-    formData.append('shell', 'true')
   }
   if (mentions && mentions.length > 0) {
     formData.append('mentions', JSON.stringify(mentions))

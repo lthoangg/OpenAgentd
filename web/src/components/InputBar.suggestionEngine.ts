@@ -42,8 +42,6 @@ export type SuggestionRow = SlashCommand | SnippetCommand | FileRef
 export interface UseInputBarSuggestionEngineOptions {
   value: string
   setValue: Dispatch<SetStateAction<string>>
-  shellMode: boolean
-  setShellMode: Dispatch<SetStateAction<boolean>>
   textareaRef: React.RefObject<HTMLTextAreaElement | null>
   resize: () => void
   slashCommands: SlashCommand[]
@@ -70,8 +68,6 @@ function useScrollOptionIntoView(open: boolean, index: number, count: number) {
 export function useInputBarSuggestionEngine({
   value,
   setValue,
-  shellMode,
-  setShellMode,
   textareaRef,
   resize,
   slashCommands,
@@ -87,7 +83,7 @@ export function useInputBarSuggestionEngine({
   const [snippetRange, setSnippetRange] = useState<SuggestionRange>(null)
   const [mentionRange, setMentionRange] = useState<SuggestionRange>(null)
 
-  const slashFilter = !shellMode && value.startsWith('/') && !value.includes(' ')
+  const slashFilter = value.startsWith('/') && !value.includes(' ')
     ? value.slice(1).toLowerCase()
     : null
 
@@ -144,7 +140,6 @@ export function useInputBarSuggestionEngine({
 
   const executeSlashCommand = useCallback((cmd: SlashCommand) => {
     if (cmd.isSeparator) return
-    setShellMode(false)
     if (cmd.keepInputOpen) {
       const next = `/${cmd.insertText ?? cmd.displayName ?? cmd.id} `
       setValue(next)
@@ -161,7 +156,7 @@ export function useInputBarSuggestionEngine({
     setValue('')
     if (textareaRef.current) textareaRef.current.style.height = 'auto'
     onSlashCommand?.(cmd.id)
-  }, [onSlashCommand, resize, setShellMode, setValue, textareaRef])
+  }, [onSlashCommand, resize, setValue, textareaRef])
 
   const insertSnippet = useCallback(async (cmd: SnippetCommand) => {
     if (!snippetRange) return
@@ -169,13 +164,11 @@ export function useInputBarSuggestionEngine({
     if (rendered == null) return
     const before = value.slice(0, snippetRange.start)
     const after = value.slice(snippetRange.end)
-    const isShellSnippet = before.length === 0 && after.length === 0 && rendered.startsWith('!')
-    const body = isShellSnippet ? rendered.slice(1) : rendered
+    const body = rendered
     const spacerBefore = before && !/\s$/.test(before) && body ? ' ' : ''
     const spacerAfter = after && !/^\s/.test(after) && body ? ' ' : ''
     const next = before + spacerBefore + body + spacerAfter + after
     setValue(next)
-    setShellMode(isShellSnippet)
     setSnippetRange(null)
     setMenuIndex(0)
     const el = textareaRef.current
@@ -187,7 +180,7 @@ export function useInputBarSuggestionEngine({
         resize()
       })
     }
-  }, [onSnippetCommand, resize, setShellMode, setValue, snippetRange, textareaRef, value])
+  }, [onSnippetCommand, resize, setValue, snippetRange, textareaRef, value])
 
   const insertMention = useCallback((ref: FileRef) => {
     if (!mentionRange) return
@@ -199,7 +192,6 @@ export function useInputBarSuggestionEngine({
     const next = before + insertion + after
     setValue(next)
     setMentions((prev) => prev.includes(ref.path) ? prev : [...prev, ref.path])
-    setShellMode(false)
     setMentionRange(null)
     setSnippetRange(null)
     setMenuIndex(0)
@@ -211,7 +203,7 @@ export function useInputBarSuggestionEngine({
         resize()
       })
     }
-  }, [mentionRange, resize, setMentions, setShellMode, setValue, textareaRef, value])
+  }, [mentionRange, resize, setMentions, setValue, textareaRef, value])
 
   /** Commit a row from the currently open menu (mouse click or Enter/Tab). */
   const commit = useCallback((row: SuggestionRow) => {

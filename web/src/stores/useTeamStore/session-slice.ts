@@ -253,8 +253,7 @@ function removePersistedOptimisticUserBlocks(stream: AgentStream) {
   // common path the id already matches the persisted row exactly — no need
   // to infer "same message?" from content + a clock-skew time window at all.
   // The heuristic below stays as a fallback for rows that predate that fix,
-  // shell-command messages (dispatched via a fire-and-forget task that does
-  // not yet return an id), and any other id-less edge case.
+  // and any other id-less edge case.
   const persistedIds = new Set(persistedUsers.map((b) => b.id))
 
   stream.currentBlocks = stream.currentBlocks.filter((block) => {

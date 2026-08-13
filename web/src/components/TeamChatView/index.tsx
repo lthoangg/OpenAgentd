@@ -591,9 +591,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
             ref={inputRef}
             boundsRef={mainColumnRef}
             onSubmit={async (content: string, files?: File[], mentions?: string[]) => {
-              const shell = content.startsWith('!')
-              const command = shell ? content.slice(1).trim() : content
-              const expanded = shell ? `!${command}` : await expandUserCommand(content)
+              const expanded = await expandUserCommand(content)
               const current = useTeamStore.getState()
               const delivered = await sendMessage(expanded, files, {
                 mode,
@@ -601,7 +599,6 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
                 model: current.sessionId ? current.sessionModel || null : null,
                 thinkingLevel: current.sessionId ? current.sessionThinkingLevel || null : null,
                 fastMode: current.sessionFastMode,
-                shell,
                 mentions,
               })
               // The composer cleared itself the moment this handler was

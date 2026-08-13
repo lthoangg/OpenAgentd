@@ -264,104 +264,6 @@ describe("InputBar — input history", () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Shell mode
-// ─────────────────────────────────────────────────────────────────────────────
-describe("InputBar — shell mode", () => {
-  it("enters shell mode when ! is typed at the start", async () => {
-    const user = userEvent.setup()
-    render(<InputBar onSubmit={() => {}} placeholder="Message…" />)
-    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
-    await user.type(textarea, "!")
-    expect(screen.getByLabelText("Shell command input")).toBe(textarea)
-    expect(textarea.placeholder).toBe("Enter shell command... git status")
-    expect(screen.getByLabelText("Exit shell mode")).toBeTruthy()
-  })
-
-  it("leaves shell mode on Backspace when command is empty", async () => {
-    const user = userEvent.setup()
-    render(<InputBar onSubmit={() => {}} placeholder="Message…" />)
-    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
-    await user.type(textarea, "!")
-    await user.keyboard("{Backspace}")
-    expect(screen.getByLabelText("Message input")).toBe(textarea)
-    expect(textarea.placeholder).toBe("Message…")
-  })
-
-  it("submits shell mode content with bang prefix", async () => {
-    const user = userEvent.setup()
-    let submitted = ""
-    render(<InputBar onSubmit={(t) => { submitted = t }} />)
-    await user.type(screen.getByLabelText("Message input"), "!pwd")
-    await user.keyboard("{Enter}")
-    expect(submitted).toBe("!pwd")
-  })
-
-  it("does not show slash commands in shell mode", async () => {
-    const user = userEvent.setup()
-    render(<InputBar onSubmit={() => {}} slashCommands={[{ id: "stop", label: "Stop", description: "" }]} />)
-    await user.type(screen.getByLabelText("Message input"), "!/")
-    expect(screen.queryByRole("listbox", { name: "Slash commands" })).toBeNull()
-  })
-
-  it("restores shell mode when navigating to a shell history entry", async () => {
-    const user = userEvent.setup()
-    render(<InputBar onSubmit={() => {}} />)
-    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
-    await user.type(textarea, "!pwd")
-    await user.keyboard("{Enter}")
-    await user.keyboard("{ArrowUp}")
-    expect(screen.getByLabelText("Shell command input")).toBe(textarea)
-  })
-
-  it("enters shell mode when the pasted text replaces an empty draft with a ! command", async () => {
-    const user = userEvent.setup()
-    render(<InputBar onSubmit={() => {}} />)
-    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
-    await user.click(textarea)
-    await user.paste("!make")
-    expect(screen.getByLabelText("Shell command input")).toBe(textarea)
-    expect(textarea.value).toBe("make")
-  })
-
-  it("does not enter shell mode when pasting ! mid-sentence", async () => {
-    const user = userEvent.setup()
-    render(<InputBar onSubmit={() => {}} />)
-    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
-    await user.type(textarea, "hello ")
-    await user.paste("!make")
-    expect(screen.getByLabelText("Message input")).toBe(textarea)
-    expect(textarea.value).toBe("hello !make")
-  })
-
-  it("does not enter shell mode when a ! paste only replaces a partial selection", async () => {
-    render(<InputBar onSubmit={() => {}} />)
-    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
-    const user = userEvent.setup()
-    await user.type(textarea, "hello world")
-    textarea.setSelectionRange(0, 5)
-    await user.paste("!make")
-    expect(screen.getByLabelText("Message input")).toBe(textarea)
-    expect(textarea.value).toBe("!make world")
-  })
-
-  it("enters shell mode when an inserted snippet's rendered body starts with !", async () => {
-    const user = userEvent.setup()
-    render(
-      <InputBar
-        onSubmit={() => {}}
-        snippetCommands={[{ id: "revision", label: "revision", description: "" }]}
-        onSnippetCommand={async () => '!make revision MSG="desc"'}
-      />,
-    )
-    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
-    await user.type(textarea, "#revision")
-    await user.keyboard("{Enter}")
-    expect(await screen.findByLabelText("Shell command input")).toBe(textarea)
-    expect(textarea.value).toBe('make revision MSG="desc"')
-  })
-})
-
-// ─────────────────────────────────────────────────────────────────────────────
 // Slash commands
 // ─────────────────────────────────────────────────────────────────────────────
 describe("InputBar — slash commands", () => {
@@ -506,19 +408,12 @@ describe("InputBar — ref API", () => {
     expect(textarea.value).toBe("hello")
   })
 
-  it("insertText('!') at start triggers shell mode", () => {
-    const ref = createRef<InputBarHandle>()
-    render(<InputBar onSubmit={() => {}} ref={ref} />)
-    act(() => { ref.current?.focus(); ref.current?.insertText("!") })
-    expect(screen.getByLabelText("Shell command input")).toBeTruthy()
-  })
-
-  it("appendValue('!make') on an empty draft triggers shell mode — the FloatingInputBar paste-while-minimized path", () => {
+  it("appendValue('!make') on an empty draft appends the text literally", () => {
     const ref = createRef<InputBarHandle>()
     render(<InputBar onSubmit={() => {}} ref={ref} />)
     act(() => { ref.current?.appendValue("!make") })
-    const textarea = screen.getByLabelText("Shell command input") as HTMLTextAreaElement
-    expect(textarea.value).toBe("make")
+    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
+    expect(textarea.value).toBe("!make")
   })
 
   it("appendValue('!make') appends literally when the draft already has text", () => {

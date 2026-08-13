@@ -206,10 +206,12 @@ run from the terminal.
     workflow: the agent investigates the problem space and proposes a step-by-step
     implementation plan, then waits for explicit approval before writing any code.
     Loaded via the `oad/plan` skill.
-- **Bang shell commands** `[v1.39.0]` — start a message with `!` to run the
-  remainder directly through the shell tool without a model turn; history stores
-  the run as structured shell tool output. Stop terminates active direct and
-  foreground shell process groups; acknowledged background PIDs remain managed
+- **Bang shell commands** `[v1.39.0]` *(deprecated — removed; use the coding
+  workspace terminal instead)* — start a message with `!` to run the
+  remainder directly through the shell tool without a model turn; history stored
+  the run as structured shell tool output.
+- **`shell`/`bg` tool output handling** — Stop terminates active foreground
+  shell process groups; acknowledged background PIDs remain managed
   through `bg`. Background process lists, status, and final output render as
   compact structured cards with bounded scroll regions on mobile and desktop
   `[v1.113.0]`. Raw ANSI/CSI/OSC escape

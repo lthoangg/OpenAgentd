@@ -499,8 +499,8 @@ export const FloatingInputBar = memo(
           data-testid="mobile-inputbar-container"
           // Solid opaque background (no backdrop-blur): on iOS WebKit a
           // translucent + blurred bar re-rasterises its whole backdrop on any
-          // content change (e.g. shell-mode toggle mounting/unmounting
-          // buttons), which flickers. A solid fill is cheaper, flicker-free,
+          // content change (e.g. attachment/action buttons mounting or
+          // unmounting), which flickers. A solid fill is cheaper, flicker-free,
           // and more legible over scrolling chat content.
           className="pointer-events-auto border-t border-(--color-border) bg-(--bg-page) px-3 pb-safe pt-2"
         >

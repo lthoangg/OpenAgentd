@@ -173,7 +173,7 @@ export interface TeamStoreState {
 
 export interface TeamStoreActions {
   /** Resolves ``true`` when the backend accepted the message, ``false`` otherwise. */
-  sendMessage: (content: string, files?: File[], options?: { mode?: string; workspace?: string | null; model?: string | null; thinkingLevel?: string | null; fastMode?: boolean; shell?: boolean; mentions?: string[] }) => Promise<boolean>
+  sendMessage: (content: string, files?: File[], options?: { mode?: string; workspace?: string | null; model?: string | null; thinkingLevel?: string | null; fastMode?: boolean; mentions?: string[] }) => Promise<boolean>
   setSessionModelSettings: (model: string | null, thinkingLevel: string | null, fastMode?: boolean) => void
   continueTeam: () => Promise<void>
   compactTeam: () => Promise<void>

@@ -14,7 +14,7 @@
 import { useState, useCallback, useMemo, memo } from 'react'
 
 import { LazyMarkdownBlock } from '@/utils/LazyMarkdownBlock'
-import { ChevronDown, ChevronUp, Copy, Check, Undo2, Terminal } from 'lucide-react'
+import { ChevronDown, ChevronUp, Copy, Check, Undo2 } from 'lucide-react'
 import { Thinking } from './Thinking'
 import { ToolCall } from './ToolCall'
 import { MCPAppResult } from './MCPAppResult'
@@ -134,7 +134,7 @@ function renderMentionSegments(content: string, mentions?: string[]): React.Reac
   return out
 }
 
-const UserBubble = memo(function UserBubble({ content, timestamp, attachments, onRevert, modelId, shell, mentions }: { content: string; timestamp?: Date; attachments?: MessageAttachment[]; onRevert?: () => void; modelId?: string | null; shell?: boolean; mentions?: string[] }) {
+const UserBubble = memo(function UserBubble({ content, timestamp, attachments, onRevert, modelId, mentions }: { content: string; timestamp?: Date; attachments?: MessageAttachment[]; onRevert?: () => void; modelId?: string | null; mentions?: string[] }) {
   const [showTime, setShowTime] = useState(false)
   const [copied, setCopied] = useState(false)
   const [expanded, setExpanded] = useState(false)
@@ -197,7 +197,7 @@ const UserBubble = memo(function UserBubble({ content, timestamp, attachments, o
            </div>
          )}
 
-          <div className={`relative min-w-0 max-w-full overflow-hidden rounded-sm border px-3 py-2 text-xs leading-relaxed text-(--color-text) shadow-sm selectable-text ${shell ? 'border-(--accent-blue)/30 bg-(--bg-key)' : 'border-(--color-border) bg-(--bg-card)'}`}>
+          <div className="relative min-w-0 max-w-full overflow-hidden rounded-sm border border-(--color-border) bg-(--bg-card) px-3 py-2 text-xs leading-relaxed text-(--color-text) shadow-sm selectable-text">
            {/* Expand / collapse button — top-right inside bubble (compact) */}
            {needsCollapse && (
              <button
@@ -209,13 +209,7 @@ const UserBubble = memo(function UserBubble({ content, timestamp, attachments, o
                {expanded ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
              </button>
            )}
-           {shell && (
-             <div className="mb-1 flex items-center gap-1 font-mono text-[10px] text-(--color-text-muted)">
-               <Terminal size={11} aria-hidden="true" />
-               <span>Shell</span>
-             </div>
-           )}
-           <p className={`min-w-0 break-words whitespace-pre-wrap [overflow-wrap:anywhere] ${shell ? 'font-mono' : ''}`}>{renderMentionSegments(visibleContent, mentions)}</p>
+           <p className="min-w-0 break-words whitespace-pre-wrap [overflow-wrap:anywhere]">{renderMentionSegments(visibleContent, mentions)}</p>
            {/* Gradient fade at bottom when collapsed */}
            {needsCollapse && !expanded && (
              <div
@@ -283,8 +277,7 @@ const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionI
         return <InboxBubble content={block.content} fromAgent={fromAgent} compact />
       }
       const blockModel = typeof block.extra?.model === 'string' ? block.extra.model : null
-      const shell = block.extra?.kind === 'user_shell'
-      return <UserBubble content={block.content} timestamp={block.timestamp} attachments={block.attachments} onRevert={onRevert} modelId={blockModel} shell={shell} mentions={block.extra?.mentions as string[] | undefined} />
+      return <UserBubble content={block.content} timestamp={block.timestamp} attachments={block.attachments} onRevert={onRevert} modelId={blockModel} mentions={block.extra?.mentions as string[] | undefined} />
     }
     case 'thinking':
       return <Thinking content={block.content} isStreaming={isStreaming} />

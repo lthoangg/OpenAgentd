@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, memo } from 'react'
-import { Check, ChevronDown, ChevronUp, Copy, Terminal, Undo2 } from 'lucide-react'
+import { Check, ChevronDown, ChevronUp, Copy, Undo2 } from 'lucide-react'
 
 import { FileLightbox, type FileLightboxItem, type FileLightboxItemType } from '../FileLightbox'
 import { FileTypeIcon } from '../FileTypeIcon'
@@ -185,7 +185,7 @@ function AttachmentThumb({ item, onOpen }: { item: FileLightboxItem; onOpen: () 
   )
 }
 
-export const UserBubble = memo(function UserBubble({ content, timestamp, attachments, onRevert, modelId, shell, onMentionFileOpen, mentions }: { content: string; timestamp?: Date; attachments?: MessageAttachment[]; onRevert?: () => void; modelId?: string | null; shell?: boolean; onMentionFileOpen?: (path: string) => void; mentions?: string[] }) {
+export const UserBubble = memo(function UserBubble({ content, timestamp, attachments, onRevert, modelId, onMentionFileOpen, mentions }: { content: string; timestamp?: Date; attachments?: MessageAttachment[]; onRevert?: () => void; modelId?: string | null; onMentionFileOpen?: (path: string) => void; mentions?: string[] }) {
   const [showTime, setShowTime] = useState(false)
   const [copied, setCopied] = useState(false)
   const [expanded, setExpanded] = useState(false)
@@ -222,7 +222,7 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
            <AttachmentStrip attachments={visibleAttachments} />
          )}
 
-          <div className={`relative min-w-0 max-w-full overflow-hidden rounded-sm border px-3 py-2.5 text-sm leading-relaxed text-(--color-text) shadow-sm selectable-text ${shell ? 'border-(--accent-blue)/30 bg-(--bg-key)' : 'border-(--color-border) bg-(--bg-card)'}`}>
+          <div className="relative min-w-0 max-w-full overflow-hidden rounded-sm border border-(--color-border) bg-(--bg-card) px-3 py-2.5 text-sm leading-relaxed text-(--color-text) shadow-sm selectable-text">
            {/* Expand / collapse button — top-right inside bubble */}
            {needsCollapse && (
              <button
@@ -234,13 +234,7 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
                {expanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
              </button>
            )}
-           {shell && (
-             <div className="mb-1.5 flex items-center gap-1 font-mono text-[11px] text-(--color-text-muted)">
-               <Terminal size={12} aria-hidden="true" />
-               <span>Shell</span>
-             </div>
-           )}
-           <p className={`min-w-0 break-words whitespace-pre-wrap [overflow-wrap:anywhere] ${shell ? 'font-mono' : ''}`}>{renderMentionSegments(visibleContent, onMentionFileOpen, mentions)}</p>
+           <p className="min-w-0 break-words whitespace-pre-wrap [overflow-wrap:anywhere]">{renderMentionSegments(visibleContent, onMentionFileOpen, mentions)}</p>
            {/* Gradient fade at bottom when collapsed */}
            {needsCollapse && !expanded && (
              <div

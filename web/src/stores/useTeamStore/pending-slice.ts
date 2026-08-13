@@ -29,7 +29,7 @@ export const createPendingSlice: StateCreator<
    * text and attachments being silently destroyed — see the restore in
    * ``TeamChatView``.
    */
-  sendMessage: async (content: string, files?: File[], options?: { mode?: string; workspace?: string | null; model?: string | null; thinkingLevel?: string | null; fastMode?: boolean; shell?: boolean; mentions?: string[] }): Promise<boolean> => {
+  sendMessage: async (content: string, files?: File[], options?: { mode?: string; workspace?: string | null; model?: string | null; thinkingLevel?: string | null; fastMode?: boolean; mentions?: string[] }): Promise<boolean> => {
     const { leadName, agentStreams } = get()
     const leadWorking = leadName ? agentStreams[leadName]?.status === 'working' : false
 
@@ -44,7 +44,6 @@ export const createPendingSlice: StateCreator<
           options?.workspace ?? null,
           options?.model ?? get().sessionModel,
           options?.thinkingLevel ?? get().sessionThinkingLevel,
-          options?.shell ?? false,
           options?.fastMode ?? get().sessionFastMode,
           options?.mentions,
         )
@@ -124,7 +123,6 @@ export const createPendingSlice: StateCreator<
             ...(effectiveModel ? { model: effectiveModel } : {}),
             ...(effectiveThinkingLevel ? { thinking_level: effectiveThinkingLevel } : {}),
             ...((options?.fastMode ?? draft.sessionFastMode) ? { service_tier: 'fast' } : {}),
-            ...(options?.shell ? { kind: 'user_shell', command: content.replace(/^!/, '').trim() } : {}),
             ...(options?.mentions && options.mentions.length > 0 ? { mentions: options.mentions } : {}),
           },
         })
@@ -141,7 +139,6 @@ export const createPendingSlice: StateCreator<
         options?.workspace ?? null,
         options?.model ?? get().sessionModel,
         options?.thinkingLevel ?? get().sessionThinkingLevel,
-        options?.shell ?? false,
         options?.fastMode ?? get().sessionFastMode,
         options?.mentions,
       )

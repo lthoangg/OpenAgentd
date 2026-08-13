@@ -54,7 +54,8 @@ class TeamMessageArgs(BaseModel):
         min_length=1,
         description=(
             "Message body for the listed recipients only: work output, instructions, "
-            "questions, requested progress, or blockers. Avoid greetings, "
+            "questions, requested progress, or blockers. Be concise — state the point "
+            "first, skip context the recipient already has. Avoid greetings, "
             "acknowledgements, and routine status chatter. Do not prefix your name; "
             "the system adds [your-name]: automatically."
         ),

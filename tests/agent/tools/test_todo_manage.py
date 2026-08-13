@@ -609,6 +609,23 @@ async def test_lead_tool_schema_excludes_member_claim_action() -> None:
 
 
 @pytest.mark.asyncio
+async def test_update_action_omit_semantics_stated_once_not_per_field() -> None:
+    """ "omit to keep unchanged" is optional-field boilerplate; stating it once
+
+    on the action (docstring) instead of on every one of its optional fields
+    keeps the schema — sent on every LLM call — smaller without losing the
+    guidance.
+    """
+    for tool, key in (
+        (todo_manage, "properties"),
+        (todo_manage_member, "properties"),
+    ):
+        actions_schema = tool.definition["function"]["parameters"][key]["actions"]
+        schema_text = json.dumps(actions_schema)
+        assert schema_text.count("unchanged") == 1
+
+
+@pytest.mark.asyncio
 async def test_member_update_requires_claim_or_assignment(
     tmp_sandbox: SandboxConfig, todos_file: Path
 ) -> None:

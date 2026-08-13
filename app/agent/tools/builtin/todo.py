@@ -93,13 +93,14 @@ class UpdateAction(BaseModel):
     action: Literal["update"]
     task_id: str = Field(description="ID of the task to update (e.g. task_1).")
     content: str | None = Field(
-        default=None, description="New description (omit to keep unchanged)."
+        default=None,
+        description="New description (omit any field to leave it unchanged).",
     )
     status: Literal["pending", "in_progress", "completed", "cancelled"] | None = Field(
-        default=None, description="New status (omit to keep unchanged)."
+        default=None, description="New status."
     )
     priority: Literal["high", "medium", "low"] | None = Field(
-        default=None, description="New priority (omit to keep unchanged)."
+        default=None, description="New priority."
     )
     dependencies: list[str] | None = Field(
         default=None,
@@ -112,14 +113,11 @@ class UpdateAction(BaseModel):
     )
     instructions: str | None = Field(
         default=None,
-        description="Replacement delegation brief (omit to keep unchanged).",
+        description="Replacement delegation brief.",
     )
     result: str | None = Field(
         default=None,
-        description=(
-            "Outcome/deliverable summary, set when completing the task "
-            "(omit to keep unchanged)."
-        ),
+        description="Outcome/deliverable summary, set when completing the task.",
     )
 
     @field_validator("content")
@@ -141,10 +139,11 @@ class MemberUpdateAction(BaseModel):
     action: Literal["update"]
     task_id: str = Field(description="ID of the claimed task to update.")
     content: str | None = Field(
-        default=None, description="New description (omit to keep unchanged)."
+        default=None,
+        description="New description (omit any field to leave it unchanged).",
     )
     status: Literal["pending", "in_progress", "completed", "cancelled"] | None = Field(
-        default=None, description="New status (omit to keep unchanged)."
+        default=None, description="New status."
     )
     result: str | None = Field(
         default=None,

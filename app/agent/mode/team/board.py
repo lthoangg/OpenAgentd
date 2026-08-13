@@ -181,7 +181,7 @@ def resumable_tasks(store: dict, actor: str) -> list[dict]:
 
 def _format_ready_message(event: TaskReady) -> str:
     lines = [
-        f"[system]: Task {event.task_id} is ready for you: {event.content}",
+        f"[system]: {event.task_id} is ready for you: {event.content}",
     ]
     if event.instructions:
         lines.append(f"Instructions: {event.instructions}")
@@ -215,7 +215,7 @@ def format_resume_message(tasks: list[dict]) -> str:
 
 def _format_completed_message(event: TaskCompleted) -> str:
     who = event.completed_by or "unknown"
-    lines = [f"[system]: {who} completed task {event.task_id}: {event.content}"]
+    lines = [f"[system]: {who} completed {event.task_id}: {event.content}"]
     if event.result:
         lines.append(f"Result: {event.result}")
     else:

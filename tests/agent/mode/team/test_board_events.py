@@ -311,6 +311,42 @@ class TestDispatch:
         assert "executor#1" in msg.content
         assert "Parser built, tests green." in msg.content
 
+    async def test_completed_message_does_not_repeat_task_before_task_id(
+        self, handle_team
+    ):
+        """``task_id`` already reads "task_1"; a literal "task" word right
+
+        before it ("completed task task_1") is redundant context, not a
+        clarification.
+        """
+        event = TaskCompleted(
+            task_id="task_1",
+            content="Build the parser",
+            result="done",
+            completed_by="executor#1",
+        )
+
+        await dispatch_board_events(handle_team, [event], actor="executor#1")
+
+        msg = handle_team.mailbox.receive_nowait("lead")
+        assert "completed task task_1" not in msg.content
+        assert "completed task_1" in msg.content
+
+    async def test_ready_message_does_not_repeat_task_before_task_id(self, handle_team):
+        event = TaskReady(
+            task_id="task_1",
+            assignee="executor#1",
+            content="Build the parser",
+            instructions=None,
+            dependency_results=(),
+        )
+
+        await dispatch_board_events(handle_team, [event], actor="lead")
+
+        msg = handle_team.mailbox.receive_nowait("executor#1")
+        assert "Task task_1" not in msg.content
+        assert "task_1 is ready for you" in msg.content
+
     async def test_actor_is_never_notified_of_own_mutation(self, handle_team):
         event = TaskCompleted(
             task_id="task_1",

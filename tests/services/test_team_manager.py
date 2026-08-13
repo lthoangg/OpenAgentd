@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
@@ -126,6 +127,42 @@ async def test_get_or_start_team_for_session_isolated_by_session(monkeypatch):
     assert first is not second
     first_team.start.assert_awaited_once()
     second_team.start.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_get_or_start_team_for_session_does_not_block_other_session_start(
+    monkeypatch,
+):
+    """A slow cold start for one session must not hold the registry lock."""
+    first_team = _make_team("lead-a")
+    second_team = _make_team("lead-b")
+    first_started = asyncio.Event()
+    release_first = asyncio.Event()
+
+    async def start_first():
+        first_started.set()
+        await release_first.wait()
+
+    first_team.start = AsyncMock(side_effect=start_first)
+    second_team.start = AsyncMock()
+    teams = iter([first_team, second_team])
+    monkeypatch.setattr(
+        "app.services.team_manager.load_team_from_dir", lambda _: next(teams)
+    )
+
+    first_task = asyncio.create_task(
+        team_manager.get_or_start_team_for_session("session-a")
+    )
+    await first_started.wait()
+    second_task = asyncio.create_task(
+        team_manager.get_or_start_team_for_session("session-b")
+    )
+    try:
+        await asyncio.wait_for(second_task, timeout=0.2)
+    finally:
+        release_first.set()
+        await first_task
+    assert second_task.result() is second_team
 
 
 @pytest.mark.asyncio

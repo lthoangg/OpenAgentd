@@ -93,8 +93,10 @@ _team: "AgentTeam | None" = None
 _team_last_used: float = 0.0
 _session_teams: dict[str, "AgentTeam"] = {}
 _session_team_last_used: dict[str, float] = {}
+_session_start_locks: dict[str, asyncio.Lock] = {}
 _coding_teams: dict[tuple[str, str], "AgentTeam"] = {}
 _coding_team_last_used: dict[tuple[str, str], float] = {}
+_coding_start_locks: dict[tuple[str, str], asyncio.Lock] = {}
 _DEFAULT_TEAM_IDLE_SECONDS = 60 * 60
 _CODING_TEAM_IDLE_SECONDS = 30 * 60
 _lock = asyncio.Lock()
@@ -447,32 +449,39 @@ async def get_or_start_team_for_session(session_id: str) -> "AgentTeam | None":
     """Return the default-mode team instance dedicated to one chat session."""
     global _team_last_used
 
-    async with _lock:
-        now = time.monotonic()
-        expired_default = _maybe_pop_idle_default_team_locked(now)
-        expired_sessions = _pop_idle_session_teams_locked(now)
-
-        existing = _session_teams.get(session_id)
-        if existing is not None:
-            _session_team_last_used[session_id] = now
-            result: "AgentTeam | None" = existing
-        else:
-            agents_dir = _resolve_agents_dir()
-            candidate = load_team_from_dir(agents_dir)
-            if candidate is None:
-                logger.warning("team_manager_no_agents path={}", agents_dir)
-                result = None
+    # Startup can load providers and plugins, so never hold the registry lock
+    # across ``await candidate.start()``. A per-session lock still prevents two
+    # simultaneous requests for the same cold session from creating teams
+    # twice, while unrelated sessions can start concurrently.
+    session_lock = _session_start_locks.setdefault(session_id, asyncio.Lock())
+    async with session_lock:
+        async with _lock:
+            now = time.monotonic()
+            expired_default = _maybe_pop_idle_default_team_locked(now)
+            expired_sessions = _pop_idle_session_teams_locked(now)
+            existing = _session_teams.get(session_id)
+            if existing is not None:
+                _session_team_last_used[session_id] = now
+                candidate = None
             else:
-                await candidate.start()
+                candidate = load_team_from_dir(_resolve_agents_dir())
+
+        if candidate is None:
+            result: "AgentTeam | None" = existing
+            if result is None:
+                logger.warning("team_manager_no_agents path={}", _resolve_agents_dir())
+        else:
+            await candidate.start()
+            async with _lock:
                 _session_teams[session_id] = candidate
                 _session_team_last_used[session_id] = now
                 _team_last_used = now
-                logger.info(
-                    "team_manager_session_started session_id={} lead={}",
-                    session_id,
-                    candidate.lead.name,
-                )
-                result = candidate
+            logger.info(
+                "team_manager_session_started session_id={} lead={}",
+                session_id,
+                candidate.lead.name,
+            )
+            result = candidate
 
     if expired_default is not None:
         try:
@@ -506,6 +515,7 @@ async def stop() -> None:
                 )
         _session_teams.clear()
         _session_team_last_used.clear()
+        _session_start_locks.clear()
         for (workspace, session_id), team in list(_coding_teams.items()):
             try:
                 await team.stop()
@@ -517,6 +527,7 @@ async def stop() -> None:
                 )
         _coding_teams.clear()
         _coding_team_last_used.clear()
+        _coding_start_locks.clear()
 
 
 def find_live_team_serving_session(session_id: str) -> "AgentTeam | None":
@@ -551,26 +562,31 @@ def find_live_team_serving_session(session_id: str) -> "AgentTeam | None":
 async def get_or_start_coding_team(workspace: str, session_id: str) -> "AgentTeam":
     resolved_workspace = validate_workspace(workspace)
     key = (resolved_workspace, session_id)
-    async with _lock:
-        now = time.monotonic()
-        expired = _pop_idle_coding_teams_locked(now)
-        existing = _coding_teams.get(key)
-        if existing is not None:
-            _coding_team_last_used[key] = now
-            team = existing
-        else:
-            agents_dir = _resolve_coding_agents_dir()
-            team = load_team_from_dir(
-                agents_dir, mode="coding", workspace=resolved_workspace
-            )
-            if team is None:
-                raise ValueError(
-                    f"No coding agents found in '{agents_dir}'. "
-                    "Create at least one .md file with 'role: lead'."
+    start_lock = _coding_start_locks.setdefault(key, asyncio.Lock())
+    async with start_lock:
+        async with _lock:
+            now = time.monotonic()
+            expired = _pop_idle_coding_teams_locked(now)
+            existing = _coding_teams.get(key)
+            if existing is not None:
+                _coding_team_last_used[key] = now
+                team = existing
+            else:
+                agents_dir = _resolve_coding_agents_dir()
+                team = load_team_from_dir(
+                    agents_dir, mode="coding", workspace=resolved_workspace
                 )
+                if team is None:
+                    raise ValueError(
+                        f"No coding agents found in '{agents_dir}'. "
+                        "Create at least one .md file with 'role: lead'."
+                    )
+
+        if existing is None:
             await team.start()
-            _coding_teams[key] = team
-            _coding_team_last_used[key] = now
+            async with _lock:
+                _coding_teams[key] = team
+                _coding_team_last_used[key] = now
             logger.info(
                 "coding_team_started workspace={} session_id={} lead={}",
                 resolved_workspace,

@@ -9,10 +9,7 @@
 import { memo, useMemo, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import remarkMath from 'remark-math'
 import rehypeHighlight from 'rehype-highlight'
-import rehypeKatex from 'rehype-katex'
-import 'katex/dist/katex.min.css'
 import { ImageOff, FileVideo } from 'lucide-react'
 import { resolveApiUrl } from '@/api/client'
 import { apiUrl } from '@/api/base-url'
@@ -468,8 +465,7 @@ export const MarkdownBlock = memo(function MarkdownBlock({
 // Me: module-level constants so ReactMarkdown sees the same plugin array
 // identity across every ``MarkdownBlock`` instance and every render — it
 // shallow-compares plugins to decide whether to rebuild its processor.
-const _REMARK_PLUGINS = [remarkGfm, remarkMath]
+const _REMARK_PLUGINS = [remarkGfm]
 const _REHYPE_PLUGINS: React.ComponentProps<typeof ReactMarkdown>['rehypePlugins'] = [
   [rehypeHighlight, { detect: false }],
-  rehypeKatex,
 ]

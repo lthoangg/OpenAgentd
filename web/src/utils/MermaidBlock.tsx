@@ -178,17 +178,30 @@ const DARK_THEME_VARS = {
 
 let renderQueue = Promise.resolve()
 let renderSequence = 0
+let mermaidInstance: typeof import('mermaid').default | null = null
+let lastInitializedTheme: 'light' | 'dark' | null = null
+
+async function getMermaidInstance() {
+  if (!mermaidInstance) {
+    const mod = await import('mermaid')
+    mermaidInstance = mod.default
+  }
+  return mermaidInstance
+}
 
 async function renderDiagram(id: string, source: string, theme: 'light' | 'dark'): Promise<string> {
   let svg = ''
   const task = renderQueue.then(async () => {
-    const { default: mermaid } = await import('mermaid')
-    mermaid.initialize({
-      startOnLoad: false,
-      securityLevel: 'strict',
-      theme: 'base',
-      themeVariables: theme === 'dark' ? DARK_THEME_VARS : LIGHT_THEME_VARS,
-    })
+    const mermaid = await getMermaidInstance()
+    if (lastInitializedTheme !== theme) {
+      mermaid.initialize({
+        startOnLoad: false,
+        securityLevel: 'strict',
+        theme: 'base',
+        themeVariables: theme === 'dark' ? DARK_THEME_VARS : LIGHT_THEME_VARS,
+      })
+      lastInitializedTheme = theme
+    }
     const result = await mermaid.render(`${id}-${++renderSequence}`, source)
     svg = result.svg
   })

@@ -131,6 +131,16 @@ function parseJsonStrings(val: unknown): unknown {
   return val
 }
 
+const MAX_LIVE_LINES = 1000
+
+function clampLiveOutput(output: string | undefined): string | undefined {
+  if (!output) return undefined
+  if (output.length < 50_000) return output
+  const lines = output.split('\n')
+  if (lines.length <= MAX_LIVE_LINES) return output
+  return `… [${lines.length - MAX_LIVE_LINES} earlier lines hidden while streaming]\n` + lines.slice(-MAX_LIVE_LINES).join('\n')
+}
+
 /**
  * Syntax-highlights a bash command string using highlight.js.
  *
@@ -139,7 +149,7 @@ function parseJsonStrings(val: unknown): unknown {
  * string; the input is the tool's own `command` arg (never user-supplied
  * free text arriving from the network), so XSS risk is negligible.
  */
-function ShellCommand({ command }: { command: string }) {
+const ShellCommand = memo(function ShellCommand({ command }: { command: string }) {
   const highlighted = useMemo(() => {
     try {
       return hljs.highlight(command, { language: 'bash' }).value
@@ -150,7 +160,7 @@ function ShellCommand({ command }: { command: string }) {
   }, [command])
 
   return <code className="hljs" dangerouslySetInnerHTML={{ __html: highlighted }} />
-}
+})
 
 export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, result, durationMs, startedAt, toolCallId }: ToolCallProps) {
   // Hooks must be called unconditionally — before any early returns
@@ -211,7 +221,8 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
   // below, preserving the previous behaviour for every other tool.
   const visibleHeader = header
   const shownResult = suppressResult ? undefined : result
-  const shownLiveOutput = shownResult ? undefined : liveOutput
+  const rawLiveOutput = (suppressResult || shownResult) ? undefined : liveOutput
+  const shownLiveOutput = done ? rawLiveOutput : clampLiveOutput(rawLiveOutput)
   const hasReadResult = usesReadView
   const isBackgroundProcess = name === 'bg'
   const isScheduleTaskList = name === 'schedule_task' && shownResult?.startsWith('Scheduled tasks (')

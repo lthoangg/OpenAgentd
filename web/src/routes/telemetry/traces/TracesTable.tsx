@@ -4,7 +4,7 @@
  */
 
 import { useRef, useState } from 'react'
-import { tableFeatures, useTable } from '@tanstack/react-table'
+import { createColumnHelper, tableFeatures, useTable } from '@tanstack/react-table'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { ChevronRight, Copy } from 'lucide-react'
 import type { TraceListItem } from '@/api/client'
@@ -24,7 +24,20 @@ import { mediumHapticFeedback } from '@/lib/haptics'
 const TRACE_LONG_PRESS_MS = 520
 const TRACE_LONG_PRESS_MOVE_TOLERANCE = 10
 const traceTableFeatures = tableFeatures({})
-const traceColumns = [{ id: 'trace' }] as const
+
+const columnHelper = createColumnHelper<typeof traceTableFeatures, TraceListItem>()
+const traceColumns = [
+  columnHelper.accessor('start_ms', { id: 'when', header: 'When' }),
+  columnHelper.accessor('session_id', { id: 'session', header: 'Session' }),
+  columnHelper.accessor('agent_name', { id: 'agent', header: 'Agent' }),
+  columnHelper.accessor((row) => row.provider_model ?? row.model, { id: 'model', header: 'Provider:model' }),
+  columnHelper.accessor('duration_ms', { id: 'duration', header: 'Duration' }),
+  columnHelper.accessor((row) => `${row.input_tokens}/${row.output_tokens}`, { id: 'tokens', header: 'Input / output' }),
+  columnHelper.accessor('cached_tokens', { id: 'cache', header: 'Cache hit' }),
+  columnHelper.accessor('estimated_cost_usd', { id: 'cost', header: 'Cost' }),
+  columnHelper.accessor('error', { id: 'status', header: 'Status' }),
+  columnHelper.display({ id: 'actions' }),
+]
 
 export function TracesTable({
   traces,
@@ -41,10 +54,10 @@ export function TracesTable({
   // — keeps the render pure (no Date.now() call during render) while still
   // giving fresh labels whenever the table unmounts/remounts on refetch.
   const [now] = useState(() => Date.now())
-  const table = useTable({
+  const table = useTable<typeof traceTableFeatures, TraceListItem>({
     features: traceTableFeatures,
     data: traces,
-    columns: traceColumns,
+    columns: traceColumns as never,
     getRowId: (trace) => trace.span_id,
   })
   const rows = table.getRowModel().rows

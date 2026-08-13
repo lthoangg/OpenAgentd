@@ -302,7 +302,7 @@ run from the terminal.
 - **Header context meter** `[v1.53.0]` — desktop and mobile chat headers show an
   icon-sized input-token progress ring against the backend's model-aware
   summarization trigger; hover, focus, or tap/click reveals input/output/cache
-  details and the estimated USD used across the active session `[v1.107.0]`; the estimate sums provider-reported input, output, and cache-read usage at the active model's registry rates, so compaction never reduces previously incurred spend.
+  details and the estimated USD used across the active session `[v1.107.0]`; the estimate sums provider-reported input, output, cache-read, and cache-write usage at the active model's registry rates, so compaction never reduces previously incurred spend. Token rows describe the lead while `session cost` covers every agent; live values are published per completed model call from the same usage snapshot the transcript and telemetry store, so the meter no longer disagrees with them, and it stays visible for the duration of a live turn `[v1.131.6]`.
 - **Todos panel** `[since v1.0]` — task board with a topbar progress badge
   `<finished>/<total>` `[v1.17.0]`. Live invalidation.
 - **Mobile / phone-first layout** `[since v1.0]` — breakpoints, safe areas, drawer
@@ -605,7 +605,9 @@ agnostic by design.
   the system block and latest cacheable turn block, matching Anthropic's
   breakpoint model instead of marking every block. Stored/model usage now counts
   total prompt input as cold + cache-read + cache-write tokens while preserving
-  cached reads as a separate metric.
+  cached reads as a separate metric. Cache-write tokens are billed at the
+  registry's `cache_write` rate — 1.25x input on Claude models — instead of the
+  plain input rate `[v1.131.6]`.
 - **Budget-based thinking metadata synthesis** `[v1.83.0]` — models whose
   registry metadata exposes raw `budget_tokens` reasoning support but no named
   effort levels now surface standard `none/low/medium/high` thinking choices in
@@ -641,7 +643,9 @@ agnostic by design.
   settings and other pickers read a cached provider model list for instant
   open; when the cache is empty, `/api/agents/registry` warms configured
   providers' caches on demand, and **List models** remains the per-provider
-  manual refresh / verification action. The providers page now includes a
+  manual refresh / verification action — available whenever credentials are
+  already saved, without retyping a secret the UI never echoes back
+  `[v1.131.6]`. The providers page now includes a
   search plus status/kind filter bar for quickly narrowing long provider lists
   `[v1.74.0]`.
 - **Curated multimodal model registry** `[v1.34.0]` — model modality gates,

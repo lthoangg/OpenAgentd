@@ -460,3 +460,28 @@ describe("AgentPane — AssistantFooter", () => {
     })
   })
 })
+
+// ── token meter visibility ───────────────────────────────────────────────────
+
+describe("AgentPane — token meter visibility", () => {
+  const meter = () => screen.queryByRole("button", { name: /Input:/ })
+
+  it("shows the meter while working, before any usage has arrived", () => {
+    // Usage now lands once the first model call completes, so gating purely on
+    // totalTokens left the meter missing for the whole first response.
+    renderPanel(makeStream({ status: "working" }))
+    expect(meter()).not.toBeNull()
+  })
+
+  it("shows the meter when idle but usage exists", () => {
+    renderPanel(makeStream({
+      usage: { promptTokens: 120, completionTokens: 30, totalTokens: 150, cachedTokens: 0 },
+    }))
+    expect(meter()).not.toBeNull()
+  })
+
+  it("hides the meter when idle with no usage", () => {
+    renderPanel(makeStream())
+    expect(meter()).toBeNull()
+  })
+})

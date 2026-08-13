@@ -242,4 +242,23 @@ describe('TeamChatView reactive derived state', () => {
 
     expect(screen.getByTestId('session-cost').textContent).toBe('0.0035')
   })
+
+  it('shows the header meter while the team is working, before any usage lands', () => {
+    // Usage arrives when the first model call completes, so gating on totals
+    // alone hid the meter for the whole first response of a new session.
+    useTeamStore.setState((state) => {
+      state.isTeamWorking = true
+      state.agentStreams.lead.status = 'working'
+    })
+
+    render(<TeamChatView sessionId="session-1" />)
+
+    expect(screen.queryByTestId('session-cost')).not.toBeNull()
+  })
+
+  it('hides the header meter when idle with no usage', () => {
+    render(<TeamChatView sessionId="session-1" />)
+
+    expect(screen.queryByTestId('session-cost')).toBeNull()
+  })
 })

@@ -32,7 +32,10 @@ describe('TokenMeter', () => {
 
     await user.hover(screen.getByRole('button'))
 
-    expect(screen.getByText('cost')).toBeTruthy()
+    // Every other row is this agent's; the cost covers the whole team, so the
+    // label has to say which scope it belongs to.
+    expect(screen.getByText('session cost')).toBeTruthy()
+    expect(screen.queryByText('cost')).toBeNull()
     expect(screen.getByText('$0.0014')).toBeTruthy()
   })
 

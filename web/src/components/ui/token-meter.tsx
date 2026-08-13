@@ -207,8 +207,11 @@ export function TokenMeter({
           <div className="flex justify-between gap-4"><span className="text-(--color-text-muted)">used</span><span>{percent}%</span></div>
           <div className="flex justify-between gap-4"><span className="text-(--color-text-muted)">output</span><span>{output.toLocaleString()}</span></div>
           <div className="flex justify-between gap-4"><span className="text-(--color-text-muted)">cache</span><span>{cached.toLocaleString()}</span></div>
+          {/* Scope differs from the rows above on purpose: those describe this
+              agent, while cost is summed across every agent in the session.
+              Labelled so the two are not read as the same scope. */}
           {sessionCostUsd !== undefined && sessionCostUsd > 0 && (
-            <div className="flex justify-between gap-4"><span className="text-(--color-text-muted)">cost</span><span>{tokenMeterUsdFmt.format(sessionCostUsd)}</span></div>
+            <div className="flex justify-between gap-4"><span className="text-(--color-text-muted)">session cost</span><span>{tokenMeterUsdFmt.format(sessionCostUsd)}</span></div>
           )}
         </div>,
         document.body,

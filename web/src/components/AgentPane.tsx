@@ -632,7 +632,7 @@ export const AgentPane = memo(function AgentPane({
            )}
          </div>
          <div className="flex items-center gap-1 text-xs text-(--color-text-subtle)">
-           {!isLead && stream.usage.totalTokens > 0 && (
+           {!isLead && (stream.usage.totalTokens > 0 || isWorking || isWaiting) && (
              <TokenMeter
                input={stream.usage.promptTokens}
                output={stream.usage.completionTokens}

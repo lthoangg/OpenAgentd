@@ -295,7 +295,10 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
   })
 
 
-  const headerTokens = leadTotalTokens > 0
+  // Usage only lands when a model call completes, so a totals-only gate hid
+  // the meter for the entire first response of a new session. A live turn is
+  // reason enough to show it.
+  const headerTokens = leadTotalTokens > 0 || isTeamWorking
     ? {
         input: leadPromptTokens,
         output: leadCompletionTokens,

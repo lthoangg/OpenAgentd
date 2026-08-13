@@ -18,6 +18,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, memo } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
+import { useHotkey } from '@tanstack/react-hotkeys'
 import {
   X,
   FileText,
@@ -682,12 +683,7 @@ export function WorkspaceFilesPanel({ open, sessionId, onClose }: WorkspaceFiles
   }, [isMobile, mobilePane, onClose])
 
   // Escape key — only on mobile (desktop has no backdrop/overlay)
-  useEffect(() => {
-    if (!open || !isMobile) return
-    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') handleClose() }
-    window.addEventListener('keydown', handler)
-    return () => window.removeEventListener('keydown', handler)
-  }, [open, isMobile, handleClose])
+  useHotkey('Escape', handleClose, { enabled: Boolean(open && isMobile) })
 
   // Resizable width — desktop only
   const resizable = useResizableWidth({

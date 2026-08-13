@@ -17,6 +17,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Check, Circle, ListTodo, Loader2, Minus } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
+import { useHotkey } from '@tanstack/react-hotkeys'
 import { TopbarAction } from '@/components/ui/topbar-action'
 import { useDeferredUnmount } from '@/components/ui/_use-deferred-unmount'
 import { cn } from '@/lib/utils'
@@ -132,6 +133,8 @@ export function TodosPopover({
     }
   }, [open, trigger])
 
+  useHotkey('Escape', () => onOpenChange(false), { enabled: Boolean(trigger && open) })
+
   useEffect(() => {
     if (!trigger || !open) return
 
@@ -141,16 +144,10 @@ export function TodosPopover({
       onOpenChange(false)
     }
 
-    const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onOpenChange(false)
-    }
-
     document.addEventListener('mousedown', handlePointerDown)
-    document.addEventListener('keydown', handleEscape)
 
     return () => {
       document.removeEventListener('mousedown', handlePointerDown)
-      document.removeEventListener('keydown', handleEscape)
     }
   }, [onOpenChange, open, trigger])
 

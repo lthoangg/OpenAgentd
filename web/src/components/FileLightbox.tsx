@@ -22,6 +22,7 @@ import {
   useCallback, useEffect, useLayoutEffect, useRef, useState,
   type ReactNode,
 } from 'react'
+import { useHotkey } from '@tanstack/react-hotkeys'
 import { createPortal } from 'react-dom'
 import { ChevronLeft, ChevronRight, Download, ExternalLink, File, X } from 'lucide-react'
 import { haptic } from '@/lib/haptics'
@@ -484,25 +485,23 @@ export function FileLightbox({ items, index = 0, isOpen, onClose, labelMode = 'f
   const goPrev = useCallback(() => goTo(current - 1), [current, goTo])
   const goNext = useCallback(() => goTo(current + 1), [current, goTo])
 
-  // ── Keyboard nav + scroll lock ─────────────────────────────────────────────
+  // ── Scroll lock + Keyboard nav ──────────────────────────────────────────────
   useEffect(() => {
     if (!isOpen) return
-    const handle = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
-      else if (hasMultiple && e.key === 'ArrowLeft')  { e.preventDefault(); goPrev() }
-      else if (hasMultiple && e.key === 'ArrowRight') { e.preventDefault(); goNext() }
-      else if (activeTypeRef.current === 'image' && (e.key === '+' || e.key === '=')) { e.preventDefault(); zoomIn() }
-      else if (activeTypeRef.current === 'image' && e.key === '-') { e.preventDefault(); zoomOut() }
-      else if (activeTypeRef.current === 'image' && e.key === '0') { e.preventDefault(); resetZoom() }
-    }
     const prev = document.body.style.overflow
     document.body.style.overflow = 'hidden'
-    document.addEventListener('keydown', handle)
     return () => {
-      document.removeEventListener('keydown', handle)
       document.body.style.overflow = prev
     }
-  }, [isOpen, onClose, hasMultiple, goPrev, goNext, zoomIn, zoomOut, resetZoom])
+  }, [isOpen])
+
+  useHotkey('Escape', onClose, { enabled: isOpen })
+  useHotkey('ArrowLeft', goPrev, { enabled: Boolean(isOpen && hasMultiple), preventDefault: true })
+  useHotkey('ArrowRight', goNext, { enabled: Boolean(isOpen && hasMultiple), preventDefault: true })
+  useHotkey({ key: '+' }, zoomIn, { enabled: Boolean(isOpen && activeTypeRef.current === 'image'), preventDefault: true })
+  useHotkey('=', zoomIn, { enabled: Boolean(isOpen && activeTypeRef.current === 'image'), preventDefault: true })
+  useHotkey('-', zoomOut, { enabled: Boolean(isOpen && activeTypeRef.current === 'image'), preventDefault: true })
+  useHotkey('0', resetZoom, { enabled: Boolean(isOpen && activeTypeRef.current === 'image'), preventDefault: true })
 
   // ── Close ──────────────────────────────────────────────────────────────────
   const closeLightbox = useCallback(() => {

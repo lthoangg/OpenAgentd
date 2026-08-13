@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useHotkey } from '@tanstack/react-hotkeys'
 import {
   AppBridge,
   buildAllowAttribute,
@@ -225,18 +226,17 @@ export function MCPAppResult({ mcpApp, sessionId, toolCallId }: MCPAppResultProp
     }
   }, [])
 
+  useHotkey('Escape', () => setDisplayMode(INLINE_DISPLAY_MODE), {
+    enabled: displayMode === FULLSCREEN_DISPLAY_MODE,
+  })
+
   useEffect(() => {
     if (displayMode !== FULLSCREEN_DISPLAY_MODE) return undefined
 
     const previousOverflow = document.body.style.overflow
-    const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setDisplayMode(INLINE_DISPLAY_MODE)
-    }
     document.body.style.overflow = 'hidden'
-    document.addEventListener('keydown', handleEscape)
     return () => {
       document.body.style.overflow = previousOverflow
-      document.removeEventListener('keydown', handleEscape)
     }
   }, [displayMode])
 

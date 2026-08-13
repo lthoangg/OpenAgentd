@@ -8,6 +8,7 @@
 
 import { createPortal } from 'react-dom'
 import { useEffect, useRef, useState } from 'react'
+import { useHotkey } from '@tanstack/react-hotkeys'
 
 import { cn } from '@/lib/utils'
 
@@ -128,23 +129,20 @@ export function TokenMeter({
       setPinnedOpen(false)
       setHoverOpen(false)
     }
-    const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        setPinnedOpen(false)
-        setHoverOpen(false)
-      }
-    }
 
     document.addEventListener('mousedown', handlePointerDown)
     document.addEventListener('touchstart', handlePointerDown)
-    document.addEventListener('keydown', handleEscape)
 
     return () => {
       document.removeEventListener('mousedown', handlePointerDown)
       document.removeEventListener('touchstart', handlePointerDown)
-      document.removeEventListener('keydown', handleEscape)
     }
   }, [pinnedOpen])
+
+  useHotkey('Escape', () => {
+    setPinnedOpen(false)
+    setHoverOpen(false)
+  }, { enabled: pinnedOpen })
 
   return (
     <div

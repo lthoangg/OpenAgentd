@@ -9,9 +9,9 @@
  * `settings/sections.ts`. Only the content switch is here, because each
  * section takes different props.
  */
-import { useEffect } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { ArrowLeft, X, type LucideIcon } from 'lucide-react'
+import { useHotkey } from '@tanstack/react-hotkeys'
 
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -322,12 +322,7 @@ export function SettingsModal() {
   const panel = prefersReducedMotion ? PANEL_VARIANTS_REDUCED : PANEL_VARIANTS
 
   // Escape to close.
-  useEffect(() => {
-    if (!open) return
-    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') closeSettings() }
-    window.addEventListener('keydown', handler)
-    return () => window.removeEventListener('keydown', handler)
-  }, [open, closeSettings])
+  useHotkey('Escape', closeSettings, { enabled: open })
 
   return (
     <AnimatePresence>

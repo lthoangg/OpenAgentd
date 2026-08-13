@@ -149,6 +149,7 @@ function extractTokens(
     ['gen_ai.usage.input_tokens', 'Input'],
     ['gen_ai.usage.output_tokens', 'Output'],
     ['gen_ai.usage.cache_read.input_tokens', 'Cached'],
+  ['gen_ai.usage.cache_creation.input_tokens', 'Cache write'],
     ['gen_ai.usage.reasoning_tokens', 'Reasoning'],
     ['gen_ai.usage.tool_use_tokens', 'Tool use'],
   ]

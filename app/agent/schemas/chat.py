@@ -73,6 +73,10 @@ class Usage(BaseModel):
     completion_tokens: int = 0
     total_tokens: int = 0
     cached_tokens: int | None = None
+    # Prompt tokens written into the provider's cache this call. Billed at a
+    # premium over fresh input (Anthropic: 1.25x), so it is tracked apart from
+    # both ``prompt_tokens`` and the far cheaper ``cached_tokens`` reads.
+    cache_write_tokens: int | None = None
     thoughts_tokens: int | None = None
     tool_use_tokens: int | None = None
 

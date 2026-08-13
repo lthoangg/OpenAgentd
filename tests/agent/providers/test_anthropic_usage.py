@@ -83,5 +83,9 @@ async def test_anthropic_stream_usage_counts_cache_read_and_write(
     assert usage is not None
     assert usage.prompt_tokens == 9159
     assert usage.cached_tokens == 9132
+    # Cache creation is priced separately from both fresh input and cache
+    # reads, so it has to survive as its own count rather than being folded
+    # into prompt_tokens and lost.
+    assert usage.cache_write_tokens == 24
     assert usage.completion_tokens == 5
     assert usage.total_tokens == 9164

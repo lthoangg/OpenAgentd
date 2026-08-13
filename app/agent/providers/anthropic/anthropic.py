@@ -564,21 +564,29 @@ def _raise_stream_error_event(event: dict[str, Any], *, url: str, raw: str) -> N
     )
 
 
-def _prompt_usage_from_raw(raw_usage: dict[str, Any]) -> tuple[int, int | None]:
-    """Collapse Anthropic's three prompt buckets into one total.
+def _prompt_usage_from_raw(
+    raw_usage: dict[str, Any],
+) -> tuple[int, int | None, int | None]:
+    """Split Anthropic's three prompt buckets into total, read, and write.
 
     ``input_tokens`` counts *only* uncached tokens — cache reads and cache
     creations are reported separately and are not included in it. They are
-    summed here to restore the ``cached_tokens <= prompt_tokens`` invariant
-    that cost estimation depends on (see ``app.agent.usage._estimate_cost``,
-    which derives billable input by subtracting the cached count).
+    summed into the total to restore the ``cached_tokens <= prompt_tokens``
+    invariant that cost estimation depends on (see
+    ``app.agent.usage._estimate_cost``, which derives billable input by
+    subtracting the cached counts), while each bucket is also returned on its
+    own because all three carry different prices.
 
     Shared by the streaming and non-streaming paths so the two cannot drift.
     """
     non_cached = int(raw_usage.get("input_tokens") or 0)
     cache_read = int(raw_usage.get("cache_read_input_tokens") or 0)
     cache_write = int(raw_usage.get("cache_creation_input_tokens") or 0)
-    return non_cached + cache_read + cache_write, cache_read or None
+    return (
+        non_cached + cache_read + cache_write,
+        cache_read or None,
+        cache_write or None,
+    )
 
 
 def _stream_chunk(
@@ -820,13 +828,16 @@ class AnthropicProvider(LLMProviderBase):
         # here made those calls invisible to cost/token telemetry.
         raw_usage = data.get("usage")
         if isinstance(raw_usage, dict):
-            prompt_tokens, cached_tokens = _prompt_usage_from_raw(raw_usage)
+            prompt_tokens, cached_tokens, cache_write_tokens = _prompt_usage_from_raw(
+                raw_usage
+            )
             completion_tokens = int(raw_usage.get("output_tokens") or 0)
             usage = Usage(
                 prompt_tokens=prompt_tokens,
                 completion_tokens=completion_tokens,
                 total_tokens=prompt_tokens + completion_tokens,
                 cached_tokens=cached_tokens,
+                cache_write_tokens=cache_write_tokens,
             )
             msg.extra = {**(msg.extra or {}), "usage": usage_to_dict(usage, self.model)}
         return msg
@@ -887,6 +898,7 @@ class AnthropicProvider(LLMProviderBase):
                             (
                                 usage.prompt_tokens,
                                 usage.cached_tokens,
+                                usage.cache_write_tokens,
                             ) = _prompt_usage_from_raw(raw_usage)
                     elif event_type == "content_block_start":
                         content_block = event.get("content_block", {})

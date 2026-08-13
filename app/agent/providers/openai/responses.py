@@ -287,6 +287,14 @@ class ResponsesHandler:
         """
         return event.get("item_id", ""), ""
 
+    def on_response_headers(self, headers: Any) -> None:
+        """Hook: read routing/state headers off a response. No-op by default.
+
+        Subclasses override it when their endpoint hands back state the client
+        has to echo on later requests (e.g. Codex's ``x-codex-turn-state``
+        sticky-routing token).
+        """
+
     # ------------------------------------------------------------------
     # Response parsing — non-streaming
     # ------------------------------------------------------------------
@@ -379,6 +387,7 @@ class ResponsesHandler:
             response = await client.post(
                 url, headers=headers, json=body, timeout=self.request_timeout
             )
+            self.on_response_headers(response.headers)
             if response.status_code >= 400:
                 logger.warning(
                     "openai_chat_error status={} body={}",
@@ -409,6 +418,7 @@ class ResponsesHandler:
                 json=body,
                 timeout=self.request_timeout,
             ) as response:
+                self.on_response_headers(response.headers)
                 if response.status_code >= 400:
                     err_body = await response.aread()
                     logger.warning(

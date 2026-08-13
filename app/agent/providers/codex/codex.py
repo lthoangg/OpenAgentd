@@ -25,13 +25,24 @@ from loguru import logger
 from app.agent.providers.base import LLMProviderBase
 from app.agent.providers.codex.oauth import CODEX_ORIGINATOR, CodexOAuth
 from app.agent.providers.openai.responses import ResponsesHandler
-from app.agent.schemas.chat import AssistantMessage, ChatMessage, SystemMessage
+from app.agent.schemas.chat import (
+    AssistantMessage,
+    ChatMessage,
+    FunctionCall,
+    SystemMessage,
+    ToolCall,
+    ToolMessage,
+)
 from app.agent.usage import Usage, usage_to_dict
 
 CODEX_API_BASE = "https://chatgpt.com/backend-api/codex"
 CODEX_STREAM_IDLE_TIMEOUT_SECONDS = 300.0
 _NO_SERVICE_TIER = {"", "auto", "default", "none", "off", "standard"}
 _NO_REASONING_SUMMARY_MODELS = {"gpt-5.3-codex-spark"}
+# Sticky-routing token: the backend issues it on the first response of a turn
+# and expects it echoed on every later request of that same turn
+# (codex-rs/core/src/client.rs: `X_CODEX_TURN_STATE_HEADER`).
+_TURN_STATE_HEADER = "x-codex-turn-state"
 
 # Identify requests honestly as OpenAgentd.
 _DEFAULT_HEADERS = {
@@ -48,6 +59,12 @@ class _CodexResponsesHandler(ResponsesHandler):
     system messages embedded inside ``input``.  This subclass extracts any
     leading SystemMessage into ``instructions`` before building the request.
     """
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        # Sticky-routing token for the turn currently in flight, or None
+        # between turns.  Scoped to a turn, never across turns.
+        self._turn_state: str | None = None
 
     def convert_messages(self, messages: list[ChatMessage]) -> list[dict[str, Any]]:
         """Convert messages to Codex's stricter Responses item shape.
@@ -95,6 +112,12 @@ class _CodexResponsesHandler(ResponsesHandler):
             else:
                 non_system.append(msg)
 
+        # A turn starts with a user message and continues through tool results.
+        # Anything that is not a tool result opens a new turn, so the previous
+        # turn's sticky-routing token must not be replayed.
+        if not non_system or not isinstance(non_system[-1], ToolMessage):
+            self._turn_state = None
+
         body = super().build_request(non_system, tools, stream, merged)
 
         # Upstream ``ResponsesApiRequest`` (codex-rs/codex-api/src/common.rs)
@@ -125,6 +148,28 @@ class _CodexResponsesHandler(ResponsesHandler):
             )
         return body
 
+    def _prepare_request_headers(self, body: dict[str, Any]) -> dict[str, str]:
+        """Echo the current turn's sticky-routing token, when the server gave one."""
+        if not self._turn_state:
+            return self.headers
+        return {**self.headers, _TURN_STATE_HEADER: self._turn_state}
+
+    def on_response_headers(self, headers: Any) -> None:
+        """Capture the turn-state token issued at the start of a turn.
+
+        Upstream fixes the token on the first response of the turn and keeps
+        sending that same value for the rest of it, so later responses must not
+        overwrite it.
+        """
+        if self._turn_state:
+            return
+        try:
+            value = headers.get(_TURN_STATE_HEADER)
+        except AttributeError:
+            return
+        if isinstance(value, str) and value:
+            self._turn_state = value
+
     async def chat(
         self,
         messages: list[ChatMessage],
@@ -137,6 +182,10 @@ class _CodexResponsesHandler(ResponsesHandler):
         reasoning_item_id: str | None = None
         reasoning_encrypted_content: str | None = None
         usage: Usage | None = None
+        # Tool calls arrive as deltas keyed by index — a turn that only calls a
+        # tool streams no content at all, so dropping them here would surface
+        # the turn as an empty assistant message.
+        calls: dict[int, ToolCall] = {}
         async for chunk in self.stream(messages, tools, merged):
             # Usage arrives on its own terminal chunk with no choices, so read it
             # before the choices guard below skips that chunk entirely.
@@ -152,6 +201,22 @@ class _CodexResponsesHandler(ResponsesHandler):
             if delta.reasoning_encrypted_content:
                 reasoning_item_id = delta.reasoning_item_id
                 reasoning_encrypted_content = delta.reasoning_encrypted_content
+            for tc in delta.tool_calls or []:
+                index = tc.index if tc.index is not None else len(calls)
+                call = calls.get(index)
+                if call is None:
+                    call = ToolCall(
+                        id=tc.id or "", function=FunctionCall(name="", arguments="")
+                    )
+                    calls[index] = call
+                if tc.id:
+                    call.id = tc.id
+                if tc.function is None:
+                    continue
+                if tc.function.name:
+                    call.function.name = tc.function.name
+                if tc.function.arguments:
+                    call.function.arguments += tc.function.arguments
         extra: dict[str, Any] = {}
         if usage is not None:
             extra["usage"] = usage_to_dict(usage, self.model)
@@ -164,6 +229,7 @@ class _CodexResponsesHandler(ResponsesHandler):
             reasoning_content=reasoning or None,
             reasoning_item_id=reasoning_item_id,
             reasoning_encrypted_content=reasoning_encrypted_content,
+            tool_calls=[calls[index] for index in sorted(calls)] or None,
             extra=extra or None,
         )
 

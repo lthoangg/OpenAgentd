@@ -42,6 +42,10 @@ from app.agent.schemas.chat import (
     ChatCompletionChunkChoice,
     ChatCompletionDelta,
     ToolMessage,
+    ToolCallDelta,
+    ToolCall,
+    FunctionCall,
+    FunctionCallDelta,
 )
 from app.cli.commands.auth import _run_login
 
@@ -1298,3 +1302,255 @@ class TestCodexPromptCachingAndReasoning:
             "role": "assistant",
             "content": [{"type": "output_text", "text": "Turn 1 response"}],
         }
+
+
+# ============================================================================
+# Codex chat() tool-call assembly
+# ============================================================================
+
+
+class TestCodexChatToolCalls:
+    """``chat()`` reads the required stream, so it must assemble tool calls too.
+
+    Verified against the live endpoint: a Codex turn that answers with a
+    ``function_call`` item streams tool-call deltas and no content, so a
+    handler that only accumulates content returns an empty message and the
+    caller sees the turn as "the model did nothing".
+    """
+
+    @pytest.mark.asyncio
+    async def test_chat_assembles_tool_calls_from_stream(self):
+        handler = _CodexResponsesHandler("gpt-5.4", "https://api.example.com", {})
+
+        async def fake_stream(messages, tools, merged):
+            for delta in (
+                ToolCallDelta(
+                    index=0,
+                    id="call_1",
+                    function=FunctionCallDelta(name="get_weather", arguments=""),
+                ),
+                ToolCallDelta(
+                    index=0, function=FunctionCallDelta(arguments='{"city":')
+                ),
+                ToolCallDelta(
+                    index=0, function=FunctionCallDelta(arguments='"Hanoi"}')
+                ),
+            ):
+                yield ChatCompletionChunk(
+                    id="resp_1",
+                    created=1,
+                    model="gpt-5.4",
+                    choices=[
+                        ChatCompletionChunkChoice(
+                            index=0,
+                            delta=ChatCompletionDelta(tool_calls=[delta]),
+                        )
+                    ],
+                )
+
+        handler.stream = fake_stream  # type: ignore[method-assign]
+
+        result = await handler.chat([HumanMessage(content="weather?")], None, {})
+
+        assert result.tool_calls is not None
+        assert len(result.tool_calls) == 1
+        assert result.tool_calls[0].id == "call_1"
+        assert result.tool_calls[0].function.name == "get_weather"
+        assert result.tool_calls[0].function.arguments == '{"city":"Hanoi"}'
+
+    @pytest.mark.asyncio
+    async def test_chat_assembles_parallel_tool_calls_in_index_order(self):
+        handler = _CodexResponsesHandler("gpt-5.4", "https://api.example.com", {})
+
+        async def fake_stream(messages, tools, merged):
+            for delta in (
+                ToolCallDelta(
+                    index=0,
+                    id="call_a",
+                    function=FunctionCallDelta(name="read", arguments='{"p":1}'),
+                ),
+                ToolCallDelta(
+                    index=1,
+                    id="call_b",
+                    function=FunctionCallDelta(name="grep", arguments='{"q":"x"}'),
+                ),
+            ):
+                yield ChatCompletionChunk(
+                    id="resp_1",
+                    created=1,
+                    model="gpt-5.4",
+                    choices=[
+                        ChatCompletionChunkChoice(
+                            index=0,
+                            delta=ChatCompletionDelta(tool_calls=[delta]),
+                        )
+                    ],
+                )
+
+        handler.stream = fake_stream  # type: ignore[method-assign]
+
+        result = await handler.chat([HumanMessage(content="go")], None, {})
+
+        assert [tc.id for tc in result.tool_calls or []] == ["call_a", "call_b"]
+        assert [tc.function.name for tc in result.tool_calls or []] == ["read", "grep"]
+
+    @pytest.mark.asyncio
+    async def test_chat_without_tool_calls_leaves_field_none(self):
+        handler = _CodexResponsesHandler("gpt-5.4", "https://api.example.com", {})
+
+        async def fake_stream(messages, tools, merged):
+            yield ChatCompletionChunk(
+                id="resp_1",
+                created=1,
+                model="gpt-5.4",
+                choices=[
+                    ChatCompletionChunkChoice(
+                        index=0, delta=ChatCompletionDelta(content="hi")
+                    )
+                ],
+            )
+
+        handler.stream = fake_stream  # type: ignore[method-assign]
+
+        result = await handler.chat([HumanMessage(content="hi")], None, {})
+
+        assert result.tool_calls is None
+
+
+# ============================================================================
+# x-codex-turn-state sticky routing
+# ============================================================================
+
+
+class TestCodexTurnStateStickyRouting:
+    """Upstream captures ``x-codex-turn-state`` from the first response of a
+    turn and replays it on every later request *within that same turn*, and
+    never across turns (codex-rs/core/src/client.rs: ``ModelClientSession``).
+    """
+
+    def test_turn_state_is_not_sent_before_the_server_issues_one(self):
+        handler = _CodexResponsesHandler(
+            "gpt-5.4", "https://api.example.com", {"Authorization": "Bearer t"}
+        )
+        handler.build_request([HumanMessage(content="Hi")], None, True, {})
+
+        headers = handler._prepare_request_headers({})
+
+        assert "x-codex-turn-state" not in headers
+        assert headers["Authorization"] == "Bearer t"
+
+    def test_turn_state_replays_on_continuation_requests_of_the_same_turn(self):
+        handler = _CodexResponsesHandler(
+            "gpt-5.4", "https://api.example.com", {"Authorization": "Bearer t"}
+        )
+        handler.build_request([HumanMessage(content="Hi")], None, True, {})
+        handler.on_response_headers({"x-codex-turn-state": "state-token-1"})
+
+        # Continuation request: the turn resumes after a tool result.
+        handler.build_request(
+            [
+                HumanMessage(content="Hi"),
+                AssistantMessage(content=None),
+                ToolMessage(content="ok", tool_call_id="call_1"),
+            ],
+            None,
+            True,
+            {},
+        )
+        headers = handler._prepare_request_headers({})
+
+        assert headers["x-codex-turn-state"] == "state-token-1"
+
+    def test_turn_state_is_dropped_when_a_new_user_turn_starts(self):
+        handler = _CodexResponsesHandler(
+            "gpt-5.4", "https://api.example.com", {"Authorization": "Bearer t"}
+        )
+        handler.build_request([HumanMessage(content="Hi")], None, True, {})
+        handler.on_response_headers({"x-codex-turn-state": "state-token-1"})
+
+        # New user turn — upstream must not leak the previous turn's token.
+        handler.build_request(
+            [
+                HumanMessage(content="Hi"),
+                AssistantMessage(content="Done"),
+                HumanMessage(content="Next question"),
+            ],
+            None,
+            True,
+            {},
+        )
+        headers = handler._prepare_request_headers({})
+
+        assert "x-codex-turn-state" not in headers
+
+    def test_first_token_of_a_turn_wins(self):
+        """Within one turn the token is fixed at turn start; later responses
+        must not overwrite it."""
+        handler = _CodexResponsesHandler(
+            "gpt-5.4", "https://api.example.com", {"Authorization": "Bearer t"}
+        )
+        handler.build_request([HumanMessage(content="Hi")], None, True, {})
+        handler.on_response_headers({"x-codex-turn-state": "state-token-1"})
+        handler.build_request(
+            [
+                HumanMessage(content="Hi"),
+                AssistantMessage(content=None),
+                ToolMessage(content="ok", tool_call_id="call_1"),
+            ],
+            None,
+            True,
+            {},
+        )
+        handler.on_response_headers({"x-codex-turn-state": "state-token-2"})
+
+        assert handler._prepare_request_headers({})["x-codex-turn-state"] == (
+            "state-token-1"
+        )
+
+    def test_base_handler_ignores_response_headers(self):
+        """The hook is a no-op for non-Codex Responses endpoints."""
+        from app.agent.providers.openai.responses import ResponsesHandler
+
+        handler = ResponsesHandler("gpt-5.4", "https://api.openai.com/v1", {})
+        handler.on_response_headers({"x-codex-turn-state": "state-token-1"})
+
+        assert not hasattr(handler, "_turn_state")
+
+    @respx.mock
+    async def test_turn_state_round_trips_through_a_real_stream_request(self):
+        """End-to-end wiring: header captured off response 1, sent on the tool
+        continuation, and dropped again when the next user turn starts."""
+        with patch(
+            "app.agent.providers.codex.codex._load_token", return_value=("key", None)
+        ):
+            provider = CodexProvider(model="gpt-5.4")
+        body = (
+            'data: {"type":"response.created","response":{"id":"r1"}}\n\n'
+            'data: {"type":"response.output_text.delta","delta":"Hi"}\n\n'
+            "data: [DONE]\n\n"
+        )
+        route = respx.post("https://chatgpt.com/backend-api/codex/responses").mock(
+            return_value=httpx.Response(
+                200, text=body, headers={"x-codex-turn-state": "state-1"}
+            )
+        )
+
+        assistant = AssistantMessage(
+            content=None,
+            tool_calls=[
+                ToolCall(id="call_1", function=FunctionCall(name="ls", arguments="{}"))
+            ],
+        )
+        await provider.chat([HumanMessage(content="Hello")])
+        await provider.chat(
+            [
+                HumanMessage(content="Hello"),
+                assistant,
+                ToolMessage(content="ok", tool_call_id="call_1"),
+            ]
+        )
+        await provider.chat([HumanMessage(content="Next turn")])
+
+        sent = [call.request.headers.get("x-codex-turn-state") for call in route.calls]
+        assert sent == [None, "state-1", None]
+        await provider.aclose()

@@ -36,7 +36,6 @@ function makeStream(overrides: object = {}) {
     lastError: null,
     currentText: "",
     currentThinking: "",
-    _completionBase: 0,
     ...overrides,
   };
 }
@@ -592,7 +591,7 @@ describe("_handleSSEEvent: usage", () => {
 
   it("accumulates usage across multiple events (multi-turn)", () => {
     // Me input = latest turn only, output = sum all turns, cache = latest turn
-    // Turn 1: fire usage then done (done commits _completionBase)
+    // Turn 1: fire usage, then done closes the turn
     useTeamStore.getState()._handleSSEEvent("usage", {
       prompt_tokens: 10, completion_tokens: 5, total_tokens: 15,
       cached_tokens: 0, metadata: { agent: "lead" },
@@ -616,6 +615,73 @@ describe("_handleSSEEvent: usage", () => {
     expect(usage.cachedTokens).toBe(3);       // latest turn cache only
   });
 
+  it("adds live output onto a mid-turn reconcile instead of double-counting", () => {
+    // A mid-turn loadSession (reconnect, tab focus) replaces usage with the
+    // total summed from persisted messages — which already covers the model
+    // calls this turn has completed. The next live event must add only its own
+    // call's output on top.
+    useTeamStore.setState({
+      agentStreams: {
+        lead: makeStream({
+          usage: {
+            promptTokens: 120,
+            completionTokens: 50,
+            totalTokens: 170,
+            cachedTokens: 0,
+            estimatedCostUsd: 0.004,
+          },
+        }),
+      },
+    });
+
+    useTeamStore.getState()._handleSSEEvent("usage", {
+      prompt_tokens: 150, completion_tokens: 40, total_tokens: 190,
+      estimated_cost_usd: 0.002, metadata: { agent: "lead" },
+    });
+
+    const usage = useTeamStore.getState().agentStreams.lead.usage;
+    expect(usage.promptTokens).toBe(150);
+    expect(usage.completionTokens).toBe(90);
+    expect(usage.totalTokens).toBe(240);
+    expect(usage.estimatedCostUsd).toBe(0.006);
+  });
+
+  it("clears the cache count when a model call reports no cache read", () => {
+    // Providers coerce a zero cache read to None (`cached_tokens or None`), so
+    // `usage_to_dict` omits the key entirely. Carrying the previous call's
+    // number forward made the live meter disagree with `sumUsageFromMessages`,
+    // which reads the last message's cache as 0.
+    useTeamStore.getState()._handleSSEEvent("usage", {
+      prompt_tokens: 900, completion_tokens: 20, total_tokens: 920,
+      cached_tokens: 768, metadata: { agent: "lead" },
+    });
+    expect(useTeamStore.getState().agentStreams.lead.usage.cachedTokens).toBe(768);
+
+    useTeamStore.getState()._handleSSEEvent("usage", {
+      prompt_tokens: 1200, completion_tokens: 30, total_tokens: 1230,
+      metadata: { agent: "lead" },
+    });
+
+    expect(useTeamStore.getState().agentStreams.lead.usage.cachedTokens).toBe(0);
+  });
+
+  it("does not move token counts while text streams", () => {
+    // Output used to be guessed from `text.length / 4` — which also counted
+    // reasoning text, and never corrected downward.
+    useTeamStore.setState({ agentStreams: { lead: makeStream() } });
+
+    useTeamStore.getState()._handleSSEEvent("message", {
+      agent: "lead", text: "a".repeat(400),
+    });
+    useTeamStore.getState()._handleSSEEvent("thinking", {
+      agent: "lead", text: "b".repeat(400),
+    });
+
+    const usage = useTeamStore.getState().agentStreams.lead.usage;
+    expect(usage.completionTokens).toBe(0);
+    expect(usage.totalTokens).toBe(0);
+  });
+
   it("stores backend turn_total usage without changing displayed current usage", () => {
     useTeamStore.getState()._handleSSEEvent("usage", {
       prompt_tokens: 100, completion_tokens: 20, total_tokens: 120,
@@ -631,9 +697,10 @@ describe("_handleSSEEvent: usage", () => {
     });
 
     const usage = useTeamStore.getState().agentStreams["lead"].usage;
+    // Two model calls: input is the latest call's context, output is their sum.
     expect(usage.promptTokens).toBe(120);
-    expect(usage.completionTokens).toBe(30);
-    expect(usage.totalTokens).toBe(150);
+    expect(usage.completionTokens).toBe(50);
+    expect(usage.totalTokens).toBe(170);
     expect(usage.cachedTokens).toBe(15);
     expect(usage.turnPromptTokens).toBe(220);
     expect(usage.turnCompletionTokens).toBe(50);

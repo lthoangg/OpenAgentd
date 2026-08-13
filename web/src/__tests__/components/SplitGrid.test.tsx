@@ -37,7 +37,6 @@ function makeStream(overrides: Partial<AgentStream> = {}): AgentStream {
     currentThinking: "",
     status: "idle",
     usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0, cachedTokens: 0 },
-    _completionBase: 0,
     model: null,
     lastError: null,
     ...overrides,

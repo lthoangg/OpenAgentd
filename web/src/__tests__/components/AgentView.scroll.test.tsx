@@ -54,7 +54,6 @@ function makeAgentStream(blocks: ContentBlock[]): AgentStream {
       totalTokens: 0,
       cachedTokens: 0,
     },
-    _completionBase: 0,
     model: null,
     lastError: null,
   }

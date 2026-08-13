@@ -155,13 +155,6 @@ function appendStreamingText(
       if (model) last.extra = { ...(last.extra ?? {}), model }
     }
   }
-  if (text) {
-    stream._completionEstimated = (stream._completionEstimated ?? 0) + (text.length / 4)
-    const newEstimatedVal = Math.round(stream._completionEstimated)
-    const currentTurnTokens = Math.max(stream.usage.completionTokens - stream._completionBase, newEstimatedVal)
-    stream.usage.completionTokens = stream._completionBase + currentTurnTokens
-    stream.usage.totalTokens = stream.usage.promptTokens + stream.usage.completionTokens
-  }
 }
 
 /**
@@ -419,11 +412,14 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
             return
           }
           u.promptTokens     = promptTokens
-          u.completionTokens = stream._completionBase + completionTokens
-          u.cachedTokens     = cachedTokens ?? u.cachedTokens
+          u.completionTokens = u.completionTokens + completionTokens
+          // Absent means "this call read nothing from cache" — providers coerce
+          // 0 to None, so `usage_to_dict` drops the key. Carrying the previous
+          // value forward diverged from `sumUsageFromMessages`, which reads the
+          // last message's cache as 0 on reload.
+          u.cachedTokens     = cachedTokens ?? 0
           u.totalTokens      = u.promptTokens + u.completionTokens
           u.estimatedCostUsd = Math.round(((u.estimatedCostUsd ?? 0) + ((d.estimated_cost_usd as number) || 0)) * 1e8) / 1e8
-          stream._completionEstimated = completionTokens
         })
         break
       }
@@ -545,7 +541,6 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
           ensureAgent(draft, agent)
           if (status === 'working') {
             draft.agentStreams[agent].status = 'working'
-            draft.agentStreams[agent]._completionEstimated = 0
             draft.isTeamWorking = true
             if (draft.liveAgentNames && !draft.liveAgentNames.includes(agent)) draft.liveAgentNames.push(agent)
             // Only the sidebar's ``running`` badge depends on this. Patch that
@@ -560,11 +555,8 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
               })
             }
           } else if (status === 'waiting_input') {
-            // Suspended on ask_user: still live, but no tokens are
-            // coming, so drop the completion estimate that drives the progress
-            // readout instead of letting it tick against a stalled turn.
+            // Suspended on ask_user: still live, but no tokens are coming.
             draft.agentStreams[agent].status = 'waiting_input'
-            draft.agentStreams[agent]._completionEstimated = 0
             draft.isTeamWorking = true
             if (draft.liveAgentNames && !draft.liveAgentNames.includes(agent)) draft.liveAgentNames.push(agent)
           } else if (status === 'idle') {
@@ -647,8 +639,6 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
               appendLocalBlocks(stream, toCommit)
               stream.currentBlocks = []
             }
-            stream._completionBase = stream.usage.completionTokens
-            stream._completionEstimated = 0
             stream._turnStartedAt = null
             if (stream.status !== 'error' && stream.status !== 'offline') {
               stream.status = 'idle'

@@ -46,7 +46,6 @@ function makeStream(status: "idle" | "working" | "error") {
     lastError: null,
     currentText: "",
     currentThinking: "",
-    _completionBase: 0,
   };
 }
 

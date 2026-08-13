@@ -17,7 +17,6 @@ from typing import TYPE_CHECKING, Any
 
 from app.agent.hooks.base import BaseAgentHook
 from app.agent.tool_id_resolver import ToolIdResolver
-from app.agent.usage import usage_to_dict
 from app.services import memory_stream_store as stream_store
 from app.agent.schemas.events import (
     MessageEvent,
@@ -110,6 +109,62 @@ class StreamPublisherHook(BaseAgentHook):
                 (time.monotonic() - started) * 1000,
                 3,
             )
+        usage = (response.extra or {}).get("usage")
+        if isinstance(usage, dict):
+            await self._publish_usage(usage, state)
+
+    async def _publish_usage(self, usage: dict[str, Any], state: "AgentState") -> None:
+        """Publish the one usage frame this model call produced.
+
+        ``stream_and_assemble`` already collapses the provider's usage chunks
+        into a single snapshot on ``extra["usage"]`` — the very dict the OTel
+        span and the persisted message carry. Reading it here means the live
+        meter cannot disagree with telemetry, and providers that repeat a
+        cumulative usage snapshot on every streamed chunk (Gemini, several
+        OpenAI-compatible gateways) can no longer multiply the totals.
+        """
+        prompt_tokens = int(usage.get("input") or 0)
+        completion_tokens = int(usage.get("output") or 0)
+        cached = usage.get("cache")
+        thoughts = usage.get("thoughts")
+        tool_use = usage.get("tool_use")
+        cost = usage.get("cost")
+        estimated_cost = cost.get("estimated_usd") if isinstance(cost, dict) else None
+
+        self._total_prompt += prompt_tokens
+        self._total_completion += completion_tokens
+        if cached is not None:
+            self._total_cached = (self._total_cached or 0) + int(cached)
+        if thoughts is not None:
+            self._total_thoughts = (self._total_thoughts or 0) + int(thoughts)
+        if tool_use is not None:
+            self._total_tool_use = (self._total_tool_use or 0) + int(tool_use)
+        self._usage_count += 1
+
+        metadata: dict[str, Any] = {"agent": self._agent_name}
+        display_model = self._current_model or state.metadata.get("effective_model")
+        if isinstance(display_model, str) and display_model:
+            metadata["model"] = display_model
+
+        # Per-call values, exactly as the message persists them: input is this
+        # call's context size, output and cost are what this call alone added.
+        # The client accumulates output and cost the same way
+        # ``sumUsageFromMessages`` does when it replays persisted messages, so
+        # a mid-turn reconcile and the live stream agree. Publishing a
+        # turn-cumulative total here would double-count every call the
+        # reconcile had already folded in.
+        await self._push(
+            UsageEvent(
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
+                total_tokens=prompt_tokens + completion_tokens,
+                cached_tokens=cached,
+                thoughts_tokens=thoughts,
+                tool_use_tokens=tool_use,
+                estimated_cost_usd=estimated_cost,
+                metadata=metadata,
+            )
+        )
 
     async def on_model_delta(
         self, ctx: "RunContext", state: "AgentState", chunk: "ChatCompletionChunk"
@@ -120,52 +175,9 @@ class StreamPublisherHook(BaseAgentHook):
         )
         if isinstance(display_model, str) and display_model:
             metadata["model"] = display_model
-        if chunk.usage:
-            u = chunk.usage
-            pt = u.prompt_tokens or 0
-            ct = u.completion_tokens or 0
-            metadata = {"agent": self._agent_name, **metadata}
-            if chunk.model:
-                self._current_model = chunk.model
-                self._used_models.add(chunk.model)
-                metadata["model"] = chunk.model
-            # Cost lookups need the fully-qualified `provider:model` registry
-            # key, not the raw model string providers echo back on chunks
-            # (e.g. "gpt-4o" instead of "openai:gpt-4o"), so prefer
-            # effective_model here even though display_model prefers chunk.model.
-            cost_model = state.metadata.get("effective_model") or display_model
-            usage_data = usage_to_dict(
-                u, cost_model if isinstance(cost_model, str) else None
-            )
-            cost = usage_data.get("cost")
-            estimated_cost = (
-                cost.get("estimated_usd") if isinstance(cost, dict) else None
-            )
-            await self._push(
-                UsageEvent(
-                    prompt_tokens=pt,
-                    completion_tokens=ct,
-                    total_tokens=u.total_tokens or (pt + ct),
-                    cached_tokens=getattr(u, "cached_tokens", None),
-                    thoughts_tokens=getattr(u, "thoughts_tokens", None),
-                    tool_use_tokens=getattr(u, "tool_use_tokens", None),
-                    estimated_cost_usd=estimated_cost,
-                    metadata=metadata,
-                )
-            )
-            # Me accumulate for turn-total summary
-            self._total_prompt += pt
-            self._total_completion += ct
-            cached = getattr(u, "cached_tokens", None)
-            if cached is not None:
-                self._total_cached = (self._total_cached or 0) + cached
-            thoughts = getattr(u, "thoughts_tokens", None)
-            if thoughts is not None:
-                self._total_thoughts = (self._total_thoughts or 0) + thoughts
-            tool_use = getattr(u, "tool_use_tokens", None)
-            if tool_use is not None:
-                self._total_tool_use = (self._total_tool_use or 0) + tool_use
-            self._usage_count += 1
+        if chunk.model:
+            self._current_model = chunk.model
+            self._used_models.add(chunk.model)
 
         if not chunk.choices:
             return

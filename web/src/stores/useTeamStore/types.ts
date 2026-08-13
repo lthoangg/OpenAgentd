@@ -65,8 +65,6 @@ export interface AgentStream {
    */
   status: 'idle' | 'working' | 'waiting_input' | 'offline' | 'error'
   usage: AgentUsage
-  _completionBase: number
-  _completionEstimated?: number
   _turnStartedAt?: number | null
   /**
    * `currentBlocks.length` at the moment the turn was restarted with no new

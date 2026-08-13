@@ -128,7 +128,6 @@ function makeStream(overrides: object = {}) {
     lastError: null,
     currentText: "",
     currentThinking: "",
-    _completionBase: 0,
     ...overrides,
   }
 }

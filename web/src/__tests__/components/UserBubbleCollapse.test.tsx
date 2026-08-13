@@ -546,7 +546,6 @@ describe("AgentPane — UserBubble collapse feature", () => {
       totalTokens: 0,
       cachedTokens: 0,
     },
-    _completionBase: 0,
     model: "gpt-4",
     lastError: null,
   })
@@ -1214,8 +1213,7 @@ describe("AgentView — UserBubble URL link rendering", () => {
           currentThinking: "",
           status: "idle",
           usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0, cachedTokens: 0 },
-          _completionBase: 0,
-          model: "gpt-4",
+                model: "gpt-4",
           lastError: null,
         }}
         isLead={true}

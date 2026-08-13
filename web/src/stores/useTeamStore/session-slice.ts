@@ -362,8 +362,6 @@ export function resetSessionState(
     state.agentStreams[name].status = 'idle'
     state.agentStreams[name].lastError = null
     state.agentStreams[name].usage = { promptTokens: 0, completionTokens: 0, totalTokens: 0, cachedTokens: 0 }
-    state.agentStreams[name]._completionBase = 0
-    state.agentStreams[name]._completionEstimated = 0
     state.agentStreams[name]._turnStartedAt = null
     // The lead stream object is reused across sessions — a restart pending in
     // the session being left would otherwise show dots on the one being opened.
@@ -540,7 +538,6 @@ async function loadSessionImpl(
         const leadVisibleMsgs = messagesBeforeRevert(history.lead)
         const leadUsage = sumUsageFromMessages(leadVisibleMsgs)
         leadStream.usage = leadUsage
-        leadStream._completionBase = leadUsage.completionTokens
       }
 
       const queued = queuedMessagesFromHistory(sessionId, history.lead.messages)
@@ -581,7 +578,6 @@ async function loadSessionImpl(
         const memberVisibleMsgs = messagesBeforeTime(member.messages, leadRevertTime)
         const memberUsage = sumUsageFromMessages(memberVisibleMsgs)
         memberStream.usage = memberUsage
-        memberStream._completionBase = memberUsage.completionTokens
       })
 
       if (!draft.activeAgent || !allNames.includes(draft.activeAgent)) {

@@ -79,11 +79,11 @@ mock.module('@/components/TeamChatView/TeamChatHeader', () => ({
 mock.module('@/components/TeamChatView/TeamChatPanels', () => ({ TeamChatPanels: () => null }))
 mock.module('@/components/TeamChatView/AgentTabs', () => ({ AgentTabs: () => null }))
 mock.module('@/components/TeamChatView/useTeamCommands', () => ({ useTeamCommands: () => [] }))
-mock.module('@/components/FloatingInputBar', () => ({
-  FloatingInputBar: forwardRef<
+mock.module('@/components/FloatingInputComposer', () => ({
+  FloatingInputComposer: forwardRef<
     { setValue: (value: string) => void; setFiles: (files: File[]) => void; addFiles: (files: File[]) => void },
     unknown
-  >(function FloatingInputBarMock(_, ref) {
+  >(function FloatingInputComposerMock(_, ref) {
     useImperativeHandle(ref, () => ({
       setValue: setValueMock,
       setFiles: setFilesMock,

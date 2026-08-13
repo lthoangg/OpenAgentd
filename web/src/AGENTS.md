@@ -113,7 +113,7 @@ All UI primitives are **zero external-dependency** implementations — no shadcn
   is allowed on static backdrops (dialog, sheet, SettingsModal), but never on
   surfaces that repaint while content changes beneath them — on iOS WebKit a
   translucent+blurred layer re-rasterises its whole backdrop on any content
-  change and flickers (see the comment in `FloatingInputBar.tsx`).
+  change and flickers (see the comment in `FloatingInputComposer.tsx`).
 - `maxWidth` prop sets `--overlay-max-width` CSS variable (modal only); palette ignores it.
 - Settings modal is the visual reference for geometry and behaviour.
 
@@ -179,9 +179,9 @@ instantly if the smooth scroll never arrived.
 The `data-keyboard-open` attribute is set/cleared by `useMobileViewportGuards`
 (`hooks/use-mobile-viewport.ts`) in sync with `window.visualViewport` resize events.
 
-## InputBar suggestion menus (`/`, `@`, `#`)
+## InputComposer suggestion menus (`/`, `@`, `#`)
 
-`InputBar.suggestions.tsx` renders three picker menus (slash commands, `@`-mentions, snippets). Their filtering, keyboard navigation, and commit actions now live in `InputBar.suggestionEngine.ts`; `InputBar.tsx` should stay the coordinator/layout layer.
+`InputComposer.suggestions.tsx` renders three picker menus (slash commands, `@`-mentions, snippets). Their filtering, keyboard navigation, and commit actions now live in `InputComposer.suggestionEngine.ts`; `InputComposer.tsx` should stay the coordinator/layout layer.
 
 **Positioning** — menus use `position: fixed` (not `absolute`) so they escape the `overflow: hidden` on `<main>`. Coordinates are computed from `getBoundingClientRect()` of the input bar's wrapper and stored as `{ top | bottom, left, right }` in state. `bottom` is set when the menu opens above the input; `top` when it opens below.
 
@@ -222,4 +222,4 @@ Desktop push-layout (flex sibling of `<main>`, animates `width 0→N`); mobile f
 - Store tests usually seed with `useStore.setState(...)` and assert via `useStore.getState()`.
 - Preserve desktop token injection rules: only same-origin `/api` requests receive auth.
 - `WorkspaceFilesPanel` uses `useWorkspaceFilesQuery` (TanStack Query) — wrap in `QueryClientProvider` in tests.
-- Large feature components should prefer colocated hooks/modules before growing further: see `TeamChatView/use*.ts`, `InputBar.suggestionEngine.ts`, and `InputBar.attachments.ts` for the current house pattern.
+- Large feature components should prefer colocated hooks/modules before growing further: see `TeamChatView/use*.ts`, `InputComposer.suggestionEngine.ts`, and `InputComposer.attachments.ts` for the current house pattern.

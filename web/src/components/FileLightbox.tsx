@@ -14,7 +14,7 @@
  *     (goTo / onClose) or when scale needs to reset between items.
  *
  * No framer-motion used here — it is kept only for the components that already
- * use it (Sidebar, InputBar, ToastStack…). This component uses only the
+ * use it (Sidebar, InputComposer, ToastStack…). This component uses only the
  * platform: CSS transitions + the Composite layer via transform/opacity.
  */
 

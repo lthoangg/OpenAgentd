@@ -1,7 +1,7 @@
 import { describe, it, expect, afterEach, beforeEach, mock } from "bun:test"
 import { render, screen, cleanup, fireEvent } from "@testing-library/react"
-import { InputBar } from "@/components/InputBar"
-import { MAX_TOTAL_ATTACHMENT_BYTES, splitFilesByBudget } from "@/components/InputBar.files"
+import { InputComposer } from "@/components/InputComposer"
+import { MAX_TOTAL_ATTACHMENT_BYTES, splitFilesByBudget } from "@/components/InputComposer.files"
 import { useToastStore } from "@/stores/useToastStore"
 
 mock.module("lucide-react", () => new Proxy({}, { get: () => () => null }))
@@ -61,7 +61,7 @@ describe("splitFilesByBudget", () => {
   })
 })
 
-describe("InputBar attachment size limit", () => {
+describe("InputComposer attachment size limit", () => {
   function dropFiles(files: File[]) {
     const textarea = screen.getByLabelText("Message input")
     const pill = textarea.closest("div")!.parentElement!.parentElement!
@@ -69,7 +69,7 @@ describe("InputBar attachment size limit", () => {
   }
 
   it("does not attach a file that exceeds the request limit", () => {
-    render(<InputBar onSubmit={() => {}} />)
+    render(<InputComposer onSubmit={() => {}} />)
 
     dropFiles([sizedFile("movie.mov", MAX_TOTAL_ATTACHMENT_BYTES + MB)])
 
@@ -77,7 +77,7 @@ describe("InputBar attachment size limit", () => {
   })
 
   it("explains why an oversize file was not attached", () => {
-    render(<InputBar onSubmit={() => {}} />)
+    render(<InputComposer onSubmit={() => {}} />)
 
     dropFiles([sizedFile("movie.mov", MAX_TOTAL_ATTACHMENT_BYTES + MB)])
 
@@ -87,7 +87,7 @@ describe("InputBar attachment size limit", () => {
   })
 
   it("still attaches files that fit", () => {
-    render(<InputBar onSubmit={() => {}} />)
+    render(<InputComposer onSubmit={() => {}} />)
 
     dropFiles([sizedFile("notes.txt", MB)])
 

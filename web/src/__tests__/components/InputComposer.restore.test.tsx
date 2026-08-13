@@ -6,17 +6,17 @@
 import { describe, it, expect, afterEach, mock } from "bun:test"
 import { render, screen, cleanup, fireEvent, act } from "@testing-library/react"
 import { createRef } from "react"
-import { InputBar, type InputBarHandle } from "@/components/InputBar"
+import { InputComposer, type InputComposerHandle } from "@/components/InputComposer"
 
 mock.module("lucide-react", () => new Proxy({}, { get: () => () => null }))
 
 afterEach(cleanup)
 
 function setup() {
-  const ref = createRef<InputBarHandle>()
+  const ref = createRef<InputComposerHandle>()
   const submissions: { content: string; files?: File[] }[] = []
   render(
-    <InputBar
+    <InputComposer
       ref={ref}
       onSubmit={(content, files) => submissions.push({ content, files })}
     />,
@@ -41,7 +41,7 @@ function dropFile(file: File) {
   fireEvent.drop(pill, { dataTransfer: { types: ["Files"], files: [file] } })
 }
 
-describe("InputBar draft restore after a failed send", () => {
+describe("InputComposer draft restore after a failed send", () => {
   it("clears the composer on submit", () => {
     setup()
     type("hello team")

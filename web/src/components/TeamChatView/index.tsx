@@ -50,8 +50,8 @@ import { usePlatform } from '@/hooks/use-platform'
 import { useTauriDrag } from '@/hooks/use-tauri-drag'
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
-import { type InputBarHandle } from '../InputBar'
-import { FloatingInputBar } from '../FloatingInputBar'
+import { type InputComposerHandle } from '../InputComposer'
+import { FloatingInputComposer } from '../FloatingInputComposer'
 import type { AgentCapabilities as AgentCapabilitiesType } from '@/api/types'
 import { SplitGrid } from './SplitGrid'
 import { TeamChatHeader } from './TeamChatHeader'
@@ -83,7 +83,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
   // The hook returns `{}` outside Tauri so the spread is a no-op in
   // browsers. See ``useTauriDrag`` for details.
   const dragHandlers = useTauriDrag()
-  const inputRef = useRef<InputBarHandle>(null)
+  const inputRef = useRef<InputComposerHandle>(null)
   const mainColumnRef = useRef<HTMLDivElement>(null)
 
   const [fileRefsEnabled, setFileRefsEnabled] = useState(false)
@@ -281,7 +281,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
     }
     return leadAgent?.summary_trigger_tokens
   }, [sessionModel, registryData, leadAgent])
-  // Workspace file/folder list for the InputBar's @-mention picker. Fetched
+  // Workspace file/folder list for the InputComposer's @-mention picker. Fetched
   // lazily — the query is keyed on workspace/session so coding and normal
   // modes don't share cache entries.
   const { refs: fileRefs } = useFileRefsQuery({
@@ -587,7 +587,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
         ) : null}
 
         {(mode !== 'coding' || workspace) && (
-          <FloatingInputBar
+          <FloatingInputComposer
             ref={inputRef}
             boundsRef={mainColumnRef}
             onSubmit={async (content: string, files?: File[], mentions?: string[]) => {

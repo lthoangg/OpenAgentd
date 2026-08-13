@@ -1,5 +1,5 @@
 /**
- * Workspace file/folder list for the InputBar's @-mention picker.
+ * Workspace file/folder list for the InputComposer's @-mention picker.
  *
  * Hits one of two existing endpoints depending on mode:
  *   - coding:  GET /api/team/workspace/files/list?workspace=...
@@ -22,7 +22,7 @@
 import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import type { WorkspaceFileInfo } from '@/api/types'
-import type { FileRef } from '@/components/InputBar.mentions'
+import type { FileRef } from '@/components/InputComposer.mentions'
 /**
  * The picker only reads ``files``, and the two endpoints' responses differ in
  * their other fields. Typing the reader against this common supertype lets one

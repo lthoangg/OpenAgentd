@@ -63,11 +63,11 @@ mock.module('@/components/TeamChatView/TeamChatHeader', () => ({
     </>
   ),
 }))
-mock.module('@/components/FloatingInputBar', () => ({
-  FloatingInputBar: forwardRef<
+mock.module('@/components/FloatingInputComposer', () => ({
+  FloatingInputComposer: forwardRef<
     { setValue: (value: string) => void; setFiles: (files: File[]) => void },
     { historyPrompts?: string[] }
-  >(function FloatingInputBarMock({ historyPrompts }, ref) {
+  >(function FloatingInputComposerMock({ historyPrompts }, ref) {
     useImperativeHandle(ref, () => ({ setValue: () => {}, setFiles: () => {} }))
     return <div data-testid="history-prompts">{(historyPrompts ?? []).join(',')}</div>
   }),

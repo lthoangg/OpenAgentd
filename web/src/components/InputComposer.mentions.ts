@@ -1,7 +1,7 @@
 /**
- * Pure helpers for the InputBar's @-mention picker.
+ * Pure helpers for the InputComposer's @-mention picker.
  *
- * Kept in a separate module so InputBar.tsx can stay HMR-friendly under
+ * Kept in a separate module so InputComposer.tsx can stay HMR-friendly under
  * react-refresh (which forbids non-component exports from .tsx files).
  */
 import fuzzysort from 'fuzzysort'
@@ -171,7 +171,7 @@ export function getExplicitMentionRanges(
  *
  * **Explicit-list mode** (when ``mentions`` is provided): only returns ranges
  * for paths in the ``mentions`` array, optionally validated against ``refs``.
- * Used by the compositor overlay (InputBar) and for submitted messages that
+ * Used by the compositor overlay (InputComposer) and for submitted messages that
  * carry ``extra.mentions``.
  *
  * **Scanner mode** (when ``mentions`` is ``undefined``): scans the text for

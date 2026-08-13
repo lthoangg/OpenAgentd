@@ -1,17 +1,17 @@
 import { useRef, useState, useEffect, useCallback, type CSSProperties, type MutableRefObject } from 'react'
 import { File, Folder } from 'lucide-react'
-import type { SlashCommand } from './InputBar'
-import type { SuggestionMenu, SuggestionRow } from './InputBar.suggestionEngine'
+import type { SlashCommand } from './InputComposer'
+import type { SuggestionMenu, SuggestionRow } from './InputComposer.suggestionEngine'
 import { useIsMobile } from '@/hooks/use-mobile'
 
 /**
- * Render half of the InputBar suggestion system. The engine
- * (`InputBar.suggestionEngine.ts`) decides *which* menu is open and what it
+ * Render half of the InputComposer suggestion system. The engine
+ * (`InputComposer.suggestionEngine.ts`) decides *which* menu is open and what it
  * contains; this component owns positioning (fixed on mobile so the menu
  * escapes `overflow: hidden` ancestors, absolute on desktop) and paints the
  * single open listbox.
  */
-export function InputBarSuggestions({
+export function InputComposerSuggestions({
   minimized,
   menu,
   activeIndex,

@@ -1,8 +1,8 @@
 /**
- * Textarea autosize state for InputBar — height-to-content resizing capped at
+ * Textarea autosize state for InputComposer — height-to-content resizing capped at
  * ``MAX_TEXTAREA_HEIGHT``.
  *
- * Kept in a separate module (not `.tsx`) so InputBar.tsx stays HMR-friendly
+ * Kept in a separate module (not `.tsx`) so InputComposer.tsx stays HMR-friendly
  * under react-refresh and its render tree stays focused on layout/markup.
  */
 import { useCallback, useEffect, useRef } from 'react'
@@ -38,7 +38,7 @@ export function useTextareaAutosize(textareaRef: React.RefObject<HTMLTextAreaEle
   // Recalculate the textarea height after the browser's next layout pass.
   // Double-rAF: the outer frame fires after React's paint; the inner frame
   // fires after the browser's subsequent layout pass, by which point any
-  // parent expand animation (e.g. FloatingInputBar minimized→expanded
+  // parent expand animation (e.g. FloatingInputComposer minimized→expanded
   // Framer spring) has had a frame to reach its final width. Measuring
   // scrollHeight at the wrong narrow width would lock the textarea at
   // 1-line height. Runs ``andThen`` after the resize; returns a cancel

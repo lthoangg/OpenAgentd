@@ -1,5 +1,5 @@
 import { describe, it, expect } from "bun:test"
-import { filesFromDataTransfer } from "@/components/InputBar.files"
+import { filesFromDataTransfer } from "@/components/InputComposer.files"
 
 function fileItem(file: File, entry?: { isDirectory: boolean }): DataTransferItem {
   return {

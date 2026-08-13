@@ -2,9 +2,9 @@ import { describe, it, expect, afterEach, beforeEach, mock } from 'bun:test'
 import { createRef, useRef } from 'react'
 import { render, screen, cleanup, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { FloatingInputBar } from '@/components/FloatingInputBar'
+import { FloatingInputComposer } from '@/components/FloatingInputComposer'
 import { useTeamStore } from '@/stores/useTeamStore'
-import type { InputBarHandle } from '@/components/InputBar'
+import type { InputComposerHandle } from '@/components/InputComposer'
 
 let mockIsMobile = false
 
@@ -68,7 +68,7 @@ function Harness(props: {
   slashCommands?: Array<{ id: string; label: string; description: string }>
 }) {
   const boundsRef = useRef<HTMLDivElement>(null)
-  const inputRef = useRef<InputBarHandle>(null)
+  const inputRef = useRef<InputComposerHandle>(null)
   return (
     <div
       ref={boundsRef}
@@ -81,7 +81,7 @@ function Harness(props: {
         </button>
       )}
       <button type="button">Outside</button>
-      <FloatingInputBar
+      <FloatingInputComposer
         ref={inputRef}
         boundsRef={boundsRef}
         onSubmit={props.onSubmit ?? (() => {})}
@@ -94,8 +94,8 @@ function Harness(props: {
   )
 }
 
-describe('FloatingInputBar', () => {
-  it('keeps the inner InputBar textarea mounted but hidden from AT while minimized', () => {
+describe('FloatingInputComposer', () => {
+  it('keeps the inner InputComposer textarea mounted but hidden from AT while minimized', () => {
     render(<Harness />)
     // The textarea is always in the DOM regardless of minimized state
     // — visibility is opacity-driven so the ref stays valid and focus
@@ -175,7 +175,7 @@ describe('FloatingInputBar', () => {
   })
 
 
-  it('forwards the placeholder prop to the inner InputBar when expanded', async () => {
+  it('forwards the placeholder prop to the inner InputComposer when expanded', async () => {
     const user = userEvent.setup()
     render(<Harness placeholder="Ask the team…" />)
     // Placeholder is empty while the bar is minimized so its ghost
@@ -281,12 +281,12 @@ describe('FloatingInputBar', () => {
 
 
   it('expands and inserts the first typed character through its imperative insertText handle', async () => {
-    const ref = createRef<InputBarHandle>()
+    const ref = createRef<InputComposerHandle>()
     function InsertHarness() {
       const boundsRef = useRef<HTMLDivElement>(null)
       return (
         <div ref={boundsRef} style={{ position: 'relative', width: 1200, height: 800 }}>
-          <FloatingInputBar ref={ref} boundsRef={boundsRef} onSubmit={() => {}} />
+          <FloatingInputComposer ref={ref} boundsRef={boundsRef} onSubmit={() => {}} />
         </div>
       )
     }
@@ -322,7 +322,7 @@ describe('FloatingInputBar', () => {
 
 // ── Cross-platform: mobile vs desktop behavior ────────────────────────────
 
-describe('FloatingInputBar — mobile: always fully expanded', () => {
+describe('FloatingInputComposer — mobile: always fully expanded', () => {
   beforeEach(() => {
     mockIsMobile = true
   })
@@ -365,7 +365,7 @@ describe('FloatingInputBar — mobile: always fully expanded', () => {
   })
 })
 
-describe('FloatingInputBar — desktop: minimize/expand lifecycle', () => {
+describe('FloatingInputComposer — desktop: minimize/expand lifecycle', () => {
   it('starts minimized and expands on click', async () => {
     const user = userEvent.setup()
     render(<Harness />)
@@ -412,7 +412,7 @@ describe('FloatingInputBar — desktop: minimize/expand lifecycle', () => {
   })
 })
 
-describe('FloatingInputBar — orientation change: portrait-mobile → landscape-tablet', () => {
+describe('FloatingInputComposer — orientation change: portrait-mobile → landscape-tablet', () => {
   it('does not schedule a collapse timer when blur fires while isMobile is true', async () => {
     // When the bar is in mobile mode (isMobile=true), handleBlur must return
     // early without calling setTimeout. We verify this by confirming the bar

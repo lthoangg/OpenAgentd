@@ -1,29 +1,29 @@
 /**
- * Suggestion-menu engine for InputBar — owns the state, filtering, and
+ * Suggestion-menu engine for InputComposer — owns the state, filtering, and
  * commit actions for all three picker menus (slash commands, `@`-mentions,
  * `#`-snippets).
  *
  * Only one menu can ever be open at a time (mention > snippet > slash
  * precedence — the ranges are mutually exclusive by construction in
- * InputBar's handleChange/syncMention), so the engine models the open menu
+ * InputComposer's handleChange/syncMention), so the engine models the open menu
  * as a single discriminated union (`SuggestionMenu`) plus one
  * highlighted-index state, instead of three parallel copies of the
  * index/refs/open/commit machinery.
  *
- * Split out of InputBar.tsx (not `.tsx` itself — react-refresh forbids
+ * Split out of InputComposer.tsx (not `.tsx` itself — react-refresh forbids
  * non-component runtime exports from `.tsx` files) so the component only
- * has to wire this hook's output into `<InputBarSuggestions>` (the render
- * half, in `InputBar.suggestions.tsx`) and into its own `handleKeyDown` /
+ * has to wire this hook's output into `<InputComposerSuggestions>` (the render
+ * half, in `InputComposer.suggestions.tsx`) and into its own `handleKeyDown` /
  * `handleChange` for keyboard navigation and the active-mention window.
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react'
-import type { SlashCommand, SnippetCommand } from './InputBar'
-import type { FileRef } from './InputBar.mentions'
+import type { SlashCommand, SnippetCommand } from './InputComposer'
+import type { FileRef } from './InputComposer.mentions'
 import {
   filterMentions,
   filterSlashCommands,
   filterSnippetCommands,
-} from './InputBar.menus'
+} from './InputComposer.menus'
 
 export type SuggestionRange = { start: number; end: number; query: string } | null
 
@@ -39,7 +39,7 @@ export type SuggestionMenu =
 
 export type SuggestionRow = SlashCommand | SnippetCommand | FileRef
 
-export interface UseInputBarSuggestionEngineOptions {
+export interface UseInputComposerSuggestionEngineOptions {
   value: string
   setValue: Dispatch<SetStateAction<string>>
   textareaRef: React.RefObject<HTMLTextAreaElement | null>
@@ -65,7 +65,7 @@ function useScrollOptionIntoView(open: boolean, index: number, count: number) {
   return refs
 }
 
-export function useInputBarSuggestionEngine({
+export function useInputComposerSuggestionEngine({
   value,
   setValue,
   textareaRef,
@@ -78,7 +78,7 @@ export function useInputBarSuggestionEngine({
   setMentions,
   minimized,
   onSuggestionsMenuChange,
-}: UseInputBarSuggestionEngineOptions) {
+}: UseInputComposerSuggestionEngineOptions) {
   const [menuIndex, setMenuIndex] = useState(0)
   const [snippetRange, setSnippetRange] = useState<SuggestionRange>(null)
   const [mentionRange, setMentionRange] = useState<SuggestionRange>(null)

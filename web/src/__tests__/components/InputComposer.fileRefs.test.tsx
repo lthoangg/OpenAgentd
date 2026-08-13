@@ -1,5 +1,5 @@
 /**
- * Tests for the InputBar's @-mention file/folder picker.
+ * Tests for the InputComposer's @-mention file/folder picker.
  *
  * Covers:
  *   - ``findActiveMention`` pure helper (caret-aware token detection)
@@ -12,13 +12,13 @@ import { describe, it, expect, afterEach } from "bun:test"
 import { render, screen, cleanup, fireEvent, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 
-import { InputBar, type FileRef } from "@/components/InputBar"
+import { InputComposer, type FileRef } from "@/components/InputComposer"
 import {
   findActiveMention,
   findCommittedMentions,
   buildMentionLookup,
   rankFileRefs,
-} from "@/components/InputBar.mentions"
+} from "@/components/InputComposer.mentions"
 
 afterEach(cleanup)
 
@@ -155,12 +155,12 @@ describe("rankFileRefs", () => {
 
   it("handles short non-prefix subsequences", () => {
     const refs: FileRef[] = [
-      { path: "src/components/InputBar.tsx", name: "InputBar.tsx", type: "file" },
+      { path: "src/components/Sidebar.tsx", name: "Sidebar.tsx", type: "file" },
       { path: "src/api/client.ts", name: "client.ts", type: "file" },
     ]
-    // ``ibar`` should pick up ``InputBar`` (I + Bar).
+    // ``ibar`` should pick up ``Sidebar`` (s-I-debar).
     const out = rankFileRefs(refs, "ibar", 20)
-    expect(out[0].path).toBe("src/components/InputBar.tsx")
+    expect(out[0].path).toBe("src/components/Sidebar.tsx")
   })
 
   it("returns an empty list when the limit is 0", () => {
@@ -345,10 +345,10 @@ const fixtures: FileRef[] = [
   { path: "src", name: "src", type: "directory" },
 ]
 
-describe("InputBar — @-mention picker", () => {
+describe("InputComposer — @-mention picker", () => {
   it("opens the popover when the user types @", async () => {
     const user = userEvent.setup()
-    render(<InputBar onSubmit={() => {}} fileRefs={fixtures} />)
+    render(<InputComposer onSubmit={() => {}} fileRefs={fixtures} />)
     const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
 
     await user.click(textarea)
@@ -362,7 +362,7 @@ describe("InputBar — @-mention picker", () => {
 
   it("filters the list as the user types", async () => {
     const user = userEvent.setup()
-    render(<InputBar onSubmit={() => {}} fileRefs={fixtures} />)
+    render(<InputComposer onSubmit={() => {}} fileRefs={fixtures} />)
     const textarea = screen.getByLabelText("Message input")
 
     await user.click(textarea)
@@ -375,7 +375,7 @@ describe("InputBar — @-mention picker", () => {
 
   it("does not open when @ is preceded by a non-whitespace char", async () => {
     const user = userEvent.setup()
-    render(<InputBar onSubmit={() => {}} fileRefs={fixtures} />)
+    render(<InputComposer onSubmit={() => {}} fileRefs={fixtures} />)
     const textarea = screen.getByLabelText("Message input")
 
     await user.type(textarea, "user@domain")
@@ -385,7 +385,7 @@ describe("InputBar — @-mention picker", () => {
 
   it("inserts the path on Enter and closes the popover", async () => {
     const user = userEvent.setup()
-    render(<InputBar onSubmit={() => {}} fileRefs={fixtures} />)
+    render(<InputComposer onSubmit={() => {}} fileRefs={fixtures} />)
     const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
 
     // ``@sr`` ranks the directory ``src`` (name starts with the query) above
@@ -408,7 +408,7 @@ describe("InputBar — @-mention picker", () => {
 
   it("ranks the matching directory above its children", async () => {
     const user = userEvent.setup()
-    render(<InputBar onSubmit={() => {}} fileRefs={fixtures} />)
+    render(<InputComposer onSubmit={() => {}} fileRefs={fixtures} />)
     const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
 
     // Typing ``@src`` should put the ``src`` directory at the top of the
@@ -435,7 +435,7 @@ describe("InputBar — @-mention picker", () => {
         type: "file",
       }))
       const user = userEvent.setup()
-      render(<InputBar onSubmit={() => {}} fileRefs={many} />)
+      render(<InputComposer onSubmit={() => {}} fileRefs={many} />)
       const textarea = screen.getByLabelText("Message input")
 
       await user.type(textarea, "@pkg")
@@ -458,7 +458,7 @@ describe("InputBar — @-mention picker", () => {
 
   it("dismisses the popover on Esc without inserting", async () => {
     const user = userEvent.setup()
-    render(<InputBar onSubmit={() => {}} fileRefs={fixtures} />)
+    render(<InputComposer onSubmit={() => {}} fileRefs={fixtures} />)
     const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
 
     await user.type(textarea, "@sr")
@@ -471,7 +471,7 @@ describe("InputBar — @-mention picker", () => {
 
   it("wires the active file mention option to the textarea", async () => {
     const user = userEvent.setup()
-    render(<InputBar onSubmit={() => {}} fileRefs={fixtures} />)
+    render(<InputComposer onSubmit={() => {}} fileRefs={fixtures} />)
     const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
 
     await user.type(textarea, "@sr")
@@ -490,7 +490,7 @@ describe("InputBar — @-mention picker", () => {
 
   it("does nothing when fileRefs is empty", async () => {
     const user = userEvent.setup()
-    render(<InputBar onSubmit={() => {}} fileRefs={[]} />)
+    render(<InputComposer onSubmit={() => {}} fileRefs={[]} />)
     const textarea = screen.getByLabelText("Message input")
 
     await user.type(textarea, "@foo")
@@ -502,7 +502,7 @@ describe("InputBar — @-mention picker", () => {
     const user = userEvent.setup()
     let submitted = ""
     render(
-      <InputBar
+      <InputComposer
         onSubmit={(text) => { submitted = text }}
         fileRefs={fixtures}
       />
@@ -520,7 +520,7 @@ describe("InputBar — @-mention picker", () => {
     const user = userEvent.setup()
     let submitted = ""
     render(
-      <InputBar
+      <InputComposer
         onSubmit={(text) => { submitted = text }}
         fileRefs={fixtures}
       />
@@ -548,7 +548,7 @@ describe("InputBar — @-mention picker", () => {
 
   it("does not chip the actively-typed mention until it is committed", async () => {
     const user = userEvent.setup()
-    render(<InputBar onSubmit={() => {}} fileRefs={fixtures} />)
+    render(<InputComposer onSubmit={() => {}} fileRefs={fixtures} />)
     const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
 
     // While typing ``@sr`` the picker is open and the token at the caret is
@@ -570,7 +570,7 @@ describe("InputBar — @-mention picker", () => {
     // Verifies the overlay enumerates all committed ranges, not just the
     // last one. Two separate Enter inserts.
     const user = userEvent.setup()
-    render(<InputBar onSubmit={() => {}} fileRefs={fixtures} />)
+    render(<InputComposer onSubmit={() => {}} fileRefs={fixtures} />)
     const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
 
     await user.type(textarea, "compare @src")
@@ -591,7 +591,7 @@ describe("InputBar — @-mention picker", () => {
     // The picker does NOT reopen in this case — that was superseded by the
     // atomic-selection feature.
     const user = userEvent.setup()
-    render(<InputBar onSubmit={() => {}} fileRefs={fixtures} />)
+    render(<InputComposer onSubmit={() => {}} fileRefs={fixtures} />)
     const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
 
     await user.type(textarea, "@sr")
@@ -601,7 +601,7 @@ describe("InputBar — @-mention picker", () => {
 
     // Move caret back inside the mention (between "ap" and "i.ts"). Using
     // ``fireEvent.select`` because React's synthetic ``onSelect`` is what
-    // ``InputBar`` listens to; a bare DOM ``select`` event doesn't reach
+    // ``InputComposer`` listens to; a bare DOM ``select`` event doesn't reach
     // the synthetic handler under jsdom.
     textarea.setSelectionRange(7, 7)
     fireEvent.select(textarea)
@@ -621,7 +621,7 @@ describe("InputBar — @-mention picker", () => {
     // it manually. The overlay must rely on the value text itself, not on
     // any picker state, so pasted mentions get the same visual treatment.
     const user = userEvent.setup()
-    render(<InputBar onSubmit={() => {}} fileRefs={fixtures} />)
+    render(<InputComposer onSubmit={() => {}} fileRefs={fixtures} />)
     const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
 
     // ``user.paste`` writes via the native input event, so it follows the
@@ -640,7 +640,7 @@ describe("InputBar — @-mention picker", () => {
     // editing the value back to an active token must transition the
     // mention from committed → active, which removes the chip.
     const user = userEvent.setup()
-    render(<InputBar onSubmit={() => {}} fileRefs={fixtures} />)
+    render(<InputComposer onSubmit={() => {}} fileRefs={fixtures} />)
     const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
 
     await user.type(textarea, "@src")
@@ -661,7 +661,7 @@ describe("InputBar — @-mention picker", () => {
     // tests) and that the class names target different tokens, so a
     // future palette tweak doesn't require an exact-color test rewrite.
     const user = userEvent.setup()
-    render(<InputBar onSubmit={() => {}} fileRefs={fixtures} />)
+    render(<InputComposer onSubmit={() => {}} fileRefs={fixtures} />)
     const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
 
     // Insert one folder (``@src/``) and one file (``@docs/intro.md``).
@@ -683,10 +683,10 @@ describe("InputBar — @-mention picker", () => {
 
 // ── Atomic mention selection ───────────────────────────────────────────────
 
-describe("InputBar — atomic mention selection", () => {
+describe("InputComposer — atomic mention selection", () => {
   it("selects the whole token when the caret moves into a committed mention", async () => {
     const user = userEvent.setup()
-    render(<InputBar onSubmit={() => {}} fileRefs={fixtures} />)
+    render(<InputComposer onSubmit={() => {}} fileRefs={fixtures} />)
     const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
 
     // Insert a mention and move past it.
@@ -707,7 +707,7 @@ describe("InputBar — atomic mention selection", () => {
 
   it("does not select-all when the caret is outside any committed mention", async () => {
     const user = userEvent.setup()
-    render(<InputBar onSubmit={() => {}} fileRefs={fixtures} />)
+    render(<InputComposer onSubmit={() => {}} fileRefs={fixtures} />)
     const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
 
     await user.type(textarea, "@sr")
@@ -729,10 +729,10 @@ describe("InputBar — atomic mention selection", () => {
 
 // ── Atomic mention deletion ────────────────────────────────────────────────
 
-describe("InputBar — atomic mention deletion", () => {
+describe("InputComposer — atomic mention deletion", () => {
   it("Backspace inside a committed mention deletes the whole token", async () => {
     const user = userEvent.setup()
-    render(<InputBar onSubmit={() => {}} fileRefs={fixtures} />)
+    render(<InputComposer onSubmit={() => {}} fileRefs={fixtures} />)
     const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
 
     await user.type(textarea, "read @sr")
@@ -753,7 +753,7 @@ describe("InputBar — atomic mention deletion", () => {
 
   it("Delete inside a committed mention deletes the whole token", async () => {
     const user = userEvent.setup()
-    render(<InputBar onSubmit={() => {}} fileRefs={fixtures} />)
+    render(<InputComposer onSubmit={() => {}} fileRefs={fixtures} />)
     const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
 
     await user.type(textarea, "@sr")
@@ -773,7 +773,7 @@ describe("InputBar — atomic mention deletion", () => {
     // The trailing space is outside the range tracked by mentions, so an
     // ordinary backspace should remove only that space.
     const user = userEvent.setup()
-    render(<InputBar onSubmit={() => {}} fileRefs={fixtures} />)
+    render(<InputComposer onSubmit={() => {}} fileRefs={fixtures} />)
     const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
 
     await user.type(textarea, "@sr")
@@ -788,7 +788,7 @@ describe("InputBar — atomic mention deletion", () => {
 
 // ── Mention sync pruning ───────────────────────────────────────────────────
 
-describe("InputBar — mention sync pruning", () => {
+describe("InputComposer — mention sync pruning", () => {
   it("removes a mention from the tracked list when its token is manually deleted", async () => {
     // The ``mentions`` array is passed to ``onSubmit`` as ``mentionedFiles``.
     // If the user types over or deletes a mention token, that path must not
@@ -797,7 +797,7 @@ describe("InputBar — mention sync pruning", () => {
     const user = userEvent.setup()
     const captured: string[] = []
     render(
-      <InputBar
+      <InputComposer
         onSubmit={(_msg: string, _files?: File[], mentionedFiles?: string[]) => {
           if (mentionedFiles) captured.push(...mentionedFiles)
         }}
@@ -824,7 +824,7 @@ describe("InputBar — mention sync pruning", () => {
     const user = userEvent.setup()
     let capturedMentions: string[] | undefined
     render(
-      <InputBar
+      <InputComposer
         onSubmit={(_msg: string, _files?: File[], mentionedFiles?: string[]) => {
           capturedMentions = mentionedFiles
         }}

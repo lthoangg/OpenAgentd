@@ -1,7 +1,7 @@
 import { describe, it, expect, afterEach, mock } from "bun:test"
 import { render, screen, cleanup, fireEvent } from "@testing-library/react"
 import { useRef } from "react"
-import { InputBar, type InputBarHandle } from "@/components/InputBar"
+import { InputComposer, type InputComposerHandle } from "@/components/InputComposer"
 import { useDragDrop } from "@/components/TeamChatView/useDragDrop"
 
 mock.module("lucide-react", () => new Proxy({}, { get: () => () => null }))
@@ -9,14 +9,14 @@ mock.module("lucide-react", () => new Proxy({}, { get: () => () => null }))
 afterEach(cleanup)
 
 /**
- * Mirrors the production tree: ``FloatingInputBar`` renders *inside* the
+ * Mirrors the production tree: ``FloatingInputComposer`` renders *inside* the
  * ``<main>`` element that ``useDragDrop`` owns (TeamChatView/index.tsx), and
  * both the bar and ``<main>`` carry drop handlers. A drop landing on the pill
  * is seen by both — it must still attach the file exactly once, and must
  * still clear the drag overlay.
  */
 function DropHarness() {
-  const ref = useRef<InputBarHandle>(null)
+  const ref = useRef<InputComposerHandle>(null)
   const { isDraggingFile, handleDragEnter, handleDragLeave, handleDragOver, handleDrop } =
     useDragDrop(ref)
   return (
@@ -28,7 +28,7 @@ function DropHarness() {
       onDrop={handleDrop}
     >
       {isDraggingFile && <span>Drop files to attach</span>}
-      <InputBar ref={ref} onSubmit={() => {}} />
+      <InputComposer ref={ref} onSubmit={() => {}} />
     </div>
   )
 }
@@ -57,7 +57,7 @@ function folderTransfer(folder: File) {
   }
 }
 
-describe("InputBar drag-and-drop", () => {
+describe("InputComposer drag-and-drop", () => {
   it("attaches a file dropped on the pill exactly once", () => {
     render(<DropHarness />)
 

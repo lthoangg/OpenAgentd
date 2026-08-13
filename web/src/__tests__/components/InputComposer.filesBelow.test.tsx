@@ -1,7 +1,7 @@
 import { describe, it, expect, afterEach } from "bun:test"
 import { render, screen, cleanup } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import { InputBar } from "@/components/InputBar"
+import { InputComposer } from "@/components/InputComposer"
 
 afterEach(cleanup)
 
@@ -31,11 +31,11 @@ function findInputPillWrapper(): HTMLElement | null {
   return textarea.parentElement?.parentElement ?? null
 }
 
-describe("InputBar.filesBelow", () => {
+describe("InputComposer.filesBelow", () => {
   it("renders file preview above input by default (filesBelow=false)", async () => {
     const user = userEvent.setup()
     const onSubmit = () => {}
-    render(<InputBar onSubmit={onSubmit} />)
+    render(<InputComposer onSubmit={onSubmit} />)
 
     // Upload a file using userEvent.upload
     const file = new File(["test content"], "notes.txt", { type: "text/plain" })
@@ -56,7 +56,7 @@ describe("InputBar.filesBelow", () => {
   it("renders file preview below input when filesBelow={true}", async () => {
     const user = userEvent.setup()
     const onSubmit = () => {}
-    render(<InputBar onSubmit={onSubmit} filesBelow={true} />)
+    render(<InputComposer onSubmit={onSubmit} filesBelow={true} />)
 
     // Upload a file
     const file = new File(["test content"], "notes.txt", { type: "text/plain" })
@@ -77,7 +77,7 @@ describe("InputBar.filesBelow", () => {
   it("applies mb-3 margin class when filesBelow={false}", async () => {
     const user = userEvent.setup()
     const onSubmit = () => {}
-    render(<InputBar onSubmit={onSubmit} filesBelow={false} />)
+    render(<InputComposer onSubmit={onSubmit} filesBelow={false} />)
 
     // Upload a file
     const file = new File(["test content"], "notes.txt", { type: "text/plain" })
@@ -100,7 +100,7 @@ describe("InputBar.filesBelow", () => {
   it("applies mt-3 margin class when filesBelow={true}", async () => {
     const user = userEvent.setup()
     const onSubmit = () => {}
-    render(<InputBar onSubmit={onSubmit} filesBelow={true} />)
+    render(<InputComposer onSubmit={onSubmit} filesBelow={true} />)
 
     // Upload a file
     const file = new File(["test content"], "notes.txt", { type: "text/plain" })
@@ -123,7 +123,7 @@ describe("InputBar.filesBelow", () => {
   it("renders previews row with flex-nowrap and w-max classes", async () => {
     const user = userEvent.setup()
     const onSubmit = () => {}
-    render(<InputBar onSubmit={onSubmit} />)
+    render(<InputComposer onSubmit={onSubmit} />)
 
     // Upload 2 files
     const file1 = new File(["content1"], "file1.txt", { type: "text/plain" })
@@ -151,7 +151,7 @@ describe("InputBar.filesBelow", () => {
   it("wraps previews in a horizontally scrollable container", async () => {
     const user = userEvent.setup()
     const onSubmit = () => {}
-    render(<InputBar onSubmit={onSubmit} />)
+    render(<InputComposer onSubmit={onSubmit} />)
 
     // Upload a file
     const file = new File(["test"], "test.txt", { type: "text/plain" })
@@ -176,7 +176,7 @@ describe("InputBar.filesBelow", () => {
   it("wraps each preview item in shrink-0 container", async () => {
     const user = userEvent.setup()
     const onSubmit = () => {}
-    render(<InputBar onSubmit={onSubmit} />)
+    render(<InputComposer onSubmit={onSubmit} />)
 
     // Upload 3 files
     const files = [
@@ -203,7 +203,7 @@ describe("InputBar.filesBelow", () => {
   it("invokes renderDragHandle and renders its output", () => {
     const onSubmit = () => {}
     const renderDragHandle = () => <button aria-label="test-handle">H</button>
-    render(<InputBar onSubmit={onSubmit} renderDragHandle={renderDragHandle} />)
+    render(<InputComposer onSubmit={onSubmit} renderDragHandle={renderDragHandle} />)
 
     const handle = screen.getByRole("button", { name: "test-handle" })
     expect(handle).toBeTruthy()
@@ -212,7 +212,7 @@ describe("InputBar.filesBelow", () => {
   it("renders renderDragHandle output above the input pill", () => {
     const onSubmit = () => {}
     const renderDragHandle = () => <button aria-label="test-handle">H</button>
-    render(<InputBar onSubmit={onSubmit} renderDragHandle={renderDragHandle} />)
+    render(<InputComposer onSubmit={onSubmit} renderDragHandle={renderDragHandle} />)
 
     const handle = screen.getByRole("button", { name: "test-handle" })
     const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
@@ -228,7 +228,7 @@ describe("InputBar.filesBelow", () => {
   it("does not clobber attach button when renderDragHandle is provided", () => {
     const onSubmit = () => {}
     const renderDragHandle = () => <button aria-label="test-handle">H</button>
-    render(<InputBar onSubmit={onSubmit} renderDragHandle={renderDragHandle} />)
+    render(<InputComposer onSubmit={onSubmit} renderDragHandle={renderDragHandle} />)
 
     const handle = screen.getByRole("button", { name: "test-handle" })
     const attachButton = screen.getByRole("button", { name: /attach file/i })
@@ -239,7 +239,7 @@ describe("InputBar.filesBelow", () => {
 
   it("renders normally when renderDragHandle is not provided", () => {
     const onSubmit = () => {}
-    render(<InputBar onSubmit={onSubmit} />)
+    render(<InputComposer onSubmit={onSubmit} />)
 
     const textarea = screen.getByLabelText("Message input")
     expect(textarea).toBeTruthy()
@@ -249,7 +249,7 @@ describe("InputBar.filesBelow", () => {
     const user = userEvent.setup()
     const onSubmit = () => {}
     const renderDragHandle = () => <button aria-label="test-handle">H</button>
-    render(<InputBar onSubmit={onSubmit} filesBelow={true} renderDragHandle={renderDragHandle} />)
+    render(<InputComposer onSubmit={onSubmit} filesBelow={true} renderDragHandle={renderDragHandle} />)
 
     // Upload a file
     const file = new File(["test"], "test.txt", { type: "text/plain" })

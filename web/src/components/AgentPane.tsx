@@ -30,7 +30,7 @@ import { extractSleepPrefix, formatTime } from '@/utils/format'
 import { latestMCPAppResourceBlockIdsFromParts, latestMCPAppResources, mcpAppResourceUri } from '@/utils/mcp-app-artifacts'
 import { useAutoFollowScroll } from '@/hooks/useAutoFollowScroll'
 import { useTeamStore, isAwaitingRestartOutput } from '@/stores/useTeamStore'
-import { findCommittedMentions } from './InputBar.mentions'
+import { findCommittedMentions } from './InputComposer.mentions'
 import type { AgentStream } from '@/stores/useTeamStore'
 import { resolveApiUrl } from '@/api/client'
 import { openExternalUrl } from '@/lib/open-external'
@@ -97,7 +97,7 @@ function renderUrlSegments(text: string, keyPrefix: string): React.ReactNode[] {
 /**
  * Render user prose with ``@mention`` tokens syntax-highlighted.
  *
- * Matches the InputBar's overlay convention so a message looks the same
+ * Matches the InputComposer's overlay convention so a message looks the same
  * after send as it did while composing:
  *   - folders (token ends in ``/``)      → ``--accent-orange-text``
  *   - files (everything else, default)   → ``--accent-blue-text``

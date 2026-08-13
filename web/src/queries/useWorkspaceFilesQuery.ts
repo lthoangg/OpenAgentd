@@ -10,7 +10,7 @@ import { WORKSPACE_TREE_STALE_MS, workspaceFilesQueryOptions } from './workspace
 
 export function useWorkspaceFilesQuery(sessionId: string | null | undefined) {
   return useQuery({
-    // Shared cache entry with the InputBar @-mention picker — same endpoint,
+    // Shared cache entry with the InputComposer @-mention picker — same endpoint,
     // same payload. See ``workspace-files.ts``.
     ...workspaceFilesQueryOptions(sessionId ?? ''),
     enabled: !!sessionId,

@@ -489,7 +489,7 @@ describe("AgentCapabilities edge cases and combinations", () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Capability access patterns (as used in InputBar.tsx)
+// Capability access patterns (as used in InputComposer.tsx)
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("AgentCapabilities access patterns", () => {

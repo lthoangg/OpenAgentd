@@ -78,8 +78,8 @@ mock.module('@/stores/useUIStore', () => ({
   }),
 }))
 
-mock.module('@/components/FloatingInputBar', () => ({
-  FloatingInputBar: forwardRef<
+mock.module('@/components/FloatingInputComposer', () => ({
+  FloatingInputComposer: forwardRef<
     { setValue: (value: string) => void; setFiles: (files: File[]) => void },
     object
   >(function Mock(_props, ref) {

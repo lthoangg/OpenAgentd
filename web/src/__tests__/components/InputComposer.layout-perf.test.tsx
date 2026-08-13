@@ -1,7 +1,7 @@
 /**
- * Performance contract for the InputBar composer pill.
+ * Performance contract for the InputComposer composer pill.
  *
- * `value` is local state (InputBar.tsx), so the composer re-renders on every
+ * `value` is local state (InputComposer.tsx), so the composer re-renders on every
  * keystroke. framer-motion's `layout` prop makes the projection pass measure
  * the node on every one of those renders — a forced reflow per typed
  * character, on the hottest path in the app.
@@ -63,7 +63,7 @@ mock.module('@/hooks/use-platform', () => ({
 }))
 
 const { render, cleanup } = await import('@testing-library/react')
-const { InputBar } = await import('@/components/InputBar')
+const { InputComposer } = await import('@/components/InputComposer')
 
 afterEach(() => {
   cleanup()
@@ -77,21 +77,21 @@ function findPill() {
   )
 }
 
-describe('InputBar — composer pill motion contract', () => {
+describe('InputComposer — composer pill motion contract', () => {
   it('renders the desktop pill as a motion element', () => {
-    render(<InputBar onSubmit={() => {}} />)
+    render(<InputComposer onSubmit={() => {}} />)
     expect(findPill()).toBeDefined()
   })
 
   it('does not use layout projection on the pill (forced reflow per keystroke)', () => {
-    render(<InputBar onSubmit={() => {}} />)
+    render(<InputComposer onSubmit={() => {}} />)
     const pill = findPill()!
     expect(pill.layout).toBeUndefined()
     expect(pill.layoutId).toBeUndefined()
   })
 
   it('still animates padding between minimized and expanded', () => {
-    render(<InputBar onSubmit={() => {}} />)
+    render(<InputComposer onSubmit={() => {}} />)
     const pill = findPill()!
     expect(pill.animate).toEqual({ padding: 8 })
   })

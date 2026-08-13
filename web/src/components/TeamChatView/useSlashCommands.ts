@@ -5,7 +5,7 @@
  * Owns:
  *   - Fetching user-defined commands + snippets (workspace-scoped queries).
  *   - Assembling the ``SlashCommand[]`` / ``SnippetCommand[]`` lists the
- *     ``InputBar`` renders in its picker (built-ins + backend-discovered).
+ *     ``InputComposer`` renders in its picker (built-ins + backend-discovered).
  *   - Dispatching a picked slash command (``stop`` / ``continue`` /
  *     ``compact`` / ``undo`` / ``redo`` / ``new`` / ``init`` — team-lifecycle
  *     actions read straight off ``useTeamStore.getState()`` since they're
@@ -21,14 +21,14 @@ import { useSnippetsQuery } from '@/queries/useSnippetsQuery'
 import { renderCommand, renderSnippet } from '@/api/client'
 import { useTeamStore } from '@/stores/useTeamStore'
 import { useToastStore } from '@/stores/useToastStore'
-import { type InputBarHandle, type SlashCommand, type SnippetCommand } from '../InputBar'
+import { type InputComposerHandle, type SlashCommand, type SnippetCommand } from '../InputComposer'
 import { BASE_SLASH_COMMANDS, attachmentToFile } from './helpers'
 
 export interface UseSlashCommandsArgs {
   mode: 'normal' | 'coding'
   /** Coding workspace path, or `null` in normal mode / no workspace attached. */
   agentWorkspace: string | null
-  inputRef: RefObject<InputBarHandle | null>
+  inputRef: RefObject<InputComposerHandle | null>
   handleNewSession: () => void
 }
 

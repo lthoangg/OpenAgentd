@@ -1,8 +1,8 @@
 /**
- * Attachment strip state + handlers for InputBar — file selection, paste,
+ * Attachment strip state + handlers for InputComposer — file selection, paste,
  * and drag-and-drop.
  *
- * Kept in a separate module (not a `.tsx` component) so InputBar.tsx's
+ * Kept in a separate module (not a `.tsx` component) so InputComposer.tsx's
  * render tree stays focused on layout/markup; this hook owns all the
  * `files` state transitions and DOM event wiring around them.
  */
@@ -13,15 +13,15 @@ import {
   filesFromDataTransfer,
   isFileTypeAllowed,
   splitFilesByBudget,
-} from './InputBar.files'
+} from './InputComposer.files'
 import { useToastStore } from '@/stores/useToastStore'
 import { formatBytes } from '@/utils/format'
 
-export interface UseInputBarAttachmentsOptions {
+export interface UseInputComposerAttachmentsOptions {
   capabilities?: AgentCapabilities
 }
 
-export function useInputBarAttachments({ capabilities }: UseInputBarAttachmentsOptions) {
+export function useInputComposerAttachments({ capabilities }: UseInputComposerAttachmentsOptions) {
   const [files, setFiles] = useState<File[]>([])
   const fileInputRef = useRef<HTMLInputElement>(null)
   const pushToast = useToastStore((s) => s.push)

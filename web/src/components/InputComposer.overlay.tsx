@@ -1,5 +1,5 @@
 /**
- * Syntax-highlight overlay for the InputBar's textarea.
+ * Syntax-highlight overlay for the InputComposer's textarea.
  *
  * Renders a mirror ``<div>`` directly behind the textarea using the same
  * font, line-height and wrap rules. The mirror paints the full message
@@ -18,8 +18,8 @@
  */
 import { memo, useEffect, useMemo, useRef } from 'react'
 
-import { buildMentionLookup, findCommittedMentions, type FileRef } from './InputBar.mentions'
-import { MAX_TEXTAREA_HEIGHT } from './InputBar.autosize'
+import { buildMentionLookup, findCommittedMentions, type FileRef } from './InputComposer.mentions'
+import { MAX_TEXTAREA_HEIGHT } from './InputComposer.autosize'
 
 interface MentionOverlayProps {
   /** Current textarea value. */

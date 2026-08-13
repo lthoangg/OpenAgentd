@@ -2,24 +2,24 @@ import { useRef, useState, useCallback, useImperativeHandle, forwardRef, useEffe
 import { ArrowUp, Loader2, MessageCircle, Paperclip, Square } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { FilePreviewStrip } from './FilePreviewStrip'
-import { findActiveMention, getExplicitMentionRanges, type FileRef } from './InputBar.mentions'
-import { MentionOverlay } from './InputBar.overlay'
-import { CHAR_WARN_THRESHOLD, findActiveSnippet } from './InputBar.helpers'
-import { InputBarSuggestions } from './InputBar.suggestions'
-import { useInputBarSuggestionEngine } from './InputBar.suggestionEngine'
-import { MAX_TEXTAREA_HEIGHT, useTextareaAutosize } from './InputBar.autosize'
+import { findActiveMention, getExplicitMentionRanges, type FileRef } from './InputComposer.mentions'
+import { MentionOverlay } from './InputComposer.overlay'
+import { CHAR_WARN_THRESHOLD, findActiveSnippet } from './InputComposer.helpers'
+import { InputComposerSuggestions } from './InputComposer.suggestions'
+import { useInputComposerSuggestionEngine } from './InputComposer.suggestionEngine'
+import { MAX_TEXTAREA_HEIGHT, useTextareaAutosize } from './InputComposer.autosize'
 import type { AgentCapabilities } from '@/api/types'
-import { buildAcceptString } from './InputBar.files'
-import { useInputBarAttachments } from './InputBar.attachments'
-import { buildHistoryEntries } from './InputBar.menus'
+import { buildAcceptString } from './InputComposer.files'
+import { useInputComposerAttachments } from './InputComposer.attachments'
+import { buildHistoryEntries } from './InputComposer.menus'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 
 // Re-export the public type so callers can import ``FileRef`` from this module
 // alongside the component. (The helper ``findActiveMention`` is imported from
-// './InputBar.mentions' directly to keep this file free of non-component
+// './InputComposer.mentions' directly to keep this file free of non-component
 // runtime exports — react-refresh requirement.)
-export type { FileRef } from './InputBar.mentions'
+export type { FileRef } from './InputComposer.mentions'
 
 // ── Slash commands ──────────────────────────────────────────────────────────
 
@@ -62,7 +62,7 @@ export interface SnippetCommand {
   category?: string
 }
 
-export interface InputBarProps {
+export interface InputComposerProps {
   onSubmit: (message: string, files?: File[], mentionedFiles?: string[]) => void
   onStop?: () => void
   onSlashCommand?: (id: string) => void
@@ -85,12 +85,12 @@ export interface InputBarProps {
    * When true, the component renders only the inner rounded pill (no
    * top border, no background row chrome). A parent wrapper is expected
    * to provide positioning, shadow, and backdrop. Used by
-   * `FloatingInputBar` for the draggable variant.
+   * `FloatingInputComposer` for the draggable variant.
    */
   floating?: boolean
   /**
    * When true, file previews render below the input container instead of
-   * above it. Used by `FloatingInputBar` when the panel is near the top
+   * above it. Used by `FloatingInputComposer` when the panel is near the top
    * edge of its bounds so previews stay visible.
    */
   filesBelow?: boolean
@@ -99,7 +99,7 @@ export interface InputBarProps {
    * Optional render-prop for a drag handle rendered anchored to the top
    * edge of the input pill (not the outer wrapper). This keeps the handle
    * pinned to the input regardless of whether file previews are rendered
-   * above or below. Used by `FloatingInputBar`.
+   * above or below. Used by `FloatingInputComposer`.
    */
   renderDragHandle?: () => React.ReactNode
   /**
@@ -136,7 +136,7 @@ export interface InputBarProps {
   historyPrompts?: string[]
 }
 
-export interface InputBarHandle {
+export interface InputComposerHandle {
   focus: () => void
   setValue: (text: string) => void
   appendValue: (text: string) => void
@@ -153,7 +153,7 @@ export interface InputBarHandle {
 }
 
 
-export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function InputBar({
+export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>(function InputComposer({
   onSubmit,
   onStop,
   onSlashCommand,
@@ -194,7 +194,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
     handleDragOver,
     handleDrop,
     handleFileSelect,
-  } = useInputBarAttachments({ capabilities })
+  } = useInputComposerAttachments({ capabilities })
   const [localHistory, setLocalHistory] = useState<string[]>([])
   const [historyIndex, setHistoryIndex] = useState(-1)
   const [mentions, setMentions] = useState<string[]>([])
@@ -235,7 +235,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
     [localHistory, historyPrompts],
   )
 
-  // Height-to-content resizing. See InputBar.autosize.ts.
+  // Height-to-content resizing. See InputComposer.autosize.ts.
   const {
     resize,
     scheduleResize,
@@ -254,7 +254,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
     commit,
     commitActive,
     dismiss,
-  } = useInputBarSuggestionEngine({
+  } = useInputComposerSuggestionEngine({
     value,
     setValue,
     textareaRef,
@@ -775,7 +775,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
         // further with every scroll. The wrapper around the overlay handles
         // overflow via the overlay's ``overflow-hidden`` + scroll sync.
         className="block w-full resize-none scrollbar-none overscroll-contain bg-transparent p-0 align-middle text-sm leading-relaxed break-words text-transparent caret-(--color-text) placeholder-(--color-text-subtle) selection:bg-(--color-accent)/30 selection:text-(--color-text) focus:outline-none disabled:opacity-50"
-        // Cap matches the ``resize()`` ceiling in InputBar.autosize.ts so the
+        // Cap matches the ``resize()`` ceiling in InputComposer.autosize.ts so the
         // JS-driven height and the CSS limit stay in lockstep.
         style={{ maxHeight: `${MAX_TEXTAREA_HEIGHT}px` }}
         // Spellcheck disabled: the squiggle is painted by the browser under
@@ -845,7 +845,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
   // by framer's projection pass on every render — 2 forced
   // ``getBoundingClientRect`` calls per typed character. Measured with
   // ``bun scripts/bench-motion-layout.mjs``; pinned by
-  // ``InputBar.layout-perf.test.tsx``. The padding animation below is free
+  // ``InputComposer.layout-perf.test.tsx``. The padding animation below is free
   // while typing (it only retargets on the minimize toggle).
   const pill = isMobile ? (
     <div
@@ -878,7 +878,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
       <div className={floating ? 'relative' : 'relative mx-auto max-w-3xl'}>
         {!minimized && !filesBelow && filePreviews}
 
-        <InputBarSuggestions
+        <InputComposerSuggestions
           minimized={minimized}
           menu={menu}
           activeIndex={activeIndex}

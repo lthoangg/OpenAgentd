@@ -6,7 +6,7 @@
  */
 import { resolveApiUrl } from '@/api/client'
 import type { MessageAttachment } from '@/api/types'
-import type { SlashCommand } from '../InputBar'
+import type { SlashCommand } from '../InputComposer'
 
 /** Built-in slash commands always available, ahead of any user-defined ones. */
 export const BASE_SLASH_COMMANDS: SlashCommand[] = [

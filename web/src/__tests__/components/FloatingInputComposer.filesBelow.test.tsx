@@ -2,7 +2,7 @@ import { describe, it, expect, afterEach, beforeEach } from "bun:test"
 import { useRef } from "react"
 import { render, screen, cleanup, act } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import { FloatingInputBar } from "@/components/FloatingInputBar"
+import { FloatingInputComposer } from "@/components/FloatingInputComposer"
 
 const STORAGE_KEY = "oa-input-position"
 
@@ -23,7 +23,7 @@ function Harness(props: {
       data-testid="bounds"
       style={{ position: "relative", width: 1200, height: 800 }}
     >
-      <FloatingInputBar
+      <FloatingInputComposer
         boundsRef={boundsRef}
         onSubmit={props.onSubmit ?? (() => {})}
         placeholder={props.placeholder ?? "Message…"}
@@ -32,7 +32,7 @@ function Harness(props: {
   )
 }
 
-describe("FloatingInputBar.filesBelow", () => {
+describe("FloatingInputComposer.filesBelow", () => {
   it("defaults to filesBelow=true (previews render below) when no position cue available", async () => {
     const user = userEvent.setup()
     render(<Harness />)

@@ -1,5 +1,5 @@
 /**
- * Tests for InputBar.suggestions positioning fixes.
+ * Tests for InputComposer.suggestions positioning fixes.
  *
  * Covers platform-specific positioning logic:
  *
@@ -10,8 +10,8 @@
 import { describe, it, expect, afterEach, mock, beforeEach } from "bun:test"
 import { render, screen, cleanup, act } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import { InputBar } from "@/components/InputBar"
-import type { FileRef } from "@/components/InputBar"
+import { InputComposer } from "@/components/InputComposer"
+import type { FileRef } from "@/components/InputComposer"
 
 mock.module("lucide-react", () => new Proxy({}, { get: () => () => null }))
 
@@ -27,7 +27,7 @@ const fixtures: FileRef[] = [
 /** Return the mention listbox once it is open. */
 async function openMentionPicker() {
   const user = userEvent.setup()
-  render(<InputBar onSubmit={() => {}} fileRefs={fixtures} />)
+  render(<InputComposer onSubmit={() => {}} fileRefs={fixtures} />)
   await user.type(screen.getByLabelText("Message input"), "@")
   return screen.getByRole("listbox", { name: "Reference workspace file" })
 }
@@ -62,7 +62,7 @@ function mockIsMobile(isMobile: boolean) {
 
 // ── 1. position: fixed (mobile) ────────────────────────────────────────────
 
-describe("InputBarSuggestions — position: fixed (mobile)", () => {
+describe("InputComposerSuggestions — position: fixed (mobile)", () => {
   let cleanup: () => void
   beforeEach(() => {
     cleanup = mockIsMobile(true)
@@ -79,7 +79,7 @@ describe("InputBarSuggestions — position: fixed (mobile)", () => {
   it("slash command menu has position:fixed on mobile", async () => {
     const user = userEvent.setup()
     render(
-      <InputBar
+      <InputComposer
         onSubmit={() => {}}
         slashCommands={[{ id: "stop", label: "Stop", description: "" }]}
       />,
@@ -92,7 +92,7 @@ describe("InputBarSuggestions — position: fixed (mobile)", () => {
 
 // ── 1b. position: absolute (desktop) ───────────────────────────────────────
 
-describe("InputBarSuggestions — position: absolute (desktop)", () => {
+describe("InputComposerSuggestions — position: absolute (desktop)", () => {
   let cleanup: () => void
   beforeEach(() => {
     cleanup = mockIsMobile(false)
@@ -109,7 +109,7 @@ describe("InputBarSuggestions — position: absolute (desktop)", () => {
   it("slash command menu has position:absolute on desktop", async () => {
     const user = userEvent.setup()
     render(
-      <InputBar
+      <InputComposer
         onSubmit={() => {}}
         slashCommands={[{ id: "stop", label: "Stop", description: "" }]}
       />,
@@ -201,7 +201,7 @@ describe("InputBarSuggestions — position: absolute (desktop)", () => {
 
 // ── 2. coordinates from getBoundingClientRect (mobile) ─────────────────────
 
-describe("InputBarSuggestions — coordinates from getBoundingClientRect (mobile)", () => {
+describe("InputComposerSuggestions — coordinates from getBoundingClientRect (mobile)", () => {
   let cleanup: () => void
   beforeEach(() => {
     cleanup = mockIsMobile(true)
@@ -271,7 +271,7 @@ describe("InputBarSuggestions — coordinates from getBoundingClientRect (mobile
 
 // ── 3. visualViewport resize triggers repositioning ────────────────────────
 
-describe("InputBarSuggestions — visualViewport resize", () => {
+describe("InputComposerSuggestions — visualViewport resize", () => {
   it("recalculates position when visualViewport fires a resize event", async () => {
     const cleanupMobile = mockIsMobile(true)
     // Set up a fake visualViewport with addEventListener/removeEventListener.
@@ -339,7 +339,7 @@ describe("InputBarSuggestions — visualViewport resize", () => {
     Object.defineProperty(window, "visualViewport", { value: fakeVV, configurable: true })
 
     const user = userEvent.setup()
-    render(<InputBar onSubmit={() => {}} fileRefs={fixtures} />)
+    render(<InputComposer onSubmit={() => {}} fileRefs={fixtures} />)
     await user.type(screen.getByLabelText("Message input"), "@")
     expect(screen.getByRole("listbox", { name: "Reference workspace file" })).toBeTruthy()
     expect(listeners.length).toBeGreaterThan(0)

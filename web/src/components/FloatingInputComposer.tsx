@@ -1,7 +1,7 @@
 import { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from 'react'
 import { motion, useDragControls } from 'framer-motion'
 import { GripHorizontal } from 'lucide-react'
-import { InputBar, type FileRef, type InputBarHandle, type SlashCommand, type SnippetCommand } from './InputBar'
+import { InputComposer, type FileRef, type InputComposerHandle, type SlashCommand, type SnippetCommand } from './InputComposer'
 import { RevertNotice } from './RevertNotice'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { getPlatform } from '@/hooks/use-platform'
@@ -89,7 +89,7 @@ function clampOffset(offset: StoredOffset, panel: Size, bounds: Size): StoredOff
 
 // ── Component ────────────────────────────────────────────────────────────────
 
-interface FloatingInputBarProps {
+interface FloatingInputComposerProps {
   boundsRef: React.RefObject<HTMLElement | null>
   onSubmit: (message: string, files?: File[], mentions?: string[]) => void
   onStop?: () => void
@@ -122,9 +122,9 @@ interface FloatingInputBarProps {
  * explicit grip handle so it doesn't conflict with textarea text selection.
  * Position persists in `localStorage` and is clamped on resize.
  */
-export const FloatingInputBar = memo(
-  forwardRef<InputBarHandle, FloatingInputBarProps>(
-    function FloatingInputBar({ boundsRef, ...inputProps }, ref) {
+export const FloatingInputComposer = memo(
+  forwardRef<InputComposerHandle, FloatingInputComposerProps>(
+    function FloatingInputComposer({ boundsRef, ...inputProps }, ref) {
     const isMobile = useIsMobile()
     const dragControls = useDragControls()
     const panelRef = useRef<HTMLDivElement>(null)
@@ -150,8 +150,8 @@ export const FloatingInputBar = memo(
     const [hasContent, setHasContent] = useState(false)
     const blurTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-    const innerRef = useRef<InputBarHandle | null>(null)
-    const setInputRefs = useCallback((handle: InputBarHandle | null) => {
+    const innerRef = useRef<InputComposerHandle | null>(null)
+    const setInputRefs = useCallback((handle: InputComposerHandle | null) => {
       innerRef.current = handle
     }, [])
 
@@ -161,7 +161,7 @@ export const FloatingInputBar = memo(
         blurTimerRef.current = null
       }
       setMinimized(false)
-      // Focus is owned by InputBar's auto-focus-on-mount callback ref
+      // Focus is owned by InputComposer's auto-focus-on-mount callback ref
       // — it fires the moment the textarea actually attaches to the
       // DOM, after AnimatePresence finishes the message-button exit.
       // A parent-side focus() here would race the unmounted ref.
@@ -363,7 +363,7 @@ export const FloatingInputBar = memo(
 
     // External signals that should keep the bar expanded regardless of
     // focus state. ``disabled`` covers the "waiting for response" pause; ``hasContent`` covers
-    // text/attachments held inside InputBar so
+    // text/attachments held inside InputComposer so
     // dropping a file via the slim strip's attach button immediately
     // re-expands the bar. Derived (not stored) so we don't cascade
     // renders inside an effect.
@@ -505,7 +505,7 @@ export const FloatingInputBar = memo(
           className="pointer-events-auto border-t border-(--color-border) bg-(--bg-page) px-3 pb-safe pt-2"
         >
           <RevertNotice count={inputProps.revertedCount ?? 0} messages={inputProps.revertedMessages ?? []} onRedo={inputProps.onRedo} />
-          <InputBar
+          <InputComposer
             ref={setInputRefs}
             floating
             filesBelow={false}
@@ -567,7 +567,7 @@ export const FloatingInputBar = memo(
         >
         <RevertNotice count={inputProps.revertedCount ?? 0} messages={inputProps.revertedMessages ?? []} onRedo={inputProps.onRedo} />
         <div className={effectiveMinimized ? '' : 'px-3'}>
-          <InputBar
+          <InputComposer
             ref={setInputRefs}
             floating
             filesBelow={renderSuggestionsBelow}

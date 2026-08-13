@@ -723,6 +723,10 @@ MCP.
 - **Semantic LSP navigation** `[v1.133.0]` — coding-team agents can find definitions,
   references, document symbols, and workspace symbols through the language server,
   using compact workspace-relative results instead of text search for code navigation.
+  Results include a readable symbol kind (`Widget (class)`, `run (function)`) when the
+  language server reports one; a file's own symbols list in source order (top-to-bottom),
+  while cross-file results (references, workspace-wide symbol search) stay alphabetically
+  sorted for determinism across multiple language-server clients.
 - **Clean tool argument validation errors** `[v1.77.0]` — when a tool call
   fails Pydantic validation, the LLM receives a compact `field: message`
   summary instead of the full Pydantic noise (type codes, raw input value,

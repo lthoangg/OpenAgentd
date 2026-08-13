@@ -134,10 +134,12 @@ def test_schedule_description_keeps_self_routing_and_compact_loop_recipe():
 
 
 def test_lsp_description_distinguishes_semantic_and_text_search():
-    assert "Coding mode only" in lsp_navigation.description
-    assert "definitions, references, and symbols" in lsp_navigation.description
-    assert "grep/glob" in lsp_navigation.description
-    assert "text or filename patterns" in lsp_navigation.description
+    assert "Coding mode only" not in lsp_navigation.description
+    assert "definition" in lsp_navigation.description
+    assert "reference" in lsp_navigation.description
+    assert "symbol" in lsp_navigation.description
+    assert "grep for text search" in lsp_navigation.description
+    assert "glob for filename patterns" in lsp_navigation.description
     assert "workspace-relative locations" in lsp_navigation.description
     assert "up to 50" in lsp_navigation.description
 

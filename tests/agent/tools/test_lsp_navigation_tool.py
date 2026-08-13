@@ -216,3 +216,109 @@ async def test_rejects_mismatched_injected_and_sandbox_workspaces(tmp_path: Path
                 "_workspace": str(tmp_path / "another-workspace"),
             },
         )
+
+
+@pytest.mark.asyncio
+async def test_workspace_symbol_appends_readable_kind_label(tmp_path: Path):
+    source = tmp_path / "symbols.py"
+    source.write_text("", encoding="utf-8")
+    _sandbox(tmp_path)
+    with patch(
+        "app.agent.tools.builtin.lsp.lsp_manager.navigation",
+        new_callable=AsyncMock,
+        return_value=[
+            {
+                "name": "Widget",
+                "kind": 5,  # SymbolKind.Class
+                "location": {
+                    "uri": (tmp_path / "widget.py").as_uri(),
+                    "range": {"start": {"line": 0, "character": 0}},
+                },
+            },
+        ],
+    ):
+        result = await lsp_navigation.arun(
+            operation="workspace_symbol",
+            path="symbols.py",
+            query="Widget",
+            _injected={"_mode": "coding", "_workspace": str(tmp_path)},
+        )
+    assert result == "Widget (class) | widget.py:1:1"
+
+
+@pytest.mark.asyncio
+async def test_workspace_symbol_omits_kind_label_for_unknown_or_missing_kind(
+    tmp_path: Path,
+):
+    source = tmp_path / "symbols.py"
+    source.write_text("", encoding="utf-8")
+    _sandbox(tmp_path)
+    with patch(
+        "app.agent.tools.builtin.lsp.lsp_manager.navigation",
+        new_callable=AsyncMock,
+        return_value=[
+            {
+                "name": "NoKind",
+                "location": {
+                    "uri": (tmp_path / "a.py").as_uri(),
+                    "range": {"start": {"line": 0, "character": 0}},
+                },
+            },
+            {
+                "name": "WeirdKind",
+                "kind": 9999,
+                "location": {
+                    "uri": (tmp_path / "b.py").as_uri(),
+                    "range": {"start": {"line": 0, "character": 0}},
+                },
+            },
+        ],
+    ):
+        result = await lsp_navigation.arun(
+            operation="workspace_symbol",
+            path="symbols.py",
+            _injected={"_mode": "coding", "_workspace": str(tmp_path)},
+        )
+    assert result == "NoKind | a.py:1:1\nWeirdKind | b.py:1:1"
+
+
+@pytest.mark.asyncio
+async def test_document_symbol_orders_by_source_position_not_alphabetically(
+    tmp_path: Path,
+):
+    """A file's symbols read top-to-bottom, not A-to-Z — unlike workspace_symbol
+    (which spans many files and has no single natural reading order), a single
+    document's outline is most useful in the order it appears in the file."""
+    source = tmp_path / "module.py"
+    source.write_text("", encoding="utf-8")
+    _sandbox(tmp_path)
+    with patch(
+        "app.agent.tools.builtin.lsp.lsp_manager.navigation",
+        new_callable=AsyncMock,
+        return_value=[
+            {
+                "name": "zeta_last",
+                "kind": 12,  # Function
+                "location": {
+                    "uri": source.as_uri(),
+                    "range": {"start": {"line": 9, "character": 0}},
+                },
+            },
+            {
+                "name": "alpha_first",
+                "kind": 5,  # Class
+                "location": {
+                    "uri": source.as_uri(),
+                    "range": {"start": {"line": 0, "character": 0}},
+                },
+            },
+        ],
+    ):
+        result = await lsp_navigation.arun(
+            operation="document_symbol",
+            path="module.py",
+            _injected={"_mode": "coding", "_workspace": str(tmp_path)},
+        )
+    assert result == (
+        "alpha_first (class) | module.py:1:1\nzeta_last (function) | module.py:10:1"
+    )

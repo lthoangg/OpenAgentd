@@ -13,8 +13,45 @@ from app.services.lsp import lsp_manager
 
 _MAX_RESULTS = 50
 
+# LSP spec `SymbolKind` enum (textDocument/documentSymbol, workspace/symbol).
+# Surfacing this alongside a symbol's name turns "Widget" into "Widget
+# (class)" — a same-named function/class/variable ambiguity an agent would
+# otherwise have to open the file to resolve.
+_SYMBOL_KIND_LABELS: dict[int, str] = {
+    1: "file",
+    2: "module",
+    3: "namespace",
+    4: "package",
+    5: "class",
+    6: "method",
+    7: "property",
+    8: "field",
+    9: "constructor",
+    10: "enum",
+    11: "interface",
+    12: "function",
+    13: "variable",
+    14: "constant",
+    15: "string",
+    16: "number",
+    17: "boolean",
+    18: "array",
+    19: "object",
+    20: "key",
+    21: "null",
+    22: "enum member",
+    23: "struct",
+    24: "event",
+    25: "operator",
+    26: "type parameter",
+}
 
-def _relative_location(item: dict, workspace: Path) -> tuple[str, str] | None:
+
+def _relative_location(item: dict, workspace: Path) -> tuple[str, int, int] | None:
+    """Resolve *item* to a sandboxed workspace-relative ``(path, line, character)``.
+
+    ``line``/``character`` are returned 1-based (LSP positions are 0-based).
+    """
     location = item.get("location", item)
     if "targetUri" in item:
         location = {
@@ -44,7 +81,7 @@ def _relative_location(item: dict, workspace: Path) -> tuple[str, str] | None:
     line, character = position.get("line"), position.get("character")
     if not isinstance(line, int) or not isinstance(character, int):
         return None
-    return path.relative_to(workspace).as_posix(), f"{line + 1}:{character + 1}"
+    return path.relative_to(workspace).as_posix(), line + 1, character + 1
 
 
 async def _lsp_navigation(
@@ -103,29 +140,49 @@ async def _lsp_navigation(
         character=character - 1,
         query=query,
     )
-    formatted: set[str] = set()
+    # (sort_key, formatted_line); dedup by line text since multiple LSP
+    # clients (e.g. Python's ty + ruff) can report the same location twice.
+    seen: set[str] = set()
+    entries: list[tuple[tuple[int, int] | str, str]] = []
     for item in results:
         parsed = _relative_location(item, workspace)
         if parsed is None:
             continue
-        display_path, position = parsed
+        display_path, line_no, char_no = parsed
         name = item.get("name") if isinstance(item, dict) else None
-        formatted.add(
-            f"{name} | {display_path}:{position}"
-            if isinstance(name, str)
-            else f"{display_path}:{position}"
-        )
-    if not formatted:
+        kind = item.get("kind") if isinstance(item, dict) else None
+        kind_label = _SYMBOL_KIND_LABELS.get(kind) if isinstance(kind, int) else None
+        if isinstance(name, str):
+            label = f"{name} ({kind_label})" if kind_label else name
+            line_text = f"{label} | {display_path}:{line_no}:{char_no}"
+        else:
+            line_text = f"{display_path}:{line_no}:{char_no}"
+        if line_text in seen:
+            continue
+        seen.add(line_text)
+        # A single document's symbols read top-to-bottom, so source position
+        # is the useful order. workspace_symbol/find_references/
+        # go_to_definition span many files with no such natural order —
+        # alphabetical keeps those deterministic across LSP clients instead.
+        sort_key = (line_no, char_no) if operation == "document_symbol" else line_text
+        entries.append((sort_key, line_text))
+    if not entries:
         return "No results."
-    return "\n".join(sorted(formatted)[:_MAX_RESULTS])
+    entries.sort(key=lambda entry: entry[0])
+    return "\n".join(line_text for _, line_text in entries[:_MAX_RESULTS])
 
 
 lsp_navigation = Tool(
     _lsp_navigation,
     name="lsp",
     description=(
-        "Coding mode only. Use LSP for code definitions, references, and symbols; "
-        "use grep/glob for text or filename patterns. Returns up to 50 compact "
+        "Semantic code navigation via the workspace language server: jump to a "
+        "symbol's definition, find every reference to it, list a file's symbols "
+        "in source order, or search symbols by name across the whole workspace. "
+        "It understands the language, so it resolves what text search can't — "
+        "renamed imports, overridden methods, a symbol name that also appears in "
+        "a comment or string elsewhere. Use grep for text search or glob for "
+        "filename patterns instead. Returns up to 50 compact, deduplicated "
         "workspace-relative locations."
     ),
 )

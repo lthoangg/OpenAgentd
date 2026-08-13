@@ -22,6 +22,7 @@ def test_schema_exposes_only_snake_case_operations():
         "find_references",
         "document_symbol",
         "workspace_symbol",
+        "hover",
     ]
     assert "path" in parameters["required"]
     assert parameters["properties"]["path"]["type"] == "string"
@@ -280,6 +281,161 @@ async def test_workspace_symbol_omits_kind_label_for_unknown_or_missing_kind(
             _injected={"_mode": "coding", "_workspace": str(tmp_path)},
         )
     assert result == "NoKind | a.py:1:1\nWeirdKind | b.py:1:1"
+
+
+@pytest.mark.asyncio
+async def test_unsupported_extension_short_circuits_without_starting_a_server(
+    tmp_path: Path,
+):
+    """.rs/.md/.rb/etc have no EXTENSION_TO_LANG entry — fail fast with a clear
+    reason instead of silently returning 'No results.', which would read as
+    'this symbol doesn't exist' rather than 'this file type isn't supported'."""
+    source = tmp_path / "notes.md"
+    source.write_text("# Notes", encoding="utf-8")
+    _sandbox(tmp_path)
+    with patch(
+        "app.agent.tools.builtin.lsp.lsp_manager.navigation",
+        new_callable=AsyncMock,
+    ) as navigation:
+        result = await lsp_navigation.arun(
+            operation="document_symbol",
+            path="notes.md",
+            _injected={"_mode": "coding", "_workspace": str(tmp_path)},
+        )
+    assert "no language server" in result.lower()
+    assert ".md" in result
+    navigation.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_hover_formats_markup_content(tmp_path: Path):
+    source = tmp_path / "main.py"
+    source.write_text("answer()\n", encoding="utf-8")
+    _sandbox(tmp_path)
+    with patch(
+        "app.agent.tools.builtin.lsp.lsp_manager.navigation",
+        new_callable=AsyncMock,
+        return_value=[
+            {
+                "contents": {
+                    "kind": "markdown",
+                    "value": "```python\ndef answer() -> int\n```",
+                }
+            }
+        ],
+    ):
+        result = await lsp_navigation.arun(
+            operation="hover",
+            path="main.py",
+            line=1,
+            character=1,
+            _injected={"_mode": "coding", "_workspace": str(tmp_path)},
+        )
+    assert result == "```python\ndef answer() -> int\n```"
+
+
+@pytest.mark.asyncio
+async def test_hover_formats_marked_string_array(tmp_path: Path):
+    source = tmp_path / "main.py"
+    source.write_text("answer()\n", encoding="utf-8")
+    _sandbox(tmp_path)
+    with patch(
+        "app.agent.tools.builtin.lsp.lsp_manager.navigation",
+        new_callable=AsyncMock,
+        return_value=[
+            {
+                "contents": [
+                    {"language": "python", "value": "def answer() -> int"},
+                    "Returns the answer.",
+                ]
+            }
+        ],
+    ):
+        result = await lsp_navigation.arun(
+            operation="hover",
+            path="main.py",
+            _injected={"_mode": "coding", "_workspace": str(tmp_path)},
+        )
+    assert result == "def answer() -> int\n\nReturns the answer."
+
+
+@pytest.mark.asyncio
+async def test_hover_with_no_result_reports_no_information(tmp_path: Path):
+    source = tmp_path / "main.py"
+    source.write_text("answer()\n", encoding="utf-8")
+    _sandbox(tmp_path)
+    with patch(
+        "app.agent.tools.builtin.lsp.lsp_manager.navigation",
+        new_callable=AsyncMock,
+        return_value=[],
+    ):
+        result = await lsp_navigation.arun(
+            operation="hover",
+            path="main.py",
+            _injected={"_mode": "coding", "_workspace": str(tmp_path)},
+        )
+    assert result == "No hover information available."
+
+
+@pytest.mark.asyncio
+async def test_kind_filter_narrows_workspace_symbol_results(tmp_path: Path):
+    source = tmp_path / "symbols.py"
+    source.write_text("", encoding="utf-8")
+    _sandbox(tmp_path)
+    with patch(
+        "app.agent.tools.builtin.lsp.lsp_manager.navigation",
+        new_callable=AsyncMock,
+        return_value=[
+            {
+                "name": "Widget",
+                "kind": 5,  # Class
+                "location": {
+                    "uri": (tmp_path / "a.py").as_uri(),
+                    "range": {"start": {"line": 0, "character": 0}},
+                },
+            },
+            {
+                "name": "make_widget",
+                "kind": 12,  # Function
+                "location": {
+                    "uri": (tmp_path / "b.py").as_uri(),
+                    "range": {"start": {"line": 0, "character": 0}},
+                },
+            },
+        ],
+    ):
+        result = await lsp_navigation.arun(
+            operation="workspace_symbol",
+            path="symbols.py",
+            kind="function",
+            _injected={"_mode": "coding", "_workspace": str(tmp_path)},
+        )
+    assert result == "make_widget (function) | b.py:1:1"
+
+
+@pytest.mark.asyncio
+async def test_kind_filter_is_case_insensitive_and_ignored_for_location_operations(
+    tmp_path: Path,
+):
+    source = tmp_path / "main.py"
+    source.write_text("x", encoding="utf-8")
+    target = tmp_path / "answer.py"
+    target.write_text("x", encoding="utf-8")
+    _sandbox(tmp_path)
+    with patch(
+        "app.agent.tools.builtin.lsp.lsp_manager.navigation",
+        new_callable=AsyncMock,
+        return_value=[
+            {"uri": target.as_uri(), "range": {"start": {"line": 0, "character": 0}}}
+        ],
+    ):
+        result = await lsp_navigation.arun(
+            operation="go_to_definition",
+            path="main.py",
+            kind="Class",
+            _injected={"_mode": "coding", "_workspace": str(tmp_path)},
+        )
+    assert result == "answer.py:1:1"
 
 
 @pytest.mark.asyncio

@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import Field
 
 from app.agent.sandbox import get_sandbox
 from app.agent.tools.registry import InjectedArg, Tool
 from app.services.lsp import lsp_manager
+from app.services.lsp.manager import EXTENSION_TO_LANG
 
 _MAX_RESULTS = 50
 
@@ -45,6 +46,27 @@ _SYMBOL_KIND_LABELS: dict[int, str] = {
     25: "operator",
     26: "type parameter",
 }
+_KIND_LABEL_TO_ID: dict[str, int] = {
+    label: kind_id for kind_id, label in _SYMBOL_KIND_LABELS.items()
+}
+
+
+def _hover_text(contents: str | dict[str, Any] | list[Any] | None) -> str:
+    """Flatten an LSP ``Hover.contents`` value to plain text.
+
+    ``contents`` is ``MarkupContent`` (``{kind, value}``), the deprecated
+    ``MarkedString`` (a bare string, or ``{language, value}``), or a list of
+    ``MarkedString`` — servers vary in which shape they use.
+    """
+    if isinstance(contents, str):
+        return contents
+    if isinstance(contents, dict):
+        value = contents.get("value")
+        return value if isinstance(value, str) else ""
+    if isinstance(contents, list):
+        parts = [_hover_text(item) for item in contents]
+        return "\n\n".join(part for part in parts if part)
+    return ""
 
 
 def _relative_location(item: dict, workspace: Path) -> tuple[str, int, int] | None:
@@ -91,6 +113,7 @@ async def _lsp_navigation(
             "find_references",
             "document_symbol",
             "workspace_symbol",
+            "hover",
         ],
         Field(description="Semantic navigation operation."),
     ],
@@ -108,6 +131,16 @@ async def _lsp_navigation(
         int, Field(ge=1, description="One-based character offset.")
     ] = 1,
     query: Annotated[str, Field(description="Symbol query for workspace_symbol.")] = "",
+    kind: Annotated[
+        str,
+        Field(
+            description=(
+                "Optional symbol kind filter for document_symbol/workspace_symbol "
+                "(e.g. 'function', 'class', 'variable'); case-insensitive, ignored "
+                "by other operations."
+            )
+        ),
+    ] = "",
     _mode: Annotated[Literal["normal", "coding"], InjectedArg()] = "normal",
     _workspace: Annotated[str | None, InjectedArg()] = None,
 ) -> str:
@@ -132,6 +165,10 @@ async def _lsp_navigation(
     if not source.is_file():
         raise FileNotFoundError(f"File not found: {path}")
 
+    lang_id = EXTENSION_TO_LANG.get(source.suffix.lower())
+    if lang_id is None:
+        return f"No language server support for '{source.suffix}' files."
+
     results = await lsp_manager.navigation(
         operation,
         workspace,
@@ -140,6 +177,17 @@ async def _lsp_navigation(
         character=character - 1,
         query=query,
     )
+
+    if operation == "hover":
+        for item in results:
+            text = _hover_text(item.get("contents")).strip()
+            if text:
+                return text
+        return "No hover information available."
+
+    kind_filter = _KIND_LABEL_TO_ID.get(kind.lower()) if kind else None
+    supports_kind_filter = operation in ("document_symbol", "workspace_symbol")
+
     # (sort_key, formatted_line); dedup by line text since multiple LSP
     # clients (e.g. Python's ty + ruff) can report the same location twice.
     seen: set[str] = set()
@@ -150,8 +198,16 @@ async def _lsp_navigation(
             continue
         display_path, line_no, char_no = parsed
         name = item.get("name") if isinstance(item, dict) else None
-        kind = item.get("kind") if isinstance(item, dict) else None
-        kind_label = _SYMBOL_KIND_LABELS.get(kind) if isinstance(kind, int) else None
+        item_kind = item.get("kind") if isinstance(item, dict) else None
+        if (
+            supports_kind_filter
+            and kind_filter is not None
+            and item_kind != kind_filter
+        ):
+            continue
+        kind_label = (
+            _SYMBOL_KIND_LABELS.get(item_kind) if isinstance(item_kind, int) else None
+        )
         if isinstance(name, str):
             label = f"{name} ({kind_label})" if kind_label else name
             line_text = f"{label} | {display_path}:{line_no}:{char_no}"
@@ -178,11 +234,13 @@ lsp_navigation = Tool(
     description=(
         "Semantic code navigation via the workspace language server: jump to a "
         "symbol's definition, find every reference to it, list a file's symbols "
-        "in source order, or search symbols by name across the whole workspace. "
-        "It understands the language, so it resolves what text search can't — "
-        "renamed imports, overridden methods, a symbol name that also appears in "
-        "a comment or string elsewhere. Use grep for text search or glob for "
-        "filename patterns instead. Returns up to 50 compact, deduplicated "
-        "workspace-relative locations."
+        "in source order, search symbols by name across the whole workspace, or "
+        "get hover info (type/signature/docstring) for a position. Narrow "
+        "document_symbol/workspace_symbol results with the optional 'kind' "
+        "filter (e.g. 'function', 'class'). It understands the language, so it "
+        "resolves what text search can't — renamed imports, overridden methods, "
+        "a symbol name that also appears in a comment or string elsewhere. Use "
+        "grep for text search or glob for filename patterns instead. Returns up "
+        "to 50 compact, deduplicated workspace-relative locations."
     ),
 )

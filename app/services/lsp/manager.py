@@ -687,6 +687,7 @@ class LspManager:
             "find_references": "textDocument/references",
             "document_symbol": "textDocument/documentSymbol",
             "workspace_symbol": "workspace/symbol",
+            "hover": "textDocument/hover",
         }
         method = methods[operation]
         if file_path is not None:

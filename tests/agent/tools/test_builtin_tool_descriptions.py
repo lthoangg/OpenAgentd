@@ -142,6 +142,8 @@ def test_lsp_description_distinguishes_semantic_and_text_search():
     assert "glob for filename patterns" in lsp_navigation.description
     assert "workspace-relative locations" in lsp_navigation.description
     assert "up to 50" in lsp_navigation.description
+    assert "hover" in lsp_navigation.description
+    assert "kind" in lsp_navigation.description
 
 
 def test_tool_schemas_do_not_repeat_pydantic_titles():

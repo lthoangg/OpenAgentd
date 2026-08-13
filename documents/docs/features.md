@@ -726,7 +726,13 @@ MCP.
   Results include a readable symbol kind (`Widget (class)`, `run (function)`) when the
   language server reports one; a file's own symbols list in source order (top-to-bottom),
   while cross-file results (references, workspace-wide symbol search) stay alphabetically
-  sorted for determinism across multiple language-server clients.
+  sorted for determinism across multiple language-server clients. A `hover` operation
+  returns type/signature/docstring info for a position (flattening `MarkupContent` and
+  `MarkedString` shapes across servers); an optional `kind` filter narrows
+  `document_symbol`/`workspace_symbol` results to one symbol kind (e.g. `function`,
+  `class`); files with no mapped language server (anything outside
+  `.py .ts .tsx .js .jsx .go .c .cpp .h .hpp`) get an explicit "no language server
+  support" message instead of a misleading empty result.
 - **Clean tool argument validation errors** `[v1.77.0]` — when a tool call
   fails Pydantic validation, the LLM receives a compact `field: message`
   summary instead of the full Pydantic noise (type codes, raw input value,

@@ -51,6 +51,20 @@ export function buildMentionLookup(refs: readonly FileRef[]): MentionLookup {
   return { valid, validLineBases }
 }
 
+/**
+ * True when the full mention text ``token`` (``@path``, ``@path/`` for a
+ * directory, or either with a trailing ``#L<n>[-L<n>]`` line-range suffix)
+ * resolves against ``lookup``. Line-range refs are file-only, so the suffix
+ * is stripped and the remainder is checked against ``validLineBases``.
+ * Shared by both {@link findCommittedMentions} modes so the line-ref
+ * stripping logic exists in one place.
+ */
+function resolvesInLookup(token: string, lookup: MentionLookup): boolean {
+  if (lookup.valid.has(token) || lookup.valid.has(`${token}/`)) return true
+  const baseToken = token.replace(/#L\d+(?:-L?\d+)?$/, '')
+  return baseToken !== token && lookup.validLineBases.has(baseToken)
+}
+
 function isMentionLookup(value: unknown): value is MentionLookup {
   return (
     typeof value === 'object' &&
@@ -187,14 +201,9 @@ export function findCommittedMentions(
   if (mentions !== undefined) {
     const explicitRanges = getExplicitMentionRanges(value, mentions)
 
-    const validatedRanges = explicitRanges.filter((r) => {
-      if (!lookup) return true
-      const token = `@${r.path}`
-      const baseToken = token.replace(/#L\d+(?:-L?\d+)?$/, '')
-      const hasFull = lookup.valid.has(token) || lookup.valid.has(token + '/')
-      const hasBase = baseToken !== token && lookup.validLineBases.has(baseToken)
-      return hasFull || hasBase
-    })
+    const validatedRanges = explicitRanges.filter((r) => (
+      !lookup || resolvesInLookup(`@${r.path}`, lookup)
+    ))
 
     if (activeRange) {
       return validatedRanges
@@ -228,16 +237,9 @@ export function findCommittedMentions(
     }
 
     // Validate against lookup when refs are available.
-    if (lookup) {
-      const token = value.slice(i, end)
-      const baseToken = token.replace(/#L\d+(?:-L?\d+)?$/, '')
-      if (
-        !lookup.valid.has(token)
-        && !(baseToken !== token && lookup.validLineBases.has(baseToken))
-      ) {
-        i = j
-        continue
-      }
+    if (lookup && !resolvesInLookup(value.slice(i, end), lookup)) {
+      i = j
+      continue
     }
 
     out.push({ start: i, end })

@@ -41,7 +41,6 @@
     "allow-secure-get-access-key",
     "allow-secure-set-access-key",
     "allow-secure-delete-access-key",
-    "allow-request-voice-permissions",
     "allow-save-workspace-file",
     "allow-backend-health",
     "allow-backend-logs-path",

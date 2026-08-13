@@ -41,12 +41,6 @@ url = "2"
 tauri = { version = "2", features = ["test"] }
 tempfile = "3"
 
-[target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
-block2 = "0.6"
-objc2 = "0.6"
-objc2-av-foundation = { version = "0.3.2", default-features = false, features = ["AVCaptureDevice", "AVMediaFormat", "block2"] }
-objc2-speech = { version = "0.3.2", default-features = false, features = ["SFSpeechRecognizer", "block2"] }
-
 [target.'cfg(target_os = "macos")'.dependencies]
 flate2 = "1"
 tar = "0.4"

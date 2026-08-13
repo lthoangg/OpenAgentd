@@ -126,6 +126,7 @@ export interface DropdownProps {
   id?: string
   'aria-label'?: string
   'aria-invalid'?: boolean | 'true' | 'false'
+  'aria-describedby'?: string
   disabled?: boolean
 }
 
@@ -139,6 +140,7 @@ function Dropdown({
   id,
   'aria-label': ariaLabel,
   'aria-invalid': ariaInvalid,
+  'aria-describedby': ariaDescribedby,
   disabled,
 }: DropdownProps) {
   const [open, setOpen] = useState(false)
@@ -319,6 +321,7 @@ function Dropdown({
         disabled={disabled}
         aria-label={ariaLabel}
         aria-invalid={ariaInvalid}
+        aria-describedby={ariaDescribedby}
         aria-haspopup="menu"
         aria-expanded={open}
         aria-activedescendant={open && highlight >= 0 ? meta[highlight]?.id : undefined}

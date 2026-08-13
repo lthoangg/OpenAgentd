@@ -1,13 +1,15 @@
 import { useState, useEffect } from 'react'
+import { useForm, useStore } from '@tanstack/react-form'
 import { AlertCircle, Loader2, Pencil, X } from 'lucide-react'
 import { DateTimePicker } from '@/components/ui/date-time-picker'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { useUpdateScheduledTaskMutation } from '@/queries'
-import type { ScheduledTaskResponse, ScheduledTaskCreate, ScheduledTaskMode } from '@/api/types'
-import { isoToWallClock, wallClockToISO } from '@/utils/format'
+import type { ScheduledTaskResponse } from '@/api/types'
+
 import { FIELD_CLASS } from './utils'
+import { editTaskDefaults, toUpdatePayload, validateTaskValues, type TaskFormErrors } from './taskForm'
 import { ScheduleTypeSegmented } from './ScheduleTypeSegmented'
 import { ModeWorkspaceFields } from './ModeWorkspaceFields'
 import { useTeamStore } from '@/stores/useTeamStore'
@@ -23,121 +25,38 @@ export function EditTaskForm({
   onCancel: () => void
 }) {
   const localTz = Intl.DateTimeFormat().resolvedOptions().timeZone
-  // The API returns `at_datetime` as a tz-aware ISO string, but DateTimePicker
-  // expects a naive wall-clock ("yyyy-MM-dd'T'HH:mm") interpreted in the
-  // task's timezone. Convert back so the picker shows the correct value.
-  const initialAt = task.at_datetime ? isoToWallClock(task.at_datetime, task.timezone) : undefined
-  const [formData, setFormData] = useState<ScheduledTaskCreate>({
-    name: task.name,
-    mode: task.mode,
-    workspace: task.workspace,
-    schedule_type: task.schedule_type,
-    at_datetime: initialAt,
-    every_seconds: task.every_seconds ?? undefined,
-    cron_expression: task.cron_expression ?? undefined,
-    timezone: task.timezone,
-    prompt: task.prompt,
-    session_id: task.session_id ?? undefined,
-    max_runs: task.max_runs ?? null,
-    enabled: task.enabled,
-  })
-  const [error, setError] = useState<string | null>(null)
-
   const currentSessionId = useTeamStore((state) => state.sessionId)
   const currentSessionTitle = useTeamStore((state) => state.sessionTitle)
   const activeSessionWorkspace = useTeamStore((state) => state._workspace)
 
+  const defaults = editTaskDefaults(task, currentSessionId)
+  const [error, setError] = useState<string | null>(null)
+  const [fieldErrors, setFieldErrors] = useState<TaskFormErrors>({})
+  const validationSummary = Object.values(fieldErrors)[0]
+  const updateMutation = useUpdateScheduledTaskMutation()
+  const form = useForm({ defaultValues: defaults, onSubmit: () => {} })
+  const values = useStore(form.store, (state) => state.values)
   const activeSessionMode = activeSessionWorkspace ? 'coding' : 'normal'
-  const isSessionCompatible =
-    !!currentSessionId &&
-    formData.mode === activeSessionMode &&
-    (formData.mode !== 'coding' || formData.workspace === activeSessionWorkspace)
-
-  const getInitialSessionType = (
-    sid: string | null | undefined,
-    currSid: string | null
-  ): 'new' | 'auto' | 'current' | 'custom' => {
-    if (!sid) return 'new'
-    if (sid === 'auto') return 'auto'
-    if (currSid && sid === currSid) return 'current'
-    return 'custom'
-  }
-
-  const initialSessionType = getInitialSessionType(task.session_id, currentSessionId)
-  const [sessionType, setSessionType] = useState<'new' | 'auto' | 'current' | 'custom'>(initialSessionType)
-  const [customSessionId, setCustomSessionId] = useState(
-    initialSessionType === 'custom' ? (task.session_id ?? '') : ''
-  )
+  const isSessionCompatible = !!currentSessionId && values.mode === activeSessionMode && (values.mode !== 'coding' || values.workspace === activeSessionWorkspace)
 
   useEffect(() => {
-    if (!isSessionCompatible && sessionType === 'current') {
-      setSessionType('new')
-    }
-  }, [isSessionCompatible, sessionType])
+    if (!isSessionCompatible && values.sessionType === 'current') form.setFieldValue('sessionType', 'new')
+  }, [form, isSessionCompatible, values.sessionType])
 
-  const updateMutation = useUpdateScheduledTaskMutation()
-
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
-
-    const mode: ScheduledTaskMode = formData.mode ?? 'normal'
-    const workspace = formData.workspace ?? null
-
-    if (mode === 'coding' && !workspace?.trim()) {
-      setError('Workspace is required for coding mode'); return
+    setFieldErrors({})
+    const submitValues = form.state.values
+    const errors = validateTaskValues(submitValues, false)
+    if (Object.keys(errors).length) {
+      setFieldErrors(errors)
+      return
     }
-    if (!formData.prompt.trim()) { setError('Prompt is required'); return }
-    if (formData.schedule_type === 'at' && !formData.at_datetime) {
-      setError('Date/time is required for "at" schedule'); return
-    }
-    if (formData.schedule_type === 'every' && (!formData.every_seconds || formData.every_seconds <= 0)) {
-      setError('Interval must be greater than 0'); return
-    }
-    if (formData.schedule_type === 'cron' && !formData.cron_expression?.trim()) {
-      setError('Cron expression is required'); return
-    }
-
-    if (sessionType === 'custom') {
-      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-      if (!customSessionId.trim()) {
-        setError('Session UUID is required'); return
-      }
-      if (!uuidRegex.test(customSessionId.trim())) {
-        setError('Please enter a valid UUID (e.g. 123e4567-e89b-12d3-a456-426614174000)'); return
-      }
-    }
-
-    // Same naive-wall-clock → tz-aware ISO conversion as CreateTaskForm.
-    const tz = formData.timezone || localTz
-    const atIso = formData.at_datetime ? wallClockToISO(formData.at_datetime, tz) : undefined
-    const payload: Partial<ScheduledTaskCreate> = {
-      mode,
-      workspace: mode === 'coding' ? workspace!.trim() : null,
-      schedule_type: formData.schedule_type,
-      timezone: tz,
-      prompt: formData.prompt.trim(),
-      session_id:
-        sessionType === 'new'
-          ? null
-          : sessionType === 'auto'
-          ? 'auto'
-          : sessionType === 'current'
-          ? currentSessionId
-          : customSessionId.trim() || null,
-      max_runs: formData.max_runs ?? null,
-      enabled: formData.enabled,
-      ...(formData.schedule_type === 'at'    ? { at_datetime: atIso }                          : {}),
-      ...(formData.schedule_type === 'every' ? { every_seconds: formData.every_seconds }       : {}),
-      ...(formData.schedule_type === 'cron'  ? { cron_expression: formData.cron_expression }   : {}),
-    }
-
-    updateMutation.mutate({ slug: task.slug, body: payload }, {
-      onSuccess,
-      onError: (err) => {
-        setError(err instanceof Error ? err.message : 'Failed to update task')
-      },
-    })
+    updateMutation.mutate(
+      { slug: task.slug, body: toUpdatePayload(submitValues, localTz, currentSessionId) },
+      { onSuccess, onError: (err) => setError(err instanceof Error ? err.message : 'Failed to update task') },
+    )
   }
 
   return (
@@ -166,42 +85,45 @@ export function EditTaskForm({
         <div className="space-y-4">
           {/* Routing — mode + workspace */}
           <ModeWorkspaceFields
-            mode={formData.mode ?? 'normal'}
-            workspace={formData.workspace ?? null}
-            onChange={(next) =>
-              setFormData((prev) => ({
-                ...prev,
-                mode: next.mode,
-                workspace: next.workspace,
-              }))
-            }
+            mode={values.mode ?? 'normal'}
+            workspace={values.workspace ?? null}
+            onChange={(next) => {
+              form.setFieldValue('mode', next.mode)
+              form.setFieldValue('workspace', next.workspace)
+            }}
+            workspaceError={fieldErrors.workspace}
+            workspaceErrorId="edit-task-workspace-error"
           />
 
           {/* Schedule Type & Detail */}
-          {formData.schedule_type === 'every' ? (
+          {values.schedule_type === 'every' ? (
             <div>
               <div className="flex flex-wrap items-start gap-4">
                 <div className="shrink-0">
                   <label className="block text-sm font-medium text-(--color-text)">Schedule Type</label>
                   <div className="mt-1">
                     <ScheduleTypeSegmented
-                      value={formData.schedule_type}
-                      onChange={(v) => setFormData({ ...formData, schedule_type: v })}
+                      value={values.schedule_type}
+                      onChange={(v) => form.setFieldValue('schedule_type', v)}
                     />
                   </div>
                 </div>
                 <div className="w-full sm:w-56 sm:shrink-0">
-                  <label className="block text-sm font-medium text-(--color-text)">Interval (seconds)</label>
+                  <label htmlFor="edit-task-every-seconds" className="block text-sm font-medium text-(--color-text)">Interval (seconds)</label>
                   <Input
+                    id="edit-task-every-seconds"
                     className={`mt-1 w-full ${FIELD_CLASS}`}
                     type="number"
                     min="1"
-                    value={formData.every_seconds ?? 3600}
+                    value={values.every_seconds ?? 3600}
                     onChange={(e) =>
-                      setFormData({ ...formData, every_seconds: parseInt(e.target.value) || 0 })
+                      form.setFieldValue('every_seconds', parseInt(e.target.value) || 0)
                     }
+                    aria-invalid={!!fieldErrors.every_seconds}
+                    aria-describedby={fieldErrors.every_seconds ? 'edit-task-every-seconds-error' : 'edit-task-every-seconds-help'}
                   />
-                  <p className="mt-1 text-xs text-(--color-text-muted)">e.g., 3600 = 1 hour, 86400 = 1 day</p>
+                  {fieldErrors.every_seconds && <p id="edit-task-every-seconds-error" className="mt-1 text-xs text-(--color-error)">{fieldErrors.every_seconds}</p>}
+                  <p id="edit-task-every-seconds-help" className="mt-1 text-xs text-(--color-text-muted)">e.g., 3600 = 1 hour, 86400 = 1 day</p>
                 </div>
               </div>
             </div>
@@ -211,31 +133,36 @@ export function EditTaskForm({
                 <label className="block text-sm font-medium text-(--color-text)">Schedule Type</label>
                 <div className="mt-1">
                   <ScheduleTypeSegmented
-                    value={formData.schedule_type}
-                    onChange={(v) => setFormData({ ...formData, schedule_type: v })}
+                    value={values.schedule_type}
+                    onChange={(v) => form.setFieldValue('schedule_type', v)}
                   />
                 </div>
               </div>
 
-              {formData.schedule_type === 'at' && (
+              {values.schedule_type === 'at' && (
                 <div>
                   <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_11rem] sm:items-end">
                     <div className="flex-1">
-                      <label className="block text-sm font-medium text-(--color-text)">Date & Time</label>
+                      <label htmlFor="edit-task-at-datetime" className="block text-sm font-medium text-(--color-text)">Date & Time</label>
                       <div className="mt-1">
                         <DateTimePicker
-                          value={formData.at_datetime ?? ''}
-                          onChange={(v) => setFormData({ ...formData, at_datetime: v })}
+                          id="edit-task-at-datetime"
+                          value={values.at_datetime ?? ''}
+                          onChange={(v) => form.setFieldValue('at_datetime', v)}
                           triggerClassName="h-8 rounded-sm bg-(--bg-card) px-2 text-xs hover:bg-(--bg-key)/30"
+                          aria-invalid={!!fieldErrors.at_datetime}
+                          aria-describedby={fieldErrors.at_datetime ? 'edit-task-at-datetime-error' : undefined}
                         />
                       </div>
+                      {fieldErrors.at_datetime && <p id="edit-task-at-datetime-error" className="mt-1 text-xs text-(--color-error)">{fieldErrors.at_datetime}</p>}
                     </div>
                     <div className="w-full min-w-0">
-                      <label className="block text-sm font-medium text-(--color-text)">Timezone</label>
+                      <label htmlFor="edit-task-timezone" className="block text-sm font-medium text-(--color-text)">Timezone</label>
                       <Input
+                        id="edit-task-timezone"
                         className={`mt-1 ${FIELD_CLASS}`}
-                        value={formData.timezone}
-                        onChange={(e) => setFormData({ ...formData, timezone: e.target.value })}
+                        value={values.timezone}
+                        onChange={(e) => form.setFieldValue('timezone', e.target.value)}
                         placeholder={localTz}
                       />
                     </div>
@@ -244,24 +171,29 @@ export function EditTaskForm({
                 </div>
               )}
 
-              {formData.schedule_type === 'cron' && (
+              {values.schedule_type === 'cron' && (
                 <div>
                   <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_11rem] sm:items-end">
                     <div className="flex-1">
-                      <label className="block text-sm font-medium text-(--color-text)">Cron Expression</label>
+                      <label htmlFor="edit-task-cron-expression" className="block text-sm font-medium text-(--color-text)">Cron Expression</label>
                       <Input
+                        id="edit-task-cron-expression"
                         className={`mt-1 ${FIELD_CLASS}`}
-                        value={formData.cron_expression ?? ''}
-                        onChange={(e) => setFormData({ ...formData, cron_expression: e.target.value })}
+                        value={values.cron_expression ?? ''}
+                        onChange={(e) => form.setFieldValue('cron_expression', e.target.value)}
                         placeholder="e.g., 0 9 * * MON-FRI"
+                        aria-invalid={!!fieldErrors.cron_expression}
+                        aria-describedby={fieldErrors.cron_expression ? 'edit-task-cron-expression-error' : undefined}
                       />
+                      {fieldErrors.cron_expression && <p id="edit-task-cron-expression-error" className="mt-1 text-xs text-(--color-error)">{fieldErrors.cron_expression}</p>}
                     </div>
                     <div className="w-full min-w-0">
-                      <label className="block text-sm font-medium text-(--color-text)">Timezone</label>
+                      <label htmlFor="edit-task-timezone" className="block text-sm font-medium text-(--color-text)">Timezone</label>
                       <Input
+                        id="edit-task-timezone"
                         className={`mt-1 ${FIELD_CLASS}`}
-                        value={formData.timezone}
-                        onChange={(e) => setFormData({ ...formData, timezone: e.target.value })}
+                        value={values.timezone}
+                        onChange={(e) => form.setFieldValue('timezone', e.target.value)}
                         placeholder={localTz}
                       />
                     </div>
@@ -274,14 +206,18 @@ export function EditTaskForm({
 
           {/* Prompt */}
           <div>
-            <label className="block text-sm font-medium text-(--color-text)">Prompt</label>
+            <label htmlFor="edit-task-prompt" className="block text-sm font-medium text-(--color-text)">Prompt</label>
             <Textarea
+              id="edit-task-prompt"
               className={`mt-1 ${FIELD_CLASS}`}
-              value={formData.prompt}
-              onChange={(e) => setFormData({ ...formData, prompt: e.target.value })}
+              value={values.prompt}
+              onChange={(e) => form.setFieldValue('prompt', e.target.value)}
               placeholder="Message to deliver to the team lead when the task fires."
               rows={4}
+              aria-invalid={!!fieldErrors.prompt}
+              aria-describedby={fieldErrors.prompt ? 'edit-task-prompt-error' : undefined}
             />
+            {fieldErrors.prompt && <p id="edit-task-prompt-error" className="mt-1 text-xs text-(--color-error)">{fieldErrors.prompt}</p>}
           </div>
 
           {/* Session Target & Max Runs */}
@@ -289,8 +225,9 @@ export function EditTaskForm({
             <div className="w-full max-w-md">
               <label htmlFor="edit-session-target" className="block text-sm font-medium text-(--color-text)">Session Target</label>
               <Dropdown
-                value={sessionType}
-                onValueChange={(v) => setSessionType(v as 'new' | 'auto' | 'current' | 'custom')}
+                id="edit-session-target"
+                value={values.sessionType}
+                onValueChange={(v) => form.setFieldValue('sessionType', v as 'new' | 'auto' | 'current' | 'custom')}
                 trigger="Session Target"
                 className="mt-1 w-full px-2 py-1 text-[11px]"
               >
@@ -304,41 +241,51 @@ export function EditTaskForm({
                 <DropdownItem value="custom">Specific Session ID…</DropdownItem>
               </Dropdown>
               <p className="mt-1 text-xs text-(--color-text-muted)">
-                {sessionType === 'new' && 'Creates a fresh, isolated chat session for every run.'}
-                {sessionType === 'auto' && 'Runs all executions in a single dedicated chat session created for this task.'}
-                {sessionType === 'current' && 'Delivers the prompt directly into your active chat thread.'}
-                {sessionType === 'custom' && 'Delivers the prompt to a specific chat session by its UUID.'}
+                {values.sessionType === 'new' && 'Creates a fresh, isolated chat session for every run.'}
+                {values.sessionType === 'auto' && 'Runs all executions in a single dedicated chat session created for this task.'}
+                {values.sessionType === 'current' && 'Delivers the prompt directly into your active chat thread.'}
+                {values.sessionType === 'custom' && 'Delivers the prompt to a specific chat session by its UUID.'}
               </p>
 
-              {sessionType === 'custom' && (
+              {values.sessionType === 'custom' && (
                 <div className="mt-2">
+                  <label htmlFor="edit-custom-session-id" className="sr-only">Session UUID</label>
                   <Input
+                    id="edit-custom-session-id"
                     className={FIELD_CLASS}
-                    value={customSessionId}
-                    onChange={(e) => setCustomSessionId(e.target.value)}
+                    value={values.customSessionId}
+                    onChange={(e) => form.setFieldValue('customSessionId', e.target.value)}
                     placeholder="Enter session UUID (e.g. 123e4567-e89b-12d3-a456-426614174000)"
+                    aria-invalid={!!fieldErrors.customSessionId}
+                    aria-describedby={fieldErrors.customSessionId ? 'edit-custom-session-id-error' : undefined}
                   />
+                  {fieldErrors.customSessionId && <p id="edit-custom-session-id-error" className="mt-1 text-xs text-(--color-error)">{fieldErrors.customSessionId}</p>}
                 </div>
               )}
             </div>
 
             <div className="w-full min-w-0">
-              <label className="block text-sm font-medium text-(--color-text)">Max runs (optional)</label>
+              <label htmlFor="edit-task-max-runs" className="block text-sm font-medium text-(--color-text)">Max runs (optional)</label>
               <Input
+                id="edit-task-max-runs"
                 type="number"
                 min="1"
                 className={`mt-1 w-full ${FIELD_CLASS}`}
-                value={formData.max_runs ?? ''}
-                onChange={(e) => setFormData({ ...formData, max_runs: e.target.value ? Number(e.target.value) : null })}
+                value={values.max_runs ?? ''}
+                onChange={(e) => form.setFieldValue('max_runs', e.target.value ? Number(e.target.value) : null)}
                 placeholder="Unlimited"
+                aria-invalid={!!fieldErrors.max_runs}
+                aria-describedby={fieldErrors.max_runs ? 'edit-task-max-runs-error' : 'edit-task-max-runs-help'}
               />
-              <p className="mt-1 text-xs text-(--color-text-muted)">Stop after this many successful firings.</p>
+              {fieldErrors.max_runs && <p id="edit-task-max-runs-error" className="mt-1 text-xs text-(--color-error)">{fieldErrors.max_runs}</p>}
+              <p id="edit-task-max-runs-help" className="mt-1 text-xs text-(--color-text-muted)">Stop after this many successful firings.</p>
             </div>
           </div>
 
           {/* Error message */}
+          {validationSummary && <p role="alert" className="sr-only">Please correct the highlighted fields.</p>}
           {error && (
-            <div className="flex gap-2 rounded-sm border border-(--color-error) bg-(--color-error-subtle) p-3">
+            <div role="alert" className="flex gap-2 rounded-sm border border-(--color-error) bg-(--color-error-subtle) p-3">
               <AlertCircle size={16} className="shrink-0 text-(--color-error)" />
               <p className="text-sm text-(--color-error)">{error}</p>
             </div>

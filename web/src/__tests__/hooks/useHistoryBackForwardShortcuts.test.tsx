@@ -33,7 +33,7 @@ function Harness() {
 
 function keydown(key: string, opts: Partial<KeyboardEventInit> = {}): KeyboardEvent {
   const e = new KeyboardEvent('keydown', { key, ctrlKey: true, bubbles: true, cancelable: true, ...opts })
-  window.dispatchEvent(e)
+  document.body.dispatchEvent(e)
   return e
 }
 

@@ -13,7 +13,7 @@
  */
 
 import { afterEach, beforeEach, describe, it, expect, mock } from 'bun:test'
-import { render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import React from 'react'
@@ -299,6 +299,58 @@ describe('SchedulerPanel — Edit Task Form', () => {
 
     await user.type(searchInput, 'c')
     expect(searchInput.value).toBe('abc')
+  })
+
+  it('debounces task filtering while keeping the search input responsive', async () => {
+    globalThis.fetch = mock(async (...args: unknown[]) => {
+      const input = args[0] as RequestInfo | URL
+      const url = typeof input === 'string' ? input : input.toString()
+      if (url.includes('/api/scheduler/tasks')) {
+        const baseTask = {
+          id: 'task-1',
+          slug: 'daily-report',
+          name: 'Daily report',
+          mode: 'normal',
+          workspace: null,
+          schedule_type: 'every',
+          at_datetime: null,
+          every_seconds: 3600,
+          cron_expression: null,
+          timezone: 'UTC',
+          prompt: 'Report',
+          session_id: null,
+          max_runs: null,
+          enabled: true,
+          status: 'pending',
+          run_count: 0,
+          last_run_at: null,
+          last_error: null,
+          next_fire_at: null,
+          created_at: '2026-08-13T00:00:00Z',
+          updated_at: '2026-08-13T00:00:00Z',
+        }
+        return new Response(JSON.stringify({
+          tasks: [
+            baseTask,
+            { ...baseTask, id: 'task-2', slug: 'weekly-sync', name: 'Weekly sync' },
+          ],
+        }), { headers: { 'Content-Type': 'application/json' } })
+      }
+      return new Response('{}', { status: 200 })
+    }) as unknown as typeof fetch
+
+    const user = userEvent.setup()
+    renderSchedulerPanel()
+    await screen.findByText('Daily report')
+    expect(screen.getByText('Weekly sync')).toBeInTheDocument()
+
+    const searchInput = screen.getByPlaceholderText(/Search tasks/i)
+    await user.type(searchInput, 'daily')
+
+    expect(searchInput).toHaveValue('daily')
+    expect(screen.getByText('Weekly sync')).toBeInTheDocument()
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 200)) })
+    expect(screen.queryByText('Weekly sync')).toBeNull()
   })
 
   it('renders panel with correct z-index for overlay', async () => {

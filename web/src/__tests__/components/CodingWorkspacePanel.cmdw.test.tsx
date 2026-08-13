@@ -127,7 +127,7 @@ describe('CodingWorkspacePanel Cmd+W / Ctrl+W closes the active file tab', () =>
     // onFileSelect(file) was called when the tab was opened — reset the mock
     onFileSelect.mockClear()
 
-    await act(async () => { window.dispatchEvent(buildKeyEvent('w', { ctrlKey: true })) })
+    await act(async () => { document.dispatchEvent(buildKeyEvent('w', { ctrlKey: true })) })
 
     // Must notify parent with null so it can clear codingFileViewer
     expect(onFileSelect).toHaveBeenCalledTimes(1)
@@ -141,7 +141,7 @@ describe('CodingWorkspacePanel Cmd+W / Ctrl+W closes the active file tab', () =>
     expect(screen.getByRole('button', { name: `Close ${readme.name}` })).toBeTruthy()
 
     const event = buildKeyEvent('w', { ctrlKey: true })
-    await act(async () => { window.dispatchEvent(event) })
+    await act(async () => { document.dispatchEvent(event) })
 
     // Tab should be closed — close button gone, back to Git tab
     expect(screen.queryByRole('button', { name: `Close ${readme.name}` })).toBeNull()
@@ -153,7 +153,7 @@ describe('CodingWorkspacePanel Cmd+W / Ctrl+W closes the active file tab', () =>
     await renderWithOpenFileTab()
 
     await act(async () => {
-      window.dispatchEvent(buildKeyEvent('w'))
+      document.dispatchEvent(buildKeyEvent('w'))
     })
 
     // Tab still open
@@ -180,7 +180,7 @@ describe('CodingWorkspacePanel Cmd+W / Ctrl+W closes the active file tab', () =>
     expect(screen.queryByRole('button', { name: /^Close / })).toBeNull()
 
     const event = buildKeyEvent('w', { ctrlKey: true })
-    await act(async () => { window.dispatchEvent(event) })
+    await act(async () => { document.dispatchEvent(event) })
 
     // Still no close button — nothing exploded
     expect(screen.queryByRole('button', { name: /^Close / })).toBeNull()

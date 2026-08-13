@@ -29,6 +29,10 @@ interface DateTimePickerProps {
    *  drawer where the default `bg-(--bg-key)` clashes with sibling inputs. */
   triggerClassName?: string
   disabled?: boolean
+  id?: string
+  'aria-label'?: string
+  'aria-invalid'?: boolean | 'true' | 'false'
+  'aria-describedby'?: string
 }
 
 // ── Bare time input (type text, no spinners) ────────────────────────────────
@@ -81,6 +85,10 @@ export function DateTimePicker({
   className,
   triggerClassName,
   disabled,
+  id,
+  'aria-label': ariaLabel,
+  'aria-invalid': ariaInvalid,
+  'aria-describedby': ariaDescribedBy,
 }: DateTimePickerProps) {
   const [open, setOpen] = React.useState(false)
 
@@ -116,7 +124,11 @@ export function DateTimePicker({
     <div className={cn('flex items-center', className)}>
       <Popover open={open} onOpenChange={handleOpenChange}>
         <PopoverTrigger
+          id={id}
           disabled={disabled}
+          aria-label={ariaLabel}
+          aria-invalid={ariaInvalid}
+          aria-describedby={ariaDescribedBy}
           className={cn(
             buttonVariants({ variant: 'default' }),
             'h-9 w-full justify-start gap-2 rounded-[10px] border border-(--color-border) bg-(--bg-page) px-3 text-sm font-normal text-(--color-text) hover:border-(--color-border-strong) hover:bg-(--bg-key)',

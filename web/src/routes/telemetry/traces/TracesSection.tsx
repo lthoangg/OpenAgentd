@@ -3,6 +3,7 @@
  * states keyed off the TanStack Query result.
  */
 
+import { useState } from 'react'
 import type { TraceListItem } from '@/api/client'
 import { EmptyTable, SectionCard, SectionCardHeader } from '../primitives'
 import { TracesTable } from './TracesTable'
@@ -32,6 +33,7 @@ export function TracesSection({
   onSelectTrace: (traceId: string) => void
 }) {
   const isInitialLoading = query.isLoading && traces.length === 0
+  const [scrollElement, setScrollElement] = useState<HTMLDivElement | null>(null)
 
   return (
     <SectionCard>
@@ -52,6 +54,7 @@ export function TracesSection({
         <EmptyTable label="No traces in this window." />
       ) : (
         <div
+          ref={setScrollElement}
           className="max-h-[34rem] overflow-y-auto"
           onScroll={(event) => {
             const el = event.currentTarget
@@ -60,7 +63,12 @@ export function TracesSection({
             }
           }}
         >
-          <TracesTable traces={traces} onSelect={onSelectTrace} embedded />
+          <TracesTable
+            traces={traces}
+            onSelect={onSelectTrace}
+            embedded
+            scrollElement={scrollElement}
+          />
           {hasNext && (
             <div className="border-t border-(--color-border) px-3 py-2 text-center text-[11px] text-(--color-text-muted)">
               {query.isFetching ? 'Loading more traces…' : `Scroll to load ${limit} more`}

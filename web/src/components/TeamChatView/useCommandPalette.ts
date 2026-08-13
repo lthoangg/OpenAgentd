@@ -8,8 +8,9 @@
  * hook avoids threading the same dozen callbacks through two separate
  * places in the shell.
  */
-import { useCallback } from 'react'
+import { useCallback, useEffect } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
+import { useHotkeys } from '@tanstack/react-hotkeys'
 import type { useNavigate } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import {
@@ -17,7 +18,8 @@ import {
   codingWorkspaceFilesQueryOptions,
 } from '@/queries/workspace-files'
 import { useIsMobile } from '@/hooks/use-mobile'
-import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts'
+import { getPlatform } from '@/hooks/use-platform'
+import { isPrimaryShortcut } from '@/lib/keyboard-shortcut'
 import type { WorkspaceFileInfo } from '@/api/types'
 import type { Command } from '../CommandPalette'
 import { useTeamCommands } from './useTeamCommands'
@@ -122,29 +124,41 @@ export function useCommandPalette({
     setCodingPanel((prev) => prev ?? 'files')
   }, [setCodingFileViewer, setCodingFileViewerDetached, setCodingFileOpenKey, setCodingPanel])
 
-  useKeyboardShortcuts({
-    n: handleNewSession,
-    // ⌘⇧A / Ctrl+Shift+A — bare ⌘A is "Select All" on macOS, so Session
-    // Settings requires Shift to avoid clobbering it.
-    a: { handler: handleToggleAgentCapabilities, shift: true },
-    f: handleWorkspaceFiles,
-    t: () => { if (sessionIdState) handleSetShowTodos((v) => !v) },
-    p: isMobile ? undefined : handleTogglePalette,
-    b: mode === 'coding' ? handleCodingSidebarToggle : undefined,
-    // ⌘⇧V / Ctrl+Shift+V — toggle between agent view and split view.
-    v: { handler: cycleViewMode, shift: true },
-    // ⌘S / Ctrl+S — open the scheduler drawer (state in useUIStore).
-    s: handleToggleScheduler,
-    // ⌘I / Ctrl+I — focus the chat input (dispatched via CustomEvent so
-    // future callers don't need a ref to the input).
-    'i': () => window.dispatchEvent(new CustomEvent('focus-chat-input')),
-    // ⌘⇧` / Ctrl+Shift+` — open a terminal (any mode: coding workspace or
-    // the cockpit session workspace). Matched on the physical key
-    // (KeyboardEvent.code === 'Backquote') because e.key for
-    // Shift+backquote is layout-dependent ('~', '`', or even 'Dead' on
-    // layouts where backquote is a dead key).
-    Backquote: { handler: handleOpenTerminal, shift: true },
-  })
+  const { os } = getPlatform()
+  useHotkeys(
+    [
+      { hotkey: 'Mod+N', callback: handleNewSession, options: { meta: { name: 'New session' } } },
+      { hotkey: 'Mod+Shift+A', callback: handleToggleAgentCapabilities, options: { meta: { name: 'Agent capabilities' } } },
+      { hotkey: 'Mod+F', callback: handleWorkspaceFiles, options: { meta: { name: 'Workspace files' } } },
+      { hotkey: 'Mod+T', callback: () => handleSetShowTodos((v) => !v), options: { enabled: Boolean(sessionIdState), meta: { name: 'Todos' } } },
+      { hotkey: 'Mod+P', callback: handleTogglePalette, options: { enabled: !isMobile, meta: { name: 'Command palette' } } },
+      // Normal-mode Mod+B belongs to Sidebar. Only the coding sidebar owns this
+      // registration when coding mode is active, preventing duplicate handlers.
+      { hotkey: 'Mod+B', callback: handleCodingSidebarToggle, options: { enabled: mode === 'coding', meta: { name: 'Coding sidebar' } } },
+      { hotkey: 'Mod+Shift+V', callback: cycleViewMode, options: { meta: { name: 'View mode' } } },
+      { hotkey: 'Mod+S', callback: handleToggleScheduler, options: { meta: { name: 'Scheduler' } } },
+      { hotkey: 'Mod+I', callback: () => window.dispatchEvent(new CustomEvent('focus-chat-input')), options: { meta: { name: 'Focus chat input' } } },
+    ],
+    {
+      target: document,
+      platform: os === 'macos' ? 'mac' : os === 'windows' ? 'windows' : 'linux',
+      preventDefault: true,
+      stopPropagation: false,
+      ignoreInputs: false,
+    },
+  )
+
+  // Keep this physical-key shortcut custom: layouts can report Shift+Backquote
+  // as `~`, `` ` ``, or `Dead`, which a character hotkey cannot represent.
+  useEffect(() => {
+    const handler = (event: KeyboardEvent) => {
+      if (event.code !== 'Backquote' || !isPrimaryShortcut(event, os, { shift: true })) return
+      event.preventDefault()
+      handleOpenTerminal()
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [handleOpenTerminal, os])
 
   return {
     cycleViewMode,

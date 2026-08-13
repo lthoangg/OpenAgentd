@@ -5,6 +5,8 @@ import userEvent from '@testing-library/user-event'
 
 const navigate = mock(() => {})
 const updateSessionTitleMutate = mock(() => {})
+let updateSessionTitlePending = false
+let updateSessionTitleError = false
 let invokeShouldFail = false
 const invokeMock = mock(async () => {
   if (invokeShouldFail) throw new Error('window failed')
@@ -172,8 +174,8 @@ mock.module('@/queries', () => ({
   useDeleteTeamSessionMutation: () => ({ mutate: mock(() => {}) }),
   useUpdateTeamSessionTitleMutation: () => ({
     mutate: updateSessionTitleMutate,
-    isPending: false,
-    isError: false,
+    isPending: updateSessionTitlePending,
+    isError: updateSessionTitleError,
   }),
 }))
 
@@ -192,6 +194,8 @@ describe('Sidebar session title editing', () => {
     ]
     isMobile = false
     invokeShouldFail = false
+    updateSessionTitlePending = false
+    updateSessionTitleError = false
     navigate.mockClear()
     invokeMock.mockClear()
     pushToast.mockClear()
@@ -243,6 +247,45 @@ describe('Sidebar session title editing', () => {
     expect(screen.getByRole('button', { name: /^save$/i }).hasAttribute('disabled')).toBe(true)
     await user.keyboard('{Enter}')
     expect(updateSessionTitleMutate).not.toHaveBeenCalled()
+  })
+
+  it('resets the draft after cancelling and reopening the editor', async () => {
+    const user = userEvent.setup()
+    await renderSidebar()
+
+    await user.click(screen.getByLabelText('Edit session Old title'))
+    const input = screen.getByLabelText('Session title')
+    await user.clear(input)
+    await user.type(input, 'Unsaved title')
+    await user.click(screen.getByRole('button', { name: /^cancel$/i }))
+
+    await user.click(screen.getByLabelText('Edit session Old title'))
+    expect((screen.getByLabelText('Session title') as HTMLInputElement).value).toBe('Old title')
+  })
+
+  it('announces mutation errors and preserves the draft', async () => {
+    updateSessionTitleError = true
+    const user = userEvent.setup()
+    await renderSidebar()
+
+    await user.click(screen.getByLabelText('Edit session Old title'))
+    const input = screen.getByLabelText('Session title')
+    await user.clear(input)
+    await user.type(input, 'Retry title')
+
+    expect(screen.getByRole('alert').textContent).toBe('Failed to update title.')
+    expect((input as HTMLInputElement).value).toBe('Retry title')
+  })
+
+  it('disables editor actions while the mutation is pending', async () => {
+    updateSessionTitlePending = true
+    const user = userEvent.setup()
+    await renderSidebar()
+
+    await user.click(screen.getByLabelText('Edit session Old title'))
+
+    expect(screen.getByRole('button', { name: 'Saving…' }).hasAttribute('disabled')).toBe(true)
+    expect(screen.getByRole('button', { name: /^cancel$/i }).hasAttribute('disabled')).toBe(true)
   })
 
   it('opens a cockpit session in a new desktop window on macOS Command+click', async () => {

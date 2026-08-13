@@ -7,14 +7,18 @@ export function ModeWorkspaceFields({
   mode,
   workspace,
   onChange,
+  workspaceError,
+  workspaceErrorId,
 }: {
   mode: ScheduledTaskMode
   workspace: string | null
   /** Emits both fields together so the parent applies them in a single
-   *  setState — preventing the stale-snapshot bug where switching
+   *  update — preventing the stale-snapshot bug where switching
    *  ``coding → normal`` would clear the workspace but leave ``mode``
-   *  unchanged (two sequential setState calls on the same snapshot). */
+   *  unchanged (two sequential updates on the same snapshot). */
   onChange: (next: { mode: ScheduledTaskMode; workspace: string | null }) => void
+  workspaceError?: string
+  workspaceErrorId?: string
 }) {
   const savedWorkspaces = useMemo(() => {
     const paths = loadCodingWorkspaceEntries().map((entry) => entry.path)
@@ -77,6 +81,8 @@ export function ModeWorkspaceFields({
               className="w-full max-w-full px-2 py-1 text-[11px]"
               panelClassName="max-w-[min(22rem,calc(100vw-2rem))]"
               aria-label="Select workspace"
+              aria-invalid={!!workspaceError}
+              aria-describedby={workspaceError ? workspaceErrorId : undefined}
             >
               {savedWorkspaces.map((path) => (
                 <DropdownItem key={path} value={path}>
@@ -87,6 +93,9 @@ export function ModeWorkspaceFields({
           </div>
         )}
       </div>
+      {workspaceError && workspaceErrorId && (
+        <p id={workspaceErrorId} className="mt-1 text-xs text-(--color-error)">{workspaceError}</p>
+      )}
       <p className="mt-1 text-xs text-(--color-text-muted)">
         {mode === 'normal' ? (
           'Delivers to the default team lead.'

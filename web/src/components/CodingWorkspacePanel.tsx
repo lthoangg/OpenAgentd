@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
+import { useHotkey } from '@tanstack/react-hotkeys'
 import { motion } from 'framer-motion'
 import { ChevronRight, Copy, Download, ExternalLink, FolderOpen, GitCompare, Plus, RefreshCw, TerminalSquare, Undo2, X, RotateCcw } from 'lucide-react'
 import { LongPressButton } from '@/components/ui/long-press-button'
@@ -26,7 +27,6 @@ import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { useResizableWidth } from '@/hooks/use-resizable-width'
 import { usePlatform } from '@/hooks/use-platform'
 import { formatShortcut } from '@/lib/keyboard-shortcut'
-import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts'
 import { useGitPanelStore, DEFAULT_WORKSPACE_STATE } from '@/stores/useGitPanelStore'
 import { useTerminalStore } from '@/stores/useTerminalStore'
 import { useShallow } from 'zustand/react/shallow'
@@ -632,10 +632,15 @@ export function CodingWorkspacePanel({
   }
   // Cmd+W / Ctrl+W closes the active file tab instead of propagating to the
   // desktop (where the OS would close the app window). Only intercepts when a
-  // file tab is active — the Git review tab cannot be closed, so the shortcut
-  // is left unregistered in that case and the event is not consumed.
-  useKeyboardShortcuts({
-    w: activeTabId !== 'review' ? () => closeTab(activeTabId) : undefined,
+  // file tab is active — the Git review tab cannot be closed, so the disabled
+  // registration remains visible to devtools without consuming the event.
+  useHotkey('Mod+W', () => closeTab(activeTabId), {
+    enabled: activeTabId !== 'review',
+    ignoreInputs: false,
+    platform: os === 'macos' ? 'mac' : os === 'windows' ? 'windows' : 'linux',
+    preventDefault: true,
+    stopPropagation: false,
+    target: typeof document === 'undefined' ? null : document,
   })
   const toggleDiffExpanded = (path: string) => {
     useGitPanelStore.getState().toggleDiffExpanded(workspace, path)

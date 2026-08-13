@@ -1,7 +1,6 @@
 import { QueryClientProvider } from '@tanstack/react-query'
+import { useHotkey } from '@tanstack/react-hotkeys'
 import { Suspense, useEffect, useRef } from 'react'
-// Temporarily disabled for clean recordings — re-enable when done.
-// import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
 import { Link, Outlet, useLocation, useNavigate } from '@tanstack/react-router'
 import { queryClient } from '@/lib/query-client'
 import { OPENAGENTD_APP_ICON } from '@/lib/brand-assets'
@@ -15,7 +14,6 @@ import { useMobileViewportGuards } from '@/hooks/use-mobile-viewport'
 import { useDesktopCommands } from '@/lib/desktop-commands'
 import { closestRestorableRoute } from '@/lib/route-restore'
 import { getPlatform } from '@/hooks/use-platform'
-import { isPrimaryShortcut } from '@/lib/keyboard-shortcut'
 import { useContainerSelectAll } from '@/hooks/useContainerSelectAll'
 import { usePreventBackspaceNavigation } from '@/hooks/usePreventBackspaceNavigation'
 import { usePreventStrayFileDrop } from '@/hooks/usePreventStrayFileDrop'
@@ -23,6 +21,10 @@ import { useHistoryBackForwardShortcuts } from '@/hooks/useHistoryBackForwardSho
 import { useDeepLinkRouter } from '@/hooks/useDeepLinkRouter'
 import { GlobalEventStream } from '@/hooks/use-global-event-stream'
 import { LspInstallPrompt } from '@/components/LspInstallPrompt'
+
+const TanStackDevtools = import.meta.env.DEV
+  ? (await import('@/components/TanStackDevtools')).TanStackDevtools
+  : null
 
 export function Root() {
   useMobileViewportGuards()
@@ -39,18 +41,22 @@ export function Root() {
   const settingsOpen = useSettingsStore((s) => s.open)
   const settingsOpenRef = useRef(settingsOpen)
   useEffect(() => { settingsOpenRef.current = settingsOpen }, [settingsOpen])
-  useEffect(() => {
-    const { os } = getPlatform()
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === ',' && isPrimaryShortcut(e, os)) {
-        e.preventDefault()
-        if (settingsOpenRef.current) closeSettings()
-        else openSettings()
-      }
-    }
-    window.addEventListener('keydown', handler)
-    return () => window.removeEventListener('keydown', handler)
-  }, [openSettings, closeSettings])
+  const { os } = getPlatform()
+  useHotkey(
+    'Mod+,',
+    () => {
+      if (settingsOpenRef.current) closeSettings()
+      else openSettings()
+    },
+    {
+      target: document,
+      platform: os === 'macos' ? 'mac' : os === 'windows' ? 'windows' : 'linux',
+      preventDefault: true,
+      stopPropagation: false,
+      ignoreInputs: false,
+      meta: { name: 'Settings', description: 'Toggle settings' },
+    },
+  )
   // Theme application is handled by `initTheme()` in main.tsx and the
   // inline pre-paint script in index.html. Do not force `.dark` here —
   // it would override the user's preference.
@@ -96,7 +102,7 @@ export function Root() {
       <SettingsModal />
       <LspInstallPrompt />
       <ToastStack />
-      {/* <ReactQueryDevtools initialIsOpen={false} /> */}
+      {TanStackDevtools && <TanStackDevtools />}
     </QueryClientProvider>
   )
 }

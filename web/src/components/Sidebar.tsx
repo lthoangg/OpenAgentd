@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo, memo, type TouchEvent } from 'react'
+import { useHotkey } from '@tanstack/react-hotkeys'
 import { useNavigate } from '@tanstack/react-router'
+import { useForm } from '@tanstack/react-form'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
@@ -33,8 +35,8 @@ import {
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { LongPressButton } from '@/components/ui/long-press-button'
-import { usePlatform, getPlatform } from '@/hooks/use-platform'
-import { isPrimaryShortcut, formatShortcut } from '@/lib/keyboard-shortcut'
+import { usePlatform } from '@/hooks/use-platform'
+import { formatShortcut } from '@/lib/keyboard-shortcut'
 import { useResizableWidth } from '@/hooks/use-resizable-width'
 import type { SessionResponse } from '@/api/types'
 import { useToastStore } from '@/stores/useToastStore'
@@ -142,7 +144,18 @@ export function Sidebar({
   const [editTarget, setEditTarget] = useState<SessionResponse | null>(null)
   const [mobileSessionActions, setMobileSessionActions] = useState<SessionResponse | null>(null)
   const [desktopSessionActions, setDesktopSessionActions] = useState<{ session: SessionResponse; x: number; y: number } | null>(null)
-  const [editTitle, setEditTitle] = useState('')
+  const editTitleForm = useForm({
+    defaultValues: { title: '' },
+    onSubmit: ({ value }) => {
+      if (!editTarget) return
+      const title = value.title.trim()
+      if (!title) return
+      updateSessionTitle.mutate(
+        { id: editTarget.id, title },
+        { onSuccess: () => setEditTarget(null) },
+      )
+    },
+  })
   const [pullDistance, setPullDistance] = useState(0)
   const pullStartYRef = useRef<number | null>(null)
   const pullStartXRef = useRef<number | null>(null)
@@ -208,16 +221,18 @@ export function Sidebar({
   // Ctrl+S (scheduler) lives in TeamChatView — that panel
   // moved out of the sidebar per the topbar-redesign wireframe and their
   // open-state is owned by useUIStore.
-  useEffect(() => {
-    const { os } = getPlatform()
-    const handler = (e: KeyboardEvent) => {
-      if (e.key !== 'b' || !isPrimaryShortcut(e, os)) return
-      e.preventDefault()
-      toggleCollapse()
-    }
-    window.addEventListener('keydown', handler)
-    return () => window.removeEventListener('keydown', handler)
-  }, [toggleCollapse])
+  useHotkey(
+    'Mod+B',
+    () => toggleCollapse(),
+    {
+      target: document,
+      platform: os === 'macos' ? 'mac' : os === 'windows' ? 'windows' : 'linux',
+      preventDefault: true,
+      stopPropagation: false,
+      ignoreInputs: false,
+      meta: { name: 'Sidebar', description: 'Toggle sidebar' },
+    },
+  )
 
   const { hasNextPage, isFetchingNextPage, fetchNextPage } = sessions
 
@@ -256,20 +271,10 @@ export function Sidebar({
   }, [])
 
   const handleEdit = useCallback((session: SessionResponse) => {
+    editTitleForm.reset()
+    editTitleForm.setFieldValue('title', session.title || '')
     setEditTarget(session)
-    setEditTitle(session.title || '')
-  }, [])
-
-  const submitSessionTitle = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!editTarget) return
-    const title = editTitle.trim()
-    if (!title) return
-    updateSessionTitle.mutate(
-      { id: editTarget.id, title },
-      { onSuccess: () => setEditTarget(null) },
-    )
-  }
+  }, [editTitleForm])
 
   const confirmDelete = () => {
     if (!deleteTarget) return
@@ -716,7 +721,7 @@ export function Sidebar({
        </Dialog>
        <Dialog open={editTarget !== null} onOpenChange={(open) => { if (!open) setEditTarget(null) }}>
          <DialogContent showCloseButton={false}>
-           <form onSubmit={submitSessionTitle}>
+           <form onSubmit={(event) => { event.preventDefault(); void editTitleForm.handleSubmit() }}>
              <DialogHeader>
                <DialogTitle>Edit session title</DialogTitle>
                <DialogDescription>
@@ -724,25 +729,34 @@ export function Sidebar({
                </DialogDescription>
              </DialogHeader>
              <div className="px-3 py-2">
-               <input
-                 ref={editTitleInputRef}
-                 value={editTitle}
-                 onChange={(e) => setEditTitle(e.target.value)}
-                 className="min-h-11 w-full min-w-0 rounded-md border border-(--color-border) bg-(--bg-page) px-3 py-1 text-sm text-(--color-text) outline-none focus-visible:border-(--focus-ring) focus-visible:ring-2 focus-visible:ring-(--focus-ring)/25 md:min-h-9"
-                 aria-label="Session title"
-                 maxLength={255}
-               />
+               <editTitleForm.Field name="title">
+                 {(field) => (
+                   <input
+                     ref={editTitleInputRef}
+                     value={field.state.value}
+                     onBlur={field.handleBlur}
+                     onChange={(event) => field.handleChange(event.target.value)}
+                     className="min-h-11 w-full min-w-0 rounded-md border border-(--color-border) bg-(--bg-page) px-3 py-1 text-sm text-(--color-text) outline-none focus-visible:border-(--focus-ring) focus-visible:ring-2 focus-visible:ring-(--focus-ring)/25 md:min-h-9"
+                     aria-label="Session title"
+                     maxLength={255}
+                   />
+                 )}
+               </editTitleForm.Field>
                {updateSessionTitle.isError && (
-                 <p className="mt-2 text-xs text-(--color-error)">Failed to update title.</p>
+                 <p role="alert" className="mt-2 text-xs text-(--color-error)">Failed to update title.</p>
                )}
              </div>
              <DialogFooter className="p-3">
-               <Button type="button" variant="default" onClick={() => setEditTarget(null)}>
+               <Button type="button" variant="default" onClick={() => setEditTarget(null)} disabled={updateSessionTitle.isPending}>
                  Cancel
                </Button>
-               <Button type="submit" disabled={!editTitle.trim() || updateSessionTitle.isPending}>
-                 {updateSessionTitle.isPending ? 'Saving…' : 'Save'}
-               </Button>
+               <editTitleForm.Subscribe selector={(state) => state.values.title}>
+                 {(title) => (
+                   <Button type="submit" disabled={!title.trim() || updateSessionTitle.isPending}>
+                     {updateSessionTitle.isPending ? 'Saving…' : 'Save'}
+                   </Button>
+                 )}
+               </editTitleForm.Subscribe>
              </DialogFooter>
            </form>
          </DialogContent>

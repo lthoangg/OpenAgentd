@@ -1,13 +1,14 @@
 import { useState, useEffect } from 'react'
+import { useForm, useStore } from '@tanstack/react-form'
 import { AlertCircle, Loader2, Plus } from 'lucide-react'
 import { DateTimePicker } from '@/components/ui/date-time-picker'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { useCreateScheduledTaskMutation } from '@/queries'
-import type { ScheduledTaskCreate, ScheduledTaskMode } from '@/api/types'
-import { wallClockToISO } from '@/utils/format'
+import type { ScheduledTaskMode } from '@/api/types'
 import { FIELD_CLASS, slugify } from './utils'
+import { createTaskDefaults, toCreatePayload, validateTaskValues, type TaskFormErrors } from './taskForm'
 import { ScheduleTypeSegmented } from './ScheduleTypeSegmented'
 import { ModeWorkspaceFields } from './ModeWorkspaceFields'
 import { useTeamStore } from '@/stores/useTeamStore'
@@ -23,128 +24,40 @@ export function CreateTaskForm({
   onSuccess: () => void
 }) {
   const localTz = Intl.DateTimeFormat().resolvedOptions().timeZone
-  const initialMode: ScheduledTaskMode = contextMode
-  const initialWorkspace: string | null =
-    contextMode === 'coding' ? contextWorkspace : null
-  const [formData, setFormData] = useState<ScheduledTaskCreate>({
-    name: '',
-    mode: initialMode,
-    workspace: initialWorkspace,
-    schedule_type: 'every',
-    every_seconds: 3600,
-    timezone: localTz,
-    prompt: '',
-    max_runs: null,
-    enabled: true,
-  })
+  const defaults = createTaskDefaults(contextMode, contextWorkspace, localTz)
   const [error, setError] = useState<string | null>(null)
-  const [title, setTitle] = useState('')
+  const [fieldErrors, setFieldErrors] = useState<TaskFormErrors>({})
+  const validationSummary = Object.values(fieldErrors)[0]
 
   const currentSessionId = useTeamStore((state) => state.sessionId)
   const currentSessionTitle = useTeamStore((state) => state.sessionTitle)
   const activeSessionWorkspace = useTeamStore((state) => state._workspace)
 
+  const createMutation = useCreateScheduledTaskMutation()
+  const form = useForm({
+    defaultValues: defaults,
+    onSubmit: () => {},
+  })
+  const values = useStore(form.store, (state) => state.values)
   const activeSessionMode = activeSessionWorkspace ? 'coding' : 'normal'
   const isSessionCompatible =
     !!currentSessionId &&
-    formData.mode === activeSessionMode &&
-    (formData.mode !== 'coding' || formData.workspace === activeSessionWorkspace)
-
-  const [sessionType, setSessionType] = useState<'new' | 'auto' | 'current' | 'custom'>('new')
-  const [customSessionId, setCustomSessionId] = useState('')
-
-  useEffect(() => {
-    if (!isSessionCompatible && sessionType === 'current') {
-      setSessionType('new')
-    }
-  }, [isSessionCompatible, sessionType])
-
-  const createMutation = useCreateScheduledTaskMutation()
+    values.mode === activeSessionMode &&
+    (values.mode !== 'coding' || values.workspace === activeSessionWorkspace)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
-
-    const mode: ScheduledTaskMode = formData.mode ?? 'normal'
-    const workspace = formData.workspace ?? null
-
-    const slug = slugify(title)
-    if (!title.trim()) { setError('Task title is required'); return }
-    if (!slug) {
-      setError('Task title must contain at least one letter or number'); return
-    }
-    if (mode === 'coding' && !workspace?.trim()) {
-      setError('Workspace is required for coding mode'); return
-    }
-    if (!formData.prompt.trim()) { setError('Prompt is required'); return }
-    if (formData.schedule_type === 'at' && !formData.at_datetime) {
-      setError('Date/time is required for "at" schedule'); return
-    }
-    if (formData.schedule_type === 'every' && (!formData.every_seconds || formData.every_seconds <= 0)) {
-      setError('Interval must be greater than 0'); return
-    }
-    if (formData.schedule_type === 'cron' && !formData.cron_expression?.trim()) {
-      setError('Cron expression is required'); return
-    }
-
-    if (sessionType === 'custom') {
-      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-      if (!customSessionId.trim()) {
-        setError('Session UUID is required'); return
-      }
-      if (!uuidRegex.test(customSessionId.trim())) {
-        setError('Please enter a valid UUID (e.g. 123e4567-e89b-12d3-a456-426614174000)'); return
-      }
-    }
-
-    // Strip fields that don't belong to the active schedule_type.
-    // The backend Pydantic validator rejects any extra schedule fields
-    // (e.g. every_seconds present when schedule_type='at').
-    //
-    // For 'at' schedules, DateTimePicker emits a NAIVE wall-clock string
-    // ("yyyy-MM-dd'T'HH:mm"). We must combine it with the user-supplied
-    // `timezone` before sending — otherwise the backend treats the wall
-    // clock as UTC and the task fires at the wrong hour.
-    const tz = formData.timezone || localTz
-    const atIso = formData.at_datetime ? wallClockToISO(formData.at_datetime, tz) : undefined
-    const payload: ScheduledTaskCreate = {
-      name: title.trim(),
-      mode,
-      workspace: mode === 'coding' ? workspace!.trim() : null,
-      schedule_type: formData.schedule_type,
-      timezone: tz,
-      prompt: formData.prompt.trim(),
-      session_id:
-        sessionType === 'new'
-          ? null
-          : sessionType === 'auto'
-          ? 'auto'
-          : sessionType === 'current'
-          ? currentSessionId
-          : customSessionId.trim() || null,
-      max_runs: formData.max_runs ?? null,
-      enabled: formData.enabled,
-      ...(formData.schedule_type === 'at'    ? { at_datetime: atIso }                          : {}),
-      ...(formData.schedule_type === 'every' ? { every_seconds: formData.every_seconds }       : {}),
-      ...(formData.schedule_type === 'cron'  ? { cron_expression: formData.cron_expression }   : {}),
-    }
+    setFieldErrors({})
+    const submitValues = form.state.values
+    const errors = validateTaskValues(submitValues)
+    if (Object.keys(errors).length) { setFieldErrors(errors); return }
+    const payload = toCreatePayload(submitValues, localTz, currentSessionId)
 
     createMutation.mutate(payload, {
       onSuccess: () => {
-        setFormData({
-          name: '',
-          mode: initialMode,
-          workspace: initialWorkspace,
-          schedule_type: 'every',
-          every_seconds: 3600,
-          timezone: localTz,
-          prompt: '',
-          max_runs: null,
-          enabled: true,
-        })
-        setTitle('')
-        setSessionType('new')
-        setCustomSessionId('')
+        form.reset()
+        setFieldErrors({})
         onSuccess()
       },
       onError: (err) => {
@@ -152,6 +65,12 @@ export function CreateTaskForm({
       },
     })
   }
+
+  useEffect(() => {
+    if (!isSessionCompatible && values.sessionType === 'current') {
+      form.setFieldValue('sessionType', 'new')
+    }
+  }, [form, isSessionCompatible, values.sessionType])
 
   return (
     <div className="flex flex-col overflow-hidden bg-(--bg-page)">
@@ -172,15 +91,19 @@ export function CreateTaskForm({
             <Input
               id="task-title"
               className={`mt-1 ${FIELD_CLASS}`}
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
+              value={values.title}
+              onChange={(e) => form.setFieldValue('title', e.target.value)}
               placeholder="e.g., Daily Standup Report"
+              maxLength={100}
+              aria-invalid={!!fieldErrors.title}
+              aria-describedby={fieldErrors.title ? 'task-title-error' : undefined}
             />
-            {title && (
+            {fieldErrors.title && <p id="task-title-error" className="mt-1 text-xs text-(--color-error)">{fieldErrors.title}</p>}
+            {values.title && (
               <p className="mt-1 text-xs text-(--color-text-muted)">
                 Slug identifier:{' '}
                 <code className="rounded bg-(--bg-key) px-1 py-0.5 font-mono text-[11px] text-(--color-text-2)">
-                  {slugify(title)}
+                  {slugify(values.title)}
                 </code>
               </p>
             )}
@@ -190,42 +113,45 @@ export function CreateTaskForm({
               schedule_task tool when fired; here the user sets where the
               task should route once the timer fires). */}
           <ModeWorkspaceFields
-            mode={formData.mode ?? 'normal'}
-            workspace={formData.workspace ?? null}
-            onChange={(next) =>
-              setFormData((prev) => ({
-                ...prev,
-                mode: next.mode,
-                workspace: next.workspace,
-              }))
-            }
+            mode={values.mode ?? 'normal'}
+            workspace={values.workspace ?? null}
+            onChange={(next) => {
+              form.setFieldValue('mode', next.mode)
+              form.setFieldValue('workspace', next.workspace)
+            }}
+            workspaceError={fieldErrors.workspace}
+            workspaceErrorId="task-workspace-error"
           />
 
           {/* Schedule Type & Detail */}
-          {formData.schedule_type === 'every' ? (
+          {values.schedule_type === 'every' ? (
             <div>
               <div className="flex flex-wrap items-start gap-4">
                 <div className="shrink-0">
                   <label className="block text-sm font-medium text-(--color-text)">Schedule Type</label>
                   <div className="mt-1">
                     <ScheduleTypeSegmented
-                      value={formData.schedule_type}
-                      onChange={(v) => setFormData({ ...formData, schedule_type: v })}
+                      value={values.schedule_type}
+                      onChange={(v) => form.setFieldValue('schedule_type', v)}
                     />
                   </div>
                 </div>
                 <div className="w-full sm:w-56 sm:shrink-0">
-                  <label className="block text-sm font-medium text-(--color-text)">Interval (seconds)</label>
+                  <label htmlFor="task-every-seconds" className="block text-sm font-medium text-(--color-text)">Interval (seconds)</label>
                   <Input
+                    id="task-every-seconds"
                     className={`mt-1 w-full ${FIELD_CLASS}`}
                     type="number"
                     min="1"
-                    value={formData.every_seconds ?? 3600}
+                    value={values.every_seconds ?? 3600}
                     onChange={(e) =>
-                      setFormData({ ...formData, every_seconds: parseInt(e.target.value) || 0 })
+                      form.setFieldValue('every_seconds', parseInt(e.target.value) || 0)
                     }
+                    aria-invalid={!!fieldErrors.every_seconds}
+                    aria-describedby={fieldErrors.every_seconds ? 'task-every-seconds-error' : 'task-every-seconds-help'}
                   />
-                  <p className="mt-1 text-xs text-(--color-text-muted)">e.g., 3600 = 1 hour, 86400 = 1 day</p>
+                  {fieldErrors.every_seconds && <p id="task-every-seconds-error" className="mt-1 text-xs text-(--color-error)">{fieldErrors.every_seconds}</p>}
+                  <p id="task-every-seconds-help" className="mt-1 text-xs text-(--color-text-muted)">e.g., 3600 = 1 hour, 86400 = 1 day</p>
                 </div>
               </div>
             </div>
@@ -235,31 +161,36 @@ export function CreateTaskForm({
                 <label className="block text-sm font-medium text-(--color-text)">Schedule Type</label>
                 <div className="mt-1">
                   <ScheduleTypeSegmented
-                    value={formData.schedule_type}
-                    onChange={(v) => setFormData({ ...formData, schedule_type: v })}
+                    value={values.schedule_type}
+                    onChange={(v) => form.setFieldValue('schedule_type', v)}
                   />
                 </div>
               </div>
 
-              {formData.schedule_type === 'at' && (
+              {values.schedule_type === 'at' && (
                 <div>
                   <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_11rem] sm:items-end">
                     <div className="flex-1">
-                      <label className="block text-sm font-medium text-(--color-text)">Date & Time</label>
+                      <label htmlFor="task-at-datetime" className="block text-sm font-medium text-(--color-text)">Date & Time</label>
                       <div className="mt-1">
                         <DateTimePicker
-                          value={formData.at_datetime ?? ''}
-                          onChange={(v) => setFormData({ ...formData, at_datetime: v })}
+                          id="task-at-datetime"
+                          value={values.at_datetime ?? ''}
+                          onChange={(v) => form.setFieldValue('at_datetime', v)}
                           triggerClassName="h-8 rounded-sm bg-(--bg-card) px-2 text-xs hover:bg-(--bg-key)/30"
+                          aria-invalid={!!fieldErrors.at_datetime}
+                          aria-describedby={fieldErrors.at_datetime ? 'task-at-datetime-error' : undefined}
                         />
                       </div>
+                      {fieldErrors.at_datetime && <p id="task-at-datetime-error" className="mt-1 text-xs text-(--color-error)">{fieldErrors.at_datetime}</p>}
                     </div>
                     <div className="w-full min-w-0">
-                      <label className="block text-sm font-medium text-(--color-text)">Timezone</label>
+                      <label htmlFor="task-timezone" className="block text-sm font-medium text-(--color-text)">Timezone</label>
                       <Input
+                        id="task-timezone"
                         className={`mt-1 ${FIELD_CLASS}`}
-                        value={formData.timezone}
-                        onChange={(e) => setFormData({ ...formData, timezone: e.target.value })}
+                        value={values.timezone}
+                        onChange={(e) => form.setFieldValue('timezone', e.target.value)}
                         placeholder={localTz}
                       />
                     </div>
@@ -268,24 +199,29 @@ export function CreateTaskForm({
                 </div>
               )}
 
-              {formData.schedule_type === 'cron' && (
+              {values.schedule_type === 'cron' && (
                 <div>
                   <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_11rem] sm:items-end">
                     <div className="flex-1">
-                      <label className="block text-sm font-medium text-(--color-text)">Cron Expression</label>
+                      <label htmlFor="task-cron-expression" className="block text-sm font-medium text-(--color-text)">Cron Expression</label>
                       <Input
+                        id="task-cron-expression"
                         className={`mt-1 ${FIELD_CLASS}`}
-                        value={formData.cron_expression ?? ''}
-                        onChange={(e) => setFormData({ ...formData, cron_expression: e.target.value })}
+                        value={values.cron_expression ?? ''}
+                        onChange={(e) => form.setFieldValue('cron_expression', e.target.value)}
                         placeholder="e.g., 0 9 * * MON-FRI"
+                        aria-invalid={!!fieldErrors.cron_expression}
+                        aria-describedby={fieldErrors.cron_expression ? 'task-cron-expression-error' : undefined}
                       />
+                      {fieldErrors.cron_expression && <p id="task-cron-expression-error" className="mt-1 text-xs text-(--color-error)">{fieldErrors.cron_expression}</p>}
                     </div>
                     <div className="w-full min-w-0">
-                      <label className="block text-sm font-medium text-(--color-text)">Timezone</label>
+                      <label htmlFor="task-timezone" className="block text-sm font-medium text-(--color-text)">Timezone</label>
                       <Input
+                        id="task-timezone"
                         className={`mt-1 ${FIELD_CLASS}`}
-                        value={formData.timezone}
-                        onChange={(e) => setFormData({ ...formData, timezone: e.target.value })}
+                        value={values.timezone}
+                        onChange={(e) => form.setFieldValue('timezone', e.target.value)}
                         placeholder={localTz}
                       />
                     </div>
@@ -298,14 +234,18 @@ export function CreateTaskForm({
 
           {/* Prompt */}
           <div>
-            <label className="block text-sm font-medium text-(--color-text)">Prompt</label>
+            <label htmlFor="task-prompt" className="block text-sm font-medium text-(--color-text)">Prompt</label>
             <Textarea
+              id="task-prompt"
               className={`mt-1 ${FIELD_CLASS}`}
-              value={formData.prompt}
-              onChange={(e) => setFormData({ ...formData, prompt: e.target.value })}
+              value={values.prompt}
+              onChange={(e) => form.setFieldValue('prompt', e.target.value)}
               placeholder="Message to deliver to the team lead when the task fires."
               rows={4}
+              aria-invalid={!!fieldErrors.prompt}
+              aria-describedby={fieldErrors.prompt ? 'task-prompt-error' : undefined}
             />
+            {fieldErrors.prompt && <p id="task-prompt-error" className="mt-1 text-xs text-(--color-error)">{fieldErrors.prompt}</p>}
           </div>
 
           {/* Session Target & Max Runs */}
@@ -313,8 +253,9 @@ export function CreateTaskForm({
             <div className="w-full max-w-md">
               <label htmlFor="session-target" className="block text-sm font-medium text-(--color-text)">Session Target</label>
               <Dropdown
-                value={sessionType}
-                onValueChange={(v) => setSessionType(v as 'new' | 'auto' | 'current' | 'custom')}
+                id="session-target"
+                value={values.sessionType}
+                onValueChange={(v) => form.setFieldValue('sessionType', v as 'new' | 'auto' | 'current' | 'custom')}
                 trigger="Session Target"
                 className="mt-1 w-full px-2 py-1 text-[11px]"
               >
@@ -328,41 +269,51 @@ export function CreateTaskForm({
                 <DropdownItem value="custom">Specific Session ID…</DropdownItem>
               </Dropdown>
               <p className="mt-1 text-xs text-(--color-text-muted)">
-                {sessionType === 'new' && 'Creates a fresh, isolated chat session for every run.'}
-                {sessionType === 'auto' && 'Runs all executions in a single dedicated chat session created for this task.'}
-                {sessionType === 'current' && 'Delivers the prompt directly into your active chat thread.'}
-                {sessionType === 'custom' && 'Delivers the prompt to a specific chat session by its UUID.'}
+                {values.sessionType === 'new' && 'Creates a fresh, isolated chat session for every run.'}
+                {values.sessionType === 'auto' && 'Runs all executions in a single dedicated chat session created for this task.'}
+                {values.sessionType === 'current' && 'Delivers the prompt directly into your active chat thread.'}
+                {values.sessionType === 'custom' && 'Delivers the prompt to a specific chat session by its UUID.'}
               </p>
 
-              {sessionType === 'custom' && (
+              {values.sessionType === 'custom' && (
                 <div className="mt-2">
+                  <label htmlFor="custom-session-id" className="sr-only">Session UUID</label>
                   <Input
+                    id="custom-session-id"
                     className={FIELD_CLASS}
-                    value={customSessionId}
-                    onChange={(e) => setCustomSessionId(e.target.value)}
+                    value={values.customSessionId}
+                    onChange={(e) => form.setFieldValue('customSessionId', e.target.value)}
                     placeholder="Enter session UUID (e.g. 123e4567-e89b-12d3-a456-426614174000)"
+                    aria-invalid={!!fieldErrors.customSessionId}
+                    aria-describedby={fieldErrors.customSessionId ? 'custom-session-id-error' : undefined}
                   />
+                  {fieldErrors.customSessionId && <p id="custom-session-id-error" className="mt-1 text-xs text-(--color-error)">{fieldErrors.customSessionId}</p>}
                 </div>
               )}
             </div>
 
             <div className="w-full min-w-0">
-              <label className="block text-sm font-medium text-(--color-text)">Max runs (optional)</label>
+              <label htmlFor="task-max-runs" className="block text-sm font-medium text-(--color-text)">Max runs (optional)</label>
               <Input
+                id="task-max-runs"
                 type="number"
                 min="1"
                 className={`mt-1 w-full ${FIELD_CLASS}`}
-                value={formData.max_runs ?? ''}
-                onChange={(e) => setFormData({ ...formData, max_runs: e.target.value ? Number(e.target.value) : null })}
+                value={values.max_runs ?? ''}
+                onChange={(e) => form.setFieldValue('max_runs', e.target.value ? Number(e.target.value) : null)}
                 placeholder="Unlimited"
+                aria-invalid={!!fieldErrors.max_runs}
+                aria-describedby={fieldErrors.max_runs ? 'task-max-runs-error' : undefined}
               />
+              {fieldErrors.max_runs && <p id="task-max-runs-error" className="mt-1 text-xs text-(--color-error)">{fieldErrors.max_runs}</p>}
               <p className="mt-1 text-xs text-(--color-text-muted)">Stop after this many successful firings.</p>
             </div>
           </div>
 
           {/* Error message */}
+          {validationSummary && <p role="alert" className="sr-only">Please correct the highlighted fields.</p>}
           {error && (
-            <div className="flex gap-2 rounded-sm border border-(--color-error) bg-(--color-error-subtle) p-3">
+            <div role="alert" className="flex gap-2 rounded-sm border border-(--color-error) bg-(--color-error-subtle) p-3">
               <AlertCircle size={16} className="shrink-0 text-(--color-error)" />
               <p className="text-sm text-(--color-error)">{error}</p>
             </div>

@@ -1,7 +1,11 @@
-import { useEffect } from 'react'
+import { useHotkeys } from '@tanstack/react-hotkeys'
 import { useRouter } from '@tanstack/react-router'
 import { getPlatform } from '@/hooks/use-platform'
-import { isPrimaryShortcut } from '@/lib/keyboard-shortcut'
+
+function hotkeyPlatform() {
+  const { os } = getPlatform()
+  return os === 'macos' ? 'mac' : os === 'windows' ? 'windows' : 'linux'
+}
 
 /**
  * ``⌘[`` / ``⌘]`` (``Ctrl+[`` / ``Ctrl+]`` on Windows/Linux) — step
@@ -17,20 +21,25 @@ import { isPrimaryShortcut } from '@/lib/keyboard-shortcut'
  */
 export function useHistoryBackForwardShortcuts(): void {
   const router = useRouter()
-
-  useEffect(() => {
-    const { os } = getPlatform()
-    const handler = (e: KeyboardEvent) => {
-      if (!isPrimaryShortcut(e, os)) return
-      if (e.key === '[') {
-        e.preventDefault()
-        router.history.back()
-      } else if (e.key === ']') {
-        e.preventDefault()
-        router.history.forward()
-      }
-    }
-    window.addEventListener('keydown', handler)
-    return () => window.removeEventListener('keydown', handler)
-  }, [router])
+  useHotkeys(
+    [
+      {
+        hotkey: 'Mod+[',
+        callback: () => router.history.back(),
+        options: { meta: { name: 'History back', description: 'Navigate backward' } },
+      },
+      {
+        hotkey: 'Mod+]',
+        callback: () => router.history.forward(),
+        options: { meta: { name: 'History forward', description: 'Navigate forward' } },
+      },
+    ],
+    {
+      target: document,
+      platform: hotkeyPlatform(),
+      preventDefault: true,
+      stopPropagation: false,
+      ignoreInputs: false,
+    },
+  )
 }

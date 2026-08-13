@@ -4,6 +4,8 @@
  */
 
 import { useRef, useState } from 'react'
+import { tableFeatures, useTable } from '@tanstack/react-table'
+import { useVirtualizer } from '@tanstack/react-virtual'
 import { ChevronRight, Copy } from 'lucide-react'
 import type { TraceListItem } from '@/api/client'
 import {
@@ -21,21 +23,49 @@ import { mediumHapticFeedback } from '@/lib/haptics'
 
 const TRACE_LONG_PRESS_MS = 520
 const TRACE_LONG_PRESS_MOVE_TOLERANCE = 10
+const traceTableFeatures = tableFeatures({})
+const traceColumns = [{ id: 'trace' }] as const
 
 export function TracesTable({
   traces,
   onSelect,
   embedded = false,
+  scrollElement,
 }: {
   traces: TraceListItem[]
   onSelect: (traceId: string) => void
   embedded?: boolean
+  scrollElement?: HTMLDivElement | null
 }) {
   // "Now" is captured once per TracesTable mount via a lazy useState initializer
   // — keeps the render pure (no Date.now() call during render) while still
   // giving fresh labels whenever the table unmounts/remounts on refetch.
   const [now] = useState(() => Date.now())
-  const table = (
+  const table = useTable({
+    features: traceTableFeatures,
+    data: traces,
+    columns: traceColumns,
+    getRowId: (trace) => trace.span_id,
+  })
+  const rows = table.getRowModel().rows
+  const shouldVirtualize = embedded && scrollElement !== null && scrollElement !== undefined
+  const rowVirtualizer = useVirtualizer({
+    count: shouldVirtualize ? rows.length : 0,
+    getScrollElement: () => scrollElement ?? null,
+    estimateSize: () => 37,
+    overscan: 8,
+    useFlushSync: false,
+  })
+  const virtualRows = shouldVirtualize ? rowVirtualizer.getVirtualItems() : []
+  // A newly mounted scroller has no measured viewport until ResizeObserver
+  // runs. Keep its rows accessible during that short interval (and in DOM-only
+  // unit environments); subsequent virtualizer updates replace them with the
+  // visible range.
+  const renderedRows =
+    shouldVirtualize && virtualRows.length > 0
+      ? virtualRows.map((virtualRow) => rows[virtualRow.index])
+      : rows
+  const tableElement = (
     <table className="min-w-[720px] w-full text-xs">
       <thead className="sticky top-0 z-10">
         <tr className="border-b border-(--color-border)/60 bg-(--bg-key)/25">
@@ -51,19 +81,33 @@ export function TracesTable({
           <Th />
         </tr>
       </thead>
-      <tbody>
-        {traces.map((trace) => (
-          <TraceRow key={trace.span_id} trace={trace} now={now} onSelect={onSelect} />
+      <tbody data-testid={embedded ? 'virtual-trace-rows' : undefined}>
+        {embedded && virtualRows.length > 0 && (
+          <tr aria-hidden="true">
+            <td colSpan={10} className="p-0" style={{ height: virtualRows[0].start }} />
+          </tr>
+        )}
+        {renderedRows.map((row) => (
+          <TraceRow key={row.id} trace={row.original} now={now} onSelect={onSelect} />
         ))}
+        {embedded && virtualRows.length > 0 && (
+          <tr aria-hidden="true">
+            <td
+              colSpan={10}
+              className="p-0"
+              style={{ height: rowVirtualizer.getTotalSize() - virtualRows.at(-1)!.end }}
+            />
+          </tr>
+        )}
       </tbody>
     </table>
   )
 
-  if (embedded) return table
+  if (embedded) return tableElement
 
   return (
     <div className="overflow-x-auto rounded border border-(--color-border) bg-(--bg-card)">
-      {table}
+      {tableElement}
     </div>
   )
 }

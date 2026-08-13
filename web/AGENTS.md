@@ -6,6 +6,12 @@ React/Vite frontend for OpenAgentd, embedded in the Tauri shell and served by th
 
 - Bun, React 19, TypeScript 5.9, Vite 7, Tailwind v4 + `tw-animate-css`.
 - TanStack Router/Query, Zustand + Immer, Tauri JS plugins.
+- Bounded TanStack pilots: Table + Virtual power the telemetry trace list;
+  Form owns the sidebar title and scheduler create/edit forms; Hotkeys owns
+  fixed global commands and the workspace-panel close shortcut; Pacer debounces
+  scheduler search. Unified Query/Router/Form/Hotkeys/Pacer devtools load in
+  Vite development only. TanStack DB is not part of the current state model;
+  Query remains server state and Zustand remains client/stream state.
 - UI primitives are **zero-dependency** hand-rolled components in `src/components/ui/`
   (no shadcn, no Base UI, no CVA, no clsx/tailwind-merge — see `src/AGENTS.md`).
 - Tests use Bun test with Happy DOM and Testing Library.

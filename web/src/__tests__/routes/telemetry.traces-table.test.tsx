@@ -71,6 +71,26 @@ describe('TracesTable', () => {
     expect(table.parentElement?.className ?? '').not.toContain('rounded')
   })
 
+  it('uses virtual rows only for the embedded scroll-paginated list', () => {
+    const traces = Array.from({ length: 100 }, (_, index) =>
+      trace({
+        trace_id: `0x${String(index).padStart(32, '0')}`,
+        span_id: `0x${String(index).padStart(16, '0')}`,
+      }),
+    )
+    const { rerender } = render(<TracesTable traces={traces} onSelect={() => {}} embedded />)
+
+    // The table only enables its virtual row range when TracesSection supplies
+    // its real scroll element; direct embedded renders stay deterministic for
+    // DOM-only tests while retaining the virtualized row container.
+    expect(screen.getByTestId('virtual-trace-rows')).toBeTruthy()
+    expect(screen.getAllByRole('button', { name: /Open trace/ })).toHaveLength(traces.length)
+
+    rerender(<TracesTable traces={traces} onSelect={() => {}} />)
+    expect(screen.queryByTestId('virtual-trace-rows')).toBeNull()
+    expect(screen.getAllByRole('button', { name: /Open trace/ })).toHaveLength(traces.length)
+  })
+
   it('shows a status pill for errored traces and a plain label otherwise', () => {
     render(
       <TracesTable

@@ -6,6 +6,7 @@
  */
 
 import { useEffect, useState } from 'react'
+import { useDebouncedCallback } from '@tanstack/react-pacer'
 import { X, Clock, Plus, Loader2, AlertCircle, CalendarClock, ArrowLeft } from 'lucide-react'
 import { SearchBar } from '@/components/ui/search-bar'
 import {
@@ -47,6 +48,11 @@ export function SchedulerPanel({
   // so useState is correct here (no need for Zustand).
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('')
+  const updateDebouncedSearchQuery = useDebouncedCallback(setDebouncedSearchQuery, {
+    wait: 150,
+    key: 'scheduler-task-search',
+  })
   // Mobile: 'list' | 'detail' | 'create'
   const [mobilePane, setMobilePane] = useState<'list' | 'detail' | 'create'>('list')
 
@@ -66,7 +72,7 @@ export function SchedulerPanel({
   // Show all scheduled tasks. Each row carries a routing badge so users can
   // distinguish normal reminders from coding-workspace reminders.
   const filteredTasks = tasks.filter((task) => {
-    const q = searchQuery.toLowerCase()
+    const q = debouncedSearchQuery.toLowerCase()
     if (!q) return true
     return (
       task.name.toLowerCase().includes(q) ||
@@ -182,7 +188,11 @@ export function SchedulerPanel({
                     <SearchBar
                       placeholder="Search tasks…"
                       value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
+                      onChange={(event) => {
+                        const nextQuery = event.target.value
+                        setSearchQuery(nextQuery)
+                        updateDebouncedSearchQuery(nextQuery)
+                      }}
                     />
                   </div>
 

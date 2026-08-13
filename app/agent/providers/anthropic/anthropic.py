@@ -467,6 +467,49 @@ def _anthropic_model_name(model: str) -> str:
     return model.lower().removeprefix("anthropic.")
 
 
+def _log_request_shape_on_error(status_code: int, payload: dict[str, Any]) -> None:
+    """Log the outgoing payload's structural shape before a 4xx propagates.
+
+    Recurring "thinking or redacted_thinking blocks in the latest assistant
+    message cannot be modified" (HTTP 400) incidents have never been
+    reproducible from persisted session history — an exhaustive DB scan found
+    no stored assistant message anywhere near the block count Anthropic's
+    error index implied. That means the corrupted payload only ever existed
+    live, in memory, at request time, and today it's discarded the moment
+    ``raise_for_status()`` fires. This logs a bounded structural summary —
+    each message's role and its content-block *type* sequence, no tool output
+    or user text — so the next occurrence gives the actual wire shape instead
+    of another after-the-fact guess.
+    """
+    if status_code < 400:
+        return
+    messages = payload.get("messages")
+    if not isinstance(messages, list):
+        return
+    shapes = []
+    for m in messages:
+        if not isinstance(m, dict):
+            continue
+        content = m.get("content")
+        if isinstance(content, list):
+            block_types = [
+                b.get("type") if isinstance(b, dict) else type(b).__name__
+                for b in content
+            ]
+            shapes.append(
+                {
+                    "role": m.get("role"),
+                    "block_types": block_types,
+                    "block_count": len(block_types),
+                }
+            )
+        else:
+            shapes.append({"role": m.get("role"), "block_types": "scalar"})
+    logger.warning(
+        "anthropic_400_request_shape status={} shapes={}", status_code, shapes
+    )
+
+
 def _uses_adaptive_thinking(model: str) -> bool:
     return _anthropic_model_name(model).startswith(
         (
@@ -734,13 +777,16 @@ class AnthropicProvider(LLMProviderBase):
             if _uses_beta_messages_api(self.model, merged) or self._beta
             else self._messages_path
         )
+        payload = self._payload(messages, tools, merged)
         async with self._http_client_context() as client:
             response = await client.post(
                 f"{self.base_url}{messages_path}",
                 headers=self.headers,
-                json=self._payload(messages, tools, merged),
+                json=payload,
                 timeout=self._timeout,
             )
+            if response.status_code >= 400:
+                _log_request_shape_on_error(response.status_code, payload)
             response.raise_for_status()
         return self._parse_response(response.json())
 
@@ -874,6 +920,7 @@ class AnthropicProvider(LLMProviderBase):
             ) as response:
                 if response.status_code >= 400:
                     await response.aread()
+                    _log_request_shape_on_error(response.status_code, payload)
                     response.raise_for_status()
                 async for line in response.aiter_lines():
                     if not line.startswith("data: "):

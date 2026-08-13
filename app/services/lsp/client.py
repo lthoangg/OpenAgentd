@@ -85,7 +85,14 @@ class LspClient:
                         "tagSupport": {"valueSet": [1, 2]},
                         "codeDescriptionSupport": True,
                         "dataSupport": True,
-                    }
+                    },
+                    # Without this, servers fall back to flat SymbolInformation
+                    # (location = the whole declaration, e.g. starting at
+                    # "async"/"def"). Hierarchical DocumentSymbol adds
+                    # selectionRange (just the identifier), which is what a
+                    # position fed back into go_to_definition/hover needs to
+                    # resolve — see LspManager.navigation's flatten().
+                    "documentSymbol": {"hierarchicalDocumentSymbolSupport": True},
                 },
             },
         }

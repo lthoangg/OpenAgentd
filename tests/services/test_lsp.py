@@ -1251,6 +1251,53 @@ async def test_lsp_client_sends_workspace_folders_in_initialize(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_lsp_client_advertises_hierarchical_document_symbol_support(tmp_path):
+    """Without this capability, servers (pyright, ty) fall back to flat
+
+    SymbolInformation — location = the whole declaration (e.g. starting at
+    "async"/"def") with no identifier-only position available. Hierarchical
+    DocumentSymbol adds selectionRange (just the identifier), which
+    LspManager.navigation's flatten() needs to report a position that
+    actually resolves in a follow-up go_to_definition/find_references/hover
+    call.
+    """
+    stdout = MockStreamReader()
+    captured_params: list[dict] = []
+
+    def on_write(data):
+        parts = data.split(b"\r\n\r\n", 1)
+        if len(parts) < 2:
+            return
+        try:
+            msg = json.loads(parts[1].decode("utf-8"))
+        except Exception:
+            return
+        if msg.get("method") == "initialize":
+            captured_params.append(msg.get("params", {}))
+            stdout.feed_message(
+                {"jsonrpc": "2.0", "id": msg["id"], "result": {"capabilities": {}}}
+            )
+
+    stdin = MockStreamWriter(on_write=on_write)
+    proc = MockProcess(stdout, stdin)
+
+    with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec:
+        mock_exec.return_value = proc
+        client = LspClient(["mock-lsp"], tmp_path)
+        await client.start()
+        await client.stop()
+
+    assert len(captured_params) == 1
+    caps = captured_params[0].get("capabilities", {})
+    assert (
+        caps.get("textDocument", {})
+        .get("documentSymbol", {})
+        .get("hierarchicalDocumentSymbolSupport")
+        is True
+    )
+
+
+@pytest.mark.asyncio
 async def test_lsp_monorepo_subfolder_uses_subfolder_root(tmp_path):
     """In a monorepo the LSP client for a sub-project is started with the
     sub-project root as its workspace_root, not the top-level workspace."""

@@ -737,6 +737,16 @@ MCP.
   and the `kind` filter (surfaced in both the `document_symbol`/`workspace_symbol`
   header and the expanded args), matching the existing per-operation formatting for
   `go_to_definition`/`find_references`/`document_symbol`/`workspace_symbol`.
+  Fixed a position-accuracy bug: the LSP client didn't advertise
+  `hierarchicalDocumentSymbolSupport`, so servers (pyright, ty) fell back to
+  flat `SymbolInformation` and `document_symbol`/`workspace_symbol` reported
+  the start of the whole declaration (e.g. the `async`/`def` keyword) instead
+  of the identifier — a position that then failed when fed into
+  `go_to_definition`/`find_references`/`hover`. The client now requests
+  hierarchical results and the manager prefers each symbol's
+  `selectionRange` (the identifier) over its full `range`, so a
+  `document_symbol` location now round-trips correctly into the other
+  operations.
 - **Clean tool argument validation errors** `[v1.77.0]` — when a tool call
   fails Pydantic validation, the LLM receives a compact `field: message`
   summary instead of the full Pydantic noise (type codes, raw input value,

@@ -739,10 +739,16 @@ class LspManager:
 
             def flatten(symbol: dict) -> None:
                 if operation == "document_symbol" and "location" not in symbol:
-                    if isinstance(symbol.get("range"), dict):
+                    # Prefer selectionRange (the identifier) over range (the
+                    # whole declaration, e.g. starting at "async"/"def"):
+                    # callers feed this position straight into
+                    # go_to_definition/find_references/hover, which resolve
+                    # against the identifier, not the leading keyword.
+                    name_range = symbol.get("selectionRange", symbol.get("range"))
+                    if isinstance(name_range, dict):
                         symbol = {
                             **symbol,
-                            "location": {"uri": uri, "range": symbol["range"]},
+                            "location": {"uri": uri, "range": name_range},
                         }
                 results.append(symbol)
                 if operation == "document_symbol":

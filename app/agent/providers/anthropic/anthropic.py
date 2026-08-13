@@ -661,7 +661,10 @@ def _stream_chunk(
 _DEFAULT_MAX_OUTPUT_TOKENS = 32000
 
 
-@lru_cache(maxsize=None)
+_MAX_OUTPUT_TOKEN_MODEL_CACHE_SIZE = 256
+
+
+@lru_cache(maxsize=_MAX_OUTPUT_TOKEN_MODEL_CACHE_SIZE)
 def _max_output_tokens_for_model(model: str) -> int:
     """Return the output-token cap for *model*.
 

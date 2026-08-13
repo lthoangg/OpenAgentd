@@ -253,6 +253,7 @@ def _pop_idle_session_teams_locked(now: float) -> list[tuple[str, "AgentTeam"]]:
     for session_id in expired:
         team = _session_teams.pop(session_id, None)
         _session_team_last_used.pop(session_id, None)
+        _session_start_locks.pop(session_id, None)
         if team is not None:
             popped.append((session_id, team))
     return popped
@@ -272,6 +273,7 @@ def _pop_idle_coding_teams_locked(
     for key in expired:
         team = _coding_teams.pop(key, None)
         _coding_team_last_used.pop(key, None)
+        _coding_start_locks.pop(key, None)
         if team is not None:
             popped.append((key, team))
     return popped

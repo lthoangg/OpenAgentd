@@ -166,6 +166,30 @@ async def test_get_or_start_team_for_session_does_not_block_other_session_start(
 
 
 @pytest.mark.asyncio
+async def test_session_team_eviction_removes_start_lock():
+    session_id = "expired-session"
+    team_manager._session_teams[session_id] = _make_team()
+    team_manager._session_team_last_used[session_id] = 0
+    team_manager._session_start_locks[session_id] = asyncio.Lock()
+
+    expired = team_manager._pop_idle_session_teams_locked(float("inf"))
+
+    assert expired
+    assert session_id not in team_manager._session_start_locks
+
+
+async def test_coding_team_eviction_removes_start_lock(tmp_path):
+    key = (str(tmp_path), "expired-session")
+    team_manager._coding_teams[key] = _make_team()
+    team_manager._coding_team_last_used[key] = 0
+    team_manager._coding_start_locks[key] = asyncio.Lock()
+
+    expired = team_manager._pop_idle_coding_teams_locked(float("inf"))
+
+    assert expired
+    assert key not in team_manager._coding_start_locks
+
+
 async def test_get_or_start_team_evicts_after_idle(monkeypatch):
     """Team evicts when idle for longer than _DEFAULT_TEAM_IDLE_SECONDS."""
     fake_team = _make_team()

@@ -61,6 +61,10 @@ def known_model_limits(monkeypatch: pytest.MonkeyPatch):
     )
 
 
+def test_unknown_model_cache_is_bounded():
+    assert _max_output_tokens_for_model.cache_info().maxsize is not None
+
+
 def test_unknown_anthropic_model_does_not_fall_back_to_4096(
     known_model_limits,
 ) -> None:

@@ -3,7 +3,7 @@ import { formDevtoolsPlugin } from '@tanstack/react-form-devtools'
 import { hotkeysDevtoolsPlugin } from '@tanstack/react-hotkeys-devtools'
 import { pacerDevtoolsPlugin } from '@tanstack/react-pacer-devtools'
 import { ReactQueryDevtoolsPanel } from '@tanstack/react-query-devtools'
-import { TanStackRouterDevtoolsPanel } from '@tanstack/router-devtools'
+import { TanStackRouterDevtoolsPanel } from '@tanstack/react-router-devtools'
 import { router } from '@/router'
 
 export function TanStackDevtools() {

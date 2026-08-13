@@ -57,16 +57,28 @@ function AppLoadingScreen({ unavailable, failed, retrying, onRetry, onChooseServ
   return (
     <div className="mobile-safe-shell mobile-viewport flex h-dvh items-center justify-center bg-(--bg-page)" role="status" aria-label="Loading OpenAgentd" aria-live="polite">
       <div className="flex max-w-sm flex-col items-center gap-5 px-6 text-center">
-        <img src={OPENAGENTD_APP_ICON} width={88} height={88} alt="" aria-hidden="true" className="rounded-2xl" />
-        {unavailable && <>
-          <p className="text-sm text-(--color-text-muted)">{failed ? 'OpenAgentd could not start its local backend.' : 'OpenAgentd is taking longer than usual to start.'}</p>
-          <div className="flex flex-wrap justify-center gap-2">
-            <Button onClick={onRetry} disabled={retrying}>{retrying ? 'Restarting…' : 'Retry'}</Button>
-            <Button variant="subtle" onClick={onChooseServer}>Choose Server</Button>
-            <Button variant="ghost" onClick={() => { void copyBackendLogPath() }}>{logCopyState === 'copied' ? 'Backend Log Path Copied' : logCopyState === 'failed' ? 'Copy Failed' : 'Copy Backend Log Path'}</Button>
+        <div className="relative flex items-center justify-center">
+          <div className="absolute -inset-2.5 rounded-3xl bg-(--bg-key)/50 blur-xl animate-pulse" />
+          <img src={OPENAGENTD_APP_ICON} width={88} height={88} alt="OpenAgentd" className="relative rounded-2xl shadow-sm" />
+        </div>
+        {!unavailable ? (
+          <div className="flex flex-col items-center gap-2">
+            <p className="text-sm font-medium text-(--color-text-muted) animate-pulse">Connecting to OpenAgentd…</p>
+            <Button variant="ghost" size="sm" className="mt-1 text-xs text-(--color-text-subtle)" onClick={onChooseServer}>
+              Choose Server
+            </Button>
           </div>
-          {logCopyState === 'failed' && backendLogPath && <code className="max-w-full select-text break-all text-xs text-(--color-text-muted)">{backendLogPath}</code>}
-        </>}
+        ) : (
+          <>
+            <p className="text-sm text-(--color-text-muted)">{failed ? 'OpenAgentd could not start its local backend.' : 'OpenAgentd is taking longer than usual to start.'}</p>
+            <div className="flex flex-wrap justify-center gap-2">
+              <Button onClick={onRetry} disabled={retrying}>{retrying ? 'Restarting…' : 'Retry'}</Button>
+              <Button variant="subtle" onClick={onChooseServer}>Choose Server</Button>
+              <Button variant="ghost" onClick={() => { void copyBackendLogPath() }}>{logCopyState === 'copied' ? 'Backend Log Path Copied' : logCopyState === 'failed' ? 'Copy Failed' : 'Copy Backend Log Path'}</Button>
+            </div>
+            {logCopyState === 'failed' && backendLogPath && <code className="max-w-full select-text break-all text-xs text-(--color-text-muted)">{backendLogPath}</code>}
+          </>
+        )}
       </div>
       <AppBackendDialog open={backendDialogOpen} onOpenChange={onBackendDialogOpenChange} />
     </div>

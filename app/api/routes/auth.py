@@ -63,10 +63,64 @@ class OAuthCallbackResponse(BaseModel):
     ok: bool
 
 
+class OAuthDisconnectResponse(BaseModel):
+    ok: bool
+    provider: str
+
+
 @router.get("/check")
 async def auth_check() -> AuthCheckResponse:
     """Protected no-op endpoint for clients to verify access credentials."""
     return AuthCheckResponse(ok=True)
+
+
+@router.delete("/{provider_id}")
+async def oauth_disconnect(provider_id: str) -> OAuthDisconnectResponse:
+    """Disconnect an OAuth provider by removing its saved token file."""
+    import shutil
+    from pathlib import Path
+
+    from app.agent.providers.catalog import find
+    from app.agent.providers.plugin_registry import (
+        ProviderCredentialStore,
+        find_provider_plugin,
+    )
+    from app.core.config import settings
+    from app.core.runtime_settings import clear_provider_cached_models
+
+    entry = find(provider_id)
+    plugin = find_provider_plugin(provider_id)
+    if entry is None and plugin is None:
+        raise HTTPException(
+            status_code=404, detail=f"Unknown OAuth provider '{provider_id}'."
+        )
+
+    cache_dir = Path(settings.OPENAGENTD_CACHE_DIR or "")
+    token_files: dict[str, Path] = {
+        "codex": cache_dir / "codex_oauth.json",
+        "copilot": cache_dir / "copilot_oauth.json",
+        "grok": cache_dir / "grok_oauth.json",
+    }
+
+    token_file = token_files.get(provider_id)
+    if token_file and token_file.is_file():
+        try:
+            token_file.unlink()
+        except Exception as exc:
+            logger.warning(
+                "failed_to_delete_oauth_file provider={} path={} error={}",
+                provider_id,
+                token_file,
+                exc,
+            )
+    elif plugin is not None:
+        store = ProviderCredentialStore(provider_id)
+        plugin_dir = Path(store.token_path("")).parent
+        if plugin_dir.is_dir():
+            shutil.rmtree(plugin_dir, ignore_errors=True)
+
+    clear_provider_cached_models(provider_id)
+    return OAuthDisconnectResponse(ok=True, provider=provider_id)
 
 
 # Sentinel queued by the worker thread once login() returns or raises.
@@ -125,9 +179,6 @@ async def oauth_login(provider_id: str, request: Request):
 
     def _run_login() -> None:
         try:
-            # All registered ``login`` functions accept ``event_sink`` as
-            # a kwarg per the refactor in this PR; ``inspect`` is no
-            # longer needed.
             if plugin_login is not None:
                 plugin_login(_sink)
             else:

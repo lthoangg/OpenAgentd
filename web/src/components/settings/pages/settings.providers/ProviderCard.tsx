@@ -6,7 +6,7 @@ import { ApiValidationError, type ProviderInfo, type ProvidersListBody } from '@
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { SectionCard, SectionCardHeader } from '@/components/ui/section-card'
-import { queryKeys, useDisconnectProviderMutation, useProviderModelsMutation, useProviderUsageQuery, useSaveProviderMutation, useSaveProviderVisibleModelsMutation } from '@/queries'
+import { queryKeys, useDisconnectOauthProviderMutation, useDisconnectProviderMutation, useProviderModelsMutation, useProviderUsageQuery, useSaveProviderMutation, useSaveProviderVisibleModelsMutation } from '@/queries'
 import { openExternalUrl } from '@/lib/open-external'
 import { useToastStore } from '@/stores/useToastStore'
 import { DAEMON_BASE_URL, providerKindLabel } from './providerUtils'
@@ -28,6 +28,7 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
   const saveMutation = useSaveProviderMutation()
   const saveVisibleModelsMutation = useSaveProviderVisibleModelsMutation()
   const disconnectMutation = useDisconnectProviderMutation()
+  const disconnectOauthMutation = useDisconnectOauthProviderMutation()
   const push = useToastStore((s) => s.push)
   const queryClient = useQueryClient()
 
@@ -177,13 +178,30 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
       await disconnectMutation.mutateAsync({ providerId: provider.id, disconnected })
       push({
         tone: 'success',
-        title: disconnected ? 'Provider disconnected' : 'Provider reconnected',
+        title: disconnected ? 'Provider hidden' : 'Provider visible',
         description: provider.label,
       })
     } catch (err) {
       push({
         tone: 'error',
-        title: disconnected ? 'Could not disconnect provider' : 'Could not reconnect provider',
+        title: disconnected ? 'Could not hide provider' : 'Could not show provider',
+        description: err instanceof Error ? err.message : String(err),
+      })
+    }
+  }
+
+  const handleOauthDisconnect = async () => {
+    try {
+      await disconnectOauthMutation.mutateAsync(provider.id)
+      push({
+        tone: 'success',
+        title: 'OAuth account disconnected',
+        description: provider.label,
+      })
+    } catch (err) {
+      push({
+        tone: 'error',
+        title: 'Could not disconnect OAuth account',
         description: err instanceof Error ? err.message : String(err),
       })
     }
@@ -214,7 +232,7 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
         ) : provider.is_disconnected ? (
           <span className="inline-flex items-center gap-1 rounded bg-(--bg-key) px-1.5 py-0.5 text-[9px] font-semibold text-(--color-text-muted) border border-(--color-border)">
             <WifiOff size={10} aria-hidden="true" />
-            Disconnected
+            Hidden
           </span>
         ) : isConnected ? (
           <span className="inline-flex items-center gap-1 rounded bg-(--color-success-subtle) px-1.5 py-0.5 text-[9px] font-semibold text-(--color-success) border border-(--color-success)/15">
@@ -234,7 +252,7 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
           >
             {disconnectMutation.isPending
               ? <Loader2 size={10.5} className="animate-spin" aria-hidden="true" />
-              : provider.is_disconnected ? 'Reconnect' : 'Disconnect'
+              : provider.is_disconnected ? 'Show' : 'Hide'
             }
           </Button>
         )}
@@ -342,15 +360,42 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
             {listing && <Loader2 className="h-3 w-3 animate-spin mr-1.5" aria-hidden="true" />}
             List models
           </Button>
-          <Button
-            type="button"
-            size="sm"
-            className="h-10 w-full sm:h-8 sm:w-auto"
-            onClick={() => setOauthOpen(true)}
-          >
-            <ShieldCheck size={12} aria-hidden="true" className="mr-1.5" />
-            Connect
-          </Button>
+          {hasSavedCredentials ? (
+            <>
+              <Button
+                type="button"
+                size="sm"
+                className="h-10 w-full sm:h-8 sm:w-auto"
+                onClick={() => setOauthOpen(true)}
+              >
+                <ShieldCheck size={12} aria-hidden="true" className="mr-1.5" />
+                Reconnect
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                className="h-10 w-full sm:h-8 sm:w-auto text-(--color-error) hover:text-(--color-error)"
+                onClick={() => void handleOauthDisconnect()}
+                disabled={disconnectOauthMutation.isPending}
+              >
+                {disconnectOauthMutation.isPending ? (
+                  <Loader2 className="h-3 w-3 animate-spin mr-1.5" aria-hidden="true" />
+                ) : null}
+                Disconnect
+              </Button>
+            </>
+          ) : (
+            <Button
+              type="button"
+              size="sm"
+              className="h-10 w-full sm:h-8 sm:w-auto"
+              onClick={() => setOauthOpen(true)}
+            >
+              <ShieldCheck size={12} aria-hidden="true" className="mr-1.5" />
+              Connect
+            </Button>
+          )}
         </div>
       )}
 

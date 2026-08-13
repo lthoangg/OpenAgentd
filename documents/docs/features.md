@@ -630,10 +630,10 @@ agnostic by design.
   a reached cap drives the panel copy instead of the credits flag `[v1.131.0]`. The
   desktop tray's "Usage Limits" submenu renders the same cap `[v1.131.1]`.
 - **Priority / Fast mode** `[v1.90.0, v1.92.0]` *(deprecated)* — opt new messages into Fast/Priority mode. Supported on models and providers that implement service/latency tiers (Anthropic maps to `auto`, Google Gemini maps to `priority`, OpenAI maps to `auto`, and ChatGPT Codex maps to `priority`). Availability is driven by a `supports_fast_mode` registry flag instead of a hard-coded provider-prefix list, so plugin providers can opt in without frontend changes `[v1.92.0]`. The web Session Settings control was removed in `v1.125.0`; the session field, API parameter, and provider mapping still work, so sessions that set it elsewhere (TUI, API) are unaffected.
-- **Disconnect a provider** `[v1.92.0]` — Settings → Providers lets you
-  temporarily disconnect a configured provider; its models disappear from
+- **Hide / show a provider** `[v1.92.0]` — Settings → Providers lets you
+  temporarily hide a configured provider's models (**Hide** / **Show** in header); its models disappear from
   every picker and the warm-cache loop skips it, while saved credentials stay
-  on disk and a single click reconnects it.
+  on disk. Connected OAuth providers also offer **Disconnect** in the card body (`DELETE /api/auth/{provider}`) to delete saved OAuth account tokens from disk and log out.
 - **Copilot usage monitor** `[v1.33.0]` — Settings → Providers shows live Copilot
   premium request quota from the saved OAuth token.
 - **Provider plugin usage hooks** `[v1.33.0]` — OAuth provider plugins can

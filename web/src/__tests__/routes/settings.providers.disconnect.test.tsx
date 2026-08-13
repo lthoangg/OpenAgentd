@@ -86,18 +86,18 @@ afterEach(() => {
 
 // ── tests ─────────────────────────────────────────────────────────────────────
 
-describe('ProviderCard — disconnect / reconnect', () => {
-  it('shows Disconnect button for a connected provider', async () => {
+describe('ProviderCard — hide / show', () => {
+  it('shows Hide button for a connected provider', async () => {
     server.use(
       http.get('http://localhost/api/settings/providers', () =>
         HttpResponse.json({ has_any_configured: true, providers: [makeProvider()] }),
       ),
     )
     renderPage()
-    expect(await screen.findByRole('button', { name: /Disconnect/i })).toBeTruthy()
+    expect(await screen.findByRole('button', { name: /Hide/i })).toBeTruthy()
   })
 
-  it('shows Disconnect button for a failed (unreachable) provider', async () => {
+  it('shows Hide button for a failed (unreachable) provider', async () => {
     server.use(
       http.get('http://localhost/api/settings/providers', () =>
         HttpResponse.json({
@@ -107,12 +107,12 @@ describe('ProviderCard — disconnect / reconnect', () => {
       ),
     )
     renderPage()
-    // "Failed" badge + Disconnect button must both be present
+    // "Failed" badge + Hide button must both be present
     expect(await screen.findByText('Failed')).toBeTruthy()
-    expect(screen.getByRole('button', { name: /Disconnect/i })).toBeTruthy()
+    expect(screen.getByRole('button', { name: /Hide/i })).toBeTruthy()
   })
 
-  it('does not show Disconnect button for an unconfigured provider', async () => {
+  it('does not show Hide button for an unconfigured provider', async () => {
     server.use(
       http.get('http://localhost/api/settings/providers', () =>
         HttpResponse.json({
@@ -123,7 +123,7 @@ describe('ProviderCard — disconnect / reconnect', () => {
     )
     renderPage()
     await screen.findByText('OpenAI')
-    expect(screen.queryByRole('button', { name: /Disconnect/i })).toBeNull()
+    expect(screen.queryByRole('button', { name: /Hide/i })).toBeNull()
   })
 
   it('calls PUT /disconnect with disconnected=true on click', async () => {
@@ -146,14 +146,14 @@ describe('ProviderCard — disconnect / reconnect', () => {
     )
 
     renderPage()
-    const btn = await screen.findByRole('button', { name: /Disconnect/i })
+    const btn = await screen.findByRole('button', { name: /Hide/i })
     fireEvent.click(btn)
 
     await waitFor(() => expect(disconnectRequests).toHaveLength(1))
     expect(disconnectRequests[0]).toEqual({ disconnected: true })
   })
 
-  it('shows Disconnected badge after disconnecting', async () => {
+  it('shows Hidden badge after hiding', async () => {
     server.use(
       http.get('http://localhost/api/settings/providers', () =>
         HttpResponse.json({ has_any_configured: true, providers: [makeProvider()] }),
@@ -171,11 +171,11 @@ describe('ProviderCard — disconnect / reconnect', () => {
     )
 
     renderPage()
-    fireEvent.click(await screen.findByRole('button', { name: /Disconnect/i }))
-    expect(await screen.findByText('Disconnected')).toBeTruthy()
+    fireEvent.click(await screen.findByRole('button', { name: /Hide/i }))
+    expect(await screen.findByText('Hidden')).toBeTruthy()
   })
 
-  it('shows Reconnect button when provider is disconnected', async () => {
+  it('shows Show button when provider is hidden', async () => {
     server.use(
       http.get('http://localhost/api/settings/providers', () =>
         HttpResponse.json({
@@ -185,10 +185,10 @@ describe('ProviderCard — disconnect / reconnect', () => {
       ),
     )
     renderPage()
-    expect(await screen.findByRole('button', { name: /Reconnect/i })).toBeTruthy()
+    expect(await screen.findByRole('button', { name: /Show/i })).toBeTruthy()
   })
 
-  it('calls PUT /disconnect with disconnected=false on Reconnect click', async () => {
+  it('calls PUT /disconnect with disconnected=false on Show click', async () => {
     const reconnectRequests: unknown[] = []
     server.use(
       http.get('http://localhost/api/settings/providers', () =>
@@ -210,7 +210,7 @@ describe('ProviderCard — disconnect / reconnect', () => {
     )
 
     renderPage()
-    const btn = await screen.findByRole('button', { name: /Reconnect/i })
+    const btn = await screen.findByRole('button', { name: /Show/i })
     fireEvent.click(btn)
 
     await waitFor(() => expect(reconnectRequests).toHaveLength(1))
@@ -250,10 +250,12 @@ describe('ProviderCard — disconnect / reconnect', () => {
     )
   })
 
-  it('shows a success toast after disconnecting', async () => {
+  it('shows a success toast after hiding', async () => {
     server.use(
-      http.get('http://localhost/api/settings/providers', () =>
-        HttpResponse.json({ has_any_configured: true, providers: [makeProvider()] }),
+      http.get(
+        'http://localhost/api/settings/providers',
+        () => HttpResponse.json({ has_any_configured: true, providers: [makeProvider()] }),
+        { once: true },
       ),
       http.put('http://localhost/api/settings/providers/openai/disconnect', () =>
         HttpResponse.json({ provider: 'openai', is_disconnected: true }),
@@ -267,17 +269,20 @@ describe('ProviderCard — disconnect / reconnect', () => {
     )
 
     renderPage()
-    fireEvent.click(await screen.findByRole('button', { name: /Disconnect/i }))
-    expect(await screen.findByText('Provider disconnected')).toBeTruthy()
+    fireEvent.click(await screen.findByRole('button', { name: /Hide/i }))
+    expect(await screen.findByText('Provider hidden')).toBeTruthy()
   })
 
-  it('shows a success toast after reconnecting', async () => {
+  it('shows a success toast after showing', async () => {
     server.use(
-      http.get('http://localhost/api/settings/providers', () =>
-        HttpResponse.json({
-          has_any_configured: true,
-          providers: [makeProvider({ is_disconnected: true })],
-        }),
+      http.get(
+        'http://localhost/api/settings/providers',
+        () =>
+          HttpResponse.json({
+            has_any_configured: true,
+            providers: [makeProvider({ is_disconnected: true })],
+          }),
+        { once: true },
       ),
       http.put('http://localhost/api/settings/providers/openai/disconnect', () =>
         HttpResponse.json({ provider: 'openai', is_disconnected: false }),
@@ -291,7 +296,7 @@ describe('ProviderCard — disconnect / reconnect', () => {
     )
 
     renderPage()
-    fireEvent.click(await screen.findByRole('button', { name: /Reconnect/i }))
-    expect(await screen.findByText('Provider reconnected')).toBeTruthy()
+    fireEvent.click(await screen.findByRole('button', { name: /Show/i }))
+    expect(await screen.findByText('Provider visible')).toBeTruthy()
   })
 })

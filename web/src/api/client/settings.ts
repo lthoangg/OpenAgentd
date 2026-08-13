@@ -354,6 +354,14 @@ export function oauthLoginStream(
     .catch((err) => { if (err.name !== 'AbortError') callbacks.onError?.(err) })
 }
 
+export async function disconnectOauthProvider(providerId: string): Promise<{ ok: boolean; provider: string }> {
+  const res = await fetch(`${apiBaseUrl()}/auth/${encodeURIComponent(providerId)}`, {
+    method: 'DELETE',
+  })
+  if (!res.ok) await parseDetailOrThrow(res, `DELETE /auth/${providerId}`)
+  return res.json()
+}
+
 export async function submitOAuthCallback(providerId: string, code: string): Promise<{ ok: boolean; suggested_model?: string }> {
   const res = await fetch(`${apiBaseUrl()}/auth/${encodeURIComponent(providerId)}/callback`, {
     method: 'POST',

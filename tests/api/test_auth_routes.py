@@ -200,6 +200,29 @@ def test_codex_login_browser_mode_passes_browser_flag(
     assert "event: browser_auth" in text
 
 
+def test_oauth_disconnect_deletes_token_file(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Any
+) -> None:
+    from app.core.config import settings
+
+    token_file = tmp_path / "copilot_oauth.json"
+    token_file.write_text('{"github_token": "secret"}')
+    monkeypatch.setattr(settings, "OPENAGENTD_CACHE_DIR", str(tmp_path))
+
+    client = TestClient(_make_app())
+    response = client.delete("/api/auth/copilot")
+
+    assert response.status_code == 200
+    assert response.json() == {"ok": True, "provider": "copilot"}
+    assert not token_file.exists()
+
+
+def test_oauth_disconnect_unknown_provider_returns_404() -> None:
+    client = TestClient(_make_app())
+    response = client.delete("/api/auth/unknown_provider")
+    assert response.status_code == 404
+
+
 def test_plugin_oauth_login_streams_plugin_events(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

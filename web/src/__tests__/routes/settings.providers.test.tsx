@@ -151,14 +151,14 @@ describe('ProvidersSettingsPage', () => {
             oauth_command: '',
             docs_url: '',
             is_configured: false,
-            is_saved: true,
+            is_saved: false,
             is_reachable: false,
             cached_models: [],
             visible_models: [],
           },
         ],
       })),
-      http.get('http://localhost/api/auth/copilot/login', () => new HttpResponse(
+      http.get('http://localhost/api/auth/copilot/login*', () => new HttpResponse(
         'event: device_code\ndata: {"user_code":"ABCD-1234","verification_uri":"https://github.com/login/device"}\n\n',
         { headers: { 'Content-Type': 'text/event-stream' } },
       )),
@@ -167,7 +167,7 @@ describe('ProvidersSettingsPage', () => {
     renderPage()
 
     expect(await screen.findByText('Copilot')).toBeTruthy()
-    fireEvent.click(screen.getAllByRole('button', { name: /Connect/i }).at(-1)!)
+    fireEvent.click(screen.getByRole('button', { name: 'Connect' }))
 
     expect(await screen.findByText('ABCD-1234')).toBeTruthy()
     expect(screen.getByText('Use this code on GitHub to authorize Copilot. Keep this dialog open while GitHub approves access.')).toBeTruthy()

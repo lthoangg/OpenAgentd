@@ -58,6 +58,7 @@ export {
   useSaveProviderVisibleModelsMutation,
   useTestProviderMutation,
   useDisconnectProviderMutation,
+  useDisconnectOauthProviderMutation,
 } from './useProvidersQuery'
 export {
   useSummarizationSettingsQuery,

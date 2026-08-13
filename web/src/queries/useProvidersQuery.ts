@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import {
+  disconnectOauthProvider,
   disconnectProvider,
   getProviderUsage,
   listProviderModels,
@@ -110,6 +111,17 @@ export function useDisconnectProviderMutation() {
       if (context?.previous) client.setQueryData(queryKeys.settings.providers(), context.previous)
     },
     onSettled: () => {
+      void client.invalidateQueries({ queryKey: queryKeys.settings.providers() })
+      void client.invalidateQueries({ queryKey: queryKeys.agentFiles.registry() })
+    },
+  })
+}
+
+export function useDisconnectOauthProviderMutation() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (providerId: string) => disconnectOauthProvider(providerId),
+    onSuccess: () => {
       void client.invalidateQueries({ queryKey: queryKeys.settings.providers() })
       void client.invalidateQueries({ queryKey: queryKeys.agentFiles.registry() })
     },

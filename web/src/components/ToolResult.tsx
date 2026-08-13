@@ -509,7 +509,12 @@ function BackgroundProcessResult({ result, headerAction, onCollapse }: { result:
     )
   }
 
-  const isError = result.startsWith('Error:')
+  const isError =
+    result.startsWith('Error:') ||
+    result.includes('[Failed') ||
+    result.includes('exit code 1') ||
+    result.includes('exit 1') ||
+    /\b(FAIL|FAILED|ERR!|Traceback)\b/i.test(result)
   return (
     <div className="relative">
       {headerAction && <div className="absolute top-0 right-1.5">{headerAction}</div>}

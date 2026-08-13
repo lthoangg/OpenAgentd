@@ -29,6 +29,7 @@ import { getToolDisplay } from './display'
 import { DiffView } from './DiffView'
 import { ReadView } from './ReadView'
 import { getDiffStats } from './diffUtils'
+import { truncateForDisplay } from './displayText'
 import type { ToolCallState } from './types'
 
 hljs.registerLanguage('bash', bash)
@@ -226,10 +227,17 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
   const hasReadResult = usesReadView
   const isBackgroundProcess = name === 'bg'
   const isScheduleTaskList = name === 'schedule_task' && shownResult?.startsWith('Scheduled tasks (')
+  const [showFullShellOutput, setShowFullShellOutput] = useState(false)
   const isShell = language === 'bash'
   const isShellTerminal = isShell && Boolean(formattedArgs)
   const shellResult = isShell ? formatShellResult(shownResult) : null
   const shellOutput = shellResult?.body ?? shownLiveOutput
+  const isShellTruncated = Boolean(done && shellOutput && shellOutput.length > 12_000)
+  const displayShellOutput = useMemo(() => {
+    if (!shellOutput) return ''
+    if (!done || showFullShellOutput) return shellOutput
+    return truncateForDisplay(shellOutput)
+  }, [shellOutput, done, showFullShellOutput])
 
   useEffect(() => {
     if (done || !startedAt) return
@@ -409,12 +417,21 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
                         </button>
                       </div>
                       {isShellTerminal ? (
-                        <div className="flex flex-col gap-1 bg-(--bg-input) p-2.5">
+                        <div className="flex flex-col gap-1.5 bg-(--bg-input) p-2.5">
                           <pre
                             className={`max-h-40 sm:max-h-64 whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-(--color-text) ${shownLiveOutput ? 'flex flex-col justify-end overflow-hidden' : 'overflow-auto'}`}
                           >
-                            <span className="block"><span className="select-none text-(--color-text-muted)">$ </span><ShellCommand command={formattedArgs} />{shellOutput ? `\n${shellOutput}` : ''}</span>
+                            <span className="block"><span className="select-none text-(--color-text-muted)">$ </span><ShellCommand command={formattedArgs} />{displayShellOutput ? `\n${displayShellOutput}` : ''}</span>
                           </pre>
+                          {isShellTruncated && (
+                            <button
+                              type="button"
+                              onClick={() => setShowFullShellOutput((prev) => !prev)}
+                              className="self-start text-[11px] font-mono text-(--color-text-muted) hover:text-(--color-text) underline underline-offset-2"
+                            >
+                              {showFullShellOutput ? 'Show head + tail summary' : 'Show full terminal output'}
+                            </button>
+                          )}
                           {shellResult?.statusLine && (
                             <span
                               className={`font-mono text-[11px] font-medium ${

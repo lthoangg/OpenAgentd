@@ -76,6 +76,7 @@ function formatShellResult(result: string | undefined): { statusLine: string | n
 
 function formatToolLabel(name: string): string {
   if (!name) return 'Tool'
+  if (name === 'lsp') return 'LSP'
   if (name === 'rm') return 'Remove'
   if (name === 'ls') return 'List'
   return name
@@ -190,6 +191,13 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
     }
     return formattedArgs
   }, [formattedArgs])
+  const toolOperation = useMemo(() => {
+    if (name !== 'lsp' || !args) return undefined
+    const parsed = tryParseJSON(args)
+    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return undefined
+    const operation = (parsed as Record<string, unknown>).operation
+    return typeof operation === 'string' ? operation : undefined
+  }, [name, args])
   const usesDiffView = name === 'edit' || name === 'patch' || (name === 'write' && done)
   const usesReadView = name === 'read'
   const diffStats = useMemo(
@@ -436,9 +444,9 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
                       replaces the generic Result caption rather than nesting below it. */}
                   {shownResult && !isShellTerminal && (
                     isBackgroundProcess ? (
-                      <ToolResult toolName={name} result={shownResult} headerAction={resultCopyButton} onCollapse={() => setManualExpanded(false)} />
+                      <ToolResult toolName={name} operation={toolOperation} result={shownResult} headerAction={resultCopyButton} onCollapse={() => setManualExpanded(false)} />
                     ) : isScheduleTaskList ? (
-                      <ToolResult toolName={name} result={shownResult} />
+                      <ToolResult toolName={name} operation={toolOperation} result={shownResult} />
                     ) : (
                       <div>
                         <div onClick={() => setManualExpanded(false)} className={`group/result-header flex cursor-pointer items-center justify-between gap-3 border-b border-(--color-border) bg-(--bg-sidebar) py-0.5 pr-1.5 pl-3 transition-colors hover:text-(--color-text) ${formattedArgs || shownLiveOutput ? 'border-t' : ''}`}>
@@ -448,7 +456,7 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
                           {resultCopyButton}
                         </div>
                         <div className="bg-(--bg-input) px-3 py-2.5 text-xs leading-relaxed text-(--color-text)">
-                          <ToolResult toolName={name} result={shownResult} />
+                          <ToolResult toolName={name} operation={toolOperation} result={shownResult} />
                         </div>
                       </div>
                     )

@@ -29,8 +29,8 @@ if TYPE_CHECKING:
 
 
 _LEAD_DESCRIPTION = (
-    "Send a message to one or more recipients to delegate, instruct, update scope, "
-    "or request status."
+    "Send a message to recipients to delegate or coordinate work, update scope, ask "
+    "questions, or request status."
 )
 
 _MEMBER_DESCRIPTION = (

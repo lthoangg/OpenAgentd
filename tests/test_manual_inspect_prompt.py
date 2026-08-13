@@ -9,6 +9,7 @@ from manual.inspect_prompt import (
     _builtin_prompt_budgets,
     _builtin_skill_budgets,
     _inject_team_protocol,
+    _inject_team_tools,
     _restrict_skill_catalog_to_builtins,
     _serialize_tools,
 )
@@ -55,6 +56,16 @@ def test_team_protocol_is_part_of_inspected_system_prompt():
     assert "## Lead workflow" in lead_prompt
     assert "You are `explorer#1`" in member_prompt
     assert "## Member workflow" in member_prompt
+
+
+def test_coding_prompt_inspection_includes_lsp_runtime_tool():
+    lead = SimpleNamespace(role="lead", name="openagentd")
+
+    normal = _inject_team_tools([], lead, mode="normal")
+    coding = _inject_team_tools([], lead, mode="coding")
+
+    assert "lsp" not in {tool["function"]["name"] for tool in normal}
+    assert "lsp" in {tool["function"]["name"] for tool in coding}
 
 
 def test_builtin_skill_budgets_count_stable_skill_bodies():

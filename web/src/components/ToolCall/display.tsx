@@ -205,6 +205,54 @@ function getToolDisplayInternal(name: string, parsed: Record<string, unknown>): 
     }
   }
 
+  // ── lsp: operation-specific semantic navigation summary ───────────
+  if (name === 'lsp') {
+    const operation = str(parsed, 'operation')
+    const path = str(parsed, 'path')
+    const query = str(parsed, 'query')
+    const line = typeof parsed.line === 'number' ? parsed.line : 1
+    const character = typeof parsed.character === 'number' ? parsed.character : 1
+    const location = path ? `${path}:${line}:${character}` : null
+
+    if (operation === 'go_to_definition') {
+      const label = location ? `Definition at ${location}` : 'Definition'
+      return {
+        header: <Arg>{label}</Arg>,
+        headerTitle: label,
+        formattedArgs: path ? `file: ${path}\nposition: ${line}:${character}` : null,
+      }
+    }
+    if (operation === 'find_references') {
+      const label = location ? `References at ${location}` : 'References'
+      return {
+        header: <Arg>{label}</Arg>,
+        headerTitle: label,
+        formattedArgs: path ? `file: ${path}\nposition: ${line}:${character}` : null,
+      }
+    }
+    if (operation === 'document_symbol') {
+      const label = path ? `Symbols in ${path}` : 'Document symbols'
+      return {
+        header: <Arg>{label}</Arg>,
+        headerTitle: label,
+        formattedArgs: path ? `file: ${path}` : null,
+      }
+    }
+    if (operation === 'workspace_symbol') {
+      const queryLabel = query ? `"${trunc(query)}"` : 'all symbols'
+      const label = path
+        ? `Workspace symbols ${queryLabel} via ${path}`
+        : `Workspace symbols ${queryLabel}`
+      return {
+        header: <Arg>{label}</Arg>,
+        headerTitle: label,
+        formattedArgs: [query ? `query: ${query}` : null, path ? `language file: ${path}` : null]
+          .filter(Boolean)
+          .join('\n') || null,
+      }
+    }
+  }
+
   // ── web_fetch: conversational header with domain + path ────────────
   if (name === 'web_fetch') {
     const url = str(parsed, 'url')

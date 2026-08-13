@@ -81,12 +81,10 @@ class WebSearchArgs(BaseModel):
     """Arguments for the web_search tool."""
 
     query: str = Field(description="Search query string.")
-    max_results: int = Field(
-        default=5, ge=1, le=20, description="Number of results (maximum 20)."
-    )
+    max_results: int = Field(default=5, ge=1, le=20, description="Results to return.")
     page: int = Field(default=1, ge=1, description="Results page number.")
     safesearch: Literal["on", "moderate", "off"] = Field(
-        default="moderate", description="Safe search level."
+        default="moderate", description="Safe-search setting."
     )
 
 
@@ -163,13 +161,13 @@ class WebFetchArgs(BaseModel):
 
     url: str = Field(description="URL to fetch. https:// prepended if no scheme.")
     format: Literal["markdown", "html", "text"] = Field(  # noqa: A003
-        default="markdown", description="Response format."
+        default="markdown", description="Output format."
     )
     timeout: int | None = Field(
         default=None,
         ge=1,
         le=120,
-        description="Timeout in seconds (maximum 120).",
+        description="Request timeout in seconds.",
     )
 
     @field_validator("url")

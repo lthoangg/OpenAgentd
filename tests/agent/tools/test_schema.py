@@ -29,6 +29,35 @@ def test_sanitize_tool_schema_strips_metadata() -> None:
     assert res["properties"] == {"name": {"type": "string"}}
 
 
+def test_sanitize_tool_schema_strips_titles_recursively() -> None:
+    schema = {
+        "title": "Request",
+        "type": "object",
+        "properties": {
+            "items": {
+                "title": "Items",
+                "type": "array",
+                "items": {
+                    "title": "Item",
+                    "type": "object",
+                    "properties": {"name": {"title": "Name", "type": "string"}},
+                },
+            }
+        },
+    }
+
+    result = sanitize_tool_schema(schema)
+
+    def has_title(node: object) -> bool:
+        if isinstance(node, dict):
+            return "title" in node or any(has_title(value) for value in node.values())
+        if isinstance(node, list):
+            return any(has_title(value) for value in node)
+        return False
+
+    assert not has_title(result)
+
+
 def test_sanitize_tool_schema_flattens_oneof() -> None:
     schema = {
         "oneOf": [

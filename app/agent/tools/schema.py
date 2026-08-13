@@ -5,6 +5,17 @@ from __future__ import annotations
 from typing import Any
 
 
+def _strip_titles(node: Any) -> Any:
+    """Remove schema titles that only restate property/model names."""
+    if isinstance(node, dict):
+        return {
+            key: _strip_titles(value) for key, value in node.items() if key != "title"
+        }
+    if isinstance(node, list):
+        return [_strip_titles(value) for value in node]
+    return node
+
+
 def resolve_top_level_combinators(schema: dict[str, Any]) -> dict[str, Any]:
     """Flatten top-level oneOf, allOf, or anyOf in a JSON Schema into type: object properties.
 
@@ -88,4 +99,4 @@ def sanitize_tool_schema(schema: dict[str, Any] | None) -> dict[str, Any]:
     result.pop("$schema", None)
     result.pop("$id", None)
 
-    return resolve_top_level_combinators(result)
+    return _strip_titles(resolve_top_level_combinators(result))

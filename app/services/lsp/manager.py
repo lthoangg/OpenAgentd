@@ -469,7 +469,11 @@ class LspManager:
             pass
 
     async def _detect_commands(
-        self, lang_id: str, project_root: Path | None = None
+        self,
+        lang_id: str,
+        project_root: Path | None = None,
+        *,
+        semantic_only: bool = False,
     ) -> list[list[str]]:
         """Resolve which LSP server command(s) to run for *lang_id*.
 
@@ -496,12 +500,19 @@ class LspManager:
                 return find_packaged_python_command(cmd[0])
             return None
 
+        def supports_semantic_navigation(cmd: list[str]) -> bool:
+            return lang_id != "python" or Path(cmd[0]).name not in {
+                "ruff",
+                "ruff.exe",
+            }
+
         # 1. Project-config-aware detection (may yield several for Python).
         if project_root is not None:
             project_cmds = [
                 resolved
                 for cmd in detect_project_lsp_commands(lang_id, project_root)
                 if (resolved := resolve(cmd)) is not None
+                and (not semantic_only or supports_semantic_navigation(resolved))
             ]
             if project_cmds:
                 logger.info(
@@ -520,7 +531,8 @@ class LspManager:
             elif not custom_cmd and lang_id == "javascriptreact":
                 custom_cmd = cfg.lsp.get("javascript")
             if custom_cmd:
-                return [custom_cmd]
+                if not semantic_only or supports_semantic_navigation(custom_cmd):
+                    return [custom_cmd]
         except Exception as e:
             logger.warning("Failed to load runtime settings for LSP command: {}", e)
 
@@ -531,6 +543,7 @@ class LspManager:
                 resolved
                 for cmd in PYTHON_MULTI_SERVERS
                 if (resolved := resolve(cmd)) is not None
+                and (not semantic_only or supports_semantic_navigation(resolved))
             ]
             return installed
 
@@ -549,7 +562,13 @@ class LspManager:
             await managed_lsp_tools.announce_typescript_required(project_root)
         return []
 
-    async def get_clients(self, workspace_root: Path, lang_id: str) -> list[LspClient]:
+    async def get_clients(
+        self,
+        workspace_root: Path,
+        lang_id: str,
+        *,
+        semantic_only: bool = False,
+    ) -> list[LspClient]:
         """Return the running LSP client(s) for a language, starting them lazily.
 
         Python yields multiple (type checker + linter); other languages yield
@@ -563,13 +582,17 @@ class LspManager:
         async with lock:
             if self._stopping:
                 return []
-            cmds = await self._detect_commands(lang_id, project_root=workspace_root)
+            cmds = await self._detect_commands(
+                lang_id,
+                project_root=workspace_root,
+                semantic_only=semantic_only,
+            )
             if not cmds:
                 logger.info("No LSP server found for language: {}", lang_id)
                 # A missing managed TypeScript component may be installed from
                 # the permission prompt at any time. Re-check on the next edit
                 # instead of hiding the new install behind the generic TTL.
-                if lang_id not in {
+                if not semantic_only and lang_id not in {
                     "typescript",
                     "typescriptreact",
                     "javascript",
@@ -608,7 +631,8 @@ class LspManager:
             if not clients:
                 # Every candidate failed to start — back off so we don't retry
                 # a broken toolchain on every keystroke.
-                self._mark_unsupported(lang_id)
+                if not semantic_only:
+                    self._mark_unsupported(lang_id)
             return clients
 
     async def get_diagnostics(
@@ -646,6 +670,92 @@ class LspManager:
                 continue
             merged.extend(r)
         return merged
+
+    async def navigation(
+        self,
+        operation: str,
+        workspace_root: Path,
+        *,
+        file_path: Path | None = None,
+        line: int = 0,
+        character: int = 0,
+        query: str = "",
+    ) -> list[dict]:
+        """Run a compact, read-only navigation request against LSP clients."""
+        methods = {
+            "go_to_definition": "textDocument/definition",
+            "find_references": "textDocument/references",
+            "document_symbol": "textDocument/documentSymbol",
+            "workspace_symbol": "workspace/symbol",
+        }
+        method = methods[operation]
+        if file_path is not None:
+            lang_id = EXTENSION_TO_LANG.get(file_path.suffix.lower())
+            if not lang_id:
+                return []
+            project_root = await asyncio.to_thread(
+                find_project_root, file_path, workspace_root, lang_id
+            )
+            clients = await self.get_clients(project_root, lang_id, semantic_only=True)
+            if not clients:
+                return []
+            uri = file_path.resolve().as_uri()
+            try:
+                content = await asyncio.to_thread(file_path.read_text, encoding="utf-8")
+            except OSError:
+                return []
+        else:
+            return []
+        if operation == "workspace_symbol":
+            params = {"query": query}
+        elif operation == "document_symbol":
+            params = {"textDocument": {"uri": uri}}
+        else:
+            params = {
+                "textDocument": {"uri": uri},
+                "position": {"line": line, "character": character},
+            }
+            if operation == "find_references":
+                params["context"] = {"includeDeclaration": True}
+
+        async def request(client: LspClient):
+            async with client.diagnostics_lock(uri):
+                try:
+                    await client.open_or_update_document(uri, lang_id, content)
+                    return await asyncio.wait_for(
+                        client.send_request(method, params), timeout=5.0
+                    )
+                finally:
+                    if file_path is not None:
+                        with suppress(Exception):
+                            await client.close_document(uri)
+
+        responses = await asyncio.gather(
+            *(request(client) for client in clients), return_exceptions=True
+        )
+        results: list[dict] = []
+        for response in responses:
+
+            def flatten(symbol: dict) -> None:
+                if operation == "document_symbol" and "location" not in symbol:
+                    if isinstance(symbol.get("range"), dict):
+                        symbol = {
+                            **symbol,
+                            "location": {"uri": uri, "range": symbol["range"]},
+                        }
+                results.append(symbol)
+                if operation == "document_symbol":
+                    for child in symbol.get("children", []):
+                        if isinstance(child, dict):
+                            flatten(child)
+
+            if isinstance(response, list):
+                for item in response:
+                    if isinstance(item, dict):
+                        flatten(item)
+            elif isinstance(response, dict):
+                flatten(response)
+        return results
 
     async def _diagnostics_from(
         self, client: LspClient, uri: str, lang_id: str, content: str

@@ -18,19 +18,21 @@ from app.agent.tools.builtin.filesystem._config_watch import notify_fs_change
 from app.agent.tools.registry import Tool
 
 _DESCRIPTION = (
-    "Replace exact text in a file. Use the shortest old_string that uniquely "
-    "identifies the location. Only the matched region changes."
+    "Replace a uniquely identified region in a file. Matching tolerates common "
+    "whitespace and indentation differences; only the matched region changes."
 )
 
 
 class EditArgs(BaseModel):
     """Arguments for the edit tool."""
 
-    path: str = Field(description="Relative path to the file to modify.")
+    path: str = Field(
+        description="File to modify; relative paths resolve from workspace."
+    )
     old_string: str = Field(
         description=(
-            "Exact text to replace. Use the minimum lines needed to uniquely "
-            "identify the location — no more. Must match whitespace/indentation exactly."
+            "Text identifying the region to replace; use the minimum lines needed "
+            "for a unique match."
         )
     )
     new_string: str = Field(

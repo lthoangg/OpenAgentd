@@ -32,9 +32,7 @@ from app.agent.tools.registry import InjectedArg, tool
 class SkillArgs(BaseModel):
     """Arguments for the skill tool."""
 
-    skill_name: str = Field(
-        description="Skill name from the available-skills list. Load each skill at most once per visible conversation."
-    )
+    skill_name: str = Field(description="Skill name from the available-skills list.")
 
 
 def _default_skills_dir() -> Path:
@@ -362,10 +360,11 @@ def format_available_skills(*, verbose: bool = False) -> str:
 def _skill_tool_description() -> str:
     return "\n".join(
         [
-            "Load a specialized skill that provides domain-specific instructions and workflows.",
+            "Load specialized instructions for a matching available skill.",
             "",
-            "When a task matches one of the available skills listed below, use this tool to load the full skill instructions.",
-            "Call this at most once per skill. If the same skill was already loaded earlier in the visible conversation, reuse those instructions instead of calling this tool again; repeated loads return the same content.",
+            "Call this at most once per skill. If already loaded in the visible "
+            "conversation, reuse those instructions instead of calling this tool again; "
+            "repeated loads return the same content.",
             "",
             format_available_skills(verbose=False),
         ]

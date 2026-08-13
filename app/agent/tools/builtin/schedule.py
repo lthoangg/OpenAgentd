@@ -28,12 +28,9 @@ from app.agent.tools.registry import InjectedArg, Tool
 
 
 _DESCRIPTION = (
-    "Schedule a prompt for future or recurring delivery. Every task fires back to you "
-    "in the same team and workspace; this cannot schedule work for another team. "
-    "For a bounded polling loop, use schedule_type='every', every_seconds=30, "
-    "session_id='current', and max_runs. Use trigger to run the first iteration now; "
-    "pause or delete the task early when the goal is met. Use session_id='auto' for a "
-    "persistent background session, or omit it for a fresh session per firing."
+    "Schedule your own future or recurring prompt. For a bounded loop use "
+    "schedule_type='every', every_seconds=30, session_id='current', and max_runs. "
+    "Use trigger for an immediate first run, then pause or delete early when done."
 )
 
 
@@ -41,15 +38,7 @@ class ScheduleArgs(BaseModel):
     """Arguments for the schedule_task tool."""
 
     action: Literal["create", "list", "pause", "resume", "delete", "trigger"] = Field(
-        description=(
-            "Action to perform on your own reminders: "
-            "'create' a new reminder, "
-            "'list' your pending reminders, "
-            "'pause' a running reminder, "
-            "'resume' a paused reminder, "
-            "'delete' a reminder, "
-            "'trigger' a reminder immediately (deliver its prompt now)."
-        )
+        description="Reminder action; trigger runs it immediately."
     )
     # ── create-only fields ──────────────────────────────────────────────
     name: str | None = Field(
@@ -59,77 +48,58 @@ class ScheduleArgs(BaseModel):
     schedule_type: Literal["at", "every", "cron"] | None = Field(
         default=None,
         description=(
-            "[create] Schedule type. Required for create. "
-            "'at' = one-shot at a specific datetime, "
-            "'every' = repeat every N seconds, "
-            "'cron' = 5-field cron expression."
+            "[create] Schedule type: at is one-shot, every is an interval, "
+            "and cron is a 5-field expression."
         ),
     )
     at_datetime: str | None = Field(
         default=None,
-        description=(
-            "[create, schedule_type='at'] ISO-8601 datetime string "
-            "e.g. '2026-05-01T09:00:00+00:00'. Required when schedule_type='at'."
-        ),
+        description=("[create, schedule_type='at'] ISO-8601 datetime."),
     )
     every_seconds: int | None = Field(
         default=None,
         gt=0,
-        description=(
-            "[create, schedule_type='every'] Interval in seconds (> 0). "
-            "Required when schedule_type='every'."
-        ),
+        description=("[create, schedule_type='every'] Interval in seconds."),
     )
     cron_expression: str | None = Field(
         default=None,
-        description=(
-            "[create, schedule_type='cron'] Standard 5-field cron expression "
-            "e.g. '0 9 * * 1-5'. Required when schedule_type='cron'."
-        ),
+        description=("[create, schedule_type='cron'] 5-field cron expression."),
     )
     timezone: str = Field(
         default="UTC",
-        description=(
-            "[create] IANA timezone for cron/at interpretation, such as "
-            "'Asia/Ho_Chi_Minh' or 'America/New_York'."
-        ),
+        description=("[create] IANA timezone for cron and naive at datetimes."),
     )
     prompt: str | None = Field(
         default=None,
         description=(
-            "[create] The prompt delivered back to you when the task fires. "
-            "Address your future self; for loops, give one iteration's instruction. "
-            "Required for create."
+            "[create] Prompt delivered when the task fires; for loops, describe "
+            "one iteration."
         ),
     )
     session_id: str | None = Field(
         default=None,
         description=(
-            "[create] Session continuity — controls where the fired prompt lands. "
-            "'current' = re-enter the current conversation (reply appears inline; "
-            "use this for self-continuation loops so you can read your prior work). "
-            "'auto' = persistent session keyed to the task name (survives restarts; "
-            "good for long-running background monitors). "
-            "None = fresh session each firing. "
-            "UUID string = continue a specific existing session."
+            "[create] Where prompts land: 'current' re-enters this conversation; "
+            "'auto' uses a persistent task session; omit for a fresh session; "
+            "a UUID continues that session."
         ),
     )
     max_runs: int | None = Field(
         default=None,
         gt=0,
         description=(
-            "[create] Hard cap on successful firings — the task auto-disables "
-            "after N runs. None is unlimited. Bound polling and retry loops."
+            "[create] Maximum successful firings; the task then disables. "
+            "Use to bound loops."
         ),
     )
     enabled: bool = Field(
         default=True,
-        description="[create] Whether the task starts enabled.",
+        description="[create] Start enabled.",
     )
     # ── pause / resume / delete / trigger fields ────────────────────────
     slug: str | None = Field(
         default=None,
-        description="[pause|resume|delete|trigger] Slug of the task to act on.",
+        description="Task slug for pause, resume, delete, or trigger.",
     )
 
     @model_validator(mode="after")

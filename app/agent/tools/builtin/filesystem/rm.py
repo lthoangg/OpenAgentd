@@ -15,7 +15,7 @@ from app.agent.tools.builtin.filesystem._config_watch import notify_fs_change
 from app.agent.tools.registry import Tool
 
 _DESCRIPTION = (
-    "Permanently delete a file or directory from the workspace. "
+    "Permanently delete a permitted file or directory. "
     "Use only when the user asked for removal or deletion is necessary. "
     "Set recursive=true to remove a non-empty directory tree."
 )
@@ -24,7 +24,9 @@ _DESCRIPTION = (
 class RmArgs(BaseModel):
     """Arguments for the rm tool."""
 
-    path: str = Field(description="Relative path to the file or directory to remove.")
+    path: str = Field(
+        description="Workspace-relative or permitted absolute path to remove."
+    )
     recursive: bool = Field(
         default=False,
         description="Remove directories recursively; required for a non-empty directory.",

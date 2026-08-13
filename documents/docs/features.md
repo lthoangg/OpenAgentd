@@ -718,6 +718,9 @@ MCP.
   npm packages, a cross-surface install prompt, and `openagentd lsp` status/install
   commands. Managed tools live under the regeneratable cache and do not modify
   the user's project.
+- **Semantic LSP navigation** `[v1.133.0]` — coding-team agents can find definitions,
+  references, document symbols, and workspace symbols through the language server,
+  using compact workspace-relative results instead of text search for code navigation.
 - **Clean tool argument validation errors** `[v1.77.0]` — when a tool call
   fails Pydantic validation, the LLM receives a compact `field: message`
   summary instead of the full Pydantic noise (type codes, raw input value,

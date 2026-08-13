@@ -477,66 +477,23 @@ def _find_item(store: dict, task_id: str) -> dict | None:
 # ---------------------------------------------------------------------------
 
 _DESCRIPTION = """\
-Manage the structured task list. Pass one or more actions in a single call;
-they are executed in order.
+Manage the task board; actions execute in order. Batch related changes and add
+read when you need the resulting board. Clear finished tasks before unrelated
+work; active tasks are kept. Skip this tool for a single trivial task.
 
-Actions
--------
-create  — Add a new task (returns the assigned task_id).
-update  — Update an existing task by task_id (change any combination of
-          content, status, priority, dependencies, assigned_to).
-delete  — Remove a task permanently by task_id.
-clear   — Bulk-remove finished tasks in one call. status='finished' (default)
-          removes completed AND cancelled; or pass 'completed' / 'cancelled'.
-          Active tasks (pending / in_progress) are always kept.
-read    — Return the full task list with task_ids.
-
-Rules
------
-- Batch related changes into a single call (e.g. complete the current task
-  and start the next one together).
-- Start a fresh, unrelated task by clearing finished items first
-  (`clear`), so the list reflects current work instead of accumulating
-  stale done/cancelled entries.
-- Assign member work with assigned_to and model ordering with dependencies.
-  Put the delegation brief in `instructions` — an assigned, unblocked task
-  wakes its assignee automatically; no separate kickoff message is needed.
-- Assigned member tasks remain pending until the member claims them; the lead
-  should not move another agent's task to in_progress.
-- Only ONE task per agent should be in_progress at a time.
-- Mark tasks completed immediately when done; do not batch updates across turns.
-- Use dependencies=["task_1"] for dependent work. A task with incomplete
-  dependencies cannot be moved to in_progress; keep it pending until
-  prerequisites are complete.
-- Use status=cancelled for tasks that are no longer needed instead of deleting.
-- Skip this tool for single, trivial tasks.
-- Mutations return consolidated outcomes grouped per verb
-  (`updated task_1, task_2`), not the board; include a read action in the
-  same call when you need the resulting task list.\
+Delegate with assigned_to plus instructions; an assigned, unblocked task wakes
+its assignee automatically without a kickoff message. Assigned tasks stay
+pending until claimed. Keep one in_progress task per agent, complete tasks
+immediately, use dependencies for prerequisites, and cancel work that is no
+longer needed instead of deleting it.\
 """
 
 _MEMBER_DESCRIPTION = """\
-Claim and update your assigned tasks. Pass one or more actions in a single call;
-they are executed in order.
-
-Actions
--------
-claim   — Claim an assigned, unblocked task and move it to in_progress.
-update  — Update a task you claimed (content and/or status only).
-read    — Return the full task list with task_ids.
-
-Rules
------
-- Claim a task before starting work.
-- If claim reports blocked dependencies, do not start; end your turn
-  (end_turn=true) — you are woken automatically when they complete.
-- Only update tasks assigned to or claimed by you.
-- When completing a task, record the outcome in `result` (what was done,
-  where, how it was verified) — the lead and unblocked teammates are
-  notified automatically.
-- Updates return consolidated outcomes grouped per verb; a successful claim echoes the task
-  line with its instructions. Include a read action when you need the full
-  list.\
+Claim before starting an assigned task; blocked claims wake automatically when
+ready. Update only your assigned or claimed tasks. On completion, record the
+outcome in `result`—what changed, where, and verification—so the lead and
+unblocked teammates are notified automatically. Add read when you need the full
+board.\
 """
 
 

@@ -84,10 +84,10 @@ VideoDuration = Literal["4", "6", "8"]
 
 _DESCRIPTION = (
     "Generate a video clip in the session workspace using Veo. "
-    "Supports text-to-video, image-to-video (first frame), first+last "
-    "frame interpolation, up to 3 reference images, and video extension "
-    "(extend an existing mp4). Returns markdown ``![alt](file.mp4)`` to "
-    "include verbatim so it renders inline. On failure returns ``Error: ...``."
+    "Use first_frame for image-to-video, last_frame for interpolation, "
+    "reference_images for subject consistency, or extend_video to extend a clip. "
+    "Returns ``![alt](file.mp4)`` markdown; include it verbatim so it renders "
+    "inline. On failure returns ``Error: ...``."
 )
 
 
@@ -96,9 +96,8 @@ class VideoArgs(BaseModel):
 
     prompt: str = Field(
         description=(
-            "Text description of the video to generate. Can include "
-            "camera direction, action, style, ambiance, and dialogue "
-            "(wrap dialogue in quotes). See the Veo prompt guide."
+            "Text description of the video, including camera direction, action, "
+            "style, ambiance, and dialogue."
         )
     )
     filename: str | None = Field(
@@ -107,58 +106,41 @@ class VideoArgs(BaseModel):
     first_frame: str | None = Field(
         default=None,
         description=(
-            "Optional workspace-relative path of the starting frame. "
-            "Switches the tool from text-to-video to image-to-video. "
-            "Combine with `last_frame` for first-to-last-frame "
-            "interpolation."
+            "Workspace-relative starting frame. Combine with `last_frame` for "
+            "first-to-last-frame interpolation."
         ),
     )
     last_frame: str | None = Field(
         default=None,
         description=(
-            "Optional workspace-relative path of the ending frame. "
-            "Requires `first_frame` to be set. The video interpolates "
-            "from `first_frame` to `last_frame`. Mutually exclusive "
-            "with `reference_images`."
+            "Workspace-relative ending frame; requires `first_frame` and is "
+            "mutually exclusive with `reference_images`."
         ),
     )
     reference_images: list[str] | None = Field(
         default=None,
         description=(
-            "Optional workspace-relative paths (up to 3) of reference "
-            "assets whose subject/appearance should be preserved in the "
-            "video. Mutually exclusive with `last_frame`."
+            "Workspace-relative reference images (up to 3) whose subject or "
+            "appearance is preserved. Mutually exclusive with `last_frame`."
         ),
     )
     aspect_ratio: VideoAspectRatio | None = Field(
         default=None,
-        description=(
-            "Output aspect ratio: '16:9' (landscape) or '9:16' (portrait). "
-            "Must be '16:9' when using `extend_video`."
-        ),
+        description=("Output aspect ratio; must be '16:9' with `extend_video`."),
     )
     resolution: VideoResolution | None = Field(
         default=None,
-        description=(
-            "Output resolution: '720p', '1080p', or '4k'. "
-            "1080p and 4k only support 8s duration."
-        ),
+        description=("Output resolution; 1080p and 4k require 8 s duration."),
     )
     duration_seconds: VideoDuration | None = Field(
         default=None,
-        description=(
-            "Clip duration in seconds: '4', '6', or '8'. Must be '8' "
-            "with 1080p, 4k, or reference_images."
-        ),
+        description=("Clip duration; must be '8' with 1080p, 4k, or reference_images."),
     )
     extend_video: str | None = Field(
         default=None,
         description=(
-            "Files API URI of a previously Veo-generated video to extend "
-            "(e.g. 'https://generativelanguage.googleapis.com/v1beta/files/…'). "
-            "Appends 8 s of new content guided by `prompt`. "
-            "Mutually exclusive with `first_frame`, `last_frame`, and "
-            "`reference_images`. Output is always 16:9 / 720p / 8 s."
+            "Files API URI of a previously Veo-generated video. Mutually exclusive "
+            "with input images; output is always 16:9 / 720p / 8 s."
         ),
     )
 

@@ -1641,6 +1641,11 @@ class AgentTeam:
             make_team_todo_tool(self, agent_name=agent_name, role=role),
         ]
 
+        if self.mode == "coding":
+            from app.agent.tools.builtin.lsp import lsp_navigation
+
+            tools.append(lsp_navigation)
+
         if agent_name == self.lead.name:
             tools.append(make_team_manage_tool(self))
             if self._question_tool_enabled():

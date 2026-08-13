@@ -78,8 +78,8 @@ ImageResolution = Literal["0.5K", "1K", "2K", "4K"]
 
 _DESCRIPTION = (
     "Create or edit an image in the session workspace. "
-    "Returns markdown ``![alt](file.ext)`` to include verbatim so it "
-    "renders inline. On failure returns ``Error: ...``."
+    "Returns ``![alt](file.ext)`` markdown; include it verbatim so it renders "
+    "inline. On failure returns ``Error: ...``."
 )
 
 
@@ -98,10 +98,8 @@ class ImageArgs(BaseModel):
     images: list[str] | None = Field(
         default=None,
         description=(
-            "Optional workspace-relative paths of input images to edit "
-            "(1–16). When provided, the tool calls the provider's image "
-            "edit API instead of text-to-image; the `prompt` then "
-            "describes the transformation."
+            "Workspace-relative input images (1–16). When provided, edits them "
+            "instead of generating from text; `prompt` describes the transformation."
         ),
     )
     size: ImageSize | None = Field(

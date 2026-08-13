@@ -73,56 +73,46 @@ _SHELL_CAPABILITIES = (
 )
 _SHELL_DESCRIPTION = (
     f"Run a command through the user's {_SHELL_KIND}; supports {_SHELL_CAPABILITIES}. "
-    "Relative workdir paths resolve inside the workspace; absolute "
-    "paths may run elsewhere. stdin is /dev/null, so use non-interactive flags such "
-    "as -y or --yes for commands that may prompt. Use background=true for servers "
-    "and watchers, then manage the returned PID with bg. Prefer file tools for file "
-    "operations."
+    "stdin is /dev/null, so use non-interactive flags for commands that may prompt. "
+    "Use background=true only for long-lived processes, then manage the PID with bg. "
+    "Prefer file tools for file operations."
 )
 
 _BG_DESCRIPTION = (
-    "Inspect and stop long-lived processes started with shell(background=true) "
-    "— servers, watchers, tunnels. Actions: list, status, output, stop. "
-    "Exited processes stay inspectable for ~10 minutes, so output/status keep "
-    "working after a process ends or is stopped. To run a command and use its "
-    "result, call shell in the foreground with a large timeout_seconds instead; "
-    "the foreground path has no duration limit."
+    "Inspect or stop long-lived processes started with shell(background=true). "
+    "Exited processes remain inspectable for about 10 minutes. Use foreground shell "
+    "with a larger timeout when you need the command result."
 )
 
 
 class ShellArgs(BaseModel):
     """Arguments for the shell tool."""
 
-    command: str = Field(
-        description=f"Command to run through the user's preferred {_SHELL_KIND}."
-    )
+    command: str = Field(description=f"{_SHELL_KIND.capitalize()} command to run.")
     description: str = Field(
         default="",
-        description=(
-            "Brief description of the command's purpose for logs and activity UI."
-        ),
+        description=("Purpose shown in logs and the activity UI."),
     )
     workdir: str | None = Field(
         default=None,
         description=(
-            "Working directory. Relative paths resolve inside the session workspace; "
-            "absolute paths may run outside it. Prefer this field over cd."
+            "Working directory; relative paths resolve inside the workspace, while "
+            "absolute paths may run outside it. Prefer this over cd."
         ),
     )
     timeout_seconds: int | None = Field(
         default=None,
         ge=1,
         description=(
-            "Timeout in seconds; omitted uses 120. There is no ceiling — pass a "
-            "large value for slow suites or builds rather than backgrounding them."
+            "Timeout in seconds; default 120, with no ceiling. Use a larger foreground "
+            "timeout for slow commands."
         ),
     )
     background: bool = Field(
         default=False,
         description=(
-            "Only for processes meant to outlive the call (servers, watchers): "
-            "returns a PID for the bg tool. For a command whose result you need, "
-            "stay in the foreground and raise timeout_seconds."
+            "Only for long-lived processes; returns a PID for bg. Stay in the "
+            "foreground when you need the command result."
         ),
     )
 
@@ -131,16 +121,16 @@ class BgArgs(BaseModel):
     """Arguments for the bg tool."""
 
     action: Literal["list", "status", "output", "stop"] = Field(
-        description="list all processes, or status/output/stop for one PID."
+        description="Process action; list needs no PID."
     )
     pid: int | None = Field(
-        default=None, description="PID (required for status/output/stop)."
+        default=None, description="PID for status, output, or stop."
     )
     last_n_lines: int | None = Field(
         default=None,
         ge=1,
         le=200,
-        description="Lines to return for output (maximum 200); omit for all retained lines.",
+        description="Output lines to return; omit for all retained lines.",
     )
 
     @model_validator(mode="after")

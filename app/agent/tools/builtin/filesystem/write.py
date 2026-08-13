@@ -18,7 +18,9 @@ _DESCRIPTION = (
 class WriteArgs(BaseModel):
     """Arguments for the write tool."""
 
-    path: str = Field(description="Relative path for the file to create or overwrite.")
+    path: str = Field(
+        description="File to create or overwrite; relative paths resolve from workspace."
+    )
     content: str = Field(description="UTF-8 text content to write.")
     overwrite: bool = Field(
         default=True, description="Fail if the file exists when false."

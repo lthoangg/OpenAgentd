@@ -142,7 +142,9 @@ def _inject_team_protocol(
     return f"{prompt}\n\n---\n\n{protocol}"
 
 
-def _inject_team_tools(tool_defs: list[dict], agent_cfg) -> list[dict]:
+def _inject_team_tools(
+    tool_defs: list[dict], agent_cfg, *, mode: str = "normal"
+) -> list[dict]:
     """Apply the same name-based runtime tool overrides as a team run."""
     from app.agent.mode.team.mailbox import TeamMailbox
     from app.agent.mode.team.manage import make_team_manage_tool
@@ -157,6 +159,10 @@ def _inject_team_tools(tool_defs: list[dict], agent_cfg) -> list[dict]:
         make_team_message_tool(mailbox, agent_name=agent_cfg.name, role=role),
         make_todo_manage_tool(role),
     ]
+    if mode == "coding":
+        from app.agent.tools.builtin.lsp import lsp_navigation
+
+        injected.append(lsp_navigation)
     if role == "lead":
         injected.append(make_team_manage_tool(object()))  # schema does not read team
     for tool in injected:
@@ -442,7 +448,7 @@ def main() -> None:
     # 4. Tool definitions — constructor tools plus runtime-injected team tools.
     tool_defs = [t.definition for t in _expanded_agent._tools.values()]
     if not args.no_team_protocol:
-        tool_defs = _inject_team_tools(tool_defs, agent_cfg)
+        tool_defs = _inject_team_tools(tool_defs, agent_cfg, mode=_mode)
     if args.skills_scope == "builtin":
         tool_defs = _restrict_skill_catalog_to_builtins(tool_defs)
 

@@ -51,7 +51,7 @@ class GlobArgs(BaseModel):
     )
     match: Literal["path", "name"] = Field(
         default="path",
-        description="Match against full 'path' or filename 'name'.",
+        description="Match full relative paths or filenames only.",
     )
     max_results: int = Field(
         default=200,

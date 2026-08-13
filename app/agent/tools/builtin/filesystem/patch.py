@@ -17,8 +17,8 @@ from app.agent.tools.registry import Tool
 PatchKind = Literal["add", "update", "delete"]
 
 _DESCRIPTION = (
-    "Apply a stripped-down file patch envelope with add, update, delete, "
-    "and move operations."
+    "Apply a file patch envelope with add, update, or delete sections; an update "
+    "may also move the file."
 )
 
 _PATCH_TEXT_DESCRIPTION = """\

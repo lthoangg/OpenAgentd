@@ -728,6 +728,97 @@ function TodoListResult({ result }: { result: string }) {
 }
 
 // ---------------------------------------------------------------------------
+// LSP navigation renderer
+// ---------------------------------------------------------------------------
+
+interface LspLocation {
+  name: string | null
+  path: string
+  position: string
+}
+
+function parseLspLocations(result: string): LspLocation[] {
+  return result
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .flatMap((line) => {
+      const [namePart, locationPart = namePart] = line.includes(' | ')
+        ? line.split(' | ', 2)
+        : [line]
+      const match = locationPart.match(/^(.*):(\d+:\d+)$/)
+      if (!match) return []
+      return [{
+        name: line.includes(' | ') ? namePart : null,
+        path: match[1],
+        position: match[2],
+      }]
+    })
+}
+
+function lspCountLabel(operation: string | undefined, count: number): string {
+  const singular = count === 1
+  if (operation === 'go_to_definition') return `${count} ${singular ? 'definition' : 'definitions'}`
+  if (operation === 'find_references') return `${count} ${singular ? 'reference' : 'references'}`
+  if (operation === 'document_symbol') return `${count} document ${singular ? 'symbol' : 'symbols'}`
+  if (operation === 'workspace_symbol') return `${count} workspace ${singular ? 'symbol' : 'symbols'}`
+  return `${count} ${singular ? 'location' : 'locations'}`
+}
+
+function lspEmptyLabel(operation: string | undefined): string {
+  if (operation === 'go_to_definition') return 'No definition found.'
+  if (operation === 'find_references') return 'No references found.'
+  return 'No symbols found.'
+}
+
+function LspNavigationResult({
+  operation,
+  result,
+}: {
+  operation?: string
+  result: string
+}) {
+  if (result.trim() === 'No results.') {
+    return (
+      <p className="font-mono text-[11px] leading-relaxed text-(--color-text-muted)">
+        {lspEmptyLabel(operation)}
+      </p>
+    )
+  }
+
+  const locations = parseLspLocations(result)
+  if (locations.length === 0) return <GenericResult result={result} />
+
+  return (
+    <div className="min-w-0">
+      <p className="mb-1 font-mono text-[10px] text-(--color-text-muted)">
+        {lspCountLabel(operation, locations.length)}
+      </p>
+      <ul className="max-h-[calc(8*1.55em)] min-w-0 space-y-1 overflow-y-auto pr-1 sm:max-h-[calc(10*1.55em)]">
+        {locations.map((location, index) => (
+          <li
+            key={`${location.path}:${location.position}:${location.name ?? ''}:${index}`}
+            className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-2 font-mono text-[11px] leading-relaxed"
+          >
+            <span className="min-w-0 break-words text-(--color-text-2)">
+              {location.name && (
+                <span className="mr-2 font-semibold text-(--color-text)">
+                  {location.name}
+                </span>
+              )}
+              {location.path}
+            </span>
+            <span className="shrink-0 text-(--color-accent)">
+              {location.position}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // Generic fallback renderer
 // ---------------------------------------------------------------------------
 
@@ -854,7 +945,10 @@ export function LspDiagnosticsView({
   )
 }
 
-function ToolResultInner({ toolName, result, headerAction, onCollapse }: { toolName: string; result: string; headerAction?: ReactNode; onCollapse?: () => void }) {
+function ToolResultInner({ toolName, operation, result, headerAction, onCollapse }: { toolName: string; operation?: string; result: string; headerAction?: ReactNode; onCollapse?: () => void }) {
+  if (toolName === 'lsp') {
+    return <LspNavigationResult operation={operation} result={result} />
+  }
   if (WEB_SEARCH_TOOLS.has(toolName)) {
     return <WebSearchResult result={result} />
   }
@@ -890,17 +984,17 @@ function ToolResultInner({ toolName, result, headerAction, onCollapse }: { toolN
   return <GenericResult result={result} />
 }
 
-export function ToolResult({ toolName, result, headerAction, onCollapse }: { toolName: string; result: string; headerAction?: ReactNode; onCollapse?: () => void }) {
+export function ToolResult({ toolName, operation, result, headerAction, onCollapse }: { toolName: string; operation?: string; result: string; headerAction?: ReactNode; onCollapse?: () => void }) {
   const lspData = parseLspDiagnostics(result)
 
   if (lspData) {
     return (
       <div className="flex flex-col gap-1">
-        <ToolResultInner toolName={toolName} result={lspData.cleanText} headerAction={headerAction} onCollapse={onCollapse} />
+        <ToolResultInner toolName={toolName} operation={operation} result={lspData.cleanText} headerAction={headerAction} onCollapse={onCollapse} />
         <LspDiagnosticsView diagnostics={lspData.diagnostics} overflowCount={lspData.overflowCount} />
       </div>
     )
   }
 
-  return <ToolResultInner toolName={toolName} result={result} headerAction={headerAction} onCollapse={onCollapse} />
+  return <ToolResultInner toolName={toolName} operation={operation} result={result} headerAction={headerAction} onCollapse={onCollapse} />
 }

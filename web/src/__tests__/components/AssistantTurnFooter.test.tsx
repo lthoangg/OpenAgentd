@@ -13,6 +13,58 @@ beforeEach(() => {
 
 afterEach(cleanup)
 
+/**
+ * `isStreaming` drives the typewriter animation (and its rAF loop). Flagging
+ * every block of the live turn kept finished text/thinking blocks animating
+ * for the whole turn — including the minutes a `pytest` / `bun test` shell
+ * call is running, when nothing in the transcript is changing at all.
+ */
+describe("AssistantTurn — which blocks count as streaming", () => {
+  const blocks: ContentBlock[] = [
+    { id: "text-1", type: "text", content: "Let me run the tests." },
+    {
+      id: "tool-1",
+      type: "tool",
+      content: "",
+      toolName: "shell",
+      toolArgs: '{"command":"bun test"}',
+      toolCallId: "call-1",
+      toolDone: false,
+    },
+  ]
+
+  function renderTurn(isWorking: boolean) {
+    const streaming: Record<string, boolean> = {}
+    render(
+      <AssistantTurn
+        blocks={blocks}
+        startIndex={0}
+        finalizedCount={0}
+        isWorking={isWorking}
+        isTrailingTurn
+        totalBlocks={blocks.length}
+        renderBlock={({ block, isStreaming }) => {
+          streaming[block.id] = isStreaming
+          return null
+        }}
+      />,
+    )
+    return streaming
+  }
+
+  it("streams only the trailing block while a tool call runs", () => {
+    const streaming = renderTurn(true)
+    expect(streaming["tool-1"]).toBe(true)
+    expect(streaming["text-1"]).toBe(false)
+  })
+
+  it("marks nothing as streaming once the turn is no longer working", () => {
+    const streaming = renderTurn(false)
+    expect(streaming["tool-1"]).toBe(false)
+    expect(streaming["text-1"]).toBe(false)
+  })
+})
+
 describe("AssistantTurnFooter", () => {
   it("shows response duration after copy, continue, and timestamp controls", () => {
     const blocks: ContentBlock[] = [{

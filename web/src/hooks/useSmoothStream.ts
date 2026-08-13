@@ -80,6 +80,17 @@ export function useSmoothStream(targetText: string, isStreaming: boolean): strin
         lastUpdateTime = timestamp
       }
 
+      // Nothing left to animate — stop asking for frames. Re-arming
+      // unconditionally kept a 60fps loop alive over already-settled text
+      // until some unrelated re-render happened to tear the effect down;
+      // traced at 172 frames for a single message. The effect re-arms on the
+      // next `targetText` change, which is the only thing that creates work.
+      //
+      // `displayedLengthRef` is written inside the state updater, which React
+      // may run after this line; a stale (short) read just costs one extra
+      // frame before the loop settles.
+      if (displayedLengthRef.current >= targetRef.current.length) return
+
       frameId = requestAnimationFrame(loop)
     }
 

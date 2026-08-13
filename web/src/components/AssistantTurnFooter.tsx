@@ -174,13 +174,19 @@ export const AssistantTurn = memo(function AssistantTurn({
     <div className="space-y-2">
       {blocks.map((block, j) => {
         const absoluteIdx = startIndex + j
-        const isStreaming = isWorking && absoluteIdx >= finalizedCount
+        const isLast = absoluteIdx === totalBlocks - 1
+        // Only the block currently receiving output is streaming. Earlier
+        // blocks of the same turn are finished the moment the next one opens —
+        // flagging them too gave every one of them a typewriter rAF loop with
+        // nothing to animate. `appendStreamed` only ever fills the last block
+        // of a kind, so the block taking deltas is always the trailing one.
+        const isStreaming = isWorking && absoluteIdx >= finalizedCount && isLast
         return (
           <div key={block.id}>
             {renderBlock({
               block,
               isStreaming,
-              isLast: absoluteIdx === totalBlocks - 1,
+              isLast,
             })}
           </div>
         )

@@ -36,6 +36,16 @@ function flushFrames(count = 1) {
   }
 }
 
+/**
+ * Advance `count` frames the way the browser does — one `act` per frame, so
+ * React commits each frame's state before the next callback runs. Flushing
+ * many frames inside a single `act` batches every update to the end, which no
+ * real rAF loop ever sees.
+ */
+function advanceFrames(count: number) {
+  for (let i = 0; i < count; i++) act(() => { flushFrames(1) })
+}
+
 beforeEach(() => {
   pendingFrames = []
   globalThis.requestAnimationFrame = mockRaf as unknown as typeof requestAnimationFrame
@@ -129,6 +139,44 @@ describe('useSmoothStream', () => {
 
     // The pending queue should not grow unboundedly.
     expect(pendingFrames.length).toBeLessThanOrEqual(framesBefore + 1)
+  })
+
+  /**
+   * The loop used to re-arm itself every frame for as long as `isStreaming`
+   * was true, even with nothing left to animate. A turn stays "streaming" for
+   * its whole duration, so a multi-minute shell tool call kept one rAF loop
+   * per text/thinking block alive for thousands of frames — pinning WebKit's
+   * rendering pipeline at 60fps while the transcript sat still.
+   */
+  it('stops requesting frames once the displayed text has caught up', () => {
+    let text = 'Hello'
+    const { result, rerender } = renderHook(() => useSmoothStream(text, true))
+
+    text = 'Hello, world! This is a longer message.'
+    rerender()
+
+    advanceFrames(60)
+    expect(result.current).toBe(text)
+
+    // Caught up and still streaming: no further frames may be queued.
+    expect(pendingFrames.length).toBe(0)
+  })
+
+  it('restarts the loop when new text arrives after catching up', () => {
+    let text = 'Hello'
+    const { result, rerender } = renderHook(() => useSmoothStream(text, true))
+
+    text = 'Hello, world!'
+    rerender()
+    advanceFrames(60)
+    expect(result.current).toBe(text)
+
+    text = 'Hello, world! And then some more text arrived.'
+    rerender()
+    expect(pendingFrames.length).toBeGreaterThan(0)
+
+    advanceFrames(60)
+    expect(result.current).toBe(text)
   })
 
   it('applies adaptive throttling when text is very long', () => {

@@ -2,7 +2,7 @@
 title: Features
 description: Canonical, version-cited catalogue of shipped user-visible OpenAgentd features.
 status: stable
-updated: 2026-08-12
+updated: 2026-08-13
 ---
 
 # Features
@@ -14,7 +14,7 @@ release that introduced it (where known). When you ship something new, **add it 
 > double-clickable app that runs a team of AI agents on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 16 providers. Your keys.
 
-**Latest release:** v1.131.5 · August 12, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v1.131.5)
+**Latest release:** v1.132.0 · August 13, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v1.132.0)
 
 ---
 
@@ -254,7 +254,7 @@ run from the terminal.
   re-sticks correctly. Keyboard scrolling (PageUp / Home / arrows) and
   scrollbar or selection drags now detach the transcript too, so reading back
   through a long streaming tool call no longer snaps to the bottom on every
-  output update `[v1.131.6]`.
+   output update `[v1.132.0]`.
 - **Mobile keyboard viewport guardrails** `[v1.99.1]` — virtual-keyboard detection now uses the pre-keyboard layout height, the mobile shell stays pinned instead of following `visualViewport.offsetTop`, and chat auto-stick ignores keyboard-only scrollport resizes so manual transcript scrolling no longer flickers on iOS/WebViews.
 - **Tool-call inspector** `[since v1.0]` — every tool call expands to show
   arguments, status, results, and inline Git-like diffs for file edits. Read
@@ -305,7 +305,7 @@ run from the terminal.
 - **Header context meter** `[v1.53.0]` — desktop and mobile chat headers show an
   icon-sized input-token progress ring against the backend's model-aware
   summarization trigger; hover, focus, or tap/click reveals input/output/cache
-  details and the estimated USD used across the active session `[v1.107.0]`; the estimate sums provider-reported input, output, cache-read, and cache-write usage at the active model's registry rates, so compaction never reduces previously incurred spend. Token rows describe the lead while `session cost` covers every agent; live values are published per completed model call from the same usage snapshot the transcript and telemetry store, so the meter no longer disagrees with them, and it stays visible for the duration of a live turn `[v1.131.6]`.
+  details and the estimated USD used across the active session `[v1.107.0]`; the estimate sums provider-reported input, output, cache-read, and cache-write usage at the active model's registry rates, so compaction never reduces previously incurred spend. Token rows describe the lead while `session cost` covers every agent; live values are published per completed model call from the same usage snapshot the transcript and telemetry store, so the meter no longer disagrees with them, and it stays visible for the duration of a live turn `[v1.132.0]`.
 - **Todos panel** `[since v1.0]` — task board with a topbar progress badge
   `<finished>/<total>` `[v1.17.0]`. Live invalidation.
 - **Mobile / phone-first layout** `[since v1.0]` — breakpoints, safe areas, drawer
@@ -610,7 +610,7 @@ agnostic by design.
   total prompt input as cold + cache-read + cache-write tokens while preserving
   cached reads as a separate metric. Cache-write tokens are billed at the
   registry's `cache_write` rate — 1.25x input on Claude models — instead of the
-  plain input rate `[v1.131.6]`.
+   plain input rate `[v1.132.0]`.
 - **Budget-based thinking metadata synthesis** `[v1.83.0]` — models whose
   registry metadata exposes raw `budget_tokens` reasoning support but no named
   effort levels now surface standard `none/low/medium/high` thinking choices in
@@ -647,8 +647,8 @@ agnostic by design.
   open; when the cache is empty, `/api/agents/registry` warms configured
   providers' caches on demand, and **List models** remains the per-provider
   manual refresh / verification action — available whenever credentials are
-  already saved, without retyping a secret the UI never echoes back
-  `[v1.131.6]`. The providers page now includes a
+   already saved, without retyping a secret the UI never echoes back
+   `[v1.132.0]`. The providers page now includes a
   search plus status/kind filter bar for quickly narrowing long provider lists
   `[v1.74.0]`.
 - **Curated multimodal model registry** `[v1.34.0]` — model modality gates,

@@ -28,7 +28,7 @@ import { CompactionDivider } from './CompactionDivider'
 import { AssistantTurn } from './AssistantTurnFooter'
 import { PendingMessageQueue } from './PendingMessageQueue'
 import { appendCurrentTurns, getVisibleTurnWindow, partitionTurns } from '@/utils/turns'
-import { latestDirectUserBlockIdFromParts, mergeBlocks } from '@/utils/blocks'
+import { latestDirectUserBlockIdFromParts, liveBlockTail } from '@/utils/blocks'
 import { extractSleepPrefix } from '@/utils/format'
 import { latestMCPAppResourceBlockIdsFromParts, latestMCPAppResources, mcpAppResourceUri } from '@/utils/mcp-app-artifacts'
 import { useTeamStore } from '@/stores/useTeamStore'
@@ -195,20 +195,21 @@ export function AgentView({ blocks, currentBlocks, isWorking, isTurnOpen = isWor
     })
   }, [])
 
-  const allBlocks = useMemo(() => mergeBlocks(blocks, currentBlocks), [blocks, currentBlocks])
-  const visibleBlocks = useMemo(
-    () => allBlocks.filter((block) => block.type !== 'compaction'),
-    [allBlocks],
-  )
-  const totalLen = allBlocks.length
+  // Live blocks not yet folded into `blocks`, deduped against confirmed ids.
+  // Both scroll bookkeeping and turn partitioning below read from this same
+  // array, so they can never disagree about what actually renders (a merged
+  // `[...blocks, ...liveTail]` copy is never needed here — nothing reads full
+  // merged content, only counts and the last block).
+  const liveTail = useMemo(() => liveBlockTail(blocks, currentBlocks), [blocks, currentBlocks])
+  const totalLen = blocks.length + liveTail.length
   const latestUserBlockId = useMemo(
     () => latestDirectUserBlockIdFromParts(blocks, currentBlocks),
     [blocks, currentBlocks],
   )
   const finalizedTurnItems = useMemo(() => partitionTurns(blocks), [blocks])
   const turnItems = useMemo(
-    () => appendCurrentTurns(finalizedTurnItems, blocks.length, currentBlocks),
-    [blocks.length, currentBlocks, finalizedTurnItems],
+    () => appendCurrentTurns(finalizedTurnItems, blocks.length, liveTail),
+    [blocks.length, liveTail, finalizedTurnItems],
   )
   const { hiddenTurnCount, visibleTurnItems } = useMemo(
     () => getVisibleTurnWindow(turnItems, renderedTurnCount),
@@ -220,10 +221,12 @@ export function AgentView({ blocks, currentBlocks, isWorking, isTurnOpen = isWor
     [currentBlocks, finalizedMCPAppResources],
   )
 
-  const lastBlock = allBlocks[allBlocks.length - 1]
+  const lastBlock = liveTail.length > 0 ? liveTail[liveTail.length - 1] : blocks[blocks.length - 1]
   const lastContent = lastBlock?.content ?? ''
   const isUserMessage = lastBlock ? isDirectUserBlock(lastBlock) : false
-  const isEmpty = visibleBlocks.length === 0 && !isWorking
+  const isEmpty = !isWorking &&
+    !blocks.some((b) => b.type !== 'compaction') &&
+    !liveTail.some((b) => b.type !== 'compaction')
 
   const handleLoadOlderTop = useCallback(() => {
     if (hiddenTurnCountRef.current > 0) {
@@ -343,7 +346,7 @@ export function AgentView({ blocks, currentBlocks, isWorking, isTurnOpen = isWor
                      isWorking={isWorking}
                      isTurnOpen={isTurnOpen}
                      isTrailingTurn={isTrailingTurn}
-                      totalBlocks={allBlocks.length}
+                      totalBlocks={totalLen}
                       size="roomy"
                       onContinue={onContinue}
                       renderBlock={({ block, isStreaming }) => (

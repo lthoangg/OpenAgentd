@@ -53,8 +53,8 @@ describe('AgentView shell streaming', () => {
   /**
    * Counterpart to the guard below: gating `isStreaming` on `isLast` must not
    * switch the typewriter off for the block that is genuinely receiving text.
-   * `isLast` is derived from `totalBlocks`, which is `mergeBlocks(...).length`
-   * — if that ever disagreed with the turn's own indices, nothing would
+   * `isLast` is derived from `totalBlocks`, which is `blocks.length +
+   * liveBlockTail(...).length` — if that ever disagreed with the turn's own indices, nothing would
    * animate at all and the regression would be invisible to the unit tests.
    */
   it('still animates the block that is currently receiving text', () => {

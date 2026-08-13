@@ -25,7 +25,7 @@ import { FileCard } from './FileCard'
 import { AssistantTurn } from './AssistantTurnFooter'
 import { TokenMeter } from '@/components/ui/token-meter'
 import { appendCurrentTurns, partitionTurns } from '@/utils/turns'
-import { latestDirectUserBlockIdFromParts, mergeBlocks } from '@/utils/blocks'
+import { latestDirectUserBlockIdFromParts, liveBlockTail } from '@/utils/blocks'
 import { extractSleepPrefix, formatTime } from '@/utils/format'
 import { latestMCPAppResourceBlockIdsFromParts, latestMCPAppResources, mcpAppResourceUri } from '@/utils/mcp-app-artifacts'
 import { useAutoFollowScroll } from '@/hooks/useAutoFollowScroll'
@@ -399,18 +399,22 @@ const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionI
   // and bouncing dots under its own question card read as work in progress.
   const isPending = !isWorking && !isWaiting && !isError && !isOffline && stream.currentBlocks.some(isDirectUserBlock)
 
-  const allBlocks = useMemo(
-    () => mergeBlocks(stream.blocks, stream.currentBlocks),
+  // Live blocks not yet folded into `stream.blocks`, deduped against
+  // confirmed ids — the same array feeds scroll bookkeeping and turn
+  // partitioning below so they can't disagree about what actually renders.
+  const liveTail = useMemo(
+    () => liveBlockTail(stream.blocks, stream.currentBlocks),
     [stream.blocks, stream.currentBlocks],
   )
+  const totalLen = stream.blocks.length + liveTail.length
   const latestUserBlockId = useMemo(
     () => latestDirectUserBlockIdFromParts(stream.blocks, stream.currentBlocks),
     [stream.blocks, stream.currentBlocks],
   )
   const finalizedTurnItems = useMemo(() => partitionTurns(stream.blocks), [stream.blocks])
   const turnItems = useMemo(
-    () => appendCurrentTurns(finalizedTurnItems, stream.blocks.length, stream.currentBlocks),
-    [finalizedTurnItems, stream.blocks.length, stream.currentBlocks],
+    () => appendCurrentTurns(finalizedTurnItems, stream.blocks.length, liveTail),
+    [finalizedTurnItems, stream.blocks.length, liveTail],
   )
   const finalizedMCPAppResources = useMemo(() => latestMCPAppResources(stream.blocks), [stream.blocks])
   const latestMCPAppBlockIds = useMemo(
@@ -418,10 +422,10 @@ const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionI
     [finalizedMCPAppResources, stream.currentBlocks],
   )
 
-  const lastBlock = allBlocks[allBlocks.length - 1]
+  const lastBlock = liveTail.length > 0 ? liveTail[liveTail.length - 1] : stream.blocks[stream.blocks.length - 1]
   const lastBlockContent = lastBlock?.content ?? ''
   const isUserMessage = lastBlock ? isDirectUserBlock(lastBlock) : false
-  const isEmpty = allBlocks.length === 0
+  const isEmpty = totalLen === 0
 
   const {
     scrollRef,
@@ -429,7 +433,7 @@ const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionI
     showScrollBtn,
     scrollToBottom,
   } = useAutoFollowScroll({
-    totalLen: allBlocks.length,
+    totalLen,
     lastContent: lastBlockContent,
     sessionId,
     isUserMessage,
@@ -482,7 +486,7 @@ const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionI
             </div>
           )}
 
-         {allBlocks.length > 0 && (
+         {totalLen > 0 && (
             <div ref={contentRef} className="space-y-3 px-2.5 py-2.5">
                {turnItems.map((item, k) => {
                    if (item.kind === 'user') {
@@ -508,7 +512,7 @@ const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionI
                        isWorking={isWorking}
                         isTurnOpen={isWorking || isWaiting}
                         isTrailingTurn={isTrailingTurn}
-                        totalBlocks={allBlocks.length}
+                        totalBlocks={totalLen}
                         onContinue={onContinue}
                         renderBlock={({ block, isStreaming }) => (
                          <BlockRenderer

@@ -22,21 +22,37 @@ function confirmedIdSet(blocks: ContentBlock[]): Set<string> {
   return ids
 }
 
+/**
+ * The live suffix of `currentBlocks` not yet folded into `blocks` — the
+ * part `mergeBlocks` appends. Exposed separately so callers that only need
+ * counts or the last block (scroll bookkeeping, turn partitioning) can
+ * derive them without allocating a copy of the full — potentially
+ * session-length — `blocks` array on every streamed delta.
+ *
+ * Defensive dedup: ids are stable identifiers now (server message id for
+ * user blocks, message/toolCall-derived ids for assistant sub-blocks — see
+ * parseTeamBlocks), so an id already present in `blocks` can only mean the
+ * live copy is a stale duplicate of a row that has since been confirmed.
+ * Drop it instead of trusting every upstream reconciliation path
+ * (loadSession, reconcileTurnTail, the SSE reducer) to have already removed
+ * it.
+ */
+export function liveBlockTail(
+  blocks: ContentBlock[],
+  currentBlocks: ContentBlock[],
+): ContentBlock[] {
+  if (currentBlocks.length === 0 || blocks.length === 0) return currentBlocks
+  const confirmedIds = confirmedIdSet(blocks)
+  return currentBlocks.filter((b) => !confirmedIds.has(b.id))
+}
+
 export function mergeBlocks(
   blocks: ContentBlock[],
   currentBlocks: ContentBlock[],
 ): ContentBlock[] {
   if (currentBlocks.length === 0) return blocks
   if (blocks.length === 0) return currentBlocks
-  // Defensive net at the render boundary: ids are stable identifiers now
-  // (server message id for user blocks, message/toolCall-derived ids for
-  // assistant sub-blocks — see parseTeamBlocks), so an id already present in
-  // `blocks` can only mean the live copy is a stale duplicate of a row that
-  // has since been confirmed. Drop it instead of trusting every upstream
-  // reconciliation path (loadSession, reconcileTurnTail, the SSE reducer) to
-  // have already removed it — this is the one place that actually renders.
-  const confirmedIds = confirmedIdSet(blocks)
-  const liveTail = currentBlocks.filter((b) => !confirmedIds.has(b.id))
+  const liveTail = liveBlockTail(blocks, currentBlocks)
   if (liveTail.length === 0) return blocks
   return [...blocks, ...liveTail]
 }
@@ -170,7 +186,7 @@ export function initTool(
       // already the stable identifier every reconciliation path matches on,
       // and parseTeamBlocks gives the eventual persisted tool block the same
       // id, so a live/confirmed duplicate becomes a real id collision that
-      // mergeBlocks' render-boundary dedup can actually catch.
+      // liveBlockTail's render-boundary dedup can actually catch.
       id: toolCallId ?? generateBlockId(),
       type: 'tool',
       content: '',

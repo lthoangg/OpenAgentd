@@ -252,15 +252,12 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
     [localHistory, historyPrompts],
   )
 
-  // Height-to-content resizing + the single/multi-line layout flag. See
-  // InputBar.autosize.ts for the promote/demote hysteresis rationale.
+  // Height-to-content resizing. See InputBar.autosize.ts.
   const {
-    isMultiLine,
     resize,
     scheduleResize,
     resizeAfterLayout,
     resetHeightNow,
-    resetMultiLine,
   } = useTextareaAutosize(textareaRef)
 
   const {
@@ -461,17 +458,10 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
     const wasMinimized = prevMinimizedRef.current
     prevMinimizedRef.current = minimized
     if (!wasMinimized || minimized) return
-    // Reset multi-line state only when the textarea is empty — if
-    // content was just injected (e.g. via /undo) we must not clear
-    // isMultiLine/promoteLengthRef here because the setValue rAF
-    // will compute the correct height from the actual content.
-    if (!textareaRef.current?.value) {
-      resetMultiLine()
-    }
     // ``resizeAfterLayout``'s double-rAF lets Framer's spring reach (or get
     // very close to) the bar's final width before scrollHeight is measured.
     return resizeAfterLayout(() => textareaRef.current?.focus())
-  }, [minimized, resizeAfterLayout, resetMultiLine])
+  }, [minimized, resizeAfterLayout])
 
   // Plain ref now — no auto-focus-on-mount magic needed since the
   // textarea never unmounts.
@@ -725,9 +715,10 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
     ? 'flex h-7 shrink-0 items-center gap-1 rounded-[10px] border border-(--color-accent) bg-(--bg-key) px-2 font-mono text-xs text-(--color-text) transition duration-100 hover:bg-(--bg-card) active:scale-95 motion-reduce:transition-none motion-reduce:active:scale-100 disabled:cursor-not-allowed disabled:opacity-50'
     : actionBtnClass
 
-  // Three states share one DOM tree: minimized, single-line, multi-line.
-  // Multi-line is triggered by the slot's flex-basis:100% which wraps the
-  // row so action buttons land on the line below — no DOM reordering.
+  // Two states share one DOM tree: minimized, and expanded. Expanded always
+  // puts the textarea on its own full-width row (the slot's flex-basis:100%)
+  // with the action buttons wrapping onto the row below — no DOM reordering,
+  // no content-dependent layout flip.
   const handleExpand = () => {
     onUnminimize?.()
   }
@@ -970,12 +961,11 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
         </>
       )}
       {/* Slot snaps w-0 ↔ flex-1 in lockstep with the card's w-fit ↔ w-full.
-          ``-ml-2`` absorbs the parent gap-2 when collapsed. */}
+          ``-ml-2`` absorbs the parent gap-2 when collapsed. Expanded always
+          takes the full row (flex-basis:100%, order:-1) so the textarea sits
+          above the action buttons. */}
       <div
-        style={{
-          flexBasis: !minimized && isMultiLine ? '100%' : undefined,
-          order: !minimized && isMultiLine ? -1 : 0,
-        }}
+        style={!minimized ? { flexBasis: '100%', order: -1 } : undefined}
         className={`min-w-0 overflow-hidden ${minimized ? 'w-0 -ml-2' : 'flex-1'}`}
       >
         {messageSlot}
@@ -989,8 +979,8 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
           {charCount}
         </span>
       )}
-      {/* Spacer pushes Send to the right edge in multi-line. */}
-      {!minimized && isMultiLine && <div className="flex-1" />}
+      {/* Spacer pushes Send to the right edge of the action-button row. */}
+      {!minimized && <div className="flex-1" />}
       {sendOrStopEl}
     </div>
   )

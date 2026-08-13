@@ -620,17 +620,8 @@ describe("InputBar — minimized state", () => {
 // Height reset after submit
 // ─────────────────────────────────────────────────────────────────────────────
 describe("InputBar — height reset after submit", () => {
-  function stubMultiLine(textarea: HTMLTextAreaElement, lineHeight = 24) {
-    Object.defineProperty(textarea, "scrollHeight", { configurable: true, get: () => lineHeight * 3 })
-    const orig = window.getComputedStyle.bind(window)
-    Object.defineProperty(window, "getComputedStyle", {
-      configurable: true, writable: true,
-      value: (el: Element) => {
-        const s = orig(el)
-        if (el !== textarea) return s
-        return new Proxy(s, { get(t, p) { if (p === "lineHeight") return `${lineHeight}px`; if (p === "fontSize") return "14px"; return (t as unknown as Record<string|symbol, unknown>)[p] } })
-      },
-    })
+  function stubScrollHeight(textarea: HTMLTextAreaElement, height: number) {
+    Object.defineProperty(textarea, "scrollHeight", { configurable: true, get: () => height })
     return () => Object.defineProperty(textarea, "scrollHeight", { configurable: true, get: () => 0 })
   }
 
@@ -638,7 +629,7 @@ describe("InputBar — height reset after submit", () => {
     const user = userEvent.setup()
     render(<InputBar onSubmit={() => {}} />)
     const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
-    const restore = stubMultiLine(textarea)
+    const restore = stubScrollHeight(textarea, 72)
     await user.type(textarea, "line one\nline two\nline three")
     act(() => { fireEvent.input(textarea) })
     await user.keyboard("{Enter}")
@@ -664,8 +655,10 @@ describe("InputBar — height reset after submit", () => {
 
     expect(textarea.value).toBe("")
     expect(textarea.style.height).toBe("auto")
+    // Expanded always renders the textarea on its own full-width row —
+    // clearing the content resets height, not the (static) row layout.
     const slot = textarea.closest("div.min-w-0") as HTMLElement
-    expect(slot.style.flexBasis).toBe("")
+    expect(slot.style.flexBasis).toBe("100%")
   })
 
   it("expands the composer to fit a multiline snippet insertion", async () => {
@@ -678,16 +671,15 @@ describe("InputBar — height reset after submit", () => {
       />,
     )
     const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
-    // scrollHeight (60px) exceeds the wrap threshold (lineHeight * 1.4 = ~34px),
-    // simulating what the browser reports once the multiline body is inserted.
+    // Simulates what the browser reports once the multiline body is inserted.
     Object.defineProperty(textarea, "scrollHeight", { configurable: true, get: () => 60 })
     await user.type(textarea, "#long")
     await user.keyboard("{Enter}")
     await act(async () => { await new Promise((r) => requestAnimationFrame(r)) })
     expect(textarea.value).toBe("line one\nline two\nline three")
     expect(textarea.style.height).toBe("60px")
-    // isMultiLine promotion pushes the message slot onto its own row
-    // (flexBasis: 100%) instead of staying inline next to the send button.
+    // Expanded always renders the message slot on its own row (flexBasis:
+    // 100%), independent of content — this just guards that invariant.
     const slot = textarea.closest("div.min-w-0") as HTMLElement
     expect(slot.style.flexBasis).toBe("100%")
   })

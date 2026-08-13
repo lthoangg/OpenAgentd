@@ -732,7 +732,11 @@ MCP.
   `document_symbol`/`workspace_symbol` results to one symbol kind (e.g. `function`,
   `class`); files with no mapped language server (anything outside
   `.py .ts .tsx .js .jsx .go .c .cpp .h .hpp`) get an explicit "no language server
-  support" message instead of a misleading empty result.
+  support" message instead of a misleading empty result. The chat UI's tool-call
+  header/args display covers `hover` (position header, e.g. "Hover at path:line:col")
+  and the `kind` filter (surfaced in both the `document_symbol`/`workspace_symbol`
+  header and the expanded args), matching the existing per-operation formatting for
+  `go_to_definition`/`find_references`/`document_symbol`/`workspace_symbol`.
 - **Clean tool argument validation errors** `[v1.77.0]` — when a tool call
   fails Pydantic validation, the LLM receives a compact `field: message`
   summary instead of the full Pydantic noise (type codes, raw input value,

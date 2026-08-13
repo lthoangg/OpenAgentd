@@ -46,4 +46,28 @@ describe("ToolResult - LSP navigation", () => {
 
     expect(screen.getByText(message)).toBeTruthy()
   })
+
+  it("renders hover text as-is, not as a location list", () => {
+    render(
+      <ToolResult
+        toolName="lsp"
+        operation="hover"
+        result={"def foo() -> int"}
+      />,
+    )
+
+    expect(screen.getByText("def foo() -> int")).toBeTruthy()
+  })
+
+  it("renders the hover empty state", () => {
+    render(
+      <ToolResult
+        toolName="lsp"
+        operation="hover"
+        result="No hover information available."
+      />,
+    )
+
+    expect(screen.getByText("No hover information available.")).toBeTruthy()
+  })
 })

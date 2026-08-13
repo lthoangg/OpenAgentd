@@ -210,6 +210,7 @@ function getToolDisplayInternal(name: string, parsed: Record<string, unknown>): 
     const operation = str(parsed, 'operation')
     const path = str(parsed, 'path')
     const query = str(parsed, 'query')
+    const kind = str(parsed, 'kind')
     const line = typeof parsed.line === 'number' ? parsed.line : 1
     const character = typeof parsed.character === 'number' ? parsed.character : 1
     const location = path ? `${path}:${line}:${character}` : null
@@ -230,23 +231,39 @@ function getToolDisplayInternal(name: string, parsed: Record<string, unknown>): 
         formattedArgs: path ? `file: ${path}\nposition: ${line}:${character}` : null,
       }
     }
-    if (operation === 'document_symbol') {
-      const label = path ? `Symbols in ${path}` : 'Document symbols'
+    if (operation === 'hover') {
+      const label = location ? `Hover at ${location}` : 'Hover'
       return {
         header: <Arg>{label}</Arg>,
         headerTitle: label,
-        formattedArgs: path ? `file: ${path}` : null,
+        formattedArgs: path ? `file: ${path}\nposition: ${line}:${character}` : null,
+      }
+    }
+    if (operation === 'document_symbol') {
+      const kindPrefix = kind ? `${kind.charAt(0).toUpperCase()}${kind.slice(1)} symbols` : 'Symbols'
+      const label = path ? `${kindPrefix} in ${path}` : (kind ? kindPrefix : 'Document symbols')
+      return {
+        header: <Arg>{label}</Arg>,
+        headerTitle: label,
+        formattedArgs: [path ? `file: ${path}` : null, kind ? `kind: ${kind}` : null]
+          .filter(Boolean)
+          .join('\n') || null,
       }
     }
     if (operation === 'workspace_symbol') {
       const queryLabel = query ? `"${trunc(query)}"` : 'all symbols'
+      const kindSuffix = kind ? ` (${kind})` : ''
       const label = path
-        ? `Workspace symbols ${queryLabel} via ${path}`
-        : `Workspace symbols ${queryLabel}`
+        ? `Workspace symbols ${queryLabel}${kindSuffix} via ${path}`
+        : `Workspace symbols ${queryLabel}${kindSuffix}`
       return {
         header: <Arg>{label}</Arg>,
         headerTitle: label,
-        formattedArgs: [query ? `query: ${query}` : null, path ? `language file: ${path}` : null]
+        formattedArgs: [
+          query ? `query: ${query}` : null,
+          kind ? `kind: ${kind}` : null,
+          path ? `language file: ${path}` : null,
+        ]
           .filter(Boolean)
           .join('\n') || null,
       }

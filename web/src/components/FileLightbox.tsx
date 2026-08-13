@@ -388,12 +388,6 @@ export function FileLightbox({ items, index = 0, isOpen, onClose, labelMode = 'f
   /** The <img> element inside FileLightboxImage — transformed for drag/zoom. */
   const imgRef      = useRef<HTMLImageElement>(null)
 
-  // Direction ref (1 = forward/next, -1 = backward/prev) — read in the slide
-  // useLayoutEffect, updated synchronously in goTo before setCurrent.
-  const directionRef  = useRef(1)
-  // Stores the pending rAF id for the slide animation so rapid navigation doesn't queue stale frames.
-  const slideRafRef   = useRef<number>(0)
-
   // ── Gallery gesture state (image pan/zoom is owned by usePanZoom) ───────
   const touchStartXRef = useRef(0)
   const touchStartYRef = useRef(0)
@@ -407,53 +401,15 @@ export function FileLightbox({ items, index = 0, isOpen, onClose, labelMode = 'f
     if (slideRef.current) slideRef.current.style.transform = `translate3d(${dx}px, ${dy}px, 0)`
   }, [])
 
-  // Tracks the last rendered current value to check if we actually changed current index.
-  const lastCurrentRef  = useRef<number | null>(null)
-
   // ── Overlay fade-in ─────────────────────────────────────────────────────────
   useLayoutEffect(() => {
-    if (!isOpen) {
-      lastCurrentRef.current = null
-      return
-    }
+    if (!isOpen) return
     const el = overlayRef.current
     if (!el) return
     el.style.opacity = '0'
     const id = requestAnimationFrame(() => { el.style.opacity = '1' })
     return () => cancelAnimationFrame(id)
   }, [isOpen])
-
-  // ── Gallery slide animation ────────────────────────────────────────────────
-  useLayoutEffect(() => {
-    if (!isOpen) return
-    const el = slideRef.current
-    if (!el) return
-
-    if (lastCurrentRef.current === null || lastCurrentRef.current === current) {
-      lastCurrentRef.current = current
-      el.style.transition = 'none'
-      el.style.transform  = 'translate3d(0, 0, 0)'
-      el.style.opacity    = '1'
-      return
-    }
-
-    cancelAnimationFrame(slideRafRef.current)
-    const dir = directionRef.current
-    el.style.transition = 'none'
-    el.style.transform  = `translate3d(${dir * 32}px, 0, 0)`
-    el.style.opacity    = '0'
-
-    // Force reflow so browser registers starting state before transition starts
-    void el.offsetWidth
-
-    slideRafRef.current = requestAnimationFrame(() => {
-      el.style.transition = `transform 240ms cubic-bezier(0.25, 0.46, 0.45, 0.94), opacity 240ms cubic-bezier(0.25, 0.46, 0.45, 0.94)`
-      el.style.transform  = 'translate3d(0, 0, 0)'
-      el.style.opacity    = '1'
-    })
-    lastCurrentRef.current = current
-    return () => cancelAnimationFrame(slideRafRef.current)
-  }, [current, isOpen])
 
   // ── Index sync on (re)open ─────────────────────────────────────────────────
   useEffect(() => {
@@ -469,8 +425,6 @@ export function FileLightbox({ items, index = 0, isOpen, onClose, labelMode = 'f
     setCurrent((prev) => {
       const target = ((next % items.length) + items.length) % items.length
       if (target !== prev) {
-        const forward = next > prev || (prev === items.length - 1 && next === 0)
-        directionRef.current = forward ? 1 : -1
         haptic('select')
       }
       return target

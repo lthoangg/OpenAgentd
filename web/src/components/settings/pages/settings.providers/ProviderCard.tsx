@@ -44,6 +44,11 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
   const cloudSignature = useMemo(() => JSON.stringify(cloudExtra), [cloudExtra])
   const hasCloudCandidate = Object.values(cloudExtra).some((value) => value.length > 0)
   const hasCandidateKey = trimmedKey.length > 0
+  // Credentials already stored on the daemon: listing models re-uses them
+  // server-side, so a refresh must not require retyping a secret the UI
+  // never echoes back. `is_saved` alone is enough — a stored key that
+  // stopped working is exactly the case where a retry is wanted.
+  const hasSavedCredentials = provider.is_saved || provider.is_configured
   const hasVerifiedKey = verifiedKey === trimmedKey && hasCandidateKey
   const hasVerifiedCloud = verifiedCloudSignature === cloudSignature && hasCloudCandidate
   const canSave =
@@ -77,14 +82,19 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
   }, [autoModelsQ.data?.models, hasCandidateKey, provider.cached_models, provider.is_configured])
 
   const handleListModels = async () => {
+    const extra = provider.kind === 'cloud_creds' ? cloudExtra : extraForRequest
     try {
       const listed = await modelsMutation.mutateAsync({
         providerId: provider.id,
         apiKey: trimmedKey,
-        extra: provider.kind === 'cloud_creds' ? cloudExtra : extraForRequest,
+        extra,
       })
       queryClient.setQueryData(queryKeys.settings.providerModels(provider.id), listed)
-      if (!hasCandidateKey && provider.public_access) {
+      // Mirror the daemon's own cache write, which only happens when the
+      // request carried no candidate credentials (see `list_provider_models`).
+      // Without this the card keeps rendering `cached_models` from the last
+      // providers fetch and a refresh looks like it did nothing.
+      if (!hasCandidateKey && !extra) {
         queryClient.setQueryData<ProvidersListBody>(queryKeys.settings.providers(), (current) => {
           if (!current) return current
           return {
@@ -270,7 +280,7 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
               variant="default"
               className="h-10 w-full sm:h-8 sm:w-auto"
               onClick={handleListModels}
-              disabled={(!hasCandidateKey && !provider.public_access) || listing}
+              disabled={(!hasCandidateKey && !hasSavedCredentials && !provider.public_access) || listing}
             >
               {listing && <Loader2 className="h-3 w-3 animate-spin mr-1.5" aria-hidden="true" />}
               List models
@@ -327,7 +337,7 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
             variant="default"
             className="h-10 w-full sm:h-8 sm:w-auto"
             onClick={handleListModels}
-            disabled={!provider.is_configured || listing}
+            disabled={!hasSavedCredentials || listing}
           >
             {listing && <Loader2 className="h-3 w-3 animate-spin mr-1.5" aria-hidden="true" />}
             List models
@@ -436,7 +446,7 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
               variant="default"
               className="h-10 w-full sm:h-8 sm:w-auto"
               onClick={handleListModels}
-              disabled={!hasCloudCandidate || listing}
+              disabled={(!hasCloudCandidate && !hasSavedCredentials) || listing}
             >
               {listing && <Loader2 className="h-3 w-3 animate-spin mr-1.5" aria-hidden="true" />}
               List models

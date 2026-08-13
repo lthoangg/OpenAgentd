@@ -959,6 +959,46 @@ def test_list_provider_models_filters_non_agent_models(
     assert body["models"] == ["gemini-3.5-flash"]
 
 
+def test_list_provider_models_blank_extra_does_not_mask_saved_credential(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A refresh from the settings card echoes every credential field, and the
+    secret ones come back blank because the UI never receives them. Those
+    blanks must not overwrite the stored value, or "List models" on an
+    already-configured cloud provider would always fail.
+    """
+    captured: dict[str, object] = {}
+
+    async def _spy(_entry, **kwargs):  # type: ignore[no-untyped-def]
+        captured["overrides"] = kwargs.get("overrides")
+        return []
+
+    monkeypatch.setattr(
+        "app.agent.providers.model_discovery.discover_provider_models", _spy
+    )
+    monkeypatch.setattr(
+        settings_routes,
+        "_provider_saved_overrides",
+        lambda _entry: {"VERTEXAI_API_KEY": "[REDACTED]"},
+    )
+
+    app = _make_app()
+    client = TestClient(app)
+    response = client.post(
+        "/api/settings/providers/vertexai/models",
+        json={
+            "api_key": "[REDACTED]",
+            "extra": {"VERTEXAI_API_KEY": "", "VERTEXAI_REGION": "eu"},
+        },
+    )
+
+    assert response.status_code == 200
+    assert captured["overrides"] == {
+        "VERTEXAI_API_KEY": "[REDACTED]",
+        "VERTEXAI_REGION": "eu",
+    }
+
+
 def test_list_provider_models_does_not_mutate_os_environ(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

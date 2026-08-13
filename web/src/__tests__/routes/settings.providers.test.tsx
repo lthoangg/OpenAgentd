@@ -130,6 +130,9 @@ describe('ProvidersSettingsPage', () => {
     expect(await screen.findByText('Codex')).toBeTruthy()
     expect(screen.getAllByText('Connected').length).toBeGreaterThan(0)
     expect(screen.queryByText('Failed')).toBeNull()
+    // A saved OAuth token whose listing failed must stay retryable — the
+    // daemon re-uses the stored token, there is nothing for the user to retype.
+    expect(screen.getByRole('button', { name: 'List models' }).getAttribute('disabled')).toBeNull()
   })
 
   it('shows GitHub device-code copy for Copilot OAuth', async () => {
@@ -359,6 +362,111 @@ describe('ProvidersSettingsPage', () => {
 
     await waitFor(() => expect(requestBody).toEqual({ api_key: '' }))
     expect(await screen.findByText('opencode:big-pickle')).toBeTruthy()
+  })
+
+  it('refreshes models for a saved api-key provider without retyping the key', async () => {
+    const requestBodies: unknown[] = []
+    server.use(
+      http.get('http://localhost/api/settings/providers', () => HttpResponse.json({
+        has_any_configured: true,
+        providers: [
+          {
+            id: 'anthropic',
+            label: 'Anthropic',
+            description: 'Anthropic provider',
+            kind: 'api_key',
+            credentials: [],
+            saved_credentials: {},
+            env_var: 'ANTHROPIC_API_KEY',
+            env_vars: [],
+            oauth_command: '',
+            docs_url: '',
+            public_access: false,
+            is_configured: true,
+            is_saved: true,
+            is_reachable: true,
+            cached_models: ['old-model'],
+            visible_models: [],
+            is_disconnected: false,
+            supports_fast_mode: false,
+          },
+        ],
+      })),
+      http.post('http://localhost/api/settings/providers/anthropic/models', async ({ request }) => {
+        requestBodies.push(await request.json())
+        return HttpResponse.json({
+          provider: 'anthropic',
+          models: ['fresh-model'],
+          source: 'provider',
+        })
+      }),
+    )
+
+    renderPage()
+
+    expect(await screen.findByText('Anthropic')).toBeTruthy()
+    const listModels = screen.getByRole('button', { name: 'List models' })
+    expect(listModels.getAttribute('disabled')).toBeNull()
+
+    fireEvent.click(listModels)
+
+    // The daemon re-uses the stored key when the request carries none.
+    await waitFor(() => expect(requestBodies).toContainEqual({ api_key: '' }))
+    // A successful listing auto-expands the models panel.
+    expect(await screen.findByRole('button', { name: /1 models available/i })).toBeTruthy()
+    expect(await screen.findByText('anthropic:fresh-model')).toBeTruthy()
+  })
+
+  it('refreshes models for a saved provider whose stored key stopped working', async () => {
+    const requestBodies: unknown[] = []
+    server.use(
+      http.get('http://localhost/api/settings/providers', () => HttpResponse.json({
+        has_any_configured: false,
+        providers: [
+          {
+            id: 'anthropic',
+            label: 'Anthropic',
+            description: 'Anthropic provider',
+            kind: 'api_key',
+            credentials: [],
+            saved_credentials: {},
+            env_var: 'ANTHROPIC_API_KEY',
+            env_vars: [],
+            oauth_command: '',
+            docs_url: '',
+            public_access: false,
+            is_configured: false,
+            is_saved: true,
+            is_reachable: false,
+            cached_models: ['old-model'],
+            visible_models: [],
+            is_disconnected: false,
+            supports_fast_mode: false,
+          },
+        ],
+      })),
+      http.post('http://localhost/api/settings/providers/anthropic/models', async ({ request }) => {
+        requestBodies.push(await request.json())
+        return HttpResponse.json({
+          provider: 'anthropic',
+          models: ['fresh-model'],
+          source: 'provider',
+        })
+      }),
+    )
+
+    renderPage()
+
+    expect(await screen.findByText('Anthropic')).toBeTruthy()
+    const listModels = screen.getByRole('button', { name: 'List models' })
+    expect(listModels.getAttribute('disabled')).toBeNull()
+
+    fireEvent.click(listModels)
+
+    await waitFor(() => expect(requestBodies).toContainEqual({ api_key: '' }))
+    // A successful listing auto-expands the models panel.
+    expect(await screen.findByRole('button', { name: /1 models available/i })).toBeTruthy()
+    expect(await screen.findByText('anthropic:fresh-model')).toBeTruthy()
   })
 
   it('hides stale OpenCode Go models when no Go key is configured', async () => {

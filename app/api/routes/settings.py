@@ -444,7 +444,11 @@ def _build_overrides(
         name = str(credentials[0].get("name", ""))
         if name:
             overrides[name] = body_api_key
-    overrides.update(body_extra)
+    # Blank values are "field left untouched in the UI", not "clear this
+    # credential" — the settings card echoes every credential field back and
+    # secrets always come back empty. Letting them through would mask the
+    # saved value in ``_provider_saved_overrides``.
+    overrides.update({name: value for name, value in body_extra.items() if value})
     return overrides
 
 

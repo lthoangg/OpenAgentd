@@ -554,6 +554,10 @@ OpenAgentd carries context across sessions via rolling-window summarization.
 - **`AGENTS.md` at repo root and subfolders** `[v1.9.0]` — written by `/init`;
   standard repo- and folder-scoped agent context files. Coding workspaces fall
   back to root `CLAUDE.md` when root `AGENTS.md` is absent.
+- **Workspace root injected into coding-mode system prompt** `[v1.133.0]` —
+  coding-team agents (lead and members) are told their workspace's absolute
+  path unconditionally, not only when an `AGENTS.md`/`CLAUDE.md` happens to
+  exist.
 - **Per-message provider metadata** `[v1.17.0]` — assistant messages persist
   the model that generated each reply (visible in inspector).
 

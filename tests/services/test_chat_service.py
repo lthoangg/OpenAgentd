@@ -1172,42 +1172,6 @@ async def test_get_messages_for_llm_summary_window_drops_orphan_tool_message(ses
     assert [m.content for m in result] == ["Summary of earlier context.", "new turn"]
 
 
-@pytest.mark.asyncio
-async def test_get_messages_for_llm_uses_synthetic_shell_user_marker(session):
-    """Visible !command rows become opencode-style synthetic markers for LLM context."""
-    chat_session = await create_chat_session(session)
-    tool_call = ToolCall(
-        id="shell-1",
-        function=FunctionCall(
-            name="shell",
-            arguments='{"command":"pwd","description":"Run user shell command"}',
-        ),
-    )
-    await save_message(
-        session,
-        chat_session.id,
-        HumanMessage(content="!pwd"),
-        extra={"kind": "user_shell", "command": "pwd"},
-    )
-    await save_message(
-        session,
-        chat_session.id,
-        AssistantMessage(content=None, tool_calls=[tool_call]),
-    )
-    await save_message(
-        session,
-        chat_session.id,
-        ToolMessage(content="/repo", tool_call_id="shell-1", name="shell"),
-    )
-    await session.commit()
-
-    result = await get_messages_for_llm(session, chat_session.id)
-
-    assert [m.role for m in result] == ["user", "assistant", "tool"]
-    assert result[0].content == "The following tool was executed by the user"
-    assert result[0].extra and result[0].extra["command"] == "pwd"
-
-
 # ── hide_messages_before_summary ─────────────────────────────────────────────
 
 

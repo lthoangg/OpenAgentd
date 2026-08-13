@@ -9,7 +9,6 @@ from loguru import logger
 from app.agent.schemas.chat import AssistantMessage, HumanMessage
 from app.models.chat import SessionMessage
 from app.services.chat_service_messages import (
-    USER_SHELL_LLM_CONTENT,
     apply_llm_content_overrides,
     deserialize_messages,
 )
@@ -210,18 +209,6 @@ def test_apply_llm_content_overrides_multiple_attachments():
     assert "a.py" in parts[0].text
     assert "b.png" in parts[1].text
     assert parts[2].text == "go"
-
-
-def test_apply_llm_content_overrides_marks_shell_messages():
-    messages = [
-        HumanMessage(content="rm -rf", extra={"kind": "user_shell"}),
-        HumanMessage(content="keep me", extra={"kind": "plain"}),
-    ]
-
-    result = apply_llm_content_overrides(messages)
-
-    assert result[0].content == USER_SHELL_LLM_CONTENT
-    assert result[1].content == "keep me"
 
 
 def test_deserialize_messages_with_sanitize_tool_pairs_drops_orphan_tool(

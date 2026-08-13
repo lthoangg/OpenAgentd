@@ -233,24 +233,6 @@ class TestTeamChatRoute:
         test_team.handle_user_message.assert_awaited_once()
         assert test_team.handle_user_message.call_args.kwargs["content"] == "Hello team"
 
-    def test_team_chat_shell_dispatches_bang_command(self, app_with_team, test_team):
-        client = TestClient(app_with_team)
-        session_id = str(uuid.uuid7())
-        with patch(
-            "app.api.routes.team.chat.agent_service.dispatch_user_shell_command",
-            AsyncMock(return_value=session_id),
-        ) as dispatch_shell:
-            response = client.post(
-                "/api/team/chat",
-                data={"message": "!ls -la", "session_id": session_id, "shell": "true"},
-            )
-
-        assert response.status_code == 202
-        assert response.json()["session_id"] == session_id
-        dispatch_shell.assert_awaited_once()
-        assert dispatch_shell.call_args.kwargs["command"] == "ls -la"
-        assert dispatch_shell.call_args.kwargs["session_id"] == session_id
-
     def test_team_chat_passes_model_settings(self, app_with_team, test_team):
         test_team.handle_user_message = AsyncMock(
             return_value=(str(uuid.uuid7()), str(uuid.uuid7()))

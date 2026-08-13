@@ -43,10 +43,6 @@ class ChatForm(BaseModel):
         False,
         description="Per-request fast mode. Ignored by unsupported providers.",
     )
-    shell: bool = Field(
-        False,
-        description="Run message text as a shell command instead of an agent prompt.",
-    )
     mentions: list[str] | None = Field(
         None, description="Paths of files/folders mentioned in this prompt."
     )
@@ -62,7 +58,6 @@ class ChatForm(BaseModel):
         model: str | None = Form(None),
         thinking_level: str | None = Form(None),
         fast_mode: bool = Form(False),
-        shell: bool = Form(False),
         mentions: str | None = Form(None),
     ) -> "ChatForm":
         parsed_mentions = None
@@ -87,7 +82,6 @@ class ChatForm(BaseModel):
                 model=model,
                 thinking_level=thinking_level,
                 fast_mode=fast_mode,
-                shell=shell,
                 mentions=parsed_mentions,
             )
         except ValidationError as exc:

@@ -17,8 +17,6 @@ from app.agent.schemas.chat import (
 )
 from app.models.chat import SessionMessage
 
-USER_SHELL_LLM_CONTENT = "The following tool was executed by the user"
-
 _chat_message_adapter: TypeAdapter[ChatMessage] = TypeAdapter(ChatMessage)
 _content_block_adapter: TypeAdapter[ContentBlock] = TypeAdapter(ContentBlock)
 
@@ -148,8 +146,6 @@ def apply_llm_content_overrides(messages: list[ChatMessage]) -> list[ChatMessage
                 # bookkeeping, but the LLM should consume the canonical
                 # attachment hint from the parent user row instead.
                 continue
-            if msg.extra.get("kind") == "user_shell":
-                msg.content = USER_SHELL_LLM_CONTENT
             attachments = msg.extra.get("attachments")
             if isinstance(attachments, list) and attachments:
                 msg = msg.model_copy(

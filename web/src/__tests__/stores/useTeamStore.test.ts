@@ -117,6 +117,21 @@ describe("beginResolvedSession", () => {
     expect(s.isConnected).toBe(false);
   });
 
+  it("keeps settings picked before a background session resolve completes", () => {
+    useTeamStore.getState().setSessionModelSettings("anthropic:claude-sonnet", "high")
+
+    useTeamStore.getState().beginResolvedSession("new-sid", {
+      mode: "normal",
+      model: "openai:gpt-4o",
+      thinkingLevel: "low",
+    })
+
+    const s = useTeamStore.getState()
+    expect(s.sessionId).toBe("new-sid")
+    expect(s.sessionModel).toBe("anthropic:claude-sonnet")
+    expect(s.sessionThinkingLevel).toBe("high")
+  })
+
   it("drops the previous session's live stream when switching to another session", () => {
     const abort = new AbortController();
     useTeamStore.setState({

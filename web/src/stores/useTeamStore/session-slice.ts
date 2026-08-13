@@ -325,6 +325,8 @@ export function resetSessionState(
   state.sessionTitle = null
   state.sessionModel = options.model ?? null
   state.sessionThinkingLevel = options.thinkingLevel ?? null
+  state._sessionSettingsDirty = false
+  state._sessionSettingsVersion = (state._sessionSettingsVersion ?? 0) + 1
   state.sessionFastMode = options.fastMode ?? false
   state.isTeamWorking = false
   state.pendingQuestion = null
@@ -382,6 +384,8 @@ export type SessionSlice = Pick<
   | 'sessionTitle'
   | 'sessionModel'
   | 'sessionThinkingLevel'
+  | '_sessionSettingsDirty'
+  | '_sessionSettingsVersion'
   | 'sessionFastMode'
   | '_sessionGeneration'
   | 'hasMore'
@@ -416,6 +420,7 @@ async function loadSessionImpl(
   workspace?: string | null,
 ): Promise<void> {
   const gen = get()._sessionGeneration
+  const settingsVersion = get()._sessionSettingsVersion
   const fetchStartedAt = Date.now()
   // How much live content each stream held before the request went out, so
   // the resolve path can tell it apart from anything appended since.
@@ -437,8 +442,10 @@ async function loadSessionImpl(
     set((draft) => {
       draft.sessionId = sessionId
       draft.sessionTitle = history.lead.title ?? null
-      draft.sessionModel = history.lead.model ?? null
-      draft.sessionThinkingLevel = history.lead.thinking_level ?? null
+      if (!draft._sessionSettingsDirty && draft._sessionSettingsVersion === settingsVersion) {
+        draft.sessionModel = history.lead.model ?? null
+        draft.sessionThinkingLevel = history.lead.thinking_level ?? null
+      }
       draft.sessionFastMode = fastModeFromMessages(history.lead.messages)
       draft.error = null
       Object.values(draft.agentStreams).forEach((stream) => {
@@ -623,6 +630,8 @@ export const createSessionSlice: StateCreator<
   sessionTitle: null,
   sessionModel: null,
   sessionThinkingLevel: null,
+  _sessionSettingsDirty: false,
+  _sessionSettingsVersion: 0,
   sessionFastMode: false,
   _sessionGeneration: 0,
   hasMore: false,
@@ -652,6 +661,7 @@ export const createSessionSlice: StateCreator<
     // treats them as newer local content) under the new session id.
     const staysOnSameSession =
       get().sessionId === null || get().sessionId === sessionId
+    const preserveLocalSettings = staysOnSameSession && get()._sessionSettingsDirty
     const isWorkingOrHasBlocks =
       get().isTeamWorking ||
       Boolean(
@@ -661,8 +671,10 @@ export const createSessionSlice: StateCreator<
     if (staysOnSameSession && isWorkingOrHasBlocks) {
       set((state) => {
         if (sessionId) state.sessionId = sessionId
-        state.sessionModel = options?.model ?? state.sessionModel
-        state.sessionThinkingLevel = options?.thinkingLevel ?? state.sessionThinkingLevel
+        if (!preserveLocalSettings) {
+          state.sessionModel = options?.model ?? state.sessionModel
+          state.sessionThinkingLevel = options?.thinkingLevel ?? state.sessionThinkingLevel
+        }
         if (options?.fastMode !== undefined) state.sessionFastMode = options.fastMode
         if (options?.mode === 'coding') state._workspace = options.workspace ?? null
         if (options?.skipInitialRestore && sessionId) state._resolvedSessionReadyId = sessionId
@@ -670,16 +682,19 @@ export const createSessionSlice: StateCreator<
       return
     }
     get()._abortController?.abort()
+    const localModel = get().sessionModel
+    const localThinkingLevel = get().sessionThinkingLevel
     set((state) => {
       resetSessionState(state, {
         sessionId,
-        model: options?.model,
-        thinkingLevel: options?.thinkingLevel,
+        model: preserveLocalSettings ? localModel : options?.model,
+        thinkingLevel: preserveLocalSettings ? localThinkingLevel : options?.thinkingLevel,
         fastMode: options?.fastMode,
         mode: options?.mode,
         workspace: options?.workspace,
       })
       if (options?.skipInitialRestore) state._resolvedSessionReadyId = sessionId
+      if (preserveLocalSettings) state._sessionSettingsDirty = true
     })
   },
 
@@ -709,6 +724,8 @@ export const createSessionSlice: StateCreator<
     set((draft) => {
       draft.sessionModel = model
       draft.sessionThinkingLevel = thinkingLevel
+      draft._sessionSettingsDirty = true
+      draft._sessionSettingsVersion += 1
       if (fastMode !== undefined) draft.sessionFastMode = fastMode
     })
   },
@@ -794,6 +811,7 @@ export const createSessionSlice: StateCreator<
     }
 
     const gen = state._sessionGeneration
+    const settingsVersion = state._sessionSettingsVersion
     let delta: Awaited<ReturnType<typeof teamHistorySince>>
     try {
       delta = await teamHistorySince(sessionId, since)
@@ -830,8 +848,10 @@ export const createSessionSlice: StateCreator<
     set((draft) => {
       // Metadata the delta carries authoritatively.
       draft.sessionTitle = delta.lead.title ?? draft.sessionTitle
-      draft.sessionModel = delta.lead.model ?? draft.sessionModel
-      draft.sessionThinkingLevel = delta.lead.thinking_level ?? draft.sessionThinkingLevel
+      if (!draft._sessionSettingsDirty && draft._sessionSettingsVersion === settingsVersion) {
+        draft.sessionModel = delta.lead.model ?? draft.sessionModel
+        draft.sessionThinkingLevel = delta.lead.thinking_level ?? draft.sessionThinkingLevel
+      }
       draft.isTeamWorking = delta.lead.running === true
       draft.error = null
 

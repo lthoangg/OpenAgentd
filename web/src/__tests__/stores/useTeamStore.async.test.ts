@@ -100,6 +100,8 @@ const INITIAL_STATE = {
   liveAgentNames: null,
   sidebarOpen: false,
   sessionId: null,
+  _sessionSettingsDirty: false,
+  _sessionSettingsVersion: 0,
   isTeamWorking: false,
   isContinuing: false,
   isConnected: false,
@@ -1993,6 +1995,37 @@ describe("loadSession", () => {
 
     resolveStatus(null)
     await loadPromise
+  })
+
+  it("keeps model settings changed while history is loading", async () => {
+    let resolveHistory!: (value: unknown) => void
+    mockTeamHistory.mockImplementation(
+      () => new Promise((resolve) => { resolveHistory = resolve })
+    )
+
+    const loadPromise = useTeamStore.getState().loadSession("settings-race")
+    useTeamStore.getState().setSessionModelSettings("anthropic:claude-sonnet", "high")
+
+    resolveHistory({
+      lead: {
+        id: "lead-sess",
+        agent_name: "lead",
+        title: null,
+        created_at: null,
+        updated_at: null,
+        model: "openai:gpt-4o",
+        thinking_level: "low",
+        sub_sessions: [],
+        messages: [],
+      },
+      members: [],
+      has_more: false,
+      next_cursor: null,
+    })
+    await loadPromise
+
+    expect(useTeamStore.getState().sessionModel).toBe("anthropic:claude-sonnet")
+    expect(useTeamStore.getState().sessionThinkingLevel).toBe("high")
   })
 
   it("sets sessionId from the argument", async () => {

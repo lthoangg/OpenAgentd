@@ -63,6 +63,8 @@ export const createPendingSlice: StateCreator<
           draft.sessionId = result.session_id
           draft.sessionModel = options?.model ?? get().sessionModel
           draft.sessionThinkingLevel = options?.thinkingLevel ?? get().sessionThinkingLevel
+          draft._sessionSettingsDirty = false
+          draft._sessionSettingsVersion += 1
           draft._pendingMessages.push({
             id: result.message_id ?? '',
             sessionId: result.session_id,
@@ -147,6 +149,8 @@ export const createPendingSlice: StateCreator<
         draft.sessionId = result.session_id
         draft.sessionModel = options?.model ?? get().sessionModel
         draft.sessionThinkingLevel = options?.thinkingLevel ?? get().sessionThinkingLevel
+        draft._sessionSettingsDirty = false
+        draft._sessionSettingsVersion += 1
         draft._pendingMessages.forEach((msg) => {
           if (msg.sessionId === null || msg.sessionId === undefined) msg.sessionId = result.session_id
         })

@@ -124,6 +124,9 @@ export interface TeamStoreState {
   sessionTitle: string | null
   sessionModel: string | null
   sessionThinkingLevel: string | null
+  /** True while model/thinking settings are local overrides not yet confirmed by the server. */
+  _sessionSettingsDirty: boolean
+  _sessionSettingsVersion: number
   sessionFastMode: boolean
   isTeamWorking: boolean
   /**

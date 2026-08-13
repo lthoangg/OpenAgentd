@@ -77,6 +77,24 @@ def test_delete_extras_unlinks_workspace_symlink_without_touching_target(
 
 
 @pytest.mark.asyncio
+async def test_snapshot_maintenance_prunes_unreachable_objects(
+    state_dir: Path, workspace: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls: list[tuple[str, ...]] = []
+
+    async def fake_git(*args: str, **kwargs: object) -> tuple[int, bytes, bytes]:
+        calls.append(args)
+        return 0, b"", b""
+
+    monkeypatch.setattr(snapshot_service, "_git", fake_git)
+    await snapshot_service._maintain_repo(state_dir / "git", workspace)
+
+    assert calls == [
+        ("--git-dir", str(state_dir / "git"), "gc", "--auto", "--prune=now")
+    ]
+
+
+@pytest.mark.asyncio
 async def test_track_returns_tree_hash(state_dir: Path, workspace: Path) -> None:
     (workspace / "a.txt").write_text("hello")
 

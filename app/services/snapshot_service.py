@@ -46,6 +46,8 @@ _CORE_FLAGS: tuple[str, ...] = (
 
 _locks: dict[str, asyncio.Lock] = {}
 _last_hashes: dict[tuple[str, Path], str] = {}
+_track_counts: dict[str, int] = {}
+_MAINTENANCE_INTERVAL = 16
 
 
 def _lock(session_id: str) -> asyncio.Lock:
@@ -100,6 +102,18 @@ async def _git(
 def _gitdir_args(gitdir: Path, worktree: Path) -> list[str]:
     """Standard ``--git-dir / --work-tree`` prefix for ``_git`` calls."""
     return ["--git-dir", str(gitdir), "--work-tree", str(worktree)]
+
+
+async def _maintain_repo(gitdir: Path, worktree: Path) -> None:
+    """Pack snapshot objects and prune unreachable intermediate trees."""
+    await _git(
+        "--git-dir",
+        str(gitdir),
+        "gc",
+        "--auto",
+        "--prune=now",
+        cwd=worktree,
+    )
 
 
 async def _init_repo(gitdir: Path, worktree: Path) -> bool:
@@ -251,6 +265,9 @@ async def track(session_id: str, workspace: Path) -> str | None:
         if not snapshot_hash:
             return None
         _last_hashes[cache_key] = snapshot_hash
+        _track_counts[session_id] = _track_counts.get(session_id, 0) + 1
+        if _track_counts[session_id] % _MAINTENANCE_INTERVAL == 0:
+            await _maintain_repo(gitdir, workspace)
         logger.debug(
             "snapshot_tracked session_id={} hash={}",
             session_id,
@@ -433,4 +450,5 @@ async def remove(session_id: str) -> None:
             for cache_key in tuple(_last_hashes):
                 if cache_key[0] == session_id:
                     del _last_hashes[cache_key]
+            _track_counts.pop(session_id, None)
     _locks.pop(session_id, None)

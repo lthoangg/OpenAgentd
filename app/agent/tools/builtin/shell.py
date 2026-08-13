@@ -169,6 +169,10 @@ _POST_KILL_WAIT_SECONDS = 5.0
 _OUTPUT_MAX_LINES = 300
 # Bytes kept inline; output beyond this spills to a temp file
 _OUTPUT_MAX_BYTES = 131_072  # 128 KB (matches opencode Truncate.MAX_BYTES)
+# Hard disk budget for one foreground command's spill artifact.  A command may
+# print indefinitely; retaining a bounded inline result must not turn that into
+# unbounded persistent disk usage.
+_SPILL_MAX_BYTES = 10 * 1024 * 1024
 # Limit live-output UI churn for noisy commands while keeping progress responsive.
 # Two updates per second keeps progress readable without forcing the chat transcript,
 # terminal row, and auto-follow observers through four layout cycles per second.
@@ -636,6 +640,8 @@ class _ForegroundOutput:
         self._tail: deque[bytes] = deque()
         self._tail_bytes = 0
         self._file: BinaryIO | None = None
+        self._spill_bytes = 0
+        self._spill_capped = False
         self._spill_failed = False
 
     def add(self, chunk: bytes) -> None:
@@ -652,7 +658,15 @@ class _ForegroundOutput:
             self._open_spill()
         if self._file is not None:
             try:
-                self._file.write(_strip_ansi_bytes(rest))
+                payload = _strip_ansi_bytes(rest)
+                remaining = _SPILL_MAX_BYTES - self._spill_bytes
+                if remaining <= 0:
+                    self._spill_capped = True
+                else:
+                    self._file.write(payload[:remaining])
+                    self._spill_bytes += min(len(payload), remaining)
+                    if len(payload) > remaining:
+                        self._spill_capped = True
             except OSError as exc:
                 logger.warning("shell_spill_write_failed error={!r}", exc)
                 self.close()
@@ -667,7 +681,10 @@ class _ForegroundOutput:
         try:
             dest = _spill_dest()
             self._file = dest.open("wb")
-            self._file.write(_strip_ansi_bytes(b"".join(self._head)))
+            head = _strip_ansi_bytes(b"".join(self._head))
+            self._file.write(head[:_SPILL_MAX_BYTES])
+            self._spill_bytes = min(len(head), _SPILL_MAX_BYTES)
+            self._spill_capped = len(head) > _SPILL_MAX_BYTES
             self.spill_path = dest
         except OSError as exc:
             logger.warning("shell_spill_open_failed error={!r}", exc)
@@ -696,9 +713,10 @@ class _ForegroundOutput:
         if was_cut and self.spill_path is None and not self._spill_failed:
             try:
                 dest = _spill_dest()
-                dest.write_bytes(
-                    _strip_ansi_bytes(b"".join(self._head) + b"".join(self._tail))
-                )
+                payload = _strip_ansi_bytes(b"".join(self._head) + b"".join(self._tail))
+                dest.write_bytes(payload[:_SPILL_MAX_BYTES])
+                self._spill_bytes = min(len(payload), _SPILL_MAX_BYTES)
+                self._spill_capped = len(payload) > _SPILL_MAX_BYTES
                 self.spill_path = dest
             except OSError as exc:
                 logger.warning("shell_spill_write_failed error={!r}", exc)
@@ -1036,8 +1054,9 @@ async def _shell(
 
         if was_cut:
             if collector.spill_path is not None:
+                suffix = " (spill file capped)" if collector._spill_capped else ""
                 header = (
-                    f"{status}\n\n...output truncated — full output saved to "
+                    f"{status}\n\n...output truncated{suffix} — full output saved to "
                     f"{collector.spill_path}\n\n"
                 )
             else:

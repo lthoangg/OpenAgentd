@@ -457,6 +457,25 @@ async def test_shell_output_spill_file_readable(sandbox_workspace):
     assert str(sandbox_workspace / ".openagentd") not in result
 
 
+@pytest.mark.asyncio
+async def test_foreground_spill_file_has_disk_budget(sandbox_workspace):
+    """A noisy command cannot consume unbounded disk through its spill file."""
+    with (
+        patch("app.agent.tools.builtin.shell._OUTPUT_MAX_BYTES", 100),
+        patch("app.agent.tools.builtin.shell._SPILL_MAX_BYTES", 1024),
+    ):
+        result = await _shell(
+            "i=0; while [ $i -lt 1000 ]; do echo xxxxxxxxxx; i=$((i+1)); done"
+        )
+
+    import re
+
+    match = re.search(r"full output saved to (\S+)", result)
+    assert match is not None
+    assert Path(match.group(1)).stat().st_size <= 1024
+    assert "spill file capped" in result
+
+
 # ---------------------------------------------------------------------------
 # Timeout
 # ---------------------------------------------------------------------------

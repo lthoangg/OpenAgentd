@@ -281,9 +281,6 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
     }
     return leadAgent?.summary_trigger_tokens
   }, [sessionModel, registryData, leadAgent])
-  const voiceEnabled = true
-  const voiceUnavailableReason = null
-
   // Workspace file/folder list for the InputBar's @-mention picker. Fetched
   // lazily — the query is keyed on workspace/session so coding and normal
   // modes don't share cache entries.
@@ -632,8 +629,6 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
                   : 'Message the team…'
             }
             capabilities={leadCapabilities}
-            voiceEnabled={voiceEnabled}
-            voiceUnavailableReason={voiceUnavailableReason}
             revertedCount={leadRevertedCount}
             revertedMessages={leadRevertedMessages}
             onRedo={() => { void handleSlashCommand('redo') }}

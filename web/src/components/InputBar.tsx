@@ -2,7 +2,6 @@ import { useRef, useState, useCallback, useImperativeHandle, forwardRef, useEffe
 import { ArrowUp, Loader2, MessageCircle, Paperclip, Square, Terminal } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { FilePreviewStrip } from './FilePreviewStrip'
-import { VoiceMicButton } from './VoiceMicButton'
 import { findActiveMention, getExplicitMentionRanges, type FileRef } from './InputBar.mentions'
 import { MentionOverlay } from './InputBar.overlay'
 import { CHAR_WARN_THRESHOLD, findActiveSnippet } from './InputBar.helpers'
@@ -104,20 +103,8 @@ export interface InputBarProps {
    */
   renderDragHandle?: () => React.ReactNode
   /**
-   * Whether voice input is enabled.
-   * When false the mic button is shown disabled with an explanatory tooltip.
-   * When true the mic button starts client-side speech recognition and appends the transcript to input.
-   */
-  voiceEnabled?: boolean
-  /**
-   * When set, the bundled speech runtime can't load on this host. The mic
-   * button stays disabled and surfaces this reason in its tooltip so users
-   * understand why voice is off even though it's enabled in settings.
-   */
-  voiceUnavailableReason?: string | null
-  /**
    * When true, render the slim collapsed action strip instead of the full
-   * pill. The strip keeps file, voice, chat, and send/stop controls visible.
+   * pill. The strip keeps file, chat, and send/stop controls visible.
    * Clicking the chat affordance calls `onUnminimize` so the parent can swap
    * back to the full variant and focus the textarea.
    */
@@ -184,8 +171,6 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
   filesBelow = false,
   suggestionsBelow,
   renderDragHandle,
-  voiceEnabled = false,
-  voiceUnavailableReason = null,
   minimized = false,
   onUnminimize,
   onFocus,
@@ -657,16 +642,6 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
     scheduleResize()
   }
 
-  // ── Voice transcript insertion ────────────────────────────────────────────
-  const handleVoiceTranscript = useCallback((transcript: string) => {
-    setValue((prev) => {
-      const trimmed = prev.trimEnd()
-      return trimmed ? `${trimmed} ${transcript}` : transcript
-    })
-    setShellMode(false)
-    requestAnimationFrame(resize)
-  }, [resize])
-
   const hasText = value.trim().length > 0
   useEffect(() => {
     onValueChange?.(value)
@@ -702,9 +677,8 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
     />
   ) : null
 
-  // Reusable pill button styles for the action row (attach, mic — pencil
-  // calls these `inputBarAttach`, `inputBarMic`: 32×32 rounded controls,
-  // warm card fill).
+  // Reusable pill button styles for the action row (attach — pencil calls
+  // this `inputBarAttach`: 32×32 rounded controls, warm card fill).
   // ``active:scale-90`` gives a tactile press response on touch (``hover``
   // never fires on a finger), and ``motion-reduce`` opts out for users who
   // disable animation. The transition is transform+color only — both
@@ -735,17 +709,6 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
     >
       <Paperclip size={14} aria-hidden="true" />
     </button>
-  )
-
-  const voiceEl = (
-    <div onClick={stopClick}>
-      <VoiceMicButton
-        voiceEnabled={voiceEnabled}
-        onTranscript={handleVoiceTranscript}
-        disabled={disabled}
-        unavailableReason={voiceUnavailableReason}
-      />
-    </div>
   )
 
   const shellEl = !minimized ? (
@@ -956,7 +919,6 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
       {!shellMode && (
         <>
           {attachEl}
-          {voiceEl}
           {chatEl}
         </>
       )}

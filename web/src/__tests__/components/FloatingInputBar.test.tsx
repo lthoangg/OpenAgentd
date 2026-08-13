@@ -193,7 +193,6 @@ describe('FloatingInputBar', () => {
     const textarea = screen.getByLabelText('Message input')
     expect(textarea.getAttribute('disabled')).not.toBeNull()
     expect(screen.getByRole('button', { name: 'Attach file' })).toBeTruthy()
-    expect(screen.getByRole('button', { name: 'Voice input unavailable' })).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Expand input bar' })).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Stop generation' })).toBeTruthy()
   })

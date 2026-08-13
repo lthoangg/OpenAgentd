@@ -26,44 +26,6 @@ mock.module("@/hooks/use-platform", () => ({
   getPlatform: () => ({ isTauri: false, os: mockOS, isMacOverlay: false }),
 }))
 
-class MockSpeechRecognition {
-  continuous = false
-  interimResults = false
-  lang = ""
-  onresult: ((event: { resultIndex: number; results: Array<{ isFinal: boolean; 0: { transcript: string } }> }) => void) | null = null
-  onerror: ((event: { error?: string; message?: string }) => void) | null = null
-  onend: (() => void) | null = null
-
-  start() {}
-
-  stop() {
-    this.onresult?.({ resultIndex: 0, results: [{ isFinal: true, 0: { transcript: "world" } }] })
-    this.onend?.()
-  }
-}
-
-// Override the global setup.ts stub so voice tests in this file use a
-// synchronous mock that doesn't touch real async browser APIs.
-mock.module("@/lib/speech-recognition", () => ({
-  isClientSpeechRecognitionSupported: () => true,
-  getSpeechRecognitionConstructor: () => MockSpeechRecognition,
-  startClientSpeechRecognition: async (options: {
-    onFinal: (t: string) => void
-    onError: (m: string) => void
-    onEnd: () => void
-  }) => {
-    const recognition = new MockSpeechRecognition()
-    recognition.onresult = (event) => {
-      const result = event.results[event.resultIndex]
-      if (result?.isFinal) options.onFinal(result[0].transcript)
-    }
-    recognition.onerror = (event) => options.onError(event.message ?? event.error ?? "error")
-    recognition.onend = () => options.onEnd()
-    recognition.start()
-    return { stop: () => recognition.stop() }
-  },
-}))
-
 beforeEach(() => {
   isMobile = false
 })
@@ -566,32 +528,6 @@ describe("InputBar — ref API", () => {
     act(() => { ref.current?.appendValue("!make") })
     const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
     expect(textarea.value).toBe("hello !make")
-  })
-})
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Voice transcript
-// ─────────────────────────────────────────────────────────────────────────────
-describe("InputBar — voice transcript", () => {
-  it("appends transcript to existing draft", async () => {
-    const user = userEvent.setup()
-    render(<InputBar onSubmit={() => {}} voiceEnabled={true} />)
-    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
-    await user.type(textarea, "hello")
-    await user.click(screen.getByLabelText("Start voice input"))
-    await user.click(screen.getByLabelText("Stop voice input"))
-    await screen.findByLabelText("Start voice input")
-    expect(textarea.value).toBe("hello world")
-  })
-
-  it("inserts transcript when input is empty", async () => {
-    const user = userEvent.setup()
-    render(<InputBar onSubmit={() => {}} voiceEnabled={true} />)
-    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
-    await user.click(screen.getByLabelText("Start voice input"))
-    await user.click(screen.getByLabelText("Stop voice input"))
-    await screen.findByLabelText("Start voice input")
-    expect(textarea.value).toBe("world")
   })
 })
 

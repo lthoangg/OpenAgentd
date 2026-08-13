@@ -897,9 +897,9 @@ Everything stays local. No third-party telemetry SaaS.
 
 Client-side speech recognition. OpenAgentd does not run backend microphone transcription.
 
-- **Mic button in composer** `[since v1.0]` — click to start listening, click to
+- **Mic button in composer** `[since v1.0]` *(deprecated — removed)* — click to start listening, click to
   stop. Transcript text is inserted into the chat input for review before sending.
-- **Browser / OS speech recognition** `[v1.34.0]` — uses the current browser or
+- **Browser / OS speech recognition** `[v1.34.0]` *(deprecated — removed)* — uses the current browser or
   app WebView speech recognizer when available. No `/api/speech/*` backend,
   `speech.yaml`, or bundled `faster-whisper`.
 

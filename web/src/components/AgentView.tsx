@@ -42,6 +42,9 @@ const SCROLL_THRESHOLD = 40
 // alone cannot see the user's upward movement — input events carry the intent.
 const USER_SCROLL_INTENT_MS = 250
 const LOAD_OLDER_THRESHOLD = 300
+/** Keys that move the viewport upward without emitting wheel/touch events. */
+const SCROLL_UP_KEYS = new Set(['PageUp', 'Home', 'ArrowUp'])
+const EDITABLE_TAGS = new Set(['INPUT', 'TEXTAREA', 'SELECT'])
 const INITIAL_RENDERED_TURNS = 80
 const TURN_RENDER_STEP = 80
 
@@ -194,6 +197,11 @@ export function AgentView({ blocks, currentBlocks, isWorking, isTurnOpen = isWor
   // considered "in flight" — suppresses the at-bottom re-attach so small
   // trackpad deltas can escape the auto-follow snap during streaming.
   const userScrollIntentUntilRef = useRef(0)
+  // True while a pointer is held inside the transcript — a scrollbar drag or a
+  // text selection. Neither produces wheel/touch events, so auto-follow must
+  // stand down for the duration or it fights the gesture every time output
+  // arrives (twice a second for a streaming shell command).
+  const pointerDownRef = useRef(false)
   const [showScrollBtn, setShowScrollBtn] = useState(false)
   const [renderedTurnCount, setRenderedTurnCount] = useState(INITIAL_RENDERED_TURNS)
   const sessionId = useTeamStore((s) => s.sessionId) ?? undefined
@@ -376,15 +384,51 @@ export function AgentView({ blocks, currentBlocks, isWorking, isTurnOpen = isWor
       lastTouchY = y
     }
 
+    // Keyboard scrolling (PageUp / Home / arrows) moves the viewport without a
+    // wheel or touch event, so it needs its own detach — otherwise the next
+    // ResizeObserver tick drags the user straight back to the bottom.
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (!SCROLL_UP_KEYS.has(e.key)) return
+      const target = e.target as HTMLElement | null
+      // Only keys aimed at the transcript scroll it. A menu, dialog or model
+      // picker moving its own selection with the arrows is navigating itself;
+      // `body` is the target when nothing holds focus, which is the case the
+      // browser actually scrolls.
+      if (target && target !== document.body && !el.contains(target)) return
+      // Caret movement inside the composer is not transcript scrolling.
+      if (target && (target.isContentEditable || EDITABLE_TAGS.has(target.tagName))) return
+      detachForUserScrollUp()
+    }
+
+    // Pointer held down: scrollbar drag or selection drag. The RO consults
+    // this and stops snapping; on release we re-pin only if the gesture left
+    // us attached (i.e. the user never actually scrolled away).
+    const onPointerDown = () => { pointerDownRef.current = true }
+    const onPointerUp = () => {
+      if (!pointerDownRef.current) return
+      pointerDownRef.current = false
+      if (!attachedRef.current) return
+      el.scrollTop = Math.max(0, el.scrollHeight - el.clientHeight)
+      lastScrollTopRef.current = el.scrollTop
+    }
+
     el.addEventListener('scroll', onScroll, { passive: true })
     el.addEventListener('wheel', onWheel, { passive: true })
     el.addEventListener('touchstart', onTouchStart, { passive: true })
     el.addEventListener('touchmove', onTouchMove, { passive: true })
+    el.addEventListener('pointerdown', onPointerDown, { passive: true })
+    window.addEventListener('pointerup', onPointerUp, { passive: true })
+    window.addEventListener('pointercancel', onPointerUp, { passive: true })
+    document.addEventListener('keydown', onKeyDown)
     return () => {
       el.removeEventListener('scroll', onScroll)
       el.removeEventListener('wheel', onWheel)
       el.removeEventListener('touchstart', onTouchStart)
       el.removeEventListener('touchmove', onTouchMove)
+      el.removeEventListener('pointerdown', onPointerDown)
+      window.removeEventListener('pointerup', onPointerUp)
+      window.removeEventListener('pointercancel', onPointerUp)
+      document.removeEventListener('keydown', onKeyDown)
     }
   }, [])
 
@@ -445,6 +489,9 @@ export function AgentView({ blocks, currentBlocks, isWorking, isTurnOpen = isWor
     let lastClientHeight = el.clientHeight
     const ro = new ResizeObserver((entries) => {
       if (!attachedRef.current) return
+      // Mid-gesture (scrollbar drag, selection drag): leave the scroll
+      // position alone. `onPointerUp` re-pins if the user stayed attached.
+      if (pointerDownRef.current) return
       const nextContentHeight = content.getBoundingClientRect().height
       const nextClientHeight = el.clientHeight
       const contentGrew = nextContentHeight > lastContentHeight

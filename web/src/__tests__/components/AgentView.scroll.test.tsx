@@ -695,3 +695,105 @@ describe("attach-to-stream — wheel/touch detach during stream growth", () => {
     expect(container.querySelector('button[aria-label="Scroll to bottom"]')).toBeTruthy()
   })
 })
+
+/**
+ * Auto-follow can only be escaped by `wheel` and `touchmove` today: the
+ * ResizeObserver rewrites `scrollTop` before the scroll listener runs, so
+ * `onScroll` never observes the upward movement. Keyboard scrolling and
+ * scrollbar drags produce neither event, so during a long streaming tool call
+ * (a test run keeps output flowing for minutes) the view yanked the user back
+ * to the bottom every time output arrived.
+ */
+describe("AgentView — escaping auto-follow without a wheel event", () => {
+  function scrollable(container: HTMLElement) {
+    const el = container.querySelector(".overflow-y-auto") as HTMLDivElement
+    Object.defineProperty(el, "scrollHeight", { value: 1000, configurable: true, writable: true })
+    Object.defineProperty(el, "clientHeight", { value: 500, configurable: true, writable: true })
+    Object.defineProperty(el, "scrollTop", { value: 500, configurable: true, writable: true })
+    return el
+  }
+
+  it("detaches when the user scrolls up with the keyboard", async () => {
+    const { container } = renderStream({ blocks: [makeTextBlock("b1", "Hi")] })
+    scrollable(container)
+
+    // With nothing focused the browser targets <body> — that is the case in
+    // which it actually scrolls the transcript.
+    await act(async () => {
+      document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "PageUp", bubbles: true }))
+    })
+
+    expect(container.querySelector('button[aria-label="Scroll to bottom"]')).toBeTruthy()
+  })
+
+  it("ignores scroll keys typed into a text field", async () => {
+    const { container } = renderStream({ blocks: [makeTextBlock("b1", "Hi")] })
+    scrollable(container)
+    const input = document.createElement("textarea")
+    document.body.appendChild(input)
+
+    await act(async () => {
+      input.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true }))
+    })
+
+    expect(container.querySelector('button[aria-label="Scroll to bottom"]')).toBeNull()
+    input.remove()
+  })
+
+  it("ignores scroll keys aimed at a menu or dialog outside the transcript", async () => {
+    const { container } = renderStream({ blocks: [makeTextBlock("b1", "Hi")] })
+    scrollable(container)
+    // A listbox/menu item elsewhere in the app navigating itself with arrows.
+    const menuItem = document.createElement("div")
+    menuItem.setAttribute("role", "option")
+    document.body.appendChild(menuItem)
+
+    await act(async () => {
+      menuItem.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true }))
+    })
+
+    expect(container.querySelector('button[aria-label="Scroll to bottom"]')).toBeNull()
+    menuItem.remove()
+  })
+
+  it("does not snap to the bottom while the pointer is held down", async () => {
+    const originalResizeObserver = globalThis.ResizeObserver
+    const observers: Array<{ callback: ResizeObserverCallback; targets: Element[] }> = []
+    globalThis.ResizeObserver = class {
+      private readonly entry: (typeof observers)[number]
+      constructor(callback: ResizeObserverCallback) {
+        this.entry = { callback, targets: [] }
+        observers.push(this.entry)
+      }
+      observe(target: Element) { this.entry.targets.push(target) }
+      unobserve() {}
+      disconnect() {}
+    } as unknown as typeof globalThis.ResizeObserver
+
+    try {
+      const { container } = renderStream({ blocks: [makeTextBlock("b1", "Hi")] })
+      const el = scrollable(container)
+      const content = el.querySelector(".space-y-3")?.parentElement as HTMLElement
+      const observer = observers.find((o) => o.targets.includes(el))
+      expect(observer).toBeTruthy()
+
+      // User presses the mouse (scrollbar thumb / text selection) and drags up.
+      await act(async () => {
+        el.dispatchEvent(new Event("pointerdown", { bubbles: true }))
+      })
+      el.scrollTop = 120
+
+      // Output arrives and the transcript grows mid-drag.
+      await act(async () => {
+        observer!.callback(
+          [{ target: content }] as unknown as ResizeObserverEntry[],
+          {} as ResizeObserver,
+        )
+      })
+
+      expect(el.scrollTop).toBe(120)
+    } finally {
+      globalThis.ResizeObserver = originalResizeObserver
+    }
+  })
+})

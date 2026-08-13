@@ -251,7 +251,10 @@ run from the terminal.
   indistinguishable from smooth-button animation on mobile); user intent is
   now detected via `onWheel` / `onTouchMove` only. `AgentPane` gains a
   `ResizeObserver` so content reflow (markdown, images, syntax highlight) also
-  re-sticks correctly.
+  re-sticks correctly. Keyboard scrolling (PageUp / Home / arrows) and
+  scrollbar or selection drags now detach the transcript too, so reading back
+  through a long streaming tool call no longer snaps to the bottom on every
+  output update `[v1.131.6]`.
 - **Mobile keyboard viewport guardrails** `[v1.99.1]` — virtual-keyboard detection now uses the pre-keyboard layout height, the mobile shell stays pinned instead of following `visualViewport.offsetTop`, and chat auto-stick ignores keyboard-only scrollport resizes so manual transcript scrolling no longer flickers on iOS/WebViews.
 - **Tool-call inspector** `[since v1.0]` — every tool call expands to show
   arguments, status, results, and inline Git-like diffs for file edits. Read

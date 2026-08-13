@@ -8,6 +8,7 @@
  */
 
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
+import { useDebouncedCallback } from '@tanstack/react-pacer'
 import fuzzysort from 'fuzzysort'
 import { Search, CornerDownLeft } from 'lucide-react'
 import { AppOverlay } from '@/components/ui/app-overlay'
@@ -44,6 +45,18 @@ interface CommandPaletteProps {
 
 export function CommandPalette({ commands, onClose, workspaceFiles = [], filesTruncated = false, onFileOpen }: CommandPaletteProps) {
   const [query, setQuery] = useState('')
+  const [debouncedQuery, setDebouncedQuery] = useState('')
+  const updateDebouncedQuery = useDebouncedCallback(
+    (val: string) => setDebouncedQuery(val),
+    { wait: 60, key: 'command-palette-query' },
+  )
+
+  const handleQueryChange = (val: string) => {
+    setQuery(val)
+    setActiveIdx(0)
+    updateDebouncedQuery(val)
+  }
+
   const [activeIdx, setActiveIdx] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
@@ -71,6 +84,7 @@ export function CommandPalette({ commands, onClose, workspaceFiles = [], filesTr
 
   const { rows, totalCount, byIdx } = useMemo(() => {
     const q = query.trim().toLowerCase()
+    const fileQ = (debouncedQuery || query).trim().toLowerCase()
 
     // ── Commands ──────────────────────────────────────────────────────────────
     const filteredCmds = commands.filter((cmd) =>
@@ -83,9 +97,9 @@ export function CommandPalette({ commands, onClose, workspaceFiles = [], filesTr
     // ── Files (ranked + capped) ───────────────────────────────────────────────
     let filteredFiles: WorkspaceFileInfo[] = []
     if (hasFiles) {
-      filteredFiles = q
+      filteredFiles = fileQ
         ? fuzzysort
-            .go(q, workspaceFiles, {
+            .go(fileQ, workspaceFiles, {
               key: 'path',
               limit: MAX_FILE_ROWS,
               // Matches the mention and model pickers.
@@ -124,7 +138,7 @@ export function CommandPalette({ commands, onClose, workspaceFiles = [], filesTr
     }
 
     return { rows: out, totalCount: absIdx, byIdx }
-  }, [commands, workspaceFiles, hasFiles, query])
+  }, [commands, workspaceFiles, hasFiles, query, debouncedQuery])
 
   // Reset active index whenever query changes.
   const prevQueryRef = useRef(query)
@@ -184,14 +198,14 @@ export function CommandPalette({ commands, onClose, workspaceFiles = [], filesTr
             <input
               ref={inputRef}
               value={query}
-              onChange={(e) => setQuery(e.target.value)}
+              onChange={(e) => handleQueryChange(e.target.value)}
               placeholder={hasFiles ? 'Search files and commands…' : 'Search commands…'}
               className="min-w-0 flex-1 bg-transparent text-xs text-(--color-text) placeholder-(--color-text-muted)/60 outline-none"
               aria-label="Search commands"
             />
             {query && (
               <button
-                onClick={() => setQuery('')}
+                onClick={() => handleQueryChange('')}
                 className="rounded-xs px-1.5 py-1 text-[11px] text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text-2)"
               >
                 Clear

@@ -10,6 +10,8 @@
  * Draft model + validators live in `./McpServerDraft` so this module
  * stays component-only (Vite fast-refresh requirement).
  */
+import { useEffect } from 'react'
+import { useForm } from '@tanstack/react-form'
 import { Plus, Trash2 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -38,7 +40,20 @@ export function McpServerForm({
   disabled,
   errors,
 }: McpServerFormProps) {
-  const set = (patch: Partial<McpServerDraft>) => onChange({ ...value, ...patch })
+  const form = useForm({
+    defaultValues: value,
+    onSubmit: () => {},
+  })
+
+  useEffect(() => {
+    form.reset(value)
+  }, [form, value])
+
+  const set = (patch: Partial<McpServerDraft>) => {
+    const next = { ...value, ...patch }
+    form.reset(next)
+    onChange(next)
+  }
   return (
     <div className="flex flex-col gap-4">
       {/* Identity ─────────────────────────────────────────────────── */}

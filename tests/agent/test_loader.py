@@ -1341,6 +1341,31 @@ def test_unknown_tools_are_pruned_from_agent_file(tmp_path):
     assert "Do the work." in f.read_text()
 
 
+@pytest.mark.parametrize("injected", ["lsp", "team_message", "team_manage", "ask_user"])
+def test_context_injected_tools_are_not_pruned(tmp_path, injected):
+    """Tools supplied by team/mode context survive pruning.
+
+    ``lsp`` (coding-mode teams) and the team tools are attached in
+    ``AgentTeam._builtin_team_tools``, never via ``_default_tool_registry``.
+    Treating them as unknown would delete valid names from a user's file.
+    """
+    f = _write_agent_md(
+        tmp_path / "worker.md",
+        {
+            "name": "worker",
+            "role": "member",
+            "model": "zai:glm-5-turbo",
+            "tools": ["read", injected, "grep"],
+        },
+    )
+    before = f.read_text()
+    factory, _ = _make_provider_factory()
+
+    rebuild_agent_from_disk(f, provider_factory=factory)
+
+    assert f.read_text() == before
+
+
 def test_pruning_leaves_file_alone_when_all_tools_are_known(tmp_path):
     f = _write_agent_md(
         tmp_path / "worker.md",

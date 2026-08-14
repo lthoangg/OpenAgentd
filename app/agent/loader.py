@@ -318,6 +318,25 @@ def _is_retired_builtin_member(mode: str, name: str) -> bool:
 # Built-in tool registry
 # ---------------------------------------------------------------------------
 
+# Tool names that are valid in an agent's ``tools:`` list but are never present
+# in ``_default_tool_registry()``, because they are attached later from runtime
+# context: ``skill``/``todo_manage``/``schedule_task`` are bound per agent in
+# ``_build_agent``, while ``lsp`` and the team tools come from
+# ``AgentTeam._builtin_team_tools`` based on mode and role. They must be
+# exempt from unknown-tool pruning or a valid name would be deleted from the
+# user's file whenever the agent is loaded outside that context.
+_CONTEXT_INJECTED_TOOLS = frozenset(
+    {
+        "skill",
+        "todo_manage",
+        "schedule_task",
+        "lsp",
+        "team_message",
+        "team_manage",
+        "ask_user",
+    }
+)
+
 
 def _default_tool_registry() -> dict[str, Tool]:
     from app.agent.mcp import mcp_manager
@@ -464,7 +483,7 @@ def _build_agent(
     cfg.mcp = list(dict.fromkeys(cfg.mcp))
     unknown_tools: list[str] = []
     for tool_name in cfg.tools:
-        if tool_name in ("skill", "todo_manage", "schedule_task"):
+        if tool_name in _CONTEXT_INJECTED_TOOLS:
             continue
         if tool_name not in tool_registry:
             # Soft-skip so this load still succeeds, then prune the name from

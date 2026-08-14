@@ -17,7 +17,7 @@ afterEach(cleanup)
 
 const BUILTINS: AgentToolInfo[] = [
   { name: 'read', description: 'Read a file from the workspace.' },
-  { name: 'write', description: 'Write a file.' },
+  { name: 'patch', description: 'Apply a patch.' },
 ]
 
 function renderTools(
@@ -42,7 +42,7 @@ describe('SessionTools', () => {
     expect(toggle().getAttribute('aria-expanded')).toBe('true')
     expect(within(toggle()).getByText('2')).toBeTruthy()
     expect(screen.getByText('read')).toBeTruthy()
-    expect(screen.getByText('write')).toBeTruthy()
+    expect(screen.getByText('patch')).toBeTruthy()
   })
 
   it('can be collapsed when toggled', async () => {

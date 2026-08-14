@@ -167,7 +167,7 @@ function ShellResult({ result }: { result: string }) {
 // ---------------------------------------------------------------------------
 
 function FileListResult({ result }: { result: string }) {
-  // ls / glob return newline-separated paths or JSON array
+  // glob / grep return newline-separated paths or JSON array
   const parsed = tryParseJSON(result)
   const entries: string[] = Array.isArray(parsed)
     ? parsed.map(String)
@@ -877,9 +877,8 @@ function GenericResult({ result }: { result: string }) {
 // Public dispatcher
 // ---------------------------------------------------------------------------
 
-const FILE_LIST_TOOLS = new Set(['ls', 'glob', 'grep'])
+const FILE_LIST_TOOLS = new Set(['glob', 'grep'])
 const FILE_READ_TOOLS = new Set(['read'])
-const FILE_WRITE_TOOLS = new Set(['write', 'edit', 'rm'])
 const SHELL_TOOLS = new Set(['shell'])
 const WEB_SEARCH_TOOLS = new Set(['web_search'])
 const BACKGROUND_PROCESS_TOOLS = new Set(['bg'])
@@ -1001,10 +1000,6 @@ function ToolResultInner({ toolName, operation, result, headerAction, onCollapse
   }
   if (FILE_READ_TOOLS.has(toolName)) {
     return <FileReadResult result={result} />
-  }
-  if (FILE_WRITE_TOOLS.has(toolName)) {
-    // Write/edit results are usually short status messages — plain success style
-    return <GenericResult result={result} />
   }
   if (toolName === 'team_message') {
     return <TeamMessageResult result={result} />

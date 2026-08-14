@@ -12,7 +12,6 @@ import { describe, it, expect, afterEach, beforeEach, spyOn } from "bun:test"
 import { act, render, cleanup } from "@testing-library/react"
 import { ToolCall } from "@/components/ToolCall"
 import * as displayModule from "@/components/ToolCall/display"
-import * as diffUtilsModule from "@/components/ToolCall/diffUtils"
 
 afterEach(cleanup)
 
@@ -99,26 +98,4 @@ describe("ToolCall — perf: memoized display/diff derivation", () => {
     }
   })
 
-  it("does not recompute getDiffStats on every elapsed-timer tick while an edit tool is running", () => {
-    const spy = spyOn(diffUtilsModule, "getDiffStats")
-    const timers = useFakeTimers()
-    try {
-      const args = JSON.stringify({
-        path: "src/main.py",
-        old_string: "old line",
-        new_string: "new line",
-      })
-      render(<ToolCall name="edit" args={args} done={false} startedAt={-1000} />)
-
-      const callsAfterMount = spy.mock.calls.length
-      expect(callsAfterMount).toBeGreaterThan(0)
-
-      act(() => { timers.tick(1000) })
-
-      expect(spy.mock.calls.length).toBe(callsAfterMount)
-    } finally {
-      timers.restore()
-      spy.mockRestore()
-    }
-  })
 })

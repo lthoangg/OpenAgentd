@@ -18,7 +18,7 @@ import type { ReactNode } from 'react'
 import type { ToolDisplay } from './types'
 import { parsePatchText } from './diffUtils'
 import { pathBasename } from '@/utils/workspace'
-import { summarizeText, parsePartialJSON } from './displayText'
+import { parsePartialJSON } from './displayText'
 
 /**
  * Keep argument values in headers easy to restyle consistently.
@@ -133,8 +133,6 @@ const HIDE_ARGS_TOOLS = new Set([
   'read',
   'web_search',
   'web_fetch',
-  'rm',
-  'ls',
   'glob',
   'grep',
   'team_manage',
@@ -143,11 +141,6 @@ const HIDE_ARGS_TOOLS = new Set([
 ])
 
 export function getToolDisplay(name: string, args: string | undefined): ToolDisplay {
-  // ── date: no args, no args section ────────────────────────────────
-  if (name === 'date') {
-    return { header: null, headerTitle: null, formattedArgs: null }
-  }
-
   if (!args) {
     // recall with no args — conversational header, no args section
     if (name === 'recall') {
@@ -490,18 +483,6 @@ function getToolDisplayInternal(name: string, parsed: Record<string, unknown>): 
     return { header: 'Managing scheduled tasks…', headerTitle: 'Managing scheduled tasks…', formattedArgs: null }
   }
 
-  // ── write: file name in header, content as args ───────────────────
-  if (name === 'write') {
-    const path = str(parsed, 'path')
-    const fileName = path ? pathBasename(path) : null
-    const content = str(parsed, 'content')
-    return {
-      header: fileName ? <Arg>{fileName}</Arg> : 'file',
-      headerTitle: fileName ? fileName : 'file',
-      formattedArgs: summarizeText('content', content),
-    }
-  }
-
   // ── read: file name in header, custom result renderer shows content ──
   if (name === 'read') {
     const path = str(parsed, 'path')
@@ -524,45 +505,6 @@ function getToolDisplayInternal(name: string, parsed: Record<string, unknown>): 
       header: summary ? <Arg>{summary}</Arg> : 'patch',
       headerTitle: summary ?? 'patch',
       formattedArgs: patchText,
-    }
-  }
-
-  // ── edit: file name in header, args as-is ─────────────────────────
-  if (name === 'edit') {
-    const path = str(parsed, 'path')
-    const fileName = path ? pathBasename(path) : null
-    return {
-      header: fileName ? <Arg>{fileName}</Arg> : 'file',
-      headerTitle: fileName ? fileName : 'file',
-      formattedArgs: JSON.stringify(parsed, null, 2),
-    }
-  }
-
-  // ── rm: file name in header, hide args ────────────────────────────
-  if (name === 'rm') {
-    const path = str(parsed, 'path')
-    const fileName = path ? pathBasename(path) : null
-    return {
-      header: fileName ? <Arg>{fileName}</Arg> : 'file',
-      headerTitle: fileName ? fileName : 'file',
-      formattedArgs: null,
-    }
-  }
-
-  // ── ls: directory path in header, hide args ───────────────────────
-  // Default path is "." (workspace root) — elide that in the header
-  // rather than saying "Listing ." which is noise.
-  if (name === 'ls') {
-    const path = str(parsed, 'path')
-    const isRoot = !path || path === '.' || path === './'
-    if (isRoot) {
-      return { header: 'workspace', headerTitle: 'workspace', formattedArgs: null }
-    }
-    const truncated = trunc(path)
-    return {
-      header: <Arg>{truncated}</Arg>,
-      headerTitle: truncated,
-      formattedArgs: null,
     }
   }
 

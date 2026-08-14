@@ -77,8 +77,6 @@ function formatShellResult(result: string | undefined): { statusLine: string | n
 function formatToolLabel(name: string): string {
   if (!name) return 'Tool'
   if (name === 'lsp') return 'LSP'
-  if (name === 'rm') return 'Remove'
-  if (name === 'ls') return 'List'
   return name
     .split('_')
     .filter(Boolean)
@@ -208,10 +206,10 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
     const operation = (parsed as Record<string, unknown>).operation
     return typeof operation === 'string' ? operation : undefined
   }, [name, args])
-  const usesDiffView = name === 'edit' || name === 'patch' || (name === 'write' && done)
+  const usesDiffView = name === 'patch'
   const usesReadView = name === 'read'
   const diffStats = useMemo(
-    () => (usesDiffView || name === 'rm') && args ? getDiffStats(name, args, result) : null,
+    () => usesDiffView && args ? getDiffStats(name, args, result) : null,
     [usesDiffView, name, args, result],
   )
   // Pending-state header comes from getToolDisplay's no-args branch

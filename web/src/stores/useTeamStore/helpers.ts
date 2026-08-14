@@ -113,9 +113,6 @@ export function applyLocalBlockTransform(
 }
 
 export const FS_MUTATING_TOOLS = new Set([
-  'write',
-  'edit',
-  'rm',
   'patch',
   'shell',
   'bg',
@@ -127,7 +124,7 @@ export const SCHEDULER_MUTATING_TOOLS = new Set(['schedule_task'])
 
 export const TODO_MUTATING_TOOLS = new Set(['todo_manage'])
 
-const PATH_BEARING_TOOLS = new Set(['write', 'edit', 'rm', 'patch'])
+const PATH_BEARING_TOOLS = new Set(['patch'])
 
 const PATCH_PATH_RE = /^\*\*\* (?:Add|Update|Delete) File: (.+)$/gm
 

@@ -229,55 +229,6 @@ describe("ToolCall — web_search display", () => {
 })
 
 describe("ToolCall — diff stats", () => {
-  it("summarizes write content instead of rendering full file contents as args", async () => {
-    const user = userEvent.setup()
-    const content = Array.from({ length: 20 }, (_, index) => `line ${index + 1}`).join("\n")
-    const args = JSON.stringify({ path: "src/generated.txt", content })
-
-    render(<ToolCall name="write" args={args} done={false} />)
-    await user.click(screen.getByRole("button", { name: "Expand write details" }))
-
-    expect(screen.getByText(/content: 20 lines/)).toBeTruthy()
-    expect(screen.queryByText("line 20")).toBeNull()
-  })
-
-
-  it("collapses the whole edit result when clicking the diff file header", async () => {
-    const user = userEvent.setup()
-    const args = JSON.stringify({
-      path: "src/main.py",
-      old_string: "old line",
-      new_string: "new line",
-    })
-
-    render(<ToolCall name="edit" args={args} done={true} result="Edit applied successfully" />)
-
-    await user.click(screen.getByRole("button", { name: "Expand edit details" }))
-    expect(screen.getByRole("button", { name: "Collapse diff for src/main.py" })).toBeTruthy()
-
-    await user.click(screen.getByRole("button", { name: "Collapse diff for src/main.py" }))
-
-    await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Expand edit details" })).toBeTruthy()
-    })
-  })
-
-  it("collapses the whole write result when clicking the diff file header", async () => {
-    const user = userEvent.setup()
-    const args = JSON.stringify({ path: "src/new.py", content: "new line" })
-
-    render(<ToolCall name="write" args={args} done={true} result="Tool applied successfully" />)
-
-    await user.click(screen.getByRole("button", { name: "Expand write details" }))
-    expect(screen.getByRole("button", { name: "Collapse diff for src/new.py" })).toBeTruthy()
-
-    await user.click(screen.getByRole("button", { name: "Collapse diff for src/new.py" }))
-
-    await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Expand write details" })).toBeTruthy()
-    })
-  })
-
   it("renders read results with write/edit-style file chrome", async () => {
     const user = userEvent.setup()
     const args = JSON.stringify({ path: "src/main.py", offset: 12, limit: 9 })
@@ -333,18 +284,6 @@ describe("ToolCall — diff stats", () => {
     await waitFor(() => expect(copiedText).toBe("hello\nworld"))
   })
 
-  it("shows deleted line count for rm from result metadata", () => {
-    const args = JSON.stringify({ path: "src/old.txt" })
-    const result = [
-      '@@ openagentd-diff-meta {"path":"src/old.txt","deleted_lines":3}',
-      'Removed file: src/old.txt',
-      'Resolved path: /tmp/src/old.txt',
-    ].join("\n")
-
-    render(<ToolCall name="rm" args={args} done={true} result={result} />)
-
-    expect(screen.getByText("-3")).toBeTruthy()
-  })
 })
 
 describe("ToolCall — file search display", () => {
@@ -938,20 +877,6 @@ describe("ToolCall — concise tool labels", () => {
     expect(title).toBeTruthy()
     expect(title!.endsWith("…")).toBe(true)
     expect(title!.length).toBeLessThan(80)
-  })
-
-  it("uses Remove rather than the rm command name", () => {
-    render(<ToolCall name="rm" args={JSON.stringify({ path: "tmp/output.txt" })} done={false} />)
-
-    expect(screen.getByText("Remove")).toBeTruthy()
-    expect(screen.queryByText("Rm")).toBeNull()
-  })
-
-  it("uses List without repeating Listing in the ls header", () => {
-    render(<ToolCall name="ls" args={JSON.stringify({ path: "src" })} done={false} />)
-
-    expect(getHeader("List: src")).toBeTruthy()
-    expect(screen.queryByText(/Listing/)).toBeNull()
   })
 
   it("describes a team roster list without implying a mutation", () => {
@@ -1632,22 +1557,9 @@ describe("ToolCall with incomplete JSON args (streaming)", () => {
     expect(screen.getByText("ToolResult.tsx")).toBeTruthy()
   })
 
-  it("extracts and displays file name for write tool immediately", () => {
-    render(<ToolCall name="write" args='{"path": "src/components/ToolResult.tsx", "content": "hello' done={false} />)
-    expect(screen.getByText("ToolResult.tsx")).toBeTruthy()
-  })
-
   it("extracts and displays query for web_search immediately", () => {
     render(<ToolCall name="web_search" args='{"query": "how to build a react' done={false} />)
     expect(screen.getByText(/"how to build a react"/)).toBeTruthy()
-  })
-
-  it("renders diff view and displays path for edit tool immediately when streaming", async () => {
-    const user = userEvent.setup()
-    render(<ToolCall name="edit" args='{"path": "src/components/ToolResult.tsx", "old_string": "hello", "new_string": "hello world"' done={false} />)
-    expect(screen.getByText("ToolResult.tsx")).toBeTruthy()
-    await user.click(screen.getByRole("button"))
-    expect(screen.getByText("src/components/ToolResult.tsx")).toBeTruthy()
   })
 
   it("renders diff view and displays path for patch tool immediately when streaming", async () => {

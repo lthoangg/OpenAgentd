@@ -220,14 +220,14 @@ describe("useTeamStore — scheduler invalidation", () => {
 
   // ── Independence of event branches ───────────────────────────────────────
 
-  it("workspace and scheduler events are independent (write to workspace)", () => {
+  it("workspace and scheduler events are independent (patch to workspace)", () => {
     useTeamStore.setState({ sessionId: "sid-123" })
-    primeBlock("claude", "write", "tc-12", { path: "notes/scratch.md", content: "..." })
+    primeBlock("claude", "patch", "tc-12", { patch_text: "*** Begin Patch\n*** Update File: notes/scratch.md\n@@\n-old\n+new\n*** End Patch" })
     useTeamStore.getState()._handleSSEEvent("tool_end", {
-      name: "write",
+      name: "patch",
       agent: "claude",
       tool_call_id: "tc-12",
-      result: "Written",
+      result: "Patched",
     })
     // Workspace event only — no scheduler event
     expect(useTeamStore.getState().cacheInvalidations).toEqual([

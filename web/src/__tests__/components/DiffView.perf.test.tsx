@@ -15,7 +15,6 @@
 import { describe, it, expect, afterEach, beforeEach, spyOn } from "bun:test"
 import { act, render, cleanup } from "@testing-library/react"
 import { ToolCall } from "@/components/ToolCall"
-import { DiffView } from "@/components/ToolCall/DiffView"
 import * as diffUtilsModule from "@/components/ToolCall/diffUtils"
 
 afterEach(cleanup)
@@ -65,34 +64,6 @@ function useFakeTimers() {
 }
 
 describe("DiffView — perf: memoized diff derivation", () => {
-  it("does not recompute diffLines on elapsed-timer ticks while an edit tool runs", () => {
-    const spy = spyOn(diffUtilsModule, "diffLines")
-    const timers = useFakeTimers()
-    try {
-      const args = JSON.stringify({
-        path: "src/main.py",
-        old_string: "old line\nsecond\nthird",
-        new_string: "new line\nsecond\nthird",
-      })
-      // `liveOutput` makes the tool card default-expanded, so DiffView mounts.
-      render(
-        <ToolCall name="edit" args={args} done={false} startedAt={-1000} liveOutput="working..." />,
-      )
-
-      const afterMount = spy.mock.calls.length
-      expect(afterMount).toBeGreaterThan(0)
-
-      act(() => { timers.tick(1000) })
-      act(() => { timers.tick(1000) })
-      act(() => { timers.tick(1000) })
-
-      expect(spy.mock.calls.length).toBe(afterMount)
-    } finally {
-      timers.restore()
-      spy.mockRestore()
-    }
-  })
-
   it("does not recompute parsePatchText on elapsed-timer ticks while a patch tool runs", () => {
     const spy = spyOn(diffUtilsModule, "parsePatchText")
     const timers = useFakeTimers()
@@ -128,38 +99,4 @@ describe("DiffView — perf: memoized diff derivation", () => {
     }
   })
 
-  it("recomputes when args actually change", () => {
-    const spy = spyOn(diffUtilsModule, "diffLines")
-    try {
-      const mk = (newStr: string) =>
-        JSON.stringify({ path: "src/main.py", old_string: "a", new_string: newStr })
-
-      const { rerender } = render(<DiffView toolName="edit" args={mk("b")} />)
-      const afterMount = spy.mock.calls.length
-
-      rerender(<DiffView toolName="edit" args={mk("c")} />)
-      expect(spy.mock.calls.length).toBeGreaterThan(afterMount)
-    } finally {
-      spy.mockRestore()
-    }
-  })
-
-  it("does not recompute when re-rendered with identical args", () => {
-    const spy = spyOn(diffUtilsModule, "diffLines")
-    try {
-      const args = JSON.stringify({
-        path: "src/main.py",
-        old_string: "a",
-        new_string: "b",
-      })
-
-      const { rerender } = render(<DiffView toolName="edit" args={args} />)
-      const afterMount = spy.mock.calls.length
-
-      rerender(<DiffView toolName="edit" args={args} />)
-      expect(spy.mock.calls.length).toBe(afterMount)
-    } finally {
-      spy.mockRestore()
-    }
-  })
 })

@@ -92,102 +92,6 @@ describe("diffLines", () => {
 })
 
 describe("DiffView", () => {
-  it("renders edit tool diff correctly", () => {
-    const args = JSON.stringify({
-      path: "src/main.py",
-      old_string: "def hello():\n    print('hello')",
-      new_string: "def hello():\n    print('hello world')",
-    })
-
-    render(<DiffView toolName="edit" args={args} result={'@@ openagentd-diff-meta {"path":"src/main.py","old_start":42,"new_start":42}'} />)
-
-    expect(screen.getByRole("button", { name: "Collapse diff for src/main.py" })).toBeTruthy()
-    expect(screen.getByText("def hello():")).toBeTruthy()
-    expect(screen.getByText("print('hello')")).toBeTruthy()
-    expect(screen.getByText("print('hello world')")).toBeTruthy()
-    expect(screen.getByText('42')).toBeTruthy()
-  })
-
-  it("keeps long diff content vertically scrollable", () => {
-    const args = JSON.stringify({
-      path: "src/main.py",
-      old_string: Array.from({ length: 40 }, (_, i) => `old line ${i}`).join("\n"),
-      new_string: Array.from({ length: 40 }, (_, i) => `new line ${i}`).join("\n"),
-    })
-
-    render(<DiffView toolName="edit" args={args} />)
-
-    const scrollContainer = screen.getByText("old line 0").closest(".overflow-y-auto")
-    expect(scrollContainer).toBeTruthy()
-    expect(scrollContainer?.className).toContain("h-full")
-    expect(scrollContainer?.className).toContain("touch-pan-y")
-    expect(scrollContainer?.className).not.toContain("overscroll-contain")
-  })
-
-  it("keeps diff line numbers sticky and inherits row highlight", () => {
-    const args = JSON.stringify({
-      path: "src/main.py",
-      old_string: "old line",
-      new_string: "new line",
-    })
-
-    render(<DiffView toolName="edit" args={args} />)
-
-    const gutterClassName = screen.getAllByText('1')[0].parentElement?.className ?? ''
-    expect(gutterClassName).toContain('sticky left-0')
-    expect(gutterClassName).toContain('bg-inherit')
-  })
-
-  it("does not make the file header sticky", () => {
-    const args = JSON.stringify({
-      path: "src/main.py",
-      old_string: "old line",
-      new_string: "new line",
-    })
-
-    render(<DiffView toolName="edit" args={args} />)
-
-    const headerClassName = screen.getByRole("button", { name: "Collapse diff for src/main.py" }).className
-    expect(headerClassName).not.toContain('sticky')
-    expect(headerClassName).not.toContain('top-0')
-  })
-
-  it("toggles edit diff when no outer collapse handler is provided", () => {
-    const args = JSON.stringify({
-      path: "src/main.py",
-      old_string: "old line",
-      new_string: "new line",
-    })
-
-    render(<DiffView toolName="edit" args={args} />)
-
-    const header = screen.getByRole("button", { name: "Collapse diff for src/main.py" })
-    expect(screen.getByText("old line")).toBeTruthy()
-
-    fireEvent.click(header)
-    expect(screen.getByRole("button", { name: "Expand diff for src/main.py" })).toBeTruthy()
-    expect(screen.getByText("old line").closest('[aria-hidden="true"]')).toBeTruthy()
-
-    fireEvent.click(screen.getByRole("button", { name: "Expand diff for src/main.py" }))
-    expect(screen.getByText("old line")).toBeTruthy()
-  })
-
-  it("calls the outer collapse handler when clicking an expanded edit file header", () => {
-    const args = JSON.stringify({
-      path: "src/main.py",
-      old_string: "old line",
-      new_string: "new line",
-    })
-    let collapsed = false
-
-    render(<DiffView toolName="edit" args={args} onCollapse={() => { collapsed = true }} />)
-
-    fireEvent.click(screen.getByRole("button", { name: "Collapse diff for src/main.py" }))
-
-    expect(collapsed).toBe(true)
-    expect(screen.getByText("old line")).toBeTruthy()
-  })
-
   it("renders patch tool diff correctly", () => {
     const patchText = [
       "*** Begin Patch",
@@ -348,20 +252,8 @@ describe("DiffView", () => {
     expect(screen.getByText('21')).toBeTruthy()
   })
 
-  it("renders write tool diff correctly", () => {
-    const args = JSON.stringify({
-      path: "src/new_file.py",
-      content: "print('hello world')",
-    })
-
-    render(<DiffView toolName="write" args={args} />)
-
-    expect(screen.getByText("src/new_file.py")).toBeTruthy()
-    expect(screen.getByText("print('hello world')")).toBeTruthy()
-  })
-
   it("handles invalid JSON gracefully", () => {
-    render(<DiffView toolName="edit" args="invalid json" />)
+    render(<DiffView toolName="patch" args="invalid json" />)
     expect(screen.getByText("invalid json")).toBeTruthy()
   })
 })
@@ -372,14 +264,10 @@ describe("DiffView", () => {
 
 describe("DiffView — LSP Diagnostics integration", () => {
   it("renders LSP diagnostics below the diff view when diagnostics exist in the result", () => {
-    const args = JSON.stringify({
-      path: "src/main.py",
-      content: "def foo(",
-    })
     const result =
       "Written 8 bytes to src/main.py\n\n[LSP Diagnostics]\n- src/main.py:1:9: error: unexpected EOF while parsing (Ruff)"
 
-    render(<DiffView toolName="write" args={args} result={result} />)
+    render(<DiffView toolName="patch" args={JSON.stringify({ patch_text: "*** Begin Patch\n*** Update File: src/main.py\n@@\n-foo\n+def foo(\n*** End Patch" })} result={result} />)
 
     // Verify diff content is rendered
     expect(screen.getByText("src/main.py")).toBeTruthy()

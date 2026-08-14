@@ -118,10 +118,10 @@ describe("ToolResult — shell", () => {
 })
 
 // ---------------------------------------------------------------------------
-// filesystem list renderers (ls, glob, grep)
+// filesystem list renderers (glob, grep)
 // ---------------------------------------------------------------------------
 
-const LIST_TOOLS = ["ls", "glob", "grep"] as const
+const LIST_TOOLS = ["glob", "grep"] as const
 
 describe("ToolResult — file list tools", () => {
   LIST_TOOLS.forEach((toolName) => {
@@ -146,13 +146,6 @@ describe("ToolResult — file list tools", () => {
       expect(screen.getByText(/1 entry/)).toBeTruthy()
       cleanup()
     })
-  })
-
-  it("parses JSON array result", () => {
-    const result = JSON.stringify(["a/b.ts", "c/d.ts"])
-    render(<ToolResult toolName="ls" result={result} />)
-    expect(screen.getByText("a/b.ts")).toBeTruthy()
-    expect(screen.getByText("c/d.ts")).toBeTruthy()
   })
 
 })

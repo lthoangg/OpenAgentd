@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { FileCode, ArrowRight, Trash2, PlusCircle, ChevronRight } from 'lucide-react'
-import { diffLines, parseDiffMeta, parsePatchText, type DiffLine, type FileDiff } from './diffUtils'
+import { parseDiffMeta, parsePatchText, type DiffLine, type FileDiff } from './diffUtils'
 import { parsePartialJSON } from './displayText'
 import { parseLspDiagnostics, LspDiagnosticsView } from '../ToolResult'
 
@@ -171,45 +171,14 @@ export function DiffView({ toolName, args, result, onCollapse }: DiffViewProps) 
   const lspData = useMemo(() => result ? parseLspDiagnostics(result) : null, [result])
 
   const model = useMemo<DiffModel | null>(() => {
-    const hasPath = typeof parsed?.path === 'string' && parsed.path.trim().length > 0
     const hasPatchText =
       typeof parsed?.patch_text === 'string' && parsed.patch_text.trim().length > 0
 
     if (
       !parsed ||
-      (toolName === 'edit' && !hasPath) ||
-      (toolName === 'write' && !hasPath) ||
       (toolName === 'patch' && !hasPatchText)
     ) {
       return { kind: 'raw', text: args, variant: 'args' }
-    }
-
-    if (toolName === 'edit') {
-      const oldStr = typeof parsed.old_string === 'string' ? parsed.old_string : ''
-      const newStr = typeof parsed.new_string === 'string' ? parsed.new_string : ''
-      return {
-        kind: 'single',
-        path: typeof parsed.path === 'string' ? parsed.path : 'unknown',
-        fileKind: 'update',
-        lines: diffLines(oldStr, newStr),
-        oldStart: diffMeta?.old_start ?? 1,
-        newStart: diffMeta?.new_start ?? 1,
-      }
-    }
-
-    if (toolName === 'write') {
-      const content = typeof parsed.content === 'string' ? parsed.content : ''
-      return {
-        kind: 'single',
-        path: typeof parsed.path === 'string' ? parsed.path : 'unknown',
-        fileKind: 'add',
-        lines: content
-          .replace(/\r\n/g, '\n')
-          .split('\n')
-          .map((line: string) => ({ type: 'added' as const, value: line })),
-        oldStart: 1,
-        newStart: 1,
-      }
     }
 
     if (toolName === 'patch') {

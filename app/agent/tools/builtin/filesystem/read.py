@@ -34,9 +34,10 @@ _MAX_LINE_CHARS = 2_000  # one minified line must not eat the whole budget
 
 _DESCRIPTION = (
     "Read a file, or list a directory's immediate children. Text comes back "
-    "verbatim (including HTML) with each line numbered 'N: content', "
-    "PNG/JPG/GIF/WebP images as vision input, and PDF/DOCX as extracted text. "
-    "Call this in parallel when you already know several files you need."
+    "verbatim (including HTML), PNG/JPG/GIF/WebP images as vision input, and "
+    "PDF/DOCX as extracted text. Content is byte-exact, so a line can be "
+    "copied straight into a patch hunk. Call this in parallel when you "
+    "already know several files you need."
 )
 
 
@@ -76,32 +77,27 @@ def _format_directory(resolved: Path) -> str:
     return "\n".join(lines) if lines else "(empty directory)"
 
 
-def _number_lines(text: str, start_line: int) -> str:
-    """Prefix each line with its 1-indexed number as ``N: content``.
+def _cap_long_lines(text: str) -> str:
+    """Truncate individual lines longer than ``_MAX_LINE_CHARS``.
 
-    Numbering makes locations citable — the model can hand a line straight to
-    the ``lsp`` tool or name it in a report instead of counting. ``patch``
-    strips a leading ``N: `` from hunk context, so numbered output can still be
-    copied into an envelope verbatim.
-
-    The trailing newline is preserved and never numbered, so a file ending in
-    ``\\n`` does not gain a phantom final line.
+    A single minified bundle line can otherwise consume the whole context
+    budget on its own. Content is returned verbatim apart from this, so the
+    model can copy a line straight into a ``patch`` hunk and have it match.
     """
-    if not text:
+    if not text or len(text) <= _MAX_LINE_CHARS:
         return text
 
     trailing_newline = text.endswith("\n")
     body = text[:-1] if trailing_newline else text
 
-    numbered = []
-    for offset, line in enumerate(body.split("\n")):
-        if len(line) > _MAX_LINE_CHARS:
-            line = (
-                f"{line[:_MAX_LINE_CHARS]}… (line truncated to {_MAX_LINE_CHARS} chars)"
-            )
-        numbered.append(f"{start_line + offset}: {line}")
+    capped = [
+        f"{line[:_MAX_LINE_CHARS]}… (line truncated to {_MAX_LINE_CHARS} chars)"
+        if len(line) > _MAX_LINE_CHARS
+        else line
+        for line in body.split("\n")
+    ]
 
-    return "\n".join(numbered) + ("\n" if trailing_newline else "")
+    return "\n".join(capped) + ("\n" if trailing_newline else "")
 
 
 def _cap_text_for_context(text: str, rel: object) -> str:
@@ -172,7 +168,7 @@ async def _read_file(
         text = raw.decode("latin-1")
 
     if offset == 1 and limit is None:
-        return _cap_text_for_context(_number_lines(text, 1), rel)
+        return _cap_text_for_context(_cap_long_lines(text), rel)
 
     lines = text.splitlines(keepends=True)
     total = len(lines)
@@ -186,7 +182,7 @@ async def _read_file(
     slice_lines = lines[start:end]
 
     header = f"[{start + 1}-{end}/{total}]\n"
-    body = _number_lines("".join(slice_lines), start + 1)
+    body = _cap_long_lines("".join(slice_lines))
     return _cap_text_for_context(header + body, rel)
 
 

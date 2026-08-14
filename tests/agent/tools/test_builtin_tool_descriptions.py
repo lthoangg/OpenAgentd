@@ -26,9 +26,9 @@ def test_read_description_advertises_directory_listing():
     assert "directory" in path["description"].lower()
 
 
-def test_read_description_explains_line_numbering():
-    """Numbering is only safe if the model is told the format up front."""
-    assert "N: content" in read_file.description
+def test_read_description_promises_byte_exact_content():
+    """The copy-into-a-patch workflow depends on reads being verbatim."""
+    assert "byte-exact" in read_file.description
 
 
 def test_patch_description_states_it_is_the_only_mutation_tool():

@@ -275,7 +275,7 @@ class TestReadFileVision:
             _injected={"_state": _make_state(vision=True)}, path="test.txt"
         )
         assert isinstance(result, str)
-        assert result == "1: hello world"
+        assert result == "hello world"
 
     @pytest.mark.asyncio
     async def test_text_read_requests_at_most_cap_plus_one_bytes(self, workspace):
@@ -340,7 +340,7 @@ class TestReadFileVision:
             )
 
         convert.assert_not_called()
-        assert result == f"1: {source}"
+        assert result == source
 
     @pytest.mark.asyncio
     async def test_htm_supports_pagination(self, workspace):
@@ -431,7 +431,7 @@ class TestReadFileNoVision:
         )
 
         assert isinstance(result, str)
-        assert result == "1: hello"
+        assert result == "hello"
 
     @pytest.mark.asyncio
     async def test_document_still_converts_text(self, workspace):

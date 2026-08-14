@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import UTC, datetime
+import json
 from pathlib import Path
 from typing import AsyncGenerator, Literal
 from uuid import UUID
@@ -532,9 +533,21 @@ async def team_stream(session_id: str, request: Request, db: DbSession):
                 }
         except Exception as exc:
             logger.exception("team_stream_error type={}", type(exc).__name__)
+            from app.agent.errors import format_agent_error
+
+            err_info = format_agent_error(exc)
+            payload = json.dumps(
+                {
+                    "type": "error",
+                    "title": err_info.get("title", "Stream Error"),
+                    "message": f"stream_error:{type(exc).__name__}",
+                    "code": err_info.get("code", "stream_error"),
+                    "category": err_info.get("category", "network"),
+                }
+            )
             yield {
                 "event": "error",
-                "data": f'{{"type":"error","message":"stream_error:{type(exc).__name__}"}}',
+                "data": payload,
             }
 
     return EventSourceResponse(_gen())

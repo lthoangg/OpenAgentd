@@ -7,6 +7,14 @@ import type {
   TeamCommandResponse,
 } from '@/api/types'
 
+export interface TeamError {
+  title?: string
+  message: string
+  code?: string
+  category?: 'provider' | 'network' | 'tool' | 'user_action' | 'system' | 'sandbox'
+  agent?: string
+}
+
 export interface PendingMessage {
   id: string
   sessionId?: string | null
@@ -148,7 +156,7 @@ export interface TeamStoreState {
    */
   resolvedQuestions: Record<string, ResolvedQuestion>
   isConnected: boolean
-  error: string | null
+  error: TeamError | string | null
   setupRequired: SetupRequiredNotice | null
   _pendingMessages: PendingMessage[]
   _sessionGeneration: number

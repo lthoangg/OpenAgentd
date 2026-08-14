@@ -128,6 +128,28 @@ describe('reconcileTurnTail', () => {
     expect(useTeamStore.getState().agentStreams.lead._unsyncedBlockIds).toEqual([])
   })
 
+  it('preserves provider_status error blocks when reconcileTurnTail runs', async () => {
+    await seedLoadedSession()
+    useTeamStore.setState((draft) => {
+      const stream = draft.agentStreams.lead
+      const providerBlock = {
+        id: 'provider-err-1',
+        type: 'provider_status' as const,
+        content: '429 Rate Limit Exceeded',
+        extra: { type: 'provider_status', status: 'error', title: 'Rate Limit Exceeded', category: 'provider' },
+        timestamp: new Date(),
+      }
+      stream.blocks.push(providerBlock)
+      stream._unsyncedBlockIds = [providerBlock.id]
+    })
+
+    await useTeamStore.getState().reconcileTurnTail('lead-sess')
+
+    const blocks = useTeamStore.getState().agentStreams.lead.blocks
+    expect(blocks.some((b) => b.id === 'provider-err-1')).toBe(true)
+    expect(blocks.find((b) => b.id === 'provider-err-1')?.content).toBe('429 Rate Limit Exceeded')
+  })
+
   it('advances the watermark so the next delta starts from the new tail', async () => {
     await seedLoadedSession()
 

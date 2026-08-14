@@ -26,7 +26,7 @@ Hierarchy::
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from uuid import UUID
@@ -194,3 +194,63 @@ class AgentConfigError(OpenAgentdError):
 
 class RoutingError(OpenAgentdError):
     """Could not resolve an agent for the incoming request."""
+
+
+def format_agent_error(exc: Exception, agent_name: str | None = None) -> dict[str, Any]:
+    """Format an exception into structured error details for events and APIs.
+
+    Returns a dict with ``message``, ``title``, ``code``, ``category``, and
+    optional ``agent``.
+    """
+    from app.agent.providers.unconfigured import UnconfiguredProviderError
+
+    title = "Agent Execution Error"
+    code = "agent_execution_failed"
+    category = "system"
+    message = str(exc)
+
+    if isinstance(exc, ProviderAuthenticationError):
+        title = "Provider Authentication Failed"
+        code = "provider_auth_failed"
+        category = "provider"
+    elif isinstance(exc, ProviderRateLimitError):
+        title = "Rate Limit Exceeded"
+        code = "provider_rate_limit"
+        category = "provider"
+    elif isinstance(exc, ProviderConnectionError):
+        title = "Provider Connection Failed"
+        code = "provider_connection_failed"
+        category = "network"
+        if getattr(exc, "provider", None):
+            title = f"{exc.provider} Connection Failed"
+    elif isinstance(exc, ProviderRequestError):
+        title = "Provider Request Error"
+        code = "provider_request_failed"
+        category = "provider"
+    elif isinstance(exc, UnconfiguredProviderError):
+        title = "Agent Not Configured"
+        code = "agent_not_configured"
+        category = "provider"
+    elif isinstance(exc, ToolError):
+        title = "Tool Execution Failed"
+        code = "tool_execution_failed"
+        category = "tool"
+    elif isinstance(exc, SandboxError | PermissionError):
+        title = "Permission Denied"
+        code = "sandbox_permission_denied"
+        category = "sandbox"
+    elif isinstance(exc, OpenAgentdError):
+        title = "Agent System Error"
+        code = "agent_system_error"
+        category = "system"
+
+    res: dict[str, Any] = {
+        "message": message,
+        "title": title,
+        "code": code,
+        "category": category,
+    }
+    if agent_name:
+        res["agent"] = agent_name
+
+    return res

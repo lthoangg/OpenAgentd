@@ -90,6 +90,57 @@ class TestExceptionHierarchy:
         assert str(exc) == "bad args for search"
 
 
+class TestFormatAgentError:
+    """Verify format_agent_error produces structured error dicts."""
+
+    def test_provider_authentication_error(self):
+        from app.agent.errors import ProviderAuthenticationError, format_agent_error
+
+        exc = ProviderAuthenticationError("Invalid API Key")
+        res = format_agent_error(exc, agent_name="lead")
+        assert res["title"] == "Provider Authentication Failed"
+        assert res["code"] == "provider_auth_failed"
+        assert res["category"] == "provider"
+        assert res["message"] == "Invalid API Key"
+        assert res["agent"] == "lead"
+
+    def test_provider_rate_limit_error(self):
+        from app.agent.errors import ProviderRateLimitError, format_agent_error
+
+        exc = ProviderRateLimitError("429 Too Many Requests")
+        res = format_agent_error(exc)
+        assert res["title"] == "Rate Limit Exceeded"
+        assert res["code"] == "provider_rate_limit"
+        assert res["category"] == "provider"
+
+    def test_provider_connection_error(self):
+        from app.agent.errors import ProviderConnectionError, format_agent_error
+
+        exc = ProviderConnectionError("Timeout", provider="anthropic")
+        res = format_agent_error(exc)
+        assert res["title"] == "anthropic Connection Failed"
+        assert res["code"] == "provider_connection_failed"
+        assert res["category"] == "network"
+
+    def test_tool_execution_error(self):
+        from app.agent.errors import ToolExecutionError, format_agent_error
+
+        exc = ToolExecutionError("Command failed")
+        res = format_agent_error(exc)
+        assert res["title"] == "Tool Execution Failed"
+        assert res["code"] == "tool_execution_failed"
+        assert res["category"] == "tool"
+
+    def test_generic_exception(self):
+        from app.agent.errors import format_agent_error
+
+        exc = RuntimeError("Unexpected boom")
+        res = format_agent_error(exc)
+        assert res["title"] == "Agent Execution Error"
+        assert res["code"] == "agent_execution_failed"
+        assert res["category"] == "system"
+
+
 # ---------------------------------------------------------------------------
 # format_validation_error — clean Pydantic error formatting
 # ---------------------------------------------------------------------------

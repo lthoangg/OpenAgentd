@@ -21,7 +21,7 @@ import {
   applyQuestionResolution,
   extractToolPaths,
 } from './helpers'
-import type { CacheInvalidation, TeamStore } from './types'
+import type { CacheInvalidation, TeamError, TeamStore } from './types'
 import type { ContentBlock, PendingQuestion, QuestionItem } from '@/api/types'
 
 type Setter = (fn: (draft: TeamStore) => void) => void
@@ -565,10 +565,25 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
             draft.agentStreams[agent].status = 'offline'
             if (draft.liveAgentNames) draft.liveAgentNames = draft.liveAgentNames.filter((name) => name !== agent)
           } else if (status === 'error') {
+            const meta = d.metadata as Record<string, unknown> | undefined
+            const lastErr = (meta?.message as string) ?? null
+            const errTitle = meta?.title as string | undefined
+            const errCode = meta?.code as string | undefined
+            const errCategory = meta?.category as TeamError['category'] | undefined
+
             draft.agentStreams[agent].status = 'error'
-            draft.agentStreams[agent].lastError =
-              (d.metadata as Record<string, unknown>)?.message as string ?? null
+            draft.agentStreams[agent].lastError = lastErr
             if (draft.liveAgentNames && !draft.liveAgentNames.includes(agent)) draft.liveAgentNames.push(agent)
+
+            if (lastErr && !draft.error) {
+              draft.error = {
+                title: errTitle || `Agent '${agent}' error`,
+                message: lastErr,
+                code: errCode,
+                category: errCategory || 'system',
+                agent,
+              }
+            }
           }
           if (status !== 'working' && status !== 'waiting_input') {
             draft.isTeamWorking = anyAgentLive(draft.agentStreams)
@@ -654,9 +669,44 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
       }
 
       case 'error': {
+        const message = (d.message as string) || 'An error occurred'
+        const title = d.title as string | undefined
+        const code = d.code as string | undefined
+        const category = d.category as TeamError['category'] | undefined
+        const agent = d.agent as string | undefined
+
         set((draft) => {
-          draft.error = d.message as string
+          draft.error = title || code || category || agent
+            ? { title, message, code, category, agent }
+            : message
           draft.isTeamWorking = false
+
+          const effectiveAgent = agent || draft.leadName || Object.keys(draft.agentStreams)[0] || 'lead'
+          const isProvider = category === 'provider' ||
+            code?.startsWith('provider_') ||
+            `${title ?? ''} ${message}`.toLowerCase().includes('provider') ||
+            `${title ?? ''} ${message}`.toLowerCase().includes('rate limit') ||
+            `${title ?? ''} ${message}`.toLowerCase().includes('invalid api key')
+
+          if (isProvider) {
+            ensureAgent(draft, effectiveAgent)
+            const stream = draft.agentStreams[effectiveAgent]
+            const errorBlock: ContentBlock = {
+              id: generateBlockId(),
+              type: 'provider_status',
+              content: message,
+              extra: {
+                type: 'provider_status',
+                status: 'error',
+                title: title || 'Provider Error',
+                message,
+                code,
+                category: 'provider',
+              },
+              timestamp: new Date(),
+            }
+            appendLocalBlocks(stream, [errorBlock])
+          }
         })
         break
       }

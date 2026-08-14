@@ -503,8 +503,16 @@ async function loadSessionImpl(
           draft.agentStreams[leadName] = createDefaultAgentStream()
         }
         const leadStream = draft.agentStreams[leadName]
+        const leadLocalErrors = [...leadStream.blocks, ...leadStream.currentBlocks].filter(
+          (b) => b.type === 'provider_status' && (b.extra?.status === 'error' || b.extra?.status === 'exhausted' || b.extra?.category === 'provider'),
+        )
         if (!leadHadNewerActivity) revokeBlobUrlsFromBlocks(leadStream.currentBlocks)
         leadStream.blocks = parseTeamBlocks(history.lead.messages)
+        if (leadLocalErrors.length > 0) {
+          const existingIds = new Set(leadStream.blocks.map((b) => b.id))
+          const toKeep = leadLocalErrors.filter((b) => !existingIds.has(b.id))
+          leadStream.blocks = [...leadStream.blocks, ...toKeep]
+        }
         leadStream._revertedSuffix = []
         applyRevertBoundary(leadStream, leadRevertTime, {
           boundaryId,
@@ -558,8 +566,16 @@ async function loadSessionImpl(
         }
         const memberStream = draft.agentStreams[member.name]
         const memberHadNewerActivity = hasLiveContent(memberStream, draft.isTeamWorking, fetchStartedAt)
+        const memberLocalErrors = [...memberStream.blocks, ...memberStream.currentBlocks].filter(
+          (b) => b.type === 'provider_status' && (b.extra?.status === 'error' || b.extra?.status === 'exhausted' || b.extra?.category === 'provider'),
+        )
         if (!memberHadNewerActivity) revokeBlobUrlsFromBlocks(memberStream.currentBlocks)
         memberStream.blocks = parseTeamBlocks(member.messages)
+        if (memberLocalErrors.length > 0) {
+          const existingIds = new Set(memberStream.blocks.map((b) => b.id))
+          const toKeep = memberLocalErrors.filter((b) => !existingIds.has(b.id))
+          memberStream.blocks = [...memberStream.blocks, ...toKeep]
+        }
         memberStream._revertedSuffix = []
         applyRevertBoundary(memberStream, leadRevertTime, {
           boundaryId,
@@ -863,7 +879,7 @@ export const createSessionSlice: StateCreator<
         if (!stream) return
         const unsynced = new Set(stream._unsyncedBlockIds ?? [])
         const confirmed = unsynced.size > 0
-          ? stream.blocks.filter((block) => !unsynced.has(block.id))
+          ? stream.blocks.filter((block) => !unsynced.has(block.id) || block.type === 'provider_status')
           : stream.blocks
         stream.blocks = [...confirmed, ...visible(parseTeamBlocks(messages))]
         stream._unsyncedBlockIds = []

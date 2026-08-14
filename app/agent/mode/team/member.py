@@ -661,11 +661,19 @@ class TeamMemberBase(abc.ABC):
                 logger.exception("team_member_error name={} error={}", self.name, exc)
             await self._on_turn_error(exc)
             self.state = "error"
+            from app.agent.errors import format_agent_error
+
+            err_info = format_agent_error(exc, agent_name=self.name)
             await self._team._emit(
                 agent=self.name,
                 event="agent_status",
                 status="error",
-                extra={"message": str(exc)},
+                extra={
+                    "message": err_info["message"],
+                    "title": err_info["title"],
+                    "code": err_info["code"],
+                    "category": err_info["category"],
+                },
             )
 
         finally:
@@ -1247,7 +1255,7 @@ class TeamLead(TeamMemberBase):
         :class:`AgentNotConfiguredEvent` by the base class; we skip the
         generic ``ErrorEvent`` here so the UI doesn't show two banners.
         """
-        from app.agent.errors import ProviderAuthenticationError
+        from app.agent.errors import ProviderAuthenticationError, format_agent_error
         from app.agent.providers.unconfigured import UnconfiguredProviderError
 
         await super()._on_turn_error(exc)
@@ -1258,12 +1266,18 @@ class TeamLead(TeamMemberBase):
         from app.services import memory_stream_store as stream_store
         from app.services.stream_envelope import StreamEnvelope
 
+        err_info = format_agent_error(exc, agent_name=self.name)
+
         try:
             await stream_store.push_event(
                 self.session_id,
                 StreamEnvelope.from_event(
                     ErrorEvent(
                         message=f"Lead agent '{self.name}' failed: {exc}",
+                        title=err_info["title"],
+                        code=err_info["code"],
+                        category=err_info["category"],
+                        agent=self.name,
                         metadata={"agent": self.name, "exception": type(exc).__name__},
                     )
                 ),

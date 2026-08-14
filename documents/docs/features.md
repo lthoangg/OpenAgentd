@@ -116,6 +116,11 @@ run from the terminal.
   for toast notifications now pauses while the pointer or keyboard focus is on
   the toast, resuming with the remaining time once it clears, so a toast can no
   longer disappear mid-read.
+- **Categorized stream & execution error handling** `[v1.133.0]` — provider stream
+  errors (rate limits, auth 401, connection drops) are now displayed directly within
+  the chat transcript area as persistent error callout cards, while action validation
+  failures (e.g. undo/redo/compaction errors) surface targeted, categorized toast
+  notifications with contextual titles.
 - **Keyboard-operable overlays and dropdowns** `[v1.125.0]` — select/menu
   dropdowns navigate with `ArrowUp`/`ArrowDown`/`Home`/`End` and commit with
   `Enter`/`Space`, announcing the active option via `aria-activedescendant`

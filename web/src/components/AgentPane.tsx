@@ -14,7 +14,7 @@
 import { useState, useCallback, useMemo, memo } from 'react'
 
 import { LazyMarkdownBlock } from '@/utils/LazyMarkdownBlock'
-import { ChevronDown, ChevronUp, Copy, Check, Undo2 } from 'lucide-react'
+import { ChevronDown, ChevronUp, Copy, Check, Undo2, AlertCircle } from 'lucide-react'
 import { Thinking } from './Thinking'
 import { ToolCall } from './ToolCall'
 import { MCPAppResult } from './MCPAppResult'
@@ -295,6 +295,21 @@ const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionI
     }
     case 'provider_status': {
       const status = block.extra?.status
+      const title = (block.extra?.title as string) || (status === 'error' || status === 'exhausted' ? 'Provider Error' : undefined)
+      const customMsg = block.extra?.message as string | undefined
+
+      if (status === 'error' || status === 'exhausted' || block.extra?.category === 'provider') {
+        return (
+          <div className="my-2 rounded-md border border-(--color-error)/30 bg-(--color-error-subtle) px-3 py-2 text-xs">
+            <div className="flex items-center gap-1.5 font-medium text-(--color-error)">
+              <AlertCircle size={14} className="shrink-0" />
+              <span>{title || 'Provider Error'}</span>
+            </div>
+            <p className="mt-1 text-(--color-error)/90 leading-relaxed break-words">{customMsg || block.content}</p>
+          </div>
+        )
+      }
+
       const model = block.extra?.model
       const attempt = block.extra?.attempt
       const maxAttempts = block.extra?.max_attempts
@@ -306,9 +321,6 @@ const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionI
         const delayText = typeof delay === 'number' ? ` Waiting ${delay.toFixed(1)}s.` : ''
         const errorText = errorType ? ` after ${String(errorType)}${statusCode ? ` ${String(statusCode)}` : ''}` : ''
         message = `Retrying ${String(model ?? 'model')} (${String(attempt ?? '?')}/${String(maxAttempts ?? '?')})${errorText}.${delayText}`
-      } else if (status === 'exhausted') {
-        const errorText = errorType ? ` after ${String(errorType)}${statusCode ? ` ${String(statusCode)}` : ''}` : ''
-        message = `${String(model ?? 'Model')} exhausted retry attempts${errorText}.`
       }
       return <p className="rounded-sm border border-(--color-border) bg-(--bg-card) px-3 py-2 text-xs text-(--color-text-muted)">{message}</p>
     }

@@ -362,6 +362,54 @@ def _default_tool_registry() -> dict[str, Tool]:
 # ---------------------------------------------------------------------------
 
 
+def _prune_unknown_tools_from_file(path: Path, unknown: list[str]) -> None:
+    """Strip *unknown* tool names from ``path``'s frontmatter ``tools:`` list.
+
+    Called when an agent file names tools that no longer exist — typically a
+    file written before a builtin tool was removed. Rewriting the file makes
+    the config self-healing instead of warning on every single load.
+
+    Only the ``tools`` key is touched. ``mcp`` entries are deliberately left
+    alone: an MCP server can be disabled or mid-restart, so an unknown server
+    name is frequently transient in a way a missing builtin tool is not.
+
+    Best-effort — a failure here must never break agent load, so every error
+    is logged and swallowed.
+    """
+    try:
+        text = path.read_text(encoding="utf-8")
+        match = _FRONTMATTER_RE.match(text)
+        if not match:
+            return
+        meta = yaml.safe_load(match.group(1)) or {}
+        listed = meta.get("tools")
+        if not isinstance(listed, list):
+            return
+
+        dropped = set(unknown)
+        kept = [t for t in listed if t not in dropped]
+        if kept == listed:
+            return
+
+        if kept:
+            meta["tools"] = kept
+        else:
+            meta.pop("tools", None)
+
+        body = match.group(2)
+        _atomic_write_text(
+            path, f"---\n{yaml.safe_dump(meta, sort_keys=False)}---\n\n{body}"
+        )
+        logger.warning(
+            "agent_tools_pruned agent={} file={} removed={}",
+            meta.get("name", path.stem),
+            path.name,
+            sorted(dropped & set(listed)),
+        )
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("agent_tools_prune_failed file={} error={}", path, exc)
+
+
 def _build_agent(
     cfg: AgentConfig,
     tool_registry: dict[str, Tool],
@@ -414,14 +462,14 @@ def _build_agent(
     seen: set[str] = {t.name for t in tools}
     cfg.tools = list(dict.fromkeys(cfg.tools))
     cfg.mcp = list(dict.fromkeys(cfg.mcp))
+    unknown_tools: list[str] = []
     for tool_name in cfg.tools:
         if tool_name in ("skill", "todo_manage", "schedule_task"):
             continue
         if tool_name not in tool_registry:
-            # Soft-skip: settings/self-healing edits and disabled-then-rebuild
-            # flows can leave a name in frontmatter briefly after the
-            # underlying tool/MCP server disappears between loads.
-
+            # Soft-skip so this load still succeeds, then prune the name from
+            # the file below so it stops recurring.
+            unknown_tools.append(tool_name)
             logger.warning(
                 "agent_unknown_tool agent={} tool={} available={}",
                 cfg.name,
@@ -433,6 +481,9 @@ def _build_agent(
             continue
         seen.add(tool_name)
         tools.append(tool_registry[tool_name])
+
+    if unknown_tools and source_path is not None:
+        _prune_unknown_tools_from_file(source_path, unknown_tools)
 
     # MCP servers: each entry grants the agent access to *all* tools exposed
     # by that server. Unknown / not-ready servers are warn-and-skip so the

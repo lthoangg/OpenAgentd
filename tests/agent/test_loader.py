@@ -13,7 +13,9 @@ from app.agent.loader import (
     AgentConfig,
     _build_agent,
     _default_tool_registry,
+    _FRONTMATTER_RE,
     parse_agent_md,
+    rebuild_agent_from_disk,
 )
 
 
@@ -1305,3 +1307,92 @@ def test_todo_and_schedule_injected_into_lead():
     agent = _build_agent(cfg, {}, factory)
     assert "todo_manage" in agent._tools
     assert "schedule_task" in agent._tools
+
+
+# ---------------------------------------------------------------------------
+# Unknown-tool pruning from user agent files
+# ---------------------------------------------------------------------------
+
+
+def test_unknown_tools_are_pruned_from_agent_file(tmp_path):
+    """Tools no longer in the registry are stripped from the .md on load."""
+    f = _write_agent_md(
+        tmp_path / "worker.md",
+        {
+            "name": "worker",
+            "role": "member",
+            "model": "zai:glm-5-turbo",
+            "tools": ["read", "write", "grep", "ls"],
+        },
+        "Do the work.",
+    )
+    factory, _ = _make_provider_factory()
+
+    agent = rebuild_agent_from_disk(f, provider_factory=factory)
+
+    assert "read" in agent._tools
+    assert "grep" in agent._tools
+
+    pruned = yaml.safe_load(_FRONTMATTER_RE.match(f.read_text()).group(1))
+    assert pruned["tools"] == ["read", "grep"]
+    # Everything else in the file survives untouched.
+    assert pruned["name"] == "worker"
+    assert pruned["model"] == "zai:glm-5-turbo"
+    assert "Do the work." in f.read_text()
+
+
+def test_pruning_leaves_file_alone_when_all_tools_are_known(tmp_path):
+    f = _write_agent_md(
+        tmp_path / "worker.md",
+        {
+            "name": "worker",
+            "role": "member",
+            "model": "zai:glm-5-turbo",
+            "tools": ["read", "grep"],
+        },
+    )
+    before = f.read_text()
+    factory, _ = _make_provider_factory()
+
+    rebuild_agent_from_disk(f, provider_factory=factory)
+
+    assert f.read_text() == before
+
+
+def test_pruning_removes_the_tools_key_when_nothing_remains(tmp_path):
+    f = _write_agent_md(
+        tmp_path / "worker.md",
+        {
+            "name": "worker",
+            "role": "member",
+            "model": "zai:glm-5-turbo",
+            "tools": ["write", "rm"],
+        },
+    )
+    factory, _ = _make_provider_factory()
+
+    rebuild_agent_from_disk(f, provider_factory=factory)
+
+    pruned = yaml.safe_load(_FRONTMATTER_RE.match(f.read_text()).group(1))
+    assert "tools" not in pruned
+
+
+def test_pruning_does_not_touch_mcp_entries(tmp_path):
+    """MCP servers can be mid-restart, so unknown ones must survive."""
+    f = _write_agent_md(
+        tmp_path / "worker.md",
+        {
+            "name": "worker",
+            "role": "member",
+            "model": "zai:glm-5-turbo",
+            "tools": ["read", "write"],
+            "mcp": ["some-offline-server"],
+        },
+    )
+    factory, _ = _make_provider_factory()
+
+    rebuild_agent_from_disk(f, provider_factory=factory)
+
+    pruned = yaml.safe_load(_FRONTMATTER_RE.match(f.read_text()).group(1))
+    assert pruned["mcp"] == ["some-offline-server"]
+    assert pruned["tools"] == ["read"]

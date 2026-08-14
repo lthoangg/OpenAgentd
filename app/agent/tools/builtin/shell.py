@@ -16,7 +16,9 @@ Design parity with opencode's bash.ts:
   allowed when the caller intentionally needs to run outside the workspace.
 - Abort via task cancellation: foreground commands and background commands still
   in startup are killed as a process group before cancellation propagates.
-- Foreground commands default to a 60-second timeout; callers can raise it explicitly.
+- Foreground commands default to ``_DEFAULT_TIMEOUT_SECONDS``; callers can raise it
+  explicitly. On timeout the command is SIGTERMed, given a short grace period to
+  clean up, then SIGKILLed.
 - Background mode preserved for long-running processes (dev servers etc.).
 
 Output format (foreground)::
@@ -73,6 +75,7 @@ _SHELL_CAPABILITIES = (
 )
 _SHELL_DESCRIPTION = (
     f"Run a command through the user's {_SHELL_KIND}; supports {_SHELL_CAPABILITIES}. "
+    "Returns stdout and stderr combined. "
     "stdin is /dev/null, so use non-interactive flags for commands that may prompt. "
     "Use background=true only for long-lived processes, then manage the PID with bg. "
     "Prefer file tools for file operations."

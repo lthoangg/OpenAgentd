@@ -155,6 +155,15 @@ def test_simple_tools_do_not_repeat_examples_or_unstable_result_shapes():
     assert web_search.description == "Search the web."
 
 
+def test_shell_description_states_streams_are_combined():
+    """stderr is folded into stdout by the spawn (`stderr=STDOUT`).
+
+    Without this the model cannot tell whether a bare command loses error
+    output, and defensively appends `2>&1` to commands that never needed it.
+    """
+    assert "stderr" in shell_tool.description
+
+
 def test_shell_description_keeps_only_non_obvious_execution_constraints():
     assert "stdin is /dev/null" in shell_tool.description
     assert "non-interactive flags" in shell_tool.description

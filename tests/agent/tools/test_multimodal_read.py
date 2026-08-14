@@ -3,7 +3,7 @@
 Tests the new multimodal read feature:
 - classify_file() categorizes files by extension
 - handle_image() returns ToolResult with ImageDataBlock
-- handle_document() converts documents via markitdown (vision-gated PDF fallback)
+- handle_document() converts documents via anydoc (vision-gated PDF fallback)
 - read_file tool returns ToolResult for images/documents, str for text
 - Vision capability gating: non-vision models get text-only results
 """
@@ -189,7 +189,7 @@ class TestHandleDocument:
         pdf.write_bytes(b"%PDF-1.4" + b"\x00" * 100)
 
         with patch(
-            "app.agent.tools.builtin.filesystem.handlers._convert_with_markitdown"
+            "app.agent.tools.builtin.filesystem.handlers._convert_document"
         ) as m:
             m.return_value = "# Title\n\nBody."
             result = handle_document(pdf, Path("test.pdf"))
@@ -200,12 +200,12 @@ class TestHandleDocument:
         assert len(result.parts) == 1
 
     def test_pdf_fallback_on_conversion_failure(self, tmp_path):
-        """When markitdown fails on a PDF, raw bytes are sent as image fallback."""
+        """When conversion fails on a PDF, raw bytes are sent as image fallback."""
         pdf = tmp_path / "test.pdf"
         pdf.write_bytes(b"%PDF-1.4" + b"\x00" * 100)
 
         with patch(
-            "app.agent.tools.builtin.filesystem.handlers._convert_with_markitdown"
+            "app.agent.tools.builtin.filesystem.handlers._convert_document"
         ) as m:
             m.return_value = None
             result = handle_document(pdf, Path("test.pdf"))
@@ -219,7 +219,7 @@ class TestHandleDocument:
         docx.write_bytes(b"PK\x03\x04" + b"\x00" * 100)
 
         with patch(
-            "app.agent.tools.builtin.filesystem.handlers._convert_with_markitdown"
+            "app.agent.tools.builtin.filesystem.handlers._convert_document"
         ) as m:
             m.return_value = None
             result = handle_document(docx, Path("test.docx"))
@@ -233,7 +233,7 @@ class TestHandleDocument:
         big.write_bytes(b"%PDF-1.4" + b"\x00" * (10_485_760 + 1))
 
         with patch(
-            "app.agent.tools.builtin.filesystem.handlers._convert_with_markitdown"
+            "app.agent.tools.builtin.filesystem.handlers._convert_document"
         ) as m:
             m.return_value = None
             result = handle_document(big, Path("big.pdf"))
@@ -250,7 +250,7 @@ class TestHandleDocument:
         with (
             patch.object(Path, "read_bytes", side_effect=AssertionError("read")),
             patch(
-                "app.agent.tools.builtin.filesystem.handlers._convert_with_markitdown"
+                "app.agent.tools.builtin.filesystem.handlers._convert_document"
             ) as convert,
         ):
             result = handle_document(pdf, Path("big.pdf"))
@@ -317,7 +317,7 @@ class TestReadFileVision:
         (workspace / "doc.pdf").write_bytes(b"%PDF-1.4" + b"\x00" * 100)
 
         with patch(
-            "app.agent.tools.builtin.filesystem.handlers._convert_with_markitdown"
+            "app.agent.tools.builtin.filesystem.handlers._convert_document"
         ) as m:
             m.return_value = "# Content"
             result = await read_file.arun(
@@ -328,12 +328,12 @@ class TestReadFileVision:
 
     @pytest.mark.asyncio
     async def test_html_returns_raw_source(self, workspace):
-        """.html is source, not a document — return it verbatim (no markitdown)."""
+        """.html is source, not a document — return it verbatim (no conversion)."""
         source = "<html><body><h1>Title</h1><p>Body</p></body></html>"
         (workspace / "page.html").write_text(source)
 
         with patch(
-            "app.agent.tools.builtin.filesystem.handlers._convert_with_markitdown"
+            "app.agent.tools.builtin.filesystem.handlers._convert_document"
         ) as convert:
             result = await read_file.arun(
                 _injected={"_state": _make_state(vision=True)}, path="page.html"
@@ -435,11 +435,11 @@ class TestReadFileNoVision:
 
     @pytest.mark.asyncio
     async def test_document_still_converts_text(self, workspace):
-        """Documents still get markitdown conversion regardless of vision."""
+        """Documents still get document conversion regardless of vision."""
         (workspace / "doc.pdf").write_bytes(b"%PDF-1.4" + b"\x00" * 100)
 
         with patch(
-            "app.agent.tools.builtin.filesystem.handlers._convert_with_markitdown"
+            "app.agent.tools.builtin.filesystem.handlers._convert_document"
         ) as m:
             m.return_value = "# Extracted"
             result = await read_file.arun(
@@ -456,7 +456,7 @@ class TestReadFileNoVision:
         (workspace / "doc.pdf").write_bytes(b"%PDF-1.4" + b"\x00" * 100)
 
         with patch(
-            "app.agent.tools.builtin.filesystem.handlers._convert_with_markitdown"
+            "app.agent.tools.builtin.filesystem.handlers._convert_document"
         ) as m:
             m.return_value = None
             result = await read_file.arun(

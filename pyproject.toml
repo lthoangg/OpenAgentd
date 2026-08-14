@@ -34,9 +34,13 @@ dependencies = [
     # breaks on Apple Silicon.
     "greenlet>=3.3.2",
     "ddgs>=9.12.0",
-    # Document conversion ships with only the formats used by the slim sidecar:
-    # PDF and DOCX via extras, plus HTML through markitdown core. Heavier
-    # features stay behind optional extras to keep the desktop bundle small.
+    # `read` converts PDF/DOCX through anydoc: a Rust library that is 55-100x
+    # faster than markitdown on the same files, releases the GIL so concurrent
+    # sessions convert in parallel, and reports typed failures (encrypted,
+    # image-only) instead of an empty string.
+    "firecrawl-anydoc>=0.1.9",
+    # Still required by `web_fetch`, which converts fetched HTML and PDF URLs.
+    # Heavier features stay behind optional extras to keep the bundle small.
     "markitdown[pdf,docx]>=0.1.5",
     "pyyaml>=6.0.3",
     "fastapi>=0.135.2",

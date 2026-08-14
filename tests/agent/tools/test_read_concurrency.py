@@ -64,7 +64,7 @@ async def test_document_read_does_not_block_the_event_loop(workspace: Path):
     doc.write_bytes(b"PK\x03\x04 not really a docx")
 
     def _slow_convert(*_args, **_kwargs) -> ToolResult:
-        time.sleep(_BLOCK_SECONDS)  # markitdown is CPU-bound and synchronous
+        time.sleep(_BLOCK_SECONDS)  # document conversion is CPU-bound and synchronous
         return ToolResult(parts=[TextBlock(text="[Document: report.docx]\nbody")])
 
     with patch(

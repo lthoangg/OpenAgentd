@@ -6,7 +6,7 @@ Supports multimodal file types:
   ``ToolResult`` with ``ImageDataBlock`` parts for vision-capable models.
   Non-vision models receive a text notice instead.
 - **Documents** (.pdf, .docx): converted to markdown text via
-  markitdown. If conversion fails, PDFs are sent as raw bytes to vision models.
+  anydoc. If conversion fails, PDFs are sent as raw bytes to vision models.
 - **Text** (everything else, including .html/.htm and other markup): read as
   UTF-8/Latin-1 text verbatim (original behaviour).
 """
@@ -188,7 +188,7 @@ async def _read_file(
         logger.info("read_image path={} size={}", rel, size)
         return await asyncio.to_thread(handle_image, resolved, rel)
 
-    # ── Document files → markitdown conversion ────────────────────────────
+    # ── Document files → anydoc conversion ────────────────────────────────
     if category == "document":
         logger.info("read_document path={} size={}", rel, resolved.stat().st_size)
         return await asyncio.to_thread(handle_document, resolved, rel)

@@ -164,6 +164,10 @@ _READER_DRAIN_TIMEOUT_SECONDS = 2.0
 # Bound on reaping after SIGKILL — a D-state (uninterruptible I/O) process can
 # survive it; log instead of hanging the tool call.
 _POST_KILL_WAIT_SECONDS = 5.0
+# Grace given to a timed-out foreground command between SIGTERM and SIGKILL.
+# Long enough for a trap handler or interpreter shutdown hook to run, short
+# enough that a hung command does not visibly extend the timeout.
+_TIMEOUT_TERM_GRACE_SECONDS = 2.0
 
 # Maximum lines and bytes to include inline in the result
 _OUTPUT_MAX_LINES = 300
@@ -443,6 +447,25 @@ def _scrubbed_env() -> dict[str, str]:
     return {k: v for k, v in os.environ.items() if k not in _PYTHON_ENV_LEAK_KEYS}
 
 
+def _format_exit_code(returncode: int | None) -> str:
+    """Render an exit code the way the user's own shell would.
+
+    ``asyncio`` reports a signal death as a negative number (``-9``), a Python
+    convention no shell uses. Shells report ``128 + signal``, so a SIGKILL is
+    the widely recognised ``137``. Naming the signal keeps the common causes
+    (OOM killer, our own timeout) diagnosable.
+    """
+    if returncode is None:
+        return "unknown"
+    if returncode >= 0:
+        return str(returncode)
+    signum = -returncode
+    try:
+        return f"{128 + signum} ({signal.Signals(signum).name})"
+    except ValueError:
+        return str(128 + signum)
+
+
 def _signal_posix_group(pid: int, sig: signal.Signals) -> bool:
     """Signal the process group *pid* leads; True when a group was signalled."""
     try:
@@ -502,6 +525,25 @@ async def _kill_process_group(
         proc.send_signal(sig)
     except (ProcessLookupError, OSError):
         pass
+
+
+async def _terminate_after_timeout(proc: asyncio.subprocess.Process) -> None:
+    """End a timed-out foreground command, letting it clean up if it can.
+
+    SIGKILL cannot be trapped, so killing outright strands whatever the command
+    was mid-way through — temp files, child processes, an unflushed log — and
+    discards its teardown output. Escalating mirrors ``_BgProcess.stop`` and the
+    ``timeout(1)`` convention. Windows has no graceful equivalent for a process
+    tree, so it goes straight to the forceful path.
+    """
+    if os.name == "nt":
+        await _kill_process_group(proc, _FORCE_KILL_SIGNAL)
+        return
+    await _kill_process_group(proc, signal.SIGTERM)
+    try:
+        await _wait_exit(proc, _TIMEOUT_TERM_GRACE_SECONDS)
+    except asyncio.TimeoutError:
+        await _kill_process_group(proc, _FORCE_KILL_SIGNAL)
 
 
 async def _wait_exit(proc: asyncio.subprocess.Process, timeout: float) -> int:
@@ -1002,7 +1044,7 @@ async def _shell(
                 await proc.wait()
 
         except asyncio.TimeoutError:
-            await _kill_process_group(proc, _FORCE_KILL_SIGNAL)
+            await _terminate_after_timeout(proc)
             # Drain any remaining output after kill
             try:
                 async with asyncio.timeout(2):
@@ -1044,7 +1086,7 @@ async def _shell(
             else (
                 f"[Timed out after {timeout}s]"
                 if aborted
-                else f"[Failed — exit code {exit_code}]"
+                else f"[Failed — exit code {_format_exit_code(exit_code)}]"
             )
         )
 
@@ -1110,7 +1152,11 @@ async def _background_process(
         lines = ["PID     | Status  | Command"]
         lines.append("--------|---------|--------")
         for pid_key, bg in processes.items():
-            status = "running" if bg.alive else f"exited ({bg.proc.returncode})"
+            status = (
+                "running"
+                if bg.alive
+                else f"exited ({_format_exit_code(bg.proc.returncode)})"
+            )
             lines.append(f"{pid_key:<7} | {status:<7} | {bg.command[:60]}")
         return "\n".join(lines)
 
@@ -1128,7 +1174,7 @@ async def _background_process(
         if bg.alive:
             return f"PID {pid}: running\nCommand: {bg.command}\nBuffered lines: {len(bg.output)}"
         else:
-            return f"PID {pid}: exited (code {bg.proc.returncode})\nCommand: {bg.command}\nBuffered lines: {len(bg.output)}"
+            return f"PID {pid}: exited (code {_format_exit_code(bg.proc.returncode)})\nCommand: {bg.command}\nBuffered lines: {len(bg.output)}"
 
     if action == "output":
         if not bg.alive:
@@ -1144,8 +1190,8 @@ async def _background_process(
     exit_code = await bg.stop()
     text = bg.read_output(last_n=last_n_lines)
     if not text:
-        return f"PID {pid}: stopped (exit code {exit_code})\nNo output captured."
-    return f"PID {pid}: stopped (exit code {exit_code})\nFinal output:\n{_limited_bg_output(text)}"
+        return f"PID {pid}: stopped (exit code {_format_exit_code(exit_code)})\nNo output captured."
+    return f"PID {pid}: stopped (exit code {_format_exit_code(exit_code)})\nFinal output:\n{_limited_bg_output(text)}"
 
 
 background_process = Tool(

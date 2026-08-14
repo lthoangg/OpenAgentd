@@ -485,6 +485,33 @@ async def test_foreground_spill_file_has_disk_budget(sandbox_workspace):
 
 
 @pytest.mark.asyncio
+async def test_signal_death_reported_as_shell_exit_code(sandbox_workspace):
+    """A signal-killed command reports 128+N, the way the user's shell does.
+
+    `asyncio` returns -9 for SIGKILL; surfacing that raw teaches the model a
+    convention no shell uses and hides the familiar 137 (OOM-killed) signal.
+    """
+    result = await _shell("kill -9 $$")
+
+    assert "137" in result
+    assert "SIGKILL" in result
+    assert "-9" not in result
+
+
+@pytest.mark.asyncio
+async def test_timeout_gives_the_command_a_chance_to_clean_up(sandbox_workspace):
+    """Foreground timeout sends SIGTERM before SIGKILL.
+
+    Killing outright strands temp files and child processes and discards the
+    command's own teardown output; `_BgProcess.stop` already escalates.
+    """
+    result = await _shell("trap 'echo CLEANED_UP' TERM; sleep 5", timeout_seconds=0.5)
+
+    assert "[Timed out" in result
+    assert "CLEANED_UP" in result
+
+
+@pytest.mark.asyncio
 async def test_shell_timeout(sandbox_workspace):
     """Commands that exceed timeout produce a [Timed out] result."""
     # Call _shell directly to pass a sub-second float timeout (tool schema requires int).

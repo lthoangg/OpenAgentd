@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 import json
+import os
+import tempfile
 from pathlib import Path
 from typing import Literal
 
@@ -265,6 +267,30 @@ def _apply_chunks_with_meta(
     return next_content, hunks
 
 
+def _atomic_write(path: Path, data: bytes) -> None:
+    """Write *data* to *path* via a same-directory temp file and ``os.replace``.
+
+    A direct ``write_bytes`` that fails partway leaves a truncated file, which
+    for the only file-mutation tool in the toolset means a half-patched source
+    file. ``os.replace`` is atomic on POSIX and Windows, so a reader either
+    sees the old content or the new content, never a partial write.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(
+        dir=path.parent, prefix=f".{path.name}.", suffix=".tmp"
+    )
+    tmp_path = Path(tmp_name)
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(data)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(tmp_path, path)
+    except BaseException:
+        tmp_path.unlink(missing_ok=True)
+        raise
+
+
 async def _patch_file(patch_text: str) -> str:
     """Apply a parsed patch envelope to the workspace."""
     denied_paths = get_denied_paths()
@@ -326,13 +352,11 @@ async def _patch_file(patch_text: str) -> str:
             resolved.unlink()
             changed.append(resolved)
         elif patch.kind == "add":
-            resolved.parent.mkdir(parents=True, exist_ok=True)
-            resolved.write_bytes(data if data is not None else b"")
+            _atomic_write(resolved, data if data is not None else b"")
             changed.append(resolved)
         else:
             write_path = target or resolved
-            write_path.parent.mkdir(parents=True, exist_ok=True)
-            write_path.write_bytes(data if data is not None else b"")
+            _atomic_write(write_path, data if data is not None else b"")
             changed.append(write_path)
             if target is not None and resolved != write_path and resolved.exists():
                 resolved.unlink()

@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import asyncio
+from unittest.mock import patch
+
 import pytest
 
 from app.agent.errors import ToolExecutionError
@@ -373,3 +376,61 @@ async def test_patch_args_supports_parameter_aliases(sandbox_workspace):
     assert (sandbox_workspace / "alias.txt").read_text(
         encoding="utf-8"
     ) == "alias content\n"
+
+
+@pytest.mark.asyncio
+async def test_concurrent_patches_to_one_file_do_not_lose_updates(sandbox_workspace):
+    """Two patches touching the same file must both land.
+
+    The agent loop dispatches up to ``MAX_CONCURRENT_TOOLS`` tool calls in
+    parallel, so a read-modify-write with no lock can interleave: both calls
+    read the same original bytes and the second write clobbers the first.
+    """
+    target = sandbox_workspace / "shared.txt"
+    target.write_text("alpha\nbeta\n", encoding="utf-8")
+
+    await asyncio.gather(
+        patch_file.arun(
+            patch_text="""*** Begin Patch
+*** Update File: shared.txt
+@@
+-alpha
++ALPHA
+*** End Patch"""
+        ),
+        patch_file.arun(
+            patch_text="""*** Begin Patch
+*** Update File: shared.txt
+@@
+-beta
++BETA
+*** End Patch"""
+        ),
+    )
+
+    assert target.read_text(encoding="utf-8") == "ALPHA\nBETA\n"
+
+
+@pytest.mark.asyncio
+async def test_patch_write_is_atomic_on_failure(sandbox_workspace):
+    """A write that fails mid-flight must not leave a truncated file."""
+    target = sandbox_workspace / "atomic.txt"
+    original = "one\ntwo\nthree\n"
+    target.write_text(original, encoding="utf-8")
+
+    with patch(
+        "app.agent.tools.builtin.filesystem.patch.os.replace",
+        side_effect=OSError("disk full"),
+    ):
+        with pytest.raises(ToolExecutionError):
+            await patch_file.arun(
+                patch_text="""*** Begin Patch
+*** Update File: atomic.txt
+@@
+-two
++TWO
+*** End Patch"""
+            )
+
+    assert target.read_text(encoding="utf-8") == original
+    assert list(sandbox_workspace.glob("*.tmp*")) == []

@@ -833,8 +833,7 @@ Four orthogonal ways to add capability.
     a plain-text wall. MCP servers that include formatted descriptions in their tool
     schemas benefit automatically; plain-text descriptions render identically to before.
     The tool inventory is grouped by origin (built-in, then one group per MCP server)
-    and collapsed by default so it no longer pushes the model and MCP controls out of
-    view; the name/description filter appears past eight tools `[v1.125.0]`.
+    and open by default so available tools are immediately visible; the name/description filter appears past eight tools `[v1.125.0]`.
 - **Sandboxed UI artifacts** `[v1.36.0]` *(beta)* — tool-produced HTML UI
   resources render as sandboxed sibling chat artifacts. The first producer is
   MCP Apps: MCP tools that declare `_meta.ui.resourceUri` can render `ui://`

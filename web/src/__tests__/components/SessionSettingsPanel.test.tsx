@@ -119,4 +119,13 @@ describe('SessionSettingsPanel — keyboard entry', () => {
     expect(input.getAttribute('aria-expanded')).toBe('false')
     expect(screen.getByRole('listitem', { name: /github/i })).toBeTruthy()
   })
+
+  it('auto opens the tool list when panel loads', async () => {
+    renderPanel()
+
+    await screen.findByRole('combobox', { name: 'Search session model' })
+    const toolsButton = screen.getByRole('button', { name: /^tools/i })
+    expect(toolsButton.getAttribute('aria-expanded')).toBe('true')
+    expect(screen.getByText('read')).toBeTruthy()
+  })
 })

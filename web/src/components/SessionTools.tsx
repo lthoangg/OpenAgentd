@@ -1,11 +1,9 @@
 /**
  * SessionTools — what this session can actually do, grouped by origin.
  *
- * Collapsed by default. The inventory is reference material you consult
+ * Open by default in session settings. The inventory is reference material you consult
  * occasionally, while the model picker and the MCP switches above it are used
- * every session, so the tools must not push those below the fold. Opening it is
- * one click and the state is per-mount, which is the right default for a panel
- * you dismiss with Esc.
+ * every session. Users can toggle it closed if needed.
  *
  * Enable/disable for MCP servers deliberately lives in `SessionMcpServers`, not
  * here. This section only reads.
@@ -138,11 +136,13 @@ function ToolGroupSection({ server, tools }: ToolGroup) {
 export function SessionTools({
   tools,
   mcpServers,
+  defaultOpen = true,
 }: {
   tools: AgentInfo['tools']
   mcpServers: string[]
+  defaultOpen?: boolean
 }) {
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useState(defaultOpen)
   const [query, setQuery] = useState('')
   const showSearch = tools.length > TOOL_SEARCH_THRESHOLD
 

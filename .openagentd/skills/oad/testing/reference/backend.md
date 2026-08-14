@@ -160,17 +160,17 @@ def make_ctx(session_id: str = "s", agent_name: str = "bot") -> RunContext:
 def make_state() -> AgentState:
     return AgentState(messages=[], system_prompt="")
 
-def make_tool_call(name: str = "write", id: str = "tc_1") -> ToolCall:
+def make_tool_call(name: str = "patch", id: str = "tc_1") -> ToolCall:
     return ToolCall(id=id, function=FunctionCall(name=name, arguments="{}"))
 ```
 
 ### wrap_tool_call
 ```python
-async def test_hook_intercepts_write(tmp_path):
+async def test_hook_intercepts_patch(tmp_path):
     hook = MyHook()
-    handler = AsyncMock(return_value="Written 10 bytes")
-    result = await hook.wrap_tool_call(make_ctx(), make_state(), make_tool_call("write"), handler)
-    assert "Written 10 bytes" in result
+    handler = AsyncMock(return_value="Patch applied successfully")
+    result = await hook.wrap_tool_call(make_ctx(), make_state(), make_tool_call("patch"), handler)
+    assert "Patch applied successfully" in result
 ```
 
 ### wrap_model_call — use ModelRequest.override

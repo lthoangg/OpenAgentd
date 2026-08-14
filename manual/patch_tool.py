@@ -64,7 +64,7 @@ def main() -> None:
     message = (
         "Use the patch tool exactly once to create a file named "
         f"{filename} with exactly this content: patch smoke ok. "
-        "Do not use write or edit. After the patch tool succeeds, reply with only: PATCH_SMOKE_DONE"
+        "After the patch tool succeeds, reply with only: PATCH_SMOKE_DONE"
     )
     session_id = _post_turn(base, message)
     print(f"session: {session_id}")

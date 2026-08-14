@@ -84,7 +84,7 @@ Rules:
 2. Choose the root (see "Discovery order" above): project-local
    `.openagentd/skills/{name}/SKILL.md` (relative to the workspace cwd) for a
    "project / repo" skill, or `{SKILLS_DIR}/{name}/SKILL.md` for a global one.
-3. Write the `SKILL.md` following the format above. The `write` tool creates
+3. Write the `SKILL.md` following the format above. The `patch` tool creates
    parent directories, so the skill directory does not need to exist first.
 4. Add supporting files in the same directory only if they are useful.
 5. Read it back to verify the file landed correctly.

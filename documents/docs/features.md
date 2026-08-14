@@ -280,8 +280,8 @@ run from the terminal.
   copy and timing metadata.
 - **`@file` / `@folder` mentions in composer** `[v1.17.0]` — files render blue,
   folders render orange. Mentioned files inject inline hidden context on the
-  turn without becoming uploads; mentioned folders inject a lightweight `ls`-
-  style listing without becoming uploads. In coding sessions,
+  turn without becoming uploads; mentioned folders inject a lightweight directory
+  listing without becoming uploads. In coding sessions,
   clicked file mentions in sent user messages open that file in the workspace
   files sidebar. Caps at 20 mentions / 20 MB / ~32k chars per turn. Persists
   on queued messages.
@@ -513,6 +513,17 @@ team against it.
   chat history. Different from editor undo: this is tied to chat turns.
 - **`/init` scaffolds AGENTS.md** `[v1.9.0]` — writes AGENTS.md files at the
   repo root and meaningful subfolders from the workspace.
+- **Consolidated filesystem toolset** `[v1.134.0]` — the agent now sees two
+  filesystem tools instead of six. `read` handles files *and* directory
+  listings, and `patch` is the single way to create, edit, delete, or move a
+  file. `write`, `edit`, `ls`, and `rm` are removed, as is `date` (the current
+  date is already injected into the system prompt every turn). Fewer
+  overlapping schemas means fewer tokens per request and no ambiguity about
+  which tool to reach for when changing a file. Two consequences worth
+  knowing: recursive directory deletion is now a `shell` command, and patches
+  are matched strictly — context lines must be copied exactly from a `read`.
+  Agent `.md` files that still list a removed tool are cleaned up
+  automatically the first time they load.
 - **Inline patch tool for multi-file edits** `[v1.5.0]` — structured patches
   with multiple hunks, real line numbers, collapsible previews. The `patch`
   tool accepts a `*** Begin Patch` / `*** End Patch` envelope with
@@ -677,7 +688,7 @@ MCP.
 
 | Category | Tools |
 |---|---|
-| Filesystem | `read`, `write`, `edit`, `patch`, `ls`, `glob`, `grep`, `rm` |
+| Filesystem | `read` (files + directory listings), `patch` (create/edit/delete/move), `glob`, `grep` |
 | Shell | `shell`, `bg` (background processes) |
 | Web | `web_search`, `web_fetch` |
 | Generation | `generate_image`, `generate_video` |
@@ -685,7 +696,7 @@ MCP.
 | Tasks | `todo_manage` |
 | Team coordination | `team_message`, `team_manage` |
 | Ask the user | `ask_user` (coding-mode lead only) `[v1.131.0]` |
-| Utility | `date`, `skill` |
+| Utility | `skill` |
 
 - **`ask_user` — durable suspend and resume** `[v1.131.0]` — in
   **coding mode**, the lead can stop mid-turn and ask you 1–4 questions rather
@@ -705,8 +716,8 @@ MCP.
   throughout and are never interrupted by an answer. One question per turn;
   scheduled sessions never get the tool, because a cron job has nobody to ask.
 
-- **Real-time LSP diagnostics injection** `[v1.89.0, v1.105.0]` — in **coding mode**, after a
-  `write`, `edit`, or `patch` tool modifies one or more files, OpenAgentd runs the
+- **Real-time LSP diagnostics injection** `[v1.89.0, v1.105.0, v1.134.0]` — in **coding mode**, after the
+  `patch` tool modifies one or more files, OpenAgentd runs the
   matching language server(s) over the changed files and injects the resulting
   errors/warnings straight into the tool result as a compact `[LSP Diagnostics]`
   block, so the agent sees and fixes problems on the very next turn. Servers run
@@ -769,7 +780,7 @@ MCP.
   silently disappearing. Empty results stay honest: `find_implementations` reports
   a cursor position problem (whitespace, comment, keyword, out-of-bounds) as such
   rather than claiming the symbol is not overridable, and a missing path says paths
-  are workspace-relative and points at glob/ls.
+  are workspace-relative and points at glob.
   Fixed a position-accuracy bug: the LSP client didn't advertise
   `hierarchicalDocumentSymbolSupport`, so servers (pyright, ty) fell back to
   flat `SymbolInformation` and `document_symbol`/`workspace_symbol` reported

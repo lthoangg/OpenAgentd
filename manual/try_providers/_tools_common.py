@@ -58,29 +58,25 @@ def get_real_tool_defs() -> list[dict]:
     produced $ref in their schemas — useful for regression testing.
     """
     from app.agent.tools import (
-        get_date,
         glob_files,
         grep_files,
-        list_directory,
         load_skill,
+        patch_file,
         read_file,
         shell_tool,
         web_fetch,
         web_search,
-        write_file,
     )
 
     tools = [
-        get_date,
         read_file,
-        list_directory,
         load_skill,
         web_search,
         web_fetch,
         glob_files,
         grep_files,
         shell_tool,
-        write_file,
+        patch_file,
     ]
 
     return [t.definition for t in tools]

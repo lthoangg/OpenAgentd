@@ -77,6 +77,22 @@ describe("ToolCall - LSP operation display", () => {
     expect(getHeader("LSP: Hover at app/services/lsp/manager.py:668:9")).toBeTruthy()
   })
 
+  it("shows the implementations path and position", () => {
+    render(
+      <ToolCall
+        name="lsp"
+        args={JSON.stringify({
+          operation: "find_implementations",
+          path: "app/services/lsp/manager.py",
+          line: 668,
+          character: 9,
+        })}
+      />,
+    )
+
+    expect(getHeader("LSP: Implementations at app/services/lsp/manager.py:668:9")).toBeTruthy()
+  })
+
   it("shows the document symbol kind filter", () => {
     render(
       <ToolCall

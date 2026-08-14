@@ -231,6 +231,14 @@ function getToolDisplayInternal(name: string, parsed: Record<string, unknown>): 
         formattedArgs: path ? `file: ${path}\nposition: ${line}:${character}` : null,
       }
     }
+    if (operation === 'find_implementations') {
+      const label = location ? `Implementations at ${location}` : 'Implementations'
+      return {
+        header: <Arg>{label}</Arg>,
+        headerTitle: label,
+        formattedArgs: path ? `file: ${path}\nposition: ${line}:${character}` : null,
+      }
+    }
     if (operation === 'hover') {
       const label = location ? `Hover at ${location}` : 'Hover'
       return {

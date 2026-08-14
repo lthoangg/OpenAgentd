@@ -740,25 +740,43 @@ interface LspLocation {
   name: string | null
   path: string
   position: string
+  /** Source line at the location, when the backend included one. */
+  code: string | null
 }
 
-function parseLspLocations(result: string): LspLocation[] {
-  return result
-    .split('\n')
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .flatMap((line) => {
-      const [namePart, locationPart = namePart] = line.includes(' | ')
-        ? line.split(' | ', 2)
-        : [line]
-      const match = locationPart.match(/^(.*):(\d+:\d+)$/)
-      if (!match) return []
-      return [{
-        name: line.includes(' | ') ? namePart : null,
-        path: match[1],
-        position: match[2],
-      }]
+/**
+ * Parse the backend's line format:
+ * ``[symbol (kind) [tag] | ]path:line:character[ | source line]``, plus the
+ * trailing ``… truncated: …`` note emitted when results exceed the cap.
+ */
+function parseLspLocations(result: string): { locations: LspLocation[]; note: string | null } {
+  const locations: LspLocation[] = []
+  let note: string | null = null
+
+  for (const raw of result.split('\n')) {
+    const line = raw.trim()
+    if (!line) continue
+    if (line.startsWith('…')) {
+      note = line
+      continue
+    }
+    const parts = line.split(' | ')
+    // The location is the first segment ending in :line:character — anything
+    // before it is the symbol label, anything after is the source excerpt
+    // (rejoined, since code can legitimately contain " | ").
+    const index = parts.findIndex((part) => /:\d+:\d+$/.test(part))
+    if (index === -1) continue
+    const match = parts[index].match(/^(.*):(\d+:\d+)$/)
+    if (!match) continue
+    locations.push({
+      name: index > 0 ? parts.slice(0, index).join(' | ') : null,
+      path: match[1],
+      position: match[2],
+      code: index < parts.length - 1 ? parts.slice(index + 1).join(' | ') : null,
     })
+  }
+
+  return { locations, note }
 }
 
 function lspCountLabel(operation: string | undefined, count: number): string {
@@ -767,12 +785,14 @@ function lspCountLabel(operation: string | undefined, count: number): string {
   if (operation === 'find_references') return `${count} ${singular ? 'reference' : 'references'}`
   if (operation === 'document_symbol') return `${count} document ${singular ? 'symbol' : 'symbols'}`
   if (operation === 'workspace_symbol') return `${count} workspace ${singular ? 'symbol' : 'symbols'}`
+  if (operation === 'find_implementations') return `${count} ${singular ? 'implementation' : 'implementations'}`
   return `${count} ${singular ? 'location' : 'locations'}`
 }
 
 function lspEmptyLabel(operation: string | undefined): string {
   if (operation === 'go_to_definition') return 'No definition found.'
   if (operation === 'find_references') return 'No references found.'
+  if (operation === 'find_implementations') return 'No implementations found.'
   return 'No symbols found.'
 }
 
@@ -791,7 +811,7 @@ function LspNavigationResult({
     )
   }
 
-  const locations = parseLspLocations(result)
+  const { locations, note } = parseLspLocations(result)
   if (locations.length === 0) return <GenericResult result={result} />
 
   return (
@@ -816,9 +836,19 @@ function LspNavigationResult({
             <span className="shrink-0 text-(--color-accent)">
               {location.position}
             </span>
+            {location.code && (
+              <span className="col-span-2 min-w-0 truncate text-[10px] text-(--color-text-muted)">
+                {location.code}
+              </span>
+            )}
           </li>
         ))}
       </ul>
+      {note && (
+        <p className="mt-1 font-mono text-[10px] text-(--color-text-muted) italic">
+          {note}
+        </p>
+      )}
     </div>
   )
 }

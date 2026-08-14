@@ -734,13 +734,37 @@ MCP.
   returns type/signature/docstring info for a position (flattening `MarkupContent` and
   `MarkedString` shapes across servers); an optional `kind` filter narrows
   `document_symbol`/`workspace_symbol` results to one symbol kind (e.g. `function`,
-  `class`); files with no mapped language server (anything outside
+  `class`, and accepting several at once, e.g. `function, method`); files with no
+  mapped language server (anything outside
   `.py .ts .tsx .js .jsx .go .c .cpp .h .hpp`) get an explicit "no language server
-  support" message instead of a misleading empty result. The chat UI's tool-call
-  header/args display covers `hover` (position header, e.g. "Hover at path:line:col")
-  and the `kind` filter (surfaced in both the `document_symbol`/`workspace_symbol`
-  header and the expanded args), matching the existing per-operation formatting for
+  support" message instead of a misleading empty result. A `find_implementations`
+  operation resolves interfaces, protocols, abstract classes, and overridable
+  members, and `find_references` tags each hit `[definition]`/`[read]`/`[write]`
+  when the server reports it. Empty results explain themselves instead of a bare
+  "No results.": a cursor on whitespace, a comment, a keyword, or past the end of
+  the file says so, and a position that is already the declaration reports
+  "already at its definition site". Symbol resolution follows the project's own
+  setup — `tsconfig.json` `paths`/`baseUrl` are forwarded to the TypeScript
+  server and a project virtualenv (`.venv`/`venv`/`env`) is detected for Python,
+  so aliased and site-packages imports resolve; `go_to_definition` falls back to
+  `textDocument/declaration` and `textDocument/typeDefinition` when the primary
+  request comes back empty. The chat UI's tool-call
+  header/args display covers `hover` (position header, e.g. "Hover at path:line:col"),
+  `find_implementations` ("Implementations at path:line:col"), and the `kind` filter
+  (surfaced in both the `document_symbol`/`workspace_symbol` header and the expanded
+  args), matching the existing per-operation formatting for
   `go_to_definition`/`find_references`/`document_symbol`/`workspace_symbol`.
+  Position results (`go_to_definition`, `find_references`, `find_implementations`)
+  carry the matching source line (trimmed, capped at 120 chars) next to each
+  location, so an import, call, or annotation can be told apart without a
+  follow-up read — the chat UI renders it as a muted second line under the path.
+  `workspace_symbol` hits are tagged `[exact]`/`[prefix]` against the query and
+  ranked by match quality ahead of fuzzy matches; results beyond the 50-item cap
+  end with an explicit `… truncated: showing 50 of N results` note instead of
+  silently disappearing. Empty results stay honest: `find_implementations` reports
+  a cursor position problem (whitespace, comment, keyword, out-of-bounds) as such
+  rather than claiming the symbol is not overridable, and a missing path says paths
+  are workspace-relative and points at glob/ls.
   Fixed a position-accuracy bug: the LSP client didn't advertise
   `hierarchicalDocumentSymbolSupport`, so servers (pyright, ty) fell back to
   flat `SymbolInformation` and `document_symbol`/`workspace_symbol` reported

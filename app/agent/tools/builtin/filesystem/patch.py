@@ -19,8 +19,10 @@ from app.agent.tools.registry import Tool
 PatchKind = Literal["add", "update", "delete"]
 
 _DESCRIPTION = (
-    "Apply a file patch envelope with add, update, or delete sections; an update "
-    "may also move the file."
+    "The only tool that creates, edits, deletes, or moves files. One envelope "
+    "may change several files, and nothing is written unless every section "
+    "applies cleanly. To replace a file wholesale, delete and re-add it in the "
+    "same envelope. Directories cannot be deleted — use shell for that."
 )
 
 _PATCH_TEXT_DESCRIPTION = """\
@@ -37,6 +39,11 @@ Update hunks start with @@ and use +/- prefixes (space = context):
   -old line
   +new line
    context line
+
+Context and removed lines must match the file exactly, whole lines only —
+copy them from a read rather than retyping. A hunk that matches nothing, or
+matches in more than one place, fails the whole envelope; add surrounding
+context lines to make it unique.
 
 Example:
 *** Begin Patch

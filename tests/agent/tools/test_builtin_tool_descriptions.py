@@ -1,5 +1,7 @@
 """Contract tests for high-impact LLM-facing builtin tool descriptions."""
 
+from app.agent.tools.builtin.filesystem.grep import grep_files
+from app.agent.tools.builtin.filesystem.patch import patch_file
 from app.agent.tools.builtin.filesystem.read import read_file
 from app.agent.tools.builtin.lsp import lsp_navigation
 from app.agent.tools.builtin.schedule import schedule_task
@@ -15,6 +17,43 @@ def test_read_description_only_claims_supported_document_formats():
     assert "PDF/DOCX" in read_file.description
     assert "PPTX" not in read_file.description
     assert "XLSX" not in read_file.description
+
+
+def test_read_description_advertises_directory_listing():
+    """`ls` was folded into `read`; the model only learns that from here."""
+    assert "directory" in read_file.description.lower()
+    path = read_file.definition["function"]["parameters"]["properties"]["path"]
+    assert "directory" in path["description"].lower()
+
+
+def test_patch_description_states_it_is_the_only_mutation_tool():
+    """`edit`, `write`, and `rm` are gone. If this description does not say so,
+    the model has no way to know patch is how files are created and deleted."""
+    description = " ".join(patch_file.description.split())
+    assert "only tool" in description
+    assert "creates" in description and "deletes" in description
+    # All-or-nothing preflight is the non-obvious safety property.
+    assert "unless every section applies" in description
+    # The whole-file replace idiom is not derivable from the grammar.
+    assert "same envelope" in description
+    # Recursive directory removal has no patch equivalent.
+    assert "shell" in description
+
+
+def test_patch_text_description_keeps_grammar_and_replace_idiom():
+    patch_text = patch_file.definition["function"]["parameters"]["properties"][
+        "patch_text"
+    ]["description"]
+    assert "*** Begin Patch" in patch_text
+    assert "*** Add File:" in patch_text
+    assert "*** Move to:" in patch_text
+    # Context matching is exact — the model must not expect fuzzy fallback.
+    assert "exactly" in patch_text
+
+
+def test_grep_description_points_at_the_right_neighbour_tool():
+    assert "glob" in grep_files.description
+    assert "lsp" in grep_files.description
 
 
 def test_read_description_says_html_comes_back_verbatim():

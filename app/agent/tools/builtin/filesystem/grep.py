@@ -23,7 +23,11 @@ _MAX_PATTERN_LEN = 500
 # Me timeout for the entire scan in seconds
 _SCAN_TIMEOUT_S = 10
 
-_DESCRIPTION = "Search file contents by regex. Returns 'file:line: content'."
+_DESCRIPTION = (
+    "Search file contents by regex. Returns 'file:line: content'. Use glob to "
+    "find files by name instead, or lsp to follow a symbol's definitions and "
+    "references."
+)
 
 
 class GrepArgs(BaseModel):

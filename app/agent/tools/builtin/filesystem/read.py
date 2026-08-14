@@ -32,20 +32,34 @@ _MAX_READ_BYTES = 5_242_880  # 5 MB read cap
 _MAX_CONTEXT_CHARS = 20_000  # keep read results within typical LLM context budgets
 
 _DESCRIPTION = (
-    "Read text verbatim (including HTML), inspect PNG/JPG/GIF/WebP images, "
-    "or extract text from PDF/DOCX documents."
+    "Read a file, or list a directory's immediate children. Text comes back "
+    "verbatim (including HTML), PNG/JPG/GIF/WebP images as vision input, and "
+    "PDF/DOCX as extracted text. Call this in parallel when you already know "
+    "several files you need."
 )
 
 
 class ReadArgs(BaseModel):
     """Arguments for the read tool."""
 
-    path: str = Field(description="Workspace-relative or permitted absolute file path.")
-    offset: int = Field(default=1, ge=1, description="1-indexed starting line.")
+    path: str = Field(
+        description=(
+            "Workspace-relative or permitted absolute path — a file to read, "
+            "or a directory to list."
+        )
+    )
+    offset: int = Field(
+        default=1,
+        ge=1,
+        description="1-indexed starting line. Ignored when path is a directory.",
+    )
     limit: int | None = Field(
         default=None,
         ge=1,
-        description="Maximum lines to return; omit for all remaining lines.",
+        description=(
+            "Maximum lines to return; omit for all remaining lines. Ignored "
+            "when path is a directory."
+        ),
     )
 
 

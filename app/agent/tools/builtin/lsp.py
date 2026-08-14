@@ -406,7 +406,7 @@ async def _lsp_navigation(
     if not source.is_file():
         raise FileNotFoundError(
             f"File not found: {path}. Paths are workspace-relative — "
-            "use glob or ls to locate the file first."
+            "use glob to locate the file first."
         )
 
     lang_id = EXTENSION_TO_LANG.get(source.suffix.lower())

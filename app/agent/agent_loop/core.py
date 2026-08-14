@@ -184,7 +184,7 @@ class Agent(Generic[TContext]):
             llm_provider=GoogleGenAIProvider(api_key="...", model="gemini-3.1-flash"),
             name="assistant",
             system_prompt="You are a helpful assistant.",
-            tools=[web_search, get_date],
+            tools=[web_search, read_file],
             hooks=[DatabaseHook(session_factory)],
             context=UserContext(user_group="premium"),
         )

@@ -19,12 +19,9 @@ from app.core.config import settings
 from app.agent.tools.builtin.filesystem import (
     glob_files,
     grep_files,
-    list_directory,
     read_file,
-    write_file,
 )
 from app.agent.tools.builtin.filesystem.grep import _grep_files
-from app.agent.tools.builtin.filesystem.rm import _remove_path
 from app.agent.tools.builtin.filesystem.glob import _glob_files as _search_files
 
 
@@ -67,26 +64,16 @@ def workspace(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# write_file / read_file — integration
+# read_file — integration
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_write_and_read_file(sandbox_workspace):
-    result = await write_file.arun(path="test.txt", content="hello world")
-    assert "Written" in result
-    assert f"Resolved path: {sandbox_workspace / 'test.txt'}" in result
-    assert (sandbox_workspace / "test.txt").read_text() == "hello world"
+async def test_read_file(sandbox_workspace):
+    (sandbox_workspace / "test.txt").write_text("hello world")
 
     read_content = await read_file.arun(path="test.txt")
     assert read_content == "hello world"
-
-
-@pytest.mark.asyncio
-async def test_write_file_no_overwrite(sandbox_workspace):
-    (sandbox_workspace / "existing.txt").write_text("old")
-    with pytest.raises(ToolExecutionError):
-        await write_file.arun(path="existing.txt", content="new", overwrite=False)
 
 
 @pytest.mark.asyncio
@@ -202,34 +189,10 @@ async def test_read_file_offset_matches_grep_line_numbers(sandbox_workspace):
     assert result == "[3-3/4]\ngamma\n"
 
 
-# ---------------------------------------------------------------------------
-# list_directory — integration
-# ---------------------------------------------------------------------------
-
-
 @pytest.mark.asyncio
-async def test_list_directory(sandbox_workspace):
-    (sandbox_workspace / "dir1").mkdir()
-    (sandbox_workspace / "file1.txt").write_text("f1")
-    (sandbox_workspace / "file2.txt").write_text("f2")
-
-    result = await list_directory.arun(path=".")
-    assert "[d] dir1/" in result
-    assert "[f] file1.txt  (2 bytes)" in result
-    assert "[f] file2.txt  (2 bytes)" in result
-
-
-@pytest.mark.asyncio
-async def test_list_directory_not_found(sandbox_workspace):
+async def test_read_directory_not_found(sandbox_workspace):
     with pytest.raises(ToolExecutionError):
-        await list_directory.arun(path="nonexistent_dir")
-
-
-@pytest.mark.asyncio
-async def test_list_directory_on_file(sandbox_workspace):
-    (sandbox_workspace / "file.txt").write_text("x")
-    with pytest.raises(ToolExecutionError):
-        await list_directory.arun(path="file.txt")
+        await read_file.arun(path="nonexistent_dir")
 
 
 # ---------------------------------------------------------------------------
@@ -386,9 +349,9 @@ async def test_sandbox_validation(sandbox_workspace, tmp_path):
     with pytest.raises(ToolExecutionError):
         await read_file.arun(path="missing.txt")
 
-    # Writing into a denied root is rejected by the sandbox itself.
+    # Reading inside a denied root is rejected by the sandbox itself.
     with pytest.raises(ToolExecutionError):
-        await write_file.arun(path=str(denied / "evil.txt"), content="evil")
+        await read_file.arun(path=str(denied / "secret.txt"))
 
 
 # ---------------------------------------------------------------------------
@@ -751,89 +714,3 @@ class TestGlobFiles:
         assert "cache.txt" not in result
         assert "ruff" not in result
         assert ".pytest_cache" not in result
-
-
-# ---------------------------------------------------------------------------
-# _remove_path: internal unit tests
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_remove_path_file(sandbox):
-    _, tmp_path = sandbox
-    f = tmp_path / "del.txt"
-    f.write_text("bye")
-    result = await _remove_path("del.txt")
-    assert '@@ openagentd-diff-meta {"path":"del.txt","deleted_lines":1}' in result
-    assert "Removed file" in result
-    assert f"Resolved path: {f}" in result
-    assert not f.exists()
-
-
-@pytest.mark.asyncio
-async def test_remove_path_binary_file_still_deletes(sandbox):
-    _, tmp_path = sandbox
-    f = tmp_path / "binary.bin"
-    f.write_bytes(b"\xff\xfe\n\x00")
-    result = await _remove_path("binary.bin")
-    assert '"deleted_lines":2' in result
-    assert not f.exists()
-
-
-@pytest.mark.asyncio
-async def test_remove_path_symlink_to_workspace_target_allowed(sandbox):
-    """Symlinks pointing to workspace-internal targets are now allowed.
-
-    `validate_path` resolves through the symlink, so removing it operates on
-    the resolved target.  Both the link and the target are gone afterwards
-    (the symlink becomes dangling, and `unlink()` is called on the target).
-    """
-    _, tmp_path = sandbox
-    target = tmp_path / "target.txt"
-    target.write_text("data")
-    link = tmp_path / "link.txt"
-    link.symlink_to(target)
-    result = await _remove_path("link.txt")
-    assert "Removed file" in result
-    # The resolved target was removed; the dangling link still exists as an
-    # entry but its target is gone.
-    assert not target.exists()
-
-
-@pytest.mark.asyncio
-async def test_remove_path_not_found_raises(sandbox):
-    with pytest.raises(FileNotFoundError, match="Path not found"):
-        await _remove_path("missing.txt")
-
-
-@pytest.mark.asyncio
-async def test_remove_path_empty_dir(sandbox):
-    _, tmp_path = sandbox
-    d = tmp_path / "emptydir"
-    d.mkdir()
-    result = await _remove_path("emptydir")
-    assert "Removed directory" in result
-    assert not d.exists()
-
-
-@pytest.mark.asyncio
-async def test_remove_path_nonempty_dir_no_recursive_raises(sandbox):
-    _, tmp_path = sandbox
-    d = tmp_path / "filled"
-    d.mkdir()
-    (d / "file.txt").write_text("x")
-    with pytest.raises(OSError, match="recursive=true"):
-        await _remove_path("filled", recursive=False)
-
-
-@pytest.mark.asyncio
-async def test_remove_path_recursive(sandbox):
-    _, tmp_path = sandbox
-    d = tmp_path / "tree"
-    d.mkdir()
-    (d / "a.txt").write_text("a")
-    (d / "sub").mkdir()
-    (d / "sub" / "b.txt").write_text("b")
-    result = await _remove_path("tree", recursive=True)
-    assert "Removed directory" in result
-    assert not d.exists()

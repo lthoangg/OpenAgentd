@@ -172,11 +172,10 @@ def test_default_tool_registry_keys():
     expected = {
         "web_search",
         "web_fetch",
-        "date",
         "read",
-        "write",
-        "ls",
+        "patch",
         "glob",
+        "grep",
         "shell",
         "skill",
         "todo_manage",
@@ -781,7 +780,7 @@ def test_coding_explorer_builtin_member_profile_checks_codebase(tmp_path):
     assert coding_agent.system_prompt == profile["prompt"]
     assert "current codebase" in coding_agent.system_prompt
     assert "grep" in coding_agent._tools
-    assert "write" not in coding_agent._tools
+    assert "patch" not in coding_agent._tools
 
 
 def test_openagentd_coding_lead_uses_coding_builtin_prompt(tmp_path):

@@ -13,35 +13,25 @@ CODING_OPENAGENTD_DESCRIPTION = "Lead coding agent. Plans the work, coordinates 
 
 NORMAL_OPENAGENTD_TOOLS = [
     "bg",
-    "date",
-    "edit",
     "generate_image",
     "generate_video",
     "glob",
     "grep",
-    "ls",
     "patch",
     "read",
-    "rm",
     "shell",
     "web_fetch",
     "web_search",
-    "write",
 ]
 CODING_OPENAGENTD_TOOLS = [
     "bg",
-    "date",
-    "edit",
     "glob",
     "grep",
-    "ls",
     "patch",
     "read",
-    "rm",
     "shell",
     "web_fetch",
     "web_search",
-    "write",
 ]
 
 
@@ -64,13 +54,9 @@ BUILTIN_MEMBER_PROFILES: dict[str, dict[str, BuiltinMemberProfile]] = {
         "executor": {
             "description": "Makes it real. Turns plans into artifacts on disk — files, documents, builds, commands, deliverables.",
             "tools": [
-                "date",
                 "read",
-                "write",
-                "edit",
                 "patch",
                 "bg",
-                "ls",
                 "glob",
                 "grep",
                 "shell",
@@ -99,9 +85,7 @@ Name the artifacts, commands, and results.""",
             "tools": [
                 "web_search",
                 "web_fetch",
-                "date",
                 "read",
-                "ls",
                 "glob",
                 "grep",
                 "shell",
@@ -128,16 +112,11 @@ Structure findings with headings, bullets, or tables. End with a short synthesis
             "description": "Implements focused code changes with the smallest correct diff and runs the relevant verification commands.",
             "tools": [
                 "bg",
-                "date",
-                "edit",
                 "glob",
                 "grep",
-                "ls",
                 "patch",
                 "read",
-                "rm",
                 "shell",
-                "write",
             ],
             "mcp": [],
             "prompt": """You are **coder**.
@@ -158,10 +137,8 @@ Report changed files, checks and results, plus any remaining risk or unverified 
         "explorer": {
             "description": "Checks the current codebase. Maps existing implementation, patterns, and risks so coding work starts from facts.",
             "tools": [
-                "date",
                 "glob",
                 "grep",
-                "ls",
                 "read",
                 "shell",
             ],

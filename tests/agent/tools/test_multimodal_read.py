@@ -483,12 +483,13 @@ class TestReadFileErrors:
             await read_file.arun(path="missing.txt")
 
     @pytest.mark.asyncio
-    async def test_is_directory(self, workspace):
-        from app.agent.errors import ToolExecutionError
-
+    async def test_directory_is_listed(self, workspace):
         (workspace / "subdir").mkdir()
-        with pytest.raises(ToolExecutionError):
-            await read_file.arun(path="subdir")
+        (workspace / "subdir" / "child.txt").write_text("x")
+
+        result = await read_file.arun(path="subdir")
+
+        assert "[f] child.txt  (1 bytes)" in result
 
 
 # ─────────────────────────────────────────────────────────────────────────────

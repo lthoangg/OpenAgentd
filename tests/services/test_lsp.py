@@ -698,21 +698,30 @@ async def test_lsp_hook_intercepts_and_formats(tmp_path):
                 id="call_1",
                 type="function",
                 function=FunctionCall(
-                    name="write",
-                    arguments=json.dumps({"path": "test.py", "content": "import os\n"}),
+                    name="patch",
+                    arguments=json.dumps(
+                        {
+                            "patch_text": (
+                                "*** Begin Patch\n"
+                                "*** Add File: test.py\n"
+                                "+import os\n"
+                                "*** End Patch\n"
+                            )
+                        }
+                    ),
                 ),
             )
 
             # Mock handler that returns the original tool output
             async def handler(ctx, state, tool_call):
-                return "Written 10 bytes to test.py"
+                return "Patch applied successfully. Updated paths:\ntest.py"
 
             ctx = MagicMock()
             state = MagicMock()
 
             result = await hook.wrap_tool_call(ctx, state, tc, handler)
 
-            assert "Written 10 bytes to test.py" in result
+            assert "Patch applied successfully" in result
             assert "[LSP Diagnostics]" in result
             assert "- test.py:3:6: error: Syntax error (pyright)" in result
         finally:

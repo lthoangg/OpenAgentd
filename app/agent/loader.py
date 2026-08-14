@@ -26,7 +26,7 @@ Each file::
     description: Coordinates the team.
         model: googlegenai:gemini-3.1-pro-preview
         thinking_level: low
-    tools: [date, read, ls]
+    tools: [read, grep, patch]
     skills: [mcp-installer]
     ---
 
@@ -323,36 +323,26 @@ def _default_tool_registry() -> dict[str, Tool]:
     from app.agent.mcp import mcp_manager
     from app.agent.tools.builtin import (
         background_process,
-        edit_file,
-        get_date,
         glob_files,
         grep_files,
-        list_directory,
         load_skill,
         patch_file,
         read_file,
-        remove_path,
         schedule_task,
         shell_tool,
         todo_manage,
         web_fetch,
         web_search,
-        write_file,
     )
     from app.agent.tools.multimodalities import generate_image, generate_video
 
     registry: dict[str, Tool] = {
         "web_search": web_search,
         "web_fetch": web_fetch,
-        "date": get_date,
         "read": read_file,
-        "write": write_file,
-        "edit": edit_file,
-        "ls": list_directory,
         "grep": grep_files,
         "glob": glob_files,
         "patch": patch_file,
-        "rm": remove_path,
         "shell": shell_tool,
         "bg": background_process,
         "skill": load_skill,

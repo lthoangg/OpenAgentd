@@ -78,7 +78,7 @@ def test_refresh_replaces_agent_in_place(
     md = _settings_dirs / "agents" / "worker.md"
     _write_agent(
         md,
-        {"name": "worker", "model": "openai:v2", "tools": ["date"]},
+        {"name": "worker", "model": "openai:v2", "tools": ["grep"]},
         body="Updated prompt.",
     )
     _bump_mtime(md)
@@ -88,7 +88,7 @@ def test_refresh_replaces_agent_in_place(
 
     assert member.agent is not original
     assert member.agent.model_id == "openai:v2"
-    assert "date" in member.agent._tools
+    assert "grep" in member.agent._tools
     assert "Updated prompt." in member.agent.system_prompt
     assert member._config_dirty is False
     assert member.session_id == original_session

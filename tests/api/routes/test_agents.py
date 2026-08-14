@@ -161,10 +161,8 @@ async def test_list_materialized_coding_explorer_uses_builtin_tools(
     rows = {row["name"]: row for row in res.json()["agents"]}
     explorer = rows["coding/explorer"]
     assert explorer["description"].startswith("Checks the current codebase")
-    assert set(["date", "glob", "grep", "ls", "read", "shell", "skill"]).issubset(
-        explorer["tools"]
-    )
-    assert "write" not in explorer["tools"]
+    assert set(["glob", "grep", "read", "shell", "skill"]).issubset(explorer["tools"])
+    assert "patch" not in explorer["tools"]
 
 
 @pytest.mark.asyncio
@@ -250,7 +248,7 @@ async def test_registry_returns_catalog(
     assert "tools" in body and "skills" in body and "models" in body
     tool_names = {t["name"] for t in body["tools"]}
     # A few builtins we know must exist.
-    assert {"read", "write", "shell", "date"}.issubset(tool_names)
+    assert {"read", "patch", "shell", "grep"}.issubset(tool_names)
     assert {"skill", "todo_manage", "schedule_task", "note"}.isdisjoint(tool_names)
     assert isinstance(body["providers"], list) and body["providers"]
 

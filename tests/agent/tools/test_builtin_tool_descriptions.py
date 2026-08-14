@@ -1,7 +1,6 @@
 """Contract tests for high-impact LLM-facing builtin tool descriptions."""
 
 from app.agent.tools.builtin.filesystem.read import read_file
-from app.agent.tools.builtin.date import get_date
 from app.agent.tools.builtin.lsp import lsp_navigation
 from app.agent.tools.builtin.schedule import schedule_task
 from app.agent.tools.builtin.shell import background_process, shell_tool
@@ -109,7 +108,6 @@ def test_multimodal_descriptions_keep_output_and_cross_field_constraints():
 
 
 def test_simple_tools_do_not_repeat_examples_or_unstable_result_shapes():
-    assert get_date.description == "Get the current local date, time, and timezone."
     assert web_search.description == "Search the web."
 
 

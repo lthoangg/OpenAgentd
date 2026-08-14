@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 
 from app.agent.agent_loop import Agent
 from app.agent.providers.base import LLMProviderBase
-from app.agent.tools.builtin.date import get_date
+from app.agent.tools.builtin.filesystem.read import read_file
 from app.agent.mode.team.member import TeamLead, TeamMember
 from app.agent.mode.team.team import AgentTeam
 from app.api.routes.team._helpers import _message_response
@@ -697,16 +697,16 @@ class TestTeamAgentsRoute:
                 enabled=True,
                 state="ready",
             ),
-            tools=[get_date],
+            tools=[read_file],
         )
-        runner.status.tool_names = [get_date.name]
+        runner.status.tool_names = [read_file.name]
         monkeypatch.setattr(mcp_manager, "_runners", {"filesystem": runner})
 
         client = TestClient(app_with_team)
         data = client.get("/api/team/agents").json()
         lead_entry = next(a for a in data["agents"] if a["name"] == "lead")
         tool_names = {tool["name"] for tool in lead_entry["tools"]}
-        assert get_date.name in tool_names
+        assert read_file.name in tool_names
 
     def test_team_agents_lists_the_tools_injected_at_run_time(
         self, app_with_team, test_team

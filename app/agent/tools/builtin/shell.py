@@ -133,7 +133,10 @@ class BgArgs(BaseModel):
         default=None,
         ge=1,
         le=200,
-        description="Output lines to return; omit for all retained lines.",
+        description=(
+            "Trailing output lines to return for 'output' and 'stop'; "
+            "omit for all retained lines."
+        ),
     )
 
     @model_validator(mode="after")

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass, field
 import json
 import os
@@ -337,8 +338,11 @@ def _atomic_write(path: Path, data: bytes) -> None:
         raise
 
 
-async def _patch_file(patch_text: str) -> str:
-    """Apply a parsed patch envelope to the workspace."""
+def _apply_patch(patch_text: str) -> str:
+    """Apply a parsed patch envelope to the workspace. Synchronous.
+
+    Read-modify-write with no locking of its own — the caller serialises it.
+    """
     denied_paths = get_denied_paths()
     patches = _parse_patch(patch_text)
     planned: list[
@@ -422,6 +426,24 @@ async def _patch_file(patch_text: str) -> str:
         f"@@ openagentd-diff-meta {diff_meta}\n"
         f"Patch applied successfully. Updated paths:\n{summary}"
     )
+
+
+# Applying a patch reads a file, matches context, and writes it back. That was
+# safe to run inline only because it contained no `await`: the event loop could
+# not interleave two of them. Running it in a worker thread removes that
+# accidental guarantee, so serialise explicitly. Patches are milliseconds long,
+# and this preserves exactly the ordering callers already relied on.
+_patch_lock = asyncio.Lock()
+
+
+async def _patch_file(patch_text: str) -> str:
+    """Apply a patch envelope without stalling the shared event loop.
+
+    One daemon serves every session, so the read/match/write — 28 ms on a
+    2.3 MB file — must not run on the loop thread.
+    """
+    async with _patch_lock:
+        return await asyncio.to_thread(_apply_patch, patch_text)
 
 
 patch_file = Tool(

@@ -13,6 +13,7 @@ Supports multimodal file types:
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from typing import Any, Annotated
 
@@ -114,47 +115,8 @@ def _cap_text_for_context(text: str, rel: object) -> str:
     )
 
 
-async def _read_file(
-    path: str,
-    offset: int = 1,
-    limit: int | None = None,
-    _state: Annotated[Any, InjectedArg()] = None,
-) -> str | ToolResult:
-    """Read a file, dispatching by kind (text, image, document).
-
-    For text files, prepends "[X-Y/N]" header when offset/limit active. Max 5 MB.
-    For images, returns base64-encoded image data for visual analysis.
-    For documents (PDF, DOCX), extracts text content.
-    """
-    denied_paths = get_denied_paths()
-    resolved = denied_paths.validate_path(path)
-    rel = denied_paths.display_path(resolved)
-    if not resolved.exists():
-        raise FileNotFoundError(f"File not found: {rel}")
-
-    # Directories list their children — `classify_file` keys off the suffix and
-    # would misread a directory as text, so this must precede it.
-    if resolved.is_dir():
-        logger.info("read_directory path={}", rel)
-        return _format_directory(resolved)
-
-    if not resolved.is_file():
-        raise IsADirectoryError(f"Path is not a regular file: {rel}")
-
-    category = classify_file(resolved)
-
-    # ── Image files ───────────────────────────────────────────────────────
-    if category == "image":
-        size = resolved.stat().st_size
-        logger.info("read_image path={} size={}", rel, size)
-        return handle_image(resolved, rel)
-
-    # ── Document files → markitdown conversion ────────────────────────────
-    if category == "document":
-        logger.info("read_document path={} size={}", rel, resolved.stat().st_size)
-        return handle_document(resolved, rel)
-
-    # ── Text files → existing behaviour ───────────────────────────────────
+def _read_text(resolved: Path, rel: object, offset: int, limit: int | None) -> str:
+    """Read and paginate a text file. Synchronous — always call via a thread."""
     with resolved.open("rb") as file:
         raw = file.read(_MAX_READ_BYTES + 1)
     truncated = len(raw) > _MAX_READ_BYTES
@@ -184,6 +146,55 @@ async def _read_file(
     header = f"[{start + 1}-{end}/{total}]\n"
     body = _cap_long_lines("".join(slice_lines))
     return _cap_text_for_context(header + body, rel)
+
+
+async def _read_file(
+    path: str,
+    offset: int = 1,
+    limit: int | None = None,
+    _state: Annotated[Any, InjectedArg()] = None,
+) -> str | ToolResult:
+    """Read a file, dispatching by kind (text, image, document).
+
+    For text files, prepends "[X-Y/N]" header when offset/limit active. Max 5 MB.
+    For images, returns base64-encoded image data for visual analysis.
+    For documents (PDF, DOCX), extracts text content.
+
+    Every read path is dispatched to a worker thread. One daemon serves all
+    sessions and desktop windows on a single event loop, so a synchronous read
+    here freezes all of them — a `.docx` conversion was measured blocking the
+    loop for 4.6 s.
+    """
+    denied_paths = get_denied_paths()
+    resolved = denied_paths.validate_path(path)
+    rel = denied_paths.display_path(resolved)
+    if not resolved.exists():
+        raise FileNotFoundError(f"File not found: {rel}")
+
+    # Directories list their children — `classify_file` keys off the suffix and
+    # would misread a directory as text, so this must precede it.
+    if resolved.is_dir():
+        logger.info("read_directory path={}", rel)
+        return await asyncio.to_thread(_format_directory, resolved)
+
+    if not resolved.is_file():
+        raise IsADirectoryError(f"Path is not a regular file: {rel}")
+
+    category = classify_file(resolved)
+
+    # ── Image files ───────────────────────────────────────────────────────
+    if category == "image":
+        size = resolved.stat().st_size
+        logger.info("read_image path={} size={}", rel, size)
+        return await asyncio.to_thread(handle_image, resolved, rel)
+
+    # ── Document files → markitdown conversion ────────────────────────────
+    if category == "document":
+        logger.info("read_document path={} size={}", rel, resolved.stat().st_size)
+        return await asyncio.to_thread(handle_document, resolved, rel)
+
+    # ── Text files → existing behaviour ───────────────────────────────────
+    return await asyncio.to_thread(_read_text, resolved, rel, offset, limit)
 
 
 read_file = Tool(

@@ -117,6 +117,20 @@ class TestCleanTitle:
         """Strips only the trailing period, not internal ones."""
         assert _clean_title("Hello. World.") == "Hello. World"
 
+    def test_clean_title_keeps_first_non_empty_line(self):
+        """Multi-line responses collapse to the first meaningful line."""
+        assert _clean_title("\nJapan trip\nHere is why...") == "Japan trip"
+
+    def test_clean_title_strips_markdown_markers(self):
+        """Heading/bullet markers and backticks are removed."""
+        assert _clean_title("## Japan trip") == "Japan trip"
+        assert _clean_title("- Japan trip") == "Japan trip"
+        assert _clean_title("`Japan trip`") == "Japan trip"
+
+    def test_clean_title_collapses_internal_whitespace(self):
+        """Runs of whitespace collapse to a single space."""
+        assert _clean_title("Japan    trip\tplanning") == "Japan trip planning"
+
     def test_clean_title_nested_quotes(self):
         """Strips outer quotes, then inner quotes."""
         # First strips outer double quotes: "'hello'"
@@ -222,8 +236,8 @@ class TestGenerateAndSaveTitle:
             messages = call_args[0][0]
             # The second message (index 1) is the user message
             user_msg = messages[1]
-            assert len(user_msg.content) == 500
-            assert user_msg.content == "a" * 500
+            assert "a" * 500 in user_msg.content
+            assert "a" * 501 not in user_msg.content
 
     @pytest.mark.asyncio
     async def test_llm_returns_dirty_title_cleaned(
@@ -469,7 +483,8 @@ class TestGenerateAndSaveTitle:
             assert len(messages) == 2
             assert isinstance(messages[0], SystemMessage)
             assert isinstance(messages[1], HumanMessage)
-            assert messages[1].content == "test message"
+            assert "test message" in messages[1].content
+            assert "<message>" in messages[1].content
 
             assert kwargs["tools"] == []
             assert kwargs["max_tokens"] == 20

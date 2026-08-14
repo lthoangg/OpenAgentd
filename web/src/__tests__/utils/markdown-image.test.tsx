@@ -1,12 +1,35 @@
 import { describe, it, expect, afterEach } from "bun:test";
 import "@testing-library/jest-dom";
 import { render, screen, fireEvent, cleanup } from "@testing-library/react";
-import { MarkdownBlock, resolveImageSrc } from "@/utils/markdown";
+import { MarkdownBlock, resolveImageSrc, extractFileName } from "@/utils/markdown";
 
 afterEach(() => {
   cleanup();
   delete window.__OAD_API_BASE_URL__;
   delete window.__OAD_TOKEN__;
+});
+
+describe("extractFileName", () => {
+  it("extracts filename from simple path", () => {
+    expect(extractFileName("chart.png")).toBe("chart.png");
+  });
+
+  it("extracts filename from nested path", () => {
+    expect(extractFileName("out/plots/chart.png")).toBe("chart.png");
+  });
+
+  it("extracts filename from URL with query string and hash", () => {
+    expect(extractFileName("https://example.com/images/demo.jpg?v=123#ref")).toBe("demo.jpg");
+  });
+
+  it("decodes URL-encoded filenames", () => {
+    expect(extractFileName("my%20chart%201.png")).toBe("my chart 1.png");
+  });
+
+  it("returns null for data URIs and blob URIs", () => {
+    expect(extractFileName("data:image/png;base64,abc")).toBeNull();
+    expect(extractFileName("blob:http://localhost/uuid")).toBeNull();
+  });
 });
 
 describe("resolveImageSrc", () => {
@@ -174,6 +197,13 @@ describe("MarkdownBlock image rendering", () => {
     render(<MarkdownBlock content="![c](c.png)" sessionId={sid} />);
     const img = screen.getByRole("img", { name: /c/i });
     expect(img.className).toContain("cursor-zoom-in");
+  });
+
+  it("renders filename under image", () => {
+    render(<MarkdownBlock content="![chart](out/report.png)" sessionId={sid} />);
+    const caption = screen.getByText("report.png");
+    expect(caption).not.toBeNull();
+    expect(caption.className).toContain("text-center");
   });
 });
 

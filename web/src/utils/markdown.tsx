@@ -154,6 +154,35 @@ export function extractText(node: unknown): string {
 // ── resolveImageSrc ───────────────────────────────────────────────────────────
 
 /**
+ * Extract the display filename from a markdown media ``src`` or raw markdown URL.
+ *
+ * Examples:
+ * - "chart.png" -> "chart.png"
+ * - "output/plots/density.png" -> "density.png"
+ * - "http://example.com/demo.mp4?v=1#t=0" -> "demo.mp4"
+ * - "my%20file.png" -> "my file.png"
+ * - "data:image/png;base64,..." -> null
+ * - "blob:..." -> null
+ */
+// eslint-disable-next-line react-refresh/only-export-components
+export function extractFileName(rawSrc?: string, resolvedSrc?: string): string | null {
+  const target = rawSrc || resolvedSrc
+  if (!target) return null
+  if (target.startsWith('data:') || target.startsWith('blob:')) return null
+  const pathOnly = target.split('?')[0].split('#')[0]
+  if (!pathOnly) return null
+  const cleaned = pathOnly.replace(/\/+$/, '')
+  if (!cleaned) return null
+  const lastSegment = cleaned.substring(cleaned.lastIndexOf('/') + 1)
+  if (!lastSegment) return null
+  try {
+    return decodeURIComponent(lastSegment)
+  } catch {
+    return lastSegment
+  }
+}
+
+/**
  * Rewrite a markdown media ``src`` for rendering.
  *
  * Used for both images and videos — videos reach this helper through the
@@ -221,46 +250,63 @@ const MarkdownVideo = memo(function MarkdownVideo({
   src,
   alt,
   title,
+  rawSrc,
 }: {
   src: string
   alt: string
   title?: string
+  rawSrc?: string
 }) {
   const [errored, setErrored] = useState(false)
+  const fileName = extractFileName(rawSrc, src)
 
   if (errored) {
     return (
-      <span
-        className="my-2 inline-flex items-center gap-2 rounded-lg border border-(--color-border) bg-(--bg-card) px-3 py-2 text-xs text-(--color-text-muted)"
-        title={alt || 'Video unavailable'}
-      >
-        <FileVideo size={14} />
-        {alt || 'Video unavailable'}
+      <span className="my-2 inline-block max-w-full">
+        <span
+          className="inline-flex items-center gap-2 rounded-lg border border-(--color-border) bg-(--bg-card) px-3 py-2 text-xs text-(--color-text-muted)"
+          title={alt || 'Video unavailable'}
+        >
+          <FileVideo size={14} />
+          {alt || 'Video unavailable'}
+        </span>
+        {fileName && (
+          <span className="mt-1 block text-center text-xs text-(--color-text-muted) break-all">
+            {fileName}
+          </span>
+        )}
       </span>
     )
   }
 
   return (
-    <video
-      src={src}
-      title={title ?? alt}
-      controls
-      preload="metadata"
-      playsInline
-      onError={(e) => {
-        // Only treat as terminal when the element reports NO_SOURCE.
-        // Transient errors during buffering/codec negotiation are otherwise
-        // ignored to avoid a flicker loop with the fallback placeholder.
-        const el = e.currentTarget
-        if (el.networkState === el.NETWORK_NO_SOURCE) {
-          setErrored(true)
-        }
-      }}
-      className="my-2 max-h-[80vh] max-w-full rounded-lg border border-(--color-border) bg-black"
-    >
-      {/* Fallback text for environments without <video> support (rare). */}
-      {alt || 'Video content'}
-    </video>
+    <span className="my-2 inline-block max-w-full">
+      <video
+        src={src}
+        title={title ?? alt}
+        controls
+        preload="metadata"
+        playsInline
+        onError={(e) => {
+          // Only treat as terminal when the element reports NO_SOURCE.
+          // Transient errors during buffering/codec negotiation are otherwise
+          // ignored to avoid a flicker loop with the fallback placeholder.
+          const el = e.currentTarget
+          if (el.networkState === el.NETWORK_NO_SOURCE) {
+            setErrored(true)
+          }
+        }}
+        className="block max-h-[80vh] max-w-full rounded-lg border border-(--color-border) bg-black"
+      >
+        {/* Fallback text for environments without <video> support (rare). */}
+        {alt || 'Video content'}
+      </video>
+      {fileName && (
+        <span className="mt-1 block text-center text-xs text-(--color-text-muted) break-all">
+          {fileName}
+        </span>
+      )}
+    </span>
   )
 })
 
@@ -281,22 +327,32 @@ function MarkdownImage({
   src,
   alt,
   title,
+  rawSrc,
 }: {
   src: string | undefined
   alt: string
   title?: string
+  rawSrc?: string
 }) {
   const [lightboxOpen, setLightboxOpen] = useState(false)
   const [errored, setErrored] = useState(false)
+  const fileName = extractFileName(rawSrc, src)
 
   if (!src || errored) {
     return (
-      <span
-        className="my-2 inline-flex items-center gap-2 rounded-lg border border-(--color-border) bg-(--bg-card) px-3 py-2 text-xs text-(--color-text-muted)"
-        title={alt || 'Image unavailable'}
-      >
-        <ImageOff size={14} />
-        {alt || 'Image unavailable'}
+      <span className="my-2 inline-block max-w-full">
+        <span
+          className="inline-flex items-center gap-2 rounded-lg border border-(--color-border) bg-(--bg-card) px-3 py-2 text-xs text-(--color-text-muted)"
+          title={alt || 'Image unavailable'}
+        >
+          <ImageOff size={14} />
+          {alt || 'Image unavailable'}
+        </span>
+        {fileName && (
+          <span className="mt-1 block text-center text-xs text-(--color-text-muted) break-all">
+            {fileName}
+          </span>
+        )}
       </span>
     )
   }
@@ -305,15 +361,15 @@ function MarkdownImage({
   // render as <video> — extension-based routing keeps the markdown authoring
   // contract identical for image and video tools.
   if (isVideoSrc(src)) {
-    return <MarkdownVideo src={src} alt={alt} title={title} />
+    return <MarkdownVideo src={src} alt={alt} title={title} rawSrc={rawSrc} />
   }
 
   return (
-    <>
+    <span className="my-2 inline-block max-w-full">
       <button
         type="button"
         onClick={() => setLightboxOpen(true)}
-        className="my-2 block focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 focus-visible:outline-none"
+        className="block focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 focus-visible:outline-none"
         aria-label={alt ? `Open image preview: ${alt}` : 'Open image preview'}
       >
         <img
@@ -323,16 +379,21 @@ function MarkdownImage({
           loading="lazy"
           decoding="async"
           onError={() => setErrored(true)}
-          className="max-h-[80vh] max-w-full cursor-zoom-in object-contain transition-opacity hover:opacity-90"
+          className="max-h-[80vh] max-w-full cursor-zoom-in object-contain rounded-lg border border-(--color-border) transition-opacity hover:opacity-90"
         />
       </button>
+      {fileName && (
+        <span className="mt-1 block text-center text-xs text-(--color-text-muted) break-all">
+          {fileName}
+        </span>
+      )}
       <ImageLightbox
         src={src}
         alt={alt}
         isOpen={lightboxOpen}
         onClose={() => setLightboxOpen(false)}
       />
-    </>
+    </span>
   )
 }
 
@@ -432,6 +493,7 @@ export const MarkdownBlock = memo(function MarkdownBlock({
       ),
       img: ({ src, alt, title }: React.ImgHTMLAttributes<HTMLImageElement>) => (
         <MarkdownImage
+          rawSrc={typeof src === 'string' ? src : undefined}
           src={resolveImageSrc(typeof src === 'string' ? src : undefined, sessionId)}
           alt={alt ?? ''}
           title={typeof title === 'string' ? title : undefined}

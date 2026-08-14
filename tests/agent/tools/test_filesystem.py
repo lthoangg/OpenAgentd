@@ -96,10 +96,44 @@ async def test_read_file_not_found(sandbox_workspace):
 
 
 @pytest.mark.asyncio
-async def test_read_file_is_directory(sandbox_workspace):
+async def test_read_directory_lists_children(sandbox_workspace):
     (sandbox_workspace / "subdir").mkdir()
-    with pytest.raises(ToolExecutionError):
-        await read_file.arun(path="subdir")
+    (sandbox_workspace / "subdir" / "inner").mkdir()
+    (sandbox_workspace / "subdir" / "note.txt").write_text("hi")
+
+    result = await read_file.arun(path="subdir")
+
+    assert "[d] inner/" in result
+    assert "[f] note.txt  (2 bytes)" in result
+
+
+@pytest.mark.asyncio
+async def test_read_directory_sorts_dirs_before_files(sandbox_workspace):
+    (sandbox_workspace / "zeta").mkdir()
+    (sandbox_workspace / "alpha.txt").write_text("a")
+
+    result = await read_file.arun(path=".")
+
+    assert result.index("[d] zeta/") < result.index("[f] alpha.txt")
+
+
+@pytest.mark.asyncio
+async def test_read_empty_directory(sandbox_workspace):
+    (sandbox_workspace / "hollow").mkdir()
+
+    result = await read_file.arun(path="hollow")
+
+    assert result == "(empty directory)"
+
+
+@pytest.mark.asyncio
+async def test_read_directory_ignores_offset_and_limit(sandbox_workspace):
+    (sandbox_workspace / "dir").mkdir()
+    (sandbox_workspace / "dir" / "one.txt").write_text("1")
+
+    result = await read_file.arun(path="dir", offset=5, limit=1)
+
+    assert "[f] one.txt  (1 bytes)" in result
 
 
 @pytest.mark.asyncio

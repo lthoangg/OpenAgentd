@@ -13,6 +13,7 @@ Supports multimodal file types:
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any, Annotated
 
 from loguru import logger
@@ -48,6 +49,18 @@ class ReadArgs(BaseModel):
     )
 
 
+def _format_directory(resolved: Path) -> str:
+    """List a directory's immediate children, directories first."""
+    entries = sorted(resolved.iterdir(), key=lambda p: (p.is_file(), p.name))
+    lines = [
+        f"[f] {entry.name}  ({entry.stat().st_size} bytes)"
+        if entry.is_file()
+        else f"[d] {entry.name}/"
+        for entry in entries
+    ]
+    return "\n".join(lines) if lines else "(empty directory)"
+
+
 def _cap_text_for_context(text: str, rel: object) -> str:
     """Return a context-safe preview for unpaginated text reads."""
     if len(text) <= _MAX_CONTEXT_CHARS:
@@ -79,8 +92,15 @@ async def _read_file(
     rel = denied_paths.display_path(resolved)
     if not resolved.exists():
         raise FileNotFoundError(f"File not found: {rel}")
+
+    # Directories list their children — `classify_file` keys off the suffix and
+    # would misread a directory as text, so this must precede it.
+    if resolved.is_dir():
+        logger.info("read_directory path={}", rel)
+        return _format_directory(resolved)
+
     if not resolved.is_file():
-        raise IsADirectoryError(f"Path is a directory: {rel}")
+        raise IsADirectoryError(f"Path is not a regular file: {rel}")
 
     category = classify_file(resolved)
 

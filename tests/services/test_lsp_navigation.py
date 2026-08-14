@@ -211,3 +211,31 @@ async def test_navigation_sends_workspace_symbol_query(tmp_path: Path):
     client.send_request.assert_awaited_once_with(
         "workspace/symbol", {"query": "answer"}
     )
+
+
+def test_ts_init_options_propagates_paths_and_baseurl(tmp_path: Path):
+    from app.services.lsp.manager import _build_ts_init_options
+
+    tsconfig = tmp_path / "tsconfig.json"
+    tsconfig.write_text(
+        '{"compilerOptions": {"baseUrl": ".", "paths": {"@/*": ["src/*"]}}}',
+        encoding="utf-8",
+    )
+
+    options = _build_ts_init_options(tmp_path)
+    compiler_opts = options.get("compilerOptions", {})
+    assert compiler_opts.get("baseUrl") == "."
+    assert compiler_opts.get("paths") == {"@/*": ["src/*"]}
+
+
+def test_python_init_options_detects_virtualenv(tmp_path: Path):
+    from app.services.lsp.manager import _build_python_init_options
+
+    venv_bin = tmp_path / ".venv" / "bin"
+    venv_bin.mkdir(parents=True)
+    (venv_bin / "python").write_text("#!/bin/sh\n", encoding="utf-8")
+
+    options = _build_python_init_options(tmp_path)
+    assert options is not None
+    assert str(tmp_path / ".venv" / "bin" / "python") in options.get("pythonPath", "")
+    assert options.get("venv") == ".venv"

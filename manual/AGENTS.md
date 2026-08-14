@@ -11,7 +11,7 @@ Manual smoke-test scripts for openagentd.
 
 ## Team & sessions
 
-Multi-agent turns, history, todos, lifecycle, stop/continue/undo, queued messages.
+Multi-agent turns, history, todos, lifecycle, stop/undo, queued messages.
 
 | Script | Purpose | Key flags |
 |--------|---------|-----------|
@@ -29,7 +29,6 @@ Multi-agent turns, history, todos, lifecycle, stop/continue/undo, queued message
 | `team_message_idempotency` | Assert each turn's LLM window is an append-only prefix of the next (prompt-cache invariant); summarization rewrites treated as expected | `--session`, `--messages`, `--wait` |
 | `team_history_n1_verify` | **(no server)** Differential check that batched member-page query equals the old N+1 loop on seeded edge cases | — |
 | `team_open_task_nudge` | Member claims a todo then stops without `team_message`; `--direct` fails unless the hidden nudge fires | `--direct`, `--session`, `--wait` |
-| `continue_smoketest` | E2E `/continue`: send → stop → resume → stream → history | `--wait-before-stop`, `--wait` |
 | `stop_mid_stream` | User-stop matrix (early/text/tool × undo) with invariant checks | `--only`, `--skip-undo` |
 | `support_interrupt` | Provider `support_interrupt` flag contracts; `--live` also hits the API | `--live`, `--base` |
 | `stop_additive` | Stop + "I forgot to add…" — final reply must include both messages | `--wait` |

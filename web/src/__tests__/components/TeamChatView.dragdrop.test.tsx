@@ -99,7 +99,6 @@ mock.module('@/stores/useTeamStore', () => {
     loadTeamStatus: async () => {},
     loadSession: async () => {},
     sendMessage: async () => {},
-    continueTeam: async () => {},
     beginResolvedSession: () => {},
     consumeResolvedSessionReady: () => false,
     setActiveAgent: () => {},

@@ -79,7 +79,6 @@ function renderView(props: Partial<React.ComponentProps<typeof AgentView>> = {})
       blocks={props.blocks ?? []}
       currentBlocks={props.currentBlocks ?? []}
       isWorking={props.isWorking ?? false}
-      onContinue={props.onContinue}
       onMentionFileOpen={props.onMentionFileOpen}
     />,
   )

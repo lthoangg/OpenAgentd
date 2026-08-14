@@ -77,8 +77,6 @@ interface AgentViewProps {
   isError?: boolean
   /** Error message to display when isError is true. */
   lastError?: string | null
-  /** Continue from the trailing assistant turn. */
-  onContinue?: () => void
   /** Optional slot rendered in place of the default mascot empty state. */
   emptyState?: React.ReactNode
   /** Open a mentioned workspace file in the coding workspace sidebar. */
@@ -174,7 +172,7 @@ const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionI
   }
 })
 
-export function AgentView({ blocks, currentBlocks, isWorking, isTurnOpen = isWorking, isAwaitingRestart = false, isError, lastError, onContinue, emptyState, onMentionFileOpen }: AgentViewProps) {
+export function AgentView({ blocks, currentBlocks, isWorking, isTurnOpen = isWorking, isAwaitingRestart = false, isError, lastError, emptyState, onMentionFileOpen }: AgentViewProps) {
   const [renderedTurnCount, setRenderedTurnCount] = useState(INITIAL_RENDERED_TURNS)
   const sessionId = useTeamStore((s) => s.sessionId) ?? undefined
   const prevScrollHeightRef = useRef<number | null>(null)
@@ -347,7 +345,6 @@ export function AgentView({ blocks, currentBlocks, isWorking, isTurnOpen = isWor
                      isTrailingTurn={isTrailingTurn}
                       totalBlocks={totalLen}
                       size="roomy"
-                      onContinue={onContinue}
                       renderBlock={({ block, isStreaming }) => (
                        <BlockRenderer
                          block={block}

@@ -100,7 +100,6 @@ export const createPendingSlice: StateCreator<
     const optimisticId = `user-${submittedAt}`
     set((draft) => {
         draft.isTeamWorking = true
-        draft.isContinuing = false
         draft.error = null
         draft.setupRequired = null
       draft._leadRevertTime = null

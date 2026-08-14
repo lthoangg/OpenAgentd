@@ -1,6 +1,6 @@
 import type { StateCreator } from 'zustand'
 import { postTeamChat, postTeamCommand, teamStream } from '@/api/client'
-import { applyQuestionResolution, applyRevertBoundary, isLiveStatus, markRestartPending } from './helpers'
+import { applyQuestionResolution, applyRevertBoundary, markRestartPending } from './helpers'
 import {
   applySSEDeltaBatch,
   createSSEHandler,
@@ -61,7 +61,6 @@ export type StreamSlice = Pick<
   | 'isTeamWorking'
   | 'pendingQuestion'
   | 'resolvedQuestions'
-  | 'isContinuing'
   | 'isConnected'
   | 'error'
   | 'setupRequired'
@@ -70,7 +69,6 @@ export type StreamSlice = Pick<
   | '_reconnectAttempts'
   | '_unloading'
   | 'cacheInvalidations'
-  | 'continueTeam'
   | 'compactTeam'
   | 'undoTeam'
   | 'redoTeam'
@@ -93,7 +91,6 @@ export const createStreamSlice: StateCreator<
   isTeamWorking: false,
   pendingQuestion: null,
   resolvedQuestions: {},
-  isContinuing: false,
   isConnected: false,
   error: null,
   setupRequired: null,
@@ -102,43 +99,6 @@ export const createStreamSlice: StateCreator<
   _reconnectAttempts: 0,
   _unloading: false,
   cacheInvalidations: [],
-
-  continueTeam: async () => {
-    const sessionId = get().sessionId
-    if (!sessionId) {
-      set((draft) => { draft.error = 'No active session to continue' })
-      return
-    }
-
-    try {
-      const submittedAt = Date.now()
-      set((draft) => {
-        draft.isTeamWorking = true
-        draft.isContinuing = true
-        draft.error = null
-        if (draft.leadName && draft.agentStreams[draft.leadName]) {
-          const lead = draft.agentStreams[draft.leadName]
-          lead._turnStartedAt = submittedAt
-          // Continue restarts the turn with no new user message, exactly like
-          // an answered question: without this nothing marks it live until the
-          // first token, and the turn reads as finished while it spins up.
-          // Mark the lead working optimistically too — `isTeamWorking` above
-          // already assumes the turn started, and leaving the lead `idle` until
-          // the server's `agent_status` lands contradicts it.
-          markRestartPending(lead)
-          if (!isLiveStatus(lead.status)) lead.status = 'working'
-        }
-      })
-      await postTeamCommand('continue', sessionId)
-      get().connectStream()
-    } catch (err) {
-      set((draft) => {
-        draft.error = err instanceof Error ? err.message : 'Failed to continue'
-        draft.isTeamWorking = false
-        draft.isContinuing = false
-      })
-    }
-  },
 
   compactTeam: async () => {
     const sessionId = get().sessionId

@@ -105,9 +105,6 @@ export function useSlashCommands({
       case 'stop':
         useTeamStore.getState().stopTeam()
         break
-      case 'continue':
-        useTeamStore.getState().continueTeam()
-        break
       case 'compact':
         useTeamStore.getState().compactTeam()
         break

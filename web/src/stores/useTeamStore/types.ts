@@ -147,7 +147,6 @@ export interface TeamStoreState {
    * immediately, from structured data rather than by re-parsing a sentence.
    */
   resolvedQuestions: Record<string, ResolvedQuestion>
-  isContinuing: boolean
   isConnected: boolean
   error: string | null
   setupRequired: SetupRequiredNotice | null
@@ -175,7 +174,6 @@ export interface TeamStoreActions {
   /** Resolves ``true`` when the backend accepted the message, ``false`` otherwise. */
   sendMessage: (content: string, files?: File[], options?: { mode?: string; workspace?: string | null; model?: string | null; thinkingLevel?: string | null; fastMode?: boolean; mentions?: string[] }) => Promise<boolean>
   setSessionModelSettings: (model: string | null, thinkingLevel: string | null, fastMode?: boolean) => void
-  continueTeam: () => Promise<void>
   compactTeam: () => Promise<void>
   undoTeam: () => Promise<TeamCommandResponse | undefined>
   redoTeam: () => Promise<void>

@@ -103,7 +103,6 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
         loadTeamStatus: s.loadTeamStatus,
         loadSession: s.loadSession,
         sendMessage: s.sendMessage,
-        continueTeam: s.continueTeam,
         beginResolvedSession: s.beginResolvedSession,
         consumeResolvedSessionReady: s.consumeResolvedSessionReady,
         setActiveAgent: s.setActiveAgent,
@@ -145,7 +144,6 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
     loadTeamStatus,
     loadSession,
     sendMessage,
-    continueTeam,
     beginResolvedSession,
     consumeResolvedSessionReady,
     setActiveAgent,
@@ -520,7 +518,6 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
             <SplitGrid
               agentNames={splitAgentNames}
               leadName={leadName}
-              onContinue={continueTeam}
             />
           </div>
         ) : isCodingSessionLoading ? (
@@ -564,12 +561,11 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
               currentBlocks={activeCurrentBlocks}
               isWorking={activeStatus === 'working'}
               // A lead suspended on `ask_user` is not streaming, but its turn
-              // is still open — no duration, no Continue, no pending dots.
+              // is still open — no duration, no pending dots.
               isTurnOpen={activeStatus === 'working' || activeStatus === 'waiting_input'}
               isAwaitingRestart={activeAwaitingRestart}
               isError={activeStatus === 'error'}
               lastError={activeLastError}
-              onContinue={activeAgent === leadName ? continueTeam : undefined}
               onMentionFileOpen={mode === 'coding' ? handleMentionFileOpen : undefined}
               emptyState={
                 mode === 'coding' && workspace ? (

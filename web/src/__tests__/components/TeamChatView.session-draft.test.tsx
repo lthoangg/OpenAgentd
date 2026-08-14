@@ -91,7 +91,6 @@ mock.module('@/stores/useTeamStore', () => {
     loadTeamStatus: async () => {},
     loadSession: async () => {},
     sendMessage: async () => {},
-    continueTeam: async () => {},
     beginResolvedSession: (sessionId: string | null) => { state.sessionId = sessionId },
     isEmptyIdleSession: () => false,
     consumeResolvedSessionReady: () => false,

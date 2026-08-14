@@ -33,7 +33,6 @@ from app.agent.agent_loop import Agent
 from app.agent.checkpointer import SQLiteCheckpointer
 from app.agent.drift import detect_drift, stamp_agent_files
 from app.agent.hooks.base import BaseAgentHook
-from app.agent.hooks.continuation import ContinuationHook
 from app.agent.hooks.dynamic_prompt import inject_current_date
 from app.agent.hooks.workspace_instructions import WorkspaceInstructionsHook
 from app.agent.hooks.otel import OpenTelemetryHook
@@ -408,33 +407,6 @@ class TeamMemberBase(abc.ABC):
             self._run_activation(), name=f"activate:{self.name}"
         )
 
-    def activate_for_continuation(self) -> None:
-        """Spawn an activation task that resumes from existing DB history.
-
-        Used by ``AgentTeam.handle_continue`` to run the agent without an
-        inbox message — the LLM call uses the existing session history
-        verbatim, which (for /continue) ends in the prior assistant turn.
-        The resulting first assistant message is stamped with
-        ``extra["is_continuation"] = True`` by :class:`ContinuationHook`.
-
-        The state check + state mutation form one logical step here so two
-        concurrent ``/continue`` requests cannot both observe ``idle`` and
-        race into ``_run_activation``.  Callers (notably
-        :meth:`AgentTeam.handle_continue`) should catch
-        :class:`AlreadyWorkingError` and translate it to their own
-        precondition error type.
-
-        Raises:
-            AlreadyWorkingError: if the agent is already working.
-        """
-        if is_busy(self.state):
-            raise AlreadyWorkingError(self.name)
-        self.state = "working"
-        self._active_task = asyncio.create_task(
-            self._run_activation(is_continuation=True),
-            name=f"continue:{self.name}",
-        )
-
     def activate_for_compaction(self) -> None:
         """Spawn an activation task that forces summarization before the model call."""
         if is_busy(self.state):
@@ -579,19 +551,12 @@ class TeamMemberBase(abc.ABC):
     async def _run_activation(
         self,
         *,
-        is_continuation: bool = False,
         force_compaction: bool = False,
         question_resume: bool = False,
     ) -> None:
         """One-shot activation: drain inbox, process, return to idle.
 
-        When ``is_continuation`` is True the inbox drain/persist/SSE-emit
-        steps are skipped — the agent runs against the current DB history
-        verbatim, which (for /continue) ends in the prior assistant turn so
-        the provider continues from there.  The resulting first assistant
-        message is stamped via :class:`ContinuationHook`.
-
-        ``question_resume`` is the same history-only path, used after the user
+        ``question_resume`` is the history-only path, used after the user
         answered an ``ask_user``.
         """
         assert self._mailbox is not None
@@ -607,7 +572,7 @@ class TeamMemberBase(abc.ABC):
 
         self._cancel_event.clear()
 
-        if is_continuation or force_compaction or question_resume:
+        if force_compaction or question_resume:
             # Control-command path — no inbox messages; run on DB history.
             pending: list[Message] = []
         else:
@@ -628,10 +593,9 @@ class TeamMemberBase(abc.ABC):
         # state was already set to "working" by _maybe_activate
         await self._team._emit(agent=self.name, event="agent_status", status="working")
         logger.info(
-            "team_member_activated name={} messages={} continuation={}",
+            "team_member_activated name={} messages={}",
             self.name,
             len(pending),
-            is_continuation,
         )
 
         # Re-check drift at turn start so edits made between turns
@@ -644,7 +608,7 @@ class TeamMemberBase(abc.ABC):
         # Let subclass reset bookkeeping
         self._on_wake(pending)
 
-        if not is_continuation and not question_resume:
+        if not question_resume:
             # Format + persist inbox RIGHT AFTER receiving (one row per message)
             inbox_msgs = await self._persist_inbox(pending)
 
@@ -662,7 +626,6 @@ class TeamMemberBase(abc.ABC):
 
         try:
             await self._handle_messages(
-                is_continuation=is_continuation,
                 force_compaction=force_compaction,
                 question_resume=question_resume,
             )
@@ -872,17 +835,10 @@ class TeamMemberBase(abc.ABC):
     async def _handle_messages(
         self,
         *,
-        is_continuation: bool = False,
         force_compaction: bool = False,
         question_resume: bool = False,
     ) -> None:
-        """Load full history from DB and call agent.run().
-
-        When ``is_continuation`` is True a one-shot
-        :class:`ContinuationHook` is appended to the hooks list so the
-        very first assistant message produced by this run gets
-        ``extra["is_continuation"] = True``.
-        """
+        """Load full history from DB and call agent.run()."""
         assert self._team is not None
 
         db_factory = resolve_db_factory(self.db_factory)
@@ -952,7 +908,7 @@ class TeamMemberBase(abc.ABC):
         publisher_hook = StreamPublisherHook(
             session_id=lead_session_id,
             agent_name=self.name,
-            publish_reasoning=not is_continuation,
+            publish_reasoning=True,
         )
 
         # Inject team protocol via hook
@@ -1012,12 +968,6 @@ class TeamMemberBase(abc.ABC):
             )
             if title_hook is not None:
                 hooks.append(title_hook)
-
-        # Continuation stamp — one-shot, flags the first assistant message
-        # of this run as a continuation of the prior assistant turn so the
-        # frontend can render it tight against that prior bubble.
-        if is_continuation:
-            hooks.append(ContinuationHook())
 
         # Build checkpointer — stream_session_id + agent_name let it clear
         # this agent's stream buffer after each persist, preventing

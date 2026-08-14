@@ -75,10 +75,9 @@ describe("AssistantTurnFooter", () => {
       responseDurationMs: 1234,
     }]
 
-    render(<AssistantTurnFooter turnBlocks={blocks} onContinue={() => undefined} />)
+    render(<AssistantTurnFooter turnBlocks={blocks} />)
 
     expect(screen.getByLabelText("Copy response")).toBeTruthy()
-    expect(screen.getByLabelText("Continue response")).toBeTruthy()
     expect(screen.getByText("12:34")).toBeTruthy()
     expect(screen.getByTitle("Response duration").textContent).toBe("1.2s")
   })
@@ -121,17 +120,10 @@ describe("AssistantTurn — a turn suspended on a question", () => {
         isTurnOpen={isTurnOpen}
         isTrailingTurn
         totalBlocks={1}
-        onContinue={() => undefined}
         renderBlock={({ block }: { block: ContentBlock }) => <div>{block.content}</div>}
       />,
     )
   }
-
-  it("offers no Continue while the turn is still open", () => {
-    renderTurn(true)
-
-    expect(screen.queryByLabelText("Continue response")).toBeNull()
-  })
 
   it("shows no response duration while the turn is still open", () => {
     renderTurn(true)
@@ -139,10 +131,9 @@ describe("AssistantTurn — a turn suspended on a question", () => {
     expect(screen.queryByTitle("Response duration")).toBeNull()
   })
 
-  it("restores both once the turn actually ends", () => {
+  it("restores response duration once the turn actually ends", () => {
     renderTurn(false)
 
-    expect(screen.getByLabelText("Continue response")).toBeTruthy()
     expect(screen.getByTitle("Response duration").textContent).toBe("1.2s")
   })
 })

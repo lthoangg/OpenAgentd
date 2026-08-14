@@ -12,12 +12,6 @@ function stripCompactionPrefix(content: string): string {
   return content.startsWith(prefix) ? content.slice(prefix.length) : content
 }
 
-function continuationSeparator(left: string, right: string): string {
-  if (!left || !right) return ''
-  if (/\s$/.test(left) || /^\s/.test(right)) return ''
-  return ' '
-}
-
 function sortMessages(msgs: MessageResponse[]): MessageResponse[] {
   const indexed = msgs.map((m, i) => ({ m, i }))
   indexed.sort((a, b) => {
@@ -37,7 +31,7 @@ function assistantBlocks(
 ): ContentBlock[] {
   const blocks: ContentBlock[] = []
 
-  if (msg.reasoning_content && !msg.extra?.is_continuation) {
+  if (msg.reasoning_content) {
     blocks.push({ id: `${msg.id}:thinking`, type: 'thinking', content: msg.reasoning_content, timestamp })
   }
 
@@ -184,12 +178,7 @@ export function parseTeamBlocks(msgs: MessageResponse[]): ContentBlock[] {
     if (msg.role === 'assistant') {
       const timestamp = msg.created_at ? new Date(msg.created_at) : new Date()
       for (const block of assistantBlocks(msg, pendingToolBlocks, timestamp)) {
-        const lastBlock = result[result.length - 1]
-        if (msg.extra?.is_continuation && block.type === 'text' && lastBlock?.type === 'text') {
-          lastBlock.content += continuationSeparator(lastBlock.content, block.content) + block.content
-        } else {
-          result.push(block)
-        }
+        result.push(block)
       }
     }
   }

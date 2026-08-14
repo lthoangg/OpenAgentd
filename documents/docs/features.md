@@ -200,7 +200,7 @@ run from the terminal.
   now fetch their own session pages (`mode=normal` vs `mode=coding`) instead of
   sharing one mixed cache, preventing intermittent empty recent-session lists
   when prior conversations exist.
-- **Slash commands** `[since v1.0]` — `/init`, `/continue`, `/compact`, `/undo`,
+- **Slash commands** `[since v1.0]` — `/init`, `/compact`, `/undo`,
   `/redo`, plus user-defined commands.
   - **`/plan` slash command** `[v1.96.0]` — triggers a research-then-approve
     workflow: the agent investigates the problem space and proposes a step-by-step
@@ -359,8 +359,8 @@ spawns specialist members on demand.
   streamed independently. See live whose turn is current, who's idle.
 - **Unified team view** `[since v1.0]` — single chronological transcript across
   the whole team for reading or sharing.
-- **`/continue` resumes interrupted work** `[v1.5.0]` — restores the team's
-  pending plan and resumes streaming from the last turn. Available in the
+- **`/continue` resumes interrupted work** `[v1.5.0]` *(deprecated — removed)* — restores
+  the team's pending plan and resumes streaming from the last turn. Available in the
   command palette and assistant footer. Continuations use the session's model
   and reasoning settings.
 - **Automatic empty-after-tool recovery** `[v1.36.0]` — if a provider returns

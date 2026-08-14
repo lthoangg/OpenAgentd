@@ -452,7 +452,6 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
           ensureAgent(draft, agent)
           if (agent !== draft.leadName || !draft.sessionId) return
           draft.isTeamWorking = true
-          draft.isContinuing = false
           draft.error = null
           draft.agentStreams[agent].status = 'working'
           const queued = draft._pendingMessages.filter((msg) => {
@@ -619,7 +618,6 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
           // fully answerable, so closing it here would show a resolution the
           // server never made. Real endings (answer, dismiss, supersede, stop)
           // all broadcast their own resolution.
-          draft.isContinuing = false
           const completedAtMs = Date.now()
           const completedAt = new Date(completedAtMs)
           const revertTime = draft._leadRevertTime
@@ -659,7 +657,6 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
         set((draft) => {
           draft.error = d.message as string
           draft.isTeamWorking = false
-          draft.isContinuing = false
         })
         break
       }

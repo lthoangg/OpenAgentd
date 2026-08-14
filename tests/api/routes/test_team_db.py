@@ -791,34 +791,6 @@ class TestTeamHistoryWithData:
         assert summary_msg["is_summary"] is True
 
     @pytest.mark.asyncio
-    async def test_history_excludes_reasoning_for_continuation_rows(
-        self, app_with_team
-    ):
-        import app.core.db as _db
-
-        lead_id = uuid.uuid7()
-        async with _db.async_session_factory() as db:
-            async with db.begin():
-                await _create_team_session(db, lead_id)
-                await _add_message(
-                    db,
-                    lead_id,
-                    role="assistant",
-                    content="continued answer",
-                    reasoning_content="hidden thinking",
-                    extra={"is_continuation": True},
-                )
-
-        client = TestClient(app_with_team)
-        resp = client.get(f"/api/team/{lead_id}/history")
-        data = resp.json()
-
-        msg = data["lead"]["messages"][0]
-        assert msg["content"] == "continued answer"
-        assert "reasoning_content" not in msg
-        assert msg["extra"] == {"is_continuation": True}
-
-    @pytest.mark.asyncio
     async def test_history_excludes_hidden_from_user_rows(self, app_with_team):
         import app.core.db as _db
 

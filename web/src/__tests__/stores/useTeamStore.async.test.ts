@@ -87,7 +87,7 @@ const mockSendDesktopNotification = mock(() => Promise.resolve()) as any
 
 // ── Store import (AFTER mock.module) ──────────────────────────────────────────
 
-import { useTeamStore, isAwaitingRestartOutput } from "@/stores/useTeamStore"
+import { useTeamStore } from "@/stores/useTeamStore"
 import type { ContentBlock } from "@/api/types"
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -222,88 +222,6 @@ describe("toggleSidebar", () => {
     useTeamStore.getState().toggleSidebar()
     useTeamStore.getState().toggleSidebar()
     expect(useTeamStore.getState().sidebarOpen).toBe(true)
-  })
-})
-
-// ── continueTeam ──────────────────────────────────────────────────────────────
-
-describe("continueTeam", () => {
-  it("posts the continue command for the active session", async () => {
-    useTeamStore.setState({ sessionId: "team-sid" })
-
-    await useTeamStore.getState().continueTeam()
-
-    expect(mockPostTeamCommand).toHaveBeenCalledWith("continue", "team-sid")
-  })
-
-  it("marks the active turn as a continuation while waiting", async () => {
-    let resolveCommand!: () => void
-    mockPostTeamCommand.mockImplementation(() => new Promise((resolve) => {
-      resolveCommand = () => resolve({ status: "accepted", session_id: "team-sid", command: "continue" })
-    }))
-    useTeamStore.setState({ sessionId: "team-sid" })
-
-    const promise = useTeamStore.getState().continueTeam()
-    expect(useTeamStore.getState().isContinuing).toBe(true)
-
-    resolveCommand()
-    await promise
-  })
-
-  it("shows the pending dots while the continued turn spins up", async () => {
-    // /continue restarts the turn with no new user message, so the optimistic
-    // user block that normally drives the dots never exists, and currentBlocks
-    // still holds the turn being continued.
-    let resolveCommand!: () => void
-    mockPostTeamCommand.mockImplementation(() => new Promise((resolve) => {
-      resolveCommand = () => resolve({ status: "accepted", session_id: "team-sid", command: "continue" })
-    }))
-    useTeamStore.setState({
-      sessionId: "team-sid",
-      leadName: "lead",
-      agentStreams: { lead: makeStream({}) },
-    } as never)
-
-    const promise = useTeamStore.getState().continueTeam()
-    expect(isAwaitingRestartOutput(useTeamStore.getState().agentStreams.lead)).toBe(true)
-
-    resolveCommand()
-    await promise
-  })
-
-  it("clears continuation state when the command fails", async () => {
-    mockPostTeamCommand.mockImplementation(() => Promise.reject(new Error("last message is not assistant")))
-    useTeamStore.setState({ sessionId: "team-sid" })
-
-    await useTeamStore.getState().continueTeam()
-
-    expect(useTeamStore.getState().isContinuing).toBe(false)
-  })
-
-  it("connects the stream after the command is accepted", async () => {
-    useTeamStore.setState({ sessionId: "team-sid" })
-
-    await useTeamStore.getState().continueTeam()
-
-    expect(mockTeamStream).toHaveBeenCalledTimes(1)
-  })
-
-  it("sets an error when there is no active session", async () => {
-    await useTeamStore.getState().continueTeam()
-
-    expect(useTeamStore.getState().error).toBe("No active session to continue")
-    expect(mockPostTeamCommand).not.toHaveBeenCalled()
-  })
-
-  it("sets error and stops working when the command fails", async () => {
-    mockPostTeamCommand.mockImplementation(() => Promise.reject(new Error("last message is not assistant")))
-    useTeamStore.setState({ sessionId: "team-sid" })
-
-    await useTeamStore.getState().continueTeam()
-
-    expect(useTeamStore.getState().error).toBe("last message is not assistant")
-    expect(useTeamStore.getState().isTeamWorking).toBe(false)
-    expect(mockTeamStream).not.toHaveBeenCalled()
   })
 })
 

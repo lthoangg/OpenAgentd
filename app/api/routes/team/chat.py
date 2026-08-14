@@ -401,7 +401,7 @@ async def cancel_queued_message(
 class CommandRequest(BaseModel):
     """Request body for ``POST /team/commands``."""
 
-    command: Literal["continue", "compact", "undo", "redo"]
+    command: Literal["compact", "undo", "redo"]
     session_id: str
 
 
@@ -414,11 +414,6 @@ async def team_command(
 
     Currently supported:
 
-    * ``continue`` — resume from the last assistant turn.  The provider
-      sees the existing history (ending in the prior assistant message)
-      and keeps generating; the resulting first assistant row is flagged
-      ``extra["is_continuation"] = True`` so the UI can render it tight
-      against the prior bubble.
     * ``compact`` — force the existing summariser before the next model call
       without adding a visible user message.
     * ``undo`` / ``redo`` — move the visible conversation boundary backward or
@@ -427,9 +422,8 @@ async def team_command(
     Returns 202 with the session_id.  Subscribe to
     ``GET /team/stream/{session_id}`` for the SSE feed.
 
-    Returns 409 with a human-readable ``detail`` when the session can't
-    be continued (no assistant message, last message has unfinished tool
-    calls, lead is already working, etc.).
+    Returns 409 with a human-readable ``detail`` when the command cannot
+    be executed (lead is already working, invalid session state, etc.).
     """
     team_obj = await team_manager.get_or_start_team_for_session(body.session_id)
     team_obj = _require_team(team_obj)
@@ -448,16 +442,6 @@ async def team_command(
                 )
             except ValueError as exc:
                 raise HTTPException(status_code=422, detail=str(exc)) from exc
-
-    if body.command == "continue":
-        try:
-            sid = await team_obj.handle_continue(body.session_id)
-        except ContinuePreconditionError as exc:
-            raise HTTPException(status_code=exc.status, detail=exc.reason) from exc
-        logger.info("team_command_continue session_id={}", sid)
-        return TeamCommandResponse(
-            status="accepted", session_id=sid, command="continue"
-        )
 
     if body.command == "compact":
         try:

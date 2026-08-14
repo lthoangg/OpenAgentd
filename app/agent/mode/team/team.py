@@ -29,7 +29,6 @@ import sqlalchemy as sa
 from loguru import logger
 from sqlmodel import col, func, select
 
-from app.agent.hooks.continuation import CONTINUATION_DIRECTIVE
 from app.agent.mode.team.mailbox import Message, TeamMailbox
 from app.agent.mode.team.member import (
     AlreadyWorkingError,
@@ -46,7 +45,7 @@ from app.agent.schemas.events import DoneEvent
 from app.agent.tools.registry import Tool
 from app.core.db import DbFactory, resolve_db_factory
 from app.core.paths import session_workspace_dir
-from app.models.chat import ChatSession, SessionMessage
+from app.models.chat import ChatSession
 from app.services import event_broadcaster, memory_stream_store as stream_store
 from app.services import snapshot_service
 from app.services.stream_envelope import StreamEnvelope
@@ -190,16 +189,6 @@ def _tool_tail_has_matching_assistant_call(messages: list) -> bool:
             continue
         return any(tc.id == tool_call_id for tc in msg.tool_calls or [])
     return False
-
-
-def _is_hidden_continuation_directive(message: object) -> bool:
-    """Return true for the internal /continue directive row."""
-    return (
-        isinstance(message, HumanMessage)
-        and message.content == CONTINUATION_DIRECTIVE
-        and bool(message.extra and message.extra.get("command") == "continue")
-        and bool(message.extra and message.extra.get("hidden_from_user"))
-    )
 
 
 class AgentTeam:
@@ -837,149 +826,6 @@ class AgentTeam:
             raise
 
         return session_id, str(saved_user_msg.id)
-
-    async def handle_continue(self, session_id: str) -> str:
-        """Continue the prior assistant turn on *session_id* — no new user message.
-
-        Runs the agent against the existing DB history verbatim.  The provider
-        sees a trailing assistant message and continues from there; the
-        resulting first assistant row is flagged ``extra["is_continuation"]``.
-
-        Preconditions (all raise :class:`ContinuePreconditionError`, HTTP 409):
-
-        * Session must exist and belong to the lead.
-        * Lead must not already be working.
-        * Last visible message must be an :class:`AssistantMessage` or a
-          linked :class:`ToolMessage`. Assistant messages with pending
-          ``tool_calls`` are rejected because continuing a half-emitted tool
-          call is unsafe — partial JSON args.
-
-        Returns the session_id.  Caller subscribes to
-        ``GET /team/stream/{session_id}`` for the SSE feed.
-        """
-        try:
-            lead_uuid = UUID(session_id)
-        except ValueError as exc:
-            raise ContinuePreconditionError("Invalid session id.") from exc
-
-        # Validate session + load history BEFORE any side effects (no
-        # _ensure_db_session, no roster realign) so that 409s leave the
-        # team object untouched.  We deliberately use
-        # ``get_messages_for_llm`` rather than ``get_messages`` because that
-        # is the exact view the agent loop will pass to the LLM — if the
-        # session has been auto-compacted such that the LLM-facing tail is
-        # a summary row rather than an assistant turn, the precondition
-        # must reject regardless of what the broader visible history says.
-        db_factory = resolve_db_factory(self.lead.db_factory)
-        async with db_factory() as db:
-            row = await db.get(ChatSession, lead_uuid)
-            if row is None:
-                raise ContinuePreconditionError("Session not found.")
-            # Session-ownership guard — refuse to continue a session that
-            # belongs to a different agent.  Older rows may have
-            # ``agent_name`` unset; allow those (back-compat).
-            if row.agent_name and row.agent_name != self.lead.name:
-                raise ContinuePreconditionError(
-                    f"Session belongs to '{row.agent_name}', not '{self.lead.name}'."
-                )
-            healed = await heal_orphaned_tool_calls(db, lead_uuid)
-            if healed:
-                await db.commit()
-            messages = await get_messages_for_llm(db, lead_uuid)
-            if _is_interrupted_thinking_only_tail(messages):
-                tail = messages[-1]
-                if tail.db_id is not None:
-                    row_to_delete = await db.get(SessionMessage, tail.db_id)
-                    if row_to_delete is not None:
-                        await db.delete(row_to_delete)
-                        await db.commit()
-                messages = messages[:-1]
-
-        while messages and _is_hidden_continuation_directive(messages[-1]):
-            messages.pop()
-
-        if not messages:
-            raise ContinuePreconditionError("Session has no messages to continue from.")
-
-        last = messages[-1]
-        if isinstance(last, ToolMessage):
-            if not _tool_tail_has_matching_assistant_call(messages):
-                raise ContinuePreconditionError(
-                    "Last tool result is not linked to an assistant tool call — "
-                    "cannot safely continue."
-                )
-        elif not isinstance(last, AssistantMessage):
-            raise ContinuePreconditionError(
-                "Last message is not an assistant message — nothing to continue. "
-                "Send a new message instead."
-            )
-        else:
-            if last.tool_calls:
-                raise ContinuePreconditionError(
-                    "Last assistant message is mid tool call — cannot safely continue."
-                )
-
-        # Preconditions satisfied — now realign the lead onto this session.
-        is_new_session = self.lead.session_id != session_id
-        if is_new_session:
-            self.lead.session_id = session_id
-            for bp in self.blueprints.values():
-                bp.counter_reconciled_for = None
-            await self._restore_or_drop_members_for_lead(session_id)
-
-        # Init the SSE stream blob synchronously so client GETs after this
-        # find the bucket in place (same contract as handle_user_message).
-        try:
-            await stream_store.init_turn(session_id)
-        except Exception as exc:
-            logger.warning("team_init_turn_failed error={}", exc)
-
-        self._has_active_turn = True
-
-        if is_busy(self.lead.state):
-            self._has_active_turn = False
-            raise ContinuePreconditionError(
-                f"Agent '{self.lead.name}' is already working."
-            )
-
-        directive_id: UUID | None = None
-        db_factory = resolve_db_factory(self.lead.db_factory)
-        async with db_factory() as db:
-            directive = await save_message(
-                db,
-                lead_uuid,
-                HumanMessage(content=CONTINUATION_DIRECTIVE),
-                exclude_from_context=False,
-                extra={
-                    "command": "continue",
-                    "hidden_from_user": True,
-                    "hidden_from_summary": True,
-                },
-            )
-            directive_id = directive.id
-            await db.commit()
-
-        logger.info(
-            "team_continue_dispatched session_id={} agent={}",
-            session_id,
-            self.lead.name,
-        )
-
-        # Activation enforces the working-state guard atomically — translate
-        # its error to our precondition type so the route layer can map it
-        # to a 409 like every other precondition violation.
-        try:
-            self.lead.activate_for_continuation()
-        except AlreadyWorkingError as exc:
-            self._has_active_turn = False
-            if directive_id is not None:
-                async with db_factory() as db:
-                    directive = await db.get(SessionMessage, directive_id)
-                    if directive is not None:
-                        await db.delete(directive)
-                        await db.commit()
-            raise ContinuePreconditionError(str(exc)) from exc
-        return session_id
 
     async def handle_compact(self, session_id: str) -> str:
         """Start a normal lead turn that forces summarization before the model call."""

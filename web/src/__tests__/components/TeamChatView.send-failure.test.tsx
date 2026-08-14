@@ -107,7 +107,6 @@ mock.module('@/stores/useTeamStore', () => {
       sentMessages.push(content)
       return sendSucceeds
     },
-    continueTeam: async () => {},
     beginResolvedSession: () => {},
     consumeResolvedSessionReady: () => false,
     setActiveAgent: () => {},

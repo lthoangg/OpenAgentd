@@ -11,7 +11,6 @@ import type { SlashCommand } from '../InputComposer'
 /** Built-in slash commands always available, ahead of any user-defined ones. */
 export const BASE_SLASH_COMMANDS: SlashCommand[] = [
   { id: 'stop', label: 'Stop', description: 'Stop all working agents' },
-  { id: 'continue', label: 'Continue', description: 'Continue the last assistant response' },
   { id: 'compact', label: 'Compact', description: 'Summarize and compact this session' },
   { id: 'undo', label: 'Undo', description: 'Undo the previous message' },
   { id: 'redo', label: 'Redo', description: 'Restore all undone messages back to the live tip' },

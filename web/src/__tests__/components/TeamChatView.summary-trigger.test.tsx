@@ -138,7 +138,6 @@ function makeStore(sessionModel: string | null) {
     loadTeamStatus: async () => {},
     loadSession: async () => {},
     sendMessage: async () => {},
-    continueTeam: async () => {},
     beginResolvedSession: () => {},
     consumeResolvedSessionReady: () => false,
     setActiveAgent: () => {},

@@ -330,7 +330,6 @@ export function resetSessionState(
   state.isTeamWorking = false
   state.pendingQuestion = null
   state.resolvedQuestions = {}
-  state.isContinuing = false
   state.isConnected = false
   state.error = null
   state.setupRequired = null
@@ -429,7 +428,6 @@ async function loadSessionImpl(
   set((draft) => {
     if (draft.sessionId !== sessionId) {
       draft.isTeamWorking = false
-      draft.isContinuing = false
     }
   })
   try {
@@ -498,7 +496,6 @@ async function loadSessionImpl(
         // ``running`` is false while the question row says otherwise. The row is
         // the durable half, so it wins.
         draft.isTeamWorking = history.lead.running === true || awaitingAnswer
-        draft.isContinuing = false
       }
 
       if (leadName) {
@@ -611,7 +608,6 @@ async function loadSessionImpl(
     if (get()._sessionGeneration !== gen) return
     set((draft) => {
       draft.error = err instanceof Error ? err.message : 'Failed to load session'
-      draft.isContinuing = false
     })
   }
 }

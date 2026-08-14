@@ -43,7 +43,6 @@ beforeEach(() => {
     liveAgentNames: null,
     sessionId: null,
     isTeamWorking: false,
-    isContinuing: false,
     isConnected: false,
     error: null,
     _leadRevertTime: null,

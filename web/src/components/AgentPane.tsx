@@ -40,7 +40,6 @@ interface AgentPaneProps {
   name: string
   stream: AgentStream
   isLead: boolean
-  onContinue?: () => void
 }
 
 const USER_COLLAPSE_LINES = 10
@@ -367,7 +366,7 @@ const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionI
  * a Zustand action, which is stable for the store's lifetime).
  */
   export const AgentPane = memo(function AgentPane({
-  name, stream, isLead, onContinue,
+  name, stream, isLead,
 }: AgentPaneProps) {
   const sessionId = useTeamStore((s) => s.sessionId) ?? undefined
   const handleRevert = useCallback(() => {
@@ -506,7 +505,6 @@ const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionI
                         isTurnOpen={isWorking || isWaiting}
                         isTrailingTurn={isTrailingTurn}
                         totalBlocks={totalLen}
-                        onContinue={onContinue}
                         renderBlock={({ block, isStreaming }) => (
                          <BlockRenderer
                            block={block}

@@ -8,7 +8,7 @@
  * (e.g. compact vs roomy `UserBubble`) stay independent.
  */
 import { memo, useCallback, useMemo, useState, type ReactNode } from 'react'
-import { Copy, Check, Play } from 'lucide-react'
+import { Copy, Check } from 'lucide-react'
 import { formatTime, lastTurnText } from '@/utils/format'
 import type { ContentBlock } from '@/api/types'
 
@@ -17,8 +17,6 @@ export interface AssistantTurnFooterProps {
   turnBlocks: ContentBlock[]
   /** Visual density: 'compact' for narrow panes, 'roomy' for the wide view. */
   size?: 'compact' | 'roomy'
-  /** Continue from this assistant turn. Only passed for the trailing lead turn. */
-  onContinue?: () => void
 }
 
 function formatDuration(ms: number): string {
@@ -36,7 +34,7 @@ function shortModelName(modelId: string | null | undefined): string | null {
   return modelId.split(':').at(-1)?.split('/').at(-1) || modelId
 }
 
-export const AssistantTurnFooter = memo(function AssistantTurnFooter({ turnBlocks, size = 'compact', onContinue }: AssistantTurnFooterProps) {
+export const AssistantTurnFooter = memo(function AssistantTurnFooter({ turnBlocks, size = 'compact' }: AssistantTurnFooterProps) {
   const [copied, setCopied] = useState(false)
   const footerData = useMemo(() => {
     // Me lastTurnText walks back to the previous user block; pass the turn directly
@@ -63,8 +61,7 @@ export const AssistantTurnFooter = memo(function AssistantTurnFooter({ turnBlock
       hasTool,
     }
   }, [turnBlocks])
-  const { textContent, timestamp, responseDurationMs, modelId, modelName, hasTool } = footerData
-  const canContinue = Boolean(onContinue && (textContent || hasTool))
+  const { textContent, timestamp, responseDurationMs, modelId, modelName } = footerData
 
   const handleCopy = useCallback(async () => {
     try {
@@ -74,7 +71,7 @@ export const AssistantTurnFooter = memo(function AssistantTurnFooter({ turnBlock
     } catch { /* ignore */ }
   }, [textContent])
 
-  if (!textContent && !timestamp && !canContinue && responseDurationMs === undefined && !modelName) return null
+  if (!textContent && !timestamp && responseDurationMs === undefined && !modelName) return null
 
   const wrapperClass = size === 'roomy' ? 'mt-1 flex items-center gap-1.5' : 'mt-0.5 flex items-center gap-1'
   const iconSize = size === 'roomy' ? 11 : 10
@@ -91,16 +88,6 @@ export const AssistantTurnFooter = memo(function AssistantTurnFooter({ turnBlock
           {copied
             ? <Check size={iconSize} className="text-(--color-success)" />
             : <Copy size={iconSize} />}
-        </button>
-      )}
-      {canContinue && onContinue && (
-        <button
-          onClick={onContinue}
-          className="rounded-xs p-0.5 text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)"
-          aria-label="Continue response"
-          title="Continue"
-        >
-          <Play size={iconSize} />
         </button>
       )}
       {modelName && (
@@ -135,7 +122,7 @@ export interface AssistantTurnProps {
    *
    * Kept separate from ``isWorking`` because the two answer different
    * questions: ``isWorking`` decides whether a *block* is mid-stream, this
-   * decides whether the *turn* is over and may show a duration and a Continue.
+   * decides whether the *turn* is over.
    * Defaults to ``isWorking`` for callers with no suspendable turn.
    */
   isTurnOpen?: boolean
@@ -149,8 +136,6 @@ export interface AssistantTurnProps {
   renderBlock: (args: { block: ContentBlock; isStreaming: boolean; isLast: boolean }) => ReactNode
   /** Footer density. */
   size?: 'compact' | 'roomy'
-  /** Continue from this turn when it is the trailing finalized lead turn. */
-  onContinue?: () => void
 }
 
 export const AssistantTurn = memo(function AssistantTurn({
@@ -163,12 +148,10 @@ export const AssistantTurn = memo(function AssistantTurn({
   totalBlocks,
   renderBlock,
   size = 'compact',
-  onContinue,
 }: AssistantTurnProps) {
   // The footer reports on a *finished* turn, so it waits for the turn to close
   // rather than merely for the stream to stop.
   const turnIsOpen = isTurnOpen && isTrailingTurn
-  const canContinue = isTrailingTurn && !isTurnOpen ? onContinue : undefined
 
   return (
     <div className="space-y-2">
@@ -191,7 +174,7 @@ export const AssistantTurn = memo(function AssistantTurn({
           </div>
         )
       })}
-      {!turnIsOpen && <AssistantTurnFooter turnBlocks={blocks} size={size} onContinue={canContinue} />}
+      {!turnIsOpen && <AssistantTurnFooter turnBlocks={blocks} size={size} />}
     </div>
   )
 })

@@ -26,6 +26,11 @@ def test_read_description_advertises_directory_listing():
     assert "directory" in path["description"].lower()
 
 
+def test_read_description_explains_line_numbering():
+    """Numbering is only safe if the model is told the format up front."""
+    assert "N: content" in read_file.description
+
+
 def test_patch_description_states_it_is_the_only_mutation_tool():
     """`edit`, `write`, and `rm` are gone. If this description does not say so,
     the model has no way to know patch is how files are created and deleted."""

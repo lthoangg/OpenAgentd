@@ -30,12 +30,13 @@ from app.agent.tools.registry import InjectedArg, Tool
 
 _MAX_READ_BYTES = 5_242_880  # 5 MB read cap
 _MAX_CONTEXT_CHARS = 20_000  # keep read results within typical LLM context budgets
+_MAX_LINE_CHARS = 2_000  # one minified line must not eat the whole budget
 
 _DESCRIPTION = (
     "Read a file, or list a directory's immediate children. Text comes back "
-    "verbatim (including HTML), PNG/JPG/GIF/WebP images as vision input, and "
-    "PDF/DOCX as extracted text. Call this in parallel when you already know "
-    "several files you need."
+    "verbatim (including HTML) with each line numbered 'N: content', "
+    "PNG/JPG/GIF/WebP images as vision input, and PDF/DOCX as extracted text. "
+    "Call this in parallel when you already know several files you need."
 )
 
 
@@ -73,6 +74,34 @@ def _format_directory(resolved: Path) -> str:
         for entry in entries
     ]
     return "\n".join(lines) if lines else "(empty directory)"
+
+
+def _number_lines(text: str, start_line: int) -> str:
+    """Prefix each line with its 1-indexed number as ``N: content``.
+
+    Numbering makes locations citable — the model can hand a line straight to
+    the ``lsp`` tool or name it in a report instead of counting. ``patch``
+    strips a leading ``N: `` from hunk context, so numbered output can still be
+    copied into an envelope verbatim.
+
+    The trailing newline is preserved and never numbered, so a file ending in
+    ``\\n`` does not gain a phantom final line.
+    """
+    if not text:
+        return text
+
+    trailing_newline = text.endswith("\n")
+    body = text[:-1] if trailing_newline else text
+
+    numbered = []
+    for offset, line in enumerate(body.split("\n")):
+        if len(line) > _MAX_LINE_CHARS:
+            line = (
+                f"{line[:_MAX_LINE_CHARS]}… (line truncated to {_MAX_LINE_CHARS} chars)"
+            )
+        numbered.append(f"{start_line + offset}: {line}")
+
+    return "\n".join(numbered) + ("\n" if trailing_newline else "")
 
 
 def _cap_text_for_context(text: str, rel: object) -> str:
@@ -143,7 +172,7 @@ async def _read_file(
         text = raw.decode("latin-1")
 
     if offset == 1 and limit is None:
-        return _cap_text_for_context(text, rel)
+        return _cap_text_for_context(_number_lines(text, 1), rel)
 
     lines = text.splitlines(keepends=True)
     total = len(lines)
@@ -152,7 +181,8 @@ async def _read_file(
     slice_lines = lines[start:end]
 
     header = f"[{start + 1}-{end}/{total}]\n"
-    return _cap_text_for_context(header + "".join(slice_lines), rel)
+    body = _number_lines("".join(slice_lines), start + 1)
+    return _cap_text_for_context(header + body, rel)
 
 
 read_file = Tool(

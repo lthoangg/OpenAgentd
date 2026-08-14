@@ -73,7 +73,7 @@ async def test_read_file(sandbox_workspace):
     (sandbox_workspace / "test.txt").write_text("hello world")
 
     read_content = await read_file.arun(path="test.txt")
-    assert read_content == "hello world"
+    assert read_content == "1: hello world"
 
 
 @pytest.mark.asyncio
@@ -131,7 +131,7 @@ async def test_read_file_truncation(sandbox_workspace, monkeypatch):
     monkeypatch.setattr(read_file_module, "_MAX_READ_BYTES", 5)
     (sandbox_workspace / "big.txt").write_text("ABCDEFGHIJ")
     result = await read_file.arun(path="big.txt")
-    assert result == "ABCDE"
+    assert result == "1: ABCDE"
 
 
 @pytest.mark.asyncio
@@ -144,7 +144,7 @@ async def test_read_file_caps_large_text_for_context(sandbox_workspace, monkeypa
 
     result = await read_file.arun(path="material-icons.json")
 
-    assert result.startswith("A" * 10)
+    assert result.startswith("1: " + "A" * 7)
     assert "read output truncated for LLM context" in result
     assert "Use offset and limit" in result
     assert len(result) < 250
@@ -154,7 +154,7 @@ async def test_read_file_caps_large_text_for_context(sandbox_workspace, monkeypa
 async def test_read_file_latin1_fallback(sandbox_workspace):
     (sandbox_workspace / "latin.bin").write_bytes(b"\xff\xfe")
     result = await read_file.arun(path="latin.bin")
-    assert len(result) == 2
+    assert result == "1: \xff\xfe"
 
 
 @pytest.mark.asyncio
@@ -163,30 +163,55 @@ async def test_read_file_pagination(sandbox_workspace):
     (sandbox_workspace / "paged.txt").write_text(lines)
     result = await read_file.arun(path="paged.txt", offset=2, limit=3)
     assert result.startswith("[2-4/10]")
-    assert "line2" in result
-    assert "line4" in result
+    assert "2: line2" in result
+    assert "4: line4" in result
     assert "line5" not in result
 
 
 @pytest.mark.asyncio
-async def test_read_file_default_returns_raw_text(sandbox_workspace):
-    """Default reads should not add pagination headers."""
-    content = "line1\nline2\nline3"
-    (sandbox_workspace / "plain.txt").write_text(content)
+async def test_read_file_numbers_every_line(sandbox_workspace):
+    """Line numbers let the model cite locations and drive the lsp tool.
+
+    `patch` strips a leading `N: ` from hunk context, so copying numbered
+    output into an envelope still applies cleanly.
+    """
+    (sandbox_workspace / "plain.txt").write_text("line1\nline2\nline3")
 
     result = await read_file.arun(path="plain.txt")
 
-    assert result == content
+    assert result == "1: line1\n2: line2\n3: line3"
 
 
 @pytest.mark.asyncio
-async def test_read_file_offset_matches_grep_line_numbers(sandbox_workspace):
+async def test_read_file_numbering_continues_from_offset(sandbox_workspace):
     """Offsets are 1-indexed so callers can pass line numbers from grep."""
     (sandbox_workspace / "paged.txt").write_text("alpha\nbeta\ngamma\ndelta\n")
 
     result = await read_file.arun(path="paged.txt", offset=3, limit=1)
 
-    assert result == "[3-3/4]\ngamma\n"
+    assert result == "[3-3/4]\n3: gamma\n"
+
+
+@pytest.mark.asyncio
+async def test_read_file_truncates_absurdly_long_lines(sandbox_workspace):
+    """One minified line must not consume the whole context budget."""
+    from app.agent.tools.builtin.filesystem.read import _MAX_LINE_CHARS
+
+    (sandbox_workspace / "min.js").write_text("x" * (_MAX_LINE_CHARS + 500))
+
+    result = await read_file.arun(path="min.js")
+
+    assert "line truncated" in result
+    assert len(result) < _MAX_LINE_CHARS + 200
+
+
+@pytest.mark.asyncio
+async def test_read_file_keeps_short_lines_intact(sandbox_workspace):
+    (sandbox_workspace / "short.txt").write_text("fine\n")
+
+    result = await read_file.arun(path="short.txt")
+
+    assert result == "1: fine\n"
 
 
 @pytest.mark.asyncio
@@ -281,7 +306,7 @@ async def test_read_allows_active_session_artifact_path_only(sandbox_workspace):
             await read_file.arun(
                 path=str(artifact.resolve()), _injected={"_state": state}
             )
-            == "artifact content"
+            == "1: artifact content"
         )
         with pytest.raises(ToolExecutionError):
             await read_file.arun(path=str(other.resolve()), _injected={"_state": state})
@@ -319,7 +344,7 @@ async def test_read_allows_log_paths(sandbox_workspace):
         log_path.parent.mkdir(parents=True, exist_ok=True)
         log_path.write_text("log content", encoding="utf-8")
 
-        assert await read_file.arun(path=str(log_path.resolve())) == "log content"
+        assert await read_file.arun(path=str(log_path.resolve())) == "1: log content"
     finally:
         _sandbox_ctx.reset(token)
 

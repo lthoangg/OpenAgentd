@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 import json
 import os
+import re
 import tempfile
 from pathlib import Path
 from typing import Literal
@@ -211,6 +212,28 @@ def _lines_to_text(lines: list[str]) -> str:
     return "\n".join(lines) + "\n"
 
 
+_LINE_NUMBER_PREFIX_RE = re.compile(r"^\s*\d+:\s?")
+
+
+def _strip_line_number_prefixes(lines: list[str]) -> list[str] | None:
+    """Drop a leading ``N: `` prefix from every line, or ``None`` if not uniform.
+
+    ``read`` numbers its output, so a model that copies context straight out of
+    a read hands us ``12:     return 1`` instead of ``    return 1``. Requiring
+    *every* line to carry a prefix keeps this unambiguous: a hunk that mixes
+    prefixed and bare lines is not numbered output and is left alone.
+    """
+    if not lines:
+        return None
+    stripped = []
+    for line in lines:
+        match = _LINE_NUMBER_PREFIX_RE.match(line)
+        if not match:
+            return None
+        stripped.append(line[match.end() :])
+    return stripped
+
+
 def _find_line_matches(
     content_lines: list[str], old_lines: list[str], *, trimmed: bool
 ) -> list[int]:
@@ -250,9 +273,25 @@ def _apply_chunks_with_meta(
         if chunk.old == chunk.new:
             continue
 
-        starts = _find_line_matches(content_lines, chunk.old, trimmed=False)
+        old_lines, new_lines = chunk.old, chunk.new
+
+        starts = _find_line_matches(content_lines, old_lines, trimmed=False)
         if not starts:
-            starts = _find_line_matches(content_lines, chunk.old, trimmed=True)
+            starts = _find_line_matches(content_lines, old_lines, trimmed=True)
+
+        if not starts:
+            # Last resort: the hunk may have been copied out of numbered `read`
+            # output. Strip the prefixes off *both* sides — dropping it only
+            # from the match side would write the numbers into the file.
+            bare_old = _strip_line_number_prefixes(old_lines)
+            if bare_old is not None:
+                bare_starts = _find_line_matches(
+                    content_lines, bare_old, trimmed=False
+                ) or _find_line_matches(content_lines, bare_old, trimmed=True)
+                if bare_starts:
+                    starts = bare_starts
+                    old_lines = bare_old
+                    new_lines = _strip_line_number_prefixes(new_lines) or new_lines
 
         if not starts:
             raise ValueError(f"Could not find patch context in {path}.")
@@ -263,8 +302,8 @@ def _apply_chunks_with_meta(
         new_start = start + 1
         old_start = new_start - line_delta
         hunks.append({"old_start": old_start, "new_start": new_start})
-        line_delta += len(chunk.new) - len(chunk.old)
-        content_lines[start : start + len(chunk.old)] = chunk.new
+        line_delta += len(new_lines) - len(old_lines)
+        content_lines[start : start + len(old_lines)] = new_lines
 
     next_content = "\n".join(content_lines)
     if has_trailing_newline and content_lines:

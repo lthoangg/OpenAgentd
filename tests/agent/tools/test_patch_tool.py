@@ -434,3 +434,64 @@ async def test_patch_write_is_atomic_on_failure(sandbox_workspace):
 
     assert target.read_text(encoding="utf-8") == original
     assert list(sandbox_workspace.glob("*.tmp*")) == []
+
+
+@pytest.mark.asyncio
+async def test_patch_strips_line_number_prefixes_from_context(sandbox_workspace):
+    """`read` returns `N: content`; models paste that straight into a hunk.
+
+    Stripping a leading line-number prefix is a narrow, unambiguous repair —
+    much safer than general fuzzy matching, and it saves a whole turn.
+    """
+    target = sandbox_workspace / "prefixed.py"
+    target.write_text("def foo():\n    return 1\n", encoding="utf-8")
+
+    result = await patch_file.arun(
+        patch_text="""*** Begin Patch
+*** Update File: prefixed.py
+@@
+ 1: def foo():
+-2:     return 1
++2:     return 2
+*** End Patch"""
+    )
+
+    assert "Patch applied successfully" in result
+    assert target.read_text(encoding="utf-8") == "def foo():\n    return 2\n"
+
+
+@pytest.mark.asyncio
+async def test_patch_prefers_a_literal_match_over_prefix_stripping(sandbox_workspace):
+    """A file whose real content looks like numbered output must win literally."""
+    target = sandbox_workspace / "literal.txt"
+    target.write_text("1: alpha\n2: beta\n", encoding="utf-8")
+
+    await patch_file.arun(
+        patch_text="""*** Begin Patch
+*** Update File: literal.txt
+@@
+-1: alpha
++1: ALPHA
+*** End Patch"""
+    )
+
+    assert target.read_text(encoding="utf-8") == "1: ALPHA\n2: beta\n"
+
+
+@pytest.mark.asyncio
+async def test_patch_does_not_strip_when_it_would_break_a_match(sandbox_workspace):
+    """Stripping must never turn a clean no-match into a wrong match."""
+    target = sandbox_workspace / "nomatch.txt"
+    target.write_text("hello\n", encoding="utf-8")
+
+    with pytest.raises(ToolExecutionError):
+        await patch_file.arun(
+            patch_text="""*** Begin Patch
+*** Update File: nomatch.txt
+@@
+-42: goodbye
++42: farewell
+*** End Patch"""
+        )
+
+    assert target.read_text(encoding="utf-8") == "hello\n"

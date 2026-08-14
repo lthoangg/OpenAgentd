@@ -193,6 +193,17 @@ async def test_read_file_numbering_continues_from_offset(sandbox_workspace):
 
 
 @pytest.mark.asyncio
+async def test_read_file_offset_past_eof_reports_clearly(sandbox_workspace):
+    """`[99-2/2]` is nonsense — say what actually happened instead."""
+    (sandbox_workspace / "two.txt").write_text("a\nb\n")
+
+    result = await read_file.arun(path="two.txt", offset=99, limit=5)
+
+    assert "99" in result and "2 lines" in result
+    assert "[99-2/2]" not in result
+
+
+@pytest.mark.asyncio
 async def test_read_file_truncates_absurdly_long_lines(sandbox_workspace):
     """One minified line must not consume the whole context budget."""
     from app.agent.tools.builtin.filesystem.read import _MAX_LINE_CHARS

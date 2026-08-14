@@ -177,6 +177,11 @@ async def _read_file(
     lines = text.splitlines(keepends=True)
     total = len(lines)
     start = max(0, offset - 1)
+    if start >= total:
+        # Without this the header reads "[99-2/2]", which is nonsense the
+        # model has to guess at. Say what happened instead.
+        return f"[no content: offset {offset} is past the end of {rel}, which has {total} lines]"
+
     end = total if limit is None else min(total, start + limit)
     slice_lines = lines[start:end]
 

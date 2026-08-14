@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import fnmatch
+import io
 import os
 import re
 from pathlib import Path
@@ -22,12 +23,31 @@ from app.agent.tools.registry import Tool
 _MAX_PATTERN_LEN = 500
 # Me timeout for the entire scan in seconds
 _SCAN_TIMEOUT_S = 10
+# Bytes sampled from the head of a file to decide whether it is binary
+_BINARY_SNIFF_BYTES = 4096
 
 _DESCRIPTION = (
     "Search file contents by regex. Returns 'file:line: content'. Use glob to "
     "find files by name instead, or lsp to follow a symbol's definitions and "
     "references."
 )
+
+
+def _compile_pattern(pattern: str) -> re.Pattern[str]:
+    """Validate and compile *pattern*, rejecting ReDoS-sized inputs.
+
+    Shared by the Pydantic validator and the tool body so the length limit and
+    the error wording cannot drift apart, and so direct internal callers get
+    the same guarantees as schema-validated ones.
+    """
+    if len(pattern) > _MAX_PATTERN_LEN:
+        raise ValueError(
+            f"Pattern too long ({len(pattern)} chars, max {_MAX_PATTERN_LEN})"
+        )
+    try:
+        return re.compile(pattern)
+    except re.error as exc:
+        raise ValueError(f"Invalid regex: {exc}") from exc
 
 
 class GrepArgs(BaseModel):
@@ -50,14 +70,7 @@ class GrepArgs(BaseModel):
     @field_validator("pattern")
     @classmethod
     def validate_pattern(cls, v: str) -> str:
-        if len(v) > _MAX_PATTERN_LEN:
-            raise ValueError(
-                f"Pattern too long ({len(v)} chars, max {_MAX_PATTERN_LEN})"
-            )
-        try:
-            re.compile(v)
-        except re.error as exc:
-            raise ValueError(f"Invalid regex: {exc}")
+        _compile_pattern(v)
         return v
 
 
@@ -75,34 +88,44 @@ async def _grep_files(
             f"File or directory not found: {denied_paths.display_path(resolved)}"
         )
 
-    # Reject patterns that are too long — prevents crafted ReDoS payloads
-    if len(pattern) > _MAX_PATTERN_LEN:
-        raise ValueError(
-            f"Pattern too long ({len(pattern)} chars, max {_MAX_PATTERN_LEN})"
-        )
+    compiled = _compile_pattern(pattern)
 
-    try:
-        compiled = re.compile(pattern)
-    except re.error as exc:
-        raise ValueError(f"Invalid regex: {exc}") from exc
+    def _scan_file(fpath: Path, hits: list[str]) -> bool:
+        """Append matches from *fpath*; return True once ``max_results`` is hit.
+
+        Lines are streamed rather than read whole: a multi-megabyte file costs
+        one line of memory instead of all of it, and a decode error partway
+        through keeps the matches already found above it.
+        """
+        display_path = denied_paths.display_path(fpath)
+        try:
+            with fpath.open("rb") as raw:
+                # A NUL in the first block is the standard binary heuristic —
+                # the same one grep and ripgrep use. Cheaper and far more
+                # reliable than waiting for a decode error, which fires on an
+                # arbitrary buffer boundary and would otherwise hide an entire
+                # text file because of one stray byte.
+                if b"\x00" in raw.read(_BINARY_SNIFF_BYTES):
+                    return False
+                raw.seek(0)
+                stream = io.TextIOWrapper(raw, encoding="utf-8", errors="replace")
+                for lineno, line in enumerate(stream, start=1):
+                    if compiled.search(line):
+                        hits.append(f"{display_path}:{lineno}: {line.rstrip()[:200]}")
+                        if len(hits) >= max_results:
+                            return True
+        except OSError:
+            return False
+        return False
 
     if resolved.is_file():
 
         def _scan_single_file() -> list[str]:
-            try:
-                text = resolved.read_text(encoding="utf-8")
-            except (UnicodeDecodeError, OSError):
-                return []
-            display_path = denied_paths.display_path(resolved)
             hits: list[str] = []
-            for lineno, line in enumerate(text.splitlines(), start=1):
-                if compiled.search(line):
-                    hits.append(f"{display_path}:{lineno}: {line[:200]}")
-                    if len(hits) >= max_results:
-                        return hits
+            _scan_file(resolved, hits)
             return hits
 
-        matches = _scan_single_file()
+        matches = await asyncio.to_thread(_scan_single_file)
         if not matches:
             return f"No matches for pattern '{pattern}' in {denied_paths.display_path(resolved)} (include={include})"
         return "\n".join(matches)
@@ -139,16 +162,8 @@ async def _grep_files(
                 # model's context.
                 if denied_paths.is_denied_path(fpath):
                     continue
-                try:
-                    text = fpath.read_text(encoding="utf-8")
-                except (UnicodeDecodeError, OSError):
-                    continue
-                display_path = denied_paths.display_path(fpath)
-                for lineno, line in enumerate(text.splitlines(), start=1):
-                    if compiled.search(line):
-                        hits.append(f"{display_path}:{lineno}: {line[:200]}")
-                        if len(hits) >= max_results:
-                            return hits
+                if _scan_file(fpath, hits):
+                    return hits
         return hits
 
     # Me run scan with timeout to prevent ReDoS from locking the thread pool

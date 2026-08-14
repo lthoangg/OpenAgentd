@@ -458,6 +458,27 @@ class TestGrepFiles:
         with pytest.raises(ToolExecutionError):
             await grep_files.arun(pattern="test", directory="nonexistent.py")
 
+    async def test_grep_returns_matches_found_before_an_undecodable_byte(
+        self, workspace
+    ):
+        """Streaming means a bad byte late in a file no longer discards the
+        matches already found earlier in it."""
+        (workspace / "mostly_text.py").write_bytes(
+            b"def keeper():\n    pass\n" + b"\xff\xfe\n"
+        )
+
+        result = await grep_files.arun(pattern="keeper", directory=".")
+
+        assert "mostly_text.py:1" in result
+
+    async def test_grep_skips_binary_files(self, workspace):
+        """A NUL in the first block means binary — do not spew bytes at the model."""
+        (workspace / "blob.py").write_bytes(b"keeper\x00\x01\x02binary junk")
+
+        result = await grep_files.arun(pattern="keeper", directory=".")
+
+        assert "blob.py" not in result
+
     async def test_grep_max_results(self, workspace):
         result = await grep_files.arun(pattern=".", directory=".", max_results=2)
         assert len(result.strip().split("\n")) == 2

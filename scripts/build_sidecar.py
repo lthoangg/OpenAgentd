@@ -580,7 +580,7 @@ def main() -> int:
     ap.add_argument(
         "--extras",
         default="",
-        help="Comma-separated optional-dep extras to install (e.g. audio,azure-doc-intel,full).",
+        help="Comma-separated optional-dep extras to install (comma-separated).",
     )
     ap.add_argument(
         "--no-smoke",

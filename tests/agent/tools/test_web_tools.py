@@ -84,8 +84,8 @@ async def test_web_search_exa_fallback_success():
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_web_fetch_html_converted_via_markitdown():
-    """HTML responses are converted to Markdown via MarkItDown."""
+async def test_web_fetch_html_converted_to_markdown():
+    """HTML responses are extracted to Markdown."""
     url = "https://example.com"
     respx.get(url).mock(
         return_value=httpx.Response(
@@ -95,19 +95,13 @@ async def test_web_fetch_html_converted_via_markitdown():
         )
     )
 
-    with patch("markitdown.MarkItDown") as mock_mid_class:
-        mock_mid = mock_mid_class.return_value
-        mock_mid.convert_stream.return_value.markdown = "# Hello"
-
-        result = await web_fetch(url)
-        assert result == "# Hello"
-        mock_mid.convert_stream.assert_called_once()
+    assert await web_fetch(url) == "Hello"
 
 
 @pytest.mark.asyncio
 @respx.mock
 async def test_web_fetch_native_markdown_returned_asis():
-    """Responses with text/markdown MIME type are returned as-is without MarkItDown."""
+    """Responses with text/markdown MIME type are returned as-is."""
     url = "https://example.com/readme.md"
     respx.get(url).mock(
         return_value=httpx.Response(
@@ -117,10 +111,7 @@ async def test_web_fetch_native_markdown_returned_asis():
         )
     )
 
-    with patch("markitdown.MarkItDown") as mock_mid_class:
-        result = await web_fetch(url)
-        assert result == "# Native Markdown"
-        mock_mid_class.return_value.convert_stream.assert_not_called()
+    assert await web_fetch(url) == "# Native Markdown"
 
 
 @pytest.mark.asyncio
@@ -135,18 +126,13 @@ async def test_web_fetch_no_scheme_prefixed():
         )
     )
 
-    with patch("markitdown.MarkItDown") as mock_mid_class:
-        mock_mid = mock_mid_class.return_value
-        mock_mid.convert_stream.return_value.markdown = "Test"
-
-        result = await web_fetch("example.com")
-        assert result == "Test"
+    assert await web_fetch("example.com") == "Test"
 
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_web_fetch_format_html_uses_markitdown():
-    """format='html' still uses MarkItDown for conversion."""
+async def test_web_fetch_format_html_still_converts():
+    """`format` only selects the Accept header; the body is still converted."""
     url = "https://example.com"
     respx.get(url).mock(
         return_value=httpx.Response(
@@ -156,13 +142,7 @@ async def test_web_fetch_format_html_uses_markitdown():
         )
     )
 
-    with patch("markitdown.MarkItDown") as mock_mid_class:
-        mock_mid = mock_mid_class.return_value
-        mock_mid.convert_stream.return_value.markdown = "Raw"
-
-        result = await web_fetch(url, format="html")
-        assert result == "Raw"
-        mock_mid.convert_stream.assert_called_once()
+    assert await web_fetch(url, format="html") == "Raw"
 
 
 @pytest.mark.asyncio
@@ -239,13 +219,10 @@ async def test_web_fetch_cloudflare_retry():
 
     respx.get(url).mock(side_effect=side_effect)
 
-    with patch("markitdown.MarkItDown") as mock_mid_class:
-        mock_mid = mock_mid_class.return_value
-        mock_mid.convert_stream.return_value.markdown = "OK"
+    result = await web_fetch(url)
 
-        result = await web_fetch(url)
-        assert result == "OK"
-        assert call_count == 2
+    assert result == "OK"
+    assert call_count == 2
 
 
 @pytest.mark.asyncio
@@ -366,13 +343,11 @@ async def test_web_fetch_binary_conversion_failure_still_reports_error():
         )
     )
 
-    with patch("markitdown.MarkItDown") as mock_mid_class:
-        mock_mid_class.return_value.convert_stream.side_effect = Exception("bad pdf")
-
-        result = await web_fetch(url)
+    result = await web_fetch(url)
 
     assert "Error fetching or converting" in result
-    assert "bad pdf" in result
+    # anydoc names the reason rather than failing anonymously.
+    assert "PDF" in result
 
 
 @pytest.mark.asyncio
@@ -405,9 +380,4 @@ async def test_web_fetch_timeout_capped_at_120():
         )
     )
 
-    with patch("markitdown.MarkItDown") as mock_mid_class:
-        mock_mid = mock_mid_class.return_value
-        mock_mid.convert_stream.return_value.markdown = "hi"
-
-        result = await web_fetch(url, timeout=9999)
-        assert result == "hi"
+    assert await web_fetch(url, timeout=9999) == "hi"

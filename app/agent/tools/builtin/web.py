@@ -1,8 +1,9 @@
 import asyncio
-from io import BytesIO
 from typing import Any, Literal
 
+import anydoc
 import httpx
+import trafilatura
 from ddgs import DDGS
 from loguru import logger
 from pydantic import BaseModel, Field, field_validator
@@ -38,11 +39,54 @@ _TEXTUAL_MIMES = frozenset(
 )
 
 
+_HTML_MIMES = frozenset({"text/html", "application/xhtml+xml"})
+
+
 def _is_textual(mime: str | None) -> bool:
     """Whether ``mime`` denotes text that can be decoded directly."""
     if mime is None:
         return False
     return mime.startswith("text/") or mime in _TEXTUAL_MIMES
+
+
+def _dropped_page_content(html: str, extracted: str | None) -> bool:
+    """Whether extraction lost enough of the page to be worth redoing.
+
+    Boilerplate removal prunes elements that look like navigation, which
+    includes tabbed code widgets built as custom elements with
+    ``role="tablist"`` — the pattern Astro Starlight and Docusaurus use for
+    per-package-manager install commands. A page whose source clearly has code
+    blocks but whose extraction has none has lost them.
+    """
+    if not extracted or not extracted.strip():
+        return True
+    return "<pre" in html.lower() and "```" not in extracted
+
+
+def _html_to_markdown(html: str) -> str:
+    """Convert an HTML page to Markdown, keeping the article and dropping chrome.
+
+    Extraction typically returns a third of the raw page — navigation,
+    sidebars, and inline ``<script>``/``<style>`` bodies are all discarded —
+    which is the difference between a docs page costing 10 KB of context and
+    costing 1 MB. ``html2txt`` is the greedy fallback for pages where that
+    pruning goes too far.
+    """
+    # A bare fragment (an htmx partial, a short error body) has no document
+    # element, and trafilatura discards it entirely. Wrapping costs nothing on
+    # a full page because the parser keeps the inner document.
+    if "<body" not in html.lower():
+        html = f"<html><body>{html}</body></html>"
+
+    extracted = trafilatura.extract(
+        html,
+        output_format="markdown",
+        include_tables=True,
+        include_links=True,
+    )
+    if _dropped_page_content(html, extracted):
+        return trafilatura.html2txt(html) or (extracted or "")
+    return extracted or ""
 
 
 def _resolve_charset(content_bytes: bytes, declared: str | None) -> str | None:
@@ -239,7 +283,8 @@ async def web_fetch(
 
         mime = content_type.split(";")[0].strip().lower() or None
         textual = _is_textual(mime)
-        # Resolve the charset against the whole body; MarkItDown only samples 4 KB.
+        # Resolve the charset against the whole body rather than a prefix, so a
+        # multi-byte character late in the stream cannot break the decode.
         charset = _resolve_charset(content_bytes, declared_charset) if textual else None
 
         # If the response is already markdown, return it as-is
@@ -247,21 +292,17 @@ async def web_fetch(
             # ``errors="replace"`` only bites when nothing decoded cleanly.
             return content_bytes.decode(charset or "utf-8", errors="replace")
 
-        # For all other types (html, text, pdf, etc.) let MarkItDown convert.
-        # ``markitdown`` is imported lazily because it pulls native libraries
-        # (``onnxruntime`` via ``magika``) whose DLL load can fail on some
-        # Windows hosts. Keeping the import inside the tool body means the
-        # backend always starts; only ``web_fetch`` calls that actually need
-        # conversion are affected when the native runtime is missing.
         def _convert() -> str:
-            from markitdown import MarkItDown, StreamInfo
-
-            md = MarkItDown()
-            result = md.convert_stream(
-                BytesIO(content_bytes),
-                stream_info=StreamInfo(url=url, mimetype=mime, charset=charset),
-            )
-            return result.markdown
+            if mime in _HTML_MIMES:
+                return _html_to_markdown(
+                    content_bytes.decode(charset or "utf-8", errors="replace")
+                )
+            if textual:
+                # Source, JSON, CSV: an extractor would mangle these, and the
+                # agent wants the bytes as served.
+                return content_bytes.decode(charset or "utf-8", errors="replace")
+            # Binary payloads — PDF, DOCX, and anydoc's other office formats.
+            return anydoc.to_markdown_bytes(content_bytes).strip()
 
         loop = asyncio.get_running_loop()
         try:

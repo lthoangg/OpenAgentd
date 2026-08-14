@@ -34,14 +34,16 @@ dependencies = [
     # breaks on Apple Silicon.
     "greenlet>=3.3.2",
     "ddgs>=9.12.0",
-    # `read` converts PDF/DOCX through anydoc: a Rust library that is 55-100x
-    # faster than markitdown on the same files, releases the GIL so concurrent
-    # sessions convert in parallel, and reports typed failures (encrypted,
-    # image-only) instead of an empty string.
+    # Binary documents (PDF/DOCX/office) for both `read` and `web_fetch`.
+    # A Rust library, 55-100x faster than markitdown on the same files, which
+    # releases the GIL so concurrent sessions convert in parallel and reports
+    # typed failures (encrypted, image-only) instead of an empty string.
     "firecrawl-anydoc>=0.1.9",
-    # Still required by `web_fetch`, which converts fetched HTML and PDF URLs.
-    # Heavier features stay behind optional extras to keep the bundle small.
-    "markitdown[pdf,docx]>=0.1.5",
+    # HTML for `web_fetch`. Extraction drops navigation, sidebars, and inline
+    # script/style bodies that a plain converter emits verbatim — on one real
+    # docs page markitdown returned 1,106,641 characters where this returns
+    # 10,655 for the same article.
+    "trafilatura>=2.0.0",
     "pyyaml>=6.0.3",
     "fastapi>=0.135.2",
     "uvicorn>=0.42.0",
@@ -82,6 +84,7 @@ dependencies = [
     # sidecar layouts by app.services.lsp.managed.
     "ruff==0.16.1",
     "ty==0.0.69",
+    "trafilatura>=2.2.0",
 ]
 
 [project.urls]
@@ -117,20 +120,6 @@ packages = ["app"]
 # not embedded in the FastAPI server wheel.
 [tool.hatch.build.targets.wheel.force-include]
 "app/alembic.ini" = "app/alembic.ini"
-
-[project.optional-dependencies]
-# Azure Document Intelligence routing in markitdown — server-side OCR fallback.
-# Brings in the azure-ai-* SDK family. Adds ~30 MB.
-azure-doc-intel = ["markitdown[az-doc-intel]>=0.1.5"]
-
-# Audio transcription via markitdown's audio backend
-# (speech_recognition + pydub). Adds ~50 MB and handles file-attached audio;
-# live microphone input uses client-side speech recognition instead.
-audio = ["markitdown[audio-transcription]>=0.1.5"]
-
-# Convenience: everything-but-the-kitchen-sink. Used by
-# ``uv tool install openagentd[full]`` for users who don't care about size.
-full = ["openagentd[audio,azure-doc-intel]"]
 
 [tool.uv]
 package = true

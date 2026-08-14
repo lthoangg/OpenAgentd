@@ -10,7 +10,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from app.agent.sandbox import get_sandbox
+from app.agent.denied_paths import get_denied_paths
 from app.agent.tools.builtin.filesystem._ignore import (
     NOISE_DIR_NAMES,
     is_gitignored,
@@ -186,10 +186,12 @@ async def _glob_files(
     max_results: int = 200,
 ) -> str:
     """Find files by glob pattern, honouring gitignore and skip rules."""
-    sandbox = get_sandbox()
-    resolved = sandbox.validate_path(directory)
+    denied_paths = get_denied_paths()
+    resolved = denied_paths.validate_path(directory)
     if not resolved.is_dir():
-        raise NotADirectoryError(f"Not a directory: {sandbox.display_path(resolved)}")
+        raise NotADirectoryError(
+            f"Not a directory: {denied_paths.display_path(resolved)}"
+        )
     if match == "path":
         _validate_pattern(pattern)
     gitignore_rules = load_gitignore_rules(resolved)
@@ -265,9 +267,9 @@ async def _glob_files(
         for _rel, path in matched:
             # Symlinks to directories and dangling links are not results, and a
             # sandbox-denied file must never be named in the output.
-            if not path.is_file() or sandbox.is_denied_path(path):
+            if not path.is_file() or denied_paths.is_denied_path(path):
                 continue
-            hits.append(sandbox.display_path(path))
+            hits.append(denied_paths.display_path(path))
             if len(hits) >= max_results:
                 break
         if hits or match == "name":
@@ -277,7 +279,7 @@ async def _glob_files(
     matches, dir_hints = await asyncio.to_thread(_scan)
 
     if not matches:
-        miss = f"No files matching '{pattern}' in {sandbox.display_path(resolved)}"
+        miss = f"No files matching '{pattern}' in {denied_paths.display_path(resolved)}"
         if dir_hints:
             # This tool reports files, so a pattern that names a directory looks
             # identical to a typo. Say which, and how to list it.

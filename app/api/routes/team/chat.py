@@ -150,7 +150,11 @@ def _serialize_agent(
     """
     from app.agent.hooks.summarization import resolve_prompt_token_threshold
     from app.agent.mcp import mcp_manager
-    from app.agent.sandbox import SandboxConfig, _sandbox_ctx, set_sandbox
+    from app.agent.denied_paths import (
+        DeniedPathsConfig,
+        _denied_paths_ctx,
+        set_denied_paths,
+    )
 
     _custom = (
         _custom_prompt_token_threshold()
@@ -167,7 +171,7 @@ def _serialize_agent(
         tools_by_name[tool.name] = tool
 
     sandbox_token = (
-        set_sandbox(SandboxConfig(workspace=workspace)) if workspace else None
+        set_denied_paths(DeniedPathsConfig(workspace=workspace)) if workspace else None
     )
     try:
         tools_payload = [
@@ -176,7 +180,7 @@ def _serialize_agent(
         ]
     finally:
         if sandbox_token is not None:
-            _sandbox_ctx.reset(sandbox_token)
+            _denied_paths_ctx.reset(sandbox_token)
 
     return {
         "name": agent.name,

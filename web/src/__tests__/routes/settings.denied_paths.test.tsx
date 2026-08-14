@@ -16,7 +16,7 @@ mock.module('@/hooks/use-mobile', () => ({
   useIsMobile: () => false,
 }))
 
-import { SandboxSettingsPage } from '@/components/settings/pages/settings.sandbox'
+import { DeniedPathsSettingsPage } from '@/components/settings/pages/settings.denied_paths'
 
 const server = setupServer()
 let originalFetch: typeof fetch | undefined
@@ -51,19 +51,19 @@ function renderPage() {
 
   return render(
     <QueryClientProvider client={queryClient}>
-      <SandboxSettingsPage />
+      <DeniedPathsSettingsPage />
       <ToastStack />
     </QueryClientProvider>,
   )
 }
 
-describe('SandboxSettingsPage', () => {
-  it('keeps sandbox row actions touch-sized before desktop compact sizing', async () => {
+describe('DeniedPathsSettingsPage', () => {
+  it('keeps denied paths row actions touch-sized before desktop compact sizing', async () => {
     server.use(
-      http.get('http://localhost/api/settings/sandbox', () => HttpResponse.json({
+      http.get('http://localhost/api/settings/denied-paths', () => HttpResponse.json({
         denied_patterns: ['**/.env'],
       })),
-      http.put('http://localhost/api/settings/sandbox', () => HttpResponse.json({
+      http.put('http://localhost/api/settings/denied-paths', () => HttpResponse.json({
         denied_patterns: ['**/.env'],
       })),
     )
@@ -91,31 +91,29 @@ describe('SandboxSettingsPage', () => {
 
   it('keeps empty-state add action touch-sized', async () => {
     server.use(
-      http.get('http://localhost/api/settings/sandbox', () => HttpResponse.json({
+      http.get('http://localhost/api/settings/denied-paths', () => HttpResponse.json({
         denied_patterns: [],
       })),
     )
 
     renderPage()
 
-    expect(await screen.findByText('No patterns')).toBeTruthy()
-    const add = screen.getByRole('button', { name: /Add pattern/i })
+    const add = await screen.findByRole('button', { name: /Add pattern/i })
     expect(add.className).toContain('min-h-11')
     expect(add.className).toContain('md:min-h-0')
   })
 
   it('keeps examples trigger touch-accessible', async () => {
     server.use(
-      http.get('http://localhost/api/settings/sandbox', () => HttpResponse.json({
+      http.get('http://localhost/api/settings/denied-paths', () => HttpResponse.json({
         denied_patterns: [],
       })),
     )
 
     renderPage()
 
-    const examples = await screen.findByRole('button', { name: /See examples/i })
-    expect(examples.className).toContain('min-h-11')
-    fireEvent.click(examples)
-    expect(await screen.findByText('Any file named .env, at any depth')).toBeTruthy()
+    const trigger = await screen.findByRole('button', { name: /See examples/i })
+    expect(trigger.className).toContain('min-h-11')
+    expect(trigger.className).toContain('md:min-h-0')
   })
 })

@@ -62,6 +62,7 @@ export function TracesTable({
   })
   const rows = table.getRowModel().rows
   const shouldVirtualize = embedded && scrollElement !== null && scrollElement !== undefined
+  // eslint-disable-next-line react-hooks/incompatible-library
   const rowVirtualizer = useVirtualizer({
     count: shouldVirtualize ? rows.length : 0,
     getScrollElement: () => scrollElement ?? null,

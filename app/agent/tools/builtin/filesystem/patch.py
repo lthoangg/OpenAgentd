@@ -10,7 +10,7 @@ from typing import Literal
 from loguru import logger
 from pydantic import AliasChoices, BaseModel, Field, field_validator
 
-from app.agent.sandbox import get_sandbox
+from app.agent.denied_paths import get_denied_paths
 from app.agent.tools.builtin.filesystem._config_watch import notify_fs_change
 from app.agent.tools.registry import Tool
 
@@ -267,15 +267,15 @@ def _apply_chunks_with_meta(
 
 async def _patch_file(patch_text: str) -> str:
     """Apply a parsed patch envelope to the workspace."""
-    sandbox = get_sandbox()
+    denied_paths = get_denied_paths()
     patches = _parse_patch(patch_text)
     planned: list[
         tuple[FilePatch, Path, Path | None, bytes | None, dict[str, object] | None]
     ] = []
 
     for patch in patches:
-        resolved = sandbox.validate_path(patch.path)
-        target = sandbox.validate_path(patch.move_to) if patch.move_to else None
+        resolved = denied_paths.validate_path(patch.path)
+        target = denied_paths.validate_path(patch.move_to) if patch.move_to else None
 
         if patch.kind == "add":
             planned.append(
@@ -291,20 +291,22 @@ async def _patch_file(patch_text: str) -> str:
         if patch.kind == "delete":
             if not resolved.exists():
                 raise FileNotFoundError(
-                    f"File not found: {sandbox.display_path(resolved)}"
+                    f"File not found: {denied_paths.display_path(resolved)}"
                 )
             if not resolved.is_file():
                 raise IsADirectoryError(
-                    f"Path is a directory: {sandbox.display_path(resolved)}"
+                    f"Path is a directory: {denied_paths.display_path(resolved)}"
                 )
             planned.append((patch, resolved, None, None, None))
             continue
 
         if not resolved.exists():
-            raise FileNotFoundError(f"File not found: {sandbox.display_path(resolved)}")
+            raise FileNotFoundError(
+                f"File not found: {denied_paths.display_path(resolved)}"
+            )
         if not resolved.is_file():
             raise IsADirectoryError(
-                f"Path is a directory: {sandbox.display_path(resolved)}"
+                f"Path is a directory: {denied_paths.display_path(resolved)}"
             )
         content = resolved.read_bytes().decode("utf-8")
         new_content, hunks = _apply_chunks_with_meta(content, patch.chunks, patch.path)
@@ -339,7 +341,7 @@ async def _patch_file(patch_text: str) -> str:
     for path in changed:
         notify_fs_change(path)
     logger.info("patch_applied files={}", len(changed))
-    summary = "\n".join(sandbox.display_path(path) for path in changed)
+    summary = "\n".join(denied_paths.display_path(path) for path in changed)
     diff_meta = json.dumps(
         {
             "files": [meta for *_rest, meta in planned if meta is not None],

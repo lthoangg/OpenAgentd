@@ -10,7 +10,10 @@ import pytest
 
 from app.agent.artifacts import session_artifact_dir
 from app.agent.errors import ToolArgumentError, ToolExecutionError
-from app.agent.sandbox import SandboxConfig, set_sandbox
+from app.agent.denied_paths import (
+    DeniedPathsConfig as SandboxConfig,
+    set_denied_paths as set_sandbox,
+)
 from app.agent.state import AgentState
 from app.core.config import settings
 from app.agent.tools.builtin.filesystem import (
@@ -35,7 +38,7 @@ def sandbox(tmp_path):
     sb = SandboxConfig(workspace=str(tmp_path))
     token = set_sandbox(sb)
     yield sb, tmp_path
-    from app.agent.sandbox import _sandbox_ctx
+    from app.agent.denied_paths import _denied_paths_ctx as _sandbox_ctx
 
     _sandbox_ctx.reset(token)
 
@@ -254,7 +257,7 @@ async def test_glob_miss_without_matching_directory_stays_terse(sandbox_workspac
 
 @pytest.mark.asyncio
 async def test_read_allows_active_session_artifact_path_only(sandbox_workspace):
-    from app.agent.sandbox import _sandbox_ctx
+    from app.agent.denied_paths import _denied_paths_ctx as _sandbox_ctx
 
     session_id = "session-read-artifact"
     token = set_sandbox(
@@ -291,7 +294,7 @@ async def test_read_allows_active_session_artifact_path_only(sandbox_workspace):
 
 @pytest.mark.asyncio
 async def test_read_rejects_data_dir_outside_active_session(sandbox_workspace):
-    from app.agent.sandbox import _sandbox_ctx
+    from app.agent.denied_paths import _denied_paths_ctx as _sandbox_ctx
 
     token = set_sandbox(SandboxConfig(workspace=str(sandbox_workspace), session_id="s"))
     try:
@@ -307,7 +310,7 @@ async def test_read_rejects_data_dir_outside_active_session(sandbox_workspace):
 
 @pytest.mark.asyncio
 async def test_read_allows_log_paths(sandbox_workspace):
-    from app.agent.sandbox import _sandbox_ctx
+    from app.agent.denied_paths import _denied_paths_ctx as _sandbox_ctx
 
     token = set_sandbox(SandboxConfig(workspace=str(sandbox_workspace), session_id="s"))
     try:
@@ -461,7 +464,7 @@ class TestGrepFiles:
     async def test_grep_never_reads_sandbox_denied_files(self, tmp_path):
         """Dot files are searchable now, so the sandbox denylist — not the dot
         prefix — is what keeps ``.env`` secrets out of grep output."""
-        from app.agent.sandbox import _sandbox_ctx
+        from app.agent.denied_paths import _denied_paths_ctx as _sandbox_ctx
 
         sb = SandboxConfig(
             workspace=str(tmp_path), denied_patterns=["**/.env", "**/.env.*"]
@@ -484,7 +487,7 @@ class TestGrepFiles:
     async def test_grep_does_not_leak_denied_files_through_a_symlink(self, tmp_path):
         """A symlink with an innocuous name must not smuggle ``.env`` contents
         into the transcript — the denylist follows the link."""
-        from app.agent.sandbox import _sandbox_ctx
+        from app.agent.denied_paths import _denied_paths_ctx as _sandbox_ctx
 
         sb = SandboxConfig(workspace=str(tmp_path), denied_patterns=["**/.env"])
         token = set_sandbox(sb)
@@ -656,7 +659,7 @@ class TestGlobFiles:
         assert ".eslintrc.json" in result
 
     async def test_glob_never_lists_sandbox_denied_files(self, tmp_path):
-        from app.agent.sandbox import _sandbox_ctx
+        from app.agent.denied_paths import _denied_paths_ctx as _sandbox_ctx
 
         sb = SandboxConfig(workspace=str(tmp_path), denied_patterns=["**/.env"])
         token = set_sandbox(sb)

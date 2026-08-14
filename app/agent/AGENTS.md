@@ -16,7 +16,7 @@ mcp/                   MCP config, manager, installer/runtime integration
 mode/team/             Multi-agent teams, roster, mailbox, board-driven todo flow
 plugins/               User plugin loading and role context
 permission.py          Tool permission decisions
-sandbox*.py            Shell/filesystem sandbox behavior
+denied_paths*.py     Shell/filesystem path-denylist behavior
 ```
 
 ## Common feature checks

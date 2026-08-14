@@ -11,7 +11,7 @@ export interface TeamError {
   title?: string
   message: string
   code?: string
-  category?: 'provider' | 'network' | 'tool' | 'user_action' | 'system' | 'sandbox'
+  category?: 'provider' | 'network' | 'tool' | 'user_action' | 'system' | 'denied_paths' | 'sandbox'
   agent?: string
 }
 

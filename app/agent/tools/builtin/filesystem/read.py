@@ -19,7 +19,7 @@ from loguru import logger
 from pydantic import BaseModel, Field
 
 from app.agent.schemas.chat import ToolResult
-from app.agent.sandbox import get_sandbox
+from app.agent.denied_paths import get_denied_paths
 from app.agent.tools.builtin.filesystem.handlers import (
     classify_file,
     handle_document,
@@ -74,9 +74,9 @@ async def _read_file(
     For images, returns base64-encoded image data for visual analysis.
     For documents (PDF, DOCX), extracts text content.
     """
-    sandbox = get_sandbox()
-    resolved = sandbox.validate_path(path)
-    rel = sandbox.display_path(resolved)
+    denied_paths = get_denied_paths()
+    resolved = denied_paths.validate_path(path)
+    rel = denied_paths.display_path(resolved)
     if not resolved.exists():
         raise FileNotFoundError(f"File not found: {rel}")
     if not resolved.is_file():

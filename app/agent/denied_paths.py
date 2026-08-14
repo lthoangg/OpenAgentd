@@ -1,7 +1,9 @@
-"""Sandbox configuration and path-validation utilities for computer tools.
+"""Path-denylist and validation utilities for filesystem and computer tools.
 
-The sandbox uses a **denylist** model: agent filesystem operations may touch
-any path on disk *except* paths that resolve under one of the denied roots.
+Tools use a **denylist** model: agent filesystem operations may touch
+any path on disk *except* paths that resolve under one of the denied roots or
+match a user-defined glob pattern in ``denied_paths.yaml``.
+
 By default the denied roots are:
 
 - ``OPENAGENTD_DATA_DIR``    — openagentd's SQLite DB and other internal data.
@@ -13,7 +15,7 @@ Self-diagnostic carve-outs
 A few subtrees of those roots are re-allowed so an agent can inspect its
 own runtime (logs, OTEL rollups, context-window dumps, and this session's
 artifacts) — see :func:`_allowed_internal_roots` for the exact list and the
-rationale for what stays denied.  Credentials (``CACHE_DIR``), the SQLite
+rationale for what stays denied. Credentials (``CACHE_DIR``), the SQLite
 DB, undo/redo snapshots, and other sessions' artifacts are **not** in that
 carve-out.
 
@@ -22,7 +24,7 @@ User uploads live *inside* the per-session workspace
 agent's fs tools as the relative path ``uploads/<filename>``.
 
 All relative paths resolve under ``workspace_root`` (the implicit "current
-directory" for the agent).  Absolute paths anywhere on the filesystem are
+directory" for the agent). Absolute paths anywhere on the filesystem are
 accepted as long as they don't fall under a denied root.
 
 Symlink rejection
@@ -36,8 +38,8 @@ Tilde paths (``~/...``) are rejected at the API surface.
 Command validation
 ------------------
 Shell-command validation lives in :class:`PermissionService`
-(``app.agent.permission``).  The sandbox additionally provides
-:meth:`SandboxConfig.check_command` — a best-effort scanner that walks
+(``app.agent.permission``). The path guard additionally provides
+:meth:`DeniedPathsConfig.check_command` — a best-effort scanner that walks
 shell-tokenised commands looking for path arguments inside denied roots
 or matching deny-patterns.
 """
@@ -61,28 +63,37 @@ DEFAULT_MAX_EXECUTION_SECONDS = 120
 DEFAULT_MAX_OUTPUT_BYTES = 131072
 DEFAULT_ALLOW_NETWORK = True
 
-# ── Context-aware Sandbox ───────────────────────────────────────────────
+# ── Context-aware Path Denylist ──────────────────────────────────────────
 
-_sandbox_ctx: contextvars.ContextVar["SandboxConfig"] = contextvars.ContextVar(
-    "sandbox_ctx"
+_denied_paths_ctx: contextvars.ContextVar["DeniedPathsConfig"] = contextvars.ContextVar(
+    "denied_paths_ctx"
 )
+_sandbox_ctx = _denied_paths_ctx
 
 
-def get_sandbox() -> "SandboxConfig":
-    """Return the active SandboxConfig for the current context."""
+def get_denied_paths() -> "DeniedPathsConfig":
+    """Return the active DeniedPathsConfig for the current context."""
     try:
-        return _sandbox_ctx.get()
+        return _denied_paths_ctx.get()
     except LookupError:
-        return _get_default_sandbox()
+        return _get_default_denied_paths()
 
 
-def set_sandbox(sandbox: "SandboxConfig") -> contextvars.Token:
-    """Set the active SandboxConfig for the current context."""
-    return _sandbox_ctx.set(sandbox)
+get_sandbox = get_denied_paths
 
 
-class SandboxConfig:
-    """Denylist-based sandbox for the agent's filesystem tools.
+def set_denied_paths(
+    denied_paths: "DeniedPathsConfig",
+) -> contextvars.Token:
+    """Set the active DeniedPathsConfig for the current context."""
+    return _denied_paths_ctx.set(denied_paths)
+
+
+set_sandbox = set_denied_paths
+
+
+class DeniedPathsConfig:
+    """Denylist-based path guard for the agent's filesystem tools.
 
     All relative paths resolve under ``workspace_root``.
     Absolute paths are accepted as-is, subject to the denylist check.
@@ -102,7 +113,7 @@ class SandboxConfig:
     ):
         if not workspace:
             raise ValueError(
-                "SandboxConfig requires an explicit workspace path; "
+                "DeniedPathsConfig requires an explicit workspace path; "
                 "no implicit default is provided."
             )
         self.workspace_root: Path = Path(workspace).resolve()
@@ -119,11 +130,11 @@ class SandboxConfig:
 
         if denied_patterns is None:
             try:
-                from app.agent.sandbox_config import load_config
+                from app.agent.denied_paths_config import load_config
 
                 denied_patterns = list(load_config().denied_patterns)
             except (ValueError, OSError) as exc:
-                logger.warning("sandbox_patterns_load_failed err={}", exc)
+                logger.warning("denied_paths_patterns_load_failed err={}", exc)
                 denied_patterns = []
         self.denied_patterns: list[str] = list(denied_patterns)
 
@@ -136,7 +147,7 @@ class SandboxConfig:
         )
 
     def metadata_path(self, name: str) -> Path:
-        """Return a path under ``.openagentd`` for this sandbox context."""
+        """Return a path under ``.openagentd`` for this context."""
         return session_artifacts_dir(self.session_id) / name
 
     # ── Path validation ───────────────────────────────────────────────────
@@ -166,7 +177,7 @@ class SandboxConfig:
         return None
 
     def validate_path(self, path: str | Path) -> Path:
-        """Resolve *path* and verify it's not inside a denied root.
+        """Resolve *path* and verify it's not inside a denied root or pattern.
 
         Raises:
             PermissionError: if the resolved path falls under a denied
@@ -174,9 +185,7 @@ class SandboxConfig:
                 tilde expansion.
         """
         if str(path).startswith("~"):
-            raise PermissionError(
-                f"Tilde paths are not allowed inside the sandbox: {path}"
-            )
+            raise PermissionError(f"Tilde paths are not allowed: {path}")
 
         p = Path(path)
         candidate = p if p.is_absolute() else self.workspace_root / p
@@ -194,7 +203,7 @@ class SandboxConfig:
                     denied = self._is_denied(target_resolved)
                     if denied is not None:
                         logger.warning(
-                            "sandbox_symlink_to_denied path={} target={} denied_root={}",
+                            "path_symlink_to_denied path={} target={} denied_root={}",
                             candidate,
                             target_resolved,
                             denied,
@@ -215,12 +224,12 @@ class SandboxConfig:
         denied = self._is_denied(resolved)
         if denied is not None:
             logger.warning(
-                "sandbox_path_denied path={} denied_root={}",
+                "path_denied path={} denied_root={}",
                 resolved,
                 denied,
             )
             raise PermissionError(
-                f"Path '{resolved}' is inside a denied sandbox root: {denied}"
+                f"Path '{resolved}' is inside a denied root: {denied}"
             )
 
         return resolved
@@ -250,122 +259,110 @@ class SandboxConfig:
             # Broken or unreadable link: refuse rather than guess.
             return True
 
-    # ── Command validation (best-effort) ─────────────────────────────────
+    def display_path(self, resolved: Path) -> str:
+        """Format an absolute path for human-facing output.
 
-    def check_command(self, command: str) -> tuple[Path, str] | None:
-        """Best-effort scan of *command* for arguments inside denied paths."""
+        Paths inside ``workspace_root`` become relative (e.g. ``src/main.py``).
+        Paths outside stay absolute.
+        """
         try:
-            tokens = shlex.split(command, posix=os.name != "nt")
+            return str(resolved.relative_to(self.workspace_root))
+        except ValueError:
+            return str(resolved)
+
+    def check_command(self, command_line: str) -> Path | str | None:
+        """Best-effort scan of a shell command line for path arguments in denied roots.
+
+        Tokenises *command_line* using POSIX or Windows rules, resolves any
+        token that looks like a path against *workspace_root*, and checks it
+        with :meth:`_is_denied`. Returns the denied root/pattern if a hit is
+        found, or None if clean.
+        """
+        posix_mode = os.name != "nt"
+        try:
+            tokens = shlex.split(command_line, posix=posix_mode)
         except ValueError:
             return None
 
-        for tok in tokens:
-            if os.name == "nt":
-                tok = tok.strip("\"'")
-            if not _looks_path_like(tok):
+        for token in tokens:
+            if not _looks_path_like(token):
                 continue
-            expanded = os.path.expanduser(tok)
-            p = Path(expanded)
-            candidate = p if p.is_absolute() else (self.workspace_root / p)
+            p = Path(token)
+            candidate = p if p.is_absolute() else self.workspace_root / p
             try:
                 resolved = candidate.resolve()
             except OSError:
                 continue
-            denied = self._is_denied(resolved)
-            if denied is not None:
+
+            hit = self._is_denied(resolved)
+            if hit is not None:
                 logger.warning(
-                    "sandbox_command_denied token={} resolved={} denied={}",
-                    tok,
+                    "path_command_denied token={} resolved={} denied={}",
+                    token,
                     resolved,
-                    denied,
+                    hit,
                 )
-                return resolved, str(denied)
+                return hit
+
         return None
 
-    # ── Display helpers ──────────────────────────────────────────────────
 
-    def display_path(self, resolved: Path) -> str:
-        """Return a display path for ``resolved``."""
-        if _path_is_under(resolved, self.workspace_root):
-            rel = resolved.relative_to(self.workspace_root)
-            return str(self.workspace_root) if str(rel) == "." else str(rel)
-        return str(resolved)
+# Backward-compatibility alias
+SandboxConfig = DeniedPathsConfig
 
 
-def _path_is_under(child: Path, parent: Path) -> bool:
-    """True if *child* equals or is contained by *parent* (after resolve)."""
+def _path_is_under(path: Path, parent: Path) -> bool:
+    """Return True if *path* equals *parent* or lives inside it."""
     try:
-        child.relative_to(parent)
+        path.relative_to(parent)
         return True
     except ValueError:
         return False
 
 
-def _allowed_internal_roots(session_id: str | None) -> list[Path]:
-    """Return internal OpenAgentd paths agents may inspect.
+def _allowed_internal_roots(session_id: str | None) -> tuple[Path, ...]:
+    """Subtrees of denied state/data roots re-allowed for self-diagnostics.
 
-    Narrow carve-outs from the denied roots so an agent can diagnose its
-    *own* runtime (the ``oad/debug-prod`` workflow) without opening up the
-    rest of the state/data dirs:
-
-    - ``{STATE_DIR}/logs`` — loguru app + per-session logs
-    - ``{STATE_DIR}/otel`` — OTEL span / metric rollups
-    - ``{STATE_DIR}/telemetry`` — per-turn context-window dumps
-    - ``{DATA_DIR}/sessions/{session_id}`` — this session's own artifacts
-
-    Containment is tested with :func:`_path_is_under`, so naming a root
-    covers every descendant; subdirectories need no entry of their own.
-
-    Deliberately still denied — these are operational state or secrets, not
-    diagnostics:
-
-    - ``{STATE_DIR}/snapshot`` — undo/redo repos; a stray write corrupts
-      session history
-    - ``CACHE_DIR`` — regeneratable cache *including OAuth tokens*
-    - ``DATA_DIR`` — the SQLite DB, plus every *other* session's artifacts
-
-    Note the asymmetry: the ``{STATE_DIR}`` carve-outs span *all* sessions
-    (a log/telemetry dump is keyed by session id underneath them), while the
-    ``DATA_DIR`` carve-out is scoped to the running session alone.  That
-    matches the pre-existing treatment of ``logs/sessions/<sid>/`` and keeps
-    the DB and cross-session artifacts out of reach.
+    Agents need to read their own runtime logs and telemetry (OTEL rollups,
+    context-window dumps) to support self-healing / oad/debug-prod commands,
+    and their active session artifact dir to read/write workspace state.
+    Credentials (CACHE_DIR), the SQLite DB, and other sessions stay denied.
     """
     state_root = Path(settings.OPENAGENTD_STATE_DIR).resolve()
-    roots = [
+    allowed: list[Path] = [
         state_root / "logs",
         state_root / "otel",
         state_root / "telemetry",
     ]
     if session_id:
-        roots.append(session_artifacts_dir(session_id).resolve())
-    return roots
+        allowed.append(session_artifacts_dir(session_id).resolve())
+    return tuple(allowed)
 
 
 def _looks_path_like(token: str) -> bool:
-    if not token:
+    """True if *token* contains path separators, file extensions, dotfiles, or tilde."""
+    if not token or token.startswith("-"):
         return False
-    if token.startswith("-"):
-        return False
-    if "/" in token:
+    if token.startswith("~") or token.startswith("."):
         return True
-    if "\\" in token:
+    if "/" in token or "\\" in token:
         return True
-    if token.startswith("~"):
-        return True
-    if token.startswith("."):
-        return True
-    return False
+    p = Path(token)
+    return bool(p.suffix) and len(p.suffix) > 1
 
 
-_default_sandbox_instance: SandboxConfig | None = None
+_default_denied_paths_instance: DeniedPathsConfig | None = None
 
 
-def _get_default_sandbox() -> SandboxConfig:
-    global _default_sandbox_instance
-    if _default_sandbox_instance is None:
+def _get_default_denied_paths() -> DeniedPathsConfig:
+    global _default_denied_paths_instance
+    if _default_denied_paths_instance is None:
         import tempfile
 
-        _default_sandbox_instance = SandboxConfig(
-            workspace=str(Path(tempfile.gettempdir()) / "openagentd-default-sandbox"),
+        _default_denied_paths_instance = DeniedPathsConfig(
+            workspace=str(Path(tempfile.gettempdir()) / "openagentd-default-workspace"),
         )
-    return _default_sandbox_instance
+    return _default_denied_paths_instance
+
+
+_get_default_sandbox = _get_default_denied_paths

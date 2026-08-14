@@ -34,10 +34,10 @@ def sessions_root() -> Path:
 def session_artifacts_dir(session_id: str | None) -> Path:
     """Return the app-managed metadata directory for *session_id*.
 
-    Pure path computation — no sandbox/contextvar lookups.  The
-    sandbox-aware default lives in :func:`app.agent.artifacts.session_artifact_dir`;
-    this lower-level helper exists so ``app.agent.sandbox`` can compute the
-    path without importing ``app.agent.artifacts`` (which imports sandbox
+    Pure path computation — no contextvar lookups. The
+    context-aware default lives in :func:`app.agent.artifacts.session_artifact_dir`;
+    this lower-level helper exists so ``app.agent.denied_paths`` can compute the
+    path without importing ``app.agent.artifacts`` (which imports denied_paths
     back — a module-level cycle).
     """
     root = sessions_root()

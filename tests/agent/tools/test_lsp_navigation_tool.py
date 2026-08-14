@@ -5,7 +5,10 @@ from pathlib import Path
 from unittest.mock import AsyncMock, patch
 import pytest
 from app.agent.errors import ToolExecutionError
-from app.agent.sandbox import SandboxConfig, set_sandbox
+from app.agent.denied_paths import (
+    DeniedPathsConfig as SandboxConfig,
+    set_denied_paths as set_sandbox,
+)
 from app.agent.tools.builtin.lsp import lsp_navigation
 
 
@@ -156,7 +159,7 @@ async def test_rejects_denied_source_symlink_and_filters_denied_result_symlink(
         )
     )
 
-    with pytest.raises(ToolExecutionError, match="denied sandbox"):
+    with pytest.raises(ToolExecutionError, match="denied path"):
         await lsp_navigation.arun(
             operation="document_symbol",
             path="denied-source.py",

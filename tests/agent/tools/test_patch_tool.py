@@ -3,7 +3,10 @@ from __future__ import annotations
 import pytest
 
 from app.agent.errors import ToolExecutionError
-from app.agent.sandbox import SandboxConfig, set_sandbox
+from app.agent.denied_paths import (
+    DeniedPathsConfig as SandboxConfig,
+    set_denied_paths as set_sandbox,
+)
 from app.agent.tools.builtin.filesystem import patch_file
 from app.agent.tools.builtin.filesystem.patch import PatchArgs, _parse_patch
 
@@ -13,7 +16,7 @@ def sandbox_workspace(tmp_path):
     config = SandboxConfig(workspace=str(tmp_path))
     token = set_sandbox(config)
     yield tmp_path
-    from app.agent.sandbox import _sandbox_ctx
+    from app.agent.denied_paths import _denied_paths_ctx as _sandbox_ctx
 
     _sandbox_ctx.reset(token)
 

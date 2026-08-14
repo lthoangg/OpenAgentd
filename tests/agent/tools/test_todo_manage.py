@@ -20,7 +20,10 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
-from app.agent.sandbox import SandboxConfig, set_sandbox
+from app.agent.denied_paths import (
+    DeniedPathsConfig as SandboxConfig,
+    set_denied_paths as set_sandbox,
+)
 from app.agent.tools.builtin.todo import (
     AnyAction,
     ClaimAction,
@@ -225,7 +228,7 @@ async def test_todos_are_isolated_by_sandbox_session(tmp_path: Path) -> None:
             _state=None,
         )
     finally:
-        from app.agent.sandbox import _sandbox_ctx
+        from app.agent.denied_paths import _denied_paths_ctx as _sandbox_ctx
 
         _sandbox_ctx.reset(token_one)
 
@@ -234,7 +237,7 @@ async def test_todos_are_isolated_by_sandbox_session(tmp_path: Path) -> None:
     try:
         result = await _todo_manage(actions=[ReadAction(action="read")], _state=None)
     finally:
-        from app.agent.sandbox import _sandbox_ctx
+        from app.agent.denied_paths import _denied_paths_ctx as _sandbox_ctx
 
         _sandbox_ctx.reset(token_two)
 

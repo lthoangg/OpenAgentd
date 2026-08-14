@@ -5,7 +5,7 @@ from __future__ import annotations
 from loguru import logger
 from pydantic import BaseModel, Field
 
-from app.agent.sandbox import get_sandbox
+from app.agent.denied_paths import get_denied_paths
 from app.agent.tools.builtin.filesystem._config_watch import notify_fs_change
 from app.agent.tools.registry import Tool
 
@@ -29,9 +29,9 @@ class WriteArgs(BaseModel):
 
 async def _write_file(path: str, content: str, overwrite: bool = True) -> str:
     """Write text to a file, creating parent directories as needed."""
-    sandbox = get_sandbox()
-    resolved = sandbox.validate_path(path)
-    rel = sandbox.display_path(resolved)
+    denied_paths = get_denied_paths()
+    resolved = denied_paths.validate_path(path)
+    rel = denied_paths.display_path(resolved)
     if not overwrite and resolved.exists():
         raise FileExistsError(f"File already exists: {rel}")
 

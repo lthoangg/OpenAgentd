@@ -10,7 +10,7 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field, field_validator
 
-from app.agent.sandbox import get_sandbox
+from app.agent.denied_paths import get_denied_paths
 from app.agent.tools.builtin.filesystem._ignore import (
     NOISE_DIR_NAMES,
     is_gitignored,
@@ -64,11 +64,11 @@ async def _grep_files(
     max_results: int = 100,
 ) -> str:
     """Search file contents by regex within the workspace."""
-    sandbox = get_sandbox()
-    resolved = sandbox.validate_path(directory)
+    denied_paths = get_denied_paths()
+    resolved = denied_paths.validate_path(directory)
     if not resolved.exists():
         raise FileNotFoundError(
-            f"File or directory not found: {sandbox.display_path(resolved)}"
+            f"File or directory not found: {denied_paths.display_path(resolved)}"
         )
 
     # Reject patterns that are too long — prevents crafted ReDoS payloads
@@ -89,7 +89,7 @@ async def _grep_files(
                 text = resolved.read_text(encoding="utf-8")
             except (UnicodeDecodeError, OSError):
                 return []
-            display_path = sandbox.display_path(resolved)
+            display_path = denied_paths.display_path(resolved)
             hits: list[str] = []
             for lineno, line in enumerate(text.splitlines(), start=1):
                 if compiled.search(line):
@@ -100,7 +100,7 @@ async def _grep_files(
 
         matches = _scan_single_file()
         if not matches:
-            return f"No matches for pattern '{pattern}' in {sandbox.display_path(resolved)} (include={include})"
+            return f"No matches for pattern '{pattern}' in {denied_paths.display_path(resolved)} (include={include})"
         return "\n".join(matches)
 
     gitignore_rules = load_gitignore_rules(resolved)
@@ -133,13 +133,13 @@ async def _grep_files(
                 # Secrets stay secret: with dotfiles in scope, the sandbox
                 # denylist is the only thing standing between `**/.env` and the
                 # model's context.
-                if sandbox.is_denied_path(fpath):
+                if denied_paths.is_denied_path(fpath):
                     continue
                 try:
                     text = fpath.read_text(encoding="utf-8")
                 except (UnicodeDecodeError, OSError):
                     continue
-                display_path = sandbox.display_path(fpath)
+                display_path = denied_paths.display_path(fpath)
                 for lineno, line in enumerate(text.splitlines(), start=1):
                     if compiled.search(line):
                         hits.append(f"{display_path}:{lineno}: {line[:200]}")
@@ -158,7 +158,7 @@ async def _grep_files(
             "pattern may be too complex or directory too large"
         )
     if not matches:
-        return f"No matches for pattern '{pattern}' in {sandbox.display_path(resolved)} (include={include})"
+        return f"No matches for pattern '{pattern}' in {denied_paths.display_path(resolved)} (include={include})"
     return "\n".join(matches)
 
 

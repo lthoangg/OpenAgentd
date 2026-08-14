@@ -56,7 +56,7 @@ from loguru import logger
 from pydantic import BaseModel, Field, model_validator
 
 from app.agent.artifacts import shell_output_dir
-from app.agent.sandbox import get_sandbox
+from app.agent.denied_paths import get_denied_paths
 
 # Import the sibling module directly — going through the package __init__
 # (``from app.agent.tools.builtin import shell_runtime``) reads an attribute
@@ -377,7 +377,7 @@ def _prune_completed_bg_processes(
 
 def _session_bg_processes() -> dict[int, _BgProcess]:
     """Return processes owned by the active tool-call session."""
-    session_id = get_sandbox().session_id
+    session_id = get_denied_paths().session_id
     return {pid: bg for pid, bg in _bg_processes.items() if bg.session_id == session_id}
 
 
@@ -750,10 +750,10 @@ def _resolve_workdir(workdir: str | None) -> Path:
     Raises:
         PermissionError: when the resolved path falls under a denied root.
     """
-    sandbox = get_sandbox()
+    denied_paths = get_denied_paths()
     if workdir is None:
-        return sandbox.workspace_root
-    return sandbox.validate_path(os.path.expanduser(workdir))
+        return denied_paths.workspace_root
+    return denied_paths.validate_path(os.path.expanduser(workdir))
 
 
 def _live_output_window(text: str) -> tuple[str, bool]:
@@ -825,20 +825,18 @@ async def _shell(
     the full output is saved to the XDG session artifact directory.
     Set ``background=true`` for long-running processes.
     """
-    sandbox = get_sandbox()
+    denied_paths = get_denied_paths()
 
-    # ── Sandbox path scan ─────────────────────────────────────────────
+    # ── Path scan ─────────────────────────────────────────────────────
     # Best-effort: walk path-like tokens in the command and reject if
     # any resolve under a denied root or match a deny pattern. Mirrors
-    # how file tools self-validate via sandbox.validate_path. See
-    # SandboxConfig.check_command for limitations (no $VAR/$()/base64
+    # how file tools self-validate via denied_paths.validate_path. See
+    # DeniedPathsConfig.check_command for limitations (no $VAR/$()/base64
     # evaluation — OS perms remain the last line of defence).
-    hit = sandbox.check_command(command)
+    hit = denied_paths.check_command(command)
     if hit is not None:
-        resolved, denied = hit
         raise PermissionError(
-            f"Sandbox blocked 'shell': command would touch "
-            f"'{resolved}' (denied by '{denied}')."
+            f"Sandbox blocked 'shell': command would touch denied path or pattern '{hit}'."
         )
 
     cwd = _resolve_workdir(workdir)
@@ -895,7 +893,7 @@ async def _shell(
                     proc.pid,
                     stale.session_id,
                 )
-            bg = _BgProcess(proc, command, sandbox.session_id)
+            bg = _BgProcess(proc, command, denied_paths.session_id)
             _bg_processes[bg.pid] = bg
 
             # Observe startup: return as soon as the process exits or its

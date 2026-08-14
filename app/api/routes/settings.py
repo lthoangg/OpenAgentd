@@ -19,7 +19,11 @@ import httpx2
 from fastapi import APIRouter, HTTPException
 from loguru import logger
 
-from app.agent.sandbox_config import SandboxFileConfig, load_config, save_config
+from app.agent.denied_paths_config import (
+    DeniedPathsFileConfig,
+    load_config,
+    save_config,
+)
 from app.core.config import settings
 from app.core.runtime_settings import (
     clear_provider_cached_models,
@@ -35,6 +39,7 @@ if TYPE_CHECKING:
 from app.api.schemas.settings import (
     DefaultModelRequest,
     DefaultModelResponse,
+    DeniedPathsSettingsBody,
     ProviderDisconnectRequest,
     ProviderDisconnectResponse,
     ProviderInfo,
@@ -53,7 +58,6 @@ from app.api.schemas.settings import (
     LspPythonToolsBody,
     LspToolsBody,
     LspTypescriptToolBody,
-    SandboxSettingsBody,
     SummarizationSettingsBody,
     TitleGenerationSettingsBody,
 )
@@ -111,26 +115,30 @@ _local_reachable_cache: dict[str, tuple[float, bool]] = {}
 _DAEMON_PROVIDER_IDS = frozenset({"ollama", "router9", "cliproxy"})
 
 
-@router.get("/sandbox")
-async def get_sandbox_settings() -> SandboxSettingsBody:
-    """Return the current sandbox deny-list.
+@router.get("/denied-paths")
+@router.get("/sandbox", deprecated=True)
+async def get_denied_paths_settings() -> DeniedPathsSettingsBody:
+    """Return the current path denylist patterns.
 
-    On first run this seeds ``sandbox.yaml`` with sensible defaults
+    On first run this seeds ``denied_paths.yaml`` with sensible defaults
     (``**/.env``, ``**/.env.*``).
     """
     try:
         cfg = load_config()
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    return SandboxSettingsBody(denied_patterns=list(cfg.denied_patterns))
+    return DeniedPathsSettingsBody(denied_patterns=list(cfg.denied_patterns))
 
 
-@router.put("/sandbox")
-async def update_sandbox_settings(body: SandboxSettingsBody) -> SandboxSettingsBody:
-    """Replace the sandbox deny-list with the supplied glob patterns."""
+@router.put("/denied-paths")
+@router.put("/sandbox", deprecated=True)
+async def update_denied_paths_settings(
+    body: DeniedPathsSettingsBody,
+) -> DeniedPathsSettingsBody:
+    """Replace the path denylist with the supplied glob patterns."""
     cleaned = [p.strip() for p in body.denied_patterns if p.strip()]
-    save_config(SandboxFileConfig(denied_patterns=cleaned))
-    return SandboxSettingsBody(denied_patterns=cleaned)
+    save_config(DeniedPathsFileConfig(denied_patterns=cleaned))
+    return DeniedPathsSettingsBody(denied_patterns=cleaned)
 
 
 @router.get("/lsp")

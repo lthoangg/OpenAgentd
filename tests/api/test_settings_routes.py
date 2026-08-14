@@ -10,7 +10,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from pydantic import SecretStr
 
-from app.agent.sandbox_config import DEFAULT_DENIED_PATTERNS
+from app.agent.denied_paths_config import DEFAULT_DENIED_PATTERNS
 from app.api.routes import settings as settings_routes
 from app.api.routes.settings import router
 from app.agent.providers.codex.oauth import CodexOAuth
@@ -38,9 +38,9 @@ def _provider_cached_models(provider_id: str) -> list[str]:
 
 @pytest.fixture
 def isolated_config(tmp_path: Path):
-    """Point load_config / save_config at a tmp ``sandbox.yaml``."""
-    target = tmp_path / "sandbox.yaml"
-    with patch("app.agent.sandbox_config.config_path", return_value=target):
+    """Point load_config / save_config at a tmp ``denied_paths.yaml``."""
+    target = tmp_path / "denied_paths.yaml"
+    with patch("app.agent.denied_paths_config.config_path", return_value=target):
         yield target
 
 
@@ -67,44 +67,51 @@ def _reset_local_reachable_cache(monkeypatch: pytest.MonkeyPatch):
     settings_routes._local_reachable_cache.clear()
 
 
-def test_get_sandbox_returns_seed_defaults_when_file_missing(
+def test_get_denied_paths_returns_seed_defaults_when_file_missing(
     isolated_config: Path,
 ) -> None:
     client = TestClient(_make_app())
-    response = client.get("/api/settings/sandbox")
+    response = client.get("/api/settings/denied-paths")
     assert response.status_code == 200
     assert response.json() == {"denied_patterns": list(DEFAULT_DENIED_PATTERNS)}
     # GET must not write the file.
     assert not isolated_config.exists()
 
 
-def test_put_sandbox_persists_patterns(isolated_config: Path) -> None:
+def test_get_sandbox_legacy_alias(isolated_config: Path) -> None:
+    client = TestClient(_make_app())
+    response = client.get("/api/settings/sandbox")
+    assert response.status_code == 200
+    assert response.json() == {"denied_patterns": list(DEFAULT_DENIED_PATTERNS)}
+
+
+def test_put_denied_paths_persists_patterns(isolated_config: Path) -> None:
     client = TestClient(_make_app())
     body = {"denied_patterns": ["**/.env", "**/secrets/**"]}
-    response = client.put("/api/settings/sandbox", json=body)
+    response = client.put("/api/settings/denied-paths", json=body)
     assert response.status_code == 200
     assert response.json() == body
     assert isolated_config.exists()
 
     # Round-trip — GET reflects what was saved.
-    again = client.get("/api/settings/sandbox")
+    again = client.get("/api/settings/denied-paths")
     assert again.json() == body
 
 
-def test_put_sandbox_strips_blank_patterns(isolated_config: Path) -> None:
+def test_put_denied_paths_strips_blank_patterns(isolated_config: Path) -> None:
     client = TestClient(_make_app())
     response = client.put(
-        "/api/settings/sandbox",
+        "/api/settings/denied-paths",
         json={"denied_patterns": ["**/.env", "", "   ", "bar/*"]},
     )
     assert response.status_code == 200
     assert response.json() == {"denied_patterns": ["**/.env", "bar/*"]}
 
 
-def test_put_sandbox_rejects_unknown_field(isolated_config: Path) -> None:
+def test_put_denied_paths_rejects_unknown_field(isolated_config: Path) -> None:
     client = TestClient(_make_app())
     response = client.put(
-        "/api/settings/sandbox",
+        "/api/settings/denied-paths",
         json={"denied_patterns": [], "extra_field": "nope"},
     )
     assert response.status_code == 422

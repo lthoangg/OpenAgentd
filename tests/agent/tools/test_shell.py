@@ -21,7 +21,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.agent.errors import ToolArgumentError
-from app.agent.sandbox import SandboxConfig, set_sandbox
+from app.agent.denied_paths import (
+    DeniedPathsConfig as SandboxConfig,
+    set_denied_paths as set_sandbox,
+)
 import app.agent.tools.builtin.shell as shell_module
 from app.agent.tools.builtin.shell import (
     _PYTHON_ENV_LEAK_KEYS,
@@ -47,7 +50,7 @@ def sandbox(tmp_path):
     sb = SandboxConfig(workspace=str(tmp_path))
     token = set_sandbox(sb)
     yield sb
-    from app.agent.sandbox import _sandbox_ctx
+    from app.agent.denied_paths import _denied_paths_ctx as _sandbox_ctx
 
     _sandbox_ctx.reset(token)
 
@@ -61,7 +64,7 @@ def sandbox_workspace(tmp_path):
     )
     token = set_sandbox(config)
     yield workspace
-    from app.agent.sandbox import _sandbox_ctx
+    from app.agent.denied_paths import _denied_paths_ctx as _sandbox_ctx
 
     _sandbox_ctx.reset(token)
 
@@ -670,7 +673,7 @@ async def test_session_cleanup_stops_only_owned_background_processes(tmp_path, f
         await _shell("sleep 30", background=True, timeout_seconds=1)
         first_pid = next(iter(_bg_processes))
     finally:
-        from app.agent.sandbox import _sandbox_ctx
+        from app.agent.denied_paths import _denied_paths_ctx as _sandbox_ctx
 
         _sandbox_ctx.reset(session_one_token)
 
@@ -680,7 +683,7 @@ async def test_session_cleanup_stops_only_owned_background_processes(tmp_path, f
         await _shell("sleep 30", background=True, timeout_seconds=1)
         second_pid = next(pid for pid in _bg_processes if pid != first_pid)
     finally:
-        from app.agent.sandbox import _sandbox_ctx
+        from app.agent.denied_paths import _denied_paths_ctx as _sandbox_ctx
 
         _sandbox_ctx.reset(session_two_token)
 
@@ -1087,7 +1090,7 @@ async def test_workdir_inside_denied_root_is_blocked(tmp_path):
         with pytest.raises(PermissionError):
             await _shell("cat key.pem", workdir=str(forbidden))
     finally:
-        from app.agent.sandbox import _sandbox_ctx
+        from app.agent.denied_paths import _denied_paths_ctx as _sandbox_ctx
 
         _sandbox_ctx.reset(token)
 
@@ -1260,7 +1263,7 @@ class TestSandboxCommandScan:
             with pytest.raises(PermissionError, match="Sandbox blocked"):
                 await _shell(command=f"cat {forbidden}/key.pem")
         finally:
-            from app.agent.sandbox import _sandbox_ctx
+            from app.agent.denied_paths import _denied_paths_ctx as _sandbox_ctx
 
             _sandbox_ctx.reset(token)
 
@@ -1277,7 +1280,7 @@ class TestSandboxCommandScan:
             with pytest.raises(PermissionError, match="Sandbox blocked"):
                 await _shell(command="cat /etc/app/.env")
         finally:
-            from app.agent.sandbox import _sandbox_ctx
+            from app.agent.denied_paths import _denied_paths_ctx as _sandbox_ctx
 
             _sandbox_ctx.reset(token)
 
@@ -1317,7 +1320,7 @@ class TestSandboxCommandScan:
             assert "[Succeeded]" in result
             assert "two" in result
         finally:
-            from app.agent.sandbox import _sandbox_ctx
+            from app.agent.denied_paths import _denied_paths_ctx as _sandbox_ctx
 
             _sandbox_ctx.reset(token)
 
@@ -1336,7 +1339,7 @@ class TestSandboxCommandScan:
             with pytest.raises(PermissionError, match="Sandbox blocked"):
                 await _shell(command=f"cat {state_path.resolve()}")
         finally:
-            from app.agent.sandbox import _sandbox_ctx
+            from app.agent.denied_paths import _denied_paths_ctx as _sandbox_ctx
 
             _sandbox_ctx.reset(token)
 
@@ -1354,7 +1357,7 @@ class TestSandboxCommandScan:
             with pytest.raises(PermissionError, match="Sandbox blocked"):
                 await _shell(command=f"cat '{tmp_path / 'secrets'}/api key.pem'")
         finally:
-            from app.agent.sandbox import _sandbox_ctx
+            from app.agent.denied_paths import _denied_paths_ctx as _sandbox_ctx
 
             _sandbox_ctx.reset(token)
 

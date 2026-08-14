@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from app.agent.sandbox import get_sandbox
+from app.agent.denied_paths import get_denied_paths
 from app.core.paths import SESSIONS_DIR as SESSIONS_DIR  # re-export (canonical home)
 from app.core.paths import session_artifacts_dir
 
@@ -22,8 +22,8 @@ def session_artifact_dir(session_id: str | None = None) -> Path:
     id is used. If no session id is available, fall back to the shared sessions
     root.
     """
-    sandbox = get_sandbox()
-    return session_artifacts_dir(session_id or sandbox.session_id)
+    denied_paths = get_denied_paths()
+    return session_artifacts_dir(session_id or denied_paths.session_id)
 
 
 def session_artifact_path(name: str, session_id: str | None = None) -> Path:

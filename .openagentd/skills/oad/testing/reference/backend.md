@@ -259,32 +259,32 @@ app.dependency_overrides[get_session] = _override_session
 
 ---
 
-## Sandbox context (for tools / LSP / file hooks)
+## Denied paths context (for tools / LSP / file hooks)
 
-Some production code reads the active sandbox via `get_sandbox()`. Set it before and reset it after:
+Some production code reads active denied paths via `get_denied_paths()`. Set it before and reset it after:
 
 ```python
-from app.agent.sandbox import SandboxConfig, set_sandbox
+from app.agent.denied_paths import DeniedPathsConfig, set_denied_paths
 
 def test_something(tmp_path):
-    sandbox = SandboxConfig(workspace=str(tmp_path))
-    token = set_sandbox(sandbox)
+    denied_paths = DeniedPathsConfig(workspace=str(tmp_path))
+    token = set_denied_paths(denied_paths)
     try:
         ...
     finally:
-        from app.agent.sandbox import _sandbox_ctx
-        _sandbox_ctx.reset(token)
+        from app.agent.denied_paths import _denied_paths_ctx
+        _denied_paths_ctx.reset(token)
 ```
 
 Or use `pytest.fixture` to scope it cleanly:
 
 ```python
 @pytest.fixture
-def sandbox(tmp_path):
-    from app.agent.sandbox import SandboxConfig, set_sandbox, _sandbox_ctx
-    token = set_sandbox(SandboxConfig(workspace=str(tmp_path)))
+def denied_paths(tmp_path):
+    from app.agent.denied_paths import DeniedPathsConfig, set_denied_paths, _denied_paths_ctx
+    token = set_denied_paths(DeniedPathsConfig(workspace=str(tmp_path)))
     yield tmp_path
-    _sandbox_ctx.reset(token)
+    _denied_paths_ctx.reset(token)
 ```
 
 ---

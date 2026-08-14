@@ -13,7 +13,7 @@ import re
 from loguru import logger
 from pydantic import BaseModel, Field, model_validator
 
-from app.agent.sandbox import get_sandbox
+from app.agent.denied_paths import get_denied_paths
 from app.agent.tools.builtin.filesystem._config_watch import notify_fs_change
 from app.agent.tools.registry import Tool
 
@@ -261,9 +261,9 @@ async def _edit_file(
     Uses fuzzy matching to handle minor whitespace/indentation variations.
     Fails if the match is ambiguous (multiple occurrences) unless replace_all=true.
     """
-    sandbox = get_sandbox()
-    resolved = sandbox.validate_path(path)
-    rel = sandbox.display_path(resolved)
+    denied_paths = get_denied_paths()
+    resolved = denied_paths.validate_path(path)
+    rel = denied_paths.display_path(resolved)
 
     if not resolved.exists():
         raise FileNotFoundError(f"File not found: {rel}")

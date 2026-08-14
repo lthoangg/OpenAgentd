@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from uuid import UUID
@@ -46,7 +47,14 @@ async def release_queued_user_messages(
         .where(col(SessionMessage.extra)["queue_status"].as_string() == "queued")
         .order_by(col(SessionMessage.created_at).asc(), col(SessionMessage.id).asc())
     )
-    queued = list(rows.all())
+    raw_all = rows.all()
+    if inspect.isawaitable(raw_all):
+        raw_all = await raw_all
+    queued: list[SessionMessage] = (
+        [r for r in raw_all if isinstance(r, SessionMessage)]
+        if isinstance(raw_all, (list, tuple, set))
+        else []
+    )
     released_at = datetime.now(timezone.utc)
     for i, row in enumerate(queued):
         extra = dict(row.extra or {})
@@ -72,7 +80,14 @@ async def pop_queued_user_messages(
         .where(col(SessionMessage.extra)["queue_status"].as_string() == "queued")
         .order_by(col(SessionMessage.created_at).asc(), col(SessionMessage.id).asc())
     )
-    queued = list(rows.all())
+    raw_all = rows.all()
+    if inspect.isawaitable(raw_all):
+        raw_all = await raw_all
+    queued: list[SessionMessage] = (
+        [r for r in raw_all if isinstance(r, SessionMessage)]
+        if isinstance(raw_all, (list, tuple, set))
+        else []
+    )
     activated_at = datetime.now(timezone.utc)
     for i, row in enumerate(queued):
         extra = dict(row.extra or {})
@@ -124,7 +139,12 @@ async def cancel_queued_user_message(
             == str(message_id)
         )
     )
-    for synthetic in synthetic_rows.all():
+    raw_synthetics = synthetic_rows.all()
+    if inspect.isawaitable(raw_synthetics):
+        raw_synthetics = await raw_synthetics
+    for synthetic in (
+        raw_synthetics if isinstance(raw_synthetics, (list, tuple, set)) else []
+    ):
         await db.delete(synthetic)
 
     await db.delete(row)

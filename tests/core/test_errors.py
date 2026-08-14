@@ -74,8 +74,11 @@ class TestExceptionHierarchy:
         assert issubclass(ToolArgumentError, ToolError)
         assert issubclass(ToolExecutionError, ToolError)
 
-    def test_sandbox_also_permission_error(self):
-        """SandboxError inherits from both OpenAgentdError and PermissionError."""
+    def test_denied_path_also_permission_error(self):
+        """DeniedPathError inherits from both OpenAgentdError and PermissionError."""
+        from app.agent.errors import DeniedPathError
+
+        assert issubclass(DeniedPathError, PermissionError)
         assert issubclass(SandboxError, PermissionError)
 
     def test_session_subtypes(self):

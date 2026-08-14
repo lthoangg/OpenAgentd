@@ -17,7 +17,10 @@ from unittest.mock import patch, MagicMock
 
 import pytest
 
-from app.agent.sandbox import SandboxConfig, set_sandbox
+from app.agent.denied_paths import (
+    DeniedPathsConfig as SandboxConfig,
+    set_denied_paths as set_sandbox,
+)
 from app.agent.schemas.chat import (
     ImageDataBlock,
     TextBlock,

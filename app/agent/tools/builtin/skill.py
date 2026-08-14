@@ -25,7 +25,7 @@ import yaml
 from loguru import logger
 from pydantic import BaseModel, Field
 
-from app.agent.sandbox import get_sandbox
+from app.agent.denied_paths import get_denied_paths
 from app.agent.tools.registry import InjectedArg, tool
 
 
@@ -47,7 +47,7 @@ _SKILLS_DIR: Path = _default_skills_dir()
 def _project_root() -> Path:
     """Return the active project root for project-local skill discovery."""
     try:
-        return get_sandbox().workspace_root
+        return get_denied_paths().workspace_root
     except Exception:
         return Path.cwd()
 
@@ -105,7 +105,7 @@ def _render_tokens(text: str, *, skill_dir: Path | None = None) -> str:
     }
     if skill_dir is not None:
         try:
-            workspace = get_sandbox().workspace_root
+            workspace = get_denied_paths().workspace_root
         except Exception:
             workspace = None
 

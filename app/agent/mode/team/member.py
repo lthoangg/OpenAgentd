@@ -44,7 +44,11 @@ from app.agent.mode.team.hooks.team_inbox import TeamInboxHook
 from app.agent.mode.team.hooks.team_prompt import AgentTeamProtocolHook
 from app.agent.hooks.tool_result_offload import ToolResultOffloadHook
 from app.agent.plugins.role import reset_role, set_role
-from app.agent.sandbox import SandboxConfig, _sandbox_ctx, set_sandbox
+from app.agent.denied_paths import (
+    DeniedPathsConfig,
+    _denied_paths_ctx,
+    set_denied_paths,
+)
 from app.core.paths import session_workspace_dir
 from app.agent.permission import (
     AutoAllowPermissionService,
@@ -1026,8 +1030,10 @@ class TeamMemberBase(abc.ABC):
 
         # Coding mode uses the exact project workspace for every team member.
         workspace = str(session_workspace_dir(lead_session_id, self._team.workspace))
-        session_sandbox = SandboxConfig(workspace=workspace, session_id=lead_session_id)
-        token = set_sandbox(session_sandbox)
+        session_sandbox = DeniedPathsConfig(
+            workspace=workspace, session_id=lead_session_id
+        )
+        token = set_denied_paths(session_sandbox)
 
         # Scope permission service to this agent run — auto-allows by default,
         # fires SSE events so the frontend can optionally show an approval UI.
@@ -1068,7 +1074,7 @@ class TeamMemberBase(abc.ABC):
             if runtime_provider is not None:
                 await _close_provider(runtime_provider)
             reset_role(role_token)
-            _sandbox_ctx.reset(token)
+            _denied_paths_ctx.reset(token)
             _permission_ctx.reset(perm_token)
 
         # If interrupted, mark last assistant message

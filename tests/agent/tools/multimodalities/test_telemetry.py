@@ -25,7 +25,10 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
 )
 from opentelemetry.trace import StatusCode
 
-from app.agent.sandbox import SandboxConfig, set_sandbox
+from app.agent.denied_paths import (
+    DeniedPathsConfig as SandboxConfig,
+    set_denied_paths as set_sandbox,
+)
 from app.agent.tools.multimodalities import _config as mm_config
 from app.agent.tools.multimodalities import _metrics as mm_metrics
 from app.agent.tools.multimodalities.image import _generate_image

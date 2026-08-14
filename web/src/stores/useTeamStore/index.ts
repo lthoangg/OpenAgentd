@@ -40,7 +40,7 @@ export function inferErrorTitle(message: string, category?: string): string {
   if (category === 'network') return 'Network error'
   if (category === 'tool') return 'Tool error'
   if (category === 'user_action') return 'Action failed'
-  if (category === 'sandbox') return 'Permission denied'
+  if (category === 'denied_paths' || category === 'sandbox') return 'Permission denied'
 
   const lower = message.toLowerCase()
   if (lower.includes('rate limit') || lower.includes('429')) return 'Rate limit exceeded'

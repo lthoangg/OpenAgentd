@@ -682,7 +682,10 @@ async def test_lsp_hook_intercepts_and_formats(tmp_path):
         file_path.write_text("import os\n", encoding="utf-8")
 
         # Set up active sandbox context
-        from app.agent.sandbox import SandboxConfig, set_sandbox
+        from app.agent.denied_paths import (
+            DeniedPathsConfig as SandboxConfig,
+            set_denied_paths as set_sandbox,
+        )
 
         sandbox = SandboxConfig(workspace=str(tmp_path))
         set_sandbox(sandbox)

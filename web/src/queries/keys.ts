@@ -77,7 +77,8 @@ export const queryKeys = {
     detail: (name: string) => ['mcp', 'detail', name] as const,
   },
   settings: {
-    sandbox: () => ['settings', 'sandbox'] as const,
+    deniedPaths: () => ['settings', 'denied-paths'] as const,
+    sandbox: () => ['settings', 'denied-paths'] as const,
     summarization: () => ['settings', 'summarization'] as const,
     titleGeneration: () => ['settings', 'titleGeneration'] as const,
     multimodal: () => ['settings', 'multimodal'] as const,

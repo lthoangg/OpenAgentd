@@ -30,7 +30,7 @@ narrative on slides and in the README:
 5. [Providers and models](#5-providers-and-models)
 6. [Built-in tools](#6-built-in-tools)
 7. [Extension surface](#7-extension-surface)
-8. [Sandbox and permissions](#8-sandbox-and-permissions)
+8. [Path denylist and permissions](#8-path-denylist-and-permissions)
 9. [Observability](#9-observability)
 10. [Voice](#10-voice)
 11. [Distribution and updates](#11-distribution-and-updates)
@@ -891,14 +891,14 @@ Four orthogonal ways to add capability.
 
 ---
 
-## 8. Sandbox and permissions
+## 8. Path denylist and permissions
 
 Single-user trust model. The host is trusted. The operator is the user.
 
 - **Path denylist** `[since v1.0]` — absolute paths anywhere on disk are accepted
   *unless* they resolve under a denied root (`OPENAGENTD_DATA_DIR`,
   `OPENAGENTD_STATE_DIR`, `OPENAGENTD_CACHE_DIR`) or match a user-defined glob
-  in `sandbox.yaml`. User-defined sandbox globs are enforced inside the active
+  in `denied_paths.yaml`. User-defined deny globs are enforced inside the active
   workspace too, not only outside it `[v1.74.0]`. Symlinks are rejected only
   when targeting a denied root. Tilde paths are always rejected.
 - **Self-diagnostic carve-outs** `[v1.120.4]` — agents can read their own

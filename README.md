@@ -110,7 +110,7 @@ cd web && bun dev
 
 **Build and inspect.** Attach files, browse a coding workspace, use `@` mentions, run a direct shell command with `!command`, review a diff, and inspect structured tool output without leaving the conversation.
 
-**Operate with confidence.** Manage providers, MCP servers, skills, sandbox permissions, scheduled tasks, todos, and local telemetry from the cockpit. OpenAgentd supports desktop, browser, and touch-first mobile clients against the same API.
+**Operate with confidence.** Manage providers, MCP servers, skills, path denylist permissions, scheduled tasks, todos, and local telemetry from the cockpit. OpenAgentd supports desktop, browser, and touch-first mobile clients against the same API.
 
 ## For users and contributors
 

@@ -1,10 +1,9 @@
-"""Config schema and file I/O for ``{CONFIG_DIR}/sandbox.yaml``.
+"""Config schema and file I/O for ``{CONFIG_DIR}/denied_paths.yaml``.
 
-User-configurable extension to the sandbox denylist: a list of glob
-patterns that, when matched against a resolved absolute path, cause the
-sandbox to reject access.  Patterns ship seeded with ``**/.env`` and
-``**/.env.*`` on first run so secret files are protected by default;
-users can edit/remove them via the Settings UI.
+User-configurable path denylist: a list of glob patterns that, when matched
+against a resolved absolute path, cause tool execution to reject access.
+Patterns ship seeded with ``**/.env`` and ``**/.env.*`` on first run so secret
+files are protected by default; users can edit/remove them via Settings UI.
 
 File shape (YAML)::
 
@@ -27,11 +26,12 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.core.config import settings
 
-_CONFIG_FILENAME = "sandbox.yaml"
+_CONFIG_FILENAME = "denied_paths.yaml"
+_LEGACY_CONFIG_FILENAME = "sandbox.yaml"
 _PARSED_CONFIG_CACHE_MAX_SIZE = 64
 _MAX_CACHED_CONFIG_CHARS = 128 * 1024
 
-#: Patterns seeded into a freshly-created ``sandbox.yaml``.  Chosen to
+#: Patterns seeded into a freshly-created ``denied_paths.yaml``. Chosen to
 #: cover the most common "sensitive file" case without being noisy.
 DEFAULT_DENIED_PATTERNS: tuple[str, ...] = (
     "**/.env",
@@ -39,8 +39,8 @@ DEFAULT_DENIED_PATTERNS: tuple[str, ...] = (
 )
 
 
-class SandboxFileConfig(BaseModel):
-    """Top-level shape of ``sandbox.yaml``."""
+class DeniedPathsFileConfig(BaseModel):
+    """Top-level shape of ``denied_paths.yaml``."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -50,9 +50,18 @@ class SandboxFileConfig(BaseModel):
     )
 
 
+# Backward-compatibility alias
+SandboxFileConfig = DeniedPathsFileConfig
+
+
 def config_path() -> Path:
-    """Return the resolved path to ``sandbox.yaml``."""
+    """Return the resolved path to ``denied_paths.yaml``."""
     return Path(settings.OPENAGENTD_CONFIG_DIR) / _CONFIG_FILENAME
+
+
+def legacy_config_path() -> Path:
+    """Return the resolved path to legacy ``sandbox.yaml``."""
+    return Path(settings.OPENAGENTD_CONFIG_DIR) / _LEGACY_CONFIG_FILENAME
 
 
 def _parse_config_text(path: Path, text: str) -> tuple[str, ...]:
@@ -64,7 +73,7 @@ def _parse_config_text(path: Path, text: str) -> tuple[str, ...]:
     if not isinstance(raw, dict):
         raise ValueError(f"{path}: expected a YAML mapping at top level")
 
-    cfg = SandboxFileConfig.model_validate(raw)
+    cfg = DeniedPathsFileConfig.model_validate(raw)
     return tuple(pattern for pattern in cfg.denied_patterns if pattern.strip())
 
 
@@ -74,29 +83,32 @@ def _parse_config(path: Path, text: str) -> tuple[str, ...]:
     return _parse_config_text(path, text)
 
 
-def load_config(path: Path | None = None) -> SandboxFileConfig:
-    """Load ``sandbox.yaml`` from disk.
+def load_config(path: Path | None = None) -> DeniedPathsFileConfig:
+    """Load ``denied_paths.yaml`` from disk.
 
-    When the file does not exist, returns the seed defaults without
-    writing — the file is only created on the first PUT from the
-    Settings UI (or whenever the user hand-edits the file).  Empty/blank
-    patterns are dropped silently.
+    When the file does not exist, checks for legacy ``sandbox.yaml``.
+    If neither exists, returns the seed defaults without writing.
+    Empty/blank patterns are dropped silently.
 
     Raises ``ValueError`` if the file exists but is malformed.
     """
     resolved = path or config_path()
     if not resolved.exists():
-        return SandboxFileConfig()
+        legacy = legacy_config_path()
+        if path is None and legacy.exists():
+            resolved = legacy
+        else:
+            return DeniedPathsFileConfig()
 
     text = resolved.read_text(encoding="utf-8")
     parser = (
         _parse_config if len(text) <= _MAX_CACHED_CONFIG_CHARS else _parse_config_text
     )
     patterns = parser(resolved.absolute(), text)
-    return SandboxFileConfig(denied_patterns=list(patterns))
+    return DeniedPathsFileConfig(denied_patterns=list(patterns))
 
 
-def save_config(cfg: SandboxFileConfig, path: Path | None = None) -> Path:
+def save_config(cfg: DeniedPathsFileConfig, path: Path | None = None) -> Path:
     """Persist ``cfg`` to disk atomically. Returns the resolved path."""
     resolved = path or config_path()
     resolved.parent.mkdir(parents=True, exist_ok=True)
@@ -106,7 +118,7 @@ def save_config(cfg: SandboxFileConfig, path: Path | None = None) -> Path:
 
     # Atomic write: tmp file in same dir, then rename.
     fd, tmp_name = tempfile.mkstemp(
-        prefix=".sandbox.yaml.", suffix=".tmp", dir=resolved.parent
+        prefix=".denied_paths.yaml.", suffix=".tmp", dir=resolved.parent
     )
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
@@ -120,7 +132,7 @@ def save_config(cfg: SandboxFileConfig, path: Path | None = None) -> Path:
         raise
 
     logger.info(
-        "sandbox_config_saved path={} patterns={}",
+        "denied_paths_config_saved path={} patterns={}",
         resolved,
         len(cfg.denied_patterns),
     )

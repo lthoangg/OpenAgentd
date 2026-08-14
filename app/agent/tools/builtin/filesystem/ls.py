@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
-from app.agent.sandbox import get_sandbox
+from app.agent.denied_paths import get_denied_paths
 from app.agent.tools.registry import Tool
 
 _DESCRIPTION = "List immediate children of a directory with type and size."
@@ -20,9 +20,9 @@ class LsArgs(BaseModel):
 
 async def _list_directory(path: str = ".") -> str:
     """List a directory's immediate children with type and size."""
-    sandbox = get_sandbox()
-    resolved = sandbox.validate_path(path)
-    rel = sandbox.display_path(resolved)
+    denied_paths = get_denied_paths()
+    resolved = denied_paths.validate_path(path)
+    rel = denied_paths.display_path(resolved)
     if not resolved.exists():
         raise FileNotFoundError(f"Directory not found: {rel}")
     if not resolved.is_dir():

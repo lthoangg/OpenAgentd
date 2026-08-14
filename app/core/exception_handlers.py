@@ -23,6 +23,7 @@ from loguru import logger
 
 from app.agent.errors import (
     AgentConfigError,
+    DeniedPathError,
     OpenAgentdError,
     ProviderAuthenticationError,
     ProviderConnectionError,
@@ -96,9 +97,12 @@ async def _tool_execution(request: Request, exc: ToolExecutionError) -> JSONResp
     return JSONResponse(status_code=500, content={"detail": "Tool execution failed."})
 
 
-async def _sandbox(request: Request, exc: SandboxError) -> JSONResponse:
-    logger.warning("sandbox_error error={}", exc)
+async def _denied_path(request: Request, exc: DeniedPathError) -> JSONResponse:
+    logger.warning("denied_path_error error={}", exc)
     return JSONResponse(status_code=403, content={"detail": str(exc)})
+
+
+_sandbox = _denied_path
 
 
 async def _routing(request: Request, exc: RoutingError) -> JSONResponse:
@@ -129,7 +133,8 @@ EXCEPTION_HANDLERS: dict[int | type[Exception], _ExceptionHandler] = {
     ProviderConnectionError: _provider_connection,
     ToolArgumentError: _tool_argument,
     ToolExecutionError: _tool_execution,
-    SandboxError: _sandbox,
+    DeniedPathError: _denied_path,
+    SandboxError: _denied_path,
     RoutingError: _routing,
     AgentConfigError: _agent_config,
     OpenAgentdError: _openagentd_fallback,

@@ -45,7 +45,7 @@ describe('apiBaseUrl', () => {
     const { apiBaseUrl, apiUrl } = await import('@/api/base-url')
 
     expect(apiBaseUrl()).toBe('http://localhost:4082/api')
-    expect(apiUrl('/settings/sandbox')).toBe('http://localhost:4082/api/settings/sandbox')
+    expect(apiUrl('/settings/denied-paths')).toBe('http://localhost:4082/api/settings/denied-paths')
   })
 
   it('updates the desktop API base URL at runtime and notifies listeners', async () => {

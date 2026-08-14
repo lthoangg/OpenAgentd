@@ -63,17 +63,17 @@ class LspHook(BaseAgentHook):
             return result
 
         try:
-            from app.agent.sandbox import get_sandbox
+            from app.agent.denied_paths import get_denied_paths
             from app.services.lsp.manager import check_lsp_diagnostics
 
-            sandbox = get_sandbox()
+            denied_paths = get_denied_paths()
 
             # Identify which files were modified/added
             files_to_check = []
             if tool_name in ("write", "edit"):
                 path = args.get("path")
                 if path:
-                    files_to_check.append(sandbox.validate_path(path))
+                    files_to_check.append(denied_paths.validate_path(path))
             elif tool_name == "patch":
                 patch_text = args.get("patch_text")
                 if patch_text:
@@ -83,7 +83,7 @@ class LspHook(BaseAgentHook):
                     for p in patches:
                         if p.kind in ("add", "update"):
                             files_to_check.append(
-                                sandbox.validate_path(p.move_to or p.path)
+                                denied_paths.validate_path(p.move_to or p.path)
                             )
 
             # Dedupe so the same file is never checked twice concurrently (the
@@ -95,7 +95,7 @@ class LspHook(BaseAgentHook):
             # so serial awaits would stack their latencies.
             reports = await asyncio.gather(
                 *(
-                    check_lsp_diagnostics(file_path, sandbox.workspace_root)
+                    check_lsp_diagnostics(file_path, denied_paths.workspace_root)
                     for file_path in unique_files
                 ),
                 return_exceptions=True,

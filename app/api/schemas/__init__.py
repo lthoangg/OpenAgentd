@@ -22,7 +22,7 @@ from app.api.schemas.sessions import (
     TeamSessionResolveRequest,
     TeamSessionResolveResponse,
 )
-from app.api.schemas.settings import SandboxSettingsBody
+from app.api.schemas.settings import DeniedPathsSettingsBody, SandboxSettingsBody
 
 __all__ = [
     # Shared primitives
@@ -40,5 +40,6 @@ __all__ = [
     "TeamSessionResolveRequest",
     "TeamSessionResolveResponse",
     # Settings
+    "DeniedPathsSettingsBody",
     "SandboxSettingsBody",
 ]

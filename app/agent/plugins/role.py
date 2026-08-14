@@ -6,7 +6,7 @@ Callers that drive ``Agent.run()`` (today: team lead/member) push their
 role onto a :class:`contextvars.ContextVar` so the agent loop picks it up
 without an extra parameter on every call site.
 
-Mirrors the pattern used by :mod:`app.agent.sandbox` and
+Mirrors the pattern used by :mod:`app.agent.denied_paths` and
 :mod:`app.agent.permission`.
 """
 

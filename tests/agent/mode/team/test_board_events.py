@@ -26,7 +26,10 @@ from app.agent.mode.team.board import (
 )
 from app.agent.mode.team.member import TeamLead, TeamMember
 from app.agent.mode.team.team import AgentTeam
-from app.agent.sandbox import SandboxConfig, set_sandbox
+from app.agent.denied_paths import (
+    DeniedPathsConfig as SandboxConfig,
+    set_denied_paths as set_sandbox,
+)
 from app.agent.tools.builtin.todo import TODOS_FILENAME
 
 from .conftest import MockTeamProvider

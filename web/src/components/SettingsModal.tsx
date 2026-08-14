@@ -19,8 +19,8 @@ import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { useSettingsStore, type SettingsSection } from '@/stores/useSettingsStore'
 import {
   useAgentFilesQuery,
+  useDeniedPathsSettingsQuery,
   useMcpServersQuery,
-  useSandboxSettingsQuery,
   useSkillFilesQuery,
 } from '@/queries'
 import {
@@ -45,7 +45,7 @@ import { McpListPage } from '@/components/settings/pages/settings.mcp'
 import { NewMcpServerPage } from '@/components/settings/pages/settings.mcp.new'
 import { McpServerDetailPage } from '@/components/settings/pages/settings.mcp.$name'
 import { ProvidersSettingsPage } from '@/components/settings/pages/settings.providers'
-import { SandboxSettingsPage } from '@/components/settings/pages/settings.sandbox'
+import { DeniedPathsSettingsPage } from '@/components/settings/pages/settings.denied_paths'
 import { AutomationSettingsPage } from '@/components/settings/pages/settings.automation'
 import { NotificationSettingsPage } from '@/components/settings/pages/settings.notifications'
 import { TerminalSettingsPage } from '@/components/settings/pages/settings.terminal'
@@ -124,14 +124,15 @@ function ModalSidebar({
   const agentsQ = useAgentFilesQuery()
   const skillsQ = useSkillFilesQuery()
   const mcpQ = useMcpServersQuery()
-  const sandboxQ = useSandboxSettingsQuery()
+  const deniedPathsQ = useDeniedPathsSettingsQuery()
   const active = parentSection(section)
 
   const counts: Partial<Record<TopLevelSection, number | null>> = {
     agents: agentsQ.data?.agents.length ?? null,
     skills: skillsQ.data?.skills.length ?? null,
     mcp: mcpQ.data?.servers.length ?? null,
-    sandbox: sandboxQ.data?.denied_patterns.length ?? null,
+    denied_paths: deniedPathsQ.data?.denied_patterns.length ?? null,
+    sandbox: deniedPathsQ.data?.denied_patterns.length ?? null,
   }
 
   return (
@@ -288,7 +289,8 @@ function SectionContent({
         <McpServerDetailPage name={selectedName} onBack={() => setSection('mcp')} />
       ) : null
     case 'providers':    return <ProvidersSettingsPage />
-    case 'sandbox':      return <SandboxSettingsPage />
+    case 'denied_paths':
+    case 'sandbox':      return <DeniedPathsSettingsPage />
     case 'automation':   return <AutomationSettingsPage />
     case 'notifications': return <NotificationSettingsPage />
     case 'terminal':     return <TerminalSettingsPage />

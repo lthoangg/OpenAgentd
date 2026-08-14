@@ -7,7 +7,11 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.agent.sandbox import SandboxConfig, _sandbox_ctx, set_sandbox
+from app.agent.denied_paths import (
+    DeniedPathsConfig as SandboxConfig,
+    _denied_paths_ctx as _sandbox_ctx,
+    set_denied_paths as set_sandbox,
+)
 from app.agent.tools.builtin.skill import (
     _builtin_skills_dir,
     _discover_skills_cached,
@@ -404,7 +408,11 @@ class TestLoadSkill:
     ):
         """For project-local skills the header path is relative (workspace-relative),
         matching the {SKILL_DIR} token behaviour in _render_tokens."""
-        from app.agent.sandbox import SandboxConfig, set_sandbox, _sandbox_ctx
+        from app.agent.denied_paths import (
+            DeniedPathsConfig as SandboxConfig,
+            _denied_paths_ctx as _sandbox_ctx,
+            set_denied_paths as set_sandbox,
+        )
 
         workspace = tmp_path / "workspace"
         workspace.mkdir()
@@ -985,7 +993,11 @@ class TestSkillDirResolution:
     @pytest.mark.asyncio
     async def test_project_skill_resolves_to_relative_path(self, tmp_path, monkeypatch):
         # Set up active sandbox workspace
-        from app.agent.sandbox import SandboxConfig, set_sandbox, _sandbox_ctx
+        from app.agent.denied_paths import (
+            DeniedPathsConfig as SandboxConfig,
+            _denied_paths_ctx as _sandbox_ctx,
+            set_denied_paths as set_sandbox,
+        )
 
         workspace = tmp_path / "workspace"
         workspace.mkdir()
@@ -1021,7 +1033,11 @@ class TestSkillDirResolution:
     @pytest.mark.asyncio
     async def test_global_skill_resolves_to_absolute_path(self, tmp_path, monkeypatch):
         # Set up active sandbox workspace
-        from app.agent.sandbox import SandboxConfig, set_sandbox, _sandbox_ctx
+        from app.agent.denied_paths import (
+            DeniedPathsConfig as SandboxConfig,
+            _denied_paths_ctx as _sandbox_ctx,
+            set_denied_paths as set_sandbox,
+        )
 
         workspace = tmp_path / "workspace"
         workspace.mkdir()
@@ -1059,7 +1075,11 @@ class TestSkillDirResolution:
         self, tmp_path, monkeypatch
     ):
         # Set up active sandbox workspace where the workspace contains the builtin skills dir
-        from app.agent.sandbox import SandboxConfig, set_sandbox, _sandbox_ctx
+        from app.agent.denied_paths import (
+            DeniedPathsConfig as SandboxConfig,
+            _denied_paths_ctx as _sandbox_ctx,
+            set_denied_paths as set_sandbox,
+        )
 
         workspace = tmp_path / "workspace"
         workspace.mkdir()

@@ -61,9 +61,9 @@ def _skills_roots() -> list[Path]:
     # ``get_sandbox()`` itself falls back to a default rather than raising, so
     # a failure here means the import or path resolution broke.
     try:
-        from app.agent.sandbox import get_sandbox
+        from app.agent.denied_paths import get_denied_paths
 
-        workspace = get_sandbox().workspace_root.resolve()
+        workspace = get_denied_paths().workspace_root.resolve()
         roots.append((workspace / ".openagentd" / "skills").resolve())
         roots.append((workspace / ".opencode" / "skills").resolve())
     except Exception as exc:  # noqa: BLE001 — see note above

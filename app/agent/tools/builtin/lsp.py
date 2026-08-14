@@ -8,7 +8,7 @@ from typing import Annotated, Any, Literal
 
 from pydantic import Field
 
-from app.agent.sandbox import get_sandbox
+from app.agent.denied_paths import get_denied_paths
 from app.agent.tools.registry import InjectedArg, Tool
 from app.services.lsp import lsp_manager
 from app.services.lsp.manager import EXTENSION_TO_LANG
@@ -298,7 +298,7 @@ def _relative_location(item: dict, workspace: Path) -> tuple[str, int, int] | No
     position = location.get("range", {}).get("start", {})
     if not isinstance(uri, str) or not uri.startswith("file:"):
         return None
-    sandbox = get_sandbox()
+    denied_paths = get_denied_paths()
     try:
         unresolved = Path.from_uri(uri)
         path = unresolved.resolve()
@@ -306,8 +306,8 @@ def _relative_location(item: dict, workspace: Path) -> tuple[str, int, int] | No
         return None
     if (
         not path.is_relative_to(workspace)
-        or sandbox.is_denied_path(unresolved)
-        or sandbox.is_denied_path(path)
+        or denied_paths.is_denied_path(unresolved)
+        or denied_paths.is_denied_path(path)
     ):
         return None
     if not isinstance(position, dict):
@@ -386,7 +386,7 @@ async def _lsp_navigation(
     """Navigate code with the workspace language server."""
     if _mode != "coding" or not _workspace:
         raise PermissionError("LSP navigation is only available in coding mode")
-    workspace = get_sandbox().workspace_root.resolve()
+    workspace = get_denied_paths().workspace_root.resolve()
     if Path(_workspace).resolve() != workspace:
         raise PermissionError("coding workspace is unavailable")
     if not path:
@@ -394,11 +394,11 @@ async def _lsp_navigation(
     candidate = Path(path)
     if candidate.is_absolute() or "~" in candidate.parts:
         raise PermissionError("path is outside the coding workspace")
-    sandbox = get_sandbox()
-    unresolved_source = sandbox.workspace_root / candidate
-    if sandbox.is_denied_path(unresolved_source):
-        raise PermissionError(f"Path '{path}' is inside a denied sandbox path")
-    source = sandbox.validate_path(path)
+    denied_paths = get_denied_paths()
+    unresolved_source = denied_paths.workspace_root / candidate
+    if denied_paths.is_denied_path(unresolved_source):
+        raise PermissionError(f"Path '{path}' is inside a denied path")
+    source = denied_paths.validate_path(path)
     if not source.is_relative_to(workspace):
         raise PermissionError("path is outside the coding workspace")
     if source.is_dir():

@@ -163,15 +163,20 @@ class QuestionSuspended(OpenAgentdError):
         super().__init__(f"Turn suspended awaiting user answer ({question_id})")
 
 
-# ── Sandbox errors ────────────────────────────────────────────────────────
+# ── Denied path errors ───────────────────────────────────────────────────
 
 
-class SandboxError(OpenAgentdError, PermissionError):
-    """Base for sandbox policy violations.
+class DeniedPathError(OpenAgentdError, PermissionError):
+    """Base for path denylist policy violations.
 
     Inherits from both ``OpenAgentdError`` (domain hierarchy) and
     ``PermissionError`` (backward compatibility with existing catches).
     """
+
+
+# Backward-compatibility aliases
+SandboxError = DeniedPathError
+PathDeniedError = DeniedPathError
 
 
 # ── Session errors ────────────────────────────────────────────────────────

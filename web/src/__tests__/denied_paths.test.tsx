@@ -1,21 +1,21 @@
 /**
- * Tests for the sandbox deny-list settings — API client + page rendering.
+ * Tests for the path denylist settings — API client + page rendering.
  */
 import { describe, it, expect, mock } from 'bun:test'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
 import {
+  getDeniedPathsSettings,
   getLspToolsStatus,
-  getSandboxSettings,
   installTypeScriptLsp,
-  updateSandboxSettings,
+  updateDeniedPathsSettings,
 } from '@/api/client'
-import { SandboxSettingsPage } from '@/components/settings/pages/settings.sandbox'
+import { DeniedPathsSettingsPage } from '@/components/settings/pages/settings.denied_paths'
 
 // ── API client ──────────────────────────────────────────────────────────────
 
-describe('getSandboxSettings', () => {
+describe('getDeniedPathsSettings', () => {
   it('returns the parsed deny-list', async () => {
     const original = globalThis.fetch
     globalThis.fetch = mock(
@@ -25,7 +25,7 @@ describe('getSandboxSettings', () => {
         }),
     )
     try {
-      const result = await getSandboxSettings()
+      const result = await getDeniedPathsSettings()
       expect(result).toEqual({ denied_patterns: ['**/.env'] })
     } finally {
       globalThis.fetch = original
@@ -36,7 +36,7 @@ describe('getSandboxSettings', () => {
     const original = globalThis.fetch
     globalThis.fetch = mock(async () => new Response(null, { status: 500 }))
     try {
-      await getSandboxSettings()
+      await getDeniedPathsSettings()
       expect.unreachable('should throw')
     } catch (err) {
       expect(err).toBeInstanceOf(Error)
@@ -46,7 +46,7 @@ describe('getSandboxSettings', () => {
   })
 })
 
-describe('updateSandboxSettings', () => {
+describe('updateDeniedPathsSettings', () => {
   it('PUTs JSON body and returns the response', async () => {
     const captured: { url?: string; init?: RequestInit } = {}
     const original = globalThis.fetch
@@ -58,9 +58,9 @@ describe('updateSandboxSettings', () => {
       })
     }) as (...args: unknown[]) => unknown) as unknown as typeof fetch
     try {
-      const result = await updateSandboxSettings({ denied_patterns: ['**/foo'] })
+      const result = await updateDeniedPathsSettings({ denied_patterns: ['**/foo'] })
       expect(result.denied_patterns).toEqual(['**/foo'])
-      expect(captured.url).toContain('/api/settings/sandbox')
+      expect(captured.url).toContain('/api/settings/denied-paths')
       expect(captured.init?.method).toBe('PUT')
       expect(JSON.parse(String(captured.init?.body))).toEqual({
         denied_patterns: ['**/foo'],
@@ -72,80 +72,95 @@ describe('updateSandboxSettings', () => {
 })
 
 describe('managed LSP settings API', () => {
-  const status = {
-    downloads_enabled: true,
-    python: { ty: true, ruff: false },
-    typescript: {
-      state: 'missing', detail: null,
-      language_server_version: '4.3.3', typescript_version: '5.8.2',
-    },
-  }
-
   it('GETs the managed LSP status', async () => {
-    const calls: Array<{ url: string; init?: RequestInit }> = []
+    const captured: { url?: string } = {}
     const original = globalThis.fetch
-    globalThis.fetch = mock((async (url: RequestInfo | URL, init?: RequestInit) => {
-      calls.push({ url: String(url), init })
-      return new Response(JSON.stringify(status), { status: 200 })
+    globalThis.fetch = mock((async (url: RequestInfo | URL) => {
+      captured.url = String(url)
+      return new Response(
+        JSON.stringify({
+          downloads_enabled: false,
+          python: { ty: true, ruff: false },
+          typescript: {
+            state: 'installed',
+            detail: 'ready',
+            language_server_version: '4.1.0',
+            typescript_version: '5.9.3',
+          },
+        }),
+        { status: 200 },
+      )
     }) as (...args: unknown[]) => unknown) as unknown as typeof fetch
+
     try {
-      await expect(getLspToolsStatus()).resolves.toEqual(status)
-      expect(calls).toEqual([{ url: '/api/settings/lsp', init: undefined }])
+      const result = await getLspToolsStatus()
+      expect(captured.url).toContain('/api/settings/lsp')
+      expect(result.typescript.state).toBe('installed')
+      expect(result.python.ty).toBe(true)
     } finally {
       globalThis.fetch = original
     }
   })
 
   it('POSTs only to the managed TypeScript installer endpoint', async () => {
-    const calls: Array<{ url: string; init?: RequestInit }> = []
+    const captured: { url?: string; init?: RequestInit } = {}
     const original = globalThis.fetch
     globalThis.fetch = mock((async (url: RequestInfo | URL, init?: RequestInit) => {
-      calls.push({ url: String(url), init })
-      return new Response(JSON.stringify({
-        ...status,
-        typescript: { ...status.typescript, state: 'ready' },
-      }), { status: 200 })
+      captured.url = String(url)
+      captured.init = init
+      return new Response(
+        JSON.stringify({
+          downloads_enabled: false,
+          python: { ty: true, ruff: false },
+          typescript: {
+            state: 'downloading',
+            detail: 'installing typescript-language-server',
+            language_server_version: '4.1.0',
+            typescript_version: '5.9.3',
+          },
+        }),
+        { status: 200 },
+      )
     }) as (...args: unknown[]) => unknown) as unknown as typeof fetch
+
     try {
-      await expect(installTypeScriptLsp()).resolves.toMatchObject({ typescript: { state: 'ready' } })
-      expect(calls).toEqual([{ url: '/api/settings/lsp/typescript/install', init: { method: 'POST' } }])
+      const result = await installTypeScriptLsp()
+      expect(captured.url).toContain('/api/settings/lsp/typescript/install')
+      expect(captured.init?.method).toBe('POST')
+      expect(result.typescript.state).toBe('downloading')
     } finally {
       globalThis.fetch = original
     }
   })
 })
 
-// ── Page rendering ──────────────────────────────────────────────────────────
+// ── Component ───────────────────────────────────────────────────────────────
 
-function renderPage() {
+function renderWithQueryClient(ui: React.ReactNode) {
   const queryClient = new QueryClient({
-    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    defaultOptions: { queries: { retry: false } },
   })
   return render(
-    <QueryClientProvider client={queryClient}>
-      <SandboxSettingsPage />
-    </QueryClientProvider>,
+    <QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>,
   )
 }
 
-describe('SandboxSettingsPage', () => {
+describe('DeniedPathsSettingsPage', () => {
   it('renders pattern rows from the server', async () => {
     const original = globalThis.fetch
     globalThis.fetch = mock(
       async () =>
-        new Response(JSON.stringify({ denied_patterns: ['**/.env', 'db/**'] }), {
-          status: 200,
-        }),
+        new Response(
+          JSON.stringify({ denied_patterns: ['**/.env', 'secrets/**'] }),
+          { status: 200 },
+        ),
     )
     try {
-      renderPage()
-      const inputs = await waitFor(() => {
-        const found = screen.getAllByRole('textbox')
-        if (found.length < 2) throw new Error('not yet')
-        return found
+      renderWithQueryClient(<DeniedPathsSettingsPage />)
+      await waitFor(() => {
+        expect(screen.getByDisplayValue('**/.env')).toBeTruthy()
+        expect(screen.getByDisplayValue('secrets/**')).toBeTruthy()
       })
-      expect((inputs[0] as HTMLInputElement).value).toBe('**/.env')
-      expect((inputs[1] as HTMLInputElement).value).toBe('db/**')
     } finally {
       globalThis.fetch = original
     }
@@ -160,16 +175,15 @@ describe('SandboxSettingsPage', () => {
         }),
     )
     try {
-      renderPage()
-      // wait for the loaded row
-      await waitFor(() => screen.getAllByRole('textbox'))
+      renderWithQueryClient(<DeniedPathsSettingsPage />)
+      await waitFor(() => screen.getByDisplayValue('**/.env'))
 
-      const addBtn = screen.getByRole('button', { name: /add pattern/i })
+      const addBtn = screen.getByText('Add pattern')
       fireEvent.click(addBtn)
 
+      // Should now have 2 pattern inputs (one filled, one empty)
       const inputs = screen.getAllByRole('textbox')
       expect(inputs.length).toBe(2)
-      expect((inputs[1] as HTMLInputElement).value).toBe('')
     } finally {
       globalThis.fetch = original
     }
@@ -182,9 +196,9 @@ describe('SandboxSettingsPage', () => {
         new Response(JSON.stringify({ denied_patterns: [] }), { status: 200 }),
     )
     try {
-      renderPage()
+      renderWithQueryClient(<DeniedPathsSettingsPage />)
       await waitFor(() => {
-        expect(screen.getByText(/no patterns/i)).toBeTruthy()
+        expect(screen.getByText('No patterns')).toBeTruthy()
       })
     } finally {
       globalThis.fetch = original

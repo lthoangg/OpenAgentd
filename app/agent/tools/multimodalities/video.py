@@ -50,7 +50,7 @@ from loguru import logger
 from opentelemetry.trace import Status, StatusCode
 from pydantic import BaseModel, Field
 
-from app.agent.sandbox import get_sandbox
+from app.agent.denied_paths import get_denied_paths
 
 # Import the backends subpackage directly — routing through the parent
 # package __init__ creates a module-level import cycle (the parent
@@ -180,9 +180,9 @@ def _load_input_image(raw: str) -> tuple[str, bytes] | str:
     """
     if not isinstance(raw, str) or not raw.strip():
         return "Error: image path must be a non-empty workspace string."
-    sandbox = get_sandbox()
+    denied_paths = get_denied_paths()
     try:
-        resolved = sandbox.validate_path(raw)
+        resolved = denied_paths.validate_path(raw)
     except (ValueError, PermissionError) as exc:
         return f"Error: input image '{raw}' rejected by sandbox: {exc}"
     if not resolved.exists():
@@ -470,11 +470,10 @@ async def _generate_video(
 
         # Me: Veo always emits mp4; no per-call format override exists today.
         name = _sanitise_filename(filename, ext="mp4")
-        sandbox = get_sandbox()
-        resolved = sandbox.validate_path(name)
-        resolved.parent.mkdir(parents=True, exist_ok=True)
+        denied_paths = get_denied_paths()
+        resolved = denied_paths.validate_path(name)
         resolved.write_bytes(mp4_bytes)
-        rel = sandbox.display_path(resolved)
+        rel = denied_paths.display_path(resolved)
         logger.info(
             "generate_video_saved path={} bytes={} provider={} model={} mode={} "
             "refs={} has_last_frame={} extend_uri={}",

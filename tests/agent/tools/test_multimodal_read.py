@@ -17,7 +17,10 @@ from unittest.mock import patch
 
 import pytest
 
-from app.agent.sandbox import SandboxConfig, set_sandbox
+from app.agent.denied_paths import (
+    DeniedPathsConfig as SandboxConfig,
+    set_denied_paths as set_sandbox,
+)
 from app.agent.schemas.chat import (
     ContentBlock,
     ImageDataBlock,
@@ -69,7 +72,7 @@ def sandbox(tmp_path):
     sb = SandboxConfig(workspace=str(tmp_path))
     token = set_sandbox(sb)
     yield sb, tmp_path
-    from app.agent.sandbox import _sandbox_ctx
+    from app.agent.denied_paths import _denied_paths_ctx as _sandbox_ctx
 
     _sandbox_ctx.reset(token)
 

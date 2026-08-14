@@ -11,7 +11,10 @@ from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 from app.agent.hooks.lsp import LspHook
-from app.agent.sandbox import SandboxConfig, set_sandbox
+from app.agent.denied_paths import (
+    DeniedPathsConfig as SandboxConfig,
+    set_denied_paths as set_sandbox,
+)
 from app.agent.schemas.chat import ToolCall, FunctionCall
 from app.services.lsp.managed import managed_lsp_tools
 from app.services.lsp.manager import LspManager, check_lsp_diagnostics, lsp_manager

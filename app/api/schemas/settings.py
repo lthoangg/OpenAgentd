@@ -7,10 +7,14 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
-class SandboxSettingsBody(BaseModel):
+class DeniedPathsSettingsBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     denied_patterns: list[str] = Field(default_factory=list)
+
+
+# Backward-compatibility alias
+SandboxSettingsBody = DeniedPathsSettingsBody
 
 
 class SummarizationSettingsBody(BaseModel):

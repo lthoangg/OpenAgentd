@@ -1361,9 +1361,14 @@ def test_context_injected_tools_are_not_pruned(tmp_path, injected):
     before = f.read_text()
     factory, _ = _make_provider_factory()
 
-    rebuild_agent_from_disk(f, provider_factory=factory)
+    agent = rebuild_agent_from_disk(f, provider_factory=factory)
 
     assert f.read_text() == before
+    # Exemption means "skip", never "grant": these tools stay gated by team
+    # mode and role in AgentTeam.get_injected_tools. Listing `lsp` in a
+    # normal-mode agent must not hand it the tool.
+    assert injected not in agent._tools
+    assert "read" in agent._tools
 
 
 def test_pruning_leaves_file_alone_when_all_tools_are_known(tmp_path):

@@ -24,9 +24,5 @@
     <!-- Required for user-chosen workspace directories. -->
     <key>com.apple.security.files.user-selected.read-write</key>
     <true/>
-
-    <!-- Microphone input for client-side speech recognition. -->
-    <key>com.apple.security.device.audio-input</key>
-    <true/>
 </dict>
 </plist>

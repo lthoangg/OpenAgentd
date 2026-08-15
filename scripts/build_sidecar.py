@@ -301,19 +301,6 @@ def strip_bundle(site_packages: Path, python_target: Path | None = None) -> int:
                 except OSError:
                     pass
 
-    # Prune botocore/data (keep only endpoints, retry, bedrock, sts, iam)
-    boto_data = site_packages / "botocore" / "data"
-    if boto_data.is_dir():
-        essential = {"_endpoints.json", "_retry.json", "bedrock-runtime", "bedrock", "sts", "iam"}
-        for p in boto_data.iterdir():
-            if p.is_dir() and p.name not in essential:
-                try:
-                    size = sum(f.stat().st_size for f in p.rglob("*") if f.is_file())
-                    shutil.rmtree(p, ignore_errors=True)
-                    removed += size
-                except OSError:
-                    pass
-
     # Prune babel locale-data (unused by text extraction)
     babel_loc = site_packages / "babel" / "locale-data"
     if babel_loc.is_dir():

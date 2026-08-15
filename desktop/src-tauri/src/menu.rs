@@ -394,7 +394,10 @@ pub fn update_tray_status(app: &AppHandle, text: &str) {
     let text = text.to_string();
     let status = state.tray_status.clone();
     tauri::async_runtime::spawn(async move {
-        if let Some(item) = status.lock().await.as_ref() {
+        // `set_text` blocks on the main thread, so clone the (Arc-backed)
+        // handle out and release the lock before calling it.
+        let item = status.lock().await.clone();
+        if let Some(item) = item {
             let _ = item.set_text(text);
         }
     });
@@ -405,7 +408,8 @@ pub fn update_tray_session(app: &AppHandle, text: &str) {
     let text = text.to_string();
     let session = state.tray_session.clone();
     tauri::async_runtime::spawn(async move {
-        if let Some(item) = session.lock().await.as_ref() {
+        let item = session.lock().await.clone();
+        if let Some(item) = item {
             let _ = item.set_text(text);
         }
     });
@@ -665,10 +669,24 @@ async fn update_tray_usage(app: &AppHandle, result: Result<UsageSummaryBody, Str
     // Skip the native-menu churn entirely when nothing changed — usage
     // percentages rarely move between polls, so most refreshes only need
     // the footer timestamp updated.
-    let mut rendered_guard = state.usage_rendered_rows.lock().await;
-    if *rendered_guard != entries {
-        let mut rows_guard = state.usage_rows.lock().await;
-        for old_row in rows_guard.drain(..) {
+    //
+    // Every menu mutation below blocks on the main thread (Tauri's
+    // `run_main_thread!` / `run_item_main_thread!`), so the state locks are
+    // taken, drained and released *first*. Holding an async mutex across a
+    // main-thread hop is one half of a deadlock: the other half is the main
+    // thread's own `block_on` of an `AppState` mutex in the `RunEvent`
+    // handlers and `install_desktop_menus`.
+    let stale_rows = {
+        let mut rendered_guard = state.usage_rendered_rows.lock().await;
+        if *rendered_guard == entries {
+            None
+        } else {
+            *rendered_guard = entries.clone();
+            Some(std::mem::take(&mut *state.usage_rows.lock().await))
+        }
+    };
+    if let Some(stale_rows) = stale_rows {
+        for old_row in stale_rows {
             let _ = submenu.remove(&old_row);
         }
         let mut new_rows = Vec::with_capacity(entries.len());
@@ -688,14 +706,12 @@ async fn update_tray_usage(app: &AppHandle, result: Result<UsageSummaryBody, Str
                 Err(e) => log::warn!("failed to build usage row menu item: {e:#}"),
             }
         }
-        *rows_guard = new_rows;
-        drop(rows_guard);
-        *rendered_guard = entries;
+        *state.usage_rows.lock().await = new_rows;
     }
-    drop(rendered_guard);
 
-    let footer_guard = state.usage_footer.lock().await;
-    if let Some(footer) = footer_guard.as_ref() {
+    // Same rule for the footer: clone the handle out, then release.
+    let footer = state.usage_footer.lock().await.clone();
+    if let Some(footer) = footer {
         let _ = footer.set_text(footer_text);
     }
 }

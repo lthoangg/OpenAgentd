@@ -29,6 +29,8 @@ from typing import Any
 import httpx
 from pydantic import BaseModel, SecretStr
 
+from app.core.secret_files import write_secret_file
+
 # -- Constants ----------------------------------------------------------------
 
 CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann"
@@ -83,14 +85,13 @@ class CodexOAuth(BaseModel):
 
     def save(self, path: Path | None = None) -> None:
         p = path or _default_oauth_file()
-        p.parent.mkdir(parents=True, exist_ok=True)
         data = {
             "access_token": self.access_token.get_secret_value(),
             "refresh_token": self.refresh_token.get_secret_value(),
             "expires_at": self.expires_at,
             "account_id": self.account_id,
         }
-        p.write_text(json.dumps(data, indent=2) + "\n")
+        write_secret_file(p, json.dumps(data, indent=2) + "\n")
 
     def is_expired(self) -> bool:
         return time.time() >= self.expires_at - 60  # 60s buffer

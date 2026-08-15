@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
 import urllib.parse
 import webbrowser
 from collections.abc import AsyncGenerator
@@ -23,6 +22,7 @@ from mcp.shared.auth import (
 
 from app.agent.mcp.config import HttpServerConfig, resolve_secret_refs
 from app.core.config import settings
+from app.core.secret_files import write_secret_file
 
 
 class OAuthRequiredError(RuntimeError):
@@ -284,9 +284,7 @@ class FileTokenStorage:
         return json.loads(self._path.read_text(encoding="utf-8"))
 
     def _write(self, data: dict[str, object]) -> None:
-        self._path.parent.mkdir(parents=True, exist_ok=True)
-        self._path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
-        os.chmod(self._path, 0o600)
+        write_secret_file(self._path, json.dumps(data, indent=2) + "\n")
 
 
 def build_oauth_provider(

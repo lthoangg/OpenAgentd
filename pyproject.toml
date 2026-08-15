@@ -79,13 +79,7 @@ dependencies = [
     # does first — so those modules migrate only when respx gains httpx2
     # support (or the mocking layer is replaced).
     "httpx2>=2.5.0",
-    "aws-bedrock-token-generator>=1.1.0",
-    # The `crt` extra is required: AWS login and background profile/credential
-    # resolution go through botocore's CRT-backed auth path. Removing it looks
-    # safe from a grep of this repo — nothing imports `awscrt` directly — but
-    # botocore loads it internally, so the breakage only shows at runtime.
-    "botocore[crt]>=1.43.1",
-    "duckdb>=1.1.0",
+    "orjson>=3.10.0",
     # Python diagnostics are part of the runtime product, not dev-only checks.
     # Their native console binaries are discovered in uv-tool and desktop
     # sidecar layouts by app.services.lsp.managed.

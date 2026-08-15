@@ -212,20 +212,10 @@ def _bedrock_bearer_token(overrides: Mapping[str, str] | None, region: str) -> s
     if bearer_token:
         return bearer_token
 
-    from aws_bedrock_token_generator import provide_token
+    from app.agent.providers.bedrock.token import generate_bedrock_bearer_token
 
     profile = _resolve(overrides, "AWS_BEDROCK_PROFILE")
-    if not profile:
-        return provide_token(region=region)
-
-    from botocore.session import Session
-
-    credentials = Session(profile=profile).get_credentials()
-
-    return provide_token(
-        region=region,
-        aws_credentials_provider=_ProfileCredentialsProvider(credentials),
-    )
+    return generate_bedrock_bearer_token(region=region, profile_name=profile)
 
 
 async def _bedrock_models(overrides: Mapping[str, str] | None = None) -> list[str]:

@@ -136,7 +136,7 @@ fn app_save_backend_server(
 }
 
 #[tauri::command]
-fn app_use_external_backend(
+async fn app_use_external_backend(
     app: AppHandle,
     state: tauri::State<'_, MobileBackendState>,
     base_url: String,
@@ -144,6 +144,11 @@ fn app_use_external_backend(
     persist: Option<bool>,
 ) -> Result<AppBackendStatus, String> {
     let normalized = normalize_base_url(&base_url).map_err(|e| format!("{e:#}"))?;
+    // Confirm the server answers *before* persisting it. Without this a
+    // mistyped host became the persisted startup backend, and the app
+    // reopened onto a loading screen on every launch with no in-app route
+    // back. The desktop shell has always health-checked here.
+    ensure_backend_reachable(&normalized).await?;
     if persist.unwrap_or(true) {
         save_backend_config(
             &app,
@@ -189,6 +194,27 @@ fn normalize_base_url(base_url: &str) -> Result<String> {
         "http" | "https" => Ok(trimmed.to_string()),
         scheme => Err(anyhow!("unsupported URL scheme: {scheme}")),
     }
+}
+
+/// Confirm a server answers `GET /api/health/live`.
+///
+/// A single attempt is enough here: unlike the desktop shell — which
+/// races a sidecar that is still starting and therefore retries — mobile
+/// only ever talks to an already-running remote server.
+async fn ensure_backend_reachable(base_url: &str) -> Result<(), String> {
+    let client = reqwest::Client::builder()
+        .connect_timeout(Duration::from_secs(5))
+        .timeout(Duration::from_secs(10))
+        .build()
+        .map_err(|e| format!("Check backend: {e}"))?;
+    client
+        .get(format!("{}/api/health/live", base_url.trim_end_matches('/')))
+        .send()
+        .await
+        .map_err(|e| format!("Backend is not reachable: {e}"))?
+        .error_for_status()
+        .map_err(|e| format!("Backend is not reachable: {e}"))?;
+    Ok(())
 }
 
 fn normalize_server_name(name: Option<String>) -> Option<String> {
@@ -532,9 +558,10 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::{
-        ensure_max_download_size, load_backend_config_from, normalize_base_url,
-        normalize_server_name, remove_backend_server_at, resolve_active_base_url,
-        save_backend_config_to, unique_cache_path, AppBackendConfig, MAX_DOWNLOAD_BYTES,
+        ensure_backend_reachable, ensure_max_download_size, load_backend_config_from,
+        normalize_base_url, normalize_server_name, remove_backend_server_at,
+        resolve_active_base_url, save_backend_config_to, unique_cache_path, AppBackendConfig,
+        MAX_DOWNLOAD_BYTES,
     };
     use std::path::PathBuf;
     use tempfile::tempdir;
@@ -758,5 +785,21 @@ mod tests {
     fn ensure_max_download_size_rejects_oversized_payload() {
         assert!(ensure_max_download_size(MAX_DOWNLOAD_BYTES).is_ok());
         assert!(ensure_max_download_size(MAX_DOWNLOAD_BYTES + 1).is_err());
+    }
+
+    // ── ensure_backend_reachable ────────────────────────────────────────
+    //
+    // Guards the ordering in `app_use_external_backend`: a server that does
+    // not answer must be rejected before it can be written to
+    // `active_base_url`, which is what the app reconnects to on launch.
+
+    #[tokio::test]
+    async fn an_unreachable_backend_is_rejected() {
+        // Port 1 is reserved and never listening — connection refused.
+        let error = ensure_backend_reachable("http://127.0.0.1:1")
+            .await
+            .expect_err("an unreachable backend must not be accepted");
+
+        assert!(error.starts_with("Backend is not reachable"), "unexpected: {error}");
     }
 }

@@ -280,7 +280,7 @@ def install_packages(
     )
 
 
-def strip_bundle(site_packages: Path) -> int:
+def strip_bundle(site_packages: Path, python_target: Path | None = None) -> int:
     """Remove caches/tests/etc. from site-packages. Returns bytes saved."""
     removed = 0
     for pattern in STRIP_GLOBS:
@@ -300,6 +300,124 @@ def strip_bundle(site_packages: Path) -> int:
                     removed += size
                 except OSError:
                     pass
+
+    # Prune botocore/data (keep only endpoints, retry, bedrock, sts, iam)
+    boto_data = site_packages / "botocore" / "data"
+    if boto_data.is_dir():
+        essential = {"_endpoints.json", "_retry.json", "bedrock-runtime", "bedrock", "sts", "iam"}
+        for p in boto_data.iterdir():
+            if p.is_dir() and p.name not in essential:
+                try:
+                    size = sum(f.stat().st_size for f in p.rglob("*") if f.is_file())
+                    shutil.rmtree(p, ignore_errors=True)
+                    removed += size
+                except OSError:
+                    pass
+
+    # Prune babel locale-data (unused by text extraction)
+    babel_loc = site_packages / "babel" / "locale-data"
+    if babel_loc.is_dir():
+        try:
+            size = sum(f.stat().st_size for f in babel_loc.rglob("*") if f.is_file())
+            shutil.rmtree(babel_loc, ignore_errors=True)
+            removed += size
+        except OSError:
+            pass
+
+    # Prune SBOM JSONs, docs, readmes, licenses in site-packages
+    for meta_pattern in ("**/*.cyclonedx.json", "**/*.dist-info/sboms"):
+        for p in site_packages.glob(meta_pattern):
+            if p.exists():
+                try:
+                    size = sum(f.stat().st_size for f in p.rglob("*") if f.is_file()) if p.is_dir() else p.stat().st_size
+                    if p.is_dir():
+                        shutil.rmtree(p, ignore_errors=True)
+                    else:
+                        p.unlink()
+                    removed += size
+                except OSError:
+                    pass
+
+    for doc_pattern in ("**/LICENSE*", "**/NOTICE*", "**/README*", "**/CHANGELOG*"):
+        for p in site_packages.glob(doc_pattern):
+            if p.is_file() and not p.is_symlink() and "site-packages/app" not in str(p):
+                try:
+                    removed += p.stat().st_size
+                    p.unlink()
+                except OSError:
+                    pass
+
+    # Prune Python runtime unused components (include, tcl/tk, ensurepip, etc.)
+    if python_target and python_target.is_dir():
+        py_include = python_target / "include"
+        py_lib = python_target / "lib"
+        for py_std in py_lib.glob("python3.*"):
+            if py_std.is_dir():
+                for unused_name in ("ensurepip", "idlelib", "tkinter", "pydoc_data", "unittest", "turtle.py"):
+                    unused_path = py_std / unused_name
+                    if unused_path.exists():
+                        try:
+                            size = sum(f.stat().st_size for f in unused_path.rglob("*") if f.is_file()) if unused_path.is_dir() else unused_path.stat().st_size
+                            if unused_path.is_dir():
+                                shutil.rmtree(unused_path, ignore_errors=True)
+                            else:
+                                unused_path.unlink()
+                            removed += size
+                        except OSError:
+                            pass
+                for cfg in py_std.glob("config-3.*"):
+                    if cfg.is_dir():
+                        try:
+                            size = sum(f.stat().st_size for f in cfg.rglob("*") if f.is_file())
+                            shutil.rmtree(cfg, ignore_errors=True)
+                            removed += size
+                        except OSError:
+                            pass
+
+        if py_include.is_dir():
+            try:
+                size = sum(f.stat().st_size for f in py_include.rglob("*") if f.is_file())
+                shutil.rmtree(py_include, ignore_errors=True)
+                removed += size
+            except OSError:
+                pass
+
+        for tcl_pattern in ("*tcl*", "*tk*", "itcl*", "thread*"):
+            for p in list(py_lib.glob(tcl_pattern)):
+                if p.exists():
+                    try:
+                        size = sum(f.stat().st_size for f in p.rglob("*") if f.is_file()) if p.is_dir() else p.stat().st_size
+                        if p.is_dir():
+                            shutil.rmtree(p, ignore_errors=True)
+                        else:
+                            p.unlink()
+                        removed += size
+                    except OSError:
+                        pass
+
+    # Strip native binary symbols using system strip tool
+    strip_tool = shutil.which("strip")
+    if strip_tool:
+        strip_args = ["-x"] if platform.system() == "Darwin" else ["--strip-unneeded"]
+        targets_to_strip: list[Path] = []
+        roots = [site_packages]
+        if python_target:
+            roots.append(python_target)
+        for r in roots:
+            for p in r.rglob("*"):
+                if p.is_file() and not p.is_symlink():
+                    if p.suffix in (".so", ".dylib", ".pyd") or (p.parent.name == "bin" and os.access(p, os.X_OK)):
+                        targets_to_strip.append(p)
+        for target in targets_to_strip:
+            try:
+                orig_sz = target.stat().st_size
+                res = subprocess.run([strip_tool, *strip_args, str(target)], capture_output=True)
+                if res.returncode == 0:
+                    diff = orig_sz - target.stat().st_size
+                    if diff > 0:
+                        removed += diff
+            except OSError:
+                pass
     return removed
 
 
@@ -617,7 +735,7 @@ def main() -> int:
     install_packages(python_bin, root, site_packages, extras)
 
     # ── 3. Strip caches/tests/etc. ──────────────────────────────────────
-    saved = strip_bundle(site_packages)
+    saved = strip_bundle(site_packages, python_target)
     print(f"stripped: {human_bytes(saved)}")
 
     # ── 4. Smoke test ───────────────────────────────────────────────────

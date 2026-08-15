@@ -81,11 +81,27 @@ class ChatSession(SQLModel, table=True):
             "workspace",
             "created_at",
         ),
+        # Sub-session lookups (`get_team_history`, `get_team_history_since`)
+        # filter on parent_session_id and order by created_at on every team
+        # history load. Ordering the index the same way keeps them out of a
+        # temp B-tree, and the leading column still serves plain
+        # parent_session_id lookups — including the ON DELETE CASCADE child
+        # scan — so no separate single-column index is needed.
+        sa.Index(
+            "ix_chat_sessions_parent_created",
+            "parent_session_id",
+            "created_at",
+        ),
+        # Plain column index, deliberately not `sa.desc("created_at")`: a DESC
+        # expression index is invisible to Alembic's SQLite comparison and made
+        # `alembic check` report a phantom diff forever. SQLite walks an ASC
+        # index backwards for `ORDER BY created_at DESC`, so the ordering of
+        # the member-restore lookups is unaffected.
         sa.Index(
             "ix_chat_sessions_parent_agent_created",
             "parent_session_id",
             "agent_name",
-            sa.desc("created_at"),
+            "created_at",
         ),
     )
 
@@ -95,7 +111,6 @@ class ChatSession(SQLModel, table=True):
         sa_column=Column(
             sa.Uuid(),
             ForeignKey("chat_sessions.id", ondelete="CASCADE"),
-            index=True,
             nullable=True,
         ),
     )
@@ -234,10 +249,27 @@ class PendingQuestion(SQLModel, table=True):
 class SessionMessage(SQLModel, table=True):
     __tablename__: str = "session_messages"  # type: ignore[reportIncompatibleVariableOverride]
     __table_args__ = (
-        # Me cover ORDER BY created_at queries (get_messages, get_messages_for_llm)
-        sa.Index("ix_session_messages_session_created", "session_id", "created_at"),
-        # Me cover is_summary lookup (get_messages_for_llm summary query)
-        sa.Index("ix_session_messages_session_summary", "session_id", "is_summary"),
+        # The only index this table needs. Every read filters on session_id and
+        # then orders by (created_at, id) — history_messages_stmt,
+        # llm_history_messages_stmt, and the team-history ROW_NUMBER() window
+        # functions — so all three columns are required to satisfy the sort
+        # without a temp B-tree.
+        #
+        # It also covers what two earlier indexes were carrying:
+        #   * a bare (session_id) index was a strict prefix of this one and was
+        #     never chosen by the planner;
+        #   * a (session_id, is_summary) index was never chosen either, because
+        #     is_summary queries also constrain session_id and range on
+        #     created_at, so this index wins and is_summary applies as a
+        #     residual filter.
+        # This is the highest-write table in the schema, so a redundant index
+        # is a B-tree insert on every persisted message.
+        sa.Index(
+            "ix_session_messages_session_created_id",
+            "session_id",
+            "created_at",
+            "id",
+        ),
     )
 
     id: UUID = Field(default_factory=uuid7, primary_key=True)
@@ -245,7 +277,6 @@ class SessionMessage(SQLModel, table=True):
         sa_column=Column(
             sa.Uuid(),
             ForeignKey("chat_sessions.id", ondelete="CASCADE"),
-            index=True,
             nullable=False,
         ),
     )

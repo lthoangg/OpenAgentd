@@ -70,7 +70,9 @@ async def reply_permission(
     service = get_permission_service()
     # Validation above guarantees ``body.reply`` is one of the literal values.
     resolved = service.reply(
-        request_id, cast(Literal["once", "always", "reject"], body.reply)
+        request_id,
+        cast(Literal["once", "always", "reject"], body.reply),
+        session_id=session_id,
     )
     if not resolved:
         raise HTTPException(

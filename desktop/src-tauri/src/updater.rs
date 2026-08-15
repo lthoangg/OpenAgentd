@@ -60,6 +60,27 @@ fn up_to_date_status() -> UpdateStatus {
     }
 }
 
+/// Minimum spacing between download-progress updates.
+///
+/// `tauri-plugin-updater` invokes the progress callback once per network
+/// chunk (`updater.rs:705`, `while let Some(chunk) = stream.next()`),
+/// which is thousands of calls for a 200 MB bundle. Each one was an IPC
+/// round-trip to every window *plus* an `update_tray_status` task that
+/// blocks on the main thread to set the menu text. 250ms is well past
+/// what a human can read and cuts the traffic by two to three orders of
+/// magnitude.
+const PROGRESS_EMIT_INTERVAL: Duration = Duration::from_millis(250);
+
+/// Whether a progress update should be emitted now. `elapsed` is the time
+/// since the last emit, or `None` for the first chunk. The chunk that
+/// completes the download always emits so the bar reaches 100%.
+pub fn should_emit_progress(elapsed: Option<Duration>, downloaded: u64, total: Option<u64>) -> bool {
+    if total.is_some_and(|total| downloaded >= total) {
+        return true;
+    }
+    elapsed.map_or(true, |elapsed| elapsed >= PROGRESS_EMIT_INTERVAL)
+}
+
 #[derive(Clone, Serialize)]
 pub struct UpdateStatus {
     pub status: String,
@@ -425,11 +446,16 @@ pub async fn run_update_download(app: AppHandle) -> Result<UpdateStatus, String>
     let version = update.version.clone();
     log::info!("updater download available version={version}");
     let mut downloaded: u64 = 0;
+    let mut last_emit: Option<std::time::Instant> = None;
     let app_for_progress = app.clone();
     let bytes = update
         .download(
             move |chunk, total| {
                 downloaded = downloaded.saturating_add(chunk as u64);
+                if !should_emit_progress(last_emit.map(|at| at.elapsed()), downloaded, total) {
+                    return;
+                }
+                last_emit = Some(std::time::Instant::now());
                 let progress = UpdateStatus {
                     status: "downloading".into(),
                     version: Some(version.clone()),

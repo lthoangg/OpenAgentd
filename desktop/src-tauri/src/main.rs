@@ -750,7 +750,7 @@ mod tests {
     use std::path::Path;
     use tauri_plugin_dialog::MessageDialogResult;
     use crate::window::{frontend_init_script, inherited_external_base_url, new_window_init_script};
-    use crate::updater::{dialog_result_is_accept, format_update_prompt, format_download_progress, silent_check_is_due, validate_install_preconditions};
+    use crate::updater::{dialog_result_is_accept, format_update_prompt, format_download_progress, should_emit_progress, silent_check_is_due, validate_install_preconditions};
     use crate::config::AppBackendConfig;
 
     #[test]
@@ -1001,6 +1001,50 @@ mod tests {
         let last = 1_760_000_000;
 
         assert!(!silent_check_is_due(last - ONE_HOUR, last));
+    }
+
+    // ── should_emit_progress ────────────────────────────────────────────────
+    //
+    // The updater plugin calls the progress closure once per network chunk,
+    // so a 200 MB bundle produced thousands of IPC emits and thousands of
+    // main-thread menu updates.
+
+    #[test]
+    fn the_first_chunk_always_reports_progress() {
+        assert!(should_emit_progress(None, 8_192, Some(200_000_000)));
+    }
+
+    #[test]
+    fn chunks_inside_the_interval_are_coalesced() {
+        assert!(!should_emit_progress(
+            Some(Duration::from_millis(10)),
+            8_192,
+            Some(200_000_000)
+        ));
+    }
+
+    #[test]
+    fn progress_reports_resume_once_the_interval_elapses() {
+        assert!(should_emit_progress(
+            Some(Duration::from_millis(250)),
+            8_192,
+            Some(200_000_000)
+        ));
+    }
+
+    #[test]
+    fn the_final_chunk_always_reports_so_the_bar_completes() {
+        assert!(should_emit_progress(
+            Some(Duration::from_millis(1)),
+            200_000_000,
+            Some(200_000_000)
+        ));
+    }
+
+    #[test]
+    fn an_unknown_total_still_throttles_on_time() {
+        assert!(!should_emit_progress(Some(Duration::from_millis(10)), 8_192, None));
+        assert!(should_emit_progress(Some(Duration::from_millis(300)), 8_192, None));
     }
 
     #[cfg(not(target_os = "macos"))]

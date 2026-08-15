@@ -511,22 +511,54 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
           // blocks whose timestamp is at or after the revert boundary so they
           // do not re-appear as ghost messages in the chat area.
           const revertTime = draft._leadRevertTime
-          const newUserBlocks = messages
-            .filter((msg) => {
-              if (revertTime === null) return true
-              const t = msg.submittedAt ?? now
-              return t < revertTime
-            })
-            .map((msg) => ({
+          const filteredMessages = messages.filter((msg) => {
+            if (revertTime === null) return true
+            const t = msg.submittedAt ?? now
+            return t < revertTime
+          })
+
+          const newUserBlocks: ContentBlock[] = []
+          for (const msg of filteredMessages) {
+            const timestamp = new Date(msg.submittedAt ?? now)
+            const attachments = msg.attachments && msg.attachments.length > 0 ? msg.attachments : undefined
+
+            let matchIdx = stream.currentBlocks.findIndex((b) => b.id === msg.id)
+            if (matchIdx === -1) {
+              matchIdx = stream.currentBlocks.findIndex(
+                (b) => b.type === 'user' && !b.extra?.from_agent && b.id.startsWith('user-') && b.content === msg.content,
+              )
+            }
+
+            if (matchIdx !== -1) {
+              const existing = stream.currentBlocks[matchIdx]
+              stream.currentBlocks[matchIdx] = {
+                ...existing,
+                id: msg.id,
+                timestamp: existing.timestamp ?? timestamp,
+                attachments: attachments ?? existing.attachments,
+              }
+              continue
+            }
+
+            const existsInBlocks = stream.blocks.some(
+              (b) => b.id === msg.id || (b.type === 'user' && !b.extra?.from_agent && b.content === msg.content),
+            )
+            if (existsInBlocks) {
+              continue
+            }
+
+            newUserBlocks.push({
               id: msg.id,
               type: 'user' as const,
               content: msg.content,
-              timestamp: new Date(msg.submittedAt ?? now),
-              ...(msg.attachments && msg.attachments.length > 0
-                ? { attachments: msg.attachments }
-                : {}),
-            }))
-          stream.currentBlocks.push(...newUserBlocks)
+              timestamp,
+              ...(attachments ? { attachments } : {}),
+            })
+          }
+
+          if (newUserBlocks.length > 0) {
+            stream.currentBlocks.push(...newUserBlocks)
+          }
           stream._turnStartedAt = nextTurnStartedAt
           draft._pendingMessages = draft._pendingMessages.filter((msg) => !queuedIds.has(msg.id))
         })

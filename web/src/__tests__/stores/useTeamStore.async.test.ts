@@ -2946,4 +2946,59 @@ describe("ghost message regression: done event after /undo", () => {
     const blocks = useTeamStore.getState().agentStreams.lead.blocks
     expect(blocks.map((b) => b.id)).toEqual(["u1", "a1"])
   })
+
+  it("does not duplicate an optimistic user block in currentBlocks when queued_turn_start arrives", () => {
+    useTeamStore.setState({
+      sessionId: "session-a",
+      leadName: "lead",
+      isTeamWorking: true,
+      agentStreams: {
+        lead: makeStream({
+          status: "working" as const,
+          blocks: [],
+          currentBlocks: [
+            { id: "user-172345678", type: "user", content: "hello world", timestamp: new Date("2024-01-01T00:00:00Z") },
+          ],
+        }),
+      },
+    })
+
+    useTeamStore.getState()._handleSSEEvent("queued_turn_start", {
+      agent: "lead",
+      message_ids: ["msg-server-1"],
+      messages: [{ id: "msg-server-1", content: "hello world" }],
+    })
+
+    const currentBlocks = useTeamStore.getState().agentStreams.lead.currentBlocks
+    expect(currentBlocks).toHaveLength(1)
+    expect(currentBlocks[0].id).toBe("msg-server-1")
+    expect(currentBlocks[0].content).toBe("hello world")
+  })
+
+  it("does not duplicate a user block in currentBlocks if server message_id was already updated", () => {
+    useTeamStore.setState({
+      sessionId: "session-a",
+      leadName: "lead",
+      isTeamWorking: true,
+      agentStreams: {
+        lead: makeStream({
+          status: "working" as const,
+          blocks: [],
+          currentBlocks: [
+            { id: "msg-server-1", type: "user", content: "hello world", timestamp: new Date("2024-01-01T00:00:00Z") },
+          ],
+        }),
+      },
+    })
+
+    useTeamStore.getState()._handleSSEEvent("queued_turn_start", {
+      agent: "lead",
+      message_ids: ["msg-server-1"],
+      messages: [{ id: "msg-server-1", content: "hello world" }],
+    })
+
+    const currentBlocks = useTeamStore.getState().agentStreams.lead.currentBlocks
+    expect(currentBlocks).toHaveLength(1)
+    expect(currentBlocks[0].id).toBe("msg-server-1")
+  })
 })

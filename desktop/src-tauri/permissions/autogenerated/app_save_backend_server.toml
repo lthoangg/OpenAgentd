@@ -1,7 +1,5 @@
 # Automatically generated - DO NOT EDIT!
 
-"$schema" = "../schemas/schema.json"
-
 [[permission]]
 identifier = "allow-app-save-backend-server"
 description = "Enables the app_save_backend_server command without any pre-configured scope."

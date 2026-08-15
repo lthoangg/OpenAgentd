@@ -536,7 +536,7 @@ team against it.
   mis-patching an earlier occurrence of the same text or rewriting file line
   endings `[v1.120.0]`. The activity header lists the comma-separated,
   deduplicated basenames of every touched file instead of collapsing
-  multi-file patches into a bare count `[v1.120.0]`.
+  multi-file patches into a bare count `[v1.120.0]`, with operation-aware header labels (`Create`, `Update`, `Move`, `Delete`), color-coded action badges, per-file line delta counters, and multi-file expand/collapse controls `[v1.134.0]`.
 - **Interactive terminal tab** `[v1.98.1]` — a real PTY shell (backend
   `subprocess.Popen` + `pty.openpty()`, streamed over WebSocket to an
   xterm.js instance) attached to the coding workspace panel, alongside

@@ -728,6 +728,11 @@ MCP.
   (`lsp:`) → built-in defaults**. Python is special-cased to run *multiple*
   complementary servers and merge results — a type checker (`ty`/`pyright`) **and**
   a linter (`ruff`) — because neither alone catches both type errors and lint;
+  `ruff`/`ty` are **not bundled** with the runtime: when a project pins them (or
+  declares them bare), the backend silently downloads the checksum-verified
+  wheel for the project's exact `==` pin (PyPI latest for ranges) into the user
+  cache (`{cache}/lsp/python/{tool}-{version}/`), so the desktop sidecar stays
+  ~22 MB lighter; a failed or disabled install degrades to `pyright`/`pylsp`.
   every other language uses its single canonical server (`gopls`,
   `typescript-language-server`, `clangd`). Multi-file `patch` checks run
   concurrently, the report is capped per file (errors first, then a `…and N more`

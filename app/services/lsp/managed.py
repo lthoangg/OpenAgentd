@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 import platform
+import re
 import shutil
 import sys
 import zipfile
@@ -25,6 +26,15 @@ TYPESCRIPT_LANGUAGE_SERVER_VERSION = "5.3.0"
 TYPESCRIPT_VERSION = "6.0.3"
 _MAX_DOWNLOAD_BYTES = 150 * 1024 * 1024
 _INSTALL_PROMPT_COOLDOWN_SECONDS = 300.0
+
+# Python diagnostic tools installable on demand from PyPI wheels. Kept out of
+# the runtime dependency set so the desktop sidecar does not ship them; they
+# are downloaded (checksum-verified) into the managed cache when a coding
+# project declares them. There is deliberately no opt-out env var: the
+# download is small, cached per version, and required for Python diagnostics.
+PYTHON_TOOL_NAMES = ("ruff", "ty")
+_MAX_MANAGED_PYTHON_VERSIONS = 2
+_PYTHON_VERSION_RE = re.compile(r"^[0-9][A-Za-z0-9._+!-]*$")
 
 
 @dataclass(frozen=True)
@@ -130,6 +140,72 @@ def _verified_bun_binary(payload: bytes, asset: BunAsset) -> bytes:
         return archive.read(asset.executable_member)
 
 
+def _platform_wheel_patterns() -> list[re.Pattern[str]]:
+    """Regexes matching PyPI wheel filenames for the current platform, best first."""
+    system = platform.system().lower()
+    machine = platform.machine().lower()
+    if system == "darwin":
+        arch = "arm64" if machine in {"arm64", "aarch64"} else "x86_64"
+        return [
+            re.compile(rf"macosx_\d+_\d+_{arch}\.whl$"),
+            re.compile(r"macosx_\d+_\d+_universal2\.whl$"),
+        ]
+    if system == "windows":
+        arch = "amd64" if machine in {"amd64", "x86_64", "x64"} else "arm64"
+        return [re.compile(rf"win_{arch}\.whl$")]
+    if system == "linux":
+        arch = "aarch64" if machine in {"arm64", "aarch64"} else "x86_64"
+        if platform.libc_ver()[0].lower() == "musl":
+            return [re.compile(rf"musllinux_\d+_\d+_{arch}\.whl$")]
+        return [re.compile(rf"manylinux_\d+_\d+_{arch}\.whl$")]
+    return []
+
+
+def _select_python_tool_wheel(
+    name: str, version: str, urls: list[dict]
+) -> tuple[str, str]:
+    """Pick the (url, sha256) of the platform wheel for ``name==version``."""
+    patterns = _platform_wheel_patterns()
+    prefix = f"{name}-{version}-py3-none-"
+    for entry in urls:
+        filename = entry.get("filename", "")
+        if not filename.startswith(prefix) or not filename.endswith(".whl"):
+            continue
+        if any(pattern.search(filename) for pattern in patterns):
+            digest = (entry.get("digests") or {}).get("sha256")
+            if not digest:
+                raise ValueError(f"wheel missing sha256 digest: {filename}")
+            return entry["url"], digest
+    raise ValueError(
+        f"no {name} {version} wheel for {platform.system()}/{platform.machine()}"
+    )
+
+
+def _verified_python_tool_binary(
+    payload: bytes, name: str, version: str, expected_sha256: str
+) -> bytes:
+    """Verify a downloaded wheel and extract its console-script binary.
+
+    Only a single, exact member is read — never an extract-all — so a hostile
+    wheel cannot plant files outside the managed cache via ``..`` members.
+    """
+    if hashlib.sha256(payload).hexdigest() != expected_sha256:
+        raise ValueError(f"{name} wheel checksum verification failed")
+    executable = _executable_name(name)
+    members = [f"{name}-{version}.data/scripts/{executable}"]
+    members.append(f"{name}-{version}.data/scripts/{name}")
+    with zipfile.ZipFile(BytesIO(payload)) as archive:
+        for member in members:
+            try:
+                info = archive.getinfo(member)
+            except KeyError:
+                continue
+            if info.file_size > _MAX_DOWNLOAD_BYTES:
+                raise ValueError(f"{name} executable exceeds the size limit")
+            return archive.read(member)
+    raise ValueError(f"{name} wheel does not contain the expected executable member")
+
+
 def _replace_executable(path: Path, binary: bytes) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(path.suffix + ".tmp")
@@ -210,10 +286,15 @@ class ManagedLspTools:
             state=state,
             detail=self._detail if state == "error" else None,
             downloads_enabled=_downloads_enabled(),
-            ty_available=find_packaged_python_command("ty") is not None
-            or shutil.which("ty") is not None,
-            ruff_available=find_packaged_python_command("ruff") is not None
-            or shutil.which("ruff") is not None,
+            ty_available=self._python_tool_available("ty"),
+            ruff_available=self._python_tool_available("ruff"),
+        )
+
+    def _python_tool_available(self, name: str) -> bool:
+        return (
+            find_packaged_python_command(name) is not None
+            or shutil.which(name) is not None
+            or self.python_tool_command(name, None) is not None
         )
 
     async def announce_typescript_required(self, project_root: Path) -> None:
@@ -347,6 +428,134 @@ class ManagedLspTools:
                 )
                 logger.warning("managed_lsp_typescript_install_failed error={!r}", exc)
                 raise
+
+    # ── Managed Python tools (ruff / ty) ───────────────────────────────────
+    #
+    # Installed on demand from PyPI wheels into
+    # ``{cache}/lsp/python/{name}-{version}/``, keyed by version so coding
+    # projects pinning different versions coexist. The sidecar ships without
+    # these binaries; the first Python LSP request for a project that declares
+    # them triggers the (checksum-verified) download. Downloads are
+    # unconditional — there is deliberately no disable switch.
+
+    def python_tool_version(self, name: str) -> str | None:
+        """Most recently installed managed version of *name*, or ``None``."""
+        root = self.root / "python"
+        if not root.is_dir():
+            return None
+        dirs = [d for d in root.glob(f"{name}-*") if d.is_dir()]
+        if not dirs:
+            return None
+        newest = max(dirs, key=lambda d: d.stat().st_mtime)
+        return newest.name.removeprefix(f"{name}-")
+
+    def python_tool_command(self, name: str, version: str | None) -> list[str] | None:
+        """``[managed-binary, "server"]`` for *name* if a managed install exists."""
+        if version is None:
+            version = self.python_tool_version(name)
+        if version is None:
+            return None
+        executable = self.root / "python" / f"{name}-{version}" / _executable_name(name)
+        if _is_executable(executable):
+            return [str(executable), "server"]
+        return None
+
+    async def ensure_python_tool(
+        self, name: str, version: str | None
+    ) -> list[str] | None:
+        """Idempotently ensure a managed ruff/ty binary for *version*.
+
+        Downloads unconditionally when missing. Returns ``None`` (never raises)
+        when the install fails so the LSP manager can fall back to other
+        servers; the failure is logged.
+        """
+        existing = self.python_tool_command(name, version)
+        if existing is not None:
+            return existing
+        async with self._install_lock:
+            existing = self.python_tool_command(name, version)
+            if existing is not None:
+                return existing
+            try:
+                return await self.install_python_tool(name, version)
+            except Exception as exc:
+                logger.warning(
+                    "managed_python_tool_install_failed name={} version={} error={!r}",
+                    name,
+                    version,
+                    exc,
+                )
+                return None
+
+    async def install_python_tool(
+        self, name: str, version: str | None, *, force: bool = False
+    ) -> list[str]:
+        """Download, verify, and install a ruff/ty wheel from PyPI into the cache."""
+        if name not in PYTHON_TOOL_NAMES:
+            raise ValueError(f"unsupported python tool: {name!r}")
+        resolved = await self._resolve_python_tool_version(name, version)
+        existing = self.python_tool_command(name, resolved)
+        if existing is not None and not force:
+            return existing
+
+        payload, digest = await self._fetch_python_tool_wheel(name, resolved)
+        binary = await asyncio.to_thread(
+            _verified_python_tool_binary, payload, name, resolved, digest
+        )
+        executable = (
+            self.root / "python" / f"{name}-{resolved}" / _executable_name(name)
+        )
+        await asyncio.to_thread(_replace_executable, executable, binary)
+        await asyncio.to_thread(self._prune_python_tool_versions, name)
+        command = self.python_tool_command(name, resolved)
+        if command is None:
+            raise RuntimeError(f"managed {name} install is incomplete")
+        logger.info(
+            "managed_python_tool_ready name={} version={}",
+            name,
+            resolved,
+        )
+        return command
+
+    async def _resolve_python_tool_version(self, name: str, version: str | None) -> str:
+        if version is None:
+            data = await self._pypi_json(name, None)
+            return str(data["info"]["version"])
+        if not _PYTHON_VERSION_RE.match(version):
+            raise ValueError(f"invalid python tool version: {version!r}")
+        return version
+
+    async def _fetch_python_tool_wheel(
+        self, name: str, version: str
+    ) -> tuple[bytes, str]:
+        data = await self._pypi_json(name, version)
+        url, digest = _select_python_tool_wheel(name, version, data.get("urls", []))
+        payload = await self._download(url)
+        return payload, digest
+
+    async def _pypi_json(self, name: str, version: str | None) -> dict:
+        url = f"https://pypi.org/pypi/{name}/json"
+        if version is not None:
+            url = f"https://pypi.org/pypi/{name}/{version}/json"
+        async with httpx2.AsyncClient(follow_redirects=True, timeout=30.0) as client:
+            response = await client.get(url)
+            response.raise_for_status()
+            if response.url.scheme != "https":
+                raise ValueError("PyPI metadata fetch redirected to a non-HTTPS URL")
+            return response.json()
+
+    def _prune_python_tool_versions(self, name: str) -> None:
+        """Keep only the most recent ``_MAX_MANAGED_PYTHON_VERSIONS`` installs."""
+        root = self.root / "python"
+        if not root.is_dir():
+            return
+        dirs = sorted(
+            (d for d in root.glob(f"{name}-*") if d.is_dir()),
+            key=lambda d: d.stat().st_mtime,
+            reverse=True,
+        )
+        for stale in dirs[_MAX_MANAGED_PYTHON_VERSIONS:]:
+            shutil.rmtree(stale, ignore_errors=True)
 
 
 managed_lsp_tools = ManagedLspTools()

@@ -912,6 +912,38 @@ def test_detect_project_lsp_commands_no_pyproject(tmp_path):
     assert detect_project_lsp_commands("typescript", tmp_path) == []
 
 
+def test_detect_project_python_tool_versions(tmp_path):
+    """Exact ``==`` pins are captured; ranges and bare declarations resolve to
+    ``None`` (PyPI latest) at install time."""
+    from app.services.lsp.manager import detect_project_python_tool_versions
+
+    (tmp_path / "pyproject.toml").write_text(
+        """
+[project]
+name = "demo"
+dependencies = ["ruff==0.16.1"]
+
+[project.optional-dependencies]
+dev = ["ty"]
+
+[dependency-groups]
+dev = ["ty>=0.0.33,<0.1", "pytest>=9"]
+""",
+        encoding="utf-8",
+    )
+
+    assert detect_project_python_tool_versions(tmp_path) == {
+        "ruff": "0.16.1",
+        "ty": None,
+    }
+
+
+def test_detect_project_python_tool_versions_no_pyproject(tmp_path):
+    from app.services.lsp.manager import detect_project_python_tool_versions
+
+    assert detect_project_python_tool_versions(tmp_path) == {}
+
+
 def test_detect_project_lsp_commands_typescript(tmp_path):
     from app.services.lsp.manager import detect_project_lsp_commands
 
@@ -941,6 +973,74 @@ async def test_detect_commands_prefers_project_config(tmp_path):
     with patch("shutil.which", side_effect=lambda exe, path=None: f"/usr/bin/{exe}"):
         cmds = await manager._detect_commands("python", project_root=tmp_path)
         assert cmds == [["ty", "server"]]
+
+
+@pytest.mark.asyncio
+async def test_detect_commands_auto_installs_declared_missing_python_tool(
+    tmp_path, monkeypatch
+):
+    """A project that declares ty/ruff but has none on PATH or bundled gets a
+    silent managed install of the pinned version, then runs that server."""
+    import app.services.lsp.manager as manager_mod
+
+    manager = LspManager()
+    (tmp_path / "pyproject.toml").write_text(
+        '[dependency-groups]\ndev = ["ty==0.0.33"]\n', encoding="utf-8"
+    )
+    monkeypatch.setattr(manager_mod.shutil, "which", lambda command, path=None: None)
+    monkeypatch.setattr(
+        manager_mod, "find_packaged_python_command", lambda command: None
+    )
+
+    installed: dict[str, bool] = {}
+    ensured: list[tuple[str, str | None]] = []
+
+    def fake_python_tool_command(name, version):
+        return [f"/managed/{name}", "server"] if installed.get(name) else None
+
+    async def fake_ensure(name, version):
+        ensured.append((name, version))
+        installed[name] = True
+
+    monkeypatch.setattr(
+        manager_mod.managed_lsp_tools, "python_tool_command", fake_python_tool_command
+    )
+    monkeypatch.setattr(
+        manager_mod.managed_lsp_tools, "ensure_python_tool", fake_ensure
+    )
+
+    cmds = await manager._detect_commands("python", project_root=tmp_path)
+
+    assert cmds == [["/managed/ty", "server"]]
+    assert ensured == [("ty", "0.0.33")]
+
+
+@pytest.mark.asyncio
+async def test_detect_commands_does_not_auto_install_without_declaration(
+    tmp_path, monkeypatch
+):
+    """Silent installs only happen for project-declared tools; a bare workspace
+    with nothing installed must not trigger a download."""
+    import app.services.lsp.manager as manager_mod
+
+    manager = LspManager()
+    monkeypatch.setattr(manager_mod.shutil, "which", lambda command, path=None: None)
+    monkeypatch.setattr(
+        manager_mod, "find_packaged_python_command", lambda command: None
+    )
+    ensured: list[tuple[str, str | None]] = []
+
+    async def fake_ensure(name, version):
+        ensured.append((name, version))
+
+    monkeypatch.setattr(
+        manager_mod.managed_lsp_tools, "ensure_python_tool", fake_ensure
+    )
+
+    cmds = await manager._detect_commands("python", project_root=tmp_path)
+
+    assert cmds == []
+    assert ensured == []
 
 
 @pytest.mark.asyncio

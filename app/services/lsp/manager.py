@@ -1,6 +1,7 @@
 import asyncio
 import json
 import os
+import re
 import shutil
 from contextlib import suppress
 from pathlib import Path
@@ -283,17 +284,7 @@ def _python_tools_from_pyproject(project_root: Path) -> list[list[str]]:
     def declares(name: str) -> bool:
         if name in tool_tables:
             return True
-        return any(
-            dep.split("[")[0]
-            .split(">")[0]
-            .split("=")[0]
-            .split("<")[0]
-            .split("~")[0]
-            .strip()
-            .lower()
-            == name
-            for dep in haystack
-        )
+        return any(_split_dep_spec(dep)[0] == name for dep in haystack)
 
     cmds: list[list[str]] = []
     # ``ty`` — Astral's type checker, speaks LSP via ``ty server``.
@@ -309,6 +300,60 @@ def _python_tools_from_pyproject(project_root: Path) -> list[list[str]]:
     if declares("python-lsp-server") or declares("pylsp"):
         cmds.append(["pylsp"])
     return cmds
+
+
+def _split_dep_spec(dep: str) -> tuple[str, str | None]:
+    """Split a PEP 508-ish dependency string into (name, exact-version-or-None).
+
+    ``ruff==0.16.1`` → (``"ruff"``, ``"0.16.1"``); ``ty>=0.0.33,<0.1`` and a
+    bare ``ty`` → (``"ty"``, ``None``). Extras and environment markers are
+    stripped before the version is read.
+    """
+    base = dep.split(";", 1)[0].strip()
+    base = re.split(r"\[[^\]]*\]", base, maxsplit=1)[0].strip()
+    match = re.match(r"^([A-Za-z0-9_.-]+)", base)
+    if match is None:
+        return "", None
+    name = match.group(1).lower()
+    rest = base[match.end() :].strip()
+    if rest.startswith("==="):
+        return name, rest[3:].strip()
+    if rest.startswith("=="):
+        return name, rest[2:].strip()
+    return name, None
+
+
+def detect_project_python_tool_versions(project_root: Path) -> dict[str, str | None]:
+    """Exact versions pinned for ty/ruff in the project's pyproject.toml.
+
+    Returns ``{tool: version}`` where *version* is the exact ``==`` pin, or
+    ``None`` for ranges and bare declarations (the installer resolves PyPI
+    latest at install time). Empty when the project declares neither tool.
+    """
+    pyproject = project_root / "pyproject.toml"
+    if not pyproject.exists():
+        return {}
+    try:
+        import tomllib
+
+        with pyproject.open("rb") as f:
+            data = tomllib.load(f)
+    except Exception:
+        return {}
+
+    project = data.get("project", {})
+    haystack: list[str] = [str(d) for d in project.get("dependencies", [])]
+    for group in (project.get("optional-dependencies", {}) or {}).values():
+        haystack += [str(d) for d in group]
+    for group in (data.get("dependency-groups", {}) or {}).values():
+        haystack += [str(d) for d in group]
+
+    versions: dict[str, str | None] = {}
+    for dep in haystack:
+        name, spec = _split_dep_spec(dep)
+        if name in {"ty", "ruff"}:
+            versions.setdefault(name, spec)
+    return versions
 
 
 def detect_project_lsp_commands(lang_id: str, project_root: Path) -> list[list[str]]:
@@ -450,6 +495,22 @@ class LspManager:
     def _mark_unsupported(self, lang_id: str) -> None:
         self._unsupported_langs[lang_id] = asyncio.get_running_loop().time()
 
+    async def _ensure_python_tool(self, name: str, version: str | None) -> None:
+        """Silently ensure a managed ty/ruff binary for a declared project.
+
+        Failures are logged and degrade to the generic fallback servers on the
+        next resolution pass rather than surfacing to the caller.
+        """
+        try:
+            await managed_lsp_tools.ensure_python_tool(name, version)
+        except Exception as exc:
+            logger.warning(
+                "managed_python_tool_ensure_failed name={} version={} error={!r}",
+                name,
+                version,
+                exc,
+            )
+
     def start(self):
         if self._cleanup_task is None:
             self._cleanup_task = asyncio.create_task(self._cleanup_loop())
@@ -519,11 +580,22 @@ class LspManager:
         """
         user_path = await _get_user_path()
 
+        declared_versions: dict[str, str | None] = {}
+        if lang_id == "python" and project_root is not None:
+            declared_versions = detect_project_python_tool_versions(project_root)
+
         def resolve(cmd: list[str]) -> list[str] | None:
             if shutil.which(cmd[0], path=user_path) is not None:
                 return cmd
             if cmd[0] in {"ty", "ruff"}:
-                return find_packaged_python_command(cmd[0])
+                packaged = find_packaged_python_command(cmd[0])
+                if packaged is not None:
+                    return packaged
+                managed = managed_lsp_tools.python_tool_command(
+                    cmd[0], declared_versions.get(cmd[0])
+                )
+                if managed is not None:
+                    return managed
             return None
 
         def supports_semantic_navigation(cmd: list[str]) -> bool:
@@ -534,17 +606,40 @@ class LspManager:
 
         # 1. Project-config-aware detection (may yield several for Python).
         if project_root is not None:
-            project_cmds = [
-                resolved
-                for cmd in detect_project_lsp_commands(lang_id, project_root)
-                if (resolved := resolve(cmd)) is not None
-                and (not semantic_only or supports_semantic_navigation(resolved))
-            ]
-            if project_cmds:
+            root: Path = project_root
+
+            def project_cmds() -> list[list[str]]:
+                return [
+                    resolved
+                    for cmd in detect_project_lsp_commands(lang_id, root)
+                    if (resolved := resolve(cmd)) is not None
+                    and (not semantic_only or supports_semantic_navigation(resolved))
+                ]
+
+            project_cmds_first = project_cmds()
+            if project_cmds_first:
                 logger.info(
-                    "Using project-configured LSP for {}: {}", lang_id, project_cmds
+                    "Using project-configured LSP for {}: {}",
+                    lang_id,
+                    project_cmds_first,
                 )
-                return project_cmds
+                return project_cmds_first
+
+            # Declared-but-unavailable Python tooling (ty/ruff): silently
+            # install the project's pinned version (or PyPI latest) into the
+            # managed cache, then re-resolve. Only project declarations
+            # trigger downloads — a bare workspace never auto-installs.
+            if lang_id == "python" and declared_versions:
+                for tool, version in declared_versions.items():
+                    await self._ensure_python_tool(tool, version)
+                project_cmds_second = project_cmds()
+                if project_cmds_second:
+                    logger.info(
+                        "Using managed Python LSP for {}: {}",
+                        lang_id,
+                        project_cmds_second,
+                    )
+                    return project_cmds_second
 
         # 2. Runtime settings (settings.yaml) — global fallback.
         try:

@@ -15,6 +15,7 @@ from app.services.lsp.managed import (
     ManagedLspTools,
     TYPESCRIPT_LANGUAGE_SERVER_VERSION,
     TYPESCRIPT_VERSION,
+    _executable_name,
     find_packaged_python_command,
 )
 
@@ -252,3 +253,404 @@ async def test_typescript_install_prompt_is_reannounced_after_cooldown(
     await tools.announce_typescript_required(tmp_path)
 
     assert publish.await_count == 2
+
+
+# ── Managed Python tools (ruff / ty) ────────────────────────────────────────
+
+
+def _python_wheel_payload(
+    name: str,
+    version: str,
+    *,
+    binary: bytes = b"managed-python-binary",
+    binary_member: str | None = None,
+) -> bytes:
+    """Build a fake PyPI wheel zip with the standard script member layout."""
+    member = binary_member or f"{name}-{version}.data/scripts/{name}"
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as zf:
+        zf.writestr(member, binary)
+    return buffer.getvalue()
+
+
+def _pypi_json_response(name: str, version: str, *, digest: str | None = None) -> dict:
+    """A PyPI JSON response with one darwin-arm64 and one manylinux wheel."""
+    if digest is None:
+        digest = hashlib.sha256(_python_wheel_payload(name, version)).hexdigest()
+    macos_filename = f"{name}-{version}-py3-none-macosx_11_0_arm64.whl"
+    linux_filename = f"{name}-{version}-py3-none-manylinux_2_17_x86_64.whl"
+    return {
+        "info": {"version": version},
+        "urls": [
+            {
+                "filename": macos_filename,
+                "url": f"https://example.invalid/{macos_filename}",
+                "digests": {"sha256": digest},
+            },
+            {
+                "filename": linux_filename,
+                "url": f"https://example.invalid/{linux_filename}",
+                "digests": {"sha256": digest},
+            },
+        ],
+    }
+
+
+def test_select_python_tool_wheel_prefers_darwin_arm64(monkeypatch):
+    from app.services.lsp.managed import _select_python_tool_wheel
+
+    monkeypatch.setattr("app.services.lsp.managed.platform.system", lambda: "Darwin")
+    monkeypatch.setattr("app.services.lsp.managed.platform.machine", lambda: "arm64")
+    urls = [
+        {
+            "filename": "ruff-1.2.3-py3-none-manylinux_2_17_x86_64.whl",
+            "url": "u1",
+            "digests": {"sha256": "a" * 64},
+        },
+        {
+            "filename": "ruff-1.2.3-py3-none-macosx_11_0_arm64.whl",
+            "url": "u2",
+            "digests": {"sha256": "b" * 64},
+        },
+        {
+            "filename": "ruff-1.2.3-py3-none-win_amd64.whl",
+            "url": "u3",
+            "digests": {"sha256": "c" * 64},
+        },
+    ]
+
+    url, digest = _select_python_tool_wheel("ruff", "1.2.3", urls)
+
+    assert url == "u2"
+    assert digest == "b" * 64
+
+
+def test_select_python_tool_wheel_prefers_musllinux_on_alpine(monkeypatch):
+    from app.services.lsp.managed import _select_python_tool_wheel
+
+    monkeypatch.setattr("app.services.lsp.managed.platform.system", lambda: "Linux")
+    monkeypatch.setattr("app.services.lsp.managed.platform.machine", lambda: "x86_64")
+    monkeypatch.setattr(
+        "app.services.lsp.managed.platform.libc_ver", lambda: ("musl", "1.2")
+    )
+    urls = [
+        {
+            "filename": "ty-1.0.0-py3-none-manylinux_2_17_x86_64.whl",
+            "url": "u1",
+            "digests": {"sha256": "a" * 64},
+        },
+        {
+            "filename": "ty-1.0.0-py3-none-musllinux_1_2_x86_64.whl",
+            "url": "u2",
+            "digests": {"sha256": "b" * 64},
+        },
+    ]
+
+    url, _ = _select_python_tool_wheel("ty", "1.0.0", urls)
+
+    assert url == "u2"
+
+
+def test_select_python_tool_wheel_windows_amd64(monkeypatch):
+    from app.services.lsp.managed import _select_python_tool_wheel
+
+    monkeypatch.setattr("app.services.lsp.managed.platform.system", lambda: "Windows")
+    monkeypatch.setattr("app.services.lsp.managed.platform.machine", lambda: "AMD64")
+    urls = [
+        {
+            "filename": "ruff-1.2.3-py3-none-win_amd64.whl",
+            "url": "u1",
+            "digests": {"sha256": "a" * 64},
+        },
+        {
+            "filename": "ruff-1.2.3-py3-none-macosx_11_0_arm64.whl",
+            "url": "u2",
+            "digests": {"sha256": "b" * 64},
+        },
+    ]
+
+    url, _ = _select_python_tool_wheel("ruff", "1.2.3", urls)
+
+    assert url == "u1"
+
+
+def test_select_python_tool_wheel_rejects_unsupported_platform(monkeypatch):
+    from app.services.lsp.managed import _select_python_tool_wheel
+
+    monkeypatch.setattr("app.services.lsp.managed.platform.system", lambda: "Haiku")
+    with pytest.raises(ValueError, match="no ruff 1.2.3 wheel"):
+        _select_python_tool_wheel("ruff", "1.2.3", [])
+
+
+def test_select_python_tool_wheel_rejects_missing_digest(monkeypatch):
+    from app.services.lsp.managed import _select_python_tool_wheel
+
+    monkeypatch.setattr("app.services.lsp.managed.platform.system", lambda: "Darwin")
+    monkeypatch.setattr("app.services.lsp.managed.platform.machine", lambda: "arm64")
+    urls = [
+        {
+            "filename": "ruff-1.2.3-py3-none-macosx_11_0_arm64.whl",
+            "url": "u1",
+            "digests": {},
+        }
+    ]
+
+    with pytest.raises(ValueError, match="missing sha256"):
+        _select_python_tool_wheel("ruff", "1.2.3", urls)
+
+
+@pytest.mark.asyncio
+async def test_install_python_tool_rejects_unsupported_name(tmp_path):
+    tools = ManagedLspTools(root=tmp_path / "managed")
+
+    with pytest.raises(ValueError, match="unsupported python tool"):
+        await tools.install_python_tool("mypy", "1.0.0")
+
+
+@pytest.mark.asyncio
+async def test_install_python_tool_rejects_malformed_version(tmp_path):
+    tools = ManagedLspTools(root=tmp_path / "managed")
+
+    with pytest.raises(ValueError, match="invalid python tool version"):
+        await tools.install_python_tool("ruff", "0.16.1; rm -rf /")
+
+
+@pytest.mark.asyncio
+async def test_install_python_tool_extracts_binary_and_verifies_checksum(
+    tmp_path, monkeypatch
+):
+    tools = ManagedLspTools(root=tmp_path / "managed")
+    version = "0.16.1"
+    payload = _python_wheel_payload("ruff", version)
+    digest = hashlib.sha256(payload).hexdigest()
+    monkeypatch.setattr("app.services.lsp.managed.platform.system", lambda: "Darwin")
+    monkeypatch.setattr("app.services.lsp.managed.platform.machine", lambda: "arm64")
+
+    async def fake_pypi_json(name: str, version: str | None = None) -> dict:
+        return _pypi_json_response(name, version, digest=digest)
+
+    async def fake_download(url: str) -> bytes:
+        assert url.endswith("macosx_11_0_arm64.whl")
+        return payload
+
+    monkeypatch.setattr(tools, "_pypi_json", fake_pypi_json)
+    monkeypatch.setattr(tools, "_download", fake_download)
+
+    command = await tools.install_python_tool("ruff", version)
+
+    executable = tools.root / "python" / "ruff-0.16.1" / _executable_name("ruff")
+    assert command == [str(executable), "server"]
+    assert executable.read_bytes() == b"managed-python-binary"
+    assert os.name == "nt" or os.access(executable, os.X_OK)
+
+
+@pytest.mark.asyncio
+async def test_install_python_tool_rejects_checksum_mismatch(tmp_path, monkeypatch):
+    tools = ManagedLspTools(root=tmp_path / "managed")
+    payload = _python_wheel_payload("ruff", "0.16.1")
+    monkeypatch.setattr("app.services.lsp.managed.platform.system", lambda: "Darwin")
+    monkeypatch.setattr("app.services.lsp.managed.platform.machine", lambda: "arm64")
+
+    async def fake_pypi_json(name: str, version: str | None = None) -> dict:
+        return _pypi_json_response(name, version, digest="0" * 64)
+
+    async def fake_download(url: str) -> bytes:
+        return payload
+
+    monkeypatch.setattr(tools, "_pypi_json", fake_pypi_json)
+    monkeypatch.setattr(tools, "_download", fake_download)
+
+    with pytest.raises(ValueError, match="checksum"):
+        await tools.install_python_tool("ruff", "0.16.1")
+
+    assert not (tools.root / "python" / "ruff-0.16.1").exists()
+
+
+@pytest.mark.asyncio
+async def test_install_python_tool_rejects_wheel_without_script_member(
+    tmp_path, monkeypatch
+):
+    """A wheel whose console-script member is missing must be rejected, not
+    partially extracted (zip-slip / structure confusion guard)."""
+    tools = ManagedLspTools(root=tmp_path / "managed")
+    payload = _python_wheel_payload(
+        "ruff", "0.16.1", binary_member="ruff-0.16.1.data/scripts/other"
+    )
+    digest = hashlib.sha256(payload).hexdigest()
+    monkeypatch.setattr("app.services.lsp.managed.platform.system", lambda: "Darwin")
+    monkeypatch.setattr("app.services.lsp.managed.platform.machine", lambda: "arm64")
+
+    async def fake_pypi_json(name: str, version: str | None = None) -> dict:
+        return _pypi_json_response(name, version, digest=digest)
+
+    async def fake_download(url: str) -> bytes:
+        return payload
+
+    monkeypatch.setattr(tools, "_pypi_json", fake_pypi_json)
+    monkeypatch.setattr(tools, "_download", fake_download)
+
+    with pytest.raises(ValueError, match="does not contain the expected"):
+        await tools.install_python_tool("ruff", "0.16.1")
+
+    assert not (tools.root / "python" / "ruff-0.16.1").exists()
+
+
+@pytest.mark.asyncio
+async def test_install_python_tool_resolves_latest_when_unpinned(tmp_path, monkeypatch):
+    tools = ManagedLspTools(root=tmp_path / "managed")
+    version = "9.9.9"
+    payload = _python_wheel_payload("ruff", version)
+    digest = hashlib.sha256(payload).hexdigest()
+    monkeypatch.setattr("app.services.lsp.managed.platform.system", lambda: "Darwin")
+    monkeypatch.setattr("app.services.lsp.managed.platform.machine", lambda: "arm64")
+    seen_versions: list[str | None] = []
+
+    async def fake_pypi_json(name: str, version: str | None = None) -> dict:
+        seen_versions.append(version)
+        resolved = version or "9.9.9"  # PyPI latest resolution returns a real version
+        return _pypi_json_response(name, resolved, digest=digest)
+
+    async def fake_download(url: str) -> bytes:
+        return payload
+
+    monkeypatch.setattr(tools, "_pypi_json", fake_pypi_json)
+    monkeypatch.setattr(tools, "_download", fake_download)
+
+    command = await tools.install_python_tool("ruff", None)
+
+    # latest resolution, then the wheel fetch for the resolved version
+    assert seen_versions == [None, "9.9.9"]
+    assert command == [
+        str(tools.root / "python" / "ruff-9.9.9" / _executable_name("ruff")),
+        "server",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_install_python_tool_is_idempotent_without_force(tmp_path, monkeypatch):
+    tools = ManagedLspTools(root=tmp_path / "managed")
+    executable = tools.root / "python" / "ruff-0.16.1" / _executable_name("ruff")
+    executable.parent.mkdir(parents=True)
+    executable.write_bytes(b"existing")
+    executable.chmod(0o755)
+
+    async def fake_pypi_json(name: str, version: str | None = None) -> dict:
+        raise AssertionError("must not resolve versions when already installed")
+
+    async def fake_download(url: str) -> bytes:
+        raise AssertionError("must not download when already installed")
+
+    monkeypatch.setattr(tools, "_pypi_json", fake_pypi_json)
+    monkeypatch.setattr(tools, "_download", fake_download)
+
+    command = await tools.install_python_tool("ruff", "0.16.1")
+
+    assert command == [str(executable), "server"]
+    assert executable.read_bytes() == b"existing"
+
+
+@pytest.mark.asyncio
+async def test_install_python_tool_prunes_old_versions(tmp_path, monkeypatch):
+    tools = ManagedLspTools(root=tmp_path / "managed")
+    for version, mtime in (("1.0.0", 1000.0), ("1.1.0", 2000.0)):
+        binary = tools.root / "python" / f"ruff-{version}" / _executable_name("ruff")
+        binary.parent.mkdir(parents=True)
+        binary.write_bytes(b"x")
+        binary.chmod(0o755)
+        os.utime(binary.parent, (mtime, mtime))
+
+    payload = _python_wheel_payload("ruff", "1.2.0")
+    digest = hashlib.sha256(payload).hexdigest()
+    monkeypatch.setattr("app.services.lsp.managed.platform.system", lambda: "Darwin")
+    monkeypatch.setattr("app.services.lsp.managed.platform.machine", lambda: "arm64")
+
+    async def fake_pypi_json(name: str, version: str | None = None) -> dict:
+        return _pypi_json_response(name, version, digest=digest)
+
+    async def fake_download(url: str) -> bytes:
+        return payload
+
+    monkeypatch.setattr(tools, "_pypi_json", fake_pypi_json)
+    monkeypatch.setattr(tools, "_download", fake_download)
+
+    await tools.install_python_tool("ruff", "1.2.0")
+
+    remaining = sorted(p.name for p in (tools.root / "python").glob("ruff-*"))
+    assert remaining == ["ruff-1.1.0", "ruff-1.2.0"]
+
+
+@pytest.mark.asyncio
+async def test_ensure_python_tool_uses_existing_binary_without_installing(
+    tmp_path, monkeypatch
+):
+    tools = ManagedLspTools(root=tmp_path / "managed")
+    executable = tools.root / "python" / "ruff-0.16.1" / _executable_name("ruff")
+    executable.parent.mkdir(parents=True)
+    executable.write_bytes(b"x")
+    executable.chmod(0o755)
+
+    async def fake_install(name: str, version: str | None, *, force: bool = False):
+        raise AssertionError("must not install when binary is present")
+
+    monkeypatch.setattr(tools, "install_python_tool", fake_install)
+
+    command = await tools.ensure_python_tool("ruff", "0.16.1")
+
+    assert command == [str(executable), "server"]
+
+
+@pytest.mark.asyncio
+async def test_ensure_python_tool_installs_when_binary_missing(tmp_path, monkeypatch):
+    tools = ManagedLspTools(root=tmp_path / "managed")
+    calls: list[tuple[str, str | None]] = []
+
+    async def fake_install(name: str, version: str | None, *, force: bool = False):
+        calls.append((name, version))
+        executable = (
+            tools.root / "python" / f"{name}-{version}" / _executable_name(name)
+        )
+        executable.parent.mkdir(parents=True)
+        executable.write_bytes(b"x")
+        executable.chmod(0o755)
+        return [str(executable), "server"]
+
+    monkeypatch.setattr(tools, "install_python_tool", fake_install)
+
+    command = await tools.ensure_python_tool("ruff", "0.16.1")
+
+    assert calls == [("ruff", "0.16.1")]
+    assert command == [
+        str(tools.root / "python" / "ruff-0.16.1" / _executable_name("ruff")),
+        "server",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_ensure_python_tool_returns_none_when_install_fails(
+    tmp_path, monkeypatch
+):
+    """A failed install must degrade silently (manager falls back), never raise."""
+    tools = ManagedLspTools(root=tmp_path / "managed")
+
+    async def fake_install(name: str, version: str | None, *, force: bool = False):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(tools, "install_python_tool", fake_install)
+
+    assert await tools.ensure_python_tool("ruff", "0.16.1") is None
+
+
+def test_python_tool_command_uses_most_recent_managed_version(tmp_path):
+    tools = ManagedLspTools(root=tmp_path / "managed")
+    for version, mtime in (("0.15.0", 1000.0), ("0.16.1", 2000.0)):
+        binary = tools.root / "python" / f"ty-{version}" / _executable_name("ty")
+        binary.parent.mkdir(parents=True)
+        binary.write_bytes(b"x")
+        binary.chmod(0o755)
+        os.utime(binary.parent, (mtime, mtime))
+
+    assert tools.python_tool_command("ty", None) == [
+        str(tools.root / "python" / "ty-0.16.1" / _executable_name("ty")),
+        "server",
+    ]
+    assert tools.python_tool_version("ty") == "0.16.1"

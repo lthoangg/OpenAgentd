@@ -632,6 +632,9 @@ fn main() {
             );
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
+                // Bundles from previous runs are unreachable (`update_state`
+                // is in-memory and starts empty), so reclaim their disk.
+                updater::purge_cached_updates(&handle);
                 let updater_handle = handle.clone();
                 tauri::async_runtime::spawn(async move {
                     tokio::time::sleep(Duration::from_secs(5)).await;

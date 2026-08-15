@@ -1,6 +1,6 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicI64, Ordering};
 use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager};
@@ -660,6 +660,43 @@ pub fn cached_update_path(app: &AppHandle, version: &str) -> Result<PathBuf> {
     Ok(dir.join(format!("openagentd-{version}.update")))
 }
 
+/// Delete update bundles left behind by previous runs, returning how many
+/// were removed.
+///
+/// `AppState::update_state` — the only handle to a downloaded bundle — is
+/// in-memory and starts as `None`, so a bundle that outlives its process
+/// can never be matched by `validate_install_preconditions` again. Every
+/// `.update` file present at startup is therefore unreachable garbage. A
+/// production cache was holding a 205 MB bundle for the version already
+/// running.
+fn purge_update_bundles(dir: &Path) -> usize {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return 0;
+    };
+    let mut removed = 0;
+    for path in entries.flatten().map(|entry| entry.path()) {
+        if path.extension().is_some_and(|ext| ext == "update") {
+            match std::fs::remove_file(&path) {
+                Ok(()) => {
+                    log::info!("removed stale cached update {}", path.display());
+                    removed += 1;
+                }
+                Err(e) => log::warn!("failed to remove {}: {e}", path.display()),
+            }
+        }
+    }
+    removed
+}
+
+/// Startup hook for [`purge_update_bundles`]. No-op when the cache
+/// directory does not exist yet.
+pub fn purge_cached_updates(app: &AppHandle) {
+    let Ok(cache_dir) = app.path().app_cache_dir() else {
+        return;
+    };
+    purge_update_bundles(&cache_dir.join("updater"));
+}
+
 /// Map a ``MessageDialogResult`` from an ``OkCancelCustom`` dialog to a
 /// simple accept/cancel boolean.
 ///
@@ -798,5 +835,38 @@ mod macos_tests {
             designated, "designated => identifier \"com.openagentd.desktop\"",
             "designated requirement must be identifier-only and stable: {requirement}"
         );
+    }
+}
+
+#[cfg(test)]
+mod cache_tests {
+    use super::purge_update_bundles;
+
+    // A production cache held a 205 MB bundle for the version already
+    // running: `update_state` is in-memory and starts as `None`, so nothing
+    // could ever reach that file again.
+
+    #[test]
+    fn stale_bundles_are_removed_and_other_files_are_left_alone() {
+        let dir = tempfile::tempdir().expect("create cache dir");
+        let stale = dir.path().join("openagentd-1.133.0.update");
+        let older = dir.path().join("openagentd-1.132.0.update");
+        let unrelated = dir.path().join("notes.txt");
+        std::fs::write(&stale, b"bundle").expect("write stale bundle");
+        std::fs::write(&older, b"bundle").expect("write older bundle");
+        std::fs::write(&unrelated, b"keep me").expect("write unrelated file");
+
+        assert_eq!(purge_update_bundles(dir.path()), 2);
+
+        assert!(!stale.exists());
+        assert!(!older.exists());
+        assert!(unrelated.exists(), "only .update bundles are purged");
+    }
+
+    #[test]
+    fn a_missing_cache_directory_is_not_an_error() {
+        let dir = tempfile::tempdir().expect("create temp root");
+
+        assert_eq!(purge_update_bundles(&dir.path().join("updater")), 0);
     }
 }

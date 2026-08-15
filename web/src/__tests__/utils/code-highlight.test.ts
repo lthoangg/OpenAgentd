@@ -124,3 +124,156 @@ describe("tokenizeCode — bundled grammars", () => {
     expect(classed('<div class="x">hi</div>', "xml")).toContain("tag:div");
   });
 });
+
+describe("tokenizeCode — go", () => {
+  it("classifies keywords, types, literals and numbers", () => {
+    const out = classed("var count int = 42\nif ok { return nil }", "go");
+
+    expect(out).toContain("keyword:var");
+    expect(out).toContain("type:int");
+    expect(out).toContain("number:42");
+    expect(out).toContain("literal:nil");
+  });
+
+  it("classifies plain functions and methods by name", () => {
+    const out = classed("func greet(n string) {}\nfunc (h *Handler) Handle() {}", "go");
+
+    expect(out).toContain("function:greet");
+    expect(out).toContain("function:Handle");
+  });
+
+  it("classifies raw string literals", () => {
+    const out = classed("q := `SELECT 1`", "go");
+
+    expect(out).toContain("string:`SELECT 1`");
+    // `SELECT` sits inside the string, so no keyword may be claimed there.
+    expect(out.some((entry) => entry.startsWith("keyword:"))).toBe(false);
+  });
+
+  it("resolves the golang alias", () => {
+    expect(classed("package main", "golang")).toContain("keyword:package");
+  });
+});
+
+describe("tokenizeCode — java", () => {
+  it("classifies keywords, types, annotations and literals", () => {
+    const out = classed("@Override\npublic String name() { return null; }", "java");
+
+    expect(out).toContain("meta:@Override");
+    expect(out).toContain("keyword:public");
+    expect(out).toContain("type:String");
+    expect(out).toContain("literal:null");
+  });
+
+  it("classifies a method name but not a control-flow keyword", () => {
+    const out = classed("if (ready) { compute(1); }", "java");
+
+    expect(out).toContain("keyword:if");
+    expect(out).toContain("function:compute");
+    expect(out).not.toContain("function:if");
+  });
+});
+
+describe("tokenizeCode — c and cpp", () => {
+  it("classifies preprocessor directives as meta", () => {
+    const out = classed('#include <stdio.h>\nint main(void) { return 0; }', "c");
+
+    expect(out).toContain("meta:#include <stdio.h>");
+    expect(out).toContain("type:int");
+    expect(out).toContain("function:main");
+  });
+
+  it("classifies cpp-only keywords the c grammar does not know", () => {
+    const out = classed("class Server { public: void run(); };", "cpp");
+
+    expect(out).toContain("keyword:class");
+    expect(out).toContain("keyword:public");
+  });
+
+  it("resolves the c++ and header aliases", () => {
+    expect(classed("class A {};", "c++")).toContain("keyword:class");
+    expect(classed("class A {};", "hpp")).toContain("keyword:class");
+    expect(classed("int x;", "h")).toContain("type:int");
+  });
+
+  it("keeps keywords inside comments and strings unclassified", () => {
+    const out = classed('// return this\nconst char *s = "return this";', "c");
+
+    expect(out).toContain("comment:// return this");
+    expect(out).toContain('string:"return this"');
+    expect(out.filter((entry) => entry === "keyword:return")).toHaveLength(0);
+  });
+});
+
+describe("tokenizeCode — ruby", () => {
+  it("classifies keywords, symbols, constants and instance variables", () => {
+    const out = classed("class Retry\n  def run(name)\n    @name = :fast\n  end\nend", "ruby");
+
+    expect(out).toContain("keyword:class");
+    expect(out).toContain("type:Retry");
+    expect(out).toContain("function:run");
+    expect(out).toContain("variable:@name");
+    expect(out).toContain("attr::fast");
+  });
+
+  it("classifies bang and predicate method names", () => {
+    const out = classed("def valid?\nend\ndef save!\nend", "ruby");
+
+    expect(out).toContain("function:valid?");
+    expect(out).toContain("function:save!");
+  });
+
+  it("resolves the rb alias", () => {
+    expect(classed("nil", "rb")).toContain("literal:nil");
+  });
+
+  it("treats a scope resolution as a constant, not a symbol", () => {
+    const out = classed("ActiveRecord::Base.find(1)", "ruby");
+
+    expect(out).toContain("type:ActiveRecord");
+    expect(out).toContain("type:Base");
+    expect(out).not.toContain("attr::Base");
+  });
+
+  it("still classifies symbols in an array literal", () => {
+    const out = classed("[:a, :b]", "ruby");
+
+    expect(out).toContain("attr::a");
+    expect(out).toContain("attr::b");
+  });
+});
+
+describe("tokenizeCode — graphql", () => {
+  it("classifies operations, type names and field arguments", () => {
+    const out = classed("query GetTurn($id: ID!) {\n  turn(id: $id) { body }\n}", "graphql");
+
+    expect(out).toContain("keyword:query");
+    expect(out).toContain("type:ID");
+    expect(out).toContain("variable:$id");
+  });
+
+  it("resolves the gql alias", () => {
+    expect(classed("type Turn { id: ID }", "gql")).toContain("keyword:type");
+  });
+});
+
+describe("tokenizeCode — makefile", () => {
+  it("classifies targets, assignments, variables and directives", () => {
+    const out = classed("CC := gcc\n\nbuild: deps\n\t$(CC) -o out main.c", "makefile");
+
+    expect(out).toContain("attr:CC");
+    expect(out).toContain("selector:build:");
+    expect(out).toContain("variable:$(CC)");
+  });
+
+  it("classifies conditional directives", () => {
+    const out = classed("ifeq ($(OS),Darwin)\nendif", "makefile");
+
+    expect(out).toContain("keyword:ifeq");
+    expect(out).toContain("keyword:endif");
+  });
+
+  it("resolves the make alias", () => {
+    expect(classed("# note", "make")).toContain("comment:# note");
+  });
+});

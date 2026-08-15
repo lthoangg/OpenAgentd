@@ -151,11 +151,19 @@ command still use `highlight.js`. Both resolve to the same `--color-syn-*`
 tokens in `index.css` (`.th-*` and `.hljs-*` rule blocks), so they look
 identical. Chat covers only the grammars listed in `LANGUAGES` — shell,
 python, ts/tsx/js/jsx, json, yaml, markdown, env, css, diff, dockerfile,
-html (aliased from `xml`), http, sql, toml, plus hand-written rust, ini and
-csv. Anything else renders as escaped plain text rather than throwing. Add a
-grammar by extending `LANGUAGES`, not by reaching for highlight.js — a bundled
-one costs ~100 bytes gzipped, a hand-written one costs a pattern table plus
-tests in `__tests__/utils/code-highlight.test.ts`.
+html (aliased from `xml`), http, sql, toml, plus hand-written rust, ini, csv,
+go, java, c, cpp, ruby, graphql and makefile. Anything else renders as escaped
+plain text rather than throwing. Add a grammar by extending `LANGUAGES`, not by
+reaching for highlight.js — a bundled one costs ~100 bytes gzipped, a
+hand-written one costs a pattern table plus tests in
+`__tests__/utils/code-highlight.test.ts`.
+
+Two constraints bind every hand-written pattern table, both documented on
+`patternLanguage`: patterns are ordered and first-match-wins (comments and
+strings must come first, or a keyword inside a string gets classified), and
+**no lookbehind** — it is a parse-time syntax error on Safari below 16.4, which
+would take out the whole chat renderer rather than one fence. Use a leading
+guard group instead, as the Ruby symbol pattern does for `Foo::Bar`.
 
 Tokens are rendered as React elements, never `dangerouslySetInnerHTML` — code
 arriving from a model is escaped by React. Keep it that way.

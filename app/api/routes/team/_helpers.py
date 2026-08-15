@@ -61,7 +61,7 @@ def _require_team(team: AgentTeam | None) -> AgentTeam:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
-def _validate_workspace_or_422(workspace: str) -> str:
+def _validate_workspace_or_422(workspace: str, *, require_exists: bool = True) -> str:
     """Route ``workspace`` through the single validation authority.
 
     ``team_manager.validate_workspace`` is the sole authority for workspace
@@ -70,7 +70,7 @@ def _validate_workspace_or_422(workspace: str) -> str:
     ``Path(workspace).resolve()`` anywhere else.
     """
     try:
-        return team_manager.validate_workspace(workspace)
+        return team_manager.validate_workspace(workspace, require_exists=require_exists)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 

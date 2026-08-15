@@ -835,10 +835,12 @@ async def resolve_team_session(
 async def update_coding_workspace_visibility(
     body: TeamWorkspaceVisibilityRequest, db: DbSession
 ) -> CodingWorkspaceVisibilityResponse:
-    workspace = (
-        str(Path(body.workspace).expanduser().resolve())
-        if body.hidden
-        else _validate_workspace_or_422(body.workspace)
+    # Hiding tolerates a workspace whose directory is gone (deleted or
+    # unmounted outside the app) so a stale sidebar entry stays removable;
+    # the restricted-root rule still applies. Unhiding requires a real
+    # directory. Both go through the single validation authority.
+    workspace = _validate_workspace_or_422(
+        body.workspace, require_exists=not body.hidden
     )
     async with db.begin():
         if body.hidden:

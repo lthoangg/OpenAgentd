@@ -509,6 +509,34 @@ class TestResolveTeamSession:
         assert tree.status_code == 200
         assert tree.json()["repositories"] == []
 
+    @pytest.mark.asyncio
+    async def test_workspace_visibility_rejects_restricted_root_when_hiding(
+        self, app_with_team
+    ):
+        """Hiding must not persist a path inside a restricted system directory.
+
+        The hide branch skips the *existence* check on purpose (see
+        ``test_workspace_visibility_can_hide_missing_workspace``), but it must
+        still enforce the blocked-root rule — ``hide_coding_workspace`` inserts
+        a row when no workspace matches, so an unvalidated path would land in
+        the database.
+        """
+        import app.core.db as _db
+        from sqlmodel import select
+
+        from app.models.chat import CodingWorkspace
+
+        client = TestClient(app_with_team)
+        resp = client.patch(
+            "/api/team/workspace/visibility",
+            json={"workspace": "/etc", "hidden": True},
+        )
+        assert resp.status_code == 422
+
+        async with _db.async_session_factory() as db:
+            rows = (await db.exec(select(CodingWorkspace))).all()
+        assert rows == []
+
 
 # ---------------------------------------------------------------------------
 # DELETE /team/sessions/{session_id}

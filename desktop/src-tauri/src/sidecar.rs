@@ -327,7 +327,8 @@ impl Sidecar {
                 // received non-handshake bytes but never the handshake"
                 // from "we received nothing at all".
                 log::info!(
-                    "sidecar stdout line {line_count} ({n} bytes): {trimmed:?}"
+                    "sidecar stdout line {line_count} ({n} bytes): {:?}",
+                    redact_handshake_token(trimmed)
                 );
                 if !trimmed.starts_with(HANDSHAKE_PREFIX) {
                     append_log_line(&parse_log_path, trimmed).await;
@@ -368,9 +369,10 @@ impl Sidecar {
                         Ok(content) => {
                             let trimmed = content.trim();
                             log::info!(
-                                "sidecar handshake file {} ({} bytes): {trimmed:?}",
+                                "sidecar handshake file {} ({} bytes): {:?}",
                                 path.display(),
-                                content.len()
+                                content.len(),
+                                redact_handshake_token(trimmed)
                             );
                             return serde_json::from_str::<Handshake>(trimmed)
                                 .with_context(|| {
@@ -532,6 +534,36 @@ fn strip_unc_prefix(path: &Path) -> PathBuf {
     path.to_path_buf()
 }
 
+/// Replace the ``token`` value in a handshake payload with a length
+/// marker.
+///
+/// The raw handshake line is logged for delivery diagnostics (see the
+/// module docs on the Windows stdout bug), but it carries the desktop
+/// session bearer token — and ``desktop.log`` is a file the menu bar
+/// invites users to open and share. Non-handshake lines are returned
+/// unchanged.
+fn redact_handshake_token(line: &str) -> String {
+    const KEY: &str = "\"token\"";
+    let Some(key_at) = line.find(KEY) else {
+        return line.to_string();
+    };
+    let after_key = key_at + KEY.len();
+    let Some(open_rel) = line[after_key..].find('"') else {
+        return line.to_string();
+    };
+    let value_start = after_key + open_rel + 1;
+    let Some(close_rel) = line[value_start..].find('"') else {
+        return line.to_string();
+    };
+    let value_end = value_start + close_rel;
+    format!(
+        "{}<redacted {} chars>{}",
+        &line[..value_start],
+        value_end - value_start,
+        &line[value_end..]
+    )
+}
+
 async fn pipe_lines_to_log<R>(mut reader: BufReader<R>, log_path: PathBuf)
 where
     R: tokio::io::AsyncRead + Unpin,
@@ -677,7 +709,7 @@ fn resume_primary_thread(child: &Child) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::strip_unc_prefix;
+    use super::{redact_handshake_token, strip_unc_prefix};
     use std::path::{Path, PathBuf};
 
     // ``strip_unc_prefix`` is pure string manipulation, so these run on
@@ -710,6 +742,51 @@ mod tests {
     fn unprefixed_unc_path_is_unchanged() {
         let p = Path::new(r"\\server\share\python.exe");
         assert_eq!(strip_unc_prefix(p), p.to_path_buf());
+    }
+
+    // ``redact_handshake_token`` guards a live secret leak: the handshake
+    // line is logged verbatim for delivery diagnostics, and it carries the
+    // desktop session bearer token.
+
+    #[test]
+    fn handshake_line_token_is_replaced_with_a_length_marker() {
+        let line = r#"OPENAGENTD_HANDSHAKE {"port": 58255, "pid": 87612, "version": "1.133.0", "token": "oKffFTEMoFrCAdyNwZYnThXkVdzMKmI9lMpsR2nfB4o"}"#;
+
+        let redacted = redact_handshake_token(line);
+
+        assert!(!redacted.contains("oKffFTEMoFrCAdyNwZYnThXkVdzMKmI9lMpsR2nfB4o"));
+        assert!(redacted.contains("<redacted 43 chars>"));
+        // Everything else stays intact — the diagnostic value is the port,
+        // pid and version, not the secret.
+        assert!(redacted.contains("\"port\": 58255"));
+        assert!(redacted.contains("\"version\": \"1.133.0\""));
+    }
+
+    #[test]
+    fn handshake_without_space_after_the_colon_is_redacted() {
+        let redacted = redact_handshake_token(r#"{"token":"abc123"}"#);
+
+        assert_eq!(redacted, r#"{"token":"<redacted 6 chars>"}"#);
+    }
+
+    #[test]
+    fn ordinary_stdout_lines_are_left_alone() {
+        let line = "INFO uvicorn running on http://127.0.0.1:58255";
+
+        assert_eq!(redact_handshake_token(line), line);
+    }
+
+    #[test]
+    fn truncated_handshake_line_is_left_alone() {
+        // A partially-written line must not panic on slicing.
+        assert_eq!(
+            redact_handshake_token(r#"{"port": 1, "token"#),
+            r#"{"port": 1, "token"#
+        );
+        assert_eq!(
+            redact_handshake_token(r#"{"token": "unterminated"#),
+            r#"{"token": "unterminated"#
+        );
     }
 }
 

@@ -52,6 +52,77 @@ def test_message_response_strips_internal_attachment_paths():
     assert resp.extra == {"attachments": expected}
 
 
+def test_message_response_strips_tool_result_parts():
+    """``extra.parts`` never reaches the client.
+
+    ``parts`` is persisted for ``ToolMessage`` only (see
+    ``chat_service.save_message``) and holds base64 ``image_data`` blocks —
+    3.6 MB on a single production row. The web UI renders ``content`` (here
+    ``[Image: uploads/x.png]``) and fetches the bytes from the uploads
+    endpoint; it never reads ``parts``. Shipping it wasted the whole blob on
+    every history load and defeated the ``Field(exclude=True)`` guard on
+    ``ChatMessage.parts`` — the display path bypasses that guard by
+    serialising the ORM row rather than the deserialised message.
+    """
+    msg = SessionMessage(
+        session_id=uuid.uuid7(),
+        role="tool",
+        name="read",
+        tool_call_id="call_1",
+        content="[Image: uploads/x.png]",
+        extra={
+            "duration_ms": 12,
+            "parts": [
+                {"type": "text", "text": "[Image: uploads/x.png]"},
+                {"type": "image_data", "media_type": "image/png", "data": "A" * 4096},
+            ],
+        },
+    )
+
+    resp = _message_response(msg)
+
+    assert resp.extra == {"duration_ms": 12}
+    assert "image_data" not in resp.model_dump_json()
+
+
+def test_message_response_keeps_extra_without_parts_untouched():
+    """Rows carrying no ``parts`` pass through unchanged."""
+    msg = SessionMessage(
+        session_id=uuid.uuid7(),
+        role="tool",
+        name="shell",
+        tool_call_id="call_2",
+        content="ok",
+        extra={"duration_ms": 5, "mcp_app": {"url": "https://example.test"}},
+    )
+
+    resp = _message_response(msg)
+
+    assert resp.extra == {"duration_ms": 5, "mcp_app": {"url": "https://example.test"}}
+
+
+def test_message_response_does_not_mutate_the_orm_row():
+    """Stripping must not clear ``parts`` on the persisted row.
+
+    The same ``SessionMessage`` instance stays in the session identity map and
+    is reused by the context path, which *does* need ``parts`` to replay images
+    to the provider.
+    """
+    parts = [{"type": "image_data", "media_type": "image/png", "data": "A" * 64}]
+    msg = SessionMessage(
+        session_id=uuid.uuid7(),
+        role="tool",
+        name="read",
+        tool_call_id="call_3",
+        content="[Image: uploads/y.png]",
+        extra={"parts": parts},
+    )
+
+    _message_response(msg)
+
+    assert msg.extra == {"parts": parts}
+
+
 class MockTestProvider(LLMProviderBase):
     """Mock LLM provider."""
 

@@ -30,7 +30,7 @@ from app.agent.tools.builtin.filesystem.handlers import (
 from app.agent.tools.registry import InjectedArg, Tool
 
 _MAX_READ_BYTES = 5_242_880  # 5 MB read cap
-_MAX_CONTEXT_CHARS = 20_000  # keep read results within typical LLM context budgets
+_MAX_CONTEXT_CHARS = 50_000  # keep read results within typical LLM context budgets
 _MAX_LINE_CHARS = 2_000  # one minified line must not eat the whole budget
 
 _DESCRIPTION = (

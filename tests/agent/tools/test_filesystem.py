@@ -139,6 +139,7 @@ async def test_read_file_caps_large_text_for_context(sandbox_workspace, monkeypa
     read_file_module = importlib.import_module(
         "app.agent.tools.builtin.filesystem.read"
     )
+    assert read_file_module._MAX_CONTEXT_CHARS == 50_000
     monkeypatch.setattr(read_file_module, "_MAX_CONTEXT_CHARS", 10)
     (sandbox_workspace / "material-icons.json").write_text("A" * 50)
 

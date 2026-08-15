@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Query OpenAgentd OpenTelemetry (OTEL) span telemetry via DuckDB.
+"""Query OpenAgentd OpenTelemetry (OTEL) span telemetry.
 
 Usage:
     uv run python .openagentd/skills/oad/debug-prod/scripts/query_otel.py [--days N]
@@ -11,13 +11,16 @@ import argparse
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-import duckdb
+try:
+    import orjson
+    def _parse_json(b: bytes) -> dict: return orjson.loads(b)
+except ImportError:
+    import json
+    def _parse_json(b: bytes) -> dict: return json.loads(b.decode("utf-8"))
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Query OpenAgentd OTEL spans using DuckDB."
-    )
+    parser = argparse.ArgumentParser(description="Query OpenAgentd OTEL spans.")
     parser.add_argument(
         "--days",
         type=int,
@@ -54,45 +57,57 @@ def main() -> None:
         print("No telemetry files found for window.")
         return
 
-    con = duckdb.connect(":memory:")
-    escaped_files = ", ".join(f"'{f}'" for f in files)
 
-    # 1. Aggregate Totals
-    totals = con.execute(
-        f"""
-        SELECT
-            count(*) as total_spans,
-            count_if(status = 'ERROR') as error_spans,
-            count_if(name LIKE 'agent_run%') as agent_runs,
-            count_if(name LIKE 'chat%') as chat_calls,
-            count_if(name LIKE 'execute_tool%') as tool_calls
-        FROM read_json([{escaped_files}], union_by_name=true)
-        WHERE end_time >= {start_ns}
-    """
-    ).fetchone()
 
-    if totals:
-        print(
-            f"Total Spans: {totals[0]} | Errors: {totals[1]} | Turns: {totals[2]} | Chat Calls: {totals[3]} | Tool Calls: {totals[4]}"
-        )
 
-    # 2. Detailed Error Spans
-    err_spans = con.execute(
-        f"""
-        SELECT
-            name,
-            attributes['error.type'] as error_type,
-            attributes['gen_ai.provider.name'] as provider,
-            attributes['gen_ai.request.model'] as model,
-            events
-        FROM read_json([{escaped_files}], union_by_name=true)
-        WHERE status = 'ERROR'
-          AND end_time >= {start_ns}
-    """
-    ).fetchall()
 
-    print(f"\n--- Error Spans ({len(err_spans)}) ---")
-    for idx, (name, err_type, provider, model, evts) in enumerate(err_spans, 1):
+    total_spans = 0
+    error_spans = 0
+    agent_runs = 0
+    chat_calls = 0
+    tool_calls = 0
+    err_list = []
+
+    for filepath in files:
+        try:
+            with open(filepath, "rb") as fp:
+                for line in fp:
+                    if not line.strip():
+                        continue
+                    try:
+                        s = _parse_json(line)
+                    except Exception:
+                        continue
+                    et = s.get("end_time")
+                    if et is not None and et >= start_ns:
+                        total_spans += 1
+                        name = str(s.get("name") or "")
+                        status = s.get("status")
+                        if status == "ERROR":
+                            error_spans += 1
+                            attrs = s.get("attributes") or {}
+                            err_list.append((
+                                name,
+                                attrs.get("error.type"),
+                                attrs.get("gen_ai.provider.name"),
+                                attrs.get("gen_ai.request.model"),
+                                s.get("events"),
+                            ))
+                        if name.startswith("agent_run"):
+                            agent_runs += 1
+                        elif name.startswith("chat"):
+                            chat_calls += 1
+                        elif name.startswith("execute_tool"):
+                            tool_calls += 1
+        except OSError:
+            continue
+
+    print(
+        f"Total Spans: {total_spans} | Errors: {error_spans} | Turns: {agent_runs} | Chat Calls: {chat_calls} | Tool Calls: {tool_calls}"
+    )
+
+    print(f"\n--- Error Spans ({len(err_list)}) ---")
+    for idx, (name, err_type, provider, model, evts) in enumerate(err_list, 1):
         print(
             f"[{idx:>2}] {name:<45} | ErrType: {str(err_type):<22} | Provider: {str(provider):<8} | Model: {str(model)}"
         )

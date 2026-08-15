@@ -702,8 +702,8 @@ def test_trace_query_caches_invalidate_on_jsonl_signature_change(
 
     with patch.object(
         observability_service,
-        "_create_spans_window_view",
-        wraps=observability_service._create_spans_window_view,
+        "_load_spans_in_window",
+        wraps=observability_service._load_spans_in_window,
     ) as create_view:
         run_query()
         run_query()

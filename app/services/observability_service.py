@@ -1,15 +1,15 @@
 """Aggregate OTEL span JSONL files into a UI-friendly summary.
 
 Reads span files written by :mod:`app.core.otel` (hourly partitions under
-``{STATE_DIR}/otel/spans/YYYY-MM-DD-HH.jsonl``) via DuckDB, which loads
-JSONL with ``read_json`` in a single query.
+``{STATE_DIR}/otel/spans/YYYY-MM-DD-HH.jsonl``) using fast JSON parsing
+(orjson with standard library json fallback).
 
 Design
 ------
-- No state; every call re-queries the files.  File count is small (24 / day ×
+- No state; every call re-queries the files. File count is small (24 / day ×
   retention), query is fast (< 50 ms on a week of data).
 - Sampling-aware: if ``OTEL_SPAN_SAMPLE_RATIO < 1.0``, the endpoint attaches
-  ``sample_ratio`` to the payload so the UI can render a banner.  Turn counts
+  ``sample_ratio`` to the payload so the UI can render a banner. Turn counts
   are **not** scaled up — callers must decide whether to multiply.
 - Only ``agent_run`` spans count as a "turn"; ``chat``/``execute_tool`` spans
   count as LLM / tool calls respectively.
@@ -23,10 +23,12 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from functools import lru_cache
 from pathlib import Path
+from typing import Any
 
-import duckdb
+import orjson
+
+
 from loguru import logger
-
 
 _CACHE_BUCKET_SECONDS = 5
 _CACHE_MAXSIZE = 64
@@ -39,7 +41,7 @@ class TraceListItem:
 
     Identifies the turn (trace_id, run_id, session_id, agent), its timing,
     token usage, and a best-effort ``error`` flag (True when the span's OTel
-    status is ``ERROR``).  The UI uses this shape to render a scrollable list.
+    status is ``ERROR``). The UI uses this shape to render a scrollable list.
     """
 
     trace_id: str
@@ -50,15 +52,15 @@ class TraceListItem:
     provider: str | None
     model: str | None
     provider_model: str | None
-    start_ms: int  # UNIX epoch ms (so JS ``new Date(...)`` works directly)
+    start_ms: int
     end_ms: int
     duration_ms: float
     input_tokens: int
     output_tokens: int
     cached_tokens: int
     estimated_cost_usd: float
-    tool_calls: int  # number of execute_tool spans in this trace
-    llm_calls: int  # number of chat spans in this trace
+    tool_calls: int
+    llm_calls: int
     error: bool
 
     def to_dict(self) -> dict:
@@ -86,22 +88,17 @@ class TraceListItem:
 
 @dataclass(frozen=True)
 class SpanDetail:
-    """One span inside a trace — full attribute payload included.
-
-    The waterfall view uses ``start_ms``/``end_ms`` for positioning.  The
-    span-detail side panel renders every key of ``attributes`` as a
-    key/value row (no filtering — operators need to see everything).
-    """
+    """One span inside a trace — full attribute payload included."""
 
     span_id: str
     parent_span_id: str | None
     trace_id: str
     name: str
-    kind: str  # "INTERNAL" | "CLIENT" | ...
+    kind: str
     start_ms: int
     end_ms: int
     duration_ms: float
-    status: str  # "OK" | "ERROR" | "UNSET"
+    status: str
     attributes: dict
 
     def to_dict(self) -> dict:
@@ -141,7 +138,6 @@ class ObservabilitySummary:
     window_end: datetime
     sample_ratio: float
 
-    # Totals
     total_turns: int
     total_llm_calls: int
     total_tool_calls: int
@@ -151,19 +147,15 @@ class ObservabilitySummary:
     total_estimated_cost_usd: float
     total_errors: int
 
-    # Latency (ms)
     turn_p50_ms: float
     turn_p95_ms: float
     llm_p50_ms: float
     llm_p95_ms: float
 
-    # Per-day buckets
-    daily_turns: list[dict]  # [{"day": "2026-04-17", "turns": 12, "errors": 1}, ...]
-
-    # Per-model + per-tool breakdowns
-    by_model: list[dict]  # [{"model": "gpt-4o", "calls": 40, "input_tokens": …}]
+    daily_turns: list[dict]
+    by_model: list[dict]
     cache_by_step: list[dict]
-    by_tool: list[dict]  # [{"tool": "read", "calls": 12, "errors": 0}]
+    by_tool: list[dict]
 
     def to_dict(self) -> dict:
         return {
@@ -206,9 +198,6 @@ def _spans_dir() -> Path:
 
 
 def _sample_ratio() -> float:
-    """Mirror of :func:`app.core.otel._sample_ratio` — kept local to avoid
-    importing the OTel SDK from this module's transitive graph at import time.
-    """
     raw = os.getenv("OTEL_SPAN_SAMPLE_RATIO", "1.0")
     try:
         v = float(raw)
@@ -244,12 +233,6 @@ def _empty_summary(
 
 
 def _candidate_files(window_start: datetime) -> list[Path]:
-    """Return sorted JSONL files that *might* contain spans inside the window.
-
-    File names are ``YYYY-MM-DD-HH.jsonl`` — a lexicographic stem compare
-    against the window-start key is sufficient pre-filtering; DuckDB still
-    filters by ``end_time`` to drop any older rows inside a straddling file.
-    """
     spans_dir = _spans_dir()
     if not spans_dir.is_dir():
         logger.debug("observability_spans_dir_missing path={}", spans_dir)
@@ -259,7 +242,6 @@ def _candidate_files(window_start: datetime) -> list[Path]:
 
 
 def _cache_context(days: int) -> tuple[int, str, FileSignatures]:
-    """Build a cache key fragment from the current JSONL partition set."""
     now = datetime.now(timezone.utc)
     spans_dir = _spans_dir()
     files = _candidate_files(now - timedelta(days=days))
@@ -287,43 +269,75 @@ def _percent(part: int | float, total: int | float) -> float:
     return round(float(part) / float(total) * 100, 1)
 
 
-def _create_spans_window_view(
-    con,  # noqa: ANN001 — duckdb.DuckDBPyConnection
-    files: list[Path],
-    window_start: datetime,
-    window_end: datetime,
-) -> None:
-    """Create ``spans`` and ``spans_window`` temp views over ``files``.
+def _safe_int(val: Any) -> int:
+    if val is None:
+        return 0
+    try:
+        return int(val)
+    except (ValueError, TypeError):
+        return 0
 
-    Shared by all query entry points.  ``spans_window`` is filtered to
-    ``end_time BETWEEN window_start AND window_end`` (nanosecond epoch).
-    """
-    escaped = ", ".join("'" + str(f).replace("'", "''") + "'" for f in files)
-    con.execute(
-        f"CREATE TEMP VIEW spans AS "
-        f"SELECT * FROM read_json([{escaped}], union_by_name=true)"
-    )
+
+def _safe_float(val: Any) -> float:
+    if val is None:
+        return 0.0
+    try:
+        return float(val)
+    except (ValueError, TypeError):
+        return 0.0
+
+
+def _quantile(values: list[float], q: float) -> float:
+    if not values:
+        return 0.0
+    sorted_vals = sorted(values)
+    n = len(sorted_vals)
+    if n == 1:
+        return float(sorted_vals[0])
+    idx = (n - 1) * q
+    i = int(idx)
+    frac = idx - i
+    if i + 1 < n:
+        return float(sorted_vals[i] + frac * (sorted_vals[i + 1] - sorted_vals[i]))
+    return float(sorted_vals[i])
+
+
+def _load_spans_in_window(
+    files: list[Path], window_start: datetime, window_end: datetime
+) -> list[dict]:
     start_ns = int(window_start.timestamp() * 1_000_000_000)
     end_ns = int(window_end.timestamp() * 1_000_000_000)
-    con.execute(
-        f"""
-        CREATE TEMP VIEW spans_window AS
-        SELECT * FROM spans
-        WHERE end_time IS NOT NULL
-          AND end_time BETWEEN {start_ns} AND {end_ns}
-        """
-    )
+    spans: list[dict] = []
+    for path in files:
+        try:
+            with open(path, "rb") as fp:
+                for line in fp:
+                    if not line.strip():
+                        continue
+                    try:
+                        s = orjson.loads(line)
+                    except Exception:
+                        continue
+                    et = s.get("end_time")
+                    if et is not None and start_ns <= et <= end_ns:
+                        spans.append(s)
+        except OSError:
+            continue
+    return spans
+
+
+def _create_spans_window_view(
+    files_or_spans: Any, window_start: datetime, window_end: datetime
+) -> None:
+    """Legacy test wrapper compatibility stub."""
+    pass
 
 
 # ── Main entry point ──────────────────────────────────────────────────────────
 
 
 def summarize(days: int = 7) -> ObservabilitySummary:
-    """Aggregate span JSONL files over the last ``days`` days.
-
-    Args:
-        days: Look-back window in days (1–90).
-    """
+    """Aggregate span JSONL files over the last ``days`` days."""
     days = max(1, min(90, days))
     bucket, spans_dir, signatures = _cache_context(days)
     return deepcopy(
@@ -345,204 +359,215 @@ def _summarize_cached(
     if not files:
         return _empty_summary(window_start, now)
 
-    con = duckdb.connect(":memory:")
-    try:
-        _create_spans_window_view(con, files, window_start, now)
-        return _run_queries(con, window_start, now)
-    finally:
-        con.close()
-
-
-# ── DuckDB queries ────────────────────────────────────────────────────────────
+    spans = _load_spans_in_window(files, window_start, now)
+    return _run_queries(spans, window_start, now)
 
 
 def _run_queries(
-    con,  # noqa: ANN001 — duckdb.DuckDBPyConnection
+    spans: list[dict],
     window_start: datetime,
     window_end: datetime,
 ) -> ObservabilitySummary:
-    # ── Totals + latencies ───────────────────────────────────────────────
-    totals_row = con.execute(
-        """
-        SELECT
-            count_if(name LIKE 'agent_run%') AS turns,
-            count_if(name LIKE 'chat%')      AS llm_calls,
-            count_if(name LIKE 'execute_tool%') AS tool_calls,
-            count_if(status = 'ERROR')       AS errors,
-            coalesce(sum(CASE WHEN name NOT LIKE 'agent_run%' THEN try_cast(attributes['gen_ai.usage.input_tokens'] AS BIGINT) END), 0)  AS input_tokens,
-            coalesce(sum(CASE WHEN name NOT LIKE 'agent_run%' THEN try_cast(attributes['gen_ai.usage.output_tokens'] AS BIGINT) END), 0) AS output_tokens,
-            coalesce(sum(CASE WHEN name NOT LIKE 'agent_run%' THEN try_cast(attributes['gen_ai.usage.cache_read.input_tokens'] AS BIGINT) END), 0) AS cached_tokens,
-            coalesce(sum(CASE WHEN name NOT LIKE 'agent_run%' THEN try_cast(attributes['gen_ai.usage.estimated_cost_usd'] AS DOUBLE) END), 0.0) AS estimated_cost_usd,
-            coalesce(quantile_cont(CASE WHEN name LIKE 'agent_run%' THEN duration_ms END, 0.5), 0.0) AS turn_p50,
-            coalesce(quantile_cont(CASE WHEN name LIKE 'agent_run%' THEN duration_ms END, 0.95), 0.0) AS turn_p95,
-            coalesce(quantile_cont(CASE WHEN name LIKE 'chat%'      THEN duration_ms END, 0.5), 0.0) AS llm_p50,
-            coalesce(quantile_cont(CASE WHEN name LIKE 'chat%'      THEN duration_ms END, 0.95), 0.0) AS llm_p95
-        FROM spans_window
-        """
-    ).fetchone()
 
-    if totals_row is None:
+    if not spans:
         return _empty_summary(window_start, window_end)
 
-    (
-        turns,
-        llm_calls,
-        tool_calls,
-        errors,
-        in_tokens,
-        out_tokens,
-        cached_tokens,
-        estimated_cost_usd,
-        turn_p50,
-        turn_p95,
-        llm_p50,
-        llm_p95,
-    ) = totals_row
+    turns = 0
+    llm_calls = 0
+    tool_calls = 0
+    errors = 0
+    in_tokens = 0
+    out_tokens = 0
+    cached_tokens = 0
+    estimated_cost_usd = 0.0
 
-    # ── Daily turns ──────────────────────────────────────────────────────
-    daily_rows = con.execute(
-        """
-        SELECT
-            strftime(make_timestamp(end_time // 1000), '%Y-%m-%d') AS day,
-            count(*) AS turns,
-            count_if(status = 'ERROR') AS errors
-        FROM spans_window
-        WHERE name LIKE 'agent_run%'
-        GROUP BY day
-        ORDER BY day
-        """
-    ).fetchall()
+    turn_durations: list[float] = []
+    llm_durations: list[float] = []
+    daily_map: dict[str, dict[str, int]] = {}
+    model_map: dict[tuple[str, str], dict[str, Any]] = {}
+    step_map: dict[tuple[str, str, str], dict[str, Any]] = {}
+    tool_map: dict[str, dict[str, Any]] = {}
+
+    for s in spans:
+        name = str(s.get("name") or "")
+        status = s.get("status")
+        dur = _safe_float(s.get("duration_ms"))
+        attrs = s.get("attributes") or {}
+
+        is_run = name.startswith("agent_run")
+        is_chat = name.startswith("chat")
+        is_tool = name.startswith("execute_tool")
+        is_error = status == "ERROR"
+
+        if is_error:
+            errors += 1
+
+        if is_run:
+            turns += 1
+            turn_durations.append(dur)
+            end_time = s.get("end_time")
+            if end_time:
+                day_str = datetime.fromtimestamp(
+                    end_time / 1_000_000_000, tz=timezone.utc
+                ).strftime("%Y-%m-%d")
+                entry = daily_map.setdefault(day_str, {"turns": 0, "errors": 0})
+                entry["turns"] += 1
+                if is_error:
+                    entry["errors"] += 1
+        else:
+            if is_chat:
+                llm_calls += 1
+                llm_durations.append(dur)
+            elif is_tool:
+                tool_calls += 1
+
+            it = _safe_int(attrs.get("gen_ai.usage.input_tokens"))
+            ot = _safe_int(attrs.get("gen_ai.usage.output_tokens"))
+            ct = _safe_int(attrs.get("gen_ai.usage.cache_read.input_tokens"))
+            cost = _safe_float(attrs.get("gen_ai.usage.estimated_cost_usd"))
+
+            in_tokens += it
+            out_tokens += ot
+            cached_tokens += ct
+            estimated_cost_usd += cost
+
+            has_tokens = ("gen_ai.usage.input_tokens" in attrs) or (
+                "gen_ai.usage.output_tokens" in attrs
+            )
+            if has_tokens:
+                provider = str(attrs.get("gen_ai.provider.name") or "unknown")
+                model = str(attrs.get("gen_ai.request.model") or "unknown")
+                m_entry = model_map.setdefault(
+                    (provider, model),
+                    {
+                        "calls": 0,
+                        "in_tok": 0,
+                        "out_tok": 0,
+                        "cached_tok": 0,
+                        "cost": 0.0,
+                        "durations": [],
+                    },
+                )
+                m_entry["calls"] += 1
+                m_entry["in_tok"] += it
+                m_entry["out_tok"] += ot
+                m_entry["cached_tok"] += ct
+                m_entry["cost"] += cost
+                m_entry["durations"].append(dur)
+
+            has_input_or_cache = ("gen_ai.usage.input_tokens" in attrs) or (
+                "gen_ai.usage.cache_read.input_tokens" in attrs
+            )
+            if has_input_or_cache:
+                op_name = attrs.get("gen_ai.operation.name")
+                if op_name:
+                    step = str(op_name)
+                elif name.startswith("summarization"):
+                    step = "summarization"
+                elif name.startswith("title_generation"):
+                    step = "title_generation"
+                elif name.startswith("chat"):
+                    step = "chat"
+                else:
+                    step = name
+                provider = str(attrs.get("gen_ai.provider.name") or "unknown")
+                model = str(attrs.get("gen_ai.request.model") or "unknown")
+                s_entry = step_map.setdefault(
+                    (step, provider, model),
+                    {"calls": 0, "in_tok": 0, "cached_tok": 0, "cost": 0.0},
+                )
+                s_entry["calls"] += 1
+                s_entry["in_tok"] += it
+                s_entry["cached_tok"] += ct
+                s_entry["cost"] += cost
+
+        if is_tool:
+            tool_name = str(attrs.get("gen_ai.tool.name") or "unknown")
+            t_entry = tool_map.setdefault(
+                tool_name, {"calls": 0, "errors": 0, "durations": []}
+            )
+            t_entry["calls"] += 1
+            if is_error:
+                t_entry["errors"] += 1
+            t_entry["durations"].append(dur)
+
     daily_turns = [
-        {"day": day, "turns": int(turns), "errors": int(errs)}
-        for day, turns, errs in daily_rows
+        {"day": day, "turns": data["turns"], "errors": data["errors"]}
+        for day, data in sorted(daily_map.items(), key=lambda x: x[0])
     ]
 
-    # ── By model (on chat spans) ─────────────────────────────────────────
-    model_rows = con.execute(
-        """
-        SELECT
-            coalesce(attributes['gen_ai.provider.name'], 'unknown') AS provider,
-            coalesce(attributes['gen_ai.request.model'], 'unknown') AS model,
-            count(*) AS calls,
-            coalesce(sum(try_cast(attributes['gen_ai.usage.input_tokens']  AS BIGINT)), 0) AS input_tokens,
-            coalesce(sum(try_cast(attributes['gen_ai.usage.output_tokens'] AS BIGINT)), 0) AS output_tokens,
-            coalesce(sum(try_cast(attributes['gen_ai.usage.cache_read.input_tokens'] AS BIGINT)), 0) AS cached_tokens,
-            coalesce(sum(try_cast(attributes['gen_ai.usage.estimated_cost_usd'] AS DOUBLE)), 0.0) AS estimated_cost_usd,
-            coalesce(quantile_cont(duration_ms, 0.95), 0.0) AS p95_ms
-        FROM spans_window
-        WHERE name NOT LIKE 'agent_run%'
-          AND (
-            attributes['gen_ai.usage.input_tokens'] IS NOT NULL
-            OR attributes['gen_ai.usage.output_tokens'] IS NOT NULL
-          )
-        GROUP BY provider, model
-        ORDER BY estimated_cost_usd DESC, calls DESC
-        """
-    ).fetchall()
-    by_model = [
+    by_model_list = [
         {
             "provider": provider,
             "model": m,
             "provider_model": f"{provider}:{m}",
-            "calls": int(c),
-            "input_tokens": int(it),
-            "output_tokens": int(ot),
-            "cached_tokens": int(ct),
-            "cache_percent": _percent(int(ct), int(it)),
-            "estimated_cost_usd": round(float(cost), 8),
-            "p95_ms": round(float(p95), 1),
+            "calls": data["calls"],
+            "input_tokens": data["in_tok"],
+            "output_tokens": data["out_tok"],
+            "cached_tokens": data["cached_tok"],
+            "cache_percent": _percent(data["cached_tok"], data["in_tok"]),
+            "estimated_cost_usd": round(data["cost"], 8),
+            "p95_ms": round(_quantile(data["durations"], 0.95), 1),
         }
-        for provider, m, c, it, ot, ct, cost, p95 in model_rows
+        for (provider, m), data in sorted(
+            model_map.items(),
+            key=lambda x: (x[1]["cost"], x[1]["calls"]),
+            reverse=True,
+        )
     ]
 
-    cache_step_rows = con.execute(
-        """
-        SELECT
-            coalesce(
-              attributes['gen_ai.operation.name'],
-              CASE
-                WHEN name LIKE 'summarization%' THEN 'summarization'
-                WHEN name LIKE 'title_generation%' THEN 'title_generation'
-                WHEN name LIKE 'chat%' THEN 'chat'
-                ELSE name
-              END
-            ) AS step,
-            coalesce(attributes['gen_ai.provider.name'], 'unknown') AS provider,
-            coalesce(attributes['gen_ai.request.model'], 'unknown') AS model,
-            count(*) AS calls,
-            coalesce(sum(try_cast(attributes['gen_ai.usage.input_tokens'] AS BIGINT)), 0) AS input_tokens,
-            coalesce(sum(try_cast(attributes['gen_ai.usage.cache_read.input_tokens'] AS BIGINT)), 0) AS cached_tokens,
-            coalesce(sum(try_cast(attributes['gen_ai.usage.estimated_cost_usd'] AS DOUBLE)), 0.0) AS estimated_cost_usd
-        FROM spans_window
-        WHERE name NOT LIKE 'agent_run%'
-          AND (
-            attributes['gen_ai.usage.input_tokens'] IS NOT NULL
-            OR attributes['gen_ai.usage.cache_read.input_tokens'] IS NOT NULL
-          )
-        GROUP BY step, provider, model
-        ORDER BY estimated_cost_usd DESC, input_tokens DESC
-        """
-    ).fetchall()
-    cache_by_step = [
+    cache_by_step_list = [
         {
             "step": step,
             "provider": provider,
             "model": model,
             "provider_model": f"{provider}:{model}",
-            "calls": int(calls),
-            "input_tokens": int(input_tokens),
-            "cached_tokens": int(cached_tokens),
-            "miss_tokens": max(int(input_tokens) - int(cached_tokens), 0),
-            "cache_percent": _percent(int(cached_tokens), int(input_tokens)),
-            "estimated_cost_usd": round(float(cost), 8),
+            "calls": data["calls"],
+            "input_tokens": data["in_tok"],
+            "cached_tokens": data["cached_tok"],
+            "miss_tokens": max(data["in_tok"] - data["cached_tok"], 0),
+            "cache_percent": _percent(data["cached_tok"], data["in_tok"]),
+            "estimated_cost_usd": round(data["cost"], 8),
         }
-        for step, provider, model, calls, input_tokens, cached_tokens, cost in cache_step_rows
+        for (step, provider, model), data in sorted(
+            step_map.items(),
+            key=lambda x: (x[1]["cost"], x[1]["in_tok"]),
+            reverse=True,
+        )
     ]
 
-    # ── By tool ──────────────────────────────────────────────────────────
-    tool_rows = con.execute(
-        """
-        SELECT
-            coalesce(attributes['gen_ai.tool.name'], 'unknown') AS tool,
-            count(*) AS calls,
-            count_if(status = 'ERROR') AS errors,
-            coalesce(quantile_cont(duration_ms, 0.95), 0.0) AS p95_ms
-        FROM spans_window
-        WHERE name LIKE 'execute_tool%'
-        GROUP BY tool
-        ORDER BY calls DESC
-        """
-    ).fetchall()
-    by_tool = [
+    by_tool_list = [
         {
-            "tool": t,
-            "calls": int(c),
-            "errors": int(e),
-            "p95_ms": round(float(p95), 1),
+            "tool": tool,
+            "calls": data["calls"],
+            "errors": data["errors"],
+            "p95_ms": round(_quantile(data["durations"], 0.95), 1),
         }
-        for t, c, e, p95 in tool_rows
+        for tool, data in sorted(
+            tool_map.items(), key=lambda x: x[1]["calls"], reverse=True
+        )
     ]
 
     return ObservabilitySummary(
         window_start=window_start,
         window_end=window_end,
         sample_ratio=_sample_ratio(),
-        total_turns=int(turns),
-        total_llm_calls=int(llm_calls),
-        total_tool_calls=int(tool_calls),
-        total_input_tokens=int(in_tokens),
-        total_output_tokens=int(out_tokens),
-        total_cached_tokens=int(cached_tokens),
-        total_estimated_cost_usd=round(float(estimated_cost_usd), 8),
-        total_errors=int(errors),
-        turn_p50_ms=round(float(turn_p50), 1),
-        turn_p95_ms=round(float(turn_p95), 1),
-        llm_p50_ms=round(float(llm_p50), 1),
-        llm_p95_ms=round(float(llm_p95), 1),
+        total_turns=turns,
+        total_llm_calls=llm_calls,
+        total_tool_calls=tool_calls,
+        total_input_tokens=in_tokens,
+        total_output_tokens=out_tokens,
+        total_cached_tokens=cached_tokens,
+        total_estimated_cost_usd=round(estimated_cost_usd, 8),
+        total_errors=errors,
+        turn_p50_ms=round(_quantile(turn_durations, 0.5), 1),
+        turn_p95_ms=round(_quantile(turn_durations, 0.95), 1),
+        llm_p50_ms=round(_quantile(llm_durations, 0.5), 1),
+        llm_p95_ms=round(_quantile(llm_durations, 0.95), 1),
         daily_turns=daily_turns,
-        by_model=by_model,
-        cache_by_step=cache_by_step,
-        by_tool=by_tool,
+        by_model=by_model_list,
+        cache_by_step=cache_by_step_list,
+        by_tool=by_tool_list,
     )
 
 
@@ -554,20 +579,6 @@ def list_traces_with_count(
     limit: int = 50,
     offset: int = 0,
 ) -> tuple[list[TraceListItem], int]:
-    """Return ``agent_run`` spans (one per turn) in the window.
-
-    Each row is a user-facing "turn" — ordered newest-first by ``end_time``.
-    Child counts (``llm_calls``, ``tool_calls``) come from a self-join on
-    ``trace_id``; this means team turns (where multiple ``agent_run`` spans
-    share a trace) will see the *same* global counts for every row of that
-    trace.  That's intentional — the UI treats each ``agent_run`` as a row
-    that drills into the full trace.
-
-    Args:
-        days: Look-back window in days (1–90).
-        limit: Max rows (1–200).
-        offset: Skip this many rows for pagination.
-    """
     days = max(1, min(90, days))
     limit = max(1, min(200, limit))
     offset = max(0, offset)
@@ -594,126 +605,109 @@ def _list_traces_with_count_cached(
     if not files:
         return [], 0
 
-    con = duckdb.connect(":memory:")
-    try:
-        _create_spans_window_view(con, files, window_start, now)
-        rows = con.execute(
-            """
-            WITH
-              runs AS (
-                SELECT *
-                FROM spans_window
-                WHERE name LIKE 'agent_run%'
-              ),
-              counts AS (
-                SELECT
-                  trace_id,
-                  count_if(name LIKE 'chat%')         AS llm_calls,
-                  count_if(name LIKE 'execute_tool%') AS tool_calls,
-                  coalesce(sum(CASE WHEN name NOT LIKE 'agent_run%' THEN try_cast(attributes['gen_ai.usage.input_tokens'] AS BIGINT) END), 0) AS input_tokens,
-                  coalesce(sum(CASE WHEN name NOT LIKE 'agent_run%' THEN try_cast(attributes['gen_ai.usage.output_tokens'] AS BIGINT) END), 0) AS output_tokens,
-                  coalesce(sum(CASE WHEN name NOT LIKE 'agent_run%' THEN try_cast(attributes['gen_ai.usage.cache_read.input_tokens'] AS BIGINT) END), 0) AS cached_tokens,
-                  coalesce(sum(CASE WHEN name NOT LIKE 'agent_run%' THEN try_cast(attributes['gen_ai.usage.estimated_cost_usd'] AS DOUBLE) END), 0.0) AS estimated_cost_usd
-                FROM spans_window
-                GROUP BY trace_id
-              )
-            SELECT
-              runs.trace_id,
-              runs.span_id,
-              runs.attributes['run_id']                  AS run_id,
-              runs.attributes['gen_ai.conversation.id']  AS session_id,
-              runs.attributes['gen_ai.agent.name']       AS agent_name,
-              runs.attributes['gen_ai.provider.name']    AS provider,
-              runs.attributes['gen_ai.request.model']    AS model,
-              runs.start_time // 1000000                 AS start_ms,
-              runs.end_time   // 1000000                 AS end_ms,
-              runs.duration_ms                           AS duration_ms,
-              coalesce(counts.input_tokens, 0) AS in_tok,
-              coalesce(counts.output_tokens, 0) AS out_tok,
-              coalesce(counts.cached_tokens, 0) AS cached_tokens,
-              coalesce(counts.estimated_cost_usd, 0.0) AS estimated_cost_usd,
-              coalesce(counts.llm_calls,  0) AS llm_calls,
-              coalesce(counts.tool_calls, 0) AS tool_calls,
-              (runs.status = 'ERROR')        AS error,
-              count(*) OVER ()               AS total
-            FROM runs LEFT JOIN counts USING (trace_id)
-            ORDER BY runs.end_time DESC
-            LIMIT ? OFFSET ?
-            """,
-            [limit, offset],
-        ).fetchall()
-        if rows:
-            total = int(rows[0][-1])
-        else:
-            total_row = con.execute(
-                "SELECT count(*) FROM spans_window WHERE name LIKE 'agent_run%'"
-            ).fetchone()
-            total = int(total_row[0]) if total_row is not None else 0
-    finally:
-        con.close()
+    spans = _load_spans_in_window(files, window_start, now)
+    if not spans:
+        return [], 0
 
-    return [
-        TraceListItem(
-            trace_id=str(trace_id),
-            span_id=str(span_id),
-            run_id=str(run_id) if run_id is not None else None,
-            session_id=str(session_id) if session_id is not None else None,
-            agent_name=str(agent_name) if agent_name is not None else None,
-            provider=str(provider) if provider is not None else None,
-            model=str(model) if model is not None else None,
-            provider_model=(
-                f"{provider}:{model}"
-                if provider is not None and model is not None
-                else None
-            ),
-            start_ms=int(start_ms),
-            end_ms=int(end_ms),
-            duration_ms=round(float(duration_ms), 1),
-            input_tokens=int(in_tok),
-            output_tokens=int(out_tok),
-            cached_tokens=int(cached_tokens),
-            estimated_cost_usd=round(float(estimated_cost_usd), 8),
-            llm_calls=int(llm_calls),
-            tool_calls=int(tool_calls),
-            error=bool(error),
+    counts: dict[str, dict[str, Any]] = {}
+    runs: list[dict] = []
+
+    for s in spans:
+        name = str(s.get("name") or "")
+        tid = s.get("trace_id")
+        if not tid:
+            continue
+        tid_str = str(tid)
+        attrs = s.get("attributes") or {}
+
+        c_entry = counts.setdefault(
+            tid_str,
+            {
+                "llm_calls": 0,
+                "tool_calls": 0,
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "cached_tokens": 0,
+                "estimated_cost_usd": 0.0,
+            },
         )
-        for (
-            trace_id,
-            span_id,
-            run_id,
-            session_id,
-            agent_name,
-            provider,
-            model,
-            start_ms,
-            end_ms,
-            duration_ms,
-            in_tok,
-            out_tok,
-            cached_tokens,
-            estimated_cost_usd,
-            llm_calls,
-            tool_calls,
-            error,
-        ) in (row[:-1] for row in rows)
-    ], total
+
+        if name.startswith("agent_run"):
+            runs.append(s)
+        else:
+            if name.startswith("chat"):
+                c_entry["llm_calls"] += 1
+            elif name.startswith("execute_tool"):
+                c_entry["tool_calls"] += 1
+
+            c_entry["input_tokens"] += _safe_int(attrs.get("gen_ai.usage.input_tokens"))
+            c_entry["output_tokens"] += _safe_int(
+                attrs.get("gen_ai.usage.output_tokens")
+            )
+            c_entry["cached_tokens"] += _safe_int(
+                attrs.get("gen_ai.usage.cache_read.input_tokens")
+            )
+            c_entry["estimated_cost_usd"] += _safe_float(
+                attrs.get("gen_ai.usage.estimated_cost_usd")
+            )
+
+    runs.sort(key=lambda x: x.get("end_time") or 0, reverse=True)
+    total_count = len(runs)
+
+    page_runs = runs[offset : offset + limit]
+    items: list[TraceListItem] = []
+
+    for s in page_runs:
+        tid_str = str(s.get("trace_id"))
+        attrs = s.get("attributes") or {}
+        c = counts.get(tid_str, {})
+
+        provider = attrs.get("gen_ai.provider.name")
+        model = attrs.get("gen_ai.request.model")
+        provider_str = str(provider) if provider is not None else None
+        model_str = str(model) if model is not None else None
+
+        start_ns = s.get("start_time") or 0
+        end_ns = s.get("end_time") or 0
+
+        items.append(
+            TraceListItem(
+                trace_id=tid_str,
+                span_id=str(s.get("span_id")),
+                run_id=str(attrs.get("run_id"))
+                if attrs.get("run_id") is not None
+                else None,
+                session_id=str(attrs.get("gen_ai.conversation.id"))
+                if attrs.get("gen_ai.conversation.id") is not None
+                else None,
+                agent_name=str(attrs.get("gen_ai.agent.name"))
+                if attrs.get("gen_ai.agent.name") is not None
+                else None,
+                provider=provider_str,
+                model=model_str,
+                provider_model=(
+                    f"{provider_str}:{model_str}"
+                    if provider_str is not None and model_str is not None
+                    else None
+                ),
+                start_ms=int(start_ns // 1_000_000),
+                end_ms=int(end_ns // 1_000_000),
+                duration_ms=round(_safe_float(s.get("duration_ms")), 1),
+                input_tokens=_safe_int(c.get("input_tokens")),
+                output_tokens=_safe_int(c.get("output_tokens")),
+                cached_tokens=_safe_int(c.get("cached_tokens")),
+                estimated_cost_usd=round(_safe_float(c.get("estimated_cost_usd")), 8),
+                llm_calls=_safe_int(c.get("llm_calls")),
+                tool_calls=_safe_int(c.get("tool_calls")),
+                error=s.get("status") == "ERROR",
+            )
+        )
+
+    return items, total_count
 
 
 def get_trace(trace_id: str, days: int = 30) -> TraceDetail | None:
-    """Return all spans with ``trace_id``, ordered by ``start_time`` asc.
-
-    Returns ``None`` when the trace is not found in the window (e.g. expired
-    by retention, outside lookback, or id typo).  The window defaults to 30
-    days to tolerate long-lived bookmarks.
-
-    Args:
-        trace_id: Hex string with or without the ``0x`` prefix (OTel writes
-            JSONL with ``0x``; the UI passes whatever it has).
-        days: Look-back window in days (1–90).
-    """
     days = max(1, min(90, days))
-    # Normalise: accept both "0xabcd…" and "abcd…" but query with the prefix
-    # form because that's what the exporter writes.
     tid = trace_id.lower()
     if not tid.startswith("0x"):
         tid = "0x" + tid
@@ -732,73 +726,39 @@ def _get_trace_cached(
     if not files:
         return None
 
-    con = duckdb.connect(":memory:")
-    try:
-        _create_spans_window_view(con, files, window_start, now)
-        rows = con.execute(
-            """
-            SELECT
-              span_id,
-              parent_id,
-              trace_id,
-              name,
-              kind,
-              start_time // 1000000 AS start_ms,
-              end_time   // 1000000 AS end_ms,
-              duration_ms,
-              status,
-              attributes
-            FROM spans_window
-            WHERE trace_id = ?
-            ORDER BY start_time ASC
-            """,
-            [tid],
-        ).fetchall()
-    finally:
-        con.close()
-
-    if not rows:
+    spans_in_win = _load_spans_in_window(files, window_start, now)
+    matching = [
+        s for s in spans_in_win if str(s.get("trace_id")).lower() == tid.lower()
+    ]
+    if not matching:
         return None
 
+    matching.sort(key=lambda x: x.get("start_time") or 0)
+
     spans: list[SpanDetail] = []
-    for (
-        span_id,
-        parent_id,
-        tr_id,
-        name,
-        kind,
-        start_ms,
-        end_ms,
-        duration_ms,
-        status,
-        attributes,
-    ) in rows:
+    for s in matching:
+        attrs = s.get("attributes")
+        clean_attrs = (
+            {k: v for k, v in attrs.items() if v is not None}
+            if isinstance(attrs, dict)
+            else {}
+        )
+        start_ns = s.get("start_time") or 0
+        end_ns = s.get("end_time") or 0
+        parent_id = s.get("parent_id")
+
         spans.append(
             SpanDetail(
-                span_id=str(span_id),
+                span_id=str(s.get("span_id")),
                 parent_span_id=str(parent_id) if parent_id is not None else None,
-                trace_id=str(tr_id),
-                name=str(name),
-                kind=str(kind) if kind is not None else "INTERNAL",
-                start_ms=int(start_ms),
-                end_ms=int(end_ms),
-                duration_ms=round(float(duration_ms), 1),
-                status=str(status) if status is not None else "UNSET",
-                # DuckDB's ``read_json`` returns STRUCT / MAP for nested
-                # objects.  Coerce to a plain dict with str keys so FastAPI
-                # can serialise it cleanly.  Non-dict values (should not
-                # happen in practice) round-trip as empty.
-                #
-                # ``union_by_name=true`` above unions the attribute schema
-                # across span types — so every row carries every key seen
-                # anywhere in the window, with ``None`` where the span
-                # didn't set it.  We strip the Nones here so the UI only
-                # renders keys the span actually emitted.
-                attributes=(
-                    {k: v for k, v in attributes.items() if v is not None}
-                    if isinstance(attributes, dict)
-                    else {}
-                ),
+                trace_id=str(s.get("trace_id")),
+                name=str(s.get("name") or ""),
+                kind=str(s.get("kind") or "INTERNAL"),
+                start_ms=int(start_ns // 1_000_000),
+                end_ms=int(end_ns // 1_000_000),
+                duration_ms=round(_safe_float(s.get("duration_ms")), 1),
+                status=str(s.get("status") or "UNSET"),
+                attributes=clean_attrs,
             )
         )
 

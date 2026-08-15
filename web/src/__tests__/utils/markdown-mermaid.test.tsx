@@ -49,7 +49,7 @@ describe('MarkdownBlock Mermaid fences', () => {
       theme: 'base',
       themeVariables: expect.any(Object),
     })
-    expect(renderMermaid.mock.calls[0]?.[1]).toBe(`${source}\n`)
+    expect(renderMermaid.mock.calls[0]?.[1]).toBe(source)
   })
 
   it('switches to the original code and retains its copy action', async () => {
@@ -63,9 +63,9 @@ describe('MarkdownBlock Mermaid fences', () => {
     fireEvent.click(screen.getByRole('tab', { name: 'Code' }))
 
     const code = document.querySelector('code')
-    expect(code?.textContent).toBe(`${source}\n`)
+    expect(code?.textContent).toBe(source)
     fireEvent.click(screen.getByRole('button', { name: 'Copy code' }))
-    await waitFor(() => expect(writeText).toHaveBeenCalledWith(`${source}\n`))
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(source))
   })
 
   it('renders a completed Mermaid fence while later prose is streaming', async () => {

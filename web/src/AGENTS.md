@@ -126,15 +126,24 @@ conditional `return null` — place it at the top of the component, above all
 
 ## Markdown rendering (`utils/markdown.tsx`)
 
-`MarkdownBlock` renders GFM markdown via `react-markdown` + `remark-gfm`.
+`MarkdownBlock` renders GFM markdown via `@tanstack/markdown` (`/react` entry),
+with `streamingMarkdownExtension` enabled and `frontmatter`/`headingIds` off —
+see the comment on `_EXTENSIONS` for why each is set that way.
 Custom component overrides live in the `components` map (memoised on `sessionId`):
 
 | Override | Purpose |
 |---|---|
-| `pre` | Wraps code fences in the styled `CodeBlock` with copy button |
+| `pre` | Reads the fence language off `data-lang` and the source off the `<code>` string child, then routes to `MermaidBlock` or `HighlightedCode` |
 | `table` | Wraps `<table>` in a `<div class="oa-table-wrap">` for bidirectional scroll on mobile |
 | `a` | Forces `target="_blank"` on all links |
 | `img` | Routes through `MarkdownImage` for lightbox and workspace-file proxy |
+
+**Syntax highlighting is not part of the parse.** No `highlighter` option is
+passed, so the renderer hands `pre` the raw fence text and `HighlightedCode`
+(memoised on the code string) runs `highlight.js` itself. The renderer
+re-parses the whole accumulated response on every streamed delta, so a
+parser-level highlighter would re-highlight *every* code block on *every*
+token. Keep highlighting behind that memo.
 
 **Table scroll pattern** — `.oa-table-wrap` (defined in `index.css`) sets
 `overflow-x: auto` with `-webkit-overflow-scrolling: touch` on the wrapper div,

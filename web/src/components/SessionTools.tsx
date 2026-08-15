@@ -16,9 +16,9 @@ import type { AgentInfo } from '@/api/types'
 import { SearchBar } from '@/components/ui/search-bar'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 // LazyMarkdownBlock (not MarkdownBlock) — a static import of `@/utils/markdown`
-// here would force the whole react-markdown chunk (~724 kB) to load and parse
-// at startup, defeating the app-wide lazy-markdown split (rolldown warns with
-// INEFFECTIVE_DYNAMIC_IMPORT). Tool descriptions render on expand, so the
+// here would force the whole markdown chunk (renderer + Mermaid) to load and
+// parse at startup, defeating the app-wide lazy-markdown split (rolldown warns
+// with INEFFECTIVE_DYNAMIC_IMPORT). Tool descriptions render on expand, so the
 // plain-text Suspense fallback is fine.
 import { LazyMarkdownBlock } from '@/utils/LazyMarkdownBlock'
 

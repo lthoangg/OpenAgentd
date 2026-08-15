@@ -7,9 +7,9 @@
  */
 
 import { memo, useMemo, useState } from 'react'
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
-import rehypeHighlight from 'rehype-highlight'
+import { Markdown } from '@tanstack/markdown/react'
+import { streamingMarkdownExtension } from '@tanstack/markdown/extensions/streaming'
+import hljs from 'highlight.js/lib/common'
 import { ImageOff, FileVideo } from 'lucide-react'
 import { resolveApiUrl } from '@/api/client'
 import { apiUrl } from '@/api/base-url'
@@ -137,19 +137,47 @@ function markClosedStreamingMermaidFences(content: string): string {
   return lines.join('\n')
 }
 
-// ── extractText ───────────────────────────────────────────────────────────────
+// ── HighlightedCode ───────────────────────────────────────────────────────────
 
-// Me rehype-highlight wraps code in spans — recursively collect text nodes
-// eslint-disable-next-line react-refresh/only-export-components
-export function extractText(node: unknown): string {
-  if (typeof node === 'string') return node
-  if (Array.isArray(node)) return (node as unknown[]).map(extractText).join('')
-  if (node !== null && typeof node === 'object' && 'props' in node) {
-    const el = node as { props: { children?: unknown } }
-    return extractText(el.props.children)
-  }
-  return ''
-}
+/** A fenced code block, syntax-highlighted with highlight.js.
+ *
+ * **Why highlighting lives here rather than in the markdown pipeline**: the
+ * renderer re-parses the whole accumulated response on every streamed delta,
+ * so a parser-level highlighter (the old ``rehype-highlight`` plugin) re-ran
+ * highlight.js over *every* code block in the message on *every* token.
+ * Hoisting it into a memoized component keyed on the code text means a fence
+ * is highlighted once and then skipped until its content actually changes —
+ * only the block still being written costs anything.
+ *
+ * ``hljs`` HTML-entity-escapes the source it emits, so the highlighted markup
+ * is safe to inject; unknown languages fall through to a plain string that
+ * React escapes itself. Same contract as ``CodingFileViewerPanel``.
+ */
+const HighlightedCode = memo(function HighlightedCode({
+  code,
+  language,
+}: {
+  code: string
+  language?: string
+}) {
+  const content = useMemo((): React.ReactNode => {
+    if (!language || !hljs.getLanguage(language)) return code
+    let html: string
+    try {
+      html = hljs.highlight(code, { language, ignoreIllegals: true }).value
+    } catch {
+      // A grammar can still throw on a half-written fence mid-stream.
+      return code
+    }
+    return <span dangerouslySetInnerHTML={{ __html: html }} />
+  }, [code, language])
+
+  return (
+    <CodeBlock language={language} rawText={code}>
+      {content}
+    </CodeBlock>
+  )
+})
 
 // ── resolveImageSrc ───────────────────────────────────────────────────────────
 
@@ -449,7 +477,7 @@ export const MarkdownBlock = memo(function MarkdownBlock({
   isStreaming?: boolean
 }) {
   // Me: the ``components`` map MUST be referentially stable across renders.
-  // If we rebuild it inline every render, ReactMarkdown treats each call
+  // If we rebuild it inline every render, the renderer treats each call
   // as a new custom-component type and unmounts+remounts every ``<img>`` /
   // ``<MarkdownVideo>`` subtree — which restarts ``<video>`` buffering and
   // causes a visible flicker whenever the parent re-renders (e.g. on every
@@ -458,24 +486,24 @@ export const MarkdownBlock = memo(function MarkdownBlock({
   // function identities as long as the session doesn't change.
   const components = useMemo(
     () => ({
-      pre: (props: React.HTMLAttributes<HTMLPreElement>) => {
-        const codeEl = props.children as React.ReactElement<{
-          children?: unknown
-          className?: string
-        }>
-        const codeText = extractText(codeEl?.props?.children)
-        const language = codeEl?.props?.className?.match(/(?:^|\s)language-([^\s]+)/)?.[1]
+      // The renderer hands ``pre`` the fence language on ``data-lang`` and the
+      // raw source as the ``<code>`` element's single string child — no
+      // highlighter is configured, so nothing has wrapped it in spans yet.
+      pre: (props: React.HTMLAttributes<HTMLPreElement> & { 'data-lang'?: string }) => {
+        const codeEl = props.children as React.ReactElement<{ children?: unknown }>
+        const codeText = typeof codeEl?.props?.children === 'string' ? codeEl.props.children : ''
+        // ``data-lang`` falls back to "plaintext" for a bare fence, where the
+        // old pipeline left the language undefined — and CodeBlock keys its
+        // header row off exactly that.
+        const rawLanguage = props['data-lang']
+        const language = !rawLanguage || rawLanguage === 'plaintext' ? undefined : rawLanguage
         const normalizedLanguage = language?.toLowerCase()
         const isMermaid = normalizedLanguage === 'mermaid'
           || normalizedLanguage === STREAMING_MERMAID_LANGUAGE
         if (isMermaid && (!isStreaming || normalizedLanguage === STREAMING_MERMAID_LANGUAGE)) {
-          return <MermaidBlock source={codeText} highlightedCode={codeEl?.props?.children as React.ReactNode} />
+          return <MermaidBlock source={codeText} highlightedCode={codeText} />
         }
-        return (
-          <CodeBlock language={language} rawText={codeText}>
-            {codeEl?.props?.children as React.ReactNode}
-          </CodeBlock>
-        )
+        return <HighlightedCode code={codeText} language={language} />
       },
       table: (props: React.HTMLAttributes<HTMLTableElement>) => (
         <div className="oa-table-wrap">
@@ -513,21 +541,29 @@ export const MarkdownBlock = memo(function MarkdownBlock({
 
   return (
     <div className="oa-prose text-sm">
-      <ReactMarkdown
-        remarkPlugins={_REMARK_PLUGINS}
-        rehypePlugins={_REHYPE_PLUGINS}
+      <Markdown
+        extensions={_EXTENSIONS}
+        frontmatter={false}
+        headingIds={false}
         components={components}
       >
         {renderedContent}
-      </ReactMarkdown>
+      </Markdown>
     </div>
   )
 })
 
-// Me: module-level constants so ReactMarkdown sees the same plugin array
-// identity across every ``MarkdownBlock`` instance and every render — it
-// shallow-compares plugins to decide whether to rebuild its processor.
-const _REMARK_PLUGINS = [remarkGfm]
-const _REHYPE_PLUGINS: React.ComponentProps<typeof ReactMarkdown>['rehypePlugins'] = [
-  [rehypeHighlight, { detect: false }],
-]
+// Me: module-level constant so every ``MarkdownBlock`` instance shares one
+// extension array identity across renders.
+//
+// ``streamingMarkdownExtension`` suppresses the empty trailing heading /
+// blockquote / list item that a half-typed line produces, so a response does
+// not flash a stray bullet or ``<h2>`` on its way in. It stays enabled after
+// the stream closes: a genuinely empty trailing heading is not something an
+// agent response ever means.
+//
+// ``frontmatter`` is off so a completed ``---`` later in a response cannot
+// retroactively reinterpret its opening lines as metadata, and ``headingIds``
+// is off because a streamed heading would otherwise change its own element id
+// on every delta.
+const _EXTENSIONS = [streamingMarkdownExtension()]

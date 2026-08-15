@@ -43,7 +43,10 @@ dependencies = [
     # script/style bodies that a plain converter emits verbatim — on one real
     # docs page markitdown returned 1,106,641 characters where this returns
     # 10,655 for the same article.
-    "trafilatura>=2.0.0",
+    # Imported lazily inside the web tools: the transitive chain (lxml, babel
+    # via courlan, dateparser) costs ~287ms to import and is only needed once
+    # a fetch actually runs.
+    "trafilatura>=2.2.0",
     "pyyaml>=6.0.3",
     "fastapi>=0.135.2",
     "uvicorn>=0.42.0",
@@ -77,6 +80,10 @@ dependencies = [
     # support (or the mocking layer is replaced).
     "httpx2>=2.5.0",
     "aws-bedrock-token-generator>=1.1.0",
+    # The `crt` extra is required: AWS login and background profile/credential
+    # resolution go through botocore's CRT-backed auth path. Removing it looks
+    # safe from a grep of this repo — nothing imports `awscrt` directly — but
+    # botocore loads it internally, so the breakage only shows at runtime.
     "botocore[crt]>=1.43.1",
     "duckdb>=1.1.0",
     # Python diagnostics are part of the runtime product, not dev-only checks.
@@ -84,7 +91,6 @@ dependencies = [
     # sidecar layouts by app.services.lsp.managed.
     "ruff==0.16.1",
     "ty==0.0.69",
-    "trafilatura>=2.2.0",
 ]
 
 [project.urls]

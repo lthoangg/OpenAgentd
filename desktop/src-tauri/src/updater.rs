@@ -1,7 +1,7 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicI64, Ordering};
 use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_updater::UpdaterExt;
@@ -9,9 +9,56 @@ use tauri_plugin_updater::UpdaterExt;
 use tauri_plugin_dialog::MessageDialogResult;
 
 use crate::{AppState, CachedUpdateState, persist_active_window_state_async};
-use crate::menu::update_tray_status;
+use crate::menu::{now_unix, update_tray_status};
 use crate::window::show_target_window;
 use crate::shutdown_sidecar_now;
+
+/// Minimum spacing between *automatic* update checks, process-wide.
+///
+/// The React card owns a 6h schedule, but it lives in component refs
+/// (`UpdateCard.tsx`) that reseed to "now" on every mount — so every new
+/// window, reload and foreground event fired another check. Production
+/// logs showed 5-10 unauthenticated GitHub requests per hour against that
+/// 6h policy, including a double-fire in the same second at startup
+/// (Rust's own check racing the React one).
+///
+/// User-initiated checks ("Check for Updates…", Settings, "Try again")
+/// pass `silent=false` and always run — the user explicitly asked.
+const SILENT_CHECK_MIN_GAP: Duration = Duration::from_secs(60 * 60);
+
+/// Unix-seconds timestamp of the last automatic check. `0` means never.
+static LAST_SILENT_CHECK: AtomicI64 = AtomicI64::new(0);
+
+/// Whether an automatic check may run, given when the last one ran.
+pub fn silent_check_is_due(now: i64, last_check: i64) -> bool {
+    now.saturating_sub(last_check) >= SILENT_CHECK_MIN_GAP.as_secs() as i64
+}
+
+/// Reserve the next automatic-check slot, or report that one ran too
+/// recently. `compare_exchange` makes the reservation exclusive so two
+/// checks racing at startup collapse into one.
+fn claim_silent_check_slot() -> bool {
+    let now = now_unix();
+    let last = LAST_SILENT_CHECK.load(Ordering::SeqCst);
+    if !silent_check_is_due(now, last) {
+        return false;
+    }
+    LAST_SILENT_CHECK
+        .compare_exchange(last, now, Ordering::SeqCst, Ordering::SeqCst)
+        .is_ok()
+}
+
+fn up_to_date_status() -> UpdateStatus {
+    UpdateStatus {
+        status: "up_to_date".into(),
+        version: None,
+        current_version: env!("CARGO_PKG_VERSION").into(),
+        notes: None,
+        downloaded_bytes: None,
+        total_bytes: None,
+        message: None,
+    }
+}
 
 #[derive(Clone, Serialize)]
 pub struct UpdateStatus {
@@ -296,6 +343,15 @@ pub async fn updater_release_notes(version: String) -> Result<ReleaseNotesRespon
 }
 
 pub async fn run_update_check(app: AppHandle, silent: bool) -> Result<UpdateStatus, String> {
+    // Throttle automatic checks only. The caller ignores an `up_to_date`
+    // result for silent checks (`UpdateCard.tsx`), so a skipped check is
+    // indistinguishable from a completed one that found nothing — and an
+    // update that lands inside the gap is still surfaced by the next check
+    // or by the startup check's `updater-status` event.
+    if silent && !claim_silent_check_slot() {
+        log::debug!("updater check skipped: inside the automatic-check min gap");
+        return Ok(up_to_date_status());
+    }
     log::info!("updater check started silent={silent}");
     let updater = app
         .updater()
@@ -335,17 +391,12 @@ pub async fn run_update_check(app: AppHandle, silent: bool) -> Result<UpdateStat
         Ok(None) => {
             log::info!("updater check found no update silent={silent}");
             let status = UpdateStatus {
-                status: "up_to_date".into(),
-                version: None,
-                current_version: env!("CARGO_PKG_VERSION").into(),
-                notes: None,
-                downloaded_bytes: None,
-                total_bytes: None,
                 message: if silent {
                     None
                 } else {
                     Some("OpenAgentd is up to date.".into())
                 },
+                ..up_to_date_status()
             };
             if !silent {
                 emit_update_status(&app, &status);

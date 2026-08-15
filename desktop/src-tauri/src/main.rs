@@ -737,7 +737,7 @@ mod tests {
     use std::path::Path;
     use tauri_plugin_dialog::MessageDialogResult;
     use crate::window::{frontend_init_script, inherited_external_base_url, new_window_init_script};
-    use crate::updater::{dialog_result_is_accept, format_update_prompt, format_download_progress, validate_install_preconditions};
+    use crate::updater::{dialog_result_is_accept, format_update_prompt, format_download_progress, silent_check_is_due, validate_install_preconditions};
     use crate::config::AppBackendConfig;
 
     #[test]
@@ -947,6 +947,47 @@ mod tests {
     #[test]
     fn first_run_sidecar_handshake_allows_cold_security_scans() {
         assert_eq!(SIDECAR_HANDSHAKE_TIMEOUT, Duration::from_secs(60));
+    }
+
+    // ── silent_check_is_due ─────────────────────────────────────────────────
+    //
+    // `UpdateCard.tsx` keeps its 6h schedule in component refs that reseed to
+    // "now" on every mount, so each window/reload/foreground event fired a
+    // fresh check — production logs showed 5-10 GitHub requests per hour.
+    // This gate is the process-wide backstop.
+
+    const ONE_HOUR: i64 = 60 * 60;
+
+    #[test]
+    fn the_first_automatic_check_of_a_launch_is_always_due() {
+        // `LAST_SILENT_CHECK` starts at 0, so a fresh process never waits.
+        assert!(silent_check_is_due(1_760_000_000, 0));
+    }
+
+    #[test]
+    fn a_second_automatic_check_inside_the_gap_is_skipped() {
+        let last = 1_760_000_000;
+
+        // The startup double-fire seen in production: two checks one second apart.
+        assert!(!silent_check_is_due(last + 1, last));
+        assert!(!silent_check_is_due(last + ONE_HOUR - 1, last));
+    }
+
+    #[test]
+    fn an_automatic_check_is_due_again_once_the_gap_elapses() {
+        let last = 1_760_000_000;
+
+        assert!(silent_check_is_due(last + ONE_HOUR, last));
+    }
+
+    #[test]
+    fn a_backwards_clock_step_does_not_wedge_automatic_checks() {
+        // Saturating arithmetic: a clock that jumped backwards must not
+        // produce a huge positive gap and let every check through, nor
+        // underflow. It simply reads as "not due yet".
+        let last = 1_760_000_000;
+
+        assert!(!silent_check_is_due(last - ONE_HOUR, last));
     }
 
     #[cfg(not(target_os = "macos"))]

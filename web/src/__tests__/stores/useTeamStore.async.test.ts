@@ -630,7 +630,73 @@ describe("sendMessage: queue behaviour", () => {
     expect(useTeamStore.getState()._pendingMessages).toHaveLength(0)
   })
 
+  // The client picks its send path from its *own* lead status, but only the
+  // backend knows whether the team still owns an active turn
+  // (``has_active_user_turn`` covers members the lead delegated to, which the
+  // client's lead status does not). The response status is the authoritative
+  // answer and both directions of disagreement are routine.
+  it("adopts the backend's queue decision when it queues a send the client thought was immediate", async () => {
+    mockPostTeamChat.mockImplementationOnce(() =>
+      Promise.resolve({ status: "queued", session_id: "session-a", message_id: "srv-1" }),
+    )
+    useTeamStore.setState({
+      sessionId: "session-a",
+      leadName: "lead",
+      agentStreams: {
+        lead: makeStream({ status: "idle" as const }),
+        worker: makeStream({ status: "working" as const }),
+      },
+    })
+
+    await useTeamStore.getState().sendMessage("only show me once")
+
+    // Queued messages render from `_pendingMessages`, never as a live block.
+    expect(useTeamStore.getState().agentStreams.lead.currentBlocks).toHaveLength(0)
+    const pending = useTeamStore.getState()._pendingMessages
+    expect(pending).toHaveLength(1)
+    expect(pending[0].id).toBe("srv-1")
+
+    // …and when the backend drains the queue the message appears exactly once.
+    useTeamStore.getState()._handleSSEEvent("queued_turn_start", {
+      agent: "lead",
+      message_ids: ["srv-1"],
+      messages: [{ id: "srv-1", content: "only show me once" }],
+    })
+    const userBlocks = useTeamStore
+      .getState()
+      .agentStreams.lead.currentBlocks.filter((b) => b.type === "user")
+    expect(userBlocks).toHaveLength(1)
+  })
+
+  it("adopts the backend's dispatch decision when it runs a send the client thought was queued", async () => {
+    mockPostTeamChat.mockImplementationOnce(() =>
+      Promise.resolve({ status: "accepted", session_id: "session-a", message_id: "srv-2" }),
+    )
+    useTeamStore.setState({
+      sessionId: "session-a",
+      leadName: "lead",
+      agentStreams: { lead: makeStream({ status: "working" as const }) },
+    })
+
+    await useTeamStore.getState().sendMessage("go now")
+
+    // Nothing is queued server-side, so no queued chip may linger — the turn
+    // is running and only the optimistic block represents it.
+    expect(useTeamStore.getState()._pendingMessages).toHaveLength(0)
+    const userBlocks = useTeamStore
+      .getState()
+      .agentStreams.lead.currentBlocks.filter((b) => b.type === "user")
+    expect(userBlocks).toHaveLength(1)
+    expect(userBlocks[0].id).toBe("srv-2")
+    expect(userBlocks[0].content).toBe("go now")
+  })
+
   it("does not add optimistic block when message is queued", async () => {
+    // The backend answers "queued" whenever it holds the message back; the
+    // store keys off that status, not off the local lead state.
+    mockPostTeamChat.mockImplementationOnce(() =>
+      Promise.resolve({ status: "queued", session_id: "team-sid", message_id: "pm-q" }),
+    )
     useTeamStore.setState({
       leadName: "lead",
       agentStreams: { lead: makeStream({ status: "working" as const }) },
@@ -640,6 +706,10 @@ describe("sendMessage: queue behaviour", () => {
   })
 
   it("queues multiple messages in order", async () => {
+    let n = 0
+    mockPostTeamChat.mockImplementation(() =>
+      Promise.resolve({ status: "queued", session_id: "team-sid", message_id: `pm-${++n}` }),
+    )
     useTeamStore.setState({
       leadName: "lead",
       agentStreams: { lead: makeStream({ status: "working" as const }) },

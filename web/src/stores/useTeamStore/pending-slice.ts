@@ -1,10 +1,97 @@
 import type { StateCreator } from 'zustand'
 import { cancelQueuedTeamMessage, postTeamChat } from '@/api/client'
+import { revokeBlobUrlsFromBlocks } from './helpers'
 import { clearReconnectTimer } from './stream-slice'
-import type { TeamStore } from './types'
+import type { PendingMessage, TeamStore } from './types'
+import type { MessageAttachment } from '@/api/types'
+
+interface SendOptions {
+  mode?: string
+  workspace?: string | null
+  model?: string | null
+  thinkingLevel?: string | null
+  fastMode?: boolean
+  mentions?: string[]
+}
 
 function effectiveLeadModel(state: TeamStore, leadName: string | null, requestedModel?: string | null): string | null {
   return requestedModel ?? state.sessionModel ?? (leadName ? state.agentStreams[leadName]?.model : null) ?? null
+}
+
+/** Display metadata for an immediate send — images carry a blob URL so the
+ *  bubble shows a thumbnail before the upload round-trips. Revoked by
+ *  whichever path drops the block (see ``revokeBlobUrlsFromBlocks``). */
+function optimisticAttachmentMetas(files?: File[]): MessageAttachment[] | undefined {
+  return files?.map((f) => ({
+    original_name: f.name,
+    media_type: f.type,
+    category: (f.type.startsWith('image/') ? 'image' : 'document') as 'image' | 'document' | 'text',
+    url: f.type.startsWith('image/') ? URL.createObjectURL(f) : undefined,
+  }))
+}
+
+/** Push the user's own bubble into the lead's live blocks, so a send renders
+ *  before the POST resolves. Shared by the immediate-send path and the
+ *  "client queued it but the backend ran it" reconciliation. */
+function appendOptimisticUserBlock(
+  draft: TeamStore,
+  leadName: string | null,
+  args: {
+    id: string
+    content: string
+    submittedAt: number
+    attachments?: MessageAttachment[]
+    options?: SendOptions
+  },
+) {
+  if (!leadName || !draft.agentStreams[leadName]) return
+  const stream = draft.agentStreams[leadName]
+  stream._turnStartedAt = args.submittedAt
+  const effectiveModel = effectiveLeadModel(draft, leadName, args.options?.model)
+  const effectiveThinkingLevel = args.options?.thinkingLevel ?? draft.sessionThinkingLevel
+  stream.currentBlocks.push({
+    id: args.id,
+    type: 'user',
+    content: args.content,
+    timestamp: new Date(args.submittedAt),
+    attachments: args.attachments,
+    extra: {
+      ...(effectiveModel ? { model: effectiveModel } : {}),
+      ...(effectiveThinkingLevel ? { thinking_level: effectiveThinkingLevel } : {}),
+      ...((args.options?.fastMode ?? draft.sessionFastMode) ? { service_tier: 'fast' } : {}),
+      ...(args.options?.mentions && args.options.mentions.length > 0
+        ? { mentions: args.options.mentions }
+        : {}),
+    },
+  })
+}
+
+/** Display metadata for queued files — deliberately without blob URLs, so
+ *  nothing has to be revoked when the queued message is spliced into the
+ *  stream or cancelled. Real URLs arrive with the next history load. */
+function queuedAttachmentMetas(files?: File[]) {
+  return files?.map((f) => ({
+    original_name: f.name,
+    media_type: f.type,
+    category: (f.type.startsWith('image/') ? 'image' : 'document') as 'image' | 'document' | 'text',
+  }))
+}
+
+function makePendingMessage(
+  id: string,
+  sessionId: string,
+  content: string,
+  submittedAt: number,
+  files?: File[],
+): PendingMessage {
+  const attachments = queuedAttachmentMetas(files)
+  return {
+    id,
+    sessionId,
+    content,
+    submittedAt,
+    ...(attachments && attachments.length > 0 ? { attachments, files } : {}),
+  }
 }
 
 export type PendingSlice = Pick<
@@ -33,6 +120,11 @@ export const createPendingSlice: StateCreator<
     const { leadName, agentStreams } = get()
     const leadWorking = leadName ? agentStreams[leadName]?.status === 'working' : false
 
+    // Whether this message runs now or waits in the queue is the *backend's*
+    // call (``has_active_user_turn`` also covers members the lead delegated
+    // to, and another client may have started a turn since). ``leadWorking``
+    // only picks which optimistic rendering to show first; both branches
+    // below reconcile against ``result.status`` when the POST answers.
     if (leadWorking) {
       try {
         const result = await postTeamChat(
@@ -47,32 +139,51 @@ export const createPendingSlice: StateCreator<
           options?.fastMode ?? get().sessionFastMode,
           options?.mentions,
         )
+        if (result.status !== 'queued') {
+          // The lead had already gone idle by the time the POST landed, so
+          // the backend started this message straight away. Keeping it in
+          // ``_pendingMessages`` would leave a "queued" chip for a running
+          // message that no ``queued_turn_start`` will ever clear — and the
+          // turn's own rows would then render it a second time.
+          const submittedAt = Date.now()
+          set((draft) => {
+            draft.sessionId = result.session_id
+            draft.sessionModel = options?.model ?? get().sessionModel
+            draft.sessionThinkingLevel = options?.thinkingLevel ?? get().sessionThinkingLevel
+            draft._sessionSettingsDirty = false
+            draft._sessionSettingsVersion += 1
+            draft.isTeamWorking = true
+            draft.error = null
+            if (options?.workspace) draft._workspace = options.workspace
+            appendOptimisticUserBlock(draft, leadName, {
+              id: result.message_id ?? `user-${submittedAt}`,
+              content,
+              submittedAt,
+              attachments: optimisticAttachmentMetas(files),
+              options,
+            })
+          })
+          get().connectStream()
+          return true
+        }
         if (result.status === 'queued' && !result.message_id) {
           throw new Error('Backend did not return a queued message id')
         }
-        // Display metadata only — no blob URLs, so nothing to revoke when the
-        // queued message is spliced into the stream or cancelled. Real URLs
-        // arrive with the next history load.
-        const queuedAttachments = files?.map((f) => ({
-          original_name: f.name,
-          media_type: f.type,
-          category: (f.type.startsWith('image/') ? 'image' : 'document') as 'image' | 'document' | 'text',
-        }))
         set((draft) => {
           draft.sessionId = result.session_id
           draft.sessionModel = options?.model ?? get().sessionModel
           draft.sessionThinkingLevel = options?.thinkingLevel ?? get().sessionThinkingLevel
           draft._sessionSettingsDirty = false
           draft._sessionSettingsVersion += 1
-          draft._pendingMessages.push({
-            id: result.message_id ?? '',
-            sessionId: result.session_id,
-            content,
-            submittedAt: Date.now(),
-            ...(queuedAttachments && queuedAttachments.length > 0
-              ? { attachments: queuedAttachments, files }
-              : {}),
-          })
+          draft._pendingMessages.push(
+            makePendingMessage(
+              result.message_id ?? '',
+              result.session_id,
+              content,
+              Date.now(),
+              files,
+            ),
+          )
           draft.error = null
         })
       } catch (err) {
@@ -89,15 +200,11 @@ export const createPendingSlice: StateCreator<
       clearReconnectTimer(draft)
     })
 
-    const optimisticAttachments = files?.map((f) => ({
-      original_name: f.name,
-      media_type: f.type,
-      category: (f.type.startsWith('image/') ? 'image' : 'document') as 'image' | 'document' | 'text',
-      url: f.type.startsWith('image/') ? URL.createObjectURL(f) : undefined,
-    }))
+    const optimisticAttachments = optimisticAttachmentMetas(files)
 
     const submittedAt = Date.now()
     const optimisticId = `user-${submittedAt}`
+    const turnStartedBefore = leadName ? agentStreams[leadName]?._turnStartedAt ?? null : null
     set((draft) => {
         draft.isTeamWorking = true
         draft.error = null
@@ -108,24 +215,13 @@ export const createPendingSlice: StateCreator<
         stream.revertedCount = 0
         stream.revertedMessages = []
       })
-      if (leadName && draft.agentStreams[leadName]) {
-        draft.agentStreams[leadName]._turnStartedAt = submittedAt
-        const effectiveModel = effectiveLeadModel(draft, leadName, options?.model)
-        const effectiveThinkingLevel = options?.thinkingLevel ?? draft.sessionThinkingLevel
-        draft.agentStreams[leadName].currentBlocks.push({
-          id: optimisticId,
-          type: 'user',
-          content,
-          timestamp: new Date(submittedAt),
-          attachments: optimisticAttachments,
-          extra: {
-            ...(effectiveModel ? { model: effectiveModel } : {}),
-            ...(effectiveThinkingLevel ? { thinking_level: effectiveThinkingLevel } : {}),
-            ...((options?.fastMode ?? draft.sessionFastMode) ? { service_tier: 'fast' } : {}),
-            ...(options?.mentions && options.mentions.length > 0 ? { mentions: options.mentions } : {}),
-          },
-        })
-      }
+      appendOptimisticUserBlock(draft, leadName, {
+        id: optimisticId,
+        content,
+        submittedAt,
+        attachments: optimisticAttachments,
+        options,
+      })
     })
 
     try {
@@ -152,6 +248,27 @@ export const createPendingSlice: StateCreator<
         })
         if (options?.workspace) {
           draft._workspace = options.workspace
+        }
+        if (result.status === 'queued' && result.message_id) {
+          // The team still owned an active turn server-side (typically a
+          // member the lead delegated to, which this client's lead status
+          // cannot see), so the message is queued rather than running. Move
+          // the optimistic bubble into the queue: left in ``currentBlocks``
+          // it renders *inside* the turn that is still streaming, and
+          // ``queued_turn_start`` would later splice the very same row in a
+          // second time.
+          const stream = leadName ? draft.agentStreams[leadName] : undefined
+          if (stream) {
+            revokeBlobUrlsFromBlocks(
+              stream.currentBlocks.filter((b) => b.id === optimisticId),
+            )
+            stream.currentBlocks = stream.currentBlocks.filter((b) => b.id !== optimisticId)
+            stream._turnStartedAt = turnStartedBefore
+          }
+          draft._pendingMessages.push(
+            makePendingMessage(result.message_id, result.session_id, content, submittedAt, files),
+          )
+          return
         }
         // Adopt the server's id for the optimistic bubble the moment it's
         // known, instead of leaving reconciliation to infer "is this the same

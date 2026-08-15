@@ -6,7 +6,6 @@ import os
 from collections.abc import Mapping
 
 import httpx
-from botocore.credentials import CredentialProvider, Credentials
 from loguru import logger
 
 from app.agent.providers.catalog import ProviderEntry
@@ -35,14 +34,6 @@ _NON_AGENT_MODEL_MARKERS = (
     "sora",
     "veo",
 )
-
-
-class _ProfileCredentialsProvider(CredentialProvider):
-    def __init__(self, credentials: Credentials | None) -> None:
-        self._credentials = credentials
-
-    def load(self) -> Credentials | None:
-        return self._credentials
 
 
 def _secret_value(value: object) -> str:

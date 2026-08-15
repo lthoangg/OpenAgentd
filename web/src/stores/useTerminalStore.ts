@@ -27,7 +27,7 @@
 import { create } from 'zustand'
 
 import { connectTerminal, type TerminalSocket, type TerminalTarget } from '@/api/terminal'
-import { createXterm, type XtermHandle } from '@/components/Terminal/xterm-instance'
+import type { XtermHandle } from '@/components/Terminal/xterm-instance'
 import { TERMINAL_THEMES, type TerminalResolvedTheme } from '@/components/Terminal/terminal-themes'
 import { readStoredPreference, resolveTheme } from '@/lib/theme'
 import {
@@ -49,6 +49,14 @@ export interface TerminalSessionMeta {
   status: TerminalSessionStatus
   closedReason?: TerminalClosedReason
   errorMsg?: string
+  /**
+   * True once the xterm handle exists. ``@xterm/*`` is ~352 kB minified and
+   * loads on demand, so a session is briefly live with no terminal object at
+   * all. ``TerminalView`` keys its attach effect on this: without it the
+   * effect would only re-run on the next ``status`` change, which happens to
+   * follow handle creation today but is not guaranteed to.
+   */
+  handleReady?: boolean
   /** Monotonic open order for stable tab listing. */
   order: number
 }
@@ -140,16 +148,12 @@ function teardownRuntime(rt: TerminalRuntime): void {
   rt.handle = null
 }
 
-function connect(
+async function connect(
   id: string,
   set: (fn: (state: TerminalStore) => Partial<TerminalStore>) => void,
-): void {
+): Promise<void> {
   const rt = runtimes.get(id)
   if (!rt) return
-  if (rt.handle === null) {
-    rt.handle = createXterm({ theme: currentTheme, fontSize: currentFontSize, fontFamily: currentFontFamily })
-  }
-  const { term } = rt.handle
 
   const patch = (changes: Partial<TerminalSessionMeta>) => {
     set((state) => {
@@ -158,6 +162,21 @@ function connect(
       return { sessions: { ...state.sessions, [id]: { ...meta, ...changes } } }
     })
   }
+
+  if (rt.handle === null) {
+    // Loaded on demand: xterm plus its WebGL and unicode addons are ~352 kB
+    // minified, and a session that never opens a terminal should never pay to
+    // parse them. The import resolves from the module registry on every later
+    // terminal, so only the first one waits.
+    const { createXterm } = await import('@/components/Terminal/xterm-instance')
+    if (runtimes.get(id) !== rt) return // closed while the chunk was loading
+    rt.handle = createXterm({ theme: currentTheme, fontSize: currentFontSize, fontFamily: currentFontFamily })
+    // Wire keystrokes once, for the lifetime of this xterm instance — this is
+    // the only place a handle is born, so it cannot double-register.
+    rt.handle.term.onData((data) => useTerminalStore.getState().sendInput(id, data))
+    patch({ handleReady: true })
+  }
+  const { term } = rt.handle
 
   // NOTE on sizing: `term.rows`/`term.cols` reflect real container
   // dimensions on `reconnect()` (the xterm handle was already fitted by a
@@ -231,10 +250,7 @@ export const useTerminalStore = create<TerminalStore>()((set, get) => ({
       },
     }))
     ensureReaper(get())
-    const rt = runtimes.get(id)!
-    // Wire keystrokes once, for the lifetime of the xterm instance.
-    connect(id, set)
-    rt.handle?.term.onData((data) => get().sendInput(id, data))
+    void connect(id, set)
     return id
   },
 
@@ -255,11 +271,7 @@ export const useTerminalStore = create<TerminalStore>()((set, get) => ({
         [id]: { ...meta, status: 'connecting', closedReason: undefined, errorMsg: undefined },
       },
     }))
-    const hadHandle = rt.handle !== null
-    connect(id, set)
-    if (!hadHandle) {
-      rt.handle?.term.onData((data) => get().sendInput(id, data))
-    }
+    void connect(id, set)
   },
 
   close: (id) => {

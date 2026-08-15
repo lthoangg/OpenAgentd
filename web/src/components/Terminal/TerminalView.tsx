@@ -53,6 +53,7 @@ export function TerminalView({ sessionId }: TerminalViewProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const meta = useTerminalStore((s) => s.sessions[sessionId])
   const status = meta?.status ?? 'error'
+  const handleReady = meta?.handleReady ?? false
   const [ctrlArmed, setCtrlArmed] = useState(false)
   const ctrlArmedRef = useRef(false)
   const isMobile = useIsMobile()
@@ -171,7 +172,10 @@ export function TerminalView({ sessionId }: TerminalViewProps) {
     // `status` in deps: after a reconnect the store may have built a fresh
     // xterm handle (idle-close disposes the old one), so re-attach on every
     // lifecycle change. Re-parenting an unchanged handle is a cheap no-op.
-  }, [isMobile, sessionId, status])
+    // `handleReady` in deps: the xterm chunk loads on demand, so the first
+    // mount usually runs before any handle exists and bails at the guard
+    // above. This flag is what brings the effect back once it does.
+  }, [handleReady, isMobile, sessionId, status])
 
   const sendKey = useCallback(
     (data: string) => {

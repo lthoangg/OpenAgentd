@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 
-import { tokenizeCode } from "@/utils/code-highlight";
+import { highlightLines, tokenizeCode } from "@/utils/code-highlight";
 
 /** Collapse tokens to `className:value` pairs for readable assertions. */
 function classed(code: string, lang: string): Array<string> {
@@ -21,6 +21,38 @@ describe("tokenizeCode", () => {
     const tokens = tokenizeCode("++[->+<]", "brainfuck");
 
     expect(tokens).toEqual([{ value: "++[->+<]" }]);
+  });
+});
+
+describe("highlightLines", () => {
+  it("returns exactly as many entries as splitting the source on newlines", () => {
+    // The viewer's gutter numbers must match the file's own line numbers.
+    for (const source of ["a\nb\nc", "", "\n", "trailing\n", "a\n\nb", "no newline"]) {
+      expect(highlightLines(source, "plaintext")).toHaveLength(source.split("\n").length);
+    }
+  });
+
+  it("closes markup on every line of a token that spans lines", () => {
+    const lines = highlightLines("/* one\n   two */\nint x;", "c");
+
+    expect(lines).toHaveLength(3);
+    for (const line of lines.slice(0, 2)) {
+      expect(line).toContain("th-comment");
+      // Each line must be independently valid markup — the file viewer
+      // injects them one <span> at a time.
+      expect(line.match(/<span/g)?.length).toBe(line.match(/<\/span>/g)?.length);
+    }
+  });
+
+  it("escapes source markup rather than emitting it", () => {
+    const [line] = highlightLines('<img src=x onerror="boom">', "plaintext");
+
+    expect(line).not.toContain("<img");
+    expect(line).toContain("&lt;img");
+  });
+
+  it("still highlights when the language is unknown", () => {
+    expect(highlightLines("anything", "brainfuck")).toEqual(["anything"]);
   });
 });
 
@@ -275,5 +307,65 @@ describe("tokenizeCode — makefile", () => {
 
   it("resolves the make alias", () => {
     expect(classed("# note", "make")).toContain("comment:# note");
+  });
+});
+
+describe("tokenizeCode — scss", () => {
+  it("classifies variables, at-rules, properties and hex colours", () => {
+    const out = classed("@use 'sass:math';\n$brand: #ff0066;\n.btn { color: $brand; }", "scss");
+
+    expect(out).toContain("keyword:@use");
+    expect(out).toContain("variable:$brand");
+    expect(out).toContain("literal:#ff0066");
+    expect(out).toContain("property:color");
+  });
+
+  it("resolves the sass alias", () => {
+    expect(classed("$x: 1px;", "sass")).toContain("variable:$x");
+  });
+});
+
+describe("tokenizeCode — kotlin", () => {
+  it("classifies keywords, functions, types and annotations", () => {
+    const out = classed("@Inject\nfun run(name: String): Int? = 1", "kotlin");
+
+    expect(out).toContain("meta:@Inject");
+    expect(out).toContain("keyword:fun");
+    expect(out).toContain("function:run");
+    expect(out).toContain("type:String");
+  });
+
+  it("resolves the kt alias", () => {
+    expect(classed("val x = null", "kt")).toContain("literal:null");
+  });
+});
+
+describe("tokenizeCode — swift", () => {
+  it("classifies keywords, functions, types and literals", () => {
+    const out = classed("func greet(name: String) -> Bool { return true }", "swift");
+
+    expect(out).toContain("keyword:func");
+    expect(out).toContain("function:greet");
+    expect(out).toContain("type:String");
+    expect(out).toContain("literal:true");
+  });
+});
+
+describe("tokenizeCode — php", () => {
+  it("classifies tags, variables, keywords and functions", () => {
+    const out = classed('<?php\nfunction run($id) {\n  return $id === null;\n}', "php");
+
+    expect(out).toContain("meta:<?php");
+    expect(out).toContain("keyword:function");
+    expect(out).toContain("function:run");
+    expect(out).toContain("variable:$id");
+    expect(out).toContain("literal:null");
+  });
+
+  it("treats both // and # as comments", () => {
+    const out = classed("// slashes\n# hash\n$x = 1;", "php");
+
+    expect(out).toContain("comment:// slashes");
+    expect(out).toContain("comment:# hash");
   });
 });

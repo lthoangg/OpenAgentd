@@ -1,33 +1,12 @@
 import { useEffect, useMemo, useRef, useState, memo } from 'react'
 import { FileLightbox } from './FileLightbox'
-import hljs from 'highlight.js/lib/core'
-import bash from 'highlight.js/lib/languages/bash'
-import c from 'highlight.js/lib/languages/c'
-import cpp from 'highlight.js/lib/languages/cpp'
-import css from 'highlight.js/lib/languages/css'
-import go from 'highlight.js/lib/languages/go'
-import ini from 'highlight.js/lib/languages/ini'
-import java from 'highlight.js/lib/languages/java'
-import javascript from 'highlight.js/lib/languages/javascript'
-import json from 'highlight.js/lib/languages/json'
-import kotlin from 'highlight.js/lib/languages/kotlin'
-import markdown from 'highlight.js/lib/languages/markdown'
-import php from 'highlight.js/lib/languages/php'
-import python from 'highlight.js/lib/languages/python'
-import ruby from 'highlight.js/lib/languages/ruby'
-import rust from 'highlight.js/lib/languages/rust'
-import scss from 'highlight.js/lib/languages/scss'
-import sql from 'highlight.js/lib/languages/sql'
-import swift from 'highlight.js/lib/languages/swift'
-import typescript from 'highlight.js/lib/languages/typescript'
-import xml from 'highlight.js/lib/languages/xml'
-import yaml from 'highlight.js/lib/languages/yaml'
 import { motion } from 'framer-motion'
 import { Check, Copy, Download, ExternalLink, FileText, Loader2, Plus, X } from 'lucide-react'
 import { codingWorkspaceFileUrl } from '@/api/client'
 import { downloadCodingWorkspaceFile } from '@/lib/coding-workspace-download'
 import { cn } from '@/lib/utils'
 import { formatBytes } from '@/utils/format'
+import { highlightLines } from '@/utils/code-highlight'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { useResizableWidth } from '@/hooks/use-resizable-width'
 import { isVideoSrc } from '@/utils/workspace'
@@ -48,17 +27,6 @@ const TEXT_EXTENSIONS = new Set([
 const IMAGE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp'])
 const MAX_TEXT_PREVIEW_BYTES = 512 * 1024
 const GUTTER_WIDTH_CH = 4
-
-// `highlight.js/lib/common` eagerly registers 37 grammars. The coding file
-// viewer supports a known extension set, so register only its 21 actual
-// languages — same visible coverage with less JS for every desktop/mobile
-// app startup (the viewer is part of the eager app shell).
-for (const [name, grammar] of Object.entries({
-  bash, c, cpp, css, go, ini, java, javascript, json, kotlin, markdown,
-  php, python, ruby, rust, scss, sql, swift, typescript, xml, yaml,
-})) {
-  hljs.registerLanguage(name, grammar)
-}
 
 function extOf(name: string): string {
   const i = name.lastIndexOf('.')
@@ -134,58 +102,46 @@ function LineGutter({ value }: { value: number }) {
 }
 
 // ---------------------------------------------------------------------------
-// Syntax highlighting via highlight.js (already bundled for markdown blocks)
+// Syntax highlighting (shared with chat markdown — see utils/code-highlight)
 // ---------------------------------------------------------------------------
 
 /**
- * Map common file extensions to highlight.js language names.
- * hljs uses its own canonical names — this covers every ext in TEXT_EXTENSIONS
- * plus a few extras. Unknown extensions fall back to plaintext.
+ * Map file extensions to the grammar names in ``utils/code-highlight``.
+ *
+ * Covers every ext in TEXT_EXTENSIONS plus a few extras. Unknown extensions
+ * fall back to plaintext — the highlighter escapes and returns the source
+ * unstyled rather than throwing.
  */
-const EXT_TO_HLJS_LANG: Record<string, string> = {
+const EXT_TO_LANG: Record<string, string> = {
   // Web
-  ts: 'typescript', tsx: 'typescript', js: 'javascript', jsx: 'javascript',
-  mjs: 'javascript', cjs: 'javascript',
+  ts: 'ts', tsx: 'tsx', js: 'js', jsx: 'jsx',
+  mjs: 'js', cjs: 'js',
   html: 'html', css: 'css', scss: 'scss', sass: 'scss',
   // Data / config
   json: 'json', jsonl: 'json', yaml: 'yaml', yml: 'yaml',
-  toml: 'ini', ini: 'ini', env: 'ini',
-  xml: 'xml', svg: 'xml',
+  toml: 'toml', ini: 'ini', env: 'env',
+  xml: 'html', svg: 'html',
   // Markup / docs
   md: 'markdown', markdown: 'markdown', rst: 'plaintext',
   // Shell
-  sh: 'bash', bash: 'bash', zsh: 'bash', fish: 'bash',
+  sh: 'shell', bash: 'shell', zsh: 'shell', fish: 'shell',
   // Systems / compiled
   rs: 'rust', go: 'go', c: 'c', cpp: 'cpp', h: 'cpp', hpp: 'cpp',
   java: 'java', kt: 'kotlin', swift: 'swift',
   // Scripting
   py: 'python', rb: 'ruby', php: 'php',
   // Query
-  sql: 'sql',
-  // Data files (no highlighting)
-  csv: 'plaintext', tsv: 'plaintext', log: 'plaintext', txt: 'plaintext',
+  sql: 'sql', graphql: 'graphql', gql: 'graphql',
+  // Build / infra — newly highlightable now that chat and the viewer share
+  // one grammar registry.
+  dockerfile: 'dockerfile', mk: 'makefile', diff: 'diff', patch: 'diff',
+  // Data files
+  csv: 'csv', tsv: 'csv', log: 'plaintext', txt: 'plaintext',
   gitignore: 'plaintext',
 }
 
-/**
- * Highlight the full file content with hljs, returning one HTML string per
- * line. hljs preserves newlines in its output, so splitting on \n is safe.
- * Falls back to plain text if the language is unknown or highlighting fails.
- */
-function highlightFile(content: string, ext: string): string[] {
-  const lang = EXT_TO_HLJS_LANG[ext]
-  try {
-    const result = lang && lang !== 'plaintext'
-      ? hljs.highlight(content, { language: lang, ignoreIllegals: true })
-      : hljs.highlightAuto(content, ['javascript', 'typescript', 'python', 'bash', 'json', 'yaml', 'sql', 'css', 'html', 'rust', 'go'])
-    return result.value.split('\n')
-  } catch {
-    return content.split('\n')
-  }
-}
-
-// Memoized so re-selection of a line doesn't re-highlight the entire file.
-// hljs output is safe — user content is HTML-entity-escaped by highlight.js.
+// Memoized so re-selection of a line doesn't re-render every other line.
+// Token text is HTML-escaped by the highlighter before it gets here.
 const HighlightedCode = memo(function HighlightedCode({ html }: { html: string }) {
   return <span className="min-w-0 flex-1" dangerouslySetInnerHTML={{ __html: html || ' ' }} />
 })
@@ -293,11 +249,11 @@ function TextPreview({
     }
   }, [workspace, file.path, tooLarge, deleted])
 
-  // Run hljs on the full content, then split into per-line HTML strings.
+  // Highlight the full content, split into per-line HTML strings.
   // Must be above early returns to satisfy Rules of Hooks.
   const ext = extOf(file.name)
   const highlightedLines = useMemo(
-    () => content !== null ? highlightFile(content, ext) : [],
+    () => content !== null ? highlightLines(content, EXT_TO_LANG[ext]) : [],
     [content, ext],
   )
 

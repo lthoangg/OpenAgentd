@@ -3,9 +3,9 @@ import { loadPdfjs } from '@/lib/pdfjs-loader'
 let scheduled = false
 
 /**
- * Warm the heavy dynamic-import chunks (Markdown renderer with KaTeX and
- * highlight.js, the Mermaid diagram engine, and the PDF.js viewer) in the
- * background so their first real render is instant.
+ * Warm the heavy dynamic-import chunks (the Markdown renderer, the Mermaid
+ * diagram engine, and the PDF.js viewer) in the background so their first
+ * real render is instant.
  *
  * Dynamic ``import()`` is memoized by the module registry, so kicking these
  * off here means the later ``React.lazy`` / on-demand imports resolve from

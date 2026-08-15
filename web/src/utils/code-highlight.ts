@@ -9,13 +9,16 @@
  * plain text rather than throwing. Adding a bundled grammar costs ~100 bytes
  * gzipped; adding a hand-written one costs a pattern table and its tests.
  *
- * highlight.js is still the highlighter for ``CodingFileViewerPanel`` and the
- * ``ToolCall`` shell command; this module deliberately does not touch them.
+ * This is the app's only highlighter — chat fences, ``CodingFileViewerPanel``
+ * and the ``ToolCall`` shell command all resolve their grammars here, so a
+ * language added below lights up in every one of those surfaces at once.
  */
 
 import {
   createHighlighter,
   defineLanguage,
+  renderNodesToHtml,
+  renderTokens,
   type HighlightToken,
   type HighlightTokenClass,
   type LanguageDefinition,
@@ -271,6 +274,66 @@ const makefile = patternLanguage('makefile', ['make', 'mk'], [
   { className: 'number', regex: /\b\d+(?:\.\d+)?\b/g },
 ])
 
+const scss = patternLanguage('scss', ['sass'], [
+  { className: 'comment', regex: /\/\/[^\n]*|\/\*[\s\S]*?\*\//g },
+  { className: 'string', regex: /"(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'/g },
+  { className: 'variable', regex: /\$[\w-]+/g },
+  { className: 'keyword', regex: /@[a-z-]+/g },
+  { className: 'literal', regex: /#[0-9a-fA-F]{3,8}\b/g },
+  { className: 'property', regex: /\b[a-z-]+(?=[ \t]*:)/g },
+  { className: 'selector', regex: /[.#&][\w-]+/g },
+  { className: 'number', regex: /-?\b\d+(?:\.\d+)?(?:px|em|rem|ex|ch|vh|vw|%|s|ms|deg|fr)?\b/g },
+])
+
+const kotlin = patternLanguage('kotlin', ['kt', 'kts'], [
+  { className: 'comment', regex: /\/\/[^\n]*|\/\*[\s\S]*?\*\//g },
+  { className: 'string', regex: /"""[\s\S]*?"""|"(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'/g },
+  { className: 'meta', regex: /@[A-Za-z_]\w*/g },
+  { className: 'function', regex: /\bfun\s+(?:<[^>\n]*>\s*)?([A-Za-z_]\w*)/g, group: 1 },
+  {
+    className: 'keyword',
+    regex: /\b(?:abstract|actual|annotation|as|break|by|catch|class|companion|const|constructor|continue|crossinline|data|do|dynamic|else|enum|expect|external|final|finally|for|fun|get|if|import|in|infix|init|inline|inner|interface|internal|is|lateinit|noinline|object|open|operator|out|override|package|private|protected|public|reified|return|sealed|set|super|suspend|tailrec|this|throw|try|typealias|val|var|vararg|when|where|while)\b/g,
+  },
+  { className: 'literal', regex: /\b(?:true|false|null)\b/g },
+  {
+    className: 'type',
+    regex: /\b(?:Any|Array|Boolean|Byte|Char|Double|Float|Int|List|Long|Map|Nothing|Number|Set|Short|String|Unit)\b/g,
+  },
+  { className: 'number', regex: /\b(?:0[xX][\da-fA-F_]+|0[bB][01_]+|\d[\d_]*(?:\.\d[\d_]*)?(?:[eE][+-]?\d+)?[fFlLuU]?)\b/g },
+])
+
+const swift = patternLanguage('swift', [], [
+  { className: 'comment', regex: /\/\/[^\n]*|\/\*[\s\S]*?\*\//g },
+  { className: 'string', regex: /"""[\s\S]*?"""|"(?:\\.|[^"\\\n])*"/g },
+  { className: 'meta', regex: /@[A-Za-z_]\w*|#(?:available|if|else|endif|selector|keyPath)\b/g },
+  { className: 'function', regex: /\bfunc\s+([A-Za-z_]\w*)/g, group: 1 },
+  {
+    className: 'keyword',
+    regex: /\b(?:actor|as|associatedtype|async|await|break|case|catch|class|continue|convenience|default|defer|deinit|do|else|enum|extension|fallthrough|fileprivate|final|for|func|guard|if|import|in|indirect|init|inout|internal|is|lazy|let|mutating|nonmutating|open|operator|private|protocol|public|repeat|required|rethrows|return|self|static|struct|subscript|super|switch|throw|throws|try|typealias|var|weak|where|while)\b/g,
+  },
+  { className: 'literal', regex: /\b(?:true|false|nil)\b/g },
+  {
+    className: 'type',
+    regex: /\b(?:Any|Array|Bool|Character|Data|Dictionary|Double|Error|Float|Int|Int8|Int16|Int32|Int64|Optional|Result|Set|String|UInt|Void)\b/g,
+  },
+  { className: 'number', regex: /\b(?:0[xX][\da-fA-F_]+|0[bB][01_]+|\d[\d_]*(?:\.\d[\d_]*)?(?:[eE][+-]?\d+)?)\b/g },
+])
+
+const php = patternLanguage('php', [], [
+  { className: 'comment', regex: /\/\/[^\n]*|#[^\n]*|\/\*[\s\S]*?\*\//g },
+  { className: 'string', regex: /"(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'/g },
+  { className: 'meta', regex: /<\?php|<\?=|\?>/g },
+  { className: 'function', regex: /\bfunction\s+&?([A-Za-z_]\w*)/g, group: 1 },
+  { className: 'variable', regex: /\$\w+/g },
+  {
+    className: 'keyword',
+    regex: /\b(?:abstract|and|array|as|break|callable|case|catch|class|clone|const|continue|declare|default|do|echo|else|elseif|empty|enum|extends|final|finally|fn|for|foreach|function|global|goto|if|implements|include|include_once|instanceof|insteadof|interface|isset|list|match|namespace|new|or|print|private|protected|public|readonly|require|require_once|return|static|switch|throw|trait|try|unset|use|var|while|xor|yield)\b/g,
+  },
+  { className: 'literal', regex: /\b(?:true|false|null|TRUE|FALSE|NULL)\b/g },
+  { className: 'type', regex: /\b(?:bool|float|int|iterable|mixed|object|string|void|self|parent)\b/g },
+  { className: 'number', regex: /\b(?:0[xX][\da-fA-F_]+|\d[\d_]*(?:\.\d[\d_]*)?(?:[eE][+-]?\d+)?)\b/g },
+])
+
 const LANGUAGES: ReadonlyArray<LanguageDefinition> = [
   plaintext,
   shell,
@@ -300,6 +363,10 @@ const LANGUAGES: ReadonlyArray<LanguageDefinition> = [
   ruby,
   graphql,
   makefile,
+  scss,
+  kotlin,
+  swift,
+  php,
 ]
 
 const highlighter = createHighlighter({ languages: LANGUAGES, fallbackLanguage: 'plaintext' })
@@ -314,4 +381,33 @@ const highlighter = createHighlighter({ languages: LANGUAGES, fallbackLanguage: 
  */
 export function tokenizeCode(code: string, language?: string): Array<HighlightToken> {
   return highlighter.tokenize(code, { lang: language }).tokens
+}
+
+/**
+ * Highlight a whole file, returning one HTML string per source line.
+ *
+ * The coding file viewer renders a line-number gutter, so it needs the markup
+ * pre-split by line — and unlike splitting a highlighter's output on ``\n``,
+ * ``renderTokens`` cuts tokens at line boundaries, so a block comment or
+ * triple-quoted string yields balanced markup on every line it covers rather
+ * than an unclosed span the browser has to repair.
+ *
+ * HTML rather than React elements is deliberate here: a 512 kB file would
+ * otherwise become tens of thousands of React elements. Token text is escaped
+ * by ``renderNodesToHtml``, so injecting the result is safe.
+ *
+ * The result always has ``content.split('\n').length`` entries: the viewer's
+ * gutter numbers have to line up with the file's own line numbers, which
+ * selections and ``@``-mentions refer to.
+ */
+export function highlightLines(code: string, language?: string): Array<string> {
+  const { tokens } = highlighter.tokenize(code, { lang: language })
+  // ``lineNumbers`` is what switches renderTokens into per-line wrapping; we
+  // want the split, not the gutter it implies (the viewer draws its own).
+  const lines = renderTokens(tokens, { lineNumbers: true })
+    .filter((node) => node.type === 'element')
+    .map((node) => renderNodesToHtml(node.children))
+  // renderTokens has no line after a final newline; `split` reports one.
+  if (code.endsWith('\n')) lines.push('')
+  return lines
 }

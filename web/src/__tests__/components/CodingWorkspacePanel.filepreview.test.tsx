@@ -7,7 +7,7 @@ import { useGitPanelStore } from '@/stores/useGitPanelStore'
 import type { WorkspaceFileInfo } from '@/api/types'
 
 const WORKSPACE = '/repo/project'
-// NOTE: Use a .ts extension so hljs keyword-highlights 'const' as a standalone
+// NOTE: Use a .ts extension so the highlighter tokenises 'const' as a standalone
 // token, keeping getByText('const') and getByText('return') assertions valid.
 const readme: WorkspaceFileInfo = { path: 'main.ts', name: 'main.ts', size: 24, mtime: 1, mime: 'text/plain' }
 const image: WorkspaceFileInfo = { path: 'assets/logo.png', name: 'logo.png', size: 100, mtime: 1, mime: 'image/png' }

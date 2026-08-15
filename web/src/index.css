@@ -7,60 +7,14 @@
  * every Tauri bundle; the Latin subsets cover all actual hand-font copy. */
 @import "@fontsource/caveat/latin-400.css";
 @import "@fontsource/caveat/latin-700.css";
-@import "highlight.js/styles/atom-one-dark.css";
 /* Bundled Nerd Font icons fallback — mobile fix (see nerd-font-icons.css). */
 @import "./assets/fonts/nerd-font-icons.css";
 
 /* ─────────────────────────────────────────────────────────────
- * OpenAgentd — syntax highlighting (highlight.js)
- * Tokens are theme-aware via var() references.
- * ───────────────────────────────────────────────────────────── */
-.hljs {
-  background: transparent;
-  color: var(--color-text);
-}
-/* When hljs <code> is used inline (e.g. shell terminal prompt), the
- * `pre code.hljs` rule from the hljs base sheet sets display:block and
- * padding:1em, which pushes the command off the $ prefix.  Reset it. */
-pre code.hljs {
-  display: inline;
-  padding: 0;
-}
-.hljs-comment,
-.hljs-quote          { color: var(--color-syn-comment); font-style: italic; }
-.hljs-keyword,
-.hljs-selector-tag,
-.hljs-built_in,
-.hljs-tag            { color: var(--color-syn-keyword); }
-.hljs-string,
-.hljs-attr,
-.hljs-attribute      { color: var(--color-syn-string); }
-.hljs-number,
-.hljs-literal        { color: var(--color-syn-number); }
-.hljs-title,
-.hljs-title.class_,
-.hljs-section        { color: var(--color-syn-type); }
-.hljs-variable,
-.hljs-template-variable,
-.hljs-name           { color: var(--color-syn-function); }
-.hljs-type,
-.hljs-class          { color: var(--color-syn-operator); }
-.hljs-symbol,
-.hljs-bullet,
-.hljs-addition       { color: var(--color-syn-string); }
-.hljs-deletion       { color: var(--color-syn-variable); }
-.hljs-function .hljs-title,
-.hljs-title.function_            { color: var(--color-syn-function); }
-.hljs-params                     { color: var(--color-text); }
-.hljs-emphasis       { font-style: italic; }
-.hljs-strong         { font-weight: bold; }
-
-/* ─────────────────────────────────────────────────────────────
  * OpenAgentd — syntax highlighting (@tanstack/highlight)
- * Chat markdown code fences only; the coding file viewer and the
- * ToolCall shell command still emit the .hljs-* classes above.
- * Both sets resolve to the same --color-syn-* tokens, so the two
- * highlighters are visually indistinguishable.
+ * The single highlighter for chat fences, the coding file viewer
+ * and the ToolCall shell command. Tokens are theme-aware via
+ * var() references.
  * ───────────────────────────────────────────────────────────── */
 .th-comment                      { color: var(--color-syn-comment); font-style: italic; }
 .th-keyword,

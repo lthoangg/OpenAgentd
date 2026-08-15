@@ -19,19 +19,16 @@
 import { useEffect, useRef, useState, useMemo, memo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { ChevronRight, Copy, Check } from 'lucide-react'
-import hljs from 'highlight.js/lib/core'
-import bash from 'highlight.js/lib/languages/bash'
 import { ToolResult } from '../ToolResult'
 import { AskUser } from '../AskUser'
 import { DURATIONS_S, EASINGS } from '@/lib/motion'
+import { tokenizeCode } from '@/utils/code-highlight'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { getToolDisplay } from './display'
 import { DiffView } from './DiffView'
 import { ReadView } from './ReadView'
 import { getDiffStats } from './diffUtils'
 import type { ToolCallState } from './types'
-
-hljs.registerLanguage('bash', bash)
 
 /** Matches ``app.agent.agent_loop.core.ASK_USER``. */
 const ASK_USER = 'ask_user'
@@ -140,24 +137,29 @@ function clampLiveOutput(output: string | undefined): string | undefined {
 }
 
 /**
- * Syntax-highlights a bash command string using highlight.js.
+ * Syntax-highlights a shell command string.
  *
  * Rendered inline inside the `<pre>` terminal block — sits right after the
- * `$ ` prompt. Uses `dangerouslySetInnerHTML` because hljs returns an HTML
- * string; the input is the tool's own `command` arg (never user-supplied
- * free text arriving from the network), so XSS risk is negligible.
+ * `$ ` prompt. Commands are short, so tokens are rendered as React elements
+ * rather than injected HTML — the text is escaped by React, and the element
+ * count stays trivial.
  */
 const ShellCommand = memo(function ShellCommand({ command }: { command: string }) {
-  const highlighted = useMemo(() => {
-    try {
-      return hljs.highlight(command, { language: 'bash' }).value
-    } catch {
-      // hljs can throw on pathological input — fall back to escaped plain text
-      return command.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-    }
-  }, [command])
+  const highlighted = useMemo(
+    () =>
+      tokenizeCode(command, 'shell').map((token, index) =>
+        token.className ? (
+          <span key={index} className={`th-token th-${token.className}`}>
+            {token.value}
+          </span>
+        ) : (
+          token.value
+        ),
+      ),
+    [command],
+  )
 
-  return <code className="hljs" dangerouslySetInnerHTML={{ __html: highlighted }} />
+  return <code>{highlighted}</code>
 })
 
 export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, result, durationMs, startedAt, toolCallId }: ToolCallProps) {

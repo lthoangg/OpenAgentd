@@ -158,7 +158,7 @@ describe("ToolCall — shell display", () => {
     render(<ToolCall name="shell" args={args} done={false} liveOutput={"hi\n"} />)
 
     expect(screen.getByText("terminal")).toBeTruthy()
-    // "hi" may be a hljs keyword span — query the pre's full textContent
+    // "hi" may be wrapped in a token span — query the pre's full textContent
     const pre = document.querySelector("pre")
     expect(pre).toBeTruthy()
     expect(pre!.textContent).toContain("hi")
@@ -1116,8 +1116,8 @@ describe("ToolCall — shell terminal label and formatting", () => {
     const pre = document.querySelector("pre")
     expect(pre).toBeTruthy()
     expect(pre!.textContent).toContain("$ npm test")
-    // The command is wrapped in a <code class="hljs"> for syntax highlighting
-    const code = pre!.querySelector("code.hljs")
+    // The command is wrapped in a <code> for syntax highlighting
+    const code = pre!.querySelector("code")
     expect(code).toBeTruthy()
   })
 
@@ -1195,18 +1195,19 @@ describe("ToolCall — shell terminal label and formatting", () => {
 })
 
 // ---------------------------------------------------------------------------
-// Shell syntax highlighting — ShellCommand uses hljs bash to tokenise the
-// command string.  Tokens end up as <span class="hljs-*"> children inside a
-// <code class="hljs"> element; the pre's textContent stays intact for copy.
+// Shell syntax highlighting — ShellCommand tokenises the command string with
+// the shared highlighter.  Tokens end up as <span class="th-token th-*">
+// children inside a <code> element; the pre's textContent stays intact for
+// copy.
 // ---------------------------------------------------------------------------
 
 describe("ToolCall — shell syntax highlighting", () => {
-  it("wraps the command in <code class='hljs'> for syntax highlighting", async () => {
+  it("wraps the command in a <code> element for syntax highlighting", async () => {
     const user = userEvent.setup()
     const args = JSON.stringify({ command: "git status", description: "Check status" })
     render(<ToolCall name="shell" args={args} done={false} />)
     await user.click(screen.getByRole("button"))
-    const code = document.querySelector("code.hljs")
+    const code = document.querySelector("pre code")
     expect(code).toBeTruthy()
     expect(code!.textContent).toContain("git status")
   })
@@ -1220,23 +1221,23 @@ describe("ToolCall — shell syntax highlighting", () => {
     expect(pre!.textContent).toContain("bun run build --minify")
   })
 
-  it("hljs tokenises bash keywords into hljs-built_in spans", async () => {
+  it("tokenises shell keywords into keyword spans", async () => {
     const user = userEvent.setup()
-    // "export" is a recognised bash built-in
+    // "export" is a recognised shell keyword
     const args = JSON.stringify({ command: "export NODE_ENV=production", description: "Set env" })
     render(<ToolCall name="shell" args={args} done={false} />)
     await user.click(screen.getByRole("button"))
-    const builtIn = document.querySelector("code.hljs .hljs-built_in")
-    expect(builtIn).toBeTruthy()
-    expect(builtIn!.textContent).toBe("export")
+    const keyword = document.querySelector("pre code .th-keyword")
+    expect(keyword).toBeTruthy()
+    expect(keyword!.textContent).toBe("export")
   })
 
-  it("hljs tokenises quoted strings into hljs-string spans", async () => {
+  it("tokenises quoted strings into string spans", async () => {
     const user = userEvent.setup()
     const args = JSON.stringify({ command: 'echo "hello world"', description: "Echo" })
     render(<ToolCall name="shell" args={args} done={false} />)
     await user.click(screen.getByRole("button"))
-    const str = document.querySelector("code.hljs .hljs-string")
+    const str = document.querySelector("pre code .th-string")
     expect(str).toBeTruthy()
     expect(str!.textContent).toContain("hello world")
   })

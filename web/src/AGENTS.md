@@ -145,18 +145,24 @@ renderer re-parses the whole accumulated response on every streamed delta, so a
 parser-level highlighter would re-highlight *every* code block on *every*
 token. Keep highlighting behind that memo.
 
-**Two highlighters ship on purpose.** Chat fences use `@tanstack/highlight`
-(`utils/code-highlight.ts`); `CodingFileViewerPanel` and the `ToolCall` shell
-command still use `highlight.js`. Both resolve to the same `--color-syn-*`
-tokens in `index.css` (`.th-*` and `.hljs-*` rule blocks), so they look
-identical. Chat covers only the grammars listed in `LANGUAGES` — shell,
-python, ts/tsx/js/jsx, json, yaml, markdown, env, css, diff, dockerfile,
-html (aliased from `xml`), http, sql, toml, plus hand-written rust, ini, csv,
-go, java, c, cpp, ruby, graphql and makefile. Anything else renders as escaped
-plain text rather than throwing. Add a grammar by extending `LANGUAGES`, not by
-reaching for highlight.js — a bundled one costs ~100 bytes gzipped, a
-hand-written one costs a pattern table plus tests in
-`__tests__/utils/code-highlight.test.ts`.
+**`utils/code-highlight.ts` is the app's only highlighter.** Chat fences,
+`CodingFileViewerPanel` and the `ToolCall` shell command all resolve grammars
+there, so a language added to `LANGUAGES` lights up in all three at once.
+Tokens carry `.th-*` classes mapped onto the `--color-syn-*` variables in
+`index.css`. An unknown language is escaped and returned unstyled rather than
+throwing, so callers never need a try/catch.
+
+Two entry points: `tokenizeCode` returns tokens for rendering as React
+elements (chat fences, shell commands — short input, no `innerHTML`), and
+`highlightLines` returns one escaped HTML string per source line for the file
+viewer, where a 512 kB file would otherwise become tens of thousands of React
+elements. `highlightLines` always returns `content.split('\n').length` entries
+so the gutter matches the file's own line numbers.
+
+Adding a grammar: a bundled one costs ~100 bytes gzipped, a hand-written one a
+pattern table plus tests in `__tests__/utils/code-highlight.test.ts`. Extend
+`EXT_TO_LANG` in `CodingFileViewerPanel` too if a file extension should map to
+it, and `TEXT_EXTENSIONS` if the viewer should treat it as text at all.
 
 Two constraints bind every hand-written pattern table, both documented on
 `patternLanguage`: patterns are ordered and first-match-wins (comments and

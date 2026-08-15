@@ -144,7 +144,7 @@ function markClosedStreamingMermaidFences(content: string): string {
  * **Why highlighting lives here rather than in the markdown pipeline**: the
  * renderer re-parses the whole accumulated response on every streamed delta,
  * so a parser-level highlighter (the old ``rehype-highlight`` plugin) re-ran
- * highlight.js over *every* code block in the message on *every* token.
+ * the highlighter over *every* code block in the message on *every* token.
  * Hoisting it into a memoized component keyed on the code text means a fence
  * is highlighted once and then skipped until its content actually changes —
  * only the block still being written costs anything.

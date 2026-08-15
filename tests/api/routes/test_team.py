@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import shutil
+import tempfile
 import uuid
 from unittest.mock import AsyncMock, patch
 
@@ -204,13 +206,35 @@ def app_with_team(test_team, monkeypatch):
 
 @pytest.fixture
 def app_without_team():
-    """Create FastAPI app without team."""
-    from app.api.app import create_app
-    from app.services.team_manager import set_team
+    """Create a FastAPI app whose agents directory is genuinely empty.
 
-    app = create_app()
-    set_team(None)
-    return app
+    ``set_team(None)`` only drops the *cached* team. The next request calls
+    ``get_or_start_team*``, which rebuilds one from ``settings.AGENTS_DIR`` —
+    so "no team" only held when that directory happened to be empty. It is the
+    ambient XDG config dir: populated on a plain ``pytest`` run (the session
+    fixture materialises agents into ``.tests/config``), but per-worker and
+    empty under ``pytest -n``. These tests therefore passed under xdist and
+    failed standalone, purely on how the suite was invoked.
+
+    Pointing ``AGENTS_DIR`` at an empty directory makes the precondition real
+    and exercises the actual "no agents configured" path rather than stubbing
+    the team lookup.
+    """
+    from app.api.app import create_app
+    from app.core.config import settings
+    from app.services import team_manager
+
+    with pytest.MonkeyPatch.context() as mp:
+        empty_agents = tempfile.mkdtemp(prefix="openagentd-no-agents-")
+        mp.setattr(settings, "AGENTS_DIR", empty_agents)
+        team_manager.reset_agents_dir_validation_cache()
+        team_manager.set_team(None)
+        try:
+            yield create_app()
+        finally:
+            team_manager.set_team(None)
+            team_manager.reset_agents_dir_validation_cache()
+            shutil.rmtree(empty_agents, ignore_errors=True)
 
 
 class TestTeamChatRoute:

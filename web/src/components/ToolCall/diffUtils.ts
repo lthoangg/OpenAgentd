@@ -232,6 +232,8 @@ export function parsePatchText(patchText: string, meta?: DiffMeta | null): FileD
       } else if (current.kind === 'add') {
         if (line.startsWith('+')) {
           pushCurrentLine({ type: 'added', value: line.substring(1) })
+        } else if (!line.startsWith('***') && !line.startsWith('@@')) {
+          pushCurrentLine({ type: 'added', value: line })
         }
       } else if (current.kind === 'update') {
         if (line.startsWith('+')) {
@@ -270,4 +272,45 @@ export function getDiffStats(toolName: string, args: string, _result?: string): 
     // ignore
   }
   return null
+}
+
+export interface PatchOperationsStats {
+  adds: number
+  updates: number
+  moves: number
+  deletes: number
+  totalFiles: number
+  additions: number
+  deletions: number
+}
+
+export function getPatchOperationsStats(diffs: FileDiff[]): PatchOperationsStats {
+  let adds = 0
+  let updates = 0
+  let moves = 0
+  let deletes = 0
+  let additions = 0
+  let deletions = 0
+
+  for (const diff of diffs) {
+    if (diff.kind === 'add') adds++
+    else if (diff.kind === 'delete') deletes++
+    else if (diff.moveTo) moves++
+    else updates++
+
+    for (const line of diff.lines) {
+      if (line.type === 'added') additions++
+      else if (line.type === 'removed') deletions++
+    }
+  }
+
+  return {
+    adds,
+    updates,
+    moves,
+    deletes,
+    totalFiles: diffs.length,
+    additions,
+    deletions,
+  }
 }

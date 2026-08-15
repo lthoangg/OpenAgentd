@@ -389,13 +389,13 @@ describe("MarkdownBlock code fences", () => {
     expect(pre?.previousElementSibling?.textContent).not.toBe("plain text");
   });
 
-  it("applies highlight.js token classes to a fence with a known grammar", () => {
+  it("applies token classes to a fence with a known grammar", () => {
     render(
       <MarkdownBlock content={["```python", "def go(x):", "    return None", "```"].join("\n")} />,
     );
 
     const pre = document.querySelector("pre");
-    expect(pre?.querySelector(".hljs-keyword")?.textContent).toBe("def");
+    expect(pre?.querySelector(".th-keyword")?.textContent).toBe("def");
     expect(pre?.textContent).toContain("def go(x):");
   });
 
@@ -406,7 +406,7 @@ describe("MarkdownBlock code fences", () => {
 
     const pre = document.querySelector("pre");
     expect(pre?.textContent).toBe("++[->+<]");
-    expect(pre?.querySelector("[class^='hljs-']")).toBeNull();
+    expect(pre?.querySelector(".th-token")).toBeNull();
   });
 
   it("escapes markup in an unhighlighted fence instead of injecting it", () => {
@@ -424,13 +424,19 @@ describe("MarkdownBlock code fences", () => {
   it("escapes markup inside a highlighted fence", () => {
     render(
       <MarkdownBlock
-        content={["```html", '<img src=x onerror="boom">', "```"].join("\n")}
+        content={["```yaml", 'key: <img src=x onerror="boom">', "```"].join("\n")}
       />,
     );
 
     const pre = document.querySelector("pre");
     expect(pre?.querySelector("img")).toBeNull();
-    expect(pre?.textContent).toBe('<img src=x onerror="boom">');
+    expect(pre?.textContent).toBe('key: <img src=x onerror="boom">');
+  });
+
+  it("resolves fence aliases to their grammar", () => {
+    render(<MarkdownBlock content={["```py", "import os", "```"].join("\n")} />);
+
+    expect(document.querySelector("pre .th-keyword")?.textContent).toBe("import");
   });
 
 });

@@ -9,13 +9,13 @@
 import { memo, useMemo, useState } from 'react'
 import { Markdown } from '@tanstack/markdown/react'
 import { streamingMarkdownExtension } from '@tanstack/markdown/extensions/streaming'
-import hljs from 'highlight.js/lib/common'
 import { ImageOff, FileVideo } from 'lucide-react'
 import { resolveApiUrl } from '@/api/client'
 import { apiUrl } from '@/api/base-url'
 import { withTokenParam } from '@/api/auth'
 import { ImageLightbox } from '@/components/ImageLightbox'
 import { CodeBlock } from '@/components/CodeBlock'
+import { tokenizeCode } from '@/utils/code-highlight'
 import { MermaidBlock } from '@/utils/MermaidBlock'
 import { isVideoSrc } from '@/utils/workspace'
 
@@ -139,7 +139,7 @@ function markClosedStreamingMermaidFences(content: string): string {
 
 // ── HighlightedCode ───────────────────────────────────────────────────────────
 
-/** A fenced code block, syntax-highlighted with highlight.js.
+/** A fenced code block, syntax-highlighted from a token stream.
  *
  * **Why highlighting lives here rather than in the markdown pipeline**: the
  * renderer re-parses the whole accumulated response on every streamed delta,
@@ -149,9 +149,10 @@ function markClosedStreamingMermaidFences(content: string): string {
  * is highlighted once and then skipped until its content actually changes —
  * only the block still being written costs anything.
  *
- * ``hljs`` HTML-entity-escapes the source it emits, so the highlighted markup
- * is safe to inject; unknown languages fall through to a plain string that
- * React escapes itself. Same contract as ``CodingFileViewerPanel``.
+ * Tokens become React elements rather than an HTML string, so model-authored
+ * code is escaped by React and never reaches ``dangerouslySetInnerHTML``. An
+ * unrecognised language tokenises to a single unclassified span, which renders
+ * as plain text.
  */
 const HighlightedCode = memo(function HighlightedCode({
   code,
@@ -161,15 +162,16 @@ const HighlightedCode = memo(function HighlightedCode({
   language?: string
 }) {
   const content = useMemo((): React.ReactNode => {
-    if (!language || !hljs.getLanguage(language)) return code
-    let html: string
-    try {
-      html = hljs.highlight(code, { language, ignoreIllegals: true }).value
-    } catch {
-      // A grammar can still throw on a half-written fence mid-stream.
-      return code
-    }
-    return <span dangerouslySetInnerHTML={{ __html: html }} />
+    const tokens = tokenizeCode(code, language)
+    return tokens.map((token, index) =>
+      token.className ? (
+        <span key={index} className={`th-token th-${token.className}`}>
+          {token.value}
+        </span>
+      ) : (
+        token.value
+      ),
+    )
   }, [code, language])
 
   return (

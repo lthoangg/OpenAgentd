@@ -140,10 +140,22 @@ Custom component overrides live in the `components` map (memoised on `sessionId`
 
 **Syntax highlighting is not part of the parse.** No `highlighter` option is
 passed, so the renderer hands `pre` the raw fence text and `HighlightedCode`
-(memoised on the code string) runs `highlight.js` itself. The renderer
-re-parses the whole accumulated response on every streamed delta, so a
+(memoised on the code string) tokenises it via `utils/code-highlight.ts`. The
+renderer re-parses the whole accumulated response on every streamed delta, so a
 parser-level highlighter would re-highlight *every* code block on *every*
 token. Keep highlighting behind that memo.
+
+**Two highlighters ship on purpose.** Chat fences use `@tanstack/highlight`
+(`utils/code-highlight.ts`); `CodingFileViewerPanel` and the `ToolCall` shell
+command still use `highlight.js`. Both resolve to the same `--color-syn-*`
+tokens in `index.css` (`.th-*` and `.hljs-*` rule blocks), so they look
+identical. Chat covers only the grammars listed in `LANGUAGES` — shell,
+python, ts/tsx/js, json, yaml, markdown, env, plus hand-written rust, ini and
+csv. Anything else renders as escaped plain text rather than throwing. Add a
+grammar by extending `LANGUAGES`, not by reaching for highlight.js.
+
+Tokens are rendered as React elements, never `dangerouslySetInnerHTML` — code
+arriving from a model is escaped by React. Keep it that way.
 
 **Table scroll pattern** — `.oa-table-wrap` (defined in `index.css`) sets
 `overflow-x: auto` with `-webkit-overflow-scrolling: touch` on the wrapper div,

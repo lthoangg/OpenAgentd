@@ -55,6 +55,34 @@ pre code.hljs {
 .hljs-emphasis       { font-style: italic; }
 .hljs-strong         { font-weight: bold; }
 
+/* ─────────────────────────────────────────────────────────────
+ * OpenAgentd — syntax highlighting (@tanstack/highlight)
+ * Chat markdown code fences only; the coding file viewer and the
+ * ToolCall shell command still emit the .hljs-* classes above.
+ * Both sets resolve to the same --color-syn-* tokens, so the two
+ * highlighters are visually indistinguishable.
+ * ───────────────────────────────────────────────────────────── */
+.th-comment                      { color: var(--color-syn-comment); font-style: italic; }
+.th-keyword,
+.th-tag,
+.th-selector,
+.th-command                      { color: var(--color-syn-keyword); }
+.th-string,
+.th-attr,
+.th-inserted                     { color: var(--color-syn-string); }
+.th-number,
+.th-literal                      { color: var(--color-syn-number); }
+.th-heading,
+.th-property                     { color: var(--color-syn-type); }
+.th-variable,
+.th-function,
+.th-link                         { color: var(--color-syn-function); }
+.th-type,
+.th-operator                     { color: var(--color-syn-operator); }
+.th-meta,
+.th-code-inline                  { color: var(--color-syn-variable); }
+.th-deleted                      { color: var(--color-syn-variable); }
+
 @custom-variant dark (&:is(.dark *));
 
 /* ─────────────────────────────────────────────────────────────

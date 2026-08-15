@@ -27,9 +27,12 @@ async def test_publish_fans_out_a_typed_event_without_replay():
     payload = {"session_id": "session-1", "title": "New title", "updated_at": "now"}
     await event_broadcaster.publish("title_update", payload)
 
-    expected = {"event": "title_update", "data": json.dumps(payload)}
-    assert await first_event == expected
-    assert await second_event == expected
+    evt1 = await first_event
+    evt2 = await second_event
+    assert evt1["event"] == "title_update"
+    assert json.loads(evt1["data"]) == payload
+    assert evt2["event"] == "title_update"
+    assert json.loads(evt2["data"]) == payload
     await first.aclose()
     await second.aclose()
 
@@ -43,7 +46,9 @@ async def test_events_published_before_subscription_are_not_replayed():
 
     payload = {"session_id": "session-2"}
     await event_broadcaster.publish("title_update", payload)
-    assert await pending == {"event": "title_update", "data": json.dumps(payload)}
+    evt = await pending
+    assert evt["event"] == "title_update"
+    assert json.loads(evt["data"]) == payload
     await stream.aclose()
 
 

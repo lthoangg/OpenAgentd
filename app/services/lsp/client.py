@@ -1,8 +1,10 @@
 import asyncio
-import json
 import os
 from pathlib import Path
 from typing import Any, Mapping
+
+import orjson
+
 
 from loguru import logger
 
@@ -186,7 +188,7 @@ class LspClient:
     async def send_message(self, msg: dict):
         if not self.process or not self.process.stdin:
             raise RuntimeError("LSP server not running")
-        body = json.dumps(msg).encode("utf-8")
+        body = orjson.dumps(msg)
         header = f"Content-Length: {len(body)}\r\n\r\n".encode("utf-8")
         self.process.stdin.write(header + body)
         await self.process.stdin.drain()
@@ -241,7 +243,7 @@ class LspClient:
                 if not body:
                     return
 
-                message = json.loads(body.decode("utf-8"))
+                message = orjson.loads(body)
                 self._handle_message(message)
         except asyncio.IncompleteReadError:
             logger.debug("LspClient stdout EOF or incomplete read")

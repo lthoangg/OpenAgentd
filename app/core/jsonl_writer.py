@@ -24,7 +24,10 @@ work.
 
 from __future__ import annotations
 
-import json
+
+import orjson
+
+
 import queue
 import threading
 import time
@@ -211,7 +214,7 @@ class JsonlBatchWriter:
             try:
                 with path.open("a", encoding="utf-8") as f:
                     for obj in objs:
-                        f.write(json.dumps(obj, ensure_ascii=False, default=str))
+                        f.write(orjson.dumps(obj, default=str).decode("utf-8"))
                         f.write("\n")
                 written += len(objs)
             except OSError as exc:

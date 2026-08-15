@@ -16,8 +16,10 @@ because raw ``{"event","data"}`` dicts are never fed back into
 
 from __future__ import annotations
 
-import json
 from typing import Any, Union
+
+import orjson
+
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -118,7 +120,7 @@ class StreamEnvelope(BaseModel):
         result to ``sse_starlette`` should use this method rather than
         dumping the model directly.
         """
-        return {"event": self.event, "data": json.dumps(self.data)}
+        return {"event": self.event, "data": orjson.dumps(self.data).decode("utf-8")}
 
     # ── Field accessors (ergonomic shortcuts) ─────────────────────────────
     @property

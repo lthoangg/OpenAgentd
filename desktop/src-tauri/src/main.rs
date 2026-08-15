@@ -22,7 +22,7 @@ use tauri::{
     menu::MenuItem,
     AppHandle, Emitter, Manager, RunEvent, Runtime, WindowEvent, Wry,
 };
-use tauri_plugin_log::{Target, TargetKind};
+use tauri_plugin_log::{RotationStrategy, Target, TargetKind};
 use tokio::sync::Mutex;
 
 use crate::sidecar::Sidecar;
@@ -165,6 +165,9 @@ pub struct CachedUpdateState {
 }
 
 pub const NORMAL_SHUTDOWN_GRACE: Duration = Duration::from_secs(5);
+/// Size cap for one `desktop.log` generation. The plugin's 40 KB default
+/// kept less than a day of history.
+pub const DESKTOP_LOG_MAX_BYTES: u128 = 5 * 1024 * 1024;
 /// First execution of the freshly installed 400+ MB sidecar can spend tens
 /// of seconds in OS security scanning before Python emits any stdout.
 pub const SIDECAR_HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(60);
@@ -569,6 +572,13 @@ fn main() {
 
     let log_plugin = tauri_plugin_log::Builder::new()
         .level(log::LevelFilter::Info)
+        // The plugin defaults to a 40 KB cap with `KeepOne`, which silently
+        // discards the previous file — a production `desktop.log` held under
+        // a day of history, so anything older than the last 40 KB was gone
+        // before a user could report it. "View Desktop Log" is the primary
+        // support artifact; give it room and keep a few generations.
+        .max_file_size(DESKTOP_LOG_MAX_BYTES)
+        .rotation_strategy(RotationStrategy::KeepSome(3))
         .targets([
             Target::new(TargetKind::Stdout),
             Target::new(TargetKind::LogDir {

@@ -36,6 +36,35 @@ use tokio::time::timeout;
 const HANDSHAKE_PREFIX: &str = "OPENAGENTD_HANDSHAKE ";
 const SHUTDOWN_GRACE: Duration = Duration::from_secs(5);
 
+/// Roll `backend.log` over once it passes this size.
+///
+/// The sidecar's stderr is wired straight into the file via
+/// `Stdio::from(File)` (see `spawn_with_desktop_token` for why that
+/// matters for crash tracebacks), so nothing rotates it — a production
+/// log had reached 12.6 MB across many restarts while `desktop.log` was
+/// being truncated to 40 KB.
+const MAX_BACKEND_LOG_BYTES: u64 = 5 * 1024 * 1024;
+
+/// Rotate `path` to `<path>.1` when it exceeds [`MAX_BACKEND_LOG_BYTES`],
+/// keeping exactly one previous generation.
+///
+/// Runs at spawn time, so growth is bounded per app launch rather than
+/// continuously — enough for a log that accumulates across restarts,
+/// and it keeps the child's stderr a plain inherited file descriptor.
+fn rotate_backend_log(path: &Path) {
+    let Ok(metadata) = std::fs::metadata(path) else {
+        return; // no log yet — nothing to rotate
+    };
+    if metadata.len() < MAX_BACKEND_LOG_BYTES {
+        return;
+    }
+    let rotated = path.with_extension("log.1");
+    match std::fs::rename(path, &rotated) {
+        Ok(()) => log::info!("rotated backend log to {}", rotated.display()),
+        Err(e) => log::warn!("failed to rotate backend log {}: {e}", path.display()),
+    }
+}
+
 #[derive(Debug, Deserialize, Clone)]
 pub struct Handshake {
     pub port: u16,
@@ -81,6 +110,7 @@ impl Sidecar {
             .context("resolve app log dir")?;
         std::fs::create_dir_all(&log_dir).context("create app log dir")?;
         let log_path = log_dir.join("backend.log");
+        rotate_backend_log(&log_path);
 
         // Windows-only: prepare a handshake file path that the child can
         // write to as a fallback for the stdout-piped handshake line.
@@ -709,7 +739,9 @@ fn resume_primary_thread(child: &Child) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{redact_handshake_token, strip_unc_prefix};
+    use super::{
+        redact_handshake_token, rotate_backend_log, strip_unc_prefix, MAX_BACKEND_LOG_BYTES,
+    };
     use std::path::{Path, PathBuf};
 
     // ``strip_unc_prefix`` is pure string manipulation, so these run on
@@ -787,6 +819,41 @@ mod tests {
             redact_handshake_token(r#"{"token": "unterminated"#),
             r#"{"token": "unterminated"#
         );
+    }
+
+    // ``rotate_backend_log`` bounds a file the sidecar appends to directly.
+    // A production ``backend.log`` reached 12.6 MB with no rotation at all.
+
+    #[test]
+    fn an_oversized_backend_log_is_rolled_to_one_previous_generation() {
+        let dir = tempfile::tempdir().expect("create log dir");
+        let log = dir.path().join("backend.log");
+        std::fs::write(&log, vec![b'x'; MAX_BACKEND_LOG_BYTES as usize + 1])
+            .expect("write oversized log");
+
+        rotate_backend_log(&log);
+
+        assert!(!log.exists(), "the oversized log is moved aside");
+        assert!(dir.path().join("backend.log.1").exists());
+    }
+
+    #[test]
+    fn a_small_backend_log_is_left_in_place() {
+        let dir = tempfile::tempdir().expect("create log dir");
+        let log = dir.path().join("backend.log");
+        std::fs::write(&log, b"recent traceback").expect("write small log");
+
+        rotate_backend_log(&log);
+
+        assert_eq!(std::fs::read(&log).expect("log still readable"), b"recent traceback");
+        assert!(!dir.path().join("backend.log.1").exists());
+    }
+
+    #[test]
+    fn a_missing_backend_log_is_not_an_error() {
+        let dir = tempfile::tempdir().expect("create log dir");
+
+        rotate_backend_log(&dir.path().join("backend.log"));
     }
 }
 

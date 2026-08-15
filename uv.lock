@@ -1278,14 +1278,18 @@ dependencies = [
     { name = "pydantic-settings" },
     { name = "python-multipart" },
     { name = "pyyaml" },
-    { name = "ruff" },
     { name = "sqlmodel" },
     { name = "sse-starlette" },
     { name = "trafilatura" },
-    { name = "ty" },
     { name = "uvicorn" },
     { name = "uvloop", marker = "platform_python_implementation == 'CPython' and sys_platform != 'win32'" },
     { name = "websockets" },
+]
+
+[package.optional-dependencies]
+python-lsp = [
+    { name = "ruff" },
+    { name = "ty" },
 ]
 
 [package.dev-dependencies]
@@ -1297,7 +1301,9 @@ dev = [
     { name = "pytest-randomly" },
     { name = "pytest-xdist" },
     { name = "respx" },
+    { name = "ruff" },
     { name = "tiktoken" },
+    { name = "ty" },
 ]
 experiment = [
     { name = "sentence-transformers" },
@@ -1324,15 +1330,16 @@ requires-dist = [
     { name = "pydantic-settings", specifier = ">=2.13.1" },
     { name = "python-multipart", specifier = ">=0.0.24" },
     { name = "pyyaml", specifier = ">=6.0.3" },
-    { name = "ruff", specifier = "==0.16.1" },
+    { name = "ruff", marker = "extra == 'python-lsp'", specifier = "==0.16.1" },
     { name = "sqlmodel", specifier = ">=0.0.22" },
     { name = "sse-starlette", specifier = ">=3.3.4" },
     { name = "trafilatura", specifier = ">=2.2.0" },
-    { name = "ty", specifier = "==0.0.69" },
+    { name = "ty", marker = "extra == 'python-lsp'", specifier = "==0.0.69" },
     { name = "uvicorn", specifier = ">=0.42.0" },
     { name = "uvloop", marker = "platform_python_implementation == 'CPython' and sys_platform != 'win32'", specifier = ">=0.22.1" },
     { name = "websockets", specifier = ">=16.0" },
 ]
+provides-extras = ["python-lsp"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -1343,7 +1350,9 @@ dev = [
     { name = "pytest-randomly", specifier = ">=4.1.0" },
     { name = "pytest-xdist", specifier = ">=3.6.1" },
     { name = "respx", specifier = ">=0.22.0" },
+    { name = "ruff", specifier = "==0.16.1" },
     { name = "tiktoken", specifier = ">=0.12.0" },
+    { name = "ty", specifier = "==0.0.69" },
 ]
 experiment = [
     { name = "sentence-transformers", specifier = ">=5.6.0" },

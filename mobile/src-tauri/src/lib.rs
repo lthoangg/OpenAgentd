@@ -37,7 +37,10 @@ fn secure_set_access_key(origin: String, key: String) -> Result<(), String> {
         return Err("access key is required".to_string());
     }
     access_key_entry(&origin)?
-        .set_password(&key)
+        // Store the trimmed value, matching the desktop shell. Validating
+        // `key.trim()` but persisting `key` meant a pasted key with a
+        // trailing newline authenticated on desktop and failed on mobile.
+        .set_password(key.trim())
         .map_err(|_| "credential store unavailable".to_string())
 }
 

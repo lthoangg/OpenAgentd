@@ -96,13 +96,31 @@ describe("tokenizeCode — bundled grammars", () => {
       ["ts", "const x = 1", "keyword:const"],
       ["tsx", "const x = 1", "keyword:const"],
       ["js", "const x = 1", "keyword:const"],
+      ["jsx", "const A = () => <b>hi</b>", "tag:b"],
       ["yaml", "key: value", "property:key"],
       ["json", '{"a": 1}', "number:1"],
       ["env", "TOKEN=abc", "property:TOKEN"],
+      ["css", "a.btn { color: red; }", "property:color"],
+      ["dockerfile", "FROM node:20", "keyword:FROM"],
+      ["html", '<div class="x">hi</div>', "tag:div"],
+      ["http", "GET /api/v1 HTTP/1.1", "keyword:GET"],
+      ["sql", "SELECT id FROM turns", "keyword:SELECT"],
+      ["toml", "[server]\nport = 8080", "number:8080"],
     ];
 
     for (const [lang, code, expected] of cases) {
       expect(classed(code, lang)).toContain(expected);
     }
+  });
+
+  it("classifies diff hunks as inserted and deleted", () => {
+    const out = classed("--- a\n+++ b\n-old line\n+new line", "diff");
+
+    expect(out).toContain("deleted:-old line");
+    expect(out).toContain("inserted:+new line");
+  });
+
+  it("resolves xml fences to the html grammar", () => {
+    expect(classed('<div class="x">hi</div>', "xml")).toContain("tag:div");
   });
 });

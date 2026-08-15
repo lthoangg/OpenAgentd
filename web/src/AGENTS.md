@@ -150,9 +150,12 @@ token. Keep highlighting behind that memo.
 command still use `highlight.js`. Both resolve to the same `--color-syn-*`
 tokens in `index.css` (`.th-*` and `.hljs-*` rule blocks), so they look
 identical. Chat covers only the grammars listed in `LANGUAGES` — shell,
-python, ts/tsx/js, json, yaml, markdown, env, plus hand-written rust, ini and
+python, ts/tsx/js/jsx, json, yaml, markdown, env, css, diff, dockerfile,
+html (aliased from `xml`), http, sql, toml, plus hand-written rust, ini and
 csv. Anything else renders as escaped plain text rather than throwing. Add a
-grammar by extending `LANGUAGES`, not by reaching for highlight.js.
+grammar by extending `LANGUAGES`, not by reaching for highlight.js — a bundled
+one costs ~100 bytes gzipped, a hand-written one costs a pattern table plus
+tests in `__tests__/utils/code-highlight.test.ts`.
 
 Tokens are rendered as React elements, never `dangerouslySetInnerHTML` — code
 arriving from a model is escaped by React. Keep it that way.

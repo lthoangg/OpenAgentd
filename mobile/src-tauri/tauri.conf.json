@@ -31,7 +31,7 @@
       ],
       "csp": {
         "default-src": "'self' http://127.0.0.1:* http://localhost:* https:",
-        "connect-src": "'self' http: https: ws: ipc: https://ipc.localhost",
+        "connect-src": "'self' http: https: ws: wss: ipc: https://ipc.localhost",
         "script-src": "'self' 'unsafe-inline' 'unsafe-eval' blob: data: http: https:",
         "style-src": "'self' 'unsafe-inline' blob: data: http: https:",
         "img-src": "'self' data: blob: http: https:",

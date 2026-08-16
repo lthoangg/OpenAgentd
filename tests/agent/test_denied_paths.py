@@ -175,6 +175,31 @@ def test_allowed_internal_roots_telemetry(tmp_path):
     assert denied_paths.validate_path(str(dump_path)) == dump_path
 
 
+def test_deny_pattern_overrides_the_self_diagnostic_carve_out(tmp_path):
+    """A hand-authored deny pattern outranks the log carve-out.
+
+    The carve-out re-allows the agent's own logs inside an otherwise denied
+    state root. A user pattern is config the user wrote deliberately, so it
+    must still win — the precedence a refactor of the root/shield logic is
+    most likely to invert.
+    """
+    state_root = Path(settings.OPENAGENTD_STATE_DIR).resolve()
+    log_path = state_root / "logs" / "app" / "openagentd.log"
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    log_path.touch()
+
+    denied_paths = DeniedPathsConfig(
+        workspace=str(tmp_path / "ws"),
+        session_id="s1",
+        denied_roots=[state_root],
+        denied_patterns=["**/*.log"],
+    )
+
+    with pytest.raises(PermissionError):
+        denied_paths.validate_path(str(log_path))
+    assert denied_paths.is_denied_path(log_path)
+
+
 def test_allowed_internal_roots_session_artifact_dir(tmp_path):
     data_root = Path(settings.OPENAGENTD_DATA_DIR).resolve()
     artifact_dir = data_root / "sessions" / "s1"

@@ -137,6 +137,10 @@ class DeniedPathsConfig:
                 logger.warning("denied_paths_patterns_load_failed err={}", exc)
                 denied_patterns = []
         self.denied_patterns: list[str] = list(denied_patterns)
+        # Populated on first use by ``_shielded_denied_roots``.
+        self._shielded_roots_cache: tuple[tuple[Path, tuple[Path, ...]], ...] | None = (
+            None
+        )
 
         self.max_execution_seconds: int = (
             max_execution_seconds or DEFAULT_MAX_EXECUTION_SECONDS
@@ -160,13 +164,8 @@ class DeniedPathsConfig:
         win** — a pattern like ``**/*.log`` intentionally shadows the log
         carve-out, because patterns are hand-authored user config.
         """
-        allowed = [self.workspace_root, *_allowed_internal_roots(self.session_id)]
-        for denied in self.denied_roots:
-            if any(
-                _path_is_under(resolved, allowed_root)
-                for allowed_root in allowed
-                if _path_is_under(allowed_root, denied)
-            ):
+        for denied, shields in self._shielded_denied_roots():
+            if any(_path_is_under(resolved, shield) for shield in shields):
                 continue
             if _path_is_under(resolved, denied):
                 return denied
@@ -175,6 +174,33 @@ class DeniedPathsConfig:
             if fnmatch.fnmatchcase(resolved_str, pattern):
                 return pattern
         return None
+
+    def _shielded_denied_roots(self) -> tuple[tuple[Path, tuple[Path, ...]], ...]:
+        """Each denied root paired with the allowed roots that carve into it.
+
+        Which allowed roots shield which denied root depends only on this
+        config, never on the path being checked — but it used to be recomputed
+        for every path, and ``_allowed_internal_roots`` calls ``resolve()``
+        twice each time. ``grep`` asks about every file it walks, so that was
+        two syscalls and ~18 ``_path_is_under`` calls per file: 66% of its
+        total runtime.
+
+        Memoised on first use. The fields it derives from are set in
+        ``__init__`` and never reassigned; a config change builds a new
+        instance.
+        """
+        cached = self._shielded_roots_cache
+        if cached is None:
+            allowed = (self.workspace_root, *_allowed_internal_roots(self.session_id))
+            cached = tuple(
+                (
+                    denied,
+                    tuple(root for root in allowed if _path_is_under(root, denied)),
+                )
+                for denied in self.denied_roots
+            )
+            self._shielded_roots_cache = cached
+        return cached
 
     def validate_path(self, path: str | Path) -> Path:
         """Resolve *path* and verify it's not inside a denied root or pattern.

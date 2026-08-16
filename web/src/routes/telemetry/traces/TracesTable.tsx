@@ -243,7 +243,7 @@ function TraceRow({
               <div
                 role="menu"
                 aria-label={`Actions for trace ${formatShortId(trace.trace_id)}`}
-                className="fixed min-w-44 rounded-sm border border-(--color-border) bg-(--bg-card) p-1 text-sm text-(--color-text) shadow-xl"
+                className="fixed min-w-44 rounded-sm border border-(--color-border) bg-(--bg-card) p-1 text-xs text-(--color-text) shadow-md"
                 style={{ left: actionsPoint.x, top: actionsPoint.y }}
                 onClick={(event) => event.stopPropagation()}
               >
@@ -256,7 +256,7 @@ function TraceRow({
                     openTrace()
                   }}
                 >
-                  <ChevronRight size={14} aria-hidden="true" />
+                  <ChevronRight size={12} aria-hidden="true" />
                   Open trace
                 </button>
                 <button
@@ -268,7 +268,7 @@ function TraceRow({
                     void copyTraceId()
                   }}
                 >
-                  <Copy size={14} aria-hidden="true" />
+                  <Copy size={12} aria-hidden="true" />
                   Copy trace ID
                 </button>
               </div>

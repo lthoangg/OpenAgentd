@@ -739,7 +739,7 @@ export function CodingSidebar({
                 <button
                   type="button"
                   onClick={() => { void selectWorkspace(path, { create: true }) }}
-                  className={`ml-1 flex h-6 w-6 shrink-0 items-center justify-center rounded border border-(--color-border) text-(--color-text-muted) transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) ${mobileLongPressActions ? 'hidden' : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:opacity-100'}`}
+                  className={`ml-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-xs border border-(--color-border) text-(--color-text-muted) transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) ${mobileLongPressActions ? 'hidden' : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:opacity-100'}`}
                   aria-label={`New session in ${workspaceLabel(path)}`}
                   title="New session"
                 >
@@ -748,7 +748,7 @@ export function CodingSidebar({
                 <button
                   type="button"
                   onClick={(event) => setDesktopWorkspaceActions({ path, kind: 'main', x: event.clientX, y: event.clientY })}
-                  className={`mr-1 flex h-6 w-6 shrink-0 items-center justify-center rounded text-(--color-text-subtle) transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) ${mobileLongPressActions ? 'hidden' : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:opacity-100'}`}
+                  className={`mr-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-xs text-(--color-text-subtle) transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) ${mobileLongPressActions ? 'hidden' : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:opacity-100'}`}
                   aria-label={`Actions for ${workspaceLabel(path)}`}
                   title="Workspace actions"
                 >
@@ -812,7 +812,7 @@ export function CodingSidebar({
                           <button
                             type="button"
                             onClick={() => { void selectWorkspace(directory, { create: true }) }}
-                            className={`ml-1 flex h-6 w-6 shrink-0 items-center justify-center rounded border border-(--color-border) text-(--color-text-muted) transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) ${mobileLongPressActions ? 'hidden' : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:opacity-100'}`}
+                            className={`ml-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-xs border border-(--color-border) text-(--color-text-muted) transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) ${mobileLongPressActions ? 'hidden' : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:opacity-100'}`}
                             aria-label={`New session in worktree ${item.name}`}
                             title={`New session in worktree ${item.name}`}
                           >
@@ -821,7 +821,7 @@ export function CodingSidebar({
                           <button
                             type="button"
                             onClick={() => handleWorktreeEdit(worktreeInfo)}
-                            className={`ml-1 flex h-6 w-6 shrink-0 items-center justify-center rounded text-(--color-text-subtle) transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) ${mobileLongPressActions ? 'hidden' : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:opacity-100'}`}
+                            className={`ml-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-xs text-(--color-text-subtle) transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) ${mobileLongPressActions ? 'hidden' : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:opacity-100'}`}
                             aria-label={`Edit worktree title ${item.name}`}
                             title="Edit worktree title"
                           >
@@ -832,7 +832,7 @@ export function CodingSidebar({
                               type="button"
                               onClick={() => setRemoveWorktreeTarget(worktreeInfo)}
                               disabled={worktreeRemoving === directory}
-                              className={`ml-1 flex h-6 w-6 shrink-0 items-center justify-center rounded text-(--color-text-subtle) transition-all hover:bg-(--color-error-subtle) hover:text-(--color-error) disabled:opacity-50 ${mobileLongPressActions ? 'hidden' : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:opacity-100'}`}
+                              className={`ml-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-xs text-(--color-text-subtle) transition-all hover:bg-(--color-error-subtle) hover:text-(--color-error) disabled:opacity-50 ${mobileLongPressActions ? 'hidden' : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:opacity-100'}`}
                               aria-label={`Remove worktree ${item.name}`}
                               title="Remove managed worktree"
                             >
@@ -1236,27 +1236,27 @@ export function CodingSidebar({
             <button
               type="button"
               role="menuitem"
-              className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none"
+              className="flex w-full items-center gap-2 rounded-xs px-2 py-1 text-left text-xs hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none"
               onClick={() => {
                 const action = desktopWorkspaceActions
                 setDesktopWorkspaceActions(null)
                 void selectWorkspace(action.path, { create: true })
               }}
             >
-              <Plus size={14} aria-hidden="true" />
+              <Plus size={12} aria-hidden="true" />
               New session
             </button>
             <button
               type="button"
               role="menuitem"
-              className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none"
+              className="flex w-full items-center gap-2 rounded-xs px-2 py-1 text-left text-xs hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none"
               onClick={() => {
                 const action = desktopWorkspaceActions
                 setDesktopWorkspaceActions(null)
                 void navigator.clipboard.writeText(action.path)
               }}
             >
-              <Copy size={14} aria-hidden="true" />
+              <Copy size={12} aria-hidden="true" />
               Copy repo absolute path
             </button>
             {desktopWorkspaceActions.kind === 'main' ? (
@@ -1264,27 +1264,27 @@ export function CodingSidebar({
                 <button
                   type="button"
                   role="menuitem"
-                  className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none"
+                  className="flex w-full items-center gap-2 rounded-xs px-2 py-1 text-left text-xs hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none"
                   onClick={() => {
                     const action = desktopWorkspaceActions
                     setDesktopWorkspaceActions(null)
                     void openWorktreeDialog(action.path)
                   }}
                 >
-                  <GitBranch size={14} aria-hidden="true" />
+                  <GitBranch size={12} aria-hidden="true" />
                   Create worktree
                 </button>
                 <button
                   type="button"
                   role="menuitem"
-                  className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-(--color-error) hover:bg-(--color-error-subtle) focus-visible:bg-(--color-error-subtle) focus-visible:outline-none"
+                  className="flex w-full items-center gap-2 rounded-xs px-2 py-1 text-left text-xs text-(--color-error) hover:bg-(--color-error-subtle) focus-visible:bg-(--color-error-subtle) focus-visible:outline-none"
                   onClick={() => {
                     const action = desktopWorkspaceActions
                     setDesktopWorkspaceActions(null)
                     setRemoveWorkspaceTarget(action.path)
                   }}
                 >
-                  <Trash2 size={14} aria-hidden="true" />
+                  <Trash2 size={12} aria-hidden="true" />
                   Remove from sidebar
                 </button>
               </>
@@ -1293,28 +1293,28 @@ export function CodingSidebar({
                 <button
                   type="button"
                   role="menuitem"
-                  className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none"
+                  className="flex w-full items-center gap-2 rounded-xs px-2 py-1 text-left text-xs hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none"
                   onClick={() => {
                     const item = desktopWorkspaceActions.worktree
                     setDesktopWorkspaceActions(null)
                     if (item) handleWorktreeEdit(item)
                   }}
                 >
-                  <Pencil size={14} aria-hidden="true" />
+                  <Pencil size={12} aria-hidden="true" />
                   Edit title
                 </button>
                 {desktopWorkspaceActions.worktree.managed ? (
                   <button
                     type="button"
                     role="menuitem"
-                    className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-(--color-error) hover:bg-(--color-error-subtle) focus-visible:bg-(--color-error-subtle) focus-visible:outline-none"
+                    className="flex w-full items-center gap-2 rounded-xs px-2 py-1 text-left text-xs text-(--color-error) hover:bg-(--color-error-subtle) focus-visible:bg-(--color-error-subtle) focus-visible:outline-none"
                     onClick={() => {
                       const item = desktopWorkspaceActions.worktree
                       setDesktopWorkspaceActions(null)
                       if (item) setRemoveWorktreeTarget(item)
                     }}
                   >
-                    <Trash2 size={14} aria-hidden="true" />
+                    <Trash2 size={12} aria-hidden="true" />
                     Remove worktree
                   </button>
                 ) : null}
@@ -1343,27 +1343,27 @@ export function CodingSidebar({
             <button
               type="button"
               role="menuitem"
-              className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none"
+              className="flex w-full items-center gap-2 rounded-xs px-2 py-1 text-left text-xs hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none"
               onClick={() => {
                 const { session } = desktopSessionActions
                 setDesktopSessionActions(null)
                 handleSessionEdit(session)
               }}
             >
-              <Pencil size={14} aria-hidden="true" />
+              <Pencil size={12} aria-hidden="true" />
               Edit title
             </button>
             <button
               type="button"
               role="menuitem"
-              className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-(--color-error) hover:bg-(--color-error-subtle) focus-visible:bg-(--color-error-subtle) focus-visible:outline-none"
+              className="flex w-full items-center gap-2 rounded-xs px-2 py-1 text-left text-xs text-(--color-error) hover:bg-(--color-error-subtle) focus-visible:bg-(--color-error-subtle) focus-visible:outline-none"
               onClick={() => {
                 const { session } = desktopSessionActions
                 setDesktopSessionActions(null)
                 setDeleteTarget(session)
               }}
             >
-              <Trash2 size={14} aria-hidden="true" />
+              <Trash2 size={12} aria-hidden="true" />
               Delete session
             </button>
           </div>

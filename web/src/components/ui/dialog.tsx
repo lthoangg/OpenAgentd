@@ -158,8 +158,8 @@ function DialogContent({ className, children, showCloseButton = true, ...props }
           'fixed top-1/2 left-1/2 z-50 -translate-x-1/2 -translate-y-1/2',
           'w-full max-w-[calc(100%-2rem)] sm:max-w-sm',
           'max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain',
-          'rounded-xl border border-(--color-border) bg-(--bg-card)',
-          'p-4 text-sm text-(--color-text) shadow-xl outline-none',
+          'rounded-lg border border-(--color-border) bg-(--bg-card)',
+          'p-4 text-sm text-(--color-text) shadow-md outline-none',
           closing
             ? 'animate-out fade-out-0 zoom-out-95 duration-100'
             : 'animate-in fade-in-0 zoom-in-95 duration-100',
@@ -196,7 +196,7 @@ function DialogFooter({ className, showCloseButton = false, children, ...props }
   return (
     <div
       data-slot="dialog-footer"
-      className={cn('-mx-4 -mb-4 flex flex-col-reverse gap-2 rounded-b-xl border-t border-(--color-border) bg-(--bg-key)/50 p-4 sm:flex-row sm:justify-end', className)}
+      className={cn('-mx-4 -mb-4 flex flex-col-reverse gap-2 rounded-b-lg border-t border-(--color-border) bg-(--bg-key)/50 p-4 sm:flex-row sm:justify-end', className)}
       {...props}
     >
       {children}

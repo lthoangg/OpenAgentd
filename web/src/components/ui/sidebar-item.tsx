@@ -60,7 +60,7 @@ export const SidebarItem = memo(function SidebarItem({
       title={title ?? (kbd ? `${label} (${renderKbd(kbd)})` : label)}
       aria-current={active ? 'page' : undefined}
       className={cn(
-        'interactive-weight flex w-full items-center gap-2.5 rounded-lg text-sm transition-colors',
+        'interactive-weight flex w-full items-center gap-2.5 rounded-sm text-sm transition-colors',
         collapsed ? 'h-10 w-10 justify-center px-0 py-0' : 'px-3 py-2',
         active
           ? 'bg-(--bg-key) text-(--color-text) font-medium'
@@ -87,7 +87,7 @@ export const SidebarItem = memo(function SidebarItem({
         (rightSlot !== undefined ? (
           rightSlot
         ) : kbd ? (
-          <kbd className="shrink-0 rounded border border-(--color-border) bg-(--bg-page) px-1 py-0.5 font-mono text-xs text-(--color-text-subtle)">
+          <kbd className="shrink-0 rounded-xs border border-(--color-border) bg-(--bg-page) px-1 py-0.5 font-mono text-[10px] text-(--color-text-subtle)">
             {renderKbd(kbd)}
           </kbd>
         ) : null)}

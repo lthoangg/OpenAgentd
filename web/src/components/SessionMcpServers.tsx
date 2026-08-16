@@ -109,7 +109,6 @@ function ServerRow({
           type="button"
           variant="default"
           size="xs"
-          className="h-7 px-2 text-[10.5px]"
           // Nothing to authorize while the server is off.
           disabled={!server.enabled || busy}
           onClick={() => onConnect(server)}
@@ -209,7 +208,6 @@ export function SessionMcpServers({ agentServers, onServersChanged }: SessionMcp
             type="button"
             variant="default"
             size="xs"
-            className="h-7 px-2 text-[10.5px]"
             onClick={() => refetch()}
           >
             Retry

@@ -254,24 +254,24 @@ const FileRow = memo(function FileRow({
           >
             <button
               type="button" role="menuitem"
-              className="flex w-full items-center gap-2 rounded-xs px-2 py-1.5 text-left hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none"
+              className="flex w-full items-center gap-2 rounded-xs px-2 py-1 text-left text-xs hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none"
               onClick={() => { setActionsPoint(null); onSelect(file) }}
             >
-              <FileText size={14} aria-hidden="true" /> Preview
+              <FileText size={12} aria-hidden="true" /> Preview
             </button>
             <button
               type="button" role="menuitem"
-              className="flex w-full items-center gap-2 rounded-xs px-2 py-1.5 text-left hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none"
+              className="flex w-full items-center gap-2 rounded-xs px-2 py-1 text-left text-xs hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none"
               onClick={() => { setActionsPoint(null); void navigator.clipboard.writeText(file.path) }}
             >
-              <Copy size={14} aria-hidden="true" /> Copy path
+              <Copy size={12} aria-hidden="true" /> Copy path
             </button>
             <button
               type="button" role="menuitem"
-              className="flex w-full items-center gap-2 rounded-xs px-2 py-1.5 text-left hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none"
+              className="flex w-full items-center gap-2 rounded-xs px-2 py-1 text-left text-xs hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none"
               onClick={() => { setActionsPoint(null); void downloadWorkspaceFile(sessionId, file) }}
             >
-              <Download size={14} aria-hidden="true" /> Download
+              <Download size={12} aria-hidden="true" /> Download
             </button>
           </div>
         </div>

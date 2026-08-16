@@ -96,7 +96,7 @@ function DropdownItem({
       tabIndex={-1}
       data-highlighted={highlighted || undefined}
       className={cn(
-        'flex w-full cursor-pointer items-center gap-2 rounded px-2 py-1 text-left text-xs font-medium outline-none',
+        'flex w-full cursor-pointer items-center gap-2 rounded-xs px-2 py-1 text-left text-xs font-medium outline-none',
         'transition-colors hover:bg-(--bg-key) focus-visible:bg-(--bg-key)',
         highlighted && 'bg-(--bg-key)',
         active ? 'text-(--color-text)' : 'text-(--color-text-2)',
@@ -358,7 +358,7 @@ function Dropdown({
           className={cn(
             'fixed z-50 flex flex-col gap-0.5',
             'min-w-[var(--dropdown-anchor-width)]',
-            'rounded border border-(--color-border) bg-(--bg-card)',
+            'rounded-sm border border-(--color-border) bg-(--bg-card)',
             'p-1 shadow-md outline-none',
             'duration-100',
             panelClosing

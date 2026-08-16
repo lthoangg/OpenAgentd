@@ -629,34 +629,34 @@ export function Sidebar({
             <div
               role="menu"
               aria-label={`Actions for ${desktopSessionActions.session.title || 'Untitled'}`}
-              className="fixed min-w-44 rounded-lg border border-(--color-border) bg-(--bg-card) p-1 text-sm text-(--color-text) shadow-xl"
+              className="fixed min-w-44 rounded-sm border border-(--color-border) bg-(--bg-card) p-1 text-xs text-(--color-text) shadow-md"
               style={{ left: desktopSessionActions.x, top: desktopSessionActions.y }}
               onClick={(event) => event.stopPropagation()}
             >
               <button
                 type="button"
                 role="menuitem"
-                className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none"
+                className="flex w-full items-center gap-2 rounded-xs px-2 py-1 text-left text-xs hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none"
                 onClick={() => {
                   const { session } = desktopSessionActions
                   setDesktopSessionActions(null)
                   handleEdit(session)
                 }}
               >
-                <Pencil size={14} aria-hidden="true" />
+                <Pencil size={12} aria-hidden="true" />
                 Edit title
               </button>
               <button
                 type="button"
                 role="menuitem"
-                className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-(--color-error) hover:bg-(--color-error-subtle) focus-visible:bg-(--color-error-subtle) focus-visible:outline-none"
+                className="flex w-full items-center gap-2 rounded-xs px-2 py-1 text-left text-xs text-(--color-error) hover:bg-(--color-error-subtle) focus-visible:bg-(--color-error-subtle) focus-visible:outline-none"
                 onClick={() => {
                   const { session } = desktopSessionActions
                   setDesktopSessionActions(null)
                   setDeleteTarget(session)
                 }}
               >
-                <Trash2 size={14} aria-hidden="true" />
+                <Trash2 size={12} aria-hidden="true" />
                 Delete session
               </button>
             </div>

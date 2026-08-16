@@ -6,6 +6,7 @@
 import { AlertTriangle, Loader2 } from 'lucide-react'
 
 import { AppHeader } from '@/components/AppHeader'
+import { Button } from '@/components/ui/button'
 
 export function PageHeader({
   isFetching,
@@ -68,12 +69,14 @@ export function ErrorState({
             Could not load observability data
           </p>
           <p className="mt-1 text-xs text-(--color-text-muted)">{message}</p>
-          <button
+          <Button
+            type="button"
+            size="sm"
             onClick={onRetry}
-            className="mt-3 rounded-sm border border-(--color-border) bg-(--bg-card) px-2.5 py-1.5 text-xs font-medium text-(--color-text) transition-colors hover:bg-(--bg-key)"
+            className="mt-3"
           >
             Retry
-          </button>
+          </Button>
         </div>
       </div>
     </div>

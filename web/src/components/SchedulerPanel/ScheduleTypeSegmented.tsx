@@ -29,15 +29,11 @@ export function ScheduleTypeSegmented({
             role="tab"
             aria-selected={active}
             onClick={() => onChange(opt.key)}
-            className={
-              // Drop ``flex-1`` — let each button hug its label with
-              // comfortable horizontal padding instead of stretching to
-              // fill the container.
-              'rounded-xs border border-transparent px-2.5 py-1 text-[11px] font-medium transition-colors ' +
-              (active
-                ? 'border border-(--color-border-strong) bg-(--bg-key) text-(--color-text)'
-                : 'text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text-2)')
-            }
+            className={`rounded-xs border px-2.5 py-1 text-[11px] font-medium transition-colors ${
+              active
+                ? 'border-(--color-border-strong) bg-(--bg-key) text-(--color-text)'
+                : 'border-transparent text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text-2)'
+            }`}
           >
             {opt.label}
           </button>

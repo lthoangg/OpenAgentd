@@ -149,8 +149,8 @@ function TooltipContent({ className, side = 'top', children, ...props }: Tooltip
       data-slot="tooltip-content"
       className={cn(
         'pointer-events-none absolute z-50 w-max max-w-xs',
-        'rounded-md px-2.5 py-1.5 text-xs',
-        'bg-(--color-text) text-(--bg-page)',
+        'rounded-sm px-2 py-1 text-[11px]',
+        'bg-(--bg-send) text-(--color-text-on-accent)',
         'shadow-sm',
         'duration-150',
         closing
@@ -166,7 +166,7 @@ function TooltipContent({ className, side = 'top', children, ...props }: Tooltip
       <span
         aria-hidden="true"
         className={cn(
-          'absolute size-[6px] rotate-45 bg-(--color-text)',
+          'absolute size-[6px] rotate-45 bg-(--bg-send)',
           arrowClass,
         )}
       />

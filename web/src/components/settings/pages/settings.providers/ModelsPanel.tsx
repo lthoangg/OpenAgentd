@@ -247,14 +247,14 @@ function ModelRow({
           <div
             role="menu"
             aria-label={`Actions for ${qualifiedId}`}
-            className="fixed min-w-40 rounded-sm border border-(--color-border) bg-(--bg-card) p-1 shadow-lg text-xs text-(--color-text)"
+            className="fixed min-w-40 rounded-sm border border-(--color-border) bg-(--bg-card) p-1 shadow-md text-xs text-(--color-text)"
             style={{ left: actionsPoint.x, top: actionsPoint.y }}
             onClick={(e) => e.stopPropagation()}
           >
             <button
               type="button"
               role="menuitem"
-              className="flex w-full items-center gap-2 rounded-xs px-2 py-1.5 text-left hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none"
+              className="flex w-full items-center gap-2 rounded-xs px-2 py-1 text-left text-xs hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none"
               onClick={() => { setActionsPoint(null); void onCopy(qualifiedId) }}
             >
               <Copy size={12} aria-hidden="true" />

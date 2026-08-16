@@ -272,14 +272,14 @@ function renderGraphPrefix(prefix: string) {
     }
     if (char === '|') {
       return (
-        <span key={index} className="text-slate-400 dark:text-slate-500 opacity-60 font-mono">
+        <span key={index} className="text-(--color-text-subtle) opacity-60 font-mono">
           |
         </span>
       )
     }
     if (char === '/' || char === '\\' || char === '_') {
       return (
-        <span key={index} className="text-slate-500 dark:text-slate-400 opacity-85 font-mono">
+        <span key={index} className="text-(--color-text-muted) opacity-85 font-mono">
           {char}
         </span>
       )
@@ -1501,7 +1501,7 @@ export function CodingWorkspacePanel({
           <div
             role="menu"
             aria-label="Commit actions"
-            className="fixed min-w-48 rounded border border-(--color-border) bg-(--bg-card) p-1 text-xs text-(--color-text) shadow-md"
+            className="fixed min-w-48 rounded-sm border border-(--color-border) bg-(--bg-card) p-1 text-xs text-(--color-text) shadow-md"
             style={{
               left: Math.min(desktopCommitActions.x, window.innerWidth - 200 - 8),
               top: Math.min(desktopCommitActions.y, window.innerHeight - 180 - 8)
@@ -1512,7 +1512,7 @@ export function CodingWorkspacePanel({
               <button
                 type="button"
                 role="menuitem"
-                className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-(--color-error) hover:bg-(--color-error)/10 focus-visible:bg-(--color-error)/10 focus-visible:outline-none cursor-pointer"
+                className="flex w-full items-center gap-2 rounded-xs px-2 py-1 text-left text-xs text-(--color-error) hover:bg-(--color-error-subtle) focus-visible:bg-(--color-error-subtle) focus-visible:outline-none cursor-pointer"
                 disabled={gitActionPending}
                 onClick={() => void handleUndoCommit()}
               >
@@ -1523,7 +1523,7 @@ export function CodingWorkspacePanel({
             <button
               type="button"
               role="menuitem"
-              className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none cursor-pointer"
+              className="flex w-full items-center gap-2 rounded-xs px-2 py-1 text-left text-xs hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none cursor-pointer"
               disabled={gitActionPending}
               onClick={() => void handleRevertCommit(desktopCommitActions.sha, desktopCommitActions.shortSha)}
             >
@@ -1534,7 +1534,7 @@ export function CodingWorkspacePanel({
             <button
               type="button"
               role="menuitem"
-              className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none cursor-pointer"
+              className="flex w-full items-center gap-2 rounded-xs px-2 py-1 text-left text-xs hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none cursor-pointer"
               onClick={() => {
                 const c = desktopCommitActions
                 setDesktopCommitActions(null)
@@ -1548,7 +1548,7 @@ export function CodingWorkspacePanel({
             <button
               type="button"
               role="menuitem"
-              className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none cursor-pointer"
+              className="flex w-full items-center gap-2 rounded-xs px-2 py-1 text-left text-xs hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none cursor-pointer"
               onClick={() => {
                 const c = desktopCommitActions
                 setDesktopCommitActions(null)
@@ -1562,7 +1562,7 @@ export function CodingWorkspacePanel({
             <button
               type="button"
               role="menuitem"
-              className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none cursor-pointer"
+              className="flex w-full items-center gap-2 rounded-xs px-2 py-1 text-left text-xs hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none cursor-pointer"
               onClick={() => {
                 const c = desktopCommitActions
                 setDesktopCommitActions(null)
@@ -1589,7 +1589,7 @@ export function CodingWorkspacePanel({
           <div
             role="menu"
             aria-label="File actions"
-            className="fixed min-w-48 rounded border border-(--color-border) bg-(--bg-card) p-1 text-xs text-(--color-text) shadow-md"
+            className="fixed min-w-48 rounded-sm border border-(--color-border) bg-(--bg-card) p-1 text-xs text-(--color-text) shadow-md"
             style={{
               left: Math.min(desktopFileActions.x, window.innerWidth - 200 - 8),
               top: Math.min(desktopFileActions.y, window.innerHeight - 150 - 8)
@@ -1600,7 +1600,7 @@ export function CodingWorkspacePanel({
               <button
                 type="button"
                 role="menuitem"
-                className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none cursor-pointer"
+                className="flex w-full items-center gap-2 rounded-xs px-2 py-1 text-left text-xs hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none cursor-pointer"
                 onClick={() => {
                   const f = desktopFileActions.file
                   setDesktopFileActions(null)
@@ -1618,7 +1618,7 @@ export function CodingWorkspacePanel({
             <button
               type="button"
               role="menuitem"
-              className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none cursor-pointer"
+              className="flex w-full items-center gap-2 rounded-xs px-2 py-1 text-left text-xs hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none cursor-pointer"
               onClick={() => {
                 const f = desktopFileActions.file
                 setDesktopFileActions(null)
@@ -1633,7 +1633,7 @@ export function CodingWorkspacePanel({
             <button
               type="button"
               role="menuitem"
-              className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-(--color-error) hover:bg-(--color-error)/10 focus-visible:bg-(--color-error)/10 focus-visible:outline-none cursor-pointer"
+              className="flex w-full items-center gap-2 rounded-xs px-2 py-1 text-left text-xs text-(--color-error) hover:bg-(--color-error-subtle) focus-visible:bg-(--color-error-subtle) focus-visible:outline-none cursor-pointer"
               onClick={() => {
                 const f = desktopFileActions.file
                 setDesktopFileActions(null)

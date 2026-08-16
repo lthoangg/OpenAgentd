@@ -200,7 +200,7 @@ export function TaskListItem({
         <div
           role="menu"
           aria-label={`Actions for ${task.name}`}
-          className="fixed min-w-44 rounded-sm border border-(--color-border) bg-(--bg-card) p-1 text-sm text-(--color-text) shadow-xl"
+          className="fixed min-w-44 rounded-sm border border-(--color-border) bg-(--bg-card) p-1 text-xs text-(--color-text) shadow-md"
           style={{ left: actionsPoint.x, top: actionsPoint.y }}
           onClick={(event) => event.stopPropagation()}
         >
@@ -213,7 +213,7 @@ export function TaskListItem({
               triggerTask()
             }}
           >
-            <Zap size={14} aria-hidden="true" />
+            <Zap size={12} aria-hidden="true" />
             Trigger now
           </button>
           <button
@@ -225,7 +225,7 @@ export function TaskListItem({
               togglePaused()
             }}
           >
-            {task.status === 'paused' ? <Play size={14} aria-hidden="true" /> : <Pause size={14} aria-hidden="true" />}
+            {task.status === 'paused' ? <Play size={12} aria-hidden="true" /> : <Pause size={12} aria-hidden="true" />}
             {task.status === 'paused' ? 'Resume' : 'Pause'}
           </button>
           <button
@@ -237,7 +237,7 @@ export function TaskListItem({
               setDeleteConfirmationOpen(true)
             }}
           >
-            <Trash2 size={14} aria-hidden="true" />
+            <Trash2 size={12} aria-hidden="true" />
             Delete task
           </button>
         </div>

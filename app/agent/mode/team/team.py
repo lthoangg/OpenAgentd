@@ -568,11 +568,22 @@ class AgentTeam:
                 return False
             await db.commit()
 
-        try:
-            await stream_store.init_turn(session_id, keep_subscribers=True)
-        except Exception as exc:
-            logger.warning("team_init_queued_turn_failed error={}", exc)
-            return False
+        # Starting a fresh turn blob is only correct when the *whole* team is
+        # idle. When the lead finished but delegated members are still
+        # streaming, this same function is called from the route's lead-idle
+        # queue branch and from ``_try_activate_queued_after_lead_turn``.
+        # Resetting the shared stream state there would wipe those members'
+        # accumulated replay state (tool calls, content, and their
+        # ``working`` agent_status), which makes their tool cards vanish and
+        # drops the working status on the next reconnect. Keep the existing
+        # turn blob in that case and let the new lead turn append to it.
+        any_agent_still_streaming = any(is_busy(m.state) for m in self.all_members)
+        if not any_agent_still_streaming:
+            try:
+                await stream_store.init_turn(session_id, keep_subscribers=True)
+            except Exception as exc:
+                logger.warning("team_init_queued_turn_failed error={}", exc)
+                return False
 
         message_ids = [str(row.id) for row in queued]
         await stream_store.push_event(

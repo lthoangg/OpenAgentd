@@ -22,7 +22,7 @@ function SectionCard({ className, ...props }: ComponentPropsWithRef<'div'>) {
   return (
     <div
       className={cn(
-        'overflow-hidden rounded border border-(--color-border) bg-(--bg-card)',
+        'overflow-hidden rounded-sm border border-(--color-border) bg-(--bg-card)',
         className,
       )}
       {...props}
@@ -38,7 +38,7 @@ function SectionCardHeader({ className, ...props }: ComponentPropsWithRef<'div'>
       className={cn(
         'border-b border-(--color-border)/60 bg-(--bg-key)/30',
         'px-3 py-1.5',
-        'text-[10.5px] font-semibold uppercase tracking-wider text-(--color-text-muted)',
+        'text-[11px] font-semibold uppercase tracking-wider text-(--color-text-muted)',
         'select-none',
         className,
       )}
@@ -79,9 +79,9 @@ function SectionCardBadge({ className, ...props }: ComponentPropsWithRef<'span'>
   return (
     <span
       className={cn(
-        'shrink-0 select-none rounded border border-(--color-border)',
+        'shrink-0 select-none rounded-xs border border-(--color-border)',
         'bg-(--bg-key) px-1.5 py-0.5',
-        'text-[9px] font-semibold text-(--color-text-muted)',
+        'text-[11px] font-semibold text-(--color-text-muted)',
         className,
       )}
       {...props}

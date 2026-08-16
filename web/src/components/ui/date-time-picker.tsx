@@ -15,7 +15,7 @@ import { format, parse, isValid } from 'date-fns'
 import { CalendarIcon } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
-import { buttonVariants } from '@/components/ui/button'
+import { Button, buttonVariants } from '@/components/ui/button'
 import { Calendar } from '@/components/ui/calendar'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 
@@ -71,7 +71,7 @@ function TimeUnit({
       onChange={handleChange}
       onKeyDown={handleKey}
       aria-label={label}
-      className="h-9 w-12 rounded-[8px] border border-(--color-border) bg-(--bg-page) text-center text-sm tabular-nums text-(--color-text) focus:outline-none focus:ring-2 focus:ring-(--focus-ring)/25"
+      className="h-9 w-12 rounded-sm border border-(--color-border) bg-(--bg-page) text-center text-sm tabular-nums text-(--color-text) focus:outline-none focus:ring-2 focus:ring-(--focus-ring)/25"
     />
   )
 }
@@ -131,7 +131,7 @@ export function DateTimePicker({
           aria-describedby={ariaDescribedBy}
           className={cn(
             buttonVariants({ variant: 'default' }),
-            'h-9 w-full justify-start gap-2 rounded-[10px] border border-(--color-border) bg-(--bg-page) px-3 text-sm font-normal text-(--color-text) hover:border-(--color-border-strong) hover:bg-(--bg-key)',
+            'h-9 w-full justify-start gap-2 rounded-md border border-(--color-border) bg-(--bg-page) px-3 text-sm font-normal text-(--color-text) hover:border-(--color-border-strong) hover:bg-(--bg-key)',
             !parsed && 'text-(--color-text-muted)',
             triggerClassName,
           )}
@@ -158,13 +158,14 @@ export function DateTimePicker({
               <TimeUnit value={minutes} min={0} max={59} label="Minutes" onChange={handleMinutes} />
             </div>
 
-            <button
+            <Button
               type="button"
+              size="sm"
+              variant="primary"
               onClick={() => setOpen(false)}
-              className="rounded-[8px] bg-(--color-accent) px-3 py-1.5 text-xs font-medium text-(--color-text-on-accent) transition-opacity hover:opacity-90"
             >
               Done
-            </button>
+            </Button>
           </div>
         </PopoverContent>
       </Popover>

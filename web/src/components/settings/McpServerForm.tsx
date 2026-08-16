@@ -292,7 +292,7 @@ function SegmentedControl({
             onClick={() => onChange(opt.value)}
             className={cn(
               // Base
-              'h-full flex-1 rounded-[3px] px-3 text-xs font-medium',
+              'h-full flex-1 rounded-xs px-3 text-xs font-medium',
               'transition-all duration-150 select-none',
               'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40',
               // Active segment — lifts off the track

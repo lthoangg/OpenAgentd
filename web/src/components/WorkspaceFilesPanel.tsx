@@ -47,6 +47,7 @@ import { formatBytes } from '@/utils/format'
 import { ImageLightbox } from './ImageLightbox'
 import { isVideoSrc } from '@/utils/workspace'
 import { EmptyState } from '@/components/ui/empty-state'
+import { buttonVariants } from '@/components/ui/button'
 import type { WorkspaceFileInfo } from '@/api/types'
 import { DURATIONS_S, EASINGS } from '@/lib/motion'
 
@@ -510,16 +511,16 @@ function BinaryPreview({ sessionId, file }: { sessionId: string; file: Workspace
           href={url}
           target="_blank"
           rel="noopener noreferrer"
-          className="flex items-center gap-1.5 rounded-sm border border-(--color-border-strong) bg-(--bg-key) px-2.5 py-1.5 text-xs text-(--color-accent) transition-colors hover:bg-(--bg-key)/70"
+          className={buttonVariants({ variant: 'primary', size: 'sm' })}
         >
-          <ExternalLink size={12} /> Open in new tab
+          <ExternalLink size={13} /> Open in new tab
         </a>
         <DownloadWorkspaceFileButton
           sessionId={sessionId}
           file={file}
-          className="flex items-center gap-1.5 rounded-sm border border-(--color-border) bg-(--bg-card) px-2.5 py-1.5 text-xs text-(--color-text-2) transition-colors hover:border-(--color-border-strong)"
+          className={buttonVariants({ variant: 'default', size: 'sm' })}
         >
-          <Download size={12} /> Download
+          <Download size={13} /> Download
         </DownloadWorkspaceFileButton>
       </div>
     </div>

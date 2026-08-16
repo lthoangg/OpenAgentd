@@ -229,7 +229,7 @@ function ReleaseNotesButton({ fallbackNotes, version }: { fallbackNotes?: string
         <DialogContent
           showCloseButton={false}
           aria-label="Release notes"
-          className="z-60 w-full max-w-lg overflow-hidden rounded-xl border border-(--color-border) bg-(--bg-card) p-0 text-(--color-text) shadow-xl"
+          className="z-60 w-full max-w-lg overflow-hidden rounded-lg border border-(--color-border) bg-(--bg-card) p-0 text-(--color-text) shadow-md"
         >
           <DialogHeader className="flex-row items-center justify-between gap-3 border-b border-(--color-border) px-4 py-3">
             <DialogTitle className="text-sm font-semibold">Release notes</DialogTitle>

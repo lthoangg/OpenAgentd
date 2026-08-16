@@ -79,11 +79,11 @@ function SingleFileDiff({ path, kind, moveTo, lines, oldStart = 1, newStart = 1,
           }
           setExpanded(!expanded)
         }}
-        className="flex w-full shrink-0 items-center gap-2 border-b border-(--color-border) bg-(--bg-sidebar) px-3 py-1.5 text-left font-mono text-xs font-semibold text-(--color-text-2) shadow-sm transition-colors hover:text-(--color-text) focus-visible:outline-2 focus-visible:outline-(--focus-ring)/40"
+        className="flex w-full shrink-0 items-center gap-1.5 border-b border-(--color-border) bg-(--bg-sidebar) px-2.5 py-1 text-left font-mono text-[11px] font-semibold text-(--color-text-2) transition-colors hover:text-(--color-text) focus-visible:outline-2 focus-visible:outline-(--focus-ring)/40"
         aria-expanded={expanded}
         aria-label={`${expanded ? 'Collapse' : 'Expand'} diff for ${path}`}
       >
-        <Icon size={13} className={`${iconColor} shrink-0`} />
+        <Icon size={12} className={`${iconColor} shrink-0`} />
         <span className="truncate" title={path}>{path}</span>
         {moveTo && (
           <>
@@ -97,11 +97,11 @@ function SingleFileDiff({ path, kind, moveTo, lines, oldStart = 1, newStart = 1,
             {deletions > 0 && <span className="text-[var(--color-diff-del-text)]">-{deletions}</span>}
           </span>
         )}
-        <span className={`rounded px-1.5 py-0.5 text-[9px] font-semibold tracking-wide uppercase select-none ${badgeClass} ${additions === 0 && deletions === 0 ? 'ml-auto' : ''}`}>
+        <span className={`rounded px-1 py-px text-[9px] font-semibold tracking-wide uppercase select-none ${badgeClass} ${additions === 0 && deletions === 0 ? 'ml-auto' : ''}`}>
           {badgeLabel}
         </span>
         <ChevronRight
-          size={13}
+          size={12}
           className={`shrink-0 text-(--color-text-muted) transition-transform duration-(--motion-fast) ease-(--ease-out) ${expanded ? 'rotate-90' : ''}`}
           aria-hidden
         />

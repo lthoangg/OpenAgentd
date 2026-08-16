@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import fnmatch
 import os
+import re
 from pathlib import Path, PurePosixPath
 from typing import Literal
 
@@ -145,7 +146,90 @@ def _validate_pattern(pattern: str) -> None:
         )
 
 
-def _visible_files(root: Path, rules: list[tuple[str, bool]]) -> list[tuple[str, Path]]:
+def _explicitly_named_noise_dirs(patterns: list[str]) -> frozenset[str]:
+    """Generated-directory names the caller wrote literally into the pattern.
+
+    Pruning ``node_modules`` out of ``**/*.ts`` is what makes this tool usable
+    at all. Pruning it out of ``web/node_modules/@scope/pkg/**`` answers a
+    question nobody asked: reading a dependency's own source is legitimate,
+    and the silent refusal was indistinguishable from "no such file".
+    A literal path segment is an explicit request, so honour it.
+    """
+    return frozenset(
+        segment
+        for pattern in patterns
+        for segment in PurePosixPath(pattern).parts
+        if segment in NOISE_DIR_NAMES
+    )
+
+
+_WILDCARD_RE = re.compile(r"[*?\[\]]")
+
+
+def _literal_dir_prefix(pattern: str) -> PurePosixPath:
+    """Leading wildcard-free directories of *pattern*.
+
+    Nothing outside this prefix can match, so the walk can start there rather
+    than at the search root. That is the difference between enumerating a whole
+    repository and enumerating one package directory — the reason
+    ``web/node_modules/@scope/pkg/**`` took 10s.
+    """
+    parts = PurePosixPath(pattern).parts
+    literal: list[str] = []
+    for segment in parts:
+        if _WILDCARD_RE.search(segment):
+            break
+        literal.append(segment)
+    else:
+        # No wildcard anywhere, so the last segment is the filename itself.
+        literal = literal[:-1]
+    return PurePosixPath(*literal)
+
+
+def _shared_prefix(prefixes: list[PurePosixPath]) -> PurePosixPath:
+    """Deepest directory common to every brace variant."""
+    if not prefixes:
+        return PurePosixPath()
+    common = prefixes[0].parts
+    for prefix in prefixes[1:]:
+        parts = prefix.parts
+        limit = min(len(common), len(parts))
+        index = 0
+        while index < limit and common[index] == parts[index]:
+            index += 1
+        common = common[:index]
+        if not common:
+            break
+    return PurePosixPath(*common)
+
+
+def _prefix_is_reachable(
+    prefix: PurePosixPath,
+    rules: list[tuple[str, bool]],
+    allowed_noise: frozenset[str],
+) -> bool:
+    """True when every directory on the way down to ``prefix`` is visible.
+
+    A walk that starts at the prefix never visits its ancestors, so the prune
+    and ``.gitignore`` rules those ancestors would have triggered have to be
+    applied here instead — otherwise ``build/**/*.js`` starts reporting files
+    from an ignored ``build/``.
+    """
+    parts = prefix.parts
+    for index, name in enumerate(parts):
+        if name in NOISE_DIR_NAMES and name not in allowed_noise:
+            return False
+        if is_gitignored("/".join(parts[: index + 1]), is_dir=True, rules=rules):
+            return False
+    return True
+
+
+def _visible_files(
+    root: Path,
+    rules: list[tuple[str, bool]],
+    allowed_noise: frozenset[str] = frozenset(),
+    rel_base: Path | None = None,
+) -> list[tuple[str, Path]]:
     """Every file under ``root`` this tool may report, as ``(rel_posix, path)``.
 
     Pruning happens *during* traversal, which is the whole point of not using
@@ -155,16 +239,25 @@ def _visible_files(root: Path, rules: list[tuple[str, bool]]) -> list[tuple[str,
 
     Directories are visited with ordinary names before dot-prefixed ones so the
     natural traversal order already approximates :func:`_rank`.
+
+    ``allowed_noise`` names generated directories the caller asked for by name;
+    those are walked instead of pruned.
+
+    ``rel_base`` is what returned paths are relative to. It differs from
+    ``root`` when the walk is anchored at a pattern's literal prefix: the
+    ``.gitignore`` rules were loaded relative to the search root, so reporting
+    paths relative to anything else would silently stop matching them.
     """
+    base = rel_base or root
     found: list[tuple[str, Path]] = []
     for dirpath, dirnames, filenames in os.walk(root):
         current = Path(dirpath)
-        rel_dir = current.relative_to(root)
+        rel_dir = current.relative_to(base)
         dirnames[:] = sorted(
             (
                 name
                 for name in dirnames
-                if name not in NOISE_DIR_NAMES
+                if (name not in NOISE_DIR_NAMES or name in allowed_noise)
                 and not is_gitignored(
                     (rel_dir / name).as_posix(), is_dir=True, rules=rules
                 )
@@ -197,6 +290,9 @@ async def _glob_files(
     gitignore_rules = load_gitignore_rules(resolved)
 
     variants = expand_braces(pattern)
+    # ``.git`` stays pruned regardless: it is an implementation detail of the
+    # repository, not source the caller can act on, and walking it is slow.
+    allowed_noise = _explicitly_named_noise_dirs(variants) - {".git"}
 
     def _select(
         candidates: list[tuple[str, Path]], patterns: list[str]
@@ -249,7 +345,23 @@ async def _glob_files(
         )
 
     def _scan() -> tuple[list[str], list[str]]:
-        candidates = _visible_files(resolved, gitignore_rules)
+        # Only files under the pattern's literal prefix can match, so start the
+        # walk there. ``match='name'`` compares basenames and has no anchor, and
+        # a separator-free pattern may be widened below, so both keep the root.
+        prefix = PurePosixPath()
+        if match == "path":
+            prefix = _shared_prefix([_literal_dir_prefix(p) for p in variants])
+        walk_root = resolved / prefix if prefix.parts else resolved
+        if prefix.parts and not _prefix_is_reachable(
+            prefix, gitignore_rules, allowed_noise
+        ):
+            return [], []
+        if not walk_root.is_dir():
+            return [], []
+
+        candidates = _visible_files(
+            walk_root, gitignore_rules, allowed_noise, rel_base=resolved
+        )
         matched = _select(candidates, variants)
 
         # A pattern with no separator only matches the top level, so `*title*`

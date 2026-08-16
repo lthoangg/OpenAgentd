@@ -772,3 +772,64 @@ class TestGlobFiles:
         assert "cache.txt" not in result
         assert "ruff" not in result
         assert ".pytest_cache" not in result
+
+    async def test_glob_honours_an_explicitly_named_generated_dir(self, workspace):
+        """Naming a pruned directory in the pattern is an explicit request.
+
+        Reading a dependency's own source is legitimate. Production shows
+        models asking for `web/node_modules/@scope/pkg/**/*` and being told
+        "No files matching" while the files sat right there — a refusal
+        that reads exactly like "it does not exist".
+        """
+        pkg = workspace / "node_modules" / "@scope" / "pkg"
+        pkg.mkdir(parents=True)
+        (pkg / "index.d.ts").write_text("export {}\n")
+
+        result = await glob_files.arun(
+            pattern="node_modules/@scope/pkg/**/*", directory="."
+        )
+        assert "index.d.ts" in result
+
+    async def test_glob_honours_a_generated_dir_named_mid_pattern(self, workspace):
+        """The literal segment can sit behind a wildcard, as in `**/node_modules/**`."""
+        pkg = workspace / "web" / "node_modules" / "pkg"
+        pkg.mkdir(parents=True)
+        (pkg / "types.d.ts").write_text("export {}\n")
+
+        result = await glob_files.arun(
+            pattern="**/node_modules/**/*.d.ts", directory="."
+        )
+        assert "types.d.ts" in result
+
+    async def test_glob_anchored_pattern_still_honours_gitignore_below_it(
+        self, workspace
+    ):
+        """Anchoring the walk must not skip .gitignore rules inside the subtree.
+
+        The rules are relative to the search root, so a walk that starts deeper
+        has to keep reporting paths relative to that root or every anchored
+        pattern quietly stops honouring .gitignore.
+        """
+        (workspace / ".gitignore").write_text("src/generated/\n", encoding="utf-8")
+        (workspace / "src" / "generated").mkdir(parents=True)
+        (workspace / "src" / "generated" / "bundle.py").write_text("x")
+        (workspace / "src" / "real.py").write_text("y")
+
+        result = await glob_files.arun(pattern="src/**/*.py", directory=".")
+        assert "real.py" in result
+        assert "bundle.py" not in result
+
+    async def test_glob_anchored_pattern_still_honours_an_ignored_ancestor(
+        self, workspace
+    ):
+        """Pointing a pattern straight into an ignored directory must stay empty.
+
+        A walk rooted at the pattern's literal prefix never visits the ignored
+        ancestor, so the rule has to be checked on the way down.
+        """
+        (workspace / ".gitignore").write_text("build/\n", encoding="utf-8")
+        (workspace / "build" / "out").mkdir(parents=True)
+        (workspace / "build" / "out" / "app.js").write_text("x")
+
+        result = await glob_files.arun(pattern="build/**/*.js", directory=".")
+        assert "app.js" not in result

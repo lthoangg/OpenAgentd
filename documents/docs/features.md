@@ -831,7 +831,11 @@ MCP.
   and caches are searchable, `.env`-style secrets stay excluded, and `glob`
   understands `{ts,tsx}` brace patterns, finds bare patterns at any depth, and
   names the directory when a pattern matched one instead of dead-ending
-  `[v1.131.3]`.
+  `[v1.131.3]`. Naming a generated directory in the pattern itself
+  (`web/node_modules/@scope/pkg/**`) is treated as an explicit request and
+  searched rather than silently pruned, and an anchored pattern walks only its
+  own subtree — 2.6x–50x faster, and 35x on a pattern pointing into a
+  dependency `[v1.134.0]`.
 
 ---
 

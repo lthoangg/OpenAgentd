@@ -278,7 +278,16 @@ def get_model_metadata(model_id: str | None) -> ModelMetadata:
     """Return metadata for a fully-qualified ``provider:model`` string."""
     if not model_id:
         return _DEFAULT
-    return _registry().get(model_id.lower(), _DEFAULT)
+    lowered = model_id.lower()
+    reg = _registry()
+    if lowered in reg:
+        return reg[lowered]
+    if ":" not in lowered:
+        suffix = f":{lowered}"
+        for key, meta in reg.items():
+            if key.endswith(suffix):
+                return meta
+    return _DEFAULT
 
 
 def get_model_limits(model_id: str | None) -> ModelLimits:

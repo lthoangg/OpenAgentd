@@ -548,7 +548,14 @@ async function loadSessionImpl(
         // when a reconnecting client missed the whole resumed turn.
         const leadVisibleMsgs = messagesBeforeRevert(history.lead)
         const leadUsage = sumUsageFromMessages(leadVisibleMsgs)
-        leadStream.usage = leadUsage
+        if (!leadHadNewerActivity) {
+          leadStream.usage = leadUsage
+        } else {
+          leadStream.usage.completionTokens = Math.max(leadStream.usage.completionTokens, leadUsage.completionTokens)
+          leadStream.usage.estimatedCostUsd = Math.round(Math.max(leadStream.usage.estimatedCostUsd ?? 0, leadUsage.estimatedCostUsd ?? 0) * 1e8) / 1e8
+          leadStream.usage.promptTokens = leadStream.usage.promptTokens || leadUsage.promptTokens
+          leadStream.usage.totalTokens = leadStream.usage.promptTokens + leadStream.usage.completionTokens
+        }
       }
 
       const queued = queuedMessagesFromHistory(sessionId, history.lead.messages)
@@ -596,7 +603,14 @@ async function loadSessionImpl(
         }
         const memberVisibleMsgs = messagesBeforeTime(member.messages, leadRevertTime)
         const memberUsage = sumUsageFromMessages(memberVisibleMsgs)
-        memberStream.usage = memberUsage
+        if (!memberHadNewerActivity) {
+          memberStream.usage = memberUsage
+        } else {
+          memberStream.usage.completionTokens = Math.max(memberStream.usage.completionTokens, memberUsage.completionTokens)
+          memberStream.usage.estimatedCostUsd = Math.round(Math.max(memberStream.usage.estimatedCostUsd ?? 0, memberUsage.estimatedCostUsd ?? 0) * 1e8) / 1e8
+          memberStream.usage.promptTokens = memberStream.usage.promptTokens || memberUsage.promptTokens
+          memberStream.usage.totalTokens = memberStream.usage.promptTokens + memberStream.usage.completionTokens
+        }
       })
 
       if (!draft.activeAgent || !allNames.includes(draft.activeAgent)) {
@@ -937,12 +951,20 @@ export const createSessionSlice: StateCreator<
           const filtered = messagesBeforeTime(history.lead.messages, _leadRevertTime)
           const older = parseTeamBlocks(filtered)
           draft.agentStreams[leadName].blocks = [...older, ...draft.agentStreams[leadName].blocks]
+          const olderUsage = sumUsageFromMessages(filtered)
+          draft.agentStreams[leadName].usage.completionTokens += olderUsage.completionTokens
+          draft.agentStreams[leadName].usage.estimatedCostUsd = Math.round(((draft.agentStreams[leadName].usage.estimatedCostUsd ?? 0) + (olderUsage.estimatedCostUsd ?? 0)) * 1e8) / 1e8
+          draft.agentStreams[leadName].usage.totalTokens = draft.agentStreams[leadName].usage.promptTokens + draft.agentStreams[leadName].usage.completionTokens
         }
         history.members.forEach((member) => {
           if (draft.agentStreams[member.name]) {
             const filtered = messagesBeforeTime(member.messages, _leadRevertTime)
             const older = parseTeamBlocks(filtered)
             draft.agentStreams[member.name].blocks = [...older, ...draft.agentStreams[member.name].blocks]
+            const olderUsage = sumUsageFromMessages(filtered)
+            draft.agentStreams[member.name].usage.completionTokens += olderUsage.completionTokens
+            draft.agentStreams[member.name].usage.estimatedCostUsd = Math.round(((draft.agentStreams[member.name].usage.estimatedCostUsd ?? 0) + (olderUsage.estimatedCostUsd ?? 0)) * 1e8) / 1e8
+            draft.agentStreams[member.name].usage.totalTokens = draft.agentStreams[member.name].usage.promptTokens + draft.agentStreams[member.name].usage.completionTokens
           }
         })
       })

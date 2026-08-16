@@ -93,12 +93,13 @@ export function sumUsageFromMessages(msgs: MessageResponse[]): AgentUsage {
   let lastCache = 0
   for (const msg of sortMessages(msgs)) {
     if (msg.role !== 'assistant') continue
-    const extra = msg.extra as { usage?: { input?: number; output?: number; cache?: number; cost?: { estimated_usd?: number } } } | null
+    const extra = msg.extra as { usage?: { input?: number; output?: number; cache?: number; cost?: { estimated_usd?: number }; estimated_cost_usd?: number }; estimated_cost_usd?: number } | null
     if (!extra?.usage) continue
     const i = extra.usage.input ?? 0
     const o = extra.usage.output ?? 0
+    const costUsd = extra.usage.cost?.estimated_usd ?? extra.usage.estimated_cost_usd ?? extra.estimated_cost_usd ?? 0
     acc.completionTokens += o
-    acc.estimatedCostUsd = Math.round((acc.estimatedCostUsd + (extra.usage.cost?.estimated_usd ?? 0)) * 1e8) / 1e8
+    acc.estimatedCostUsd = Math.round((acc.estimatedCostUsd + costUsd) * 1e8) / 1e8
     lastInput = i
     lastCache = extra.usage.cache ?? 0
   }

@@ -49,8 +49,8 @@ from __future__ import annotations
 import contextvars
 import fnmatch
 import os
+import re
 import shlex
-import stat as stat_module
 from pathlib import Path
 
 from loguru import logger
@@ -137,6 +137,9 @@ class DeniedPathsConfig:
                 logger.warning("denied_paths_patterns_load_failed err={}", exc)
                 denied_patterns = []
         self.denied_patterns: list[str] = list(denied_patterns)
+        self._compiled_patterns: tuple[tuple[str, re.Pattern[str]], ...] = tuple(
+            (pat, re.compile(fnmatch.translate(pat))) for pat in self.denied_patterns
+        )
         # Populated on first use by ``_shielded_denied_roots``.
         self._shielded_roots_cache: tuple[tuple[Path, tuple[Path, ...]], ...] | None = (
             None
@@ -170,8 +173,8 @@ class DeniedPathsConfig:
             if _path_is_under(resolved, denied):
                 return denied
         resolved_str = str(resolved)
-        for pattern in self.denied_patterns:
-            if fnmatch.fnmatchcase(resolved_str, pattern):
+        for pattern, rx in self._compiled_patterns:
+            if rx.match(resolved_str):
                 return pattern
         return None
 
@@ -215,36 +218,6 @@ class DeniedPathsConfig:
 
         p = Path(path)
         candidate = p if p.is_absolute() else self.workspace_root / p
-
-        # Walk every component looking for symlinks BEFORE resolve() follows them.
-        check = candidate
-        while True:
-            try:
-                st = os.lstat(check)
-                if stat_module.S_ISLNK(st.st_mode):
-                    target = Path(os.readlink(check))
-                    if not target.is_absolute():
-                        target = check.parent / target
-                    target_resolved = target.resolve()
-                    denied = self._is_denied(target_resolved)
-                    if denied is not None:
-                        logger.warning(
-                            "path_symlink_to_denied path={} target={} denied_root={}",
-                            candidate,
-                            target_resolved,
-                            denied,
-                        )
-                        raise PermissionError(
-                            f"Symlink target is inside a denied root: "
-                            f"{candidate} -> {target_resolved} (denied: {denied})"
-                        )
-            except (FileNotFoundError, NotADirectoryError):
-                pass
-            parent = check.parent
-            if parent == check:
-                break
-            check = parent
-
         resolved = candidate.resolve()
 
         denied = self._is_denied(resolved)
@@ -339,11 +312,7 @@ SandboxConfig = DeniedPathsConfig
 
 def _path_is_under(path: Path, parent: Path) -> bool:
     """Return True if *path* equals *parent* or lives inside it."""
-    try:
-        path.relative_to(parent)
-        return True
-    except ValueError:
-        return False
+    return path.is_relative_to(parent)
 
 
 def _allowed_internal_roots(session_id: str | None) -> tuple[Path, ...]:

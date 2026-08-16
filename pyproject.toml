@@ -80,6 +80,7 @@ dependencies = [
     # support (or the mocking layer is replaced).
     "httpx2>=2.5.0",
     "orjson>=3.10.0",
+    "pathspec>=1.1.1",
 ]
 
 [project.optional-dependencies]

@@ -184,6 +184,7 @@ async def _grep_files(
         hits: list[str] = []
         for root, dirs, files in os.walk(resolved):
             current = Path(root)
+            rel_dir = current.relative_to(resolved).as_posix()
             # Dot-prefixed entries are searched: `.github/workflows`,
             # `.openagentd/skills` and `.eslintrc.json` are things users ask
             # about. Only generated trees (`.git`, caches, dependencies) are
@@ -193,7 +194,7 @@ async def _grep_files(
                 for d in dirs
                 if d not in NOISE_DIR_NAMES
                 and not is_gitignored(
-                    (current / d).relative_to(resolved).as_posix(),
+                    f"{rel_dir}/{d}" if rel_dir != "." else d,
                     is_dir=True,
                     rules=gitignore_rules,
                 )
@@ -201,10 +202,10 @@ async def _grep_files(
             for fname in files:
                 if not fnmatch.fnmatch(fname, include):
                     continue
-                fpath = current / fname
-                rel = fpath.relative_to(resolved).as_posix()
+                rel = f"{rel_dir}/{fname}" if rel_dir != "." else fname
                 if is_gitignored(rel, is_dir=False, rules=gitignore_rules):
                     continue
+                fpath = current / fname
                 # Secrets stay secret: with dotfiles in scope, the sandbox
                 # denylist is the only thing standing between `**/.env` and the
                 # model's context.

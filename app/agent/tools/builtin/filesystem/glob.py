@@ -7,7 +7,8 @@ import fnmatch
 import os
 import re
 from pathlib import Path, PurePosixPath
-from typing import Literal
+import pathlib
+from typing import Callable, Literal
 
 from pydantic import BaseModel, Field
 
@@ -146,6 +147,17 @@ def _validate_pattern(pattern: str) -> None:
         )
 
 
+def _compile_glob_matcher(pattern: str) -> Callable[[str], bool]:
+    """Precompile a glob pattern into a fast matcher function."""
+    globber_cls = getattr(pathlib, "_StringGlobber", None)
+    if globber_cls is not None:
+        globber = globber_cls("/", True, recursive=True)
+        matcher = globber.compile(pattern)
+        return lambda s: matcher(s) is not None
+    pure = PurePosixPath(pattern)
+    return lambda s: PurePosixPath(s).full_match(pure)
+
+
 def _explicitly_named_noise_dirs(patterns: list[str]) -> frozenset[str]:
     """Generated-directory names the caller wrote literally into the pattern.
 
@@ -252,20 +264,22 @@ def _visible_files(
     found: list[tuple[str, Path]] = []
     for dirpath, dirnames, filenames in os.walk(root):
         current = Path(dirpath)
-        rel_dir = current.relative_to(base)
+        rel_dir = current.relative_to(base).as_posix()
         dirnames[:] = sorted(
             (
                 name
                 for name in dirnames
                 if (name not in NOISE_DIR_NAMES or name in allowed_noise)
                 and not is_gitignored(
-                    (rel_dir / name).as_posix(), is_dir=True, rules=rules
+                    f"{rel_dir}/{name}" if rel_dir != "." else name,
+                    is_dir=True,
+                    rules=rules,
                 )
             ),
             key=lambda name: (name.startswith("."), name),
         )
         for fname in sorted(filenames):
-            rel = (rel_dir / fname).as_posix()
+            rel = f"{rel_dir}/{fname}" if rel_dir != "." else fname
             if is_gitignored(rel, is_dir=False, rules=rules):
                 continue
             found.append((rel, current / fname))
@@ -318,10 +332,9 @@ async def _glob_files(
             # would turn ``**/`` into ``**`` and match the entire tree.
             hit = []
         else:
+            matchers = [_compile_glob_matcher(p) for p in patterns]
             hit = [
-                (rel, path)
-                for rel, path in candidates
-                if any(PurePosixPath(rel).full_match(p) for p in patterns)
+                (rel, path) for rel, path in candidates if any(m(rel) for m in matchers)
             ]
         hit.sort(key=lambda item: _rank(item[0]))
         return hit
@@ -340,9 +353,10 @@ async def _glob_files(
             for parent in PurePosixPath(rel).parents:
                 if parent.name:
                     dirs.add(parent.as_posix())
-        return sorted(
-            d for d in dirs if any(PurePosixPath(d).full_match(p) for p in patterns)
-        )
+        if not dirs:
+            return []
+        matchers = [_compile_glob_matcher(p) for p in patterns]
+        return sorted(d for d in dirs if any(m(d) for m in matchers))
 
     def _scan() -> tuple[list[str], list[str]]:
         # Only files under the pattern's literal prefix can match, so start the

@@ -32,6 +32,17 @@ def test_schema_exposes_only_snake_case_operations():
     assert parameters["properties"]["path"]["type"] == "string"
 
 
+def test_description_guides_lsp_workflow_and_position_conventions():
+    description = lsp_navigation.definition["function"]["description"]
+
+    assert "document_symbol" in description
+    assert "unfamiliar" in description
+    assert "grep" in description and "glob" in description
+    assert "known identifier" in description
+    assert "one-based" in description
+    assert "workspace-relative" in description
+
+
 @pytest.mark.asyncio
 async def test_definition_formats_workspace_location_and_converts_position(
     tmp_path: Path,

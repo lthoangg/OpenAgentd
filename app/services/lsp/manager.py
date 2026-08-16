@@ -19,6 +19,7 @@ from app.services.lsp.managed import (
 _CACHED_USER_PATH: str | None = None
 _USER_PATH_LOCK = asyncio.Lock()
 _USER_PATH_TIMEOUT_SECONDS = 3.0
+_CLIENT_START_TIMEOUT_SECONDS = 15.0
 _PATH_OUTPUT_PREFIX = "__OPENAGENTD_PATH__"
 
 
@@ -741,13 +742,26 @@ class LspManager:
                     env={**os.environ, "PATH": await _get_user_path()},
                 )
                 try:
-                    await client.start()
+                    await asyncio.wait_for(
+                        client.start(), timeout=_CLIENT_START_TIMEOUT_SECONDS
+                    )
                     self._clients[key] = client
                     clients.append(client)
+                except TimeoutError:
+                    logger.warning(
+                        "Timed out starting LSP client {} for {} after {}s",
+                        cmd,
+                        lang_id,
+                        _CLIENT_START_TIMEOUT_SECONDS,
+                    )
                 except Exception as e:
                     logger.warning(
                         "Failed to start LSP client {} for {}: {}", cmd, lang_id, e
                     )
+                finally:
+                    if client not in clients:
+                        with suppress(Exception):
+                            await client.stop()
 
             if not clients:
                 # Every candidate failed to start — back off so we don't retry

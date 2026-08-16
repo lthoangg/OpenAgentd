@@ -256,6 +256,42 @@ async def test_lsp_manager_starts_unrelated_workspace_clients_concurrently(tmp_p
 
 
 @pytest.mark.asyncio
+async def test_lsp_manager_times_out_and_stops_hung_client_start(tmp_path):
+    """A server that hangs during initialize must not block callers forever."""
+    manager = LspManager()
+    stopped = False
+
+    class HangingClient:
+        def __init__(self, command, workspace_root, **kwargs):
+            self.process = None
+
+        async def start(self):
+            await asyncio.Event().wait()
+
+        async def stop(self):
+            nonlocal stopped
+            stopped = True
+
+    async def timeout(awaitable, timeout):
+        awaitable.close()
+        raise TimeoutError
+
+    with (
+        patch.object(
+            manager,
+            "_detect_commands",
+            new_callable=AsyncMock,
+            return_value=[["mock-lsp"]],
+        ),
+        patch("app.services.lsp.manager.LspClient", HangingClient),
+        patch("app.services.lsp.manager.asyncio.wait_for", side_effect=timeout),
+    ):
+        assert await manager.get_clients(tmp_path, "python") == []
+
+    assert stopped
+
+
+@pytest.mark.asyncio
 async def test_lsp_manager_starts_same_workspace_client_once(tmp_path):
     """Concurrent callers for one workspace/language share its startup."""
     manager = LspManager()

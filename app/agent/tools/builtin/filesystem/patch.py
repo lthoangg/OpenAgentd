@@ -86,6 +86,8 @@ class PatchArgs(BaseModel):
 class Chunk:
     old: list[str] = field(default_factory=list)
     new: list[str] = field(default_factory=list)
+    raw_old: list[str] = field(default_factory=list)
+    raw_new: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -192,18 +194,26 @@ def _parse_patch(patch_text: str) -> list[FilePatch]:
             )
         if line.startswith("+"):
             chunk.new.append(line[1:])
+            chunk.raw_new.append(line[1:])
         elif line.startswith("-"):
             chunk.old.append(line[1:])
+            chunk.raw_old.append(line[1:])
         elif line.startswith(" "):
             text = line[1:]
             chunk.old.append(text)
             chunk.new.append(text)
+            chunk.raw_old.append(line)
+            chunk.raw_new.append(line)
         elif line == "":
             chunk.old.append("")
             chunk.new.append("")
+            chunk.raw_old.append("")
+            chunk.raw_new.append("")
         else:
             chunk.old.append(line)
             chunk.new.append(line)
+            chunk.raw_old.append(line)
+            chunk.raw_new.append(line)
 
     finish_chunk()
     if not patches:
@@ -299,6 +309,74 @@ def _find_line_matches(
     return matches
 
 
+def _find_indentation_tolerant_matches(
+    content_lines: list[str], old_lines: list[str]
+) -> list[int]:
+    """Return match indices where stripped lines match and relative indentation matches."""
+    if not old_lines or len(old_lines) > len(content_lines):
+        return []
+    stripped_target = [line.strip() for line in old_lines]
+    if not any(stripped_target):
+        return []
+    matches: list[int] = []
+    for i in range(len(content_lines) - len(old_lines) + 1):
+        window = content_lines[i : i + len(old_lines)]
+        if [line.strip() for line in window] == stripped_target:
+            matches.append(i)
+    return matches
+
+
+def _adjust_new_lines_indentation(
+    content_window: list[str], old_lines: list[str], new_lines: list[str]
+) -> list[str]:
+    """Adjust indentation of new_lines when matching against a shifted window."""
+    for c_line, o_line in zip(content_window, old_lines):
+        if c_line.strip() and o_line.strip():
+            c_indent = len(c_line) - len(c_line.lstrip())
+            o_indent = len(o_line) - len(o_line.lstrip())
+            delta = c_indent - o_indent
+            if delta > 0:
+                return [
+                    (" " * delta) + line if line.strip() else line for line in new_lines
+                ]
+            if delta < 0:
+                trim = -delta
+                return [
+                    line[trim:] if line.startswith(" " * trim) else line
+                    for line in new_lines
+                ]
+            break
+    return new_lines
+
+
+def _format_context_miss_error(
+    path: str, content_lines: list[str], old_lines: list[str]
+) -> str:
+    """Build a helpful diagnostic error message when patch context is not found."""
+    preview_len = min(5, len(old_lines))
+    expected_sample = "\n".join(f"  | {line}" for line in old_lines[:preview_len])
+    if len(old_lines) > preview_len:
+        expected_sample += f"\n  | ... ({len(old_lines) - preview_len} more lines)"
+
+    first_non_empty = next((line.strip() for line in old_lines if line.strip()), None)
+    hint = ""
+    if first_non_empty and content_lines:
+        candidates = [
+            (idx + 1, line)
+            for idx, line in enumerate(content_lines)
+            if first_non_empty in line
+        ]
+        if candidates:
+            sample_candidates = ", ".join(f"line {idx}" for idx, _ in candidates[:3])
+            hint = f"\nNote: Similar text found at {sample_candidates} in {path}, but surrounding context differed."
+
+    return (
+        f"Could not find patch context in {path}.\n"
+        f"The patch was looking for this block:\n{expected_sample}{hint}\n"
+        f"Check that context lines match the current file contents exactly."
+    )
+
+
 def _apply_chunks_with_meta(
     content: str, chunks: list[Chunk], path: str
 ) -> tuple[str, list[dict[str, int]]]:
@@ -319,14 +397,23 @@ def _apply_chunks_with_meta(
 
         old_lines, new_lines = chunk.old, chunk.new
 
+        # 1. Exact match
         starts = _find_line_matches(content_lines, old_lines, trimmed=False)
+        # 2. Trailing whitespace tolerant match
         if not starts:
             starts = _find_line_matches(content_lines, old_lines, trimmed=True)
 
+        # 3. Fallback: unstripped context lines (lines copied verbatim from source)
+        if not starts and chunk.raw_old != chunk.old:
+            starts = _find_line_matches(
+                content_lines, chunk.raw_old, trimmed=False
+            ) or _find_line_matches(content_lines, chunk.raw_old, trimmed=True)
+            if starts:
+                old_lines = chunk.raw_old
+                new_lines = chunk.raw_new
+
+        # 4. Fallback: line-number prefixes stripped (e.g. from read tool output "12:   foo")
         if not starts:
-            # Last resort: the hunk may have been copied out of numbered `read`
-            # output. Strip the prefixes off *both* sides — dropping it only
-            # from the match side would write the numbers into the file.
             bare_old = _strip_line_number_prefixes(old_lines)
             if bare_old is not None:
                 bare_starts = _find_line_matches(
@@ -337,8 +424,17 @@ def _apply_chunks_with_meta(
                     old_lines = bare_old
                     new_lines = _strip_line_number_prefixes(new_lines) or new_lines
 
+        # 5. Fallback: uniform indentation shift
         if not starts:
-            raise ValueError(f"Could not find patch context in {path}.")
+            indent_starts = _find_indentation_tolerant_matches(content_lines, old_lines)
+            if len(indent_starts) == 1:
+                starts = indent_starts
+                window = content_lines[starts[0] : starts[0] + len(old_lines)]
+                new_lines = _adjust_new_lines_indentation(window, old_lines, new_lines)
+                old_lines = window
+
+        if not starts:
+            raise ValueError(_format_context_miss_error(path, content_lines, chunk.old))
         if len(starts) > 1:
             raise ValueError(f"Patch context is ambiguous in {path}.")
 

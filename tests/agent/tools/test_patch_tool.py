@@ -675,3 +675,55 @@ async def test_patch_tolerates_a_stray_empty_hunk_beside_a_real_one(sandbox_work
 
     assert "Patch applied successfully" in result
     assert target.read_text(encoding="utf-8") == "ALPHA\nbeta\n"
+
+
+@pytest.mark.asyncio
+async def test_patch_handles_verbatim_indented_context_without_space_prefix(
+    sandbox_workspace,
+):
+    """When LLM copies context lines verbatim without diff's leading space, it must match."""
+    target = sandbox_workspace / "foo.py"
+    target.write_text(
+        "class Foo:\n    def fn():\n        return 42\n", encoding="utf-8"
+    )
+
+    patch_text = """*** Begin Patch
+*** Update File: foo.py
+@@
+class Foo:
+    def fn():
+-        return 42
++        return 100
+*** End Patch"""
+
+    result = await patch_file.arun(patch_text=patch_text)
+    assert "Patch applied successfully" in result
+    assert (
+        target.read_text(encoding="utf-8")
+        == "class Foo:\n    def fn():\n        return 100\n"
+    )
+
+
+@pytest.mark.asyncio
+async def test_patch_diagnostic_error_on_context_miss(sandbox_workspace):
+    """Context miss error includes the expected block and line numbers if similar text exists."""
+    target = sandbox_workspace / "main.py"
+    target.write_text(
+        "import sys\ndef main():\n    print(sys.argv)\n", encoding="utf-8"
+    )
+
+    patch_text = """*** Begin Patch
+*** Update File: main.py
+@@
+def main(arg):
+-    print(arg)
++    print(arg.upper())
+*** End Patch"""
+
+    with pytest.raises(ToolExecutionError) as exc_info:
+        await patch_file.arun(patch_text=patch_text)
+
+    err_str = str(exc_info.value)
+    assert "Could not find patch context in main.py" in err_str
+    assert "The patch was looking for this block:" in err_str
+    assert "def main(arg):" in err_str

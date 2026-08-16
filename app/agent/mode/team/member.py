@@ -20,7 +20,9 @@ from __future__ import annotations
 
 import abc
 import asyncio
+import copy
 import uuid
+from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 from uuid import uuid7
@@ -60,7 +62,13 @@ from app.agent.schemas.chat import HumanMessage
 from app.agent.mode.team.mailbox import Message
 from app.core.db import DbFactory, resolve_db_factory
 from app.models.chat import ChatSession, SessionMessage
-from app.services.chat_service import get_messages_for_llm, save_message
+from app.services.chat_service import (
+    get_history_cursor,
+    get_history_revision,
+    get_messages_for_llm,
+    get_messages_for_llm_after,
+    save_message,
+)
 
 MAX_OPEN_TASK_NUDGES = 1
 
@@ -302,6 +310,9 @@ class TeamMemberBase(abc.ABC):
         self._team: AgentTeam | None = None
         self._mailbox: TeamMailbox | None = None
         self._open_task_nudge_counts: dict[str, int] = {}
+        self._llm_history: list = []
+        self._llm_history_revision: tuple[int, int] | None = None
+        self._llm_history_cursor: tuple[datetime, uuid.UUID] | None = None
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -844,6 +855,34 @@ class TeamMemberBase(abc.ABC):
     # Message handling
     # ------------------------------------------------------------------
 
+    async def _load_turn_history(self, db, session_uuid: uuid.UUID) -> list:
+        revision = await get_history_revision(db, session_uuid)
+        cursor = await get_history_cursor(db, session_uuid)
+        cached = self._llm_history
+        if (
+            cached
+            and self._llm_history_revision is not None
+            and self._llm_history_cursor is not None
+        ):
+            if (
+                revision == self._llm_history_revision
+                and cursor == self._llm_history_cursor
+            ):
+                return copy.deepcopy(cached)
+            if revision == self._llm_history_revision:
+                delta = await get_messages_for_llm_after(
+                    db, session_uuid, self._llm_history_cursor
+                )
+                history = cached + delta
+            else:
+                history = await get_messages_for_llm(db, session_uuid)
+        else:
+            history = await get_messages_for_llm(db, session_uuid)
+        self._llm_history_revision = revision
+        self._llm_history_cursor = cursor
+        self._llm_history = copy.deepcopy(history)
+        return history
+
     async def _handle_messages(
         self,
         *,
@@ -858,7 +897,7 @@ class TeamMemberBase(abc.ABC):
 
         async with db_factory() as db:
             try:
-                history = await get_messages_for_llm(db, session_uuid)
+                history = await self._load_turn_history(db, session_uuid)
             except Exception:
                 history = []
             session_row = await db.get(ChatSession, session_uuid)
@@ -1044,7 +1083,7 @@ class TeamMemberBase(abc.ABC):
         role_token = set_role(self._role_label)
 
         try:
-            await self.agent.run(
+            run_messages = await self.agent.run(
                 run_messages,
                 config=config,
                 hooks=hooks,
@@ -1054,6 +1093,14 @@ class TeamMemberBase(abc.ABC):
                 llm_provider=runtime_provider,
                 model_id=runtime_model,
             )
+            self._llm_history = copy.deepcopy(run_messages)
+            async with db_factory() as history_db:
+                self._llm_history_revision = await get_history_revision(
+                    history_db, session_uuid
+                )
+                self._llm_history_cursor = await get_history_cursor(
+                    history_db, session_uuid
+                )
 
             # ``ask_user`` suspended the turn: the loop reports it
             # through the run config rather than raising, because the turn is

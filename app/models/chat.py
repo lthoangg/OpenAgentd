@@ -136,6 +136,17 @@ class ChatSession(SQLModel, table=True):
         default=None,
         sa_column=Column(JSON(), nullable=True),
     )
+    # Monotonic counter for mutations that can change the effective LLM
+    # history.  It lets a live agent distinguish append-only turns from undo,
+    # compaction, and queue state changes without rebuilding blindly.
+    history_revision: int = Field(
+        default=0,
+        sa_column=Column(sa.Integer(), nullable=False, server_default="0"),
+    )
+    history_structure_revision: int = Field(
+        default=0,
+        sa_column=Column(sa.Integer(), nullable=False, server_default="0"),
+    )
     created_at: datetime = Field(
         default_factory=_utcnow,
         sa_column=Column(TZDateTime(), nullable=False),

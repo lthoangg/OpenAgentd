@@ -155,6 +155,24 @@ class TestInMemoryCheckpointer:
 
 class TestSQLiteCheckpointerLoad:
     @pytest.mark.asyncio
+    async def test_history_revision_changes_when_message_is_saved(self):
+        import app.core.db as _db
+        from app.services.chat_service import get_history_revision, save_message
+
+        sid = uuid.uuid7()
+        async with _db.async_session_factory() as db:
+            async with db.begin():
+                await _make_session(db, sid)
+                before = await get_history_revision(db, sid)
+                await save_message(
+                    db, sid, AssistantMessage(content="summary"), is_summary=True
+                )
+                after = await get_history_revision(db, sid)
+
+        assert after[0] == before[0] + 1
+        assert after[1] == before[1] + 1
+
+    @pytest.mark.asyncio
     async def test_load_returns_none_for_empty_session(self):
         """No messages in DB → returns None."""
         import app.core.db as _db

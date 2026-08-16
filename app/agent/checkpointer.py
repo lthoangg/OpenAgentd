@@ -36,7 +36,13 @@ from app.agent.schemas.chat import (
 )
 from app.agent.state import AgentState, RunContext
 from app.models.chat import SessionMessage
-from app.services.chat_service import get_messages_for_llm, save_message
+from app.services.chat_service import (
+    bump_history_revision,
+    get_history_cursor,
+    get_history_revision,
+    get_messages_for_llm,
+    save_message,
+)
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import async_sessionmaker
@@ -232,6 +238,9 @@ class SQLiteCheckpointer(Checkpointer):
         # bucket to drop so we leave the state blob alone.
         self._stream_session_id = stream_session_id
         self._agent_name = agent_name
+        self._loaded: dict[str, AgentState] = {}
+        self._loaded_revision: dict[str, tuple[int, int]] = {}
+        self._loaded_cursor: dict[str, tuple[datetime, UUID] | None] = {}
 
     def mark_loaded(self, session_id: str, messages: list[ChatMessage]) -> None:
         """Register *messages* as already persisted in the DB.
@@ -260,6 +269,12 @@ class SQLiteCheckpointer(Checkpointer):
             len(messages),
             self._seeded_tokens.get(session_id, 0),
         )
+
+    def invalidate(self, session_id: str) -> None:
+        """Drop cached history after an external database mutation."""
+        self._loaded.pop(session_id, None)
+        self._loaded_revision.pop(session_id, None)
+        self._loaded_cursor.pop(session_id, None)
 
     def seed_state(self, session_id: str, state: "AgentState") -> None:
         """Seed ``state.usage.last_prompt_tokens`` from loaded history.
@@ -295,6 +310,16 @@ class SQLiteCheckpointer(Checkpointer):
         """
         logger.debug("checkpointer_load session_id={}", session_id)
         async with self._session_factory() as db:
+            revision = await get_history_revision(db, UUID(session_id))
+            cursor = await get_history_cursor(db, UUID(session_id))
+        cached = self._loaded.get(session_id)
+        if (
+            cached is not None
+            and self._loaded_revision.get(session_id) == revision
+            and self._loaded_cursor.get(session_id) == cursor
+        ):
+            return AgentState(messages=copy.deepcopy(cached.messages))
+        async with self._session_factory() as db:
             messages = await get_messages_for_llm(db, UUID(session_id))
 
         if not messages:
@@ -303,6 +328,9 @@ class SQLiteCheckpointer(Checkpointer):
 
         # Me auto-register loaded messages + compute seed tokens via mark_loaded()
         self.mark_loaded(session_id, messages)
+        self._loaded[session_id] = AgentState(messages=copy.deepcopy(messages))
+        self._loaded_revision[session_id] = revision
+        self._loaded_cursor[session_id] = cursor
 
         seeded_tokens = self._seeded_tokens.get(session_id, 0)
         logger.debug(
@@ -448,6 +476,8 @@ class SQLiteCheckpointer(Checkpointer):
                             continue
 
                         persisted_ids.add(id(msg))
+                    if exclude_ids:
+                        await bump_history_revision(db, UUID(sid), structural=True)
 
         # Me drop this agent's stream buffer — once the assistant text is in
         # the DB, a mid-turn reconnect loading it via loadSession must not
@@ -467,6 +497,8 @@ class SQLiteCheckpointer(Checkpointer):
         # ``saved_assistant`` / ``saved_tool`` lines are gone too; ``new`` and
         # ``total_persisted`` summarise the same outcome, and ``db_id`` values
         # are recoverable from the session's message rows.
+        if new_messages or exclude_ids:
+            self.invalidate(sid)
         if new_messages:
             logger.debug(
                 "checkpointer_sync_done session_id={} new={} total_persisted={}",

@@ -28,7 +28,7 @@ from app.services.chat_service_messages import (
 from app.services.chat_service_revert import (
     BoundaryShift,
     boundary_created_at as _boundary_created_at,
-    exclude_messages_before_summary,
+    exclude_messages_before_summary as _exclude_messages_before_summary,
     get_dynamically_visible_messages as _get_dynamically_visible_messages,
     history_messages_stmt as _history_messages_stmt,
     is_hidden_from_user as _is_hidden_from_user,
@@ -66,6 +66,80 @@ async def create_chat_session(
     except Exception as e:
         logger.error("chat_session_creation_failed error={} title={}", e, title)
         raise
+
+
+async def bump_history_revision(
+    db: AsyncSession, session_id: UUID, *, structural: bool = False
+) -> None:
+    """Mark a session's effective LLM history as changed in this transaction."""
+    if not isinstance(db, AsyncSession):
+        return
+    values: dict[str, object] = {
+        "history_revision": col(ChatSession.history_revision) + 1
+    }
+    if structural:
+        values["history_structure_revision"] = (
+            col(ChatSession.history_structure_revision) + 1
+        )
+    statement = (
+        sa.update(ChatSession).where(col(ChatSession.id) == session_id).values(**values)
+    )
+    await db.run_sync(lambda sync_db: sync_db.execute(statement))
+
+
+async def get_history_revision(db: AsyncSession, session_id: UUID) -> tuple[int, int]:
+    """Read history revisions used by incremental turn loading."""
+    result = await db.exec(
+        select(
+            ChatSession.history_revision,
+            ChatSession.history_structure_revision,
+        ).where(col(ChatSession.id) == session_id)
+    )
+    row = result.first()
+    return (int(row[0]), int(row[1])) if row else (0, 0)
+
+
+async def get_history_cursor(
+    db: AsyncSession, session_id: UUID
+) -> tuple[datetime, UUID] | None:
+    """Return the newest persisted row's ordering cursor."""
+    result = await db.exec(
+        select(SessionMessage.created_at, SessionMessage.id)
+        .where(col(SessionMessage.session_id) == session_id)
+        .order_by(col(SessionMessage.created_at).desc(), col(SessionMessage.id).desc())
+        .limit(1)
+    )
+    row = result.first()
+    return (row[0], row[1]) if row else None
+
+
+async def get_messages_for_llm_after(
+    db: AsyncSession,
+    session_id: UUID,
+    cursor: tuple[datetime, UUID],
+) -> list[ChatMessage]:
+    """Deserialize only visible LLM rows after an append-only cursor."""
+    boundary = await _boundary_created_at(db, session_id)
+    stmt = (
+        _llm_history_messages_stmt(session_id)
+        if boundary is None
+        else _history_messages_stmt(session_id, boundary)
+    )
+    created_at, message_id = cursor
+    stmt = stmt.where(
+        sa.or_(
+            col(SessionMessage.created_at) > created_at,
+            sa.and_(
+                col(SessionMessage.created_at) == created_at,
+                col(SessionMessage.id) > message_id,
+            ),
+        )
+    )
+    rows = (await db.exec(stmt)).all()
+    messages = await asyncio.to_thread(
+        _deserialize_messages, rows, sanitize_tool_pairs=True
+    )
+    return _apply_llm_content_overrides(messages)
 
 
 _INTERRUPTED_TOOL_RESULT = (
@@ -234,6 +308,8 @@ async def save_message(
         db_message = SessionMessage(**kwargs)
         db.add(db_message)
         await db.flush()
+        if is_summary:
+            await bump_history_revision(db, session_id, structural=True)
         # Single post-save record for the whole operation.  This deliberately
         # carries the role-specific detail (tool-call count, tool name) that
         # used to be logged as separate pre-save lines, so one grep still
@@ -364,14 +440,20 @@ async def release_queued_user_messages(
     db: AsyncSession,
     session_id: UUID,
 ) -> list[SessionMessage]:
-    return await _chat_service_queue.release_queued_user_messages(db, session_id)
+    rows = await _chat_service_queue.release_queued_user_messages(db, session_id)
+    if rows:
+        await bump_history_revision(db, session_id, structural=True)
+    return rows
 
 
 async def pop_queued_user_messages(
     db: AsyncSession,
     session_id: UUID,
 ) -> list[SessionMessage]:
-    return await _chat_service_queue.pop_queued_user_messages(db, session_id)
+    rows = await _chat_service_queue.pop_queued_user_messages(db, session_id)
+    if rows:
+        await bump_history_revision(db, session_id, structural=True)
+    return rows
 
 
 async def cancel_queued_user_message(
@@ -379,29 +461,56 @@ async def cancel_queued_user_message(
     session_id: UUID,
     message_id: UUID,
 ) -> bool:
-    return await _chat_service_queue.cancel_queued_user_message(
+    cancelled = await _chat_service_queue.cancel_queued_user_message(
         db, session_id, message_id
     )
+    if cancelled:
+        await bump_history_revision(db, session_id, structural=True)
+    return cancelled
 
 
 # Preserve patchability from tests and existing callers by rebinding the
 # extracted revert module to the local path helper on each call.
 async def undo_session_messages(db: AsyncSession, session_id: UUID) -> BoundaryShift:
     _chat_service_revert.session_workspace_dir = session_workspace_dir
-    return await _chat_service_revert.undo_session_messages(db, session_id)
+    shift = await _chat_service_revert.undo_session_messages(db, session_id)
+    if shift.applied:
+        await bump_history_revision(db, session_id, structural=True)
+    return shift
 
 
 async def redo_session_messages(db: AsyncSession, session_id: UUID) -> BoundaryShift:
     _chat_service_revert.session_workspace_dir = session_workspace_dir
-    return await _chat_service_revert.redo_session_messages(db, session_id)
+    shift = await _chat_service_revert.redo_session_messages(db, session_id)
+    if shift.applied:
+        await bump_history_revision(db, session_id, structural=True)
+    return shift
 
 
 async def cleanup_reverted_tail(db: AsyncSession, session_id: UUID) -> int:
     _chat_service_revert.session_workspace_dir = session_workspace_dir
-    return await _chat_service_revert.cleanup_reverted_tail(db, session_id)
+    cleaned = await _chat_service_revert.cleanup_reverted_tail(db, session_id)
+    if cleaned:
+        await bump_history_revision(db, session_id, structural=True)
+    return cleaned
 
 
-# Me keep backward-compat alias during transition
+async def exclude_messages_before_summary(
+    db: AsyncSession,
+    session_id: UUID,
+    summary_message_id: UUID,
+    keep_last_n: int = 0,
+) -> int:
+    """Hide pre-summary rows and invalidate incremental LLM history."""
+    hidden = await _exclude_messages_before_summary(
+        db, session_id, summary_message_id, keep_last_n
+    )
+    if hidden:
+        await bump_history_revision(db, session_id, structural=True)
+    return hidden
+
+
+# Keep the historical name used by callers and manual scenarios.
 hide_messages_before_summary = exclude_messages_before_summary
 
 

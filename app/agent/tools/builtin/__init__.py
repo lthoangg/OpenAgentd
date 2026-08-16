@@ -6,13 +6,12 @@ from .filesystem import (
     read_file,
 )
 from .schedule import schedule_task
-from .shell import background_process, shell_tool
+from .shell import shell_tool
 from .skill import discover_skills, load_skill
 from .todo import todo_manage
 from .web import web_fetch, web_search
 
 __all__ = [
-    "background_process",
     "discover_skills",
     "shell_tool",
     "glob_files",

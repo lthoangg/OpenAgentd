@@ -89,7 +89,7 @@ def make_tool_executor(
             if tc.function.name not in run_tools:
                 raise ToolNotFoundError(f"Tool '{tc.function.name}' not found.")
 
-            # Empty ``arguments`` is a valid no-arg call (``bg``, ``date``), but
+            # Empty ``arguments`` is a valid no-arg call, but
             # for a tool with required parameters it means the model's output was
             # cut off before it emitted any argument text — usually a large
             # ``write``/``patch``.  Pydantic would report "Field required", which

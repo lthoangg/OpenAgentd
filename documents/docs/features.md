@@ -215,23 +215,14 @@ run from the terminal.
   workspace terminal instead)* — start a message with `!` to run the
   remainder directly through the shell tool without a model turn; history stored
   the run as structured shell tool output.
-- **`shell`/`bg` tool output handling** — Stop terminates active foreground
-  shell process groups; acknowledged background PIDs remain managed
-  through `bg`. Background process lists, status, and final output render as
-  compact structured cards with bounded scroll regions on mobile and desktop
-  `[v1.113.0]`. Raw ANSI/CSI/OSC escape
+- **`shell` tool output handling** — Stop terminates active foreground
+  shell process groups; background commands started with `background=true` return
+  the spawned PID. Raw ANSI/CSI/OSC escape
   sequences (colors, cursor movement, hyperlinks) from color-forcing CLIs are
-  stripped from foreground results, live streamed output, and background
-  process buffers before reaching the LLM or the UI `[v1.120.0]`. Background
-  starts return as soon as the process exits or its first output settles
-  (previously a fixed 3-second wait); exited background processes stay
-  inspectable via `bg` for ~10 minutes after they stop; every `bg` action
-  and session interrupt stays bounded even when an orphaned child still holds
-  the output pipe; foreground output memory is bounded, with oversized output
-  streamed incrementally to a session spill file `[v1.120.1]`. The blocking
-  `bg wait` action is gone and foreground commands default to a 120-second
-  timeout instead of 60: agents poll `bg output` rather than parking a turn on
-  a wait that usually timed out anyway `[v1.131.3]`.
+  stripped from foreground results and live streamed output before reaching
+  the LLM or the UI `[v1.120.0]`. Foreground output memory is bounded, with
+  oversized output streamed incrementally to a session spill file `[v1.120.1]`.
+  Foreground commands default to a 120-second timeout instead of 60 `[v1.131.3]`.
 - **Drag-and-drop files into chat** `[since v1.0, v1.82.0, v1.131.0]` — drag files (images, PDFs, text, etc.) anywhere onto the chat area (both cockpit and coding views) to show a drop overlay and attach them to the composer. Supports multi-file drops, file-type filtering, and cancellation. A drop no longer attaches the same file twice, folders dropped onto the chat are ignored instead of silently swallowed, and a file dropped outside the chat area no longer navigates the app away from the session `[v1.131.0]`.
 - **50 MB attachments with in-composer rejection** `[v1.131.0]` — every attachment
   type shares one 50 MB per-message ceiling instead of the previous mix of
@@ -693,7 +684,7 @@ MCP.
 | Category | Tools |
 |---|---|
 | Filesystem | `read` (files + directory listings), `patch` (create/edit/delete/move), `glob`, `grep` |
-| Shell | `shell`, `bg` (background processes) |
+| Shell | `shell` (supports `background=true`) |
 | Web | `web_search`, `web_fetch` |
 | Generation | `generate_image`, `generate_video` |
 | Scheduling | `schedule_task` (reminders + self-scheduling agentic loops) `[v1.70.0]` |

@@ -1,6 +1,5 @@
 from .registry import Tool, tool
 from .builtin import (
-    background_process,
     discover_skills,
     shell_tool,
     glob_files,
@@ -19,7 +18,6 @@ __all__ = [
     "Tool",
     "tool",
     # builtin
-    "background_process",
     "discover_skills",
     "shell_tool",
     "glob_files",

@@ -1,4 +1,4 @@
-"""Tests for app/tools/builtin/shell.py — shell & bg.
+"""Tests for app/tools/builtin/shell.py — shell.
 
 Covers the rewritten shell tool:
 - $SHELL detection via app.agent.tools.builtin.shell_runtime
@@ -6,7 +6,7 @@ Covers the rewritten shell tool:
 - workdir parameter
 - timeout handling
 - output spilling to the XDG session artifact directory
-- background process management
+- background process execution (returns PID)
 """
 
 from __future__ import annotations
@@ -20,7 +20,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.agent.errors import ToolArgumentError
 from app.agent.denied_paths import (
     DeniedPathsConfig as SandboxConfig,
     set_denied_paths as set_sandbox,
@@ -28,13 +27,10 @@ from app.agent.denied_paths import (
 import app.agent.tools.builtin.shell as shell_module
 from app.agent.tools.builtin.shell import (
     _PYTHON_ENV_LEAK_KEYS,
-    _BgProcess,
-    _bg_processes,
     _scrubbed_env,
     _shell,
     _strip_ansi,
     _tail_text,
-    background_process,
     shell_tool,
 )
 from app.core.config import settings
@@ -302,33 +298,6 @@ async def test_cancelling_foreground_shell_terminates_process_group(sandbox_work
 
 
 @pytest.mark.asyncio
-async def test_cancelling_background_shell_during_startup_terminates_process(
-    sandbox_workspace, monkeypatch
-):
-    # Park the warmup loop on an hour-long poll sleep; registration happens
-    # before the first poll, so once the registry is non-empty the task is
-    # blocked inside warmup and safe to cancel.
-    import app.agent.tools.builtin.shell as shell_mod
-
-    monkeypatch.setattr(shell_mod, "_BG_WARMUP_POLL_SECONDS", 3600)
-
-    task = asyncio.create_task(_shell("sleep 60", background=True))
-    for _ in range(100):
-        if _bg_processes:
-            break
-        await asyncio.sleep(0.01)
-    [pid] = list(_bg_processes)
-
-    task.cancel()
-    with pytest.raises(asyncio.CancelledError):
-        await task
-
-    assert pid not in _bg_processes
-    with pytest.raises(ProcessLookupError):
-        os.kill(pid, 0)
-
-
-@pytest.mark.asyncio
 async def test_shell_with_exit_code(sandbox_workspace):
     result = await shell_tool.arun(command="false")
     assert "[Failed" in result
@@ -503,7 +472,7 @@ async def test_timeout_gives_the_command_a_chance_to_clean_up(sandbox_workspace)
     """Foreground timeout sends SIGTERM before SIGKILL.
 
     Killing outright strands temp files and child processes and discards the
-    command's own teardown output; `_BgProcess.stop` already escalates.
+    command's own teardown output.
     """
     result = await _shell("trap 'echo CLEANED_UP' TERM; sleep 5", timeout_seconds=0.5)
 
@@ -556,509 +525,18 @@ async def test_shell_permission_error_reraises(sandbox):
 # ---------------------------------------------------------------------------
 
 
-@pytest.fixture(autouse=True)
-def _clear_bg_registry():
-    """Ensure background registry is clean before and after each test."""
-    _bg_processes.clear()
-    yield
-    for bg in list(_bg_processes.values()):
-        if bg.alive:
-            bg.proc.kill()
-    _bg_processes.clear()
-
-
-@pytest.fixture()
-def fast_bg(monkeypatch):
-    """Shrink the production ~3s warmup poll loop so background tests finish fast.
-
-    The warmup exists to (a) drain initial echo output via the reader task
-    and (b) detect immediate exits.  Production polls 30 × 100 ms, breaking
-    early on exit or settled output; tests poll 5 × 10 ms — enough event-loop
-    turns for the reader task to consume ``echo`` output on every platform
-    tested here.
-
-    We also force ``/bin/sh`` so we skip zsh login + rc-file sourcing
-    (~200ms boot cost), which would otherwise blow past the short poll
-    budget before the spawned process finishes echoing.
-    """
-    monkeypatch.setattr(shell_module, "_BG_WARMUP_POLLS", 5)
-    monkeypatch.setattr(shell_module, "_BG_WARMUP_POLL_SECONDS", 0.01)
-    monkeypatch.setattr(shell_module, "_BG_WARMUP_SETTLED_POLLS", 1)
-    # ``/bin/sh`` takes the bare ``-c`` argv path → no rc sourcing → instant boot.
-    monkeypatch.setattr(
-        "app.agent.tools.builtin.shell._shell_mod.acceptable", lambda: "/bin/sh"
-    )
-
-
-def test_completed_background_processes_expire_after_ten_minutes():
-    """Pruning expires completed records without sleeping in the test."""
-    completed = MagicMock(alive=False)
-    completed.completed_at = None
-    _bg_processes[1001] = completed
-
-    shell_module._prune_completed_bg_processes(clock=lambda: 0)
-    assert 1001 in _bg_processes
-
-    shell_module._prune_completed_bg_processes(clock=lambda: 600)
-    assert 1001 in _bg_processes
-
-    shell_module._prune_completed_bg_processes(clock=lambda: 600.001)
-    assert 1001 not in _bg_processes
-
-
-def test_completed_background_process_limit_never_evicts_alive_processes():
-    """The completed-record cap retains all live jobs and newest completions."""
-    alive = MagicMock(alive=True)
-    _bg_processes[1] = alive
-    for pid in range(2, 103):
-        completed = MagicMock(alive=False)
-        completed.completed_at = float(pid)
-        _bg_processes[pid] = completed
-
-    shell_module._prune_completed_bg_processes(clock=lambda: 200)
-
-    assert 1 in _bg_processes
-    assert len(_bg_processes) == 101
-    assert 2 not in _bg_processes
-    assert set(_bg_processes) == {1, *range(3, 103)}
-
-
 @pytest.mark.asyncio
-async def test_background_reader_bounds_a_single_oversized_line():
-    reader = asyncio.StreamReader()
-    reader.feed_data(b"x" * 200_000)
-    reader.feed_eof()
-    proc = MagicMock(stdout=reader, returncode=0, pid=4242)
-
-    bg = _BgProcess(proc, "noisy-command", "session-1")
-    await bg._reader_task
-
-    output = bg.read_output()
-    assert output.endswith("x" * 100)
-    assert len(output) <= 24_100
-
-
-@pytest.mark.asyncio
-async def test_background_actions_lazily_prune_completed_records(sandbox_workspace):
-    """A registry action removes expired completed jobs while retaining live jobs."""
-    expired = MagicMock(alive=False, session_id="session-1")
-    expired.completed_at = (
-        shell_module.time.monotonic() - shell_module._BG_COMPLETED_TTL_SECONDS - 1
-    )
-    alive = MagicMock(alive=True, session_id="session-1", command="sleep 30")
-    _bg_processes[1001] = expired
-    _bg_processes[1002] = alive
-
-    result = await background_process.arun(action="list")
-
-    assert "sleep 30" in result
-    assert 1001 not in _bg_processes
-    assert 1002 in _bg_processes
-
-
-@pytest.mark.asyncio
-async def test_background_start_lazily_prunes_completed_records(
-    sandbox_workspace, fast_bg
-):
-    """Starting a job also prunes expired completed records."""
-    expired = MagicMock(alive=False)
-    expired.completed_at = (
-        shell_module.time.monotonic() - shell_module._BG_COMPLETED_TTL_SECONDS - 1
-    )
-    _bg_processes[1001] = expired
-
-    await shell_tool.arun(command="sleep 30", background=True, timeout_seconds=1)
-
-    assert 1001 not in _bg_processes
-
-
-@pytest.mark.asyncio
-async def test_background_captures_initial_output_and_registry(
-    sandbox_workspace, fast_bg
-):
-    """background=True returns PID, registers process, captures initial output."""
-    result = await shell_tool.arun(
-        command="echo 'server started on port 3000' && sleep 30",
-        background=True,
-        timeout_seconds=1,
-    )
-    assert "[Background" in result
-    assert "PID" in result
-    assert "server started on port 3000" in result
-    assert len(_bg_processes) == 1
-    pid = next(iter(_bg_processes))
-    assert _bg_processes[pid].alive
-
-    _bg_processes[pid].proc.kill()
-
-
-async def test_session_cleanup_stops_only_owned_background_processes(tmp_path, fast_bg):
-    """Stopping one session preserves another session's background process."""
-    session_one = SandboxConfig(workspace=str(tmp_path / "one"), session_id="one")
-    session_one_token = set_sandbox(session_one)
+async def test_background_returns_pid(sandbox_workspace):
+    """background=True spawns detached process and returns PID: {pid}."""
+    result = await shell_tool.arun(command="sleep 30", background=True)
+    assert result.startswith("PID: ")
+    pid_str = result.removeprefix("PID: ").strip()
+    pid = int(pid_str)
+    assert pid > 0
     try:
-        await _shell("sleep 30", background=True, timeout_seconds=1)
-        first_pid = next(iter(_bg_processes))
-    finally:
-        from app.agent.denied_paths import _denied_paths_ctx as _sandbox_ctx
-
-        _sandbox_ctx.reset(session_one_token)
-
-    session_two = SandboxConfig(workspace=str(tmp_path / "two"), session_id="two")
-    session_two_token = set_sandbox(session_two)
-    try:
-        await _shell("sleep 30", background=True, timeout_seconds=1)
-        second_pid = next(pid for pid in _bg_processes if pid != first_pid)
-    finally:
-        from app.agent.denied_paths import _denied_paths_ctx as _sandbox_ctx
-
-        _sandbox_ctx.reset(session_two_token)
-
-    assert await shell_module.stop_background_processes_for_session("one") == 1
-    assert first_pid not in _bg_processes
-    assert second_pid in _bg_processes
-    assert _bg_processes[second_pid].alive
-
-
-async def test_session_cleanup_attempts_every_owned_process_when_one_fails():
-    first = MagicMock(session_id="one")
-    first.stop = AsyncMock(side_effect=RuntimeError("stuck"))
-    second = MagicMock(session_id="one")
-    second.stop = AsyncMock(return_value=0)
-    _bg_processes[1001] = first
-    _bg_processes[1002] = second
-    try:
-        assert await shell_module.stop_background_processes_for_session("one") == 1
-        first.stop.assert_awaited_once()
-        second.stop.assert_awaited_once()
-        assert 1001 in _bg_processes
-        assert 1002 not in _bg_processes
-    finally:
-        _bg_processes.pop(1001, None)
-        _bg_processes.pop(1002, None)
-
-
-@pytest.mark.asyncio
-async def test_background_immediate_exit_treated_as_failure(sandbox_workspace, fast_bg):
-    """If a background process exits immediately, it should report failure."""
-    result = await shell_tool.arun(command="exit 1", background=True, timeout_seconds=1)
-    assert "[Failed" in result
-    assert len(_bg_processes) == 0
-
-
-@pytest.mark.asyncio
-async def test_background_process_list(sandbox_workspace, fast_bg):
-    """background_process list shows running processes; empty list when none."""
-    assert "No background processes" in await background_process.arun(action="list")
-
-    await shell_tool.arun(command="sleep 30", background=True, timeout_seconds=1)
-    pid = next(iter(_bg_processes))
-    result = await background_process.arun(action="list")
-    assert "running" in result
-    assert "sleep 30" in result
-
-    _bg_processes[pid].proc.kill()
-
-
-@pytest.mark.asyncio
-async def test_background_process_output_and_status(sandbox_workspace, fast_bg):
-    """output returns buffered lines; last_n_lines limits them; status reports running."""
-    await shell_tool.arun(
-        command="echo line1 && echo line2 && echo line3 && sleep 30",
-        background=True,
-        timeout_seconds=1,
-    )
-    pid = next(iter(_bg_processes))
-
-    out_all = await background_process.arun(action="output", pid=pid)
-    assert "line1" in out_all
-    assert "line3" in out_all
-
-    out_last = await background_process.arun(action="output", pid=pid, last_n_lines=1)
-    assert "line3" in out_last
-    assert "line1" not in out_last
-
-    status = await background_process.arun(action="status", pid=pid)
-    assert "running" in status
-    assert str(pid) in status
-
-    _bg_processes[pid].proc.kill()
-
-
-@pytest.mark.asyncio
-async def test_bg_rejects_the_removed_wait_action(sandbox_workspace, fast_bg):
-    """`wait` is gone: blocking on a background process is what foreground
-    shell already does, without the 300s cap the action carried."""
-    with pytest.raises((ToolArgumentError, ValueError)):
-        await background_process.arun(action="wait", pid=1234)
-
-
-@pytest.mark.asyncio
-async def test_background_process_output_limits_final_output(
-    sandbox_workspace, fast_bg
-):
-    """bg output caps content to the same inline limits as shell."""
-    await shell_tool.arun(
-        command="python3 - <<'PY'\nfor i in range(400):\n    print(f'line{i:03d}-' + 'x' * 1000)\nPY\nsleep 0.05",
-        background=True,
-        timeout_seconds=1,
-    )
-    pid = next(iter(_bg_processes))
-    await asyncio.sleep(0.3)  # let the writer finish before reading its output
-
-    result = await background_process.arun(action="output", pid=pid)
-
-    assert "...output truncated..." in result
-    assert "line399" in result  # newest output always retained
-    assert "line000" not in result  # oldest lines evicted by the byte budget
-    # Inline result stays within the shell inline byte cap (+ small framing).
-    assert len(result.encode()) <= shell_module._OUTPUT_MAX_BYTES + 1024
-
-
-@pytest.mark.asyncio
-async def test_background_process_stop(sandbox_workspace, fast_bg):
-    """background_process stop terminates the process and keeps the record."""
-    await shell_tool.arun(command="sleep 30", background=True, timeout_seconds=1)
-    pid = next(iter(_bg_processes))
-
-    _bg_processes[pid].proc.kill()
-    await asyncio.sleep(0.05)
-
-    result = await background_process.arun(action="stop", pid=pid)
-    assert "stopped" in result
-    # Retained until TTL pruning — status/output still work after stop.
-    assert pid in _bg_processes
-    assert not _bg_processes[pid].alive
-
-
-@pytest.mark.asyncio
-async def test_background_process_stop_honors_output_limit(sandbox_workspace, fast_bg):
-    """stop uses the requested line limit for its final output."""
-    await shell_tool.arun(
-        command="printf 'line1\\nline2\\nline3\\n' && sleep 30",
-        background=True,
-        timeout_seconds=1,
-    )
-    pid = next(iter(_bg_processes))
-
-    result = await background_process.arun(action="stop", pid=pid, last_n_lines=1)
-
-    assert "line3" in result
-    assert "line1" not in result
-
-
-@pytest.mark.asyncio
-async def test_background_actions_are_scoped_to_current_session(sandbox_workspace):
-    """A session cannot discover or manage another session's process."""
-    foreign = MagicMock(session_id="session-2", alive=True, command="secret command")
-    _bg_processes[4242] = foreign
-
-    listing = await background_process.arun(action="list")
-    status = await background_process.arun(action="status", pid=4242)
-
-    assert "No background processes" in listing
-    assert "No tracked background process with PID 4242" in status
-    assert "Known PIDs: none" in status
-
-
-@pytest.mark.asyncio
-async def test_background_process_error_cases(sandbox_workspace):
-    """Unknown pid, missing pid, and unknown action all return errors."""
-    assert "99999" in await background_process.arun(action="status", pid=99999)
-
-    with pytest.raises(ToolArgumentError, match="pid"):
-        await background_process.arun(action="status")
-
-    with pytest.raises(ToolArgumentError, match="action"):
-        await background_process.arun(action="restart")
-
-
-@pytest.mark.asyncio
-async def test_background_process_output_empty(sandbox_workspace, fast_bg):
-    """background_process output returns 'no output' when buffer is empty."""
-    await shell_tool.arun(command="sleep 30", background=True, timeout_seconds=1)
-    pid = next(iter(_bg_processes))
-    _bg_processes[pid].output.clear()
-
-    result = await background_process.arun(action="output", pid=pid)
-    assert "no output captured yet" in result
-
-    _bg_processes[pid].proc.kill()
-
-
-@pytest.mark.asyncio
-async def test_background_process_status_exited(sandbox_workspace):
-    """background_process status shows exit code when process has finished."""
-    proc = await asyncio.create_subprocess_shell(
-        "true",
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.STDOUT,
-    )
-    await proc.wait()
-
-    bg = _BgProcess(proc, "true", "session-1")
-    pid = bg.pid
-    _bg_processes[pid] = bg
-    await asyncio.sleep(0.05)
-
-    result = await background_process.arun(action="status", pid=pid)
-    assert "exited" in result
-    assert str(pid) in result
-
-    _bg_processes.pop(pid, None)
-
-
-# ---------------------------------------------------------------------------
-# Regression: process-exit vs stdout-EOF lifecycle mismatches
-# ---------------------------------------------------------------------------
-# The tracked shell and its stdout pipe have independent lifetimes: a child
-# started with ``cmd &`` inherits the pipe and outlives the shell
-# (exit-before-EOF), and a command can close its own stdout and keep running
-# (EOF-before-exit).  Every bg action and the foreground timeout must stay
-# bounded in both cases.
-
-
-@pytest.mark.asyncio
-async def test_background_command_finishing_during_startup_reports_success(
-    sandbox_workspace, monkeypatch
-):
-    """A zero-exit background command must not be misreported as a failure."""
-    # No stdout output, so the warmup loop can only end on exit detection —
-    # deterministic even when exit reaping lags under load.  Generous poll
-    # budget keeps the bound while typically returning in ~20 ms.
-    monkeypatch.setattr(shell_module, "_BG_WARMUP_POLLS", 200)
-    monkeypatch.setattr(shell_module, "_BG_WARMUP_POLL_SECONDS", 0.01)
-    monkeypatch.setattr(
-        "app.agent.tools.builtin.shell._shell_mod.acceptable", lambda: "/bin/sh"
-    )
-
-    result = await shell_tool.arun(command="exit 0", background=True, timeout_seconds=1)
-
-    assert "[Succeeded]" in result
-    assert "[Failed" not in result
-    assert len(_bg_processes) == 0
-
-
-@pytest.mark.asyncio
-async def test_background_child_exit_with_escaped_grandchild_reports_success(
-    sandbox_workspace, fast_bg
-):
-    """A `cmd &` leader that exits during warmup resolves bounded, never Failed.
-
-    Depending on whether the exit is reaped before or after the initial
-    output settles, the tool reports success inline or hands back a PID —
-    both are correct; hanging or reporting `[Failed` is not.
-    """
-    result = await asyncio.wait_for(
-        shell_tool.arun(
-            command="sleep 30 & echo started", background=True, timeout_seconds=1
-        ),
-        timeout=10,
-    )
-
-    assert "[Failed" not in result
-    if "[Background" in result:
-        pid = next(iter(_bg_processes))
-        result = await asyncio.wait_for(
-            shell_module._background_process(action="stop", pid=pid),
-            timeout=10,
-        )
-        assert "exit code 0" in result
-    else:
-        assert "[Succeeded]" in result
-        assert len(_bg_processes) == 0
-    assert "started" in result
-
-
-@pytest.mark.asyncio
-async def test_bg_output_is_bounded_when_child_keeps_stdout_open(
-    sandbox_workspace, fast_bg, monkeypatch
-):
-    """bg output on an exited-leader process returns instead of hanging."""
-    monkeypatch.setattr(shell_module, "_READER_DRAIN_TIMEOUT_SECONDS", 0.2)
-    await shell_tool.arun(
-        command="sleep 30 & echo started; sleep 0.3",
-        background=True,
-        timeout_seconds=1,
-    )
-    pid = next(iter(_bg_processes))
-    # Let the leader shell exit; the `sleep 30` child still holds stdout open.
-    # (proc.wait() itself blocks on pipe closure, so poll returncode.)
-    for _ in range(200):
-        if not _bg_processes[pid].alive:
-            break
-        await asyncio.sleep(0.01)
-    assert not _bg_processes[pid].alive
-
-    result = await asyncio.wait_for(
-        shell_module._background_process(action="output", pid=pid), timeout=5
-    )
-
-    assert "started" in result
-
-
-@pytest.mark.asyncio
-async def test_bg_stop_kills_escaped_child_in_process_group(sandbox_workspace, fast_bg):
-    """bg stop terminates group members even after the leader was reaped."""
-    await shell_tool.arun(
-        command="sleep 30 & echo $!; sleep 0.3", background=True, timeout_seconds=1
-    )
-    pid = next(iter(_bg_processes))
-    for _ in range(200):
-        if not _bg_processes[pid].alive:
-            break
-        await asyncio.sleep(0.01)
-    assert not _bg_processes[pid].alive
-    child_pid = int(_bg_processes[pid].read_output().strip().splitlines()[0])
-
-    result = await asyncio.wait_for(
-        shell_module._background_process(action="stop", pid=pid), timeout=5
-    )
-
-    assert "stopped" in result
-    # SIGKILL delivery is asynchronous — poll briefly for the child to die.
-    for _ in range(100):
-        try:
-            os.kill(child_pid, 0)
-        except ProcessLookupError:
-            break
-        await asyncio.sleep(0.01)
-    with pytest.raises(ProcessLookupError):
-        os.kill(child_pid, 0)
-
-
-@pytest.mark.asyncio
-async def test_foreground_timeout_fires_when_stdout_closes_before_exit(
-    sandbox_workspace,
-):
-    """A command that closes stdout but keeps running must still hit the timeout."""
-    result = await asyncio.wait_for(
-        _shell("exec 1>&- 2>&-; sleep 30", timeout_seconds=0.3), timeout=5
-    )
-
-    assert "[Timed out" in result
-
-
-# ---------------------------------------------------------------------------
-# Bounded memory: bg byte budget, foreground incremental spill
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_background_reader_bounds_total_buffered_bytes():
-    """The bg line buffer enforces a total byte budget, not just a line count."""
-    reader = asyncio.StreamReader()
-    for i in range(300):
-        reader.feed_data(f"line{i:03d}-".encode() + b"x" * 2000 + b"\n")
-    reader.feed_eof()
-    proc = MagicMock(stdout=reader, returncode=0, pid=4243)
-
-    bg = _BgProcess(proc, "noisy-command", "session-1")
-    await bg._reader_task
-
-    buffered = sum(len(line) for line in bg.output)
-    assert buffered <= shell_module._BG_OUTPUT_MAX_BYTES + 2010  # + one line slack
-    assert bg.read_output().endswith("x" * 100)  # newest lines retained
+        os.kill(pid, signal.SIGKILL)
+    except (ProcessLookupError, PermissionError):
+        pass
 
 
 @pytest.mark.asyncio
@@ -1081,20 +559,6 @@ async def test_foreground_large_output_spills_incrementally(sandbox_workspace):
     # The spill file holds the complete output, including the middle the
     # inline view dropped.
     assert spilled.splitlines() == [f"line-number-{i}" for i in range(200)]
-
-
-def test_prune_closes_evicted_records():
-    """Evicted completed records get their reader task released."""
-    expired = MagicMock(alive=False)
-    expired.completed_at = 0.0
-    _bg_processes[1001] = expired
-
-    shell_module._prune_completed_bg_processes(
-        clock=lambda: shell_module._BG_COMPLETED_TTL_SECONDS + 1
-    )
-
-    assert 1001 not in _bg_processes
-    expired.close.assert_called_once_with()
 
 
 # ---------------------------------------------------------------------------

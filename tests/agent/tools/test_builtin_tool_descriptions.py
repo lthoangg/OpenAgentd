@@ -5,7 +5,7 @@ from app.agent.tools.builtin.filesystem.patch import patch_file
 from app.agent.tools.builtin.filesystem.read import read_file
 from app.agent.tools.builtin.lsp import lsp_navigation
 from app.agent.tools.builtin.schedule import schedule_task
-from app.agent.tools.builtin.shell import background_process, shell_tool
+from app.agent.tools.builtin.shell import shell_tool
 from app.agent.tools.builtin.skill import load_skill
 from app.agent.tools.builtin.todo import todo_manage, todo_manage_member
 from app.agent.tools.builtin.web import web_search
@@ -82,29 +82,13 @@ def test_shell_timeout_description_matches_runtime_default():
 
 def test_background_flag_description_steers_away_from_one_shot_commands():
     """25 of 29 observed background launches were one-shot builds, then blocked
-    on a capped `bg wait`. The flag must read as "for things that outlive the
+    on a capped `wait`. The flag must read as "for things that outlive the
     call", not as a generic runner."""
     background = shell_tool.definition["function"]["parameters"]["properties"][
         "background"
     ]["description"]
     assert "long-lived" in background
     assert "foreground" in background
-
-
-def test_background_pid_description_lists_every_pid_action():
-    pid = background_process.definition["function"]["parameters"]["properties"]["pid"]
-    assert "status, output, or stop" in pid["description"]
-    assert "wait" not in pid["description"]
-
-
-def test_bg_description_no_longer_advertises_wait():
-    """`wait` was removed: it duplicated foreground shell while capping at 300s."""
-    action = background_process.definition["function"]["parameters"]["properties"][
-        "action"
-    ]
-    assert action["enum"] == ["list", "status", "output", "stop"]
-    assert "wait" not in background_process.description
-    assert "foreground" in background_process.description
 
 
 def test_todo_descriptions_explain_assignment_claim_handoff():

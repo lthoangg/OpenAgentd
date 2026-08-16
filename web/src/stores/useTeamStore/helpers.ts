@@ -115,7 +115,6 @@ export function applyLocalBlockTransform(
 export const FS_MUTATING_TOOLS = new Set([
   'patch',
   'shell',
-  'bg',
   'generate_image',
   'generate_video',
 ])

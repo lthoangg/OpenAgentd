@@ -341,7 +341,6 @@ _CONTEXT_INJECTED_TOOLS = frozenset(
 def _default_tool_registry() -> dict[str, Tool]:
     from app.agent.mcp import mcp_manager
     from app.agent.tools.builtin import (
-        background_process,
         glob_files,
         grep_files,
         load_skill,
@@ -363,7 +362,6 @@ def _default_tool_registry() -> dict[str, Tool]:
         "glob": glob_files,
         "patch": patch_file,
         "shell": shell_tool,
-        "bg": background_process,
         "skill": load_skill,
         "schedule_task": schedule_task,
         "todo_manage": todo_manage,

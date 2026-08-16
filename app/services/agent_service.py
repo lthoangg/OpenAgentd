@@ -557,7 +557,6 @@ async def dispatch_user_message(
 async def interrupt_team(team: "AgentTeam", session_id: str | None) -> list[str]:
     """Cancel all working team members. Returns the cancelled member names."""
     from app.agent.schemas.chat import HumanMessage
-    from app.agent.tools.builtin.shell import stop_background_processes_for_session
     from app.agent.tools.builtin.todo import release_in_progress_for_actor
     from app.core.db import resolve_db_factory
     from app.services.chat_service import release_queued_user_messages, save_message
@@ -618,33 +617,8 @@ async def interrupt_team(team: "AgentTeam", session_id: str | None) -> list[str]
     # cannot delay cancellation of the others.
     for member in working_members:
         member.interrupt()
-    background_cleanup = (
-        asyncio.create_task(stop_background_processes_for_session(effective_session_id))
-        if effective_session_id
-        else None
-    )
-    cleanup_tasks = [*active_tasks]
-    if background_cleanup is not None:
-        cleanup_tasks.append(background_cleanup)
-    if cleanup_tasks:
-        await asyncio.gather(*cleanup_tasks, return_exceptions=True)
-
-    if background_cleanup is not None:
-        try:
-            stopped_background = background_cleanup.result()
-        except Exception as exc:
-            logger.warning(
-                "team_interrupt_background_shells_failed session_id={} error={}",
-                effective_session_id,
-                exc,
-            )
-        else:
-            if stopped_background:
-                logger.info(
-                    "team_interrupt_background_shells session_id={} stopped={}",
-                    effective_session_id,
-                    stopped_background,
-                )
+    if active_tasks:
+        await asyncio.gather(*active_tasks, return_exceptions=True)
 
     live_members = getattr(team, "members", {})
     if isinstance(live_members, dict):

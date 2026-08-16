@@ -12,7 +12,6 @@ NORMAL_OPENAGENTD_DESCRIPTION = "Your personal on-machine AI assistant. Lives on
 CODING_OPENAGENTD_DESCRIPTION = "Lead coding agent. Plans the work, coordinates the team, and delivers a verified change with a concise handoff."
 
 NORMAL_OPENAGENTD_TOOLS = [
-    "bg",
     "generate_image",
     "generate_video",
     "glob",
@@ -24,7 +23,6 @@ NORMAL_OPENAGENTD_TOOLS = [
     "web_search",
 ]
 CODING_OPENAGENTD_TOOLS = [
-    "bg",
     "glob",
     "grep",
     "patch",
@@ -56,7 +54,6 @@ BUILTIN_MEMBER_PROFILES: dict[str, dict[str, BuiltinMemberProfile]] = {
             "tools": [
                 "read",
                 "patch",
-                "bg",
                 "glob",
                 "grep",
                 "shell",
@@ -111,7 +108,6 @@ Structure findings with headings, bullets, or tables. End with a short synthesis
         "coder": {
             "description": "Implements focused code changes with the smallest correct diff and runs the relevant verification commands.",
             "tools": [
-                "bg",
                 "glob",
                 "grep",
                 "patch",

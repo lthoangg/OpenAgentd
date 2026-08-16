@@ -68,11 +68,10 @@ describe("useTeamStore — coding_workspace invalidation", () => {
     ])
   })
 
-  it.each(["bg", "generate_image", "generate_video"] as const)(
+  it.each(["generate_image", "generate_video"] as const)(
     "emits broad coding_workspace event when `%s` finishes in coding mode (no extractable path)",
     (toolName) => {
-      // ``bg`` is shell-like (arbitrary path mutations); the
-      // multimodal generators don't surface deterministic output
+      // The multimodal generators don't surface deterministic output
       // paths in their args. All fall back to broad invalidation.
       resetStore({ sessionId: "sess-c3", _workspace: "/tmp/proj" })
       primeBlock("claude", toolName, `tc-${toolName}`, { foo: "bar" })

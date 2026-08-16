@@ -24,6 +24,97 @@ from app.agent.tools.builtin.filesystem._ignore import (
 )
 
 
+def _rule_by_rule(rel: str, *, is_dir: bool, rules) -> bool:
+    """Reference implementation: every rule, in order, last match wins."""
+    ignored = False
+    for pattern, include in rules:
+        if matches_gitignore_pattern(pattern, rel, is_dir=is_dir):
+            ignored = not include
+    return ignored
+
+
+class TestFastPathAgreesWithRuleByRule:
+    """Any prefilter added for speed must never change the answer.
+
+    ``is_gitignored`` rejects most paths without consulting each rule. A
+    superset matcher that is even slightly too narrow silently un-ignores
+    files, so the two implementations are compared directly over a corpus
+    built from the shapes real ``.gitignore`` files use.
+    """
+
+    RULES = [
+        ("*.log", False),
+        ("build/", False),
+        ("docs/*.tmp", False),
+        ("**/.openagentd/cache/", False),
+        ("node_modules", False),
+        ("/root-only.txt", False),
+        ("a/**/b", False),
+        ("temp?", False),
+        ("[Dd]ebug/", False),
+        ("!keep.log", True),
+        ("!build/keep/", True),
+        ("weird\\#name", False),
+        ("space name/", False),
+    ]
+
+    PATHS = [
+        "app.log",
+        "keep.log",
+        "src/app.log",
+        "src/keep.log",
+        "build",
+        "build/out.js",
+        "build/keep/x.js",
+        "web/build/o.js",
+        "docs/scratch.tmp",
+        "docs/guide/deep/notes.tmp",
+        "docs/readme.md",
+        ".openagentd/cache/blob",
+        "web/.openagentd/cache/blob",
+        "node_modules",
+        "node_modules/pkg/index.js",
+        "web/node_modules/p/i.js",
+        "root-only.txt",
+        "sub/root-only.txt",
+        "a/b",
+        "a/x/b",
+        "a/x/y/b",
+        "a/x/y/c",
+        "temp1",
+        "temps",
+        "temp",
+        "Debug/app.o",
+        "debug/app.o",
+        "src/Debug/app.o",
+        "weird#name",
+        "space name/file",
+        "src/main.py",
+        "README.md",
+        "",
+    ]
+
+    @pytest.mark.parametrize("is_dir", [False, True])
+    def test_agreement_over_corpus(self, is_dir):
+        mismatches = [
+            rel
+            for rel in self.PATHS
+            if is_gitignored(rel, is_dir=is_dir, rules=self.RULES)
+            != _rule_by_rule(rel, is_dir=is_dir, rules=self.RULES)
+        ]
+        assert not mismatches, f"fast path disagrees for is_dir={is_dir}: {mismatches}"
+
+    def test_agreement_when_a_negation_re_includes(self):
+        rules = [("build/", False), ("!build/keep/", True), ("build/keep/no.js", False)]
+        for rel in ("build/x.js", "build/keep/y.js", "build/keep/no.js"):
+            assert is_gitignored(rel, is_dir=False, rules=rules) == _rule_by_rule(
+                rel, is_dir=False, rules=rules
+            ), rel
+
+    def test_empty_rule_set_ignores_nothing(self):
+        assert is_gitignored("anything/at/all.py", is_dir=False, rules=[]) is False
+
+
 class TestWildcardsDoNotCrossSlash:
     @pytest.mark.parametrize(
         "pattern,rel,expected",

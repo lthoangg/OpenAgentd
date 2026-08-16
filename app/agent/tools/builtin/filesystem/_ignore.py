@@ -60,7 +60,55 @@ NOISE_DIR_NAMES = frozenset(
 _MAX_CACHED_PATTERNS = 1024
 
 
-def load_gitignore_rules(root: Path) -> list[tuple[str, bool]]:
+class GitignoreRules(list):
+    """Ordered ``(pattern, is_negation)`` rules that can prefilter themselves.
+
+    A plain list of pairs, so every existing caller and comparison keeps
+    working — it just carries a lazily-built union matcher used to answer
+    "no rule can possibly match this path" in two regex operations per path
+    component instead of one per rule. A repository with 127 rules was
+    spending 219,456 pattern checks on 1,728 paths.
+
+    The union is built once, on first use, so the rules must not be mutated
+    after loading. Nothing does: callers load them and pass them through.
+    """
+
+    _union: "tuple[re.Pattern[str] | None, re.Pattern[str] | None] | None" = None
+
+    def union(self) -> "tuple[re.Pattern[str] | None, re.Pattern[str] | None]":
+        """``(name_union, path_union)``, compiled once per rule set.
+
+        Non-anchored patterns are only ever tested against a single path
+        component, anchored ones only against a path prefix, so they union
+        separately. ``directory_only`` is deliberately ignored here: including
+        those rules can only make the union match *more* often, and a false
+        positive costs one slow-path walk while a false negative would
+        silently un-ignore a file.
+        """
+        if self._union is None:
+            names: list[str] = []
+            paths: list[str] = []
+            for pattern, _include in self:
+                spec = _compile_pattern(pattern)
+                if spec is None:
+                    continue
+                (paths if spec.anchored else names).append(spec.source)
+            self._union = (_compile_union(names), _compile_union(paths))
+        return self._union
+
+
+def _compile_union(bodies: list[str]) -> "re.Pattern[str] | None":
+    """One alternation over *bodies*, or ``None`` when there is nothing to try."""
+    if not bodies:
+        return None
+    joined = "|".join(f"(?:{body})" for body in bodies)
+    try:
+        return re.compile(f"(?s:{joined})\\Z")
+    except re.error:
+        return None  # fall back to rule-by-rule matching
+
+
+def load_gitignore_rules(root: Path) -> GitignoreRules:
     """Parse ``root/.gitignore`` into ``(pattern, is_negation)`` pairs.
 
     Order is preserved: :func:`is_gitignored` applies last-match-wins, so a
@@ -68,11 +116,11 @@ def load_gitignore_rules(root: Path) -> list[tuple[str, bool]]:
     """
     gitignore = root / ".gitignore"
     if not gitignore.is_file():
-        return []
+        return GitignoreRules()
     try:
         lines = gitignore.read_text(encoding="utf-8").splitlines()
     except (OSError, UnicodeDecodeError):
-        return []
+        return GitignoreRules()
 
     rules: list[tuple[str, bool]] = []
     for line in lines:
@@ -87,18 +135,25 @@ def load_gitignore_rules(root: Path) -> list[tuple[str, bool]]:
             pattern = pattern[1:]
         if pattern:
             rules.append((pattern, include))
-    return rules
+    return GitignoreRules(rules)
 
 
 class _PatternSpec:
     """A gitignore pattern compiled to a regex, plus its matching mode."""
 
-    __slots__ = ("regex", "directory_only", "anchored")
+    __slots__ = ("regex", "directory_only", "anchored", "source")
 
-    def __init__(self, regex: re.Pattern[str], directory_only: bool, anchored: bool):
+    def __init__(
+        self,
+        regex: re.Pattern[str],
+        directory_only: bool,
+        anchored: bool,
+        source: str,
+    ):
         self.regex = regex
         self.directory_only = directory_only
         self.anchored = anchored
+        self.source = source
 
 
 def _translate(glob: str) -> str:
@@ -168,7 +223,7 @@ def _compile_pattern(pattern: str) -> _PatternSpec | None:
         regex = re.compile(f"(?s:{_translate(body)})\\Z")
     except re.error:
         return None
-    return _PatternSpec(regex, directory_only, anchored)
+    return _PatternSpec(regex, directory_only, anchored, _translate(body))
 
 
 def matches_gitignore_pattern(pattern: str, rel: str, *, is_dir: bool) -> bool:
@@ -201,8 +256,35 @@ def matches_gitignore_pattern(pattern: str, rel: str, *, is_dir: bool) -> bool:
 
 def is_gitignored(rel: str, *, is_dir: bool, rules: list[tuple[str, bool]]) -> bool:
     """Apply ``rules`` to ``rel``, last match wins (so ``!`` can re-include)."""
+    # Most paths match no rule at all. Ask the union first and skip the
+    # per-rule walk entirely when it says no rule can apply.
+    if isinstance(rules, GitignoreRules) and not _union_may_match(rel, rules.union()):
+        return False
     ignored = False
     for pattern, include in rules:
         if matches_gitignore_pattern(pattern, rel, is_dir=is_dir):
             ignored = not include
     return ignored
+
+
+def _union_may_match(
+    rel: str, union: "tuple[re.Pattern[str] | None, re.Pattern[str] | None]"
+) -> bool:
+    """True when some rule *could* match ``rel`` — a superset of the real answer."""
+    name_union, path_union = union
+    if name_union is None and path_union is None:
+        return False
+    parts = [part for part in rel.split("/") if part]
+    if not parts:
+        return False
+    if name_union is not None:
+        for name in parts:
+            if name_union.match(name):
+                return True
+    if path_union is not None:
+        prefix = ""
+        for name in parts:
+            prefix = f"{prefix}/{name}" if prefix else name
+            if path_union.match(prefix):
+                return True
+    return False

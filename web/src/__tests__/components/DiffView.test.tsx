@@ -190,6 +190,27 @@ describe("DiffView", () => {
     expect(screen.getByRole("button", { name: "Collapse diff for src/main.py" })).toBeTruthy()
   })
 
+  it("does not render a multi-file stats / collapse-all summary bar", () => {
+    const patchText = [
+      "*** Begin Patch",
+      "*** Update File: src/utils.py",
+      "@@",
+      "-old utils line",
+      "+new utils line",
+      "*** Update File: src/main.py",
+      "@@",
+      "-old main line",
+      "+new main line",
+      "*** End Patch",
+    ].join("\n")
+
+    render(<DiffView toolName="patch" args={JSON.stringify({ patch_text: patchText })} />)
+
+    expect(screen.queryByText(/files:/i)).toBeNull()
+    expect(screen.queryByText(/collapse all/i)).toBeNull()
+    expect(screen.queryByText(/expand all/i)).toBeNull()
+  })
+
   it("does not call the outer collapse handler when toggling one file in a multi-file patch", () => {
     const patchText = [
       "*** Begin Patch",

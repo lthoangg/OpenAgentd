@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
-import { ArrowRight, Trash2, PlusCircle, ChevronRight, FileEdit, ChevronsUpDown, ChevronsDownUp } from 'lucide-react'
-import { parseDiffMeta, parsePatchText, getPatchOperationsStats, type DiffLine, type FileDiff } from './diffUtils'
+import { ArrowRight, Trash2, PlusCircle, ChevronRight, FileEdit } from 'lucide-react'
+import { parseDiffMeta, parsePatchText, type DiffLine, type FileDiff } from './diffUtils'
 import { parsePartialJSON } from './displayText'
 import { parseLspDiagnostics, LspDiagnosticsView } from '../ToolResult'
 
@@ -12,17 +12,10 @@ interface SingleFileDiffProps {
   oldStart?: number
   newStart?: number
   onCollapse?: () => void
-  forceExpanded?: boolean
 }
 
-function SingleFileDiff({ path, kind, moveTo, lines, oldStart = 1, newStart = 1, onCollapse, forceExpanded }: SingleFileDiffProps) {
-  const [manualExpanded, setManualExpanded] = useState<boolean | null>(null)
-  const [lastForceExpanded, setLastForceExpanded] = useState(forceExpanded)
-  if (forceExpanded !== lastForceExpanded) {
-    setLastForceExpanded(forceExpanded)
-    setManualExpanded(null)
-  }
-  const expanded = manualExpanded ?? forceExpanded ?? true
+function SingleFileDiff({ path, kind, moveTo, lines, oldStart = 1, newStart = 1, onCollapse }: SingleFileDiffProps) {
+  const [expanded, setExpanded] = useState(true)
 
   const linesWithNumbers = useMemo(() => {
     let oldLineNum = oldStart
@@ -84,7 +77,7 @@ function SingleFileDiff({ path, kind, moveTo, lines, oldStart = 1, newStart = 1,
             onCollapse()
             return
           }
-          setManualExpanded(!expanded)
+          setExpanded(!expanded)
         }}
         className="flex w-full shrink-0 items-center gap-2 border-b border-(--color-border) bg-(--bg-sidebar) px-3 py-1.5 text-left font-mono text-xs font-semibold text-(--color-text-2) shadow-sm transition-colors hover:text-(--color-text) focus-visible:outline-2 focus-visible:outline-(--focus-ring)/40"
         aria-expanded={expanded}
@@ -216,7 +209,6 @@ type DiffModel =
   | { kind: 'files'; diffs: FileDiff[] }
 
 export function DiffView({ toolName, args, result, onCollapse }: DiffViewProps) {
-  const [allExpanded, setAllExpanded] = useState(true)
   const parsed = useMemo(() => {
     try {
       return JSON.parse(args)
@@ -249,11 +241,6 @@ export function DiffView({ toolName, args, result, onCollapse }: DiffViewProps) 
     return null
   }, [toolName, args, parsed, diffMeta])
 
-  const multiFileStats = useMemo(() => {
-    if (model?.kind !== 'files' || model.diffs.length <= 1) return null
-    return getPatchOperationsStats(model.diffs)
-  }, [model])
-
   let viewContent: React.ReactNode = null
 
   if (model?.kind === 'raw') {
@@ -282,42 +269,6 @@ export function DiffView({ toolName, args, result, onCollapse }: DiffViewProps) 
     const diffs = model.diffs
     viewContent = (
       <div className="flex flex-col overflow-hidden">
-        {multiFileStats && (
-          <div className="flex items-center justify-between border-b border-(--color-border) bg-(--bg-sidebar) px-3 py-1.5 font-mono text-xs">
-            <div className="flex flex-wrap items-center gap-1.5">
-              <span className="font-semibold text-(--color-text-2)">{multiFileStats.totalFiles} files:</span>
-              {multiFileStats.adds > 0 && (
-                <span className="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-medium bg-[var(--color-diff-add-bg)] text-[var(--color-diff-add-text)] border border-(--color-success)/20">
-                  +{multiFileStats.adds} created
-                </span>
-              )}
-              {multiFileStats.updates > 0 && (
-                <span className="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-medium bg-(--bg-key) text-(--color-text-2) border border-(--color-border)/50">
-                  ~{multiFileStats.updates} updated
-                </span>
-              )}
-              {multiFileStats.moves > 0 && (
-                <span className="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-medium bg-[var(--color-accent-purple-soft,#E8DEF8)] text-[var(--color-accent-purple,#5A34D1)] border border-[var(--color-accent-purple,#5A34D1)]/20">
-                  →{multiFileStats.moves} moved
-                </span>
-              )}
-              {multiFileStats.deletes > 0 && (
-                <span className="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-medium bg-[var(--color-diff-del-bg)] text-[var(--color-diff-del-text)] border border-(--color-error)/20">
-                  -{multiFileStats.deletes} deleted
-                </span>
-              )}
-            </div>
-            <button
-              type="button"
-              onClick={() => setAllExpanded(!allExpanded)}
-              className="ml-2 flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text) transition-colors focus-visible:outline-2 focus-visible:outline-(--focus-ring)/40"
-              aria-label={allExpanded ? 'Collapse all diffs' : 'Expand all diffs'}
-            >
-              {allExpanded ? <ChevronsDownUp size={12} /> : <ChevronsUpDown size={12} />}
-              <span>{allExpanded ? 'Collapse all' : 'Expand all'}</span>
-            </button>
-          </div>
-        )}
         {diffs.map((diff, idx) => (
           <SingleFileDiff
             key={idx}
@@ -328,7 +279,6 @@ export function DiffView({ toolName, args, result, onCollapse }: DiffViewProps) 
             oldStart={diff.hunkStarts?.[0]?.oldStart ?? 1}
             newStart={diff.hunkStarts?.[0]?.newStart ?? 1}
             onCollapse={diffs.length === 1 ? onCollapse : undefined}
-            forceExpanded={allExpanded}
           />
         ))}
       </div>

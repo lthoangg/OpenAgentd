@@ -616,6 +616,67 @@ class TestGrepFiles:
         assert "ruff" not in result
         assert ".pytest_cache" not in result
 
+    # ── literal prefilter ────────────────────────────────────────────────
+    #
+    # Two thirds of real patterns are a bare literal or an alternation of
+    # literals, so a byte scan can rule a file out before it is decoded. The
+    # prefilter must never change *which* lines are reported.
+
+    async def test_grep_literal_spanning_a_read_boundary_is_still_found(
+        self, workspace
+    ):
+        """The match must survive a literal straddling two internal chunks.
+
+        A chunked byte scan that forgets to overlap its reads splits the
+        needle in half and silently reports "No matches".
+        """
+        target = workspace / "big.txt"
+        needle = "NEEDLE_ACROSS_BOUNDARY"
+        # Bury the needle at several offsets so one lands on whatever chunk
+        # boundary the implementation picks. Padding is many short lines so the
+        # needle stays on a line of its own and is not truncated in the output.
+        filler = "x" * 79 + "\n"
+        parts: list[str] = []
+        for pad_bytes in (65536, 131072, 262144):
+            parts.append(filler * (pad_bytes // len(filler)))
+            parts.append(needle + "\n")
+        target.write_text("".join(parts), encoding="utf-8")
+
+        result = await grep_files.arun(pattern=needle, directory=".")
+        assert "No matches" not in result
+        assert result.count(needle) >= 3
+
+    async def test_grep_literal_alternation_finds_every_branch(self, workspace):
+        (workspace / "a.py").write_text("alpha here\n")
+        (workspace / "b.py").write_text("bravo here\n")
+        (workspace / "c.py").write_text("charlie here\n")
+
+        result = await grep_files.arun(pattern="alpha|bravo", directory=".")
+        assert "a.py" in result
+        assert "b.py" in result
+        assert "c.py" not in result
+
+    async def test_grep_case_insensitive_flag_still_matches(self, workspace):
+        """`(?i)` must disable the prefilter, not defeat the search."""
+        (workspace / "a.py").write_text("SHOUTING loudly\n")
+
+        result = await grep_files.arun(pattern="(?i)shouting", directory=".")
+        assert "a.py" in result
+
+    async def test_grep_regex_metacharacters_still_match(self, workspace):
+        (workspace / "a.py").write_text("value = 42\nother = x\n")
+
+        result = await grep_files.arun(pattern=r"value\s*=\s*\d+", directory=".")
+        assert "a.py" in result
+        assert "other" not in result
+
+    async def test_grep_literal_is_matched_case_sensitively(self, workspace):
+        """A prefilter comparing bytes must not become accidentally lax."""
+        (workspace / "a.py").write_text("Alpha\n")
+
+        result = await grep_files.arun(pattern="alpha", directory=".")
+        assert "No matches" in result
+
 
 # ---------------------------------------------------------------------------
 # _grep_files: internal unit tests

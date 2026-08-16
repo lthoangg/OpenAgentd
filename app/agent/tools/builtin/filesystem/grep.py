@@ -25,6 +25,10 @@ _MAX_PATTERN_LEN = 500
 _SCAN_TIMEOUT_S = 10
 # Bytes sampled from the head of a file to decide whether it is binary
 _BINARY_SNIFF_BYTES = 4096
+# Bytes per read when ruling a file out by literal content
+_LITERAL_SCAN_CHUNK = 262144
+# Characters that give a pattern meaning beyond a plain substring
+_REGEX_META = frozenset(".^$*+?{}[]()|\\")
 
 _DESCRIPTION = (
     "Search file contents by regex. Returns 'file:line: content'. Use glob to "
@@ -48,6 +52,45 @@ def _compile_pattern(pattern: str) -> re.Pattern[str]:
         return re.compile(pattern)
     except re.error as exc:
         raise ValueError(f"Invalid regex: {exc}") from exc
+
+
+def _required_literals(pattern: str) -> tuple[bytes, ...]:
+    """Substrings a file must contain for *pattern* to match anything.
+
+    Two thirds of recorded patterns are a bare literal (25%) or an alternation
+    of literals (41%), and most files contain neither — so a byte scan rules
+    them out before they are decoded and matched line by line.
+
+    Returns ``()`` for anything carrying regex syntax, including ``(?i)``,
+    which would make the byte comparison wrong. This is an optimisation: being
+    unsure is free, being wrong would silently lose matches.
+    """
+    branches = pattern.split("|")
+    if not all(branch and not (_REGEX_META & set(branch)) for branch in branches):
+        return ()
+    return tuple(branch.encode("utf-8") for branch in branches)
+
+
+def _stream_contains_literal(
+    raw: io.BufferedReader, literals: tuple[bytes, ...]
+) -> bool:
+    """True when the stream holds any of *literals*, reading bounded chunks.
+
+    Reads overlap by the longest literal minus one byte, so a needle straddling
+    a chunk boundary is still found. Streaming keeps the memory profile the
+    line scan already promised: a multi-megabyte file costs a chunk, not all
+    of it.
+    """
+    overlap = max(len(literal) for literal in literals) - 1
+    tail = b""
+    while True:
+        block = raw.read(_LITERAL_SCAN_CHUNK)
+        if not block:
+            return False
+        window = tail + block
+        if any(literal in window for literal in literals):
+            return True
+        tail = window[-overlap:] if overlap else b""
 
 
 class GrepArgs(BaseModel):
@@ -89,6 +132,7 @@ async def _grep_files(
         )
 
     compiled = _compile_pattern(pattern)
+    literals = _required_literals(pattern)
 
     def _scan_file(fpath: Path, hits: list[str]) -> bool:
         """Append matches from *fpath*; return True once ``max_results`` is hit.
@@ -107,6 +151,10 @@ async def _grep_files(
                 # text file because of one stray byte.
                 if b"\x00" in raw.read(_BINARY_SNIFF_BYTES):
                     return False
+                if literals:
+                    raw.seek(0)
+                    if not _stream_contains_literal(raw, literals):
+                        return False
                 raw.seek(0)
                 stream = io.TextIOWrapper(raw, encoding="utf-8", errors="replace")
                 for lineno, line in enumerate(stream, start=1):

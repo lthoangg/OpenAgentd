@@ -153,7 +153,7 @@ export function TokenMeter({
       <button
         ref={triggerRef}
         type="button"
-        className="relative flex h-9 min-w-9 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:outline-none md:h-7 md:min-w-7 md:rounded-sm"
+        className="relative flex h-8 min-w-8 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) aria-expanded:bg-(--bg-key) aria-expanded:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 md:h-7 md:min-w-7 md:rounded-sm"
         aria-label={tooltip}
         aria-expanded={open}
         onClick={() => {
@@ -168,7 +168,7 @@ export function TokenMeter({
         onFocus={openHoverTooltip}
         onBlur={closeHoverTooltip}
       >
-        <svg className="h-[17px] w-[17px] -rotate-90" viewBox="0 0 18 18" aria-hidden="true">
+        <svg className="h-4 w-4 -rotate-90" viewBox="0 0 18 18" aria-hidden="true">
           <circle
             cx="9"
             cy="9"

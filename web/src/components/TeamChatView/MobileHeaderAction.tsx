@@ -20,7 +20,7 @@ export function MobileHeaderAction({
       type="button"
       onClick={onClick}
       disabled={disabled || !onClick}
-      className={`relative flex h-9 w-9 items-center justify-center rounded-md transition-colors disabled:opacity-45 ${
+      className={`relative flex h-8 w-8 items-center justify-center rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 disabled:opacity-45 ${
         active
           ? 'bg-(--bg-key) text-(--color-text)'
           : 'text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text)'
@@ -28,7 +28,7 @@ export function MobileHeaderAction({
       aria-label={label}
       title={label}
     >
-      <Icon size={16} aria-hidden="true" />
+      <Icon size={14} strokeWidth={1.8} aria-hidden="true" />
       {badge > 0 && (
         <span className="absolute right-0.5 top-0.5 min-w-3.5 rounded-full bg-(--color-accent) px-1 text-center font-mono text-[9px] leading-3.5 text-(--bg-page)">
           {badge > 9 ? '9+' : badge}

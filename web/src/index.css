@@ -59,9 +59,9 @@
     --radius-3xl: 16px;
     --radius-4xl: 20px;
 
-    /* App header — 40 px shared bar. The 70 px inset clears the
+    /* App header — 36 px shared bar. The 70 px inset clears the
      * macOS traffic-light overlay (x=12 origin + ~58 button group). */
-    --spacing-app-header: 2.5rem;
+    --spacing-app-header: 2.25rem;
     --spacing-mac-traffic-inset: 70px;
 }
 

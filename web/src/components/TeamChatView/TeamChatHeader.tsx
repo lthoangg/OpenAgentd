@@ -1,5 +1,5 @@
 import { memo, type Dispatch, type HTMLAttributes, type SetStateAction } from 'react'
-import { Home, FolderOpen, ListTodo, Menu, SlidersHorizontal } from 'lucide-react'
+import { Home, FolderOpen, ListTodo, PanelLeft, SlidersHorizontal } from 'lucide-react'
 import type { NavigateFn } from '@tanstack/react-router'
 
 import { AgentTopbar, type AgentTopbarTokens } from '@/components/AgentTopbar'
@@ -93,7 +93,7 @@ export const TeamChatHeader = memo(function TeamChatHeader({
   return (
     <header
       {...dragHandlers}
-      className={`mobile-safe-header flex h-10 shrink-0 items-center overflow-hidden border-b border-(--color-border) bg-(--bg-page) ${
+      className={`mobile-safe-header flex h-(--spacing-app-header) shrink-0 items-center overflow-hidden border-b border-(--color-border) bg-(--bg-page) ${
         isMacOverlay ? 'select-none pl-[70px]' : ''
       }`}
     >
@@ -112,7 +112,7 @@ export const TeamChatHeader = memo(function TeamChatHeader({
                 navigate({ to: '/' })
               }}
             >
-              <Home size={16} aria-hidden="true" />
+              <Home size={14} strokeWidth={1.8} aria-hidden="true" />
             </a>
           )}
 
@@ -133,9 +133,9 @@ export const TeamChatHeader = memo(function TeamChatHeader({
             }}
             aria-label="Toggle sidebar"
             title={`Toggle sidebar (${formatShortcut('B', os)})`}
-            className="flex h-9 w-9 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-8 md:w-8"
+            className="flex h-8 w-8 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-7 md:w-7"
           >
-            <Menu size={16} aria-hidden="true" />
+            <PanelLeft size={14} strokeWidth={1.8} aria-hidden="true" />
           </button>
           {mode === 'coding' && workspace && !isMobile ? (
             <span

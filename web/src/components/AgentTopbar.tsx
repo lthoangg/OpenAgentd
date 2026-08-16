@@ -101,7 +101,7 @@ export function AgentTopbar({
   return (
     <div
       className={cn(
-        // py-0 keeps the element within h-10 on desktop so the
+        // py-0 keeps the element within the compact app header on desktop so the
         // AgentTopbar never grows the header's intrinsic height —
         // an oversized header confuses AppKit's titlebar measurement
         // and pushes the macOS traffic lights off-centre.

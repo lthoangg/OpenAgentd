@@ -46,6 +46,10 @@ Context and removed lines must match the file exactly, whole lines only —
 copy them from a read rather than retyping. A hunk that matches nothing, or
 matches in more than one place, fails the whole envelope; add surrounding
 context lines to make it unique.
+Each update section needs at least one '-' or '+' line; a section of pure
+context changes nothing and is rejected rather than silently applied. To
+delete lines, prefix every line you want gone with '-' — pasting them bare
+reads as unchanged context and removes nothing.
 
 Example:
 *** Begin Patch
@@ -204,7 +208,46 @@ def _parse_patch(patch_text: str) -> list[FilePatch]:
     finish_chunk()
     if not patches:
         raise ValueError("Patch contains no file operations.")
+    for patch in patches:
+        _reject_no_op_update(patch)
     return patches
+
+
+def _reject_no_op_update(patch: FilePatch) -> None:
+    """Reject an update section that would write the file back unchanged.
+
+    A no-op section used to report "Patch applied successfully" while touching
+    nothing, so the model re-read the file, saw the original content, and
+    resent the identical envelope — an endless retry loop that only ended when
+    it gave up and deleted/recreated the file. Failing at parse time instead
+    means the caller learns *why* the envelope was empty before anything
+    reaches the disk.
+
+    Scope is deliberately the *section*, not the chunk. A context-only chunk
+    beside a real one is the widely-used locator idiom (a bare ``@@`` block
+    naming the enclosing function, then the hunk that changes it) — 493 of
+    them across 18% of recorded envelopes. Rejecting those would break far
+    more than it fixed; a section with no marked line anywhere is unambiguous.
+    """
+    if patch.kind != "update":
+        return
+    # A rename is a real change, even with no hunks at all.
+    if patch.move_to is not None:
+        return
+    if any(chunk.old != chunk.new for chunk in patch.chunks):
+        return
+
+    detail = (
+        "it has no '@@' hunk"
+        if not patch.chunks
+        else "no hunk line starts with '-' or '+', so every line reads as "
+        "unchanged context"
+    )
+    raise ValueError(
+        f"Update section for {patch.path} would change nothing: {detail}. "
+        "Prefix every line you want removed with '-' and every line you want "
+        "added with '+', or use '*** Move to: <path>' to rename the file."
+    )
 
 
 def _lines_to_text(lines: list[str]) -> str:

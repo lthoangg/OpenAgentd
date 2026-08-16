@@ -534,7 +534,11 @@ team against it.
   code blocks or surrounding commentary, and falls back to line-aligned fuzzy
   context matching when whitespace doesn't match exactly, without
   mis-patching an earlier occurrence of the same text or rewriting file line
-  endings `[v1.120.0]`. The activity header lists the comma-separated,
+  endings `[v1.120.0]`. An update section that would change nothing — no
+  hunk line marked `-` or `+`, so every line reads as unchanged context — is
+  rejected with guidance instead of reporting success without writing,
+  which previously sent the agent into a silent retry loop `[v1.134.0]`.
+  The activity header lists the comma-separated,
   deduplicated basenames of every touched file instead of collapsing
   multi-file patches into a bare count `[v1.120.0]`, with operation-aware header labels (`Create`, `Update`, `Move`, `Delete`), color-coded action badges, per-file line delta counters, and multi-file expand/collapse controls `[v1.134.0]`.
 - **Interactive terminal tab** `[v1.98.1]` — a real PTY shell (backend

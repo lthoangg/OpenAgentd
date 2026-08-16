@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 import pytest
 
-from app.agent.errors import ToolExecutionError
+from app.agent.errors import ToolArgumentError, ToolExecutionError
 from app.agent.denied_paths import (
     DeniedPathsConfig as SandboxConfig,
     set_denied_paths as set_sandbox,
@@ -495,3 +495,183 @@ async def test_patch_does_not_strip_when_it_would_break_a_match(sandbox_workspac
         )
 
     assert target.read_text(encoding="utf-8") == "hello\n"
+
+
+# ── no-op envelopes must not report success ───────────────────────────────────
+#
+# A section that writes nothing but reports "Patch applied successfully" sends
+# the model into a retry loop: it re-reads the file, sees the old content, and
+# resends the identical envelope. Every shape below must fail loudly instead.
+
+
+@pytest.mark.asyncio
+async def test_patch_rejects_update_section_without_a_hunk(sandbox_workspace):
+    target = sandbox_workspace / "a.py"
+    target.write_text("def foo():\n    return 1\n", encoding="utf-8")
+
+    with pytest.raises(ToolArgumentError, match="@@"):
+        await patch_file.arun(
+            patch_text="""*** Begin Patch
+*** Update File: a.py
+*** End Patch"""
+        )
+
+    assert target.read_text(encoding="utf-8") == "def foo():\n    return 1\n"
+
+
+@pytest.mark.asyncio
+async def test_patch_rejects_hunk_with_no_change_prefixes(sandbox_workspace):
+    """The common failure: the model forgets the '-'/'+' markers entirely.
+
+    Unprefixed lines parse as context, so the hunk asks for no change at all.
+    """
+    target = sandbox_workspace / "a.py"
+    target.write_text("def foo():\n    return 1\n", encoding="utf-8")
+
+    with pytest.raises(ToolArgumentError, match="context"):
+        await patch_file.arun(
+            patch_text="""*** Begin Patch
+*** Update File: a.py
+@@
+def foo():
+    return 2
+*** End Patch"""
+        )
+
+    assert target.read_text(encoding="utf-8") == "def foo():\n    return 1\n"
+
+
+@pytest.mark.asyncio
+async def test_patch_rejects_context_only_hunk(sandbox_workspace):
+    target = sandbox_workspace / "a.py"
+    target.write_text("def foo():\n    return 1\n", encoding="utf-8")
+
+    with pytest.raises(ToolArgumentError, match="context"):
+        await patch_file.arun(
+            patch_text="""*** Begin Patch
+*** Update File: a.py
+@@
+ def foo():
+     return 1
+*** End Patch"""
+        )
+
+    assert target.read_text(encoding="utf-8") == "def foo():\n    return 1\n"
+
+
+@pytest.mark.asyncio
+async def test_patch_rejects_empty_hunk_as_the_only_change(sandbox_workspace):
+    target = sandbox_workspace / "a.py"
+    target.write_text("def foo():\n    return 1\n", encoding="utf-8")
+
+    with pytest.raises(ToolArgumentError):
+        await patch_file.arun(
+            patch_text="""*** Begin Patch
+*** Update File: a.py
+@@
+*** End Patch"""
+        )
+
+    assert target.read_text(encoding="utf-8") == "def foo():\n    return 1\n"
+
+
+@pytest.mark.asyncio
+async def test_patch_rejects_a_bare_block_the_model_meant_to_delete(sandbox_workspace):
+    """Observed in production: the model pastes the block it wants *removed*.
+
+    Without '-' markers those lines read as context, so the old parser dropped
+    the chunk and reported success while the block stayed in the file.
+    """
+    target = sandbox_workspace / "diffUtils.ts"
+    original = (
+        "export interface PatchOperationsStats {\n"
+        "  adds: number\n"
+        "}\n"
+        "export function getPatchOperationsStats() {\n"
+        "  return null\n"
+        "}\n"
+    )
+    target.write_text(original, encoding="utf-8")
+
+    with pytest.raises(ToolArgumentError, match="removed with '-'"):
+        await patch_file.arun(
+            patch_text="""*** Begin Patch
+*** Update File: diffUtils.ts
+@@
+export interface PatchOperationsStats {
+  adds: number
+}
+export function getPatchOperationsStats() {
+  return null
+}
+*** End Patch"""
+        )
+
+    assert target.read_text(encoding="utf-8") == original
+
+
+@pytest.mark.asyncio
+async def test_patch_keeps_the_bare_hunk_locator_idiom(sandbox_workspace):
+    """A context-only chunk *beside a real one* is a locator, not a lost edit.
+
+    493 of these appear across 18% of recorded envelopes: a bare '@@' block
+    naming the enclosing scope, then the '@@' hunk that changes it. Rejecting
+    them would break far more envelopes than the no-op guard fixes.
+    """
+    target = sandbox_workspace / "prompts.py"
+    target.write_text(
+        'AGENTS = {\n    "coder": {\n        "prompt": "old",\n    },\n}\n',
+        encoding="utf-8",
+    )
+
+    result = await patch_file.arun(
+        patch_text="""*** Begin Patch
+*** Update File: prompts.py
+@@
+    "coder": {
+@@
+-        "prompt": "old",
++        "prompt": "new",
+*** End Patch"""
+    )
+
+    assert "Patch applied successfully" in result
+    assert '"prompt": "new"' in target.read_text(encoding="utf-8")
+
+
+@pytest.mark.asyncio
+async def test_patch_allows_rename_without_any_hunk(sandbox_workspace):
+    """A pure rename legitimately changes no content — it must still apply."""
+    source = sandbox_workspace / "old.txt"
+    source.write_text("keep me\n", encoding="utf-8")
+
+    result = await patch_file.arun(
+        patch_text="""*** Begin Patch
+*** Update File: old.txt
+*** Move to: new.txt
+*** End Patch"""
+    )
+
+    assert "Patch applied successfully" in result
+    assert not source.exists()
+    assert (sandbox_workspace / "new.txt").read_text(encoding="utf-8") == "keep me\n"
+
+
+@pytest.mark.asyncio
+async def test_patch_tolerates_a_stray_empty_hunk_beside_a_real_one(sandbox_workspace):
+    """A trailing bare '@@' is a harmless artefact, not a lost edit."""
+    target = sandbox_workspace / "a.py"
+    target.write_text("alpha\nbeta\n", encoding="utf-8")
+
+    result = await patch_file.arun(
+        patch_text="""*** Begin Patch
+*** Update File: a.py
+@@
+-alpha
++ALPHA
+@@
+*** End Patch"""
+    )
+
+    assert "Patch applied successfully" in result
+    assert target.read_text(encoding="utf-8") == "ALPHA\nbeta\n"

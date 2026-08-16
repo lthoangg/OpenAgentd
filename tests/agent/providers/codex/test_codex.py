@@ -808,6 +808,21 @@ class TestCodexResponsesHandlerBuildRequest:
         body = handler.build_request(messages, None, False, {"service_tier": "fast"})
         assert body["service_tier"] == "priority"
 
+    def test_build_request_forwards_prompt_cache_key(self):
+        """Codex requests retain the stable cache-routing key from the caller."""
+        handler = _CodexResponsesHandler(
+            "gpt-5.6-luna",
+            "https://chatgpt.com/backend-api/codex",
+            {},
+        )
+        body = handler.build_request(
+            [HumanMessage(content="Hi")],
+            None,
+            False,
+            {"prompt_cache_key": "openagentd:session-123"},
+        )
+        assert body["prompt_cache_key"] == "openagentd:session-123"
+
     def test_build_request_omits_standard_service_tier(self):
         """Standard/default tiers should not add a private endpoint field."""
         handler = _CodexResponsesHandler("gpt-5.4", "https://api.example.com", {})

@@ -138,6 +138,13 @@ class _CodexResponsesHandler(ResponsesHandler):
         # dropping the reasoning item each turn.
         body["include"] = ["reasoning.encrypted_content"]
 
+        # Codex's backend uses this stable conversation key to keep repeated
+        # requests on the same prompt-cache route.  The generic Responses
+        # handler supports it, but keep the intent explicit here because this
+        # endpoint is not api.openai.com.
+        if merged.get("prompt_cache_key") is not None:
+            body["prompt_cache_key"] = merged["prompt_cache_key"]
+
         service_tier = str(merged.get("service_tier") or "").lower()
         if service_tier not in _NO_SERVICE_TIER:
             # Codex Fast mode is exposed as the request service tier.  The
@@ -150,9 +157,10 @@ class _CodexResponsesHandler(ResponsesHandler):
 
     def _prepare_request_headers(self, body: dict[str, Any]) -> dict[str, str]:
         """Echo the current turn's sticky-routing token, when the server gave one."""
-        if not self._turn_state:
-            return self.headers
-        return {**self.headers, _TURN_STATE_HEADER: self._turn_state}
+        headers = self.headers
+        if self._turn_state:
+            headers = {**headers, _TURN_STATE_HEADER: self._turn_state}
+        return headers
 
     def on_response_headers(self, headers: Any) -> None:
         """Capture the turn-state token issued at the start of a turn.

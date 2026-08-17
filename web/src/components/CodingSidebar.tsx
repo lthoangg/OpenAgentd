@@ -879,9 +879,8 @@ export function CodingSidebar({
         </button>
       </div>
 
-      {/* Footer trio — Settings · Help · HealthDot + ThemeToggle. Mirrors
-          the cockpit sidebar so both feel like the same shell. */}
-      <div className="flex items-center justify-between gap-2 border-t border-(--color-border) px-3 py-2 pb-safe">
+      {/* Mobile drawer footer — on desktop this lives in AppFooter status bar */}
+      <div className="flex md:hidden items-center justify-between gap-2 border-t border-(--color-border) px-3 py-2 pb-safe">
         <div className="flex items-center gap-1">
           <button
             type="button"

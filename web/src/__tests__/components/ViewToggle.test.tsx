@@ -50,4 +50,14 @@ describe('ViewToggle', () => {
     const button = screen.getByRole('button')
     expect(button.classList.contains('custom-class')).toBe(true)
   })
+
+  it('renders with compact layout when compact prop is true', () => {
+    const onValueChange = mock()
+    render(<ViewToggle value="agent" onValueChange={onValueChange} compact />)
+
+    const button = screen.getByRole('button')
+    expect(button.className).toContain('h-5')
+    expect(button.className).toContain('w-5')
+    expect(button.className).toContain('rounded-xs')
+  })
 })

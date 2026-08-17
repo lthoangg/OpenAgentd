@@ -84,8 +84,8 @@ export const TeamChatHeader = memo(function TeamChatHeader({
   onSelectAgent,
   onToggleScheduler,
   onCloseMobileActionsMenu,
-  viewMode,
-  onViewModeChange,
+  viewMode: _viewMode,
+  onViewModeChange: _onViewModeChange,
 }: TeamChatHeaderProps) {
   const activeTodoCount = todos.filter((todo) => todo.status === 'pending' || todo.status === 'in_progress').length
   const { os } = usePlatform()
@@ -237,8 +237,6 @@ export const TeamChatHeader = memo(function TeamChatHeader({
           <AgentTopbar
             isMobile={false}
             tokens={headerTokens}
-            viewMode={viewMode}
-            onViewModeChange={onViewModeChange}
             todosSlot={
               <TodosPopover
                 open={showTodos}
@@ -263,13 +261,6 @@ export const TeamChatHeader = memo(function TeamChatHeader({
                   ariaLabel: 'Workspace files',
                   className: showFilesPanel ? 'border border-(--color-border-strong) bg-(--bg-key) text-(--color-text)' : undefined,
                 }}
-            agentsAction={{
-              Icon: SlidersHorizontal,
-              onClick: onToggleAgentCapabilities,
-              title: `Session settings (${formatShortcut('A', os, { shift: true })})`,
-              ariaLabel: 'Session settings',
-              className: agentCapabilitiesOpen ? 'mr-2 bg-(--bg-key) text-(--color-text)' : 'mr-2',
-            }}
           />
         )}
         </div>

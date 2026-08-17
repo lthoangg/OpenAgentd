@@ -13,12 +13,15 @@ export type ViewMode = 'agent' | 'split'
 export interface ViewToggleProps {
   value: ViewMode
   onValueChange: (mode: ViewMode) => void
+  /** Compact layout for status bar / app footer. */
+  compact?: boolean
   className?: string
 }
 
 export function ViewToggle({
   value,
   onValueChange,
+  compact = false,
   className,
 }: ViewToggleProps) {
   const { os } = usePlatform()
@@ -36,11 +39,13 @@ export function ViewToggle({
       title={title}
       onClick={() => onValueChange(nextMode)}
       className={cn(
-        'inline-flex h-8 w-8 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 md:h-7 md:w-7 md:rounded-sm',
+        compact
+          ? 'flex h-5 w-5 items-center justify-center rounded-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40'
+          : 'inline-flex h-8 w-8 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 md:h-7 md:w-7 md:rounded-sm',
         className,
       )}
     >
-      <Icon size={14} strokeWidth={1.8} aria-hidden="true" />
+      <Icon size={compact ? 12 : 14} strokeWidth={1.8} aria-hidden="true" />
     </button>
   )
 }

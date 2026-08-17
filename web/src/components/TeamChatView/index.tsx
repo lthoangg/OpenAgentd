@@ -56,6 +56,7 @@ import type { AgentCapabilities as AgentCapabilitiesType } from '@/api/types'
 import { SplitGrid } from './SplitGrid'
 import { TeamChatHeader } from './TeamChatHeader'
 import { TeamChatPanels } from './TeamChatPanels'
+import { AppFooter } from '../AppFooter'
 import { AgentTabs } from './AgentTabs'
 import { type ViewMode } from './types'
 import { workspaceLabel } from '@/utils/workspace'
@@ -117,6 +118,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
         sessionModel: s.sessionModel,
         sessionThinkingLevel: s.sessionThinkingLevel,
         leadName: s.leadName,
+        sessionFastMode: s.sessionFastMode,
 
         activeBlocks: activeStream?.blocks ?? EMPTY_BLOCKS,
         activeCurrentBlocks: activeStream?.currentBlocks ?? EMPTY_BLOCKS,
@@ -673,6 +675,21 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
           )}
         </AnimatePresence>
       </div>
+
+      <AppFooter
+        mode={mode}
+        workspace={workspace}
+        sessionId={sessionIdState}
+        sessionModel={sessionModel}
+        sessionThinkingLevel={sessionThinkingLevel}
+        sessionFastMode={storeState.sessionFastMode}
+        viewMode={viewMode}
+        onViewModeChange={setViewMode}
+        onToggleScheduler={handleToggleScheduler}
+        onToggleSessionSettings={handleToggleAgentCapabilities}
+        onTogglePalette={handleTogglePalette}
+        onOpenGitChanges={mode === 'coding' && workspace ? handleWorkspaceFiles : undefined}
+      />
 
       <TeamChatPanels
         agentCapabilitiesOpen={agentCapabilitiesOpen}

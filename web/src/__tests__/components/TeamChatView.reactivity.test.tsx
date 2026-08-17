@@ -42,6 +42,7 @@ mock.module('@/components/CodingWorkspacePanel', () => ({ CodingWorkspacePanel: 
 mock.module('@/components/CodingFileViewerPanel', () => ({ CodingFileViewerPanel: () => null }))
 mock.module('@/components/WorkspaceFilesPanel', () => ({ WorkspaceFilesPanel: () => null }))
 mock.module('@/components/Sidebar', () => ({ Sidebar: () => null }))
+mock.module('@/components/AppFooter', () => ({ AppFooter: () => null }))
 mock.module('@/components/TeamChatView/SplitGrid', () => ({ SplitGrid: () => null }))
 mock.module('@/components/TeamChatView/TeamChatPanels', () => ({ TeamChatPanels: () => null }))
 mock.module('@/components/TeamChatView/AgentTabs', () => ({

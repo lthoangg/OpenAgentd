@@ -575,11 +575,8 @@ export function Sidebar({
               </div>
             )}
 
-            {/* Footer — wireframe trio: Settings · Help (palette) · ThemeToggle.
-                HealthDot is the small status dot tucked between the icon group
-                and the theme toggle. Collapsed mode keeps only the theme
-                cycler so the rail stays at 56px wide. */}
-            <div className={`flex items-center gap-2 border-t border-(--color-border) px-3 py-2 pb-safe ${showIconOnly ? 'justify-center' : 'justify-between'}`}>
+            {/* Mobile drawer footer — on desktop this lives in AppFooter status bar */}
+            <div className={`flex md:hidden items-center gap-2 border-t border-(--color-border) px-3 py-2 pb-safe ${showIconOnly ? 'justify-center' : 'justify-between'}`}>
               {showIconOnly ? (
                 <ThemeToggle collapsed />
               ) : (

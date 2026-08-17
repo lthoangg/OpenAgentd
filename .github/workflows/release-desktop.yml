@@ -119,7 +119,7 @@ jobs:
         if: matrix.platform == 'linux'
         run: echo "APPIMAGE_EXTRACT_AND_RUN=1" >> "$GITHUB_ENV"
 
-      - uses: astral-sh/setup-uv@v9.0.0
+      - uses: astral-sh/setup-uv@v10.0.1
         with:
           enable-cache: true
 
@@ -195,7 +195,7 @@ jobs:
 
       - name: Install cargo-binstall
         if: steps.cache-tauri-cli.outputs.cache-hit != 'true'
-        uses: taiki-e/install-action@v2.85.10
+        uses: taiki-e/install-action@v2.85.13
         with:
           tool: cargo-binstall
 

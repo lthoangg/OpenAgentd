@@ -16,9 +16,7 @@ export function ScheduleTypeSegmented({
     <div
       role="tablist"
       aria-label="Schedule type"
-      // ``inline-flex`` (not ``flex w-full``) so the control sizes to its
-      // contents — three short labels do not need the full form width.
-      className="mt-2 inline-flex max-w-full gap-0.5 overflow-x-auto rounded-sm border border-(--color-border) bg-(--bg-card) p-0.5"
+      className="inline-flex h-8 max-w-full items-center gap-0.5 overflow-x-auto rounded-sm border border-(--color-border) bg-(--bg-key)/60 p-0.5"
     >
       {options.map((opt) => {
         const active = value === opt.key
@@ -29,10 +27,10 @@ export function ScheduleTypeSegmented({
             role="tab"
             aria-selected={active}
             onClick={() => onChange(opt.key)}
-            className={`rounded-xs border px-2.5 py-1 text-[11px] font-medium transition-colors ${
+            className={`flex h-7 items-center rounded-xs border px-2.5 text-xs font-medium transition-colors ${
               active
-                ? 'border-(--color-border-strong) bg-(--bg-key) text-(--color-text)'
-                : 'border-transparent text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text-2)'
+                ? 'border-(--color-border-strong) bg-(--bg-card) text-(--color-text) shadow-2xs font-semibold'
+                : 'border-transparent text-(--color-text-muted) hover:bg-(--bg-key)/60 hover:text-(--color-text)'
             }`}
           >
             {opt.label}

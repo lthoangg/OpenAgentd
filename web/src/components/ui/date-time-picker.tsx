@@ -71,7 +71,7 @@ function TimeUnit({
       onChange={handleChange}
       onKeyDown={handleKey}
       aria-label={label}
-      className="h-9 w-12 rounded-sm border border-(--color-border) bg-(--bg-page) text-center text-sm tabular-nums text-(--color-text) focus:outline-none focus:ring-2 focus:ring-(--focus-ring)/25"
+      className="h-7 w-10 rounded-xs border border-(--color-border) bg-(--bg-page) text-center text-xs font-mono font-medium tabular-nums text-(--color-text) outline-none transition-colors focus:border-(--focus-ring) focus:ring-1 focus:ring-(--focus-ring)/30"
     />
   )
 }
@@ -131,16 +131,16 @@ export function DateTimePicker({
           aria-describedby={ariaDescribedBy}
           className={cn(
             buttonVariants({ variant: 'default' }),
-            'h-9 w-full justify-start gap-2 rounded-md border border-(--color-border) bg-(--bg-page) px-3 text-sm font-normal text-(--color-text) hover:border-(--color-border-strong) hover:bg-(--bg-key)',
+            'h-8 w-full justify-start gap-2 rounded-sm border border-(--color-border) bg-(--bg-page) px-2.5 text-xs font-normal text-(--color-text) hover:border-(--color-border-strong) hover:bg-(--bg-key)/50 transition-colors',
             !parsed && 'text-(--color-text-muted)',
             triggerClassName,
           )}
         >
-          <CalendarIcon className="size-4 shrink-0 opacity-60" />
-          <span>{displayLabel}</span>
+          <CalendarIcon className="size-3.5 shrink-0 text-(--color-text-subtle)" />
+          <span className="truncate">{displayLabel}</span>
         </PopoverTrigger>
 
-          <PopoverContent className="w-auto overflow-hidden p-0" align="start">
+        <PopoverContent className="w-auto overflow-hidden rounded-md border border-(--color-border) bg-(--bg-card) p-0 shadow-lg" align="start">
           <Calendar
             mode="single"
             selected={parsed}
@@ -150,19 +150,20 @@ export function DateTimePicker({
           />
 
           {/* Time + Done row */}
-          <div className="flex items-center justify-between gap-4 border-t border-(--color-border) px-4 py-3">
-            <div className="flex items-center gap-1">
-              <span className="mr-2 text-xs font-medium text-(--color-text-muted)">Time</span>
+          <div className="flex items-center justify-between gap-3 border-t border-(--color-border) bg-(--bg-sidebar)/60 px-3 py-2">
+            <div className="flex items-center gap-1.5">
+              <span className="text-[11px] font-medium text-(--color-text-muted)">Time</span>
               <TimeUnit value={hours} min={0} max={23} label="Hours" onChange={handleHours} />
-              <span className="mb-0.5 self-center px-0.5 text-base font-semibold text-(--color-text-muted)">:</span>
+              <span className="self-center font-mono text-xs text-(--color-text-muted)">:</span>
               <TimeUnit value={minutes} min={0} max={59} label="Minutes" onChange={handleMinutes} />
             </div>
 
             <Button
               type="button"
-              size="sm"
+              size="xs"
               variant="primary"
               onClick={() => setOpen(false)}
+              className="h-7 px-3 text-xs"
             >
               Done
             </Button>

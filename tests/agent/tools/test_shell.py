@@ -507,6 +507,16 @@ async def test_shell_timeout_returns_output_before_timeout(sandbox_workspace):
     assert "Command timed out after 0.3s" in result
 
 
+@pytest.mark.asyncio
+async def test_shell_timeout_no_output_before_timeout(sandbox_workspace):
+    """Command with no output before timeout produces clear notice with metadata."""
+    result = await _shell("sleep 60", timeout_seconds=0.1)
+    assert "[Timed out after 0.1s]" in result
+    assert "(No output before timeout)" in result
+    assert "<shell_metadata>" in result
+    assert "Command timed out after 0.1s" in result
+
+
 # ---------------------------------------------------------------------------
 # Error paths
 # ---------------------------------------------------------------------------

@@ -801,7 +801,10 @@ async def _shell(
                 header = f"{status}\n\n...output truncated\n\n"
             result = header + inline
         else:
-            result = f"{status}\n\n{inline}"
+            if aborted and not inline.strip():
+                result = f"{status}\n\n(No output before timeout)"
+            else:
+                result = f"{status}\n\n{inline}" if inline else status
 
         if aborted:
             result += (

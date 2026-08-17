@@ -10,7 +10,7 @@
  */
 
 import { useState } from 'react'
-import { FolderOpen, ListChecks, Users } from 'lucide-react'
+import { ListChecks, PanelRight, Users } from 'lucide-react'
 
 import { AgentTopbar } from '@/components/AgentTopbar'
 import type { ViewMode } from '@/components/ui/view-toggle'
@@ -54,7 +54,7 @@ export function AgentTopbarPreview() {
     onClick: () => undefined,
   }
   const files = {
-    Icon: FolderOpen,
+    Icon: PanelRight,
     label: 'Files',
     onClick: () => undefined,
   }

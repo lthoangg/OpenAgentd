@@ -1,5 +1,5 @@
 import { memo, type Dispatch, type HTMLAttributes, type SetStateAction } from 'react'
-import { Home, FolderOpen, ListTodo, PanelLeft, SlidersHorizontal } from 'lucide-react'
+import { Home, ListTodo, PanelLeft, PanelRight, SlidersHorizontal } from 'lucide-react'
 import type { NavigateFn } from '@tanstack/react-router'
 
 import { AgentTopbar, type AgentTopbarTokens } from '@/components/AgentTopbar'
@@ -206,7 +206,7 @@ export const TeamChatHeader = memo(function TeamChatHeader({
               active={showTodos}
             />
             <MobileHeaderAction
-              Icon={FolderOpen}
+              Icon={PanelRight}
               label={mode === 'coding' ? 'Workspace files' : 'Session files'}
               onClick={mode === 'coding'
                 ? workspace ? onWorkspaceFiles : undefined
@@ -247,14 +247,14 @@ export const TeamChatHeader = memo(function TeamChatHeader({
             }
             filesAction={mode === 'coding'
               ? workspace ? {
-                  Icon: FolderOpen,
+                  Icon: PanelRight,
                   onClick: onWorkspaceFiles,
                   title: codingPanel === null ? 'Changed files and workspace files' : 'Close changed files and workspace files',
                   ariaLabel: 'Changed files and workspace files',
                   className: codingPanel !== null ? 'border border-(--color-border-strong) bg-(--bg-key) text-(--color-text)' : undefined,
                 } : undefined
               : {
-                  Icon: FolderOpen,
+                  Icon: PanelRight,
                   onClick: () => setShowFilesPanel((v) => !v),
                   disabled: !sessionId,
                   title: sessionId ? `Workspace files (${formatShortcut('F', os)})` : 'No active session',

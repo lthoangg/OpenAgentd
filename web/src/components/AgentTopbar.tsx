@@ -9,8 +9,8 @@
 
 import {
   CalendarClock,
-  FolderOpen,
   ListChecks,
+  PanelRight,
   Users,
   type LucideIcon,
 } from 'lucide-react'
@@ -130,7 +130,7 @@ export function AgentTopbar({
         <AgentTopbarActionButton action={schedulerAction} fallbackIcon={CalendarClock} />
       )}
       {filesAction && (
-        <AgentTopbarActionButton action={filesAction} fallbackIcon={FolderOpen} />
+        <AgentTopbarActionButton action={filesAction} fallbackIcon={PanelRight} />
       )}
       {agentsAction && (
         <AgentTopbarActionButton action={agentsAction} fallbackIcon={Users} />

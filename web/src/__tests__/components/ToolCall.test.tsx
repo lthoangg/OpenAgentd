@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, beforeEach } from "bun:test"
-import { render, screen, cleanup, waitFor } from "@testing-library/react"
+import { render, screen, cleanup, waitFor, fireEvent } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { ToolCall } from "@/components/ToolCall"
 
@@ -183,7 +183,7 @@ describe("ToolCall — shell display", () => {
     expect(screen.getAllByRole("button")[0].getAttribute("aria-expanded")).toBe("false")
   })
 
-  it("renders the latest live shell tail without forcing an inner scroll on each update", () => {
+  it("renders the latest live shell tail and scrolls on each update", () => {
     const args = JSON.stringify({ command: "printf live" })
     const { rerender } = render(
       <ToolCall name="shell" args={args} done={false} liveOutput={"line-1\n"} />,
@@ -201,7 +201,40 @@ describe("ToolCall — shell display", () => {
     )
 
     expect(pre.textContent).toContain("line-2")
-    expect(scrollWrites).toBe(0)
+    expect(scrollWrites).toBeGreaterThan(0)
+  })
+
+  it("pauses auto-scroll when the user scrolls up in the live output", () => {
+    const args = JSON.stringify({ command: "printf live" })
+    const { rerender } = render(
+      <ToolCall name="shell" args={args} done={false} liveOutput={"line-1\n"} />,
+    )
+    const pre = document.querySelector("pre") as HTMLPreElement
+    let currentScrollTop = 0
+    let scrollWrites = 0
+    Object.defineProperty(pre, "scrollHeight", { configurable: true, get: () => 500 })
+    Object.defineProperty(pre, "clientHeight", { configurable: true, get: () => 100 })
+    Object.defineProperty(pre, "scrollTop", {
+      configurable: true,
+      get: () => currentScrollTop,
+      set: (val: number) => {
+        currentScrollTop = val
+        scrollWrites += 1
+      },
+    })
+
+    // Simulate user scrolling up (scrollTop = 50, so distFromBottom = 500 - 50 - 100 = 350 > 30)
+    currentScrollTop = 50
+    fireEvent.scroll(pre)
+
+    const writesBefore = scrollWrites
+    rerender(
+      <ToolCall name="shell" args={args} done={false} liveOutput={"line-1\nline-2\n"} />,
+    )
+
+    expect(pre.textContent).toContain("line-2")
+    // Should NOT force scroll to bottom because user detached
+    expect(scrollWrites).toBe(writesBefore)
   })
 })
 

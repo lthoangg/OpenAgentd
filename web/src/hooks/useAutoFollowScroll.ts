@@ -5,6 +5,26 @@ const USER_SCROLL_INTENT_MS = 250
 const SCROLL_UP_KEYS = new Set(['PageUp', 'Home', 'ArrowUp'])
 const EDITABLE_TAGS = new Set(['INPUT', 'TEXTAREA', 'SELECT'])
 
+function isInsideScrollableChild(root: HTMLElement, target: EventTarget | null, deltaY: number): boolean {
+  if (!target || !(target instanceof Element)) return false
+  let curr: Element | null = target
+  while (curr && curr !== root) {
+    if (curr instanceof HTMLElement) {
+      const style = window.getComputedStyle(curr)
+      const isScrollable =
+        (style.overflowY === 'auto' || style.overflowY === 'scroll' || style.overflow === 'auto' || style.overflow === 'scroll') &&
+        curr.scrollHeight > curr.clientHeight
+      if (isScrollable) {
+        const isContain = style.overscrollBehavior === 'contain' || style.overscrollBehaviorY === 'contain'
+        if (deltaY < 0 && (curr.scrollTop > 0 || isContain)) return true
+        if (deltaY > 0 && (curr.scrollTop < curr.scrollHeight - curr.clientHeight - 1 || isContain)) return true
+      }
+    }
+    curr = curr.parentElement
+  }
+  return false
+}
+
 export interface UseAutoFollowScrollOptions {
   totalLen?: number
   lastContent?: string
@@ -104,16 +124,25 @@ export function useAutoFollowScroll(options: UseAutoFollowScrollOptions = {}) {
     }
 
     const onWheel = (e: WheelEvent) => {
-      if (e.deltaY < 0) detachForUserScrollUp()
+      if (e.deltaY < 0) {
+        if (isInsideScrollableChild(el, e.target, e.deltaY)) return
+        detachForUserScrollUp()
+      }
     }
     let lastTouchY: number | null = null
+    let lastTouchTarget: EventTarget | null = null
     const onTouchStart = (e: TouchEvent) => {
       lastTouchY = e.touches[0]?.clientY ?? null
+      lastTouchTarget = e.target
     }
     const onTouchMove = (e: TouchEvent) => {
       const y = e.touches[0]?.clientY
       if (y === undefined) return
-      if (lastTouchY !== null && y > lastTouchY) detachForUserScrollUp()
+      if (lastTouchY !== null && y > lastTouchY) {
+        if (!isInsideScrollableChild(el, lastTouchTarget ?? e.target, -1)) {
+          detachForUserScrollUp()
+        }
+      }
       lastTouchY = y
     }
 

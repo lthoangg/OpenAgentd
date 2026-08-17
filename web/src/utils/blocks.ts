@@ -309,17 +309,13 @@ export function completeTool(
   return blocks
 }
 
-/** Trailing lines of live tool output retained for display. The live-output
- *  `<pre>` is capped at `max-h-40` (~7 lines) on mobile and `sm:max-h-64`
- *  (~12 lines) on desktop, so keeping more only buys invisible scrollback at
- *  the cost of a larger string to diff and repaint on every streamed delta.
- *  The full output arrives in `toolResult` when the tool completes.
+/** Trailing lines of live tool output retained for display.
  *  Mirrors `_LIVE_OUTPUT_MAX_LINES` in `app/agent/tools/builtin/shell.py`. */
-export const LIVE_OUTPUT_MAX_LINES = 10
+export const LIVE_OUTPUT_MAX_LINES = 100
 
 /** Max chars of live output retained — guards a single pathologically long
  *  line, which the line cap alone cannot bound. */
-const LIVE_OUTPUT_MAX_CHARS = 24_000
+export const LIVE_OUTPUT_MAX_CHARS = 100_000
 
 /** Count newlines in `s`, stopping as soon as `limit` is reached. Used to
  *  cheaply answer "does this have more than N lines?" without allocating a

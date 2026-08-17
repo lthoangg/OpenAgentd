@@ -493,6 +493,20 @@ async def test_shell_timeout(sandbox_workspace):
     )
 
 
+@pytest.mark.asyncio
+async def test_shell_timeout_returns_output_before_timeout(sandbox_workspace):
+    """Command that outputs content then hangs/times out returns the output before timeout."""
+    result = await _shell(
+        "echo 'line before timeout 1'; echo 'line before timeout 2'; sleep 60",
+        timeout_seconds=0.3,
+    )
+    assert "[Timed out after 0.3s]" in result
+    assert "line before timeout 1" in result
+    assert "line before timeout 2" in result
+    assert "<shell_metadata>" in result
+    assert "Command timed out after 0.3s" in result
+
+
 # ---------------------------------------------------------------------------
 # Error paths
 # ---------------------------------------------------------------------------

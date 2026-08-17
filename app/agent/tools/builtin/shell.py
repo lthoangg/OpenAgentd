@@ -140,20 +140,8 @@ _SPILL_MAX_BYTES = 10 * 1024 * 1024
 # Two updates per second keeps progress readable without forcing the chat transcript,
 # terminal row, and auto-follow observers through four layout cycles per second.
 _OUTPUT_STREAM_INTERVAL_SECONDS = 0.5
-_LIVE_OUTPUT_MAX_CHARS = 24_000
-# The chat UI keeps only the trailing N lines of live tool output (see
-# ``LIVE_OUTPUT_MAX_LINES`` in ``web/src/utils/blocks.ts``). Streaming more
-# than that spends SSE bandwidth, an immer transaction, and a React
-# re-render on bytes the client drops on arrival — a ``bun test`` run emits
-# ~290 lines per flush.
-#
-# 10 lines is deliberate: the live-output ``<pre>`` is capped at ``max-h-40``
-# (~7 lines) on mobile and ``sm:max-h-64`` (~12 lines) on desktop, so this
-# fills the visible box without paying for invisible scrollback. The
-# complete output still reaches the user in the final ``tool_end`` result
-# (300 lines / 128 KB inline, plus the spill file for anything larger).
-# Keep this in sync with the frontend constant.
-_LIVE_OUTPUT_MAX_LINES = 10
+_LIVE_OUTPUT_MAX_CHARS = 100_000
+_LIVE_OUTPUT_MAX_LINES = 100
 _LIVE_OUTPUT_TRUNCATED = "... [truncated live output] ...\n"
 _WINDOWS_CREATE_NEW_PROCESS_GROUP = 0x0000_0200
 _WINDOWS_CREATE_NO_WINDOW = 0x0800_0000
@@ -196,7 +184,9 @@ def _scrubbed_env() -> dict[str, str]:
     tool — and shadows other Python tools' own packages.  We strip the
     known leak vars before spawning the user's shell command.
     """
-    return {k: v for k, v in os.environ.items() if k not in _PYTHON_ENV_LEAK_KEYS}
+    env = {k: v for k, v in os.environ.items() if k not in _PYTHON_ENV_LEAK_KEYS}
+    env["PYTHONUNBUFFERED"] = "1"
+    return env
 
 
 def _format_exit_code(returncode: int | None) -> str:
@@ -754,8 +744,10 @@ async def _shell(
             # Drain any remaining output after kill
             try:
                 async with asyncio.timeout(2):
-                    remaining = await proc.stdout.read()
-                    if remaining:
+                    while True:
+                        remaining = await proc.stdout.read(8192)
+                        if not remaining:
+                            break
                         collector.add(remaining)
                         buffer_live(remaining)
             except Exception as exc:

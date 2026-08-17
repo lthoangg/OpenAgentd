@@ -494,7 +494,8 @@ describe("appendToolOutput", () => {
       { id: "t1", type: "tool", content: "", toolName: "shell", toolDone: false, toolCallId: "tc1", toolOutput: "" },
     ];
     // Generate more than the retained live-output line budget.
-    const lines = Array.from({ length: 140 }, (_, i) => `line ${i}`).join("\n");
+    const count = LIVE_OUTPUT_MAX_LINES + 50;
+    const lines = Array.from({ length: count }, (_, i) => `line ${i}`).join("\n");
     const result = appendToolOutput(blocks, "shell", "tc1", lines);
 
     const output = result[0].toolOutput || "";
@@ -502,8 +503,8 @@ describe("appendToolOutput", () => {
     const outputLines = output.split("\n");
     // Should be 1 header line + LIVE_OUTPUT_MAX_LINES lines of output
     expect(outputLines.length).toBe(LIVE_OUTPUT_MAX_LINES + 1);
-    expect(outputLines[1]).toBe(`line ${140 - LIVE_OUTPUT_MAX_LINES}`);
-    expect(outputLines[LIVE_OUTPUT_MAX_LINES]).toBe("line 139");
+    expect(outputLines[1]).toBe(`line ${count - LIVE_OUTPUT_MAX_LINES}`);
+    expect(outputLines[LIVE_OUTPUT_MAX_LINES]).toBe(`line ${count - 1}`);
   });
 
   it("does not truncate when exactly at the retained-line boundary", () => {
@@ -543,13 +544,13 @@ describe("appendToolOutput", () => {
     const blocks: ContentBlock[] = [
       { id: "t1", type: "tool", content: "", toolName: "shell", toolDone: false, toolCallId: "tc1", toolOutput: "" },
     ];
-    // A single line far exceeding 24,000 chars — line-count check doesn't
+    // A single line far exceeding max chars — line-count check doesn't
     // fire (only 1 line), but the byte-length truncation must still apply.
-    const longLine = "x".repeat(30_000);
+    const longLine = "x".repeat(120_000);
     const result = appendToolOutput(blocks, "shell", "tc1", longLine);
     const output = result[0].toolOutput || "";
     expect(output).toContain("... [truncated live output] ...");
-    expect(output.length).toBeLessThan(30_000);
+    expect(output.length).toBeLessThan(120_000);
     expect(output.endsWith("x")).toBe(true);
   });
 });

@@ -16,7 +16,7 @@
  * this module owns only the chrome (collapse, copy, motion).
  */
 
-import { useEffect, useRef, useState, useMemo, memo } from 'react'
+import { useEffect, useRef, useState, useMemo, useCallback, memo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { ChevronRight, Copy, Check } from 'lucide-react'
 import { ToolResult } from '../ToolResult'
@@ -51,6 +51,7 @@ function isFailedResult(result: string | undefined): boolean {
   return (
     firstLine.startsWith('[failed') ||
     firstLine.startsWith('[error') ||
+    firstLine.startsWith('[timed out') ||
     firstLine.includes('exit code 1') ||
     firstLine.includes('exit 1')
   )
@@ -61,7 +62,7 @@ function formatShellResult(result: string | undefined): { statusLine: string | n
 
   const firstNewline = result.indexOf('\n')
   const firstLine = firstNewline >= 0 ? result.slice(0, firstNewline).trim() : result.trim()
-  const hasStatusLine = /^\[(Succeeded|Failed|Error)/i.test(firstLine)
+  const hasStatusLine = /^\[(Succeeded|Failed|Error|Timed out)/i.test(firstLine)
 
   if (!hasStatusLine) {
     return { statusLine: null, body: result }
@@ -126,7 +127,7 @@ function parseJsonStrings(val: unknown): unknown {
   return val
 }
 
-const MAX_LIVE_LINES = 1000
+const MAX_LIVE_LINES = 100
 
 function clampLiveOutput(output: string | undefined): string | undefined {
   if (!output) return undefined
@@ -172,6 +173,7 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
   const [copiedArgs, setCopiedArgs] = useState(false)
   const [copiedResult, setCopiedResult] = useState(false)
   const liveOutputRef = useRef<HTMLPreElement>(null)
+  const isAttachedRef = useRef(true)
   const [now, setNow] = useState(() => Date.now())
 
   // Determine status: start (name only) → running (args) → success/failed (result)
@@ -237,14 +239,18 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
     return () => window.clearInterval(id)
   }, [done, startedAt])
 
+  const handleScroll = useCallback((e: React.UIEvent<HTMLPreElement>) => {
+    const el = e.currentTarget
+    const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
+    isAttachedRef.current = distFromBottom <= 30
+  }, [])
+
   useEffect(() => {
-    // Shell output is already a bounded trailing window and is bottom-anchored
-    // with CSS below. Avoid a synchronous scrollHeight read + scrollTop write
-    // on every shell delta; the outer chat ResizeObserver owns auto-follow.
-    if (isShellTerminal) return
     const el = liveOutputRef.current
-    if (el) el.scrollTop = el.scrollHeight
-  }, [isShellTerminal, shownLiveOutput])
+    if (el && isAttachedRef.current) {
+      el.scrollTop = el.scrollHeight
+    }
+  }, [shownLiveOutput, shellOutput])
 
   const handleCopyArgs = async (e: React.MouseEvent) => {
     e.stopPropagation()
@@ -411,7 +417,9 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
                       {isShellTerminal ? (
                         <div className="flex flex-col gap-1 bg-(--bg-input) p-2.5">
                           <pre
-                            className={`max-h-40 sm:max-h-64 whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-(--color-text) ${shownLiveOutput ? 'flex flex-col justify-end overflow-hidden' : 'overflow-auto'}`}
+                            ref={liveOutputRef}
+                            onScroll={handleScroll}
+                            className="max-h-40 sm:max-h-64 overflow-auto overscroll-contain touch-pan-y whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-(--color-text)"
                           >
                             <span className="block"><span className="select-none text-(--color-text-muted)">$ </span><ShellCommand command={formattedArgs} />{shellOutput ? `\n${shellOutput}` : ''}</span>
                           </pre>
@@ -444,7 +452,8 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
                       </div>
                       <pre
                         ref={liveOutputRef}
-                        className="max-h-40 overflow-auto sm:max-h-64 whitespace-pre-wrap break-words bg-(--bg-input) px-3 py-2.5 font-mono text-[11px] leading-relaxed text-(--color-text)"
+                        onScroll={handleScroll}
+                        className="max-h-40 overflow-auto overscroll-contain touch-pan-y sm:max-h-64 whitespace-pre-wrap break-words bg-(--bg-input) px-3 py-2.5 font-mono text-[11px] leading-relaxed text-(--color-text)"
                       >
                         {shownLiveOutput}
                       </pre>

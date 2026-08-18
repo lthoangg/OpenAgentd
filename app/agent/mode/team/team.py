@@ -55,6 +55,7 @@ from app.services.chat_service import (
     get_messages_for_llm,
     heal_orphaned_tool_calls,
     pop_queued_user_messages,
+    redo_all_session_messages,
     redo_session_messages,
     save_message,
     undo_session_messages,
@@ -984,6 +985,41 @@ class AgentTeam:
 
         logger.info(
             "team_redo_applied session_id={} agent={}", session_id, self.lead.name
+        )
+        return session_id, shift
+
+    async def handle_redo_all(self, session_id: str) -> tuple[str, BoundaryShift]:
+        """Clear the revert boundary back to the live tip in one step.
+
+        Returns ``(session_id, shift)``. ``shift.target`` is ``None``.
+        The path partition rides along so the HTTP layer can drive scoped
+        cache invalidations on the client.
+        """
+        if self._has_active_turn:
+            raise ContinuePreconditionError("Lead is already working.")
+
+        try:
+            lead_uuid = UUID(session_id)
+        except ValueError as exc:
+            raise ContinuePreconditionError("Invalid session id.") from exc
+
+        async with _command_lock(session_id):
+            db_factory = resolve_db_factory(self.lead.db_factory)
+            async with db_factory() as db:
+                row = await db.get(ChatSession, lead_uuid)
+                if row is None:
+                    raise ContinuePreconditionError("Session not found.")
+                if row.agent_name and row.agent_name != self.lead.name:
+                    raise ContinuePreconditionError(
+                        f"Session belongs to '{row.agent_name}', not '{self.lead.name}'."
+                    )
+                shift = await redo_all_session_messages(db, lead_uuid)
+                if not shift.applied:
+                    raise ContinuePreconditionError("No undone message to redo.")
+                await db.commit()
+
+        logger.info(
+            "team_redo_all_applied session_id={} agent={}", session_id, self.lead.name
         )
         return session_id, shift
 

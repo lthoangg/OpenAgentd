@@ -13,7 +13,8 @@ export const BASE_SLASH_COMMANDS: SlashCommand[] = [
   { id: 'stop', label: 'Stop', description: 'Stop all working agents' },
   { id: 'compact', label: 'Compact', description: 'Summarize and compact this session' },
   { id: 'undo', label: 'Undo', description: 'Undo the previous message' },
-  { id: 'redo', label: 'Redo', description: 'Restore all undone messages back to the live tip' },
+  { id: 'redo', label: 'Redo', description: 'Redo the next undone message' },
+  { id: 'redo-all', label: 'Redo All', description: 'Restore all undone messages back to the live tip' },
   { id: 'new', label: 'New Chat', description: 'Start a fresh team conversation' },
   { id: 'init', label: 'Init', description: 'Create or update AGENTS.md for this project' },
 ]

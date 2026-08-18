@@ -206,7 +206,7 @@ run from the terminal.
   sharing one mixed cache, preventing intermittent empty recent-session lists
   when prior conversations exist.
 - **Slash commands** `[since v1.0]` — `/init`, `/compact`, `/undo`,
-  `/redo`, plus user-defined commands.
+  `/redo`, `/redo-all`, plus user-defined commands.
   - **`/plan` slash command** `[v1.96.0]` — triggers a research-then-approve
     workflow: the agent investigates the problem space and proposes a step-by-step
     implementation plan, then waits for explicit approval before writing any code.
@@ -502,6 +502,8 @@ team against it.
 - **Git-backed `/undo` and `/redo`** `[v1.11.0]` — restore workspace files
   (created, modified, deleted) to the exact prior state from any prior turn in
   chat history. Different from editor undo: this is tied to chat turns.
+  `/redo` restores one undone turn; `/redo-all` restores all undone turns back
+  to the live tip.
 - **`/init` scaffolds AGENTS.md** `[v1.9.0]` — writes AGENTS.md files at the
   repo root and meaningful subfolders from the workspace.
 - **Consolidated filesystem toolset** `[v1.134.0]` — the agent now sees two

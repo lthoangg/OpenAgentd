@@ -20,4 +20,27 @@ describe('RevertNotice', () => {
 
     expect(onRedo).toHaveBeenCalledTimes(1)
   })
+
+  it('calls onRedoAll when clicking "/redo-all"', async () => {
+    const user = userEvent.setup()
+    const onRedo = mock(() => {})
+    const onRedoAll = mock(() => {})
+
+    render(
+      <RevertNotice
+        count={2}
+        messages={[
+          { role: 'user', content: 'draft 1' },
+          { role: 'user', content: 'draft 2' },
+        ]}
+        onRedo={onRedo}
+        onRedoAll={onRedoAll}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: '/redo-all' }))
+
+    expect(onRedoAll).toHaveBeenCalledTimes(1)
+    expect(onRedo).not.toHaveBeenCalled()
+  })
 })

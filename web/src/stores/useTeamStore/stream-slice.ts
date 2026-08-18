@@ -72,6 +72,7 @@ export type StreamSlice = Pick<
   | 'compactTeam'
   | 'undoTeam'
   | 'redoTeam'
+  | 'redoAllTeam'
   | 'stopTeam'
   | 'connectStream'
   | 'resolveQuestion'
@@ -185,43 +186,36 @@ export const createStreamSlice: StateCreator<
     const sessionId = get().sessionId
     if (!sessionId) {
       set((draft) => { draft.error = 'No active session to redo' })
-      return
+      return undefined
+    }
+    if (get().isTeamWorking) {
+      set((draft) => {
+        draft.error = 'Cannot redo while agents are working — /stop first'
+      })
+      return undefined
     }
 
-    const MAX_ITER = 200
-    const allChangedPaths = new Set<string>()
-    let sawChangedPaths = false
-    let sawMissingChangedPaths = false
-    let sawResponse = false
     try {
       set((draft) => { draft.error = null })
-      for (let i = 0; i < MAX_ITER; i++) {
-        const response = await postTeamCommand('redo', sessionId)
-        sawResponse = true
-        const boundaryIso = response.message?.created_at
-        const boundaryTime = boundaryIso ? new Date(boundaryIso).getTime() : null
-        set((draft) => {
-          draft._leadRevertTime = boundaryTime
-          Object.values(draft.agentStreams).forEach((stream) => {
-            applyRevertBoundary(stream, boundaryTime, {
-              boundaryId: response.message?.id ?? null,
-              boundaryContent: response.message?.content ?? null,
-            })
+      const response = await postTeamCommand('redo', sessionId)
+      const boundaryIso = response.message?.created_at
+      const boundaryTime = boundaryIso ? new Date(boundaryIso).getTime() : null
+      set((draft) => {
+        draft._leadRevertTime = boundaryTime
+        Object.values(draft.agentStreams).forEach((stream) => {
+          applyRevertBoundary(stream, boundaryTime, {
+            boundaryId: response.message?.id ?? null,
+            boundaryContent: response.message?.content ?? null,
           })
         })
-        if (response.changed_paths === undefined) {
-          sawMissingChangedPaths = true
-        } else {
-          sawChangedPaths = true
-        }
-        const merged = mergeChangedPaths(response.changed_paths)
-        merged?.forEach((p) => allChangedPaths.add(p))
-        if (response.message === null) break
-
-        if (i === MAX_ITER - 1) {
-          throw new Error('Redo did not reach the live tip')
-        }
-      }
+      })
+      enqueueWorkspaceInvalidation(
+        set,
+        get,
+        sessionId,
+        mergeChangedPaths(response.changed_paths),
+      )
+      return response
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       if (message.includes('No undone message to redo')) {
@@ -236,21 +230,54 @@ export const createStreamSlice: StateCreator<
           draft.error = `Failed to redo: ${message}`
         })
       }
-    } finally {
-      if (sawMissingChangedPaths) {
-        enqueueWorkspaceInvalidation(set, get, sessionId)
-      } else if (allChangedPaths.size > 0) {
-        enqueueWorkspaceInvalidation(
-          set,
-          get,
-          sessionId,
-          [...allChangedPaths],
-        )
-      } else if (sawChangedPaths) {
-        enqueueWorkspaceInvalidation(set, get, sessionId, [])
-      } else if (sawResponse) {
-        enqueueWorkspaceInvalidation(set, get, sessionId)
+      return undefined
+    }
+  },
+
+  redoAllTeam: async () => {
+    const sessionId = get().sessionId
+    if (!sessionId) {
+      set((draft) => { draft.error = 'No active session to redo' })
+      return
+    }
+    if (get().isTeamWorking) {
+      set((draft) => {
+        draft.error = 'Cannot redo while agents are working — /stop first'
+      })
+      return
+    }
+
+    try {
+      set((draft) => { draft.error = null })
+      const response = await postTeamCommand('redo-all', sessionId)
+      set((draft) => {
+        draft._leadRevertTime = null
+        Object.values(draft.agentStreams).forEach((stream) => {
+          applyRevertBoundary(stream, null)
+        })
+      })
+      enqueueWorkspaceInvalidation(
+        set,
+        get,
+        sessionId,
+        mergeChangedPaths(response.changed_paths),
+      )
+      return response
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      if (message.includes('No undone message to redo')) {
+        set((draft) => {
+          draft._leadRevertTime = null
+          Object.values(draft.agentStreams).forEach((stream) => {
+            applyRevertBoundary(stream, null)
+          })
+        })
+      } else {
+        set((draft) => {
+          draft.error = `Failed to redo: ${message}`
+        })
       }
+      return undefined
     }
   },
 

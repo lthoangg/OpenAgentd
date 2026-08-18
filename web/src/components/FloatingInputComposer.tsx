@@ -107,6 +107,7 @@ interface FloatingInputComposerProps {
   revertedCount?: number
   revertedMessages?: Array<{ role: string; content: string }>
   onRedo?: () => void
+  onRedoAll?: () => void
   historyPrompts?: string[]
   value?: string
   onValueChange?: (value: string) => void
@@ -504,7 +505,7 @@ export const FloatingInputComposer = memo(
           // and more legible over scrolling chat content.
           className="pointer-events-auto border-t border-(--color-border) bg-(--bg-page) px-3 pb-safe pt-2"
         >
-          <RevertNotice count={inputProps.revertedCount ?? 0} messages={inputProps.revertedMessages ?? []} onRedo={inputProps.onRedo} />
+          <RevertNotice count={inputProps.revertedCount ?? 0} messages={inputProps.revertedMessages ?? []} onRedo={inputProps.onRedo} onRedoAll={inputProps.onRedoAll} />
           <InputComposer
             ref={setInputRefs}
             floating
@@ -565,7 +566,7 @@ export const FloatingInputComposer = memo(
           className="pointer-events-auto w-full"
           style={{ touchAction: 'none' }}
         >
-        <RevertNotice count={inputProps.revertedCount ?? 0} messages={inputProps.revertedMessages ?? []} onRedo={inputProps.onRedo} />
+        <RevertNotice count={inputProps.revertedCount ?? 0} messages={inputProps.revertedMessages ?? []} onRedo={inputProps.onRedo} onRedoAll={inputProps.onRedoAll} />
         <div className={effectiveMinimized ? '' : 'px-3'}>
           <InputComposer
             ref={setInputRefs}

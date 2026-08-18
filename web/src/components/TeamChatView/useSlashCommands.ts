@@ -7,7 +7,7 @@
  *   - Assembling the ``SlashCommand[]`` / ``SnippetCommand[]`` lists the
  *     ``InputComposer`` renders in its picker (built-ins + backend-discovered).
  *   - Dispatching a picked slash command (``stop`` / ``continue`` /
- *     ``compact`` / ``undo`` / ``redo`` / ``new`` / ``init`` — team-lifecycle
+ *     ``compact`` / ``undo`` / ``redo`` / ``redo-all`` / ``new`` / ``init`` — team-lifecycle
  *     actions read straight off ``useTeamStore.getState()`` since they're
  *     one-shot imperative calls, not part of the render subscription).
  *   - Expanding a user-defined ``/command`` at submit time by rendering it
@@ -123,6 +123,12 @@ export function useSlashCommands({
         break
       case 'redo':
         void useTeamStore.getState().redoTeam().then(() => {
+          inputRef.current?.setValue('')
+          inputRef.current?.setFiles([])
+        })
+        break
+      case 'redo-all':
+        void useTeamStore.getState().redoAllTeam().then(() => {
           inputRef.current?.setValue('')
           inputRef.current?.setFiles([])
         })

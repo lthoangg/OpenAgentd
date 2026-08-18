@@ -2131,6 +2131,88 @@ async def test_undo_and_redo_use_workspace_snapshots(session, tmp_path, monkeypa
     assert refreshed.revert is None
 
 
+@pytest.mark.asyncio
+async def test_redo_all_restores_workspace_snapshot_in_one_step(
+    session, tmp_path, monkeypatch
+):
+    """redo_all_session_messages restores directly to anchor snapshot."""
+    from app.agent.schemas.chat import AssistantMessage, HumanMessage
+    from app.services import snapshot_service
+    from app.services.chat_service import (
+        create_chat_session,
+        redo_all_session_messages,
+        save_message,
+        undo_session_messages,
+    )
+
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    doc = ws / "doc.md"
+    snapshots: dict[str, str] = {}
+
+    async def fake_track(session_id: str, workspace):
+        snapshot = f"{len(snapshots) + 1:040x}"
+        snapshots[snapshot] = doc.read_text()
+        return snapshot
+
+    async def fake_restore(
+        session_id: str,
+        workspace,
+        snapshot: str,
+        *,
+        skip_stage: bool = False,
+    ):
+        assert snapshot in snapshots
+        doc.write_text(snapshots[snapshot])
+        return snapshot_service.RestoreResult(ok=True, modified=["doc.md"])
+
+    monkeypatch.setattr(snapshot_service, "track", fake_track)
+    monkeypatch.setattr(snapshot_service, "restore", fake_restore)
+
+    import app.services.chat_service as cs
+
+    monkeypatch.setattr(cs, "session_workspace_dir", lambda sid, w: ws)
+
+    chat_session = await create_chat_session(session, title="snap-test")
+    doc.write_text("v1")
+    snap_u1 = await snapshot_service.track(str(chat_session.id), ws)
+    await save_message(
+        session,
+        chat_session.id,
+        HumanMessage(content="u1"),
+        extra={"snapshot": snap_u1},
+    )
+    await save_message(session, chat_session.id, AssistantMessage(content="a1"))
+
+    doc.write_text("v2")
+    snap_u2 = await snapshot_service.track(str(chat_session.id), ws)
+    await save_message(
+        session,
+        chat_session.id,
+        HumanMessage(content="u2"),
+        extra={"snapshot": snap_u2},
+    )
+    await save_message(session, chat_session.id, AssistantMessage(content="a2"))
+
+    doc.write_text("v3")
+    await save_message(session, chat_session.id, AssistantMessage(content="a3"))
+
+    # Undo both turns
+    await undo_session_messages(session, chat_session.id)
+    await undo_session_messages(session, chat_session.id)
+    assert doc.read_text() == "v1"
+
+    # Redo all in one step
+    shift = await redo_all_session_messages(session, chat_session.id)
+    assert shift.applied is True
+    assert shift.target is None
+    assert doc.read_text() == "v3"
+    assert "doc.md" in shift.modified
+    refreshed = await session.get(ChatSession, chat_session.id)
+    assert refreshed is not None
+    assert refreshed.revert is None
+
+
 # ---------------------------------------------------------------------------
 # get_team_history — bounded member-page fetches
 # ---------------------------------------------------------------------------

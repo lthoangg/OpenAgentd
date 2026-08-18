@@ -303,6 +303,33 @@ async def redo_session_messages(db: AsyncSession, session_id: UUID) -> BoundaryS
     )
 
 
+async def redo_all_session_messages(
+    db: AsyncSession, session_id: UUID
+) -> BoundaryShift:
+    session = await db.get(ChatSession, session_id)
+    boundary = await revert_boundary(db, session_id)
+    if session is None or boundary is None:
+        return BoundaryShift(applied=False)
+    anchor = redo_anchor(session)
+    workspace = session_workspace_dir(str(session_id), session.workspace)
+    added: list[str] = []
+    modified: list[str] = []
+    removed: list[str] = []
+    if anchor:
+        result = await snapshot_service.restore(str(session_id), workspace, anchor)
+        added, modified, removed = result.added, result.modified, result.removed
+    session.revert = None
+    db.add(session)
+    await db.flush()
+    return BoundaryShift(
+        applied=True,
+        target=None,
+        added=added,
+        modified=modified,
+        removed=removed,
+    )
+
+
 async def cleanup_reverted_tail(db: AsyncSession, session_id: UUID) -> int:
     session = await db.get(ChatSession, session_id)
     boundary = await revert_boundary(db, session_id)

@@ -299,6 +299,56 @@ class TestPostTeamCommands:
         ]
 
     @pytest.mark.asyncio
+    async def test_redo_all_restores_all_undone_turns(self, app_with_lead_only_team):
+        sid = uuid.uuid7()
+        await _seed_session_and_messages(
+            sid,
+            [
+                ("user", "first", None),
+                ("assistant", "first answer", None),
+                ("user", "second", None),
+                ("assistant", "second answer", None),
+                ("user", "third", None),
+                ("assistant", "third answer", None),
+            ],
+        )
+
+        client = TestClient(app_with_lead_only_team)
+        # Undo two turns
+        client.post(
+            "/api/team/commands",
+            json={"command": "undo", "session_id": str(sid)},
+        )
+        client.post(
+            "/api/team/commands",
+            json={"command": "undo", "session_id": str(sid)},
+        )
+
+        # Redo-all restores directly to the live tip in one step
+        redo_all = client.post(
+            "/api/team/commands",
+            json={"command": "redo-all", "session_id": str(sid)},
+        )
+        assert redo_all.status_code == 202
+        redo_body = redo_all.json()
+        assert redo_body["command"] == "redo-all"
+        assert redo_body["message"] is None
+
+        async with _db.async_session_factory() as db:
+            session = await db.get(ChatSession, sid)
+            llm_messages = await get_messages_for_llm(db, sid)
+        assert session is not None
+        assert session.revert is None
+        assert [msg.content for msg in llm_messages] == [
+            "first",
+            "first answer",
+            "second",
+            "second answer",
+            "third",
+            "third answer",
+        ]
+
+    @pytest.mark.asyncio
     async def test_undo_rejected_when_lead_is_working(self, app_with_lead_only_team):
         """Pre-existing precondition: lead's own turn is in flight.
 

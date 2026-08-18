@@ -184,7 +184,8 @@ export interface TeamStoreActions {
   setSessionModelSettings: (model: string | null, thinkingLevel: string | null, fastMode?: boolean) => void
   compactTeam: () => Promise<void>
   undoTeam: () => Promise<TeamCommandResponse | undefined>
-  redoTeam: () => Promise<void>
+  redoTeam: () => Promise<TeamCommandResponse | undefined>
+  redoAllTeam: () => Promise<TeamCommandResponse | undefined>
   stopTeam: () => Promise<void>
   connectStream: () => AbortController
   /**

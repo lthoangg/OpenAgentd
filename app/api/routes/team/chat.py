@@ -406,7 +406,7 @@ async def cancel_queued_message(
 class CommandRequest(BaseModel):
     """Request body for ``POST /team/commands``."""
 
-    command: Literal["compact", "undo", "redo"]
+    command: Literal["compact", "undo", "redo", "redo-all", "redo_all"]
     session_id: str
 
 
@@ -484,6 +484,20 @@ async def team_command(
             message=(
                 _message_response(shift.target) if shift.target is not None else None
             ),
+            changed_paths=ChangedPathsPayload(**_changed_paths_payload(shift)),
+        )
+
+    if body.command in ("redo-all", "redo_all"):
+        try:
+            sid, shift = await team_obj.handle_redo_all(body.session_id)
+        except ContinuePreconditionError as exc:
+            raise HTTPException(status_code=exc.status, detail=exc.reason) from exc
+        logger.info("team_command_redo_all session_id={}", sid)
+        return TeamCommandResponse(
+            status="accepted",
+            session_id=sid,
+            command="redo-all",
+            message=None,
             changed_paths=ChangedPathsPayload(**_changed_paths_payload(shift)),
         )
 

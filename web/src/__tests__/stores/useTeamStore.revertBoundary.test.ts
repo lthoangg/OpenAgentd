@@ -889,8 +889,8 @@ describe("undoTeam — local boundary application", () => {
   })
 })
 
-describe("redoTeam — restores ALL undone messages (sequential loop)", () => {
-  it("loops /redo until the boundary clears, flushing the full suffix back", async () => {
+describe("redoTeam — restores ONE undone message step", () => {
+  it("advances the boundary by a single step when multiple turns are undone", async () => {
     useTeamStore.setState({
       sessionId: "sess-1",
       leadName: "lead",
@@ -909,43 +909,30 @@ describe("redoTeam — restores ALL undone messages (sequential loop)", () => {
       },
     })
 
-    mockPostTeamCommand
-      .mockImplementationOnce(() =>
-        Promise.resolve({
-          status: "accepted",
-          session_id: "sess-1",
-          command: "redo",
-          message: makeMessageResponse({ created_at: "2024-01-01T00:00:04Z" }),
-        }),
-      )
-      .mockImplementationOnce(() =>
-        Promise.resolve({
-          status: "accepted",
-          session_id: "sess-1",
-          command: "redo",
-          message: null,
-        }),
-      )
+    mockPostTeamCommand.mockImplementationOnce(() =>
+      Promise.resolve({
+        status: "accepted",
+        session_id: "sess-1",
+        command: "redo",
+        message: makeMessageResponse({ id: "u3", created_at: "2024-01-01T00:00:04Z" }),
+      }),
+    )
 
-    await useTeamStore.getState().redoTeam()
+    const response = await useTeamStore.getState().redoTeam()
 
-    expect(mockPostTeamCommand).toHaveBeenCalledTimes(2)
-    expect(mockTeamHistory).not.toHaveBeenCalled()
+    expect(mockPostTeamCommand).toHaveBeenCalledTimes(1)
+    expect(response?.message?.id).toBe("u3")
 
     const stream = useTeamStore.getState().agentStreams.lead
-    expect(stream.blocks.map((b) => b.id)).toEqual([
-      "u1",
-      "u2",
-      "a2",
-      "u3",
-      "a3",
-    ])
-    expect(stream._revertedSuffix).toEqual([])
-    expect(stream.revertedCount).toBe(0)
-    expect(useTeamStore.getState()._leadRevertTime).toBeNull()
+    expect(stream.blocks.map((b) => b.id)).toEqual(["u1", "u2", "a2"])
+    expect(stream._revertedSuffix?.map((b) => b.id)).toEqual(["u3", "a3"])
+    expect(stream.revertedCount).toBe(1)
+    expect(useTeamStore.getState()._leadRevertTime).toBe(
+      new Date("2024-01-01T00:00:04Z").getTime(),
+    )
   })
 
-  it("exits cleanly after a single step when nothing else is reverted", async () => {
+  it("clears boundary when redoing the final undone turn", async () => {
     useTeamStore.setState({
       sessionId: "sess-1",
       leadName: "lead",
@@ -981,71 +968,7 @@ describe("redoTeam — restores ALL undone messages (sequential loop)", () => {
     expect(useTeamStore.getState()._leadRevertTime).toBeNull()
   })
 
-  it("merges changed_paths across iterations into a single scoped invalidation", async () => {
-    useTeamStore.setState({
-      sessionId: "sess-1",
-      leadName: "lead",
-      _workspace: "/tmp/proj",
-      _leadRevertTime: new Date("2024-01-01T00:00:02Z").getTime(),
-      agentStreams: {
-        lead: makeStream({
-          blocks: [block("u1", "user", "first", "2024-01-01T00:00:00Z")],
-          _revertedSuffix: [
-            block("u2", "user", "second", "2024-01-01T00:00:02Z"),
-            block("u3", "user", "third", "2024-01-01T00:00:04Z"),
-          ],
-          revertedCount: 2,
-        }),
-      },
-    })
-
-    mockPostTeamCommand
-      .mockImplementationOnce(() =>
-        Promise.resolve({
-          status: "accepted",
-          session_id: "sess-1",
-          command: "redo",
-          message: makeMessageResponse({ created_at: "2024-01-01T00:00:04Z" }),
-          changed_paths: {
-            added: ["new-from-step-1.ts"],
-            modified: ["shared.ts"],
-            removed: [],
-          },
-        }),
-      )
-      .mockImplementationOnce(() =>
-        Promise.resolve({
-          status: "accepted",
-          session_id: "sess-1",
-          command: "redo",
-          message: null,
-          changed_paths: {
-            added: [],
-            modified: ["shared.ts", "step-2-only.ts"],
-            removed: ["deleted-by-step-2.ts"],
-          },
-        }),
-      )
-
-    await useTeamStore.getState().redoTeam()
-
-    const events = useTeamStore.getState().cacheInvalidations
-    expect(events).toHaveLength(1)
-    expect(events[0].kind).toBe("coding_workspace_paths")
-    expect(events[0]).toMatchObject({
-      kind: "coding_workspace_paths",
-      workspace: "/tmp/proj",
-    })
-    const paths = (events[0] as { paths: string[] }).paths
-    expect([...paths].sort()).toEqual([
-      "deleted-by-step-2.ts",
-      "new-from-step-1.ts",
-      "shared.ts",
-      "step-2-only.ts",
-    ])
-  })
-
-  it("falls back to broad coding_workspace when no changed_paths arrive", async () => {
+  it("enqueues scoped invalidation for single step changed_paths", async () => {
     useTeamStore.setState({
       sessionId: "sess-1",
       leadName: "lead",
@@ -1057,26 +980,37 @@ describe("redoTeam — restores ALL undone messages (sequential loop)", () => {
           _revertedSuffix: [
             block("u2", "user", "second", "2024-01-01T00:00:02Z"),
           ],
+          revertedCount: 1,
         }),
       },
     })
-    mockPostTeamCommand.mockImplementation(() =>
+
+    mockPostTeamCommand.mockImplementationOnce(() =>
       Promise.resolve({
         status: "accepted",
         session_id: "sess-1",
         command: "redo",
         message: null,
+        changed_paths: {
+          added: ["restored.ts"],
+          modified: [],
+          removed: [],
+        },
       }),
     )
 
     await useTeamStore.getState().redoTeam()
 
-    expect(useTeamStore.getState().cacheInvalidations).toEqual([
-      { kind: "coding_workspace", workspace: "/tmp/proj" },
-    ])
+    const events = useTeamStore.getState().cacheInvalidations
+    expect(events).toHaveLength(1)
+    expect(events[0]).toMatchObject({
+      kind: "coding_workspace_paths",
+      workspace: "/tmp/proj",
+      paths: ["restored.ts"],
+    })
   })
 
-  it("does not touch streams when /redo fails on the very first call", async () => {
+  it("does not touch streams when /redo fails on single step", async () => {
     useTeamStore.setState({
       sessionId: "sess-1",
       leadName: "lead",
@@ -1121,6 +1055,189 @@ describe("redoTeam — restores ALL undone messages (sequential loop)", () => {
     )
 
     await useTeamStore.getState().redoTeam()
+
+    const stream = useTeamStore.getState().agentStreams.lead
+    expect(stream.blocks.map((b) => b.id)).toEqual(["u1", "u2"])
+    expect(stream._revertedSuffix).toEqual([])
+    expect(stream.revertedCount).toBe(0)
+    expect(useTeamStore.getState()._leadRevertTime).toBeNull()
+    expect(useTeamStore.getState().error).toBeNull()
+  })
+})
+
+describe("redoAllTeam — restores ALL undone messages back to live tip", () => {
+  it("calls /team/commands with redo-all and clears boundary to tip in one step", async () => {
+    useTeamStore.setState({
+      sessionId: "sess-1",
+      leadName: "lead",
+      _leadRevertTime: new Date("2024-01-01T00:00:02Z").getTime(),
+      agentStreams: {
+        lead: makeStream({
+          blocks: [block("u1", "user", "first", "2024-01-01T00:00:00Z")],
+          _revertedSuffix: [
+            block("u2", "user", "second", "2024-01-01T00:00:02Z"),
+            block("a2", "text", "a2", "2024-01-01T00:00:03Z"),
+            block("u3", "user", "third", "2024-01-01T00:00:04Z"),
+            block("a3", "text", "a3", "2024-01-01T00:00:05Z"),
+          ],
+          revertedCount: 2,
+        }),
+      },
+    })
+
+    mockPostTeamCommand.mockImplementationOnce(() =>
+      Promise.resolve({
+        status: "accepted",
+        session_id: "sess-1",
+        command: "redo-all",
+        message: null,
+      }),
+    )
+
+    await useTeamStore.getState().redoAllTeam()
+
+    expect(mockPostTeamCommand).toHaveBeenCalledTimes(1)
+    expect(mockPostTeamCommand).toHaveBeenCalledWith("redo-all", "sess-1")
+    expect(mockTeamHistory).not.toHaveBeenCalled()
+
+    const stream = useTeamStore.getState().agentStreams.lead
+    expect(stream.blocks.map((b) => b.id)).toEqual([
+      "u1",
+      "u2",
+      "a2",
+      "u3",
+      "a3",
+    ])
+    expect(stream._revertedSuffix).toEqual([])
+    expect(stream.revertedCount).toBe(0)
+    expect(useTeamStore.getState()._leadRevertTime).toBeNull()
+  })
+
+  it("enqueues scoped invalidation for changed_paths returned by redo-all", async () => {
+    useTeamStore.setState({
+      sessionId: "sess-1",
+      leadName: "lead",
+      _workspace: "/tmp/proj",
+      _leadRevertTime: new Date("2024-01-01T00:00:02Z").getTime(),
+      agentStreams: {
+        lead: makeStream({
+          blocks: [block("u1", "user", "first", "2024-01-01T00:00:00Z")],
+          _revertedSuffix: [
+            block("u2", "user", "second", "2024-01-01T00:00:02Z"),
+            block("u3", "user", "third", "2024-01-01T00:00:04Z"),
+          ],
+          revertedCount: 2,
+        }),
+      },
+    })
+
+    mockPostTeamCommand.mockImplementationOnce(() =>
+      Promise.resolve({
+        status: "accepted",
+        session_id: "sess-1",
+        command: "redo-all",
+        message: null,
+        changed_paths: {
+          added: ["new-file.ts"],
+          modified: ["shared.ts"],
+          removed: ["deleted.ts"],
+        },
+      }),
+    )
+
+    await useTeamStore.getState().redoAllTeam()
+
+    const events = useTeamStore.getState().cacheInvalidations
+    expect(events).toHaveLength(1)
+    expect(events[0].kind).toBe("coding_workspace_paths")
+    expect(events[0]).toMatchObject({
+      kind: "coding_workspace_paths",
+      workspace: "/tmp/proj",
+    })
+    const paths = (events[0] as { paths: string[] }).paths
+    expect([...paths].sort()).toEqual([
+      "deleted.ts",
+      "new-file.ts",
+      "shared.ts",
+    ])
+  })
+
+  it("falls back to broad coding_workspace when no changed_paths arrive", async () => {
+    useTeamStore.setState({
+      sessionId: "sess-1",
+      leadName: "lead",
+      _workspace: "/tmp/proj",
+      _leadRevertTime: new Date("2024-01-01T00:00:02Z").getTime(),
+      agentStreams: {
+        lead: makeStream({
+          blocks: [block("u1", "user", "first", "2024-01-01T00:00:00Z")],
+          _revertedSuffix: [
+            block("u2", "user", "second", "2024-01-01T00:00:02Z"),
+          ],
+        }),
+      },
+    })
+    mockPostTeamCommand.mockImplementation(() =>
+      Promise.resolve({
+        status: "accepted",
+        session_id: "sess-1",
+        command: "redo-all",
+        message: null,
+      }),
+    )
+
+    await useTeamStore.getState().redoAllTeam()
+
+    expect(useTeamStore.getState().cacheInvalidations).toEqual([
+      { kind: "coding_workspace", workspace: "/tmp/proj" },
+    ])
+  })
+
+  it("does not touch streams when redo-all fails", async () => {
+    useTeamStore.setState({
+      sessionId: "sess-1",
+      leadName: "lead",
+      agentStreams: {
+        lead: makeStream({
+          blocks: [block("u1", "user", "first", "2024-01-01T00:00:00Z")],
+          _revertedSuffix: [
+            block("u2", "user", "second", "2024-01-01T00:00:02Z"),
+          ],
+        }),
+      },
+    })
+    mockPostTeamCommand.mockImplementation(() =>
+      Promise.reject(new Error("network down")),
+    )
+
+    await useTeamStore.getState().redoAllTeam()
+
+    const stream = useTeamStore.getState().agentStreams.lead
+    expect(stream.blocks.map((b) => b.id)).toEqual(["u1"])
+    expect(stream._revertedSuffix?.map((b) => b.id)).toEqual(["u2"])
+    expect(useTeamStore.getState().error).toBe("Failed to redo: network down")
+  })
+
+  it("clears local revert state when the server says there is nothing to redo", async () => {
+    useTeamStore.setState({
+      sessionId: "sess-1",
+      leadName: "lead",
+      _leadRevertTime: new Date("2024-01-01T00:00:02Z").getTime(),
+      agentStreams: {
+        lead: makeStream({
+          blocks: [block("u1", "user", "first", "2024-01-01T00:00:00Z")],
+          _revertedSuffix: [
+            block("u2", "user", "second", "2024-01-01T00:00:02Z"),
+          ],
+          revertedCount: 1,
+        }),
+      },
+    })
+    mockPostTeamCommand.mockImplementation(() =>
+      Promise.reject(new Error("No undone message to redo.")),
+    )
+
+    await useTeamStore.getState().redoAllTeam()
 
     const stream = useTeamStore.getState().agentStreams.lead
     expect(stream.blocks.map((b) => b.id)).toEqual(["u1", "u2"])

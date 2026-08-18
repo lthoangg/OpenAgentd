@@ -5,9 +5,10 @@ interface RevertNoticeProps {
   count: number
   messages?: Array<{ role: string; content: string }>
   onRedo?: () => void
+  onRedoAll?: () => void
 }
 
-export function RevertNotice({ count, messages = [], onRedo }: RevertNoticeProps) {
+export function RevertNotice({ count, messages = [], onRedo, onRedoAll }: RevertNoticeProps) {
   const [expanded, setExpanded] = useState(false)
   // Collapse whenever the revert count resets to 0 (redo or new session),
   // so the next undo doesn't open already-expanded.
@@ -52,6 +53,16 @@ export function RevertNotice({ count, messages = [], onRedo }: RevertNoticeProps
             <RotateCcw size={13} className="text-(--color-text-subtle) transition-colors group-hover:text-(--color-accent)" />
             <span>/redo to restore</span>
           </button>
+          {count > 1 && onRedoAll && (
+            <button
+              type="button"
+              onClick={onRedoAll}
+              className="group flex items-center gap-1.5 rounded-xs px-2 py-1 transition-colors hover:text-(--color-text)"
+              title="Restore all undone messages back to the live tip"
+            >
+              <span>/redo-all</span>
+            </button>
+          )}
         </div>
         </div>
       </div>

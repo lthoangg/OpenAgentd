@@ -627,6 +627,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
             revertedCount={leadRevertedCount}
             revertedMessages={leadRevertedMessages}
             onRedo={() => { void handleSlashCommand('redo') }}
+            onRedoAll={() => { void handleSlashCommand('redo-all') }}
           />
         )}
         </main>

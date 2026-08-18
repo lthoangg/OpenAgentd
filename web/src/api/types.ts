@@ -448,7 +448,7 @@ export interface ChangedPaths {
 export interface TeamCommandResponse {
   status: string
   session_id: string
-  command: 'continue' | 'compact' | 'undo' | 'redo'
+  command: 'continue' | 'compact' | 'undo' | 'redo' | 'redo-all' | 'redo_all'
   message?: MessageResponse
   /**
    * Present on ``undo`` / ``redo`` responses only. The client uses

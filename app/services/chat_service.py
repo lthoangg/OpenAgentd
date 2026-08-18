@@ -487,6 +487,16 @@ async def redo_session_messages(db: AsyncSession, session_id: UUID) -> BoundaryS
     return shift
 
 
+async def redo_all_session_messages(
+    db: AsyncSession, session_id: UUID
+) -> BoundaryShift:
+    _chat_service_revert.session_workspace_dir = session_workspace_dir
+    shift = await _chat_service_revert.redo_all_session_messages(db, session_id)
+    if shift.applied:
+        await bump_history_revision(db, session_id, structural=True)
+    return shift
+
+
 async def cleanup_reverted_tail(db: AsyncSession, session_id: UUID) -> int:
     _chat_service_revert.session_workspace_dir = session_workspace_dir
     cleaned = await _chat_service_revert.cleanup_reverted_tail(db, session_id)

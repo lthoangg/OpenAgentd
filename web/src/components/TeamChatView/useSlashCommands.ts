@@ -22,7 +22,7 @@ import { renderCommand, renderSnippet } from '@/api/client'
 import { useTeamStore } from '@/stores/useTeamStore'
 import { useToastStore } from '@/stores/useToastStore'
 import { type InputComposerHandle, type SlashCommand, type SnippetCommand } from '../InputComposer'
-import { BASE_SLASH_COMMANDS, attachmentToFile } from './helpers'
+import { filterBaseSlashCommands, attachmentToFile } from './helpers'
 
 export interface UseSlashCommandsArgs {
   mode: 'normal' | 'coding'
@@ -30,6 +30,9 @@ export interface UseSlashCommandsArgs {
   agentWorkspace: string | null
   inputRef: RefObject<InputComposerHandle | null>
   handleNewSession: () => void
+  isTeamWorking?: boolean
+  revertedCount?: number
+  hasVisibleMessages?: boolean
 }
 
 export interface UseSlashCommandsResult {
@@ -49,6 +52,9 @@ export function useSlashCommands({
   agentWorkspace,
   inputRef,
   handleNewSession,
+  isTeamWorking = false,
+  revertedCount = 0,
+  hasVisibleMessages = false,
 }: UseSlashCommandsArgs): UseSlashCommandsResult {
   const pushToast = useToastStore((s) => s.push)
 
@@ -62,8 +68,20 @@ export function useSlashCommands({
     () => new Set<string>((commandsQ.data?.commands ?? []).map((c) => c.name)),
     [commandsQ.data],
   )
+  const baseCommands = useMemo(
+    () =>
+      filterBaseSlashCommands({
+        isTeamWorking,
+        revertedCount,
+        hasVisibleMessages,
+        mode,
+        hasWorkspace: Boolean(agentWorkspace),
+      }),
+    [isTeamWorking, revertedCount, hasVisibleMessages, mode, agentWorkspace],
+  )
+
   const slashCommands: SlashCommand[] = useMemo(() => [
-    ...BASE_SLASH_COMMANDS,
+    ...baseCommands,
     ...(commandsQ.data?.commands ?? []).map((c) => {
       const displayName = c.name.replace('/', ':')
       return {
@@ -76,7 +94,7 @@ export function useSlashCommands({
         keepInputOpen: true,
       }
     }),
-  ], [commandsQ.data?.commands])
+  ], [baseCommands, commandsQ.data?.commands])
 
   const snippetCommands: SnippetCommand[] = (snippetsQ.data?.snippets ?? []).map((item) => ({
     id: item.name,

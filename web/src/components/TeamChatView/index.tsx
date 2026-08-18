@@ -128,6 +128,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
 
         leadRevertedCount: leadStream?.revertedCount ?? 0,
         leadRevertedMessages: leadStream?.revertedMessages ?? EMPTY_REVERTED_MESSAGES,
+        leadHasVisibleBlocks: (leadStream?.blocks.length ?? 0) > 0,
 
         leadPromptTokens: leadStream?.usage.promptTokens ?? 0,
         leadCompletionTokens: leadStream?.usage.completionTokens ?? 0,
@@ -169,6 +170,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
 
     leadRevertedCount,
     leadRevertedMessages,
+    leadHasVisibleBlocks,
 
     leadPromptTokens,
     leadCompletionTokens,
@@ -347,6 +349,9 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
     agentWorkspace,
     inputRef,
     handleNewSession,
+    isTeamWorking,
+    revertedCount: leadRevertedCount,
+    hasVisibleMessages: leadHasVisibleBlocks,
   })
 
   const {

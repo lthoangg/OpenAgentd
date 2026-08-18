@@ -19,6 +19,41 @@ export const BASE_SLASH_COMMANDS: SlashCommand[] = [
   { id: 'init', label: 'Init', description: 'Create or update AGENTS.md for this project' },
 ]
 
+export interface FilterSlashCommandsContext {
+  isTeamWorking?: boolean
+  revertedCount?: number
+  hasVisibleMessages?: boolean
+  mode?: 'normal' | 'coding'
+  hasWorkspace?: boolean
+}
+
+/** Filter built-in slash commands to only those contextually relevant right now. */
+export function filterBaseSlashCommands(ctx: FilterSlashCommandsContext): SlashCommand[] {
+  const isWorking = ctx.isTeamWorking ?? false
+  const revertedCount = ctx.revertedCount ?? 0
+  const hasVisible = ctx.hasVisibleMessages ?? false
+  const isCoding = ctx.mode === 'coding' && (ctx.hasWorkspace ?? false)
+
+  return BASE_SLASH_COMMANDS.filter((cmd) => {
+    switch (cmd.id) {
+      case 'stop':
+        return isWorking
+      case 'undo':
+      case 'compact':
+        return hasVisible && !isWorking
+      case 'redo':
+      case 'redo-all':
+        return revertedCount > 0 && !isWorking
+      case 'init':
+        return isCoding
+      case 'new':
+        return true
+      default:
+        return true
+    }
+  })
+}
+
 /** Re-fetch a message attachment as a ``File`` so it can be restored into the composer. */
 export async function attachmentToFile(att: MessageAttachment): Promise<File | null> {
   const url = resolveApiUrl(att.url)

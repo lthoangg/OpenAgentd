@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { cleanup, renderHook } from '@testing-library/react'
-import { BASE_SLASH_COMMANDS } from '@/components/TeamChatView/helpers'
+import { BASE_SLASH_COMMANDS, filterBaseSlashCommands } from '@/components/TeamChatView/helpers'
 import { useSlashCommands } from '@/components/TeamChatView/useSlashCommands'
 import { useTeamStore } from '@/stores/useTeamStore'
 
@@ -33,6 +33,80 @@ describe('BASE_SLASH_COMMANDS', () => {
   })
 })
 
+describe('filterBaseSlashCommands', () => {
+  it('shows only /new on an empty idle normal session', () => {
+    const commands = filterBaseSlashCommands({
+      isTeamWorking: false,
+      revertedCount: 0,
+      hasVisibleMessages: false,
+      mode: 'normal',
+      hasWorkspace: false,
+    })
+    expect(commands.map((c) => c.id)).toEqual(['new'])
+  })
+
+  it('shows /compact, /undo, /new on a normal session with messages', () => {
+    const commands = filterBaseSlashCommands({
+      isTeamWorking: false,
+      revertedCount: 0,
+      hasVisibleMessages: true,
+      mode: 'normal',
+      hasWorkspace: false,
+    })
+    expect(commands.map((c) => c.id)).toEqual(['compact', 'undo', 'new'])
+  })
+
+  it('shows /redo and /redo-all when revertedCount > 0', () => {
+    const commands = filterBaseSlashCommands({
+      isTeamWorking: false,
+      revertedCount: 2,
+      hasVisibleMessages: true,
+      mode: 'normal',
+      hasWorkspace: false,
+    })
+    expect(commands.map((c) => c.id)).toEqual([
+      'compact',
+      'undo',
+      'redo',
+      'redo-all',
+      'new',
+    ])
+  })
+
+  it('shows /stop and /new when team is actively working', () => {
+    const commands = filterBaseSlashCommands({
+      isTeamWorking: true,
+      revertedCount: 2,
+      hasVisibleMessages: true,
+      mode: 'normal',
+      hasWorkspace: false,
+    })
+    expect(commands.map((c) => c.id)).toEqual(['stop', 'new'])
+  })
+
+  it('shows /init in coding mode with a workspace attached', () => {
+    const commands = filterBaseSlashCommands({
+      isTeamWorking: false,
+      revertedCount: 0,
+      hasVisibleMessages: true,
+      mode: 'coding',
+      hasWorkspace: true,
+    })
+    expect(commands.map((c) => c.id)).toEqual(['compact', 'undo', 'new', 'init'])
+  })
+
+  it('does not show /init in coding mode without a workspace', () => {
+    const commands = filterBaseSlashCommands({
+      isTeamWorking: false,
+      revertedCount: 0,
+      hasVisibleMessages: true,
+      mode: 'coding',
+      hasWorkspace: false,
+    })
+    expect(commands.map((c) => c.id)).toEqual(['compact', 'undo', 'new'])
+  })
+})
+
 describe('useSlashCommands', () => {
   const inputRef = {
     current: {
@@ -51,6 +125,23 @@ describe('useSlashCommands', () => {
     inputRef.current.setValue.mockClear()
     inputRef.current.setFiles.mockClear()
     handleNewSession.mockClear()
+  })
+
+  it('filters slashCommands according to contextual state', () => {
+    const { result } = renderHook(() =>
+      useSlashCommands({
+        mode: 'coding',
+        agentWorkspace: '/tmp/project',
+        inputRef,
+        handleNewSession,
+        isTeamWorking: false,
+        revertedCount: 1,
+        hasVisibleMessages: true,
+      }),
+    )
+
+    const ids = result.current.slashCommands.map((c) => c.id)
+    expect(ids).toEqual(['compact', 'undo', 'redo', 'redo-all', 'new', 'init'])
   })
 
   it('dispatches redo to redoTeam and clears input', async () => {

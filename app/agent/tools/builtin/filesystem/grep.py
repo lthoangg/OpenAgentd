@@ -30,11 +30,7 @@ _LITERAL_SCAN_CHUNK = 262144
 # Characters that give a pattern meaning beyond a plain substring
 _REGEX_META = frozenset(".^$*+?{}[]()|\\")
 
-_DESCRIPTION = (
-    "Search file contents by regex. Returns 'file:line: content'. Use glob to "
-    "find files by name instead, or lsp to follow a symbol's definitions and "
-    "references."
-)
+_DESCRIPTION = "Search file contents by regex. Returns 'file:line: content'."
 
 
 def _compile_pattern(pattern: str) -> re.Pattern[str]:

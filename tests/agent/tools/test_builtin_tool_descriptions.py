@@ -56,9 +56,9 @@ def test_patch_text_description_keeps_grammar_and_replace_idiom():
     assert "exactly" in patch_text
 
 
-def test_grep_description_points_at_the_right_neighbour_tool():
-    assert "glob" in grep_files.description
-    assert "lsp" in grep_files.description
+def test_grep_description_has_no_dangling_tool_references():
+    assert "glob" not in grep_files.description
+    assert "lsp" not in grep_files.description
 
 
 def test_read_description_says_html_comes_back_verbatim():

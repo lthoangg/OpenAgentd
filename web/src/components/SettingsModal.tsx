@@ -14,6 +14,7 @@ import { ArrowLeft, X, type LucideIcon } from 'lucide-react'
 import { useHotkey } from '@tanstack/react-hotkeys'
 
 import { Button } from '@/components/ui/button'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { useSettingsStore, type SettingsSection } from '@/stores/useSettingsStore'
@@ -377,15 +378,21 @@ export function SettingsModal() {
                 <span className="text-base font-semibold text-(--color-text)">Settings</span>
               </div>
 
-              <button
-                type="button"
-                onClick={closeSettings}
-                className="flex h-11 w-11 items-center justify-center rounded-sm text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text) transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) md:h-7 md:w-7"
-                aria-label="Close settings"
-                title="Close (Esc)"
-              >
-                <X size={ICON_SIZE_INLINE} aria-hidden="true" />
-              </button>
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <button
+                      type="button"
+                      onClick={closeSettings}
+                      className="flex h-11 w-11 items-center justify-center rounded-sm text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text) transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) md:h-7 md:w-7"
+                      aria-label="Close settings"
+                    >
+                      <X size={ICON_SIZE_INLINE} aria-hidden="true" />
+                    </button>
+                  }
+                />
+                <TooltipContent>Close (Esc)</TooltipContent>
+              </Tooltip>
             </div>
 
             {/* Body */}

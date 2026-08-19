@@ -23,6 +23,7 @@ import {
 } from 'lucide-react'
 
 import { haptic } from '@/lib/haptics'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 
 interface TerminalKeyBarProps {
@@ -220,17 +221,22 @@ export function TerminalKeyBar({ onKey, ctrlArmed, onCtrlToggle }: TerminalKeyBa
       <div className="mx-0.5 h-5 w-px shrink-0 bg-(--color-border)" aria-hidden="true" />
 
       {SIGNAL_KEYS.map(({ label, seq, title }) => (
-        <button
-          key={label}
-          type="button"
-          aria-label={title}
-          title={title}
-          className={cn(keyClass, 'font-mono')}
-          onPointerDown={preventFocusLoss}
-          onClick={() => send(seq)}
-        >
-          {label}
-        </button>
+        <Tooltip key={label}>
+          <TooltipTrigger
+            render={
+              <button
+                type="button"
+                aria-label={title}
+                className={cn(keyClass, 'font-mono')}
+                onPointerDown={preventFocusLoss}
+                onClick={() => send(seq)}
+              >
+                {label}
+              </button>
+            }
+          />
+          <TooltipContent>{title}</TooltipContent>
+        </Tooltip>
       ))}
       <button
         type="button"

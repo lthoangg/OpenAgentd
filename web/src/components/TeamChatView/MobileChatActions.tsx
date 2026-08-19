@@ -1,5 +1,6 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import { CalendarClock, Check, MoreHorizontal, X } from 'lucide-react'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useTeamStore, type AgentStream } from '@/stores/useTeamStore'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { workspaceLabel } from '@/utils/workspace'
@@ -43,16 +44,22 @@ export function MobileChatActions({
     : { initial: { x: 280 }, animate: { x: dragOffset ?? 0 }, exit: { x: 280 } }
   return (
     <>
-      <button
-        type="button"
-        data-no-drag
-        onClick={() => onOpenChange(true)}
-        className="mr-1 flex h-9 w-9 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
-        aria-label="Open chat actions"
-        title="Chat actions"
-      >
-        <MoreHorizontal size={17} aria-hidden="true" />
-      </button>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <button
+              type="button"
+              data-no-drag
+              onClick={() => onOpenChange(true)}
+              className="mr-1 flex h-9 w-9 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
+              aria-label="Open chat actions"
+            >
+              <MoreHorizontal size={17} aria-hidden="true" />
+            </button>
+          }
+        />
+        <TooltipContent>Chat actions</TooltipContent>
+      </Tooltip>
 
       <AnimatePresence>
         {(open || dragOffset !== null) && (

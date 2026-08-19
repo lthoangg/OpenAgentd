@@ -11,6 +11,7 @@ import { useMemo } from 'react'
 import { X } from 'lucide-react'
 import type { SpanDetail } from '@/api/client'
 import { formatInt, formatMs, formatShortId, formatUsd } from '@/utils/telemetryFormat'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { Kv } from '../primitives'
 
 export function SpanDetailPanel({
@@ -36,12 +37,19 @@ export function SpanDetailPanel({
   return (
     <aside className={`flex shrink-0 flex-col overflow-hidden border-l border-(--color-border) bg-(--bg-page) ${fullWidth ? 'w-full' : 'w-96'}`}>
       <div className="flex h-11 shrink-0 items-center justify-between border-b border-(--color-border) bg-(--bg-sidebar) px-3">
-        <h3 className="truncate text-sm font-semibold text-(--color-text)" title={span.name}>
-          {span.name}
-        </h3>
+        <Tooltip className="min-w-0">
+          <TooltipTrigger
+            render={
+              <h3 className="truncate text-sm font-semibold text-(--color-text)">
+                {span.name}
+              </h3>
+            }
+          />
+          <TooltipContent>{span.name}</TooltipContent>
+        </Tooltip>
         <button
           onClick={onClose}
-          className="flex h-7 w-7 items-center justify-center rounded-sm text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
+          className="flex h-11 w-11 items-center justify-center rounded-sm text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-7 md:w-7"
           aria-label="Close span detail"
         >
           <X size={14} />

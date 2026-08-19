@@ -16,6 +16,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogD
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { LongPressButton } from '@/components/ui/long-press-button'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { softHapticFeedback } from '@/lib/haptics'
 import { cn } from '@/lib/utils'
 import { useTerminalStore, type TerminalSessionMeta } from '@/stores/useTerminalStore'
@@ -70,26 +71,33 @@ export function TerminalTabButton({
           className,
         )}
       >
-        <LongPressButton
-          ref={buttonRef}
-          type="button"
-          enabled={mobile}
-          onLongPress={() => {
-            softHapticFeedback()
-            setMobileSheetOpen(true)
-          }}
-          onContextMenu={(e) => {
-            if (mobile) return
-            e.preventDefault()
-            setDesktopMenuAt({ x: e.clientX, y: e.clientY })
-          }}
-          onClick={onActivate}
-          className="flex min-w-0 flex-1 items-center gap-1.5 truncate"
-          title={meta.title}
-        >
-          <TerminalSquare size={12} className="shrink-0" aria-hidden="true" />
-          <span className="truncate font-mono">{meta.title}</span>
-        </LongPressButton>
+        <Tooltip className="min-w-0 flex-1">
+          <TooltipTrigger
+            className="min-w-0 flex-1"
+            render={
+              <LongPressButton
+                ref={buttonRef}
+                type="button"
+                enabled={mobile}
+                onLongPress={() => {
+                  softHapticFeedback()
+                  setMobileSheetOpen(true)
+                }}
+                onContextMenu={(e) => {
+                  if (mobile) return
+                  e.preventDefault()
+                  setDesktopMenuAt({ x: e.clientX, y: e.clientY })
+                }}
+                onClick={onActivate}
+                className="flex min-w-0 flex-1 items-center gap-1.5 truncate"
+              >
+                <TerminalSquare size={12} className="shrink-0" aria-hidden="true" />
+                <span className="truncate font-mono">{meta.title}</span>
+              </LongPressButton>
+            }
+          />
+          <TooltipContent>{meta.title}</TooltipContent>
+        </Tooltip>
         {!mobile && (
           <span
             role="button"

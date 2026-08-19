@@ -73,7 +73,7 @@ describe('TaskListItem', () => {
       </QueryClientProvider>,
     )
 
-    fireEvent.click(screen.getByTitle('Delete'))
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }))
 
     expect(screen.getByRole('dialog', { name: 'Delete scheduled task' })).toBeInTheDocument()
     expect(requests).toHaveLength(0)

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useDebouncedCallback } from '@tanstack/react-pacer'
 import { X, Clock, Plus, Loader2, AlertCircle, CalendarClock, ArrowLeft } from 'lucide-react'
 import { SearchBar } from '@/components/ui/search-bar'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import {
   useScheduledTasksQuery,
 } from '@/queries'
@@ -101,13 +102,20 @@ export function SchedulerPanel({
         <div className="flex min-w-0 flex-1 items-center gap-2">
           {/* Mobile back button */}
           {isMobile && mobilePane !== 'list' && (
-            <button
-              onClick={handleBackToList}
-              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-sm text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
-              aria-label="Back to task list"
-            >
-              <ArrowLeft size={14} />
-            </button>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <button
+                    onClick={handleBackToList}
+                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-sm text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-7 md:w-7"
+                    aria-label="Back to task list"
+                  >
+                    <ArrowLeft size={14} />
+                  </button>
+                }
+              />
+              <TooltipContent>Back to task list</TooltipContent>
+            </Tooltip>
           )}
           <div className="flex min-w-0 items-center gap-2.5">
             <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-sm border border-(--color-accent)/30 bg-(--color-accent)/10 text-(--color-accent)">
@@ -129,12 +137,13 @@ export function SchedulerPanel({
                 )}
               </div>
               {(!isMobile || mobilePane === 'list') && (
-                <p
-                  className="truncate text-[11px] text-(--color-text-muted)"
-                  title="Normal and coding scheduled tasks"
-                >
-                  All scheduled tasks
-                </p>
+                <Tooltip className="min-w-0">
+                  <TooltipTrigger
+                    className="min-w-0"
+                    render={<p className="truncate text-[11px] text-(--color-text-muted)">All scheduled tasks</p>}
+                  />
+                  <TooltipContent>Normal and coding scheduled tasks</TooltipContent>
+                </Tooltip>
               )}
             </div>
           </div>
@@ -142,33 +151,52 @@ export function SchedulerPanel({
         <div className="flex shrink-0 items-center gap-1">
           {/* Desktop/Mobile: Create button */}
           {selectedTaskId !== null && !isMobile && (
-            <button
-              onClick={handleOpenCreate}
-              className="flex h-7 items-center gap-1 rounded-sm border border-(--color-border) bg-(--bg-card) px-2 text-xs font-medium text-(--color-text) transition-colors hover:bg-(--bg-key) hover:border-(--color-border-strong)"
-              title="Create new task"
-            >
-              <Plus size={12} />
-              <span>New Task</span>
-            </button>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <button
+                    onClick={handleOpenCreate}
+                    className="flex h-7 items-center gap-1 rounded-sm border border-(--color-border) bg-(--bg-card) px-2 text-xs font-medium text-(--color-text) transition-colors hover:bg-(--bg-key) hover:border-(--color-border-strong)"
+                    aria-label="Create new task"
+                  >
+                    <Plus size={12} />
+                    <span>New Task</span>
+                  </button>
+                }
+              />
+              <TooltipContent>Create new task</TooltipContent>
+            </Tooltip>
           )}
           {isMobile && mobilePane === 'list' && (
-            <button
-              onClick={handleOpenCreate}
-              className="flex h-7 w-7 items-center justify-center rounded-sm border border-(--color-border) bg-(--bg-card) text-(--color-text) transition-colors hover:bg-(--bg-key)"
-              aria-label="Create new task"
-              title="Create task"
-            >
-              <Plus size={13} />
-            </button>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <button
+                    onClick={handleOpenCreate}
+                    className="flex h-11 w-11 items-center justify-center rounded-sm border border-(--color-border) bg-(--bg-card) text-(--color-text) transition-colors hover:bg-(--bg-key) md:h-7 md:w-7"
+                    aria-label="Create new task"
+                  >
+                    <Plus size={13} />
+                  </button>
+                }
+              />
+              <TooltipContent>Create task</TooltipContent>
+            </Tooltip>
           )}
-          <button
-            onClick={onClose}
-            className="flex h-7 w-7 items-center justify-center rounded-sm text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
-            aria-label="Close scheduler panel"
-            title="Close (Esc)"
-          >
-            <X size={14} />
-          </button>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <button
+                  onClick={onClose}
+                  className="flex h-11 w-11 items-center justify-center rounded-sm text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-7 md:w-7"
+                  aria-label="Close scheduler panel"
+                >
+                  <X size={14} />
+                </button>
+              }
+            />
+            <TooltipContent>Close (Esc)</TooltipContent>
+          </Tooltip>
         </div>
       </header>
 

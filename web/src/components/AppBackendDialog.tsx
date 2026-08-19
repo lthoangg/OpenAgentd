@@ -3,6 +3,7 @@ import { Server } from 'lucide-react'
 import { AppOverlay } from '@/components/ui/app-overlay'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { SectionCard, SectionCardHeader, SectionCardRows, SectionCardRow, SectionCardBadge } from '@/components/ui/section-card'
 
 import { apiBaseUrl, setApiBaseUrl } from '@/api/base-url'
@@ -495,5 +496,10 @@ function ServerStatusDot({ status }: { status: 'checking' | 'online' | 'offline'
       ? 'bg-(--color-error)'
       : 'animate-pulse bg-(--color-text-muted)'
   const label = status === 'online' ? 'Online' : status === 'offline' ? 'Offline' : 'Checking'
-  return <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${className}`} title={label} aria-label={label} />
+  return (
+    <Tooltip>
+      <TooltipTrigger render={<span className={`h-1.5 w-1.5 shrink-0 rounded-full ${className}`} aria-label={label} />} />
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
+  )
 }

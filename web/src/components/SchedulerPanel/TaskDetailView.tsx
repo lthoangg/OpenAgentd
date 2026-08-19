@@ -6,6 +6,7 @@ import { formatScheduleLabel, slugify } from './utils'
 import { EditTaskForm } from './EditTaskForm'
 import { useTeamStore } from '@/stores/useTeamStore'
 import { Button } from '@/components/ui/button'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { useDeleteScheduledTaskMutation, usePauseScheduledTaskMutation, useResumeScheduledTaskMutation, useTriggerScheduledTaskMutation } from '@/queries'
 
@@ -94,58 +95,91 @@ export function TaskDetailView({
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-1">
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              onClick={triggerTask}
-              disabled={triggerMutation.isPending}
-              title="Trigger now"
-              className="h-7 w-7 rounded-sm text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-accent)"
-            >
-              {triggerMutation.isPending ? <Loader2 size={13} className="animate-spin" /> : <Zap size={13} />}
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              onClick={togglePaused}
-              disabled={pauseMutation.isPending || resumeMutation.isPending}
-              title={task.status === 'paused' ? 'Resume' : 'Pause'}
-              className="h-7 w-7 rounded-sm text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text)"
-            >
-              {pauseMutation.isPending || resumeMutation.isPending ? (
-                <Loader2 size={13} className="animate-spin" />
-              ) : task.status === 'paused' ? (
-                <Play size={13} />
-              ) : (
-                <Pause size={13} />
-              )}
-            </Button>
-            <button
-              onClick={() => setEditing(true)}
-              className="flex h-7 w-7 items-center justify-center rounded-sm text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)"
-              aria-label="Edit task"
-              title="Edit task"
-            >
-              <Pencil size={13} />
-            </button>
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              onClick={() => setDeleteConfirmationOpen(true)}
-              disabled={deleteMutation.isPending}
-              title="Delete task"
-              className="h-7 w-7 rounded-sm text-(--color-text-muted) hover:bg-(--color-error-subtle) hover:text-(--color-error)"
-            >
-              <Trash2 size={13} />
-            </Button>
-            <button
-              onClick={onClose}
-              className="flex h-7 w-7 items-center justify-center rounded-sm text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)"
-              aria-label="Close detail"
-              title="Close"
-            >
-              <X size={14} />
-            </button>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    onClick={triggerTask}
+                    disabled={triggerMutation.isPending}
+                    aria-label="Trigger now"
+                    className="h-7 w-7 rounded-sm text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-accent)"
+                  >
+                    {triggerMutation.isPending ? <Loader2 size={13} className="animate-spin" /> : <Zap size={13} />}
+                  </Button>
+                }
+              />
+              <TooltipContent>Trigger now</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    onClick={togglePaused}
+                    disabled={pauseMutation.isPending || resumeMutation.isPending}
+                    aria-label={task.status === 'paused' ? 'Resume' : 'Pause'}
+                    className="h-7 w-7 rounded-sm text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text)"
+                  >
+                    {pauseMutation.isPending || resumeMutation.isPending ? (
+                      <Loader2 size={13} className="animate-spin" />
+                    ) : task.status === 'paused' ? (
+                      <Play size={13} />
+                    ) : (
+                      <Pause size={13} />
+                    )}
+                  </Button>
+                }
+              />
+              <TooltipContent>{task.status === 'paused' ? 'Resume' : 'Pause'}</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <button
+                    onClick={() => setEditing(true)}
+                    className="flex h-7 w-7 items-center justify-center rounded-sm text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)"
+                    aria-label="Edit task"
+                  >
+                    <Pencil size={13} />
+                  </button>
+                }
+              />
+              <TooltipContent>Edit task</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    onClick={() => setDeleteConfirmationOpen(true)}
+                    disabled={deleteMutation.isPending}
+                    aria-label="Delete task"
+                    className="h-7 w-7 rounded-sm text-(--color-text-muted) hover:bg-(--color-error-subtle) hover:text-(--color-error)"
+                  >
+                    <Trash2 size={13} />
+                  </Button>
+                }
+              />
+              <TooltipContent>Delete task</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <button
+                    onClick={onClose}
+                    className="flex h-7 w-7 items-center justify-center rounded-sm text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)"
+                    aria-label="Close detail"
+                  >
+                    <X size={14} />
+                  </button>
+                }
+              />
+              <TooltipContent>Close</TooltipContent>
+            </Tooltip>
           </div>
         </div>
       </div>
@@ -189,9 +223,13 @@ export function TaskDetailView({
                     <FolderOpen size={12} className="text-(--color-accent)" />
                     <span>Coding team</span>
                     {task.workspace && (
-                      <span className="font-mono text-xs text-(--color-text-muted) truncate max-w-[200px]" title={task.workspace}>
-                        · {task.workspace}
-                      </span>
+                      <Tooltip className="min-w-0 max-w-[200px]">
+                        <TooltipTrigger
+                          className="min-w-0 max-w-[200px]"
+                          render={<span className="font-mono text-xs text-(--color-text-muted) truncate">· {task.workspace}</span>}
+                        />
+                        <TooltipContent>{task.workspace}</TooltipContent>
+                      </Tooltip>
                     )}
                   </span>
                 ) : (
@@ -266,16 +304,22 @@ export function TaskDetailView({
             <h3 className="text-[10.5px] font-semibold uppercase tracking-wider text-(--color-text-muted)">
               Prompt
             </h3>
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              onClick={handleCopyPrompt}
-              title="Copy prompt"
-              className="h-6 gap-1 px-1.5 text-[11px] text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text)"
-            >
-              {copiedPrompt ? <Check size={12} className="text-(--color-success)" /> : <Copy size={12} />}
-              <span>{copiedPrompt ? 'Copied' : 'Copy'}</span>
-            </Button>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    onClick={handleCopyPrompt}
+                    className="h-6 gap-1 px-1.5 text-[11px] text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text)"
+                  >
+                    {copiedPrompt ? <Check size={12} className="text-(--color-success)" /> : <Copy size={12} />}
+                    <span>{copiedPrompt ? 'Copied' : 'Copy'}</span>
+                  </Button>
+                }
+              />
+              <TooltipContent>Copy prompt</TooltipContent>
+            </Tooltip>
           </div>
           <div className="rounded-xs border border-(--color-border-subtle) bg-(--bg-page) p-2.5 font-mono text-xs leading-relaxed text-(--color-text) whitespace-pre-wrap">
             {task.prompt}

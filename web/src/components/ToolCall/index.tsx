@@ -19,6 +19,7 @@
 import { useEffect, useRef, useState, useMemo, useCallback, memo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { ChevronRight, Copy, Check } from 'lucide-react'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { ToolResult } from '../ToolResult'
 import { AskUser } from '../AskUser'
 import { DURATIONS_S, EASINGS } from '@/lib/motion'
@@ -279,18 +280,24 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
   }
 
   const resultCopyButton = (
-    <button
-      onClick={handleCopyResult}
-      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-sm text-(--color-text-muted) opacity-100 transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-2 focus-visible:outline-(--focus-ring)/40 md:h-6 md:w-6 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100"
-      aria-label="Copy result"
-      title="Copy result"
-    >
-      {copiedResult ? (
-        <Check size={12} className="text-(--color-success)" />
-      ) : (
-        <Copy size={12} />
-      )}
-    </button>
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <button
+            onClick={handleCopyResult}
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-sm text-(--color-text-muted) opacity-100 transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-2 focus-visible:outline-(--focus-ring)/40 md:h-6 md:w-6 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100"
+            aria-label="Copy result"
+          >
+            {copiedResult ? (
+              <Check size={12} className="text-(--color-success)" />
+            ) : (
+              <Copy size={12} />
+            )}
+          </button>
+        }
+      />
+      <TooltipContent>Copy result</TooltipContent>
+    </Tooltip>
   )
 
   const hasDetails = Boolean(formattedArgs || shownLiveOutput || shownResult || hasReadResult)
@@ -353,9 +360,7 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
         </span>
 
         {elapsedMs !== undefined && (
-          <span className="shrink-0 font-mono text-[10px] text-(--color-text-muted)" title="Duration">
-            {formatDuration(elapsedMs)}
-          </span>
+          <span className="shrink-0 font-mono text-[10px] text-(--color-text-muted)">{formatDuration(elapsedMs)}</span>
         )}
 
         {hasDetails && (
@@ -401,18 +406,24 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
                         <span className="font-mono text-[10px] font-semibold uppercase tracking-wider text-(--color-text-muted) transition-colors group-hover/result-header:text-(--color-text)">
                           {isShellTerminal ? 'terminal' : 'arguments'}
                         </span>
-                        <button
-                          onClick={handleCopyArgs}
-                          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-sm text-(--color-text-muted) opacity-100 transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-2 focus-visible:outline-(--focus-ring)/40 md:h-6 md:w-6 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100"
-                          aria-label="Copy arguments"
-                          title="Copy"
-                        >
-                          {copiedArgs ? (
-                            <Check size={12} className="text-(--color-success)" />
-                          ) : (
-                            <Copy size={12} />
-                          )}
-                        </button>
+                        <Tooltip>
+                          <TooltipTrigger
+                            render={
+                              <button
+                                onClick={handleCopyArgs}
+                                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-sm text-(--color-text-muted) opacity-100 transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-2 focus-visible:outline-(--focus-ring)/40 md:h-6 md:w-6 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100"
+                                aria-label="Copy arguments"
+                              >
+                                {copiedArgs ? (
+                                  <Check size={12} className="text-(--color-success)" />
+                                ) : (
+                                  <Copy size={12} />
+                                )}
+                              </button>
+                            }
+                          />
+                          <TooltipContent>Copy</TooltipContent>
+                        </Tooltip>
                       </div>
                       {isShellTerminal ? (
                         <div className="flex flex-col gap-1 bg-(--bg-input) p-2.5">

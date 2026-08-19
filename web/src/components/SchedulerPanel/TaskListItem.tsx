@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 import { AlertCircle, CalendarClock, Clock, Loader2, Pause, Play, Trash2, Zap } from 'lucide-react'
 import type { ScheduledTaskResponse } from '@/api/types'
 import { Button } from '@/components/ui/button'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { useDeleteScheduledTaskMutation, usePauseScheduledTaskMutation, useResumeScheduledTaskMutation, useTriggerScheduledTaskMutation } from '@/queries'
 import { formatRelativeDate } from '@/utils/format'
@@ -162,59 +163,80 @@ export function TaskListItem({
 
         {/* Action buttons */}
         <div className="flex shrink-0 items-center gap-0.5">
-          <Button
-            variant="ghost"
-            size="icon-xs"
-            onClick={(e) => {
-              e.stopPropagation()
-              triggerTask()
-            }}
-            disabled={triggerMutation.isPending}
-            title="Trigger now"
-            className="h-7 w-7 rounded-sm text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text)"
-          >
-            {triggerMutation.isPending ? (
-              <Loader2 size={12} className="animate-spin" />
-            ) : (
-              <Zap size={12} />
-            )}
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon-xs"
-            onClick={(e) => {
-              e.stopPropagation()
-              togglePaused()
-            }}
-            disabled={pauseMutation.isPending || resumeMutation.isPending}
-            title={task.status === 'paused' ? 'Resume' : 'Pause'}
-            className="h-7 w-7 rounded-sm text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text)"
-          >
-            {pauseMutation.isPending || resumeMutation.isPending ? (
-              <Loader2 size={12} className="animate-spin" />
-            ) : task.status === 'paused' ? (
-              <Play size={12} />
-            ) : (
-              <Pause size={12} />
-            )}
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon-xs"
-            onClick={(e) => {
-              e.stopPropagation()
-              setDeleteConfirmationOpen(true)
-            }}
-            disabled={deleteMutation.isPending}
-            title="Delete"
-            className="h-7 w-7 rounded-sm text-(--color-text-muted) hover:bg-(--color-error-subtle) hover:text-(--color-error)"
-          >
-            {deleteMutation.isPending ? (
-              <Loader2 size={12} className="animate-spin" />
-            ) : (
-              <Trash2 size={12} />
-            )}
-          </Button>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    triggerTask()
+                  }}
+                  disabled={triggerMutation.isPending}
+                  aria-label="Trigger now"
+                  className="h-7 w-7 rounded-sm text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text)"
+                >
+                  {triggerMutation.isPending ? (
+                    <Loader2 size={12} className="animate-spin" />
+                  ) : (
+                    <Zap size={12} />
+                  )}
+                </Button>
+              }
+            />
+            <TooltipContent>Trigger now</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    togglePaused()
+                  }}
+                  disabled={pauseMutation.isPending || resumeMutation.isPending}
+                  aria-label={task.status === 'paused' ? 'Resume' : 'Pause'}
+                  className="h-7 w-7 rounded-sm text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text)"
+                >
+                  {pauseMutation.isPending || resumeMutation.isPending ? (
+                    <Loader2 size={12} className="animate-spin" />
+                  ) : task.status === 'paused' ? (
+                    <Play size={12} />
+                  ) : (
+                    <Pause size={12} />
+                  )}
+                </Button>
+              }
+            />
+            <TooltipContent>{task.status === 'paused' ? 'Resume' : 'Pause'}</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setDeleteConfirmationOpen(true)
+                  }}
+                  disabled={deleteMutation.isPending}
+                  aria-label="Delete"
+                  className="h-7 w-7 rounded-sm text-(--color-text-muted) hover:bg-(--color-error-subtle) hover:text-(--color-error)"
+                >
+                  {deleteMutation.isPending ? (
+                    <Loader2 size={12} className="animate-spin" />
+                  ) : (
+                    <Trash2 size={12} />
+                  )}
+                </Button>
+              }
+            />
+            <TooltipContent>Delete</TooltipContent>
+          </Tooltip>
         </div>
       </div>
     </div>

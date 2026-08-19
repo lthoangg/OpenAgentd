@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from 'react'
 import fuzzysort from 'fuzzysort'
 import { Check, ChevronDown, Copy, Loader2 } from 'lucide-react'
 import { SearchBar } from '@/components/ui/search-bar'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { usePlatform } from '@/hooks/use-platform'
 import { mediumHapticFeedback } from '@/lib/haptics'
@@ -194,33 +195,43 @@ function ModelRow({
       onPointerLeave={clearLongPress}
     >
       {/* Model ID */}
-      <span className="min-w-0 flex-1 truncate font-mono text-[10.5px] text-(--color-text)">
-        {qualifiedId}
-      </span>
+      <Tooltip className="min-w-0 flex-1">
+        <TooltipTrigger
+          className="min-w-0 flex-1"
+          render={<span className="min-w-0 flex-1 truncate font-mono text-[10.5px] text-(--color-text)">{qualifiedId}</span>}
+        />
+        <TooltipContent>{qualifiedId}</TooltipContent>
+      </Tooltip>
 
       {/* Visibility toggle */}
-      <button
-        type="button"
-        onClick={onToggleVisible}
-        disabled={savingVisibleModels}
-        aria-label={`${selected ? 'Remove' : 'Show'} ${qualifiedId} in model pickers`}
-        title={selected ? 'Remove from visible models' : 'Add to visible models'}
-        className={cn(
-          'flex h-8 min-w-[3.5rem] items-center justify-center gap-1 rounded-xs px-2 md:h-6 md:min-w-[3.5rem] md:px-1.5',
-          'text-[10px] font-medium transition-colors',
-          selected
-            ? 'bg-(--color-success-subtle) text-(--color-success)'
-            : 'text-(--color-text-muted) hover:bg-(--bg-card) hover:text-(--color-text)',
-          savingVisibleModels && 'opacity-50 cursor-not-allowed',
-        )}
-      >
-        {savingVisibleModels
-          ? <Loader2 size={10} className="animate-spin" aria-hidden="true" />
-          : selected
-            ? <Check size={10} aria-hidden="true" />
-            : null}
-        {selected ? 'Visible' : 'Show'}
-      </button>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <button
+              type="button"
+              onClick={onToggleVisible}
+              disabled={savingVisibleModels}
+              aria-label={`${selected ? 'Remove' : 'Show'} ${qualifiedId} in model pickers`}
+              className={cn(
+                'flex h-8 min-w-[3.5rem] items-center justify-center gap-1 rounded-xs px-2 md:h-6 md:min-w-[3.5rem] md:px-1.5',
+                'text-[10px] font-medium transition-colors',
+                selected
+                  ? 'bg-(--color-success-subtle) text-(--color-success)'
+                  : 'text-(--color-text-muted) hover:bg-(--bg-card) hover:text-(--color-text)',
+                savingVisibleModels && 'opacity-50 cursor-not-allowed',
+              )}
+            >
+              {savingVisibleModels
+                ? <Loader2 size={10} className="animate-spin" aria-hidden="true" />
+                : selected
+                  ? <Check size={10} aria-hidden="true" />
+                  : null}
+              {selected ? 'Visible' : 'Show'}
+            </button>
+          }
+        />
+        <TooltipContent>{selected ? 'Remove from visible models' : 'Add to visible models'}</TooltipContent>
+      </Tooltip>
 
       {/* Copy button */}
       <button

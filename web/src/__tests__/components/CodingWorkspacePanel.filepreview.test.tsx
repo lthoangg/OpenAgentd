@@ -116,7 +116,7 @@ describe('Coding workspace two-layer file preview', () => {
     await renderWorkspacePanel(onFileSelect, readmePath)
 
     await waitFor(() => expect(onFileSelect).toHaveBeenCalledWith(readme))
-    await waitFor(() => expect(screen.getAllByTitle(readmePath).length).toBeGreaterThanOrEqual(1))
+    await waitFor(() => expect(screen.getAllByText(readmePath).length).toBeGreaterThanOrEqual(1))
     await waitFor(() => expect(screen.getByText('const')).toBeTruthy())
   })
 
@@ -195,15 +195,15 @@ describe('Coding workspace two-layer file preview', () => {
 
     const user = userEvent.setup()
     await renderWorkspacePanel()
-    await waitFor(() => expect(screen.getByTitle('README.md')).toBeTruthy())
+    await waitFor(() => expect(screen.getByRole('button', { name: /diff for README.md/i })).toBeTruthy())
 
-    const changedRow = screen.getByTitle('README.md')
+    const changedRow = screen.getByRole('button', { name: /diff for README.md/i })
     expect(changedRow.textContent).toContain('M')
     await user.click(changedRow)
 
     expect(screen.getByText('old')).toBeTruthy()
     expect(screen.getByText('new')).toBeTruthy()
-    expect(screen.getAllByTitle('README.md')).toHaveLength(1)
+    expect(screen.getAllByRole('button', { name: /diff for README.md/i })).toHaveLength(1)
     expect(screen.queryByRole('button', { name: /^diff$/i })).toBeNull()
   })
 
@@ -217,8 +217,8 @@ describe('Coding workspace two-layer file preview', () => {
     const user = userEvent.setup()
     const onFileSelect = mock(() => {})
     await renderWorkspacePanel(onFileSelect)
-    await waitFor(() => expect(screen.getByTitle('deleted.txt')).toBeTruthy())
-    const deletedRow = screen.getByTitle('deleted.txt')
+    await waitFor(() => expect(screen.getByRole('button', { name: /diff for deleted.txt/i })).toBeTruthy())
+    const deletedRow = screen.getByRole('button', { name: /diff for deleted.txt/i })
     await user.click(deletedRow)
 
     expect(deletedRow.textContent).toContain('D')

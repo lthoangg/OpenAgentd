@@ -16,6 +16,7 @@ import { Folder, GitBranch, RefreshCw } from 'lucide-react'
 
 import { getCodingWorkspaceStatus } from '@/api/client'
 import { Button } from '@/components/ui/button'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { queryKeys } from '@/queries'
 import { workspaceLabel } from '@/utils/workspace'
 
@@ -41,17 +42,22 @@ export function WorkspaceInfoCard({ workspace }: Props) {
     <div className="mx-auto w-full max-w-md px-4 py-4">
       <div className="flex min-w-0 items-center gap-2">
         <Folder size={16} className="shrink-0 text-(--color-text-muted)" aria-hidden="true" />
-        <h2 className="truncate text-sm font-medium text-(--color-text)" title={name}>
-          {name}
-        </h2>
+        <Tooltip className="min-w-0">
+          <TooltipTrigger
+            className="min-w-0"
+            render={<h2 className="truncate text-sm font-medium text-(--color-text)">{name}</h2>}
+          />
+          <TooltipContent>{name}</TooltipContent>
+        </Tooltip>
       </div>
 
-      <p
-        className="mt-1 truncate font-mono text-xs text-(--color-text-muted)"
-        title={workspace}
-      >
-        {workspace}
-      </p>
+      <Tooltip className="mt-1 w-full">
+        <TooltipTrigger
+          className="w-full"
+          render={<p className="mt-1 truncate font-mono text-xs text-(--color-text-muted)">{workspace}</p>}
+        />
+        <TooltipContent>{workspace}</TooltipContent>
+      </Tooltip>
 
       {isLoading ? (
         <p className="mt-3 text-xs text-(--color-text-subtle)">Loading…</p>
@@ -74,22 +80,33 @@ export function WorkspaceInfoCard({ workspace }: Props) {
         <div className="mt-3 space-y-2 text-xs">
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
             {data.branch && (
-              <span
-                className="inline-flex items-center gap-1 text-(--color-text-2)"
-                title="Current branch"
-              >
-                <GitBranch size={11} aria-hidden="true" />
-                <span className="font-mono">{data.branch}</span>
-              </span>
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <span className="inline-flex items-center gap-1 text-(--color-text-2)">
+                      <GitBranch size={11} aria-hidden="true" />
+                      <span className="font-mono">{data.branch}</span>
+                    </span>
+                  }
+                />
+                <TooltipContent>Current branch</TooltipContent>
+              </Tooltip>
             )}
             {dirty && dirtyTotal > 0 ? (
-              <span className="font-mono text-(--color-text-muted)" title="staged · unstaged · untracked">
-                {dirty.staged > 0 && <span className="text-(--color-success)">+{dirty.staged}</span>}
-                {dirty.staged > 0 && (dirty.unstaged > 0 || dirty.untracked > 0) && ' '}
-                {dirty.unstaged > 0 && <span className="text-(--color-warning)">~{dirty.unstaged}</span>}
-                {dirty.unstaged > 0 && dirty.untracked > 0 && ' '}
-                {dirty.untracked > 0 && <span className="text-(--color-text-subtle)">?{dirty.untracked}</span>}
-              </span>
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <span className="font-mono text-(--color-text-muted)">
+                      {dirty.staged > 0 && <span className="text-(--color-success)">+{dirty.staged}</span>}
+                      {dirty.staged > 0 && (dirty.unstaged > 0 || dirty.untracked > 0) && ' '}
+                      {dirty.unstaged > 0 && <span className="text-(--color-warning)">~{dirty.unstaged}</span>}
+                      {dirty.unstaged > 0 && dirty.untracked > 0 && ' '}
+                      {dirty.untracked > 0 && <span className="text-(--color-text-subtle)">?{dirty.untracked}</span>}
+                    </span>
+                  }
+                />
+                <TooltipContent>staged · unstaged · untracked</TooltipContent>
+              </Tooltip>
             ) : (
               <span className="text-(--color-text-subtle)">clean</span>
             )}
@@ -98,15 +115,23 @@ export function WorkspaceInfoCard({ workspace }: Props) {
           {data.head && (
             <div className="flex items-baseline gap-2 text-(--color-text-muted)">
               <span className="font-mono text-(--color-text-2)">{data.head.sha}</span>
-              <span className="min-w-0 flex-1 truncate" title={data.head.subject}>
-                {data.head.subject}
-              </span>
-              <span
-                className="shrink-0 text-(--color-text-subtle)"
-                title={new Date(data.head.timestamp * 1000).toLocaleString()}
-              >
-                {formatDistanceToNowStrict(new Date(data.head.timestamp * 1000), { addSuffix: true })}
-              </span>
+              <Tooltip className="min-w-0 flex-1">
+                <TooltipTrigger
+                  className="min-w-0 flex-1"
+                  render={<span className="min-w-0 flex-1 truncate">{data.head.subject}</span>}
+                />
+                <TooltipContent>{data.head.subject}</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <span className="shrink-0 text-(--color-text-subtle)">
+                      {formatDistanceToNowStrict(new Date(data.head.timestamp * 1000), { addSuffix: true })}
+                    </span>
+                  }
+                />
+                <TooltipContent>{new Date(data.head.timestamp * 1000).toLocaleString()}</TooltipContent>
+              </Tooltip>
             </div>
           )}
         </div>

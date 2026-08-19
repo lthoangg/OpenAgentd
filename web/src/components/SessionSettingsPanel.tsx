@@ -13,6 +13,7 @@
 
 import { useEffect, useRef } from 'react'
 import { X } from 'lucide-react'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 
 import { AppOverlay } from '@/components/ui/app-overlay'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -86,14 +87,20 @@ export function SessionSettingsPanel({
             Applies from your next message.
           </p>
         </div>
-        <button
-          onClick={onClose}
-          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-sm text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2) md:h-7 md:w-7"
-          aria-label="Close (Esc)"
-          title="Close (Esc)"
-        >
-          <X size={14} />
-        </button>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <button
+                onClick={onClose}
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-sm text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2) md:h-7 md:w-7"
+                aria-label="Close (Esc)"
+              >
+                <X size={14} />
+              </button>
+            }
+          />
+          <TooltipContent>Close (Esc)</TooltipContent>
+        </Tooltip>
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain touch-pan-y">

@@ -10,6 +10,7 @@
 
 import { useState, useMemo } from 'react'
 import { ChevronDown, ChevronUp } from 'lucide-react'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { LazyMarkdownBlock } from '@/utils/LazyMarkdownBlock'
 
 /** Me change N here to tune collapse threshold */
@@ -77,25 +78,32 @@ export function InboxBubble({ content, fromAgent, compact = false }: InboxBubble
           </p>
 
           {needsCollapse && (
-            <button
-              onClick={() => setExpanded((v) => !v)}
-              aria-expanded={expanded}
-              title={expanded ? 'Collapse' : 'Expand'}
-              className={[
-                'flex items-center justify-center shrink-0',
-                'rounded-md border border-(--color-border)',
-                'bg-(--bg-page) text-(--color-text-muted)',
-                compact ? 'h-4 w-4' : 'h-5 w-5',
-                'transition-all duration-150',
-                'hover:border-(--color-border-strong) hover:text-(--color-text)',
-                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40',
-                'active:scale-90',
-              ].join(' ')}
-            >
-              {expanded
-                ? <ChevronUp size={compact ? 10 : 12} />
-                : <ChevronDown size={compact ? 10 : 12} />}
-            </button>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <button
+                    onClick={() => setExpanded((v) => !v)}
+                    aria-expanded={expanded}
+                    aria-label={expanded ? 'Collapse' : 'Expand'}
+                    className={[
+                      'flex items-center justify-center shrink-0',
+                      'rounded-md border border-(--color-border)',
+                      'bg-(--bg-page) text-(--color-text-muted)',
+                      compact ? 'h-4 w-4' : 'h-5 w-5',
+                      'transition-all duration-150',
+                      'hover:border-(--color-border-strong) hover:text-(--color-text)',
+                      'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40',
+                      'active:scale-90',
+                    ].join(' ')}
+                  >
+                    {expanded
+                      ? <ChevronUp size={compact ? 10 : 12} />
+                      : <ChevronDown size={compact ? 10 : 12} />}
+                  </button>
+                }
+              />
+              <TooltipContent>{expanded ? 'Collapse' : 'Expand'}</TooltipContent>
+            </Tooltip>
           )}
         </div>
 

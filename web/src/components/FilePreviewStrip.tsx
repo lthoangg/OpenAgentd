@@ -20,6 +20,7 @@
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { X } from 'lucide-react'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { FileCard } from './FileCard'
 import { FileTypeIcon } from './FileTypeIcon'
 import { FileLightbox, type FileLightboxItem, type FileLightboxItemType } from './FileLightbox'
@@ -88,15 +89,21 @@ function itemTypeOf(file: File): FileLightboxItemType {
 
 function RemoveButton({ onRemove, label = 'Remove file' }: { onRemove: () => void; label?: string }) {
   return (
-    <button
-      type="button"
-      onClick={(e) => { e.stopPropagation(); onRemove() }}
-      className="absolute -right-2 -top-2 flex h-7 w-7 items-center justify-center rounded-sm border border-(--color-border) bg-(--bg-card) text-(--color-text-muted) shadow-sm opacity-100 transition-colors hover:border-(--color-border-strong) hover:text-(--color-text) md:-right-1.5 md:-top-1.5 md:h-4 md:w-4 md:opacity-0 md:group-hover:opacity-100"
-      aria-label={label}
-      title="Remove"
-    >
-      <X size={12} className="md:h-2.5 md:w-2.5" />
-    </button>
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onRemove() }}
+            className="absolute -right-2 -top-2 flex h-7 w-7 items-center justify-center rounded-sm border border-(--color-border) bg-(--bg-card) text-(--color-text-muted) shadow-sm opacity-100 transition-colors hover:border-(--color-border-strong) hover:text-(--color-text) md:-right-1.5 md:-top-1.5 md:h-4 md:w-4 md:opacity-0 md:group-hover:opacity-100"
+            aria-label={label}
+          >
+            <X size={12} className="md:h-2.5 md:w-2.5" />
+          </button>
+        }
+      />
+      <TooltipContent>Remove</TooltipContent>
+    </Tooltip>
   )
 }
 
@@ -160,7 +167,13 @@ function VideoCard({ file, blobUrl, onRemove, onOpen }: CardProps) {
         />
         <div className="flex items-center gap-1.5 px-2 py-1">
           <FileTypeIcon name={file.name} size={12} />
-          <span className="truncate text-xs text-(--color-text-muted)" title={file.name}>{displayName}</span>
+          <Tooltip className="min-w-0">
+            <TooltipTrigger
+              className="min-w-0"
+              render={<span className="truncate text-xs text-(--color-text-muted)">{displayName}</span>}
+            />
+            <TooltipContent>{file.name}</TooltipContent>
+          </Tooltip>
         </div>
       </button>
       <RemoveButton onRemove={onRemove} />
@@ -180,7 +193,13 @@ function AudioCard({ file, blobUrl, onRemove, onOpen }: CardProps) {
           aria-label={`Preview ${file.name}`}
         >
           <FileTypeIcon name={file.name} size={12} />
-          <span className="truncate text-xs font-medium text-(--color-text) hover:underline" title={file.name}>{displayName}</span>
+          <Tooltip className="min-w-0">
+            <TooltipTrigger
+              className="min-w-0"
+              render={<span className="truncate text-xs font-medium text-(--color-text) hover:underline">{displayName}</span>}
+            />
+            <TooltipContent>{file.name}</TooltipContent>
+          </Tooltip>
         </button>
         <audio
           src={blobUrl}
@@ -210,7 +229,13 @@ function PdfCard({ file, blobUrl, onRemove, onOpen }: CardProps) {
         />
         <div className="flex items-center gap-1.5 border-t border-(--color-border-subtle) px-2 py-1">
           <FileTypeIcon name={file.name} size={12} />
-          <span className="truncate text-xs text-(--color-text-muted)" title={file.name}>{displayName}</span>
+          <Tooltip className="min-w-0">
+            <TooltipTrigger
+              className="min-w-0"
+              render={<span className="truncate text-xs text-(--color-text-muted)">{displayName}</span>}
+            />
+            <TooltipContent>{file.name}</TooltipContent>
+          </Tooltip>
         </div>
       </button>
       <RemoveButton onRemove={onRemove} />
@@ -247,7 +272,13 @@ function TextCard({ file, onRemove, onOpen }: Omit<CardProps, 'blobUrl'> & { blo
       >
         <div className="flex items-center gap-1.5 border-b border-(--color-border-subtle) px-2 py-1.5">
           <FileTypeIcon name={file.name} size={12} />
-          <span className="truncate text-xs font-medium text-(--color-text)" title={file.name}>{displayName}</span>
+          <Tooltip className="min-w-0">
+            <TooltipTrigger
+              className="min-w-0"
+              render={<span className="truncate text-xs font-medium text-(--color-text)">{displayName}</span>}
+            />
+            <TooltipContent>{file.name}</TooltipContent>
+          </Tooltip>
         </div>
         <pre className="h-[68px] overflow-hidden whitespace-pre-wrap break-all px-2 py-1.5 font-mono text-[10px] leading-relaxed text-(--color-text-muted) select-none">
           {snippet ?? ''}

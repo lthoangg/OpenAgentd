@@ -17,6 +17,7 @@ import {
   timeAgo,
 } from '@/utils/telemetryFormat'
 import { Td, Th } from '../primitives'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { usePlatform } from '@/hooks/use-platform'
 import { mediumHapticFeedback } from '@/lib/haptics'
@@ -197,9 +198,10 @@ function TraceRow({
         className="cursor-pointer border-b border-(--color-border)/40 transition-colors last:border-b-0 hover:bg-(--bg-key)/35 focus:bg-(--bg-key)/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-(--focus-ring)/40"
       >
         <Td>
-          <span title={new Date(trace.start_ms).toLocaleString()}>
-            {timeAgo(trace.start_ms, now)}
-          </span>
+          <Tooltip>
+            <TooltipTrigger render={<span>{timeAgo(trace.start_ms, now)}</span>} />
+            <TooltipContent>{new Date(trace.start_ms).toLocaleString()}</TooltipContent>
+          </Tooltip>
         </Td>
         <Td muted mono>
           {trace.session_id ? formatShortId(trace.session_id) : '—'}

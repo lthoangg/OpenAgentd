@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { ArrowRight, Trash2, PlusCircle, ChevronRight, FileEdit } from 'lucide-react'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { parseDiffMeta, parsePatchText, type DiffLine, type FileDiff } from './diffUtils'
 import { parsePartialJSON } from './displayText'
 import { parseLspDiagnostics, LspDiagnosticsView } from '../ToolResult'
@@ -84,11 +85,17 @@ function SingleFileDiff({ path, kind, moveTo, lines, oldStart = 1, newStart = 1,
         aria-label={`${expanded ? 'Collapse' : 'Expand'} diff for ${path}`}
       >
         <Icon size={12} className={`${iconColor} shrink-0`} />
-        <span className="truncate" title={path}>{path}</span>
+        <Tooltip className="min-w-0">
+          <TooltipTrigger className="min-w-0" render={<span className="truncate">{path}</span>} />
+          <TooltipContent>{path}</TooltipContent>
+        </Tooltip>
         {moveTo && (
           <>
             <ArrowRight size={12} className="shrink-0 text-(--color-text-muted)" />
-            <span className="truncate font-semibold text-(--color-accent)" title={moveTo}>{moveTo}</span>
+            <Tooltip className="min-w-0">
+              <TooltipTrigger className="min-w-0" render={<span className="truncate font-semibold text-(--color-accent)">{moveTo}</span>} />
+              <TooltipContent>{moveTo}</TooltipContent>
+            </Tooltip>
           </>
         )}
         {(additions > 0 || deletions > 0) && (

@@ -5,6 +5,7 @@ import { useCodingWorkspaceSessionsQuery } from '@/queries/useSessionsQuery'
 import type { SessionResponse } from '@/api/types'
 import { formatRelativeDate } from '@/utils/format'
 import { LongPressButton } from '@/components/ui/long-press-button'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 
 function isModifiedPrimaryClick(event: React.MouseEvent): boolean {
   return event.button === 0 && (event.metaKey || event.ctrlKey)
@@ -73,48 +74,54 @@ export function WorkspaceSessionList({
         const sessionDate = formatRelativeDate(session.created_at)
         return (
           <div key={session.id} className="group relative">
-            <LongPressButton
-              enabled={mobileLongPressActions}
-              onLongPress={() => onSessionLongPress(session)}
-              type="button"
-              onMouseDown={(e) => {
-                if (!isModifiedPrimaryClick(e)) return
-                onSessionSelect(session, path, e)
-              }}
-              onClick={(e) => {
-                if (isModifiedPrimaryClick(e)) return
-                onSessionSelect(session, path, e)
-              }}
-              onDoubleClick={(e) => {
-                e.stopPropagation()
-                onSessionEdit(session)
-              }}
-              onContextMenu={(e) => {
-                if (mobileLongPressActions) return
-                e.preventDefault()
-                onSessionContextActions(session, e)
-              }}
-              title={`${sessionTitle} · ${sessionDate}`}
-              className={`flex min-h-6 w-full items-center gap-1.5 rounded px-2 py-0.5 text-left text-xs transition-colors ${
-                isCurrent
-                  ? 'text-(--color-text)'
-                  : 'text-(--color-text-2) hover:text-(--color-text)'
-              }`}
-            >
-              <span
-                className={`h-1.5 w-1.5 shrink-0 rounded-full ${
-                  needsInput
-                    ? 'animate-pulse bg-(--color-warning)'
-                    : isRunning
-                      ? 'session-title-breathe bg-(--color-accent)'
-                      : 'border border-(--color-text-subtle)'
-                }`}
-                aria-label={needsInput ? 'Session needs your input' : isRunning ? 'Session running' : undefined}
-                aria-hidden={needsInput || isRunning ? undefined : true}
+            <Tooltip className="w-full">
+              <TooltipTrigger
+                className="w-full"
+                render={
+                  <LongPressButton
+                    enabled={mobileLongPressActions}
+                    onLongPress={() => onSessionLongPress(session)}
+                    type="button"
+                    onMouseDown={(e) => {
+                      if (!isModifiedPrimaryClick(e)) return
+                      onSessionSelect(session, path, e)
+                    }}
+                    onClick={(e) => {
+                      if (isModifiedPrimaryClick(e)) return
+                      onSessionSelect(session, path, e)
+                    }}
+                    onDoubleClick={(e) => {
+                      e.stopPropagation()
+                      onSessionEdit(session)
+                    }}
+                    onContextMenu={(e) => {
+                      if (mobileLongPressActions) return
+                      e.preventDefault()
+                      onSessionContextActions(session, e)
+                    }}
+                    className={`flex min-h-6 w-full items-center gap-1.5 rounded px-2 py-0.5 text-left text-xs transition-colors ${
+                      isCurrent
+                        ? 'text-(--color-text)'
+                        : 'text-(--color-text-2) hover:text-(--color-text)'
+                    }`}
+                  >
+                    <span
+                      className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+                        needsInput
+                          ? 'animate-pulse bg-(--color-warning)'
+                          : isRunning
+                            ? 'session-title-breathe bg-(--color-accent)'
+                            : 'border border-(--color-text-subtle)'
+                      }`}
+                      aria-label={needsInput ? 'Session needs your input' : isRunning ? 'Session running' : undefined}
+                      aria-hidden={needsInput || isRunning ? undefined : true}
+                    />
+                    <span className={`min-w-0 flex-1 truncate ${isCurrent ? 'font-semibold text-(--color-text)' : 'font-medium'} ${isRunning ? 'session-title-breathe text-(--color-text)' : ''}`}>{sessionTitle}</span>
+                  </LongPressButton>
+                }
               />
-              <span className={`min-w-0 flex-1 truncate ${isCurrent ? 'font-semibold text-(--color-text)' : 'font-medium'} ${isRunning ? 'session-title-breathe text-(--color-text)' : ''}`}>{sessionTitle}</span>
-
-            </LongPressButton>
+              <TooltipContent>{`${sessionTitle} · ${sessionDate}`}</TooltipContent>
+            </Tooltip>
             <button
               type="button"
               onClick={(e) => {

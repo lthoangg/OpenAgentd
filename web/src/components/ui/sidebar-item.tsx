@@ -15,6 +15,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { cn } from '@/lib/utils'
 import { getPlatform } from '@/hooks/use-platform'
 import { formatShortcut } from '@/lib/keyboard-shortcut'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { memo, type ComponentType, type MouseEventHandler, type ReactNode } from 'react'
 
 /**
@@ -53,11 +54,11 @@ export const SidebarItem = memo(function SidebarItem({
   rightSlot,
   className,
 }: SidebarItemProps) {
-  return (
+  const tooltipText = title ?? (kbd ? `${label} (${renderKbd(kbd)})` : label)
+  const button = (
     <button
       type="button"
       onClick={onClick}
-      title={title ?? (kbd ? `${label} (${renderKbd(kbd)})` : label)}
       aria-current={active ? 'page' : undefined}
       className={cn(
         'interactive-weight flex w-full items-center gap-2.5 rounded-sm text-sm transition-colors',
@@ -92,5 +93,11 @@ export const SidebarItem = memo(function SidebarItem({
           </kbd>
         ) : null)}
     </button>
+  )
+  return (
+    <Tooltip className={collapsed ? undefined : 'w-full'}>
+      <TooltipTrigger className={collapsed ? undefined : 'w-full'} render={button} />
+      <TooltipContent>{tooltipText}</TooltipContent>
+    </Tooltip>
   )
 })

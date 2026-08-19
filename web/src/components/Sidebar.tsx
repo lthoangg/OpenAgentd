@@ -23,6 +23,7 @@ import { formatRelativeDate } from '@/utils/format'
 import { ThemeToggle } from './ThemeToggle'
 import { Skeleton } from './ui/skeleton'
 import { HealthDot } from './HealthDot'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { SidebarItem } from '@/components/ui/sidebar-item'
 import {
@@ -422,17 +423,24 @@ export function Sidebar({
                 palette open. */}
             {!showIconOnly && onCommandPalette && (
               <div className="px-3 pt-3">
-                <button
-                  type="button"
-                  onClick={onCommandPalette}
-                  className="flex h-8 w-full items-center gap-2 rounded-md border border-(--color-border) bg-(--bg-page) px-2.5 text-left text-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)"
-                  aria-label="Open command palette"
-                  title={`Open command palette (${formatShortcut('P', os)})`}
-                >
-                  <Search size={13} aria-hidden="true" />
-                  <span className="flex-1">Search…</span>
-                  <kbd className="font-mono text-[10px] text-(--color-text-subtle)">^P</kbd>
-                </button>
+                <Tooltip className="w-full">
+                  <TooltipTrigger
+                    className="w-full"
+                    render={
+                      <button
+                        type="button"
+                        onClick={onCommandPalette}
+                        className="flex h-8 w-full items-center gap-2 rounded-md border border-(--color-border) bg-(--bg-page) px-2.5 text-left text-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)"
+                        aria-label="Open command palette"
+                      >
+                        <Search size={13} aria-hidden="true" />
+                        <span className="flex-1">Search…</span>
+                        <kbd className="font-mono text-[10px] text-(--color-text-subtle)">^P</kbd>
+                      </button>
+                    }
+                  />
+                  <TooltipContent>{`Open command palette (${formatShortcut('P', os)})`}</TooltipContent>
+                </Tooltip>
               </div>
             )}
 
@@ -477,14 +485,20 @@ export function Sidebar({
                     <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-(--color-text-muted)">
                       Recent
                     </span>
-                    <button
-                      onClick={() => refetchSessions()}
-                      className="rounded p-1 text-(--color-text-subtle) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-muted)"
-                      aria-label="Refresh sessions"
-                      title="Refresh sessions"
-                    >
-                      <RefreshCw size={12} className={sessions.isFetching ? 'animate-spin' : ''} />
-                    </button>
+                    <Tooltip>
+                      <TooltipTrigger
+                        render={
+                          <button
+                            onClick={() => refetchSessions()}
+                            className="rounded p-1 text-(--color-text-subtle) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-muted)"
+                            aria-label="Refresh sessions"
+                          >
+                            <RefreshCw size={12} className={sessions.isFetching ? 'animate-spin' : ''} />
+                          </button>
+                        }
+                      />
+                      <TooltipContent>Refresh sessions</TooltipContent>
+                    </Tooltip>
                   </div>
 
                   <div
@@ -551,25 +565,31 @@ export function Sidebar({
                 {sessions.isSuccess && normalSessions.slice(0, 8).map((session) => {
                   const isActive = session.id === currentSessionId
                   return (
-                    <button
-                      key={session.id}
-                      onMouseDown={(e) => {
-                        if (!isModifiedPrimaryClick(e)) return
-                        handleSelect(session.id, e)
-                      }}
-                      onClick={(e) => {
-                        if (isModifiedPrimaryClick(e)) return
-                        handleSelect(session.id, e)
-                      }}
-                      title={session.title || 'Untitled'}
-                      className={`flex h-8 w-8 items-center justify-center rounded-md transition-colors ${
-                        isActive
-                          ? 'bg-(--bg-key) text-(--color-accent)'
-                          : 'text-(--color-text-subtle) hover:bg-(--bg-key) hover:text-(--color-text-2)'
-                      }`}
-                    >
-                      <div className="h-1.5 w-1.5 rounded-full bg-current" />
-                    </button>
+                    <Tooltip key={session.id}>
+                      <TooltipTrigger
+                        render={
+                          <button
+                            onMouseDown={(e) => {
+                              if (!isModifiedPrimaryClick(e)) return
+                              handleSelect(session.id, e)
+                            }}
+                            onClick={(e) => {
+                              if (isModifiedPrimaryClick(e)) return
+                              handleSelect(session.id, e)
+                            }}
+                            aria-label={session.title || 'Untitled'}
+                            className={`flex h-8 w-8 items-center justify-center rounded-md transition-colors ${
+                              isActive
+                                ? 'bg-(--bg-key) text-(--color-accent)'
+                                : 'text-(--color-text-subtle) hover:bg-(--bg-key) hover:text-(--color-text-2)'
+                            }`}
+                          >
+                            <div className="h-1.5 w-1.5 rounded-full bg-current" />
+                          </button>
+                        }
+                      />
+                      <TooltipContent>{session.title || 'Untitled'}</TooltipContent>
+                    </Tooltip>
                   )
                 })}
               </div>
@@ -582,25 +602,37 @@ export function Sidebar({
               ) : (
                 <>
                   <div className="flex items-center gap-1">
-                    <button
-                      type="button"
-                      onClick={() => { openSettings(); onMobileClose?.() }}
-                      className="flex h-8 w-8 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
-                      aria-label="Settings"
-                      title={`Settings (${formatShortcut(',', os)})`}
-                    >
-                      <Settings size={14} aria-hidden="true" />
-                    </button>
+                    <Tooltip>
+                      <TooltipTrigger
+                        render={
+                          <button
+                            type="button"
+                            onClick={() => { openSettings(); onMobileClose?.() }}
+                            className="flex h-11 w-11 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
+                            aria-label="Settings"
+                          >
+                            <Settings size={14} aria-hidden="true" />
+                          </button>
+                        }
+                      />
+                      <TooltipContent>{`Settings (${formatShortcut(',', os)})`}</TooltipContent>
+                    </Tooltip>
                     {onCommandPalette && (
-                      <button
-                        type="button"
-                        onClick={onCommandPalette}
-                        className="flex h-8 w-8 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
-                        aria-label="Help and shortcuts"
-                        title={`Help and shortcuts (${formatShortcut('P', os)})`}
-                      >
-                        <HelpCircle size={14} aria-hidden="true" />
-                      </button>
+                      <Tooltip>
+                        <TooltipTrigger
+                          render={
+                            <button
+                              type="button"
+                              onClick={onCommandPalette}
+                              className="flex h-11 w-11 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
+                              aria-label="Help and shortcuts"
+                            >
+                              <HelpCircle size={14} aria-hidden="true" />
+                            </button>
+                          }
+                        />
+                        <TooltipContent>{`Help and shortcuts (${formatShortcut('P', os)})`}</TooltipContent>
+                      </Tooltip>
                     )}
                   </div>
                   <div className="flex items-center gap-2">

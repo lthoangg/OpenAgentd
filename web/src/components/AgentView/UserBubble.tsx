@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, memo } from 'react'
 import { Check, ChevronDown, ChevronUp, Copy, Undo2 } from 'lucide-react'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 
 import { FileLightbox, type FileLightboxItem, type FileLightboxItemType } from '../FileLightbox'
 import { FileTypeIcon } from '../FileTypeIcon'
@@ -171,17 +172,23 @@ function AttachmentThumb({ item, onOpen }: { item: FileLightboxItem; onOpen: () 
 
   // All non-image types: icon chip that opens the lightbox
   return (
-    <button
-      type="button"
-      onClick={onOpen}
-      className="flex items-center gap-2 rounded-sm border border-(--color-border) bg-(--bg-card) px-2.5 py-1.5 text-xs text-(--color-text) transition-colors hover:border-(--color-border-strong) hover:bg-(--bg-key)/40 focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 focus-visible:outline-none"
-      title={item.name}
-    >
-      <span className="shrink-0 text-(--color-text-muted)">
-        <FileTypeIcon name={item.name} size={14} />
-      </span>
-      <span className="max-w-[160px] truncate font-medium">{item.name}</span>
-    </button>
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <button
+            type="button"
+            onClick={onOpen}
+            className="flex items-center gap-2 rounded-sm border border-(--color-border) bg-(--bg-card) px-2.5 py-1.5 text-xs text-(--color-text) transition-colors hover:border-(--color-border-strong) hover:bg-(--bg-key)/40 focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 focus-visible:outline-none"
+          >
+            <span className="shrink-0 text-(--color-text-muted)">
+              <FileTypeIcon name={item.name} size={14} />
+            </span>
+            <span className="max-w-[160px] truncate font-medium">{item.name}</span>
+          </button>
+        }
+      />
+      <TooltipContent>{item.name}</TooltipContent>
+    </Tooltip>
   )
 }
 
@@ -225,14 +232,21 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
           <div className="relative min-w-0 max-w-full overflow-hidden rounded-sm border border-(--color-border) bg-(--bg-card) px-3 py-2.5 text-sm leading-relaxed text-(--color-text) shadow-sm selectable-text">
            {/* Expand / collapse button — top-right inside bubble */}
            {needsCollapse && (
-             <button
-               onClick={() => setExpanded((v) => !v)}
-               aria-expanded={expanded}
-               title={expanded ? 'Collapse' : 'Expand'}
-               className="absolute top-1.5 right-1.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-sm bg-(--bg-key) text-(--color-text-2) transition-all duration-150 hover:text-(--color-text) active:scale-90"
-             >
-               {expanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-             </button>
+             <Tooltip>
+               <TooltipTrigger
+                 render={
+                   <button
+                     onClick={() => setExpanded((v) => !v)}
+                     aria-expanded={expanded}
+                     aria-label={expanded ? 'Collapse' : 'Expand'}
+                     className="absolute top-1.5 right-1.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-sm bg-(--bg-key) text-(--color-text-2) transition-all duration-150 hover:text-(--color-text) active:scale-90"
+                   >
+                     {expanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                   </button>
+                 }
+               />
+               <TooltipContent>{expanded ? 'Collapse' : 'Expand'}</TooltipContent>
+             </Tooltip>
            )}
            <p className="min-w-0 break-words whitespace-pre-wrap [overflow-wrap:anywhere]">{renderMentionSegments(visibleContent, onMentionFileOpen, mentions)}</p>
            {/* Gradient fade at bottom when collapsed */}
@@ -251,40 +265,53 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
           {(timestamp || modelName) && (
             <div className={`flex items-center gap-1.5 transition-opacity duration-150 ${showTime ? 'opacity-100' : 'opacity-0'}`}>
               {modelName && (
-                <span className="mr-1 font-mono text-[11px] text-(--color-text-subtle)" title={modelId ?? undefined}>
-                  {modelName}
-                </span>
+                <span className="mr-1 font-mono text-[11px] text-(--color-text-subtle)">{modelName}</span>
               )}
                {onRevert && (
-                <button
-                  onClick={onRevert}
-                  className="rounded-xs p-0.5 text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)"
-                  aria-label="Revert latest message"
-                  title="Revert latest message"
-                >
-                  <Undo2 size={11} />
-                </button>
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <button
+                        onClick={onRevert}
+                        className="rounded-xs p-0.5 text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)"
+                        aria-label="Revert latest message"
+                      >
+                        <Undo2 size={11} />
+                      </button>
+                    }
+                  />
+                  <TooltipContent>Revert latest message</TooltipContent>
+                </Tooltip>
               )}
-              <button
-                onClick={handleCopy}
-                className="rounded-xs p-0.5 text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)"
-               aria-label="Copy message"
-               title="Copy"
-             >
-               {copied ? (
-                 <Check size={11} className="text-(--color-success)" />
-               ) : (
-                 <Copy size={11} />
-               )}
-             </button>
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <button
+                      onClick={handleCopy}
+                      className="rounded-xs p-0.5 text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)"
+                      aria-label="Copy message"
+                    >
+                      {copied ? (
+                        <Check size={11} className="text-(--color-success)" />
+                      ) : (
+                        <Copy size={11} />
+                      )}
+                    </button>
+                  }
+                />
+                <TooltipContent>Copy</TooltipContent>
+              </Tooltip>
               {timestamp && (
-                <span
-                  className="text-xs text-(--color-text-subtle)"
-                  aria-hidden={!showTime}
-                  title={formatTime(timestamp)}
-                >
-                  {formatTime(timestamp)}
-                </span>
+                <Tooltip className="text-xs text-(--color-text-subtle)">
+                  <TooltipTrigger
+                    render={
+                      <span className="text-xs text-(--color-text-subtle)" aria-hidden={!showTime}>
+                        {formatTime(timestamp)}
+                      </span>
+                    }
+                  />
+                  <TooltipContent>{timestamp.toLocaleString()}</TooltipContent>
+                </Tooltip>
               )}
             </div>
           )}

@@ -19,6 +19,7 @@ import { Check, Circle, ListTodo, Loader2, Minus } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { useHotkey } from '@tanstack/react-hotkeys'
 import { TopbarAction } from '@/components/ui/topbar-action'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useDeferredUnmount } from '@/components/ui/_use-deferred-unmount'
 import { cn } from '@/lib/utils'
 import { usePlatform } from '@/hooks/use-platform'
@@ -232,18 +233,25 @@ export function TodosPopover({
                   />
                 </span>
                 <div className="min-w-0 flex-1">
-                  <div
-                    className={cn(
-                      'truncate text-[12px] leading-4',
-                      isStruck
-                        ? 'text-(--color-text-subtle) line-through decoration-(--color-text-subtle)/40'
-                        : isInProgress
-                          ? 'font-medium text-(--color-text)'
-                          : 'text-(--color-text-2)'
-                    )}
-                  >
-                    {todo.content}
-                  </div>
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={
+                        <div
+                          className={cn(
+                            'truncate text-[12px] leading-4',
+                            isStruck
+                              ? 'text-(--color-text-subtle) line-through decoration-(--color-text-subtle)/40'
+                              : isInProgress
+                                ? 'font-medium text-(--color-text)'
+                                : 'text-(--color-text-2)'
+                          )}
+                        >
+                          {todo.content}
+                        </div>
+                      }
+                    />
+                    <TooltipContent>{todo.content}</TooltipContent>
+                  </Tooltip>
                   {agent && (
                     <div className="mt-0.5 text-[10px] text-(--color-text-subtle)">
                       {agent}
@@ -303,26 +311,32 @@ export function TodosPopover({
   return (
     <>
       {trigger && (
-        <TopbarAction
-          ref={triggerRef}
-          Icon={ListTodo}
-          indicator={hasInProgress}
-          badge={progressLabel}
-          title={sessionId ? `Task list (${formatShortcut('T', os)})` : 'No active session'}
-          aria-label="Task list"
-          aria-expanded={open}
-          disabled={!sessionId}
-          onClick={() => {
-            if (!sessionId) return
-            onOpenChange(!open)
-          }}
-          data-state={open ? 'open' : 'closed'}
-          className={
-            open
-              ? 'border border-(--color-border-strong) bg-(--bg-key) text-(--color-text)'
-              : undefined
-          }
-        />
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <TopbarAction
+                ref={triggerRef}
+                Icon={ListTodo}
+                indicator={hasInProgress}
+                badge={progressLabel}
+                aria-label="Task list"
+                aria-expanded={open}
+                disabled={!sessionId}
+                onClick={() => {
+                  if (!sessionId) return
+                  onOpenChange(!open)
+                }}
+                data-state={open ? 'open' : 'closed'}
+                className={
+                  open
+                    ? 'border border-(--color-border-strong) bg-(--bg-key) text-(--color-text)'
+                    : undefined
+                }
+              />
+            }
+          />
+          <TooltipContent>{sessionId ? `Task list (${formatShortcut('T', os)})` : 'No active session'}</TooltipContent>
+        </Tooltip>
       )}
 
       {trigger && mounted && (

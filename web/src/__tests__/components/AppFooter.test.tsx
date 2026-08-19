@@ -1,5 +1,6 @@
 import { describe, it, expect, mock, beforeEach } from 'bun:test'
 import { render, screen, fireEvent } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { AppFooter } from '@/components/AppFooter'
 const mockOpenSettings = mock(() => {})
@@ -43,7 +44,8 @@ describe('AppFooter', () => {
     expect(screen.getByText('local')).toBeTruthy()
   })
 
-  it('renders model name and thinking level when provided and triggers session settings', () => {
+  it('renders model name and thinking level when provided and triggers session settings', async () => {
+    const user = userEvent.setup()
     const onToggleSessionSettings = mock(() => {})
     renderWithQueryClient(
       <AppFooter
@@ -52,21 +54,26 @@ describe('AppFooter', () => {
         onToggleSessionSettings={onToggleSessionSettings}
       />
     )
-    const modelButton = screen.getByTitle(/Active Model: anthropic\/claude-3-7-sonnet/i)
+    const modelButton = screen.getByRole('button', { name: /anthropic\/claude-3-7-sonnet/i })
     expect(modelButton).toBeTruthy()
     expect(screen.getByText('anthropic/claude-3-7-sonnet')).toBeTruthy()
     expect(screen.getByText('(high)')).toBeTruthy()
+
+    await user.hover(modelButton)
+    expect((await screen.findByRole('tooltip')).textContent).toMatch(/Active Model: anthropic\/claude-3-7-sonnet/i)
 
     fireEvent.click(modelButton)
     expect(onToggleSessionSettings).toHaveBeenCalledTimes(1)
   })
 
-  it('renders fast mode pill when fast mode is enabled', () => {
+  it('renders fast mode pill when fast mode is enabled', async () => {
+    const user = userEvent.setup()
     renderWithQueryClient(
       <AppFooter sessionFastMode={true} />
     )
-    expect(screen.getByTitle('Fast mode active')).toBeTruthy()
     expect(screen.getByText('fast')).toBeTruthy()
+    await user.hover(screen.getByText('fast'))
+    expect((await screen.findByRole('tooltip')).textContent).toBe('Fast mode active')
   })
 
   it('renders ViewToggle with compact layout and triggers onViewModeChange', () => {

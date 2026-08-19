@@ -19,6 +19,7 @@ import {
 import type { Transport, TransportSendOptions } from '@modelcontextprotocol/sdk/shared/transport.js'
 import { ExternalLink, Maximize2, X } from 'lucide-react'
 import { callMcpAppTool } from '@/api/client'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { openExternalUrl } from '@/lib/open-external'
 
 interface MCPAppPayload {
@@ -389,7 +390,17 @@ export function MCPAppResult({ mcpApp, sessionId, toolCallId }: MCPAppResultProp
       {...(isFullscreen ? { 'data-swipe-ignore': true } : {})}
     >
       <div className={isFullscreen ? 'hidden' : 'flex items-center justify-between gap-2 font-mono text-[10px] text-(--color-text-muted)'}>
-        <span className="min-w-0 truncate" title={resourceUri}>{title}{resourceUri ? ` · ${String(resourceUri)}` : ''}</span>
+        {resourceUri ? (
+          <Tooltip className="min-w-0">
+            <TooltipTrigger
+              className="min-w-0"
+              render={<span className="min-w-0 truncate">{title}{` · ${String(resourceUri)}`}</span>}
+            />
+            <TooltipContent>{String(resourceUri)}</TooltipContent>
+          </Tooltip>
+        ) : (
+          <span className="min-w-0 truncate">{title}</span>
+        )}
         <button
           type="button"
           onClick={() => setDisplayMode(FULLSCREEN_DISPLAY_MODE)}

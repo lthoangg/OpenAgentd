@@ -79,7 +79,7 @@ describe("AssistantTurnFooter", () => {
 
     expect(screen.getByLabelText("Copy response")).toBeTruthy()
     expect(screen.getByText("12:34")).toBeTruthy()
-    expect(screen.getByTitle("Response duration").textContent).toBe("1.2s")
+    expect(screen.getByText("1.2s")).toBeTruthy()
   })
 
   it("shows long response durations as minutes and seconds", () => {
@@ -92,7 +92,7 @@ describe("AssistantTurnFooter", () => {
 
     render(<AssistantTurnFooter turnBlocks={blocks} />)
 
-    expect(screen.getByTitle("Response duration").textContent).toBe("1m 33s")
+    expect(screen.getByText("1m 33s")).toBeTruthy()
   })
 })
 
@@ -128,12 +128,12 @@ describe("AssistantTurn — a turn suspended on a question", () => {
   it("shows no response duration while the turn is still open", () => {
     renderTurn(true)
 
-    expect(screen.queryByTitle("Response duration")).toBeNull()
+    expect(screen.queryByText("1.2s")).toBeNull()
   })
 
   it("restores response duration once the turn actually ends", () => {
     renderTurn(false)
 
-    expect(screen.getByTitle("Response duration").textContent).toBe("1.2s")
+    expect(screen.getByText("1.2s")).toBeTruthy()
   })
 })

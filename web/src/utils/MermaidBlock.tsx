@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { AlertCircle, Check, Copy, Maximize2, X } from 'lucide-react'
 import { CodeBlock } from '@/components/CodeBlock'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useThemePreference } from '@/hooks/useThemePreference'
 import { usePanZoom } from '@/hooks/use-pan-zoom'
 import { usePlatform } from '@/hooks/use-platform'
@@ -228,15 +229,21 @@ function LightboxButton({
   onClick: (event: React.MouseEvent<HTMLButtonElement>) => void
 }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-label={label}
-      title={title}
-      className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md bg-white/10 text-white/80 transition-colors hover:bg-white/20 hover:text-white focus-visible:ring-2 focus-visible:ring-white focus-visible:outline-none sm:h-9 sm:w-9"
-    >
-      {icon}
-    </button>
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <button
+            type="button"
+            onClick={onClick}
+            aria-label={label}
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md bg-white/10 text-white/80 transition-colors hover:bg-white/20 hover:text-white focus-visible:ring-2 focus-visible:ring-white focus-visible:outline-none sm:h-9 sm:w-9"
+          >
+            {icon}
+          </button>
+        }
+      />
+      <TooltipContent>{title}</TooltipContent>
+    </Tooltip>
   )
 }
 
@@ -389,29 +396,37 @@ export function MermaidBlock({ source, highlightedCode }: MermaidBlockProps) {
 
           <div className="flex items-center gap-1">
             {renderState.status === 'ready' && (
+              <Tooltip>
+              <TooltipTrigger render={
               <button
                 type="button"
                 onClick={() => setFullscreenOpen(true)}
-                className="flex h-8 w-8 items-center justify-center rounded-md text-(--color-text-muted) opacity-100 transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) md:h-6 md:w-6 md:opacity-0 md:group-hover:opacity-100"
+                className="flex h-11 w-11 items-center justify-center rounded-md text-(--color-text-muted) opacity-100 transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) md:h-6 md:w-6 md:opacity-0 md:group-hover:opacity-100"
                 aria-label="Full screen"
-                title="Full screen"
               >
                 <Maximize2 size={13} />
               </button>
-            )}
-            <button
-              type="button"
-              onClick={handleCopy}
-              className="flex h-8 w-8 items-center justify-center rounded-md text-(--color-text-muted) opacity-100 transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) md:h-6 md:w-6 md:opacity-0 md:group-hover:opacity-100"
-              aria-label="Copy code"
-              title="Copy"
-            >
+              } />
+              <TooltipContent>Full screen</TooltipContent>
+              </Tooltip>
+              )}
+              <Tooltip>
+              <TooltipTrigger render={
+              <button
+                type="button"
+                onClick={handleCopy}
+                className="flex h-11 w-11 items-center justify-center rounded-md text-(--color-text-muted) opacity-100 transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) md:h-6 md:w-6 md:opacity-0 md:group-hover:opacity-100"
+                aria-label="Copy code"
+              >
               {copied ? (
                 <Check size={13} className="text-(--color-success)" />
               ) : (
                 <Copy size={13} />
               )}
-            </button>
+              </button>
+              } />
+              <TooltipContent>Copy</TooltipContent>
+              </Tooltip>
           </div>
         </div>
 

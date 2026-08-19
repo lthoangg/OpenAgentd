@@ -30,6 +30,7 @@ import { useQuery } from '@tanstack/react-query'
 
 import { HealthDot } from './HealthDot'
 import { ThemeToggle } from './ThemeToggle'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { ViewToggle, type ViewMode } from '@/components/ui/view-toggle'
 import { usePlatform } from '@/hooks/use-platform'
 import { formatShortcut } from '@/lib/keyboard-shortcut'
@@ -110,47 +111,63 @@ export const AppFooter = memo(function AppFooter({
         {isCoding && isGit && branch && (
           <>
             <div className="mx-0.5 h-3 w-px bg-(--color-border-subtle)" aria-hidden="true" />
-            <button
-              type="button"
-              onClick={onOpenGitChanges}
-              className="flex h-5 max-w-[180px] items-center gap-1 rounded-xs px-1.5 font-mono text-[10.5px] text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
-              title={`Git branch: ${branch}${dirtyTotal > 0 ? ` (${dirtyTotal} changed files)` : ''}`}
-            >
-              <GitBranch size={11} className="shrink-0 text-(--color-text-subtle)" />
-              <span className="truncate">{branch}</span>
-              {dirtyTotal > 0 && (
-                <span className="font-medium text-(--color-warning)">*{dirtyTotal}</span>
-              )}
-            </button>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <button
+                    type="button"
+                    onClick={onOpenGitChanges}
+                    className="flex h-5 max-w-[180px] items-center gap-1 rounded-xs px-1.5 font-mono text-[10.5px] text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
+                  >
+                    <GitBranch size={11} className="shrink-0 text-(--color-text-subtle)" />
+                    <span className="truncate">{branch}</span>
+                    {dirtyTotal > 0 && (
+                      <span className="font-medium text-(--color-warning)">*{dirtyTotal}</span>
+                    )}
+                  </button>
+                }
+              />
+              <TooltipContent>{`Git branch: ${branch}${dirtyTotal > 0 ? ` (${dirtyTotal} changed files)` : ''}`}</TooltipContent>
+            </Tooltip>
           </>
         )}
 
         {sessionModel && (
           <>
             <div className="mx-0.5 h-3 w-px bg-(--color-border-subtle)" aria-hidden="true" />
-            <button
-              type="button"
-              onClick={onToggleSessionSettings}
-              className="flex h-5 max-w-[340px] lg:max-w-[480px] xl:max-w-[600px] items-center gap-1 rounded-xs px-1.5 font-mono text-[10.5px] text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
-              title={`Active Model: ${sessionModel}${sessionThinkingLevel ? ` (thinking: ${sessionThinkingLevel})` : ''} (${formatShortcut('A', os, { shift: true })})`}
-            >
-              <Sparkles size={11} className="shrink-0 text-(--color-accent)" />
-              <span className="truncate">{formatModelDisplay(sessionModel)}</span>
-              {sessionThinkingLevel && sessionThinkingLevel !== 'off' && (
-                <span className="shrink-0 text-[9.5px] text-(--color-text-subtle)">({sessionThinkingLevel})</span>
-              )}
-            </button>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <button
+                    type="button"
+                    onClick={onToggleSessionSettings}
+                    className="flex h-5 max-w-[340px] lg:max-w-[480px] xl:max-w-[600px] items-center gap-1 rounded-xs px-1.5 font-mono text-[10.5px] text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
+                  >
+                    <Sparkles size={11} className="shrink-0 text-(--color-accent)" />
+                    <span className="truncate">{formatModelDisplay(sessionModel)}</span>
+                    {sessionThinkingLevel && sessionThinkingLevel !== 'off' && (
+                      <span className="shrink-0 text-[9.5px] text-(--color-text-subtle)">({sessionThinkingLevel})</span>
+                    )}
+                  </button>
+                }
+              />
+              <TooltipContent>{`Active Model: ${sessionModel}${sessionThinkingLevel ? ` (thinking: ${sessionThinkingLevel})` : ''} (${formatShortcut('A', os, { shift: true })})`}</TooltipContent>
+            </Tooltip>
           </>
         )}
 
         {sessionFastMode && (
-          <span
-            className="inline-flex h-4 items-center gap-0.5 rounded-xs bg-(--accent-orange-soft) px-1 font-mono text-[9px] font-medium text-(--accent-orange-text)"
-            title="Fast mode active"
-          >
-            <Zap size={8.5} />
-            <span>fast</span>
-          </span>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <span className="inline-flex h-4 items-center gap-0.5 rounded-xs bg-(--accent-orange-soft) px-1 font-mono text-[9px] font-medium text-(--accent-orange-text)">
+                  <Zap size={8.5} />
+                  <span>fast</span>
+                </span>
+              }
+            />
+            <TooltipContent>Fast mode active</TooltipContent>
+          </Tooltip>
         )}
       </div>
 
@@ -168,40 +185,58 @@ export const AppFooter = memo(function AppFooter({
         )}
 
         {onToggleScheduler && (
-          <button
-            type="button"
-            onClick={onToggleScheduler}
-            className="flex h-5 w-5 items-center justify-center rounded-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
-            aria-label="Scheduler"
-            title={`Scheduler (${formatShortcut('S', os)})`}
-          >
-            <CalendarClock size={12} aria-hidden="true" />
-          </button>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <button
+                  type="button"
+                  onClick={onToggleScheduler}
+                  className="flex h-5 w-5 items-center justify-center rounded-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
+                  aria-label="Scheduler"
+                >
+                  <CalendarClock size={12} aria-hidden="true" />
+                </button>
+              }
+            />
+            <TooltipContent>{`Scheduler (${formatShortcut('S', os)})`}</TooltipContent>
+          </Tooltip>
         )}
 
         <ThemeToggle collapsed compact />
 
         {onTogglePalette && (
-          <button
-            type="button"
-            onClick={onTogglePalette}
-            className="flex h-5 w-5 items-center justify-center rounded-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
-            aria-label="Help and shortcuts"
-            title={`Help and shortcuts (${formatShortcut('P', os)})`}
-          >
-            <HelpCircle size={12} aria-hidden="true" />
-          </button>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <button
+                  type="button"
+                  onClick={onTogglePalette}
+                  className="flex h-5 w-5 items-center justify-center rounded-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
+                  aria-label="Help and shortcuts"
+                >
+                  <HelpCircle size={12} aria-hidden="true" />
+                </button>
+              }
+            />
+            <TooltipContent>{`Help and shortcuts (${formatShortcut('P', os)})`}</TooltipContent>
+          </Tooltip>
         )}
 
-        <button
-          type="button"
-          onClick={() => openSettings()}
-          className="flex h-5 w-5 items-center justify-center rounded-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
-          aria-label="Settings"
-          title={`Settings (${formatShortcut(',', os)})`}
-        >
-          <Settings size={12} aria-hidden="true" />
-        </button>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <button
+                type="button"
+                onClick={() => openSettings()}
+                className="flex h-5 w-5 items-center justify-center rounded-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
+                aria-label="Settings"
+              >
+                <Settings size={12} aria-hidden="true" />
+              </button>
+            }
+          />
+          <TooltipContent>{`Settings (${formatShortcut(',', os)})`}</TooltipContent>
+        </Tooltip>
       </div>
     </footer>
   )

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 
 import { AppBackendDialog } from '@/components/AppBackendDialog'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useHealthQuery } from '@/queries/useHealthQuery'
 import { cn } from '@/lib/utils'
 
@@ -43,16 +44,22 @@ export function HealthDot({
 
   return (
     <>
-      <button
-        type="button"
-        onClick={() => setDialogOpen(true)}
-        className={cn(defaultClasses, className)}
-        title={label}
-        aria-label={label}
-      >
-        <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${bgColor} ${pulseClass}`} aria-hidden="true" />
-        {children}
-      </button>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <button
+              type="button"
+              onClick={() => setDialogOpen(true)}
+              className={cn(defaultClasses, className)}
+              aria-label={label}
+            >
+              <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${bgColor} ${pulseClass}`} aria-hidden="true" />
+              {children}
+            </button>
+          }
+        />
+        <TooltipContent>{label}</TooltipContent>
+      </Tooltip>
       <AppBackendDialog open={dialogOpen} onOpenChange={setDialogOpen} />
     </>
   )

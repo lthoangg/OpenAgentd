@@ -22,7 +22,8 @@ describe('ViewToggle', () => {
 
     const button = screen.getByRole('button', { name: 'Switch to split view' })
     expect(button).toBeTruthy()
-    expect(button.getAttribute('title')).toContain('Switch to split view')
+    await user.hover(button)
+    expect((await screen.findByRole('tooltip')).textContent).toContain('Switch to split view')
 
     await user.click(button)
     expect(onValueChange).toHaveBeenCalledTimes(1)
@@ -36,7 +37,8 @@ describe('ViewToggle', () => {
 
     const button = screen.getByRole('button', { name: 'Switch to agent view' })
     expect(button).toBeTruthy()
-    expect(button.getAttribute('title')).toContain('Switch to agent view')
+    await user.hover(button)
+    expect((await screen.findByRole('tooltip')).textContent).toContain('Switch to agent view')
 
     await user.click(button)
     expect(onValueChange).toHaveBeenCalledTimes(1)

@@ -12,6 +12,7 @@ import { useDebouncedCallback } from '@tanstack/react-pacer'
 import fuzzysort from 'fuzzysort'
 import { Search, CornerDownLeft } from 'lucide-react'
 import { AppOverlay } from '@/components/ui/app-overlay'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import type { WorkspaceFileInfo } from '@/api/types'
 
 export interface Command {
@@ -265,9 +266,13 @@ export function CommandPalette({ commands, onClose, workspaceFiles = [], filesTr
             <kbd className="rounded-xs border border-(--color-border) bg-(--bg-card) px-1 py-0.5 font-mono text-[10px] text-(--color-text-muted)">Esc</kbd>
             <span className="text-xs text-(--color-text-muted)">close</span>
             {hasFiles && filesTruncated && (
-              <span className="ml-auto truncate text-xs text-(--color-warning)" title="The workspace has more files than the listing cap, so some files are not searchable here.">
-                file list truncated
-              </span>
+              <Tooltip className="ml-auto min-w-0">
+                <TooltipTrigger
+                  className="min-w-0"
+                  render={<span className="truncate text-xs text-(--color-warning)">file list truncated</span>}
+                />
+                <TooltipContent>The workspace has more files than the listing cap, so some files are not searchable here.</TooltipContent>
+              </Tooltip>
             )}
           </div>
       </div>
@@ -296,8 +301,18 @@ function FileRow({ file, idx, isActive, onRun, onActivate }: FileRowProps) {
       }`}
     >
       <div className="min-w-0 flex-1">
-        <span className="block truncate font-mono text-xs font-medium">{file.name}</span>
-        <span className="block truncate text-xs text-(--color-text-muted)">{file.path}</span>
+        <div className="min-w-0">
+          <Tooltip>
+            <TooltipTrigger render={<span className="block truncate font-mono text-xs font-medium">{file.name}</span>} />
+            <TooltipContent>{file.name}</TooltipContent>
+          </Tooltip>
+        </div>
+        <div className="min-w-0">
+          <Tooltip>
+            <TooltipTrigger render={<span className="block truncate text-xs text-(--color-text-muted)">{file.path}</span>} />
+            <TooltipContent>{file.path}</TooltipContent>
+          </Tooltip>
+        </div>
       </div>
       {isActive && <CornerDownLeft size={12} className="shrink-0 text-(--color-text-muted)" />}
     </button>

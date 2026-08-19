@@ -1,6 +1,7 @@
 import { useRef, useState, useCallback, useImperativeHandle, forwardRef, useEffect, useMemo } from 'react'
 import { ArrowUp, Loader2, MessageCircle, Paperclip, Square } from 'lucide-react'
 import { motion } from 'framer-motion'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { FilePreviewStrip } from './FilePreviewStrip'
 import { findActiveMention, getExplicitMentionRanges, type FileRef } from './InputComposer.mentions'
 import { MentionOverlay } from './InputComposer.overlay'
@@ -614,7 +615,7 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
   // disable animation. The transition is transform+color only — both
   // GPU-cheap, no layout.
   const actionBtnClass =
-    'flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-(--color-border) bg-(--bg-card) text-(--color-text-2) transition duration-100 hover:bg-(--bg-key) hover:text-(--color-text) active:scale-90 active:bg-(--bg-key) motion-reduce:transition-none motion-reduce:active:scale-100 disabled:cursor-not-allowed disabled:opacity-50'
+    'flex h-11 w-11 shrink-0 items-center justify-center rounded-md border border-(--color-border) bg-(--bg-card) text-(--color-text-2) transition duration-100 hover:bg-(--bg-key) hover:text-(--color-text) active:scale-90 active:bg-(--bg-key) motion-reduce:transition-none motion-reduce:active:scale-100 disabled:cursor-not-allowed disabled:opacity-50 md:h-7 md:w-7'
 
   // Two states share one DOM tree: minimized, and expanded. Expanded always
   // puts the textarea on its own full-width row (the slot's flex-basis:100%)
@@ -626,28 +627,40 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
   const stopClick = (e: React.MouseEvent) => e.stopPropagation()
 
   const attachEl = (
-    <button
-      type="button"
-      onClick={(e) => { stopClick(e); fileInputRef.current?.click() }}
-      disabled={disabled}
-      aria-label="Attach file"
-      title="Attach file (paste or drag)"
-      className={actionBtnClass}
-    >
-      <Paperclip size={14} aria-hidden="true" />
-    </button>
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <button
+            type="button"
+            onClick={(e) => { stopClick(e); fileInputRef.current?.click() }}
+            disabled={disabled}
+            aria-label="Attach file"
+            className={actionBtnClass}
+          >
+            <Paperclip size={14} aria-hidden="true" />
+          </button>
+        }
+      />
+      <TooltipContent>Attach file (paste or drag)</TooltipContent>
+    </Tooltip>
   )
 
   const chatEl = minimized ? (
-    <button
-      type="button"
-      onClick={(e) => { stopClick(e); handleExpand() }}
-      aria-label="Expand input bar"
-      title="Click to write"
-      className={actionBtnClass}
-    >
-      <MessageCircle size={14} aria-hidden="true" />
-    </button>
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <button
+            type="button"
+            onClick={(e) => { stopClick(e); handleExpand() }}
+            aria-label="Expand input bar"
+            className={actionBtnClass}
+          >
+            <MessageCircle size={14} aria-hidden="true" />
+          </button>
+        }
+      />
+      <TooltipContent>Click to write</TooltipContent>
+    </Tooltip>
   ) : null
 
   const effectivePlaceholder = disabled
@@ -666,35 +679,41 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
       type="button"
       onClick={(e) => { stopClick(e); onStop?.() }}
       aria-label="Stop generation"
-      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-(--color-error) bg-(--color-error) text-(--bg-page) transition duration-100 hover:opacity-90 active:scale-90 motion-reduce:transition-none motion-reduce:active:scale-100"
+      className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md border border-(--color-error) bg-(--color-error) text-(--bg-page) transition duration-100 hover:opacity-90 active:scale-90 motion-reduce:transition-none motion-reduce:active:scale-100 md:h-7 md:w-7"
     >
       <Square size={12} fill="currentColor" />
     </button>
   ) : (
-    <button
-      type="button"
-      onClick={(e) => {
-        stopClick(e)
-        submit()
-      }}
-      disabled={!canSend}
-      aria-label="Send message"
-      title={isMobile ? 'Send message' : 'Send (Enter) · New line (Shift+Enter) · Commands (/)'}
-      className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md border transition duration-100 active:scale-90 motion-reduce:transition-none motion-reduce:active:scale-100 disabled:cursor-not-allowed disabled:opacity-50 ${
-        canSend
-          // When there's something to send, promote the button to an accent
-          // fill so the primary action reads clearly — a small but meaningful
-          // clarity win over the flat grey it always was.
-          ? 'border-(--color-accent) bg-(--color-accent) text-(--bg-page) hover:opacity-90'
-          : 'border-(--color-border) bg-(--bg-card) text-(--color-text-2) hover:bg-(--bg-key) hover:text-(--color-text)'
-      }`}
-    >
-      {disabled && !minimized ? (
-        <Loader2 size={14} className="animate-spin" aria-hidden="true" />
-      ) : (
-        <ArrowUp size={14} aria-hidden="true" />
-      )}
-    </button>
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <button
+            type="button"
+            onClick={(e) => {
+              stopClick(e)
+              submit()
+            }}
+            disabled={!canSend}
+            aria-label="Send message"
+            className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-md border transition duration-100 active:scale-90 motion-reduce:transition-none motion-reduce:active:scale-100 disabled:cursor-not-allowed disabled:opacity-50 md:h-7 md:w-7 ${
+              canSend
+                // When there's something to send, promote the button to an accent
+                // fill so the primary action reads clearly — a small but meaningful
+                // clarity win over the flat grey it always was.
+                ? 'border-(--color-accent) bg-(--color-accent) text-(--bg-page) hover:opacity-90'
+                : 'border-(--color-border) bg-(--bg-card) text-(--color-text-2) hover:bg-(--bg-key) hover:text-(--color-text)'
+            }`}
+          >
+            {disabled && !minimized ? (
+              <Loader2 size={14} className="animate-spin" aria-hidden="true" />
+            ) : (
+              <ArrowUp size={14} aria-hidden="true" />
+            )}
+          </button>
+        }
+      />
+      <TooltipContent>{isMobile ? 'Send message' : 'Send (Enter) · New line (Shift+Enter) · Commands (/)'}</TooltipContent>
+    </Tooltip>
   )
 
   // The textarea stays mounted while minimized (opacity + pointer-events

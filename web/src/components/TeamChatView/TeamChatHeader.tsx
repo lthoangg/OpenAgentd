@@ -3,6 +3,7 @@ import { Home, ListTodo, PanelLeft, PanelRight, SlidersHorizontal } from 'lucide
 import type { NavigateFn } from '@tanstack/react-router'
 
 import { AgentTopbar, type AgentTopbarTokens } from '@/components/AgentTopbar'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { MobileHeaderAction } from './MobileHeaderAction'
 import { MobileChatActions } from './MobileChatActions'
 import { TodosPopover } from '@/components/TodosPopover'
@@ -102,61 +103,83 @@ export const TeamChatHeader = memo(function TeamChatHeader({
             uses one global nav entry and places Home inside the drawer. */}
         <div className={`mr-1 flex h-full min-w-0 shrink items-center gap-1 pl-2 md:mr-2 ${isMacOverlay ? '' : 'md:pl-3'}`}>
           {!isMobile && (
-            <a
-              href="/"
-              aria-label="Home"
-              title="Home"
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
-              onClick={(event) => {
-                event.preventDefault()
-                navigate({ to: '/' })
-              }}
-            >
-              <Home size={14} strokeWidth={1.8} aria-hidden="true" />
-            </a>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <a
+                    href="/"
+                    aria-label="Home"
+                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
+                    onClick={(event) => {
+                      event.preventDefault()
+                      navigate({ to: '/' })
+                    }}
+                  >
+                    <Home size={14} strokeWidth={1.8} aria-hidden="true" />
+                  </a>
+                }
+              />
+              <TooltipContent>Home</TooltipContent>
+            </Tooltip>
           )}
 
           {/* Hamburger target depends on mode: coding sidebar toggle,
               mobile drawer, or a synthetic ⌘B/Ctrl+B for the normal sidebar
               (whose collapse state is owned by Sidebar). */}
-          <button
-            type="button"
-            onClick={() => {
-              if (mode === 'coding') {
-                onCodingSidebarToggle()
-              } else if (isMobile) {
-                onMobileSidebarOpen()
-              } else {
-                // Sidebar's own window listener owns the ⌘B/Ctrl+B toggle.
-                dispatchShortcutKey('b', os)
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (mode === 'coding') {
+                      onCodingSidebarToggle()
+                    } else if (isMobile) {
+                      onMobileSidebarOpen()
+                    } else {
+                      // Sidebar's own window listener owns the ⌘B/Ctrl+B toggle.
+                      dispatchShortcutKey('b', os)
+                    }
+                  }}
+                  aria-label="Toggle sidebar"
+                  className="flex h-8 w-8 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-7 md:w-7"
+                >
+                  <PanelLeft size={14} strokeWidth={1.8} aria-hidden="true" />
+                </button>
               }
-            }}
-            aria-label="Toggle sidebar"
-            title={`Toggle sidebar (${formatShortcut('B', os)})`}
-            className="flex h-8 w-8 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-7 md:w-7"
-          >
-            <PanelLeft size={14} strokeWidth={1.8} aria-hidden="true" />
-          </button>
+            />
+            <TooltipContent>{`Toggle sidebar (${formatShortcut('B', os)})`}</TooltipContent>
+          </Tooltip>
           {mode === 'coding' && workspace && !isMobile ? (
-            <span
-              className="ml-1 flex min-w-0 max-w-xs items-baseline gap-1 text-sm lg:max-w-md xl:max-w-xl"
-              title={sessionTitle ? `${workspaceLabel(workspace)}: ${sessionTitle}` : workspace}
-            >
-              <span className="shrink-0 font-semibold text-(--color-text)">{workspaceLabel(workspace)}</span>
-              {sessionTitle && (
-                <>
-                  <span className="shrink-0 text-(--color-text-muted)">·</span>
-                  <span className="truncate text-(--color-text-muted)">{sessionTitle}</span>
-                </>
-              )}
-            </span>
+            <Tooltip className="ml-1 min-w-0 max-w-xs lg:max-w-md xl:max-w-xl">
+              <TooltipTrigger
+                className="min-w-0 max-w-xs lg:max-w-md xl:max-w-xl"
+                render={
+                  <span className="flex min-w-0 max-w-xs items-baseline gap-1 text-sm lg:max-w-md xl:max-w-xl">
+                    <span className="shrink-0 font-semibold text-(--color-text)">{workspaceLabel(workspace)}</span>
+                    {sessionTitle && (
+                      <>
+                        <span className="shrink-0 text-(--color-text-muted)">·</span>
+                        <span className="truncate text-(--color-text-muted)">{sessionTitle}</span>
+                      </>
+                    )}
+                  </span>
+                }
+              />
+              <TooltipContent>{sessionTitle ? `${workspaceLabel(workspace)}: ${sessionTitle}` : workspace}</TooltipContent>
+            </Tooltip>
           ) : mode !== 'coding' && sessionTitle && !isMobile ? (
-            <span
-              className="ml-1 min-w-0 max-w-xs truncate text-sm font-semibold text-(--color-text) lg:max-w-md xl:max-w-xl"
-              title={sessionTitle}
-            >
-              {sessionTitle}
-            </span>
+            <Tooltip className="ml-1 min-w-0 max-w-xs lg:max-w-md xl:max-w-xl">
+              <TooltipTrigger
+                className="min-w-0 max-w-xs lg:max-w-md xl:max-w-xl"
+                render={
+                  <span className="min-w-0 max-w-xs truncate text-sm font-semibold text-(--color-text) lg:max-w-md xl:max-w-xl">
+                    {sessionTitle}
+                  </span>
+                }
+              />
+              <TooltipContent>{sessionTitle}</TooltipContent>
+            </Tooltip>
           ) : null}
         </div>
 

@@ -3,6 +3,7 @@ import { useForm, useStore } from '@tanstack/react-form'
 import { AlertCircle, Loader2, Pencil, X } from 'lucide-react'
 import { DateTimePicker } from '@/components/ui/date-time-picker'
 import { Button } from '@/components/ui/button'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { useUpdateScheduledTaskMutation } from '@/queries'
@@ -73,16 +74,22 @@ export function EditTaskForm({
               <p className="text-[11px] text-(--color-text-muted)">{task.name}</p>
             </div>
           </div>
-          <Button
-            variant="ghost"
-            size="icon-xs"
-            onClick={onCancel}
-            className="h-7 w-7 rounded-sm text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text)"
-            aria-label="Cancel edit"
-            title="Cancel"
-          >
-            <X size={13} />
-          </Button>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  onClick={onCancel}
+                  className="h-11 w-11 rounded-sm text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text) md:h-7 md:w-7"
+                  aria-label="Cancel edit"
+                >
+                  <X size={13} />
+                </Button>
+              }
+            />
+            <TooltipContent>Cancel</TooltipContent>
+          </Tooltip>
         </div>
       </div>
 

@@ -9,6 +9,7 @@
  */
 import { memo, useCallback, useMemo, useState, type ReactNode } from 'react'
 import { Copy, Check } from 'lucide-react'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { formatTime, lastTurnText } from '@/utils/format'
 import type { ContentBlock } from '@/api/types'
 
@@ -61,7 +62,7 @@ export const AssistantTurnFooter = memo(function AssistantTurnFooter({ turnBlock
       hasTool,
     }
   }, [turnBlocks])
-  const { textContent, timestamp, responseDurationMs, modelId, modelName } = footerData
+  const { textContent, timestamp, responseDurationMs, modelName } = footerData
 
   const handleCopy = useCallback(async () => {
     try {
@@ -79,27 +80,34 @@ export const AssistantTurnFooter = memo(function AssistantTurnFooter({ turnBlock
   return (
     <div className={wrapperClass}>
       {textContent && (
-        <button
-          onClick={handleCopy}
-          className="rounded-xs p-0.5 text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)"
-          aria-label="Copy response"
-          title="Copy"
-        >
-          {copied
-            ? <Check size={iconSize} className="text-(--color-success)" />
-            : <Copy size={iconSize} />}
-        </button>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <button
+                onClick={handleCopy}
+                className="rounded-xs p-0.5 text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)"
+                aria-label="Copy response"
+              >
+                {copied
+                  ? <Check size={iconSize} className="text-(--color-success)" />
+                  : <Copy size={iconSize} />}
+              </button>
+            }
+          />
+          <TooltipContent>Copy</TooltipContent>
+        </Tooltip>
       )}
       {modelName && (
-        <span className="font-mono text-(--color-text-subtle) text-xs" title={modelId ?? undefined}>
-          {modelName}
-        </span>
+        <span className="font-mono text-(--color-text-subtle) text-xs">{modelName}</span>
       )}
-      {timestamp && <span className="text-(--color-text-subtle) text-xs">{formatTime(timestamp)}</span>}
+      {timestamp && (
+        <Tooltip className="text-(--color-text-subtle) text-xs">
+          <TooltipTrigger render={<span className="text-(--color-text-subtle) text-xs">{formatTime(timestamp)}</span>} />
+          <TooltipContent>{timestamp.toLocaleString()}</TooltipContent>
+        </Tooltip>
+      )}
       {responseDurationMs !== undefined && (
-        <span className="font-mono text-(--color-text-subtle) text-xs" title="Response duration">
-          {formatDuration(responseDurationMs)}
-        </span>
+        <span className="font-mono text-(--color-text-subtle) text-xs">{formatDuration(responseDurationMs)}</span>
       )}
     </div>
   )

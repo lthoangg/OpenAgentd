@@ -22,6 +22,7 @@
  */
 import { describe, it, expect, afterEach } from "bun:test"
 import { render, cleanup, screen } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
 import { SidebarItem } from "@/components/ui/sidebar-item"
 import { Home } from "lucide-react"
 
@@ -140,33 +141,37 @@ describe("SidebarItem — rightSlot override", () => {
 })
 
 describe("SidebarItem — title tooltip", () => {
-  it("title defaults to 'label (Ctrl+N)' when kbd is shorthand", () => {
+  it("title defaults to 'label (Ctrl+N)' when kbd is shorthand", async () => {
     const { container } = render(<SidebarItem Icon={Home} label="New" kbd="^N" />)
     const btn = container.querySelector("button")!
-    expect(btn.getAttribute("title")).toBe("New (Ctrl+N)")
+    await userEvent.hover(btn)
+    expect((await screen.findByRole("tooltip")).textContent).toBe("New (Ctrl+N)")
   })
 
-  it("title defaults to 'label (Ctrl+Shift+P)' for literal kbd", () => {
+  it("title defaults to 'label (Ctrl+Shift+P)' for literal kbd", async () => {
     const { container } = render(
       <SidebarItem Icon={Home} label="Find" kbd="Ctrl+Shift+P" />,
     )
-    expect(container.querySelector("button")!.getAttribute("title")).toBe(
+    await userEvent.hover(container.querySelector("button")!)
+    expect((await screen.findByRole("tooltip")).textContent).toBe(
       "Find (Ctrl+Shift+P)",
     )
   })
 
-  it("title falls back to bare label when no kbd is provided", () => {
+  it("title falls back to bare label when no kbd is provided", async () => {
     const { container } = render(<SidebarItem Icon={Home} label="Just Label" />)
-    expect(container.querySelector("button")!.getAttribute("title")).toBe(
+    await userEvent.hover(container.querySelector("button")!)
+    expect((await screen.findByRole("tooltip")).textContent).toBe(
       "Just Label",
     )
   })
 
-  it("explicit title prop overrides the auto-generated one", () => {
+  it("explicit title prop overrides the auto-generated one", async () => {
     const { container } = render(
       <SidebarItem Icon={Home} label="X" kbd="^N" title="Custom tooltip" />,
     )
-    expect(container.querySelector("button")!.getAttribute("title")).toBe(
+    await userEvent.hover(container.querySelector("button")!)
+    expect((await screen.findByRole("tooltip")).textContent).toBe(
       "Custom tooltip",
     )
   })

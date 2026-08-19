@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils'
 import { formatBytes } from '@/utils/format'
 import { highlightLines } from '@/utils/code-highlight'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useResizableWidth } from '@/hooks/use-resizable-width'
 import { isVideoSrc } from '@/utils/workspace'
 import { PdfThumbnail } from './PdfThumbnail'
@@ -76,16 +77,22 @@ export function CopyButton({ workspace, file }: { workspace: string; file: Works
 
   const label = tooLarge ? 'File too large to copy' : copied ? 'Copied!' : 'Copy file contents'
   return (
-    <button
-      type="button"
-      onClick={handleCopy}
-      disabled={busy || tooLarge}
-      title={label}
-      aria-label={label}
-      className="flex h-9 min-w-9 items-center justify-center gap-1 rounded px-2 text-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2) disabled:cursor-not-allowed disabled:opacity-40 md:h-auto md:min-w-0 md:py-1"
-    >
-      {copied ? <Check size={12} className="text-(--color-success)" /> : busy ? <Loader2 size={12} className="animate-spin" /> : <Copy size={12} />}
-    </button>
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <button
+            type="button"
+            onClick={handleCopy}
+            disabled={busy || tooLarge}
+            aria-label={label}
+            className="flex h-9 min-w-9 items-center justify-center gap-1 rounded px-2 text-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2) disabled:cursor-not-allowed disabled:opacity-40 md:h-auto md:min-w-0 md:py-1"
+          >
+            {copied ? <Check size={12} className="text-(--color-success)" /> : busy ? <Loader2 size={12} className="animate-spin" /> : <Copy size={12} />}
+          </button>
+        }
+      />
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
   )
 }
 
@@ -299,19 +306,25 @@ function TextPreview({
               )}
             >
               {selected && lineNo === selectedEnd && selectedStart !== null ? (
-                <button
-                  type="button"
-                  onMouseDown={(event) => event.stopPropagation()}
-                  onClick={(event) => {
-                    event.stopPropagation()
-                    onAddComment?.(file.path, selectedStart, selectedEnd)
-                  }}
-                  className="absolute left-[calc(0.75rem+4ch+0.25rem)] top-1 z-10 flex h-4 w-4 items-center justify-center rounded border border-(--color-border-strong) bg-(--bg-card) text-(--color-text-muted) shadow hover:bg-(--bg-key) hover:text-(--color-text)"
-                  aria-label={selectedStart === selectedEnd ? `Add comment for line ${selectedStart}` : `Add comment for lines ${selectedStart}-${selectedEnd}`}
-                  title={selectedStart === selectedEnd ? `Comment line ${selectedStart}` : `Comment lines ${selectedStart}-${selectedEnd}`}
-                >
-                  <Plus size={13} aria-hidden="true" />
-                </button>
+                <Tooltip className="absolute left-[calc(0.75rem+4ch+0.25rem)] top-1 z-10">
+                  <TooltipTrigger
+                    render={
+                      <button
+                        type="button"
+                        onMouseDown={(event) => event.stopPropagation()}
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          onAddComment?.(file.path, selectedStart, selectedEnd)
+                        }}
+                        className="flex h-4 w-4 items-center justify-center rounded border border-(--color-border-strong) bg-(--bg-card) text-(--color-text-muted) shadow hover:bg-(--bg-key) hover:text-(--color-text)"
+                        aria-label={selectedStart === selectedEnd ? `Add comment for line ${selectedStart}` : `Add comment for lines ${selectedStart}-${selectedEnd}`}
+                      >
+                        <Plus size={13} aria-hidden="true" />
+                      </button>
+                    }
+                  />
+                  <TooltipContent>{selectedStart === selectedEnd ? `Comment line ${selectedStart}` : `Comment lines ${selectedStart}-${selectedEnd}`}</TooltipContent>
+                </Tooltip>
               ) : null}
               <button
                 type="button"
@@ -676,13 +689,26 @@ export function CodingFileViewerPanel({
         <header className="flex shrink-0 items-center justify-between gap-3 border-b border-(--color-border) px-3 py-3">
           <div className="min-w-0 flex-1">
             <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-(--color-text-subtle)">File</p>
-            <p className="mt-1 truncate font-mono text-xs text-(--color-text)" title={file.path}>{file.path}</p>
+            <p className="mt-1 truncate font-mono text-xs text-(--color-text)">{file.path}</p>
             <p className="mt-0.5 text-[10px] text-(--color-text-subtle)">{formatBytes(file.size)} · {file.mime}</p>
           </div>
           <div className="flex shrink-0 items-center gap-1">
-            <button type="button" onClick={() => void downloadCodingWorkspaceFile(workspace, file)} disabled={deleted} title={deleted ? 'File deleted from workspace' : 'Download'} className="flex h-11 w-11 items-center justify-center rounded text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) disabled:cursor-not-allowed disabled:opacity-40 md:h-7 md:w-7">
-              <Download size={14} />
-            </button>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <button
+                    type="button"
+                    onClick={() => void downloadCodingWorkspaceFile(workspace, file)}
+                    disabled={deleted}
+                    aria-label={deleted ? 'File deleted from workspace' : 'Download'}
+                    className="flex h-11 w-11 items-center justify-center rounded text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) disabled:cursor-not-allowed disabled:opacity-40 md:h-7 md:w-7"
+                  >
+                    <Download size={14} />
+                  </button>
+                }
+              />
+              <TooltipContent>{deleted ? 'File deleted from workspace' : 'Download'}</TooltipContent>
+            </Tooltip>
             {kind === 'text' && !deleted && <CopyButton workspace={workspace} file={file} />}
             <button type="button" onClick={onClose} className="flex h-11 w-11 items-center justify-center rounded text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-7 md:w-7" aria-label="Close file viewer">
               <X size={14} />

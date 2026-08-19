@@ -5,6 +5,7 @@
 
 import { User, Columns2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { formatShortcut } from '@/lib/keyboard-shortcut'
 import { usePlatform } from '@/hooks/use-platform'
 
@@ -33,19 +34,25 @@ export function ViewToggle({
   const title = `${label} (${shortcut})`
 
   return (
-    <button
-      type="button"
-      aria-label={label}
-      title={title}
-      onClick={() => onValueChange(nextMode)}
-      className={cn(
-        compact
-          ? 'flex h-5 w-5 items-center justify-center rounded-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40'
-          : 'inline-flex h-8 w-8 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 md:h-7 md:w-7 md:rounded-sm',
-        className,
-      )}
-    >
-      <Icon size={compact ? 12 : 14} strokeWidth={1.8} aria-hidden="true" />
-    </button>
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <button
+            type="button"
+            aria-label={label}
+            onClick={() => onValueChange(nextMode)}
+            className={cn(
+              compact
+                ? 'flex h-5 w-5 items-center justify-center rounded-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40'
+                : 'inline-flex h-11 w-11 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 md:h-7 md:w-7 md:rounded-sm',
+              className,
+            )}
+          >
+            <Icon size={compact ? 12 : 14} strokeWidth={1.8} aria-hidden="true" />
+          </button>
+        }
+      />
+      <TooltipContent>{title}</TooltipContent>
+    </Tooltip>
   )
 }

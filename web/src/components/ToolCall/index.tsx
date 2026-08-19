@@ -430,7 +430,7 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
                           <pre
                             ref={liveOutputRef}
                             onScroll={handleScroll}
-                            className="max-h-40 sm:max-h-64 overflow-auto overscroll-contain touch-pan-y whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-(--color-text)"
+                            className="max-h-40 sm:max-h-64 overflow-auto touch-pan-y whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-(--color-text)"
                           >
                             <span className="block"><span className="select-none text-(--color-text-muted)">$ </span><ShellCommand command={formattedArgs} />{shellOutput ? `\n${shellOutput}` : ''}</span>
                           </pre>
@@ -464,7 +464,7 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
                       <pre
                         ref={liveOutputRef}
                         onScroll={handleScroll}
-                        className="max-h-40 overflow-auto overscroll-contain touch-pan-y sm:max-h-64 whitespace-pre-wrap break-words bg-(--bg-input) px-3 py-2.5 font-mono text-[11px] leading-relaxed text-(--color-text)"
+                        className="max-h-40 overflow-auto touch-pan-y sm:max-h-64 whitespace-pre-wrap break-words bg-(--bg-input) px-3 py-2.5 font-mono text-[11px] leading-relaxed text-(--color-text)"
                       >
                         {shownLiveOutput}
                       </pre>

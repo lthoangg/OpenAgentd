@@ -186,6 +186,10 @@ import type { ContentBlock } from '@/api/types'
  * not response content. For a text block that ends with a sentinel the prefix
  * before the sentinel is kept (it may still contain real content).
  *
+ * If the turn contains a `tool` block, only text blocks *after* the last one
+ * count as the response — earlier text is narration the agent wrote before
+ * or between tool calls, not the final answer.
+ *
  * Returns empty string when there is no assistant text in the last turn.
  */
 export function lastTurnText(blocks: ContentBlock[]): string {
@@ -198,7 +202,16 @@ export function lastTurnText(blocks: ContentBlock[]): string {
     }
   }
 
-  const turnBlocks = blocks.slice(startIdx)
+  let turnBlocks = blocks.slice(startIdx)
+
+  // Keep only what follows the last tool call, if any.
+  for (let i = turnBlocks.length - 1; i >= 0; i--) {
+    if (turnBlocks[i].type === 'tool') {
+      turnBlocks = turnBlocks.slice(i + 1)
+      break
+    }
+  }
+
   const parts: string[] = []
 
   for (const block of turnBlocks) {

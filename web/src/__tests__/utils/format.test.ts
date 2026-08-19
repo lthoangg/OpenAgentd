@@ -321,3 +321,42 @@ describe("lastTurnText", () => {
     expect(lastTurnText(blocks)).toBe("");
   });
 });
+
+describe("lastTurnText — only the final response after the last tool call", () => {
+  it("drops narration text that precedes a tool call", () => {
+    const blocks = [
+      block("text", "Let me check that for you."),
+      block("tool", ""),
+      block("text", "Here is the answer."),
+    ];
+    expect(lastTurnText(blocks)).toBe("Here is the answer.");
+  });
+
+  it("keeps only the text after the last of several tool calls", () => {
+    const blocks = [
+      block("text", "plan"),
+      block("tool", ""),
+      block("text", "intermediate note"),
+      block("tool", ""),
+      block("text", "final answer"),
+    ];
+    expect(lastTurnText(blocks)).toBe("final answer");
+  });
+
+  it("joins multiple text blocks that all follow the last tool call", () => {
+    const blocks = [
+      block("tool", ""),
+      block("text", "part one"),
+      block("text", "part two"),
+    ];
+    expect(lastTurnText(blocks)).toBe("part one\n\npart two");
+  });
+
+  it("returns empty string when the turn ends on a tool call with no trailing text", () => {
+    const blocks = [
+      block("text", "working on it"),
+      block("tool", ""),
+    ];
+    expect(lastTurnText(blocks)).toBe("");
+  });
+});

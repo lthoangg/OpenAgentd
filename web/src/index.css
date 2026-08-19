@@ -702,6 +702,19 @@ html[data-mobile-shell][data-vp-anim] .settings-modal-shell {
 }
 
 /* ─────────────────────────────────────────────────────────────
+ * Chat transcript scroller
+ * ─────────────────────────────────────────────────────────────
+ * ``overflow-anchor: none`` opts the scroller itself out of scroll
+ * anchoring; a single bottom sentinel ([data-chat-scroll-anchor], set
+ * ``overflow-anchor: auto`` via JS) is the one element the browser may
+ * use to keep the view pinned as streamed content grows. Pinning via the
+ * browser avoids the per-frame ``scrollTop`` assignments that dropped
+ * compositor tiles and left the transcript blank until the next scroll. */
+.oa-chat-scroll {
+  overflow-anchor: none;
+}
+
+/* ─────────────────────────────────────────────────────────────
  * Focus ring — :focus-visible only, never on mouse click
  * ───────────────────────────────────────────────────────────── */
 @layer base {

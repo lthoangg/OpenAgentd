@@ -39,6 +39,7 @@ export function useAutoFollowScroll(options: UseAutoFollowScrollOptions = {}) {
 
   const scrollRef = useRef<HTMLDivElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
+  const anchorRef = useRef<HTMLDivElement>(null)
   const attachedRef = useRef(true)
   const isProgrammaticScrollRef = useRef(false)
   const lastScrollTopRef = useRef(0)
@@ -51,11 +52,24 @@ export function useAutoFollowScroll(options: UseAutoFollowScrollOptions = {}) {
     onLoadOlderTopRef.current = onLoadOlderTop
   }, [onLoadOlderTop])
 
+  // Overflow-anchor pairs with the bottom sentinel the views render: while
+  // attached, the browser pins the viewport to the sentinel as the stream
+  // grows — no per-frame ``scrollTop`` writes that would drop compositor
+  // tiles and leave the transcript blank until the next user scroll. When the
+  // user detaches (scrolled up to read), the anchor is disabled so the
+  // browser does not silently yank them back to the bottom.
+  const syncAnchor = useCallback(() => {
+    const anchor = anchorRef.current
+    if (!anchor) return
+    anchor.style.overflowAnchor = attachedRef.current ? 'auto' : 'none'
+  }, [])
+
   const scrollToBottom = useCallback((behavior: ScrollBehavior = 'auto') => {
     const el = scrollRef.current
     if (!el) return
     const bottom = Math.max(0, el.scrollHeight - el.clientHeight)
     attachedRef.current = true
+    syncAnchor()
     userScrollIntentUntilRef.current = 0
     setShowScrollBtn(false)
     if (behavior === 'smooth' && typeof el.scrollTo === 'function') {
@@ -79,7 +93,7 @@ export function useAutoFollowScroll(options: UseAutoFollowScrollOptions = {}) {
       el.scrollTop = bottom
       lastScrollTopRef.current = el.scrollTop
     }
-  }, [])
+  }, [syncAnchor])
 
   useEffect(() => {
     const el = scrollRef.current
@@ -98,6 +112,7 @@ export function useAutoFollowScroll(options: UseAutoFollowScrollOptions = {}) {
       if (atBottom) {
         if (Date.now() >= userScrollIntentUntilRef.current) {
           attachedRef.current = true
+          syncAnchor()
           setShowScrollBtn(false)
         }
       } else if (attachedRef.current) {
@@ -105,6 +120,7 @@ export function useAutoFollowScroll(options: UseAutoFollowScrollOptions = {}) {
           const isScrollUp = currentScrollTop < prevScrollTop
           if (isScrollUp) {
             attachedRef.current = false
+            syncAnchor()
             setShowScrollBtn(true)
           }
         }
@@ -120,6 +136,7 @@ export function useAutoFollowScroll(options: UseAutoFollowScrollOptions = {}) {
       if (!attachedRef.current) return
       if (el.scrollHeight - el.clientHeight <= 1) return
       attachedRef.current = false
+      syncAnchor()
       setShowScrollBtn(true)
     }
 
@@ -182,28 +199,33 @@ export function useAutoFollowScroll(options: UseAutoFollowScrollOptions = {}) {
       window.removeEventListener('pointercancel', onPointerUp)
       document.removeEventListener('keydown', onKeyDown)
     }
-  }, [])
+  }, [syncAnchor])
 
   useEffect(() => {
     attachedRef.current = true
+    syncAnchor()
     setShowScrollBtn(false)
     scrollToBottom()
-  }, [sessionId, scrollToBottom])
+  }, [sessionId, scrollToBottom, syncAnchor])
 
   useEffect(() => {
     if (isUserMessage) {
       attachedRef.current = true
     }
-    if (attachedRef.current) scrollToBottom()
+    if (attachedRef.current) {
+      syncAnchor()
+      scrollToBottom()
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [totalLen, lastContent])
 
   useEffect(() => {
     if (!isEmpty) return
     attachedRef.current = true
+    syncAnchor()
     setShowScrollBtn(false)
     if (scrollRef.current) scrollRef.current.scrollTop = 0
-  }, [isEmpty])
+  }, [isEmpty, syncAnchor])
 
   const hasContent = !isEmpty
   useEffect(() => {
@@ -220,21 +242,30 @@ export function useAutoFollowScroll(options: UseAutoFollowScrollOptions = {}) {
       const contentGrew = nextContentHeight > lastContentHeight
       const viewportChanged = nextClientHeight !== lastClientHeight
       const contentChanged = entries.some((entry) => entry.target === content)
+      const anchorChanged = entries.some((entry) => entry.target === anchorRef.current)
 
       lastContentHeight = nextContentHeight
       lastClientHeight = nextClientHeight
       if (document.documentElement.hasAttribute('data-keyboard-open') && viewportChanged && !contentGrew && !contentChanged) return
+      // While attached to a live stream the browser's overflow-anchor keeps
+      // the view pinned as content grows; assigning ``scrollTop`` each reflow
+      // is what drops compositor tiles and blanks the transcript. Only jump
+      // when the viewport itself changed or content shrank — those are not
+      // things overflow-anchor can pin against.
+      if (contentChanged && contentGrew && !viewportChanged && !anchorChanged) return
       el.scrollTop = Math.max(0, el.scrollHeight - el.clientHeight)
       lastScrollTopRef.current = el.scrollTop
     })
     ro.observe(content)
     ro.observe(el)
+    if (anchorRef.current) ro.observe(anchorRef.current)
     return () => ro.disconnect()
   }, [hasContent])
 
   return {
     scrollRef,
     contentRef,
+    anchorRef,
     attachedRef,
     showScrollBtn,
     setShowScrollBtn,

@@ -434,6 +434,7 @@ const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionI
   const {
     scrollRef,
     contentRef,
+    anchorRef,
     showScrollBtn,
     scrollToBottom,
   } = useAutoFollowScroll({
@@ -483,7 +484,7 @@ const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionI
 
       {/* Body */}
       <div className="relative flex min-h-0 flex-1 flex-col">
-      <div ref={scrollRef} className="flex-1 overflow-y-auto" style={{ minHeight: 0 }}>
+      <div ref={scrollRef} className="oa-chat-scroll flex-1 overflow-y-auto" style={{ minHeight: 0 }}>
         {isEmpty && !isWorking && (isError || isOffline) && (
             <div className="flex h-full select-none flex-col items-center justify-center py-8">
               <p className="text-xs text-(--color-text-subtle)">{isError ? stream.lastError || 'Error' : 'Offline'}</p>
@@ -528,8 +529,10 @@ const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionI
                      />
                    )
                   })}
-              </div>
-            )}
+            </div>
+          )}
+
+          <div ref={anchorRef} data-chat-scroll-anchor aria-hidden="true" />
 
           {/* Me show dots when pending (user sent, agent not woken), restarting
               after an answered question (no new user block, blocks still hold

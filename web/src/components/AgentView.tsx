@@ -255,6 +255,7 @@ export function AgentView({ blocks, currentBlocks, isWorking, isTurnOpen = isWor
   const {
     scrollRef,
     contentRef,
+    anchorRef,
     attachedRef,
     showScrollBtn,
     scrollToBottom,
@@ -295,7 +296,7 @@ export function AgentView({ blocks, currentBlocks, isWorking, isTurnOpen = isWor
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
-    <div ref={scrollRef} className="flex-1 overflow-y-auto">
+    <div ref={scrollRef} className="oa-chat-scroll flex-1 overflow-y-auto">
       <div ref={contentRef} className="mx-auto max-w-3xl px-3 py-5 sm:px-4 sm:py-6">
         {isEmpty && (
            emptyState ?? (
@@ -396,6 +397,8 @@ export function AgentView({ blocks, currentBlocks, isWorking, isTurnOpen = isWor
                <p className="text-xs text-(--color-error)">{lastError}</p>
              </div>
            )}
+
+           <div ref={anchorRef} data-chat-scroll-anchor aria-hidden="true" />
          </div>
       </div>
     </div>

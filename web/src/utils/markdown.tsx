@@ -18,6 +18,13 @@ import { CodeBlock } from '@/components/CodeBlock'
 import { tokenizeCode } from '@/utils/code-highlight'
 import { MermaidBlock } from '@/utils/MermaidBlock'
 import { isVideoSrc } from '@/utils/workspace'
+import {
+  MathBlock,
+  MathSpan,
+  mathMarkdownExtension,
+  MATH_INLINE_SENTINEL,
+  MATH_BLOCK_SENTINEL,
+} from '@/utils/markdown-math'
 
 // ── fixNestedFences ───────────────────────────────────────────────────────────
 
@@ -505,7 +512,24 @@ export const MarkdownBlock = memo(function MarkdownBlock({
         if (isMermaid && (!isStreaming || normalizedLanguage === STREAMING_MERMAID_LANGUAGE)) {
           return <MermaidBlock source={codeText} highlightedCode={codeText} />
         }
+        if (normalizedLanguage === 'math' || normalizedLanguage === 'katex') {
+          return <MathBlock math={codeText} />
+        }
         return <HighlightedCode code={codeText} language={language} />
+      },
+      'math-block': (props: React.HTMLAttributes<HTMLElement> & { 'data-math'?: string }) => (
+        <MathBlock math={props['data-math'] ?? ''} />
+      ),
+      code: ({ children, ...props }: React.HTMLAttributes<HTMLElement>) => {
+        if (typeof children === 'string') {
+          if (children.startsWith(MATH_INLINE_SENTINEL)) {
+            return <MathSpan math={children.slice(MATH_INLINE_SENTINEL.length)} />
+          }
+          if (children.startsWith(MATH_BLOCK_SENTINEL)) {
+            return <MathBlock math={children.slice(MATH_BLOCK_SENTINEL.length)} />
+          }
+        }
+        return <code {...props}>{children}</code>
       },
       table: (props: React.HTMLAttributes<HTMLTableElement>) => (
         <div className="oa-table-wrap">
@@ -568,4 +592,4 @@ export const MarkdownBlock = memo(function MarkdownBlock({
 // retroactively reinterpret its opening lines as metadata, and ``headingIds``
 // is off because a streamed heading would otherwise change its own element id
 // on every delta.
-const _EXTENSIONS = [streamingMarkdownExtension()]
+const _EXTENSIONS = [streamingMarkdownExtension(), mathMarkdownExtension()]

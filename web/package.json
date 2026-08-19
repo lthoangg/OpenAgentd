@@ -46,6 +46,7 @@
     "framer-motion": "^12.43.0",
     "fuzzysort": "^3.1.0",
     "immer": "^11.1.16",
+    "katex": "^0.16.21",
     "lucide-react": "^1.29.0",
     "material-icon-theme": "^5.37.0",
     "mermaid": "^11.16.1",

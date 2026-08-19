@@ -104,4 +104,26 @@ describe('InlineMarkdown', () => {
     expect(container.querySelector('em')).toBeNull()
     expect(container.textContent).toBe('use snake_case_names here')
   })
+
+  it('renders inline math $\\rightarrow$', () => {
+    const { container } = render(<InlineMarkdown text={'Choose A $\\rightarrow$ B'} />)
+    const math = container.querySelector('.oa-math-inline')
+    expect(math).not.toBeNull()
+    expect(math?.querySelector('.katex')).not.toBeNull()
+    expect(math?.textContent).toContain('→')
+  })
+
+  it('does not render currency amounts like $50 and $100 as math in InlineMarkdown', () => {
+    const { container } = render(<InlineMarkdown text={'Between $50 and $100'} />)
+    expect(container.querySelector('.oa-math-inline')).toBeNull()
+    expect(container.querySelector('.katex')).toBeNull()
+    expect(container.textContent).toContain('$50 and $100')
+  })
+
+  it('keeps math literal in the code-only variant', () => {
+    const { container } = render(<InlineMarkdown text={'Migrate $\\rightarrow$ now'} variant="code" />)
+    expect(container.querySelector('.oa-math-inline')).toBeNull()
+    expect(container.querySelector('.katex')).toBeNull()
+    expect(container.textContent).toContain('$\\rightarrow$')
+  })
 })

@@ -133,7 +133,9 @@ Custom component overrides live in the `components` map (memoised on `sessionId`
 
 | Override | Purpose |
 |---|---|
-| `pre` | Reads the fence language off `data-lang` and the source off the `<code>` string child, then routes to `MermaidBlock` or `HighlightedCode` |
+| `pre` | Reads the fence language off `data-lang` and the source off the `<code>` string child, then routes to `MermaidBlock`, `MathBlock`, or `HighlightedCode` |
+| `math-block` | Renders block LaTeX mathematics via `MathBlock` (KaTeX) |
+| `code` | Renders inline code and intercepts math sentinels to render `MathSpan` or `MathBlock` |
 | `table` | Wraps `<table>` in a `<div class="oa-table-wrap">` for bidirectional scroll on mobile |
 | `a` | Forces `target="_blank"` on all links |
 | `img` | Routes through `MarkdownImage` for lightbox and workspace-file proxy |

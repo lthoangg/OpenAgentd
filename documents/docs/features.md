@@ -243,6 +243,12 @@ run from the terminal.
   Full-screen diagrams keep the chrome minimal while supporting keyboard,
   wheel/trackpad and pinch zoom, double-click/double-tap, and drag-to-pan;
   diagram text selection is disabled so gestures stay responsive.
+- **LaTeX math rendering** `[v1.133.0]` — inline math (`$math$` and `\(math\)`),
+  display math (`$$math$$` and `\[math\]`), and fenced code blocks (`math`, `katex`)
+  render formatted LaTeX mathematics via KaTeX. Distinguishes mathematical
+  formulas from currency amounts ($50 and $100) and escaped dollar signs (\$50),
+  with scrollable containers for wide formulas and theme-aware styling across
+  light and dark modes.
 - **Stream auto-stick restored after scroll-to-bottom on mobile** `[v1.77.0]` —
   tapping the scroll-to-bottom button no longer detaches the stream
   auto-follow; direction-based detach logic removed from `onScroll` (was

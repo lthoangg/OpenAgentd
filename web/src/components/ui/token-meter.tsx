@@ -202,7 +202,7 @@ export function TokenMeter({
       {open && tooltipPosition && createPortal(
         <div
           ref={tooltipRef}
-          className="fixed z-50 min-w-40 rounded-md border border-(--color-border) bg-(--bg-page) px-3 py-2 font-mono text-[11px] leading-5 text-(--color-text) shadow-lg"
+          className="fixed z-50 min-w-40 rounded-sm border border-(--color-border) bg-(--bg-page) px-3 py-2 font-mono text-[11px] leading-5 text-(--color-text) shadow-lg"
           style={{ top: tooltipPosition.top, left: tooltipPosition.left }}
           role="tooltip"
           onMouseEnter={openHoverTooltip}

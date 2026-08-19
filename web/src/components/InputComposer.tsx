@@ -812,7 +812,7 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
     </div>
   )
 
-  const pillClassName = `relative block rounded-[14px] border bg-(--color-surface) transition-[border-color,box-shadow,background-color] duration-200 ${
+  const pillClassName = `relative block rounded-lg border bg-(--color-surface) transition-[border-color,box-shadow,background-color] duration-200 ${
     minimized
       ? 'w-fit border-(--color-border) shadow-sm hover:bg-(--bg-key)'
       : 'w-full border-(--color-border-strong) shadow-md focus-within:ring-1 focus-within:ring-(--color-accent)'

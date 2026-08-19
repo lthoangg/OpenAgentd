@@ -70,10 +70,10 @@ afterEach(() => {
   captured.length = 0
 })
 
-/** The composer pill is the motion element carrying the rounded-[14px] shell. */
+/** The composer pill is the motion element carrying the rounded-lg shell. */
 function findPill() {
   return captured.find(
-    (p) => typeof p.className === 'string' && p.className.includes('rounded-[14px]'),
+    (p) => typeof p.className === 'string' && p.className.includes('rounded-lg'),
   )
 }
 

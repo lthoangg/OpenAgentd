@@ -49,7 +49,7 @@ function QueuedMessageContent({ content, attachments }: { content: string; attac
                 onClick={() => setExpanded((v) => !v)}
                 aria-expanded={expanded}
                 aria-label={expanded ? 'Collapse' : 'Expand'}
-                className="absolute top-1.5 right-1.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-md bg-(--bg-key) text-(--color-text-2) transition-all duration-150 hover:text-(--color-text) active:scale-90 md:h-5 md:w-5"
+                className="absolute top-1.5 right-1.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-sm bg-(--bg-key) text-(--color-text-2) transition-all duration-150 hover:text-(--color-text) active:scale-90 md:h-5 md:w-5"
               >
                 {expanded ? <ChevronUp size={14} className="md:h-3 md:w-3" /> : <ChevronDown size={14} className="md:h-3 md:w-3" />}
               </button>

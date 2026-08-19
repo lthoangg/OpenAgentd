@@ -140,7 +140,7 @@ export function DateTimePicker({
           <span className="truncate">{displayLabel}</span>
         </PopoverTrigger>
 
-        <PopoverContent className="w-auto overflow-hidden rounded-md border border-(--color-border) bg-(--bg-card) p-0 shadow-lg" align="start">
+        <PopoverContent className="w-auto overflow-hidden rounded-sm border border-(--color-border) bg-(--bg-card) p-0 shadow-lg" align="start">
           <Calendar
             mode="single"
             selected={parsed}

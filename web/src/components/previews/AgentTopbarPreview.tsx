@@ -25,7 +25,7 @@ function PreviewFrame({
   children: React.ReactNode
 }) {
   return (
-    <div className="rounded-[10px] border border-(--color-border) bg-(--bg-page)">
+    <div className="rounded-sm border border-(--color-border) bg-(--bg-page)">
       <div className="border-b border-(--color-border) px-4 py-2">
         <h3 className="font-mono text-xs font-semibold uppercase tracking-wider text-(--color-text-2)">
           {title}
@@ -65,7 +65,7 @@ export function AgentTopbarPreview() {
   }
 
   return (
-    <section className="grid gap-5 rounded-[14px] border border-(--color-border) bg-(--bg-card) p-5 text-(--color-text)">
+    <section className="grid gap-5 rounded-sm border border-(--color-border) bg-(--bg-card) p-5 text-(--color-text)">
       <div>
         <h2 className="font-hand text-3xl font-bold">AgentTopbar</h2>
         <p className="text-sm text-(--color-text-2)">

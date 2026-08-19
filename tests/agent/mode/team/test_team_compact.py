@@ -93,3 +93,48 @@ async def test_compact_after_undo_commits_reverted_branch(monkeypatch):
 
     assert [message.content for message in visible] == ["summary"]
     assert redo.applied is False
+
+
+async def test_handle_compact_uses_session_model_override_end_to_end():
+    """``/compact`` must run the summariser on the session's overridden
+    model, not the agent's configured default — the same override a normal
+    chat turn on this session would use."""
+    session_id = uuid.uuid7()
+    default_provider = MockTeamProvider("default-summary")
+    override_provider = MockTeamProvider("override-summary")
+
+    def provider_factory(model: str, model_kwargs=None):
+        assert model == "googlegenai:gemini-3.1-flash-lite"
+        return override_provider
+
+    lead = TeamLead(
+        Agent(name="lead", llm_provider=default_provider),
+        db_factory=_db.async_session_factory,
+    )
+    team = AgentTeam(
+        lead=lead,
+        members={},
+        db_factory=_db.async_session_factory,
+        provider_factory=provider_factory,
+    )
+    await team.start()
+
+    async with _db.async_session_factory() as db:
+        db.add(
+            ChatSession(
+                id=session_id,
+                agent_name="lead",
+                model="googlegenai:gemini-3.1-flash-lite",
+            )
+        )
+        await db.flush()
+        await save_message(db, session_id, HumanMessage(content="first"))
+        await save_message(db, session_id, AssistantMessage(content="first answer"))
+        await db.commit()
+
+    await team.handle_compact(str(session_id))
+    assert lead._active_task is not None
+    await lead._active_task
+
+    assert override_provider.call_count > 0, "override provider was never called"
+    assert default_provider.call_count == 0, "default provider was called instead"

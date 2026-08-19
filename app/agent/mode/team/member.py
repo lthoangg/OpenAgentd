@@ -58,7 +58,7 @@ from app.agent.permission import (
     _permission_ctx,
 )
 from app.agent.schemas.agent import RunConfig
-from app.agent.schemas.chat import HumanMessage
+from app.agent.schemas.chat import ChatMessage, HumanMessage
 from app.agent.mode.team.mailbox import Message
 from app.core.db import DbFactory, resolve_db_factory
 from app.models.chat import ChatSession, SessionMessage
@@ -310,7 +310,7 @@ class TeamMemberBase(abc.ABC):
         self._team: AgentTeam | None = None
         self._mailbox: TeamMailbox | None = None
         self._open_task_nudge_counts: dict[str, int] = {}
-        self._llm_history: list = []
+        self._llm_history: list[ChatMessage] = []
         self._llm_history_revision: tuple[int, int] | None = None
         self._llm_history_cursor: tuple[datetime, uuid.UUID] | None = None
 
@@ -855,7 +855,9 @@ class TeamMemberBase(abc.ABC):
     # Message handling
     # ------------------------------------------------------------------
 
-    async def _load_turn_history(self, db, session_uuid: uuid.UUID) -> list:
+    async def _load_turn_history(
+        self, db, session_uuid: uuid.UUID
+    ) -> list[ChatMessage]:
         revision = await get_history_revision(db, session_uuid)
         cursor = await get_history_cursor(db, session_uuid)
         cached = self._llm_history

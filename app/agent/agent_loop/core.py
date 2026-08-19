@@ -49,6 +49,7 @@ from app.agent.schemas.chat import (
     ChatMessage,
     ContentBlock,
     SystemMessage,
+    ToolCall,
     ToolMessage,
     Usage,
 )
@@ -92,7 +93,7 @@ ASK_MERGED_INTO_PRIMARY = (
 )
 
 
-def _merge_question_calls(primary, duplicates: list) -> None:
+def _merge_question_calls(primary: ToolCall, duplicates: list[ToolCall]) -> None:
     """Fold *duplicates*' questions into *primary*'s arguments, in place.
 
     Models occasionally split one clarification into several parallel calls.
@@ -631,7 +632,7 @@ class Agent(Generic[TContext]):
     def _skip_tool_dispatch_for_interrupt(
         self,
         messages: list[ChatMessage],
-        tc_list: list,
+        tc_list: list[ToolCall],
     ) -> None:
         """Append cancellation stubs for tool calls skipped by a pre-dispatch interrupt."""
         logger.info(
@@ -978,7 +979,7 @@ class Agent(Generic[TContext]):
         *,
         env: _RunEnv,
         messages: list[ChatMessage],
-        tc_list: list,
+        tc_list: list[ToolCall],
         interrupt_event: asyncio.Event | None,
         checkpointer: Checkpointer | None = None,
         config: RunConfig | None = None,
@@ -1038,7 +1039,7 @@ class Agent(Generic[TContext]):
         self,
         messages: list[ChatMessage],
         state: AgentState,
-        results: list,
+        results: list[tuple[ToolCall, str] | BaseException],
     ) -> None:
         """Turn gathered tool outcomes into ``ToolMessage`` rows on *messages*."""
         # Retrieve any multimodal parts stashed by ToolResult-returning tools
@@ -1071,7 +1072,7 @@ class Agent(Generic[TContext]):
         *,
         env: _RunEnv,
         messages: list[ChatMessage],
-        ask_calls: list,
+        ask_calls: list[ToolCall],
         checkpointer: Checkpointer | None,
         config: RunConfig | None,
     ) -> str:
@@ -1193,9 +1194,9 @@ class Agent(Generic[TContext]):
         self,
         ctx: RunContext,
         state: AgentState,
-        tc,
+        tc: ToolCall,
         chain: ToolCallHandler,
-    ) -> tuple:
+    ) -> tuple[ToolCall, str]:
         """Execute a single tool call through the hook chain (semaphore-bounded).
 
         ``tool_executor.execute`` (the innermost link) already turns ordinary

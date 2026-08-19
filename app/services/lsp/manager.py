@@ -5,6 +5,7 @@ import re
 import shutil
 from contextlib import suppress
 from pathlib import Path
+from typing import Any
 
 from loguru import logger
 
@@ -867,7 +868,7 @@ class LspManager:
                         with suppress(Exception):
                             await client.close_document(uri)
 
-        def _collect(response_list: list) -> list[dict]:
+        def _collect(response_list: list[Any]) -> list[dict]:
             collected: list[dict] = []
             for resp in response_list:
 

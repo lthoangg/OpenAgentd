@@ -54,6 +54,7 @@ from __future__ import annotations
 
 import json
 import time
+from collections.abc import Sequence
 from typing import TYPE_CHECKING, Awaitable, Callable
 
 from loguru import logger
@@ -65,6 +66,7 @@ from app.agent.providers.base import LLMProviderBase
 from app.agent.providers.model_metadata import get_model_limits
 from app.agent.schemas.chat import (
     AssistantMessage,
+    ChatMessage,
     HumanMessage,
     SystemMessage,
     ToolMessage,
@@ -206,7 +208,7 @@ _MERGE_REQUEST = (
 )
 
 
-def _find_assistant_cutoff(msgs: list, keep_last: int) -> int:
+def _find_assistant_cutoff(msgs: Sequence[ChatMessage], keep_last: int) -> int:
     """Return the index of the Nth-from-last assistant message in *msgs*.
 
     Messages at or after this index are protected from summarisation; the
@@ -234,7 +236,9 @@ def _find_assistant_cutoff(msgs: list, keep_last: int) -> int:
     return 0  # not enough assistant turns — protect everything
 
 
-def _expand_tool_pair_ids(messages: list, seed_ids: set[int]) -> set[int]:
+def _expand_tool_pair_ids(
+    messages: Sequence[ChatMessage], seed_ids: set[int]
+) -> set[int]:
     """Expand *seed_ids* so assistant/tool-call pairs stay together.
 
     Compaction must not hide only one side of an assistant→tool exchange: OpenAI
@@ -279,7 +283,7 @@ def _expand_tool_pair_ids(messages: list, seed_ids: set[int]) -> set[int]:
     return expanded
 
 
-def _skill_tool_pair_ids(messages: list) -> set[int]:
+def _skill_tool_pair_ids(messages: Sequence[ChatMessage]) -> set[int]:
     """Return ids for the first visible assistant→skill tool-result pair per skill.
 
     Skill tool results contain active instruction text. During compaction they

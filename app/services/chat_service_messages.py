@@ -13,6 +13,7 @@ from app.agent.schemas.chat import (
     ContentBlock,
     HumanMessage,
     TextBlock,
+    ToolCall,
     ToolMessage,
 )
 from app.models.chat import SessionMessage
@@ -92,7 +93,7 @@ def deserialize_messages(
     for msg in result:
         if not isinstance(msg, AssistantMessage) or not msg.tool_calls:
             continue
-        clean: list = []
+        clean: list[ToolCall] = []
         for tc in msg.tool_calls:
             try:
                 json.loads(tc.function.arguments)

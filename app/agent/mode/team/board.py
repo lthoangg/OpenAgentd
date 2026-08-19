@@ -26,6 +26,7 @@ from loguru import logger
 from pydantic import Field
 
 from app.agent.tools.registry import InjectedArg, Tool
+from app.agent.tools.builtin.todo import ActionModel
 
 if TYPE_CHECKING:
     from app.agent.mode.team.team import AgentTeam
@@ -318,7 +319,7 @@ def make_team_todo_tool(
     actor_state = SimpleNamespace(metadata={"agent_name": agent_name})
 
     async def todo_manage(
-        actions: list,
+        actions: list[ActionModel],
         end_turn: bool = False,
         _state: Annotated[Any, InjectedArg()] = None,
     ) -> str:

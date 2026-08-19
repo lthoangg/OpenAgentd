@@ -40,7 +40,12 @@ from app.agent.mode.team.member import (
 from app.agent.mode.team.manage import make_team_manage_tool
 from app.agent.mode.team.question import make_ask_user_tool
 from app.agent.mode.team.tools import make_team_message_tool
-from app.agent.schemas.chat import AssistantMessage, HumanMessage, ToolMessage
+from app.agent.schemas.chat import (
+    AssistantMessage,
+    ChatMessage,
+    HumanMessage,
+    ToolMessage,
+)
 from app.agent.schemas.events import DoneEvent
 from app.agent.tools.registry import Tool
 from app.core.db import DbFactory, resolve_db_factory
@@ -165,7 +170,7 @@ def _command_lock(session_id: str) -> asyncio.Lock:
     return lock
 
 
-def _is_interrupted_thinking_only_tail(messages: list) -> bool:
+def _is_interrupted_thinking_only_tail(messages: list[ChatMessage]) -> bool:
     """Return true for a stopped assistant row that has no visible output."""
     if not messages:
         return False
@@ -178,7 +183,7 @@ def _is_interrupted_thinking_only_tail(messages: list) -> bool:
     )
 
 
-def _tool_tail_has_matching_assistant_call(messages: list) -> bool:
+def _tool_tail_has_matching_assistant_call(messages: list[ChatMessage]) -> bool:
     """A trailing tool result is continuable only if a prior assistant called it."""
     if not messages or not isinstance(messages[-1], ToolMessage):
         return False

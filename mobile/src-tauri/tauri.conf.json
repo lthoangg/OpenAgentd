@@ -21,7 +21,8 @@
         "height": 844,
         "resizable": true,
         "fullscreen": false,
-        "visible": true
+        "visible": true,
+        "backgroundColor": "#FAF6EC"
       }
     ],
     "security": {

@@ -103,53 +103,39 @@ export const TeamChatHeader = memo(function TeamChatHeader({
             uses one global nav entry and places Home inside the drawer. */}
         <div className={`mr-1 flex h-full min-w-0 shrink items-center gap-1 pl-2 md:mr-2 ${isMacOverlay ? '' : 'md:pl-3'}`}>
           {!isMobile && (
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <a
-                    href="/"
-                    aria-label="Home"
-                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
-                    onClick={(event) => {
-                      event.preventDefault()
-                      navigate({ to: '/' })
-                    }}
-                  >
-                    <Home size={14} strokeWidth={1.8} aria-hidden="true" />
-                  </a>
-                }
-              />
-              <TooltipContent>Home</TooltipContent>
-            </Tooltip>
+            <a
+              href="/"
+              aria-label="Home"
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-sm text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-7 md:w-7"
+              onClick={(event) => {
+                event.preventDefault()
+                navigate({ to: '/' })
+              }}
+            >
+              <Home size={14} strokeWidth={1.8} aria-hidden="true" />
+            </a>
           )}
 
           {/* Hamburger target depends on mode: coding sidebar toggle,
               mobile drawer, or a synthetic ⌘B/Ctrl+B for the normal sidebar
               (whose collapse state is owned by Sidebar). */}
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (mode === 'coding') {
-                      onCodingSidebarToggle()
-                    } else if (isMobile) {
-                      onMobileSidebarOpen()
-                    } else {
-                      // Sidebar's own window listener owns the ⌘B/Ctrl+B toggle.
-                      dispatchShortcutKey('b', os)
-                    }
-                  }}
-                  aria-label="Toggle sidebar"
-                  className="flex h-8 w-8 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-7 md:w-7"
-                >
-                  <PanelLeft size={14} strokeWidth={1.8} aria-hidden="true" />
-                </button>
+          <button
+            type="button"
+            onClick={() => {
+              if (mode === 'coding') {
+                onCodingSidebarToggle()
+              } else if (isMobile) {
+                onMobileSidebarOpen()
+              } else {
+                // Sidebar's own window listener owns the ⌘B/Ctrl+B toggle.
+                dispatchShortcutKey('b', os)
               }
-            />
-            <TooltipContent>{`Toggle sidebar (${formatShortcut('B', os)})`}</TooltipContent>
-          </Tooltip>
+            }}
+            aria-label="Toggle sidebar"
+            className="flex h-8 w-8 items-center justify-center rounded-sm text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-7 md:w-7"
+          >
+            <PanelLeft size={14} strokeWidth={1.8} aria-hidden="true" />
+          </button>
           {mode === 'coding' && workspace && !isMobile ? (
             <Tooltip className="ml-1 min-w-0 max-w-xs lg:max-w-md xl:max-w-xl">
               <TooltipTrigger

@@ -32,7 +32,7 @@ from loguru import logger
 
 from app.agent.agent_loop.streaming import stream_and_assemble
 from app.agent.agent_loop.tool_dispatch import gather_or_cancel
-from app.agent.agent_loop.tool_executor import make_tool_executor
+from app.agent.agent_loop.tool_executor import make_tool_executor, sanitize_error
 from app.agent.usage import usage_to_dict
 from app.agent.checkpointer import Checkpointer
 from app.agent.errors import ProviderRequestError, QuestionSuspended
@@ -1196,9 +1196,33 @@ class Agent(Generic[TContext]):
         tc,
         chain: ToolCallHandler,
     ) -> tuple:
-        """Execute a single tool call through the hook chain (semaphore-bounded)."""
+        """Execute a single tool call through the hook chain (semaphore-bounded).
+
+        ``tool_executor.execute`` (the innermost link) already turns ordinary
+        tool failures into an ``"Error: ..."`` string. This guards the *outer*
+        links — hooks' own ``wrap_tool_call`` code (permission checks, stream
+        publishing, etc.) — which run outside that try/except. Left uncaught,
+        such a failure would surface as a bare exception from ``gather_or_cancel``
+        and ``_append_tool_results`` would silently drop the tool's message,
+        leaving its ``tool_call_id`` unanswered in the transcript sent back to
+        the model (most providers reject that on the very next call).
+
+        ``QuestionSuspended`` is control flow, not a failure, and must keep
+        propagating so ``_dispatch_question`` can suspend the turn.
+        """
         async with self._tool_semaphore:
-            result = await chain(ctx, state, tc)
+            try:
+                result = await chain(ctx, state, tc)
+            except QuestionSuspended:
+                raise
+            except Exception as exc:
+                logger.warning(
+                    "tool_chain_error agent={} tool={} error={}",
+                    self.name,
+                    tc.function.name,
+                    exc,
+                )
+                result = f"Error: {sanitize_error(str(exc))}"
             return tc, result
 
     @staticmethod

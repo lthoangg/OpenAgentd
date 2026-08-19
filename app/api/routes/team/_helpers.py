@@ -138,6 +138,38 @@ class ResolvedChatTeam:
     workspace: str | None
 
 
+async def resolve_team_for_existing_session(
+    db: AsyncSession, session_id: str
+) -> AgentTeam:
+    """Return the team that owns an *already-persisted* session.
+
+    A coding session's persisted workspace is always authoritative — every
+    command dispatched against the session (``compact``, ``undo``, ``redo``,
+    ``redo-all``, ...) must resolve to the same coding team, never the
+    workspace-less default team. Sharing this lookup (rather than each
+    command branch re-implementing it) is what keeps that guarantee from
+    silently regressing when a new command is added.
+
+    Raises :class:`HTTPException` (422 invalid session id / workspace) as
+    the callers previously did inline.
+    """
+    try:
+        session_uuid = UUID(session_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="Invalid session id.") from exc
+    async with db.begin():
+        existing = await db.get(ChatSession, session_uuid)
+    if existing and existing.mode == "coding" and existing.workspace:
+        try:
+            return await team_manager.get_or_start_coding_team(
+                _validate_workspace_or_422(existing.workspace), session_id
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+    team_obj = await team_manager.get_or_start_team_for_session(session_id)
+    return _require_team(team_obj)
+
+
 async def resolve_chat_team(
     db: AsyncSession,
     *,

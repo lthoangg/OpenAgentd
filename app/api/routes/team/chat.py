@@ -27,6 +27,7 @@ from app.api.routes.team._helpers import (
     build_mention_context_blocks,
     persist_queued_user_message,
     resolve_chat_team,
+    resolve_team_for_existing_session,
     validate_model_settings,
 )
 from app.api.routes.agents import is_registered_model_id
@@ -430,23 +431,12 @@ async def team_command(
     Returns 409 with a human-readable ``detail`` when the command cannot
     be executed (lead is already working, invalid session state, etc.).
     """
-    team_obj = await team_manager.get_or_start_team_for_session(body.session_id)
-    team_obj = _require_team(team_obj)
-
-    if body.command == "compact":
-        try:
-            session_uuid = UUID(body.session_id)
-        except ValueError as exc:
-            raise HTTPException(status_code=422, detail="Invalid session id.") from exc
-        async with db.begin():
-            existing = await db.get(ChatSession, session_uuid)
-        if existing and existing.mode == "coding" and existing.workspace:
-            try:
-                team_obj = await team_manager.get_or_start_coding_team(
-                    _validate_workspace_or_422(existing.workspace), body.session_id
-                )
-            except ValueError as exc:
-                raise HTTPException(status_code=422, detail=str(exc)) from exc
+    # A coding session's team binding is authoritative regardless of which
+    # command is being run — every branch shares one lookup so a new
+    # command can't reintroduce the bug where only ``compact`` re-resolved
+    # to the coding team and ``undo``/``redo``/``redo-all`` silently ran
+    # (and got cached) against the workspace-less default team instead.
+    team_obj = await resolve_team_for_existing_session(db, body.session_id)
 
     if body.command == "compact":
         try:

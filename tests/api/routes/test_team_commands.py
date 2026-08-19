@@ -229,6 +229,87 @@ class TestPostTeamCommands:
         ]
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize("command", ["undo", "redo", "redo-all"])
+    async def test_command_uses_coding_team_for_coding_session(
+        self, app_with_lead_only_team, monkeypatch, tmp_path, command
+    ):
+        """Regression test: undo/redo must not run against the default team
+        for a coding session. Previously only ``compact`` re-resolved to the
+        coding team; ``undo``/``redo``/``redo-all`` ran on the workspace-less
+        default team, which then got cached in ``_session_teams`` and
+        silently replaced the coding team binding for every later turn of
+        the session.
+        """
+        sid = uuid.uuid7()
+        workspace = str(tmp_path)
+        await _seed_session_and_messages(
+            sid,
+            [
+                ("user", "first", None),
+                ("assistant", "first answer", None),
+                ("user", "second", None),
+                ("assistant", "second answer", None),
+            ],
+        )
+        async with _db.async_session_factory() as db:
+            async with db.begin():
+                session = await db.get(ChatSession, sid)
+                session.mode = "coding"
+                session.workspace = workspace
+
+        default_team = app_with_lead_only_team.state.test_team
+        coding_team = AgentTeam(
+            lead=TeamLead(
+                Agent(name="lead", llm_provider=MockProvider(), system_prompt="Lead"),
+                db_factory=_db.async_session_factory,
+            ),
+            members={},
+            mode="coding",
+            workspace=workspace,
+        )
+        await coding_team.start()
+        called: dict[str, object] = {}
+
+        async def fake_get_or_start_coding_team(requested_workspace, session_id):
+            called["workspace"] = requested_workspace
+            called["session_id"] = session_id
+            return coding_team
+
+        async def _fail(*_args, **_kwargs):
+            raise AssertionError(f"default team must not handle coding {command}")
+
+        monkeypatch.setattr(default_team, "handle_undo", _fail)
+        monkeypatch.setattr(default_team, "handle_redo", _fail)
+        monkeypatch.setattr(default_team, "handle_redo_all", _fail)
+        monkeypatch.setattr(
+            "app.api.routes.team.chat.team_manager.get_or_start_coding_team",
+            fake_get_or_start_coding_team,
+        )
+
+        try:
+            client = TestClient(app_with_lead_only_team)
+            if command in ("redo", "redo-all"):
+                # Need a real undone turn to redo — drive it through the
+                # (unmocked) coding team directly.
+                for _ in range(2 if command == "redo-all" else 1):
+                    prep = client.post(
+                        "/api/team/commands",
+                        json={"command": "undo", "session_id": str(sid)},
+                    )
+                    assert prep.status_code == 202
+                called.clear()
+            resp = client.post(
+                "/api/team/commands",
+                json={"command": command, "session_id": str(sid)},
+            )
+        finally:
+            await coding_team.stop()
+
+        assert resp.status_code == 202
+        assert called["workspace"] == workspace
+        assert called["session_id"] == str(sid)
+
+    @pytest.mark.asyncio
     async def test_redo_restores_next_undone_turn(self, app_with_lead_only_team):
         sid = uuid.uuid7()
         await _seed_session_and_messages(

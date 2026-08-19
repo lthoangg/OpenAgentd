@@ -216,8 +216,9 @@ function CommitDetail({
         const fileDiff = commitDiffSections.get(changedFile.path)?.diff
         return (
           <div key={changedFile.path} className="overflow-hidden rounded-sm border border-(--color-border-subtle) bg-(--bg-card)">
-            <Tooltip>
+            <Tooltip className="w-full">
               <TooltipTrigger
+                className="w-full"
                 render={
                   <LongPressButton
                     type="button"

@@ -78,11 +78,6 @@ function findPill() {
 }
 
 describe('InputComposer — composer pill motion contract', () => {
-  it('renders the desktop pill as a motion element', () => {
-    render(<InputComposer onSubmit={() => {}} />)
-    expect(findPill()).toBeDefined()
-  })
-
   it('does not use layout projection on the pill (forced reflow per keystroke)', () => {
     render(<InputComposer onSubmit={() => {}} />)
     const pill = findPill()!

@@ -37,7 +37,14 @@ export function ModelsPanel({
   savingVisibleModels: boolean
 }) {
   const push = useToastStore((s) => s.push)
-  const visibleSet = useMemo(() => new Set(visibleModels), [visibleModels])
+  // Drop visibility selections for models the provider no longer lists: a
+  // stale entry would whitelist nothing, hide every remaining model of the
+  // provider in pickers, and leave no row behind to un-select it. The model
+  // list is the single authority for which ids can be visible.
+  const visibleSet = useMemo(() => {
+    const inList = new Set(models)
+    return new Set(visibleModels.filter((id) => inList.has(id)))
+  }, [models, visibleModels])
   const allVisible = visibleSet.size === 0
 
   const handleCopy = async (qualifiedId: string) => {
@@ -63,7 +70,7 @@ export function ModelsPanel({
   const visibleCount = allVisible ? indexed.length : visibleSet.size
 
   const toggleVisibleModel = (modelId: string) => {
-    const next = new Set(visibleModels)
+    const next = new Set(visibleSet)
     if (next.has(modelId)) next.delete(modelId)
     else next.add(modelId)
     void onSaveVisibleModels(Array.from(next).sort())

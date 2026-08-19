@@ -280,7 +280,7 @@ def test_list_providers_reads_provider_ui_state_from_one_settings_snapshot(
         providers={
             "googlegenai": runtime_settings.ProviderUiSettings(
                 cached_models=["gemini-cached"],
-                visible_models=["gemini-visible"],
+                visible_models=["gemini-cached"],
                 is_disconnected=True,
             )
         }
@@ -306,7 +306,7 @@ def test_list_providers_reads_provider_ui_state_from_one_settings_snapshot(
         if provider["id"] == "googlegenai"
     )
     assert google["cached_models"] == ["gemini-cached"]
-    assert google["visible_models"] == ["gemini-visible"]
+    assert google["visible_models"] == ["gemini-cached"]
     assert google["is_disconnected"] is True
 
     refreshed = client.get("/api/settings/providers")
@@ -319,6 +319,35 @@ def test_list_providers_reads_provider_ui_state_from_one_settings_snapshot(
     assert refreshed_google["visible_models"] == ["gemini-refreshed"]
     assert refreshed_google["is_disconnected"] is False
     assert load_settings.call_count == 2
+
+
+def test_list_providers_prunes_stale_visible_models(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Providers list only reports visible models the provider still lists;
+    a stale entry is dropped instead of whitelisting nothing."""
+    from app.core import runtime_settings
+
+    snapshot = runtime_settings.RuntimeSettings(
+        providers={
+            "googlegenai": runtime_settings.ProviderUiSettings(
+                cached_models=["gemini-cached"],
+                visible_models=["gemini-cached", "gemini-retired"],
+            )
+        }
+    )
+    monkeypatch.setattr(runtime_settings, "load_runtime_settings", lambda: snapshot)
+
+    client = TestClient(_make_app())
+    response = client.get("/api/settings/providers")
+
+    assert response.status_code == 200
+    google = next(
+        provider
+        for provider in response.json()["providers"]
+        if provider["id"] == "googlegenai"
+    )
+    assert google["visible_models"] == ["gemini-cached"]
 
 
 def test_list_providers_marks_configured_when_env_var_set(

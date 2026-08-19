@@ -23,7 +23,11 @@ function placeholderRegistryFromProviders(data: ProvidersListBody | undefined): 
 
   const models: ModelCatalogEntry[] = []
   for (const provider of data.providers) {
-    const visible = new Set(provider.visible_models)
+    // Ignore visible selections for models the provider no longer lists: a
+    // stale entry would whitelist nothing and hide every remaining model of
+    // the provider while the real registry is loading.
+    const cached = new Set(provider.cached_models)
+    const visible = new Set(provider.visible_models.filter((m) => cached.has(m)))
     for (const model of provider.cached_models) {
       if (visible.size > 0 && !visible.has(model)) continue
       models.push({

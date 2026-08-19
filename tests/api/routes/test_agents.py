@@ -432,6 +432,43 @@ async def test_registry_filters_cached_models_using_refreshed_visible_models(
 
 
 @pytest.mark.asyncio
+async def test_registry_ignores_visible_models_no_longer_listed(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """A stale visible entry (the provider dropped the model) must not hide
+    the provider's remaining models — the visible whitelist is limited to
+    models the provider still lists."""
+    from app.api.routes import agents as agents_routes
+    from app.core.runtime_settings import ProviderUiSettings, RuntimeSettings
+
+    load_settings = Mock(
+        return_value=RuntimeSettings(
+            providers={
+                "openai": ProviderUiSettings(
+                    cached_models=["shown-model", "hidden-model"],
+                    visible_models=["retired-model"],
+                )
+            }
+        )
+    )
+    monkeypatch.setattr(agents_routes, "load_runtime_settings", load_settings)
+    monkeypatch.setattr(
+        agents_routes,
+        "all_providers",
+        lambda: [{"id": "openai", "kind": "api_key", "label": "OpenAI"}],
+    )
+    monkeypatch.setattr(agents_routes, "_provider_is_configured", lambda _entry: False)
+    monkeypatch.setattr(agents_routes, "is_agent_model_id", lambda _model_id: True)
+
+    request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace()))
+    registry = await agents_routes.get_registry(request)
+
+    model_ids = {model.id for model in registry.models}
+    assert "openai:shown-model" in model_ids
+    assert "openai:hidden-model" in model_ids
+
+
+@pytest.mark.asyncio
 async def test_is_registered_model_reads_provider_ui_state_from_one_snapshot(
     monkeypatch: pytest.MonkeyPatch,
 ):

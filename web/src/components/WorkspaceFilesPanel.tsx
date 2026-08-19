@@ -829,7 +829,7 @@ export function WorkspaceFilesPanel({ open, sessionId, onClose }: WorkspaceFiles
                 <button
                   onClick={() => refetch()}
                   disabled={!sessionId || isFetching}
-                  className="flex h-11 w-11 items-center justify-center rounded text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) disabled:opacity-50 md:h-7 md:w-7"
+                  className="flex h-11 w-11 items-center justify-center rounded-sm text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) disabled:opacity-50 md:h-7 md:w-7"
                   aria-label="Refresh"
                 >
                   <RefreshCw size={14} className={isFetching ? 'animate-spin' : ''} />
@@ -843,7 +843,7 @@ export function WorkspaceFilesPanel({ open, sessionId, onClose }: WorkspaceFiles
               render={
                 <button
                   onClick={onClose}
-                  className="flex h-11 w-11 items-center justify-center rounded text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-7 md:w-7"
+                  className="flex h-11 w-11 items-center justify-center rounded-sm text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-7 md:w-7"
                   aria-label="Close workspace files panel"
                 >
                   <X size={14} />

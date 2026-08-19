@@ -181,7 +181,7 @@ export function SettingsHubPage() {
       <div className="mx-auto max-w-3xl space-y-4 p-3 sm:p-5">
         <header className="flex items-center gap-3 select-none">
           <span
-            className="flex h-9 w-9 items-center justify-center rounded bg-(--bg-key) text-(--color-text-muted) border border-(--color-border)"
+            className="flex h-9 w-9 items-center justify-center rounded-md bg-(--bg-key) text-(--color-text-muted) border border-(--color-border)"
             aria-hidden="true"
           >
             <Info size={15} />
@@ -248,7 +248,7 @@ export function SettingsHubPage() {
               onClick={() => void openExternalUrl('https://discord.gg/cz6GQHQUMg')}
               className="flex items-start gap-3 rounded-md border border-(--color-border) bg-(--bg-card) p-3 text-left transition-colors hover:bg-(--bg-key)/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)"
             >
-              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded bg-[#5865F2]/10 text-[#5865F2]" aria-hidden="true">
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-sm bg-[#5865F2]/10 text-[#5865F2]" aria-hidden="true">
                 <MessageSquare size={16} />
               </span>
               <div className="min-w-0 flex-1">
@@ -267,7 +267,7 @@ export function SettingsHubPage() {
               onClick={() => void openExternalUrl('https://www.facebook.com/groups/1256361676707935')}
               className="flex items-start gap-3 rounded-md border border-(--color-border) bg-(--bg-card) p-3 text-left transition-colors hover:bg-(--bg-key)/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)"
             >
-              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded bg-[#1877F2]/10 text-[#1877F2]" aria-hidden="true">
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-sm bg-[#1877F2]/10 text-[#1877F2]" aria-hidden="true">
                 <Users size={16} />
               </span>
               <div className="min-w-0 flex-1">

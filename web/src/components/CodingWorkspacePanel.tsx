@@ -1372,7 +1372,7 @@ export function CodingWorkspacePanel({
                           type="button"
                           onClick={() => void downloadCodingWorkspaceFile(workspace, activeTab.file)}
                           aria-label="Download file"
-                          className="flex h-9 w-9 items-center justify-center rounded text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) disabled:cursor-not-allowed disabled:opacity-40 md:h-auto md:w-auto md:p-1"
+                          className="flex h-9 w-9 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) disabled:cursor-not-allowed disabled:opacity-40 md:h-auto md:w-auto md:p-1"
                         >
                           <Download size={13} />
                         </button>

@@ -701,7 +701,7 @@ export function CodingFileViewerPanel({
                     onClick={() => void downloadCodingWorkspaceFile(workspace, file)}
                     disabled={deleted}
                     aria-label={deleted ? 'File deleted from workspace' : 'Download'}
-                    className="flex h-11 w-11 items-center justify-center rounded text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) disabled:cursor-not-allowed disabled:opacity-40 md:h-7 md:w-7"
+                    className="flex h-11 w-11 items-center justify-center rounded-sm text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) disabled:cursor-not-allowed disabled:opacity-40 md:h-7 md:w-7"
                   >
                     <Download size={14} />
                   </button>
@@ -710,7 +710,7 @@ export function CodingFileViewerPanel({
               <TooltipContent>{deleted ? 'File deleted from workspace' : 'Download'}</TooltipContent>
             </Tooltip>
             {kind === 'text' && !deleted && <CopyButton workspace={workspace} file={file} />}
-            <button type="button" onClick={onClose} className="flex h-11 w-11 items-center justify-center rounded text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-7 md:w-7" aria-label="Close file viewer">
+            <button type="button" onClick={onClose} className="flex h-11 w-11 items-center justify-center rounded-sm text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-7 md:w-7" aria-label="Close file viewer">
               <X size={14} />
             </button>
           </div>

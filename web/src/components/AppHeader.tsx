@@ -35,7 +35,7 @@ export interface AppHeaderProps {
 // Keep the controls inside the compact header while retaining a slightly
 // larger touch target on phones. All header icon buttons share this geometry.
 const ICON_BUTTON =
-  'flex h-11 w-11 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 md:h-7 md:w-7'
+  'flex h-11 w-11 items-center justify-center rounded-sm text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 md:h-7 md:w-7'
 
 function DefaultStatus() {
   return (

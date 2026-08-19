@@ -159,10 +159,8 @@ def _inject_team_tools(
         make_team_message_tool(mailbox, agent_name=agent_cfg.name, role=role),
         make_todo_manage_tool(role),
     ]
-    if mode == "coding":
-        from app.agent.tools.builtin.lsp import lsp_navigation
-
-        injected.append(lsp_navigation)
+    # lsp navigation is currently detached from AgentTeam.get_injected_tools
+    # (app/agent/mode/team/team.py) — mirrored here to match runtime.
     if role == "lead":
         injected.append(make_team_manage_tool(object()))  # schema does not read team
     for tool in injected:

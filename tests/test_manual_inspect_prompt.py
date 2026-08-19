@@ -58,14 +58,15 @@ def test_team_protocol_is_part_of_inspected_system_prompt():
     assert "## Member workflow" in member_prompt
 
 
-def test_coding_prompt_inspection_includes_lsp_runtime_tool():
+def test_coding_prompt_inspection_does_not_include_lsp_runtime_tool():
+    """lsp injection is temporarily detached — mirrored in _inject_team_tools."""
     lead = SimpleNamespace(role="lead", name="openagentd")
 
     normal = _inject_team_tools([], lead, mode="normal")
     coding = _inject_team_tools([], lead, mode="coding")
 
     assert "lsp" not in {tool["function"]["name"] for tool in normal}
-    assert "lsp" in {tool["function"]["name"] for tool in coding}
+    assert "lsp" not in {tool["function"]["name"] for tool in coding}
 
 
 def test_builtin_skill_budgets_count_stable_skill_bodies():

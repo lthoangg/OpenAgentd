@@ -637,15 +637,16 @@ class TestAgentTeamToolInjection:
     # it is not in any prompt, registry, or agent config — so these are the
     # assertions that decide whether the feature exists at runtime at all.
 
-    async def test_coding_agents_get_lsp(self, basic_team):
+    async def test_coding_agents_do_not_get_lsp(self, basic_team):
+        """lsp injection is temporarily detached (see AgentTeam.get_injected_tools)."""
         team = basic_team
         team.mode = "coding"
 
         lead_names = {t.name for t in team.get_injected_tools("lead")}
         member_names = {t.name for t in team.get_injected_tools("member_a")}
 
-        assert "lsp" in lead_names
-        assert "lsp" in member_names
+        assert "lsp" not in lead_names
+        assert "lsp" not in member_names
 
     async def test_normal_agents_do_not_get_lsp(self, basic_team):
         team = basic_team

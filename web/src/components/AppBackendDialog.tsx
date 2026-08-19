@@ -214,7 +214,7 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
 
         <div className="relative min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain touch-pan-y px-5 py-4">
           {/* Connected backend status line */}
-          <div className="rounded border border-(--color-border) bg-(--bg-card) p-3 font-mono text-[11px] text-(--color-text-muted) flex items-center justify-between select-none">
+          <div className="rounded-sm border border-(--color-border) bg-(--bg-card) p-3 font-mono text-[11px] text-(--color-text-muted) flex items-center justify-between select-none">
             <span className="truncate">
               Connected: <span className="text-(--color-text) font-semibold">{status?.base_url || apiBaseUrl().replace(/\/api$/, '')}</span>
             </span>
@@ -401,13 +401,13 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
           </p>
 
           {testedBaseUrl === normalizeServerBaseUrl(baseUrl) ? (
-            <div className="rounded border border-(--color-success)/25 bg-(--color-success-subtle) px-3.5 py-2.5 text-xs text-(--color-success)" role="status">
+            <div className="rounded-sm border border-(--color-success)/25 bg-(--color-success-subtle) px-3.5 py-2.5 text-xs text-(--color-success)" role="status">
               Connection successful.
             </div>
           ) : null}
 
           {error ? (
-            <div className="rounded border border-(--color-error)/25 bg-(--color-error-subtle) px-3.5 py-2.5 text-xs text-(--color-error)" role="alert">
+            <div className="rounded-sm border border-(--color-error)/25 bg-(--color-error-subtle) px-3.5 py-2.5 text-xs text-(--color-error)" role="alert">
               {error}
             </div>
           ) : null}

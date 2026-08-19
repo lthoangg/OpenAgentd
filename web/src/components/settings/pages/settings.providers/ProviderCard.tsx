@@ -225,17 +225,17 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
         </span>
 
         {isConfiguredButUnreachable ? (
-          <span className="inline-flex items-center gap-1 rounded bg-(--color-error-subtle) px-1.5 py-0.5 text-[9px] font-semibold text-(--color-error) border border-(--color-error)/15">
+          <span className="inline-flex items-center gap-1 rounded-xs bg-(--color-error-subtle) px-1.5 py-0.5 text-[9px] font-semibold text-(--color-error) border border-(--color-error)/15">
             <AlertCircle size={10} aria-hidden="true" />
             Failed
           </span>
         ) : provider.is_disconnected ? (
-          <span className="inline-flex items-center gap-1 rounded bg-(--bg-key) px-1.5 py-0.5 text-[9px] font-semibold text-(--color-text-muted) border border-(--color-border)">
+          <span className="inline-flex items-center gap-1 rounded-xs bg-(--bg-key) px-1.5 py-0.5 text-[9px] font-semibold text-(--color-text-muted) border border-(--color-border)">
             <WifiOff size={10} aria-hidden="true" />
             Hidden
           </span>
         ) : isConnected ? (
-          <span className="inline-flex items-center gap-1 rounded bg-(--color-success-subtle) px-1.5 py-0.5 text-[9px] font-semibold text-(--color-success) border border-(--color-success)/15">
+          <span className="inline-flex items-center gap-1 rounded-xs bg-(--color-success-subtle) px-1.5 py-0.5 text-[9px] font-semibold text-(--color-success) border border-(--color-success)/15">
             <CheckCircle2 size={10} aria-hidden="true" />
             Connected
           </span>

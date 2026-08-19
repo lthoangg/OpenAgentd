@@ -733,7 +733,7 @@ export function CodingSidebar({
                           event.preventDefault()
                           setDesktopWorkspaceActions({ path, kind: 'main', x: event.clientX, y: event.clientY })
                         }}
-                        className="flex min-w-0 flex-1 items-center gap-1.5 truncate rounded px-1.5 py-1 text-left text-xs"
+                        className="flex min-w-0 flex-1 items-center gap-1.5 truncate rounded-sm px-1.5 py-1 text-left text-xs"
                         aria-expanded={sourceIsExpanded}
                         aria-label={`${sourceIsExpanded ? 'Collapse' : 'Expand'} repository ${workspaceLabel(path)}`}
                       >
@@ -825,7 +825,7 @@ export function CodingSidebar({
                                     event.preventDefault()
                                     setDesktopWorkspaceActions({ path: directory, kind: 'worktree', source: path, worktree: worktreeInfo, x: event.clientX, y: event.clientY })
                                   }}
-                                  className={`flex min-w-0 flex-1 items-center gap-1.5 rounded px-1.5 py-0.5 text-left text-xs transition-colors ${isActive ? 'text-(--color-accent)' : 'text-(--color-text-2)'}`}
+                                  className={`flex min-w-0 flex-1 items-center gap-1.5 rounded-sm px-1.5 py-0.5 text-left text-xs transition-colors ${isActive ? 'text-(--color-accent)' : 'text-(--color-text-2)'}`}
                                   aria-expanded={isExpanded}
                                   aria-label={`${isExpanded ? 'Collapse' : 'Expand'} worktree ${item.name}`}
                                 >

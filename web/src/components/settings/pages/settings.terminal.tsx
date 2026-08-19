@@ -95,8 +95,8 @@ export function TerminalSettingsPage() {
                 <span
                   className={
                     availability
-                      ? 'rounded border border-(--color-border) bg-(--bg-key) px-1.5 py-0.5 text-[11px] font-medium text-(--color-text)'
-                      : 'rounded border border-(--color-error)/40 bg-(--color-error-subtle) px-1.5 py-0.5 text-[11px] font-medium text-(--color-error)'
+                      ? 'rounded-xs border border-(--color-border) bg-(--bg-key) px-1.5 py-0.5 text-[11px] font-medium text-(--color-text)'
+                      : 'rounded-xs border border-(--color-error)/40 bg-(--color-error-subtle) px-1.5 py-0.5 text-[11px] font-medium text-(--color-error)'
                   }
                 >
                   {availability ? 'Available' : 'Not found on this device'}

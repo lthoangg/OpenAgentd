@@ -120,7 +120,7 @@ export function MultiSelect({
             aria-haspopup="listbox"
             tabIndex={0}
             className={cn(
-              'flex min-h-11 w-full cursor-text flex-wrap items-center gap-1 rounded border border-(--color-border) bg-(--bg-input) px-1.5 py-1 text-xs text-(--color-text) transition-colors outline-none md:min-h-8',
+              'flex min-h-11 w-full cursor-text flex-wrap items-center gap-1 rounded-sm border border-(--color-border) bg-(--bg-input) px-1.5 py-1 text-xs text-(--color-text) transition-colors outline-none md:min-h-8',
               'focus-visible:border-(--focus-ring) focus-visible:ring-2 focus-visible:ring-(--focus-ring)/30',
               'aria-expanded:border-(--focus-ring)',
             )}
@@ -208,7 +208,7 @@ export function MultiSelect({
                     }}
                     onMouseEnter={() => setHighlight(i)}
                     className={cn(
-                      'flex min-h-11 w-full cursor-pointer items-start gap-2 rounded px-2 py-1.5 text-left transition-colors md:min-h-0',
+                      'flex min-h-11 w-full cursor-pointer items-start gap-2 rounded-xs px-2 py-1.5 text-left transition-colors md:min-h-0',
                       isHi ? 'bg-(--bg-key)' : 'hover:bg-(--bg-key)',
                     )}
                   >

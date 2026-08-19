@@ -95,7 +95,7 @@ function UpdateSettingsCard() {
   return (
     <SettingsSection title="Updates">
       <div className="flex items-start gap-3">
-        <span className="flex h-8.5 w-8.5 shrink-0 items-center justify-center rounded bg-(--bg-key) text-(--color-text-muted) border border-(--color-border)" aria-hidden="true">
+        <span className="flex h-8.5 w-8.5 shrink-0 items-center justify-center rounded-md bg-(--bg-key) text-(--color-text-muted) border border-(--color-border)" aria-hidden="true">
           <Download size={15} />
         </span>
         <div className="min-w-0 flex-1">
@@ -106,20 +106,20 @@ function UpdateSettingsCard() {
             </button>
           ) : null}
         </div>
-        <span className="rounded bg-(--bg-key) px-1.5 py-0.5 text-[9px] font-semibold text-(--color-text-muted) border border-(--color-border) select-none">{title}</span>
+        <span className="rounded-xs bg-(--bg-key) px-1.5 py-0.5 text-[9px] font-semibold text-(--color-text-muted) border border-(--color-border) select-none">{title}</span>
       </div>
 
       <div className="mt-4 flex flex-wrap justify-end gap-2">
-        <button className="rounded border border-(--color-border) bg-(--bg-card) px-2.5 py-1 text-xs font-medium text-(--color-text) hover:bg-(--bg-key)/40 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none" disabled={pending} onClick={() => void onCheck()}>
+        <button className="rounded-sm border border-(--color-border) bg-(--bg-card) px-2.5 py-1 text-xs font-medium text-(--color-text) hover:bg-(--bg-key)/40 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none" disabled={pending} onClick={() => void onCheck()}>
           Check for updates
         </button>
         {status?.status === 'available' ? (
-          <button className="rounded border border-(--color-border-strong) bg-(--bg-key) px-2.5 py-1 text-xs font-medium text-(--color-text) hover:bg-(--bg-key)/80 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none" disabled={pending} onClick={() => void onDownload()}>
+          <button className="rounded-sm border border-(--color-border-strong) bg-(--bg-key) px-2.5 py-1 text-xs font-medium text-(--color-text) hover:bg-(--bg-key)/80 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none" disabled={pending} onClick={() => void onDownload()}>
             Download
           </button>
         ) : null}
         {status?.status === 'downloaded' ? (
-          <button className="rounded border border-(--color-border-strong) bg-(--bg-key) px-2.5 py-1 text-xs font-medium text-(--color-text) hover:bg-(--bg-key)/80 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none" disabled={pending} onClick={() => void onInstall()}>
+          <button className="rounded-sm border border-(--color-border-strong) bg-(--bg-key) px-2.5 py-1 text-xs font-medium text-(--color-text) hover:bg-(--bg-key)/80 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none" disabled={pending} onClick={() => void onInstall()}>
             Install and restart
           </button>
         ) : null}
@@ -131,8 +131,8 @@ function UpdateSettingsCard() {
             <div className="flex items-center justify-between gap-3 border-b border-(--color-border) px-4 py-3 select-none">
               <h3 className="text-sm font-semibold">Release notes</h3>
               <div className="flex items-center gap-2">
-                {releaseNotes?.url ? <a className="rounded px-2 py-1 text-xs text-(--color-accent) hover:bg-(--bg-page)" href={releaseNotes.url} target="_blank" rel="noopener noreferrer" onClick={(event) => { event.preventDefault(); void openExternalUrl(releaseNotes.url!) }}>View in GitHub</a> : null}
-                <button className="rounded px-2 py-1 text-xs text-(--color-text-muted) hover:bg-(--bg-page)" onClick={() => setNotesOpen(false)}>Close</button>
+                {releaseNotes?.url ? <a className="rounded-sm px-2 py-1 text-xs text-(--color-accent) hover:bg-(--bg-page)" href={releaseNotes.url} target="_blank" rel="noopener noreferrer" onClick={(event) => { event.preventDefault(); void openExternalUrl(releaseNotes.url!) }}>View in GitHub</a> : null}
+                <button className="rounded-sm px-2 py-1 text-xs text-(--color-text-muted) hover:bg-(--bg-page)" onClick={() => setNotesOpen(false)}>Close</button>
               </div>
             </div>
             <div className="max-h-[24rem] overflow-y-auto px-4 py-3 text-(--color-text)">

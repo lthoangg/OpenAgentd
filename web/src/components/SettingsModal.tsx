@@ -94,7 +94,7 @@ function SidebarRow({
       {count !== undefined && count !== null && (
         <span
           className={cn(
-            'shrink-0 font-mono text-[10px] tabular-nums px-1.5 py-0.5 rounded border transition-colors',
+            'shrink-0 font-mono text-[10px] tabular-nums px-1.5 py-0.5 rounded-xs border transition-colors',
             active
               ? 'font-semibold text-(--color-text) bg-(--bg-page) border-(--color-border-strong)'
               : 'text-(--color-text-muted) bg-(--bg-key)/50 border-(--color-border)',

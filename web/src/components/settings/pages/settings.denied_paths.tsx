@@ -66,9 +66,9 @@ export function DeniedPathsSettingsPage() {
       intro={
         <>
           Glob patterns matched against the resolved absolute path. Use{' '}
-          <code className="rounded bg-(--bg-key) px-1 py-0.5 font-mono">**</code>{' '}
+          <code className="rounded-sm bg-(--bg-key) px-1 py-0.5 font-mono">**</code>{' '}
           for any depth and{' '}
-          <code className="rounded bg-(--bg-key) px-1 py-0.5 font-mono">*</code>{' '}
+          <code className="rounded-sm bg-(--bg-key) px-1 py-0.5 font-mono">*</code>{' '}
           for one path segment. The agent&rsquo;s workspace and shared memory
           are always reachable, even when a pattern would otherwise match.{' '}
           <DeniedPathsHelpPopover />
@@ -159,7 +159,7 @@ function DeniedPathsHelpPopover() {
         render={
           <button
             type="button"
-            className="inline-flex min-h-11 items-center gap-0.5 rounded text-(--color-text) underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 md:min-h-0"
+            className="inline-flex min-h-11 items-center gap-0.5 rounded-xs text-(--color-text) underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 md:min-h-0"
           >
             See examples
             <ChevronDown
@@ -177,7 +177,7 @@ function DeniedPathsHelpPopover() {
         <ul className="flex flex-col gap-1.5">
           {EXAMPLES.map((ex) => (
             <li key={ex.pattern} className="flex flex-col gap-0.5">
-              <code className="self-start rounded bg-(--bg-key) px-1.5 py-0.5 font-mono text-[10px] text-(--color-text)">
+              <code className="self-start rounded-sm bg-(--bg-key) px-1.5 py-0.5 font-mono text-[10px] text-(--color-text)">
                 {ex.pattern}
               </code>
               <span className="text-[10px] leading-snug text-(--color-text-muted)">

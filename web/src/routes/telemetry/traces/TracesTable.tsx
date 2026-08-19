@@ -122,7 +122,7 @@ export function TracesTable({
   if (embedded) return tableElement
 
   return (
-    <div className="overflow-x-auto rounded border border-(--color-border) bg-(--bg-card)">
+    <div className="overflow-x-auto rounded-sm border border-(--color-border) bg-(--bg-card)">
       {tableElement}
     </div>
   )

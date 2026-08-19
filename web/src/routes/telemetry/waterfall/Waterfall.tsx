@@ -46,7 +46,7 @@ export function Waterfall({
         </span>
         <span>Total {formatMs(bounds.duration_ms)}</span>
       </div>
-      <div className="overflow-x-auto rounded border border-(--color-border) bg-(--bg-card)">
+      <div className="overflow-x-auto rounded-sm border border-(--color-border) bg-(--bg-card)">
         <div className="min-w-[480px]">
           <div className="flex border-b border-(--color-border)/60 bg-(--bg-key)/25 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-(--color-text-muted)">
             <div className="w-48 shrink-0 sm:w-64">Span</div>

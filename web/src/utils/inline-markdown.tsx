@@ -46,7 +46,7 @@ const INLINE_MARKERS =
 const INLINE_CODE_ONLY = /`([^`\n]+)`/g
 
 const INLINE_CODE_CLASS =
-  'rounded bg-(--bg-key) px-1 py-0.5 font-mono text-[0.9em] text-(--color-text)'
+  'rounded-sm bg-(--bg-key) px-1 py-0.5 font-mono text-[0.9em] text-(--color-text)'
 
 function tokenizeInline(text: string, variant: 'full' | 'code'): React.ReactNode[] {
   const pattern = variant === 'code' ? INLINE_CODE_ONLY : INLINE_MARKERS

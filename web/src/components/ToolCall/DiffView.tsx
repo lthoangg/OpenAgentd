@@ -104,7 +104,7 @@ function SingleFileDiff({ path, kind, moveTo, lines, oldStart = 1, newStart = 1,
             {deletions > 0 && <span className="text-[var(--color-diff-del-text)]">-{deletions}</span>}
           </span>
         )}
-        <span className={`rounded px-1 py-px text-[9px] font-semibold tracking-wide uppercase select-none ${badgeClass} ${additions === 0 && deletions === 0 ? 'ml-auto' : ''}`}>
+        <span className={`rounded-xs px-1 py-px text-[9px] font-semibold tracking-wide uppercase select-none ${badgeClass} ${additions === 0 && deletions === 0 ? 'ml-auto' : ''}`}>
           {badgeLabel}
         </span>
         <ChevronRight

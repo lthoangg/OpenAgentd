@@ -391,7 +391,7 @@ function ImagePreview({ sessionId, file }: { sessionId: string; file: WorkspaceF
           src={url}
           alt={file.name}
           onClick={() => setOpen(true)}
-          className="max-h-full max-w-full cursor-zoom-in rounded border border-(--color-border) object-contain"
+          className="max-h-full max-w-full cursor-zoom-in rounded-sm border border-(--color-border) object-contain"
         />
       </div>
       <ImageLightbox src={url} alt={file.name} isOpen={open} onClose={() => setOpen(false)} />
@@ -408,7 +408,7 @@ function VideoPreview({ sessionId, file }: { sessionId: string; file: WorkspaceF
         controls
         preload="metadata"
         playsInline
-        className="block max-h-full max-w-full rounded border border-(--color-border) bg-black object-contain"
+        className="block max-h-full max-w-full rounded-sm border border-(--color-border) bg-black object-contain"
       />
     </div>
   )
@@ -610,7 +610,7 @@ export function CopyContentsButton({
             onClick={handleCopy}
             disabled={busy || tooLarge}
             aria-label={title}
-            className="flex items-center gap-1 rounded px-2 py-1 text-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2) disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-(--color-text-muted)"
+            className="flex items-center gap-1 rounded-sm px-2 py-1 text-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2) disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-(--color-text-muted)"
           >
             {copied ? (
               <Check size={12} className="text-(--color-success)" />
@@ -651,7 +651,7 @@ function PreviewArea({
           <DownloadWorkspaceFileButton
             sessionId={sessionId}
             file={file}
-            className="flex items-center gap-1 rounded px-2 py-1 text-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)"
+            className="flex items-center gap-1 rounded-sm px-2 py-1 text-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)"
           >
             <Download size={12} />
           </DownloadWorkspaceFileButton>

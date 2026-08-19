@@ -85,7 +85,7 @@ export function CopyButton({ workspace, file }: { workspace: string; file: Works
             onClick={handleCopy}
             disabled={busy || tooLarge}
             aria-label={label}
-            className="flex h-9 min-w-9 items-center justify-center gap-1 rounded px-2 text-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2) disabled:cursor-not-allowed disabled:opacity-40 md:h-auto md:min-w-0 md:py-1"
+            className="flex h-9 min-w-9 items-center justify-center gap-1 rounded-md px-2 text-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2) disabled:cursor-not-allowed disabled:opacity-40 md:h-auto md:min-w-0 md:py-1"
           >
             {copied ? <Check size={12} className="text-(--color-success)" /> : busy ? <Loader2 size={12} className="animate-spin" /> : <Copy size={12} />}
           </button>
@@ -316,7 +316,7 @@ function TextPreview({
                           event.stopPropagation()
                           onAddComment?.(file.path, selectedStart, selectedEnd)
                         }}
-                        className="flex h-4 w-4 items-center justify-center rounded border border-(--color-border-strong) bg-(--bg-card) text-(--color-text-muted) shadow hover:bg-(--bg-key) hover:text-(--color-text)"
+                        className="flex h-4 w-4 items-center justify-center rounded-xs border border-(--color-border-strong) bg-(--bg-card) text-(--color-text-muted) shadow hover:bg-(--bg-key) hover:text-(--color-text)"
                         aria-label={selectedStart === selectedEnd ? `Add comment for line ${selectedStart}` : `Add comment for lines ${selectedStart}-${selectedEnd}`}
                       >
                         <Plus size={13} aria-hidden="true" />
@@ -359,7 +359,7 @@ function ImagePreview({ workspace, file }: { workspace: string; file: WorkspaceF
         className="flex h-full min-h-0 w-full items-center justify-center overflow-auto overscroll-contain touch-pan-y bg-(--bg-page) p-4"
         aria-label={`Open ${file.name} preview in lightbox`}
       >
-        <img src={url} alt={file.name} className="block max-h-full max-w-full rounded border border-(--color-border) object-contain" />
+        <img src={url} alt={file.name} className="block max-h-full max-w-full rounded-sm border border-(--color-border) object-contain" />
       </button>
       <FileLightbox
         items={[{ type: 'image', src: url, name: file.name }]}
@@ -388,7 +388,7 @@ function VideoPreview({ workspace, file }: { workspace: string; file: WorkspaceF
           controls
           preload="metadata"
           playsInline
-          className="block max-h-full max-w-full rounded border border-(--color-border) bg-black object-contain"
+          className="block max-h-full max-w-full rounded-sm border border-(--color-border) bg-black object-contain"
         />
       </button>
       <FileLightbox
@@ -419,7 +419,7 @@ function PdfPreview({ workspace, file }: { workspace: string; file: WorkspaceFil
         <PdfThumbnail
           src={url}
           className="flex h-full w-full items-center justify-center"
-          canvasClassName="max-h-full max-w-full rounded border border-(--color-border) object-contain"
+          canvasClassName="max-h-full max-w-full rounded-sm border border-(--color-border) object-contain"
         />
       </button>
       <FileLightbox

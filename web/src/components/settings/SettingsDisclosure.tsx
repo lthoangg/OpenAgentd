@@ -76,7 +76,7 @@ export function SettingsDisclosure({
           )}
           {dirty && (
             <span
-              className="ml-auto shrink-0 rounded border border-(--color-border) bg-(--bg-page) px-1.5 py-0.5 text-[10px] font-semibold text-(--color-text)"
+              className="ml-auto shrink-0 rounded-xs border border-(--color-border) bg-(--bg-page) px-1.5 py-0.5 text-[10px] font-semibold text-(--color-text)"
               aria-label="This group has unsaved changes"
             >
               edited

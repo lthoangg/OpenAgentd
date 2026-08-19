@@ -490,7 +490,7 @@ export function Sidebar({
                         render={
                           <button
                             onClick={() => refetchSessions()}
-                            className="rounded p-1 text-(--color-text-subtle) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-muted)"
+                            className="rounded-xs p-1 text-(--color-text-subtle) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-muted)"
                             aria-label="Refresh sessions"
                           >
                             <RefreshCw size={12} className={sessions.isFetching ? 'animate-spin' : ''} />
@@ -868,7 +868,7 @@ const SessionRow = memo(function SessionRow({ session, isActive, onSelect, onDel
               </motion.p>
             </AnimatePresence>
             {isScheduled && (
-              <span className="shrink-0 rounded px-1 py-px text-[10px] leading-tight bg-(--bg-key) text-(--color-text-subtle)">
+              <span className="shrink-0 rounded-xs px-1 py-px text-[10px] leading-tight bg-(--bg-key) text-(--color-text-subtle)">
                 sched
               </span>
             )}
@@ -879,7 +879,7 @@ const SessionRow = memo(function SessionRow({ session, isActive, onSelect, onDel
             )}
             {needsInput && (
               <span
-                className="shrink-0 rounded px-1 py-px text-[10px] leading-tight bg-(--color-warning)/15 text-(--color-warning)"
+                className="shrink-0 rounded-xs px-1 py-px text-[10px] leading-tight bg-(--color-warning)/15 text-(--color-warning)"
                 aria-label="Session needs your input"
               >
                 asks
@@ -902,7 +902,7 @@ const SessionRow = memo(function SessionRow({ session, isActive, onSelect, onDel
           e.stopPropagation()
           onEdit(session)
         }}
-        className="absolute right-7 top-1/2 flex -translate-y-1/2 items-center justify-center rounded p-1 text-(--color-text-subtle) opacity-0 transition-all hover:bg-(--bg-key) hover:text-(--color-text) group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:opacity-100"
+        className="absolute right-7 top-1/2 flex -translate-y-1/2 items-center justify-center rounded-xs p-1 text-(--color-text-subtle) opacity-0 transition-all hover:bg-(--bg-key) hover:text-(--color-text) group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:opacity-100"
         aria-label={`Edit session ${session.title || 'Untitled'}`}
       >
         <Pencil size={12} />
@@ -911,7 +911,7 @@ const SessionRow = memo(function SessionRow({ session, isActive, onSelect, onDel
       {/* Delete on hover */}
       <button
         onClick={(e) => onDelete(e, session)}
-        className="absolute right-1.5 top-1/2 flex -translate-y-1/2 items-center justify-center rounded p-1 text-(--color-text-subtle) opacity-0 transition-all hover:bg-(--color-error-subtle) hover:text-(--color-error) group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:opacity-100"
+        className="absolute right-1.5 top-1/2 flex -translate-y-1/2 items-center justify-center rounded-xs p-1 text-(--color-text-subtle) opacity-0 transition-all hover:bg-(--color-error-subtle) hover:text-(--color-error) group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:opacity-100"
         aria-label={`Delete session ${session.title || 'Untitled'}`}
       >
         <Trash2 size={12} />

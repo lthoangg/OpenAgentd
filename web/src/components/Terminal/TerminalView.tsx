@@ -283,7 +283,7 @@ function ReconnectButton({ onClick }: { onClick: () => void }) {
     <button
       type="button"
       onClick={onClick}
-      className="min-h-8 rounded border border-(--color-border) px-3 py-1 text-xs text-(--color-text-2) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) active:bg-(--bg-key)"
+      className="min-h-8 rounded-sm border border-(--color-border) px-3 py-1 text-xs text-(--color-text-2) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) active:bg-(--bg-key)"
     >
       Reconnect
     </button>

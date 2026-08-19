@@ -245,7 +245,7 @@ export function ModelCombobox({
               left: anchorRect.left,
               width: anchorRect.width,
             }}
-            className="z-50 max-h-64 overflow-y-auto overscroll-contain rounded border border-(--color-border) bg-(--bg-card) p-1 shadow-md"
+            className="z-50 max-h-64 overflow-y-auto overscroll-contain rounded-sm border border-(--color-border) bg-(--bg-card) p-1 shadow-md"
           >
             {filtered.length === 0 ? (
               <li className="px-3 py-3 text-center text-xs text-(--color-text-muted)">
@@ -267,7 +267,7 @@ export function ModelCombobox({
                       onClick={() => commit(o.id)}
                       onMouseEnter={() => setHighlight(i)}
                       className={cn(
-                        'flex w-full items-center justify-between gap-2 rounded px-2 py-1 text-left font-mono text-xs transition-colors cursor-pointer',
+                        'flex w-full items-center justify-between gap-2 rounded-xs px-2 py-1 text-left font-mono text-xs transition-colors cursor-pointer',
                         isHi ? 'bg-(--bg-key)' : '',
                         isSel ? 'text-(--color-text)' : 'text-(--color-text-2)',
                       )}

@@ -165,7 +165,7 @@ function CommitSyncBadge({
         render={
           <span
             className={cn(
-              'rounded border border-(--color-border-subtle) bg-(--bg-card) px-1 py-0.5 font-mono text-[9px] font-semibold leading-none',
+              'rounded-xs border border-(--color-border-subtle) bg-(--bg-card) px-1 py-0.5 font-mono text-[9px] font-semibold leading-none',
               isAhead ? 'text-(--color-diff-add-text)' : 'text-(--color-diff-del-text)',
             )}
           >
@@ -215,7 +215,7 @@ function CommitDetail({
         const expanded = expandedCommitFiles.has(changedFile.path)
         const fileDiff = commitDiffSections.get(changedFile.path)?.diff
         return (
-          <div key={changedFile.path} className="overflow-hidden rounded border border-(--color-border-subtle) bg-(--bg-card)">
+          <div key={changedFile.path} className="overflow-hidden rounded-sm border border-(--color-border-subtle) bg-(--bg-card)">
             <Tooltip>
               <TooltipTrigger
                 render={
@@ -853,7 +853,7 @@ export function CodingWorkspacePanel({
                             closeTab(tabItem.id)
                           }
                         }}
-                        className="ml-0.5 rounded text-(--color-text-subtle) opacity-70 hover:text-(--color-text) md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100"
+                        className="ml-0.5 rounded-xs text-(--color-text-subtle) opacity-70 hover:text-(--color-text) md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100"
                         aria-label={`Close ${tabItem.title}`}
                       >
                         <X size={11} aria-hidden="true" />
@@ -958,7 +958,7 @@ export function CodingWorkspacePanel({
                         type="button"
                         onClick={() => setSubTab('changes')}
                         className={cn(
-                          'flex-1 rounded py-1 text-center text-[11px] font-medium transition-colors cursor-pointer',
+                          'flex-1 rounded-xs py-1 text-center text-[11px] font-medium transition-colors cursor-pointer',
                           subTab === 'changes'
                             ? 'bg-(--bg-page) text-(--color-text) shadow-xs border border-(--color-border-strong)'
                             : 'text-(--color-text-muted) hover:text-(--color-text)'
@@ -970,7 +970,7 @@ export function CodingWorkspacePanel({
                         type="button"
                         onClick={() => setSubTab('commits')}
                         className={cn(
-                          'flex-1 rounded py-1 text-center text-[11px] font-medium transition-colors cursor-pointer',
+                          'flex-1 rounded-xs py-1 text-center text-[11px] font-medium transition-colors cursor-pointer',
                           subTab === 'commits'
                             ? 'bg-(--bg-page) text-(--color-text) shadow-xs border border-(--color-border-strong)'
                             : 'text-(--color-text-muted) hover:text-(--color-text)'
@@ -990,7 +990,7 @@ export function CodingWorkspacePanel({
                         type="button"
                         onClick={() => setSubTab('tree')}
                         className={cn(
-                          'flex-1 rounded py-1 text-center text-[11px] font-medium transition-colors cursor-pointer',
+                          'flex-1 rounded-xs py-1 text-center text-[11px] font-medium transition-colors cursor-pointer',
                           subTab === 'tree'
                             ? 'bg-(--bg-page) text-(--color-text) shadow-xs border border-(--color-border-strong)'
                             : 'text-(--color-text-muted) hover:text-(--color-text)'
@@ -1032,7 +1032,7 @@ export function CodingWorkspacePanel({
                       </button>
                     )}
                     {subTab === 'tree' && (
-                      <label className="flex h-7 cursor-pointer select-none items-center gap-1.5 rounded border border-transparent px-1.5 text-[11px] text-(--color-text-muted) transition-colors">
+                      <label className="flex h-7 cursor-pointer select-none items-center gap-1.5 rounded-sm border border-transparent px-1.5 text-[11px] text-(--color-text-muted) transition-colors">
                         <Checkbox
                           checked={allBranches}
                           onChange={(event) => setAllBranches(event.currentTarget.checked)}
@@ -1058,14 +1058,14 @@ export function CodingWorkspacePanel({
                     <p className="px-2 py-4 text-xs text-(--color-text-subtle)">No changed files</p>
                   ) : (
                     <div>
-                      {diff.data.truncated && <p className="mb-2 rounded bg-(--color-warning)/10 px-2 py-1 text-xs text-(--color-warning)">Changed list may be incomplete because the diff was truncated.</p>}
+                      {diff.data.truncated && <p className="mb-2 rounded-sm bg-(--color-warning)/10 px-2 py-1 text-xs text-(--color-warning)">Changed list may be incomplete because the diff was truncated.</p>}
                       <div className="space-y-2">
                         {changedFiles.map((changedFile) => {
                           const isSelected = selectedFilePath === changedFile.path
                           const expanded = expandedDiffs.has(changedFile.path)
                           const fileDiff = diffSections.get(changedFile.path)?.diff
                           return (
-                            <div key={changedFile.path} className="group overflow-hidden rounded border border-(--color-border-subtle) bg-(--bg-card)">
+                            <div key={changedFile.path} className="group overflow-hidden rounded-sm border border-(--color-border-subtle) bg-(--bg-card)">
                               <Tooltip className="w-full">
                                 <TooltipTrigger
                                   className="w-full"
@@ -1107,7 +1107,7 @@ export function CodingWorkspacePanel({
                                             openFileTab(file)
                                           }}
                                           onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') e.currentTarget.click() }}
-                                          className="hidden shrink-0 rounded p-0.5 text-(--color-text-subtle) opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 hover:text-(--color-text) md:block"
+                                          className="hidden shrink-0 rounded-xs p-0.5 text-(--color-text-subtle) opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 hover:text-(--color-text) md:block"
                                           aria-label={`Open ${changedFile.path}`}
                                         >
                                           <ExternalLink size={11} aria-hidden="true" />
@@ -1148,7 +1148,7 @@ export function CodingWorkspacePanel({
                         {commits.map((commit) => {
                           const isExpanded = expandedCommitSha === commit.sha
                           return (
-                          <div key={commit.sha} data-commit-sha={commit.sha} className="overflow-hidden rounded border border-(--color-border-subtle) bg-(--bg-card) p-2 transition-colors hover:border-(--color-border) hover:bg-(--bg-key)">
+                          <div key={commit.sha} data-commit-sha={commit.sha} className="overflow-hidden rounded-sm border border-(--color-border-subtle) bg-(--bg-card) p-2 transition-colors hover:border-(--color-border) hover:bg-(--bg-key)">
                             <LongPressButton
                               type="button"
                               onClick={(e) => {
@@ -1201,7 +1201,7 @@ export function CodingWorkspacePanel({
                                     <TooltipContent>{safeDecodeURIComponent(commit.subject)}</TooltipContent>
                                   </Tooltip>
                                 </div>
-                                <span className="shrink-0 rounded border border-(--color-border-subtle) bg-(--bg-card) px-1 py-0.5 font-mono text-[9px] text-(--color-text-subtle)">
+                                <span className="shrink-0 rounded-xs border border-(--color-border-subtle) bg-(--bg-card) px-1 py-0.5 font-mono text-[9px] text-(--color-text-subtle)">
                                   {commit.short_sha}
                                 </span>
                               </div>
@@ -1209,7 +1209,7 @@ export function CodingWorkspacePanel({
                               {commit.refs && (
                                 <div className="flex flex-wrap gap-1 mt-0.5">
                                   {commit.refs.split(',').map((ref) => (
-                                    <span key={ref} className="text-[9px] font-semibold px-1 rounded bg-(--color-accent)/10 text-(--color-accent) border border-(--color-accent)/20">
+                                    <span key={ref} className="text-[9px] font-semibold px-1 rounded-xs bg-(--color-accent)/10 text-(--color-accent) border border-(--color-accent)/20">
                                       {ref.trim()}
                                     </span>
                                   ))}
@@ -1225,7 +1225,7 @@ export function CodingWorkspacePanel({
                             {isExpanded && (
                               <>
                                 {commit.body && (
-                                  <p className="mt-2 max-h-32 overflow-y-auto touch-pan-y whitespace-pre-wrap break-words rounded border border-(--color-border) bg-(--bg-page) px-2 py-1.5 text-[11px] leading-relaxed text-(--color-text-2)">
+                                  <p className="mt-2 max-h-32 overflow-y-auto touch-pan-y whitespace-pre-wrap break-words rounded-sm border border-(--color-border) bg-(--bg-page) px-2 py-1.5 text-[11px] leading-relaxed text-(--color-text-2)">
                                     {commit.body}
                                   </p>
                                 )}
@@ -1291,7 +1291,7 @@ export function CodingWorkspacePanel({
                                               setExpandedCommitSha(fullSha)
                                               setSubTab('commits')
                                             }}
-                                            className="shrink-0 cursor-pointer rounded border border-(--color-border-subtle) bg-(--bg-card) px-1 py-0.5 font-mono text-[9px] text-(--color-text-subtle) transition-colors hover:border-(--color-accent)/30 hover:bg-(--color-accent)/10 hover:text-(--color-accent)"
+                                            className="shrink-0 cursor-pointer rounded-xs border border-(--color-border-subtle) bg-(--bg-card) px-1 py-0.5 font-mono text-[9px] text-(--color-text-subtle) transition-colors hover:border-(--color-accent)/30 hover:bg-(--color-accent)/10 hover:text-(--color-accent)"
                                           >
                                             {line.sha.substring(0, 7)}
                                           </button>
@@ -1307,7 +1307,7 @@ export function CodingWorkspacePanel({
                                           const isHead = trimmed.includes('HEAD ->')
                                           const isRemote = trimmed.includes('origin/')
                                           const badgeClassName = cn(
-                                            "text-[8px] font-semibold px-1 py-0.5 rounded border truncate leading-none select-none",
+                                            "text-[8px] font-semibold px-1 py-0.5 rounded-xs border truncate leading-none select-none",
                                             isHead
                                               ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
                                               : isRemote

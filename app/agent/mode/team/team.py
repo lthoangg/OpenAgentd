@@ -1286,7 +1286,6 @@ class AgentTeam:
                     db,
                     lead_uuid,
                     HumanMessage(content=content),
-                    exclude_from_context=False,
                     extra={
                         "hidden_from_user": True,
                         "hidden_from_summary": True,

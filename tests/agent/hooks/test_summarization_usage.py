@@ -374,7 +374,7 @@ async def test_summary_usage_is_persisted_to_db():
             )
         ).all()
 
-    summary_row = next(r for r in rows if r.is_summary)
+    summary_row = next(r for r in rows if r.kind == "summary")
     stored = (summary_row.extra or {}).get("usage")
     assert stored is not None, "summary row must persist the summariser usage"
     assert stored["input"] == PROMPT_TOKENS

@@ -33,6 +33,16 @@ function stripCompactionPrefix(content: string): string {
 function sortMessages(msgs: MessageResponse[]): MessageResponse[] {
   const indexed = msgs.map((m, i) => ({ m, i }))
   indexed.sort((a, b) => {
+    // seq is the canonical position (anchored rows — compaction summaries,
+    // healed tool stubs — sit at their logical spot, not insertion time).
+    // Fall back to created_at for locally-built messages that lack it.
+    const sa = a.m.seq ?? 0
+    const sb = b.m.seq ?? 0
+    if (sa > 0 && sb > 0) {
+      if (sa !== sb) return sa - sb
+      if (a.m.id !== b.m.id) return a.m.id < b.m.id ? -1 : 1
+      return a.i - b.i
+    }
     const ta = a.m.created_at ? new Date(a.m.created_at).getTime() : 0
     const tb = b.m.created_at ? new Date(b.m.created_at).getTime() : 0
     if (ta !== tb) return ta - tb

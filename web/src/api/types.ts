@@ -158,6 +158,10 @@ export interface MessageResponse {
   tool_calls: Array<Partial<ToolCall> & { id: string; function?: Partial<ToolCall['function']> }> | null
   tool_call_id: string | null
   name: string | null
+  /** Canonical ordering key within a session — sort by (seq, id), not created_at. */
+  seq?: number
+  /** Row kind: chat | note | queued | summary | reverted. */
+  kind?: string
   is_summary: boolean
   is_hidden: boolean
   extra: Record<string, unknown> | null

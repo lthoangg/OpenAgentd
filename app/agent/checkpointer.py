@@ -19,7 +19,6 @@ from __future__ import annotations
 
 import copy
 from abc import ABC, abstractmethod
-from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 from uuid import UUID
 
@@ -42,6 +41,7 @@ from app.services.chat_service import (
     get_history_revision,
     get_messages_for_llm,
     save_message,
+    seq_before_row,
 )
 
 if TYPE_CHECKING:
@@ -84,10 +84,13 @@ def _summary_anchor_ids(
 
     :class:`~app.agent.hooks.SummarizationHook` *inserts* its summary into the
     middle of ``state.messages`` — directly before the window it kept verbatim —
-    but a fresh row takes ``utcnow()`` and would therefore sort after that whole
-    window. Since the visible transcript is ordered by ``created_at``, the
-    "Session compacted" divider then lands between the user's message and its
-    reply instead of at the boundary it actually marks.
+    but a fresh row takes the next append ``seq`` and would therefore sort
+    after that whole window. The summary's position *is* its compaction
+    boundary in the derived model, so it must be anchored before the first
+    kept row of the contiguous tail: pick the first persisted row after the
+    summary that is still in the window (not excluded) and not pinned —
+    pinned rows are scattered retained rows that live *below* the boundary
+    by design.
 
     Keyed by ``id(msg)`` so :meth:`SQLiteCheckpointer.sync` can look the anchor
     up while iterating its own filtered list of new messages.
@@ -97,26 +100,31 @@ def _summary_anchor_ids(
         if not msg.is_summary or id(msg) in persisted_ids:
             continue
         anchor = next(
-            (m.db_id for m in messages[idx + 1 :] if m.db_id is not None), None
+            (
+                m.db_id
+                for m in messages[idx + 1 :]
+                if m.db_id is not None and not m.exclude_from_context and not m.pinned
+            ),
+            None,
         )
         if anchor is not None:
             anchors[id(msg)] = anchor
     return anchors
 
 
-async def _resolve_summary_timestamps(
+async def _resolve_summary_seqs(
     db: "AsyncSession", anchors: dict[int, UUID]
-) -> dict[int, datetime]:
-    """Turn anchor row ids into the ``created_at`` each summary should take.
+) -> dict[int, int]:
+    """Turn anchor row ids into the ``seq`` each summary should take.
 
-    One microsecond *before* the anchor: enough to sort ahead of it, close
-    enough that no other row can slot in between.
+    The midpoint of the gap before the anchor row: sorts ahead of the kept
+    tail, behind everything the summary covers.
     """
-    resolved: dict[int, datetime] = {}
+    resolved: dict[int, int] = {}
     for key, anchor_id in anchors.items():
         row = await db.get(SessionMessage, anchor_id)
-        if row is not None and row.created_at is not None:
-            resolved[key] = row.created_at - timedelta(microseconds=1)
+        if row is not None:
+            resolved[key] = await seq_before_row(db, row.session_id, row)
     return resolved
 
 
@@ -247,7 +255,11 @@ class SQLiteCheckpointer(Checkpointer):
         self._agent_name = agent_name
         self._loaded: dict[str, AgentState] = {}
         self._loaded_revision: dict[str, tuple[int, int]] = {}
-        self._loaded_cursor: dict[str, tuple[datetime, UUID] | None] = {}
+        self._loaded_cursor: dict[str, tuple[int, UUID] | None] = {}
+        # Last pinned state flushed to (or loaded from) the DB per row —
+        # sync() only issues UPDATEs for rows whose in-memory ``pinned``
+        # diverged, so a settled conversation writes nothing.
+        self._flushed_pinned: dict[str, dict[UUID, bool]] = {}
 
     def mark_loaded(self, session_id: str, messages: list[ChatMessage]) -> None:
         """Register *messages* as already persisted in the DB.
@@ -262,8 +274,11 @@ class SQLiteCheckpointer(Checkpointer):
         most-recent assistant message so :meth:`seed_state` can apply it.
         """
         ids = self._persisted.setdefault(session_id, set())
+        pinned = self._flushed_pinned.setdefault(session_id, {})
         for msg in messages:
             ids.add(id(msg))
+            if msg.db_id is not None:
+                pinned.setdefault(msg.db_id, msg.pinned)
         # Me compute token seed — only overwrite if we find actual usage.
         # A second call (e.g. for the current user message) must not zero out
         # the value seeded by the first call (history with assistant usage).
@@ -351,20 +366,18 @@ class SQLiteCheckpointer(Checkpointer):
         return state
 
     async def sync(self, ctx: RunContext, state: AgentState) -> None:
-        """Persist new messages and propagate ``exclude_from_context`` changes.
+        """Persist new messages and flush ``pinned`` flag changes.
 
         Rules
         -----
-        * ``AssistantMessage`` — saved with ``extra``, ``is_summary``, and
-          ``exclude_from_context``.
+        * ``AssistantMessage`` — saved with ``extra`` and its kind.
         * ``ToolMessage`` — saved with defaults.
         * ``SystemMessage`` / ``HumanMessage`` — skipped (human messages are
           saved by the route handler; system messages are never persisted).
-        * Already-persisted messages whose ``exclude_from_context`` flipped to
-          ``True`` are updated in the DB (``exclude_from_context=True``).
-        * Summary messages get an explicit ``created_at`` so the stored order
-          matches where the summariser inserted them — see
-          :func:`_summary_anchor_ids`.
+        * Compaction never rewrites history: exclusion is derived from the
+          summary row's anchored ``seq`` (see :func:`_summary_anchor_ids`).
+          The only per-row updates are ``pinned`` flips for the handful of
+          retained skill pairs, and only when they actually changed.
         """
         sid = ctx.session_id or ""
         # Me init tracking sets for this session on first sync
@@ -380,41 +393,42 @@ class SQLiteCheckpointer(Checkpointer):
         if not new_messages and not seen_messages:
             return
 
-        # ── Update exclude_from_context on already-persisted messages ─────
-        # One-way conditional UPDATE avoids re-reading every tracked row.
-        # Computed *before* opening a session: ``sync`` runs on every agent
-        # step, and on a settled conversation both this and ``new_messages``
-        # are empty, so entering a transaction only to commit nothing was pure
-        # per-step overhead.
-        exclude_ids = [
-            msg.db_id
-            for msg in seen_messages
-            if not isinstance(msg, SystemMessage)
-            and msg.exclude_from_context
-            and msg.db_id is not None
-        ]
+        # ── Diff pinned flags on already-persisted messages ────────────────
+        # SummarizationHook pins retained skill pairs and unpins rows it
+        # compacts away. Only rows whose flag actually diverged from what the
+        # DB holds are updated, so a settled conversation writes nothing.
+        flushed_pinned = self._flushed_pinned.setdefault(sid, {})
+        pin_updates: dict[UUID, bool] = {}
+        for msg in seen_messages:
+            if isinstance(msg, SystemMessage) or msg.db_id is None:
+                continue
+            if flushed_pinned.get(msg.db_id, False) != msg.pinned:
+                pin_updates[msg.db_id] = msg.pinned
 
         summary_anchors = _summary_anchor_ids(state.messages, persisted_ids)
 
         # NOTE: the stream-buffer commit further down must still run on a no-op
         # sync, so this guards only the DB work — it is deliberately not an
         # early return.
-        if new_messages or exclude_ids:
+        if new_messages or pin_updates:
             async with self._session_factory() as db:
                 async with db.begin():
-                    anchored_at = await _resolve_summary_timestamps(db, summary_anchors)
-                    if exclude_ids:
-                        stmt = (
+                    anchored_seq = await _resolve_summary_seqs(db, summary_anchors)
+                    for flag in (True, False):
+                        ids = [k for k, v in pin_updates.items() if v is flag]
+                        if not ids:
+                            continue
+                        await db.exec(
                             sa.update(SessionMessage)
-                            .where(col(SessionMessage.id).in_(exclude_ids))
-                            .where(col(SessionMessage.exclude_from_context).is_(False))
-                            .values(exclude_from_context=True)
+                            .where(col(SessionMessage.id).in_(ids))
+                            .values(pinned=flag)
                         )
-                        await db.exec(stmt)
+                    if pin_updates:
+                        flushed_pinned.update(pin_updates)
                         logger.debug(
-                            "checkpointer_exclude_flags_updated session_id={} count={}",
+                            "checkpointer_pinned_flags_updated session_id={} count={}",
                             sid,
-                            len(exclude_ids),
+                            len(pin_updates),
                         )
 
                     # ── Persist new messages ──────────────────────────────────────────
@@ -443,14 +457,14 @@ class SQLiteCheckpointer(Checkpointer):
                                 UUID(sid),
                                 msg,
                                 is_summary=msg.is_summary,
-                                exclude_from_context=msg.exclude_from_context,
+                                pinned=msg.pinned,
                                 extra=msg.extra,
-                                created_at=anchored_at.get(id(msg)),
+                                seq=anchored_seq.get(id(msg)),
                             )
                             msg.db_id = row.id
                         elif isinstance(msg, ToolMessage):
                             row = await save_message(
-                                db, UUID(sid), msg, extra=msg.extra
+                                db, UUID(sid), msg, pinned=msg.pinned, extra=msg.extra
                             )
                             msg.db_id = row.id
                         elif isinstance(msg, HumanMessage):
@@ -463,9 +477,9 @@ class SQLiteCheckpointer(Checkpointer):
                                     UUID(sid),
                                     msg,
                                     is_summary=msg.is_summary,
-                                    exclude_from_context=msg.exclude_from_context,
+                                    pinned=msg.pinned,
                                     extra=msg.extra,
-                                    created_at=anchored_at.get(id(msg)),
+                                    seq=anchored_seq.get(id(msg)),
                                 )
                                 msg.db_id = row.id
                                 logger.debug(
@@ -483,7 +497,9 @@ class SQLiteCheckpointer(Checkpointer):
                             continue
 
                         persisted_ids.add(id(msg))
-                    if exclude_ids:
+                        if msg.db_id is not None:
+                            flushed_pinned[msg.db_id] = msg.pinned
+                    if pin_updates:
                         await bump_history_revision(db, UUID(sid), structural=True)
 
         # Me drop this agent's stream buffer — once the assistant text is in
@@ -504,7 +520,7 @@ class SQLiteCheckpointer(Checkpointer):
         # ``saved_assistant`` / ``saved_tool`` lines are gone too; ``new`` and
         # ``total_persisted`` summarise the same outcome, and ``db_id`` values
         # are recoverable from the session's message rows.
-        if new_messages or exclude_ids:
+        if new_messages or pin_updates:
             self.invalidate(sid)
         if new_messages:
             logger.debug(

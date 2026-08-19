@@ -38,10 +38,11 @@ def test_chat_session_recent_list_indexes_cover_mode_and_workspace() -> None:
 def test_session_messages_has_a_single_covering_history_index() -> None:
     """One index serves every ``session_messages`` read path.
 
-    Every query filters ``session_id`` then orders by ``created_at, id``
-    (``history_messages_stmt``, ``llm_history_messages_stmt``, and the
-    team-history window functions), so ``(session_id, created_at, id)``
-    satisfies both the filter and the sort — no temp B-tree.
+    Every query filters ``session_id`` then orders by ``seq, id``
+    (``history_messages_stmt``, ``llm_window_stmt``, and the team-history
+    window functions), so ``(session_id, seq, id)`` satisfies both the
+    filter and the sort — no temp B-tree. ``kind`` predicates apply as
+    residual filters.
 
     The two indexes it replaced were dead weight:
 
@@ -54,7 +55,7 @@ def test_session_messages_has_a_single_covering_history_index() -> None:
       while costing an index write per message.
     """
     assert _index_map(SessionMessage) == {
-        "ix_session_messages_session_created_id": ("session_id", "created_at", "id"),
+        "ix_session_messages_session_seq_id": ("session_id", "seq", "id"),
     }
 
 

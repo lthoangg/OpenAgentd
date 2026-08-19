@@ -18,7 +18,7 @@ from app.agent.schemas.chat import (
 )
 from app.agent.artifacts import session_artifact_dir
 from app.core.paths import session_workspace_dir, uploads_dir, workspace_dir
-from app.models.chat import ChatSession, SessionMessage
+from app.models.chat import SEQ_STEP, ChatSession, MessageKind, SessionMessage
 from app.services import chat_service_queue as _chat_service_queue
 from app.services import chat_service_revert as _chat_service_revert
 from app.services.chat_service_messages import (
@@ -27,12 +27,11 @@ from app.services.chat_service_messages import (
 )
 from app.services.chat_service_revert import (
     BoundaryShift,
-    boundary_created_at as _boundary_created_at,
     exclude_messages_before_summary as _exclude_messages_before_summary,
-    get_dynamically_visible_messages as _get_dynamically_visible_messages,
-    history_messages_stmt as _history_messages_stmt,
-    is_hidden_from_user as _is_hidden_from_user,
-    llm_history_messages_stmt as _llm_history_messages_stmt,
+    get_active_summary as _get_active_summary,
+    llm_window_stmt as _llm_window_stmt,
+    revert_boundary as _revert_boundary,
+    user_visible_predicate as _user_visible_predicate,
 )
 
 
@@ -101,36 +100,76 @@ async def get_history_revision(db: AsyncSession, session_id: UUID) -> tuple[int,
 
 async def get_history_cursor(
     db: AsyncSession, session_id: UUID
-) -> tuple[datetime, UUID] | None:
+) -> tuple[int, UUID] | None:
     """Return the newest persisted row's ordering cursor."""
     result = await db.exec(
-        select(SessionMessage.created_at, SessionMessage.id)
+        select(SessionMessage.seq, SessionMessage.id)
         .where(col(SessionMessage.session_id) == session_id)
-        .order_by(col(SessionMessage.created_at).desc(), col(SessionMessage.id).desc())
+        .order_by(col(SessionMessage.seq).desc(), col(SessionMessage.id).desc())
         .limit(1)
     )
     row = result.first()
     return (row[0], row[1]) if row else None
 
 
+async def next_seq(db: AsyncSession, session_id: UUID) -> int:
+    """Allocate the next append position for *session_id*."""
+    result = await db.exec(
+        select(sa.func.max(SessionMessage.seq)).where(
+            col(SessionMessage.session_id) == session_id
+        )
+    )
+    highest = result.first() or 0
+    return highest + SEQ_STEP
+
+
+def seq_between(prev_seq: int, next_seq_value: int) -> int:
+    """Midpoint position strictly between two rows.
+
+    When the gap is exhausted, returns *prev_seq* — the new row ties with the
+    previous one and uuid7 ``id`` tie-breaking (creation order) places it
+    after that row but before the next.
+    """
+    gap = next_seq_value - prev_seq
+    return prev_seq + gap // 2 if gap >= 2 else prev_seq
+
+
+async def seq_before_row(
+    db: AsyncSession, session_id: UUID, anchor: SessionMessage
+) -> int:
+    """Position for a row anchored directly *before* an existing row."""
+    result = await db.exec(
+        select(sa.func.max(SessionMessage.seq))
+        .where(col(SessionMessage.session_id) == session_id)
+        .where(col(SessionMessage.seq) < anchor.seq)
+    )
+    prev = result.first() or 0
+    return seq_between(prev, anchor.seq)
+
+
+async def _llm_window_rows(db: AsyncSession, session_id: UUID) -> list[SessionMessage]:
+    """Fetch the derived LLM window (boundary-aware)."""
+    boundary = await _revert_boundary(db, session_id)
+    summary = await _get_active_summary(db, session_id, boundary)
+    stmt = _llm_window_stmt(session_id, summary, boundary)
+    return list((await db.exec(stmt)).all())
+
+
 async def get_messages_for_llm_after(
     db: AsyncSession,
     session_id: UUID,
-    cursor: tuple[datetime, UUID],
+    cursor: tuple[int, UUID],
 ) -> list[ChatMessage]:
     """Deserialize only visible LLM rows after an append-only cursor."""
-    boundary = await _boundary_created_at(db, session_id)
-    stmt = (
-        _llm_history_messages_stmt(session_id)
-        if boundary is None
-        else _history_messages_stmt(session_id, boundary)
-    )
-    created_at, message_id = cursor
+    boundary = await _revert_boundary(db, session_id)
+    summary = await _get_active_summary(db, session_id, boundary)
+    stmt = _llm_window_stmt(session_id, summary, boundary)
+    seq, message_id = cursor
     stmt = stmt.where(
         sa.or_(
-            col(SessionMessage.created_at) > created_at,
+            col(SessionMessage.seq) > seq,
             sa.and_(
-                col(SessionMessage.created_at) == created_at,
+                col(SessionMessage.seq) == seq,
                 col(SessionMessage.id) > message_id,
             ),
         )
@@ -173,16 +212,7 @@ async def heal_orphaned_tool_calls(db: AsyncSession, session_id: UUID) -> int:
     Returns the number of synthetic rows inserted (``0`` in the healthy
     case).  Caller is responsible for the commit.
     """
-    boundary = await _boundary_created_at(db, session_id)
-    stmt = (
-        _llm_history_messages_stmt(session_id)
-        if boundary is None
-        else _history_messages_stmt(session_id, boundary)
-    )
-    rows = (await db.exec(stmt)).all()
-    db_messages = await _get_dynamically_visible_messages(
-        db, session_id, boundary, rows
-    )
+    db_messages = await _llm_window_rows(db, session_id)
 
     assistant_rows = [
         row for row in db_messages if row.role == "assistant" and row.tool_calls
@@ -210,24 +240,36 @@ async def heal_orphaned_tool_calls(db: AsyncSession, session_id: UUID) -> int:
     if not missing_by_row:
         return 0
 
-    # Anchor synthetic timestamps to the orphaned assistant message so
-    # that even if the user sends the next message in the same micro-
-    # second as the heal runs, the LLM input order is unambiguous:
+    # Anchor synthetic positions directly after the orphaned assistant row so
+    # the LLM input order is unambiguous even if the user sends the next
+    # message while the heal runs:
     # ``assistant{tool_calls} → tool (synth) → tool (synth) → … → user``.
-    # ``+1µs * (i+1)`` keeps multiple stubs strictly monotonic relative
-    # to one another, and well before any new ``utcnow()`` write.
+    # Successive midpoints keep multiple stubs strictly monotonic relative to
+    # one another; when a gap is exhausted the stubs tie with the assistant
+    # row and uuid7 id ordering keeps them directly behind it.
     healed_ids: list[str] = []
     for row, missing in missing_by_row:
+        next_row_seq = (
+            await db.exec(
+                select(sa.func.min(SessionMessage.seq))
+                .where(col(SessionMessage.session_id) == session_id)
+                .where(col(SessionMessage.seq) > row.seq)
+            )
+        ).first()
+        upper = next_row_seq if next_row_seq is not None else row.seq + 2 * SEQ_STEP
+        anchor_seq = row.seq
         for i, tc in enumerate(missing):
             stub = ToolMessage(
                 content=_INTERRUPTED_TOOL_RESULT,
                 tool_call_id=tc["id"],
                 name=tc.get("function", {}).get("name", "unknown"),
             )
+            anchor_seq = max(seq_between(anchor_seq, upper), anchor_seq)
             await save_message(
                 db,
                 session_id,
                 stub,
+                seq=anchor_seq,
                 created_at=row.created_at + timedelta(microseconds=i + 1),
             )
             healed_ids.append(tc["id"])
@@ -248,9 +290,11 @@ async def save_message(
     *,
     is_summary: bool = False,
     is_hidden: bool = False,
-    exclude_from_context: bool | None = None,
     extra: dict | None = None,
     created_at: datetime | None = None,
+    kind: str | None = None,
+    pinned: bool | None = None,
+    seq: int | None = None,
 ) -> SessionMessage:
     """Saves a ChatMessage to the database.
 
@@ -258,21 +302,20 @@ async def save_message(
         db: Async database session.
         session_id: The session to attach the message to.
         message: The chat message to persist.
-        is_summary: When ``True`` this message is a conversation summary
-            (produced by :class:`~app.hooks.summarization.SummarizationHook`).
-        is_hidden: Deprecated alias for ``exclude_from_context``.
-        exclude_from_context: When ``True`` this message is excluded from the
-            LLM context window but retained for audit / history.
-        created_at: Optional explicit timestamp.  Defaults to ``utcnow()``
-            via the model's Field default.  Used by
-            :func:`heal_orphaned_tool_calls` to anchor synthetic tool
-            replies immediately after the orphaned assistant message
-            (so the LLM sees ``assistant{tool_calls} → tool → user``,
-            not ``assistant{tool_calls} → user → tool``).
+        is_summary: Convenience for ``kind='summary'``.
+        is_hidden: Convenience for ``kind='note'`` (kept for callers that
+            predate the kind column).
+        kind: Explicit row kind — overrides the conveniences. When omitted it
+            is derived: summary → ``summary``; ``extra.hidden_from_user`` →
+            ``note``; otherwise ``chat``.
+        pinned: Position-independent LLM membership. Defaults to ``True`` for
+            notes saved with ``extra.hidden_from_summary`` (mention blocks,
+            roster changes — permanent internal context), else ``False``.
+        seq: Explicit position (heal stubs, anchored summaries). Defaults to
+            the next append position.
+        created_at: Optional explicit timestamp (display metadata only —
+            ordering is by ``seq``).
     """
-    # Me support both old and new param names during transition
-    _exclude = exclude_from_context if exclude_from_context is not None else is_hidden
-
     tool_calls = None
     tool_call_id = None
     name = None
@@ -290,7 +333,21 @@ async def save_message(
             next_extra["parts"] = [part.model_dump() for part in message.parts]
             extra = next_extra
 
+    if kind is None:
+        if is_summary:
+            kind = MessageKind.SUMMARY
+        elif is_hidden or (extra or {}).get("hidden_from_user"):
+            kind = MessageKind.NOTE
+        else:
+            kind = MessageKind.CHAT
+    if pinned is None:
+        pinned = kind == MessageKind.NOTE and bool(
+            (extra or {}).get("hidden_from_summary")
+        )
+
     try:
+        if seq is None:
+            seq = await next_seq(db, session_id)
         kwargs: dict = dict(
             session_id=session_id,
             role=message.role,
@@ -299,8 +356,9 @@ async def save_message(
             tool_calls=tool_calls,
             tool_call_id=tool_call_id,
             name=name,
-            is_summary=is_summary,
-            exclude_from_context=_exclude,
+            seq=seq,
+            kind=kind,
+            pinned=pinned,
             extra=extra,
         )
         if created_at is not None:
@@ -308,7 +366,7 @@ async def save_message(
         db_message = SessionMessage(**kwargs)
         db.add(db_message)
         await db.flush()
-        if is_summary:
+        if kind == MessageKind.SUMMARY:
             await bump_history_revision(db, session_id, structural=True)
         # Single post-save record for the whole operation.  This deliberately
         # carries the role-specific detail (tool-call count, tool name) that
@@ -316,15 +374,16 @@ async def save_message(
         # answers "what was persisted" without four lines per message.
         logger.debug(
             "message_saved session_id={} message_id={} role={} content_length={} "
-            "tool_calls={} tool={} is_summary={} exclude_from_context={}",
+            "tool_calls={} tool={} kind={} seq={} pinned={}",
             session_id,
             db_message.id,
             message.role,
             len(message.content or ""),
             len(tool_calls) if tool_calls else 0,
             name or "-",
-            is_summary,
-            _exclude,
+            kind,
+            seq,
+            pinned,
         )
         return db_message
     except Exception as e:
@@ -340,27 +399,25 @@ async def save_message(
 async def get_messages(db: AsyncSession, session_id: UUID) -> list[ChatMessage]:
     """Return the full conversation history for the session.
 
-    This is the list shown to the end user.  Summary messages (``is_summary=True``)
-    are included so the UI can render them.
+    This is the list shown to the end user: the derived LLM window (active
+    summary divider included) minus internal ``note`` rows.
 
     To get the context window sent to the LLM, use
     :func:`get_messages_for_llm` instead.
     """
     logger.debug("loading_messages session_id={}", session_id)
     try:
-        boundary = await _boundary_created_at(db, session_id)
-        rows = (await db.exec(_history_messages_stmt(session_id, boundary))).all()
-        db_messages = await _get_dynamically_visible_messages(
-            db, session_id, boundary, rows
-        )
+        db_messages = [
+            row
+            for row in await _llm_window_rows(db, session_id)
+            if row.kind != MessageKind.NOTE
+        ]
         logger.debug(
             "messages_fetched session_id={} count={}", session_id, len(db_messages)
         )
         # Me run in thread — _deserialize_messages does disk I/O for image hydration
         messages = await asyncio.to_thread(_deserialize_messages, db_messages)
-        return [
-            m for m in messages if not (m.extra and m.extra.get("hidden_from_user"))
-        ]
+        return messages
     except Exception as e:
         logger.error("load_messages_failed session_id={} error={}", session_id, e)
         raise
@@ -371,44 +428,23 @@ async def get_messages_for_llm(db: AsyncSession, session_id: UUID) -> list[ChatM
 
     Strategy
     --------
-    1. Find the most recent ``is_summary=True`` message.
-    2. If one exists, return ``[latest_summary] + [non-hidden, non-summary
-       messages ordered by created_at]``.  This correctly handles:
-       - Multiple summaries: only the latest is prepended; older summary rows
-         are excluded by the ``not is_summary`` filter.
-       - ``keep_last_n`` messages: they were not hidden so they appear after
-         the summary in chronological order, even though their ``created_at``
-         is earlier than the summary's.
-       - Fresh messages added after the summary: included in order.
-    3. If no summary exists, fall back to all visible (non-hidden) messages —
-       identical to :func:`get_messages`.
+    Fully derived — see :func:`chat_service_revert.llm_window_stmt`:
+
+    1. Active summary = newest-created ``kind='summary'`` row (before the
+       undo boundary, when one is staged).
+    2. Window = pinned rows + the active summary + every chat/note/queued row
+       positioned at/after it, in ``(seq, id)`` order. The summary is
+       *anchored* before the window it kept, so the order the LLM sees is
+       ``[pinned…, summary, kept tail…, new messages…]``.
+    3. No summary → all non-reverted rows.
     """
     logger.debug("loading_llm_messages session_id={}", session_id)
     try:
-        boundary = await _boundary_created_at(db, session_id)
-        stmt = (
-            _llm_history_messages_stmt(session_id)
-            if boundary is None
-            else _history_messages_stmt(session_id, boundary)
-        )
-        rows = (await db.exec(stmt)).all()
-        db_messages = await _get_dynamically_visible_messages(
-            db, session_id, boundary, rows
-        )
-
-        # Move the active summary to position 0 so the LLM always sees the
-        # context window as [summary → kept_last_n → post-summary messages].
-        # This is a no-op when there is no active summary (e.g. after undo).
-        active_summary = next((m for m in db_messages if m.is_summary), None)
-        if active_summary is not None:
-            db_messages = [active_summary] + [
-                m for m in db_messages if m.id != active_summary.id
-            ]
+        db_messages = await _llm_window_rows(db, session_id)
         logger.debug(
-            "llm_messages_fetched session_id={} count={} summary_id={}",
+            "llm_messages_fetched session_id={} count={}",
             session_id,
             len(db_messages),
-            active_summary.id if active_summary else None,
         )
         # Me run in thread — _deserialize_messages does disk I/O for image hydration
         messages = await asyncio.to_thread(
@@ -730,38 +766,47 @@ class TeamHistoryMemberData(NamedTuple):
 _HISTORY_PAGE_SIZE = 100
 
 
-def _visible_to_user_predicate():
-    """SQL predicate matching rows not marked ``extra.hidden_from_user``.
-
-    Shared by the lead and member history queries so both pages agree on which
-    layer owns the filter. A Python-side :func:`_is_hidden_from_user` pass is
-    still applied after fetching, because the JSON ``as_boolean()`` cast here
-    and Python truthiness disagree on non-boolean values (e.g. a stored
-    ``"1"``); the SQL predicate is the bulk filter, Python is the backstop.
-    """
-    hidden = col(SessionMessage.extra)["hidden_from_user"].as_boolean()
-    return sa.or_(hidden.is_(None), hidden.is_(False))
-
-
-def _before_cursor_predicate(before: datetime | None, before_id: UUID | None):
-    """SQL predicate for "strictly older than the ``(created_at, id)`` cursor".
-
-    ``created_at`` alone cannot order rows that share a timestamp, so paging on
-    it drops the tied rows. When *before_id* is supplied the comparison becomes
-    a proper compound tuple test; without it the predicate degrades to the
-    timestamp-only form for backwards compatibility with older cursors.
-    """
-    if before is None:
+def _before_cursor_predicate(before_seq: int | None, before_id: UUID | None):
+    """SQL predicate for "strictly older than the ``(seq, id)`` cursor"."""
+    if before_seq is None:
         return None
     if before_id is None:
-        return col(SessionMessage.created_at) < before
+        return col(SessionMessage.seq) < before_seq
     return sa.or_(
-        col(SessionMessage.created_at) < before,
+        col(SessionMessage.seq) < before_seq,
         sa.and_(
-            col(SessionMessage.created_at) == before,
+            col(SessionMessage.seq) == before_seq,
             col(SessionMessage.id) < before_id,
         ),
     )
+
+
+async def resolve_legacy_history_cursor(
+    db: AsyncSession,
+    session_id: UUID,
+    before: datetime,
+    before_id: UUID | None,
+) -> tuple[int, UUID | None] | None:
+    """Translate a legacy ``(created_at, id)`` cursor into ``(seq, id)``.
+
+    Cursors are opaque strings the client echoes back; one persisted before
+    the seq remodel carries a timestamp. The boundary row's id (when present)
+    resolves it exactly; otherwise fall back to the newest row older than the
+    timestamp.
+    """
+    if before_id is not None:
+        row = await db.get(SessionMessage, before_id)
+        if row is not None and row.session_id == session_id:
+            return row.seq, row.id
+    result = await db.exec(
+        select(SessionMessage.seq, SessionMessage.id)
+        .where(col(SessionMessage.session_id) == session_id)
+        .where(col(SessionMessage.created_at) >= before)
+        .order_by(col(SessionMessage.seq).asc(), col(SessionMessage.id).asc())
+        .limit(1)
+    )
+    row = result.first()
+    return (row[0], row[1]) if row else None
 
 
 class TeamHistoryData(NamedTuple):
@@ -779,7 +824,7 @@ class TeamHistoryData(NamedTuple):
     lead_messages: list[SessionMessage]
     members: list[TeamHistoryMemberData]
     has_more: bool
-    next_cursor: datetime | None
+    next_cursor: int | None
     next_cursor_id: UUID | None = None
 
 
@@ -787,7 +832,7 @@ async def _fetch_member_pages(
     db: AsyncSession,
     sub_sessions: Sequence[ChatSession],
     *,
-    before: datetime | None,
+    before_seq: int | None,
     before_id: UUID | None = None,
 ) -> list[TeamHistoryMemberData]:
     """Fetch the newest message page for every sub-session in one query.
@@ -800,21 +845,14 @@ async def _fetch_member_pages(
     with a very long history never pulls unbounded rows into memory.
 
     Semantics match the old loop exactly:
-    - ``before`` filter (from the lead's cursor) is applied uniformly;
-    - hidden rows are excluded in SQL, mirroring the lead query, so the
-      ``ROW_NUMBER()`` window ranks only user-visible rows. Without this a
-      member whose newest ``_HISTORY_PAGE_SIZE + 1`` rows were all hidden
-      (an undone batch of work) returned an *empty* page, and since member
-      histories carry no cursor of their own the older visible rows were
-      unreachable. A Python ``_is_hidden_from_user`` pass still runs as a
-      backstop for values the JSON boolean cast cannot express;
+    - the ``(seq, id)`` cursor (from the lead's page) is applied uniformly;
+    - hidden rows are excluded in SQL via the typed ``kind`` filter, so the
+      ``ROW_NUMBER()`` window ranks only user-visible rows — a member whose
+      newest rows were all hidden (an undone batch of work) still returns
+      its older visible rows;
     - sub-sessions with no messages still appear, with an empty list;
     - per-session order is chronological (ascending), sessions keep the
       caller-provided order.
-
-    The final newest-``_HISTORY_PAGE_SIZE`` trim (after hidden-row
-    filtering) still happens in Python, but operates on at most
-    ``_HISTORY_PAGE_SIZE + 1`` rows per session.
     """
     if not sub_sessions:
         return []
@@ -829,7 +867,7 @@ async def _fetch_member_pages(
         .over(
             partition_by=col(SessionMessage.session_id),
             order_by=(
-                col(SessionMessage.created_at).desc(),
+                col(SessionMessage.seq).desc(),
                 col(SessionMessage.id).desc(),
             ),
         )
@@ -837,9 +875,9 @@ async def _fetch_member_pages(
     )
     inner = select(SessionMessage, rank).where(
         col(SessionMessage.session_id).in_(session_ids),
-        _visible_to_user_predicate(),
+        _user_visible_predicate(),
     )
-    before_predicate = _before_cursor_predicate(before, before_id)
+    before_predicate = _before_cursor_predicate(before_seq, before_id)
     if before_predicate is not None:
         inner = inner.where(before_predicate)
     ranked = inner.subquery()
@@ -847,7 +885,7 @@ async def _fetch_member_pages(
     stmt = (
         select(msg_alias)
         .where(ranked.c.rank <= _HISTORY_PAGE_SIZE + 1)
-        .order_by(ranked.c.created_at.desc(), ranked.c.id.desc())
+        .order_by(ranked.c.seq.desc(), ranked.c.id.desc())
     )
     rows = (await db.exec(stmt)).all()
 
@@ -861,9 +899,7 @@ async def _fetch_member_pages(
 
     members: list[TeamHistoryMemberData] = []
     for sub in sub_sessions:
-        raw_member = [
-            msg for msg in by_session.get(sub.id, []) if not _is_hidden_from_user(msg)
-        ]
+        raw_member = by_session.get(sub.id, [])
         member_msgs = list(reversed(raw_member[:_HISTORY_PAGE_SIZE]))
         members.append(TeamHistoryMemberData(session=sub, messages=member_msgs))
     return members
@@ -914,13 +950,14 @@ async def _fetch_member_delta(
     inner = select(SessionMessage, rank).where(
         col(SessionMessage.session_id).in_(session_ids),
         col(SessionMessage.created_at) > since,
+        _user_visible_predicate(),
     )
     ranked = inner.subquery()
     msg_alias = aliased(SessionMessage, ranked)
     stmt = (
         select(msg_alias)
         .where(ranked.c.rank <= limit + 1)
-        .order_by(ranked.c.created_at.asc(), ranked.c.id.asc())
+        .order_by(ranked.c.seq.asc(), ranked.c.id.asc())
     )
     rows = (await db.exec(stmt)).all()
 
@@ -932,9 +969,7 @@ async def _fetch_member_delta(
 
     members: list[TeamHistoryMemberData] = []
     for sub in sub_sessions:
-        visible = [
-            msg for msg in by_session.get(sub.id, []) if not _is_hidden_from_user(msg)
-        ]
+        visible = by_session.get(sub.id, [])
         members.append(TeamHistoryMemberData(session=sub, messages=visible[:limit]))
     return members
 
@@ -963,20 +998,19 @@ async def get_team_history_since(
     if lead_session is None:
         return None
 
-    hidden_from_user = col(SessionMessage.extra)["hidden_from_user"].as_boolean()
     stmt = (
         select(SessionMessage)
         .where(col(SessionMessage.session_id) == lead_session_id)
         .where(col(SessionMessage.created_at) > since)
-        .where(sa.or_(hidden_from_user.is_(None), hidden_from_user.is_(False)))
+        .where(_user_visible_predicate())
         .order_by(
-            col(SessionMessage.created_at).asc(),
+            col(SessionMessage.seq).asc(),
             col(SessionMessage.id).asc(),
         )
         .limit(limit + 1)
     )
     rows = list((await db.exec(stmt)).all())
-    visible = [msg for msg in rows if not _is_hidden_from_user(msg)]
+    visible = rows
     truncated = len(visible) > limit
     lead_messages = visible[:limit]
 
@@ -1003,17 +1037,16 @@ async def get_team_history(
     db: AsyncSession,
     lead_session_id: UUID,
     *,
-    before: datetime | None = None,
+    before_seq: int | None = None,
     before_id: UUID | None = None,
 ) -> TeamHistoryData | None:
     """Fetch the latest page of history for a team lead session and its sub-sessions.
 
     Fetches up to ``_HISTORY_PAGE_SIZE`` messages per session ordered by
-    ``created_at DESC`` (newest first), then reverses to chronological order
+    ``(seq, id) DESC`` (newest first), then reverses to chronological order
     for the caller.  Pass the ``next_cursor`` from a previous response as
-    ``before`` — and ``next_cursor_id`` as ``before_id`` — to load older
-    messages. Supplying only ``before`` still works but cannot break
-    ``created_at`` ties, so rows sharing the boundary timestamp are skipped.
+    ``before_seq`` — and ``next_cursor_id`` as ``before_id`` — to load older
+    messages.
 
     Returns ``None`` if the lead session does not exist.
     """
@@ -1021,60 +1054,30 @@ async def get_team_history(
     if lead_session is None:
         return None
 
-    # Me: summaries are NOT filtered here. The compaction divider in the
-    # web UI keys off ``is_summary=True`` rows to render the inline
-    # "Session compacted" marker + summary body; hiding them would make
-    # the divider vanish on reload. Undo uses ``extra.hidden_from_user``.
-    raw_lead: list[SessionMessage] = []
-    scan_before = before
-    scan_before_id: UUID | None = before_id
-    # Bound the refill loop. Hidden rows are already excluded in SQL, so a
-    # second pass only happens for rows the JSON boolean cast and Python
-    # truthiness disagree on. Without a cap that disagreement would scan the
-    # whole session one page at a time.
-    max_scans = 4
-    scans_used = 0
-    for _ in range(max_scans):
-        if len(raw_lead) > _HISTORY_PAGE_SIZE:
-            break
-        scans_used += 1
-        stmt = (
-            select(SessionMessage)
-            .where(col(SessionMessage.session_id) == lead_session_id)
-            .where(_visible_to_user_predicate())
-            .order_by(
-                col(SessionMessage.created_at).desc(),
-                col(SessionMessage.id).desc(),
-            )
-            .limit(_HISTORY_PAGE_SIZE + 1)
+    # Summaries are NOT filtered here: the compaction divider in the web UI
+    # keys off summary rows to render the inline "Session compacted" marker.
+    # ``kind`` is a typed column, so the SQL filter is exact — no Python
+    # backstop or refill loop is needed anymore.
+    stmt = (
+        select(SessionMessage)
+        .where(col(SessionMessage.session_id) == lead_session_id)
+        .where(_user_visible_predicate())
+        .order_by(
+            col(SessionMessage.seq).desc(),
+            col(SessionMessage.id).desc(),
         )
-        scan_predicate = _before_cursor_predicate(scan_before, scan_before_id)
-        if scan_predicate is not None:
-            stmt = stmt.where(scan_predicate)
-        rows = list((await db.exec(stmt)).all())
-        raw_lead.extend(msg for msg in rows if not _is_hidden_from_user(msg))
-        if len(rows) < _HISTORY_PAGE_SIZE + 1:
-            break
-        scan_before = rows[-1].created_at
-        scan_before_id = rows[-1].id
-
-    if scans_used >= max_scans and len(raw_lead) <= _HISTORY_PAGE_SIZE:
-        # Only reachable when the SQL boolean cast and Python truthiness
-        # disagree about ``hidden_from_user`` often enough to drain four
-        # consecutive pages. That means malformed ``extra`` payloads — log it
-        # rather than keep scanning the session one page at a time.
-        logger.warning(
-            "team_history_scan_cap_hit session_id={} scans={} visible_rows={}",
-            lead_session_id,
-            scans_used,
-            len(raw_lead),
-        )
+        .limit(_HISTORY_PAGE_SIZE + 1)
+    )
+    scan_predicate = _before_cursor_predicate(before_seq, before_id)
+    if scan_predicate is not None:
+        stmt = stmt.where(scan_predicate)
+    raw_lead = list((await db.exec(stmt)).all())
 
     has_more = len(raw_lead) > _HISTORY_PAGE_SIZE
     raw_lead = raw_lead[:_HISTORY_PAGE_SIZE]
     lead_msgs = list(reversed(raw_lead))
     boundary = lead_msgs[0] if (has_more and lead_msgs) else None
-    next_cursor = boundary.created_at if boundary is not None else None
+    next_cursor = boundary.seq if boundary is not None else None
     next_cursor_id = boundary.id if boundary is not None else None
 
     sub_sessions = (
@@ -1086,7 +1089,7 @@ async def get_team_history(
     ).all()
 
     members = await _fetch_member_pages(
-        db, sub_sessions, before=before, before_id=before_id
+        db, sub_sessions, before_seq=before_seq, before_id=before_id
     )
 
     return TeamHistoryData(

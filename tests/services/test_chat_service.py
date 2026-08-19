@@ -36,7 +36,8 @@ from app.services.chat_service import (
 )
 from app.services.chat_service_revert import (
     history_messages_stmt,
-    llm_history_messages_stmt,
+    get_active_summary,
+    llm_window_stmt,
 )
 
 
@@ -213,30 +214,34 @@ async def test_delete_session_finds_all_descendants_with_one_recursive_query(
 
 @pytest.mark.asyncio
 async def test_save_message_with_summary_flag(session):
-    """save_message persists is_summary=True correctly (summary is a HumanMessage)."""
+    """save_message maps is_summary=True to kind='summary' (a HumanMessage row)."""
     chat_session = await create_chat_session(session)
     msg = HumanMessage(content="Summary text.")
     saved = await save_message(session, chat_session.id, msg, is_summary=True)
-    assert saved.is_summary is True
-    assert saved.exclude_from_context is False
+    assert saved.kind == "summary"
+    assert saved.pinned is False
     assert saved.role == "user"
 
 
 @pytest.mark.asyncio
 async def test_save_message_with_hidden_flag(session):
-    """save_message persists exclude_from_context=True correctly."""
+    """save_message maps is_hidden=True to kind='note'."""
     chat_session = await create_chat_session(session)
     msg = HumanMessage(content="Old message.")
     saved = await save_message(session, chat_session.id, msg, is_hidden=True)
-    assert saved.exclude_from_context is True
-    assert saved.is_summary is False
+    assert saved.kind == "note"
+    assert saved.pinned is False
 
 
 @pytest.mark.asyncio
 async def test_save_message_flushes_returned_tool_row_without_refresh_select(
     session, engine
 ):
-    """Flush populates Python defaults and tool fields without a post-insert SELECT."""
+    """Flush populates Python defaults and tool fields without a post-insert SELECT.
+
+    The single SELECT before the INSERT is the seq allocation (MAX(seq) point
+    lookup); what must never happen is a refresh SELECT *after* the insert.
+    """
     chat_session = await create_chat_session(session)
     statements: list[str] = []
 
@@ -254,7 +259,10 @@ async def test_save_message_flushes_returned_tool_row_without_refresh_select(
     finally:
         event.remove(engine.sync_engine, "before_cursor_execute", record_statement)
 
-    assert not any("SELECT" in statement.upper() for statement in statements)
+    insert_idx = next(i for i, s in enumerate(statements) if "INSERT" in s.upper())
+    assert not any("SELECT" in s.upper() for s in statements[insert_idx + 1 :]), (
+        statements
+    )
     assert saved.id is not None
     assert saved.created_at is not None
     assert saved.session_id == chat_session.id
@@ -263,8 +271,8 @@ async def test_save_message_flushes_returned_tool_row_without_refresh_select(
     assert saved.tool_call_id == "call-1"
     assert saved.name == "search"
     assert saved.extra == {"duration_ms": 12.5}
-    assert saved.is_summary is False
-    assert saved.exclude_from_context is False
+    assert saved.kind == "chat"
+    assert saved.pinned is False
 
 
 @pytest.mark.asyncio
@@ -285,9 +293,9 @@ async def test_cleanup_reverted_summary_restores_compacted_context(session):
         session, chat_session.id, AssistantMessage(content="after summary")
     )
 
-    for row in (u1, a1, u2, a2):
-        row.exclude_from_context = True
-        session.add(row)
+    # Coverage is positional: the summary was saved after u1..a2, so those
+    # rows are out of the derived window with no flag mutation at all.
+    assert (u1.seq, a1.seq, u2.seq, a2.seq) < (summary.seq,) * 4
     await session.commit()
 
     shift = await undo_session_messages(session, chat_session.id)
@@ -303,11 +311,7 @@ async def test_cleanup_reverted_summary_restores_compacted_context(session):
 
     refreshed_summary = await session.get(SessionMessage, summary.id)
     assert refreshed_summary is not None
-    assert refreshed_summary.exclude_from_context is True
-    assert (
-        refreshed_summary.extra
-        and refreshed_summary.extra.get("hidden_from_user") is True
-    )
+    assert refreshed_summary.kind == "reverted"
 
 
 @pytest.mark.asyncio
@@ -326,12 +330,8 @@ async def test_cleanup_reverted_summary_restores_only_to_previous_summary(sessio
         HumanMessage(content="summary 1"),
         is_summary=True,
     )
-    mid_user = await save_message(
-        session, chat_session.id, HumanMessage(content="mid u")
-    )
-    mid_assistant = await save_message(
-        session, chat_session.id, AssistantMessage(content="mid a")
-    )
+    await save_message(session, chat_session.id, HumanMessage(content="mid u"))
+    await save_message(session, chat_session.id, AssistantMessage(content="mid a"))
     second_summary = await save_message(
         session,
         chat_session.id,
@@ -340,9 +340,6 @@ async def test_cleanup_reverted_summary_restores_only_to_previous_summary(sessio
     )
     await save_message(session, chat_session.id, AssistantMessage(content="after s2"))
 
-    for row in (old_user, old_assistant, first_summary, mid_user, mid_assistant):
-        row.exclude_from_context = True
-        session.add(row)
     await session.commit()
 
     shift = await undo_session_messages(session, chat_session.id)
@@ -360,8 +357,11 @@ async def test_cleanup_reverted_summary_restores_only_to_previous_summary(sessio
     refreshed_old_assistant = await session.get(SessionMessage, old_assistant.id)
     assert refreshed_old_user is not None
     assert refreshed_old_assistant is not None
-    assert refreshed_old_user.exclude_from_context is True
-    assert refreshed_old_assistant.exclude_from_context is True
+    # Still covered by summary 1 (positional), untouched by the revert.
+    assert refreshed_old_user.kind == "chat"
+    assert refreshed_old_assistant.kind == "chat"
+    assert refreshed_old_user.seq < first_summary.seq
+    assert refreshed_old_assistant.seq < first_summary.seq
 
 
 @pytest.mark.asyncio
@@ -396,9 +396,6 @@ async def test_redo_reapplies_second_summary_without_restoring_old_context(sessi
         session, chat_session.id, AssistantMessage(content="after s2")
     )
 
-    for row in (old_user, old_assistant, first_summary, mid_user, mid_assistant):
-        row.exclude_from_context = True
-        session.add(row)
     await session.commit()
 
     undo_shift = await undo_session_messages(session, chat_session.id)
@@ -414,16 +411,17 @@ async def test_redo_reapplies_second_summary_without_restoring_old_context(sessi
     visible = await get_messages_for_llm(session, chat_session.id)
     assert [m.content for m in visible] == ["summary 2", "after s2"]
 
+    # Everything before summary 2 stays covered by it positionally.
     for row in (old_user, old_assistant, first_summary, mid_user, mid_assistant):
         refreshed = await session.get(SessionMessage, row.id)
         assert refreshed is not None
-        assert refreshed.exclude_from_context is True
+        assert refreshed.seq < second_summary.seq
     refreshed_second_summary = await session.get(SessionMessage, second_summary.id)
     refreshed_after_summary = await session.get(SessionMessage, after_summary.id)
     assert refreshed_second_summary is not None
     assert refreshed_after_summary is not None
-    assert refreshed_second_summary.exclude_from_context is False
-    assert refreshed_after_summary.exclude_from_context is False
+    assert refreshed_second_summary.kind == "summary"
+    assert refreshed_after_summary.kind == "chat"
 
 
 @pytest.mark.asyncio
@@ -444,10 +442,8 @@ async def test_cleanup_reverted_middle_summary_restores_previous_summary_window(
         HumanMessage(content="summary 1"),
         is_summary=True,
     )
-    first_window_user = await save_message(
-        session, chat_session.id, HumanMessage(content="s1 window u")
-    )
-    first_window_assistant = await save_message(
+    await save_message(session, chat_session.id, HumanMessage(content="s1 window u"))
+    await save_message(
         session, chat_session.id, AssistantMessage(content="s1 window a")
     )
     second_summary = await save_message(
@@ -470,18 +466,6 @@ async def test_cleanup_reverted_middle_summary_restores_previous_summary_window(
     )
     await save_message(session, chat_session.id, AssistantMessage(content="after s3"))
 
-    for row in (
-        old_user,
-        old_assistant,
-        first_summary,
-        first_window_user,
-        first_window_assistant,
-        second_summary,
-        second_window_user,
-        second_window_assistant,
-    ):
-        row.exclude_from_context = True
-        session.add(row)
     await session.commit()
 
     first_undo = await undo_session_messages(session, chat_session.id)
@@ -504,10 +488,12 @@ async def test_cleanup_reverted_middle_summary_restores_previous_summary_window(
         "s1 window a",
     ]
 
+    # Rows before summary 1 stay positionally covered by it.
     for row in (old_user, old_assistant):
         refreshed = await session.get(SessionMessage, row.id)
         assert refreshed is not None
-        assert refreshed.exclude_from_context is True
+        assert refreshed.kind == "chat"
+        assert refreshed.seq < first_summary.seq
     for row in (
         second_summary,
         second_window_user,
@@ -516,22 +502,20 @@ async def test_cleanup_reverted_middle_summary_restores_previous_summary_window(
     ):
         refreshed = await session.get(SessionMessage, row.id)
         assert refreshed is not None
-        assert refreshed.exclude_from_context is True
+        assert refreshed.kind == "reverted"
 
 
 @pytest.mark.asyncio
 async def test_cleanup_reverted_branched_summary_does_not_restore_old_branch(session):
     chat_session = await create_chat_session(session)
 
-    first_summary = await save_message(
+    await save_message(
         session,
         chat_session.id,
         HumanMessage(content="summary 1"),
         is_summary=True,
     )
-    first_window = await save_message(
-        session, chat_session.id, HumanMessage(content="s1 window")
-    )
+    await save_message(session, chat_session.id, HumanMessage(content="s1 window"))
 
     old_branch_summary = await save_message(
         session,
@@ -542,20 +526,19 @@ async def test_cleanup_reverted_branched_summary_does_not_restore_old_branch(ses
     old_branch_message = await save_message(
         session, chat_session.id, HumanMessage(content="old branch message")
     )
+    # The old branch was reverted away (kind='reverted' is what
+    # cleanup_reverted_tail writes).
     for row in (old_branch_summary, old_branch_message):
-        row.exclude_from_context = True
-        row.extra = {"hidden_from_user": True}
+        row.kind = "reverted"
         session.add(row)
 
-    new_second_summary = await save_message(
+    await save_message(
         session,
         chat_session.id,
         HumanMessage(content="new summary 2"),
         is_summary=True,
     )
-    new_second_window = await save_message(
-        session, chat_session.id, HumanMessage(content="new s2 window")
-    )
+    await save_message(session, chat_session.id, HumanMessage(content="new s2 window"))
     new_third_summary = await save_message(
         session,
         chat_session.id,
@@ -566,9 +549,6 @@ async def test_cleanup_reverted_branched_summary_does_not_restore_old_branch(ses
         session, chat_session.id, AssistantMessage(content="after new s3")
     )
 
-    for row in (first_summary, first_window, new_second_summary, new_second_window):
-        row.exclude_from_context = True
-        session.add(row)
     await session.commit()
 
     shift = await undo_session_messages(session, chat_session.id)
@@ -586,8 +566,8 @@ async def test_cleanup_reverted_branched_summary_does_not_restore_old_branch(ses
     refreshed_old_message = await session.get(SessionMessage, old_branch_message.id)
     assert refreshed_old_summary is not None
     assert refreshed_old_message is not None
-    assert refreshed_old_summary.exclude_from_context is True
-    assert refreshed_old_message.exclude_from_context is True
+    assert refreshed_old_summary.kind == "reverted"
+    assert refreshed_old_message.kind == "reverted"
 
 
 # ── get_messages excludes hidden ──────────────────────────────────────────────
@@ -644,7 +624,7 @@ async def test_queued_user_messages_are_hidden_until_popped(session):
     await session.commit()
 
     assert [row.id for row in popped] == [queued.id]
-    assert popped[0].exclude_from_context is False
+    assert popped[0].kind == "chat"
     assert popped[0].extra is None
     visible = await get_messages(session, chat_session.id)
     assert [msg.content for msg in visible] == ["current response", "next"]
@@ -756,8 +736,8 @@ async def test_undo_filters_non_targets_in_sql(session):
         await save_message(
             session,
             chat_session.id,
-            HumanMessage(content=f"excluded-{i}"),
-            exclude_from_context=True,
+            HumanMessage(content=f"note-{i}"),
+            is_hidden=True,
         )
     await session.commit()
 
@@ -811,7 +791,7 @@ async def test_cleanup_reverted_tail_preserves_queued_messages(session):
     assert refreshed is not None
     assert refreshed.extra and refreshed.extra["queue_status"] == "queued"
     assert isinstance(refreshed.extra.get("queued_at"), str)
-    assert refreshed.exclude_from_context is True
+    assert refreshed.kind == "queued"
     popped = await pop_queued_user_messages(session, chat_session.id)
     assert [row.id for row in popped] == [queued.id]
 
@@ -850,10 +830,8 @@ async def test_undo_summary_dynamically_restores_compacted_messages(session):
         session, chat_session.id, AssistantMessage(content="after summary")
     )
 
-    # Simulate compaction by excluding messages before the summary
-    for row in (u1, a1):
-        row.exclude_from_context = True
-        session.add(row)
+    # Compaction coverage is positional — the summary was saved after u1/a1.
+    assert u1.seq < summary.seq and a1.seq < summary.seq
     await session.commit()
 
     # Now verify that when no undo is applied, we only see the summary and messages after it
@@ -887,10 +865,8 @@ async def test_undo_summary_llm_view_before_undo_excludes_compacted(session):
     )
     await save_message(session, chat_session.id, AssistantMessage(content="after"))
 
-    for row in (u1, a1):
-        row.exclude_from_context = True
-        session.add(row)
     await session.commit()
+    assert u1.seq < a1.seq
 
     # No undo applied — LLM must not see the compacted messages.
     llm_messages = await get_messages_for_llm(session, chat_session.id)
@@ -918,10 +894,10 @@ async def test_undo_summary_does_not_over_restore_with_two_summaries(session):
     )
     await save_message(session, chat_session.id, AssistantMessage(content="after_s2"))
 
-    # Compact everything before summary_2 (includes u1/a1/summary_1/u2/a2).
-    for row in (u1, a1, summary_1, u2, a2):
-        row.exclude_from_context = True
-        session.add(row)
+    # Everything before summary_2 (u1/a1/summary_1/u2/a2) is positionally
+    # covered by it; summary_1 is additionally superseded (older id).
+    assert summary_1.id < summary_2.id
+    assert all(r.seq < summary_2.seq for r in (u1, a1, u2, a2))
     await session.commit()
 
     # Undo summary_2 — boundary now points at summary_2.
@@ -961,10 +937,8 @@ async def test_undo_first_summary_restores_all_compacted_messages(session):
     )
     await save_message(session, chat_session.id, AssistantMessage(content="after"))
 
-    for row in (u1, a1, u2):
-        row.exclude_from_context = True
-        session.add(row)
     await session.commit()
+    assert all(r.seq < summary.seq for r in (u1, a1, u2))
 
     shift = await undo_session_messages(session, chat_session.id)
     assert shift.applied is True
@@ -981,14 +955,14 @@ async def test_undo_first_summary_restores_all_compacted_messages(session):
 
 @pytest.mark.asyncio
 async def test_get_dynamically_visible_messages_no_undo_no_summary(session):
-    """Without undo or summary, only non-excluded messages are returned."""
+    """Without undo or summary, reverted rows stay out of both views."""
     chat_session = await create_chat_session(session)
 
     await save_message(session, chat_session.id, HumanMessage(content="visible"))
     hidden = await save_message(
         session, chat_session.id, AssistantMessage(content="hidden")
     )
-    hidden.exclude_from_context = True
+    hidden.kind = "reverted"
     session.add(hidden)
     await session.commit()
 
@@ -1001,7 +975,7 @@ async def test_get_dynamically_visible_messages_no_undo_no_summary(session):
 
 @pytest.mark.asyncio
 async def test_queued_messages_always_visible_despite_exclude_flag(session):
-    """Queued messages bypass the exclude_from_context filter."""
+    """Queued messages are visible in both views while still queued."""
     chat_session = await create_chat_session(session)
 
     await save_message(session, chat_session.id, HumanMessage(content="normal"))
@@ -1019,13 +993,12 @@ async def test_queued_messages_always_visible_despite_exclude_flag(session):
 
 @pytest.mark.asyncio
 async def test_llm_history_query_without_revert_excludes_compacted_rows(session):
-    """The ordinary LLM query reads only visible, summary, and queued rows."""
+    """The derived LLM window reads the active summary and everything after it."""
     chat_session = await create_chat_session(session)
     await save_message(
         session,
         chat_session.id,
         HumanMessage(content="compacted"),
-        exclude_from_context=True,
     )
     await save_message(
         session,
@@ -1037,7 +1010,8 @@ async def test_llm_history_query_without_revert_excludes_compacted_rows(session)
     await save_queued_user_message(session, chat_session.id, "queued")
     await session.commit()
 
-    rows = (await session.exec(llm_history_messages_stmt(chat_session.id))).all()
+    summary_row = await get_active_summary(session, chat_session.id)
+    rows = (await session.exec(llm_window_stmt(chat_session.id, summary_row))).all()
 
     assert [row.content for row in rows] == ["summary", "visible", "queued"]
 
@@ -1177,7 +1151,7 @@ async def test_get_messages_for_llm_summary_window_drops_orphan_tool_message(ses
 
 @pytest.mark.asyncio
 async def test_hide_messages_before_summary(session):
-    """hide_messages_before_summary marks all non-summary older messages as hidden."""
+    """hide_messages_before_summary covers all older messages positionally."""
     chat_session = await create_chat_session(session)
 
     m1 = await save_message(session, chat_session.id, HumanMessage(content="msg 1"))
@@ -1210,12 +1184,13 @@ async def test_hide_messages_before_summary(session):
     ).all()
     by_id = {r.id: r for r in rows}
 
-    assert by_id[m1.id].exclude_from_context is True
-    assert by_id[m2.id].exclude_from_context is True
-    assert (
-        by_id[summary.id].exclude_from_context is False
-    )  # summary itself not excluded
-    assert by_id[m4.id].exclude_from_context is False  # after summary — not touched
+    # Coverage is positional: m1/m2 sit before the summary, m4 after it.
+    summary_pos = (by_id[summary.id].seq, by_id[summary.id].id)
+    assert (by_id[m1.id].seq, m1.id) < summary_pos
+    assert (by_id[m2.id].seq, m2.id) < summary_pos
+    assert (by_id[m4.id].seq, m4.id) > summary_pos
+    llm = await get_messages_for_llm(session, chat_session.id)
+    assert [m.content for m in llm] == ["Summary", "msg 4"]
 
 
 @pytest.mark.asyncio
@@ -1260,8 +1235,13 @@ async def test_hide_messages_before_summary_keep_last_n_all_spare(session):
         )
     ).all()
     by_id = {r.id: r for r in rows}
-    assert by_id[m1.id].exclude_from_context is False
-    assert by_id[m2.id].exclude_from_context is False
+    # The summary was repositioned before both kept rows, so they stay in
+    # the LLM window after it.
+    summary_pos = (by_id[summary.id].seq, by_id[summary.id].id)
+    assert (by_id[m1.id].seq, m1.id) > summary_pos
+    assert (by_id[m2.id].seq, m2.id) > summary_pos
+    llm = await get_messages_for_llm(session, chat_session.id)
+    assert [m.content for m in llm] == ["Summary", "msg 1", "msg 2"]
 
 
 @pytest.mark.asyncio
@@ -1428,8 +1408,7 @@ async def test_summary_flow_with_keep_last_n(session):
 
 @pytest.mark.asyncio
 async def test_exclude_messages_before_summary_marks_old_summaries_excluded(session):
-    """Lines 276-277: when a second summary is created, the first summary row
-    is marked exclude_from_context=True by exclude_messages_before_summary."""
+    """A newer summary supersedes older ones with no row mutation at all."""
     from app.services.chat_service import exclude_messages_before_summary
 
     chat_session = await create_chat_session(session)
@@ -1455,30 +1434,20 @@ async def test_exclude_messages_before_summary_marks_old_summaries_excluded(sess
         is_summary=True,
     )
 
-    # Me call with second summary id — should exclude first summary
+    # Anchor the second summary's coverage.
     await exclude_messages_before_summary(session, chat_session.id, second_summary.id)
     await session.commit()
 
-    # Me reload first summary row from DB
-    from sqlmodel import col, select
-    from app.models.chat import SessionMessage
-
-    rows = (
-        await session.exec(
-            select(SessionMessage).where(col(SessionMessage.id) == first_summary.id)
-        )
-    ).all()
-    assert len(rows) == 1
-    # Me first summary should now be excluded
-    assert rows[0].exclude_from_context is True
-
-    # Me second summary itself should NOT be excluded
-    second_rows = (
-        await session.exec(
-            select(SessionMessage).where(col(SessionMessage.id) == second_summary.id)
-        )
-    ).all()
-    assert second_rows[0].exclude_from_context is False
+    # The second summary is active (newest id); the first never enters the
+    # LLM window even though its row was not touched.
+    active = await get_active_summary(session, chat_session.id)
+    assert active is not None and active.id == second_summary.id
+    llm = await get_messages_for_llm(session, chat_session.id)
+    contents = [m.content for m in llm]
+    assert "[Summary] Second summary." in contents
+    assert "[Summary] First summary." not in contents
+    refreshed_first = await session.get(SessionMessage, first_summary.id)
+    assert refreshed_first is not None and refreshed_first.kind == "summary"
 
 
 @pytest.mark.asyncio
@@ -1516,6 +1485,21 @@ async def test_get_messages_for_llm_preserves_skill_tool_pair_after_summary(sess
             name="skill",
         ),
     )
+    # The live SummarizationHook pins retained skill pairs before the
+    # checkpointer persists the summary; simulate that persisted state.
+    from sqlmodel import col, select as _select
+
+    skill_rows = (
+        await session.exec(
+            _select(SessionMessage).where(
+                col(SessionMessage.session_id) == chat_session.id
+            )
+        )
+    ).all()
+    for row in skill_rows:
+        if row.role in ("assistant", "tool"):
+            row.pinned = True
+            session.add(row)
     await save_message(
         session,
         chat_session.id,
@@ -1537,8 +1521,9 @@ async def test_get_messages_for_llm_preserves_skill_tool_pair_after_summary(sess
         m for m in result if isinstance(m, ToolMessage) and m.name == "skill"
     )
 
-    # The summary is always moved to position 0 by get_messages_for_llm.
-    assert result[0].is_summary
+    # Pinned rows keep their anchored position below the summary.
+    assert [m.role for m in result] == ["assistant", "tool", "user"]
+    assert result[-1].is_summary
     assert skill_call.tool_calls[0].id == "call_skill_1"
     assert skill_result.tool_call_id == "call_skill_1"
     assert skill_result.content == "Guideline instructions body"
@@ -1581,7 +1566,7 @@ async def test_queued_messages_with_same_timestamp_keep_id_order_when_activated(
             message_id,
             content,
             queued_at,
-            exclude_from_context=True,
+            kind="queued",
             extra={"queue_status": "queued"},
         )
     await session.commit()
@@ -1609,7 +1594,7 @@ async def test_release_queued_messages_with_same_timestamp_keep_id_order(session
             message_id,
             content,
             queued_at,
-            exclude_from_context=True,
+            kind="queued",
             extra={"queue_status": "queued"},
         )
     await session.commit()
@@ -1622,7 +1607,7 @@ async def test_release_queued_messages_with_same_timestamp_keep_id_order(session
 
 @pytest.mark.asyncio
 async def test_llm_history_query_with_same_timestamp_keeps_id_order(session):
-    """``llm_history_messages_stmt`` must break timestamp ties by id too."""
+    """``llm_window_stmt`` must break seq ties by id."""
     chat_session = await create_chat_session(session)
     tied_at = datetime.now(UTC)
     second_id = UUID("00000000-0000-0000-0000-000000000002")
@@ -1631,7 +1616,7 @@ async def test_llm_history_query_with_same_timestamp_keeps_id_order(session):
         await _add_tied_message(session, chat_session.id, message_id, content, tied_at)
     await session.commit()
 
-    rows = (await session.exec(llm_history_messages_stmt(chat_session.id))).all()
+    rows = (await session.exec(llm_window_stmt(chat_session.id, None))).all()
 
     assert [row.id for row in rows] == sorted((first_id, second_id))
     assert [row.content for row in rows] == ["first", "second"]
@@ -1639,8 +1624,7 @@ async def test_llm_history_query_with_same_timestamp_keeps_id_order(session):
 
 @pytest.mark.asyncio
 async def test_history_messages_stmt_with_same_timestamp_keeps_id_order(session):
-    """``history_messages_stmt`` (visible history / get_messages) must break
-    timestamp ties by id too."""
+    """``history_messages_stmt`` must break seq ties by id too."""
     chat_session = await create_chat_session(session)
     tied_at = datetime.now(UTC)
     second_id = UUID("00000000-0000-0000-0000-000000000002")
@@ -1657,11 +1641,7 @@ async def test_history_messages_stmt_with_same_timestamp_keeps_id_order(session)
 
 @pytest.mark.asyncio
 async def test_get_messages_for_llm_summary_appears_exactly_once(session):
-    """The summary row must appear exactly once even when other rows share its timestamp.
-
-    get_messages_for_llm prepends the latest summary explicitly and then fetches
-    non-summary rows, so the summary is never duplicated regardless of timestamps.
-    """
+    """The summary row appears exactly once even when other rows share its seq."""
     from app.models.chat import SessionMessage
 
     chat_session = await create_chat_session(session)
@@ -1675,13 +1655,13 @@ async def test_get_messages_for_llm_summary_appears_exactly_once(session):
     )
     await session.commit()
 
-    # Force a non-hidden, non-summary message to share the exact created_at as the summary.
+    # Force a non-summary message to share the summary's exact position; its
+    # newer uuid7 id sorts it directly after the summary.
     same_ts_msg = SessionMessage(
         session_id=chat_session.id,
         role="user",
         content="same-timestamp sibling",
-        exclude_from_context=False,
-        is_summary=False,
+        seq=summary.seq,
     )
     same_ts_msg.created_at = summary.created_at
     session.add(same_ts_msg)
@@ -1692,8 +1672,8 @@ async def test_get_messages_for_llm_summary_appears_exactly_once(session):
 
     # Summary appears exactly once — never duplicated by the non-summary query
     assert contents.count("[Summary] Compact history.") == 1
-    # Non-hidden, non-summary messages (before + sibling) are included
-    assert "before" in contents
+    # "before" sits below the summary's position, so it is covered by it.
+    assert "before" not in contents
     assert "same-timestamp sibling" in contents
 
 
@@ -2241,7 +2221,9 @@ async def test_get_team_history_pages_past_hidden_messages(session):
     assert data.has_more is True
     assert data.next_cursor is not None
 
-    older = await get_team_history(session, lead.id, before=data.next_cursor)
+    older = await get_team_history(
+        session, lead.id, before_seq=data.next_cursor, before_id=data.next_cursor_id
+    )
     assert older is not None
     assert [message.content for message in older.lead_messages] == ["visible-0"]
     assert older.has_more is False
@@ -2510,12 +2492,10 @@ async def test_get_team_history_member_page_skips_hidden_rows_in_sql(session):
 
 @pytest.mark.asyncio
 async def test_get_team_history_cursor_keeps_rows_tied_on_created_at(session):
-    """A row sharing the boundary ``created_at`` must not vanish between pages.
+    """A row sharing the boundary ``seq`` must not vanish between pages.
 
-    Regression: ``next_cursor`` carried only ``created_at`` while the internal
-    paging loop compared ``(created_at, id)``.  The next page applied
-    ``created_at < before`` strictly, so any row tied with the boundary
-    timestamp was skipped by both pages and became unreachable.
+    The cursor is the compound ``(seq, id)`` pair; a bare-seq cursor would
+    skip rows tied on the boundary seq (anchored inserts produce such ties).
     """
     from sqlalchemy import update
 
@@ -2533,22 +2513,22 @@ async def test_get_team_history_cursor_keeps_rows_tied_on_created_at(session):
     assert page1 is not None
     boundary = page1.lead_messages[0]
 
-    # Force the row immediately older than the boundary to tie with it.
+    # Force the row immediately older than the boundary to tie with it on seq.
     victim = max(
-        (m for m in saved if m.created_at < boundary.created_at),
-        key=lambda m: m.created_at,
+        (m for m in saved if (m.seq, m.id) < (boundary.seq, boundary.id)),
+        key=lambda m: (m.seq, m.id),
     )
     await session.exec(
         update(SessionMessage)
         .where(SessionMessage.id == victim.id)
-        .values(created_at=boundary.created_at)
+        .values(seq=boundary.seq)
     )
     await session.commit()
 
     page2 = await get_team_history(
         session,
         lead.id,
-        before=page1.next_cursor,
+        before_seq=page1.next_cursor,
         before_id=page1.next_cursor_id,
     )
     assert page2 is not None

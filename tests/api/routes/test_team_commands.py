@@ -20,7 +20,7 @@ import app.core.db as _db
 from app.agent.agent_loop import Agent
 from app.agent.mode.team.member import TeamLead
 from app.agent.mode.team.team import AgentTeam
-from app.models.chat import ChatSession, SessionMessage
+from app.models.chat import ChatSession, MessageKind, SessionMessage
 from app.services.chat_service import get_messages_for_llm
 from tests.api.routes.test_team_db import MockProvider
 
@@ -214,7 +214,7 @@ class TestPostTeamCommands:
             llm_messages = await get_messages_for_llm(db, sid)
         assert session is not None
         assert session.revert == {"message_id": body["message"]["id"]}
-        assert [row.content for row in rows if row.exclude_from_context] == []
+        assert [row.content for row in rows if row.kind == MessageKind.REVERTED] == []
         assert [msg.content for msg in llm_messages] == ["first", "first answer"]
 
         history = client.get(f"/api/team/{sid}/history")
@@ -371,7 +371,7 @@ class TestPostTeamCommands:
             llm_messages = await get_messages_for_llm(db, sid)
         assert session is not None
         assert session.revert is None
-        assert [row.content for row in rows if row.exclude_from_context] == []
+        assert [row.content for row in rows if row.kind == MessageKind.REVERTED] == []
         assert [msg.content for msg in llm_messages] == [
             "first",
             "first answer",

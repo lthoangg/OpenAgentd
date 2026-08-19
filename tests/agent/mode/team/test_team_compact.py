@@ -70,9 +70,7 @@ async def test_compact_after_undo_commits_reverted_branch(monkeypatch):
     assert session is not None
     assert session.revert is None
     assert [message.content for message in compact_input] == ["first", "first answer"]
-    assert [
-        row.content for row in rows if (row.extra or {}).get("hidden_from_user")
-    ] == [
+    assert [row.content for row in rows if row.kind == "reverted"] == [
         "second",
         "second answer",
     ]

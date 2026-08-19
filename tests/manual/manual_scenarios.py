@@ -45,10 +45,10 @@ async def run(engine):
     print("\n── Scenario A: Normal compaction ──")
     async with factory() as s:
         sess = await create_chat_session(s)
-        u1 = await save_message(s, sess.id, HumanMessage(content="msg1"))
-        a1 = await save_message(s, sess.id, AssistantMessage(content="msg2"))
-        u2 = await save_message(s, sess.id, HumanMessage(content="msg3"))
-        a2 = await save_message(s, sess.id, AssistantMessage(content="msg4"))
+        await save_message(s, sess.id, HumanMessage(content="msg1"))
+        await save_message(s, sess.id, AssistantMessage(content="msg2"))
+        await save_message(s, sess.id, HumanMessage(content="msg3"))
+        await save_message(s, sess.id, AssistantMessage(content="msg4"))
         summary = await save_message(
             s, sess.id, HumanMessage(content="summary"), is_summary=True
         )
@@ -58,9 +58,9 @@ async def run(engine):
 
         user_msgs = await get_messages(s, sess.id)
         check(
-            "A1: user view — summary + kept + post",
+            "A1: user view — summary anchored at divider position before kept tail",
             [m.content for m in user_msgs],
-            ["msg3", "msg4", "summary", "msg5"],
+            ["summary", "msg3", "msg4", "msg5"],
         )
 
         llm_msgs = await get_messages_for_llm(s, sess.id)
@@ -80,15 +80,13 @@ async def run(engine):
     print("\n── Scenario B: Undo summary — user view ──")
     async with factory() as s:
         sess = await create_chat_session(s)
-        u1 = await save_message(s, sess.id, HumanMessage(content="u1"))
-        a1 = await save_message(s, sess.id, AssistantMessage(content="a1"))
+        await save_message(s, sess.id, HumanMessage(content="u1"))
+        await save_message(s, sess.id, AssistantMessage(content="a1"))
         summary = await save_message(
             s, sess.id, HumanMessage(content="summary"), is_summary=True
         )
         await save_message(s, sess.id, AssistantMessage(content="after"))
-        for row in (u1, a1):
-            row.exclude_from_context = True
-            s.add(row)
+        await hide_messages_before_summary(s, sess.id, summary.id)
         await s.commit()
 
         # Before undo
@@ -118,14 +116,12 @@ async def run(engine):
     print("\n── Scenario C: Undo summary — LLM view ──")
     async with factory() as s:
         sess = await create_chat_session(s)
-        u1 = await save_message(s, sess.id, HumanMessage(content="u1"))
-        a1 = await save_message(s, sess.id, AssistantMessage(content="a1"))
+        await save_message(s, sess.id, HumanMessage(content="u1"))
+        await save_message(s, sess.id, AssistantMessage(content="a1"))
         summary = await save_message(
             s, sess.id, HumanMessage(content="summary"), is_summary=True
         )
-        for row in (u1, a1):
-            row.exclude_from_context = True
-            s.add(row)
+        await hide_messages_before_summary(s, sess.id, summary.id)
         await s.commit()
 
         # Before undo LLM
@@ -155,21 +151,18 @@ async def run(engine):
     print("\n── Scenario D: Two summaries, undo second ──")
     async with factory() as s:
         sess = await create_chat_session(s)
-        u1 = await save_message(s, sess.id, HumanMessage(content="u1"))
-        a1 = await save_message(s, sess.id, AssistantMessage(content="a1"))
-        s1 = await save_message(
-            s, sess.id, HumanMessage(content="sum1"), is_summary=True
-        )
-        u2 = await save_message(s, sess.id, HumanMessage(content="u2"))
-        a2 = await save_message(s, sess.id, AssistantMessage(content="a2"))
+        await save_message(s, sess.id, HumanMessage(content="u1"))
+        await save_message(s, sess.id, AssistantMessage(content="a1"))
+        await save_message(s, sess.id, HumanMessage(content="sum1"), is_summary=True)
+        await save_message(s, sess.id, HumanMessage(content="u2"))
+        await save_message(s, sess.id, AssistantMessage(content="a2"))
         s2 = await save_message(
             s, sess.id, HumanMessage(content="sum2"), is_summary=True
         )
         await save_message(s, sess.id, AssistantMessage(content="after_s2"))
-        # Compact everything before sum2 (includes u1,a1,s1,u2,a2)
-        for row in (u1, a1, s1, u2, a2):
-            row.exclude_from_context = True
-            s.add(row)
+        # Compaction coverage is positional: sum1 covers u1/a1, sum2 covers
+        # everything before it (sum1 is superseded automatically by max-id).
+        await hide_messages_before_summary(s, sess.id, s2.id)
         await s.commit()
 
         # Undo sum2
@@ -205,7 +198,7 @@ async def run(engine):
         contents = [m.content for m in msgs]
         check("E1: normal message visible", "normal" in contents, True)
         check(
-            "E2: queued message visible despite exclude_from_context",
+            "E2: queued message visible despite queued kind",
             "queued" in contents,
             True,
         )
@@ -214,15 +207,13 @@ async def run(engine):
     print("\n── Scenario F: Redo after undo ──")
     async with factory() as s:
         sess = await create_chat_session(s)
-        u1 = await save_message(s, sess.id, HumanMessage(content="u1"))
-        a1 = await save_message(s, sess.id, AssistantMessage(content="a1"))
+        await save_message(s, sess.id, HumanMessage(content="u1"))
+        await save_message(s, sess.id, AssistantMessage(content="a1"))
         summary = await save_message(
             s, sess.id, HumanMessage(content="summary"), is_summary=True
         )
         await save_message(s, sess.id, AssistantMessage(content="after"))
-        for row in (u1, a1):
-            row.exclude_from_context = True
-            s.add(row)
+        await hide_messages_before_summary(s, sess.id, summary.id)
         await s.commit()
 
         await undo_session_messages(s, sess.id)
@@ -252,15 +243,13 @@ async def run(engine):
     print("\n── Scenario G: Undo only summary, all compacted restored ──")
     async with factory() as s:
         sess = await create_chat_session(s)
-        u1 = await save_message(s, sess.id, HumanMessage(content="u1"))
-        a1 = await save_message(s, sess.id, AssistantMessage(content="a1"))
-        u2 = await save_message(s, sess.id, HumanMessage(content="u2"))
+        await save_message(s, sess.id, HumanMessage(content="u1"))
+        await save_message(s, sess.id, AssistantMessage(content="a1"))
+        await save_message(s, sess.id, HumanMessage(content="u2"))
         summary = await save_message(
             s, sess.id, HumanMessage(content="summary"), is_summary=True
         )
-        for row in (u1, a1, u2):
-            row.exclude_from_context = True
-            s.add(row)
+        await hide_messages_before_summary(s, sess.id, summary.id)
         await s.commit()
 
         await undo_session_messages(s, sess.id)

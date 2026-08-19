@@ -942,18 +942,26 @@ class TestTeamHistoryRouteExtra:
     def test_history_before_cursor_accepts_compound_and_legacy_forms(
         self, app_with_team, monkeypatch
     ):
-        """``before`` accepts ``<iso>|<uuid>`` and a bare ISO timestamp."""
+        """``before`` accepts ``<seq>|<uuid>``, ``<iso>|<uuid>``, and bare ISO."""
         captured: dict[str, object] = {}
 
         async def fake_get_team_history(
-            db, requested_id, *, before=None, before_id=None
+            db, requested_id, *, before_seq=None, before_id=None
         ):
-            captured["before"] = before
+            captured["before_seq"] = before_seq
             captured["before_id"] = before_id
             return None  # 404s out; we only care about cursor parsing
 
         monkeypatch.setattr(
             "app.api.routes.team.chat.get_team_history", fake_get_team_history
+        )
+
+        async def fake_resolve(db, session_id, before, before_id):
+            captured["legacy"] = (before, before_id)
+            return (777, before_id)
+
+        monkeypatch.setattr(
+            "app.api.routes.team.chat.resolve_legacy_history_cursor", fake_resolve
         )
         client = TestClient(app_with_team)
         sid = uuid.uuid7()
@@ -961,11 +969,21 @@ class TestTeamHistoryRouteExtra:
 
         resp = client.get(
             f"/api/team/{sid}/history",
+            params={"before": f"4096|{msg_id}"},
+        )
+        assert resp.status_code == 404
+        assert captured["before_seq"] == 4096
+        assert captured["before_id"] == msg_id
+
+        resp = client.get(
+            f"/api/team/{sid}/history",
             params={"before": f"2025-01-01T00:00:00+00:00|{msg_id}"},
         )
         assert resp.status_code == 404
         assert captured["before_id"] == msg_id
-        assert captured["before"].year == 2025
+        # Legacy timestamp cursors are resolved to their (seq, id) position.
+        assert captured["before_seq"] == 777
+        assert captured["legacy"][0].year == 2025
 
         resp = client.get(
             f"/api/team/{sid}/history", params={"before": "2025-01-01T00:00:00+00:00"}

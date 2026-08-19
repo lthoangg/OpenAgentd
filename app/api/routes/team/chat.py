@@ -85,6 +85,7 @@ from app.services.chat_service import (
     get_team_history_since,
     get_latest_top_level_session,
     list_sessions_page,
+    resolve_legacy_history_cursor,
     save_message,
     save_queued_user_message,
     update_session_title,
@@ -951,25 +952,30 @@ def _parse_cursor(raw: str, field: str) -> datetime:
     return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=UTC)
 
 
-def _parse_before_cursor(raw: str) -> tuple[datetime, UUID | None]:
-    """Parse a ``before`` cursor into its ``(created_at, id)`` components.
+def _parse_before_cursor(
+    raw: str,
+) -> tuple[int | None, datetime | None, UUID | None]:
+    """Parse an opaque ``before`` cursor.
 
-    Accepts both the compound ``"<iso>|<uuid>"`` form emitted by
-    :func:`team_history` and the legacy bare-ISO form, so cursors a client
-    persisted before the id component existed keep working (they just cannot
-    break ``created_at`` ties). Clients treat the cursor as an opaque string
-    and echo it back verbatim.
+    Current form is ``"<seq>|<uuid>"``. Two legacy forms are still accepted —
+    ``"<created_at-iso>|<uuid>"`` and a bare ISO timestamp — because clients
+    treat the cursor as an opaque string and may echo back one persisted
+    before the seq remodel. Returns ``(seq, legacy_created_at, id)`` with
+    exactly one of the first two set.
     """
-    timestamp, _, raw_id = raw.partition("|")
-    parsed = _parse_cursor(timestamp, "before")
-    if not raw_id:
-        return parsed, None
+    head, _, raw_id = raw.partition("|")
+    message_id: UUID | None = None
+    if raw_id:
+        try:
+            message_id = UUID(raw_id)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=422, detail=f"Invalid before cursor: {raw}"
+            ) from exc
     try:
-        return parsed, UUID(raw_id)
-    except ValueError as exc:
-        raise HTTPException(
-            status_code=422, detail=f"Invalid before cursor: {raw}"
-        ) from exc
+        return int(head), None, message_id
+    except ValueError:
+        return None, _parse_cursor(head, "before"), message_id
 
 
 @router.get("/{session_id}/history")
@@ -986,10 +992,9 @@ async def team_history(
     """Return a page of turn history (cursor-based, newest-first page).
 
     Pass ``before`` (the opaque ``next_cursor`` from the previous response) to
-    load an older page. The cursor encodes ``"<created_at-iso>|<message-id>"``;
-    the id breaks ``created_at`` ties, which team turns produce routinely by
-    batch-inserting lead and member rows. A bare ISO timestamp is still
-    accepted for older clients.
+    load an older page. The cursor encodes ``"<seq>|<message-id>"``; the id
+    breaks ``seq`` ties. Legacy timestamp cursors persisted by older clients
+    are transparently resolved to their ``(seq, id)`` position.
 
     Pass ``since`` (``created_at`` of the newest message the caller already
     holds) to fetch only what was persisted after it.  That is how the frontend
@@ -1009,13 +1014,22 @@ async def team_history(
             db, team, session_id, _parse_cursor(since, "since")
         )
 
-    before_dt: datetime | None = None
+    before_seq: int | None = None
     before_id: UUID | None = None
     if before is not None:
-        before_dt, before_id = _parse_before_cursor(before)
+        before_seq, legacy_dt, before_id = _parse_before_cursor(before)
+        if before_seq is None and legacy_dt is not None:
+            resolved = await resolve_legacy_history_cursor(
+                db, session_id, legacy_dt, before_id
+            )
+            if resolved is None:
+                before_seq, before_id = None, None
+                before = None
+            else:
+                before_seq, before_id = resolved
 
     history = await get_team_history(
-        db, session_id, before=before_dt, before_id=before_id
+        db, session_id, before_seq=before_seq, before_id=before_id
     )
     if history is None:
         raise HTTPException(status_code=404, detail="Lead session not found.")
@@ -1050,15 +1064,15 @@ async def team_history(
     ]
 
     next_cursor = (
-        f"{history.next_cursor.isoformat()}|{history.next_cursor_id}"
-        if history.next_cursor and history.next_cursor_id
+        f"{history.next_cursor}|{history.next_cursor_id}"
+        if history.next_cursor is not None and history.next_cursor_id
         else None
     )
     # Only a first page can be a cold load, and only a cold load needs to learn
     # about an open question — paging backwards through history never does.
     pending_row = (
         None
-        if before_dt is not None
+        if before is not None
         else await question_service.get_pending_question(db, session_id)
     )
 

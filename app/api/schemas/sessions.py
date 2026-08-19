@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from app.api.schemas.base import _ExcludeNoneModel
 
@@ -107,14 +107,26 @@ class MessageResponse(_ExcludeNoneModel):
     tool_calls: list[dict] | None = None
     tool_call_id: str | None = None
     name: str | None = None
+    # Position within the session — the canonical ordering key. Clients must
+    # sort by (seq, id), not created_at: anchored rows (compaction summaries,
+    # healed tool stubs) sit at their logical position, not insertion time.
+    seq: int = 0
+    # chat | note | queued | summary | reverted — see SessionMessage.kind.
+    kind: str = "chat"
+    # Derived from ``kind`` for backwards compatibility with existing clients.
     is_summary: bool = False
-    exclude_from_context: bool = False
     extra: dict | None = None
     created_at: datetime | None = None
     # Attachment metadata (path/workspace_path stripped — see _message_response)
     attachments: list[dict] | None = None
     # True when this message has file attachments — frontend shows file cards
     file_message: bool = False
+
+    @model_validator(mode="after")
+    def _derive_is_summary(self) -> "MessageResponse":
+        if self.kind == "summary":
+            self.is_summary = True
+        return self
 
 
 class SessionDetailResponse(SessionResponse):

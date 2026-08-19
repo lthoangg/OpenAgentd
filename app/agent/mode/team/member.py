@@ -22,7 +22,6 @@ import abc
 import asyncio
 import copy
 import uuid
-from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 from uuid import uuid7
@@ -312,7 +311,7 @@ class TeamMemberBase(abc.ABC):
         self._open_task_nudge_counts: dict[str, int] = {}
         self._llm_history: list[ChatMessage] = []
         self._llm_history_revision: tuple[int, int] | None = None
-        self._llm_history_cursor: tuple[datetime, uuid.UUID] | None = None
+        self._llm_history_cursor: tuple[int, uuid.UUID] | None = None
 
     # ------------------------------------------------------------------
     # Lifecycle

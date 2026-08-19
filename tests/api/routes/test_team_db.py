@@ -96,6 +96,12 @@ async def _create_member_session(db, session_id, parent_id, agent_name="worker")
 
 
 async def _add_message(db, session_id, role="user", content="test", **kwargs):
+    # Mirror save_message's kind derivation for rows built directly.
+    if "kind" not in kwargs:
+        if kwargs.pop("is_summary", False):
+            kwargs["kind"] = "summary"
+        elif (kwargs.get("extra") or {}).get("hidden_from_user"):
+            kwargs["kind"] = "note"
     msg = SessionMessage(
         session_id=session_id,
         role=role,

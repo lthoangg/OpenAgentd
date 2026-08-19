@@ -420,11 +420,8 @@ class TestDismiss:
                 ]
 
                 assert [r.role for r in roster_rows] == ["user", "user", "user"]
-                assert [r.exclude_from_context for r in roster_rows] == [
-                    False,
-                    False,
-                    False,
-                ]
+                assert [r.kind for r in roster_rows] == ["note"] * 3
+                assert [r.pinned for r in roster_rows] == [True] * 3
                 assert all(
                     r.extra and r.extra.get("hidden_from_user") is True
                     for r in roster_rows

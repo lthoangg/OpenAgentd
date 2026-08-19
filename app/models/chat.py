@@ -19,6 +19,27 @@ def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
+# ── session_messages constants ────────────────────────────────────────────────
+
+# Sparse allocation step for ``SessionMessage.seq``.  Appends take
+# ``MAX(seq) + SEQ_STEP``; anchored inserts (summary dividers, healed tool
+# stubs) take the midpoint of the two neighbouring rows.  1024 allows ten
+# midpoint splits at the same point before falling back to id tie-breaking.
+SEQ_STEP = 1024
+
+
+class MessageKind:
+    """Values for ``SessionMessage.kind`` — see the column docstring."""
+
+    CHAT = "chat"
+    NOTE = "note"
+    QUEUED = "queued"
+    SUMMARY = "summary"
+    REVERTED = "reverted"
+
+    ALL = (CHAT, NOTE, QUEUED, SUMMARY, REVERTED)
+
+
 class TZDateTime(TypeDecorator):
     """DateTime type that always returns timezone-aware UTC datetimes.
 
@@ -261,24 +282,19 @@ class SessionMessage(SQLModel, table=True):
     __tablename__: str = "session_messages"  # type: ignore[reportIncompatibleVariableOverride]
     __table_args__ = (
         # The only index this table needs. Every read filters on session_id and
-        # then orders by (created_at, id) — history_messages_stmt,
-        # llm_history_messages_stmt, and the team-history ROW_NUMBER() window
-        # functions — so all three columns are required to satisfy the sort
-        # without a temp B-tree.
+        # then orders by (seq, id) — the transcript, the LLM window, and the
+        # team-history ROW_NUMBER() windows — so all three columns are required
+        # to satisfy the sort without a temp B-tree. ``kind`` predicates apply
+        # as residual filters; a dedicated kind index lost to this one on every
+        # query shape (same reasoning that consolidated the old indexes in
+        # migration 00000017).
         #
-        # It also covers what two earlier indexes were carrying:
-        #   * a bare (session_id) index was a strict prefix of this one and was
-        #     never chosen by the planner;
-        #   * a (session_id, is_summary) index was never chosen either, because
-        #     is_summary queries also constrain session_id and range on
-        #     created_at, so this index wins and is_summary applies as a
-        #     residual filter.
         # This is the highest-write table in the schema, so a redundant index
         # is a B-tree insert on every persisted message.
         sa.Index(
-            "ix_session_messages_session_created_id",
+            "ix_session_messages_session_seq_id",
             "session_id",
-            "created_at",
+            "seq",
             "id",
         ),
     )
@@ -295,6 +311,61 @@ class SessionMessage(SQLModel, table=True):
     content: str | None = Field(default=None)
     reasoning_content: str | None = Field(default=None)
 
+    # ── Position ──────────────────────────────────────────────────────────
+    # Sparse per-session sequence number: the single ordering key for every
+    # read path (transcript, LLM window, pagination). Allocated in steps of
+    # ``SEQ_STEP`` so rows can be *anchored* between two existing rows
+    # (summary dividers, healed tool stubs) by taking the midpoint. Ties are
+    # broken by ``id`` (uuid7 — creation-ordered), so even a fully exhausted
+    # gap only costs deterministic tie-breaking, never a constraint failure.
+    #
+    # ``created_at`` remains as honest wall-clock metadata for display; it is
+    # never used for ordering or boundary math.
+    seq: int = Field(
+        default=0,
+        sa_column=Column(sa.Integer(), nullable=False, server_default="0"),
+    )
+
+    # ── Kind ──────────────────────────────────────────────────────────────
+    # What this row *is* — replaces the old ``is_summary`` /
+    # ``exclude_from_context`` boolean pair and the ``extra.hidden_from_user``
+    # / ``extra.queue_status`` JSON flags. LLM-context membership is *derived*
+    # from (kind, seq) — see ``chat_service_revert.llm_window_rows`` — so
+    # compaction and undo never mutate historical rows.
+    #
+    #   chat     — normal message. UI ✓. LLM ✓ when positioned at/after the
+    #              active summary (or when no summary exists).
+    #   note     — internal context for the LLM (mention blocks, truncation
+    #              recovery, roster changes, team inbox copies). UI ✗, LLM
+    #              same positional rule as chat.
+    #   queued   — user message waiting for the current turn to finish.
+    #              UI ✓ (queued badge), LLM ✓; promotion re-seqs it to the
+    #              end and flips it to ``chat``.
+    #   summary  — compaction summary. The *active* summary is the one with
+    #              the highest ``id`` (uuid7 = true creation order — position
+    #              can't be trusted because summaries are anchored before the
+    #              window they kept). Non-active summaries stay visible in the
+    #              UI as dividers but never enter the LLM window.
+    #   reverted — undone by revert cleanup. UI ✗, LLM ✗, audit only.
+    kind: str = Field(
+        default="chat",
+        max_length=16,
+        sa_column=Column(sa.String(16), nullable=False, server_default="chat"),
+    )
+
+    # Position-independent LLM membership: pinned rows stay in the LLM window
+    # even when positioned below the active summary. Set for retained skill
+    # tool pairs (kind=chat) and for permanent internal context such as
+    # mention blocks and roster notes (kind=note, saved with
+    # ``extra.hidden_from_summary``). Orthogonal to ``kind`` because UI
+    # visibility and compaction survival are independent axes — a mention
+    # note is hidden *and* pinned, a skill pair is visible *and* pinned.
+    # ``kind='reverted'`` always wins over pinned.
+    pinned: bool = Field(
+        default=False,
+        sa_column=Column(sa.Boolean, nullable=False, server_default=sa.false()),
+    )
+
     # Stores tool_calls as a list of dicts
     tool_calls: list[dict] | None = Field(
         default=None,
@@ -305,22 +376,12 @@ class SessionMessage(SQLModel, table=True):
     tool_call_id: str | None = Field(default=None, max_length=100)
     name: str | None = Field(default=None, max_length=100)
 
-    # Flexible extra data (usage stats, etc.)
+    # Flexible extra data (usage stats, provider blobs, attachments…).
+    # Contract: ``extra`` is never queried in SQL on a hot path — anything
+    # that needs an indexed predicate must be a real column (``kind``/``seq``).
     extra: dict | None = Field(
         default=None,
         sa_column=Column(JSON()),
-    )
-
-    # Summarization support
-    # is_summary=True           → this message IS the conversation summary (assistant role)
-    # exclude_from_context=True → this message exists in audit log but is not sent to LLM
-    is_summary: bool = Field(
-        default=False,
-        sa_column=Column(sa.Boolean, nullable=False, server_default=sa.false()),
-    )
-    exclude_from_context: bool = Field(
-        default=False,
-        sa_column=Column(sa.Boolean, nullable=False, server_default=sa.false()),
     )
 
     created_at: datetime = Field(

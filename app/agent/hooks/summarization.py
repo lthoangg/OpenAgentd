@@ -803,6 +803,11 @@ class SummarizationHook(BaseAgentHook):
         for m in state.messages:
             if id(m) in to_summarise_set and id(m) not in retained_skill_ids:
                 m.exclude_from_context = True
+                # Compacted rows lose position-independent membership — a
+                # previously retained skill pair that just got superseded by a
+                # newer load of the same skill compacts away like anything
+                # else. The checkpointer flushes the flip.
+                m.pinned = False
 
         # Exclude any prior summary still in the kept window — the new
         # summary supersedes it, and two summaries in a row can produce
@@ -821,6 +826,31 @@ class SummarizationHook(BaseAgentHook):
                 (i for i, m in enumerate(state.messages) if not m.exclude_from_context),
                 len(state.messages),
             )
+
+        # Invariant for the derived DB window: no excluded message may sit
+        # *after* the summary's position — coverage is positional
+        # (seq >= summary), so a straddled excluded row above the anchor
+        # would silently re-enter the window on reload. Tool-pair expansion
+        # can exclude rows past the first kept one; place the summary after
+        # the last excluded row in that case.
+        last_excluded_idx = next(
+            (
+                i
+                for i in range(len(state.messages) - 1, -1, -1)
+                if state.messages[i].exclude_from_context
+            ),
+            -1,
+        )
+        first_kept_idx = max(first_kept_idx, last_excluded_idx + 1)
+
+        # Everything that survives *below* the summary's anchor position is
+        # position-independent by definition (retained skill pairs, permanent
+        # notes, and any kept row the anchor ended up past). Pin them so the
+        # derived DB window — pinned rows + rows at/after the summary —
+        # reproduces exactly this in-memory window on reload.
+        for m in state.messages[:first_kept_idx]:
+            if not m.exclude_from_context and not isinstance(m, SystemMessage):
+                m.pinned = True
 
         # HumanMessage as the summary anchor: ZAI and most OpenAI-compat
         # APIs require system → user → … so this shape is safe regardless

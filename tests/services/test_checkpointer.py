@@ -463,7 +463,7 @@ class TestSQLiteCheckpointerSync:
                 await db.exec(
                     select(SessionMessage).where(
                         col(SessionMessage.session_id) == sid,
-                        col(SessionMessage.is_summary).is_(True),
+                        col(SessionMessage.kind) == "summary",
                     )
                 )
             ).all()
@@ -483,8 +483,8 @@ class TestSQLiteCheckpointerSync:
         await cp.sync(ctx, state)
 
     @pytest.mark.asyncio
-    async def test_sync_updates_exclude_from_context_flag(self):
-        """When a previously-persisted message flips exclude_from_context→True, DB row is updated."""
+    async def test_sync_updates_pinned_flag(self):
+        """When a previously-persisted message flips pinned→True, the DB row is updated."""
         import app.core.db as _db
         from sqlmodel import col, select
         from app.models.chat import SessionMessage
@@ -496,14 +496,14 @@ class TestSQLiteCheckpointerSync:
 
         cp = SQLiteCheckpointer(_db.async_session_factory)
         ctx = _ctx(str(sid))
-        msg = AssistantMessage(content="will be excluded")
+        msg = AssistantMessage(content="will be pinned")
         state = AgentState(messages=[msg])
 
         # Me first sync — persists the message
         await cp.sync(ctx, state)
 
-        # Me flip exclude_from_context
-        msg.exclude_from_context = True
+        # Me flip pinned (SummarizationHook does this for retained skill pairs)
+        msg.pinned = True
         await cp.sync(ctx, state)
 
         # Me check DB row
@@ -512,16 +512,20 @@ class TestSQLiteCheckpointerSync:
                 await db.exec(
                     select(SessionMessage).where(
                         col(SessionMessage.session_id) == sid,
-                        col(SessionMessage.content) == "will be excluded",
+                        col(SessionMessage.content) == "will be pinned",
                     )
                 )
             ).all()
         assert len(rows) == 1
-        assert rows[0].exclude_from_context is True
+        assert rows[0].pinned is True
 
     @pytest.mark.asyncio
-    async def test_sync_bulk_updates_exclusion_without_per_message_selects(self):
-        """Seen excluded messages use one conditional UPDATE, not N PK SELECTs."""
+    async def test_sync_bulk_updates_pins_without_per_message_selects(self):
+        """Seen pinned messages use one bulk UPDATE, not N PK SELECTs.
+
+        Exclusion flips, by contrast, produce *no* writes at all — context
+        membership is derived from the summary row's position.
+        """
         import app.core.db as _db
         from app.services.chat_service import get_messages
 
@@ -537,6 +541,7 @@ class TestSQLiteCheckpointerSync:
         await cp.sync(ctx, state)
         for message in messages:
             message.exclude_from_context = True
+            message.pinned = True
 
         statements: list[str] = []
 
@@ -551,22 +556,24 @@ class TestSQLiteCheckpointerSync:
                 _db.engine.sync_engine, "before_cursor_execute", record_statement
             )
 
-        exclusion_selects = [
+        pin_selects = [
             statement
             for statement in statements
             if "SELECT" in statement.upper() and "session_messages" in statement
         ]
-        exclusion_updates = [
+        pin_updates = [
             statement
             for statement in statements
             if "UPDATE session_messages" in statement
         ]
-        assert exclusion_selects == []
-        assert len(exclusion_updates) == 1
+        assert pin_selects == []
+        assert len(pin_updates) == 1
 
         async with _db.async_session_factory() as db:
             persisted = await get_messages(db, sid)
-        assert persisted == []
+        # In-memory exclusion is not persisted on its own — durability comes
+        # from the summary row that always accompanies it in the real flow.
+        assert len(persisted) == 3
         assert all(id(message) in cp._persisted[str(sid)] for message in messages)
 
     @pytest.mark.asyncio
@@ -712,7 +719,7 @@ class TestSQLiteCheckpointerSync:
                 await db.exec(
                     select(SessionMessage).where(
                         col(SessionMessage.session_id) == sid,
-                        col(SessionMessage.is_summary).is_(True),
+                        col(SessionMessage.kind) == "summary",
                     )
                 )
             ).all()
@@ -727,9 +734,9 @@ class TestSQLiteCheckpointerSync:
 
         ``SummarizationHook`` *inserts* the summary into ``state.messages``
         ahead of the window it kept verbatim. A fresh row defaults to
-        ``utcnow()``, so persisting it plainly would sort it after that whole
-        window — putting the transcript's "Session compacted" divider between
-        the user's message and its reply.
+        the next append ``seq``, so persisting it plainly would sort it after
+        that whole window — and, in the derived model, fail to cover the
+        compacted rows at all.
         """
         import app.core.db as _db
         from sqlmodel import col, select
@@ -774,24 +781,24 @@ class TestSQLiteCheckpointerSync:
                     select(SessionMessage)
                     .where(col(SessionMessage.session_id) == sid)
                     .order_by(
-                        col(SessionMessage.created_at).asc(),
+                        col(SessionMessage.seq).asc(),
                         col(SessionMessage.id).asc(),
                     )
                 )
             ).all()
 
-        assert [(r.role, r.is_summary) for r in rows] == [
-            ("user", False),
-            ("assistant", False),
-            ("user", True),
-            ("user", False),
+        assert [(r.role, r.kind) for r in rows] == [
+            ("user", "chat"),
+            ("assistant", "chat"),
+            ("user", "summary"),
+            ("user", "chat"),
         ]
         assert rows[2].content == "Earlier: the user asked for ONE."
         assert rows[3].id == kept_user.id
 
     @pytest.mark.asyncio
     async def test_sync_leaves_a_trailing_summary_at_the_tail(self):
-        """No kept window after it — the default ``utcnow()`` is already right."""
+        """No kept window after it — the default append ``seq`` is already right."""
         import app.core.db as _db
         from sqlmodel import col, select
         from app.models.chat import SessionMessage
@@ -816,10 +823,10 @@ class TestSQLiteCheckpointerSync:
                 await db.exec(
                     select(SessionMessage)
                     .where(col(SessionMessage.session_id) == sid)
-                    .order_by(col(SessionMessage.created_at).asc())
+                    .order_by(col(SessionMessage.seq).asc())
                 )
             ).all()
-        assert [r.is_summary for r in rows] == [False, True]
+        assert [r.kind for r in rows] == ["chat", "summary"]
 
     @pytest.mark.asyncio
     async def test_mark_loaded_sets_seeded_tokens_from_usage(self):

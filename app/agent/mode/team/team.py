@@ -1534,10 +1534,12 @@ class AgentTeam:
             make_team_todo_tool(self, agent_name=agent_name, role=role),
         ]
 
-        if self.mode == "coding":
-            from app.agent.tools.builtin.lsp import lsp_navigation
-
-            tools.append(lsp_navigation)
+        # LSP navigation tool is temporarily detached — agents were not using
+        # it. Code kept in app/agent/tools/builtin/lsp.py for future reuse.
+        # if self.mode == "coding":
+        #     from app.agent.tools.builtin.lsp import lsp_navigation
+        #
+        #     tools.append(lsp_navigation)
 
         if agent_name == self.lead.name:
             tools.append(make_team_manage_tool(self))

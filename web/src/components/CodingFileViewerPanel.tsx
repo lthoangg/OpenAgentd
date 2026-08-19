@@ -568,6 +568,11 @@ export function DiffPreview({ diff }: { diff: string }) {
           }
 
           if (p.kind === 'hunk') {
+            // No skipped lines to report (e.g. the first hunk starts at the
+            // top of the file) — rendering the empty separator anyway left a
+            // blank bordered strip between the file header row and the
+            // first real diff line, reading as a stray gap.
+            if (p.skipped <= 0) return null
             return (
               <div
                 key={index}
@@ -577,7 +582,7 @@ export function DiffPreview({ diff }: { diff: string }) {
                   <span className="block w-9 py-0.5" />
                 </div>
                 <span className="px-3 py-0.5 text-[10px] italic text-(--color-text-subtle)/50">
-                  {p.skipped > 0 ? `${p.skipped} line${p.skipped === 1 ? '' : 's'} unchanged` : ''}
+                  {p.skipped} line{p.skipped === 1 ? '' : 's'} unchanged
                 </span>
               </div>
             )

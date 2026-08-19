@@ -206,7 +206,7 @@ export const TeamChatHeader = memo(function TeamChatHeader({
 
         {/* Right cluster — desktop gets the full action row. Mobile keeps
             frequent actions visible and leaves secondary panels in More. */}
-        <div className="flex shrink-0 items-center gap-0.5">
+        <div className="flex shrink-0 items-center gap-0.5 md:pr-1">
         {isMobile ? (
           <>
             {headerTokens && (

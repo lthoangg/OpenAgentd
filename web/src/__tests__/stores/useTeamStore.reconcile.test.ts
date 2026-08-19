@@ -114,6 +114,59 @@ describe('reconcileTurnTail', () => {
     expect(mockTeamHistory).not.toHaveBeenCalled()
   })
 
+  // Delta-boundary regression: a mid-turn loadSession advances the watermark
+  // past the assistant row (persisted before its tools finish), so the
+  // end-of-turn delta carries only the tool *result* row. That orphaned
+  // result must complete the already-confirmed card instead of being
+  // silently dropped — otherwise the card stays "running" forever when the
+  // live tool_end event was missed (tab sleep / reconnect).
+  it('completes a confirmed running tool card from a result-only delta', async () => {
+    await seedLoadedSession()
+    // The card a mid-turn loadSession reconciled: confirmed, not yet done.
+    useTeamStore.setState((state) => {
+      const stream = state.agentStreams.lead
+      stream.blocks = [
+        ...stream.blocks,
+        {
+          id: 'call-9',
+          type: 'tool',
+          content: '',
+          toolName: 'shell',
+          toolCallId: 'call-9',
+          toolDone: false,
+          timestamp: new Date('2026-07-01T00:00:03Z'),
+        },
+      ]
+      return state
+    })
+    mockTeamHistorySince.mockImplementation(() =>
+      Promise.resolve(
+        deltaHistory({
+          lead: leadSession({
+            messages: [
+              {
+                id: 'tr-9',
+                role: 'tool',
+                tool_call_id: 'call-9',
+                content: 'late result',
+                extra: { duration_ms: 5 },
+                created_at: '2026-07-01T00:00:06Z',
+              },
+            ],
+          }),
+        }),
+      ),
+    )
+
+    await useTeamStore.getState().reconcileTurnTail('lead-sess')
+
+    const blocks = useTeamStore.getState().agentStreams.lead.blocks
+    const tool = blocks.find((b) => b.type === 'tool' && b.toolCallId === 'call-9')
+    expect(tool?.toolDone).toBe(true)
+    expect(tool?.toolResult).toBe('late result')
+    expect(tool?.serverDurationMs).toBe(5)
+  })
+
   it('replaces stream-committed blocks with the canonical rows', async () => {
     await seedLoadedSession()
     addUnsyncedBlock('client-block-1')

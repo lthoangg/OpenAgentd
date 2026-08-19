@@ -1,5 +1,23 @@
 import type { AgentUsage, ContentBlock, MessageResponse } from '@/api/types'
 
+/**
+ * A ``role='tool'`` result row whose matching assistant ``tool_calls`` row was
+ * not in the same parsed batch.
+ *
+ * History fetches cut at arbitrary row boundaries — the pagination cursor can
+ * split a call/result pair across pages, and a turn-tail delta can carry only
+ * the result when a mid-turn reconcile already adopted the assistant row (it
+ * is persisted before its tools finish). ``parseTeamBlocks`` used to drop such
+ * rows silently, losing the result and leaving the card stuck "running".
+ * Callers collect them here and attach via {@link applyOrphanToolResults}
+ * once the owning card is in reach.
+ */
+export interface OrphanToolResult {
+  content: string
+  serverDurationMs?: number
+  mcpApp?: Record<string, unknown>
+}
+
 // Me sort messages by timestamp asc, assistant before tool on ties
 
 /** Legacy-row guard: pre-2026-05 summary rows had a hardcoded
@@ -114,8 +132,15 @@ export function sumUsageFromMessages(msgs: MessageResponse[]): AgentUsage {
  * User messages → type:'user' block (rendered as user bubble inline)
  * Assistant messages → thinking/tool/text blocks
  * Tool result messages → mutate matching tool block
+ *
+ * ``orphanToolResults`` (optional): collector for tool result rows whose
+ * assistant row is outside this batch — see {@link OrphanToolResult}. Without
+ * it those rows are dropped, matching the old behavior.
  */
-export function parseTeamBlocks(msgs: MessageResponse[]): ContentBlock[] {
+export function parseTeamBlocks(
+  msgs: MessageResponse[],
+  orphanToolResults?: Record<string, OrphanToolResult>,
+): ContentBlock[] {
   const result: ContentBlock[] = []
   const pendingToolBlocks: Map<string, ContentBlock> = new Map()
 
@@ -172,6 +197,11 @@ export function parseTeamBlocks(msgs: MessageResponse[]): ContentBlock[] {
             mcp_app: extra.mcp_app,
           }
         }
+      } else if (orphanToolResults) {
+        const orphan: OrphanToolResult = { content: msg.content || '' }
+        if (typeof extra?.duration_ms === 'number') orphan.serverDurationMs = extra.duration_ms
+        if (extra?.mcp_app) orphan.mcpApp = extra.mcp_app
+        orphanToolResults[msg.tool_call_id] = orphan
       }
       continue
     }
@@ -185,4 +215,38 @@ export function parseTeamBlocks(msgs: MessageResponse[]): ContentBlock[] {
   }
 
   return result
+}
+
+/**
+ * Complete incomplete tool cards in ``blocks`` from ``orphans``, consuming
+ * every entry it applies (leftovers stay for a later batch to claim).
+ *
+ * Matched strictly by ``toolCallId`` and only onto cards that are not done —
+ * a finished card keeps its own result, so a stale orphan can never overwrite
+ * live state. Returns the original array untouched when nothing applies.
+ */
+export function applyOrphanToolResults(
+  blocks: ContentBlock[],
+  orphans: Record<string, OrphanToolResult>,
+): ContentBlock[] {
+  if (Object.keys(orphans).length === 0) return blocks
+  let result: ContentBlock[] | null = null
+  for (let i = 0; i < blocks.length; i++) {
+    const block = blocks[i]
+    if (block.type !== 'tool' || block.toolDone || !block.toolCallId) continue
+    const orphan = orphans[block.toolCallId]
+    if (!orphan) continue
+    if (result === null) result = [...blocks]
+    result[i] = {
+      ...block,
+      toolDone: true,
+      toolResult: orphan.content,
+      ...(orphan.serverDurationMs !== undefined
+        ? { serverDurationMs: orphan.serverDurationMs, durationMs: orphan.serverDurationMs }
+        : {}),
+      ...(orphan.mcpApp ? { extra: { ...(block.extra ?? {}), mcp_app: orphan.mcpApp } } : {}),
+    }
+    delete orphans[block.toolCallId]
+  }
+  return result ?? blocks
 }

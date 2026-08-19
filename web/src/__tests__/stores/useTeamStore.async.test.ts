@@ -2786,6 +2786,92 @@ describe("loadOlderMessages", () => {
     expect(blocks[0].content).toBe("older")
     expect(blocks[1].content).toBe("newer")
   })
+
+   // Page-boundary regression: the history cursor cuts at arbitrary rows, so a
+  // tool *result* row can land in the first (newest) page while the assistant
+  // row carrying the matching tool_call sits in the older page. The result
+  // must survive the first parse and attach to the card once the older page
+  // is prepended — previously it was silently dropped, leaving the card stuck
+  // "running" with its output missing.
+  it("attaches a tool result orphaned by the page boundary to its card in the older page", async () => {
+    useTeamStore.setState({ leadName: "lead", liveAgentNames: ["lead"] })
+    mockTeamHistory.mockImplementation((_sid: string, cursor?: string) => {
+      if (!cursor) {
+        // Newest page: starts mid-turn with the orphaned tool result.
+        return Promise.resolve({
+          lead: {
+            id: "lead-sess",
+            agent_name: "lead",
+            title: null,
+            created_at: null,
+            updated_at: null,
+            sub_sessions: [],
+            running: false,
+            messages: [
+              makeMessageResponse({
+                id: "m-toolresult",
+                role: "tool",
+                tool_call_id: "call-split",
+                content: "split result",
+                extra: { duration_ms: 42 },
+                created_at: "2024-03-01T00:00:02Z",
+              }),
+              makeMessageResponse({
+                id: "m-final",
+                role: "assistant",
+                content: "done!",
+                created_at: "2024-03-01T00:00:03Z",
+              }),
+            ],
+          },
+          members: [],
+          has_more: true,
+          next_cursor: "2024-03-01T00:00:02Z",
+        })
+      }
+      // Older page: the assistant row that issued the tool call.
+      return Promise.resolve({
+        lead: {
+          id: "lead-sess",
+          agent_name: "lead",
+          title: null,
+          created_at: null,
+          updated_at: null,
+          sub_sessions: [],
+          messages: [
+            makeMessageResponse({
+              id: "m-user",
+              role: "user",
+              content: "run it",
+              created_at: "2024-03-01T00:00:00Z",
+            }),
+            makeMessageResponse({
+              id: "m-call",
+              role: "assistant",
+              content: "",
+              tool_calls: [
+                { id: "call-split", type: "function", function: { name: "shell", arguments: '{"command":"ls"}' } },
+              ],
+              created_at: "2024-03-01T00:00:01Z",
+            }),
+          ],
+        },
+        members: [],
+        has_more: false,
+        next_cursor: null,
+      })
+    })
+
+    await useTeamStore.getState().loadSession("sess-1")
+    await useTeamStore.getState().loadOlderMessages()
+
+    const blocks = useTeamStore.getState().agentStreams["lead"].blocks
+    const tool = blocks.find((b) => b.type === "tool" && b.toolCallId === "call-split")
+    expect(tool).toBeDefined()
+    expect(tool?.toolDone).toBe(true)
+    expect(tool?.toolResult).toBe("split result")
+    expect(tool?.serverDurationMs).toBe(42)
+  })
 })
 
 // ── Ghost-message regression: late SSE after /undo ────────────────────────────

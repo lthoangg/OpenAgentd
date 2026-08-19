@@ -1,5 +1,6 @@
 import { describe, it, expect } from "bun:test";
-import { sumUsageFromMessages, parseTeamBlocks } from "@/utils/messages";
+import { sumUsageFromMessages, parseTeamBlocks, applyOrphanToolResults } from "@/utils/messages";
+import type { OrphanToolResult } from "@/utils/messages";
 import type { MessageResponse } from "@/api/types";
 
 // ---------------------------------------------------------------------------
@@ -409,5 +410,112 @@ describe("parseTeamBlocks — todo_manage rendering", () => {
     expect(blocks).toHaveLength(1);
     expect(blocks[0].toolDone).toBe(true);
     expect(blocks[0].toolResult).toBe("[task_1] [completed] (high) claimed=executor#1 Do the thing");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Orphaned tool results — call/result pairs split across a fetch boundary
+// ---------------------------------------------------------------------------
+
+describe("orphaned tool results", () => {
+  it("collects a tool result whose assistant row is outside the batch", () => {
+    const orphans: Record<string, OrphanToolResult> = {};
+    const blocks = parseTeamBlocks(
+      [
+        makeMsg({
+          role: "tool",
+          tool_call_id: "call-1",
+          content: "result text",
+          extra: { duration_ms: 42 },
+          created_at: "2026-01-01T00:00:01Z",
+        }),
+      ],
+      orphans,
+    );
+    expect(blocks).toHaveLength(0);
+    expect(orphans["call-1"]).toMatchObject({ content: "result text", serverDurationMs: 42 });
+  });
+
+  it("does not collect results that matched a card in the same batch", () => {
+    const orphans: Record<string, OrphanToolResult> = {};
+    const blocks = parseTeamBlocks(
+      [
+        makeMsg({
+          role: "assistant",
+          content: "",
+          tool_calls: [
+            { id: "call-1", type: "function", function: { name: "shell", arguments: "{}" } },
+          ],
+          created_at: "2026-01-01T00:00:00Z",
+        }),
+        makeMsg({
+          role: "tool",
+          tool_call_id: "call-1",
+          content: "attached",
+          created_at: "2026-01-01T00:00:01Z",
+        }),
+      ],
+      orphans,
+    );
+    const tool = blocks.find((b) => b.type === "tool");
+    expect(tool?.toolDone).toBe(true);
+    expect(tool?.toolResult).toBe("attached");
+    expect(Object.keys(orphans)).toHaveLength(0);
+  });
+
+  it("applyOrphanToolResults completes a matching incomplete card and consumes the orphan", () => {
+    const blocks = parseTeamBlocks([
+      makeMsg({
+        role: "assistant",
+        content: "",
+        tool_calls: [
+          { id: "call-1", type: "function", function: { name: "shell", arguments: "{}" } },
+        ],
+        created_at: "2026-01-01T00:00:00Z",
+      }),
+    ]);
+    const orphans: Record<string, OrphanToolResult> = {
+      "call-1": { content: "res", serverDurationMs: 42 },
+    };
+
+    const applied = applyOrphanToolResults(blocks, orphans);
+
+    const tool = applied.find((b) => b.type === "tool");
+    expect(tool?.toolDone).toBe(true);
+    expect(tool?.toolResult).toBe("res");
+    expect(tool?.serverDurationMs).toBe(42);
+    expect(tool?.durationMs).toBe(42);
+    expect(orphans["call-1"]).toBeUndefined();
+  });
+
+  it("applyOrphanToolResults leaves done cards and unrelated orphans alone", () => {
+    const blocks = parseTeamBlocks([
+      makeMsg({
+        role: "assistant",
+        content: "",
+        tool_calls: [
+          { id: "call-done", type: "function", function: { name: "shell", arguments: "{}" } },
+        ],
+        created_at: "2026-01-01T00:00:00Z",
+      }),
+      makeMsg({
+        role: "tool",
+        tool_call_id: "call-done",
+        content: "already finished",
+        created_at: "2026-01-01T00:00:01Z",
+      }),
+    ]);
+    const orphans: Record<string, OrphanToolResult> = {
+      "call-done": { content: "stale overwrite" },
+      "call-elsewhere": { content: "still waiting" },
+    };
+
+    const applied = applyOrphanToolResults(blocks, orphans);
+
+    const tool = applied.find((b) => b.type === "tool");
+    expect(tool?.toolResult).toBe("already finished");
+    // Consumed nothing: the done card keeps its result, the unrelated orphan stays.
+    expect(orphans["call-done"]).toBeDefined();
+    expect(orphans["call-elsewhere"]).toBeDefined();
   });
 });

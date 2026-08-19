@@ -6,6 +6,7 @@ import type {
   QuestionItem,
   TeamCommandResponse,
 } from '@/api/types'
+import type { OrphanToolResult } from '@/utils/messages'
 
 export interface TeamError {
   title?: string
@@ -105,6 +106,16 @@ export interface AgentStream {
    * client/server clock skew respectively).
    */
   _unsyncedBlockIds?: string[]
+  /**
+   * Tool result rows waiting for their card. A history fetch cuts at
+   * arbitrary rows, so a ``role='tool'`` result can arrive in a batch that
+   * does not contain the assistant row carrying the matching ``tool_calls``
+   * (pagination boundary, or a turn-tail delta after a mid-turn reconcile
+   * already adopted the assistant row). Parked here keyed by ``toolCallId``
+   * until the owning card shows up — ``loadOlderMessages`` claims them for
+   * prepended pages, ``reconcileTurnTail`` for already-confirmed cards.
+   */
+  _orphanToolResults?: Record<string, OrphanToolResult>
   /**
    * Per-kind "the next streamed chunk may be a full replay snapshot" flag.
    *

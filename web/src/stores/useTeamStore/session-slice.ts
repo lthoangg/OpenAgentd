@@ -1,6 +1,7 @@
 import type { StateCreator } from 'zustand'
 import { teamStatus, teamHistory, teamHistorySince } from '@/api/client'
-import { parseTeamBlocks, sumUsageFromMessages } from '@/utils/messages'
+import { applyOrphanToolResults, parseTeamBlocks, sumUsageFromMessages } from '@/utils/messages'
+import type { OrphanToolResult } from '@/utils/messages'
 import { createDefaultAgentStream } from './defaults'
 import { applyRevertBoundary, revokeBlobUrlsFromBlocks } from './helpers'
 import { toPendingQuestion } from './sse-reducer'
@@ -370,6 +371,7 @@ export function resetSessionState(
       state.agentStreams[name].revertedMessages = []
       state.agentStreams[name]._revertedSuffix = []
       state.agentStreams[name]._unsyncedBlockIds = []
+      state.agentStreams[name]._orphanToolResults = {}
   })
 }
 
@@ -507,7 +509,11 @@ async function loadSessionImpl(
           (b) => b.type === 'provider_status' && (b.extra?.status === 'error' || b.extra?.status === 'exhausted' || b.extra?.category === 'provider'),
         )
         if (!leadHadNewerActivity) revokeBlobUrlsFromBlocks(leadStream.currentBlocks)
-        leadStream.blocks = parseTeamBlocks(history.lead.messages)
+        const leadOrphans: Record<string, OrphanToolResult> = {}
+        leadStream.blocks = parseTeamBlocks(history.lead.messages, leadOrphans)
+        // Results whose calls sit in older, not-yet-loaded pages — parked for
+        // loadOlderMessages to attach when the owning card scrolls in.
+        leadStream._orphanToolResults = leadOrphans
         if (leadLocalErrors.length > 0) {
           const existingIds = new Set(leadStream.blocks.map((b) => b.id))
           const toKeep = leadLocalErrors.filter((b) => !existingIds.has(b.id))
@@ -577,7 +583,9 @@ async function loadSessionImpl(
           (b) => b.type === 'provider_status' && (b.extra?.status === 'error' || b.extra?.status === 'exhausted' || b.extra?.category === 'provider'),
         )
         if (!memberHadNewerActivity) revokeBlobUrlsFromBlocks(memberStream.currentBlocks)
-        memberStream.blocks = parseTeamBlocks(member.messages)
+        const memberOrphans: Record<string, OrphanToolResult> = {}
+        memberStream.blocks = parseTeamBlocks(member.messages, memberOrphans)
+        memberStream._orphanToolResults = memberOrphans
         if (memberLocalErrors.length > 0) {
           const existingIds = new Set(memberStream.blocks.map((b) => b.id))
           const toKeep = memberLocalErrors.filter((b) => !existingIds.has(b.id))
@@ -892,10 +900,18 @@ export const createSessionSlice: StateCreator<
         const stream = draft.agentStreams[name]
         if (!stream) return
         const unsynced = new Set(stream._unsyncedBlockIds ?? [])
-        const confirmed = unsynced.size > 0
+        const confirmedRaw = unsynced.size > 0
           ? stream.blocks.filter((block) => !unsynced.has(block.id) || block.type === 'provider_status')
           : stream.blocks
-        stream.blocks = [...confirmed, ...visible(parseTeamBlocks(messages))]
+        // The delta can carry a tool result whose assistant row predates the
+        // watermark (a mid-turn loadSession adopted it before the tool
+        // finished). Attach such orphans to the already-confirmed card, or it
+        // stays "running" forever when the live tool_end was missed.
+        const orphans = { ...(stream._orphanToolResults ?? {}) }
+        const tail = visible(parseTeamBlocks(messages, orphans))
+        const confirmed = applyOrphanToolResults(confirmedRaw, orphans)
+        stream.blocks = [...confirmed, ...tail]
+        stream._orphanToolResults = orphans
         stream._unsyncedBlockIds = []
       }
 
@@ -949,8 +965,13 @@ export const createSessionSlice: StateCreator<
         draft.nextCursor = history.next_cursor
         if (leadName && draft.agentStreams[leadName]) {
           const filtered = messagesBeforeTime(history.lead.messages, _leadRevertTime)
-          const older = parseTeamBlocks(filtered)
-          draft.agentStreams[leadName].blocks = [...older, ...draft.agentStreams[leadName].blocks]
+          const leadStream = draft.agentStreams[leadName]
+          // Claim results orphaned by the page boundary: the newer page may
+          // hold a tool result whose call row is in this older page.
+          const orphans = { ...(leadStream._orphanToolResults ?? {}) }
+          const older = applyOrphanToolResults(parseTeamBlocks(filtered, orphans), orphans)
+          leadStream.blocks = [...older, ...leadStream.blocks]
+          leadStream._orphanToolResults = orphans
           const olderUsage = sumUsageFromMessages(filtered)
           draft.agentStreams[leadName].usage.completionTokens += olderUsage.completionTokens
           draft.agentStreams[leadName].usage.estimatedCostUsd = Math.round(((draft.agentStreams[leadName].usage.estimatedCostUsd ?? 0) + (olderUsage.estimatedCostUsd ?? 0)) * 1e8) / 1e8
@@ -959,8 +980,11 @@ export const createSessionSlice: StateCreator<
         history.members.forEach((member) => {
           if (draft.agentStreams[member.name]) {
             const filtered = messagesBeforeTime(member.messages, _leadRevertTime)
-            const older = parseTeamBlocks(filtered)
-            draft.agentStreams[member.name].blocks = [...older, ...draft.agentStreams[member.name].blocks]
+            const memberStream = draft.agentStreams[member.name]
+            const orphans = { ...(memberStream._orphanToolResults ?? {}) }
+            const older = applyOrphanToolResults(parseTeamBlocks(filtered, orphans), orphans)
+            memberStream.blocks = [...older, ...memberStream.blocks]
+            memberStream._orphanToolResults = orphans
             const olderUsage = sumUsageFromMessages(filtered)
             draft.agentStreams[member.name].usage.completionTokens += olderUsage.completionTokens
             draft.agentStreams[member.name].usage.estimatedCostUsd = Math.round(((draft.agentStreams[member.name].usage.estimatedCostUsd ?? 0) + (olderUsage.estimatedCostUsd ?? 0)) * 1e8) / 1e8

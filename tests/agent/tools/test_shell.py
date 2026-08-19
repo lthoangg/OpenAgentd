@@ -751,6 +751,51 @@ def test_signal_posix_group_targets_group_of_reaped_leader():
     assert killed == [(12345, signal.SIGKILL)]
 
 
+@pytest.mark.asyncio
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX process groups only")
+@pytest.mark.timeout(15)
+async def test_timeout_kills_grandchild_that_escaped_its_process_group(
+    tmp_path, sandbox_workspace
+):
+    """A monitored child that re-groups itself must still be killed.
+
+    ``timeout``, ``setsid``, and ``sudo`` all deliberately move the command
+    they launch into a *new* process group so their own supervision logic
+    can manage it — which, as a side effect, makes that subtree invisible to
+    a ``killpg`` aimed at the originally-launched shell's group. The PPID
+    chain survives regrouping, so the kill must walk it rather than rely on
+    process groups alone.
+    """
+    # A single interpreter forked directly by the shell (``&`` + ``wait``),
+    # not a chain of two — matching how ``timeout``'s own monitored child is
+    # one direct fork, not a grandchild through an intermediary process. This
+    # keeps the escape a single, fast startup instead of two sequential
+    # Python boots racing the tool's own timeout under CI/load variance.
+    pid_file = tmp_path / "escaped.pid"
+    escape_script = tmp_path / "escape.py"
+    escape_script.write_text(
+        "import os, time\n"
+        "os.setpgid(0, 0)\n"  # escape into a brand new process group
+        f"open({str(pid_file)!r}, 'w').write(str(os.getpid()))\n"
+        "time.sleep(30)\n"
+    )
+
+    result = await _shell(
+        f"{sys.executable} {escape_script} & wait",
+        timeout_seconds=1.0,
+    )
+
+    assert "[Timed out" in result
+    for _ in range(20):
+        if pid_file.exists():
+            break
+        await asyncio.sleep(0.05)
+    escaped_pid = int(pid_file.read_text())
+
+    with pytest.raises(ProcessLookupError):
+        os.kill(escaped_pid, 0)
+
+
 # ---------------------------------------------------------------------------
 # Sandbox command scan (path-token deny enforcement inside _shell)
 # ---------------------------------------------------------------------------

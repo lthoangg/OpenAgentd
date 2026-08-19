@@ -46,6 +46,7 @@ import asyncio
 import os
 import re
 import signal
+import subprocess
 import sys
 import uuid
 from collections import deque
@@ -225,6 +226,63 @@ def _signal_posix_group(pid: int, sig: signal.Signals) -> bool:
         return False
 
 
+def _pid_ppid_table() -> dict[int, int]:
+    """Return ``{pid: ppid}`` for every process, via ``ps`` (no extra dependency).
+
+    Same flags work on both macOS and Linux. Best-effort: an empty table on
+    failure just means the PPID-based fallback below finds nothing, leaving
+    the process-group signal above as the only effect.
+    """
+    try:
+        out = subprocess.run(
+            ["ps", "-Ao", "pid=,ppid="],
+            capture_output=True,
+            text=True,
+            timeout=3,
+            check=False,
+        ).stdout
+    except (OSError, subprocess.SubprocessError):
+        return {}
+    table: dict[int, int] = {}
+    for line in out.splitlines():
+        parts = line.split()
+        if len(parts) != 2:
+            continue
+        try:
+            table[int(parts[0])] = int(parts[1])
+        except ValueError:
+            continue
+    return table
+
+
+def _descendant_pids(root_pid: int) -> list[int]:
+    """Return every live descendant of *root_pid*, direct or not.
+
+    Utilities like ``timeout``, ``setsid``, and ``sudo`` deliberately move the
+    command they launch into a *new* process group so their own supervision
+    logic can manage it — which also makes that subtree invisible to a
+    ``killpg`` aimed at whatever group launched them. ``setpgid``/``setsid``
+    only ever change the group/session id, never the parent/child link, so
+    walking PPID finds it regardless of which group it escaped into.
+    """
+    table = _pid_ppid_table()
+    if not table:
+        return []
+    children: dict[int, list[int]] = {}
+    for pid, ppid in table.items():
+        children.setdefault(ppid, []).append(pid)
+    result: list[int] = []
+    frontier = [root_pid]
+    while frontier:
+        next_frontier: list[int] = []
+        for pid in frontier:
+            for child in children.get(pid, ()):
+                result.append(child)
+                next_frontier.append(child)
+        frontier = next_frontier
+    return result
+
+
 async def _taskkill_tree(pid: int) -> bool:
     """Kill a Windows process tree without blocking the event loop."""
     try:
@@ -249,7 +307,15 @@ async def _taskkill_tree(pid: int) -> bool:
 async def _kill_process_group(
     proc: asyncio.subprocess.Process, sig: signal.Signals
 ) -> None:
-    """Send *sig* to the process group led by *proc*, falling back to direct kill."""
+    """Send *sig* to the process group led by *proc*, plus the real descendant tree.
+
+    Process-group signalling alone misses a descendant that re-grouped itself
+    (``timeout``'s and ``sudo``'s monitored child both do this on purpose).
+    Walking the PPID chain catches it regardless of which group it escaped
+    into — but only if captured *before* the signal: killing the group
+    reparents an already-orphaned descendant to init almost instantly,
+    which would erase the very chain a query made afterwards needs.
+    """
     pid = proc.pid
     if pid is None:
         return
@@ -261,8 +327,17 @@ async def _kill_process_group(
         except (ProcessLookupError, OSError):
             pass
         return
-    if _signal_posix_group(pid, sig):
-        return
+    # Snapshot the tree *before* signalling anything: killing the launched
+    # shell reparents an already-escaped descendant to init almost instantly
+    # (POSIX orphan handling), which erases the very PPID chain a query made
+    # afterwards would need to find it.
+    descendants = await asyncio.to_thread(_descendant_pids, pid)
+    _signal_posix_group(pid, sig)
+    for descendant in descendants:
+        try:
+            os.kill(descendant, sig)
+        except (ProcessLookupError, PermissionError, OSError):
+            pass
     try:
         proc.send_signal(sig)
     except (ProcessLookupError, OSError):

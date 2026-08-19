@@ -48,7 +48,7 @@ GREEN = "\033[32m"
 YELLOW = "\033[33m"
 CYAN = "\033[36m"
 
-# Long prompts that burn tokens fast — mirrors manual.summarization_test
+# Long prompts that burn tokens fast
 WARMUP_PROMPTS = [
     "Write a detailed 250-word biography of Albert Einstein.",
     "Write a detailed 250-word summary of the theory of relativity.",

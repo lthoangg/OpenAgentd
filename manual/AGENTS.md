@@ -36,7 +36,7 @@ Multi-agent turns, history, todos, lifecycle, stop/undo, queued messages.
 | `cancel_queued_message` | × cancel hard-deletes a queued row (204 → 404, absent from history) | `--queue-delay`, `--base` |
 | `queued_file_attach` | Explicit file uploads are accepted on queued messages; cancel deletes persisted files | `--scenario a\|b\|both`, `--base` |
 | `undo_mid_second_turn` | Interrupt turn 2, `/undo` (202), boundary rolls back for a clean follow-up | `--base` |
-| `fast_mode` | `fast_mode=true` ignored for non-Codex, persists `service_tier=fast` for Codex | `--non-codex-model`, `--codex-model` |
+| `fast_mode` | `fast_mode=true` always persists `extra.service_tier=fast` on the user message, regardless of provider | `--non-codex-model`, `--codex-model` |
 | `mention_attachments` | `@`-mention auto-attach: text fenced + head/tail truncated, image/folder reference-only | `--base` |
 
 ```bash
@@ -67,8 +67,7 @@ uv run python -m manual.fast_mode --codex-model codex:gpt-5.4
 | `patch_tool` | Agent uses filesystem `patch`; verify the tool call | `--base`, `--wait` |
 | `lsp_smoketest` | E2E check of LSP diagnostics injection; `--direct` checks bundled Python + managed TypeScript without a server | `--direct`, `--base`, `--wait` |
 | `shell_output_delta` | Verify live `tool_output_delta` events from shell output | `--base`, `--message`, `--wait` |
-| `bang_shell` | `!command` input dispatches to the shell tool, streams + persists | `--command`, `--expect`, `--session`, `--wait` |
-| `tool_result_offload_test` | Verify large tool results are offloaded to the workspace | — |
+| `tool_result_offload_test` | Verify large tool results are offloaded to session artifacts and re-readable via `read` | `--base`, `--wait` |
 
 ```bash
 uv run python -m manual.health
@@ -83,7 +82,7 @@ uv run python -m manual.skill_tool_analytics --env production --since-days 7
 uv run python -m manual.otel_inspect --session <ID>                      # or --trace <ID> / --metrics
 uv run python -m manual.otel_inspect --env production --session <ID>
 uv run python -m manual.scheduler create --type every --every 60 --prompt "Say hello"
-uv run python -m manual.bang_shell --command "pwd && echo ok"
+uv run python -m manual.tool_result_offload_test
 ```
 
 ---
@@ -94,12 +93,18 @@ Most require a low `DEFAULT_PROMPT_TOKEN_THRESHOLD` in `app/agent/hooks/summariz
 
 | Script | Purpose | Key flags |
 |--------|---------|-----------|
-| `summarization_test` | Drive the summarization hook by sending many turns | — |
-| `summarization_max_tokens_test` | Test the `max_token_length` cap on summary output | — |
 | `summarization_improvements_test` | **(no server)** P2 tool-result context, P5 merge-vs-fresh, P6 min-delta guard | — |
 | `summarization_sse` | Capture `summarization_start/_content/_end` SSE; deltas reconstruct the summary | `--session`, `--warmup`, `--wait`, `--out` |
 | `compaction_cache` | Cache-first summarization; `--direct` (no server) checks prefix shape + multi-skill retention; live checks prompt-cache reads | `--direct`, `--turns`, `--wait`, `--min-cache-ratio` |
 | `skill_dedupe` | **(no server)** Duplicate skill loads replay the body; summarization keeps only the first full skill pair | — |
+
+`summarization_test` / `summarization_max_tokens_test` were removed: both posted to
+dead `/chat`-family endpoints and assumed the API zeroes out every `is_summary`
+row, which is no longer true (the active summary is shown to the user). Use
+`summarization_sse` for a live end-to-end check and `compaction_cache --direct`
+for prefix/threshold assertions instead; `max_token_length` itself is covered by
+`tests/agent/hooks/test_build_summarization_hook.py` and
+`tests/agent/hooks/test_summarization_hook.py`.
 
 ```bash
 uv run python -m manual.summarization_improvements_test                  # no server

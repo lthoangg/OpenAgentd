@@ -387,7 +387,7 @@ export function SettingsModal() {
                       className="flex h-11 w-11 items-center justify-center rounded-sm text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text) transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) md:h-7 md:w-7"
                       aria-label="Close settings"
                     >
-                      <X size={ICON_SIZE_INLINE} aria-hidden="true" />
+                      <X size={14} aria-hidden="true" />
                     </button>
                   }
                 />

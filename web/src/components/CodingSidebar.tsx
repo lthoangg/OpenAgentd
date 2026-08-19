@@ -1296,7 +1296,7 @@ export function CodingSidebar({
                   </ul>
                 )}
               </div>
-              {error && <p className="rounded-md border border-(--color-error)/30 bg-(--color-error-subtle) px-3 py-2 text-xs text-(--color-error)">{error}</p>}
+              {error && <p className="mt-2 text-xs text-(--color-error)">{error}</p>}
             </div>
             <DialogFooter className="mx-0 mb-0 shrink-0 flex-row justify-end gap-2 rounded-none border-t border-(--color-border) bg-(--bg-page) px-3 py-2.5 sm:px-4">
               <Button type="button" size="sm" variant="default" onClick={() => setWorktreeTarget(null)}>Cancel</Button>

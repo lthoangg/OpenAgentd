@@ -62,8 +62,15 @@ def _last_prompt_tokens_from_history(history: list[ChatMessage]) -> int:
 
     Scans in reverse so the most-recent usage wins.  Returns ``0`` when no
     usage metadata is found (fresh session or provider didn't report tokens).
+
+    Summary rows are skipped: they carry the *summariser call's* usage (kept
+    for cost accounting), whose ``input`` is the pre-compaction context size.
+    Seeding from it would tell the SummarizationHook the context is still over
+    threshold and re-compact an already-compacted session on the next turn.
     """
     for msg in reversed(history):
+        if getattr(msg, "is_summary", False):
+            continue
         usage = (getattr(msg, "extra", None) or {}).get("usage")
         if usage and isinstance(usage.get("input"), int):
             return usage["input"]

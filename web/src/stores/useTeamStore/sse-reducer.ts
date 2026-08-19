@@ -411,13 +411,21 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
             u.turnCachedTokens = cachedTokens ?? 0
             return
           }
-          u.promptTokens     = promptTokens
+          // A compaction frame's prompt is the PRE-compaction context the
+          // summariser read (and its cache read belongs to that old context),
+          // so it must not define the displayed context size — but its output
+          // and cost are real spend and accumulate like any other call. This
+          // mirrors `sumUsageFromMessages`, which applies the same split to
+          // the persisted summary row on reload.
+          if (!meta?.summarization) {
+            u.promptTokens   = promptTokens
+            // Absent means "this call read nothing from cache" — providers coerce
+            // 0 to None, so `usage_to_dict` drops the key. Carrying the previous
+            // value forward diverged from `sumUsageFromMessages`, which reads the
+            // last message's cache as 0 on reload.
+            u.cachedTokens   = cachedTokens ?? 0
+          }
           u.completionTokens = u.completionTokens + completionTokens
-          // Absent means "this call read nothing from cache" — providers coerce
-          // 0 to None, so `usage_to_dict` drops the key. Carrying the previous
-          // value forward diverged from `sumUsageFromMessages`, which reads the
-          // last message's cache as 0 on reload.
-          u.cachedTokens     = cachedTokens ?? 0
           u.totalTokens      = u.promptTokens + u.completionTokens
           u.estimatedCostUsd = Math.round(((u.estimatedCostUsd ?? 0) + ((d.estimated_cost_usd as number) || 0)) * 1e8) / 1e8
         })

@@ -310,6 +310,10 @@ run from the terminal.
   icon-sized input-token progress ring against the backend's model-aware
   summarization trigger; hover, focus, or tap/click reveals input/output/cache
   details and the estimated USD used across the active session `[v1.107.0]`; the estimate sums provider-reported input, output, cache-read, and cache-write usage at the active model's registry rates, so compaction never reduces previously incurred spend. Token rows describe the lead while `session cost` covers every agent; live values are published per completed model call from the same usage snapshot the transcript and telemetry store, so the meter no longer disagrees with them, and it stays visible for the duration of a live turn `[v1.132.0]`.
+  The summarizer's own LLM call now counts too: its usage (with cost) is
+  persisted on the compaction summary row and published as a live usage frame,
+  so the running session cost stays `previous cost + current turn cost` across
+  compactions, on the live meter and after reload alike `[v1.134.0]`.
 - **Todos panel** `[since v1.0]` — task board with a topbar progress badge
   `<finished>/<total>` `[v1.17.0]`. Live invalidation.
 - **Mobile / phone-first layout** `[since v1.0]` — breakpoints, safe areas, drawer

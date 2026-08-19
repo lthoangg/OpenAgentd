@@ -122,6 +122,60 @@ describe("sumUsageFromMessages", () => {
     // Me still counts hidden messages — this matches DatabaseHook behaviour (all turns are stored)
     expect(result.totalTokens).toBe(15);
   });
+
+  // ── Compaction (summary rows carry the summariser call's usage) ──────────
+
+  it("includes the compaction cost persisted on the summary message", () => {
+    const t = (s: number) => new Date(Date.UTC(2026, 0, 1, 0, 0, s)).toISOString();
+    const msgs = [
+      makeMsg({ created_at: t(1), extra: { usage: { input: 100, output: 20, cost: { estimated_usd: 0.001 } } } }),
+      makeMsg({ role: "user", is_summary: true, created_at: t(2), extra: { usage: { input: 9000, output: 50, cost: { estimated_usd: 0.0005 } } } }),
+      makeMsg({ created_at: t(3), extra: { usage: { input: 200, output: 30, cache: 40, cost: { estimated_usd: 0.002 } } } }),
+    ];
+    const result = sumUsageFromMessages(msgs);
+    // Running sum = turn A + compaction S + turn B — nothing dropped.
+    expect(result.estimatedCostUsd).toBe(0.0035);
+    // Output accumulates the summary's generation, matching the live meter.
+    expect(result.completionTokens).toBe(100);
+    // The summary's input is the PRE-compaction context — it must never
+    // define the displayed context size or cache read.
+    expect(result.promptTokens).toBe(200);
+    expect(result.cachedTokens).toBe(40);
+  });
+
+  it("summary as newest row (coding mode) does not define context size or cache", () => {
+    const t = (s: number) => new Date(Date.UTC(2026, 0, 1, 0, 0, s)).toISOString();
+    const msgs = [
+      makeMsg({ created_at: t(1), extra: { usage: { input: 500, output: 20, cache: 10, cost: { estimated_usd: 0.001 } } } }),
+      makeMsg({ role: "user", is_summary: true, created_at: t(2), extra: { usage: { input: 250000, output: 400, cache: 9999, cost: { estimated_usd: 0.0005 } } } }),
+    ];
+    const result = sumUsageFromMessages(msgs);
+    expect(result.estimatedCostUsd).toBe(0.0015);
+    expect(result.promptTokens).toBe(500);
+    expect(result.cachedTokens).toBe(10);
+  });
+
+  it("keeps the running sum across multiple turns and compactions", () => {
+    const t = (s: number) => new Date(Date.UTC(2026, 0, 1, 0, 0, s)).toISOString();
+    const msgs = [
+      makeMsg({ created_at: t(1), extra: { usage: { input: 100, output: 10, cost: { estimated_usd: 0.001 } } } }),
+      makeMsg({ role: "user", is_summary: true, created_at: t(2), extra: { usage: { input: 5000, output: 40, cost: { estimated_usd: 0.0004 } } } }),
+      makeMsg({ created_at: t(3), extra: { usage: { input: 150, output: 20, cost: { estimated_usd: 0.002 } } } }),
+      makeMsg({ role: "user", is_summary: true, created_at: t(4), extra: { usage: { input: 6000, output: 50, cost: { estimated_usd: 0.0006 } } } }),
+      makeMsg({ created_at: t(5), extra: { usage: { input: 200, output: 30, cost: { estimated_usd: 0.003 } } } }),
+    ];
+    expect(sumUsageFromMessages(msgs).estimatedCostUsd).toBe(0.007);
+  });
+
+  it("summary message without usage contributes nothing (pre-fix rows)", () => {
+    const msgs = [
+      makeMsg({ extra: { usage: { input: 100, output: 20, cost: { estimated_usd: 0.001 } } } }),
+      makeMsg({ role: "user", is_summary: true, extra: null }),
+    ];
+    const result = sumUsageFromMessages(msgs);
+    expect(result.estimatedCostUsd).toBe(0.001);
+    expect(result.completionTokens).toBe(20);
+  });
 });
 
 // ---------------------------------------------------------------------------

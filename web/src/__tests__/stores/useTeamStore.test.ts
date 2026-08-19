@@ -592,6 +592,50 @@ describe("_handleSSEEvent: usage", () => {
     expect(useTeamStore.getState().agentStreams.lead.usage.estimatedCostUsd).toBe(0.12);
   });
 
+  it("running sum stays previous cost + current turn cost across a compaction", () => {
+    // Turn 1 costs A.
+    useTeamStore.getState()._handleSSEEvent("usage", {
+      prompt_tokens: 100, completion_tokens: 20, total_tokens: 120,
+      estimated_cost_usd: 0.001, metadata: { agent: "lead" },
+    });
+    useTeamStore.getState()._handleSSEEvent("done", {});
+    // Compaction fires before turn 2 — its LLM call costs S.
+    useTeamStore.getState()._handleSSEEvent("usage", {
+      prompt_tokens: 9000, completion_tokens: 50, total_tokens: 9050,
+      estimated_cost_usd: 0.0005, metadata: { agent: "lead", summarization: true },
+    });
+    // Turn 2 costs B.
+    useTeamStore.getState()._handleSSEEvent("usage", {
+      prompt_tokens: 150, completion_tokens: 30, total_tokens: 180,
+      estimated_cost_usd: 0.002, metadata: { agent: "lead" },
+    });
+
+    // A + S + B — the compaction call is real spend and must not be dropped.
+    expect(useTeamStore.getState().agentStreams.lead.usage.estimatedCostUsd).toBe(0.0035);
+  });
+
+  it("summarization usage adds cost and output but not the pre-compaction context", () => {
+    useTeamStore.getState()._handleSSEEvent("usage", {
+      prompt_tokens: 1200, completion_tokens: 30, total_tokens: 1230,
+      cached_tokens: 100, estimated_cost_usd: 0.002, metadata: { agent: "lead" },
+    });
+    useTeamStore.getState()._handleSSEEvent("usage", {
+      prompt_tokens: 9000, completion_tokens: 50, total_tokens: 9050,
+      cached_tokens: 8000, estimated_cost_usd: 0.0005,
+      metadata: { agent: "lead", summarization: true },
+    });
+
+    const usage = useTeamStore.getState().agentStreams.lead.usage;
+    // The summariser reads the OLD context — showing 9000 as the current
+    // context size (or 8000 as its cache read) would misreport the meter.
+    expect(usage.promptTokens).toBe(1200);
+    expect(usage.cachedTokens).toBe(100);
+    // But its generation and cost are real and accumulate.
+    expect(usage.completionTokens).toBe(80);
+    expect(usage.totalTokens).toBe(1280);
+    expect(usage.estimatedCostUsd).toBe(0.0025);
+  });
+
   it("falls back to top-level agent field", () => {
     useTeamStore.getState()._handleSSEEvent("usage", {
       agent: "worker",

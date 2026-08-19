@@ -73,6 +73,7 @@ from app.agent.schemas.events import (
     SummarizationContentEvent,
     SummarizationEndEvent,
     SummarizationStartEvent,
+    UsageEvent,
 )
 from app.core.otel import get_tracer
 from app.services.stream_envelope import StreamEnvelope
@@ -760,7 +761,7 @@ class SummarizationHook(BaseAgentHook):
             on_delta = self._make_delta_emitter(emit_session_id, agent_name)
 
         try:
-            summary_text = await self._call_llm(
+            summary_text, summariser_usage = await self._call_llm(
                 ctx,
                 summariser_messages,
                 tools=state.tool_defs or None,
@@ -823,9 +824,14 @@ class SummarizationHook(BaseAgentHook):
         # stored verbatim — no prefix — so it renders cleanly in the UI
         # divider; the ``is_summary=True`` flag is the marker the LLM and
         # the frontend both key off of.
+        # The summariser's own usage (a real, billed model call) rides along
+        # in ``extra["usage"]`` — the same shape every assistant row persists —
+        # so the client's reload path (``sumUsageFromMessages``) keeps the
+        # compaction cost in the session's running sum.
         summary_msg = HumanMessage(
             content=summary_text,
             is_summary=True,
+            extra={"usage": summariser_usage} if summariser_usage else None,
         )
         state.messages.insert(first_kept_idx, summary_msg)
         # checkpointer.sync() (called by the loop after before_model)
@@ -839,6 +845,8 @@ class SummarizationHook(BaseAgentHook):
         span.set_status(StatusCode.OK)
 
         if emit_session_id:
+            if summariser_usage:
+                await self._emit_usage(emit_session_id, agent_name, summariser_usage)
             await self._emit_end(emit_session_id, agent_name, summary=summary_text)
 
         logger.info(
@@ -887,6 +895,43 @@ class SummarizationHook(BaseAgentHook):
         except Exception as exc:
             logger.debug("summarization_emit_end_failed error={}", exc)
 
+    async def _emit_usage(self, session_id: str, agent: str, usage: dict) -> None:
+        """Publish the summariser call's usage so the live cost meter adds it.
+
+        Mirrors ``StreamPublisherHook._publish_usage``: per-call values from
+        the same dict the summary message persists, so the live running sum
+        and a reload replay cannot disagree about the compaction cost.
+        ``metadata.summarization`` lets the client treat the prompt size as
+        the *pre-compaction* context rather than the current one.
+        """
+        from app.services import memory_stream_store as stream_store
+
+        cost = usage.get("cost")
+        estimated_cost = cost.get("estimated_usd") if isinstance(cost, dict) else None
+        metadata: dict = {"agent": agent, "summarization": True}
+        model_id = self._model_id or getattr(self._llm_provider, "model", None)
+        if isinstance(model_id, str) and model_id:
+            metadata["model"] = model_id
+        prompt_tokens = int(usage.get("input") or 0)
+        completion_tokens = int(usage.get("output") or 0)
+        try:
+            await stream_store.push_event(
+                session_id,
+                StreamEnvelope.from_event(
+                    UsageEvent(
+                        prompt_tokens=prompt_tokens,
+                        completion_tokens=completion_tokens,
+                        total_tokens=prompt_tokens + completion_tokens,
+                        cached_tokens=usage.get("cache"),
+                        thoughts_tokens=usage.get("thoughts"),
+                        estimated_cost_usd=estimated_cost,
+                        metadata=metadata,
+                    )
+                ),
+            )
+        except Exception as exc:
+            logger.debug("summarization_emit_usage_failed error={}", exc)
+
     def _make_delta_emitter(
         self, session_id: str, agent: str
     ) -> Callable[[str], Awaitable[None]]:
@@ -912,8 +957,13 @@ class SummarizationHook(BaseAgentHook):
         *,
         tools: list[dict] | None = None,
         on_delta: Callable[[str], Awaitable[None]] | None = None,
-    ) -> str:
-        """Stream the summariser LLM and return the full text response.
+    ) -> tuple[str, dict | None]:
+        """Stream the summariser LLM; return the full text and its usage dict.
+
+        The usage dict is ``usage_to_dict``'s shape (input/output/cache/cost),
+        or ``None`` when the provider never reported usage. Callers persist it
+        on the summary message and publish it as a ``usage`` event so the
+        summarisation cost enters the session's running cost sum.
 
         Passes max_token_length to the LLM provider if set. When ``on_delta``
         is supplied each non-empty content chunk is forwarded to it — used
@@ -993,6 +1043,7 @@ class SummarizationHook(BaseAgentHook):
             elapsed = time.monotonic() - t0
             span.set_attribute("summarization.llm_duration_s", round(elapsed, 3))
             span.set_attribute("summarization.response_length", len(full_text))
+            usage_dict: dict | None = None
             if last_usage is not None:
                 usage_dict = usage_to_dict(last_usage, model_id)
                 logger.info(
@@ -1004,4 +1055,4 @@ class SummarizationHook(BaseAgentHook):
                 )
                 set_usage_span_attributes(span, usage_dict)
             span.set_status(StatusCode.OK)
-            return full_text.strip()
+            return full_text.strip(), usage_dict

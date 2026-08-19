@@ -104,22 +104,28 @@ function assistantBlocks(
  * Aggregate token usage across all assistant messages in a list.
  * Rules: input = last turn, output = sum all turns, cache = last turn.
  * Reads from message.extra.usage persisted by DatabaseHook.
+ *
+ * Summary rows (``is_summary``, role user) carry the summariser call's usage —
+ * a real, billed model call — so their output and cost accumulate too. Their
+ * ``input``/``cache`` describe the *pre-compaction* context and never define
+ * the displayed context size.
  */
 export function sumUsageFromMessages(msgs: MessageResponse[]): AgentUsage {
   const acc = { promptTokens: 0, completionTokens: 0, totalTokens: 0, cachedTokens: 0, estimatedCostUsd: 0 }
   let lastInput = 0
   let lastCache = 0
   for (const msg of sortMessages(msgs)) {
-    if (msg.role !== 'assistant') continue
+    if (msg.role !== 'assistant' && !msg.is_summary) continue
     const extra = msg.extra as { usage?: { input?: number; output?: number; cache?: number; cost?: { estimated_usd?: number }; estimated_cost_usd?: number }; estimated_cost_usd?: number } | null
     if (!extra?.usage) continue
-    const i = extra.usage.input ?? 0
     const o = extra.usage.output ?? 0
     const costUsd = extra.usage.cost?.estimated_usd ?? extra.usage.estimated_cost_usd ?? extra.estimated_cost_usd ?? 0
     acc.completionTokens += o
     acc.estimatedCostUsd = Math.round((acc.estimatedCostUsd + costUsd) * 1e8) / 1e8
-    lastInput = i
-    lastCache = extra.usage.cache ?? 0
+    if (msg.role === 'assistant') {
+      lastInput = extra.usage.input ?? 0
+      lastCache = extra.usage.cache ?? 0
+    }
   }
   acc.promptTokens = lastInput
   acc.cachedTokens = lastCache

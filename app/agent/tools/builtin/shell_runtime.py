@@ -174,10 +174,19 @@ def build_argv(shell_bin: str, command: str) -> list[str]:
         # -l loads ~/.zprofile/~/.zlogin; explicit source covers ~/.zshenv
         # and ~/.zshrc which a non-interactive login shell skips.
         # ``eval $1`` keeps quoting/$VAR semantics identical to ``zsh -c``.
+        # History isolation: a non-interactive ``zsh -c`` never triggers zsh's
+        # own history-save-on-exit path, but a user's ~/.zshrc may load a
+        # history plugin (atuin, zsh-histdb, custom preexec/precmd hooks)
+        # that writes unconditionally rather than gating on ``[[ -o interactive ]]``.
+        # Force HISTFILE off *after* sourcing rc (so PATH/aliases from rc still
+        # apply) to guarantee agent-run commands never land in the user's real
+        # shell history, regardless of what the rc file does.
         wrapper = (
             "[[ -f ~/.zshenv ]] && source ~/.zshenv >/dev/null 2>&1 || true; "
             '[[ -f "${ZDOTDIR:-$HOME}/.zshrc" ]] && '
             'source "${ZDOTDIR:-$HOME}/.zshrc" >/dev/null 2>&1 || true; '
+            "unset HISTFILE; HISTSIZE=0; SAVEHIST=0; "
+            "unsetopt appendhistory incappendhistory sharehistory 2>/dev/null; "
             'eval "$1"'
         )
         return ["-l", "-c", wrapper, "openagentd", command]
@@ -186,6 +195,7 @@ def build_argv(shell_bin: str, command: str) -> list[str]:
         wrapper = (
             "shopt -s expand_aliases; "
             "[[ -f ~/.bashrc ]] && source ~/.bashrc >/dev/null 2>&1 || true; "
+            "unset HISTFILE; HISTSIZE=0; HISTFILESIZE=0; set +o history 2>/dev/null; "
             'eval "$1"'
         )
         return ["-l", "-c", wrapper, "openagentd", command]

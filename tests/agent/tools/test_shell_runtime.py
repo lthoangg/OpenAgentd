@@ -29,6 +29,22 @@ def test_build_argv_zsh_uses_login_and_sources_rc_files():
     assert argv[4] == "echo hi"
 
 
+def test_build_argv_zsh_disables_history_after_sourcing_rc():
+    """zsh wrapper neutralizes HISTFILE after rc sourcing so agent commands
+    never leak into the user's real shell history, regardless of what the
+    user's ~/.zshrc configures (e.g. history plugins/hooks)."""
+    argv = shell_runtime.build_argv("/bin/zsh", "echo hi")
+    wrapper = argv[2]
+
+    # Must come after rc sourcing (so PATH/aliases still load) but before eval.
+    rc_index = wrapper.index(".zshrc")
+    hist_index = wrapper.index("unset HISTFILE")
+    eval_index = wrapper.index('eval "$1"')
+    assert rc_index < hist_index < eval_index
+    assert "HISTSIZE=0" in wrapper
+    assert "SAVEHIST=0" in wrapper
+
+
 def test_build_argv_bash_uses_login_and_sources_bashrc():
     """bash argv passes -l, enables alias expansion, sources ~/.bashrc."""
     argv = shell_runtime.build_argv("/bin/bash", "ls -la")
@@ -41,6 +57,20 @@ def test_build_argv_bash_uses_login_and_sources_bashrc():
     assert 'eval "$1"' in wrapper
     assert argv[3] == "openagentd"
     assert argv[4] == "ls -la"
+
+
+def test_build_argv_bash_disables_history_after_sourcing_rc():
+    """bash wrapper neutralizes HISTFILE after rc sourcing for the same
+    isolation guarantee as zsh."""
+    argv = shell_runtime.build_argv("/bin/bash", "ls -la")
+    wrapper = argv[2]
+
+    rc_index = wrapper.index(".bashrc")
+    hist_index = wrapper.index("unset HISTFILE")
+    eval_index = wrapper.index('eval "$1"')
+    assert rc_index < hist_index < eval_index
+    assert "HISTSIZE=0" in wrapper
+    assert "set +o history" in wrapper
 
 
 def test_build_argv_sh_uses_bare_c():

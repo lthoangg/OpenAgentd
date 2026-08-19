@@ -7,7 +7,7 @@ import { FileTypeIcon } from '../FileTypeIcon'
 import { findCommittedMentions } from '../InputComposer.mentions'
 import { resolveApiUrl } from '@/api/client'
 import { openExternalUrl } from '@/lib/open-external'
-import { formatTime } from '@/utils/format'
+import { formatTime, formatFullDateTime } from '@/utils/format'
 import type { MessageAttachment } from '@/api/types'
 
 /** Matches http:// and https:// URLs (greedy, stops at whitespace or common trailing punctuation). */
@@ -310,7 +310,7 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
                       </span>
                     }
                   />
-                  <TooltipContent>{timestamp.toLocaleString()}</TooltipContent>
+                  <TooltipContent>{formatFullDateTime(timestamp)}</TooltipContent>
                 </Tooltip>
               )}
             </div>

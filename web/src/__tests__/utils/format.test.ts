@@ -1,5 +1,5 @@
 import { describe, it, expect } from "bun:test";
-import { formatTokens, formatRelativeDate, formatDate, isSleepMessage, extractSleepPrefix, shortId, formatTime, lastTurnText } from "@/utils/format";
+import { formatTokens, formatRelativeDate, formatDate, isSleepMessage, extractSleepPrefix, shortId, formatTime, formatFullDateTime, lastTurnText } from "@/utils/format";
 
 // ---------------------------------------------------------------------------
 // formatTokens
@@ -86,6 +86,22 @@ describe("formatDate", () => {
     expect(result).toBeInstanceOf(Date);
     expect(result.getTime()).toBeGreaterThanOrEqual(before);
     expect(result.getTime()).toBeLessThanOrEqual(after);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// formatFullDateTime
+// ---------------------------------------------------------------------------
+
+describe("formatFullDateTime", () => {
+  it("formats as DD/MM/YYYY HH:mm:ss regardless of locale", () => {
+    const date = new Date(2024, 0, 15, 9, 5, 3); // 15 Jan 2024 09:05:03
+    expect(formatFullDateTime(date)).toBe("15/01/2024 09:05:03");
+  });
+
+  it("pads single-digit day and month", () => {
+    const date = new Date(2023, 2, 5, 8, 3, 0); // 5 Mar 2023 08:03:00
+    expect(formatFullDateTime(date)).toBe("05/03/2023 08:03:00");
   });
 });
 

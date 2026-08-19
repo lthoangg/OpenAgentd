@@ -26,6 +26,15 @@ export function formatTime(date: Date): string {
   })
 }
 
+/**
+ * Me format a full date+time as "dd/MM/yyyy HH:mm:ss" — used anywhere a
+ * precise absolute timestamp is shown (e.g. tooltips), so it never falls
+ * back to the browser locale's (often MM/DD/YYYY) rendering.
+ */
+export function formatFullDateTime(date: Date): string {
+  return format(date, 'dd/MM/yyyy HH:mm:ss')
+}
+
 export function formatTokens(n: number): string {
   if (n >= 1000) {
     return (n / 1000).toFixed(1).replace(/\.0$/, '') + 'k'

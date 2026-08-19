@@ -13,6 +13,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { formatDistanceToNowStrict } from 'date-fns'
 import { Folder, GitBranch, RefreshCw } from 'lucide-react'
+import { formatFullDateTime } from '@/utils/format'
 
 import { getCodingWorkspaceStatus } from '@/api/client'
 import { Button } from '@/components/ui/button'
@@ -130,7 +131,7 @@ export function WorkspaceInfoCard({ workspace }: Props) {
                     </span>
                   }
                 />
-                <TooltipContent>{new Date(data.head.timestamp * 1000).toLocaleString()}</TooltipContent>
+                <TooltipContent>{formatFullDateTime(new Date(data.head.timestamp * 1000))}</TooltipContent>
               </Tooltip>
             </div>
           )}

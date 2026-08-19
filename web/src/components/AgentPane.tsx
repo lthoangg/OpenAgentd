@@ -27,7 +27,7 @@ import { AssistantTurn } from './AssistantTurnFooter'
 import { TokenMeter } from '@/components/ui/token-meter'
 import { appendCurrentTurns, partitionTurns } from '@/utils/turns'
 import { latestDirectUserBlockIdFromParts, liveBlockTail } from '@/utils/blocks'
-import { extractSleepPrefix, formatTime } from '@/utils/format'
+import { extractSleepPrefix, formatTime, formatFullDateTime } from '@/utils/format'
 import { latestMCPAppResourceBlockIdsFromParts, latestMCPAppResources, mcpAppResourceUri } from '@/utils/mcp-app-artifacts'
 import { useAutoFollowScroll } from '@/hooks/useAutoFollowScroll'
 import { useTeamStore, isAwaitingRestartOutput } from '@/stores/useTeamStore'
@@ -278,7 +278,7 @@ const UserBubble = memo(function UserBubble({ content, timestamp, attachments, o
                       </span>
                     }
                   />
-                  <TooltipContent>{timestamp.toLocaleString()}</TooltipContent>
+                  <TooltipContent>{formatFullDateTime(timestamp)}</TooltipContent>
                 </Tooltip>
               )}
            </div>

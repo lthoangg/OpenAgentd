@@ -8,6 +8,7 @@ import { createColumnHelper, tableFeatures, useTable } from '@tanstack/react-tab
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { ChevronRight, Copy } from 'lucide-react'
 import type { TraceListItem } from '@/api/client'
+import { formatFullDateTime } from '@/utils/format'
 import {
   formatCompact,
   formatMs,
@@ -200,7 +201,7 @@ function TraceRow({
         <Td>
           <Tooltip>
             <TooltipTrigger render={<span>{timeAgo(trace.start_ms, now)}</span>} />
-            <TooltipContent>{new Date(trace.start_ms).toLocaleString()}</TooltipContent>
+            <TooltipContent>{formatFullDateTime(new Date(trace.start_ms))}</TooltipContent>
           </Tooltip>
         </Td>
         <Td muted mono>

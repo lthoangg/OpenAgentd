@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { AlertCircle, RotateCw, Trash2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { formatFullDateTime } from '@/utils/format'
 
 import {
   useConnectMcpOAuthMutation,
@@ -228,7 +229,7 @@ function StatusCard({ server }: { server: NonNullable<ReturnType<typeof useMcpSe
         </Stat>
         <Stat label="Transport"><span className="font-mono">{server.transport}</span></Stat>
         <Stat label="Enabled">{server.enabled ? 'yes' : 'no'}</Stat>
-        <Stat label="Started">{server.started_at ? new Date(server.started_at).toLocaleString() : '—'}</Stat>
+        <Stat label="Started">{server.started_at ? formatFullDateTime(new Date(server.started_at)) : '—'}</Stat>
         {server.tool_names.length > 0 && (
           <div className="sm:col-span-2">
             <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-(--color-text-muted) select-none">Tools ({server.tool_names.length})</p>

@@ -10,7 +10,7 @@
 import { memo, useCallback, useMemo, useState, type ReactNode } from 'react'
 import { Copy, Check } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { formatTime, lastTurnText } from '@/utils/format'
+import { formatTime, formatFullDateTime, lastTurnText } from '@/utils/format'
 import type { ContentBlock } from '@/api/types'
 
 export interface AssistantTurnFooterProps {
@@ -103,7 +103,7 @@ export const AssistantTurnFooter = memo(function AssistantTurnFooter({ turnBlock
       {timestamp && (
         <Tooltip className="text-(--color-text-subtle) text-xs">
           <TooltipTrigger render={<span className="text-(--color-text-subtle) text-xs">{formatTime(timestamp)}</span>} />
-          <TooltipContent>{timestamp.toLocaleString()}</TooltipContent>
+          <TooltipContent>{formatFullDateTime(timestamp)}</TooltipContent>
         </Tooltip>
       )}
       {responseDurationMs !== undefined && (

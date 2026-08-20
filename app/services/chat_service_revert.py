@@ -414,48 +414,48 @@ async def exclude_messages_before_summary(
     if summary_msg is None or summary_msg.session_id != session_id:
         return 0
 
-    window_rows = list(
-        (
-            await db.exec(
-                order_by_pos(
-                    select(SessionMessage)
-                    .where(col(SessionMessage.session_id) == session_id)
-                    .where(
-                        col(SessionMessage.kind).in_(
-                            (MessageKind.CHAT, MessageKind.NOTE, MessageKind.QUEUED)
-                        )
-                    )
+    previous = await get_active_summary(db, session_id)
+
+    # Candidate rows: window kinds positioned before the summary — rows after
+    # it belong to the ongoing conversation and are never covered. When the
+    # caller compacts with a non-newest summary (legacy path), restrict to
+    # the current active summary's window, mirroring what the derived view
+    # considers live.
+    def _candidates_stmt(stmt):
+        stmt = (
+            stmt.where(col(SessionMessage.session_id) == session_id)
+            .where(
+                col(SessionMessage.kind).in_(
+                    (MessageKind.CHAT, MessageKind.NOTE, MessageKind.QUEUED)
                 )
             )
-        ).all()
-    )
-    previous = await get_active_summary(db, session_id)
-    if previous is not None and previous.id != summary_msg.id:
-        window_rows = [
-            row
-            for row in window_rows
-            if row.pinned
-            or row.seq > previous.seq
-            or (row.seq == previous.seq and row.id >= previous.id)
-        ]
-    # Only rows positioned before the summary are candidates — rows after it
-    # belong to the ongoing conversation and are never covered.
-    rows_before = [
-        row
-        for row in window_rows
-        if row.id != summary_msg.id
-        and (row.seq, row.id) < (summary_msg.seq, summary_msg.id)
-    ]
+            .where(before_pos(summary_msg))
+        )
+        if previous is not None and previous.id != summary_msg.id:
+            stmt = stmt.where(
+                or_(col(SessionMessage.pinned), at_or_after_pos(previous))
+            )
+        return stmt
 
+    total_before = (
+        await db.exec(
+            _candidates_stmt(select(sa.func.count()).select_from(SessionMessage))
+        )
+    ).first() or 0
+
+    # ``first_kept`` is the keep_last_n-th candidate from the end (or the
+    # oldest candidate when fewer exist) — fetched directly instead of
+    # loading the whole window into memory.
     first_kept: SessionMessage | None = None
-    if keep_last_n <= 0:
-        covered = rows_before
-    elif len(rows_before) > keep_last_n:
-        first_kept = rows_before[-keep_last_n]
-        covered = rows_before[:-keep_last_n]
-    else:
-        first_kept = rows_before[0] if rows_before else None
-        covered = []
+    if keep_last_n > 0 and total_before > 0:
+        first_kept = (
+            await db.exec(
+                order_by_pos(_candidates_stmt(select(SessionMessage)), desc=True)
+                .limit(1)
+                .offset(min(keep_last_n, total_before) - 1)
+            )
+        ).first()
+    covered = total_before if keep_last_n <= 0 else max(0, total_before - keep_last_n)
 
     if first_kept is not None:
         prev_seq_result = await db.exec(
@@ -486,4 +486,4 @@ async def exclude_messages_before_summary(
     )
 
     await db.flush()
-    return len(covered)
+    return covered

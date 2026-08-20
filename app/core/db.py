@@ -116,8 +116,33 @@ def run_migrations() -> None:
     if _db_path and _db_path != ":memory:":
         with _sqlite_migration_lock(Path(_db_path).expanduser()):
             _run_alembic_upgrade(cfg)
+        _optimize_sqlite(Path(_db_path).expanduser())
     else:
         _run_alembic_upgrade(cfg)
+
+
+def _optimize_sqlite(db_path: Path) -> None:
+    """Materialise/refresh query-planner statistics (best-effort).
+
+    Without ``ANALYZE`` statistics SQLite plans every join and index choice
+    from fixed heuristics. ``PRAGMA optimize=0x10002`` runs a bounded ANALYZE
+    over all tables (``analysis_limit`` caps the rows sampled, so this stays
+    cheap even on multi-GB databases) and is a no-op when stats are already
+    fresh. Runs once per startup, right after migrations; failures are
+    swallowed — stale or missing stats degrade plans, not correctness.
+    """
+    import sqlite3
+
+    try:
+        conn = sqlite3.connect(db_path)
+        try:
+            conn.execute("PRAGMA analysis_limit=1000")
+            conn.execute("PRAGMA optimize=0x10002")
+            conn.commit()
+        finally:
+            conn.close()
+    except sqlite3.Error as exc:
+        logger.debug("sqlite_optimize_skipped error={}", exc)
 
 
 def _run_alembic_upgrade(cfg: Config) -> None:

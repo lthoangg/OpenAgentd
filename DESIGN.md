@@ -177,7 +177,7 @@ spacing:
   mac-traffic-inset: 70px
   content-max: 768px
   overlay-max: 860px
-  palette-max: 480px
+  palette-max: 600px
 
 components:
   button-default:
@@ -484,7 +484,7 @@ desktop-first and walk styles back down.
 - `mac-traffic-inset` (70px) — left inset that clears the macOS traffic-light
   overlay (12px origin + ~58px button group).
 - `content-max` (768px) — reading measure for transcripts and prose.
-- `overlay-max` (860px) — default modal width cap; `palette-max` (480px) for the
+- `overlay-max` (860px) — default modal width cap; `palette-max` (600px) for the
   command palette.
 
 **Safe areas are non-negotiable.** Every outermost shell and overlay applies

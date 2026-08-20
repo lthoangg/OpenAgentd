@@ -194,14 +194,14 @@ export function CommandPalette({ commands, onClose, workspaceFiles = [], filesTr
     >
       <div onKeyDown={handleKeyDown}>
           {/* Search input */}
-          <div className="flex items-center gap-2 border-b border-(--color-border) bg-(--bg-sidebar) px-3 py-2.5">
-            <Search size={13} className="shrink-0 text-(--color-text-muted)" />
+          <div className="flex items-center gap-2.5 border-b border-(--color-border) bg-(--bg-sidebar) px-3.5 py-2.5 md:py-3">
+            <Search size={14} className="shrink-0 text-(--color-text-muted)" />
             <input
               ref={inputRef}
               value={query}
               onChange={(e) => handleQueryChange(e.target.value)}
               placeholder={hasFiles ? 'Search files and commands…' : 'Search commands…'}
-              className="min-w-0 flex-1 bg-transparent text-xs text-(--color-text) placeholder-(--color-text-muted)/60 outline-none"
+              className="min-w-0 flex-1 bg-transparent text-xs text-(--color-text) placeholder-(--color-text-muted)/60 outline-none md:text-sm"
               aria-label="Search commands"
             />
             {query && (
@@ -215,7 +215,7 @@ export function CommandPalette({ commands, onClose, workspaceFiles = [], filesTr
           </div>
 
           {/* Command + file list */}
-          <div ref={listRef} className="max-h-80 overflow-y-auto overscroll-contain p-1.5">
+          <div ref={listRef} className="max-h-80 overflow-y-auto overscroll-contain p-1.5 md:max-h-[28rem]">
             {totalCount === 0 ? (
               <div className="flex flex-col items-center justify-center gap-1 px-4 py-8 text-center" role="status">
                 <p className="text-xs text-(--color-text-muted)">

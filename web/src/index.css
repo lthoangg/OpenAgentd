@@ -542,7 +542,7 @@ html[data-mobile-shell] .app-overlay-modal {
     right: 0;
     margin-left: auto;
     margin-right: auto;
-    width: min(90vw, 480px);
+    width: min(90vw, 600px);
   }
 }
 

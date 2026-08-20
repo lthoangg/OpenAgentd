@@ -41,6 +41,7 @@ from typing import Sequence, Union
 import sqlalchemy as sa
 from alembic import op
 
+
 revision: str = "00000019"
 down_revision: Union[str, Sequence[str], None] = "00000018"
 branch_labels: Union[str, Sequence[str], None] = None
@@ -52,29 +53,114 @@ depends_on: Union[str, Sequence[str], None] = None
 _HIDDEN = "COALESCE(json_extract(extra, '$.hidden_from_user'), 0) IN (1, '1', 'true')"
 
 
-def upgrade() -> None:
-    op.add_column(
-        "session_messages",
-        sa.Column("seq", sa.Integer(), nullable=False, server_default="0"),
-    )
-    op.add_column(
-        "session_messages",
-        sa.Column("kind", sa.String(16), nullable=False, server_default="chat"),
-    )
-    op.add_column(
-        "session_messages",
-        sa.Column("pinned", sa.Boolean(), nullable=False, server_default=sa.false()),
-    )
+def _column_names() -> set[str]:
+    inspector = sa.inspect(op.get_bind())
 
+    return {column["name"] for column in inspector.get_columns("session_messages")}
+
+
+def _index_names() -> set[str]:
+    inspector = sa.inspect(op.get_bind())
+
+    return {
+        name
+        for idx in inspector.get_indexes("session_messages")
+        if (name := idx["name"])
+    }
+
+
+def upgrade() -> None:
+    # SQLite DDL is not transactional in Alembic's migration environment.
+    #
+    # A process can therefore be interrupted after one or more ADD COLUMN
+    # statements have succeeded but before Alembic stamps this revision.
+    #
+    # Do explicit schema-state detection instead of relying on
+    # ADD COLUMN IF NOT EXISTS, which SQLite does not support.
+    columns = _column_names()
+
+    if "seq" not in columns:
+        op.add_column(
+            "session_messages",
+            sa.Column(
+                "seq",
+                sa.Integer(),
+                nullable=False,
+                server_default="0",
+            ),
+        )
+
+    if "kind" not in columns:
+        op.add_column(
+            "session_messages",
+            sa.Column(
+                "kind",
+                sa.String(16),
+                nullable=False,
+                server_default="chat",
+            ),
+        )
+
+    if "pinned" not in columns:
+        op.add_column(
+            "session_messages",
+            sa.Column(
+                "pinned",
+                sa.Boolean(),
+                nullable=False,
+                server_default=sa.false(),
+            ),
+        )
+
+    # Refresh after DDL. The initial `columns` snapshot may no longer match
+    # the actual schema.
+    columns = _column_names()
+
+    has_is_summary = "is_summary" in columns
+    has_exclude_from_context = "exclude_from_context" in columns
+
+    # The two legacy columns are removed together by batch_alter_table().
+    #
+    # Both present:
+    #   migration has not yet completed the legacy conversion, so rerun the
+    #   deterministic backfill and remove them.
+    #
+    # Both absent:
+    #   an earlier attempt got through the table rebuild but failed before
+    #   Alembic stamped the revision. Skip legacy SQL and repair indexes.
+    #
+    # Exactly one present:
+    #   unexpected/corrupt intermediate schema; do not guess how to repair it.
+    if has_is_summary != has_exclude_from_context:
+        raise RuntimeError(
+            "session_messages is in an unexpected partial migration state: "
+            f"is_summary={has_is_summary}, "
+            f"exclude_from_context={has_exclude_from_context}"
+        )
+
+    if has_is_summary:
+        _backfill_and_drop_legacy_columns()
+
+    _ensure_indexes()
+
+
+def _backfill_and_drop_legacy_columns() -> None:
     # ── seq backfill ──────────────────────────────────────────────────────
+    #
+    # This is deliberately safe to rerun while the legacy columns still
+    # exist. If an earlier migration attempt stopped somewhere in the
+    # backfill, start again from the canonical legacy ordering.
     op.execute(
         """
         UPDATE session_messages
         SET seq = ordered.rn * 1024
         FROM (
-            SELECT id, ROW_NUMBER() OVER (
-                PARTITION BY session_id ORDER BY created_at, id
-            ) AS rn
+            SELECT
+                id,
+                ROW_NUMBER() OVER (
+                    PARTITION BY session_id
+                    ORDER BY created_at, id
+                ) AS rn
             FROM session_messages
         ) AS ordered
         WHERE session_messages.id = ordered.id
@@ -86,30 +172,44 @@ def upgrade() -> None:
         f"""
         UPDATE session_messages
         SET kind = CASE
-            WHEN json_extract(extra, '$.queue_status') = 'queued' THEN 'queued'
-            WHEN is_summary = 1 AND {_HIDDEN} THEN 'reverted'
-            WHEN is_summary = 1 THEN 'summary'
-            WHEN {_HIDDEN} AND exclude_from_context = 1 THEN 'reverted'
-            WHEN {_HIDDEN} THEN 'note'
+            WHEN json_extract(extra, '$.queue_status') = 'queued'
+                THEN 'queued'
+
+            WHEN is_summary = 1 AND {_HIDDEN}
+                THEN 'reverted'
+
+            WHEN is_summary = 1
+                THEN 'summary'
+
+            WHEN {_HIDDEN} AND exclude_from_context = 1
+                THEN 'reverted'
+
+            WHEN {_HIDDEN}
+                THEN 'note'
+
             ELSE 'chat'
         END
-        WHERE is_summary = 1 OR extra IS NOT NULL
+        WHERE is_summary = 1
+           OR extra IS NOT NULL
         """
     )
 
-    # ── pinned backfill ───────────────────────────────────────────────────
+    # ── positional repair ─────────────────────────────────────────────────
+    #
     # Legacy anchoring quirk: the old checkpointer anchored a summary before
     # the *first* retained row, so rows it compacted could end up positioned
-    # *after* the summary (scattered exclusion). Positional coverage cannot
-    # express "excluded but above the summary", so move those rows to tie
-    # with the summary's seq: uuid7 ids preserve their relative order and
-    # sort them before the (newer) summary row, putting them back under its
-    # coverage without touching anything else.
+    # *after* the summary (scattered exclusion).
+    #
+    # Positional coverage cannot express "excluded but above the summary",
+    # so move those rows to tie with the summary's seq. uuid7 ids preserve
+    # their relative order and sort them before the newer summary row,
+    # putting them back under its coverage without touching anything else.
     op.execute(
         """
         UPDATE session_messages
         SET seq = (
-            SELECT s.seq FROM session_messages AS s
+            SELECT s.seq
+            FROM session_messages AS s
             WHERE s.session_id = session_messages.session_id
               AND s.kind = 'summary'
             ORDER BY s.id DESC
@@ -118,18 +218,21 @@ def upgrade() -> None:
         WHERE kind IN ('chat', 'note')
           AND exclude_from_context = 1
           AND session_id IN (
-              SELECT DISTINCT session_id FROM session_messages
+              SELECT DISTINCT session_id
+              FROM session_messages
               WHERE kind = 'summary'
           )
           AND id < (
-              SELECT s.id FROM session_messages AS s
+              SELECT s.id
+              FROM session_messages AS s
               WHERE s.session_id = session_messages.session_id
                 AND s.kind = 'summary'
               ORDER BY s.id DESC
               LIMIT 1
           )
           AND (seq, id) > (
-              SELECT s.seq, s.id FROM session_messages AS s
+              SELECT s.seq, s.id
+              FROM session_messages AS s
               WHERE s.session_id = session_messages.session_id
                 AND s.kind = 'summary'
               ORDER BY s.id DESC
@@ -141,8 +244,10 @@ def upgrade() -> None:
     # Residual excluded rows that no summary can cover: stranded artifacts of
     # an old queue-promotion bug (user rows whose exclude flag survived a
     # crashed release) in sessions without a summary, or created *after* the
-    # active summary. The old model kept them permanently out of the LLM via
-    # the flag; the derived model expresses that as ``reverted``.
+    # active summary.
+    #
+    # The old model kept them permanently out of the LLM via the flag; the
+    # derived model expresses that as ``reverted``.
     op.execute(
         """
         UPDATE session_messages
@@ -151,11 +256,13 @@ def upgrade() -> None:
           AND exclude_from_context = 1
           AND (
               session_id NOT IN (
-                  SELECT DISTINCT session_id FROM session_messages
+                  SELECT DISTINCT session_id
+                  FROM session_messages
                   WHERE kind = 'summary'
               )
               OR (seq, id) > (
-                  SELECT s.seq, s.id FROM session_messages AS s
+                  SELECT s.seq, s.id
+                  FROM session_messages AS s
                   WHERE s.session_id = session_messages.session_id
                     AND s.kind = 'summary'
                   ORDER BY s.id DESC
@@ -165,12 +272,15 @@ def upgrade() -> None:
         """
     )
 
+    # ── pinned backfill ───────────────────────────────────────────────────
+    #
     # For every session with an active summary (highest id among
     # kind='summary' — uuid7 hex sorts by creation time), rows positioned
     # before that summary which the old model kept in the LLM window
     # (exclude_from_context = 0) were deliberately retained: skill tool
-    # pairs and hidden-from-summary notes. Mark them pinned so the derived
-    # window reproduces the old one exactly.
+    # pairs and hidden-from-summary notes.
+    #
+    # Mark them pinned so the derived window reproduces the old one exactly.
     op.execute(
         """
         UPDATE session_messages
@@ -178,11 +288,13 @@ def upgrade() -> None:
         WHERE kind IN ('chat', 'note')
           AND exclude_from_context = 0
           AND session_id IN (
-              SELECT DISTINCT session_id FROM session_messages
+              SELECT DISTINCT session_id
+              FROM session_messages
               WHERE kind = 'summary'
           )
           AND seq < (
-              SELECT s.seq FROM session_messages AS s
+              SELECT s.seq
+              FROM session_messages AS s
               WHERE s.session_id = session_messages.session_id
                 AND s.kind = 'summary'
               ORDER BY s.id DESC
@@ -191,23 +303,33 @@ def upgrade() -> None:
         """
     )
 
-    # ── drop the old flag columns and re-point the composite index ───────
+    # ── drop legacy flags ─────────────────────────────────────────────────
+    #
+    # batch_alter_table performs the SQLite move/copy/recreate operation.
+    #
+    # Only reach this point when *both* legacy columns exist.
     with op.batch_alter_table("session_messages") as batch:
         batch.drop_column("is_summary")
         batch.drop_column("exclude_from_context")
-    # batch_alter_table rebuilds the table on SQLite, dropping and
-    # recreating attached indexes — normalise afterwards: the obsolete
-    # created_at index must be gone and the seq index present.
-    inspector = sa.inspect(op.get_bind())
-    names = {
-        name
-        for idx in inspector.get_indexes("session_messages")
-        if (name := idx["name"])
-    }
+
+
+def _ensure_indexes() -> None:
+    # batch_alter_table rebuilds the table on SQLite. Depending on exactly
+    # where a previous migration attempt was interrupted, indexes can be in
+    # either their old or new state.
+    #
+    # Normalize them rather than assuming a specific starting point.
+    names = _index_names()
+
     if "ix_session_messages_session_created_id" in names:
         op.drop_index(
-            "ix_session_messages_session_created_id", table_name="session_messages"
+            "ix_session_messages_session_created_id",
+            table_name="session_messages",
         )
+
+    # Refresh because index DDL above changes inspector-visible state.
+    names = _index_names()
+
     if "ix_session_messages_session_seq_id" not in names:
         op.create_index(
             "ix_session_messages_session_seq_id",
@@ -215,9 +337,12 @@ def upgrade() -> None:
             ["session_id", "seq", "id"],
             unique=False,
         )
+
+    names = _index_names()
+
     if "ix_session_messages_active_summary" not in names:
-        # Partial index for the active-summary lookup (kind='summary' rows
-        # only) — see the model comment for the rationale.
+        # Partial index for the active-summary lookup
+        # (kind='summary' rows only).
         op.create_index(
             "ix_session_messages_active_summary",
             "session_messages",
@@ -225,21 +350,29 @@ def upgrade() -> None:
             unique=False,
             sqlite_where=sa.text("kind = 'summary'"),
         )
-    # The batch rebuild leaves roughly the old table's size on the freelist
-    # (~50% of the file for message-heavy databases). Reclaim it now; VACUUM
-    # cannot run inside a transaction, hence the autocommit block.
-    if op.get_bind().dialect.name == "sqlite":
-        with op.get_context().autocommit_block():
-            op.execute("VACUUM")
+
+    # Do NOT VACUUM here.
+    #
+    # VACUUM requires leaving Alembic's normal transaction context.
+    # autocommit_block() commits preceding migration work before Alembic has
+    # necessarily stamped this revision, which creates another recoverability
+    # boundary if the application is terminated.
+    #
+    # Run VACUUM separately as optional DB maintenance after migrations have
+    # completed successfully.
 
 
 def downgrade() -> None:
     op.add_column(
         "session_messages",
         sa.Column(
-            "is_summary", sa.Boolean(), nullable=False, server_default=sa.false()
+            "is_summary",
+            sa.Boolean(),
+            nullable=False,
+            server_default=sa.false(),
         ),
     )
+
     op.add_column(
         "session_messages",
         sa.Column(
@@ -249,13 +382,25 @@ def downgrade() -> None:
             server_default=sa.false(),
         ),
     )
-    op.execute("UPDATE session_messages SET is_summary = 1 WHERE kind = 'summary'")
+
+    op.execute(
+        """
+        UPDATE session_messages
+        SET is_summary = 1
+        WHERE kind = 'summary'
+        """
+    )
+
     # Approximate reverse mapping: everything positioned below the active
     # summary that is not pinned was out of the LLM window, as is anything
-    # reverted. Position is the (seq, id) tuple — legacy re-anchored rows tie
-    # with the summary's seq and sort before it only by id, so a bare
-    # ``seq <`` comparison would miss them. Sessions without a summary yield
-    # a NULL row value, which compares falsy, excluding nothing.
+    # reverted.
+    #
+    # Position is the (seq, id) tuple — legacy re-anchored rows tie with the
+    # summary's seq and sort before it only by id, so a bare ``seq <``
+    # comparison would miss them.
+    #
+    # Sessions without a summary yield a NULL row value, which compares
+    # falsy, excluding nothing.
     op.execute(
         """
         UPDATE session_messages
@@ -263,59 +408,70 @@ def downgrade() -> None:
         WHERE kind = 'reverted'
            OR kind = 'queued'
            OR (
-              pinned = 0
-              AND kind IN ('chat', 'note')
-              AND (seq, id) < (
-                  SELECT s.seq, s.id FROM session_messages AS s
-                  WHERE s.session_id = session_messages.session_id
-                    AND s.kind = 'summary'
-                  ORDER BY s.id DESC
-                  LIMIT 1
-              )
+               pinned = 0
+               AND kind IN ('chat', 'note')
+               AND (seq, id) < (
+                   SELECT s.seq, s.id
+                   FROM session_messages AS s
+                   WHERE s.session_id = session_messages.session_id
+                     AND s.kind = 'summary'
+                   ORDER BY s.id DESC
+                   LIMIT 1
+               )
            )
         """
     )
+
     op.execute(
         """
         UPDATE session_messages
-        SET extra = json_set(COALESCE(extra, '{}'), '$.hidden_from_user', 1)
+        SET extra = json_set(
+            COALESCE(extra, '{}'),
+            '$.hidden_from_user',
+            1
+        )
         WHERE kind IN ('note', 'reverted')
         """
     )
+
     op.execute(
         """
         UPDATE session_messages
-        SET extra = json_set(COALESCE(extra, '{}'), '$.queue_status', 'queued')
+        SET extra = json_set(
+            COALESCE(extra, '{}'),
+            '$.queue_status',
+            'queued'
+        )
         WHERE kind = 'queued'
         """
     )
-    # Drop the seq/kind indexes *before* the batch rebuild: batch_alter_table
-    # recreates attached indexes on the rebuilt table, and an index over a
-    # just-dropped column would fail the whole rebuild.
-    inspector = sa.inspect(op.get_bind())
-    names = {
-        name
-        for idx in inspector.get_indexes("session_messages")
-        if (name := idx["name"])
-    }
+
+    # Drop indexes over seq/kind before rebuilding the table. Otherwise the
+    # SQLite batch operation can attempt to recreate indexes that reference
+    # columns which have just been removed.
+    names = _index_names()
+
     if "ix_session_messages_session_seq_id" in names:
         op.drop_index(
-            "ix_session_messages_session_seq_id", table_name="session_messages"
+            "ix_session_messages_session_seq_id",
+            table_name="session_messages",
         )
+
+    names = _index_names()
+
     if "ix_session_messages_active_summary" in names:
         op.drop_index(
-            "ix_session_messages_active_summary", table_name="session_messages"
+            "ix_session_messages_active_summary",
+            table_name="session_messages",
         )
+
     with op.batch_alter_table("session_messages") as batch:
         batch.drop_column("seq")
         batch.drop_column("kind")
         batch.drop_column("pinned")
-    inspector = sa.inspect(op.get_bind())
-    names = {
-        name
-        for idx in inspector.get_indexes("session_messages")
-        if (name := idx["name"])
-    }
+
+    names = _index_names()
+
     if "ix_session_messages_session_created_id" not in names:
         op.create_index(
             "ix_session_messages_session_created_id",

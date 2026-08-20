@@ -417,7 +417,8 @@ export async function teamHistory(sessionId: string, before?: string): Promise<T
 }
 
 /**
- * Messages persisted after ``since`` only — the post-turn reconciliation path.
+ * Rows created after the opaque uuid7 ``since`` cursor — the post-turn
+ * reconciliation path.
  *
  * A full page carries up to 100 lead messages plus 100 per member with complete
  * tool output (over a megabyte on an active session), nearly all of which the

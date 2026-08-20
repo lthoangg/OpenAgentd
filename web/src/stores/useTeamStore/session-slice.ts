@@ -61,8 +61,10 @@ function newestMessageAt(history: {
   let newest: string | null = null
   const consider = (msgs: MessageResponse[]) => {
     for (const msg of msgs) {
-      if (!msg.created_at) continue
-      if (newest === null || msg.created_at > newest) newest = msg.created_at
+      // Message ids are uuid7: globally creation-ordered across lead/member
+      // sessions. Unlike per-session seq or display-only created_at, this
+      // watermark also discovers a newly anchored compaction summary.
+      if (newest === null || msg.id > newest) newest = msg.id
     }
   }
   consider(history.lead.messages)
@@ -288,12 +290,11 @@ function removePersistedOptimisticUserBlocks(stream: AgentStream) {
 /**
  * True when this turn compacted and the divider is still client-only.
  *
- * A summary row is stored at the *boundary* it marks — one microsecond ahead of
- * the oldest message the summariser kept, which is several turns back (see
- * ``_summary_anchor_ids`` in ``app/agent/checkpointer.py``). That is older than
- * the delta watermark, so ``teamHistorySince`` can never return it: swapping the
- * tail would drop the locally-created divider with nothing to replace it, and
- * the "Session compacted" marker would disappear until the next full load.
+ * A summary row is created after the delta's uuid7 watermark, so the backend
+ * does return it. Its logical ``seq`` is anchored several turns back, however,
+ * and parsed UI blocks do not retain sequence positions. Tail-splicing would
+ * append the divider instead of inserting it at the boundary it marks, so a
+ * compacted turn still needs one canonical full-page reconciliation.
  *
  * Local blocks are only ever appended, so they form a suffix of ``blocks`` —
  * stop at the first confirmed row rather than scanning the whole session.
@@ -832,7 +833,8 @@ export const createSessionSlice: StateCreator<
     const since = state._syncedThrough
 
     // No confirmed baseline, a turn is still producing content, or the turn
-    // compacted: a delta cannot be spliced safely, so take the full page.
+    // compacted: an anchored summary cannot be tail-spliced safely, so take
+    // the full page.
     if (
       state.sessionId !== sessionId ||
       since === null ||

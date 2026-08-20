@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Sequence
+from typing import cast
 from uuid import UUID
 
 from loguru import logger
@@ -12,14 +13,15 @@ from app.agent.schemas.chat import (
     ChatMessage,
     ContentBlock,
     HumanMessage,
+    SystemMessage,
     TextBlock,
     ToolCall,
     ToolMessage,
 )
 from app.models.chat import SessionMessage
 
-_chat_message_adapter: TypeAdapter[ChatMessage] = TypeAdapter(ChatMessage)
 _content_block_adapter: TypeAdapter[ContentBlock] = TypeAdapter(ContentBlock)
+_tool_calls_adapter: TypeAdapter[list[ToolCall]] = TypeAdapter(list[ToolCall])
 
 
 def _attachment_hint_parts(message: str, attachments: list[dict]) -> list[TextBlock]:
@@ -43,44 +45,102 @@ def _attachment_hint_parts(message: str, attachments: list[dict]) -> list[TextBl
     return parts
 
 
+def _chat_message_from_row(row: SessionMessage) -> ChatMessage:
+    """Project one trusted persistence row into the canonical runtime union.
+
+    This role dispatch is intentionally explicit.  A generic ``row.model_dump()``
+    serializes database-only fields (session id, ordering, timestamps) and then
+    asks Pydantic's discriminated union to inspect and discard them.  Selecting
+    the fields owned by each runtime model avoids that duplicate work and makes
+    the persistence → runtime boundary reviewable in one place.
+    """
+    if row.role == "system":
+        return SystemMessage(
+            content=row.content,
+            kind=row.kind,
+            pinned=row.pinned,
+            extra=row.extra,
+            db_id=row.id,
+        )
+    if row.role == "user":
+        return HumanMessage(
+            content=row.content,
+            kind=row.kind,
+            pinned=row.pinned,
+            extra=row.extra,
+            db_id=row.id,
+        )
+    if row.role == "assistant":
+        extra = row.extra or {}
+        signature = extra.get("reasoning_signature")
+        redacted = extra.get("redacted_thinking_blocks")
+        raw_blocks = extra.get("raw_content_blocks")
+        encrypted = extra.get("reasoning_encrypted_content")
+        item_id = extra.get("reasoning_item_id")
+        return AssistantMessage(
+            content=row.content,
+            kind=row.kind,
+            pinned=row.pinned,
+            extra=row.extra,
+            db_id=row.id,
+            reasoning_content=row.reasoning_content,
+            reasoning_signature=(
+                signature if isinstance(signature, str) and signature else None
+            ),
+            redacted_thinking_blocks=(
+                cast(list[dict], redacted)
+                if isinstance(redacted, list) and redacted
+                else None
+            ),
+            raw_content_blocks=(
+                cast(list[dict], raw_blocks)
+                if isinstance(raw_blocks, list) and raw_blocks
+                else None
+            ),
+            reasoning_item_id=(
+                item_id
+                if isinstance(encrypted, str)
+                and encrypted
+                and isinstance(item_id, str)
+                and item_id
+                else None
+            ),
+            reasoning_encrypted_content=(
+                encrypted if isinstance(encrypted, str) and encrypted else None
+            ),
+            tool_calls=(
+                _tool_calls_adapter.validate_python(row.tool_calls)
+                if row.tool_calls is not None
+                else None
+            ),
+        )
+    if row.role == "tool":
+        raw_parts = (row.extra or {}).get("parts")
+        parts = (
+            [_content_block_adapter.validate_python(part) for part in raw_parts]
+            if isinstance(raw_parts, list)
+            else None
+        )
+        return ToolMessage(
+            content=row.content,
+            kind=row.kind,
+            pinned=row.pinned,
+            extra=row.extra,
+            db_id=row.id,
+            tool_call_id=row.tool_call_id or "",
+            name=row.name,
+            parts=parts,
+        )
+    raise ValueError(f"unsupported message role: {row.role}")
+
+
 def deserialize_messages(
     db_messages: Sequence[SessionMessage], *, sanitize_tool_pairs: bool = False
 ) -> list[ChatMessage]:
     result: list[ChatMessage] = []
     for m in db_messages:
         try:
-            d = m.model_dump()
-            if d.get("tool_call_id") is None:
-                d["tool_call_id"] = ""
-            msg = _chat_message_adapter.validate_python(d)
-            msg.db_id = m.id
-            if isinstance(msg, AssistantMessage) and m.extra:
-                sig = m.extra.get("reasoning_signature")
-                if isinstance(sig, str) and sig:
-                    msg.reasoning_signature = sig
-                redacted = m.extra.get("redacted_thinking_blocks")
-                if isinstance(redacted, list) and redacted:
-                    msg.redacted_thinking_blocks = redacted
-                raw_blocks = m.extra.get("raw_content_blocks")
-                if isinstance(raw_blocks, list) and raw_blocks:
-                    msg.raw_content_blocks = raw_blocks
-                encrypted = m.extra.get("reasoning_encrypted_content")
-                if isinstance(encrypted, str) and encrypted:
-                    msg.reasoning_encrypted_content = encrypted
-                    item_id = m.extra.get("reasoning_item_id")
-                    if isinstance(item_id, str) and item_id:
-                        msg.reasoning_item_id = item_id
-            if (
-                isinstance(msg, ToolMessage)
-                and m.extra
-                and isinstance(m.extra.get("parts"), list)
-            ):
-                msg.parts = [
-                    _content_block_adapter.validate_python(part)
-                    for part in m.extra["parts"]
-                ]
-
-            result.append(msg)
+            result.append(_chat_message_from_row(m))
         except Exception:
             logger.warning(
                 "deserialize_skip_unknown_role session_id={} message_id={} role={}",

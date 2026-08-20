@@ -215,6 +215,12 @@ def upgrade() -> None:
             ["session_id", "seq", "id"],
             unique=False,
         )
+    # The batch rebuild leaves roughly the old table's size on the freelist
+    # (~50% of the file for message-heavy databases). Reclaim it now; VACUUM
+    # cannot run inside a transaction, hence the autocommit block.
+    if op.get_bind().dialect.name == "sqlite":
+        with op.get_context().autocommit_block():
+            op.execute("VACUUM")
 
 
 def downgrade() -> None:

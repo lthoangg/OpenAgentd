@@ -113,7 +113,7 @@ export function MobileChatActions({
               <div className="flex-1 overflow-y-auto overscroll-contain touch-pan-y p-2">
                 {activeAgent && agents.length > 1 && (
                   <>
-                    <div className="px-2 py-2 text-xs font-medium text-muted-foreground">Agents</div>
+                    <div className="px-2 py-2 text-xs font-medium text-(--color-text-muted)">Agents</div>
                     {agents.map((name) => (
                       <button
                         type="button"
@@ -129,7 +129,7 @@ export function MobileChatActions({
                   </>
                 )}
 
-                <div className="px-2 py-2 text-xs font-medium text-muted-foreground">Session</div>
+                <div className="px-2 py-2 text-xs font-medium text-(--color-text-muted)">Session</div>
                 <button type="button" onClick={onScheduler} className="flex min-h-10 w-full items-center gap-2 rounded-md px-2 text-left text-sm transition-colors hover:bg-(--bg-key)">
                   <CalendarClock size={15} aria-hidden="true" />
                   <span className="flex-1">Scheduler</span>

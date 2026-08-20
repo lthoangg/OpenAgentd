@@ -303,7 +303,7 @@ export function MermaidLightbox({ onClose, svg, source }: MermaidLightboxProps) 
           <LightboxButton
             label="Copy code"
             title="Copy source"
-            icon={copied ? <Check size={16} className="text-emerald-400" /> : <Copy size={16} />}
+            icon={copied ? <Check size={16} className="text-(--color-success)" /> : <Copy size={16} />}
             onClick={handleCopy}
           />
           <LightboxButton label="Close full screen" title="Close (Esc)" icon={<X size={17} />} onClick={onClose} />

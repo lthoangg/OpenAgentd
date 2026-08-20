@@ -1308,11 +1308,11 @@ export function CodingWorkspacePanel({
                                           const isHead = trimmed.includes('HEAD ->')
                                           const isRemote = trimmed.includes('origin/')
                                           const badgeClassName = cn(
-                                            "text-[8px] font-semibold px-1 py-0.5 rounded-xs border truncate leading-none select-none",
+                                            "text-[10px] font-semibold px-1 py-0.5 rounded-xs border truncate leading-none select-none",
                                             isHead
-                                              ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
+                                              ? "bg-(--color-diff-add-bg) text-(--color-diff-add-text) border-(--color-success)/20"
                                               : isRemote
-                                              ? "bg-rose-500/10 text-rose-500 border-rose-500/20"
+                                              ? "bg-(--color-diff-del-bg) text-(--color-diff-del-text) border-(--color-error)/20"
                                               : "bg-(--color-accent)/10 text-(--color-accent) border-(--color-accent)/20"
                                           )
                                           return (

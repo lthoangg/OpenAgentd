@@ -17,7 +17,7 @@ const TONE_STYLES: Record<
 > = {
   success: {
     icon: CheckCircle2,
-    iconClass: 'text-(--color-success) opacity-60',
+    iconClass: 'text-(--color-success)',
   },
   error: {
     icon: AlertCircle,

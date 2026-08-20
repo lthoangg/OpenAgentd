@@ -30,7 +30,7 @@ function Checkbox({ className, onChange, onCheckedChange, checkClassName, ...pro
       />
       <Check
         className={cn(
-          'pointer-events-none absolute inset-0 m-auto hidden size-3 text-white peer-checked:block',
+          'pointer-events-none absolute inset-0 m-auto hidden size-3 text-(--color-text-on-accent) peer-checked:block',
           checkClassName,
         )}
         aria-hidden="true"

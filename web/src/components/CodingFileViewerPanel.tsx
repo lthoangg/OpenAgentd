@@ -560,7 +560,7 @@ export function DiffPreview({ diff }: { diff: string }) {
                 <div className="sticky left-0 z-[1] shrink-0 border-r border-(--color-border)/40 bg-inherit">
                   <span className="block w-9 py-0.5" />
                 </div>
-                <span className="px-3 py-0.5 text-[10px] italic text-(--color-text-subtle)/50">
+                <span className="px-3 py-0.5 text-[10px] italic text-(--color-text-subtle)">
                   {p.text}
                 </span>
               </div>
@@ -581,7 +581,7 @@ export function DiffPreview({ diff }: { diff: string }) {
                 <div className="sticky left-0 z-[1] shrink-0 border-r border-(--color-border)/40 bg-inherit">
                   <span className="block w-9 py-0.5" />
                 </div>
-                <span className="px-3 py-0.5 text-[10px] italic text-(--color-text-subtle)/50">
+                <span className="px-3 py-0.5 text-[10px] italic text-(--color-text-subtle)">
                   {p.skipped} line{p.skipped === 1 ? '' : 's'} unchanged
                 </span>
               </div>

@@ -380,6 +380,7 @@ html[data-mobile-shell] code {
    (and iPad-as-desktop) rendering 9–10.5px metadata that fails comfortable-
    reading guidance and made the same screen differ between platforms. An
    11px floor keeps desktop dense while guaranteeing a readable minimum. */
+.text-\[8px\],
 .text-\[9px\],
 .text-\[10px\],
 .text-\[10\.5px\] {

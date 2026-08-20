@@ -35,14 +35,19 @@ def test_chat_session_recent_list_indexes_cover_mode_and_workspace() -> None:
     )
 
 
-def test_session_messages_has_a_single_covering_history_index() -> None:
-    """One index serves every ``session_messages`` read path.
+def test_session_messages_index_shape() -> None:
+    """One covering index plus one tiny partial index — nothing else.
 
     Every query filters ``session_id`` then orders by ``seq, id``
     (``history_messages_stmt``, ``llm_window_stmt``, and the team-history
     window functions), so ``(session_id, seq, id)`` satisfies both the
     filter and the sort — no temp B-tree. ``kind`` predicates apply as
     residual filters.
+
+    The one exception is the active-summary lookup (``kind='summary'
+    ORDER BY id DESC LIMIT 1``), which the covering index cannot serve
+    without walking the whole session: it gets a *partial* index over the
+    rare summary rows, costing an index write only when a compaction runs.
 
     The two indexes it replaced were dead weight:
 
@@ -56,7 +61,14 @@ def test_session_messages_has_a_single_covering_history_index() -> None:
     """
     assert _index_map(SessionMessage) == {
         "ix_session_messages_session_seq_id": ("session_id", "seq", "id"),
+        "ix_session_messages_active_summary": ("session_id", "id"),
     }
+    partial = next(
+        idx
+        for idx in SessionMessage.__table__.indexes
+        if idx.name == "ix_session_messages_active_summary"
+    )
+    assert str(partial.dialect_options["sqlite"]["where"]) == "kind = 'summary'"
 
 
 def test_chat_sessions_parent_index_orders_by_created_at() -> None:

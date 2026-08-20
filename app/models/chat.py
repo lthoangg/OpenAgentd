@@ -281,7 +281,7 @@ class PendingQuestion(SQLModel, table=True):
 class SessionMessage(SQLModel, table=True):
     __tablename__: str = "session_messages"  # type: ignore[reportIncompatibleVariableOverride]
     __table_args__ = (
-        # The only index this table needs. Every read filters on session_id and
+        # The workhorse index. Every read filters on session_id and
         # then orders by (seq, id) — the transcript, the LLM window, and the
         # team-history ROW_NUMBER() windows — so all three columns are required
         # to satisfy the sort without a temp B-tree. ``kind`` predicates apply
@@ -296,6 +296,18 @@ class SessionMessage(SQLModel, table=True):
             "session_id",
             "seq",
             "id",
+        ),
+        # Active-summary lookup: ``WHERE kind='summary' ORDER BY id DESC
+        # LIMIT 1`` runs on every window derivation. Without this it walks
+        # all of the session's rows through a temp B-tree (~1.7 ms on a
+        # 3k-row session); the partial index makes it a direct seek. Summary
+        # rows are vanishingly rare (<0.05% of prod rows), so the index costs
+        # kilobytes and is only touched when a compaction writes one.
+        sa.Index(
+            "ix_session_messages_active_summary",
+            "session_id",
+            "id",
+            sqlite_where=sa.text("kind = 'summary'"),
         ),
     )
 

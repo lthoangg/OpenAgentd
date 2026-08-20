@@ -215,6 +215,16 @@ def upgrade() -> None:
             ["session_id", "seq", "id"],
             unique=False,
         )
+    if "ix_session_messages_active_summary" not in names:
+        # Partial index for the active-summary lookup (kind='summary' rows
+        # only) — see the model comment for the rationale.
+        op.create_index(
+            "ix_session_messages_active_summary",
+            "session_messages",
+            ["session_id", "id"],
+            unique=False,
+            sqlite_where=sa.text("kind = 'summary'"),
+        )
     # The batch rebuild leaves roughly the old table's size on the freelist
     # (~50% of the file for message-heavy databases). Reclaim it now; VACUUM
     # cannot run inside a transaction, hence the autocommit block.
@@ -279,9 +289,9 @@ def downgrade() -> None:
         WHERE kind = 'queued'
         """
     )
-    # Drop the seq index *before* the batch rebuild: batch_alter_table
-    # recreates attached indexes on the rebuilt table, and an index over the
-    # just-dropped ``seq`` column would fail the whole rebuild.
+    # Drop the seq/kind indexes *before* the batch rebuild: batch_alter_table
+    # recreates attached indexes on the rebuilt table, and an index over a
+    # just-dropped column would fail the whole rebuild.
     inspector = sa.inspect(op.get_bind())
     names = {
         name
@@ -291,6 +301,10 @@ def downgrade() -> None:
     if "ix_session_messages_session_seq_id" in names:
         op.drop_index(
             "ix_session_messages_session_seq_id", table_name="session_messages"
+        )
+    if "ix_session_messages_active_summary" in names:
+        op.drop_index(
+            "ix_session_messages_active_summary", table_name="session_messages"
         )
     with op.batch_alter_table("session_messages") as batch:
         batch.drop_column("seq")

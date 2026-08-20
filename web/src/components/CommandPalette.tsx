@@ -217,16 +217,19 @@ export function CommandPalette({ commands, onClose, workspaceFiles = [], filesTr
           {/* Command + file list */}
           <div ref={listRef} className="max-h-80 overflow-y-auto overscroll-contain p-1.5">
             {totalCount === 0 ? (
-              <p className="px-4 py-6 text-center text-sm text-(--color-text-muted)">
-                No {hasFiles ? 'files or commands' : 'commands'} match "{query}"
-              </p>
+              <div className="flex flex-col items-center justify-center gap-1 px-4 py-8 text-center" role="status">
+                <p className="text-xs text-(--color-text-muted)">
+                  No {hasFiles ? 'files or commands' : 'commands'} match "{query}"
+                </p>
+                <p className="text-[11px] text-(--color-text-subtle)">Try searching for another keyword or path</p>
+              </div>
             ) : (
               rows.map((row, i) => {
                 if (row.type === 'header') {
                   return (
                     <p
                       key={`h-${i}`}
-                      className="px-2 pb-1 pt-2.5 text-[10px] font-semibold uppercase tracking-widest text-(--color-text-muted)"
+                      className="px-2.5 pb-1 pt-2 font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-(--color-text-subtle) select-none"
                     >
                       {row.label}
                     </p>

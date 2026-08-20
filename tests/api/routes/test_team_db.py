@@ -980,6 +980,36 @@ class TestListTeamSessionsCursorPagination:
         assert ids_page1.isdisjoint(ids_page2)
 
     @pytest.mark.asyncio
+    async def test_cursor_does_not_skip_sessions_with_equal_timestamps(
+        self, app_with_team
+    ):
+        """The uuid tie-break carries all equal-created_at rows across pages."""
+        import app.core.db as _db
+
+        created_at = datetime(2026, 8, 20, 10, 0, tzinfo=timezone.utc)
+        ids = [uuid.uuid7() for _ in range(4)]
+        async with _db.async_session_factory() as db:
+            async with db.begin():
+                for sid in ids:
+                    db.add(ChatSession(id=sid, created_at=created_at))
+
+        client = TestClient(app_with_team)
+        seen: list[str] = []
+        before: str | None = None
+        while True:
+            suffix = f"&before={before}" if before else ""
+            response = client.get(f"/api/team/sessions?limit=2{suffix}")
+            assert response.status_code == 200
+            page = response.json()
+            seen.extend(row["id"] for row in page["data"])
+            if not page["has_more"]:
+                break
+            before = page["next_cursor"]
+
+        assert {str(sid) for sid in ids}.issubset(seen)
+        assert len(seen) == len(set(seen))
+
+    @pytest.mark.asyncio
     async def test_invalid_before_returns_422(self, app_with_team):
         """Malformed before= cursor returns 422."""
         client = TestClient(app_with_team)

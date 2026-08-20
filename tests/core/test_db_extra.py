@@ -64,6 +64,24 @@ def test_sqlite_pragmas_enable_foreign_keys(tmp_path):
         conn.close()
 
 
+def test_sqlite_pragmas_tune_wal_and_read_working_set(tmp_path):
+    """Production connections bound WAL growth and keep temp reads in memory."""
+    import sqlite3
+
+    from app.core.db import _set_sqlite_pragmas
+
+    conn = sqlite3.connect(tmp_path / "read-write-tuning.db")
+    try:
+        _set_sqlite_pragmas(conn, None)
+        assert (
+            conn.execute("PRAGMA journal_size_limit").fetchone()[0] == 64 * 1024 * 1024
+        )
+        assert conn.execute("PRAGMA temp_store").fetchone()[0] == 2  # MEMORY
+        assert conn.execute("PRAGMA mmap_size").fetchone()[0] == 256 * 1024 * 1024
+    finally:
+        conn.close()
+
+
 # ── run_migrations() ──────────────────────────────────────────────────────────
 
 

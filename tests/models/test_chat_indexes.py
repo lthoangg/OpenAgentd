@@ -26,17 +26,19 @@ def test_chat_session_recent_list_indexes_cover_mode_and_workspace() -> None:
         "parent_session_id",
         "mode",
         "created_at",
+        "id",
     )
     assert indexes["ix_chat_sessions_top_mode_workspace_created"] == (
         "parent_session_id",
         "mode",
         "workspace",
         "created_at",
+        "id",
     )
 
 
 def test_session_messages_index_shape() -> None:
-    """One covering index plus one tiny partial index — nothing else.
+    """Logical-order, creation-delta, and active-summary indexes only.
 
     Every query filters ``session_id`` then orders by ``seq, id``
     (``history_messages_stmt``, ``llm_window_stmt``, and the team-history
@@ -44,15 +46,17 @@ def test_session_messages_index_shape() -> None:
     filter and the sort — no temp B-tree. ``kind`` predicates apply as
     residual filters.
 
-    The one exception is the active-summary lookup (``kind='summary'
+    The uuid7 delta lookup has a separate ``(session_id, id)`` index because
+    ``seq`` is per-session logical position: it cannot discover newly anchored
+    summaries or serve as one global watermark across team members.
+
+    The other exception is the active-summary lookup (``kind='summary'
     ORDER BY id DESC LIMIT 1``), which the covering index cannot serve
     without walking the whole session: it gets a *partial* index over the
     rare summary rows, costing an index write only when a compaction runs.
 
-    The two indexes it replaced were dead weight:
+    The summary index this replaced was dead weight:
 
-    * ``ix_session_messages_session_id`` — a strict prefix of the composite,
-      so SQLite never chose it;
     * ``ix_session_messages_session_summary`` — ``is_summary`` queries also
       constrain ``session_id`` and range/order on ``created_at``, so the
       planner preferred the composite and applied ``is_summary`` as a residual
@@ -61,6 +65,7 @@ def test_session_messages_index_shape() -> None:
     """
     assert _index_map(SessionMessage) == {
         "ix_session_messages_session_seq_id": ("session_id", "seq", "id"),
+        "ix_session_messages_session_id": ("session_id", "id"),
         "ix_session_messages_active_summary": ("session_id", "id"),
     }
     partial = next(
@@ -86,6 +91,7 @@ def test_chat_sessions_parent_index_orders_by_created_at() -> None:
     assert indexes["ix_chat_sessions_parent_created"] == (
         "parent_session_id",
         "created_at",
+        "id",
     )
     assert "ix_chat_sessions_parent_session_id" not in indexes
 

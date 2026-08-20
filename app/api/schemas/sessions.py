@@ -86,10 +86,10 @@ class SessionListResponse(BaseModel):
 
 
 class SessionPageResponse(BaseModel):
-    """Cursor-paginated session list (created_at-based, newest-first).
+    """Cursor-paginated session list (newest-first).
 
-    ``next_cursor`` is the ISO 8601 ``created_at`` of the last item returned.
-    Pass it as ``?before=<next_cursor>`` to fetch the next page.
+    ``next_cursor`` is an opaque ``<created_at>|<uuid>`` cursor for the last
+    item returned. Pass it verbatim as ``?before=<next_cursor>``.
     ``None`` means this is the last page.
     """
 

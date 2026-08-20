@@ -335,14 +335,18 @@ class SQLiteCheckpointer(Checkpointer):
         async with self._session_factory() as db:
             revision = await get_history_revision(db, UUID(session_id))
             cursor = await get_history_cursor(db, UUID(session_id))
-        cached = self._loaded.get(session_id)
-        if (
-            cached is not None
-            and self._loaded_revision.get(session_id) == revision
-            and self._loaded_cursor.get(session_id) == cursor
-        ):
-            return AgentState(messages=copy.deepcopy(cached.messages))
-        async with self._session_factory() as db:
+            cached = self._loaded.get(session_id)
+            if (
+                cached is not None
+                and self._loaded_revision.get(session_id) == revision
+                and self._loaded_cursor.get(session_id) == cursor
+            ):
+                return AgentState(messages=copy.deepcopy(cached.messages))
+
+            # Keep revision/cursor/window reads on one checked-out connection.
+            # The old two-context shape paid a second pool checkout and could
+            # label a window loaded after a concurrent write with the cursor
+            # observed before it, causing one needless cache miss next load.
             messages = await get_messages_for_llm(db, UUID(session_id))
 
         if not messages:
@@ -448,6 +452,12 @@ class SQLiteCheckpointer(Checkpointer):
                         )
 
                     # ── Persist new messages ──────────────────────────────────────────
+                    # Rows are added without per-row flushes (``flush=False``)
+                    # and flushed once after the loop: ids are client-side
+                    # uuid7, so nothing needs an early flush, and one
+                    # executemany beats N round-trips on the hottest write
+                    # path in the app.
+                    saved_summary = False
                     for msg in new_messages:
                         if isinstance(msg, AssistantMessage):
                             # Skip empty assistant messages (e.g. interrupted before
@@ -477,8 +487,10 @@ class SQLiteCheckpointer(Checkpointer):
                                 pinned=msg.pinned,
                                 extra=msg.extra,
                                 seq=seq if seq is not None else await _next_tail(),
+                                flush=False,
                             )
                             msg.db_id = row.id
+                            saved_summary = saved_summary or msg.is_summary
                         elif isinstance(msg, ToolMessage):
                             row = await save_message(
                                 db,
@@ -487,6 +499,7 @@ class SQLiteCheckpointer(Checkpointer):
                                 pinned=msg.pinned,
                                 extra=msg.extra,
                                 seq=await _next_tail(),
+                                flush=False,
                             )
                             msg.db_id = row.id
                         elif isinstance(msg, HumanMessage):
@@ -503,8 +516,10 @@ class SQLiteCheckpointer(Checkpointer):
                                     pinned=msg.pinned,
                                     extra=msg.extra,
                                     seq=seq if seq is not None else await _next_tail(),
+                                    flush=False,
                                 )
                                 msg.db_id = row.id
+                                saved_summary = saved_summary or msg.is_summary
                                 logger.debug(
                                     "checkpointer_saved_hidden_human session_id={} db_id={}",
                                     sid,
@@ -522,7 +537,8 @@ class SQLiteCheckpointer(Checkpointer):
                         persisted_ids.add(id(msg))
                         if msg.db_id is not None:
                             flushed_pinned[msg.db_id] = msg.pinned
-                    if pin_updates:
+                    await db.flush()
+                    if pin_updates or saved_summary:
                         await bump_history_revision(db, UUID(sid), structural=True)
 
         # Me drop this agent's stream buffer — once the assistant text is in

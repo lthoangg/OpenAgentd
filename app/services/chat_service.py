@@ -7,7 +7,6 @@ from uuid import UUID
 
 import sqlalchemy as sa
 from loguru import logger
-from sqlalchemy.orm import aliased
 from sqlmodel import col, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -18,7 +17,13 @@ from app.agent.schemas.chat import (
 )
 from app.agent.artifacts import session_artifact_dir
 from app.core.paths import session_workspace_dir, uploads_dir, workspace_dir
-from app.models.chat import SEQ_STEP, ChatSession, MessageKind, SessionMessage
+from app.models.chat import (
+    SEQ_STEP,
+    ChatSession,
+    MessageKind,
+    SessionMessage,
+    TZDateTime,
+)
 from app.services import chat_service_queue as _chat_service_queue
 from app.services import chat_service_revert as _chat_service_revert
 from app.services.chat_service_messages import (
@@ -27,9 +32,11 @@ from app.services.chat_service_messages import (
 )
 from app.services.chat_service_revert import (
     BoundaryShift,
+    after_cursor_predicate as _after_cursor_predicate,
     exclude_messages_before_summary as _exclude_messages_before_summary,
     get_active_summary as _get_active_summary,
     llm_window_stmt as _llm_window_stmt,
+    llm_tool_pair_stmt as _llm_tool_pair_stmt,
     revert_boundary as _revert_boundary,
     user_visible_predicate as _user_visible_predicate,
 )
@@ -83,7 +90,7 @@ async def bump_history_revision(
     statement = (
         sa.update(ChatSession).where(col(ChatSession.id) == session_id).values(**values)
     )
-    await db.run_sync(lambda sync_db: sync_db.execute(statement))
+    await db.exec(statement)
 
 
 async def get_history_revision(db: AsyncSession, session_id: UUID) -> tuple[int, int]:
@@ -165,15 +172,7 @@ async def get_messages_for_llm_after(
     summary = await _get_active_summary(db, session_id, boundary)
     stmt = _llm_window_stmt(session_id, summary, boundary)
     seq, message_id = cursor
-    stmt = stmt.where(
-        sa.or_(
-            col(SessionMessage.seq) > seq,
-            sa.and_(
-                col(SessionMessage.seq) == seq,
-                col(SessionMessage.id) > message_id,
-            ),
-        )
-    )
+    stmt = stmt.where(_after_cursor_predicate(seq, message_id))
     rows = (await db.exec(stmt)).all()
     messages = await asyncio.to_thread(
         _deserialize_messages, rows, sanitize_tool_pairs=True
@@ -184,6 +183,13 @@ async def get_messages_for_llm_after(
 _INTERRUPTED_TOOL_RESULT = (
     "Tool execution was interrupted before a result could be recorded."
 )
+
+
+class _ToolPairRow(NamedTuple):
+    seq: int
+    tool_calls: list[dict] | None
+    tool_call_id: str | None
+    created_at: datetime
 
 
 async def heal_orphaned_tool_calls(db: AsyncSession, session_id: UUID) -> int:
@@ -212,11 +218,27 @@ async def heal_orphaned_tool_calls(db: AsyncSession, session_id: UUID) -> int:
     Returns the number of synthetic rows inserted (``0`` in the healthy
     case).  Caller is responsible for the commit.
     """
-    db_messages = await _llm_window_rows(db, session_id)
+    # Use the exact same derived window predicates as the LLM load, but do not
+    # materialise every message body/reasoning blob just to inspect tool ids.
+    # The normal path loads the full window moments later; this narrow
+    # projection removes that duplicate multi-megabyte read.
+    boundary = await _revert_boundary(db, session_id)
+    summary = await _get_active_summary(db, session_id, boundary)
+    stmt = _llm_tool_pair_stmt(session_id, summary, boundary).where(
+        sa.or_(
+            sa.and_(
+                col(SessionMessage.role) == "assistant",
+                col(SessionMessage.tool_calls).is_not(None),
+            ),
+            sa.and_(
+                col(SessionMessage.role) == "tool",
+                col(SessionMessage.tool_call_id).is_not(None),
+            ),
+        )
+    )
+    db_messages = [_ToolPairRow(*row) for row in (await db.exec(stmt)).all()]
 
-    assistant_rows = [
-        row for row in db_messages if row.role == "assistant" and row.tool_calls
-    ]
+    assistant_rows = [row for row in db_messages if row.tool_calls]
     if not assistant_rows:
         return 0
 
@@ -227,11 +249,9 @@ async def heal_orphaned_tool_calls(db: AsyncSession, session_id: UUID) -> int:
         return 0
 
     matched_ids = {
-        row.tool_call_id
-        for row in db_messages
-        if row.role == "tool" and row.tool_call_id in expected_ids
+        row.tool_call_id for row in db_messages if row.tool_call_id in expected_ids
     }
-    missing_by_row: list[tuple[SessionMessage, list[dict]]] = []
+    missing_by_row: list[tuple[_ToolPairRow, list[dict]]] = []
     for row in assistant_rows:
         missing = [tc for tc in row.tool_calls or [] if tc.get("id") not in matched_ids]
         if missing:
@@ -295,6 +315,7 @@ async def save_message(
     kind: str | None = None,
     pinned: bool | None = None,
     seq: int | None = None,
+    flush: bool = True,
 ) -> SessionMessage:
     """Saves a ChatMessage to the database.
 
@@ -315,6 +336,10 @@ async def save_message(
             the next append position.
         created_at: Optional explicit timestamp (display metadata only —
             ordering is by ``seq``).
+        flush: Flush the session after adding the row (default). Batch
+            writers (the checkpointer sync loop) pass ``False`` and flush
+            once for the whole turn — ``id`` is client-generated uuid7, so
+            nothing needs the flush to learn its primary key.
     """
     tool_calls = None
     tool_call_id = None
@@ -365,8 +390,9 @@ async def save_message(
             kwargs["created_at"] = created_at
         db_message = SessionMessage(**kwargs)
         db.add(db_message)
-        await db.flush()
-        if kind == MessageKind.SUMMARY:
+        if flush:
+            await db.flush()
+        if flush and kind == MessageKind.SUMMARY:
             await bump_history_revision(db, session_id, structural=True)
         # Single post-save record for the whole operation.  This deliberately
         # carries the role-specific detail (tool-call count, tool name) that
@@ -578,7 +604,8 @@ async def list_sessions_page(
 
     Args:
         db: Async database session.
-        before: ISO 8601 ``created_at`` cursor — return sessions older than this.
+        before: Opaque ``<created_at>|<uuid>`` cursor — return older sessions.
+            A bare ISO timestamp from an older client remains accepted.
         limit: Maximum number of sessions to return (1–100).
         mode: Optional session mode filter.
         workspace: Optional workspace filter for coding sessions.
@@ -594,7 +621,7 @@ async def list_sessions_page(
     stmt = (
         select(ChatSession)
         .where(col(ChatSession.parent_session_id).is_(None))
-        .order_by(col(ChatSession.created_at).desc())
+        .order_by(col(ChatSession.created_at).desc(), col(ChatSession.id).desc())
     )
 
     if mode is not None:
@@ -603,8 +630,21 @@ async def list_sessions_page(
         stmt = stmt.where(col(ChatSession.workspace) == workspace)
 
     if before:
-        cursor_dt = datetime.fromisoformat(before.replace("Z", "+00:00"))
-        stmt = stmt.where(col(ChatSession.created_at) < cursor_dt)
+        raw_dt, separator, raw_id = before.partition("|")
+        cursor_dt = datetime.fromisoformat(raw_dt.replace("Z", "+00:00"))
+        if separator:
+            cursor_id = UUID(raw_id)
+            stmt = stmt.where(
+                sa.tuple_(col(ChatSession.created_at), col(ChatSession.id))
+                < sa.tuple_(
+                    sa.literal(cursor_dt, type_=TZDateTime()),
+                    sa.literal(cursor_id, type_=sa.Uuid()),
+                )
+            )
+        else:
+            # Legacy timestamp-only cursor. It cannot disambiguate ties but
+            # preserving its old semantics keeps rolling upgrades compatible.
+            stmt = stmt.where(col(ChatSession.created_at) < cursor_dt)
 
     rows = (await db.exec(stmt.limit(limit + 1))).all()
 
@@ -617,7 +657,9 @@ async def list_sessions_page(
         if last_created is not None:
             if last_created.tzinfo is None:
                 last_created = last_created.replace(tzinfo=timezone.utc)
-            next_cursor = last_created.isoformat().replace("+00:00", "Z")
+            next_cursor = (
+                f"{last_created.isoformat().replace('+00:00', 'Z')}|{rows[-1].id}"
+            )
 
     return rows, next_cursor, has_more
 
@@ -772,13 +814,7 @@ def _before_cursor_predicate(before_seq: int | None, before_id: UUID | None):
         return None
     if before_id is None:
         return col(SessionMessage.seq) < before_seq
-    return sa.or_(
-        col(SessionMessage.seq) < before_seq,
-        sa.and_(
-            col(SessionMessage.seq) == before_seq,
-            col(SessionMessage.id) < before_id,
-        ),
-    )
+    return _chat_service_revert.before_cursor_predicate(before_seq, before_id)
 
 
 async def resolve_legacy_history_cursor(
@@ -809,6 +845,39 @@ async def resolve_legacy_history_cursor(
     return (row[0], row[1]) if row else None
 
 
+async def resolve_legacy_delta_cursor(
+    db: AsyncSession,
+    lead_session_id: UUID,
+    since: datetime,
+) -> UUID:
+    """Translate the old timestamp delta watermark to a uuid7 cursor.
+
+    Older web bundles may survive a daemon upgrade and send their last
+    ``created_at`` watermark once. This cold compatibility scan finds the
+    newest-created row at/before it across the lead and direct members; all
+    subsequent requests from the updated client use the indexed uuid7 path.
+    """
+    tree_session_ids = select(ChatSession.id).where(
+        sa.or_(
+            col(ChatSession.id) == lead_session_id,
+            col(ChatSession.parent_session_id) == lead_session_id,
+        )
+    )
+    row = (
+        await db.exec(
+            select(SessionMessage.id)
+            .where(col(SessionMessage.session_id).in_(tree_session_ids))
+            .where(col(SessionMessage.created_at) <= since)
+            .order_by(
+                col(SessionMessage.created_at).desc(),
+                col(SessionMessage.id).desc(),
+            )
+            .limit(1)
+        )
+    ).first()
+    return row if row is not None else UUID(int=0)
+
+
 class TeamHistoryData(NamedTuple):
     """Full history payload for a team lead session.
 
@@ -835,14 +904,14 @@ async def _fetch_member_pages(
     before_seq: int | None,
     before_id: UUID | None = None,
 ) -> list[TeamHistoryMemberData]:
-    """Fetch the newest message page for every sub-session in one query.
+    """Fetch an index-bounded newest page for every sub-session.
 
-    Replaces the previous N+1 loop (one ``SELECT`` per sub-session) with a
-    single batched ``WHERE session_id IN (...)`` query ordered newest-first,
-    grouped back per session in Python. The per-session
-    ``_HISTORY_PAGE_SIZE + 1`` cap is enforced in SQL via a
-    ``ROW_NUMBER() OVER (PARTITION BY session_id ...)`` window so a session
-    with a very long history never pulls unbounded rows into memory.
+    Each member uses one ``(session_id, seq, id)`` index walk capped at
+    ``_HISTORY_PAGE_SIZE + 1``. A previous single-query implementation used
+    ``ROW_NUMBER() OVER (PARTITION BY session_id ...)`` to avoid N queries,
+    but SQLite had to rank every historical row and build two temp B-trees
+    before applying the page cap. On the production clone (10 members / 3,340
+    rows) the bounded index walks are ~5x faster despite the extra round trips.
 
     Semantics match the old loop exactly:
     - the ``(seq, id)`` cursor (from the lead's page) is applied uniformly;
@@ -856,50 +925,23 @@ async def _fetch_member_pages(
     """
     if not sub_sessions:
         return []
-
-    session_ids = [s.id for s in sub_sessions]
-
-    # Rank rows newest-first *within each session* so SQL enforces the
-    # per-session page cap. Without this, a member with a very long history
-    # materialized every row before the Python-side trim (unbounded memory).
-    rank = (
-        sa.func.row_number()
-        .over(
-            partition_by=col(SessionMessage.session_id),
-            order_by=(
-                col(SessionMessage.seq).desc(),
-                col(SessionMessage.id).desc(),
-            ),
-        )
-        .label("rank")
-    )
-    inner = select(SessionMessage, rank).where(
-        col(SessionMessage.session_id).in_(session_ids),
-        _user_visible_predicate(),
-    )
     before_predicate = _before_cursor_predicate(before_seq, before_id)
-    if before_predicate is not None:
-        inner = inner.where(before_predicate)
-    ranked = inner.subquery()
-    msg_alias = aliased(SessionMessage, ranked)
-    stmt = (
-        select(msg_alias)
-        .where(ranked.c.rank <= _HISTORY_PAGE_SIZE + 1)
-        .order_by(ranked.c.seq.desc(), ranked.c.id.desc())
-    )
-    rows = (await db.exec(stmt)).all()
-
-    # Group newest-first per session (rows already arrive in DESC order, so
-    # appending preserves the per-session ordering the old loop produced).
-    by_session: dict[UUID, list[SessionMessage]] = {sid: [] for sid in session_ids}
-    for msg in rows:
-        bucket = by_session.get(msg.session_id)
-        if bucket is not None:
-            bucket.append(msg)
 
     members: list[TeamHistoryMemberData] = []
     for sub in sub_sessions:
-        raw_member = by_session.get(sub.id, [])
+        stmt = (
+            select(SessionMessage)
+            .where(col(SessionMessage.session_id) == sub.id)
+            .where(_user_visible_predicate())
+            .order_by(
+                col(SessionMessage.seq).desc(),
+                col(SessionMessage.id).desc(),
+            )
+            .limit(_HISTORY_PAGE_SIZE + 1)
+        )
+        if before_predicate is not None:
+            stmt = stmt.where(before_predicate)
+        raw_member = list((await db.exec(stmt)).all())
         member_msgs = list(reversed(raw_member[:_HISTORY_PAGE_SIZE]))
         members.append(TeamHistoryMemberData(session=sub, messages=member_msgs))
     return members
@@ -923,53 +965,34 @@ async def _fetch_member_delta(
     db: AsyncSession,
     sub_sessions: Sequence[ChatSession],
     *,
-    since: datetime,
+    since_id: UUID,
     limit: int,
 ) -> list[TeamHistoryMemberData]:
-    """Newest-after-``since`` messages for every sub-session in one query.
+    """Rows created after ``since_id`` for every member, page-bounded.
 
-    Mirrors :func:`_fetch_member_pages` (single batched ``IN`` query with a
-    per-session ``ROW_NUMBER()`` cap so one chatty member cannot pull unbounded
-    rows) but scans *forward* from the cursor and returns chronological order.
+    uuid7 ids are globally creation-ordered, so one cursor is valid across
+    the lead and all member sessions. The per-member ``(session_id, id)``
+    index stops after ``limit + 1`` rows; sorting by logical ``(seq, id)``
+    happens on that bounded result so anchored summaries land correctly.
     """
     if not sub_sessions:
         return []
 
-    session_ids = [s.id for s in sub_sessions]
-    rank = (
-        sa.func.row_number()
-        .over(
-            partition_by=col(SessionMessage.session_id),
-            order_by=(
-                col(SessionMessage.created_at).asc(),
-                col(SessionMessage.id).asc(),
-            ),
-        )
-        .label("rank")
-    )
-    inner = select(SessionMessage, rank).where(
-        col(SessionMessage.session_id).in_(session_ids),
-        col(SessionMessage.created_at) > since,
-        _user_visible_predicate(),
-    )
-    ranked = inner.subquery()
-    msg_alias = aliased(SessionMessage, ranked)
-    stmt = (
-        select(msg_alias)
-        .where(ranked.c.rank <= limit + 1)
-        .order_by(ranked.c.seq.asc(), ranked.c.id.asc())
-    )
-    rows = (await db.exec(stmt)).all()
-
-    by_session: dict[UUID, list[SessionMessage]] = {sid: [] for sid in session_ids}
-    for msg in rows:
-        bucket = by_session.get(msg.session_id)
-        if bucket is not None:
-            bucket.append(msg)
-
     members: list[TeamHistoryMemberData] = []
     for sub in sub_sessions:
-        visible = by_session.get(sub.id, [])
+        visible = list(
+            (
+                await db.exec(
+                    select(SessionMessage)
+                    .where(col(SessionMessage.session_id) == sub.id)
+                    .where(col(SessionMessage.id) > since_id)
+                    .where(_user_visible_predicate())
+                    .order_by(col(SessionMessage.id).asc())
+                    .limit(limit + 1)
+                )
+            ).all()
+        )
+        visible.sort(key=lambda row: (row.seq, row.id))
         members.append(TeamHistoryMemberData(session=sub, messages=visible[:limit]))
     return members
 
@@ -978,19 +1001,21 @@ async def get_team_history_since(
     db: AsyncSession,
     lead_session_id: UUID,
     *,
-    since: datetime,
+    since_id: UUID,
     limit: int = _HISTORY_PAGE_SIZE,
 ) -> TeamHistoryDelta | None:
-    """Fetch only the messages persisted after ``since``.
+    """Fetch only rows created after the uuid7 ``since_id`` cursor.
 
     Exists so the frontend's turn-completion reconciliation can adopt canonical
     message ids/timestamps without re-downloading the whole visible page — that
     page reaches well over a megabyte on an active session, and the client
     already received the same content over SSE.
 
-    ``since`` is exclusive: the cursor row is already on the client. Ordering is
-    chronological (ascending), matching :func:`get_team_history`, so callers can
-    reuse the same block parser.
+    ``since_id`` is exclusive: the cursor row is already on the client. uuid7
+    creation order is global across the lead and its members, unlike per-session
+    ``seq``. It also discovers newly anchored summaries whose logical ``seq``
+    sits before the previous tail. Results are returned in logical ``(seq, id)``
+    order so callers can reuse the same block parser.
 
     Returns ``None`` when the lead session does not exist.
     """
@@ -1001,18 +1026,15 @@ async def get_team_history_since(
     stmt = (
         select(SessionMessage)
         .where(col(SessionMessage.session_id) == lead_session_id)
-        .where(col(SessionMessage.created_at) > since)
+        .where(col(SessionMessage.id) > since_id)
         .where(_user_visible_predicate())
-        .order_by(
-            col(SessionMessage.seq).asc(),
-            col(SessionMessage.id).asc(),
-        )
+        .order_by(col(SessionMessage.id).asc())
         .limit(limit + 1)
     )
     rows = list((await db.exec(stmt)).all())
-    visible = rows
-    truncated = len(visible) > limit
-    lead_messages = visible[:limit]
+    truncated = len(rows) > limit
+    lead_messages = rows[:limit]
+    lead_messages.sort(key=lambda row: (row.seq, row.id))
 
     sub_sessions = (
         await db.exec(
@@ -1021,7 +1043,9 @@ async def get_team_history_since(
             .order_by(col(ChatSession.created_at).asc())
         )
     ).all()
-    members = await _fetch_member_delta(db, sub_sessions, since=since, limit=limit)
+    members = await _fetch_member_delta(
+        db, sub_sessions, since_id=since_id, limit=limit
+    )
     if any(len(member.messages) >= limit for member in members):
         truncated = True
 

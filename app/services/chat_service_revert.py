@@ -52,37 +52,50 @@ class BoundaryShift:
 # ── Position helpers ──────────────────────────────────────────────────────────
 
 
+def _pos() -> sa.Tuple:
+    """The ``(seq, id)`` ordering key as a SQL row value.
+
+    Row-value comparisons (``(seq, id) < (?, ?)``) compile to a single range
+    bound on ``ix_session_messages_session_seq_id``; the equivalent OR-chain
+    (``seq < ? OR (seq = ? AND id < ?)``) only bounds the index on ``seq``
+    and evaluates the tie-break as a residual filter.
+    """
+    return sa.tuple_(col(SessionMessage.seq), col(SessionMessage.id))
+
+
+def _pos_value(seq: int, message_id: UUID) -> sa.Tuple:
+    """A concrete ``(seq, id)`` row value with correctly typed binds."""
+    return sa.tuple_(
+        sa.literal(seq),
+        # ``SessionMessage.id`` maps to ``sa.Uuid()`` — bind with the same
+        # type so the literal serialises to the stored 32-char hex form.
+        sa.literal(message_id, type_=sa.Uuid()),
+    )
+
+
 def before_pos(row: SessionMessage):
     """SQL predicate: strictly before *row* in ``(seq, id)`` order."""
-    return or_(
-        col(SessionMessage.seq) < row.seq,
-        sa.and_(
-            col(SessionMessage.seq) == row.seq,
-            col(SessionMessage.id) < row.id,
-        ),
-    )
+    return _pos() < _pos_value(row.seq, row.id)
 
 
 def at_or_after_pos(row: SessionMessage):
     """SQL predicate: at/after *row* in ``(seq, id)`` order."""
-    return or_(
-        col(SessionMessage.seq) > row.seq,
-        sa.and_(
-            col(SessionMessage.seq) == row.seq,
-            col(SessionMessage.id) >= row.id,
-        ),
-    )
+    return _pos() >= _pos_value(row.seq, row.id)
 
 
 def after_pos(row: SessionMessage):
     """SQL predicate: strictly after *row* in ``(seq, id)`` order."""
-    return or_(
-        col(SessionMessage.seq) > row.seq,
-        sa.and_(
-            col(SessionMessage.seq) == row.seq,
-            col(SessionMessage.id) > row.id,
-        ),
-    )
+    return _pos() > _pos_value(row.seq, row.id)
+
+
+def before_cursor_predicate(seq: int, message_id: UUID):
+    """SQL predicate: strictly before the ``(seq, id)`` cursor."""
+    return _pos() < _pos_value(seq, message_id)
+
+
+def after_cursor_predicate(seq: int, message_id: UUID):
+    """SQL predicate: strictly after the ``(seq, id)`` cursor."""
+    return _pos() > _pos_value(seq, message_id)
 
 
 def order_by_pos(stmt, *, desc: bool = False):
@@ -159,10 +172,33 @@ def llm_window_stmt(
     Callers obtain *summary* via :func:`get_active_summary` (with the same
     *boundary*) so the two queries agree on which summary is active.
     """
-    stmt = (
-        select(SessionMessage)
-        .where(col(SessionMessage.session_id) == session_id)
-        .where(col(SessionMessage.kind) != MessageKind.REVERTED)
+    return _apply_llm_window(select(SessionMessage), session_id, summary, boundary)
+
+
+def llm_tool_pair_stmt(
+    session_id: UUID,
+    summary: SessionMessage | None,
+    boundary: SessionMessage | None = None,
+):
+    """Narrow LLM-window projection used by orphaned tool-call healing."""
+    stmt = select(
+        SessionMessage.seq,
+        SessionMessage.tool_calls,
+        SessionMessage.tool_call_id,
+        SessionMessage.created_at,
+    )
+    return _apply_llm_window(stmt, session_id, summary, boundary)
+
+
+def _apply_llm_window(
+    stmt,
+    session_id: UUID,
+    summary: SessionMessage | None,
+    boundary: SessionMessage | None,
+):
+    """Apply derived-window filters/order to a model or column projection."""
+    stmt = stmt.where(col(SessionMessage.session_id) == session_id).where(
+        col(SessionMessage.kind) != MessageKind.REVERTED
     )
     if summary is not None:
         stmt = stmt.where(

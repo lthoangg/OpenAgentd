@@ -55,6 +55,18 @@ def _set_sqlite_pragmas(dbapi_conn, connection_record):
     # waits for the lock instead of failing fast with "database is locked".
     # Mirrors the test engine hook in tests/conftest.py.
     cursor.execute("PRAGMA busy_timeout=5000")
+    # Bound the WAL file: long-lived readers (SSE polls, history loads) can
+    # starve auto-checkpoints, and without a limit the -wal grows unbounded
+    # on busy sessions. After a successful checkpoint the file is truncated
+    # back to this size instead of being left fully allocated.
+    cursor.execute("PRAGMA journal_size_limit=67108864")  # 64 MiB
+    # Sort/temp B-trees (window ORDER BYs, history pagination) in memory
+    # instead of temp files.
+    cursor.execute("PRAGMA temp_store=MEMORY")
+    # Serve reads through a shared mmap of the DB file — page-cache hits are
+    # shared across all pooled connections instead of each connection warming
+    # its own private page cache. No effect on write serialisation.
+    cursor.execute("PRAGMA mmap_size=268435456")  # 256 MiB
     cursor.close()
 
 
@@ -138,6 +150,12 @@ def _optimize_sqlite(db_path: Path) -> None:
         try:
             conn.execute("PRAGMA analysis_limit=1000")
             conn.execute("PRAGMA optimize=0x10002")
+            # Fold the WAL back into the DB and truncate it. Startup is the
+            # one moment no readers/writers are live, so the checkpoint
+            # cannot be starved; steady-state auto-checkpoints then keep the
+            # file near zero instead of inheriting yesterday's high-water
+            # mark (journal_size_limit bounds it between restarts).
+            conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
             conn.commit()
         finally:
             conn.close()

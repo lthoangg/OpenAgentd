@@ -85,6 +85,7 @@ from app.services.chat_service import (
     get_team_history_since,
     get_latest_top_level_session,
     list_sessions_page,
+    resolve_legacy_delta_cursor,
     resolve_legacy_history_cursor,
     save_message,
     save_queued_user_message,
@@ -699,15 +700,15 @@ async def list_team_sessions(
     db: DbSession,
     before: str | None = Query(
         None,
-        description="ISO 8601 created_at cursor — return sessions older than this.",
+        description="Opaque pagination cursor — return sessions older than this.",
     ),
     limit: int = Query(20, ge=1, le=100),
     mode: str | None = Query(None),
     workspace: str | None = Query(None),
 ) -> SessionPageResponse:
-    """List team lead sessions newest-first, cursor-paginated by created_at.
+    """List team lead sessions newest-first with an opaque cursor.
 
-    Pass ``before=<created_at_iso>`` (the ``next_cursor`` from the previous
+    Pass ``before=<next_cursor>`` from the previous
     page) to retrieve the next batch.  Omit to start from the newest.
     """
     if mode is not None and mode not in {"normal", "coding"}:
@@ -726,7 +727,7 @@ async def list_team_sessions(
     except ValueError:
         raise HTTPException(
             status_code=422,
-            detail="Invalid 'before' cursor — expected ISO 8601 datetime.",
+            detail="Invalid 'before' cursor.",
         )
 
     running_session_ids = stream_store.running_session_ids()
@@ -952,6 +953,14 @@ def _parse_cursor(raw: str, field: str) -> datetime:
     return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=UTC)
 
 
+def _parse_since_cursor(raw: str) -> UUID | datetime:
+    """Parse the current uuid7 delta cursor or a legacy ISO timestamp."""
+    try:
+        return UUID(raw)
+    except ValueError:
+        return _parse_cursor(raw, "since")
+
+
 def _parse_before_cursor(
     raw: str,
 ) -> tuple[int | None, datetime | None, UUID | None]:
@@ -986,7 +995,7 @@ async def team_history(
     before: str | None = Query(default=None),
     since: str | None = Query(
         default=None,
-        description="ISO 8601 created_at cursor — return only messages newer than this.",
+        description="Opaque uuid7 cursor — return only rows created after it.",
     ),
 ) -> TeamHistoryResponse:
     """Return a page of turn history (cursor-based, newest-first page).
@@ -996,8 +1005,8 @@ async def team_history(
     breaks ``seq`` ties. Legacy timestamp cursors persisted by older clients
     are transparently resolved to their ``(seq, id)`` position.
 
-    Pass ``since`` (``created_at`` of the newest message the caller already
-    holds) to fetch only what was persisted after it.  That is how the frontend
+    Pass ``since`` (the id of the newest-created row the caller already holds)
+    to fetch only what was persisted after it.  That is how the frontend
     adopts canonical message ids after a turn completes without re-downloading
     the whole visible page, which exceeds a megabyte on an active session and
     duplicates content the client already received over SSE.  A delta reports
@@ -1011,7 +1020,7 @@ async def team_history(
 
     if since is not None:
         return await _team_history_delta(
-            db, team, session_id, _parse_cursor(since, "since")
+            db, team, session_id, _parse_since_cursor(since)
         )
 
     before_seq: int | None = None
@@ -1091,7 +1100,7 @@ async def _team_history_delta(
     db: DbSession,
     team: TeamDep,
     session_id: UUID,
-    since: datetime,
+    since: UUID | datetime,
 ) -> TeamHistoryResponse:
     """Serve ``GET /{sid}/history?since=`` — messages newer than the cursor.
 
@@ -1099,7 +1108,12 @@ async def _team_history_delta(
     session still gets its team started, keeping the two paths interchangeable
     from the caller's point of view.
     """
-    delta = await get_team_history_since(db, session_id, since=since)
+    since_id = (
+        await resolve_legacy_delta_cursor(db, session_id, since)
+        if isinstance(since, datetime)
+        else since
+    )
+    delta = await get_team_history_since(db, session_id, since_id=since_id)
     if delta is None:
         raise HTTPException(status_code=404, detail="Lead session not found.")
     if delta.lead_session.mode == "coding" and delta.lead_session.workspace:

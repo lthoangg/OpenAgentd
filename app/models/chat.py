@@ -94,6 +94,7 @@ class ChatSession(SQLModel, table=True):
             "parent_session_id",
             "mode",
             "created_at",
+            "id",
         ),
         sa.Index(
             "ix_chat_sessions_top_mode_workspace_created",
@@ -101,6 +102,7 @@ class ChatSession(SQLModel, table=True):
             "mode",
             "workspace",
             "created_at",
+            "id",
         ),
         # Sub-session lookups (`get_team_history`, `get_team_history_since`)
         # filter on parent_session_id and order by created_at on every team
@@ -112,6 +114,7 @@ class ChatSession(SQLModel, table=True):
             "ix_chat_sessions_parent_created",
             "parent_session_id",
             "created_at",
+            "id",
         ),
         # Plain column index, deliberately not `sa.desc("created_at")`: a DESC
         # expression index is invisible to Alembic's SQLite comparison and made
@@ -295,6 +298,16 @@ class SessionMessage(SQLModel, table=True):
             "ix_session_messages_session_seq_id",
             "session_id",
             "seq",
+            "id",
+        ),
+        # Turn-completion deltas use the globally monotonic uuid7 ``id`` as a
+        # creation cursor. Unlike ``seq`` it still finds freshly anchored
+        # summaries whose logical position sits in the middle of history.
+        # The session prefix makes each lead/member delta a bounded range
+        # scan rather than a residual filter over the whole session.
+        sa.Index(
+            "ix_session_messages_session_id",
+            "session_id",
             "id",
         ),
         # Active-summary lookup: ``WHERE kind='summary' ORDER BY id DESC

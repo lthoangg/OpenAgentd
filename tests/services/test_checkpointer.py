@@ -285,6 +285,58 @@ class TestSQLiteCheckpointerSync:
         assert seqs == sorted(seqs) and len(set(seqs)) == 3
         assert seqs[1] - seqs[0] == SEQ_STEP and seqs[2] - seqs[1] == SEQ_STEP
 
+    async def test_sync_batches_inserts_into_one_flush(self):
+        """A sync of N new messages flushes once (one executemany INSERT).
+
+        Ids are client-generated uuid7, so no row needs an early flush to
+        learn its primary key; per-row flushes were N round-trips on the
+        hottest write path in the app.
+        """
+        import app.core.db as _db
+
+        sid = uuid.uuid7()
+        async with _db.async_session_factory() as db:
+            async with db.begin():
+                await _make_session(db, sid)
+
+        cp = SQLiteCheckpointer(_db.async_session_factory)
+        ctx = _ctx(str(sid))
+        tool_calls = None
+        state = AgentState(
+            messages=[
+                AssistantMessage(content="head", tool_calls=tool_calls),
+                *[
+                    ToolMessage(content=f"out {i}", tool_call_id=f"tc{i}", name="Shell")
+                    for i in range(5)
+                ],
+            ]
+        )
+
+        insert_executions = 0
+
+        def _count(conn, cursor, statement, parameters, context, executemany):
+            nonlocal insert_executions
+            if statement.lstrip().lower().startswith("insert into session_messages"):
+                insert_executions += 1
+
+        event.listen(_db.engine.sync_engine, "before_cursor_execute", _count)
+        try:
+            await cp.sync(ctx, state)
+        finally:
+            event.remove(_db.engine.sync_engine, "before_cursor_execute", _count)
+
+        assert insert_executions == 1
+
+        async with _db.async_session_factory() as db:
+            rows = (
+                await db.exec(
+                    select(SessionMessage)
+                    .where(col(SessionMessage.session_id) == sid)
+                    .order_by(col(SessionMessage.seq), col(SessionMessage.id))
+                )
+            ).all()
+        assert [r.content for r in rows] == ["head"] + [f"out {i}" for i in range(5)]
+
     @pytest.mark.asyncio
     async def test_sync_persists_assistant_message(self):
         """AssistantMessage is persisted to DB."""
@@ -522,8 +574,12 @@ class TestSQLiteCheckpointerSync:
                     )
                 )
             ).all()
+            session_row = await db.get(ChatSession, sid)
         assert len(rows) == 1
         assert rows[0].extra == {"usage": {"input": 100}}
+        assert session_row is not None
+        assert session_row.history_revision == 1
+        assert session_row.history_structure_revision == 1
 
     @pytest.mark.asyncio
     async def test_sync_early_return_when_no_messages(self):

@@ -29,6 +29,7 @@ import { getToolDisplay } from './display'
 import { DiffView } from './DiffView'
 import { ReadView } from './ReadView'
 import { getDiffStats } from './diffUtils'
+import { isFailedResult } from './toolResultStatus'
 import type { ToolCallState } from './types'
 
 /** Matches ``app.agent.agent_loop.core.ASK_USER``. */
@@ -44,18 +45,6 @@ interface ToolCallProps {
   startedAt?: number
   /** Needed by ``ask_user`` to match the call against the open question. */
   toolCallId?: string
-}
-
-function isFailedResult(result: string | undefined): boolean {
-  if (!result) return false
-  const firstLine = result.trimStart().split('\n', 1)[0]?.toLowerCase() ?? ''
-  return (
-    firstLine.startsWith('[failed') ||
-    firstLine.startsWith('[error') ||
-    firstLine.startsWith('[timed out') ||
-    firstLine.includes('exit code 1') ||
-    firstLine.includes('exit 1')
-  )
 }
 
 function formatShellResult(result: string | undefined): { statusLine: string | null; body: string | null } {
@@ -214,7 +203,7 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
   const usesDiffView = name === 'patch'
   const usesReadView = name === 'read'
   const diffStats = useMemo(
-    () => usesDiffView && args ? getDiffStats(name, args, result) : null,
+    () => usesDiffView && args && !isFailedResult(result) ? getDiffStats(name, args, result) : null,
     [usesDiffView, name, args, result],
   )
   // Pending-state header comes from getToolDisplay's no-args branch
@@ -305,7 +294,13 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
   const displayName = name || 'tool'
   const toolLabel = formatToolLabel(displayName)
   const title = headerTitle ? `${toolLabel}: ${headerTitle}` : toolLabel
-  const headerClassName = `min-w-0 truncate font-mono text-(--color-text) ${state === 'running' ? 'animate-pulse text-(--color-marker-orange)' : ''}`
+  const headerClassName = `min-w-0 truncate font-mono text-(--color-text) ${
+    state === 'running'
+      ? 'animate-pulse text-(--color-marker-orange)'
+      : state === 'failed'
+        ? 'text-(--color-error)'
+        : ''
+  }`
   const elapsedMs = durationMs ?? (!done && startedAt ? now - startedAt : undefined)
 
   // ``ask_user`` owns its whole card — frame and label included, since

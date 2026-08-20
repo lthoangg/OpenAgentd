@@ -3,6 +3,7 @@ import { ArrowRight, Trash2, PlusCircle, ChevronRight, FileEdit } from 'lucide-r
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { parseDiffMeta, parsePatchText, type DiffLine, type FileDiff } from './diffUtils'
 import { parsePartialJSON } from './displayText'
+import { isFailedResult } from './toolResultStatus'
 import { parseLspDiagnostics, LspDiagnosticsView } from '../ToolResult'
 
 interface SingleFileDiffProps {
@@ -248,9 +249,22 @@ export function DiffView({ toolName, args, result, onCollapse }: DiffViewProps) 
     return null
   }, [toolName, args, parsed, diffMeta])
 
+  // A rejected patch never touched disk — nothing here was actually applied.
+  // Rendering `model` (derived purely from the *requested* patch_text) would
+  // show the model's intended edit as if it had landed, and the diffMeta this
+  // relies on for hunk line numbers is only ever emitted on success anyway.
+  // Show the tool's own error instead of a diff nobody applied.
+  const failed = toolName === 'patch' && isFailedResult(result)
+
   let viewContent: React.ReactNode = null
 
-  if (model?.kind === 'raw') {
+  if (failed) {
+    viewContent = (
+      <pre className="overflow-auto overscroll-contain touch-pan-y p-3 whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-(--color-error)">
+        {result}
+      </pre>
+    )
+  } else if (model?.kind === 'raw') {
     viewContent =
       model.variant === 'patch' ? (
         <pre className="overflow-auto overscroll-contain touch-pan-y p-3 font-mono text-xs leading-relaxed text-(--color-text-2)">

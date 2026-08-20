@@ -172,7 +172,7 @@ function ModeCard({
       whileTap={disabled ? {} : { scale: 0.985 }}
       onClick={disabled ? undefined : onClick}
       disabled={disabled}
-      className={`flex w-full items-center rounded-sm border text-left transition-colors ${compact ? 'gap-3 px-3 py-2.5' : 'gap-3 px-4 py-3'} ${
+      className={`flex w-full items-center rounded-sm border text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 ${compact ? 'gap-3 px-3 py-2.5' : 'gap-3 px-4 py-3'} ${
         disabled
           ? 'cursor-not-allowed border-(--color-border) bg-(--bg-card) opacity-45'
           : 'border-(--color-border) bg-(--bg-card) hover:border-(--color-border-strong) hover:bg-(--bg-key)/40'

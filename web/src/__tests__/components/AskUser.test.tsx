@@ -432,6 +432,70 @@ describe('AskUser — closed without an answer', () => {
 })
 
 /**
+ * Loop-side endings that never opened a question. Each writes its own
+ * sentence onto the tool row (schema validation runs before the tool body,
+ * ``ask_user`` refuses without a call id, and a restart heals the orphaned
+ * call with a stub) — none of which involve the user, so "Closed without an
+ * answer" misreports every one of them as a question the user lost.
+ */
+describe('AskUser — asks that failed before a question opened', () => {
+  it('labels an args-validation failure as never asked', () => {
+    useTeamStore.setState({ pendingQuestion: null, resolvedQuestions: {} })
+
+    const { container } = render(
+      <AskUser
+        toolCallId="call-1"
+        args={JSON.stringify({ questions: QUESTION.questions })}
+        result={
+          "Error: Invalid arguments for tool 'ask_user': questions -> 3 -> " +
+          'options -> 0 -> description: String should have at most 200 characters'
+        }
+      />,
+    )
+
+    expect(container.textContent).not.toContain('Closed without an answer')
+    expect(screen.getByText(/not asked/i)).toBeInTheDocument()
+    expect(screen.getByText('Which package manager?')).toBeInTheDocument()
+    expect(screen.queryByText(/needs your input/i)).toBeNull()
+  })
+
+  it('labels an undeliverable ask (no tool call id) as never asked', () => {
+    useTeamStore.setState({ pendingQuestion: null, resolvedQuestions: {} })
+
+    const { container } = render(
+      <AskUser
+        toolCallId="call-1"
+        args={JSON.stringify({ questions: QUESTION.questions })}
+        result={
+          'Your question could not be delivered (no tool call id). ' +
+          'Continue with your best judgment.'
+        }
+      />,
+    )
+
+    expect(container.textContent).not.toContain('Closed without an answer')
+    expect(screen.getByText(/not asked/i)).toBeInTheDocument()
+    expect(screen.queryByText(/needs your input/i)).toBeNull()
+  })
+
+  it('labels a restart-healed ask as interrupted, not closed without an answer', () => {
+    useTeamStore.setState({ pendingQuestion: null, resolvedQuestions: {} })
+
+    const { container } = render(
+      <AskUser
+        toolCallId="call-1"
+        args={JSON.stringify({ questions: QUESTION.questions })}
+        result="Tool execution was interrupted before a result could be recorded."
+      />,
+    )
+
+    expect(container.textContent).not.toContain('Closed without an answer')
+    expect(screen.getByText(/interrupted/i)).toBeInTheDocument()
+    expect(screen.queryByText(/needs your input/i)).toBeNull()
+  })
+})
+
+/**
  * The card's own label has to track the same two states as its body — a
  * resolved question still headed "Needs your input" reads as an outstanding
  * request the user has to act on.

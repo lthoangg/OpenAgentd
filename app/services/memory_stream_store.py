@@ -405,7 +405,8 @@ async def push_event(
 
 async def commit_agent_content(session_id: str, agent: str) -> None:
     """Drop ``content[agent]``, ``thinking[agent]`` and any ``tool_calls``
-    owned by *agent* from the state blob.
+    owned by *agent* from the state blob. Also drop a completed summarization
+    for that agent: its summary row is durable by the time this hook runs.
 
     Called by the checkpointer after an assistant message is persisted to
     the DB — once durable, a mid-turn reconnect must not replay it (the
@@ -416,6 +417,9 @@ async def commit_agent_content(session_id: str, agent: str) -> None:
         return
     state.content.pop(agent, None)
     state.thinking.pop(agent, None)
+    summary = state.summarization.get(agent)
+    if summary and summary.get("done") and not summary.get("error"):
+        state.summarization.pop(agent, None)
     # Me drop tool_calls owned by this agent.  AssistantMessage rows embed
     # their tool_calls as part of the assistant payload, so once that row is
     # in the DB the corresponding replay entries must go too — otherwise

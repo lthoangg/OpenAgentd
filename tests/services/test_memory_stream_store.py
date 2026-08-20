@@ -742,6 +742,24 @@ class TestCommitAgentContent:
         assert remaining[0]["agent"] == "bob"
 
     @pytest.mark.asyncio
+    async def test_commit_drops_completed_summarization_for_agent(self):
+        """Persisted summaries must not replay after history hydration."""
+        await store.init_turn("sid-1")
+        _turns["sid-1"].summarization = {
+            "alice": {"text": "persisted summary", "done": True, "error": False},
+            "bob": {"text": "still streaming", "done": False, "error": False},
+            "charlie": {"text": "failed summary", "done": True, "error": True},
+        }
+
+        await store.commit_agent_content("sid-1", "alice")
+        await store.commit_agent_content("sid-1", "bob")
+        await store.commit_agent_content("sid-1", "charlie")
+
+        assert "alice" not in _turns["sid-1"].summarization
+        assert _turns["sid-1"].summarization["bob"]["text"] == "still streaming"
+        assert _turns["sid-1"].summarization["charlie"]["error"] is True
+
+    @pytest.mark.asyncio
     async def test_commit_idempotent_when_agent_missing(self):
         """Calling commit for an agent with no buffered content is a no-op."""
         await store.init_turn("sid-1")

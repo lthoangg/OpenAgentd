@@ -378,6 +378,57 @@ describe('AskUser — closed without an answer', () => {
 
     expect(screen.getByText(/dismissed/i)).toBeInTheDocument()
   })
+
+  /**
+   * The agent loop refuses a second ``ask_user`` in a resumed turn and writes
+   * ``ASK_BUDGET_EXHAUSTED`` as the tool result (core.py). The card must not
+   * present that as a question the user somehow missed — nothing was ever
+   * open, so "Closed without an answer" reads as a bug.
+   */
+  it('labels a budget-refused ask as not asked, not as closed without an answer', () => {
+    useTeamStore.setState({ pendingQuestion: null, resolvedQuestions: {} })
+
+    const { container } = render(
+      <AskUser
+        toolCallId="call-1"
+        args={JSON.stringify({ questions: QUESTION.questions })}
+        result={
+          'You already used your one interruption for this turn. Continue with your ' +
+          'best judgment, or finish and raise anything outstanding in your reply.'
+        }
+      />,
+    )
+
+    expect(container.textContent).not.toContain('Closed without an answer')
+    expect(screen.getByText(/not asked/i)).toBeInTheDocument()
+    expect(screen.getByText('Which package manager?')).toBeInTheDocument()
+    // Resolved framing, not an outstanding request.
+    expect(screen.queryByText(/needs your input/i)).toBeNull()
+  })
+
+  /**
+   * Parallel ``ask_user`` calls are folded into one card; the duplicates get
+   * ``ASK_MERGED_INTO_PRIMARY`` as their result. Same rule: never "Closed
+   * without an answer" for a question the primary card actually carried.
+   */
+  it('labels a merged duplicate ask as merged, not as closed without an answer', () => {
+    useTeamStore.setState({ pendingQuestion: null, resolvedQuestions: {} })
+
+    const { container } = render(
+      <AskUser
+        toolCallId="call-2"
+        args={JSON.stringify({ questions: QUESTION.questions })}
+        result={
+          'Merged into your other ask_user call — the user sees a single card ' +
+          'with every question.'
+        }
+      />,
+    )
+
+    expect(container.textContent).not.toContain('Closed without an answer')
+    expect(screen.getByText(/merged/i)).toBeInTheDocument()
+    expect(screen.queryByText(/needs your input/i)).toBeNull()
+  })
 })
 
 /**

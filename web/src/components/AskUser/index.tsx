@@ -39,18 +39,25 @@ const PLACEHOLDER_PREFIX = 'Waiting for the user to answer'
 /**
  * Recovers the reason from the persisted sentence, which is all a cold load
  * has. Mirrors the non-answer entries of ``question_service._RESOLUTION_TEXT``;
- * an unrecognised sentence still resolves, just without a specific reason.
+ * plus the agent loop's refusal sentences (``ASK_BUDGET_EXHAUSTED`` /
+ * ``ASK_MERGED_INTO_PRIMARY`` in ``agent_loop/core.py``), which are written
+ * straight onto the tool row without a question ever opening. An unrecognised
+ * sentence still resolves, just without a specific reason.
  */
 const RESOLUTION_PREFIXES: readonly (readonly [string, string])[] = [
   ['Question(s) being dismissed', 'dismissed'],
   ['Superseded', 'superseded'],
   ['This question is no longer relevant', 'expired'],
+  ['You already used your one interruption', 'refused'],
+  ['Merged into your other ask_user call', 'merged'],
 ]
 
 const REASON_LABEL: Record<string, string> = {
   dismissed: 'Dismissed',
   superseded: 'Superseded by your next message',
   expired: 'No longer relevant',
+  refused: 'Not asked — the agent already used its one question for this turn',
+  merged: 'Merged into the other question card',
 }
 
 function errorMessage(cause: unknown, fallback: string): string {

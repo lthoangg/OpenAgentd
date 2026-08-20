@@ -189,7 +189,7 @@ function AudioCard({ file, blobUrl, onRemove, onOpen }: CardProps) {
         <button
           type="button"
           onClick={onOpen}
-          className="flex items-center gap-1.5 text-left focus-visible:outline-none"
+          className="flex items-center gap-1.5 rounded-xs text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40"
           aria-label={`Preview ${file.name}`}
         >
           <FileTypeIcon name={file.name} size={12} />

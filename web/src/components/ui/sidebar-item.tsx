@@ -61,7 +61,7 @@ export const SidebarItem = memo(function SidebarItem({
       onClick={onClick}
       aria-current={active ? 'page' : undefined}
       className={cn(
-        'interactive-weight flex w-full items-center gap-2.5 rounded-sm text-sm transition-colors',
+        'interactive-weight flex w-full items-center gap-2.5 rounded-sm text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40',
         collapsed ? 'h-10 w-10 justify-center px-0 py-0' : 'px-3 py-2',
         active
           ? 'bg-(--bg-key) text-(--color-text) font-medium'

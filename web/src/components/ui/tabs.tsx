@@ -103,7 +103,7 @@ function TabsTrigger({ className, value, id, type = 'button', onClick, ...props 
       tabIndex={active ? 0 : -1}
       className={cn(
         'relative inline-flex h-full flex-1 items-center justify-center gap-1.5 rounded-xs border border-transparent px-3 py-1 text-sm font-medium whitespace-nowrap text-(--color-text-muted) transition-colors',
-        'hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/30 disabled:pointer-events-none disabled:opacity-50',
+        'hover:bg-(--bg-card)/40 hover:text-(--color-text) active:bg-(--bg-card)/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/30 disabled:pointer-events-none disabled:opacity-50',
         'data-active:border-(--color-border-strong) data-active:bg-(--bg-card) data-active:text-(--color-text) data-active:shadow-sm',
         '[&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*=size-])]:size-4',
         className,

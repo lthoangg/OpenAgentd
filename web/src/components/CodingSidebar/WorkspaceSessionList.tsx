@@ -101,8 +101,8 @@ export function WorkspaceSessionList({
                     }}
                     className={`flex min-h-6 w-full items-center gap-1.5 rounded-sm px-2 py-0.5 text-left text-xs transition-colors ${
                       isCurrent
-                        ? 'text-(--color-text)'
-                        : 'text-(--color-text-2) hover:text-(--color-text)'
+                        ? 'bg-(--bg-key)/50 text-(--color-text)'
+                        : 'text-(--color-text-2) hover:bg-(--bg-key)/30 hover:text-(--color-text)'
                     }`}
                   >
                     <span

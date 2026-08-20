@@ -264,7 +264,7 @@ export function ProvidersSettingsPage() {
                 <button
                   type="button"
                   onClick={clearFilters}
-                  className="text-xs font-medium text-(--color-text) underline-offset-2 hover:underline focus-visible:outline-none"
+                  className="rounded-xs text-xs font-medium text-(--color-text) underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40"
                 >
                   Clear filters
                 </button>

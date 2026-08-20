@@ -273,7 +273,7 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
                     render={
                       <button
                         onClick={onRevert}
-                        className="rounded-xs p-0.5 text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)"
+                        className="rounded-xs p-0.5 text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 active:scale-90"
                         aria-label="Revert latest message"
                       >
                         <Undo2 size={11} />
@@ -288,7 +288,7 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
                   render={
                     <button
                       onClick={handleCopy}
-                      className="rounded-xs p-0.5 text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)"
+                      className="rounded-xs p-0.5 text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 active:scale-90"
                       aria-label="Copy message"
                     >
                       {copied ? (

@@ -207,7 +207,7 @@ export function CommandPalette({ commands, onClose, workspaceFiles = [], filesTr
             {query && (
               <button
                 onClick={() => handleQueryChange('')}
-                className="rounded-xs px-1.5 py-1 text-[11px] text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text-2)"
+                className="rounded-xs px-1.5 py-1 text-[11px] text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40"
               >
                 Clear
               </button>

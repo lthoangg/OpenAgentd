@@ -232,7 +232,7 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
                   <button
                     type="button"
                     onClick={() => {}}
-                    className="flex min-w-0 flex-1 items-center gap-2 text-left focus:outline-none"
+                    className="flex min-w-0 flex-1 items-center gap-2 rounded-xs text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40"
                     disabled={pending}
                   >
                     <ServerStatusDot status={status?.sidecar_running ? 'online' : undefined} />
@@ -287,7 +287,7 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
                     <button
                       type="button"
                       onClick={() => { editServer(normalizedServerUrl, server.name ?? '') }}
-                      className="flex min-w-0 flex-1 items-center gap-2 text-left focus:outline-none"
+                      className="flex min-w-0 flex-1 items-center gap-2 rounded-xs text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40"
                       disabled={pending}
                     >
                       <ServerStatusDot status={serverHealth[normalizedServerUrl] ?? serverHealth[server.base_url]} />

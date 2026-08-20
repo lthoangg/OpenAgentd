@@ -85,7 +85,7 @@ export const AssistantTurnFooter = memo(function AssistantTurnFooter({ turnBlock
             render={
               <button
                 onClick={handleCopy}
-                className="rounded-xs p-0.5 text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)"
+                className="rounded-xs p-0.5 text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 active:scale-90"
                 aria-label="Copy response"
               >
                 {copied

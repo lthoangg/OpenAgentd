@@ -295,27 +295,27 @@ function FileRow({ file, idx, isActive, onRun, onActivate }: FileRowProps) {
   return (
     <button
       data-idx={idx}
+      type="button"
       onClick={() => onRun(file)}
       onMouseEnter={() => onActivate(idx)}
-      className={`flex w-full items-center gap-2 rounded-sm border border-transparent px-2.5 py-2 text-left ${
+      className={`group flex w-full min-w-0 items-center justify-between gap-3 rounded-sm border border-transparent px-2.5 py-1.5 text-left transition-colors ${
         isActive
           ? 'border-(--color-border-strong) bg-(--bg-key)/60 text-(--color-text)'
           : 'text-(--color-text-2) hover:border-(--color-border) hover:bg-(--bg-card)'
       }`}
     >
-      <div className="min-w-0 flex-1">
-        <div className="min-w-0">
-          <Tooltip>
-            <TooltipTrigger render={<span className="block truncate font-mono text-xs font-medium">{file.name}</span>} />
-            <TooltipContent>{file.name}</TooltipContent>
-          </Tooltip>
-        </div>
-        <div className="min-w-0">
-          <Tooltip>
-            <TooltipTrigger render={<span className="block truncate text-xs text-(--color-text-muted)">{file.path}</span>} />
-            <TooltipContent>{file.path}</TooltipContent>
-          </Tooltip>
-        </div>
+      <div className="min-w-0 flex-1 overflow-hidden">
+        <span className="block truncate font-mono text-xs font-medium text-(--color-text)">
+          {file.name}
+        </span>
+        {file.path !== file.name && (
+          <span
+            className="block truncate font-mono text-[10.5px] text-(--color-text-muted)"
+            title={file.path}
+          >
+            {file.path}
+          </span>
+        )}
       </div>
       {isActive && <CornerDownLeft size={12} className="shrink-0 text-(--color-text-muted)" />}
     </button>
@@ -332,34 +332,35 @@ interface CommandRowProps {
 
 function CommandRow({ cmd, idx, isActive, onRun, onActivate }: CommandRowProps) {
   return (
-    <div>
-      <button
-        data-idx={idx}
-        onClick={() => onRun(cmd)}
-        onMouseEnter={() => onActivate(idx)}
-        className={`flex w-full items-center gap-2 rounded-sm border border-transparent px-2.5 py-2 text-left ${
-          isActive
-            ? 'border-(--color-border-strong) bg-(--bg-key)/60 text-(--color-text)'
-            : 'text-(--color-text-2) hover:border-(--color-border) hover:bg-(--bg-card)'
-        }`}
-      >
-        <div className="min-w-0 flex-1">
-          <span className="block text-xs font-medium">{cmd.label}</span>
-          {cmd.description && (
-            <span className="block truncate text-xs text-(--color-text-muted)">
-              {cmd.description}
-            </span>
-          )}
-        </div>
+    <button
+      data-idx={idx}
+      type="button"
+      onClick={() => onRun(cmd)}
+      onMouseEnter={() => onActivate(idx)}
+      className={`group flex w-full min-w-0 items-center justify-between gap-3 rounded-sm border border-transparent px-2.5 py-1.5 text-left transition-colors ${
+        isActive
+          ? 'border-(--color-border-strong) bg-(--bg-key)/60 text-(--color-text)'
+          : 'text-(--color-text-2) hover:border-(--color-border) hover:bg-(--bg-card)'
+      }`}
+    >
+      <div className="min-w-0 flex-1 overflow-hidden">
+        <span className="block truncate text-xs font-medium text-(--color-text)">{cmd.label}</span>
+        {cmd.description && (
+          <span className="block truncate text-[11px] text-(--color-text-muted)">
+            {cmd.description}
+          </span>
+        )}
+      </div>
+      <div className="flex shrink-0 items-center gap-2">
         {cmd.shortcut && (
-          <kbd className="shrink-0 rounded-xs border border-(--color-border) bg-(--bg-card) px-1.5 py-0.5 font-mono text-[10px] text-(--color-text-muted)">
+          <kbd className="rounded-xs border border-(--color-border) bg-(--bg-card) px-1.5 py-0.5 font-mono text-[10px] text-(--color-text-muted)">
             {cmd.shortcut}
           </kbd>
         )}
         {isActive && (
           <CornerDownLeft size={12} className="shrink-0 text-(--color-text-muted)" />
         )}
-      </button>
-    </div>
+      </div>
+    </button>
   )
 }

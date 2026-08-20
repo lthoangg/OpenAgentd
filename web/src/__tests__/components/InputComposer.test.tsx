@@ -196,12 +196,10 @@ describe("InputComposer — placeholder and disabled state", () => {
     expect(btn.hasAttribute("disabled")).toBe(false)
   })
 
-  it("send button tooltip mentions Enter and Shift+Enter", async () => {
+  it("does not render a tooltip on hover over the send button", async () => {
     render(<InputComposer onSubmit={() => {}} />)
     await userEvent.hover(screen.getByLabelText("Send message"))
-    const tooltip = (await screen.findByRole("tooltip")).textContent ?? ""
-    expect(tooltip).toMatch(/Enter/)
-    expect(tooltip).toMatch(/Shift\+Enter/)
+    expect(screen.queryByRole("tooltip")).toBeNull()
   })
 })
 

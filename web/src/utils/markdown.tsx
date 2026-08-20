@@ -301,7 +301,7 @@ const MarkdownVideo = memo(function MarkdownVideo({
     return (
       <span className="my-2 inline-block max-w-full">
         <span
-          className="inline-flex items-center gap-2 rounded-lg border border-(--color-border) bg-(--bg-card) px-3 py-2 text-xs text-(--color-text-muted)"
+          className="inline-flex items-center gap-2 rounded-sm border border-(--color-border) bg-(--bg-card) px-3 py-2 text-xs text-(--color-text-muted)"
           title={alt || 'Video unavailable'}
         >
           <FileVideo size={14} />
@@ -333,7 +333,7 @@ const MarkdownVideo = memo(function MarkdownVideo({
             setErrored(true)
           }
         }}
-        className="block max-h-[80vh] max-w-full rounded-lg border border-(--color-border) bg-black"
+        className="block max-h-[80vh] max-w-full rounded-sm border border-(--color-border) bg-black"
       >
         {/* Fallback text for environments without <video> support (rare). */}
         {alt || 'Video content'}
@@ -379,7 +379,7 @@ function MarkdownImage({
     return (
       <span className="my-2 inline-block max-w-full">
         <span
-          className="inline-flex items-center gap-2 rounded-lg border border-(--color-border) bg-(--bg-card) px-3 py-2 text-xs text-(--color-text-muted)"
+          className="inline-flex items-center gap-2 rounded-sm border border-(--color-border) bg-(--bg-card) px-3 py-2 text-xs text-(--color-text-muted)"
           title={alt || 'Image unavailable'}
         >
           <ImageOff size={14} />
@@ -416,7 +416,7 @@ function MarkdownImage({
           loading="lazy"
           decoding="async"
           onError={() => setErrored(true)}
-          className="max-h-[80vh] max-w-full cursor-zoom-in object-contain rounded-lg border border-(--color-border) transition-opacity hover:opacity-90"
+          className="max-h-[80vh] max-w-full cursor-zoom-in object-contain rounded-sm border border-(--color-border) transition-opacity hover:opacity-90"
         />
       </button>
       {fileName && (

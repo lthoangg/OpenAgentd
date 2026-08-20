@@ -1044,7 +1044,7 @@ export function CodingSidebar({
                   {parentPath && (
                     <button
                       type="button"
-                      className="w-full rounded-md px-2 py-1.5 text-left text-sm hover:bg-(--bg-key)"
+                      className="w-full rounded-xs px-2 py-1.5 text-left text-sm hover:bg-(--bg-key)"
                       onClick={() => void loadBrowser(parentPath)}
                     >
                       ..
@@ -1060,7 +1060,7 @@ export function CodingSidebar({
                     <button
                       type="button"
                       key={dir.path}
-                      className="flex w-full min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-(--bg-key)"
+                      className="flex w-full min-w-0 items-center gap-2 rounded-xs px-2 py-1.5 text-left text-sm hover:bg-(--bg-key)"
                       onClick={() => void loadBrowser(dir.path)}
                     >
                       <Folder size={14} className="shrink-0" />
@@ -1205,7 +1205,7 @@ export function CodingSidebar({
               </div>
             </DialogHeader>
             <div className="min-h-0 flex-1 space-y-2.5 overflow-y-auto px-3 py-3 sm:px-4">
-              <div className="rounded-md border border-(--color-border) bg-(--bg-page) px-2.5 py-1.5">
+              <div className="rounded-sm border border-(--color-border) bg-(--bg-page) px-2.5 py-1.5">
                 <div className="mb-0.5 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-(--color-text-subtle)">
                   <Folder size={12} aria-hidden="true" />
                   Source workspace
@@ -1229,7 +1229,7 @@ export function CodingSidebar({
                     value={worktreeName}
                     onChange={(e) => setWorktreeName(e.target.value)}
                     placeholder="feature-login"
-                    className="min-h-11 w-full min-w-0 rounded-md border border-(--color-border) bg-(--bg-page) px-2.5 py-1 font-mono text-sm text-(--color-text) outline-none transition-colors placeholder:text-(--color-text-subtle) focus-visible:border-(--focus-ring) focus-visible:ring-2 focus-visible:ring-(--focus-ring)/25 md:min-h-8"
+                    className="min-h-11 w-full min-w-0 rounded-sm border border-(--color-border) bg-(--bg-page) px-2.5 py-1 font-mono text-sm text-(--color-text) outline-none transition-colors placeholder:text-(--color-text-subtle) focus-visible:border-(--focus-ring) focus-visible:ring-2 focus-visible:ring-(--focus-ring)/25 md:min-h-8"
                     maxLength={80}
                     autoFocus
                   />
@@ -1241,13 +1241,13 @@ export function CodingSidebar({
                     value={worktreeBranch}
                     onChange={(e) => setWorktreeBranch(e.target.value)}
                     placeholder="openagentd/feature-login"
-                    className="min-h-11 w-full min-w-0 rounded-md border border-(--color-border) bg-(--bg-page) px-2.5 py-1 font-mono text-sm text-(--color-text) outline-none transition-colors placeholder:text-(--color-text-subtle) focus-visible:border-(--focus-ring) focus-visible:ring-2 focus-visible:ring-(--focus-ring)/25 md:min-h-8"
+                    className="min-h-11 w-full min-w-0 rounded-sm border border-(--color-border) bg-(--bg-page) px-2.5 py-1 font-mono text-sm text-(--color-text) outline-none transition-colors placeholder:text-(--color-text-subtle) focus-visible:border-(--focus-ring) focus-visible:ring-2 focus-visible:ring-(--focus-ring)/25 md:min-h-8"
                     maxLength={255}
                   />
                   <p className="text-[10px] font-normal text-(--color-text-subtle)">Blank defaults to openagentd/name.</p>
                 </label>
               </div>
-              <div className="rounded-md border border-(--color-border) bg-(--bg-page) px-2.5 py-2 text-xs text-(--color-text-muted)">
+              <div className="rounded-sm border border-(--color-border) bg-(--bg-page) px-2.5 py-2 text-xs text-(--color-text-muted)">
                 <div className="mb-1 flex items-center justify-between gap-2">
                     <p className="font-medium text-(--color-text-2)">Existing worktrees</p>
                     <span className="rounded-full bg-(--bg-key) px-2 py-0.5 text-[10px] text-(--color-text-subtle)">{worktreeOptions.length}</span>
@@ -1257,7 +1257,7 @@ export function CodingSidebar({
                 ) : (
                   <ul className="max-h-32 space-y-0.5 overflow-y-auto pr-1">
                       {worktreeOptions.map((item) => (
-                        <li key={item.directory} className="group flex min-w-0 items-center gap-2 rounded-md px-2 py-1 hover:bg-(--bg-key)">
+                        <li key={item.directory} className="group flex min-w-0 items-center gap-2 rounded-xs px-2 py-1 hover:bg-(--bg-key)">
                           <GitBranch size={12} className="shrink-0 text-(--color-text-subtle)" aria-hidden="true" />
                           <Tooltip className="min-w-0 flex-1">
                             <TooltipTrigger
@@ -1279,7 +1279,7 @@ export function CodingSidebar({
                                     type="button"
                                     onClick={() => setRemoveWorktreeTarget(item)}
                                     disabled={worktreeRemoving === item.directory}
-                                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-(--color-text-subtle) opacity-100 transition-colors hover:bg-(--color-error-subtle) hover:text-(--color-error) disabled:opacity-50 md:opacity-0 md:group-hover:opacity-100"
+                                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xs text-(--color-text-subtle) opacity-100 transition-colors hover:bg-(--color-error-subtle) hover:text-(--color-error) disabled:opacity-50 md:opacity-0 md:group-hover:opacity-100"
                                     aria-label={`Remove worktree ${item.name}`}
                                   >
                                     {worktreeRemoving === item.directory ? <Loader2 size={12} className="animate-spin" aria-hidden="true" /> : <Trash2 size={12} aria-hidden="true" />}
@@ -1518,7 +1518,7 @@ export function CodingSidebar({
                 ref={editTitleInputRef}
                 value={editTitle}
                 onChange={(e) => setEditTitle(e.target.value)}
-                className="min-h-11 w-full min-w-0 rounded-md border border-(--color-border) bg-(--bg-page) px-2.5 py-1 text-sm text-(--color-text) outline-none focus-visible:border-(--focus-ring) focus-visible:ring-2 focus-visible:ring-(--focus-ring)/25 md:min-h-8"
+                className="min-h-11 w-full min-w-0 rounded-sm border border-(--color-border) bg-(--bg-page) px-2.5 py-1 text-sm text-(--color-text) outline-none focus-visible:border-(--focus-ring) focus-visible:ring-2 focus-visible:ring-(--focus-ring)/25 md:min-h-8"
                 aria-label="Session title"
                 maxLength={255}
               />
@@ -1561,7 +1561,7 @@ export function CodingSidebar({
                 ref={worktreeEditInputRef}
                 value={worktreeEditTitle}
                 onChange={(e) => setWorktreeEditTitle(e.target.value)}
-                className="min-h-11 w-full min-w-0 rounded-md border border-(--color-border) bg-(--bg-page) px-2.5 py-1 text-sm text-(--color-text) outline-none focus-visible:border-(--focus-ring) focus-visible:ring-2 focus-visible:ring-(--focus-ring)/25 md:min-h-8"
+                className="min-h-11 w-full min-w-0 rounded-sm border border-(--color-border) bg-(--bg-page) px-2.5 py-1 text-sm text-(--color-text) outline-none focus-visible:border-(--focus-ring) focus-visible:ring-2 focus-visible:ring-(--focus-ring)/25 md:min-h-8"
                 aria-label="Worktree title"
                 maxLength={255}
               />

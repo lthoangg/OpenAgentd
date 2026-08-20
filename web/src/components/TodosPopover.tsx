@@ -14,7 +14,8 @@
  *   in_progress → pending → completed → cancelled
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Check, Circle, ListTodo, Loader2, Minus } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { useHotkey } from '@tanstack/react-hotkeys'
@@ -59,6 +60,24 @@ interface DesktopPopoverPosition {
   left: number
 }
 
+function computeDesktopPosition(
+  triggerEl: HTMLElement | null,
+  panelEl: HTMLElement | null,
+): DesktopPopoverPosition | null {
+  if (!triggerEl) return null
+  const triggerRect = triggerEl.getBoundingClientRect()
+  const panelWidth = panelEl?.offsetWidth ?? Math.min(window.innerWidth - 16, 320)
+  const panelHeight = panelEl?.offsetHeight ?? 280
+  const gap = 8
+  const left = Math.max(8, Math.min(triggerRect.right - panelWidth, window.innerWidth - panelWidth - 8))
+  const preferredTop = triggerRect.bottom + gap
+  const top = preferredTop + panelHeight > window.innerHeight
+    ? Math.max(8, triggerRect.top - panelHeight - gap)
+    : preferredTop
+
+  return { top, left }
+}
+
 // ── Component ────────────────────────────────────────────────────────────────
 
 interface TodosPopoverProps {
@@ -100,28 +119,15 @@ export function TodosPopover({
   const desktopPanelRef = useRef<HTMLDivElement | null>(null)
   const [desktopPosition, setDesktopPosition] = useState<DesktopPopoverPosition | null>(null)
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!trigger || !mounted) {
       setDesktopPosition(null)
       return
     }
 
     const updateDesktopPosition = () => {
-      const triggerEl = triggerRef.current
-      const panelEl = desktopPanelRef.current
-      if (!triggerEl) return
-
-      const triggerRect = triggerEl.getBoundingClientRect()
-      const panelWidth = panelEl?.offsetWidth ?? Math.min(window.innerWidth - 16, 320)
-      const panelHeight = panelEl?.offsetHeight ?? 280
-      const gap = 8
-      const left = Math.max(8, Math.min(triggerRect.right - panelWidth, window.innerWidth - panelWidth - 8))
-      const preferredTop = triggerRect.bottom + gap
-      const top = preferredTop + panelHeight > window.innerHeight
-        ? Math.max(8, triggerRect.top - panelHeight - gap)
-        : preferredTop
-
-      setDesktopPosition({ top, left })
+      const next = computeDesktopPosition(triggerRef.current, desktopPanelRef.current)
+      if (next) setDesktopPosition(next)
     }
 
     updateDesktopPosition()
@@ -216,7 +222,7 @@ export function TodosPopover({
               <li
                 key={todo.task_id}
                 className={cn(
-                  'group flex gap-2 rounded-md px-2 py-1.5 transition-colors',
+                  'group flex gap-2 rounded-sm px-2 py-1.5 transition-colors',
                   agent ? 'items-start' : 'items-center',
                   isInProgress
                     ? 'bg-(--color-info-subtle) text-(--color-text)'
@@ -326,6 +332,9 @@ export function TodosPopover({
                 disabled={!sessionId}
                 onClick={() => {
                   if (!sessionId) return
+                  if (!open && triggerRef.current) {
+                    setDesktopPosition(computeDesktopPosition(triggerRef.current, desktopPanelRef.current))
+                  }
                   onOpenChange(!open)
                 }}
                 data-state={open ? 'open' : 'closed'}
@@ -341,7 +350,7 @@ export function TodosPopover({
         </Tooltip>
       )}
 
-      {trigger && mounted && (
+      {trigger && mounted && createPortal(
         <div
           ref={desktopPanelRef}
           data-slot="popover-content"
@@ -352,13 +361,13 @@ export function TodosPopover({
               : 'animate-in fade-in-0 duration-100 ease-out'
           )}
           style={{
-            top: desktopPosition?.top ?? 0,
-            left: desktopPosition?.left ?? 0,
-            visibility: desktopPosition ? 'visible' : 'hidden',
+            top: desktopPosition?.top ?? (triggerRef.current ? triggerRef.current.getBoundingClientRect().bottom + 8 : 48),
+            left: desktopPosition?.left ?? (triggerRef.current ? Math.max(8, Math.min(triggerRef.current.getBoundingClientRect().right - 320, window.innerWidth - 328)) : window.innerWidth - 328),
           }}
         >
           {content}
-        </div>
+        </div>,
+        document.body,
       )}
     </>
   )

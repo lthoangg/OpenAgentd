@@ -1,7 +1,6 @@
 import { useRef, useState, useCallback, useImperativeHandle, forwardRef, useEffect, useMemo } from 'react'
 import { ArrowUp, Loader2, MessageCircle, Paperclip, Square } from 'lucide-react'
 import { motion } from 'framer-motion'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { FilePreviewStrip } from './FilePreviewStrip'
 import { findActiveMention, getExplicitMentionRanges, type FileRef } from './InputComposer.mentions'
 import { MentionOverlay } from './InputComposer.overlay'
@@ -627,40 +626,26 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
   const stopClick = (e: React.MouseEvent) => e.stopPropagation()
 
   const attachEl = (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <button
-            type="button"
-            onClick={(e) => { stopClick(e); fileInputRef.current?.click() }}
-            disabled={disabled}
-            aria-label="Attach file"
-            className={actionBtnClass}
-          >
-            <Paperclip size={14} aria-hidden="true" />
-          </button>
-        }
-      />
-      <TooltipContent>Attach file (paste or drag)</TooltipContent>
-    </Tooltip>
+    <button
+      type="button"
+      onClick={(e) => { stopClick(e); fileInputRef.current?.click() }}
+      disabled={disabled}
+      aria-label="Attach file"
+      className={actionBtnClass}
+    >
+      <Paperclip size={14} aria-hidden="true" />
+    </button>
   )
 
   const chatEl = minimized ? (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <button
-            type="button"
-            onClick={(e) => { stopClick(e); handleExpand() }}
-            aria-label="Expand input bar"
-            className={actionBtnClass}
-          >
-            <MessageCircle size={14} aria-hidden="true" />
-          </button>
-        }
-      />
-      <TooltipContent>Click to write</TooltipContent>
-    </Tooltip>
+    <button
+      type="button"
+      onClick={(e) => { stopClick(e); handleExpand() }}
+      aria-label="Expand input bar"
+      className={actionBtnClass}
+    >
+      <MessageCircle size={14} aria-hidden="true" />
+    </button>
   ) : null
 
   const effectivePlaceholder = disabled
@@ -684,36 +669,29 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
       <Square size={12} fill="currentColor" />
     </button>
   ) : (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <button
-            type="button"
-            onClick={(e) => {
-              stopClick(e)
-              submit()
-            }}
-            disabled={!canSend}
-            aria-label="Send message"
-            className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-sm border transition duration-100 active:scale-90 motion-reduce:transition-none motion-reduce:active:scale-100 disabled:cursor-not-allowed disabled:opacity-50 md:h-7 md:w-7 ${
-              canSend
-                // When there's something to send, promote the button to an accent
-                // fill so the primary action reads clearly — a small but meaningful
-                // clarity win over the flat grey it always was.
-                ? 'border-(--color-accent) bg-(--color-accent) text-(--bg-page) hover:opacity-90'
-                : 'border-(--color-border) bg-(--bg-card) text-(--color-text-2) hover:bg-(--bg-key) hover:text-(--color-text)'
-            }`}
-          >
-            {disabled && !minimized ? (
-              <Loader2 size={14} className="animate-spin" aria-hidden="true" />
-            ) : (
-              <ArrowUp size={14} aria-hidden="true" />
-            )}
-          </button>
-        }
-      />
-      <TooltipContent>{isMobile ? 'Send message' : 'Send (Enter) · New line (Shift+Enter) · Commands (/)'}</TooltipContent>
-    </Tooltip>
+    <button
+      type="button"
+      onClick={(e) => {
+        stopClick(e)
+        submit()
+      }}
+      disabled={!canSend}
+      aria-label="Send message"
+      className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-sm border transition duration-100 active:scale-90 motion-reduce:transition-none motion-reduce:active:scale-100 disabled:cursor-not-allowed disabled:opacity-50 md:h-7 md:w-7 ${
+        canSend
+          // When there's something to send, promote the button to an accent
+          // fill so the primary action reads clearly — a small but meaningful
+          // clarity win over the flat grey it always was.
+          ? 'border-(--color-accent) bg-(--color-accent) text-(--bg-page) hover:opacity-90'
+          : 'border-(--color-border) bg-(--bg-card) text-(--color-text-2) hover:bg-(--bg-key) hover:text-(--color-text)'
+      }`}
+    >
+      {disabled && !minimized ? (
+        <Loader2 size={14} className="animate-spin" aria-hidden="true" />
+      ) : (
+        <ArrowUp size={14} aria-hidden="true" />
+      )}
+    </button>
   )
 
   // The textarea stays mounted while minimized (opacity + pointer-events

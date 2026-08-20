@@ -181,7 +181,7 @@ export function TerminalKeyBar({ onKey, ctrlArmed, onCtrlToggle }: TerminalKeyBa
         aria-pressed={ctrlArmed}
         className={cn(
           keyClass,
-          ctrlArmed && 'bg-(--color-accent) text-(--color-accent-foreground)',
+          ctrlArmed && 'bg-(--color-accent) text-(--color-text-on-accent)',
         )}
         onPointerDown={preventFocusLoss}
         onClick={() => {

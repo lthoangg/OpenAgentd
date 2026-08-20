@@ -44,7 +44,7 @@ export function CompactionDivider({ state, error, summary, sessionId, isStreamin
       : 'Session compacted'
 
   const tone = error
-    ? 'text-(--color-danger)'
+    ? 'text-(--color-error)'
     : state === 'compacting'
       ? 'text-(--color-text-subtle)'
       : 'text-(--color-text-2)'

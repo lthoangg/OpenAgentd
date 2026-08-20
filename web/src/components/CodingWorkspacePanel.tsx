@@ -241,9 +241,9 @@ function CommitDetail({
                     <ChevronRight size={10} className={cn('shrink-0 text-(--color-text-subtle) transition-transform', expanded && 'rotate-90')} aria-hidden="true" />
                     <FileTypeIcon name={changedFile.path} size={11} />
                     <span className="min-w-0 flex-1 truncate font-mono">{changedFile.path}</span>
-                    <span className="shrink-0 font-mono text-[8px] text-(--color-diff-add-text)">{changedFile.additions > 0 ? `+${changedFile.additions}` : ''}</span>
-                    <span className="shrink-0 font-mono text-[8px] text-(--color-diff-del-text)">{changedFile.deletions > 0 ? `-${changedFile.deletions}` : ''}</span>
-                    <span className="shrink-0 font-mono text-[8px] font-semibold text-(--accent-orange-text)">{changedFile.status}</span>
+                    <span className="shrink-0 font-mono text-[10px] text-(--color-diff-add-text)">{changedFile.additions > 0 ? `+${changedFile.additions}` : ''}</span>
+                    <span className="shrink-0 font-mono text-[10px] text-(--color-diff-del-text)">{changedFile.deletions > 0 ? `-${changedFile.deletions}` : ''}</span>
+                    <span className="shrink-0 font-mono text-[10px] font-semibold text-(--accent-orange-text)">{changedFile.status}</span>
                   </LongPressButton>
                 }
               />

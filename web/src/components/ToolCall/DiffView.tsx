@@ -66,7 +66,7 @@ function SingleFileDiff({ path, kind, moveTo, lines, oldStart = 1, newStart = 1,
     badgeClass = 'bg-[var(--color-diff-del-bg)] text-[var(--color-diff-del-text)] border border-(--color-error)/20'
   } else if (moveTo) {
     badgeLabel = additions > 0 || deletions > 0 ? 'MOVE & EDIT' : 'MOVE'
-    badgeClass = 'bg-[var(--color-accent-purple-soft,#E8DEF8)] text-[var(--color-accent-purple,#5A34D1)] border border-[var(--color-accent-purple,#5A34D1)]/20'
+    badgeClass = 'bg-(--accent-purple-soft) text-(--accent-purple) border border-(--accent-purple)/20'
   }
 
   return (

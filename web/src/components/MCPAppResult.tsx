@@ -404,7 +404,7 @@ export function MCPAppResult({ mcpApp, sessionId, toolCallId }: MCPAppResultProp
         <button
           type="button"
           onClick={() => setDisplayMode(FULLSCREEN_DISPLAY_MODE)}
-          className="inline-flex shrink-0 cursor-pointer items-center gap-1 rounded-full border border-(--color-border) px-1.5 py-0.5 text-[9px] uppercase tracking-wide transition-colors hover:bg-(--bg-key) focus-visible:ring-2 focus-visible:ring-(--focus-ring) focus-visible:outline-none"
+          className="inline-flex shrink-0 cursor-pointer items-center gap-1 rounded-full border border-(--color-border) px-1.5 py-0.5 text-[10px] uppercase tracking-wide transition-colors hover:bg-(--bg-key) focus-visible:ring-2 focus-visible:ring-(--focus-ring) focus-visible:outline-none"
           aria-label={`Open ${title} fullscreen`}
         >
           <Maximize2 size={9} aria-hidden /> MCP App
@@ -428,7 +428,7 @@ export function MCPAppResult({ mcpApp, sessionId, toolCallId }: MCPAppResultProp
           <button
             type="button"
             onClick={() => setDisplayMode(INLINE_DISPLAY_MODE)}
-            className="absolute right-4 top-4 flex h-11 w-11 cursor-pointer items-center justify-center rounded-sm border border-(--color-border) bg-(--bg-card) text-(--color-text) transition-colors hover:bg-(--bg-key) focus-visible:ring-2 focus-visible:ring-(--color-text) focus-visible:outline-none [[data-mobile-shell='ios']_&]:top-[max(4rem,calc(env(safe-area-inset-top)+1rem))]"
+            className="absolute right-4 top-4 flex h-11 w-11 cursor-pointer items-center justify-center rounded-sm border border-(--color-border) bg-(--bg-card) text-(--color-text) transition-colors hover:bg-(--bg-key) focus-visible:ring-2 focus-visible:ring-(--color-text) focus-visible:outline-none [[data-mobile-shell]_&]:top-[max(4rem,calc(env(safe-area-inset-top)+1rem))]"
             aria-label="Close fullscreen MCP app"
           >
             <X size={18} aria-hidden />

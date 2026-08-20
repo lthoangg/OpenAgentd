@@ -106,22 +106,22 @@ function UpdateSettingsCard() {
             </button>
           ) : null}
         </div>
-        <span className="rounded-xs bg-(--bg-key) px-1.5 py-0.5 text-[9px] font-semibold text-(--color-text-muted) border border-(--color-border) select-none">{title}</span>
+        <span className="rounded-xs bg-(--bg-key) px-1.5 py-0.5 text-[10px] font-semibold text-(--color-text-muted) border border-(--color-border) select-none">{title}</span>
       </div>
 
       <div className="mt-4 flex flex-wrap justify-end gap-2">
-        <button className="rounded-sm border border-(--color-border) bg-(--bg-card) px-2.5 py-1 text-xs font-medium text-(--color-text) hover:bg-(--bg-key)/40 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none" disabled={pending} onClick={() => void onCheck()}>
+        <Button size="sm" variant="default" disabled={pending} onClick={() => void onCheck()}>
           Check for updates
-        </button>
+        </Button>
         {status?.status === 'available' ? (
-          <button className="rounded-sm border border-(--color-border-strong) bg-(--bg-key) px-2.5 py-1 text-xs font-medium text-(--color-text) hover:bg-(--bg-key)/80 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none" disabled={pending} onClick={() => void onDownload()}>
+          <Button size="sm" variant="primary" disabled={pending} onClick={() => void onDownload()}>
             Download
-          </button>
+          </Button>
         ) : null}
         {status?.status === 'downloaded' ? (
-          <button className="rounded-sm border border-(--color-border-strong) bg-(--bg-key) px-2.5 py-1 text-xs font-medium text-(--color-text) hover:bg-(--bg-key)/80 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none" disabled={pending} onClick={() => void onInstall()}>
+          <Button size="sm" variant="primary" disabled={pending} onClick={() => void onInstall()}>
             Install and restart
-          </button>
+          </Button>
         ) : null}
       </div>
 
@@ -132,7 +132,7 @@ function UpdateSettingsCard() {
               <h3 className="text-sm font-semibold">Release notes</h3>
               <div className="flex items-center gap-2">
                 {releaseNotes?.url ? <a className="rounded-sm px-2 py-1 text-xs text-(--color-accent) hover:bg-(--bg-page)" href={releaseNotes.url} target="_blank" rel="noopener noreferrer" onClick={(event) => { event.preventDefault(); void openExternalUrl(releaseNotes.url!) }}>View in GitHub</a> : null}
-                <button className="rounded-sm px-2 py-1 text-xs text-(--color-text-muted) hover:bg-(--bg-page)" onClick={() => setNotesOpen(false)}>Close</button>
+                <Button size="sm" variant="ghost" onClick={() => setNotesOpen(false)}>Close</Button>
               </div>
             </div>
             <div className="max-h-[24rem] overflow-y-auto px-4 py-3 text-(--color-text)">

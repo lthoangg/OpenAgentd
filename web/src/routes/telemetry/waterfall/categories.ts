@@ -11,15 +11,15 @@ export function categoryDotClass(cat: SpanCategory): string {
     case 'agent_run':
       return 'bg-(--color-accent)'
     case 'chat':
-      return 'bg-sky-500'
+      return 'bg-(--color-marker-blue)'
     case 'tool':
-      return 'bg-emerald-500'
+      return 'bg-(--color-marker-mint)'
     case 'summarization':
-      return 'bg-purple-500'
+      return 'bg-(--color-violet)'
     case 'title':
-      return 'bg-amber-500'
+      return 'bg-(--color-marker-orange)'
     default:
-      return 'bg-slate-400'
+      return 'bg-(--color-text-muted)'
   }
 }
 
@@ -29,14 +29,14 @@ export function categoryBarClass(cat: SpanCategory, isError: boolean): string {
     case 'agent_run':
       return 'bg-(--color-accent)'
     case 'chat':
-      return 'bg-sky-500'
+      return 'bg-(--color-marker-blue)'
     case 'tool':
-      return 'bg-emerald-500'
+      return 'bg-(--color-marker-mint)'
     case 'summarization':
-      return 'bg-purple-500'
+      return 'bg-(--color-violet)'
     case 'title':
-      return 'bg-amber-500'
+      return 'bg-(--color-marker-orange)'
     default:
-      return 'bg-slate-400'
+      return 'bg-(--color-text-muted)'
   }
 }

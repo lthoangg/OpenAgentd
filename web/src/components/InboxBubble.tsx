@@ -114,7 +114,7 @@ export function InboxBubble({ content, fromAgent, compact = false }: InboxBubble
 
         {needsCollapse && !expanded && (
           <div
-            className="pointer-events-none absolute inset-x-0 bottom-0 backdrop-blur-[1px]"
+            className="pointer-events-none absolute inset-x-0 bottom-0"
             style={{
               height: fadeHeight,
               background: 'linear-gradient(to bottom, transparent 0%, var(--bg-card) 90%)',

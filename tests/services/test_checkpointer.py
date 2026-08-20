@@ -10,6 +10,7 @@ from unittest.mock import MagicMock
 
 import pytest
 from sqlalchemy import event
+from sqlmodel import col, select
 
 from app.agent.checkpointer import (
     Checkpointer,
@@ -23,7 +24,7 @@ from app.agent.schemas.chat import (
     ToolMessage,
 )
 from app.agent.state import AgentState, RunContext
-from app.models.chat import ChatSession
+from app.models.chat import ChatSession, SessionMessage
 
 
 # ---------------------------------------------------------------------------
@@ -230,6 +231,60 @@ class TestSQLiteCheckpointerLoad:
 
 
 class TestSQLiteCheckpointerSync:
+    @pytest.mark.asyncio
+    async def test_sync_allocates_seq_tail_once_per_flush(self):
+        """A flush of N new messages runs one MAX(seq) allocation, not N.
+
+        The checkpointer allocates the append tail once and hands explicit
+        ``seq`` values to ``save_message``; per-row pre-selects would put a
+        redundant query on the hottest write path in the app.
+        """
+        import app.core.db as _db
+        from app.models.chat import SEQ_STEP
+
+        sid = uuid.uuid7()
+        async with _db.async_session_factory() as db:
+            async with db.begin():
+                await _make_session(db, sid)
+
+        cp = SQLiteCheckpointer(_db.async_session_factory)
+        ctx = _ctx(str(sid))
+        state = AgentState(
+            messages=[
+                AssistantMessage(content="one"),
+                ToolMessage(content="two", tool_call_id="tc1", name="search"),
+                AssistantMessage(content="three"),
+            ]
+        )
+
+        max_seq_selects = 0
+
+        def _count(conn, cursor, statement, parameters, context, executemany):
+            nonlocal max_seq_selects
+            if "max(session_messages.seq" in statement.lower():
+                max_seq_selects += 1
+
+        event.listen(_db.engine.sync_engine, "before_cursor_execute", _count)
+        try:
+            await cp.sync(ctx, state)
+        finally:
+            event.remove(_db.engine.sync_engine, "before_cursor_execute", _count)
+
+        assert max_seq_selects == 1
+
+        async with _db.async_session_factory() as db:
+            rows = (
+                await db.exec(
+                    select(SessionMessage)
+                    .where(col(SessionMessage.session_id) == sid)
+                    .order_by(col(SessionMessage.seq), col(SessionMessage.id))
+                )
+            ).all()
+        assert [r.content for r in rows] == ["one", "two", "three"]
+        seqs = [r.seq for r in rows]
+        assert seqs == sorted(seqs) and len(set(seqs)) == 3
+        assert seqs[1] - seqs[0] == SEQ_STEP and seqs[2] - seqs[1] == SEQ_STEP
+
     @pytest.mark.asyncio
     async def test_sync_persists_assistant_message(self):
         """AssistantMessage is persisted to DB."""

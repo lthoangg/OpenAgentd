@@ -34,12 +34,13 @@ from app.agent.schemas.chat import (
     ToolMessage,
 )
 from app.agent.state import AgentState, RunContext
-from app.models.chat import SessionMessage
+from app.models.chat import SEQ_STEP, SessionMessage
 from app.services.chat_service import (
     bump_history_revision,
     get_history_cursor,
     get_history_revision,
     get_messages_for_llm,
+    next_seq,
     save_message,
     seq_before_row,
 )
@@ -414,6 +415,21 @@ class SQLiteCheckpointer(Checkpointer):
             async with self._session_factory() as db:
                 async with db.begin():
                     anchored_seq = await _resolve_summary_seqs(db, summary_anchors)
+
+                    # Allocate the append tail once for the whole flush;
+                    # per-row MAX(seq) pre-selects would put a redundant
+                    # query on the hottest write path in the app. Lazy so a
+                    # flush of only anchored/skipped rows allocates nothing.
+                    tail: int | None = None
+
+                    async def _next_tail() -> int:
+                        nonlocal tail
+                        if tail is None:
+                            tail = await next_seq(db, UUID(sid))
+                        else:
+                            tail += SEQ_STEP
+                        return tail
+
                     for flag in (True, False):
                         ids = [k for k, v in pin_updates.items() if v is flag]
                         if not ids:
@@ -452,6 +468,7 @@ class SQLiteCheckpointer(Checkpointer):
                                     sid,
                                 )
                                 continue
+                            seq = anchored_seq.get(id(msg))
                             row = await save_message(
                                 db,
                                 UUID(sid),
@@ -459,12 +476,17 @@ class SQLiteCheckpointer(Checkpointer):
                                 is_summary=msg.is_summary,
                                 pinned=msg.pinned,
                                 extra=msg.extra,
-                                seq=anchored_seq.get(id(msg)),
+                                seq=seq if seq is not None else await _next_tail(),
                             )
                             msg.db_id = row.id
                         elif isinstance(msg, ToolMessage):
                             row = await save_message(
-                                db, UUID(sid), msg, pinned=msg.pinned, extra=msg.extra
+                                db,
+                                UUID(sid),
+                                msg,
+                                pinned=msg.pinned,
+                                extra=msg.extra,
+                                seq=await _next_tail(),
                             )
                             msg.db_id = row.id
                         elif isinstance(msg, HumanMessage):
@@ -472,6 +494,7 @@ class SQLiteCheckpointer(Checkpointer):
                                 msg.extra and msg.extra.get("hidden_from_user")
                             ):
                                 # Me save summary or hidden HumanMessages (e.g. truncation recovery)
+                                seq = anchored_seq.get(id(msg))
                                 row = await save_message(
                                     db,
                                     UUID(sid),
@@ -479,7 +502,7 @@ class SQLiteCheckpointer(Checkpointer):
                                     is_summary=msg.is_summary,
                                     pinned=msg.pinned,
                                     extra=msg.extra,
-                                    seq=anchored_seq.get(id(msg)),
+                                    seq=seq if seq is not None else await _next_tail(),
                                 )
                                 msg.db_id = row.id
                                 logger.debug(

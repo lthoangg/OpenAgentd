@@ -104,6 +104,10 @@ function formatTodoAction(action: Record<string, unknown>): string {
   if (type === 'claim') return `claim ${taskId ?? 'todo'}`
   if (type === 'delete') return `delete ${taskId ?? 'todo'}`
   if (type === 'read') return 'read todos'
+  if (type === 'clear') {
+    const statuses = Array.isArray(action.statuses) ? action.statuses.map(String).join('/') : ''
+    return `clear ${statuses || 'finished'} todos`.trim()
+  }
   return type ? `${type} ${taskId ?? ''}`.trim() : JSON.stringify(action)
 }
 
@@ -402,6 +406,9 @@ function getToolDisplayInternal(name: string, parsed: Record<string, unknown>): 
     const firstAction = first ? str(first, 'action') : null
     if (actions.length === 1 && firstAction === 'read') {
       return { header: 'Reading todos…', headerTitle: 'Reading todos…', formattedArgs: null }
+    }
+    if (actions.length === 1 && firstAction === 'clear') {
+      return { header: 'Clearing finished todos…', headerTitle: 'Clearing finished todos…', formattedArgs: null }
     }
     if (actions.length === 1 && firstAction === 'claim') {
       const taskId = str(first, 'task_id')

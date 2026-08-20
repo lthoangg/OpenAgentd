@@ -101,7 +101,7 @@ export function TodosPopover({
   const [desktopPosition, setDesktopPosition] = useState<DesktopPopoverPosition | null>(null)
 
   useEffect(() => {
-    if (!trigger || !open) {
+    if (!trigger || !mounted) {
       setDesktopPosition(null)
       return
     }
@@ -132,7 +132,7 @@ export function TodosPopover({
       window.removeEventListener('resize', updateDesktopPosition)
       window.removeEventListener('scroll', updateDesktopPosition, { capture: true })
     }
-  }, [open, trigger])
+  }, [open, trigger, mounted])
 
   useHotkey('Escape', () => onOpenChange(false), { enabled: Boolean(trigger && open) })
 
@@ -216,24 +216,25 @@ export function TodosPopover({
               <li
                 key={todo.task_id}
                 className={cn(
-                  'group flex items-start gap-2 rounded-md px-2 py-1.5 transition-colors',
+                  'group flex gap-2 rounded-md px-2 py-1.5 transition-colors',
+                  agent ? 'items-start' : 'items-center',
                   isInProgress
-                    ? 'bg-(--color-info-subtle)/12'
+                    ? 'bg-(--color-info-subtle) text-(--color-text)'
                     : 'hover:bg-(--bg-key)/50'
                 )}
               >
-                <span className="mt-0.5 flex h-3.5 w-3.5 shrink-0 items-center justify-center">
-                  <Icon
-                    size={11}
-                    aria-hidden="true"
-                    className={cn(
-                      STATUS_ICON_COLOR[todo.status],
-                      isInProgress && 'animate-spin'
-                    )}
-                  />
-                </span>
+                <Icon
+                  size={12}
+                  aria-hidden="true"
+                  className={cn(
+                    'shrink-0',
+                    agent && 'mt-0.5',
+                    STATUS_ICON_COLOR[todo.status],
+                    isInProgress && 'animate-spin'
+                  )}
+                />
                 <div className="min-w-0 flex-1">
-                  <Tooltip>
+                  <Tooltip className="w-full">
                     <TooltipTrigger
                       render={
                         <div
@@ -318,6 +319,7 @@ export function TodosPopover({
                 ref={triggerRef}
                 Icon={ListTodo}
                 indicator={hasInProgress}
+                indicatorClassName="bg-(--color-info)"
                 badge={progressLabel}
                 aria-label="Task list"
                 aria-expanded={open}

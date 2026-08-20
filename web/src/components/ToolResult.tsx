@@ -638,97 +638,146 @@ const TODO_STATUS_COLOR: Record<string, string> = {
 const TODO_LINE_RE =
   /^\[([^\]]+)\] \[([^\]]+)\] \(([^)]+)\)(?: deps=\[([^\]]*)\])?(?: assigned=(\S+))?(?: claimed=(\S+))? (.+)$/
 
-/** Parse the todo_manage board-state text into tasks; null when nothing matches. */
-function parseTodoList(result: string): TodoResultTask[] | null {
+interface ParsedTodoList {
+  outcomes: string[]
+  tasks: TodoResultTask[]
+}
+
+/** Parse the todo_manage board-state text into tasks and action outcomes; null when nothing matches. */
+function parseTodoList(result: string): ParsedTodoList | null {
   const tasks: TodoResultTask[] = []
+  const outcomes: string[] = []
   // 'instructions' / 'result' sub-lines can span multiple lines; unmatched
   // lines append to whichever field is currently open.
   let openField: 'instructions' | 'result' | null = null
 
-  for (const line of result.split('\n')) {
+  for (const rawLine of result.split('\n')) {
+    const line = rawLine.trimEnd()
+    if (!line) {
+      if (openField && tasks.length > 0) {
+        const last = tasks[tasks.length - 1]
+        last[openField] = `${last[openField]}\n`
+      }
+      continue
+    }
+
     const m = line.match(TODO_LINE_RE)
     if (m) {
       tasks.push({
         taskId: m[1],
         status: m[2],
         priority: m[3],
-        deps: m[4] ?? null,
-        assignedTo: m[5] ?? null,
-        claimedBy: m[6] ?? null,
-        content: m[7],
+        deps: m[4] || null,
+        assignedTo: m[5] || null,
+        claimedBy: m[6] || null,
+        content: m[7].trim(),
         instructions: null,
         result: null,
       })
       openField = null
       continue
     }
-    const last = tasks[tasks.length - 1]
-    if (!last) return null // leading junk — not a board listing
+
     const sub = line.match(/^ {4}(instructions|result): (.*)$/)
-    if (sub) {
+    if (sub && tasks.length > 0) {
       openField = sub[1] as 'instructions' | 'result'
-      last[openField] = sub[2]
+      tasks[tasks.length - 1][openField] = sub[2]
       continue
     }
-    if (openField) {
+    if (openField && tasks.length > 0) {
+      const last = tasks[tasks.length - 1]
       last[openField] = `${last[openField]}\n${line}`
+      continue
+    }
+
+    // Outcome line (e.g. "created task_1", "claimed task_1", "cleared 1 completed", "blocked task_2: waiting for task_1")
+    const isOutcome = /^(created|updated|claimed|deleted|cleared|blocked|not_found|not_claimed|claim_missing_actor|invalid_dependencies|invalid_status_transition)\b/i.test(line)
+    if (isOutcome) {
+      outcomes.push(line)
+      openField = null
       continue
     }
     return null // unrecognised line — fall back to generic text
   }
-  return tasks.length > 0 ? tasks : null
+  return tasks.length > 0 || outcomes.length > 0 ? { outcomes, tasks } : null
 }
 
 function TodoListResult({ result }: { result: string }) {
   if (result.trim() === 'No todos.') {
     return <div className="text-[11px] text-(--color-text-muted)">No todos.</div>
   }
-  const tasks = parseTodoList(result)
-  if (!tasks) return <GenericResult result={result} />
+  const parsed = parseTodoList(result)
+  if (!parsed) return <GenericResult result={result} />
+
+  const { outcomes, tasks } = parsed
 
   return (
-    <ul className="space-y-2">
-      {tasks.map((task) => {
-        const Icon = TODO_STATUS_ICON[task.status] ?? Circle
-        const iconColor = TODO_STATUS_COLOR[task.status] ?? 'text-(--color-text-muted)'
-        const isFinished = task.status === 'completed' || task.status === 'cancelled'
-        const agent = task.claimedBy ?? task.assignedTo
-        return (
-          <li key={task.taskId} className="flex items-start gap-2">
-            <Icon
-              size={13}
-              className={`mt-0.5 shrink-0 ${iconColor} ${task.status === 'in_progress' ? 'animate-spin' : ''}`}
-              aria-hidden
-            />
-            <div className="min-w-0 flex-1">
+    <div className="space-y-2">
+      {outcomes.length > 0 && (
+        <div className="space-y-1">
+          {outcomes.map((outcome, idx) => {
+            const isError = /^(blocked|not_found|not_claimed|claim_missing_actor|invalid_)/i.test(outcome)
+            return (
               <div
-                className={`text-xs leading-relaxed break-words ${
-                  isFinished ? 'text-(--color-text-muted)' : 'text-(--color-text)'
+                key={idx}
+                className={`font-mono text-[11px] leading-relaxed ${
+                  isError ? 'text-(--color-warning)' : 'text-(--color-text-muted)'
                 }`}
               >
-                {task.content}
+                {outcome}
               </div>
-              <div className="mt-0.5 flex flex-wrap items-center gap-x-2 font-mono text-[10px] text-(--color-text-muted)">
-                <span>{task.taskId}</span>
-                <span>{task.status}</span>
-                {agent && <span>{agent}</span>}
-                {task.deps && <span>deps: {task.deps}</span>}
-              </div>
-              {task.instructions && (
-                <div className="mt-1 text-[11px] leading-relaxed whitespace-pre-wrap break-words text-(--color-text-muted)">
-                  <span className="font-semibold">instructions:</span> {task.instructions}
+            )
+          })}
+        </div>
+      )}
+      {tasks.length > 0 && (
+        <ul className="space-y-2">
+          {tasks.map((task) => {
+            const Icon = TODO_STATUS_ICON[task.status] ?? Circle
+            const iconColor = TODO_STATUS_COLOR[task.status] ?? 'text-(--color-text-muted)'
+            const isFinished = task.status === 'completed' || task.status === 'cancelled'
+            const agent = task.claimedBy ?? task.assignedTo
+            return (
+              <li key={task.taskId} className="flex items-start gap-2">
+                <span className="flex h-5 w-3.5 shrink-0 items-center justify-center">
+                  <Icon
+                    size={12}
+                    className={`shrink-0 ${iconColor} ${task.status === 'in_progress' ? 'animate-spin' : ''}`}
+                    aria-hidden
+                  />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div
+                    className={`text-xs leading-5 break-words ${
+                      isFinished ? 'text-(--color-text-muted)' : 'text-(--color-text)'
+                    }`}
+                  >
+                    {task.content}
+                  </div>
+                  <div className="mt-0.5 flex flex-wrap items-center gap-x-2 font-mono text-[10px] text-(--color-text-muted)">
+                    <span>{task.taskId}</span>
+                    <span>{task.status}</span>
+                    {task.priority && <span>{task.priority}</span>}
+                    {agent && <span>{agent}</span>}
+                    {task.deps && <span>deps: {task.deps}</span>}
+                  </div>
+                  {task.instructions && (
+                    <div className="mt-1 text-[11px] leading-relaxed whitespace-pre-wrap break-words text-(--color-text-muted)">
+                      <span className="font-semibold">instructions:</span> {task.instructions}
+                    </div>
+                  )}
+                  {task.result && (
+                    <div className="mt-1 text-[11px] leading-relaxed whitespace-pre-wrap break-words text-(--color-text-2)">
+                      <span className="font-semibold">result:</span> {task.result}
+                    </div>
+                  )}
                 </div>
-              )}
-              {task.result && (
-                <div className="mt-1 text-[11px] leading-relaxed whitespace-pre-wrap break-words text-(--color-text-2)">
-                  <span className="font-semibold">result:</span> {task.result}
-                </div>
-              )}
-            </div>
-          </li>
-        )
-      })}
-    </ul>
+              </li>
+            )
+          })}
+        </ul>
+      )}
+    </div>
   )
 }
 

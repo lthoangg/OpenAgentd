@@ -824,6 +824,15 @@ describe("ToolCall — todo_manage display", () => {
     await user.click(screen.getByRole("button"))
     expect(screen.queryByText("arguments")).toBeNull()
   })
+
+  it("shows concise clear summary", async () => {
+    const user = userEvent.setup()
+    const args = JSON.stringify({ actions: [{ action: "clear", statuses: ["completed"] }] })
+    render(<ToolCall name="todo_manage" args={args} done={false} />)
+
+    expect(getHeader("Clearing finished todos…")).toBeTruthy()
+    await user.click(screen.getByRole("button"))
+  })
 })
 
 describe("ToolCall — schedule_task display", () => {

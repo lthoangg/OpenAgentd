@@ -119,32 +119,34 @@ def upgrade() -> None:
     has_is_summary = "is_summary" in columns
     has_exclude_from_context = "exclude_from_context" in columns
 
-    # The two legacy columns are removed together by batch_alter_table().
+    # The two legacy columns are removed with native ``ALTER TABLE … DROP
+    # COLUMN`` (SQLite ≥ 3.35), which — unlike Alembic's batch recreate —
+    # rewrites the table in place and preserves any index that does not
+    # reference the dropped columns. It also runs an order of magnitude
+    # faster than the create/copy/drop/rename dance on a table this size.
     #
     # Both present:
-    #   migration has not yet completed the legacy conversion, so rerun the
-    #   deterministic backfill and remove them.
-    #
-    # Both absent:
-    #   an earlier attempt got through the table rebuild but failed before
-    #   Alembic stamped the revision. Skip legacy SQL and repair indexes.
+    #   the legacy conversion has not (fully) run. Rerun the deterministic
+    #   backfill, then drop both columns.
     #
     # Exactly one present:
-    #   unexpected/corrupt intermediate schema; do not guess how to repair it.
-    if has_is_summary != has_exclude_from_context:
-        raise RuntimeError(
-            "session_messages is in an unexpected partial migration state: "
-            f"is_summary={has_is_summary}, "
-            f"exclude_from_context={has_exclude_from_context}"
-        )
-
-    if has_is_summary:
-        _backfill_and_drop_legacy_columns()
+    #   a previous attempt finished the backfill but was interrupted between
+    #   the two DROP COLUMN statements. The derived columns are already
+    #   populated, so just finish dropping the survivor.
+    #
+    # Both absent:
+    #   an earlier attempt got through the drops but failed before Alembic
+    #   stamped the revision. Skip legacy SQL and repair indexes.
+    if has_is_summary and has_exclude_from_context:
+        _backfill_derived_state()
+        _drop_legacy_columns()
+    elif has_is_summary or has_exclude_from_context:
+        _drop_legacy_columns()
 
     _ensure_indexes()
 
 
-def _backfill_and_drop_legacy_columns() -> None:
+def _backfill_derived_state() -> None:
     # ── seq backfill ──────────────────────────────────────────────────────
     #
     # This is deliberately safe to rerun while the legacy columns still
@@ -193,6 +195,26 @@ def _backfill_and_drop_legacy_columns() -> None:
            OR extra IS NOT NULL
         """
     )
+
+    # ── active-summary index before the correlated backfill ──────────────
+    #
+    # The three UPDATEs below each run a correlated subquery that locates a
+    # session's active summary (``kind='summary'`` with the highest id).
+    # Without an index restricted to summary rows, every evaluation scans
+    # the session's rows — O(rows × session size). With the partial index the
+    # lookup is a single backward seek on (session_id, id).
+    #
+    # This is the same index ``_ensure_indexes`` creates later; creating it
+    # up front also lets the native DROP COLUMN below preserve it (native
+    # DROP COLUMN keeps indexes that don't reference the dropped columns).
+    if "ix_session_messages_active_summary" not in _index_names():
+        op.create_index(
+            "ix_session_messages_active_summary",
+            "session_messages",
+            ["session_id", "id"],
+            unique=False,
+            sqlite_where=sa.text("kind = 'summary'"),
+        )
 
     # ── positional repair ─────────────────────────────────────────────────
     #
@@ -303,18 +325,23 @@ def _backfill_and_drop_legacy_columns() -> None:
         """
     )
 
-    # ── drop legacy flags ─────────────────────────────────────────────────
-    #
-    # batch_alter_table performs the SQLite move/copy/recreate operation.
-    #
-    # Only reach this point when *both* legacy columns exist.
-    with op.batch_alter_table("session_messages") as batch:
-        batch.drop_column("is_summary")
-        batch.drop_column("exclude_from_context")
+
+def _drop_legacy_columns() -> None:
+    """Drop the two legacy boolean flags via native SQLite DROP COLUMN.
+
+    Each statement is idempotent-by-inspection, so an interruption between
+    the two leaves a state the next run repairs by dropping the survivor.
+    """
+    columns = _column_names()
+    if "is_summary" in columns:
+        op.execute("ALTER TABLE session_messages DROP COLUMN is_summary")
+    if "exclude_from_context" in columns:
+        op.execute("ALTER TABLE session_messages DROP COLUMN exclude_from_context")
 
 
 def _ensure_indexes() -> None:
-    # batch_alter_table rebuilds the table on SQLite. Depending on exactly
+    # The native DROP COLUMN rebuilds the table on SQLite but preserves
+    # indexes that don't reference the dropped columns. Depending on exactly
     # where a previous migration attempt was interrupted, indexes can be in
     # either their old or new state.
     #

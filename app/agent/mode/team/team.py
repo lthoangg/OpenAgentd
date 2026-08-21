@@ -1665,14 +1665,13 @@ class AgentTeam:
     def _question_tool_enabled(self) -> bool:
         """Whether the lead may interrupt the user with ``ask_user``.
 
-        Coding mode only (that is where a wrong guess costs real work), lead
-        only (members escalate through ``team_message``), and never on a
-        scheduler-owned session — a cron job has no one to answer, and a tool
-        the model cannot usefully call is better left out of the schema than
-        offered and refused.
+        Available in both coding and cockpit (normal) mode — either way a
+        wrong guess costs real work, and the human answering is on the other
+        end of the same session either way. Lead only (members escalate
+        through ``team_message``), and never on a scheduler-owned session — a
+        cron job has no one to answer, and a tool the model cannot usefully
+        call is better left out of the schema than offered and refused.
         """
-        if self.mode != "coding":
-            return False
         return not getattr(self.lead, "is_scheduler_session", False)
 
     # ------------------------------------------------------------------

@@ -893,7 +893,7 @@ class TestTeamAgentsRoute:
         assert "ask_user" not in worker_tools
         assert "team_manage" not in worker_tools
 
-    def test_team_agents_omits_ask_user_outside_coding_mode(
+    def test_team_agents_includes_ask_user_in_normal_mode(
         self, app_with_team, test_team
     ):
         test_team.mode = "normal"
@@ -906,7 +906,7 @@ class TestTeamAgentsRoute:
             for t in next(a for a in data["agents"] if a["name"] == "lead")["tools"]
         }
         assert "team_message" in lead_tools
-        assert "ask_user" not in lead_tools
+        assert "ask_user" in lead_tools
 
     def test_team_agents_tool_descriptions_are_not_empty_for_injected_tools(
         self, app_with_team, test_team

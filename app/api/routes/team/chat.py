@@ -613,7 +613,7 @@ async def list_team_agents(
         _serialize_blueprint(team_obj, bp, custom_threshold=custom_threshold)
         for bp in team_obj.blueprints.values()
     ]
-    # The injected set is role- and mode-dependent (only a coding-mode lead on a
+    # The injected set is role- and mode-dependent (only a lead on a
     # human-owned session gets ``ask_user``), but within one role every agent
     # gets the same tool *names and descriptions* — only the closure binding
     # differs, and this listing reads nothing else. Building them per member cost

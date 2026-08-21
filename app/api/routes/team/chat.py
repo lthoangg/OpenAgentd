@@ -517,7 +517,7 @@ async def _ensure_turn_for_open_question(session_id: str, db: DbSession) -> None
 
 
 @router.get("/{session_id}/stream")
-async def team_stream(session_id: str, request: Request, db: DbSession):
+async def team_stream(session_id: str, db: DbSession):
     """SSE stream for all team agent events.
 
     Replays buffered events from the current turn then delivers live events.
@@ -534,9 +534,13 @@ async def team_stream(session_id: str, request: Request, db: DbSession):
 
     async def _gen() -> AsyncGenerator[dict, None]:
         try:
+            # No per-event disconnect poll: `EventSourceResponse` races the
+            # stream against its own `_listen_for_disconnect` task and cancels
+            # this generator at its next await when the client goes away.
+            # Polling here also consumed ASGI `receive` in competition with
+            # that listener, and cost ~180µs per event — 8x the cost of
+            # yielding the event itself on tool-output bursts.
             async for event in stream_store.attach(session_id):
-                if await request.is_disconnected():
-                    break
                 yield {
                     "event": event.get("event", "message"),
                     "data": event.get("data", "{}"),

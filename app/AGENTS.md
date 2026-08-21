@@ -1,65 +1,62 @@
-# app/ — Agent Instructions
+# Backend Guide
 
-FastAPI backend, CLI, agent runtime, persistence, scheduler, and service-layer code for OpenAgentd.
+Python `>=3.14` backend managed with `uv`. This subtree contains the FastAPI
+app, CLI, agent runtime, SQLModel persistence, scheduler, and migrations.
 
-## Tech stack
+## Ownership
 
-- Python `>=3.14`, managed with `uv`.
-- FastAPI, SQLModel/SQLite, Pydantic v2, Alembic, SSE, loguru.
-- CLI entry point: `openagentd = app.cli:main`.
+- `api/`: HTTP/SSE assembly, request validation, dependencies, and response
+  shaping. Durable behavior does not belong in route handlers.
+- `services/`: application behavior shared by routes, CLI, scheduler, or the
+  agent runtime.
+- `agent/`: provider, tool, MCP, permission, prompt, and multi-agent runtime.
+- `core/`: configuration, paths, database/session factories, auth, logging,
+  and telemetry primitives.
+- `models/` and `scheduler/models.py`: persisted SQLModel tables.
+- `cli/`: the `openagentd = app.cli:main` command and subcommands.
+- `migrations/`: Alembic environment and ordered schema revisions.
 
-## Layout
+Use absolute imports from `app`. Backend modules consistently use
+`from __future__ import annotations`, `|` unions, typed signatures, Pydantic v2,
+and loguru placeholder formatting such as `logger.info("event key={}", value)`.
+External provider payload models use the existing permissive
+`ConfigDict(extra="ignore")` pattern where forward-compatible fields are
+expected.
 
-```
-agent/       Agent loop, providers, tools, MCP, teams, plugins, schemas
-api/         FastAPI routes and API dependencies
-cli/         Command-line entry points and subcommands
-core/        Config, paths, database, auth, telemetry primitives
-models/      SQLModel tables and persistence models
-scheduler/   Scheduled task runtime
-services/    Business logic used by routes and agent runtime
-migrations/  Alembic revisions
-server.py    FastAPI app factory/export
-```
-
-## Essential commands
-
-```bash
-uv sync
-uv run ruff check app/ tests/
-uv run ruff format --check app/ tests/
-uv run ty check app/
-uv run pytest --no-cov -q
-make run        # API only on :8000
-make dev        # API reload + Vite dev server
-```
-
-## Code style
-
-- Use `from __future__ import annotations`, `|` unions, and strict signature types.
-- Keep routes thin; put logic in `services/`, `agent/`, or `core/` helpers.
-- Use absolute imports from `app`.
-- Use Pydantic v2 and `ConfigDict(extra="ignore")` for external provider payloads.
-- Use loguru formatting: `logger.info("event_name key={}", value)`.
-
-## Post-implementation checklist
+## Development
 
 ```bash
-uv run ruff check app/ tests/ && uv run ruff format --check app/ tests/ && uv run ty check app/ && uv run pytest --no-cov -q
+uv sync --frozen
+make run
+make dev
+uv run pytest tests/path/test_file.py::test_name -q
+uv run ruff format app/ tests/            # apply Python formatting
+make migrate                              # development DB only
+make revision MSG="describe change"       # create a new revision
+make build                                # API-only Python package
 ```
 
-## CLI command map
+Production startup runs migrations automatically; the Make migration targets
+operate on source-checkout development paths unless the environment is
+explicitly changed.
 
-| Command | Module |
-|---------|--------|
-| `export` | `app/cli/commands/export.py` — packs config into a `.tar.gz` for server migration |
-| `import` | `app/cli/commands/importcmd.py` — unpacks a migration archive (named `importcmd` to avoid the Python builtin) |
-| `migrate` | `app/cli/commands/migrate.py` — imports from OpenClaw / Hermes |
-| `lsp` | `app/cli/commands/lsp.py` — inspect/install managed language-server components |
+## Checks
 
-## Documentation pointers
+```bash
+make verify-backend
+```
 
-- CLI server bind/auth persistence: `app/core/server_settings.py` (`server.yaml`); shared agent/runtime settings remain in `app/core/runtime_settings.py` (`settings.yaml`).
-- Backend conventions: source modules, adjacent tests, and Make targets are authoritative.
-- Architecture: follow the package layout above and trace runtime behavior through the source.
-- Feature catalogue: `documents/docs/features.md`.
+This is the canonical backend contract: Ruff lint and format check, `ty` on
+`app/`, and pytest with four xdist workers. Use focused test/lint commands while
+iterating, then run the target before finishing backend changes.
+
+## Constraints
+
+- Add or update tests under the mirrored `tests/` path for behavior changes.
+- Treat auth, externally supplied paths, subprocesses, tool execution, MCP
+  launch, and provider credentials as security-sensitive; follow the root
+  invariants and the nearest child guide.
+- Do not edit packaged copies under `app/_web_dist/` or sidecar bundles. They
+  are generated build output.
+- When a backend wire or SSE shape changes, update the consumers under
+  `web/src/` and run both backend and web checks.

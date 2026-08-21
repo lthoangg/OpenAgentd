@@ -1,48 +1,48 @@
-# app/agent/ — Agent Instructions
+# Agent Runtime Guide
 
-Agent runtime: loops, providers, tools, teams, MCP, permissions, prompts, and runtime config loading.
+This subtree owns agent loading, turn execution, providers, tools, teams, MCP,
+permissions, prompts, and runtime wire schemas.
 
-## Where to look first
+## Map and boundaries
 
-```
-loader.py              Agent `.md` frontmatter schema and validation
-drift.py               Hot-reload detection for edited agent files
-builtin_prompts.py     Code-owned base prompts for first-party agents
-agent_loop/            Core turn loop, tool execution, streaming, retries
-providers/             LLM provider implementations and routing
-schemas/               Chat/event/provider wire types
-tools/                 Built-in tool registry and implementations
-mcp/                   MCP config, manager, installer/runtime integration
-mode/team/             Multi-agent teams, roster, mailbox, board-driven todo flow
-plugins/               User plugin loading and role context
-permission.py          Tool permission decisions
-denied_paths*.py     Shell/filesystem path-denylist behavior
-```
+- `loader.py` validates agent Markdown/frontmatter and materializes built-ins;
+  `drift.py` detects user config changes and `builtin_prompts.py` owns
+  first-party defaults.
+- `agent_loop/` owns turns, streaming, retries, tool dispatch, and tool-result
+  handling.
+- `providers/` adapts provider-specific transports. Keep their payload quirks
+  behind generic schemas in `schemas/`.
+- `tools/` owns the registry and built-ins; preserve permission, sandbox,
+  cancellation, output, and UI-result contracts when adding a tool.
+- `mcp/` owns external MCP configuration and process/client lifecycle.
+- `mode/team/` owns roster instances, mailbox wakeups, board todos, questions,
+  and multi-agent orchestration. Cross-surface team changes also involve
+  `app/services/team_manager.py`, API routes, and frontend SSE stores.
+- `plugins/` loads user plugin context; keep failures isolated from the core
+  runtime.
 
-## Common feature checks
+First-party profile frontmatter is additive over code-owned defaults. Keep
+prompt text capability-neutral because injected tools differ by runtime mode.
+The team-aware `todo_manage` in `mode/team/board.py` performs mailbox wakeups;
+the plain builtin in `tools/builtin/todo.py` is intentionally passive.
 
-- Agent config/frontmatter change: update `loader.py`, built-in profiles if needed, and focused tests.
-- Tool change: check `tools/registry.py`, the tool implementation, permission/sandbox behavior, and UI rendering if the result shape changes.
-- Team behavior change: check `mode/team/`, `services/team_manager.py`, API routes, and SSE event consumers in `web/src/stores/`.
-- Provider change: add/adjust tests under `tests/agent/providers/` and avoid leaking provider-specific shapes into generic schemas.
+## Security and compatibility
 
-## Commands
+- Review shell/file built-ins, denied-path handling, MCP launch arguments, and
+  any model-supplied input together with their permission/sandbox tests.
+- Use argument-list subprocess APIs; do not add `shell=True` construction.
+- Streaming loops must turn provider/tool chunk failures into the established
+  recoverable event path where possible. Coordinate event-shape changes with
+  `web/src/api/` and `web/src/stores/`.
+- Preserve provider-neutral persisted replay data. Provider-specific reasoning
+  or tool metadata must round-trip through existing generic message fields
+  rather than leaking a raw transport shape into other providers.
+
+## Checks
 
 ```bash
-uv run pytest --no-cov -q tests/agent
+uv run pytest tests/agent -q
 uv run ruff check app/agent tests/agent
 uv run ty check app/
+make verify-backend
 ```
-
-## Gotchas
-
-- First-party profile frontmatter is additive on top of code-owned defaults.
-- `team_message` and `todo_manage` are injected; do not ask users to list them manually.
-- Team sessions get the board-aware `todo_manage` from `mode/team/board.py` (mutations wake assignees/lead via the mailbox); the plain builtin in `tools/builtin/todo.py` stays passive and is what non-team constructor wiring uses.
-- Members end turns with `end_turn=true` on `team_message`/`todo_manage`; the `<sleep>`/`[sleep]` sentinel is legacy back-compat only (loop + frontend still strip it).
-- Keep prompt bodies tool-agnostic because runtime capabilities can change.
-- Streaming loops must catch provider/tool chunk errors and emit recoverable events where possible.
-- `SummarizationHook` respects `provider.support_interrupt`: when `False`, summarisation only fires at the user-turn boundary (last visible message is a real `HumanMessage` from the user), never mid-loop. `build_summarization_hook` in `member.py` reads this flag automatically.
-- Codex/OpenAI Responses reasoning items are round-tripped via `AssistantMessage.reasoning_item_id`/`reasoning_encrypted_content` (persisted in `extra`, replayed ahead of the next `function_call`). This preserves reasoning continuity across turns; it does not guarantee the model emits human-readable reasoning detail text (a separate, server-side gap).
-- Bedrock is Mantle-only: route only recognized Models.dev transport metadata through its Anthropic/OpenAI delegate, keep OpenAI `store: false`, and use bearer-token or AWS-profile auth.
-- Grok Build subscription access uses the separate `grok:` OAuth provider; keep direct `xai:` API-key behavior independent.

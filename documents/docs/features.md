@@ -101,6 +101,12 @@ run from the terminal.
   tighter animation and a curated command set that drops low-value entries.
   Command and file search overlays use the compact warm-paper surface treatment
   across desktop and mobile `[v1.74.0]`, with expanded desktop width and list height `[v2.0.0]`.
+- **Fullscreen view mode and traffic-light space reclamation** `[v2.0.0]` — automatically
+  detects macOS fullscreen mode and reclaims the window traffic-light header padding to
+  maximise message and diff reading area.
+- **Design token & UI corner-roundness ramp** `[v2.0.0]` — modernized design tokens with
+  a softer corner-roundness ramp across bubbles, composer pills, dialogs, badges, and
+  action states.
 - **Platform-aware keyboard shortcuts** `[v1.93.1]` — `⌘` on macOS, `Ctrl`
   elsewhere, applied consistently across in-app shortcuts, the Command
   Palette, and native Tauri menu accelerators. Session Settings moved to
@@ -255,6 +261,16 @@ run from the terminal.
   formulas from currency amounts ($50 and $100) and escaped dollar signs (\$50),
   with scrollable containers for wide formulas and theme-aware styling across
   light and dark modes.
+- **Fast TanStack Markdown & unified syntax highlighting** `[v2.0.0]` — chat markdown
+  rendering is powered by `@tanstack/markdown` and code fences are highlighted with
+  `@tanstack/highlight`, sharing one unified highlighter and caching highlights across
+  re-renders for fluid scrolling and streaming.
+- **Pin chat transcript via CSS `overflow-anchor`** `[v2.0.0]` — pins chat transcript
+  scrolling using native browser `overflow-anchor` instead of per-frame JS `scrollTop`
+  calculations, eliminating stream stutter and CPU churn during fast agent output.
+- **On-demand bundle splitting for heavy components** `[v2.0.0]` — xterm.js, Mermaid
+  diagrams, and PDF.js load lazily on demand when first needed, accelerating cold-start
+  boot time and reducing initial bundle memory.
 - **Stream auto-stick restored after scroll-to-bottom on mobile** `[v1.77.0]` —
   tapping the scroll-to-bottom button no longer detaches the stream
   auto-follow; direction-based detach logic removed from `onScroll` (was
@@ -367,6 +383,12 @@ spawns specialist members on demand.
   lead plus any assignees the completion unblocks (dependency results ride
   along as the handoff). After a restart or session restore, members holding
   open assigned or in-progress tasks are re-woken automatically.
+- **High-throughput chat persistence engine** `[v2.0.0]` — remodeled `session_messages`
+  onto derived state (`seq` + `kind` + `pinned`) with partial SQL indexing,
+  single-allocation checkpointers, and SQL-level compaction keep-tail calculation.
+- **Incremental session history hydration** `[v2.0.0]` — hydrates session histories
+  incrementally and materializes SQLite query-planner statistics (`ANALYZE`) after
+  migrations for sub-millisecond query planning.
 - **Split-pane live view** `[since v1.0]` — each active agent gets its own pane,
   streamed independently. See live whose turn is current, who's idle.
 - **Unified team view** `[since v1.0]` — single chronological transcript across
@@ -485,6 +507,13 @@ team against it.
   and deleting session `[v1.117.0]`; repository/worktree context menu / action sheet includes
   copying the repo or worktree's absolute path `[v1.120.0]`; scroll-triggered pagination replaces
   the Load more button.
+- **Anchored & regex-optimized filesystem search** `[v2.0.0]` — `glob` pattern matching
+  anchors walks at the literal prefix (up to 50x faster), `grep` pre-filters files using
+  literal scanning and streams matches asynchronously off the main loop, and non-ignored
+  paths are filtered using a compiled union regex.
+- **Non-blocking asynchronous file I/O & atomic patch operations** `[v2.0.0]` — file
+  reads, directory scans, and patch applications run off the asyncio event loop with async
+  lock protection, preventing UI latency during large multi-file operations.
 - **Changed-file highlights in the workspace tree** `[v1.30.0]` — modified and
   untracked files are marked directly in the Files tab, parent folders show a
   changed-state indicator, and the tab badge reports the changed-file count.
@@ -637,6 +666,9 @@ agnostic by design.
   Converse and the access-key/secret-key Settings path were removed. This is an
   explicit user-approved hard conversion, so it did not follow the normal
   feature deprecation period.
+- **Pure-Python SigV4 AWS Bedrock token generator** `[v2.0.0]` — replaces `botocore`
+  with a pure-Python SigV4 token generator, dropping AWS bundle strip overhead and
+  runtime memory footprint.
 - **Anthropic-compatible custom endpoints** `[v1.16.0]` — providers needing
   custom headers or alternate message endpoints are supported.
 - **Anthropic prompt caching + full input accounting** `[v1.66.0]` — Claude
@@ -729,6 +761,11 @@ MCP.
   else are the only ways to move it — there is no timeout. Members keep working
   throughout and are never interrupted by an answer. One question per turn;
   scheduled sessions never get the tool, because a cron job has nobody to ask.
+- **Fast HTML & document extraction** `[v2.0.0]` — `web_fetch` uses `trafilatura` for
+  clean HTML-to-markdown extraction, and `read` uses `anydoc` for robust document
+  conversion, dropping `markitdown`.
+- **50k character read limit** `[v2.0.0]` — expanded `read` tool context limit to
+  50,000 characters for reviewing larger source files in a single pass.
 
 - **Real-time LSP diagnostics injection** `[v1.89.0, v1.105.0, v2.0.0]` — in **coding mode**, after the
   `patch` tool modifies one or more files, OpenAgentd runs the

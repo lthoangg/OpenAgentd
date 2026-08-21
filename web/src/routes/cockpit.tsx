@@ -20,7 +20,6 @@ function TeamLayoutBase({ forcedMode }: { forcedMode?: 'normal' | 'coding' }) {
   const mode = forcedMode ?? 'normal'
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const workspaceRef = useRef<string | null>(null)
   const cachedSessionPages = queryClient.getQueryData<{
     pages: Array<{ data: Array<{ id: string; workspace?: string | null }> }>
   }>(queryKeys.team.sessions.infinite())
@@ -36,6 +35,17 @@ function TeamLayoutBase({ forcedMode }: { forcedMode?: 'normal' | 'coding' }) {
     staleTime: 30_000,
   })
   const workspace = workspaceFromSession(mode, sessionId, cachedSession?.workspace ?? sessionQuery.data?.workspace)
+
+  const navigateRef = useRef(navigate)
+  const sessionIdRef = useRef(sessionId)
+  const modeRef = useRef(mode)
+  const workspaceRef = useRef<string | null>(null)
+  useEffect(() => {
+    navigateRef.current = navigate
+    sessionIdRef.current = sessionId
+    modeRef.current = mode
+    workspaceRef.current = workspace
+  })
 
   useEffect(() => {
     if (mode === 'coding' && workspace) saveLastCodingWorkspace(workspace)
@@ -98,16 +108,6 @@ function TeamLayoutBase({ forcedMode }: { forcedMode?: 'normal' | 'coding' }) {
       window.clearTimeout(restore)
     }
   }, [mode, navigate, queryClient, sessionId])
-
-  const navigateRef = useRef(navigate)
-  const sessionIdRef = useRef(sessionId)
-  const modeRef = useRef(mode)
-  useEffect(() => {
-    navigateRef.current = navigate
-    sessionIdRef.current = sessionId
-    modeRef.current = mode
-    workspaceRef.current = workspace
-  })
 
   // Keep ``useTeamStore._workspace`` in sync with the URL-derived
   // workspace path the moment we render the layout. The SSE reducer
@@ -228,8 +228,7 @@ function TeamLayoutBase({ forcedMode }: { forcedMode?: 'normal' | 'coding' }) {
         applyCacheInvalidations(queryClient, useTeamStore.getState()._drainCacheInvalidations())
       }
     })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [queryClient])
 
   return (
     <>

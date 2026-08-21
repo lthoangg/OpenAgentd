@@ -56,6 +56,15 @@ export async function processOAuthCallback(provider: string, code: string): Prom
   }
 }
 
+async function listenToDeepLinks(onUrls: (urls: string[]) => void): Promise<(() => void) | undefined> {
+  const { getCurrentWindow } = await import('@tauri-apps/api/window')
+  if (getCurrentWindow().label !== 'main') return undefined
+  const stopListening = await onOpenUrl((urls) => { void onUrls(urls) })
+  const initial = await getCurrent()
+  if (initial) void onUrls(initial)
+  return stopListening
+}
+
 export function useDeepLinkRouter(): void {
   const router = useRouter()
 
@@ -86,21 +95,15 @@ export function useDeepLinkRouter(): void {
       await Promise.all(urls.map(handleUrl))
     }
 
-    void (async () => {
-      try {
-        const { getCurrentWindow } = await import('@tauri-apps/api/window')
-        if (getCurrentWindow().label !== 'main') return
-        const stopListening = await onOpenUrl((urls) => { void handleUrls(urls) })
-        if (disposed) {
-          stopListening()
-          return
-        }
-        unlisten = stopListening
-        await handleUrls((await getCurrent()) ?? [])
-      } catch {
-        // The plugin is unavailable when the app runs in a regular browser.
+    void listenToDeepLinks((urls) => {
+      void handleUrls(urls)
+    }).then((stop) => {
+      if (disposed) {
+        stop?.()
+      } else {
+        unlisten = stop
       }
-    })()
+    }).catch(() => {})
 
     return () => {
       disposed = true

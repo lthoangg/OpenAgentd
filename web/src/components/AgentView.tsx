@@ -191,6 +191,8 @@ export function AgentView({ blocks, currentBlocks, isWorking, isTurnOpen = isWor
   const loadingOlderRef = useRef(false)
   const hiddenTurnCountRef = useRef(0)
   const showEarlierTurnsRef = useRef<() => void>(() => {})
+  const pendingRestoreRef = useRef(false)
+  const onLoadOlderTopRef = useRef<() => void>(() => {})
 
   const handleRevert = useCallback(() => {
     void useTeamStore.getState().undoTeam().then(async (response) => {
@@ -239,19 +241,8 @@ export function AgentView({ blocks, currentBlocks, isWorking, isTurnOpen = isWor
     !blocks.some((b) => b.type !== 'compaction') &&
     !liveTail.some((b) => b.type !== 'compaction')
 
-  const handleLoadOlderTop = useCallback(() => {
-    if (hiddenTurnCountRef.current > 0) {
-      showEarlierTurnsRef.current()
-    } else if (useTeamStore.getState().hasMore && !loadingOlderRef.current) {
-      loadingOlderRef.current = true
-      const el = scrollRef.current
-      if (el) prevScrollHeightRef.current = el.scrollHeight
-      pendingRestoreRef.current = true
-      void useTeamStore.getState().loadOlderMessages().finally(() => {
-        loadingOlderRef.current = false
-      })
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  const handleLoadOlderTopTrigger = useCallback(() => {
+    onLoadOlderTopRef.current()
   }, [])
 
   const {
@@ -267,7 +258,7 @@ export function AgentView({ blocks, currentBlocks, isWorking, isTurnOpen = isWor
     sessionId,
     isUserMessage,
     isEmpty,
-    onLoadOlderTop: handleLoadOlderTop,
+    onLoadOlderTop: handleLoadOlderTopTrigger,
   })
 
   const showEarlierTurns = useCallback(() => {
@@ -279,13 +270,29 @@ export function AgentView({ blocks, currentBlocks, isWorking, isTurnOpen = isWor
     setRenderedTurnCount((count) => Math.min(turnItems.length, count + TURN_RENDER_STEP))
   }, [scrollRef, turnItems.length])
 
-  // Keep the refs in sync every render so the scroll handler always sees
+  const handleLoadOlderTop = useCallback(() => {
+    if (hiddenTurnCountRef.current > 0) {
+      showEarlierTurns()
+    } else if (useTeamStore.getState().hasMore && !loadingOlderRef.current) {
+      loadingOlderRef.current = true
+      const el = scrollRef.current
+      if (el) prevScrollHeightRef.current = el.scrollHeight
+      pendingRestoreRef.current = true
+      void useTeamStore.getState().loadOlderMessages().finally(() => {
+        loadingOlderRef.current = false
+      })
+    }
+  }, [scrollRef, showEarlierTurns])
+
+  // Keep the refs in sync so callbacks/listeners always see
   // the latest values without needing to re-register listeners.
-  hiddenTurnCountRef.current = hiddenTurnCount
-  showEarlierTurnsRef.current = showEarlierTurns
+  useEffect(() => {
+    onLoadOlderTopRef.current = handleLoadOlderTop
+    hiddenTurnCountRef.current = hiddenTurnCount
+    showEarlierTurnsRef.current = showEarlierTurns
+  })
 
   // Restore scroll position after older messages are prepended.
-  const pendingRestoreRef = useRef(false)
   useEffect(() => {
     const el = scrollRef.current
     if (!el || !pendingRestoreRef.current || prevScrollHeightRef.current === null) return
@@ -293,8 +300,7 @@ export function AgentView({ blocks, currentBlocks, isWorking, isTurnOpen = isWor
     attachedRef.current = false
     el.scrollTop = el.scrollHeight - prevScrollHeightRef.current
     prevScrollHeightRef.current = null
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [blocks.length, renderedTurnCount])
+  }, [blocks.length, renderedTurnCount, scrollRef, attachedRef])
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">

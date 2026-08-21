@@ -42,13 +42,13 @@ export function SchedulerPanel({
   const [mobilePane, setMobilePane] = useState<'list' | 'detail' | 'create'>('list')
 
   const tasksQuery = useScheduledTasksQuery()
+  const { refetch: refetchTasks } = tasksQuery
 
   useEffect(() => {
     if (open) {
-      tasksQuery.refetch()
+      refetchTasks()
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open])
+  }, [open, refetchTasks])
 
   const tasks = tasksQuery.data?.tasks ?? []
 

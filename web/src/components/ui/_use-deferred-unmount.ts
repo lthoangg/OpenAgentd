@@ -18,13 +18,21 @@ export function useDeferredUnmount(open: boolean, durationMs = 150) {
   const [mounted, setMounted] = useState(open)
   const [closing, setClosing] = useState(false)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const prevOpenRef = useRef(open)
 
   useEffect(() => {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current)
+      timerRef.current = null
+    }
+
+    const wasOpen = prevOpenRef.current
+    prevOpenRef.current = open
+
     if (open) {
-      if (timerRef.current) clearTimeout(timerRef.current)
       setClosing(false)
       setMounted(true)
-    } else if (mounted) {
+    } else if (wasOpen) {
       setClosing(true)
       timerRef.current = setTimeout(() => {
         setMounted(false)
@@ -32,10 +40,12 @@ export function useDeferredUnmount(open: boolean, durationMs = 150) {
       }, durationMs)
     }
     return () => {
-      if (timerRef.current) clearTimeout(timerRef.current)
+      if (timerRef.current) {
+        clearTimeout(timerRef.current)
+        timerRef.current = null
+      }
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open])
+  }, [open, durationMs])
 
   return { mounted, closing }
 }

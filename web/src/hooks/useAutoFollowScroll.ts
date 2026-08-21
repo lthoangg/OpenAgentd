@@ -216,8 +216,7 @@ export function useAutoFollowScroll(options: UseAutoFollowScrollOptions = {}) {
       syncAnchor()
       scrollToBottom()
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [totalLen, lastContent])
+  }, [totalLen, lastContent, isUserMessage, scrollToBottom, syncAnchor])
 
   useEffect(() => {
     if (!isEmpty) return

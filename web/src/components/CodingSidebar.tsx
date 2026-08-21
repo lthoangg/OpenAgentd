@@ -128,6 +128,16 @@ interface CodingSidebarProps {
   onMobileClose?: () => void
 }
 
+async function pickWorkspaceDirectory(): Promise<string | null> {
+  const { open } = await import('@tauri-apps/plugin-dialog')
+  const selected = await open({
+    directory: true,
+    multiple: false,
+    title: 'Open workspace',
+  })
+  return typeof selected === 'string' ? selected : null
+}
+
 export function CodingSidebar({
   currentSessionId,
   workspace,
@@ -270,13 +280,8 @@ export function CodingSidebar({
     setDialogOpen(true)
     setLoading(true)
     try {
-      const { open } = await import('@tauri-apps/plugin-dialog')
-      const selected = await open({
-        directory: true,
-        multiple: false,
-        title: 'Open workspace',
-      })
-      if (typeof selected !== 'string') return
+      const selected = await pickWorkspaceDirectory()
+      if (!selected) return
       setSelectedWorkspace(selected)
       setTrustWorkspace(await validateTrustedWorkspace(selected))
       setDialogOpen(true)

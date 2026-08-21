@@ -361,8 +361,8 @@ export function TodosPopover({
               : 'animate-in fade-in-0 duration-100 ease-out'
           )}
           style={{
-            top: desktopPosition?.top ?? (triggerRef.current ? triggerRef.current.getBoundingClientRect().bottom + 8 : 48),
-            left: desktopPosition?.left ?? (triggerRef.current ? Math.max(8, Math.min(triggerRef.current.getBoundingClientRect().right - 320, window.innerWidth - 328)) : window.innerWidth - 328),
+            top: desktopPosition?.top ?? 48,
+            left: desktopPosition?.left ?? (typeof window !== 'undefined' ? window.innerWidth - 328 : 0),
           }}
         >
           {content}

@@ -22,18 +22,19 @@ function SingleFileDiff({ path, kind, moveTo, lines, oldStart = 1, newStart = 1,
   const linesWithNumbers = useMemo(() => {
     let oldLineNum = oldStart
     let newLineNum = newStart
-    return lines.map((line) => {
+    const result: ((typeof lines)[number] & { num: number })[] = []
+    for (const line of lines) {
       if (line.oldStart !== undefined) oldLineNum = line.oldStart
       if (line.newStart !== undefined) newLineNum = line.newStart
       const num = line.type === 'removed' ? oldLineNum : newLineNum
-      const r = {
+      result.push({
         ...line,
         num,
-      }
+      })
       if (line.type !== 'added') oldLineNum++
       if (line.type !== 'removed') newLineNum++
-      return r
-    })
+    }
+    return result
   }, [lines, oldStart, newStart])
 
   const { additions, deletions } = useMemo(() => {

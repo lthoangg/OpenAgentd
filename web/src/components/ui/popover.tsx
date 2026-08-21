@@ -33,6 +33,7 @@ import { cn } from '@/lib/utils'
 interface PopoverCtx {
   open: boolean
   setOpen: (v: boolean) => void
+  setTriggerEl: (el: HTMLElement | null) => void
   triggerRef: React.RefObject<HTMLElement | null>
   contentId: string
 }
@@ -57,13 +58,16 @@ function Popover({ open: controlledOpen, onOpenChange, defaultOpen = false, chil
   const [uncontrolled, setUncontrolled] = useState(defaultOpen)
   const contentId = useId()
   const triggerRef = useRef<HTMLElement | null>(null)
+  const setTriggerEl = useCallback((el: HTMLElement | null) => {
+    triggerRef.current = el
+  }, [])
   const open = controlledOpen ?? uncontrolled
   const setOpen = useCallback((v: boolean) => {
     setUncontrolled(v)
     onOpenChange?.(v)
   }, [onOpenChange])
   return (
-    <PopoverContext.Provider value={{ open, setOpen, triggerRef, contentId }}>
+    <PopoverContext.Provider value={{ open, setOpen, setTriggerEl, triggerRef, contentId }}>
       {children}
     </PopoverContext.Provider>
   )
@@ -79,7 +83,7 @@ interface PopoverTriggerProps extends ComponentPropsWithRef<'button'> {
 }
 
 function PopoverTrigger({ children, className, render: renderProp, nativeButton: _nb, ref: externalRef, ...props }: PopoverTriggerProps) {
-  const { open, setOpen, triggerRef } = usePopover()
+  const { open, setOpen, setTriggerEl } = usePopover()
 
   const handlers = {
     'data-slot': 'popover-trigger',
@@ -91,13 +95,13 @@ function PopoverTrigger({ children, className, render: renderProp, nativeButton:
     return cloneElement(renderProp as ReactElement<Record<string, unknown>>, {
       ...handlers,
       ref: (el: HTMLElement | null) => {
-        (triggerRef as React.MutableRefObject<HTMLElement | null>).current = el
+        setTriggerEl(el)
       },
     })
   }
 
   const setRef = (el: HTMLButtonElement | null) => {
-    (triggerRef as React.MutableRefObject<HTMLElement | null>).current = el
+    setTriggerEl(el)
     if (typeof externalRef === 'function') externalRef(el)
     else if (externalRef) (externalRef as React.MutableRefObject<HTMLButtonElement | null>).current = el
   }
@@ -127,7 +131,7 @@ interface PopoverContentProps extends ComponentPropsWithRef<'div'> {
   alignOffset?: number
 }
 
-interface Pos { top: number; left: number }
+interface Pos { top: number; left: number; anchorWidth: number }
 
 function computePosition(trigger: DOMRect, content: DOMRect, side: Side, align: Align, sideOffset: number): Pos {
   const gap = sideOffset
@@ -157,7 +161,7 @@ function computePosition(trigger: DOMRect, content: DOMRect, side: Side, align: 
     left = Math.max(8, Math.min(left, window.innerWidth - content.width - 8))
   }
 
-  return { top: top + window.scrollY, left: left + window.scrollX }
+  return { top: top + window.scrollY, left: left + window.scrollX, anchorWidth: trigger.width }
 }
 
 function PopoverContent({
@@ -218,8 +222,6 @@ function PopoverContent({
 
   if (!mounted) return null
 
-  const anchorWidth = triggerRef.current?.getBoundingClientRect().width ?? 0
-
   return createPortal(
     <div
       ref={contentRef}
@@ -240,7 +242,7 @@ function PopoverContent({
         top: pos?.top ?? 0,
         left: pos?.left ?? 0,
         visibility: pos ? 'visible' : 'hidden',
-        '--anchor-width': `${anchorWidth}px`,
+        '--anchor-width': `${pos?.anchorWidth ?? 0}px`,
       } as React.CSSProperties}
       onClick={(e) => e.stopPropagation()}
       {...props}

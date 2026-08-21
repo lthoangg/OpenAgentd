@@ -52,8 +52,7 @@ export function SessionSettingsPanel({
   // Config can change on disk between openings.
   useEffect(() => {
     if (open) refetch()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open])
+  }, [open, refetch])
 
   const allAgents: TeamAgentInfo[] = data?.agents ?? []
   // Lead comes from the API `is_lead` flag if present, else first in list. Only

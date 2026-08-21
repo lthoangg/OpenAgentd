@@ -14,11 +14,10 @@ import { useEffect, useState, useRef } from 'react'
 export function useSmoothStream(targetText: string, isStreaming: boolean): string {
   const [displayedText, setDisplayedText] = useState(targetText)
   const targetRef = useRef(targetText)
-  targetRef.current = targetText
-
   const displayedLengthRef = useRef(targetText.length)
 
   useEffect(() => {
+    targetRef.current = targetText
     // Not streaming: always show the real text immediately.
     if (!isStreaming) {
       setDisplayedText(targetText)

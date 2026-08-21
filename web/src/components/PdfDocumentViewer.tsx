@@ -19,13 +19,13 @@ const noop = () => {}
 function PdfPage({
   document,
   pageNumber,
-  container,
+  containerRef,
   onRendered,
   onError,
 }: {
   document: PDFDocumentProxy
   pageNumber: number
-  container: HTMLDivElement | null
+  containerRef: React.RefObject<HTMLDivElement | null>
   onRendered: () => void
   onError: () => void
 }) {
@@ -46,7 +46,7 @@ function PdfPage({
 
       const baseViewport = page.getViewport({ scale: 1 })
       const dpr = Math.min(window.devicePixelRatio || 1, MAX_DPR)
-      const targetWidth = Math.min(container?.clientWidth || MAX_PAGE_RENDER_WIDTH, MAX_PAGE_RENDER_WIDTH)
+      const targetWidth = Math.min(containerRef.current?.clientWidth || MAX_PAGE_RENDER_WIDTH, MAX_PAGE_RENDER_WIDTH)
       const viewport = page.getViewport({ scale: (targetWidth / baseViewport.width) * dpr })
       canvas.width = Math.max(1, Math.round(viewport.width))
       canvas.height = Math.max(1, Math.round(viewport.height))
@@ -66,7 +66,7 @@ function PdfPage({
       task?.cancel()
       pageToClean?.cleanup?.()
     }
-  }, [container, document, onError, onRendered, pageNumber])
+  }, [containerRef, document, onError, onRendered, pageNumber])
 
   return <canvas ref={canvasRef} className="block rounded-sm bg-white shadow-sm" />
 }
@@ -150,7 +150,7 @@ export function PdfDocumentViewer({ src, className }: PdfDocumentViewerProps) {
               className="flex justify-center"
               style={{ width: '100%', maxWidth: `${MAX_PAGE_RENDER_WIDTH}px`, aspectRatio: '8.5 / 11' }}
             >
-              {document && renderedPages.has(pageNumber) && <PdfPage document={document} pageNumber={pageNumber} container={scrollRef.current} onRendered={pageNumber === 1 ? markReady : noop} onError={pageNumber === 1 ? markError : noop} />}
+              {document && renderedPages.has(pageNumber) && <PdfPage document={document} pageNumber={pageNumber} containerRef={scrollRef} onRendered={pageNumber === 1 ? markReady : noop} onError={pageNumber === 1 ? markError : noop} />}
             </div>
           )
         })}

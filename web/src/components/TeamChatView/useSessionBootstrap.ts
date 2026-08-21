@@ -177,8 +177,19 @@ export function useSessionBootstrap({
       abortRef.current?.abort()
       abortRef.current = null
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionId, agentWorkspace, hasCodingWorkspace, isCodingSessionLoading])
+  }, [
+    sessionId,
+    agentWorkspace,
+    hasCodingWorkspace,
+    isCodingSessionLoading,
+    mode,
+    loadTeamStatus,
+    beginResolvedSession,
+    consumeResolvedSessionReady,
+    loadSession,
+    connectStream,
+    inputRef,
+  ])
 
   useEffect(() => {
     if (!sessionId) return
@@ -223,8 +234,7 @@ export function useSessionBootstrap({
       window.removeEventListener('pageshow', resumeStream)
       document.removeEventListener('visibilitychange', handleVisibilityChange)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionId, agentWorkspace, isMobile])
+  }, [sessionId, agentWorkspace, isMobile, loadSession, connectStream])
 
   // ── Commands / shortcuts ───────────────────────────────────────────────────
 

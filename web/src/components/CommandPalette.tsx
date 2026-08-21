@@ -142,9 +142,9 @@ export function CommandPalette({ commands, onClose, workspaceFiles = [], filesTr
   }, [commands, workspaceFiles, hasFiles, query, debouncedQuery])
 
   // Reset active index whenever query changes.
-  const prevQueryRef = useRef(query)
-  if (prevQueryRef.current !== query) {
-    prevQueryRef.current = query
+  const [prevQuery, setPrevQuery] = useState(query)
+  if (prevQuery !== query) {
+    setPrevQuery(query)
     if (activeIdx !== 0) setActiveIdx(0)
   }
 

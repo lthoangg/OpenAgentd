@@ -2,11 +2,43 @@ import path from "path"
 import tailwindcss from "@tailwindcss/vite"
 import react from "@vitejs/plugin-react"
 import svgr from "vite-plugin-svgr"
-import { defineConfig } from "vite"
+import { createLogger, defineConfig } from "vite"
 import { visualizer } from "rollup-plugin-visualizer"
+
+// oxc's React Compiler cannot lower dynamic `import()` expressions yet
+// (upstream Todo: BuildHIR::lowerExpression). It safely bails out of each
+// component/hook containing one — the lazy Tauri-import pattern alone makes
+// that ~44 warnings per build with no action to take on our side. Drop just
+// those diagnostics; everything else (including real compiler errors) still
+// surfaces. Remove this filter once oxc lowers import expressions, which
+// will also let those components compile.
+const logger = createLogger()
+const warn = logger.warn.bind(logger)
+const warnOnce = logger.warnOnce.bind(logger)
+const isIgnoredCompilerNotice = (msg: unknown) => {
+  const text =
+    typeof msg === "string"
+      ? msg
+      : msg && typeof msg === "object" && "message" in msg && typeof (msg as any).message === "string"
+        ? (msg as any).message
+        : ""
+  return (
+    text.includes("react-compiler(Todo)") ||
+    text.includes("react-compiler(IncompatibleLibrary)")
+  )
+}
+logger.warn = (msg, options) => {
+  if (isIgnoredCompilerNotice(msg)) return
+  warn(msg, options)
+}
+logger.warnOnce = (msg, options) => {
+  if (isIgnoredCompilerNotice(msg)) return
+  warnOnce(msg, options)
+}
 
 // https://vite.dev/config/
 export default defineConfig({
+  customLogger: logger,
   plugins: [
     react({
       // React Compiler via the native oxc-transform-react backend:
@@ -14,7 +46,8 @@ export default defineConfig({
       // index and markdown chunks — the streaming render hot path) for
       // +3.6% total JS. Note: `bun test` transpiles with Bun, so unit
       // tests exercise the uncompiled sources; the compiled output is
-      // covered by tsc + this build.
+      // covered by tsc + this build. Components using dynamic `import()`
+      // are skipped for now — see the logger filter above.
       compiler: true,
     }),
     tailwindcss(),

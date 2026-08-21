@@ -65,9 +65,9 @@ export function QuestionCard({
 
   // Re-seed when the card is reused for a different question (the dock keys on
   // id, but a parent that does not would otherwise show a stale draft).
-  const lastIdRef = useRef(question.id)
-  if (lastIdRef.current !== question.id) {
-    lastIdRef.current = question.id
+  const [prevQuestionId, setPrevQuestionId] = useState(question.id)
+  if (prevQuestionId !== question.id) {
+    setPrevQuestionId(question.id)
     setDraft(readQuestionDraft(question.id))
   }
 

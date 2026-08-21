@@ -46,6 +46,27 @@ function isBootstrapReady(status: AppBackendStatus | null, isTauri: boolean): bo
   return status.sidecar_running
 }
 
+async function listenWebviewBackendEvents(callbacks: {
+  onReady: (payload: { base_url: string; token?: string | null }) => void
+  onError: () => void
+}): Promise<() => void> {
+  const { getCurrentWebviewWindow } = await import('@tauri-apps/api/webviewWindow')
+  const currentWindow = getCurrentWebviewWindow()
+  const unlistenReady = await currentWindow.listen<{ base_url: string; token?: string | null }>(
+    'backend-ready',
+    (event) => {
+      callbacks.onReady(event.payload)
+    },
+  )
+  const unlistenError = await currentWindow.listen<{ message: string }>('backend-error', () => {
+    callbacks.onError()
+  })
+  return () => {
+    unlistenReady()
+    unlistenError()
+  }
+}
+
 export function useAppBackendBootstrap(): AppBackendBootstrap {
   const [ready, setReady] = useState(false)
   const [retryKey, setRetryKey] = useState(0)
@@ -75,8 +96,7 @@ export function useAppBackendBootstrap(): AppBackendBootstrap {
 
   useEffect(() => {
     let cancelled = false
-    let unlistenBackendReady: (() => void) | undefined
-    let unlistenBackendError: (() => void) | undefined
+    let unlistenBackendEvents: (() => void) | undefined
     let pollTimer: ReturnType<typeof setTimeout> | undefined
     const isTauri = getPlatform().isTauri
     const deadline = Date.now() + DESKTOP_BOOTSTRAP_TIMEOUT_MS
@@ -149,32 +169,25 @@ export function useAppBackendBootstrap(): AppBackendBootstrap {
     // `emit_to`/`emit_filter` call to a specific window. Using
     // `getCurrentWebviewWindow().listen(...)` registers with this window's
     // label as the target, which Tauri's event filter actually respects.
-    void import('@tauri-apps/api/webviewWindow').then(({ getCurrentWebviewWindow }) => {
-      if (cancelled) return
-      const currentWindow = getCurrentWebviewWindow()
-      void currentWindow
-        .listen<{ base_url: string; token?: string | null }>('backend-ready', (event) => {
-          if (cancelled || !event.payload.base_url) return
-          void applyDesktopBackend(event.payload).then(finishReady).catch(() => {
-            if (!cancelled) setUnavailable(true)
-          })
-        }).then((unlisten) => {
-          if (cancelled) unlisten()
-          else unlistenBackendReady = unlisten
-        }).catch(() => {})
-      void currentWindow
-        .listen<{ message: string }>('backend-error', () => {
-          // Do not wait out the generic startup timeout when native startup has
-          // already failed. The shell's detailed error remains in its log;
-          // the recovery UI intentionally exposes only safe generic copy.
-          if (!cancelled) {
-            setFailed(true)
-            setUnavailable(true)
-          }
-        }).then((unlisten) => {
-          if (cancelled) unlisten()
-          else unlistenBackendError = unlisten
-        }).catch(() => {})
+    void listenWebviewBackendEvents({
+      onReady: (payload) => {
+        if (cancelled || !payload.base_url) return
+        void applyDesktopBackend(payload).then(finishReady).catch(() => {
+          if (!cancelled) setUnavailable(true)
+        })
+      },
+      onError: () => {
+        // Do not wait out the generic startup timeout when native startup has
+        // already failed. The shell's detailed error remains in its log;
+        // the recovery UI intentionally exposes only safe generic copy.
+        if (!cancelled) {
+          setFailed(true)
+          setUnavailable(true)
+        }
+      },
+    }).then((unlisten) => {
+      if (cancelled) unlisten()
+      else unlistenBackendEvents = unlisten
     }).catch(() => {})
 
     void bootstrap()
@@ -186,8 +199,7 @@ export function useAppBackendBootstrap(): AppBackendBootstrap {
     return () => {
       cancelled = true
       if (pollTimer) clearTimeout(pollTimer)
-      unlistenBackendReady?.()
-      unlistenBackendError?.()
+      unlistenBackendEvents?.()
       unsubscribe()
     }
   }, [retryKey])

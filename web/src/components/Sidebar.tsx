@@ -87,6 +87,11 @@ function groupByDate(sessions: SessionResponse[]): DateGroup[] {
 
 const COLLAPSE_KEY = 'oa-sidebar-collapsed'
 
+async function openSessionInNewWindow(sessionId: string): Promise<void> {
+  const { invoke } = await import('@tauri-apps/api/core')
+  await invoke('app_new_window', { initialPath: `/cockpit/${sessionId}`, initial_path: `/cockpit/${sessionId}` })
+}
+
 interface SidebarProps {
   currentSessionId?: string
   onCommandPalette?: () => void
@@ -301,20 +306,12 @@ export function Sidebar({
     if (event && isTauri && (os === 'macos' ? event.metaKey : (event.ctrlKey || event.metaKey))) {
       event.preventDefault()
       event.stopPropagation()
-      import('@tauri-apps/api/core').then(({ invoke }) => {
-        invoke('app_new_window', { initialPath: `/cockpit/${id}`, initial_path: `/cockpit/${id}` }).catch((err) => {
-          console.error('Failed to open session in new window:', err)
-          pushToast({
-            tone: 'error',
-            title: 'Could not open session in new window',
-            description: err instanceof Error ? err.message : 'Desktop window creation failed.',
-          })
-        })
-      }).catch((err) => {
+      openSessionInNewWindow(id).catch((err) => {
+        console.error('Failed to open session in new window:', err)
         pushToast({
           tone: 'error',
           title: 'Could not open session in new window',
-          description: err instanceof Error ? err.message : 'Desktop API is unavailable.',
+          description: err instanceof Error ? err.message : 'Desktop window creation failed.',
         })
       })
       return

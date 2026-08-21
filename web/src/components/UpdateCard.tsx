@@ -8,6 +8,23 @@ import { getPlatform } from '@/hooks/use-platform'
 
 const CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000
 
+async function listenUpdaterEvents(callbacks: {
+  onStatus: (status: UpdateStatus) => void
+  onCheckRequested: () => void
+}): Promise<() => void> {
+  const { listen } = await import('@tauri-apps/api/event')
+  const unlistenStatus = await listen<UpdateStatus>('updater-status', (event) => {
+    callbacks.onStatus(event.payload)
+  })
+  const unlistenCheck = await listen('updater-check-requested', () => {
+    callbacks.onCheckRequested()
+  })
+  return () => {
+    void unlistenStatus()
+    void unlistenCheck()
+  }
+}
+
 export function UpdateCard() {
   const [status, setStatus] = useState<UpdateStatus>({ status: 'idle' })
   const [tauriReady, setTauriReady] = useState(false)
@@ -96,20 +113,21 @@ export function UpdateCard() {
 
     async function start() {
       try {
-        const { listen } = await import('@tauri-apps/api/event')
-        if (cancelled) return
-        setTauriReady(true)
-        const unlistenStatus = await listen<UpdateStatus>('updater-status', (event) => {
-          if (dismissedUntilNextCheckRef.current && (event.payload.status === 'available' || event.payload.status === 'downloaded')) return
-          setStatus(event.payload)
+        const unlistenAll = await listenUpdaterEvents({
+          onStatus: (incomingStatus) => {
+            if (dismissedUntilNextCheckRef.current && (incomingStatus.status === 'available' || incomingStatus.status === 'downloaded')) return
+            setStatus(incomingStatus)
+          },
+          onCheckRequested: () => {
+            void checkForUpdates(false)
+          },
         })
-        const unlistenCheck = await listen('updater-check-requested', () => {
-          void checkForUpdates(false)
-        })
-        cleanup = () => {
-          void unlistenStatus()
-          void unlistenCheck()
+        if (cancelled) {
+          unlistenAll()
+          return
         }
+        setTauriReady(true)
+        cleanup = unlistenAll
         const handleForeground = () => {
           if (
             document.visibilityState === 'visible'

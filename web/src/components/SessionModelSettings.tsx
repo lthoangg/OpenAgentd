@@ -16,7 +16,7 @@
  *
  * Everything else renders straight from props, the single source of truth.
  */
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Eye } from 'lucide-react'
 
 import { useRegistryQuery } from '@/queries'
@@ -131,10 +131,10 @@ export function SessionModelSettings({
 
   /** Normalise and push upstream. An override equal to the agent default is
    *  stored as `null` so the session doesn't pin a value it didn't choose. */
-  const commit = (model: string, level: string) => {
+  const commit = useCallback((model: string, level: string) => {
     const id = model.trim()
     onChange(id && id !== defaultModel ? id : null, level || null)
-  }
+  }, [defaultModel, onChange])
 
   const selectModel = (next: string) => {
     setModelText(next)
@@ -158,8 +158,7 @@ export function SessionModelSettings({
       // field cleared or half-typed, and this effect is only about the level.
       commit(sessionModel ?? '', '')
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [registry.data?.models, modelValid, thinkingLevel, supportedLevels])
+  }, [registry.data?.models, modelValid, thinkingLevel, supportedLevels, commit, sessionModel])
 
   const selectedThinkingLabel =
     thinkingOptions.find((level) => level.value === thinkingLevel)?.label ?? DEFAULT_LEVEL_LABEL

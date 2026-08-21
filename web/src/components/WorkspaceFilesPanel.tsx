@@ -719,8 +719,7 @@ export function WorkspaceFilesPanel({ open, sessionId, onClose }: WorkspaceFiles
   // Refresh on open
   useEffect(() => {
     if (open && sessionId) refetch()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, sessionId])
+  }, [open, sessionId, refetch])
 
   const files = useMemo<WorkspaceFileInfo[]>(() => data?.files ?? [], [data])
   const nodes = useMemo(() => buildTree(files), [files])

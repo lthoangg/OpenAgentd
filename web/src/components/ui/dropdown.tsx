@@ -205,15 +205,17 @@ function Dropdown({
   }, [open])
 
   // In select mode: derive display label + inject active+onSelect into items
-  let displayLabel: ReactNode = trigger
+  const childrenArray = Children.toArray(children)
+  const selectedChild = value !== undefined
+    ? childrenArray.find((child) => isValidElement<DropdownItemProps>(child) && child.props.value === value)
+    : undefined
+  const displayLabel: ReactNode = (isValidElement<DropdownItemProps>(selectedChild) ? selectedChild.props.children : null) ?? trigger
+
   /** Per-item keyboard metadata, rebuilt every render so the key handler below
    *  always closes over the current children. */
   const meta: { id: string; disabled: boolean; select: () => void }[] = []
-  let index = -1
-  const items = Children.map(children, (child) => {
+  const items = Children.map(children, (child, i) => {
     if (!isValidElement<DropdownItemProps>(child)) return child
-    index += 1
-    const i = index
     const id = `${uid}-item-${i}`
     meta.push({
       id,
@@ -229,7 +231,6 @@ function Dropdown({
     })
     const shared = { id, highlighted: i === highlight }
     if (value !== undefined) {
-      if (child.props.value === value) displayLabel = child.props.children
       return cloneElement(child, {
         ...shared,
         active: child.props.value === value,
@@ -246,7 +247,7 @@ function Dropdown({
   const navigable = meta.map((m, i) => (m.disabled ? -1 : i)).filter((i) => i >= 0)
   /** Where the keyboard starts: the selected option if there is one. */
   const initialIndex = () => {
-    const selected = Children.toArray(children).findIndex(
+    const selected = childrenArray.findIndex(
       (child) => isValidElement<DropdownItemProps>(child) && child.props.value === value,
     )
     if (selected >= 0 && !meta[selected]?.disabled) return selected

@@ -400,7 +400,9 @@ export const FloatingInputComposer = memo(
     const effectiveMinimized = !isMobile && minimized && !forceExpanded
 
     // Keep the ref used by the paste handler in sync with the current value.
-    effectiveMinimizedRef.current = effectiveMinimized
+    useEffect(() => {
+      effectiveMinimizedRef.current = effectiveMinimized
+    }, [effectiveMinimized])
 
     const recomputeSuggestionPlacement = useCallback(() => {
       const bounds = boundsRef.current

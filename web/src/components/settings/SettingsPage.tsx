@@ -52,7 +52,9 @@ export function SettingsPage({
   // page rather than re-bound on every keystroke: `draft.save` and `canSave`
   // both change identity whenever the draft value does.
   const draftRef = useRef(draft)
-  draftRef.current = draft
+  useEffect(() => {
+    draftRef.current = draft
+  }, [draft])
 
   // Cmd/Ctrl+S saves without hunting for the button.
   useEffect(() => {

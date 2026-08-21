@@ -559,11 +559,16 @@ async function loadSessionImpl(
         // when a reconnecting client missed the whole resumed turn.
         const leadVisibleMsgs = messagesBeforeRevert(history.lead)
         const leadUsage = sumUsageFromMessages(leadVisibleMsgs)
+        const prevEstimatedCost = leadStream.usage?.estimatedCostUsd ?? 0
+        const prevCompletionTokens = leadStream.usage?.completionTokens ?? 0
         if (!leadHadNewerActivity) {
           leadStream.usage = leadUsage
+          leadStream.usage.completionTokens = Math.max(prevCompletionTokens, leadUsage.completionTokens)
+          leadStream.usage.estimatedCostUsd = Math.round(Math.max(prevEstimatedCost, leadUsage.estimatedCostUsd ?? 0) * 1e8) / 1e8
+          leadStream.usage.totalTokens = leadStream.usage.promptTokens + leadStream.usage.completionTokens
         } else {
-          leadStream.usage.completionTokens = Math.max(leadStream.usage.completionTokens, leadUsage.completionTokens)
-          leadStream.usage.estimatedCostUsd = Math.round(Math.max(leadStream.usage.estimatedCostUsd ?? 0, leadUsage.estimatedCostUsd ?? 0) * 1e8) / 1e8
+          leadStream.usage.completionTokens = Math.max(prevCompletionTokens, leadUsage.completionTokens)
+          leadStream.usage.estimatedCostUsd = Math.round(Math.max(prevEstimatedCost, leadUsage.estimatedCostUsd ?? 0) * 1e8) / 1e8
           leadStream.usage.promptTokens = leadStream.usage.promptTokens || leadUsage.promptTokens
           leadStream.usage.totalTokens = leadStream.usage.promptTokens + leadStream.usage.completionTokens
         }
@@ -616,11 +621,16 @@ async function loadSessionImpl(
         }
         const memberVisibleMsgs = messagesBeforeTime(member.messages, leadRevertTime)
         const memberUsage = sumUsageFromMessages(memberVisibleMsgs)
+        const prevMemberEstimatedCost = memberStream.usage?.estimatedCostUsd ?? 0
+        const prevMemberCompletionTokens = memberStream.usage?.completionTokens ?? 0
         if (!memberHadNewerActivity) {
           memberStream.usage = memberUsage
+          memberStream.usage.completionTokens = Math.max(prevMemberCompletionTokens, memberUsage.completionTokens)
+          memberStream.usage.estimatedCostUsd = Math.round(Math.max(prevMemberEstimatedCost, memberUsage.estimatedCostUsd ?? 0) * 1e8) / 1e8
+          memberStream.usage.totalTokens = memberStream.usage.promptTokens + memberStream.usage.completionTokens
         } else {
-          memberStream.usage.completionTokens = Math.max(memberStream.usage.completionTokens, memberUsage.completionTokens)
-          memberStream.usage.estimatedCostUsd = Math.round(Math.max(memberStream.usage.estimatedCostUsd ?? 0, memberUsage.estimatedCostUsd ?? 0) * 1e8) / 1e8
+          memberStream.usage.completionTokens = Math.max(prevMemberCompletionTokens, memberUsage.completionTokens)
+          memberStream.usage.estimatedCostUsd = Math.round(Math.max(prevMemberEstimatedCost, memberUsage.estimatedCostUsd ?? 0) * 1e8) / 1e8
           memberStream.usage.promptTokens = memberStream.usage.promptTokens || memberUsage.promptTokens
           memberStream.usage.totalTokens = memberStream.usage.promptTokens + memberStream.usage.completionTokens
         }

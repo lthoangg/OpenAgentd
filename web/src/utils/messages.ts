@@ -127,26 +127,44 @@ export function sumUsageFromMessages(msgs: MessageResponse[]): AgentUsage {
   let lastCachePercent: number | undefined = undefined
   for (const msg of sortMessages(msgs)) {
     if (msg.role !== 'assistant' && !msg.is_summary) continue
-    const extra = msg.extra as { usage?: { input?: number; output?: number; cache?: number; cache_percent?: number; cost?: { estimated_usd?: number }; estimated_cost_usd?: number }; estimated_cost_usd?: number } | null
-    if (!extra?.usage) continue
-    const o = extra.usage.output ?? 0
-    const costUsd = extra.usage.cost?.estimated_usd ?? extra.usage.estimated_cost_usd ?? extra.estimated_cost_usd ?? 0
+    const extra = msg.extra as {
+      usage?: {
+        input?: number
+        output?: number
+        cache?: number
+        cache_percent?: number
+        cost?: { estimated_usd?: number }
+        estimated_cost_usd?: number
+      }
+      cost?: { estimated_usd?: number }
+      estimated_cost_usd?: number
+    } | null
+    if (!extra) continue
+    const usage = extra.usage
+    const costUsd =
+      usage?.cost?.estimated_usd ??
+      usage?.estimated_cost_usd ??
+      extra.estimated_cost_usd ??
+      extra.cost?.estimated_usd ??
+      0
+    const o = usage?.output ?? 0
     acc.completionTokens += o
     acc.estimatedCostUsd = Math.round(((acc.estimatedCostUsd ?? 0) + costUsd) * 1e8) / 1e8
-    const inputForCache = typeof extra.usage.input === 'number' && extra.usage.input > 0 ? extra.usage.input : 0
-    const cacheTokens = typeof extra.usage.cache === 'number' ? extra.usage.cache : 0
-    const calcPercent = typeof extra.usage.cache_percent === 'number'
-      ? extra.usage.cache_percent
-      : typeof extra.usage.cache === 'number'
+    if (!usage) continue
+    const inputForCache = typeof usage.input === 'number' && usage.input > 0 ? usage.input : 0
+    const cacheTokens = typeof usage.cache === 'number' ? usage.cache : 0
+    const calcPercent = typeof usage.cache_percent === 'number'
+      ? usage.cache_percent
+      : typeof usage.cache === 'number'
       ? (inputForCache > 0 ? Math.round((cacheTokens / inputForCache) * 10000) / 100 : 0)
       : undefined
     if (msg.is_summary) {
-      lastInput = extra.usage.output ?? 0
-      lastCache = extra.usage.cache ?? 0
+      lastInput = usage.output ?? 0
+      lastCache = usage.cache ?? 0
       lastCachePercent = calcPercent
     } else if (msg.role === 'assistant') {
-      lastInput = extra.usage.input ?? 0
-      lastCache = extra.usage.cache ?? 0
+      lastInput = usage.input ?? 0
+      lastCache = usage.cache ?? 0
       lastCachePercent = calcPercent
     }
   }

@@ -592,6 +592,37 @@ describe("_handleSSEEvent: usage", () => {
     expect(useTeamStore.getState().agentStreams.lead.usage.estimatedCostUsd).toBe(0.12);
   });
 
+  it("session cost is always appended and never less than previous agent turn", () => {
+    // Turn 1 costs 0.002
+    useTeamStore.getState()._handleSSEEvent("usage", {
+      prompt_tokens: 100, completion_tokens: 20, total_tokens: 120,
+      estimated_cost_usd: 0.002, metadata: { agent: "lead" },
+    });
+    useTeamStore.getState()._handleSSEEvent("done", {});
+    const costAfterTurn1 = useTeamStore.getState().agentStreams.lead.usage.estimatedCostUsd;
+    expect(costAfterTurn1).toBe(0.002);
+
+    // Turn 2 costs 0.0015
+    useTeamStore.getState()._handleSSEEvent("usage", {
+      prompt_tokens: 150, completion_tokens: 30, total_tokens: 180,
+      estimated_cost_usd: 0.0015, metadata: { agent: "lead" },
+    });
+    useTeamStore.getState()._handleSSEEvent("done", {});
+    const costAfterTurn2 = useTeamStore.getState().agentStreams.lead.usage.estimatedCostUsd;
+    expect(costAfterTurn2).toBe(0.0035);
+    expect(costAfterTurn2).toBeGreaterThanOrEqual(costAfterTurn1!);
+
+    // Turn 3 has zero/unknown cost — running cost must not decrease
+    useTeamStore.getState()._handleSSEEvent("usage", {
+      prompt_tokens: 200, completion_tokens: 40, total_tokens: 240,
+      metadata: { agent: "lead" },
+    });
+    useTeamStore.getState()._handleSSEEvent("done", {});
+    const costAfterTurn3 = useTeamStore.getState().agentStreams.lead.usage.estimatedCostUsd;
+    expect(costAfterTurn3).toBe(0.0035);
+    expect(costAfterTurn3).toBeGreaterThanOrEqual(costAfterTurn2!);
+  });
+
   it("running sum stays previous cost + current turn cost across a compaction", () => {
     // Turn 1 costs A.
     useTeamStore.getState()._handleSSEEvent("usage", {

@@ -20,6 +20,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Eye } from 'lucide-react'
 
 import { useRegistryQuery } from '@/queries'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { Dropdown, DropdownItem } from '@/components/ui/dropdown'
 import { ModelCombobox } from '@/components/settings/AgentForm/ModelCombobox'
 import type { ModelCatalogEntry } from '@/api/types'
@@ -176,13 +177,17 @@ export function SessionModelSettings({
           <span className="mb-1 flex h-4 items-center gap-1.5 font-medium leading-none text-(--color-text-2)">
             Model
             {effectiveEntry?.vision && (
-              <span
-                className="flex h-4 items-center gap-1 rounded-xs border border-(--color-border) bg-(--bg-key) px-1.5 text-[10px] font-normal leading-none text-(--color-text-muted)"
-                title="Accepts image input"
-              >
-                <Eye size={10} aria-hidden />
-                Vision
-              </span>
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <span className="flex h-4 items-center gap-1 rounded-xs border border-(--color-border) bg-(--bg-key) px-1.5 text-[10px] font-normal leading-none text-(--color-text-muted)">
+                      <Eye size={10} aria-hidden />
+                      Vision
+                    </span>
+                  }
+                />
+                <TooltipContent>Accepts image input</TooltipContent>
+              </Tooltip>
             )}
           </span>
           <ModelCombobox

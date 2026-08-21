@@ -160,17 +160,17 @@ def make_ctx(session_id: str = "s", agent_name: str = "bot") -> RunContext:
 def make_state() -> AgentState:
     return AgentState(messages=[], system_prompt="")
 
-def make_tool_call(name: str = "write", id: str = "tc_1") -> ToolCall:
+def make_tool_call(name: str = "patch", id: str = "tc_1") -> ToolCall:
     return ToolCall(id=id, function=FunctionCall(name=name, arguments="{}"))
 ```
 
 ### wrap_tool_call
 ```python
-async def test_hook_intercepts_write(tmp_path):
+async def test_hook_intercepts_patch(tmp_path):
     hook = MyHook()
-    handler = AsyncMock(return_value="Written 10 bytes")
-    result = await hook.wrap_tool_call(make_ctx(), make_state(), make_tool_call("write"), handler)
-    assert "Written 10 bytes" in result
+    handler = AsyncMock(return_value="Patch applied successfully")
+    result = await hook.wrap_tool_call(make_ctx(), make_state(), make_tool_call("patch"), handler)
+    assert "Patch applied successfully" in result
 ```
 
 ### wrap_model_call — use ModelRequest.override
@@ -259,32 +259,32 @@ app.dependency_overrides[get_session] = _override_session
 
 ---
 
-## Sandbox context (for tools / LSP / file hooks)
+## Denied paths context (for tools / LSP / file hooks)
 
-Some production code reads the active sandbox via `get_sandbox()`. Set it before and reset it after:
+Some production code reads active denied paths via `get_denied_paths()`. Set it before and reset it after:
 
 ```python
-from app.agent.sandbox import SandboxConfig, set_sandbox
+from app.agent.denied_paths import DeniedPathsConfig, set_denied_paths
 
 def test_something(tmp_path):
-    sandbox = SandboxConfig(workspace=str(tmp_path))
-    token = set_sandbox(sandbox)
+    denied_paths = DeniedPathsConfig(workspace=str(tmp_path))
+    token = set_denied_paths(denied_paths)
     try:
         ...
     finally:
-        from app.agent.sandbox import _sandbox_ctx
-        _sandbox_ctx.reset(token)
+        from app.agent.denied_paths import _denied_paths_ctx
+        _denied_paths_ctx.reset(token)
 ```
 
 Or use `pytest.fixture` to scope it cleanly:
 
 ```python
 @pytest.fixture
-def sandbox(tmp_path):
-    from app.agent.sandbox import SandboxConfig, set_sandbox, _sandbox_ctx
-    token = set_sandbox(SandboxConfig(workspace=str(tmp_path)))
+def denied_paths(tmp_path):
+    from app.agent.denied_paths import DeniedPathsConfig, set_denied_paths, _denied_paths_ctx
+    token = set_denied_paths(DeniedPathsConfig(workspace=str(tmp_path)))
     yield tmp_path
-    _sandbox_ctx.reset(token)
+    _denied_paths_ctx.reset(token)
 ```
 
 ---

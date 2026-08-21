@@ -8,7 +8,7 @@
  * workspace/session rather than fetching its own copy.
  *
  * Consumers: `WorkspaceFilesPanel` (artifacts tree), `CodingWorkspacePanel`
- * (coding file tree), the InputBar `@`-mention picker (`useFileRefsQuery`), and
+ * (coding file tree), the InputComposer `@`-mention picker (`useFileRefsQuery`), and
  * the coding command palette (`useCommandPalette`).
  *
  * Two invariants these factories exist to enforce:

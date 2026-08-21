@@ -1,7 +1,7 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
-use std::sync::atomic::Ordering;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicI64, Ordering};
 use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_updater::UpdaterExt;
@@ -9,9 +9,77 @@ use tauri_plugin_updater::UpdaterExt;
 use tauri_plugin_dialog::MessageDialogResult;
 
 use crate::{AppState, CachedUpdateState, persist_active_window_state_async};
-use crate::menu::update_tray_status;
+use crate::menu::{now_unix, update_tray_status};
 use crate::window::show_target_window;
 use crate::shutdown_sidecar_now;
+
+/// Minimum spacing between *automatic* update checks, process-wide.
+///
+/// The React card owns a 6h schedule, but it lives in component refs
+/// (`UpdateCard.tsx`) that reseed to "now" on every mount — so every new
+/// window, reload and foreground event fired another check. Production
+/// logs showed 5-10 unauthenticated GitHub requests per hour against that
+/// 6h policy, including a double-fire in the same second at startup
+/// (Rust's own check racing the React one).
+///
+/// User-initiated checks ("Check for Updates…", Settings, "Try again")
+/// pass `silent=false` and always run — the user explicitly asked.
+const SILENT_CHECK_MIN_GAP: Duration = Duration::from_secs(60 * 60);
+
+/// Unix-seconds timestamp of the last automatic check. `0` means never.
+static LAST_SILENT_CHECK: AtomicI64 = AtomicI64::new(0);
+
+/// Whether an automatic check may run, given when the last one ran.
+pub fn silent_check_is_due(now: i64, last_check: i64) -> bool {
+    now.saturating_sub(last_check) >= SILENT_CHECK_MIN_GAP.as_secs() as i64
+}
+
+/// Reserve the next automatic-check slot, or report that one ran too
+/// recently. `compare_exchange` makes the reservation exclusive so two
+/// checks racing at startup collapse into one.
+fn claim_silent_check_slot() -> bool {
+    let now = now_unix();
+    let last = LAST_SILENT_CHECK.load(Ordering::SeqCst);
+    if !silent_check_is_due(now, last) {
+        return false;
+    }
+    LAST_SILENT_CHECK
+        .compare_exchange(last, now, Ordering::SeqCst, Ordering::SeqCst)
+        .is_ok()
+}
+
+fn up_to_date_status() -> UpdateStatus {
+    UpdateStatus {
+        status: "up_to_date".into(),
+        version: None,
+        current_version: env!("CARGO_PKG_VERSION").into(),
+        notes: None,
+        downloaded_bytes: None,
+        total_bytes: None,
+        message: None,
+    }
+}
+
+/// Minimum spacing between download-progress updates.
+///
+/// `tauri-plugin-updater` invokes the progress callback once per network
+/// chunk (`updater.rs:705`, `while let Some(chunk) = stream.next()`),
+/// which is thousands of calls for a 200 MB bundle. Each one was an IPC
+/// round-trip to every window *plus* an `update_tray_status` task that
+/// blocks on the main thread to set the menu text. 250ms is well past
+/// what a human can read and cuts the traffic by two to three orders of
+/// magnitude.
+const PROGRESS_EMIT_INTERVAL: Duration = Duration::from_millis(250);
+
+/// Whether a progress update should be emitted now. `elapsed` is the time
+/// since the last emit, or `None` for the first chunk. The chunk that
+/// completes the download always emits so the bar reaches 100%.
+pub fn should_emit_progress(elapsed: Option<Duration>, downloaded: u64, total: Option<u64>) -> bool {
+    if total.is_some_and(|total| downloaded >= total) {
+        return true;
+    }
+    elapsed.map_or(true, |elapsed| elapsed >= PROGRESS_EMIT_INTERVAL)
+}
 
 #[derive(Clone, Serialize)]
 pub struct UpdateStatus {
@@ -296,6 +364,15 @@ pub async fn updater_release_notes(version: String) -> Result<ReleaseNotesRespon
 }
 
 pub async fn run_update_check(app: AppHandle, silent: bool) -> Result<UpdateStatus, String> {
+    // Throttle automatic checks only. The caller ignores an `up_to_date`
+    // result for silent checks (`UpdateCard.tsx`), so a skipped check is
+    // indistinguishable from a completed one that found nothing — and an
+    // update that lands inside the gap is still surfaced by the next check
+    // or by the startup check's `updater-status` event.
+    if silent && !claim_silent_check_slot() {
+        log::debug!("updater check skipped: inside the automatic-check min gap");
+        return Ok(up_to_date_status());
+    }
     log::info!("updater check started silent={silent}");
     let updater = app
         .updater()
@@ -335,17 +412,12 @@ pub async fn run_update_check(app: AppHandle, silent: bool) -> Result<UpdateStat
         Ok(None) => {
             log::info!("updater check found no update silent={silent}");
             let status = UpdateStatus {
-                status: "up_to_date".into(),
-                version: None,
-                current_version: env!("CARGO_PKG_VERSION").into(),
-                notes: None,
-                downloaded_bytes: None,
-                total_bytes: None,
                 message: if silent {
                     None
                 } else {
                     Some("OpenAgentd is up to date.".into())
                 },
+                ..up_to_date_status()
             };
             if !silent {
                 emit_update_status(&app, &status);
@@ -374,11 +446,16 @@ pub async fn run_update_download(app: AppHandle) -> Result<UpdateStatus, String>
     let version = update.version.clone();
     log::info!("updater download available version={version}");
     let mut downloaded: u64 = 0;
+    let mut last_emit: Option<std::time::Instant> = None;
     let app_for_progress = app.clone();
     let bytes = update
         .download(
             move |chunk, total| {
                 downloaded = downloaded.saturating_add(chunk as u64);
+                if !should_emit_progress(last_emit.map(|at| at.elapsed()), downloaded, total) {
+                    return;
+                }
+                last_emit = Some(std::time::Instant::now());
                 let progress = UpdateStatus {
                     status: "downloading".into(),
                     version: Some(version.clone()),
@@ -609,6 +686,43 @@ pub fn cached_update_path(app: &AppHandle, version: &str) -> Result<PathBuf> {
     Ok(dir.join(format!("openagentd-{version}.update")))
 }
 
+/// Delete update bundles left behind by previous runs, returning how many
+/// were removed.
+///
+/// `AppState::update_state` — the only handle to a downloaded bundle — is
+/// in-memory and starts as `None`, so a bundle that outlives its process
+/// can never be matched by `validate_install_preconditions` again. Every
+/// `.update` file present at startup is therefore unreachable garbage. A
+/// production cache was holding a 205 MB bundle for the version already
+/// running.
+fn purge_update_bundles(dir: &Path) -> usize {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return 0;
+    };
+    let mut removed = 0;
+    for path in entries.flatten().map(|entry| entry.path()) {
+        if path.extension().is_some_and(|ext| ext == "update") {
+            match std::fs::remove_file(&path) {
+                Ok(()) => {
+                    log::info!("removed stale cached update {}", path.display());
+                    removed += 1;
+                }
+                Err(e) => log::warn!("failed to remove {}: {e}", path.display()),
+            }
+        }
+    }
+    removed
+}
+
+/// Startup hook for [`purge_update_bundles`]. No-op when the cache
+/// directory does not exist yet.
+pub fn purge_cached_updates(app: &AppHandle) {
+    let Ok(cache_dir) = app.path().app_cache_dir() else {
+        return;
+    };
+    purge_update_bundles(&cache_dir.join("updater"));
+}
+
 /// Map a ``MessageDialogResult`` from an ``OkCancelCustom`` dialog to a
 /// simple accept/cancel boolean.
 ///
@@ -747,5 +861,38 @@ mod macos_tests {
             designated, "designated => identifier \"com.openagentd.desktop\"",
             "designated requirement must be identifier-only and stable: {requirement}"
         );
+    }
+}
+
+#[cfg(test)]
+mod cache_tests {
+    use super::purge_update_bundles;
+
+    // A production cache held a 205 MB bundle for the version already
+    // running: `update_state` is in-memory and starts as `None`, so nothing
+    // could ever reach that file again.
+
+    #[test]
+    fn stale_bundles_are_removed_and_other_files_are_left_alone() {
+        let dir = tempfile::tempdir().expect("create cache dir");
+        let stale = dir.path().join("openagentd-1.133.0.update");
+        let older = dir.path().join("openagentd-1.132.0.update");
+        let unrelated = dir.path().join("notes.txt");
+        std::fs::write(&stale, b"bundle").expect("write stale bundle");
+        std::fs::write(&older, b"bundle").expect("write older bundle");
+        std::fs::write(&unrelated, b"keep me").expect("write unrelated file");
+
+        assert_eq!(purge_update_bundles(dir.path()), 2);
+
+        assert!(!stale.exists());
+        assert!(!older.exists());
+        assert!(unrelated.exists(), "only .update bundles are purged");
+    }
+
+    #[test]
+    fn a_missing_cache_directory_is_not_an_error() {
+        let dir = tempfile::tempdir().expect("create temp root");
+
+        assert_eq!(purge_update_bundles(&dir.path().join("updater")), 0);
     }
 }

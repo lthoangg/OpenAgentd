@@ -59,7 +59,7 @@ Process restart required only for: adding/removing agent files, `.env` changes, 
 | Field | Values |
 |-------|--------|
 | `model` | `provider:model` — e.g. `openai:gpt-4o`, `anthropic:claude-...`, `googlegenai:gemini-...` |
-| `tools` | Extra tools on top of built-in profile: `web_search`, `web_fetch`, `date`, `read`, `write`, `edit`, `patch`, `ls`, `grep`, `glob`, `rm`, `shell`, `bg`, `generate_image`, `generate_video`, plus `<server>_<tool>` for MCP. Never add `skill` or `team_message` — injected automatically. |
+| `tools` | Extra tools on top of built-in profile: `web_search`, `web_fetch`, `read`, `patch`, `grep`, `glob`, `shell`, `generate_image`, `generate_video`, plus `<server>_<tool>` for MCP. Never add `skill` or `team_message` — injected automatically. |
 
 **Invariants:** exactly one `role: lead` per agents dir; `model` must contain `:`.
 

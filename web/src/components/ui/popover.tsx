@@ -228,7 +228,7 @@ function PopoverContent({
       className={cn(
         'fixed z-50 overscroll-contain',
         'flex w-[min(18rem,calc(100vw-1rem))] flex-col gap-2.5',
-        'rounded border border-(--color-border) bg-(--bg-card)',
+        'rounded-sm border border-(--color-border) bg-(--bg-card)',
         'p-3.5 text-xs text-(--color-text) shadow-md outline-none',
         'duration-100',
         closing

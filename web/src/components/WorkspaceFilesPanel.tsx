@@ -18,6 +18,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, memo } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { useHotkey } from '@tanstack/react-hotkeys'
 import {
   X,
   FileText,
@@ -46,6 +48,7 @@ import { formatBytes } from '@/utils/format'
 import { ImageLightbox } from './ImageLightbox'
 import { isVideoSrc } from '@/utils/workspace'
 import { EmptyState } from '@/components/ui/empty-state'
+import { buttonVariants } from '@/components/ui/button'
 import type { WorkspaceFileInfo } from '@/api/types'
 import { DURATIONS_S, EASINGS } from '@/lib/motion'
 
@@ -199,44 +202,51 @@ const FileRow = memo(function FileRow({
 
   return (
     <>
-      <button
-        onClick={() => onSelect(file)}
-        onContextMenu={(event) => {
-          if (isTauriMobile) return
-          event.preventDefault()
-          setActionsPoint({ x: event.clientX, y: event.clientY })
-        }}
-        onPointerDown={(event) => {
-          if (!isMobile || !isTauriMobile || event.pointerType === 'mouse') return
-          longPressStartRef.current = { x: event.clientX, y: event.clientY }
-          longPressTimerRef.current = window.setTimeout(() => {
-            longPressTimerRef.current = null
-            longPressStartRef.current = null
-            mediumHapticFeedback()
-            setActionsPoint({ x: event.clientX, y: event.clientY })
-          }, FILE_LONG_PRESS_MS)
-        }}
-        onPointerMove={(event) => {
-          const start = longPressStartRef.current
-          if (!start) return
-          if (
-            Math.abs(event.clientX - start.x) > FILE_LONG_PRESS_MOVE_TOLERANCE ||
-            Math.abs(event.clientY - start.y) > FILE_LONG_PRESS_MOVE_TOLERANCE
-          ) clearLongPress()
-        }}
-        onPointerUp={clearLongPress}
-        onPointerCancel={clearLongPress}
-        onPointerLeave={clearLongPress}
-        style={{ paddingLeft: depth * INDENT_PX + 6 }}
-        className={cn(
-          'flex w-full items-center gap-1.5 py-[3px] pr-2 text-left',
-          selected ? 'text-(--color-accent)' : 'text-(--color-text-2)',
-        )}
-        title={file.path}
-      >
-        <FileTypeIcon name={file.name} size={14} />
-        <span className="min-w-0 flex-1 truncate font-mono text-[12px] leading-5">{file.name}</span>
-      </button>
+      <Tooltip className="w-full">
+        <TooltipTrigger
+          className="w-full"
+          render={
+            <button
+              onClick={() => onSelect(file)}
+              onContextMenu={(event) => {
+                if (isTauriMobile) return
+                event.preventDefault()
+                setActionsPoint({ x: event.clientX, y: event.clientY })
+              }}
+              onPointerDown={(event) => {
+                if (!isMobile || !isTauriMobile || event.pointerType === 'mouse') return
+                longPressStartRef.current = { x: event.clientX, y: event.clientY }
+                longPressTimerRef.current = window.setTimeout(() => {
+                  longPressTimerRef.current = null
+                  longPressStartRef.current = null
+                  mediumHapticFeedback()
+                  setActionsPoint({ x: event.clientX, y: event.clientY })
+                }, FILE_LONG_PRESS_MS)
+              }}
+              onPointerMove={(event) => {
+                const start = longPressStartRef.current
+                if (!start) return
+                if (
+                  Math.abs(event.clientX - start.x) > FILE_LONG_PRESS_MOVE_TOLERANCE ||
+                  Math.abs(event.clientY - start.y) > FILE_LONG_PRESS_MOVE_TOLERANCE
+                ) clearLongPress()
+              }}
+              onPointerUp={clearLongPress}
+              onPointerCancel={clearLongPress}
+              onPointerLeave={clearLongPress}
+              style={{ paddingLeft: depth * INDENT_PX + 6 }}
+              className={cn(
+                'flex w-full items-center gap-1.5 py-[3px] pr-2 text-left',
+                selected ? 'text-(--color-accent)' : 'text-(--color-text-2)',
+              )}
+            >
+              <FileTypeIcon name={file.name} size={14} />
+              <span className="min-w-0 flex-1 truncate font-mono text-[12px] leading-5">{file.name}</span>
+            </button>
+          }
+        />
+        <TooltipContent>{file.path}</TooltipContent>
+      </Tooltip>
 
       {actionsPoint && (
         <div
@@ -253,24 +263,24 @@ const FileRow = memo(function FileRow({
           >
             <button
               type="button" role="menuitem"
-              className="flex w-full items-center gap-2 rounded-xs px-2 py-1.5 text-left hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none"
+              className="flex w-full items-center gap-2 rounded-xs px-2 py-1 text-left text-xs hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none"
               onClick={() => { setActionsPoint(null); onSelect(file) }}
             >
-              <FileText size={14} aria-hidden="true" /> Preview
+              <FileText size={12} aria-hidden="true" /> Preview
             </button>
             <button
               type="button" role="menuitem"
-              className="flex w-full items-center gap-2 rounded-xs px-2 py-1.5 text-left hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none"
+              className="flex w-full items-center gap-2 rounded-xs px-2 py-1 text-left text-xs hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none"
               onClick={() => { setActionsPoint(null); void navigator.clipboard.writeText(file.path) }}
             >
-              <Copy size={14} aria-hidden="true" /> Copy path
+              <Copy size={12} aria-hidden="true" /> Copy path
             </button>
             <button
               type="button" role="menuitem"
-              className="flex w-full items-center gap-2 rounded-xs px-2 py-1.5 text-left hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none"
+              className="flex w-full items-center gap-2 rounded-xs px-2 py-1 text-left text-xs hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none"
               onClick={() => { setActionsPoint(null); void downloadWorkspaceFile(sessionId, file) }}
             >
-              <Download size={14} aria-hidden="true" /> Download
+              <Download size={12} aria-hidden="true" /> Download
             </button>
           </div>
         </div>
@@ -381,7 +391,7 @@ function ImagePreview({ sessionId, file }: { sessionId: string; file: WorkspaceF
           src={url}
           alt={file.name}
           onClick={() => setOpen(true)}
-          className="max-h-full max-w-full cursor-zoom-in rounded border border-(--color-border) object-contain"
+          className="max-h-full max-w-full cursor-zoom-in rounded-sm border border-(--color-border) object-contain"
         />
       </div>
       <ImageLightbox src={url} alt={file.name} isOpen={open} onClose={() => setOpen(false)} />
@@ -398,7 +408,7 @@ function VideoPreview({ sessionId, file }: { sessionId: string; file: WorkspaceF
         controls
         preload="metadata"
         playsInline
-        className="block max-h-full max-w-full rounded border border-(--color-border) bg-black object-contain"
+        className="block max-h-full max-w-full rounded-sm border border-(--color-border) bg-black object-contain"
       />
     </div>
   )
@@ -509,16 +519,16 @@ function BinaryPreview({ sessionId, file }: { sessionId: string; file: Workspace
           href={url}
           target="_blank"
           rel="noopener noreferrer"
-          className="flex items-center gap-1.5 rounded-sm border border-(--color-border-strong) bg-(--bg-key) px-2.5 py-1.5 text-xs text-(--color-accent) transition-colors hover:bg-(--bg-key)/70"
+          className={buttonVariants({ variant: 'primary', size: 'sm' })}
         >
-          <ExternalLink size={12} /> Open in new tab
+          <ExternalLink size={13} /> Open in new tab
         </a>
         <DownloadWorkspaceFileButton
           sessionId={sessionId}
           file={file}
-          className="flex items-center gap-1.5 rounded-sm border border-(--color-border) bg-(--bg-card) px-2.5 py-1.5 text-xs text-(--color-text-2) transition-colors hover:border-(--color-border-strong)"
+          className={buttonVariants({ variant: 'default', size: 'sm' })}
         >
-          <Download size={12} /> Download
+          <Download size={13} /> Download
         </DownloadWorkspaceFileButton>
       </div>
     </div>
@@ -537,15 +547,21 @@ export function DownloadWorkspaceFileButton({
   children: React.ReactNode
 }) {
   return (
-    <button
-      type="button"
-      onClick={() => void downloadWorkspaceFile(sessionId, file)}
-      className={className}
-      title="Download"
-      aria-label="Download"
-    >
-      {children}
-    </button>
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <button
+            type="button"
+            onClick={() => void downloadWorkspaceFile(sessionId, file)}
+            className={className}
+            aria-label="Download"
+          >
+            {children}
+          </button>
+        }
+      />
+      <TooltipContent>Download</TooltipContent>
+    </Tooltip>
   )
 }
 
@@ -586,22 +602,28 @@ export function CopyContentsButton({
       : 'Copy file contents'
 
   return (
-    <button
-      type="button"
-      onClick={handleCopy}
-      disabled={busy || tooLarge}
-      title={title}
-      aria-label={title}
-      className="flex items-center gap-1 rounded px-2 py-1 text-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2) disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-(--color-text-muted)"
-    >
-      {copied ? (
-        <Check size={12} className="text-(--color-success)" />
-      ) : busy ? (
-        <Loader2 size={12} className="animate-spin" />
-      ) : (
-        <Copy size={12} />
-      )}
-    </button>
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <button
+            type="button"
+            onClick={handleCopy}
+            disabled={busy || tooLarge}
+            aria-label={title}
+            className="flex items-center gap-1 rounded-sm px-2 py-1 text-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2) disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-(--color-text-muted)"
+          >
+            {copied ? (
+              <Check size={12} className="text-(--color-success)" />
+            ) : busy ? (
+              <Loader2 size={12} className="animate-spin" />
+            ) : (
+              <Copy size={12} />
+            )}
+          </button>
+        }
+      />
+      <TooltipContent>{title}</TooltipContent>
+    </Tooltip>
   )
 }
 
@@ -629,7 +651,7 @@ function PreviewArea({
           <DownloadWorkspaceFileButton
             sessionId={sessionId}
             file={file}
-            className="flex items-center gap-1 rounded px-2 py-1 text-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)"
+            className="flex items-center gap-1 rounded-sm px-2 py-1 text-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)"
           >
             <Download size={12} />
           </DownloadWorkspaceFileButton>
@@ -682,12 +704,7 @@ export function WorkspaceFilesPanel({ open, sessionId, onClose }: WorkspaceFiles
   }, [isMobile, mobilePane, onClose])
 
   // Escape key — only on mobile (desktop has no backdrop/overlay)
-  useEffect(() => {
-    if (!open || !isMobile) return
-    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') handleClose() }
-    window.addEventListener('keydown', handler)
-    return () => window.removeEventListener('keydown', handler)
-  }, [open, isMobile, handleClose])
+  useHotkey('Escape', handleClose, { enabled: Boolean(open && isMobile) })
 
   // Resizable width — desktop only
   const resizable = useResizableWidth({
@@ -806,23 +823,35 @@ export function WorkspaceFilesPanel({ open, sessionId, onClose }: WorkspaceFiles
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-1">
-          <button
-            onClick={() => refetch()}
-            disabled={!sessionId || isFetching}
-            className="flex h-11 w-11 items-center justify-center rounded text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) disabled:opacity-50 md:h-7 md:w-7"
-            title="Refresh"
-            aria-label="Refresh"
-          >
-            <RefreshCw size={14} className={isFetching ? 'animate-spin' : ''} />
-          </button>
-          <button
-            onClick={onClose}
-            className="flex h-11 w-11 items-center justify-center rounded text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-7 md:w-7"
-            title="Close (Esc)"
-            aria-label="Close workspace files panel"
-          >
-            <X size={14} />
-          </button>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <button
+                  onClick={() => refetch()}
+                  disabled={!sessionId || isFetching}
+                  className="flex h-11 w-11 items-center justify-center rounded-sm text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) disabled:opacity-50 md:h-7 md:w-7"
+                  aria-label="Refresh"
+                >
+                  <RefreshCw size={14} className={isFetching ? 'animate-spin' : ''} />
+                </button>
+              }
+            />
+            <TooltipContent>Refresh</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <button
+                  onClick={onClose}
+                  className="flex h-11 w-11 items-center justify-center rounded-sm text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-7 md:w-7"
+                  aria-label="Close workspace files panel"
+                >
+                  <X size={14} />
+                </button>
+              }
+            />
+            <TooltipContent>Close (Esc)</TooltipContent>
+          </Tooltip>
         </div>
       </header>
 

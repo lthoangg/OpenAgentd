@@ -1,5 +1,6 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import { CalendarClock, Check, MoreHorizontal, X } from 'lucide-react'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useTeamStore, type AgentStream } from '@/stores/useTeamStore'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { workspaceLabel } from '@/utils/workspace'
@@ -43,16 +44,22 @@ export function MobileChatActions({
     : { initial: { x: 280 }, animate: { x: dragOffset ?? 0 }, exit: { x: 280 } }
   return (
     <>
-      <button
-        type="button"
-        data-no-drag
-        onClick={() => onOpenChange(true)}
-        className="mr-1 flex h-9 w-9 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
-        aria-label="Open chat actions"
-        title="Chat actions"
-      >
-        <MoreHorizontal size={17} aria-hidden="true" />
-      </button>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <button
+              type="button"
+              data-no-drag
+              onClick={() => onOpenChange(true)}
+              className="mr-1 flex h-9 w-9 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
+              aria-label="Open chat actions"
+            >
+              <MoreHorizontal size={17} aria-hidden="true" />
+            </button>
+          }
+        />
+        <TooltipContent>Chat actions</TooltipContent>
+      </Tooltip>
 
       <AnimatePresence>
         {(open || dragOffset !== null) && (
@@ -106,13 +113,13 @@ export function MobileChatActions({
               <div className="flex-1 overflow-y-auto overscroll-contain touch-pan-y p-2">
                 {activeAgent && agents.length > 1 && (
                   <>
-                    <div className="px-2 py-2 text-xs font-medium text-muted-foreground">Agents</div>
+                    <div className="px-2 py-2 text-xs font-medium text-(--color-text-muted)">Agents</div>
                     {agents.map((name) => (
                       <button
                         type="button"
                         key={name}
                         onClick={() => { onSelectAgent(name); onOpenChange(false) }}
-                        className="flex min-h-10 w-full items-center gap-2 rounded-md px-2 text-left text-sm transition-colors hover:bg-(--bg-key)"
+                        className="flex min-h-10 w-full items-center gap-2 rounded-md px-2 text-left text-sm transition-colors hover:bg-(--bg-key) active:bg-(--bg-key)/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40"
                       >
                         <span className={`h-2 w-2 rounded-full ${dotClassFor(name, streams[name])}`} aria-hidden="true" />
                         <span className="min-w-0 flex-1 truncate font-mono text-xs">{name}</span>
@@ -122,8 +129,8 @@ export function MobileChatActions({
                   </>
                 )}
 
-                <div className="px-2 py-2 text-xs font-medium text-muted-foreground">Session</div>
-                <button type="button" onClick={onScheduler} className="flex min-h-10 w-full items-center gap-2 rounded-md px-2 text-left text-sm transition-colors hover:bg-(--bg-key)">
+                <div className="px-2 py-2 text-xs font-medium text-(--color-text-muted)">Session</div>
+                <button type="button" onClick={onScheduler} className="flex min-h-10 w-full items-center gap-2 rounded-md px-2 text-left text-sm transition-colors hover:bg-(--bg-key) active:bg-(--bg-key)/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40">
                   <CalendarClock size={15} aria-hidden="true" />
                   <span className="flex-1">Scheduler</span>
                 </button>

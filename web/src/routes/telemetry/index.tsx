@@ -163,7 +163,7 @@ function TraceDetailRoute({
         left={
           <button
             onClick={onBack}
-            className="flex h-8 w-8 items-center justify-center rounded-sm text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) sm:h-7 sm:w-7"
+            className="flex h-11 w-11 items-center justify-center rounded-sm text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-7 md:w-7"
             aria-label="Back to list"
           >
             <ArrowLeft size={14} />

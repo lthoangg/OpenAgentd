@@ -64,7 +64,67 @@ def test_sqlite_pragmas_enable_foreign_keys(tmp_path):
         conn.close()
 
 
+def test_sqlite_pragmas_tune_wal_and_read_working_set(tmp_path):
+    """Production connections bound WAL growth and keep temp reads in memory."""
+    import sqlite3
+
+    from app.core.db import _set_sqlite_pragmas
+
+    conn = sqlite3.connect(tmp_path / "read-write-tuning.db")
+    try:
+        _set_sqlite_pragmas(conn, None)
+        assert (
+            conn.execute("PRAGMA journal_size_limit").fetchone()[0] == 64 * 1024 * 1024
+        )
+        assert conn.execute("PRAGMA temp_store").fetchone()[0] == 2  # MEMORY
+        assert conn.execute("PRAGMA mmap_size").fetchone()[0] == 256 * 1024 * 1024
+    finally:
+        conn.close()
+
+
 # ── run_migrations() ──────────────────────────────────────────────────────────
+
+
+def test_optimize_sqlite_creates_planner_statistics(tmp_path):
+    """Post-migration optimization must materialise sqlite_stat1.
+
+    Without ANALYZE statistics the query planner falls back to fixed
+    heuristics for every join and index choice. ``_optimize_sqlite`` runs
+    after migrations so the stats exist from the first real query on.
+    """
+    import sqlite3
+
+    from app.core.db import _optimize_sqlite
+
+    db_file = tmp_path / "opt.db"
+    conn = sqlite3.connect(db_file)
+    conn.execute("CREATE TABLE t (id INTEGER PRIMARY KEY, v TEXT)")
+    conn.execute("CREATE INDEX ix_t_v ON t(v)")
+    conn.executemany("INSERT INTO t (v) VALUES (?)", [(str(i),) for i in range(50)])
+    conn.commit()
+    conn.close()
+
+    _optimize_sqlite(db_file)
+
+    conn = sqlite3.connect(db_file)
+    try:
+        tables = {
+            row[0]
+            for row in conn.execute(
+                "SELECT name FROM sqlite_master WHERE name='sqlite_stat1'"
+            )
+        }
+        assert "sqlite_stat1" in tables
+        assert conn.execute("SELECT COUNT(*) FROM sqlite_stat1").fetchone()[0] > 0
+    finally:
+        conn.close()
+
+
+def test_optimize_sqlite_is_best_effort(tmp_path):
+    """A locked or missing file must not break startup."""
+    from app.core.db import _optimize_sqlite
+
+    _optimize_sqlite(tmp_path / "does-not-exist-dir" / "nope.db")
 
 
 def test_run_migrations_raises_when_ini_not_found(tmp_path):

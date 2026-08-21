@@ -2,8 +2,7 @@
  * SessionTools — the collapsible tool inventory in session settings.
  *
  * It answers "what can this session actually do", grouped by where each tool
- * comes from, without pushing the model and MCP controls below the fold: the
- * whole section stays collapsed until asked for.
+ * comes from. Auto-opened by default so users immediately see available tools.
  */
 import { afterEach, describe, expect, it, mock } from 'bun:test'
 import { cleanup, render, screen, within } from '@testing-library/react'
@@ -18,11 +17,17 @@ afterEach(cleanup)
 
 const BUILTINS: AgentToolInfo[] = [
   { name: 'read', description: 'Read a file from the workspace.' },
-  { name: 'write', description: 'Write a file.' },
+  { name: 'patch', description: 'Apply a patch.' },
 ]
 
-function renderTools(tools: AgentToolInfo[] = BUILTINS, mcpServers: string[] = []) {
-  return render(<SessionTools tools={tools} mcpServers={mcpServers} />)
+function renderTools(
+  tools: AgentToolInfo[] = BUILTINS,
+  mcpServers: string[] = [],
+  defaultOpen?: boolean,
+) {
+  return render(
+    <SessionTools tools={tools} mcpServers={mcpServers} defaultOpen={defaultOpen} />,
+  )
 }
 
 /** The disclosure button that opens the whole section. */
@@ -31,25 +36,34 @@ function toggle() {
 }
 
 describe('SessionTools', () => {
-  it('starts collapsed, reporting only the total count', () => {
+  it('starts open by default, reporting total count and displaying tools', () => {
     renderTools()
 
+    expect(toggle().getAttribute('aria-expanded')).toBe('true')
+    expect(within(toggle()).getByText('2')).toBeTruthy()
+    expect(screen.getByText('read')).toBeTruthy()
+    expect(screen.getByText('patch')).toBeTruthy()
+  })
+
+  it('can be collapsed when toggled', async () => {
+    renderTools()
+
+    expect(toggle().getAttribute('aria-expanded')).toBe('true')
+    await userEvent.click(toggle())
+
     expect(toggle().getAttribute('aria-expanded')).toBe('false')
-    expect(screen.getByText('2')).toBeTruthy()
     expect(screen.queryByText('read')).toBeNull()
   })
 
-  it('reveals the tools when opened', async () => {
-    renderTools()
+  it('can start collapsed if defaultOpen=false is provided', () => {
+    renderTools(BUILTINS, [], false)
 
-    await userEvent.click(toggle())
-
-    expect(toggle().getAttribute('aria-expanded')).toBe('true')
-    expect(screen.getByText('read')).toBeTruthy()
-    expect(screen.getByText('write')).toBeTruthy()
+    expect(toggle().getAttribute('aria-expanded')).toBe('false')
+    expect(within(toggle()).getByText('2')).toBeTruthy()
+    expect(screen.queryByText('read')).toBeNull()
   })
 
-  it('groups MCP tools under their server and leaves the rest built-in', async () => {
+  it('groups MCP tools under their server and leaves the rest built-in', () => {
     renderTools(
       [
         ...BUILTINS,
@@ -58,8 +72,6 @@ describe('SessionTools', () => {
       ],
       ['github'],
     )
-
-    await userEvent.click(toggle())
 
     const builtinGroup = screen.getByRole('group', { name: /built-in/i })
     expect(within(builtinGroup).getByText('read')).toBeTruthy()
@@ -73,7 +85,6 @@ describe('SessionTools', () => {
   it('keeps a tool description hidden until its row is opened', async () => {
     renderTools()
 
-    await userEvent.click(toggle())
     expect(screen.queryByText('Read a file from the workspace.')).toBeNull()
 
     await userEvent.click(screen.getByRole('button', { name: /read/i }))
@@ -87,7 +98,6 @@ describe('SessionTools', () => {
     }))
     renderTools(many)
 
-    await userEvent.click(toggle())
     const filter = screen.getByPlaceholderText(/filter tools/i)
     await userEvent.type(filter, 'tool_3')
 
@@ -95,10 +105,8 @@ describe('SessionTools', () => {
     expect(screen.queryByText('tool_4')).toBeNull()
   })
 
-  it('does not offer a filter for a short list', async () => {
+  it('does not offer a filter for a short list', () => {
     renderTools()
-
-    await userEvent.click(toggle())
 
     expect(screen.queryByPlaceholderText(/filter tools/i)).toBeNull()
   })
@@ -110,7 +118,6 @@ describe('SessionTools', () => {
     }))
     renderTools(many)
 
-    await userEvent.click(toggle())
     await userEvent.type(screen.getByPlaceholderText(/filter tools/i), 'mermaid')
 
     expect(screen.getByText('tool_5')).toBeTruthy()
@@ -124,16 +131,13 @@ describe('SessionTools', () => {
     }))
     renderTools(many)
 
-    await userEvent.click(toggle())
     await userEvent.type(screen.getByPlaceholderText(/filter tools/i), 'zzznope')
 
     expect(screen.getByText(/no tools match/i)).toBeTruthy()
   })
 
-  it('shows a configured server that has contributed no tools', async () => {
+  it('shows a configured server that has contributed no tools', () => {
     renderTools(BUILTINS, ['figma'])
-
-    await userEvent.click(toggle())
 
     const mcpGroup = screen.getByRole('group', { name: /figma/i })
     expect(within(mcpGroup).getByText(/no tools available/i)).toBeTruthy()

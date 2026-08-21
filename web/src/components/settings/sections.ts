@@ -37,6 +37,7 @@ export type TopLevelSection = Extract<
   | 'skills'
   | 'mcp'
   | 'providers'
+  | 'denied_paths'
   | 'sandbox'
   | 'automation'
   | 'notifications'
@@ -109,10 +110,10 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionDef[] = [
     group: 'models',
   },
   {
-    id: 'sandbox',
-    label: 'Sandbox',
+    id: 'denied_paths',
+    label: 'Denied Paths',
     icon: Shield,
-    group: 'system',
+    group: 'build',
   },
   {
     id: 'terminal',

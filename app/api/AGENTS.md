@@ -1,33 +1,40 @@
-# app/api/ — Agent Instructions
+# API Guide
 
-FastAPI application assembly, dependencies, schemas, and HTTP/SSE routes.
+This subtree owns FastAPI assembly, dependencies, request/response schemas, and
+HTTP, WebSocket, and SSE routes.
 
-## Where to look first
+## Boundaries
 
-```
-app.py       FastAPI app factory, middleware, static web mount
-deps.py      Shared dependencies
-routes/      Route modules grouped by product area
-schemas/     API request/response schemas
-```
+- `app.py` owns middleware, lifecycle, and router registration; `deps.py` owns
+  shared dependencies; `routes/` groups transport handlers; `schemas/` holds
+  reusable wire models.
+- Keep handlers focused on transport validation/status/response shaping.
+  Delegate durable behavior to `app/services/` or the owning `app/agent/`
+  subsystem.
+- Put route coverage in `tests/api/`; use FastAPI dependency overrides instead
+  of patching route internals when the dependency seam exists.
+- Preserve shapes consumed by `web/src/api/`, queries, and stream stores. API,
+  SSE, or WebSocket contract changes require frontend updates and web checks.
 
-## Common feature checks
+## Path and auth safety
 
-- New endpoint: add route logic in `routes/`, schemas in `schemas/` when shared, and tests in `tests/api/routes/`.
-- Streaming/SSE change: check frontend SSE parser/store handling in `web/src/api/` and `web/src/stores/`.
-- Desktop-only auth behavior: check `app.core.desktop_auth` tests and make sure browser/dev flows still work.
-- Keep routes thin; move durable business logic to `app/services/` or `app/agent/`.
+- Pass every externally supplied workspace root through
+  `team_manager.validate_workspace()` or the existing
+  `_validate_workspace_or_422()` wrapper.
+- Resolve user/model-supplied paths inside that root with the established
+  `_safe_resolve()` / `_safe_join*()` helpers; do not concatenate paths.
+- Keep desktop/access-key comparisons constant-time and verify both desktop
+  and browser/dev auth flows when changing middleware or dependencies.
 
-## Commands
+The test fixtures clear inherited `OPENAGENTD_DESKTOP_TOKEN` and
+`OPENAGENTD_ACCESS_KEY`. Do not bypass that isolation with import-time auth
+state.
+
+## Checks
 
 ```bash
-uv run pytest --no-cov -q tests/api
+uv run pytest tests/api -q
 uv run ruff check app/api tests/api
 uv run ty check app/
+make verify-backend
 ```
-
-## Gotchas
-
-- Tests can fail with `401` if `OPENAGENTD_DESKTOP_TOKEN` is inherited; unset it for normal route tests.
-- Preserve response shapes consumed by `web/src/api/client.ts` and query hooks.
-- Use FastAPI dependency overrides in tests instead of monkeypatching route internals when possible.

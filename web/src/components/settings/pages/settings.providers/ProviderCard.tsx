@@ -225,17 +225,17 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
         </span>
 
         {isConfiguredButUnreachable ? (
-          <span className="inline-flex items-center gap-1 rounded bg-(--color-error-subtle) px-1.5 py-0.5 text-[9px] font-semibold text-(--color-error) border border-(--color-error)/15">
+          <span className="inline-flex items-center gap-1 rounded-xs bg-(--color-error-subtle) px-1.5 py-0.5 text-[9px] font-semibold text-(--color-error) border border-(--color-error)/15">
             <AlertCircle size={10} aria-hidden="true" />
             Failed
           </span>
         ) : provider.is_disconnected ? (
-          <span className="inline-flex items-center gap-1 rounded bg-(--bg-key) px-1.5 py-0.5 text-[9px] font-semibold text-(--color-text-muted) border border-(--color-border)">
+          <span className="inline-flex items-center gap-1 rounded-xs bg-(--bg-key) px-1.5 py-0.5 text-[9px] font-semibold text-(--color-text-muted) border border-(--color-border)">
             <WifiOff size={10} aria-hidden="true" />
             Hidden
           </span>
         ) : isConnected ? (
-          <span className="inline-flex items-center gap-1 rounded bg-(--color-success-subtle) px-1.5 py-0.5 text-[9px] font-semibold text-(--color-success) border border-(--color-success)/15">
+          <span className="inline-flex items-center gap-1 rounded-xs bg-(--color-success-subtle) px-1.5 py-0.5 text-[9px] font-semibold text-(--color-success) border border-(--color-success)/15">
             <CheckCircle2 size={10} aria-hidden="true" />
             Connected
           </span>
@@ -244,9 +244,8 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
         {(isConnected || isConfiguredButUnreachable) && (
           <Button
             type="button"
-            size="sm"
+            size="xs"
             variant="ghost"
-            className="h-8 px-2 text-[10.5px] sm:h-6.5"
             onClick={() => void handleDisconnect(!provider.is_disconnected)}
             disabled={disconnectMutation.isPending}
           >
@@ -260,9 +259,8 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
         {provider.docs_url && (
           <Button
             type="button"
-            size="sm"
+            size="xs"
             variant="ghost"
-            className="h-8 px-2 text-[10.5px] sm:h-6.5"
             onClick={() => void openExternalUrl(provider.docs_url)}
           >
             Docs <ExternalLink size={10.5} aria-hidden="true" className="ml-1" />
@@ -289,14 +287,14 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
                 }}
                 placeholder={primaryCredential?.placeholder || (provider.is_configured ? 'Enter a new key to replace current key' : 'Paste API key')}
                 autoComplete="off"
-                className="h-10 text-xs font-mono sm:h-8.5"
+                className="font-mono text-xs"
               />
             </label>
             <Button
               type="button"
               size="sm"
               variant="default"
-              className="h-10 w-full sm:h-8 sm:w-auto"
+              className="w-full sm:w-auto"
               onClick={handleListModels}
               disabled={(!hasCandidateKey && !hasSavedCredentials && !provider.public_access) || listing}
             >
@@ -306,7 +304,7 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
             <Button
               type="button"
               size="sm"
-              className="h-10 w-full sm:h-8 sm:w-auto"
+              className="w-full sm:w-auto"
               onClick={handleSave}
               disabled={!canSave || saveMutation.isPending}
             >
@@ -323,7 +321,7 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
                 onChange={(e) => setBaseUrl(e.target.value)}
                 placeholder={daemon.placeholder}
                 autoComplete="off"
-                className="mt-1 h-10 font-mono sm:h-9"
+                className="mt-1 font-mono text-xs"
                 spellCheck={false}
               />
             </label>
@@ -353,7 +351,7 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
             type="button"
             size="sm"
             variant="default"
-            className="h-10 w-full sm:h-8 sm:w-auto"
+            className="w-full sm:w-auto"
             onClick={handleListModels}
             disabled={!hasSavedCredentials || listing}
           >
@@ -365,7 +363,7 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
               <Button
                 type="button"
                 size="sm"
-                className="h-10 w-full sm:h-8 sm:w-auto"
+                className="w-full sm:w-auto"
                 onClick={() => setOauthOpen(true)}
               >
                 <ShieldCheck size={12} aria-hidden="true" className="mr-1.5" />
@@ -375,7 +373,7 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
                 type="button"
                 size="sm"
                 variant="ghost"
-                className="h-10 w-full sm:h-8 sm:w-auto text-(--color-error) hover:text-(--color-error)"
+                className="w-full sm:w-auto text-(--color-error) hover:text-(--color-error)"
                 onClick={() => void handleOauthDisconnect()}
                 disabled={disconnectOauthMutation.isPending}
               >
@@ -389,7 +387,7 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
             <Button
               type="button"
               size="sm"
-              className="h-10 w-full sm:h-8 sm:w-auto"
+              className="w-full sm:w-auto"
               onClick={() => setOauthOpen(true)}
             >
               <ShieldCheck size={12} aria-hidden="true" className="mr-1.5" />
@@ -430,7 +428,7 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
                 onChange={(e) => setBaseUrl(e.target.value)}
                 placeholder={daemon.placeholder}
                 autoComplete="off"
-                className="h-10 font-mono sm:h-9"
+                className="font-mono text-xs"
                 spellCheck={false}
               />
             </label>
@@ -438,7 +436,7 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
               type="button"
               size="sm"
               variant="default"
-              className="h-10 w-full sm:h-8 sm:w-auto"
+              className="w-full sm:w-auto"
               onClick={handleListModels}
               disabled={listing}
             >
@@ -448,7 +446,7 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
             <Button
               type="button"
               size="sm"
-              className="h-10 w-full sm:h-8 sm:w-auto"
+              className="w-full sm:w-auto"
               onClick={handleSave}
               disabled={saveMutation.isPending}
             >
@@ -478,7 +476,7 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
                   }}
                   placeholder={credential.placeholder}
                   autoComplete="off"
-                  className="mt-1 h-10 font-mono sm:h-9"
+                  className="mt-1 font-mono text-xs"
                   spellCheck={false}
                 />
               </label>
@@ -489,7 +487,7 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
               type="button"
               size="sm"
               variant="default"
-              className="h-10 w-full sm:h-8 sm:w-auto"
+              className="w-full sm:w-auto"
               onClick={handleListModels}
               disabled={(!hasCloudCandidate && !hasSavedCredentials) || listing}
             >
@@ -499,7 +497,7 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
             <Button
               type="button"
               size="sm"
-              className="h-10 w-full sm:h-8 sm:w-auto"
+              className="w-full sm:w-auto"
               onClick={handleSave}
               disabled={!canSave || saveMutation.isPending}
             >

@@ -25,6 +25,18 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.agent.providers.zai.zai import ZAIProvider
 
+
+# Windows does not support signal.SIGALRM; force thread timeout method on win32.
+@pytest.hookimpl(tryfirst=True)
+def pytest_configure(config: pytest.Config) -> None:
+    import sys
+
+    if sys.platform == "win32":
+        if hasattr(config.option, "timeout_method"):
+            config.option.timeout_method = "thread"
+        config._env_timeout_method = "thread"
+
+
 # Me on-disk SQLite file in a tempdir for the test session.  ``:memory:``
 # databases are per-connection, so any code that opens a fresh connection
 # (e.g. async_sessionmaker auto-opening one) sees an empty database with no

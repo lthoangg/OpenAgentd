@@ -44,13 +44,14 @@ export function CompactionDivider({ state, error, summary, sessionId, isStreamin
       : 'Session compacted'
 
   const tone = error
-    ? 'text-(--color-danger)'
+    ? 'text-(--color-error)'
     : state === 'compacting'
       ? 'text-(--color-text-subtle)'
       : 'text-(--color-text-2)'
 
   const trimmed = summary?.trim() ?? ''
   const showBody = trimmed.length > 0 && !error
+  const content = effectiveIsStreaming ? (summary ?? '') : trimmed
 
   return (
     <div role="region" aria-label={label} className="my-4 space-y-3">
@@ -70,7 +71,7 @@ export function CompactionDivider({ state, error, summary, sessionId, isStreamin
         // as a regular assistant text block, just dimmed via --color-text-2
         // to signal it is a derived/system artefact rather than a fresh reply.
         <div className="text-sm text-(--color-text-2)">
-          <LazyMarkdownBlock content={trimmed} sessionId={sessionId} isStreaming={effectiveIsStreaming} />
+          <LazyMarkdownBlock content={content} sessionId={sessionId} isStreaming={effectiveIsStreaming} />
         </div>
       )}
     </div>

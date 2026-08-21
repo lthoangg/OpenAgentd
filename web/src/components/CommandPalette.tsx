@@ -8,9 +8,11 @@
  */
 
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
+import { useDebouncedCallback } from '@tanstack/react-pacer'
 import fuzzysort from 'fuzzysort'
 import { Search, CornerDownLeft } from 'lucide-react'
 import { AppOverlay } from '@/components/ui/app-overlay'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import type { WorkspaceFileInfo } from '@/api/types'
 
 export interface Command {
@@ -44,6 +46,18 @@ interface CommandPaletteProps {
 
 export function CommandPalette({ commands, onClose, workspaceFiles = [], filesTruncated = false, onFileOpen }: CommandPaletteProps) {
   const [query, setQuery] = useState('')
+  const [debouncedQuery, setDebouncedQuery] = useState('')
+  const updateDebouncedQuery = useDebouncedCallback(
+    (val: string) => setDebouncedQuery(val),
+    { wait: 60, key: 'command-palette-query' },
+  )
+
+  const handleQueryChange = (val: string) => {
+    setQuery(val)
+    setActiveIdx(0)
+    updateDebouncedQuery(val)
+  }
+
   const [activeIdx, setActiveIdx] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
@@ -71,6 +85,7 @@ export function CommandPalette({ commands, onClose, workspaceFiles = [], filesTr
 
   const { rows, totalCount, byIdx } = useMemo(() => {
     const q = query.trim().toLowerCase()
+    const fileQ = (debouncedQuery || query).trim().toLowerCase()
 
     // ── Commands ──────────────────────────────────────────────────────────────
     const filteredCmds = commands.filter((cmd) =>
@@ -83,9 +98,9 @@ export function CommandPalette({ commands, onClose, workspaceFiles = [], filesTr
     // ── Files (ranked + capped) ───────────────────────────────────────────────
     let filteredFiles: WorkspaceFileInfo[] = []
     if (hasFiles) {
-      filteredFiles = q
+      filteredFiles = fileQ
         ? fuzzysort
-            .go(q, workspaceFiles, {
+            .go(fileQ, workspaceFiles, {
               key: 'path',
               limit: MAX_FILE_ROWS,
               // Matches the mention and model pickers.
@@ -124,7 +139,7 @@ export function CommandPalette({ commands, onClose, workspaceFiles = [], filesTr
     }
 
     return { rows: out, totalCount: absIdx, byIdx }
-  }, [commands, workspaceFiles, hasFiles, query])
+  }, [commands, workspaceFiles, hasFiles, query, debouncedQuery])
 
   // Reset active index whenever query changes.
   const prevQueryRef = useRef(query)
@@ -179,20 +194,20 @@ export function CommandPalette({ commands, onClose, workspaceFiles = [], filesTr
     >
       <div onKeyDown={handleKeyDown}>
           {/* Search input */}
-          <div className="flex items-center gap-2 border-b border-(--color-border) bg-(--bg-sidebar) px-3 py-2.5">
-            <Search size={13} className="shrink-0 text-(--color-text-muted)" />
+          <div className="flex items-center gap-2.5 border-b border-(--color-border) bg-(--bg-sidebar) px-3.5 py-2.5 md:py-3">
+            <Search size={14} className="shrink-0 text-(--color-text-muted)" />
             <input
               ref={inputRef}
               value={query}
-              onChange={(e) => setQuery(e.target.value)}
+              onChange={(e) => handleQueryChange(e.target.value)}
               placeholder={hasFiles ? 'Search files and commands…' : 'Search commands…'}
-              className="min-w-0 flex-1 bg-transparent text-xs text-(--color-text) placeholder-(--color-text-muted)/60 outline-none"
+              className="min-w-0 flex-1 bg-transparent text-xs text-(--color-text) placeholder-(--color-text-muted)/60 outline-none md:text-sm"
               aria-label="Search commands"
             />
             {query && (
               <button
-                onClick={() => setQuery('')}
-                className="rounded-xs px-1.5 py-1 text-[11px] text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text-2)"
+                onClick={() => handleQueryChange('')}
+                className="rounded-xs px-1.5 py-1 text-[11px] text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40"
               >
                 Clear
               </button>
@@ -200,18 +215,21 @@ export function CommandPalette({ commands, onClose, workspaceFiles = [], filesTr
           </div>
 
           {/* Command + file list */}
-          <div ref={listRef} className="max-h-80 overflow-y-auto overscroll-contain p-1.5">
+          <div ref={listRef} className="max-h-80 overflow-y-auto overscroll-contain p-1.5 md:max-h-[28rem]">
             {totalCount === 0 ? (
-              <p className="px-4 py-6 text-center text-sm text-(--color-text-muted)">
-                No {hasFiles ? 'files or commands' : 'commands'} match "{query}"
-              </p>
+              <div className="flex flex-col items-center justify-center gap-1 px-4 py-8 text-center" role="status">
+                <p className="text-xs text-(--color-text-muted)">
+                  No {hasFiles ? 'files or commands' : 'commands'} match "{query}"
+                </p>
+                <p className="text-[11px] text-(--color-text-subtle)">Try searching for another keyword or path</p>
+              </div>
             ) : (
               rows.map((row, i) => {
                 if (row.type === 'header') {
                   return (
                     <p
                       key={`h-${i}`}
-                      className="px-2 pb-1 pt-2.5 text-[10px] font-semibold uppercase tracking-widest text-(--color-text-muted)"
+                      className="px-2.5 pb-1 pt-2 font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-(--color-text-subtle) select-none"
                     >
                       {row.label}
                     </p>
@@ -251,9 +269,13 @@ export function CommandPalette({ commands, onClose, workspaceFiles = [], filesTr
             <kbd className="rounded-xs border border-(--color-border) bg-(--bg-card) px-1 py-0.5 font-mono text-[10px] text-(--color-text-muted)">Esc</kbd>
             <span className="text-xs text-(--color-text-muted)">close</span>
             {hasFiles && filesTruncated && (
-              <span className="ml-auto truncate text-xs text-(--color-warning)" title="The workspace has more files than the listing cap, so some files are not searchable here.">
-                file list truncated
-              </span>
+              <Tooltip className="ml-auto min-w-0">
+                <TooltipTrigger
+                  className="min-w-0"
+                  render={<span className="truncate text-xs text-(--color-warning)">file list truncated</span>}
+                />
+                <TooltipContent>The workspace has more files than the listing cap, so some files are not searchable here.</TooltipContent>
+              </Tooltip>
             )}
           </div>
       </div>
@@ -273,17 +295,27 @@ function FileRow({ file, idx, isActive, onRun, onActivate }: FileRowProps) {
   return (
     <button
       data-idx={idx}
+      type="button"
       onClick={() => onRun(file)}
       onMouseEnter={() => onActivate(idx)}
-      className={`flex w-full items-center gap-2 rounded-sm border border-transparent px-2.5 py-2 text-left ${
+      className={`group flex w-full min-w-0 items-center justify-between gap-3 rounded-sm border border-transparent px-2.5 py-1.5 text-left transition-colors ${
         isActive
           ? 'border-(--color-border-strong) bg-(--bg-key)/60 text-(--color-text)'
           : 'text-(--color-text-2) hover:border-(--color-border) hover:bg-(--bg-card)'
       }`}
     >
-      <div className="min-w-0 flex-1">
-        <span className="block truncate font-mono text-xs font-medium">{file.name}</span>
-        <span className="block truncate text-xs text-(--color-text-muted)">{file.path}</span>
+      <div className="min-w-0 flex-1 overflow-hidden">
+        <span className="block truncate font-mono text-xs font-medium text-(--color-text)">
+          {file.name}
+        </span>
+        {file.path !== file.name && (
+          <span
+            className="block truncate font-mono text-[10.5px] text-(--color-text-muted)"
+            title={file.path}
+          >
+            {file.path}
+          </span>
+        )}
       </div>
       {isActive && <CornerDownLeft size={12} className="shrink-0 text-(--color-text-muted)" />}
     </button>
@@ -300,34 +332,35 @@ interface CommandRowProps {
 
 function CommandRow({ cmd, idx, isActive, onRun, onActivate }: CommandRowProps) {
   return (
-    <div>
-      <button
-        data-idx={idx}
-        onClick={() => onRun(cmd)}
-        onMouseEnter={() => onActivate(idx)}
-        className={`flex w-full items-center gap-2 rounded-sm border border-transparent px-2.5 py-2 text-left ${
-          isActive
-            ? 'border-(--color-border-strong) bg-(--bg-key)/60 text-(--color-text)'
-            : 'text-(--color-text-2) hover:border-(--color-border) hover:bg-(--bg-card)'
-        }`}
-      >
-        <div className="min-w-0 flex-1">
-          <span className="block text-xs font-medium">{cmd.label}</span>
-          {cmd.description && (
-            <span className="block truncate text-xs text-(--color-text-muted)">
-              {cmd.description}
-            </span>
-          )}
-        </div>
+    <button
+      data-idx={idx}
+      type="button"
+      onClick={() => onRun(cmd)}
+      onMouseEnter={() => onActivate(idx)}
+      className={`group flex w-full min-w-0 items-center justify-between gap-3 rounded-sm border border-transparent px-2.5 py-1.5 text-left transition-colors ${
+        isActive
+          ? 'border-(--color-border-strong) bg-(--bg-key)/60 text-(--color-text)'
+          : 'text-(--color-text-2) hover:border-(--color-border) hover:bg-(--bg-card)'
+      }`}
+    >
+      <div className="min-w-0 flex-1 overflow-hidden">
+        <span className="block truncate text-xs font-medium text-(--color-text)">{cmd.label}</span>
+        {cmd.description && (
+          <span className="block truncate text-[11px] text-(--color-text-muted)">
+            {cmd.description}
+          </span>
+        )}
+      </div>
+      <div className="flex shrink-0 items-center gap-2">
         {cmd.shortcut && (
-          <kbd className="shrink-0 rounded-xs border border-(--color-border) bg-(--bg-card) px-1.5 py-0.5 font-mono text-[10px] text-(--color-text-muted)">
+          <kbd className="rounded-xs border border-(--color-border) bg-(--bg-card) px-1.5 py-0.5 font-mono text-[10px] text-(--color-text-muted)">
             {cmd.shortcut}
           </kbd>
         )}
         {isActive && (
           <CornerDownLeft size={12} className="shrink-0 text-(--color-text-muted)" />
         )}
-      </button>
-    </div>
+      </div>
+    </button>
   )
 }

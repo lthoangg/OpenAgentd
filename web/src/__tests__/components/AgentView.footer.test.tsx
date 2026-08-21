@@ -41,7 +41,6 @@ function renderStream(props: Partial<React.ComponentProps<typeof AgentView>> = {
       blocks={props.blocks ?? []}
       currentBlocks={props.currentBlocks ?? []}
       isWorking={props.isWorking ?? false}
-      onContinue={props.onContinue}
       onMentionFileOpen={props.onMentionFileOpen}
     />
   )
@@ -298,66 +297,16 @@ describe("AgentView — AssistantFooter", () => {
       expect(copyBtn.getAttribute("aria-label")).toBe("Copy response")
     })
 
-    it("copy button has correct title attribute", () => {
+    it("copy button shows a 'Copy' tooltip on hover", async () => {
+      const user = userEvent.setup()
       renderStream({
         blocks: [makeTextBlock("b1", "Hello world")],
         currentBlocks: [],
         isWorking: false,
       })
       const copyBtn = screen.getByRole("button", { name: /copy response/i })
-      expect(copyBtn.getAttribute("title")).toBe("Copy")
-    })
-  })
-
-  describe("continue button", () => {
-    it("renders continue button for the trailing assistant turn", () => {
-      renderStream({
-        blocks: [makeTextBlock("b1", "Hello world")],
-        currentBlocks: [],
-        isWorking: false,
-        onContinue: () => {},
-      })
-
-      expect(screen.queryByRole("button", { name: /continue response/i })).toBeTruthy()
-    })
-
-    it("calls onContinue when clicked", async () => {
-      const user = userEvent.setup()
-      const onContinue = mock(() => {})
-
-      renderStream({
-        blocks: [makeTextBlock("b1", "Hello world")],
-        currentBlocks: [],
-        isWorking: false,
-        onContinue,
-      })
-
-      await user.click(screen.getByRole("button", { name: /continue response/i }))
-
-      expect(onContinue).toHaveBeenCalledOnce()
-    })
-
-    it("does not render continue button while the turn is streaming", () => {
-      renderStream({
-        blocks: [makeTextBlock("b1", "Hello world")],
-        currentBlocks: [],
-        isWorking: true,
-        onContinue: () => {},
-      })
-
-      expect(screen.queryByRole("button", { name: /continue response/i })).toBeNull()
-    })
-
-    it("renders continue button without copy for a tool-only turn", () => {
-      renderStream({
-        blocks: [makeToolBlock("tool1", "shell")],
-        currentBlocks: [],
-        isWorking: false,
-        onContinue: () => {},
-      })
-
-      expect(screen.queryByRole("button", { name: /copy response/i })).toBeNull()
-      expect(screen.queryByRole("button", { name: /continue response/i })).toBeTruthy()
+      await user.hover(copyBtn)
+      expect((await screen.findByRole("tooltip")).textContent).toBe("Copy")
     })
   })
 
@@ -473,7 +422,9 @@ describe("AgentView — AssistantFooter", () => {
       // Look for the timestamp in the footer specifically
       const footer = container.querySelector(".mt-1.flex.items-center.gap-1\\.5")
       expect(footer).toBeTruthy()
-      const timeEl = footer?.querySelector("span")
+      const timeEl = Array.from(footer?.querySelectorAll("span") ?? []).find((el) =>
+        /\d+:\d+/.test(el.textContent ?? ""),
+      )
       expect(timeEl?.textContent).toMatch(/\d+:\d+/)
     })
 
@@ -492,7 +443,9 @@ describe("AgentView — AssistantFooter", () => {
       // Should render the time from the last block (b2)
       const footer = container.querySelector(".mt-1.flex.items-center.gap-1\\.5")
       expect(footer).toBeTruthy()
-      const timeEl = footer?.querySelector("span")
+      const timeEl = Array.from(footer?.querySelectorAll("span") ?? []).find((el) =>
+        /\d+:\d+/.test(el.textContent ?? ""),
+      )
       expect(timeEl?.textContent).toMatch(/\d+:\d+/)
     })
 
@@ -507,8 +460,10 @@ describe("AgentView — AssistantFooter", () => {
       expect(copyBtn).toBeTruthy()
       // Check that there's no footer with timestamp
       const footer = container.querySelector(".mt-1.flex.items-center.gap-1\\.5")
-      const timeSpan = footer?.querySelector("span")
-      expect(timeSpan).toBeNull()
+      const timeSpan = Array.from(footer?.querySelectorAll("span") ?? []).find((el) =>
+        /\d+:\d+/.test(el.textContent ?? ""),
+      )
+      expect(timeSpan).toBeUndefined()
     })
 
     it("renders timestamp from thinking block if it's the last non-user block", () => {
@@ -524,8 +479,10 @@ describe("AgentView — AssistantFooter", () => {
       // The last non-user block is the text block, so it should have a timestamp
       // But since we didn't add one, there should be no timestamp rendered
       const footer = container.querySelector(".mt-1.flex.items-center.gap-1\\.5")
-      const timeSpan = footer?.querySelector("span")
-      expect(timeSpan).toBeNull()
+      const timeSpan = Array.from(footer?.querySelectorAll("span") ?? []).find((el) =>
+        /\d+:\d+/.test(el.textContent ?? ""),
+      )
+      expect(timeSpan).toBeUndefined()
     })
 
     it("renders timestamp from tool block if it's the last non-user block", () => {
@@ -663,7 +620,9 @@ describe("AgentView — AssistantFooter", () => {
       expect(copyBtn).toBeTruthy()
       const footer = container.querySelector(".mt-1.flex.items-center.gap-1\\.5")
       expect(footer).toBeTruthy()
-      const timeEl = footer?.querySelector("span")
+      const timeEl = Array.from(footer?.querySelectorAll("span") ?? []).find((el) =>
+        /\d+:\d+/.test(el.textContent ?? ""),
+      )
       expect(timeEl?.textContent).toMatch(/\d+:\d+/)
     })
   })

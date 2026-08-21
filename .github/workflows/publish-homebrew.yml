@@ -93,12 +93,8 @@ jobs:
 
             def caveats
               <<~EOS
-                This formula installs the base package only. Optional extras are not
-                supported by Homebrew. To install with every optional extra:
-
-                  uv tool install "openagentd[full]"
-                  # or
-                  pip install "openagentd[full]"
+                Run `openagentd --help` to get started, or see
+                https://github.com/lthoangg/OpenAgentd for documentation.
               EOS
             end
 

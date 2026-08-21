@@ -42,22 +42,15 @@ async def test_bedrock_models_use_mantle_with_a_direct_bearer_token() -> None:
 async def test_bedrock_models_generate_a_mantle_bearer_token_from_profile(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    credentials = object()
-
-    class _Session:
-        def __init__(self, *, profile: str) -> None:
-            assert profile == "production"
-
-        def get_credentials(self) -> object:
-            return credentials
-
-    def _provide_token(*, region: str, aws_credentials_provider: object) -> str:
+    def _generate_token(*, region: str, profile_name: str | None = None) -> str:
         assert region == "eu-west-1"
-        assert aws_credentials_provider.load() is credentials
+        assert profile_name == "production"
         return "generated-bedrock-token"
 
-    monkeypatch.setattr("botocore.session.Session", _Session)
-    monkeypatch.setattr("aws_bedrock_token_generator.provide_token", _provide_token)
+    monkeypatch.setattr(
+        "app.agent.providers.bedrock.token.generate_bedrock_bearer_token",
+        _generate_token,
+    )
     route = respx.get("https://bedrock-mantle.eu-west-1.api.aws/v1/models").mock(
         return_value=Response(200, json={"data": [{"id": "openai.gpt-oss-20b"}]})
     )

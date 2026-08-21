@@ -23,13 +23,17 @@ interface FakeTerm {
 }
 
 const createdTerms: FakeTerm[] = []
+const onDataHandlers: Array<(data: string) => void> = []
 
 function makeFakeTerm(): FakeTerm {
   return {
     write: mock(() => {}),
     dispose: mock(() => {}),
     focus: mock(() => {}),
-    onData: mock(() => {}),
+    // Capture the handler so tests can drive real keystrokes through it.
+    onData: mock(((handler: unknown) => {
+      onDataHandlers.push(handler as (data: string) => void)
+    }) as (...args: unknown[]) => unknown),
     options: {},
     rows: 24,
     cols: 80,
@@ -84,6 +88,7 @@ const flush = () => new Promise((r) => setTimeout(r, 0))
 beforeEach(() => {
   _resetTerminalStoreForTests()
   createdTerms.length = 0
+  onDataHandlers.length = 0
   lastSocket = null
   lastCallbacks = null
   connectShouldFail = false
@@ -98,6 +103,37 @@ describe('useTerminalStore', () => {
     // Server output is written to the persistent term instance.
     lastCallbacks!.onOutput('hello')
     expect(createdTerms[0].write).toHaveBeenCalledWith('hello')
+  })
+
+  it('does not build the xterm instance until the lazy chunk resolves', async () => {
+    // @xterm/* is ~352 kB minified and must not be parsed on app start, so
+    // the handle cannot exist synchronously with open().
+    const id = useTerminalStore.getState().open({ workspace: '/tmp/ws' }, '/tmp/ws')
+
+    expect(getTerminalRuntime(id)!.handle).toBeNull()
+    expect(useTerminalStore.getState().sessions[id]?.handleReady).toBeFalsy()
+
+    await flush()
+
+    expect(getTerminalRuntime(id)!.handle).not.toBeNull()
+    expect(useTerminalStore.getState().sessions[id]?.handleReady).toBe(true)
+  })
+
+  it('routes terminal keystrokes to the socket once the handle exists', async () => {
+    const s = useTerminalStore.getState()
+    const id = s.open({ workspace: '/tmp/ws' }, '/tmp/ws')
+    await flush()
+
+    // Exactly one keystroke handler per xterm instance — no double-wiring.
+    expect(onDataHandlers).toHaveLength(1)
+    onDataHandlers[0]('ls\r')
+    expect(lastSocket!.sendInput).toHaveBeenCalledWith('ls\r')
+
+    // Reconnecting an existing handle must not register a second handler.
+    lastCallbacks!.onExit!()
+    s.reconnect(id)
+    await flush()
+    expect(onDataHandlers).toHaveLength(1)
   })
 
   it('numbers titles per context', async () => {

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import stat
+import sys
 from unittest.mock import MagicMock, patch
 
 import httpx
@@ -479,3 +481,39 @@ class TestLogin:
 
         data = _json.loads(path.read_text())
         assert data["github_token"] == "gho_unverified_token"
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="POSIX mode bits are not meaningful on Windows"
+)
+class TestTokenFilePermissions:
+    """The file holds a long-lived GitHub token."""
+
+    def test_saved_token_file_is_owner_only(self, tmp_path):
+        path = tmp_path / "copilot_oauth.json"
+        CopilotOAuth(github_token=SecretStr("gho_secret")).save(path)
+
+        assert stat.S_IMODE(path.stat().st_mode) == 0o600
+
+    def test_existing_loose_token_file_is_tightened(self, tmp_path):
+        """A file written before this rule existed must not stay readable."""
+        path = tmp_path / "copilot_oauth.json"
+        path.write_text("{}", encoding="utf-8")
+        path.chmod(0o644)
+
+        CopilotOAuth(github_token=SecretStr("gho_secret")).save(path)
+
+        assert stat.S_IMODE(path.stat().st_mode) == 0o600
+
+    def test_save_round_trips_through_load(self, tmp_path):
+        """Guard the on-disk format while changing how the file is written."""
+        path = tmp_path / "copilot_oauth.json"
+        CopilotOAuth(
+            github_token=SecretStr("gho_secret"),
+            enterprise_url="https://ghe.example.com",
+        ).save(path)
+
+        loaded = CopilotOAuth.load(path)
+        assert loaded is not None
+        assert loaded.github_token.get_secret_value() == "gho_secret"
+        assert loaded.enterprise_url == "https://ghe.example.com"

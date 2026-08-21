@@ -64,11 +64,11 @@ mock.module('@/components/TeamChatView/TeamChatHeader', () => ({ TeamChatHeader:
 mock.module('@/components/TeamChatView/TeamChatPanels', () => ({ TeamChatPanels: () => null }))
 mock.module('@/components/TeamChatView/AgentTabs', () => ({ AgentTabs: () => null }))
 mock.module('@/components/TeamChatView/useTeamCommands', () => ({ useTeamCommands: () => [] }))
-mock.module('@/components/FloatingInputBar', () => ({
-  FloatingInputBar: forwardRef<
+mock.module('@/components/FloatingInputComposer', () => ({
+  FloatingInputComposer: forwardRef<
     { setValue: (value: string) => void; setFiles: (files: File[]) => void },
     { onValueChange?: (value: string) => void; onSlashCommand?: (id: string) => void }
-  >(function FloatingInputBarMock({ onValueChange, onSlashCommand }, ref) {
+  >(function FloatingInputComposerMock({ onValueChange, onSlashCommand }, ref) {
     useImperativeHandle(ref, () => ({
       setValue: setValueMock,
       setFiles: setFilesMock,
@@ -91,7 +91,6 @@ mock.module('@/stores/useTeamStore', () => {
     loadTeamStatus: async () => {},
     loadSession: async () => {},
     sendMessage: async () => {},
-    continueTeam: async () => {},
     beginResolvedSession: (sessionId: string | null) => { state.sessionId = sessionId },
     isEmptyIdleSession: () => false,
     consumeResolvedSessionReady: () => false,
@@ -143,13 +142,13 @@ describe('TeamChatView session drafts', () => {
     // User types '/new' — draft is saved for session-a
     latestOnValueChange?.('/new')
 
-    // User executes the /new slash command. InputBar calls executeSlashCommand
-    // which: 1) calls setValue('') (InputBar local), 2) calls onSlashCommand('new').
+    // User executes the /new slash command. InputComposer calls executeSlashCommand
+    // which: 1) calls setValue('') (InputComposer local), 2) calls onSlashCommand('new').
     // handleNewSession immediately calls beginResolvedSession(null) → sessionId=null.
     // The onValueChange('') from setValue('') fires AFTER this (useEffect timing).
     latestOnSlashCommand?.('new')
 
-    // Now simulate the deferred onValueChange('') that InputBar fires via useEffect.
+    // Now simulate the deferred onValueChange('') that InputComposer fires via useEffect.
     // By this point store.sessionId is null because beginResolvedSession ran first.
     latestOnValueChange?.('')
 

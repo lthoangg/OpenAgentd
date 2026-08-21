@@ -4,6 +4,7 @@ import { useQueryClient } from '@tanstack/react-query'
 
 import { configureDefaultModel, oauthLoginStream, submitOAuthCallback, type OAuthLoginEvent, type ProviderInfo } from '@/api/client'
 import { Button } from '@/components/ui/button'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { queryKeys } from '@/queries'
@@ -130,17 +131,23 @@ export function OAuthLoginDialog({
                 <p className="text-xs font-medium tracking-[0.18em] text-(--color-text-muted) uppercase">Device code</p>
                 <div className="mt-2 flex flex-col items-center justify-center gap-3 sm:flex-row">
                   <p className="min-w-0 max-w-full break-all font-mono text-2xl font-semibold tracking-[0.12em] text-(--color-text) sm:text-3xl sm:tracking-[0.18em]">{deviceEvent.user_code}</p>
-                  <Button
-                    type="button"
-                    onClick={() => { void copyDeviceCode() }}
-                    variant="default"
-                    size="icon-sm"
-                    className="min-h-9 min-w-9 sm:min-h-0 sm:min-w-0"
-                    aria-label="Copy device code"
-                    title="Copy device code"
-                  >
-                    {codeCopied ? <Check size={15} className="text-(--color-success)" /> : <Copy size={15} />}
-                  </Button>
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={
+                        <Button
+                          type="button"
+                          onClick={() => { void copyDeviceCode() }}
+                          variant="default"
+                          size="icon-sm"
+                          className="min-h-9 min-w-9 sm:min-h-0 sm:min-w-0"
+                          aria-label="Copy device code"
+                        >
+                          {codeCopied ? <Check size={15} className="text-(--color-success)" /> : <Copy size={15} />}
+                        </Button>
+                      }
+                    />
+                    <TooltipContent>Copy device code</TooltipContent>
+                  </Tooltip>
                 </div>
                 <p className="mx-auto mt-2 max-w-sm text-xs leading-relaxed text-(--color-text-muted)">
                   {deviceCodeHelp(provider.id)}
@@ -203,9 +210,9 @@ export function OAuthLoginDialog({
             </form>
           )}
           {isSuccess && (
-            <p className="rounded-sm bg-(--color-success-subtle) p-3 text-sm text-(--color-success)">Connected successfully.</p>
+            <p className="text-sm text-(--color-success)">Connected successfully.</p>
           )}
-          {error && <p className="rounded-sm bg-(--color-error)/10 p-3 text-sm text-(--color-error)">{error}</p>}
+          {error && <p className="text-sm text-(--color-error)">{error}</p>}
           {events.length > 0 && (
             <details className="rounded-sm border border-(--color-border) bg-(--bg-page) p-3">
               <summary className="flex cursor-pointer items-center gap-2 text-xs font-medium text-(--color-text-muted)">

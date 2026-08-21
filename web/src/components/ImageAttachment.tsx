@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { X } from 'lucide-react'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { ImageLightbox } from './ImageLightbox'
 
 interface ImageAttachmentProps {
@@ -61,17 +62,23 @@ export function ImageAttachment({ src, alt = 'Image', onRemove, removable, compa
           />
         </button>
         {removable && onRemove && (
-          <button
-            onClick={(e) => {
-              e.stopPropagation()
-              onRemove()
-            }}
-            className="absolute -right-2 -top-2 flex h-7 w-7 items-center justify-center rounded-sm border border-(--color-border) bg-(--bg-card) text-(--color-text-muted) shadow-sm opacity-100 transition-colors hover:border-(--color-border-strong) hover:text-(--color-text) md:-right-1.5 md:-top-1.5 md:h-4 md:w-4 md:opacity-0 md:group-hover:opacity-100"
-            aria-label="Remove image"
-            title="Remove"
-          >
-            <X size={12} className="md:h-2.5 md:w-2.5" />
-          </button>
+          <Tooltip className="absolute -right-2 -top-2 z-10 md:-right-1.5 md:-top-1.5">
+            <TooltipTrigger
+              render={
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onRemove()
+                  }}
+                  className="flex h-7 w-7 items-center justify-center rounded-sm border border-(--color-border) bg-(--bg-card) text-(--color-text-muted) shadow-sm opacity-100 transition-colors hover:border-(--color-border-strong) hover:text-(--color-text) md:h-4 md:w-4 md:opacity-0 md:group-hover:opacity-100"
+                  aria-label="Remove image"
+                >
+                  <X size={12} className="md:h-2.5 md:w-2.5" />
+                </button>
+              }
+            />
+            <TooltipContent>Remove</TooltipContent>
+          </Tooltip>
         )}
       </div>
 

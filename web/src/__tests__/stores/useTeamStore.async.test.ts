@@ -87,7 +87,7 @@ const mockSendDesktopNotification = mock(() => Promise.resolve()) as any
 
 // ── Store import (AFTER mock.module) ──────────────────────────────────────────
 
-import { useTeamStore, isAwaitingRestartOutput } from "@/stores/useTeamStore"
+import { useTeamStore } from "@/stores/useTeamStore"
 import type { ContentBlock } from "@/api/types"
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -222,88 +222,6 @@ describe("toggleSidebar", () => {
     useTeamStore.getState().toggleSidebar()
     useTeamStore.getState().toggleSidebar()
     expect(useTeamStore.getState().sidebarOpen).toBe(true)
-  })
-})
-
-// ── continueTeam ──────────────────────────────────────────────────────────────
-
-describe("continueTeam", () => {
-  it("posts the continue command for the active session", async () => {
-    useTeamStore.setState({ sessionId: "team-sid" })
-
-    await useTeamStore.getState().continueTeam()
-
-    expect(mockPostTeamCommand).toHaveBeenCalledWith("continue", "team-sid")
-  })
-
-  it("marks the active turn as a continuation while waiting", async () => {
-    let resolveCommand!: () => void
-    mockPostTeamCommand.mockImplementation(() => new Promise((resolve) => {
-      resolveCommand = () => resolve({ status: "accepted", session_id: "team-sid", command: "continue" })
-    }))
-    useTeamStore.setState({ sessionId: "team-sid" })
-
-    const promise = useTeamStore.getState().continueTeam()
-    expect(useTeamStore.getState().isContinuing).toBe(true)
-
-    resolveCommand()
-    await promise
-  })
-
-  it("shows the pending dots while the continued turn spins up", async () => {
-    // /continue restarts the turn with no new user message, so the optimistic
-    // user block that normally drives the dots never exists, and currentBlocks
-    // still holds the turn being continued.
-    let resolveCommand!: () => void
-    mockPostTeamCommand.mockImplementation(() => new Promise((resolve) => {
-      resolveCommand = () => resolve({ status: "accepted", session_id: "team-sid", command: "continue" })
-    }))
-    useTeamStore.setState({
-      sessionId: "team-sid",
-      leadName: "lead",
-      agentStreams: { lead: makeStream({}) },
-    } as never)
-
-    const promise = useTeamStore.getState().continueTeam()
-    expect(isAwaitingRestartOutput(useTeamStore.getState().agentStreams.lead)).toBe(true)
-
-    resolveCommand()
-    await promise
-  })
-
-  it("clears continuation state when the command fails", async () => {
-    mockPostTeamCommand.mockImplementation(() => Promise.reject(new Error("last message is not assistant")))
-    useTeamStore.setState({ sessionId: "team-sid" })
-
-    await useTeamStore.getState().continueTeam()
-
-    expect(useTeamStore.getState().isContinuing).toBe(false)
-  })
-
-  it("connects the stream after the command is accepted", async () => {
-    useTeamStore.setState({ sessionId: "team-sid" })
-
-    await useTeamStore.getState().continueTeam()
-
-    expect(mockTeamStream).toHaveBeenCalledTimes(1)
-  })
-
-  it("sets an error when there is no active session", async () => {
-    await useTeamStore.getState().continueTeam()
-
-    expect(useTeamStore.getState().error).toBe("No active session to continue")
-    expect(mockPostTeamCommand).not.toHaveBeenCalled()
-  })
-
-  it("sets error and stops working when the command fails", async () => {
-    mockPostTeamCommand.mockImplementation(() => Promise.reject(new Error("last message is not assistant")))
-    useTeamStore.setState({ sessionId: "team-sid" })
-
-    await useTeamStore.getState().continueTeam()
-
-    expect(useTeamStore.getState().error).toBe("last message is not assistant")
-    expect(useTeamStore.getState().isTeamWorking).toBe(false)
-    expect(mockTeamStream).not.toHaveBeenCalled()
   })
 })
 
@@ -490,16 +408,6 @@ describe("sendMessage", () => {
     useTeamStore.setState({ leadName: "lead", agentStreams: { lead: makeStream() } })
     await useTeamStore.getState().sendMessage("hello")
     expect(mockPostTeamChat.mock.calls[0][2]).toBe(false)
-  })
-
-  it("passes shell option and visible bang command to postTeamChat", async () => {
-    useTeamStore.setState({ leadName: "lead", agentStreams: { lead: makeStream() } })
-    await useTeamStore.getState().sendMessage("!ls -la", undefined, { shell: true })
-    expect(mockPostTeamChat.mock.calls[0][0]).toBe("!ls -la")
-    expect(mockPostTeamChat.mock.calls[0]).toContain(true)
-    const block = useTeamStore.getState().agentStreams.lead.currentBlocks[0]
-    expect(block.extra?.kind).toBe("user_shell")
-    expect(block.extra?.command).toBe("ls -la")
   })
 
   it("sets sessionId from postTeamChat response", async () => {
@@ -722,7 +630,73 @@ describe("sendMessage: queue behaviour", () => {
     expect(useTeamStore.getState()._pendingMessages).toHaveLength(0)
   })
 
+  // The client picks its send path from its *own* lead status, but only the
+  // backend knows whether the team still owns an active turn
+  // (``has_active_user_turn`` covers members the lead delegated to, which the
+  // client's lead status does not). The response status is the authoritative
+  // answer and both directions of disagreement are routine.
+  it("adopts the backend's queue decision when it queues a send the client thought was immediate", async () => {
+    mockPostTeamChat.mockImplementationOnce(() =>
+      Promise.resolve({ status: "queued", session_id: "session-a", message_id: "srv-1" }),
+    )
+    useTeamStore.setState({
+      sessionId: "session-a",
+      leadName: "lead",
+      agentStreams: {
+        lead: makeStream({ status: "idle" as const }),
+        worker: makeStream({ status: "working" as const }),
+      },
+    })
+
+    await useTeamStore.getState().sendMessage("only show me once")
+
+    // Queued messages render from `_pendingMessages`, never as a live block.
+    expect(useTeamStore.getState().agentStreams.lead.currentBlocks).toHaveLength(0)
+    const pending = useTeamStore.getState()._pendingMessages
+    expect(pending).toHaveLength(1)
+    expect(pending[0].id).toBe("srv-1")
+
+    // …and when the backend drains the queue the message appears exactly once.
+    useTeamStore.getState()._handleSSEEvent("queued_turn_start", {
+      agent: "lead",
+      message_ids: ["srv-1"],
+      messages: [{ id: "srv-1", content: "only show me once" }],
+    })
+    const userBlocks = useTeamStore
+      .getState()
+      .agentStreams.lead.currentBlocks.filter((b) => b.type === "user")
+    expect(userBlocks).toHaveLength(1)
+  })
+
+  it("adopts the backend's dispatch decision when it runs a send the client thought was queued", async () => {
+    mockPostTeamChat.mockImplementationOnce(() =>
+      Promise.resolve({ status: "accepted", session_id: "session-a", message_id: "srv-2" }),
+    )
+    useTeamStore.setState({
+      sessionId: "session-a",
+      leadName: "lead",
+      agentStreams: { lead: makeStream({ status: "working" as const }) },
+    })
+
+    await useTeamStore.getState().sendMessage("go now")
+
+    // Nothing is queued server-side, so no queued chip may linger — the turn
+    // is running and only the optimistic block represents it.
+    expect(useTeamStore.getState()._pendingMessages).toHaveLength(0)
+    const userBlocks = useTeamStore
+      .getState()
+      .agentStreams.lead.currentBlocks.filter((b) => b.type === "user")
+    expect(userBlocks).toHaveLength(1)
+    expect(userBlocks[0].id).toBe("srv-2")
+    expect(userBlocks[0].content).toBe("go now")
+  })
+
   it("does not add optimistic block when message is queued", async () => {
+    // The backend answers "queued" whenever it holds the message back; the
+    // store keys off that status, not off the local lead state.
+    mockPostTeamChat.mockImplementationOnce(() =>
+      Promise.resolve({ status: "queued", session_id: "team-sid", message_id: "pm-q" }),
+    )
     useTeamStore.setState({
       leadName: "lead",
       agentStreams: { lead: makeStream({ status: "working" as const }) },
@@ -732,6 +706,10 @@ describe("sendMessage: queue behaviour", () => {
   })
 
   it("queues multiple messages in order", async () => {
+    let n = 0
+    mockPostTeamChat.mockImplementation(() =>
+      Promise.resolve({ status: "queued", session_id: "team-sid", message_id: `pm-${++n}` }),
+    )
     useTeamStore.setState({
       leadName: "lead",
       agentStreams: { lead: makeStream({ status: "working" as const }) },
@@ -2808,6 +2786,92 @@ describe("loadOlderMessages", () => {
     expect(blocks[0].content).toBe("older")
     expect(blocks[1].content).toBe("newer")
   })
+
+   // Page-boundary regression: the history cursor cuts at arbitrary rows, so a
+  // tool *result* row can land in the first (newest) page while the assistant
+  // row carrying the matching tool_call sits in the older page. The result
+  // must survive the first parse and attach to the card once the older page
+  // is prepended — previously it was silently dropped, leaving the card stuck
+  // "running" with its output missing.
+  it("attaches a tool result orphaned by the page boundary to its card in the older page", async () => {
+    useTeamStore.setState({ leadName: "lead", liveAgentNames: ["lead"] })
+    mockTeamHistory.mockImplementation((_sid: string, cursor?: string) => {
+      if (!cursor) {
+        // Newest page: starts mid-turn with the orphaned tool result.
+        return Promise.resolve({
+          lead: {
+            id: "lead-sess",
+            agent_name: "lead",
+            title: null,
+            created_at: null,
+            updated_at: null,
+            sub_sessions: [],
+            running: false,
+            messages: [
+              makeMessageResponse({
+                id: "m-toolresult",
+                role: "tool",
+                tool_call_id: "call-split",
+                content: "split result",
+                extra: { duration_ms: 42 },
+                created_at: "2024-03-01T00:00:02Z",
+              }),
+              makeMessageResponse({
+                id: "m-final",
+                role: "assistant",
+                content: "done!",
+                created_at: "2024-03-01T00:00:03Z",
+              }),
+            ],
+          },
+          members: [],
+          has_more: true,
+          next_cursor: "2024-03-01T00:00:02Z",
+        })
+      }
+      // Older page: the assistant row that issued the tool call.
+      return Promise.resolve({
+        lead: {
+          id: "lead-sess",
+          agent_name: "lead",
+          title: null,
+          created_at: null,
+          updated_at: null,
+          sub_sessions: [],
+          messages: [
+            makeMessageResponse({
+              id: "m-user",
+              role: "user",
+              content: "run it",
+              created_at: "2024-03-01T00:00:00Z",
+            }),
+            makeMessageResponse({
+              id: "m-call",
+              role: "assistant",
+              content: "",
+              tool_calls: [
+                { id: "call-split", type: "function", function: { name: "shell", arguments: '{"command":"ls"}' } },
+              ],
+              created_at: "2024-03-01T00:00:01Z",
+            }),
+          ],
+        },
+        members: [],
+        has_more: false,
+        next_cursor: null,
+      })
+    })
+
+    await useTeamStore.getState().loadSession("sess-1")
+    await useTeamStore.getState().loadOlderMessages()
+
+    const blocks = useTeamStore.getState().agentStreams["lead"].blocks
+    const tool = blocks.find((b) => b.type === "tool" && b.toolCallId === "call-split")
+    expect(tool).toBeDefined()
+    expect(tool?.toolDone).toBe(true)
+    expect(tool?.toolResult).toBe("split result")
+    expect(tool?.serverDurationMs).toBe(42)
+  })
 })
 
 // ── Ghost-message regression: late SSE after /undo ────────────────────────────
@@ -2967,5 +3031,60 @@ describe("ghost message regression: done event after /undo", () => {
 
     const blocks = useTeamStore.getState().agentStreams.lead.blocks
     expect(blocks.map((b) => b.id)).toEqual(["u1", "a1"])
+  })
+
+  it("does not duplicate an optimistic user block in currentBlocks when queued_turn_start arrives", () => {
+    useTeamStore.setState({
+      sessionId: "session-a",
+      leadName: "lead",
+      isTeamWorking: true,
+      agentStreams: {
+        lead: makeStream({
+          status: "working" as const,
+          blocks: [],
+          currentBlocks: [
+            { id: "user-172345678", type: "user", content: "hello world", timestamp: new Date("2024-01-01T00:00:00Z") },
+          ],
+        }),
+      },
+    })
+
+    useTeamStore.getState()._handleSSEEvent("queued_turn_start", {
+      agent: "lead",
+      message_ids: ["msg-server-1"],
+      messages: [{ id: "msg-server-1", content: "hello world" }],
+    })
+
+    const currentBlocks = useTeamStore.getState().agentStreams.lead.currentBlocks
+    expect(currentBlocks).toHaveLength(1)
+    expect(currentBlocks[0].id).toBe("msg-server-1")
+    expect(currentBlocks[0].content).toBe("hello world")
+  })
+
+  it("does not duplicate a user block in currentBlocks if server message_id was already updated", () => {
+    useTeamStore.setState({
+      sessionId: "session-a",
+      leadName: "lead",
+      isTeamWorking: true,
+      agentStreams: {
+        lead: makeStream({
+          status: "working" as const,
+          blocks: [],
+          currentBlocks: [
+            { id: "msg-server-1", type: "user", content: "hello world", timestamp: new Date("2024-01-01T00:00:00Z") },
+          ],
+        }),
+      },
+    })
+
+    useTeamStore.getState()._handleSSEEvent("queued_turn_start", {
+      agent: "lead",
+      message_ids: ["msg-server-1"],
+      messages: [{ id: "msg-server-1", content: "hello world" }],
+    })
+
+    const currentBlocks = useTeamStore.getState().agentStreams.lead.currentBlocks
+    expect(currentBlocks).toHaveLength(1)
+    expect(currentBlocks[0].id).toBe("msg-server-1")
   })
 })

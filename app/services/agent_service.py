@@ -25,13 +25,8 @@ from loguru import logger
 
 from app.core.paths import session_uploads_dir
 from app.agent.mode.team.member import is_busy
-from app.agent.schemas.events import DoneEvent, ErrorEvent
 from app.services import memory_stream_store as stream_store
-from app.services.shell_service import dispatch_shell_command
 from app.services.stream_envelope import StreamEnvelope
-
-
-_user_shell_tasks: dict[str, set[asyncio.Task[None]]] = {}
 
 
 def _uploads_dir(session_id: str, workspace: str | None = None) -> Path:
@@ -559,83 +554,9 @@ async def dispatch_user_message(
     return sid, len(metas), message_id
 
 
-async def dispatch_user_shell_command(
-    team: "AgentTeam",
-    *,
-    command: str,
-    session_id: str | None,
-    mode: str = "normal",
-    workspace: str | None = None,
-    model: str | None = None,
-    model_provided: bool = False,
-    thinking_level: str | None = None,
-    thinking_level_provided: bool = False,
-    service_tier: str | None = None,
-) -> str:
-    """Run a user-entered shell command in the session workspace."""
-    sid = session_id or str(uuid7())
-    await stream_store.init_turn(sid)
-
-    async def _run_shell() -> None:
-        try:
-            await dispatch_shell_command(
-                team,
-                command=command,
-                session_id=sid,
-                mode=mode,
-                workspace=workspace,
-                model=model,
-                model_provided=model_provided,
-                thinking_level=thinking_level,
-                thinking_level_provided=thinking_level_provided,
-                service_tier=service_tier,
-            )
-        except Exception as exc:
-            logger.warning(
-                "agent_service_shell_failed session_id={} error={}", sid, exc
-            )
-            await stream_store.push_event(
-                sid,
-                StreamEnvelope.from_event(ErrorEvent(message=str(exc))),
-            )
-            await stream_store.push_event(sid, StreamEnvelope.from_event(DoneEvent()))
-            await stream_store.mark_done(sid)
-            try:
-                from app.services import event_broadcaster
-
-                await event_broadcaster.publish(
-                    "session_turn_completed",
-                    {
-                        "session_id": sid,
-                        "status": "completed",
-                    },
-                )
-            except Exception as publish_exc:
-                logger.warning(
-                    "agent_service_shell_publish_failed error={}", publish_exc
-                )
-
-    task = asyncio.create_task(_run_shell(), name=f"user_shell:{sid}")
-    session_tasks = _user_shell_tasks.setdefault(sid, set())
-    session_tasks.add(task)
-
-    def _discard_finished_shell(finished: asyncio.Task[None]) -> None:
-        tasks = _user_shell_tasks.get(sid)
-        if tasks is None:
-            return
-        tasks.discard(finished)
-        if not tasks:
-            _user_shell_tasks.pop(sid, None)
-
-    task.add_done_callback(_discard_finished_shell)
-    logger.info("agent_service_shell_dispatched session_id={}", sid)
-    return sid
-
-
 async def interrupt_team(team: "AgentTeam", session_id: str | None) -> list[str]:
     """Cancel all working team members. Returns the cancelled member names."""
     from app.agent.schemas.chat import HumanMessage
-    from app.agent.tools.builtin.shell import stop_background_processes_for_session
     from app.agent.tools.builtin.todo import release_in_progress_for_actor
     from app.core.db import resolve_db_factory
     from app.services.chat_service import release_queued_user_messages, save_message
@@ -692,51 +613,12 @@ async def interrupt_team(team: "AgentTeam", session_id: str | None) -> list[str]
         and not task.done()
     ]
 
-    direct_shell_tasks = (
-        list(_user_shell_tasks.pop(effective_session_id, ()))
-        if effective_session_id
-        else []
-    )
-
     # Issue every cancellation before waiting for cleanup, so one slow task
     # cannot delay cancellation of the others.
     for member in working_members:
         member.interrupt()
-    for task in direct_shell_tasks:
-        task.cancel()
-    background_cleanup = (
-        asyncio.create_task(stop_background_processes_for_session(effective_session_id))
-        if effective_session_id
-        else None
-    )
-    cleanup_tasks = [*active_tasks, *direct_shell_tasks]
-    if background_cleanup is not None:
-        cleanup_tasks.append(background_cleanup)
-    if cleanup_tasks:
-        await asyncio.gather(*cleanup_tasks, return_exceptions=True)
-
-    if direct_shell_tasks:
-        logger.info(
-            "team_interrupt_user_shells session_id={} cancelled={}",
-            effective_session_id,
-            len(direct_shell_tasks),
-        )
-    if background_cleanup is not None:
-        try:
-            stopped_background = background_cleanup.result()
-        except Exception as exc:
-            logger.warning(
-                "team_interrupt_background_shells_failed session_id={} error={}",
-                effective_session_id,
-                exc,
-            )
-        else:
-            if stopped_background:
-                logger.info(
-                    "team_interrupt_background_shells session_id={} stopped={}",
-                    effective_session_id,
-                    stopped_background,
-                )
+    if active_tasks:
+        await asyncio.gather(*active_tasks, return_exceptions=True)
 
     live_members = getattr(team, "members", {})
     if isinstance(live_members, dict):

@@ -61,6 +61,53 @@ describe("ToolCall - LSP operation display", () => {
     expect(getHeader("LSP: Symbols in app/agent/tools/builtin/lsp.py")).toBeTruthy()
   })
 
+  it("shows the hover position", () => {
+    render(
+      <ToolCall
+        name="lsp"
+        args={JSON.stringify({
+          operation: "hover",
+          path: "app/services/lsp/manager.py",
+          line: 668,
+          character: 9,
+        })}
+      />,
+    )
+
+    expect(getHeader("LSP: Hover at app/services/lsp/manager.py:668:9")).toBeTruthy()
+  })
+
+  it("shows the implementations path and position", () => {
+    render(
+      <ToolCall
+        name="lsp"
+        args={JSON.stringify({
+          operation: "find_implementations",
+          path: "app/services/lsp/manager.py",
+          line: 668,
+          character: 9,
+        })}
+      />,
+    )
+
+    expect(getHeader("LSP: Implementations at app/services/lsp/manager.py:668:9")).toBeTruthy()
+  })
+
+  it("shows the document symbol kind filter", () => {
+    render(
+      <ToolCall
+        name="lsp"
+        args={JSON.stringify({
+          operation: "document_symbol",
+          path: "app/agent/tools/builtin/lsp.py",
+          kind: "function",
+        })}
+      />,
+    )
+
+    expect(getHeader("LSP: Function symbols in app/agent/tools/builtin/lsp.py")).toBeTruthy()
+  })
+
   it("shows the workspace symbol query and representative source", () => {
     render(
       <ToolCall
@@ -75,6 +122,24 @@ describe("ToolCall - LSP operation display", () => {
 
     expect(
       getHeader('LSP: Workspace symbols "navigation" via app/services/lsp/manager.py'),
+    ).toBeTruthy()
+  })
+
+  it("shows the workspace symbol kind filter alongside the query", () => {
+    render(
+      <ToolCall
+        name="lsp"
+        args={JSON.stringify({
+          operation: "workspace_symbol",
+          path: "app/services/lsp/manager.py",
+          query: "navigation",
+          kind: "class",
+        })}
+      />,
+    )
+
+    expect(
+      getHeader('LSP: Workspace symbols "navigation" (class) via app/services/lsp/manager.py'),
     ).toBeTruthy()
   })
 

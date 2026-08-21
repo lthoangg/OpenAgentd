@@ -63,6 +63,50 @@ describe("AssistantTurn — which blocks count as streaming", () => {
     expect(streaming["tool-1"]).toBe(false)
     expect(streaming["text-1"]).toBe(false)
   })
+
+  it("marks a compaction block as streaming while compacting and working", () => {
+    const compactionBlocks: ContentBlock[] = [
+      { id: "comp-1", type: "compaction", content: "Summarizing...", extra: { state: "compacting" } },
+    ]
+    const streaming: Record<string, boolean> = {}
+    render(
+      <AssistantTurn
+        blocks={compactionBlocks}
+        startIndex={0}
+        finalizedCount={compactionBlocks.length}
+        isWorking={true}
+        isTrailingTurn
+        totalBlocks={compactionBlocks.length}
+        renderBlock={({ block, isStreaming }) => {
+          streaming[block.id] = isStreaming
+          return null
+        }}
+      />,
+    )
+    expect(streaming["comp-1"]).toBe(true)
+  })
+
+  it("marks a compacted block as not streaming even if isWorking is true", () => {
+    const compactionBlocks: ContentBlock[] = [
+      { id: "comp-1", type: "compaction", content: "Summary", extra: { state: "compacted" } },
+    ]
+    const streaming: Record<string, boolean> = {}
+    render(
+      <AssistantTurn
+        blocks={compactionBlocks}
+        startIndex={0}
+        finalizedCount={compactionBlocks.length}
+        isWorking={true}
+        isTrailingTurn
+        totalBlocks={compactionBlocks.length}
+        renderBlock={({ block, isStreaming }) => {
+          streaming[block.id] = isStreaming
+          return null
+        }}
+      />,
+    )
+    expect(streaming["comp-1"]).toBe(false)
+  })
 })
 
 describe("AssistantTurnFooter", () => {
@@ -75,12 +119,11 @@ describe("AssistantTurnFooter", () => {
       responseDurationMs: 1234,
     }]
 
-    render(<AssistantTurnFooter turnBlocks={blocks} onContinue={() => undefined} />)
+    render(<AssistantTurnFooter turnBlocks={blocks} />)
 
     expect(screen.getByLabelText("Copy response")).toBeTruthy()
-    expect(screen.getByLabelText("Continue response")).toBeTruthy()
     expect(screen.getByText("12:34")).toBeTruthy()
-    expect(screen.getByTitle("Response duration").textContent).toBe("1.2s")
+    expect(screen.getByText("1.2s")).toBeTruthy()
   })
 
   it("shows long response durations as minutes and seconds", () => {
@@ -93,7 +136,7 @@ describe("AssistantTurnFooter", () => {
 
     render(<AssistantTurnFooter turnBlocks={blocks} />)
 
-    expect(screen.getByTitle("Response duration").textContent).toBe("1m 33s")
+    expect(screen.getByText("1m 33s")).toBeTruthy()
   })
 })
 
@@ -121,28 +164,20 @@ describe("AssistantTurn — a turn suspended on a question", () => {
         isTurnOpen={isTurnOpen}
         isTrailingTurn
         totalBlocks={1}
-        onContinue={() => undefined}
         renderBlock={({ block }: { block: ContentBlock }) => <div>{block.content}</div>}
       />,
     )
   }
 
-  it("offers no Continue while the turn is still open", () => {
-    renderTurn(true)
-
-    expect(screen.queryByLabelText("Continue response")).toBeNull()
-  })
-
   it("shows no response duration while the turn is still open", () => {
     renderTurn(true)
 
-    expect(screen.queryByTitle("Response duration")).toBeNull()
+    expect(screen.queryByText("1.2s")).toBeNull()
   })
 
-  it("restores both once the turn actually ends", () => {
+  it("restores response duration once the turn actually ends", () => {
     renderTurn(false)
 
-    expect(screen.getByLabelText("Continue response")).toBeTruthy()
-    expect(screen.getByTitle("Response duration").textContent).toBe("1.2s")
+    expect(screen.getByText("1.2s")).toBeTruthy()
   })
 })

@@ -10,10 +10,10 @@ describe('TokenMeter', () => {
   it('shows detail on hover', async () => {
     const user = userEvent.setup()
 
-    render(<TokenMeter input={1500} output={200} cached={30} />)
+    render(<TokenMeter input={1500} output={200} cached={30} cachedPercent={2} />)
 
     const trigger = screen.getByRole('button', {
-      name: 'Input: 1,500 / 250,000 (1%) · Output: 200 · Cache: 30',
+      name: 'Input: 1,500 / 250,000 (1%) · Output: 200 · Cache: 2.00%',
     })
 
     await user.hover(trigger)
@@ -22,7 +22,7 @@ describe('TokenMeter', () => {
     expect(screen.getByText('input')).toBeTruthy()
     expect(screen.getByText('1,500')).toBeTruthy()
     expect(screen.getByText('200')).toBeTruthy()
-    expect(screen.getByText('30')).toBeTruthy()
+    expect(screen.getByText('2.00%')).toBeTruthy()
   })
 
   it('shows estimated session costs to four decimal places', async () => {
@@ -42,10 +42,10 @@ describe('TokenMeter', () => {
   it('closes after hover when the pointer leaves', async () => {
     const user = userEvent.setup()
 
-    render(<TokenMeter input={1500} output={200} cached={30} />)
+    render(<TokenMeter input={1500} output={200} cached={30} cachedPercent={2} />)
 
     const trigger = screen.getByRole('button', {
-      name: 'Input: 1,500 / 250,000 (1%) · Output: 200 · Cache: 30',
+      name: 'Input: 1,500 / 250,000 (1%) · Output: 200 · Cache: 2.00%',
     })
 
     await user.hover(trigger)
@@ -58,10 +58,10 @@ describe('TokenMeter', () => {
   it('stays open after click until toggled off', async () => {
     const user = userEvent.setup()
 
-    render(<TokenMeter input={1500} output={200} cached={30} />)
+    render(<TokenMeter input={1500} output={200} cached={30} cachedPercent={2} />)
 
     const trigger = screen.getByRole('button', {
-      name: 'Input: 1,500 / 250,000 (1%) · Output: 200 · Cache: 30',
+      name: 'Input: 1,500 / 250,000 (1%) · Output: 200 · Cache: 2.00%',
     })
 
     await user.click(trigger)

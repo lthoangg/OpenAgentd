@@ -1,11 +1,9 @@
 /**
  * SessionTools — what this session can actually do, grouped by origin.
  *
- * Collapsed by default. The inventory is reference material you consult
+ * Open by default in session settings. The inventory is reference material you consult
  * occasionally, while the model picker and the MCP switches above it are used
- * every session, so the tools must not push those below the fold. Opening it is
- * one click and the state is per-mount, which is the right default for a panel
- * you dismiss with Esc.
+ * every session. Users can toggle it closed if needed.
  *
  * Enable/disable for MCP servers deliberately lives in `SessionMcpServers`, not
  * here. This section only reads.
@@ -18,9 +16,9 @@ import type { AgentInfo } from '@/api/types'
 import { SearchBar } from '@/components/ui/search-bar'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 // LazyMarkdownBlock (not MarkdownBlock) — a static import of `@/utils/markdown`
-// here would force the whole react-markdown chunk (~724 kB) to load and parse
-// at startup, defeating the app-wide lazy-markdown split (rolldown warns with
-// INEFFECTIVE_DYNAMIC_IMPORT). Tool descriptions render on expand, so the
+// here would force the whole markdown chunk (renderer + Mermaid) to load and
+// parse at startup, defeating the app-wide lazy-markdown split (rolldown warns
+// with INEFFECTIVE_DYNAMIC_IMPORT). Tool descriptions render on expand, so the
 // plain-text Suspense fallback is fine.
 import { LazyMarkdownBlock } from '@/utils/LazyMarkdownBlock'
 
@@ -138,11 +136,13 @@ function ToolGroupSection({ server, tools }: ToolGroup) {
 export function SessionTools({
   tools,
   mcpServers,
+  defaultOpen = true,
 }: {
   tools: AgentInfo['tools']
   mcpServers: string[]
+  defaultOpen?: boolean
 }) {
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useState(defaultOpen)
   const [query, setQuery] = useState('')
   const showSearch = tools.length > TOOL_SEARCH_THRESHOLD
 

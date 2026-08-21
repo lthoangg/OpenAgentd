@@ -6,10 +6,14 @@ from uuid import uuid7
 import pytest
 from loguru import logger
 
-from app.agent.schemas.chat import AssistantMessage, HumanMessage
+from app.agent.schemas.chat import (
+    AssistantMessage,
+    HumanMessage,
+    SystemMessage,
+    ToolMessage,
+)
 from app.models.chat import SessionMessage
 from app.services.chat_service_messages import (
-    USER_SHELL_LLM_CONTENT,
     apply_llm_content_overrides,
     deserialize_messages,
 )
@@ -73,6 +77,45 @@ def test_deserialize_messages_keeps_valid_tool_call_json(session_id, caplog_logu
     assert isinstance(result[0], AssistantMessage)
     assert result[0].tool_calls is not None
     assert result[0].tool_calls[0].id == "call_1"
+
+
+def test_deserialize_messages_projects_rows_without_generic_model_dump(
+    session_id, monkeypatch
+):
+    """The DB-to-runtime boundary selects fields by role instead of dumping rows.
+
+    ``SessionMessage.model_dump()`` serializes every persistence field before the
+    discriminated union validates the same data again.  Besides wasting work on
+    every history load, that makes it unclear which DB fields belong in the
+    runtime/model-facing representation.
+    """
+    db_messages = [
+        make_session_message(role="system", content="system", session_id=session_id),
+        make_session_message(role="user", content="hello", session_id=session_id),
+        make_session_message(role="assistant", content="answer", session_id=session_id),
+        make_session_message(
+            role="tool",
+            content="result",
+            tool_call_id="call_1",
+            name="read",
+            session_id=session_id,
+        ),
+    ]
+
+    def fail_generic_dump(*_args, **_kwargs):
+        raise AssertionError("generic SessionMessage.model_dump() used")
+
+    monkeypatch.setattr(SessionMessage, "model_dump", fail_generic_dump)
+
+    result = deserialize_messages(db_messages)
+
+    assert [type(message) for message in result] == [
+        SystemMessage,
+        HumanMessage,
+        AssistantMessage,
+        ToolMessage,
+    ]
+    assert [message.db_id for message in result] == [row.id for row in db_messages]
 
 
 def test_deserialize_messages_strips_partial_tool_calls_and_orphans(
@@ -210,18 +253,6 @@ def test_apply_llm_content_overrides_multiple_attachments():
     assert "a.py" in parts[0].text
     assert "b.png" in parts[1].text
     assert parts[2].text == "go"
-
-
-def test_apply_llm_content_overrides_marks_shell_messages():
-    messages = [
-        HumanMessage(content="rm -rf", extra={"kind": "user_shell"}),
-        HumanMessage(content="keep me", extra={"kind": "plain"}),
-    ]
-
-    result = apply_llm_content_overrides(messages)
-
-    assert result[0].content == USER_SHELL_LLM_CONTENT
-    assert result[1].content == "keep me"
 
 
 def test_deserialize_messages_with_sanitize_tool_pairs_drops_orphan_tool(

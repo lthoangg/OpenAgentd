@@ -773,3 +773,35 @@ def test_non_forced_refresh_respects_the_cache_ttl(
 
     monkeypatch.setattr(model_registry, "_fetch_models_dev", fail_if_called)
     model_registry.refresh_model_registry(force=False)
+
+
+def test_get_model_metadata_falls_back_to_bare_model_suffix(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        model_registry.settings, "OPENAGENTD_CACHE_DIR", str(tmp_path / "cache")
+    )
+    monkeypatch.setattr(
+        model_registry.settings, "OPENAGENTD_CONFIG_DIR", str(tmp_path / "config")
+    )
+    monkeypatch.setattr(
+        model_registry.settings, "OPENAGENTD_MODEL_REGISTRY_REFRESH", True
+    )
+    monkeypatch.setattr(
+        model_registry,
+        "_fetch_models_dev",
+        lambda: {
+            "openai": {
+                "models": {
+                    "gpt-bare-test": {
+                        "id": "gpt-bare-test",
+                        "cost": {"input": 2.5, "output": 10.0},
+                    }
+                }
+            }
+        },
+    )
+
+    assert get_model_cost("openai:gpt-bare-test").input == 2.5
+    assert get_model_cost("gpt-bare-test").input == 2.5
+    assert get_model_cost("gpt-bare-test").output == 10.0

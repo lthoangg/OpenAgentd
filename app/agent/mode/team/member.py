@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import abc
 import asyncio
+import copy
 import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
@@ -33,7 +34,6 @@ from app.agent.agent_loop import Agent
 from app.agent.checkpointer import SQLiteCheckpointer
 from app.agent.drift import detect_drift, stamp_agent_files
 from app.agent.hooks.base import BaseAgentHook
-from app.agent.hooks.continuation import ContinuationHook
 from app.agent.hooks.dynamic_prompt import inject_current_date
 from app.agent.hooks.workspace_instructions import WorkspaceInstructionsHook
 from app.agent.hooks.otel import OpenTelemetryHook
@@ -45,7 +45,11 @@ from app.agent.mode.team.hooks.team_inbox import TeamInboxHook
 from app.agent.mode.team.hooks.team_prompt import AgentTeamProtocolHook
 from app.agent.hooks.tool_result_offload import ToolResultOffloadHook
 from app.agent.plugins.role import reset_role, set_role
-from app.agent.sandbox import SandboxConfig, _sandbox_ctx, set_sandbox
+from app.agent.denied_paths import (
+    DeniedPathsConfig,
+    _denied_paths_ctx,
+    set_denied_paths,
+)
 from app.core.paths import session_workspace_dir
 from app.agent.permission import (
     AutoAllowPermissionService,
@@ -53,11 +57,17 @@ from app.agent.permission import (
     _permission_ctx,
 )
 from app.agent.schemas.agent import RunConfig
-from app.agent.schemas.chat import HumanMessage
+from app.agent.schemas.chat import ChatMessage, HumanMessage
 from app.agent.mode.team.mailbox import Message
 from app.core.db import DbFactory, resolve_db_factory
 from app.models.chat import ChatSession, SessionMessage
-from app.services.chat_service import get_messages_for_llm, save_message
+from app.services.chat_service import (
+    get_history_cursor,
+    get_history_revision,
+    get_messages_for_llm,
+    get_messages_for_llm_after,
+    save_message,
+)
 
 MAX_OPEN_TASK_NUDGES = 1
 
@@ -299,6 +309,9 @@ class TeamMemberBase(abc.ABC):
         self._team: AgentTeam | None = None
         self._mailbox: TeamMailbox | None = None
         self._open_task_nudge_counts: dict[str, int] = {}
+        self._llm_history: list[ChatMessage] = []
+        self._llm_history_revision: tuple[int, int] | None = None
+        self._llm_history_cursor: tuple[int, uuid.UUID] | None = None
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -406,33 +419,6 @@ class TeamMemberBase(abc.ABC):
         self.state = "working"
         self._active_task = asyncio.create_task(
             self._run_activation(), name=f"activate:{self.name}"
-        )
-
-    def activate_for_continuation(self) -> None:
-        """Spawn an activation task that resumes from existing DB history.
-
-        Used by ``AgentTeam.handle_continue`` to run the agent without an
-        inbox message — the LLM call uses the existing session history
-        verbatim, which (for /continue) ends in the prior assistant turn.
-        The resulting first assistant message is stamped with
-        ``extra["is_continuation"] = True`` by :class:`ContinuationHook`.
-
-        The state check + state mutation form one logical step here so two
-        concurrent ``/continue`` requests cannot both observe ``idle`` and
-        race into ``_run_activation``.  Callers (notably
-        :meth:`AgentTeam.handle_continue`) should catch
-        :class:`AlreadyWorkingError` and translate it to their own
-        precondition error type.
-
-        Raises:
-            AlreadyWorkingError: if the agent is already working.
-        """
-        if is_busy(self.state):
-            raise AlreadyWorkingError(self.name)
-        self.state = "working"
-        self._active_task = asyncio.create_task(
-            self._run_activation(is_continuation=True),
-            name=f"continue:{self.name}",
         )
 
     def activate_for_compaction(self) -> None:
@@ -579,19 +565,12 @@ class TeamMemberBase(abc.ABC):
     async def _run_activation(
         self,
         *,
-        is_continuation: bool = False,
         force_compaction: bool = False,
         question_resume: bool = False,
     ) -> None:
         """One-shot activation: drain inbox, process, return to idle.
 
-        When ``is_continuation`` is True the inbox drain/persist/SSE-emit
-        steps are skipped — the agent runs against the current DB history
-        verbatim, which (for /continue) ends in the prior assistant turn so
-        the provider continues from there.  The resulting first assistant
-        message is stamped via :class:`ContinuationHook`.
-
-        ``question_resume`` is the same history-only path, used after the user
+        ``question_resume`` is the history-only path, used after the user
         answered an ``ask_user``.
         """
         assert self._mailbox is not None
@@ -607,7 +586,7 @@ class TeamMemberBase(abc.ABC):
 
         self._cancel_event.clear()
 
-        if is_continuation or force_compaction or question_resume:
+        if force_compaction or question_resume:
             # Control-command path — no inbox messages; run on DB history.
             pending: list[Message] = []
         else:
@@ -628,10 +607,9 @@ class TeamMemberBase(abc.ABC):
         # state was already set to "working" by _maybe_activate
         await self._team._emit(agent=self.name, event="agent_status", status="working")
         logger.info(
-            "team_member_activated name={} messages={} continuation={}",
+            "team_member_activated name={} messages={}",
             self.name,
             len(pending),
-            is_continuation,
         )
 
         # Re-check drift at turn start so edits made between turns
@@ -644,7 +622,7 @@ class TeamMemberBase(abc.ABC):
         # Let subclass reset bookkeeping
         self._on_wake(pending)
 
-        if not is_continuation and not question_resume:
+        if not question_resume:
             # Format + persist inbox RIGHT AFTER receiving (one row per message)
             inbox_msgs = await self._persist_inbox(pending)
 
@@ -662,7 +640,6 @@ class TeamMemberBase(abc.ABC):
 
         try:
             await self._handle_messages(
-                is_continuation=is_continuation,
                 force_compaction=force_compaction,
                 question_resume=question_resume,
             )
@@ -698,11 +675,19 @@ class TeamMemberBase(abc.ABC):
                 logger.exception("team_member_error name={} error={}", self.name, exc)
             await self._on_turn_error(exc)
             self.state = "error"
+            from app.agent.errors import format_agent_error
+
+            err_info = format_agent_error(exc, agent_name=self.name)
             await self._team._emit(
                 agent=self.name,
                 event="agent_status",
                 status="error",
-                extra={"message": str(exc)},
+                extra={
+                    "message": err_info["message"],
+                    "title": err_info["title"],
+                    "code": err_info["code"],
+                    "category": err_info["category"],
+                },
             )
 
         finally:
@@ -869,20 +854,43 @@ class TeamMemberBase(abc.ABC):
     # Message handling
     # ------------------------------------------------------------------
 
+    async def _load_turn_history(
+        self, db, session_uuid: uuid.UUID
+    ) -> list[ChatMessage]:
+        revision = await get_history_revision(db, session_uuid)
+        cursor = await get_history_cursor(db, session_uuid)
+        cached = self._llm_history
+        if (
+            cached
+            and self._llm_history_revision is not None
+            and self._llm_history_cursor is not None
+        ):
+            if (
+                revision == self._llm_history_revision
+                and cursor == self._llm_history_cursor
+            ):
+                return copy.deepcopy(cached)
+            if revision == self._llm_history_revision:
+                delta = await get_messages_for_llm_after(
+                    db, session_uuid, self._llm_history_cursor
+                )
+                history = cached + delta
+            else:
+                history = await get_messages_for_llm(db, session_uuid)
+        else:
+            history = await get_messages_for_llm(db, session_uuid)
+        self._llm_history_revision = revision
+        self._llm_history_cursor = cursor
+        self._llm_history = copy.deepcopy(history)
+        return history
+
     async def _handle_messages(
         self,
         *,
-        is_continuation: bool = False,
         force_compaction: bool = False,
         question_resume: bool = False,
     ) -> None:
-        """Load full history from DB and call agent.run().
-
-        When ``is_continuation`` is True a one-shot
-        :class:`ContinuationHook` is appended to the hooks list so the
-        very first assistant message produced by this run gets
-        ``extra["is_continuation"] = True``.
-        """
+        """Load full history from DB and call agent.run()."""
         assert self._team is not None
 
         db_factory = resolve_db_factory(self.db_factory)
@@ -890,7 +898,7 @@ class TeamMemberBase(abc.ABC):
 
         async with db_factory() as db:
             try:
-                history = await get_messages_for_llm(db, session_uuid)
+                history = await self._load_turn_history(db, session_uuid)
             except Exception:
                 history = []
             session_row = await db.get(ChatSession, session_uuid)
@@ -952,7 +960,7 @@ class TeamMemberBase(abc.ABC):
         publisher_hook = StreamPublisherHook(
             session_id=lead_session_id,
             agent_name=self.name,
-            publish_reasoning=not is_continuation,
+            publish_reasoning=True,
         )
 
         # Inject team protocol via hook
@@ -1013,12 +1021,6 @@ class TeamMemberBase(abc.ABC):
             if title_hook is not None:
                 hooks.append(title_hook)
 
-        # Continuation stamp — one-shot, flags the first assistant message
-        # of this run as a continuation of the prior assistant turn so the
-        # frontend can render it tight against that prior bubble.
-        if is_continuation:
-            hooks.append(ContinuationHook())
-
         # Build checkpointer — stream_session_id + agent_name let it clear
         # this agent's stream buffer after each persist, preventing
         # duplicate blocks on mid-turn refresh.
@@ -1068,8 +1070,10 @@ class TeamMemberBase(abc.ABC):
 
         # Coding mode uses the exact project workspace for every team member.
         workspace = str(session_workspace_dir(lead_session_id, self._team.workspace))
-        session_sandbox = SandboxConfig(workspace=workspace, session_id=lead_session_id)
-        token = set_sandbox(session_sandbox)
+        session_sandbox = DeniedPathsConfig(
+            workspace=workspace, session_id=lead_session_id
+        )
+        token = set_denied_paths(session_sandbox)
 
         # Scope permission service to this agent run — auto-allows by default,
         # fires SSE events so the frontend can optionally show an approval UI.
@@ -1080,7 +1084,7 @@ class TeamMemberBase(abc.ABC):
         role_token = set_role(self._role_label)
 
         try:
-            await self.agent.run(
+            run_messages = await self.agent.run(
                 run_messages,
                 config=config,
                 hooks=hooks,
@@ -1090,6 +1094,14 @@ class TeamMemberBase(abc.ABC):
                 llm_provider=runtime_provider,
                 model_id=runtime_model,
             )
+            self._llm_history = copy.deepcopy(run_messages)
+            async with db_factory() as history_db:
+                self._llm_history_revision = await get_history_revision(
+                    history_db, session_uuid
+                )
+                self._llm_history_cursor = await get_history_cursor(
+                    history_db, session_uuid
+                )
 
             # ``ask_user`` suspended the turn: the loop reports it
             # through the run config rather than raising, because the turn is
@@ -1110,7 +1122,7 @@ class TeamMemberBase(abc.ABC):
             if runtime_provider is not None:
                 await _close_provider(runtime_provider)
             reset_role(role_token)
-            _sandbox_ctx.reset(token)
+            _denied_paths_ctx.reset(token)
             _permission_ctx.reset(perm_token)
 
         # If interrupted, mark last assistant message
@@ -1297,7 +1309,7 @@ class TeamLead(TeamMemberBase):
         :class:`AgentNotConfiguredEvent` by the base class; we skip the
         generic ``ErrorEvent`` here so the UI doesn't show two banners.
         """
-        from app.agent.errors import ProviderAuthenticationError
+        from app.agent.errors import ProviderAuthenticationError, format_agent_error
         from app.agent.providers.unconfigured import UnconfiguredProviderError
 
         await super()._on_turn_error(exc)
@@ -1308,12 +1320,18 @@ class TeamLead(TeamMemberBase):
         from app.services import memory_stream_store as stream_store
         from app.services.stream_envelope import StreamEnvelope
 
+        err_info = format_agent_error(exc, agent_name=self.name)
+
         try:
             await stream_store.push_event(
                 self.session_id,
                 StreamEnvelope.from_event(
                     ErrorEvent(
                         message=f"Lead agent '{self.name}' failed: {exc}",
+                        title=err_info["title"],
+                        code=err_info["code"],
+                        category=err_info["category"],
+                        agent=self.name,
                         metadata={"agent": self.name, "exception": type(exc).__name__},
                     )
                 ),

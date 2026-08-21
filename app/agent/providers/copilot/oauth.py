@@ -23,6 +23,8 @@ from urllib.parse import urlparse
 
 import httpx
 from pydantic import BaseModel, SecretStr
+
+from app.core.secret_files import write_secret_file
 from app.core.version import VERSION
 
 # Callable invoked at every user-visible milestone. ``event`` is the
@@ -80,14 +82,13 @@ class CopilotOAuth(BaseModel):
     def save(self, path: Path | None = None) -> None:
         """Write to disk, exposing secret for persistence."""
         p = path or _default_oauth_file()
-        p.parent.mkdir(parents=True, exist_ok=True)
         data = {
             "github_token": self.github_token.get_secret_value(),
             "enterprise_url": normalize_enterprise_url(self.enterprise_url),
         }
         import json
 
-        p.write_text(json.dumps(data, indent=2) + "\n")
+        write_secret_file(p, json.dumps(data, indent=2) + "\n")
 
 
 # -- Device-flow constants ----------------------------------------------------

@@ -5,6 +5,7 @@ import { useHotkey } from '@tanstack/react-hotkeys'
 import { motion } from 'framer-motion'
 import { ChevronRight, Copy, Download, ExternalLink, FolderOpen, GitCompare, Plus, RefreshCw, TerminalSquare, Undo2, X, RotateCcw } from 'lucide-react'
 import { LongPressButton } from '@/components/ui/long-press-button'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -159,15 +160,21 @@ function CommitSyncBadge({
   const noun = count === 1 ? 'commit' : 'commits'
   const target = upstream || 'origin'
   return (
-    <span
-      title={`${count} ${isAhead ? `local ${noun} ahead of ${target}` : `${noun} behind ${target}`}`}
-      className={cn(
-        'rounded border border-(--color-border-subtle) bg-(--bg-card) px-1 py-0.5 font-mono text-[9px] font-semibold leading-none',
-        isAhead ? 'text-(--color-diff-add-text)' : 'text-(--color-diff-del-text)',
-      )}
-    >
-      {count}{isAhead ? '↑' : '↓'}
-    </span>
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <span
+            className={cn(
+              'rounded-xs border border-(--color-border-subtle) bg-(--bg-card) px-1 py-0.5 font-mono text-[9px] font-semibold leading-none',
+              isAhead ? 'text-(--color-diff-add-text)' : 'text-(--color-diff-del-text)',
+            )}
+          >
+            {count}{isAhead ? '↑' : '↓'}
+          </span>
+        }
+      />
+      <TooltipContent>{`${count} ${isAhead ? `local ${noun} ahead of ${target}` : `${noun} behind ${target}`}`}</TooltipContent>
+    </Tooltip>
   )
 }
 
@@ -208,32 +215,40 @@ function CommitDetail({
         const expanded = expandedCommitFiles.has(changedFile.path)
         const fileDiff = commitDiffSections.get(changedFile.path)?.diff
         return (
-          <div key={changedFile.path} className="overflow-hidden rounded border border-(--color-border-subtle) bg-(--bg-card)">
-            <LongPressButton
-              type="button"
-              onClick={(e) => { e.stopPropagation(); toggleFileExpanded(changedFile.path) }}
-              enabled={mobile}
-              onLongPress={() => setMobileFileActions(changedFile)}
-              onContextMenu={(e) => {
-                if (!mobile) {
-                  e.preventDefault()
-                  setDesktopFileActions({
-                    file: changedFile,
-                    x: e.clientX,
-                    y: e.clientY,
-                  })
+          <div key={changedFile.path} className="overflow-hidden rounded-sm border border-(--color-border-subtle) bg-(--bg-card)">
+            <Tooltip className="w-full">
+              <TooltipTrigger
+                className="w-full"
+                render={
+                  <LongPressButton
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); toggleFileExpanded(changedFile.path) }}
+                    enabled={mobile}
+                    onLongPress={() => setMobileFileActions(changedFile)}
+                    onContextMenu={(e) => {
+                      if (!mobile) {
+                        e.preventDefault()
+                        setDesktopFileActions({
+                          file: changedFile,
+                          x: e.clientX,
+                          y: e.clientY,
+                        })
+                      }
+                    }}
+                    className="flex w-full cursor-pointer items-center gap-1.5 px-1.5 py-1 text-left text-[10px] text-(--color-text-2) hover:bg-(--bg-key) hover:text-(--color-text)"
+                    aria-expanded={expanded}
+                  >
+                    <ChevronRight size={10} className={cn('shrink-0 text-(--color-text-subtle) transition-transform', expanded && 'rotate-90')} aria-hidden="true" />
+                    <FileTypeIcon name={changedFile.path} size={11} />
+                    <span className="min-w-0 flex-1 truncate font-mono">{changedFile.path}</span>
+                    <span className="shrink-0 font-mono text-[10px] text-(--color-diff-add-text)">{changedFile.additions > 0 ? `+${changedFile.additions}` : ''}</span>
+                    <span className="shrink-0 font-mono text-[10px] text-(--color-diff-del-text)">{changedFile.deletions > 0 ? `-${changedFile.deletions}` : ''}</span>
+                    <span className="shrink-0 font-mono text-[10px] font-semibold text-(--accent-orange-text)">{changedFile.status}</span>
+                  </LongPressButton>
                 }
-              }}
-              className="flex w-full cursor-pointer items-center gap-1.5 px-1.5 py-1 text-left text-[10px] text-(--color-text-2) hover:bg-(--bg-key) hover:text-(--color-text)"
-              aria-expanded={expanded}
-            >
-              <ChevronRight size={10} className={cn('shrink-0 text-(--color-text-subtle) transition-transform', expanded && 'rotate-90')} aria-hidden="true" />
-              <FileTypeIcon name={changedFile.path} size={11} />
-              <span className="min-w-0 flex-1 truncate font-mono">{changedFile.path}</span>
-              <span className="shrink-0 font-mono text-[8px] text-(--color-diff-add-text)">{changedFile.additions > 0 ? `+${changedFile.additions}` : ''}</span>
-              <span className="shrink-0 font-mono text-[8px] text-(--color-diff-del-text)">{changedFile.deletions > 0 ? `-${changedFile.deletions}` : ''}</span>
-              <span className="shrink-0 font-mono text-[8px] font-semibold text-(--accent-orange-text)">{changedFile.status}</span>
-            </LongPressButton>
+              />
+              <TooltipContent>{changedFile.path}</TooltipContent>
+            </Tooltip>
             {expanded && (
               <div className="border-t border-(--color-border-subtle)">
                 {fileDiff ? (
@@ -272,14 +287,14 @@ function renderGraphPrefix(prefix: string) {
     }
     if (char === '|') {
       return (
-        <span key={index} className="text-slate-400 dark:text-slate-500 opacity-60 font-mono">
+        <span key={index} className="text-(--color-text-subtle) opacity-60 font-mono">
           |
         </span>
       )
     }
     if (char === '/' || char === '\\' || char === '_') {
       return (
-        <span key={index} className="text-slate-500 dark:text-slate-400 opacity-85 font-mono">
+        <span key={index} className="text-(--color-text-muted) opacity-85 font-mono">
           {char}
         </span>
       )
@@ -803,69 +818,94 @@ export function CodingWorkspacePanel({
                 onActivate={() => setActiveTabId(tabItem.id)}
               />
             ) : (
-              <button
-                key={tabItem.id}
-                ref={(node) => {
-                  if (node) tabButtonRefs.current.set(tabItem.id, node)
-                  else tabButtonRefs.current.delete(tabItem.id)
-                }}
-                type="button"
-                onClick={() => setActiveTabId(tabItem.id)}
-                className={cn(
-                  'group flex h-7 max-w-40 shrink-0 items-center gap-1.5 rounded-xs px-2 text-xs',
-                  activeTabId === tabItem.id
-                    ? tabItem.type === 'file'
-                      ? 'border border-(--color-border-strong) bg-(--bg-key)/35 text-(--color-accent)'
-                      : 'border border-(--color-border-strong) bg-(--bg-key)/35 text-(--color-text)'
-                    : 'border border-transparent text-(--color-text-muted) hover:text-(--color-text-2)',
-                )}
-                title={tabItem.type === 'file' ? tabItem.file.path : tabItem.title}
-              >
-                {tabItem.type === 'review' ? (
-                  <GitCompare size={12} aria-hidden="true" />
-                ) : (
-                  <FileTypeIcon name={tabItem.file.name || tabItem.file.path} size={13} />
-                )}
-                <span className="truncate font-mono">{tabItem.title}</span>
-                {tabItem.type === 'file' && (
-                  <span
-                    role="button"
-                    tabIndex={0}
-                    onClick={(event) => { event.stopPropagation(); closeTab(tabItem.id) }}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter' || event.key === ' ') {
-                        event.preventDefault()
-                        event.stopPropagation()
-                        closeTab(tabItem.id)
-                      }
+              (() => {
+                const tabButton = (
+                  <button
+                    ref={(node) => {
+                      if (node) tabButtonRefs.current.set(tabItem.id, node)
+                      else tabButtonRefs.current.delete(tabItem.id)
                     }}
-                    className="ml-0.5 rounded text-(--color-text-subtle) opacity-70 hover:text-(--color-text) md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100"
-                    aria-label={`Close ${tabItem.title}`}
+                    type="button"
+                    onClick={() => setActiveTabId(tabItem.id)}
+                    className={cn(
+                      'group flex h-7 max-w-40 shrink-0 items-center gap-1.5 rounded-xs px-2 text-xs',
+                      activeTabId === tabItem.id
+                        ? tabItem.type === 'file'
+                          ? 'border border-(--color-border-strong) bg-(--bg-key)/35 text-(--color-accent)'
+                          : 'border border-(--color-border-strong) bg-(--bg-key)/35 text-(--color-text)'
+                        : 'border border-transparent text-(--color-text-muted) hover:text-(--color-text-2)',
+                    )}
                   >
-                    <X size={11} aria-hidden="true" />
-                  </span>
-                )}
-              </button>
+                    {tabItem.type === 'review' ? (
+                      <GitCompare size={12} aria-hidden="true" />
+                    ) : (
+                      <FileTypeIcon name={tabItem.file.name || tabItem.file.path} size={13} />
+                    )}
+                    <span className="truncate font-mono">{tabItem.title}</span>
+                    {tabItem.type === 'file' && (
+                      <span
+                        role="button"
+                        tabIndex={0}
+                        onClick={(event) => { event.stopPropagation(); closeTab(tabItem.id) }}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter' || event.key === ' ') {
+                            event.preventDefault()
+                            event.stopPropagation()
+                            closeTab(tabItem.id)
+                          }
+                        }}
+                        className="ml-0.5 rounded-xs text-(--color-text-subtle) opacity-70 hover:text-(--color-text) md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100"
+                        aria-label={`Close ${tabItem.title}`}
+                      >
+                        <X size={11} aria-hidden="true" />
+                      </span>
+                    )}
+                  </button>
+                )
+                // Only file tabs get a tooltip — it reveals the full path,
+                // which differs from the truncated basename shown on the tab.
+                // The "Git" review tab's title never changes and never
+                // truncates, so a tooltip there would just repeat "Git".
+                if (tabItem.type !== 'file') return <div key={tabItem.id} className="shrink-0">{tabButton}</div>
+                return (
+                  <Tooltip key={tabItem.id} className="shrink-0">
+                    <TooltipTrigger className="shrink-0" render={tabButton} />
+                    <TooltipContent>{tabItem.file.path}</TooltipContent>
+                  </Tooltip>
+                )
+              })()
             ))}
           </div>
-          <button
-            type="button"
-            onClick={onOpenPalette}
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-sm text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text) md:h-7 md:w-7"
-            aria-label={`Search files (${formatShortcut('P', os)})`}
-            title={`Search files (${formatShortcut('P', os)})`}
-          >
-            <Plus size={14} aria-hidden="true" />
-          </button>
-          <button
-            type="button"
-            onClick={openTerminal}
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-sm text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text) md:h-7 md:w-7"
-            aria-label="New terminal"
-            title="New terminal"
-          >
-            <TerminalSquare size={14} aria-hidden="true" />
-          </button>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <button
+                  type="button"
+                  onClick={onOpenPalette}
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-sm text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text) md:h-7 md:w-7"
+                  aria-label={`Search files (${formatShortcut('P', os)})`}
+                >
+                  <Plus size={14} aria-hidden="true" />
+                </button>
+              }
+            />
+            <TooltipContent>{`Search files (${formatShortcut('P', os)})`}</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <button
+                  type="button"
+                  onClick={openTerminal}
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-sm text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text) md:h-7 md:w-7"
+                  aria-label="New terminal"
+                >
+                  <TerminalSquare size={14} aria-hidden="true" />
+                </button>
+              }
+            />
+            <TooltipContent>New terminal</TooltipContent>
+          </Tooltip>
 
         </div>
         <div className="min-h-0 flex-1 overflow-hidden">
@@ -919,7 +959,7 @@ export function CodingWorkspacePanel({
                         type="button"
                         onClick={() => setSubTab('changes')}
                         className={cn(
-                          'flex-1 rounded py-1 text-center text-[11px] font-medium transition-colors cursor-pointer',
+                          'flex-1 rounded-xs py-1 text-center text-[11px] font-medium transition-colors cursor-pointer',
                           subTab === 'changes'
                             ? 'bg-(--bg-page) text-(--color-text) shadow-xs border border-(--color-border-strong)'
                             : 'text-(--color-text-muted) hover:text-(--color-text)'
@@ -931,7 +971,7 @@ export function CodingWorkspacePanel({
                         type="button"
                         onClick={() => setSubTab('commits')}
                         className={cn(
-                          'flex-1 rounded py-1 text-center text-[11px] font-medium transition-colors cursor-pointer',
+                          'flex-1 rounded-xs py-1 text-center text-[11px] font-medium transition-colors cursor-pointer',
                           subTab === 'commits'
                             ? 'bg-(--bg-page) text-(--color-text) shadow-xs border border-(--color-border-strong)'
                             : 'text-(--color-text-muted) hover:text-(--color-text)'
@@ -951,7 +991,7 @@ export function CodingWorkspacePanel({
                         type="button"
                         onClick={() => setSubTab('tree')}
                         className={cn(
-                          'flex-1 rounded py-1 text-center text-[11px] font-medium transition-colors cursor-pointer',
+                          'flex-1 rounded-xs py-1 text-center text-[11px] font-medium transition-colors cursor-pointer',
                           subTab === 'tree'
                             ? 'bg-(--bg-page) text-(--color-text) shadow-xs border border-(--color-border-strong)'
                             : 'text-(--color-text-muted) hover:text-(--color-text)'
@@ -993,7 +1033,7 @@ export function CodingWorkspacePanel({
                       </button>
                     )}
                     {subTab === 'tree' && (
-                      <label className="flex h-7 cursor-pointer select-none items-center gap-1.5 rounded border border-transparent px-1.5 text-[11px] text-(--color-text-muted) transition-colors">
+                      <label className="flex h-7 cursor-pointer select-none items-center gap-1.5 rounded-sm border border-transparent px-1.5 text-[11px] text-(--color-text-muted) transition-colors">
                         <Checkbox
                           checked={allBranches}
                           onChange={(event) => setAllBranches(event.currentTarget.checked)}
@@ -1019,63 +1059,69 @@ export function CodingWorkspacePanel({
                     <p className="px-2 py-4 text-xs text-(--color-text-subtle)">No changed files</p>
                   ) : (
                     <div>
-                      {diff.data.truncated && <p className="mb-2 rounded bg-(--color-warning)/10 px-2 py-1 text-xs text-(--color-warning)">Changed list may be incomplete because the diff was truncated.</p>}
+                      {diff.data.truncated && <p className="mb-2 rounded-sm bg-(--color-warning)/10 px-2 py-1 text-xs text-(--color-warning)">Changed list may be incomplete because the diff was truncated.</p>}
                       <div className="space-y-2">
                         {changedFiles.map((changedFile) => {
                           const isSelected = selectedFilePath === changedFile.path
                           const expanded = expandedDiffs.has(changedFile.path)
                           const fileDiff = diffSections.get(changedFile.path)?.diff
                           return (
-                            <div key={changedFile.path} className="group overflow-hidden rounded border border-(--color-border-subtle) bg-(--bg-card)">
-                              <LongPressButton
-                                type="button"
-                                onClick={() => toggleDiffExpanded(changedFile.path)}
-                                enabled={mobile}
-                                onLongPress={() => setMobileFileActions(changedFile)}
-                                onContextMenu={(e) => {
-                                  if (!mobile) {
-                                    e.preventDefault()
-                                    setDesktopFileActions({
-                                      file: changedFile,
-                                      x: e.clientX,
-                                      y: e.clientY,
-                                    })
+                            <div key={changedFile.path} className="group overflow-hidden rounded-sm border border-(--color-border-subtle) bg-(--bg-card)">
+                              <Tooltip className="w-full">
+                                <TooltipTrigger
+                                  className="w-full"
+                                  render={
+                                    <LongPressButton
+                                      type="button"
+                                      onClick={() => toggleDiffExpanded(changedFile.path)}
+                                      enabled={mobile}
+                                      onLongPress={() => setMobileFileActions(changedFile)}
+                                      onContextMenu={(e) => {
+                                        if (!mobile) {
+                                          e.preventDefault()
+                                          setDesktopFileActions({
+                                            file: changedFile,
+                                            x: e.clientX,
+                                            y: e.clientY,
+                                          })
+                                        }
+                                      }}
+                                      className={cn(
+                                        'flex w-full cursor-pointer items-center gap-2 px-2 py-1.5 text-left text-xs transition-colors hover:bg-(--bg-key) hover:text-(--color-text)',
+                                        isSelected ? 'text-(--color-accent)' : 'text-(--color-text-2)',
+                                      )}
+                                      aria-label={`${expanded ? 'Collapse' : 'Expand'} diff for ${changedFile.path}`}
+                                      aria-expanded={expanded}
+                                    >
+                                      <ChevronRight size={12} className={cn('shrink-0 text-(--color-text-subtle) transition-transform', expanded && 'rotate-90')} aria-hidden="true" />
+                                      <FileTypeIcon name={changedFile.path} size={13} />
+                                      <span className="min-w-0 flex-1 truncate font-mono">{changedFile.path}</span>
+                                      {changedFile.status !== 'D' && (
+                                        <span
+                                          role="button"
+                                          tabIndex={0}
+                                          onClick={(e) => {
+                                            e.stopPropagation()
+                                            const name = changedFile.path.split('/').pop() ?? changedFile.path
+                                            const file: WorkspaceFileInfo = files.data?.files.find((f) => f.path === changedFile.path)
+                                              ?? { path: changedFile.path, name, size: 0, mtime: 0, mime: 'text/plain' }
+                                            openFileTab(file)
+                                          }}
+                                          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') e.currentTarget.click() }}
+                                          className="hidden shrink-0 rounded-xs p-0.5 text-(--color-text-subtle) opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 hover:text-(--color-text) md:block"
+                                          aria-label={`Open ${changedFile.path}`}
+                                        >
+                                          <ExternalLink size={11} aria-hidden="true" />
+                                        </span>
+                                      )}
+                                      <span className="shrink-0 font-mono text-[10px] text-(--color-diff-add-text)">{changedFile.additions > 0 ? `+${changedFile.additions}` : ''}</span>
+                                      <span className="shrink-0 font-mono text-[10px] text-(--color-diff-del-text)">{changedFile.deletions > 0 ? `-${changedFile.deletions}` : ''}</span>
+                                      <span className="shrink-0 font-mono text-[10px] font-semibold text-(--accent-orange-text)" aria-label={CHANGED_STATUS_LABELS[changedFile.status]}>{changedFile.status}</span>
+                                    </LongPressButton>
                                   }
-                                }}
-                                className={cn(
-                                  'flex w-full cursor-pointer items-center gap-2 px-2 py-1.5 text-left text-xs transition-colors hover:bg-(--bg-key) hover:text-(--color-text)',
-                                  isSelected ? 'text-(--color-accent)' : 'text-(--color-text-2)',
-                                )}
-                                title={changedFile.path}
-                                aria-label={`${expanded ? 'Collapse' : 'Expand'} diff for ${changedFile.path}`}
-                                aria-expanded={expanded}
-                              >
-                                <ChevronRight size={12} className={cn('shrink-0 text-(--color-text-subtle) transition-transform', expanded && 'rotate-90')} aria-hidden="true" />
-                                <FileTypeIcon name={changedFile.path} size={13} />
-                                <span className="min-w-0 flex-1 truncate font-mono">{changedFile.path}</span>
-                                {changedFile.status !== 'D' && (
-                                  <span
-                                    role="button"
-                                    tabIndex={0}
-                                    onClick={(e) => {
-                                      e.stopPropagation()
-                                      const name = changedFile.path.split('/').pop() ?? changedFile.path
-                                      const file: WorkspaceFileInfo = files.data?.files.find((f) => f.path === changedFile.path)
-                                        ?? { path: changedFile.path, name, size: 0, mtime: 0, mime: 'text/plain' }
-                                      openFileTab(file)
-                                    }}
-                                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') e.currentTarget.click() }}
-                                    className="hidden shrink-0 rounded p-0.5 text-(--color-text-subtle) opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 hover:text-(--color-text) md:block"
-                                    title="Open file"
-                                    aria-label={`Open ${changedFile.path}`}
-                                  >
-                                    <ExternalLink size={11} aria-hidden="true" />
-                                  </span>
-                                )}
-                                <span className="shrink-0 font-mono text-[10px] text-(--color-diff-add-text)">{changedFile.additions > 0 ? `+${changedFile.additions}` : ''}</span>
-                                <span className="shrink-0 font-mono text-[10px] text-(--color-diff-del-text)">{changedFile.deletions > 0 ? `-${changedFile.deletions}` : ''}</span>
-                                <span className="shrink-0 font-mono text-[10px] font-semibold text-(--accent-orange-text)" aria-label={CHANGED_STATUS_LABELS[changedFile.status]}>{changedFile.status}</span>
-                              </LongPressButton>
+                                />
+                                <TooltipContent>{changedFile.path}</TooltipContent>
+                              </Tooltip>
 
                               {expanded && (
                                 <div className="border-t border-(--color-border-subtle)">
@@ -1103,7 +1149,7 @@ export function CodingWorkspacePanel({
                         {commits.map((commit) => {
                           const isExpanded = expandedCommitSha === commit.sha
                           return (
-                          <div key={commit.sha} data-commit-sha={commit.sha} className="overflow-hidden rounded border border-(--color-border-subtle) bg-(--bg-card) p-2 transition-colors hover:border-(--color-border) hover:bg-(--bg-key)">
+                          <div key={commit.sha} data-commit-sha={commit.sha} className="overflow-hidden rounded-sm border border-(--color-border-subtle) bg-(--bg-card) p-2 transition-colors hover:border-(--color-border) hover:bg-(--bg-key)">
                             <LongPressButton
                               type="button"
                               onClick={(e) => {
@@ -1144,11 +1190,19 @@ export function CodingWorkspacePanel({
                               <div className="flex w-full items-start justify-between gap-1.5">
                                 <div className="flex items-start gap-1.5 min-w-0 flex-1">
                                   <span className="shrink-0 font-mono text-xs text-(--color-text-subtle) select-none mt-0.5">•</span>
-                                  <span className="truncate font-mono text-[11px] font-semibold text-(--color-text)">
-                                    {safeDecodeURIComponent(commit.subject)}
-                                  </span>
+                                  <Tooltip className="min-w-0">
+                                    <TooltipTrigger
+                                      className="min-w-0"
+                                      render={
+                                        <span className="truncate font-mono text-[11px] font-semibold text-(--color-text)">
+                                          {safeDecodeURIComponent(commit.subject)}
+                                        </span>
+                                      }
+                                    />
+                                    <TooltipContent>{safeDecodeURIComponent(commit.subject)}</TooltipContent>
+                                  </Tooltip>
                                 </div>
-                                <span className="shrink-0 rounded border border-(--color-border-subtle) bg-(--bg-card) px-1 py-0.5 font-mono text-[9px] text-(--color-text-subtle)">
+                                <span className="shrink-0 rounded-xs border border-(--color-border-subtle) bg-(--bg-card) px-1 py-0.5 font-mono text-[9px] text-(--color-text-subtle)">
                                   {commit.short_sha}
                                 </span>
                               </div>
@@ -1156,7 +1210,7 @@ export function CodingWorkspacePanel({
                               {commit.refs && (
                                 <div className="flex flex-wrap gap-1 mt-0.5">
                                   {commit.refs.split(',').map((ref) => (
-                                    <span key={ref} className="text-[9px] font-semibold px-1 rounded bg-(--color-accent)/10 text-(--color-accent) border border-(--color-accent)/20">
+                                    <span key={ref} className="text-[9px] font-semibold px-1 rounded-xs bg-(--color-accent)/10 text-(--color-accent) border border-(--color-accent)/20">
                                       {ref.trim()}
                                     </span>
                                   ))}
@@ -1172,7 +1226,7 @@ export function CodingWorkspacePanel({
                             {isExpanded && (
                               <>
                                 {commit.body && (
-                                  <p className="mt-2 max-h-32 overflow-y-auto touch-pan-y whitespace-pre-wrap break-words rounded border border-(--color-border) bg-(--bg-page) px-2 py-1.5 text-[11px] leading-relaxed text-(--color-text-2)">
+                                  <p className="mt-2 max-h-32 overflow-y-auto touch-pan-y whitespace-pre-wrap break-words rounded-sm border border-(--color-border) bg-(--bg-page) px-2 py-1.5 text-[11px] leading-relaxed text-(--color-text-2)">
                                     {commit.body}
                                   </p>
                                 )}
@@ -1219,26 +1273,33 @@ export function CodingWorkspacePanel({
                                 </span>
                                 {line.sha ? (
                                   <div className="flex items-center gap-2 min-w-0 flex-1">
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        // The graph uses short SHAs (7-10 chars); resolve to the
-                                        // full SHA from the loaded commits list so the expand check
-                                        // (expandedCommitSha === commit.sha) matches correctly.
-                                        const shortSha = line.sha ?? null
-                                        const fullSha = shortSha
-                                          ? (commits.find((c) => c.sha.startsWith(shortSha))?.sha ?? shortSha)
-                                          : null
-                                        pendingScrollShaRef.current = fullSha
-                                        setExpandedCommitFiles(new Set())
-                                        setExpandedCommitSha(fullSha)
-                                        setSubTab('commits')
-                                      }}
-                                      className="shrink-0 cursor-pointer rounded border border-(--color-border-subtle) bg-(--bg-card) px-1 py-0.5 font-mono text-[9px] text-(--color-text-subtle) transition-colors hover:border-(--color-accent)/30 hover:bg-(--color-accent)/10 hover:text-(--color-accent)"
-                                      title="Click to view commit details"
-                                    >
-                                      {line.sha.substring(0, 7)}
-                                    </button>
+                                    <Tooltip className="shrink-0">
+                                      <TooltipTrigger
+                                        className="shrink-0"
+                                        render={
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              // The graph uses short SHAs (7-10 chars); resolve to the
+                                              // full SHA from the loaded commits list so the expand check
+                                              // (expandedCommitSha === commit.sha) matches correctly.
+                                              const shortSha = line.sha ?? null
+                                              const fullSha = shortSha
+                                                ? (commits.find((c) => c.sha.startsWith(shortSha))?.sha ?? shortSha)
+                                                : null
+                                              pendingScrollShaRef.current = fullSha
+                                              setExpandedCommitFiles(new Set())
+                                              setExpandedCommitSha(fullSha)
+                                              setSubTab('commits')
+                                            }}
+                                            className="shrink-0 cursor-pointer rounded-xs border border-(--color-border-subtle) bg-(--bg-card) px-1 py-0.5 font-mono text-[9px] text-(--color-text-subtle) transition-colors hover:border-(--color-accent)/30 hover:bg-(--color-accent)/10 hover:text-(--color-accent)"
+                                          >
+                                            {line.sha.substring(0, 7)}
+                                          </button>
+                                        }
+                                      />
+                                      <TooltipContent>Click to view commit details</TooltipContent>
+                                    </Tooltip>
 
                                     {line.decorations && (
                                       <div className="flex items-center gap-1 shrink-0 max-w-[200px] overflow-hidden">
@@ -1246,28 +1307,33 @@ export function CodingWorkspacePanel({
                                           const trimmed = ref.trim()
                                           const isHead = trimmed.includes('HEAD ->')
                                           const isRemote = trimmed.includes('origin/')
+                                          const badgeClassName = cn(
+                                            "text-[10px] font-semibold px-1 py-0.5 rounded-xs border truncate leading-none select-none",
+                                            isHead
+                                              ? "bg-(--color-diff-add-bg) text-(--color-diff-add-text) border-(--color-success)/20"
+                                              : isRemote
+                                              ? "bg-(--color-diff-del-bg) text-(--color-diff-del-text) border-(--color-error)/20"
+                                              : "bg-(--color-accent)/10 text-(--color-accent) border-(--color-accent)/20"
+                                          )
                                           return (
-                                            <span
-                                              key={ref}
-                                              className={cn(
-                                                "text-[8px] font-semibold px-1 py-0.5 rounded border truncate leading-none select-none",
-                                                isHead
-                                                  ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
-                                                  : isRemote
-                                                  ? "bg-rose-500/10 text-rose-500 border-rose-500/20"
-                                                  : "bg-(--color-accent)/10 text-(--color-accent) border-(--color-accent)/20"
-                                              )}
-                                              title={trimmed}
-                                            >
-                                              {trimmed}
-                                            </span>
+                                            <Tooltip key={ref} className="min-w-0">
+                                              <TooltipTrigger
+                                                className="min-w-0"
+                                                render={<span className={badgeClassName}>{trimmed}</span>}
+                                              />
+                                              <TooltipContent>{trimmed}</TooltipContent>
+                                            </Tooltip>
                                           )
                                         })}
                                       </div>
                                     )}
-                                    <span className="truncate font-mono text-[11px] text-(--color-text-2) group-hover:text-(--color-text) transition-colors flex-1" title={line.message}>
-                                      {line.message}
-                                    </span>
+                                    <Tooltip className="min-w-0 flex-1">
+                                      <TooltipTrigger
+                                        className="min-w-0 flex-1"
+                                        render={<span className="truncate font-mono text-[11px] text-(--color-text-2) group-hover:text-(--color-text) transition-colors">{line.message}</span>}
+                                      />
+                                      <TooltipContent>{line.message}</TooltipContent>
+                                    </Tooltip>
                                   </div>
                                 ) : (
                                   line.raw.trim().length > line.graphPart.trim().length && (
@@ -1291,18 +1357,30 @@ export function CodingWorkspacePanel({
               <div className="flex shrink-0 items-center justify-between gap-2 border-b border-(--color-border) bg-(--bg-key)/25 px-3 py-2">
                 <div className="flex min-w-0 items-center gap-2">
                   <FileTypeIcon name={activeTab.file.name || activeTab.file.path} size={16} />
-                  <p className="truncate font-mono text-xs font-medium text-(--color-text)" title={activeTab.file.path}>{activeTab.file.path}</p>
+                  <Tooltip className="min-w-0">
+                    <TooltipTrigger
+                      className="min-w-0"
+                      render={<p className="truncate font-mono text-xs font-medium text-(--color-text)">{activeTab.file.path}</p>}
+                    />
+                    <TooltipContent>{activeTab.file.path}</TooltipContent>
+                  </Tooltip>
                 </div>
                 <div className="flex shrink-0 items-center gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => void downloadCodingWorkspaceFile(workspace, activeTab.file)}
-                    title="Download file"
-                    aria-label="Download file"
-                    className="flex h-9 w-9 items-center justify-center rounded text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) disabled:cursor-not-allowed disabled:opacity-40 md:h-auto md:w-auto md:p-1"
-                  >
-                    <Download size={13} />
-                  </button>
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={
+                        <button
+                          type="button"
+                          onClick={() => void downloadCodingWorkspaceFile(workspace, activeTab.file)}
+                          aria-label="Download file"
+                          className="flex h-9 w-9 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) disabled:cursor-not-allowed disabled:opacity-40 md:h-auto md:w-auto md:p-1"
+                        >
+                          <Download size={13} />
+                        </button>
+                      }
+                    />
+                    <TooltipContent>Download file</TooltipContent>
+                  </Tooltip>
                   <CopyButton workspace={workspace} file={activeTab.file} />
                 </div>
               </div>
@@ -1501,7 +1579,7 @@ export function CodingWorkspacePanel({
           <div
             role="menu"
             aria-label="Commit actions"
-            className="fixed min-w-48 rounded border border-(--color-border) bg-(--bg-card) p-1 text-xs text-(--color-text) shadow-md"
+            className="fixed min-w-48 rounded-sm border border-(--color-border) bg-(--bg-card) p-1 text-xs text-(--color-text) shadow-md"
             style={{
               left: Math.min(desktopCommitActions.x, window.innerWidth - 200 - 8),
               top: Math.min(desktopCommitActions.y, window.innerHeight - 180 - 8)
@@ -1512,7 +1590,7 @@ export function CodingWorkspacePanel({
               <button
                 type="button"
                 role="menuitem"
-                className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-(--color-error) hover:bg-(--color-error)/10 focus-visible:bg-(--color-error)/10 focus-visible:outline-none cursor-pointer"
+                className="flex w-full items-center gap-2 rounded-xs px-2 py-1 text-left text-xs text-(--color-error) hover:bg-(--color-error-subtle) focus-visible:bg-(--color-error-subtle) focus-visible:outline-none cursor-pointer"
                 disabled={gitActionPending}
                 onClick={() => void handleUndoCommit()}
               >
@@ -1523,7 +1601,7 @@ export function CodingWorkspacePanel({
             <button
               type="button"
               role="menuitem"
-              className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none cursor-pointer"
+              className="flex w-full items-center gap-2 rounded-xs px-2 py-1 text-left text-xs hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none cursor-pointer"
               disabled={gitActionPending}
               onClick={() => void handleRevertCommit(desktopCommitActions.sha, desktopCommitActions.shortSha)}
             >
@@ -1534,7 +1612,7 @@ export function CodingWorkspacePanel({
             <button
               type="button"
               role="menuitem"
-              className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none cursor-pointer"
+              className="flex w-full items-center gap-2 rounded-xs px-2 py-1 text-left text-xs hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none cursor-pointer"
               onClick={() => {
                 const c = desktopCommitActions
                 setDesktopCommitActions(null)
@@ -1548,7 +1626,7 @@ export function CodingWorkspacePanel({
             <button
               type="button"
               role="menuitem"
-              className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none cursor-pointer"
+              className="flex w-full items-center gap-2 rounded-xs px-2 py-1 text-left text-xs hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none cursor-pointer"
               onClick={() => {
                 const c = desktopCommitActions
                 setDesktopCommitActions(null)
@@ -1562,7 +1640,7 @@ export function CodingWorkspacePanel({
             <button
               type="button"
               role="menuitem"
-              className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none cursor-pointer"
+              className="flex w-full items-center gap-2 rounded-xs px-2 py-1 text-left text-xs hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none cursor-pointer"
               onClick={() => {
                 const c = desktopCommitActions
                 setDesktopCommitActions(null)
@@ -1589,7 +1667,7 @@ export function CodingWorkspacePanel({
           <div
             role="menu"
             aria-label="File actions"
-            className="fixed min-w-48 rounded border border-(--color-border) bg-(--bg-card) p-1 text-xs text-(--color-text) shadow-md"
+            className="fixed min-w-48 rounded-sm border border-(--color-border) bg-(--bg-card) p-1 text-xs text-(--color-text) shadow-md"
             style={{
               left: Math.min(desktopFileActions.x, window.innerWidth - 200 - 8),
               top: Math.min(desktopFileActions.y, window.innerHeight - 150 - 8)
@@ -1600,7 +1678,7 @@ export function CodingWorkspacePanel({
               <button
                 type="button"
                 role="menuitem"
-                className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none cursor-pointer"
+                className="flex w-full items-center gap-2 rounded-xs px-2 py-1 text-left text-xs hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none cursor-pointer"
                 onClick={() => {
                   const f = desktopFileActions.file
                   setDesktopFileActions(null)
@@ -1618,7 +1696,7 @@ export function CodingWorkspacePanel({
             <button
               type="button"
               role="menuitem"
-              className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none cursor-pointer"
+              className="flex w-full items-center gap-2 rounded-xs px-2 py-1 text-left text-xs hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none cursor-pointer"
               onClick={() => {
                 const f = desktopFileActions.file
                 setDesktopFileActions(null)
@@ -1633,7 +1711,7 @@ export function CodingWorkspacePanel({
             <button
               type="button"
               role="menuitem"
-              className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-(--color-error) hover:bg-(--color-error)/10 focus-visible:bg-(--color-error)/10 focus-visible:outline-none cursor-pointer"
+              className="flex w-full items-center gap-2 rounded-xs px-2 py-1 text-left text-xs text-(--color-error) hover:bg-(--color-error-subtle) focus-visible:bg-(--color-error-subtle) focus-visible:outline-none cursor-pointer"
               onClick={() => {
                 const f = desktopFileActions.file
                 setDesktopFileActions(null)

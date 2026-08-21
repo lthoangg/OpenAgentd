@@ -13,7 +13,7 @@ if TYPE_CHECKING:
 
 
 class LspHook(BaseAgentHook):
-    """Agent hook that intercepts write, edit, and patch tool calls and injects LSP diagnostics.
+    """Agent hook that intercepts patch tool calls and injects LSP diagnostics.
 
     Only active in coding mode. The mode is decided once by the caller and
     passed in at construction — the hook does no DB lookups or test sniffing
@@ -39,7 +39,7 @@ class LspHook(BaseAgentHook):
             return result
 
         tool_name = tool_call.function.name
-        if tool_name not in ("write", "edit", "patch"):
+        if tool_name != "patch":
             return result
 
         # A tool call truncated by the model's output-token cap can arrive with
@@ -63,28 +63,23 @@ class LspHook(BaseAgentHook):
             return result
 
         try:
-            from app.agent.sandbox import get_sandbox
+            from app.agent.denied_paths import get_denied_paths
             from app.services.lsp.manager import check_lsp_diagnostics
 
-            sandbox = get_sandbox()
+            denied_paths = get_denied_paths()
 
             # Identify which files were modified/added
             files_to_check = []
-            if tool_name in ("write", "edit"):
-                path = args.get("path")
-                if path:
-                    files_to_check.append(sandbox.validate_path(path))
-            elif tool_name == "patch":
-                patch_text = args.get("patch_text")
-                if patch_text:
-                    from app.agent.tools.builtin.filesystem.patch import _parse_patch
+            patch_text = args.get("patch_text")
+            if patch_text:
+                from app.agent.tools.builtin.filesystem.patch import _parse_patch
 
-                    patches = _parse_patch(patch_text)
-                    for p in patches:
-                        if p.kind in ("add", "update"):
-                            files_to_check.append(
-                                sandbox.validate_path(p.move_to or p.path)
-                            )
+                patches = _parse_patch(patch_text)
+                for p in patches:
+                    if p.kind in ("add", "update"):
+                        files_to_check.append(
+                            denied_paths.validate_path(p.move_to or p.path)
+                        )
 
             # Dedupe so the same file is never checked twice concurrently (the
             # per-URI diagnostics state assumes a single in-flight check).
@@ -95,7 +90,7 @@ class LspHook(BaseAgentHook):
             # so serial awaits would stack their latencies.
             reports = await asyncio.gather(
                 *(
-                    check_lsp_diagnostics(file_path, sandbox.workspace_root)
+                    check_lsp_diagnostics(file_path, denied_paths.workspace_root)
                     for file_path in unique_files
                 ),
                 return_exceptions=True,

@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 
@@ -172,7 +172,7 @@ async def stream_and_assemble(
     state: AgentState,
     hooks: list[BaseAgentHook],
     interrupt_event: asyncio.Event | None,
-    tool_defs: list,
+    tool_defs: list[dict[str, Any]],
     primary_provider: LLMProviderBase,
     primary_label: str,
     agent_name: str,

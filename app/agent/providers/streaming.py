@@ -17,7 +17,7 @@ Usage::
 
 from __future__ import annotations
 
-import json
+import orjson
 from collections.abc import AsyncIterator
 from typing import Any
 
@@ -54,7 +54,7 @@ async def iter_sse_data(
             break
 
         try:
-            yield json.loads(data_str)
-        except (json.JSONDecodeError, ValueError):
+            yield orjson.loads(data_str)
+        except Exception:
             logger.debug("sse_invalid_json data={}", data_str[:200])
             continue

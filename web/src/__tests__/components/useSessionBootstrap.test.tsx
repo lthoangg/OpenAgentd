@@ -5,7 +5,7 @@ import { cleanup, render, waitFor } from '@testing-library/react'
 import { QueryClient } from '@tanstack/react-query'
 import { useSessionBootstrap } from '@/components/TeamChatView/useSessionBootstrap'
 import type { UseSessionBootstrapArgs } from '@/components/TeamChatView/useSessionBootstrap'
-import type { InputBarHandle } from '@/components/InputBar'
+import type { InputComposerHandle } from '@/components/InputComposer'
 import { useTeamStore } from '@/stores/useTeamStore'
 import { createDefaultAgentStream } from '@/stores/useTeamStore/defaults'
 
@@ -20,7 +20,7 @@ function Harness({
   connectStream: () => AbortController
   sessionId?: string
   beginResolvedSession?: UseSessionBootstrapArgs['beginResolvedSession']
-  inputRef?: RefObject<InputBarHandle | null>
+  inputRef?: RefObject<InputComposerHandle | null>
 }) {
   useSessionBootstrap({
     sessionId,
@@ -36,7 +36,7 @@ function Harness({
     sessionThinkingLevel: null,
     sessionTitle: null,
     isTeamWorking: true,
-    inputRef: inputRef ?? createRef<InputBarHandle>(),
+    inputRef: inputRef ?? createRef<InputComposerHandle>(),
     navigate: mock(() => {}) as never,
     queryClient: new QueryClient(),
     connectStream,
@@ -127,7 +127,7 @@ describe('useSessionBootstrap undo draft-restore', () => {
   // the "Session compacted" placeholder, and the composer must not be
   // pre-filled with it instead of the human's actual undone text.
   it('skips a leading reverted compaction block and restores the real undone user text', async () => {
-    const inputRef = createRef<InputBarHandle>()
+    const inputRef = createRef<InputComposerHandle>()
     const setValueMock = mock(() => {})
     const setFilesMock = mock(() => {})
     inputRef.current = {

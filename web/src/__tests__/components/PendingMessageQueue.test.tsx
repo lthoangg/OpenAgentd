@@ -115,4 +115,42 @@ describe('PendingMessageQueue', () => {
     expect(restoredFiles).toEqual([file])
     window.removeEventListener('queue:restore-draft', restoreListener)
   })
+
+  it('collapses and expands long queued messages with top-right collapse toggle', async () => {
+    const user = userEvent.setup()
+    const elevenLines = Array.from({ length: 11 }, (_, i) => `queued-line-${i + 1}`).join('\n')
+    useTeamStore.setState({
+      sessionId: 'session-1',
+      _pendingMessages: [
+        {
+          id: 'pending-long',
+          sessionId: 'session-1',
+          content: elevenLines,
+        },
+      ],
+    })
+
+    const { container } = render(<PendingMessageQueue />)
+
+    // Visible first lines, hidden 11th line
+    expect(screen.getByText(/queued-line-1/)).toBeTruthy()
+    expect(screen.queryByText(/queued-line-11/)).toBeNull()
+
+    // Positioned tooltip wrapper
+    const tooltipWrapper = container.querySelector("span[class*='absolute'][class*='top-1.5'][class*='right-1.5']")
+    expect(tooltipWrapper).toBeTruthy()
+
+    // Toggle expand
+    const expandBtn = screen.getByRole('button', { name: 'Expand' })
+    expect(expandBtn.getAttribute('aria-expanded')).toBe('false')
+
+    await user.click(expandBtn)
+    expect(screen.getByText(/queued-line-11/)).toBeTruthy()
+    expect(expandBtn.getAttribute('aria-expanded')).toBe('true')
+
+    // Toggle collapse
+    const collapseBtn = screen.getByRole('button', { name: 'Collapse' })
+    await user.click(collapseBtn)
+    expect(screen.queryByText(/queued-line-11/)).toBeNull()
+  })
 })

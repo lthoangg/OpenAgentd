@@ -33,14 +33,12 @@ export function ModeWorkspaceFields({
 
   return (
     <div>
-      <label className="block text-sm font-medium text-(--color-text)">Routing</label>
-      <div className="mt-2 flex flex-wrap items-center gap-2">
+      <label className="mb-1 block text-xs font-medium text-(--color-text-2)">Routing</label>
+      <div className="flex flex-wrap items-center gap-2">
         <div
           role="tablist"
           aria-label="Task mode"
-          // ``inline-flex`` so two short labels ("Normal" / "Coding") do not
-          // sprawl across the full form width.
-          className="inline-flex max-w-full shrink-0 gap-0.5 overflow-x-auto rounded-sm border border-(--color-border) bg-(--bg-card) p-0.5"
+          className="inline-flex h-8 max-w-full shrink-0 items-center gap-0.5 overflow-x-auto rounded-sm border border-(--color-border) bg-(--bg-key)/60 p-0.5"
         >
           {modeOptions.map((opt) => {
             const active = mode === opt.key
@@ -53,18 +51,14 @@ export function ModeWorkspaceFields({
                 onClick={() => {
                   onChange({
                     mode: opt.key,
-                    // Drop the workspace when leaving coding mode; preserve it
-                    // when staying on coding so the user does not lose their
-                    // typed-in path by tapping the active tab.
                     workspace: opt.key === 'coding' ? workspace : null,
                   })
                 }}
-                className={
-                  'rounded-xs border border-transparent px-2.5 py-1 text-[11px] font-medium transition-colors ' +
-                  (active
-                    ? 'border-(--color-border-strong) bg-(--bg-key) text-(--color-text)'
-                    : 'text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text-2)')
-                }
+                className={`flex h-7 items-center rounded-xs border px-2.5 text-xs font-medium transition-colors ${
+                  active
+                    ? 'border-(--color-border-strong) bg-(--bg-card) text-(--color-text) shadow-2xs font-semibold'
+                    : 'border-transparent text-(--color-text-muted) hover:bg-(--bg-key)/60 hover:text-(--color-text)'
+                }`}
               >
                 {opt.label}
               </button>
@@ -78,7 +72,7 @@ export function ModeWorkspaceFields({
               value={workspace ?? ''}
               onValueChange={(v) => onChange({ mode, workspace: v || null })}
               trigger={workspace ? workspaceLabel(workspace) : 'Select a saved workspace…'}
-              className="w-full max-w-full px-2 py-1 text-[11px]"
+              className="h-8 w-full max-w-full rounded-sm border-(--color-border) bg-(--bg-page) px-2.5 text-xs"
               panelClassName="max-w-[min(22rem,calc(100vw-2rem))]"
               aria-label="Select workspace"
               aria-invalid={!!workspaceError}
@@ -102,7 +96,7 @@ export function ModeWorkspaceFields({
         ) : (
           <>
             Delivers to the lead of the coding team for the selected workspace.{' '}
-            <span>Workspaces come from saved coding workspaces.</span>
+            <span className="text-(--color-text-subtle)">Workspaces come from saved coding workspaces.</span>
           </>
         )}
       </p>

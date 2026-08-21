@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "tw-animate-css";
+@import "katex/dist/katex.min.css";
 @import "@fontsource-variable/inter";
 @import "@fontsource-variable/jetbrains-mono";
 /* Handwritten font is used only for English UI headings. Importing the
@@ -7,53 +8,35 @@
  * every Tauri bundle; the Latin subsets cover all actual hand-font copy. */
 @import "@fontsource/caveat/latin-400.css";
 @import "@fontsource/caveat/latin-700.css";
-@import "highlight.js/styles/atom-one-dark.css";
 /* Bundled Nerd Font icons fallback — mobile fix (see nerd-font-icons.css). */
 @import "./assets/fonts/nerd-font-icons.css";
 
 /* ─────────────────────────────────────────────────────────────
- * OpenAgentd — syntax highlighting (highlight.js)
- * Tokens are theme-aware via var() references.
+ * OpenAgentd — syntax highlighting (@tanstack/highlight)
+ * The single highlighter for chat fences, the coding file viewer
+ * and the ToolCall shell command. Tokens are theme-aware via
+ * var() references.
  * ───────────────────────────────────────────────────────────── */
-.hljs {
-  background: transparent;
-  color: var(--color-text);
-}
-/* When hljs <code> is used inline (e.g. shell terminal prompt), the
- * `pre code.hljs` rule from the hljs base sheet sets display:block and
- * padding:1em, which pushes the command off the $ prefix.  Reset it. */
-pre code.hljs {
-  display: inline;
-  padding: 0;
-}
-.hljs-comment,
-.hljs-quote          { color: var(--color-syn-comment); font-style: italic; }
-.hljs-keyword,
-.hljs-selector-tag,
-.hljs-built_in,
-.hljs-tag            { color: var(--color-syn-keyword); }
-.hljs-string,
-.hljs-attr,
-.hljs-attribute      { color: var(--color-syn-string); }
-.hljs-number,
-.hljs-literal        { color: var(--color-syn-number); }
-.hljs-title,
-.hljs-title.class_,
-.hljs-section        { color: var(--color-syn-type); }
-.hljs-variable,
-.hljs-template-variable,
-.hljs-name           { color: var(--color-syn-function); }
-.hljs-type,
-.hljs-class          { color: var(--color-syn-operator); }
-.hljs-symbol,
-.hljs-bullet,
-.hljs-addition       { color: var(--color-syn-string); }
-.hljs-deletion       { color: var(--color-syn-variable); }
-.hljs-function .hljs-title,
-.hljs-title.function_            { color: var(--color-syn-function); }
-.hljs-params                     { color: var(--color-text); }
-.hljs-emphasis       { font-style: italic; }
-.hljs-strong         { font-weight: bold; }
+.th-comment                      { color: var(--color-syn-comment); font-style: italic; }
+.th-keyword,
+.th-tag,
+.th-selector,
+.th-command                      { color: var(--color-syn-keyword); }
+.th-string,
+.th-attr,
+.th-inserted                     { color: var(--color-syn-string); }
+.th-number,
+.th-literal                      { color: var(--color-syn-number); }
+.th-heading,
+.th-property                     { color: var(--color-syn-type); }
+.th-variable,
+.th-function,
+.th-link                         { color: var(--color-syn-function); }
+.th-type,
+.th-operator                     { color: var(--color-syn-operator); }
+.th-meta,
+.th-code-inline                  { color: var(--color-syn-variable); }
+.th-deleted                      { color: var(--color-syn-variable); }
 
 @custom-variant dark (&:is(.dark *));
 
@@ -68,18 +51,18 @@ pre code.hljs {
     --font-hand: 'Caveat', 'Bradley Hand', cursive;
 
 
-    --radius-xs: 2px;
-    --radius-sm: 4px;
-    --radius-md: 6px;
-    --radius-lg: 8px;
-    --radius-xl: 10px;
-    --radius-2xl: 12px;
-    --radius-3xl: 16px;
-    --radius-4xl: 20px;
+    --radius-xs: 4px;
+    --radius-sm: 6px;
+    --radius-md: 8px;
+    --radius-lg: 12px;
+    --radius-xl: 16px;
+    --radius-2xl: 20px;
+    --radius-3xl: 24px;
+    --radius-4xl: 28px;
 
-    /* App header — 40 px shared bar. The 70 px inset clears the
+    /* App header — 36 px shared bar. The 70 px inset clears the
      * macOS traffic-light overlay (x=12 origin + ~58 button group). */
-    --spacing-app-header: 2.5rem;
+    --spacing-app-header: 2.25rem;
     --spacing-mac-traffic-inset: 70px;
 }
 
@@ -397,6 +380,7 @@ html[data-mobile-shell] code {
    (and iPad-as-desktop) rendering 9–10.5px metadata that fails comfortable-
    reading guidance and made the same screen differ between platforms. An
    11px floor keeps desktop dense while guaranteeing a readable minimum. */
+.text-\[8px\],
 .text-\[9px\],
 .text-\[10px\],
 .text-\[10\.5px\] {
@@ -558,7 +542,7 @@ html[data-mobile-shell] .app-overlay-modal {
     right: 0;
     margin-left: auto;
     margin-right: auto;
-    width: min(90vw, 480px);
+    width: min(90vw, 600px);
   }
 }
 
@@ -680,7 +664,7 @@ html[data-mobile-shell][data-vp-anim] .settings-modal-shell {
   }
   ::-webkit-scrollbar-thumb {
     background: transparent;
-    border-radius: 3px;
+    border-radius: var(--radius-xs);
     transition: background-color 0.15s ease;
   }
   :hover::-webkit-scrollbar-thumb,
@@ -716,6 +700,19 @@ html[data-mobile-shell][data-vp-anim] .settings-modal-shell {
   .scrollbar-none::-webkit-scrollbar {
     display: none;
   }
+}
+
+/* ─────────────────────────────────────────────────────────────
+ * Chat transcript scroller
+ * ─────────────────────────────────────────────────────────────
+ * ``overflow-anchor: none`` opts the scroller itself out of scroll
+ * anchoring; a single bottom sentinel ([data-chat-scroll-anchor], set
+ * ``overflow-anchor: auto`` via JS) is the one element the browser may
+ * use to keep the view pinned as streamed content grows. Pinning via the
+ * browser avoids the per-frame ``scrollTop`` assignments that dropped
+ * compositor tiles and left the transcript blank until the next scroll. */
+.oa-chat-scroll {
+  overflow-anchor: none;
 }
 
 /* ─────────────────────────────────────────────────────────────
@@ -871,7 +868,7 @@ html[data-mobile-shell][data-vp-anim] .settings-modal-shell {
 .oa-prose code {
   background: var(--bg-key);
   border: 1px solid var(--color-border);
-  border-radius: 4px;
+  border-radius: var(--radius-xs);
   padding: 0.15em 0.4em;
   font-size: 0.85em;
   font-family: var(--font-mono);
@@ -910,8 +907,8 @@ html[data-mobile-shell][data-vp-anim] .settings-modal-shell {
 .oa-mermaid-diagram .node rect,
 .oa-mermaid-diagram .node circle,
 .oa-mermaid-diagram .node polygon {
-  rx: 4px;
-  ry: 4px;
+  rx: var(--radius-xs);
+  ry: var(--radius-xs);
 }
 
 .oa-mermaid-diagram text,
@@ -933,23 +930,6 @@ html[data-mobile-shell][data-vp-anim] .settings-modal-shell {
   margin-inline: auto;
 }
 
-.oa-prose .katex-display,
-.oa-prose .katex,
-.oa-prose .katex-html,
-.oa-prose .katex .base {
-  max-width: 100%;
-  white-space: normal;
-  overflow-wrap: anywhere;
-  word-break: break-word;
-}
-
-.oa-prose .katex-display {
-  overflow: visible;
-}
-
-.oa-prose .katex .base {
-  display: inline;
-}
 .oa-prose a {
   color: var(--color-text);
   font-weight: 500;
@@ -966,7 +946,7 @@ html[data-mobile-shell][data-vp-anim] .settings-modal-shell {
 .oa-prose a:focus-visible {
   outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
-  border-radius: 2px;
+  border-radius: var(--radius-xs);
 }
 .oa-prose blockquote {
   border-left: 2px solid var(--color-border-strong);

@@ -1,4 +1,4 @@
-"""Inject workspace-local AGENTS.md or CLAUDE.md instructions for coding mode."""
+"""Inject the workspace root path and local AGENTS.md/CLAUDE.md for coding mode."""
 
 from __future__ import annotations
 
@@ -30,10 +30,13 @@ class WorkspaceInstructionsHook(BaseAgentHook):
         request: "ModelRequest",
         handler: "ModelCallHandler",
     ) -> "AssistantMessage":
-        instructions = self._read_workspace_instructions()
-        if not instructions:
+        if self._workspace is None:
             return await handler(request)
-        block = f"## Workspace Instructions\n\n{instructions}"
+        blocks = [f"## Workspace\nRoot: `{self._workspace}`"]
+        instructions = self._read_workspace_instructions()
+        if instructions:
+            blocks.append(f"## Workspace Instructions\n\n{instructions}")
+        block = "\n\n".join(blocks)
         prompt = (
             f"{request.system_prompt}\n\n{block}" if request.system_prompt else block
         )

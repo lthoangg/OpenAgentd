@@ -232,6 +232,8 @@ export function parsePatchText(patchText: string, meta?: DiffMeta | null): FileD
       } else if (current.kind === 'add') {
         if (line.startsWith('+')) {
           pushCurrentLine({ type: 'added', value: line.substring(1) })
+        } else if (!line.startsWith('***') && !line.startsWith('@@')) {
+          pushCurrentLine({ type: 'added', value: line })
         }
       } else if (current.kind === 'update') {
         if (line.startsWith('+')) {
@@ -247,29 +249,10 @@ export function parsePatchText(patchText: string, meta?: DiffMeta | null): FileD
   return diffs
 }
 
-export function getDiffStats(toolName: string, args: string, result?: string): { additions: number; deletions: number } | null {
+export function getDiffStats(toolName: string, args: string, _result?: string): { additions: number; deletions: number } | null {
   try {
     const parsed = JSON.parse(args)
     if (!parsed) return null
-
-    if (toolName === 'edit') {
-      const oldStr = typeof parsed.old_string === 'string' ? parsed.old_string : ''
-      const newStr = typeof parsed.new_string === 'string' ? parsed.new_string : ''
-      const lines = diffLines(oldStr, newStr)
-      let additions = 0
-      let deletions = 0
-      for (const line of lines) {
-        if (line.type === 'added') additions++
-        if (line.type === 'removed') deletions++
-      }
-      return { additions, deletions }
-    }
-
-    if (toolName === 'write') {
-      const content = typeof parsed.content === 'string' ? parsed.content : ''
-      const lines = content.replace(/\r\n/g, '\n').split('\n')
-      return { additions: lines.length, deletions: 0 }
-    }
 
     if (toolName === 'patch') {
       const patchText = typeof parsed.patch_text === 'string' ? parsed.patch_text : ''
@@ -285,12 +268,6 @@ export function getDiffStats(toolName: string, args: string, result?: string): {
       return { additions, deletions }
     }
 
-    if (toolName === 'rm') {
-      const meta = parseDiffMeta(result)
-      if (typeof meta?.deleted_lines === 'number') {
-        return { additions: 0, deletions: meta.deleted_lines }
-      }
-    }
   } catch {
     // ignore
   }

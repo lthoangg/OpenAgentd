@@ -33,7 +33,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.agent.schemas.chat import ToolMessage
 from app.models.chat import PendingQuestion, SessionMessage
-from app.services.chat_service import save_message
+from app.services.chat_service import bump_history_revision, save_message
 
 TOOL_NAME = "ask_user"
 
@@ -221,3 +221,4 @@ async def _rewrite_placeholder(
     extra.pop("pending_question", None)
     placeholder.extra = extra or None
     db.add(placeholder)
+    await bump_history_revision(db, session_id, structural=True)

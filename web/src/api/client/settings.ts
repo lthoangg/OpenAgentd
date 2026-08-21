@@ -7,7 +7,8 @@ import { readSSE } from '../sse'
 import type { SSECallbacks } from '../sse'
 import { parseDetailOrThrow } from './_shared'
 
-export type SandboxSettings = { denied_patterns: string[] }
+export type DeniedPathsSettings = { denied_patterns: string[] }
+export type SandboxSettings = DeniedPathsSettings
 
 export type LspToolsStatus = {
   downloads_enabled: boolean
@@ -32,23 +33,26 @@ export async function installTypeScriptLsp(): Promise<LspToolsStatus> {
   return res.json()
 }
 
-export async function getSandboxSettings(): Promise<SandboxSettings> {
-  const res = await fetch(`${apiBaseUrl()}/settings/sandbox`)
-  if (!res.ok) await parseDetailOrThrow(res, 'GET /settings/sandbox')
+export async function getDeniedPathsSettings(): Promise<DeniedPathsSettings> {
+  const res = await fetch(`${apiBaseUrl()}/settings/denied-paths`)
+  if (!res.ok) await parseDetailOrThrow(res, 'GET /settings/denied-paths')
   return res.json()
 }
 
-export async function updateSandboxSettings(
-  body: SandboxSettings,
-): Promise<SandboxSettings> {
-  const res = await fetch(`${apiBaseUrl()}/settings/sandbox`, {
+export async function updateDeniedPathsSettings(
+  body: DeniedPathsSettings,
+): Promise<DeniedPathsSettings> {
+  const res = await fetch(`${apiBaseUrl()}/settings/denied-paths`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   })
-  if (!res.ok) await parseDetailOrThrow(res, 'PUT /settings/sandbox')
+  if (!res.ok) await parseDetailOrThrow(res, 'PUT /settings/denied-paths')
   return res.json()
 }
+
+export const getSandboxSettings = getDeniedPathsSettings
+export const updateSandboxSettings = updateDeniedPathsSettings
 
 export type SummarizationSettings = {
   /** null = use the auto-computed model-aware threshold */

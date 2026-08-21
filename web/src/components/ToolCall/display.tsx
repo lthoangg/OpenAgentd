@@ -18,7 +18,7 @@ import type { ReactNode } from 'react'
 import type { ToolDisplay } from './types'
 import { parsePatchText } from './diffUtils'
 import { pathBasename } from '@/utils/workspace'
-import { summarizeText, parsePartialJSON } from './displayText'
+import { parsePartialJSON } from './displayText'
 
 /**
  * Keep argument values in headers easy to restyle consistently.
@@ -104,6 +104,10 @@ function formatTodoAction(action: Record<string, unknown>): string {
   if (type === 'claim') return `claim ${taskId ?? 'todo'}`
   if (type === 'delete') return `delete ${taskId ?? 'todo'}`
   if (type === 'read') return 'read todos'
+  if (type === 'clear') {
+    const statuses = Array.isArray(action.statuses) ? action.statuses.map(String).join('/') : ''
+    return `clear ${statuses || 'finished'} todos`.trim()
+  }
   return type ? `${type} ${taskId ?? ''}`.trim() : JSON.stringify(action)
 }
 
@@ -133,8 +137,6 @@ const HIDE_ARGS_TOOLS = new Set([
   'read',
   'web_search',
   'web_fetch',
-  'rm',
-  'ls',
   'glob',
   'grep',
   'team_manage',
@@ -143,11 +145,6 @@ const HIDE_ARGS_TOOLS = new Set([
 ])
 
 export function getToolDisplay(name: string, args: string | undefined): ToolDisplay {
-  // ── date: no args, no args section ────────────────────────────────
-  if (name === 'date') {
-    return { header: null, headerTitle: null, formattedArgs: null }
-  }
-
   if (!args) {
     // recall with no args — conversational header, no args section
     if (name === 'recall') {
@@ -210,6 +207,7 @@ function getToolDisplayInternal(name: string, parsed: Record<string, unknown>): 
     const operation = str(parsed, 'operation')
     const path = str(parsed, 'path')
     const query = str(parsed, 'query')
+    const kind = str(parsed, 'kind')
     const line = typeof parsed.line === 'number' ? parsed.line : 1
     const character = typeof parsed.character === 'number' ? parsed.character : 1
     const location = path ? `${path}:${line}:${character}` : null
@@ -230,23 +228,47 @@ function getToolDisplayInternal(name: string, parsed: Record<string, unknown>): 
         formattedArgs: path ? `file: ${path}\nposition: ${line}:${character}` : null,
       }
     }
-    if (operation === 'document_symbol') {
-      const label = path ? `Symbols in ${path}` : 'Document symbols'
+    if (operation === 'find_implementations') {
+      const label = location ? `Implementations at ${location}` : 'Implementations'
       return {
         header: <Arg>{label}</Arg>,
         headerTitle: label,
-        formattedArgs: path ? `file: ${path}` : null,
+        formattedArgs: path ? `file: ${path}\nposition: ${line}:${character}` : null,
+      }
+    }
+    if (operation === 'hover') {
+      const label = location ? `Hover at ${location}` : 'Hover'
+      return {
+        header: <Arg>{label}</Arg>,
+        headerTitle: label,
+        formattedArgs: path ? `file: ${path}\nposition: ${line}:${character}` : null,
+      }
+    }
+    if (operation === 'document_symbol') {
+      const kindPrefix = kind ? `${kind.charAt(0).toUpperCase()}${kind.slice(1)} symbols` : 'Symbols'
+      const label = path ? `${kindPrefix} in ${path}` : (kind ? kindPrefix : 'Document symbols')
+      return {
+        header: <Arg>{label}</Arg>,
+        headerTitle: label,
+        formattedArgs: [path ? `file: ${path}` : null, kind ? `kind: ${kind}` : null]
+          .filter(Boolean)
+          .join('\n') || null,
       }
     }
     if (operation === 'workspace_symbol') {
       const queryLabel = query ? `"${trunc(query)}"` : 'all symbols'
+      const kindSuffix = kind ? ` (${kind})` : ''
       const label = path
-        ? `Workspace symbols ${queryLabel} via ${path}`
-        : `Workspace symbols ${queryLabel}`
+        ? `Workspace symbols ${queryLabel}${kindSuffix} via ${path}`
+        : `Workspace symbols ${queryLabel}${kindSuffix}`
       return {
         header: <Arg>{label}</Arg>,
         headerTitle: label,
-        formattedArgs: [query ? `query: ${query}` : null, path ? `language file: ${path}` : null]
+        formattedArgs: [
+          query ? `query: ${query}` : null,
+          kind ? `kind: ${kind}` : null,
+          path ? `language file: ${path}` : null,
+        ]
           .filter(Boolean)
           .join('\n') || null,
       }
@@ -385,6 +407,9 @@ function getToolDisplayInternal(name: string, parsed: Record<string, unknown>): 
     if (actions.length === 1 && firstAction === 'read') {
       return { header: 'Reading todos…', headerTitle: 'Reading todos…', formattedArgs: null }
     }
+    if (actions.length === 1 && firstAction === 'clear') {
+      return { header: 'Clearing finished todos…', headerTitle: 'Clearing finished todos…', formattedArgs: null }
+    }
     if (actions.length === 1 && firstAction === 'claim') {
       const taskId = str(first, 'task_id')
       return {
@@ -465,18 +490,6 @@ function getToolDisplayInternal(name: string, parsed: Record<string, unknown>): 
     return { header: 'Managing scheduled tasks…', headerTitle: 'Managing scheduled tasks…', formattedArgs: null }
   }
 
-  // ── write: file name in header, content as args ───────────────────
-  if (name === 'write') {
-    const path = str(parsed, 'path')
-    const fileName = path ? pathBasename(path) : null
-    const content = str(parsed, 'content')
-    return {
-      header: fileName ? <Arg>{fileName}</Arg> : 'file',
-      headerTitle: fileName ? fileName : 'file',
-      formattedArgs: summarizeText('content', content),
-    }
-  }
-
   // ── read: file name in header, custom result renderer shows content ──
   if (name === 'read') {
     const path = str(parsed, 'path')
@@ -499,45 +512,6 @@ function getToolDisplayInternal(name: string, parsed: Record<string, unknown>): 
       header: summary ? <Arg>{summary}</Arg> : 'patch',
       headerTitle: summary ?? 'patch',
       formattedArgs: patchText,
-    }
-  }
-
-  // ── edit: file name in header, args as-is ─────────────────────────
-  if (name === 'edit') {
-    const path = str(parsed, 'path')
-    const fileName = path ? pathBasename(path) : null
-    return {
-      header: fileName ? <Arg>{fileName}</Arg> : 'file',
-      headerTitle: fileName ? fileName : 'file',
-      formattedArgs: JSON.stringify(parsed, null, 2),
-    }
-  }
-
-  // ── rm: file name in header, hide args ────────────────────────────
-  if (name === 'rm') {
-    const path = str(parsed, 'path')
-    const fileName = path ? pathBasename(path) : null
-    return {
-      header: fileName ? <Arg>{fileName}</Arg> : 'file',
-      headerTitle: fileName ? fileName : 'file',
-      formattedArgs: null,
-    }
-  }
-
-  // ── ls: directory path in header, hide args ───────────────────────
-  // Default path is "." (workspace root) — elide that in the header
-  // rather than saying "Listing ." which is noise.
-  if (name === 'ls') {
-    const path = str(parsed, 'path')
-    const isRoot = !path || path === '.' || path === './'
-    if (isRoot) {
-      return { header: 'workspace', headerTitle: 'workspace', formattedArgs: null }
-    }
-    const truncated = trunc(path)
-    return {
-      header: <Arg>{truncated}</Arg>,
-      headerTitle: truncated,
-      formattedArgs: null,
     }
   }
 

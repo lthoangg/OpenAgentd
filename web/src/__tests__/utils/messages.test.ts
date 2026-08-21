@@ -1,5 +1,6 @@
 import { describe, it, expect } from "bun:test";
-import { sumUsageFromMessages, parseTeamBlocks } from "@/utils/messages";
+import { sumUsageFromMessages, parseTeamBlocks, applyOrphanToolResults } from "@/utils/messages";
+import type { OrphanToolResult } from "@/utils/messages";
 import type { MessageResponse } from "@/api/types";
 
 // ---------------------------------------------------------------------------
@@ -78,6 +79,15 @@ describe("sumUsageFromMessages", () => {
     expect(sumUsageFromMessages(msgs).estimatedCostUsd).toBe(0.0035);
   });
 
+  it("supports estimated_cost_usd directly on usage or extra", () => {
+    const msgs = [
+      makeMsg({ extra: { usage: { input: 10, output: 5, estimated_cost_usd: 0.0015 } } }),
+      makeMsg({ extra: { usage: { input: 20, output: 8 }, estimated_cost_usd: 0.0025 } }),
+    ];
+
+    expect(sumUsageFromMessages(msgs).estimatedCostUsd).toBe(0.004);
+  });
+
   it("restores the running session cost across 100 assistant messages", () => {
     const msgs = Array.from({ length: 100 }, (_, turn) => makeMsg({
       created_at: new Date(Date.UTC(2026, 0, 1, 0, 0, turn)).toISOString(),
@@ -111,6 +121,63 @@ describe("sumUsageFromMessages", () => {
     const result = sumUsageFromMessages(msgs);
     // Me still counts hidden messages — this matches DatabaseHook behaviour (all turns are stored)
     expect(result.totalTokens).toBe(15);
+  });
+
+  // ── Compaction (summary rows carry the summariser call's usage) ──────────
+
+  it("includes the compaction cost persisted on the summary message", () => {
+    const t = (s: number) => new Date(Date.UTC(2026, 0, 1, 0, 0, s)).toISOString();
+    const msgs = [
+      makeMsg({ created_at: t(1), extra: { usage: { input: 100, output: 20, cost: { estimated_usd: 0.001 } } } }),
+      makeMsg({ role: "user", is_summary: true, created_at: t(2), extra: { usage: { input: 9000, output: 50, cost: { estimated_usd: 0.0005 } } } }),
+      makeMsg({ created_at: t(3), extra: { usage: { input: 200, output: 30, cache: 40, cost: { estimated_usd: 0.002 } } } }),
+    ];
+    const result = sumUsageFromMessages(msgs);
+    // Running sum = turn A + compaction S + turn B — nothing dropped.
+    expect(result.estimatedCostUsd).toBe(0.0035);
+    // Output accumulates the summary's generation, matching the live meter.
+    expect(result.completionTokens).toBe(100);
+    // The summary's input is the PRE-compaction context — it must never
+    // define the displayed context size or cache read.
+    expect(result.promptTokens).toBe(200);
+    expect(result.cachedTokens).toBe(40);
+  });
+
+  it("summary as newest row sets promptTokens to summary output so compaction reduction is immediately visible", () => {
+    const t = (s: number) => new Date(Date.UTC(2026, 0, 1, 0, 0, s)).toISOString();
+    const msgs = [
+      makeMsg({ created_at: t(1), extra: { usage: { input: 500, output: 20, cache: 10, cost: { estimated_usd: 0.001 } } } }),
+      makeMsg({ role: "user", is_summary: true, created_at: t(2), extra: { usage: { input: 250000, output: 400, cache: 200000, cost: { estimated_usd: 0.0005 } } } }),
+    ];
+    const result = sumUsageFromMessages(msgs);
+    expect(result.estimatedCostUsd).toBe(0.0015);
+    expect(result.promptTokens).toBe(400);
+    expect(result.cachedTokens).toBe(200000);
+    expect(result.cachedPercent).toBe(80.0);
+    expect(result.completionTokens).toBe(420);
+    expect(result.totalTokens).toBe(820);
+  });
+
+  it("keeps the running sum across multiple turns and compactions", () => {
+    const t = (s: number) => new Date(Date.UTC(2026, 0, 1, 0, 0, s)).toISOString();
+    const msgs = [
+      makeMsg({ created_at: t(1), extra: { usage: { input: 100, output: 10, cost: { estimated_usd: 0.001 } } } }),
+      makeMsg({ role: "user", is_summary: true, created_at: t(2), extra: { usage: { input: 5000, output: 40, cost: { estimated_usd: 0.0004 } } } }),
+      makeMsg({ created_at: t(3), extra: { usage: { input: 150, output: 20, cost: { estimated_usd: 0.002 } } } }),
+      makeMsg({ role: "user", is_summary: true, created_at: t(4), extra: { usage: { input: 6000, output: 50, cost: { estimated_usd: 0.0006 } } } }),
+      makeMsg({ created_at: t(5), extra: { usage: { input: 200, output: 30, cost: { estimated_usd: 0.003 } } } }),
+    ];
+    expect(sumUsageFromMessages(msgs).estimatedCostUsd).toBe(0.007);
+  });
+
+  it("summary message without usage contributes nothing (pre-fix rows)", () => {
+    const msgs = [
+      makeMsg({ extra: { usage: { input: 100, output: 20, cost: { estimated_usd: 0.001 } } } }),
+      makeMsg({ role: "user", is_summary: true, extra: null }),
+    ];
+    const result = sumUsageFromMessages(msgs);
+    expect(result.estimatedCostUsd).toBe(0.001);
+    expect(result.completionTokens).toBe(20);
   });
 });
 
@@ -152,23 +219,6 @@ describe("parseTeamBlocks", () => {
     const msgs = [makeMsg({ role: "user", content: "legacy", extra: null })];
     const blocks = parseTeamBlocks(msgs);
     expect(blocks[0].extra).toBeUndefined();
-  });
-
-  it("renders shell user messages from command metadata instead of synthetic LLM text", () => {
-    const msgs = [makeMsg({
-      role: "user",
-      content: "The following tool was executed by the user",
-      extra: {
-        kind: "user_shell",
-        command: "pwd",
-      },
-    })];
-
-    const blocks = parseTeamBlocks(msgs);
-
-    expect(blocks).toHaveLength(1);
-    expect(blocks[0].type).toBe("user");
-    expect(blocks[0].content).toBe("!pwd");
   });
 
   it("converts assistant message to text block", () => {
@@ -223,44 +273,6 @@ describe("parseTeamBlocks", () => {
     const blocks = parseTeamBlocks(msgs);
     expect(blocks[0].type).toBe("thinking");
     expect(blocks[0].content).toBe("let me think");
-  });
-
-  it("skips reasoning_content for continuation assistant messages", () => {
-    const msgs = [makeMsg({
-      role: "assistant",
-      reasoning_content: "do not render",
-      content: "continued answer",
-      extra: { is_continuation: true },
-    })];
-    const blocks = parseTeamBlocks(msgs);
-    expect(blocks).toHaveLength(1);
-    expect(blocks[0].type).toBe("text");
-    expect(blocks[0].content).toBe("continued answer");
-  });
-
-  it("merges continuation text into the previous assistant text block", () => {
-    const msgs = [
-      makeMsg({ role: "assistant", content: "The quick" }),
-      makeMsg({ role: "assistant", content: " brown fox", extra: { is_continuation: true } }),
-    ];
-
-    const blocks = parseTeamBlocks(msgs);
-
-    expect(blocks).toHaveLength(1);
-    expect(blocks[0].type).toBe("text");
-    expect(blocks[0].content).toBe("The quick brown fox");
-  });
-
-  it("adds one space when merging continuation text without boundary whitespace", () => {
-    const msgs = [
-      makeMsg({ role: "assistant", content: "The quick" }),
-      makeMsg({ role: "assistant", content: "brown fox", extra: { is_continuation: true } }),
-    ];
-
-    const blocks = parseTeamBlocks(msgs);
-
-    expect(blocks).toHaveLength(1);
-    expect(blocks[0].content).toBe("The quick brown fox");
   });
 
   it("renders summary messages as compaction divider blocks (legacy prefix stripped)", () => {
@@ -455,5 +467,112 @@ describe("parseTeamBlocks — todo_manage rendering", () => {
     expect(blocks).toHaveLength(1);
     expect(blocks[0].toolDone).toBe(true);
     expect(blocks[0].toolResult).toBe("[task_1] [completed] (high) claimed=executor#1 Do the thing");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Orphaned tool results — call/result pairs split across a fetch boundary
+// ---------------------------------------------------------------------------
+
+describe("orphaned tool results", () => {
+  it("collects a tool result whose assistant row is outside the batch", () => {
+    const orphans: Record<string, OrphanToolResult> = {};
+    const blocks = parseTeamBlocks(
+      [
+        makeMsg({
+          role: "tool",
+          tool_call_id: "call-1",
+          content: "result text",
+          extra: { duration_ms: 42 },
+          created_at: "2026-01-01T00:00:01Z",
+        }),
+      ],
+      orphans,
+    );
+    expect(blocks).toHaveLength(0);
+    expect(orphans["call-1"]).toMatchObject({ content: "result text", serverDurationMs: 42 });
+  });
+
+  it("does not collect results that matched a card in the same batch", () => {
+    const orphans: Record<string, OrphanToolResult> = {};
+    const blocks = parseTeamBlocks(
+      [
+        makeMsg({
+          role: "assistant",
+          content: "",
+          tool_calls: [
+            { id: "call-1", type: "function", function: { name: "shell", arguments: "{}" } },
+          ],
+          created_at: "2026-01-01T00:00:00Z",
+        }),
+        makeMsg({
+          role: "tool",
+          tool_call_id: "call-1",
+          content: "attached",
+          created_at: "2026-01-01T00:00:01Z",
+        }),
+      ],
+      orphans,
+    );
+    const tool = blocks.find((b) => b.type === "tool");
+    expect(tool?.toolDone).toBe(true);
+    expect(tool?.toolResult).toBe("attached");
+    expect(Object.keys(orphans)).toHaveLength(0);
+  });
+
+  it("applyOrphanToolResults completes a matching incomplete card and consumes the orphan", () => {
+    const blocks = parseTeamBlocks([
+      makeMsg({
+        role: "assistant",
+        content: "",
+        tool_calls: [
+          { id: "call-1", type: "function", function: { name: "shell", arguments: "{}" } },
+        ],
+        created_at: "2026-01-01T00:00:00Z",
+      }),
+    ]);
+    const orphans: Record<string, OrphanToolResult> = {
+      "call-1": { content: "res", serverDurationMs: 42 },
+    };
+
+    const applied = applyOrphanToolResults(blocks, orphans);
+
+    const tool = applied.find((b) => b.type === "tool");
+    expect(tool?.toolDone).toBe(true);
+    expect(tool?.toolResult).toBe("res");
+    expect(tool?.serverDurationMs).toBe(42);
+    expect(tool?.durationMs).toBe(42);
+    expect(orphans["call-1"]).toBeUndefined();
+  });
+
+  it("applyOrphanToolResults leaves done cards and unrelated orphans alone", () => {
+    const blocks = parseTeamBlocks([
+      makeMsg({
+        role: "assistant",
+        content: "",
+        tool_calls: [
+          { id: "call-done", type: "function", function: { name: "shell", arguments: "{}" } },
+        ],
+        created_at: "2026-01-01T00:00:00Z",
+      }),
+      makeMsg({
+        role: "tool",
+        tool_call_id: "call-done",
+        content: "already finished",
+        created_at: "2026-01-01T00:00:01Z",
+      }),
+    ]);
+    const orphans: Record<string, OrphanToolResult> = {
+      "call-done": { content: "stale overwrite" },
+      "call-elsewhere": { content: "still waiting" },
+    };
+
+    const applied = applyOrphanToolResults(blocks, orphans);
+
+    const tool = applied.find((b) => b.type === "tool");
+    expect(tool?.toolResult).toBe("already finished");
+    // Consumed nothing: the done card keeps its result, the unrelated orphan stays.
+    expect(orphans["call-done"]).toBeDefined();
+    expect(orphans["call-elsewhere"]).toBeDefined();
   });
 });

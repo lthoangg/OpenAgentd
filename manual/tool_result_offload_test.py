@@ -1,17 +1,26 @@
-"""Test ToolResultOffloadHook — verifies large tool results are offloaded to workspace.
+"""Verify ToolResultOffloadHook offloads large tool results to disk.
+
+Prerequisites: server running on http://localhost:8000 (dev API).
+
+What it checks:
+  1. Sends a prompt that triggers web_fetch on a large file (CPython
+     argparse.py, ~114KB), which exceeds ToolResultOffloadHook's char
+     threshold (40,000 chars).
+  2. Verifies the tool_end SSE event for web_fetch carries the offload
+     marker instead of the raw content.
+  3. Confirms the full result was written under the session's
+     ``.tool_results/{agent_name}/{tool_call_id}.txt`` artifact path.
+  4. Asks the agent to `read` the offloaded path back and confirms that
+     succeeds without re-triggering an offload (the hook special-cases
+     ``read`` to avoid a circular offload-of-an-offload loop).
 
 Usage:
   uv run python -m manual.tool_result_offload_test
-  uv run python -m manual.tool_result_offload_test --base http://localhost:8000
-  uv run python -m manual.tool_result_offload_test --wait 90
-
-What it checks:
-  1. Sends a prompt that triggers web_fetch on a large file (CPython ast.py ~25KB)
-  2. Verifies the tool_end SSE event contains the offload marker
-  3. Checks the workspace for the .tool_results/ file
-  4. Verifies the agent can read the offloaded file via read_file (no circular loop)
-  5. Reports PASS / FAIL with details
+  uv run python -m manual.tool_result_offload_test --base http://localhost:8000/api
+  uv run python -m manual.tool_result_offload_test --wait 180
 """
+
+from __future__ import annotations
 
 import argparse
 import json
@@ -20,93 +29,80 @@ from pathlib import Path
 
 import httpx
 
-from app.core.paths import workspace_dir
+from app.agent.artifacts import tool_results_dir
 
 from manual._common import DEFAULT_BASE
 BASE = DEFAULT_BASE
-DEFAULT_WAIT = 120
-# Me large file — CPython ast.py is ~25KB, well above 8000-char threshold
-LARGE_FILE_URL = "https://raw.githubusercontent.com/python/cpython/main/Lib/ast.py"
+DEFAULT_WAIT = 180
+# Large file — CPython argparse.py (~114KB), well above the offload hook's
+# 40,000-char threshold. ast.py (~27KB) used to be the fixture here but no
+# longer clears the threshold and must not be reused for this test.
+LARGE_FILE_URL = "https://raw.githubusercontent.com/python/cpython/main/Lib/argparse.py"
+OFFLOAD_MARKER = "[Tool result offloaded"
 
 
-def post_and_wait(
-    base: str, message: str, session_id: str | None, timeout: int
-) -> tuple[str, list[dict]]:
-    """Send a message and wait for done, returning (session_id, events)."""
-    payload: dict = {"message": message}
+def _post_turn(base: str, message: str, session_id: str | None) -> str:
+    payload: dict[str, str] = {"message": message}
     if session_id:
         payload["session_id"] = session_id
-    r = httpx.post(f"{base}/chat", data=payload)
-    r.raise_for_status()
-    sid = r.json()["session_id"]
+    response = httpx.post(f"{base}/team/chat", data=payload, timeout=30)
+    response.raise_for_status()
+    return str(response.json()["session_id"])
 
-    events = []
-    deadline = time.time() + timeout
-    with httpx.stream("GET", f"{base}/chat/stream/{sid}", timeout=timeout + 5) as resp:
-        for line in resp.iter_lines():
-            if time.time() > deadline:
-                print("  [TIMEOUT]")
+
+def _stream_events(base: str, session_id: str, wait: int) -> list[dict]:
+    """Drain the team SSE stream, returning every ``{event, data}`` pair seen."""
+    events: list[dict] = []
+    start = time.monotonic()
+    current_event = "message"
+    data_buf: list[str] = []
+    with httpx.stream(
+        "GET", f"{base}/team/{session_id}/stream", timeout=wait + 5
+    ) as response:
+        response.raise_for_status()
+        for line in response.iter_lines():
+            if time.monotonic() - start > wait:
+                print("  [timeout while waiting for done]")
                 break
-            if line.startswith("data:"):
-                raw = line[5:].strip()
-                if not raw:
+            if line.startswith("event:"):
+                current_event = line[6:].strip()
+            elif line.startswith("data:"):
+                data_buf.append(line[5:].strip())
+            elif line == "":
+                if not data_buf:
                     continue
-                try:
-                    ev = json.loads(raw)
-                    events.append(ev)
-                    if ev.get("type") == "done":
-                        break
-                except json.JSONDecodeError:
-                    pass
-    return sid, events
+                data = json.loads("\n".join(data_buf))
+                data_buf = []
+                events.append({"event": current_event, "data": data})
+                if current_event == "done":
+                    break
+    return events
 
 
-def check_offload_in_events(events: list[dict]) -> tuple[bool, str]:
-    """Return (found, tool_call_id) if any tool_end has the offload marker."""
-    for ev in events:
-        if ev.get("type") == "tool_end":
-            result = ev.get("result", "") or ""
-            if "[Tool result offloaded" in result:
-                tc_id = ev.get("tool_call_id", "")
-                return True, tc_id
-    return False, ""
+def _tool_ends(events: list[dict], name: str) -> list[dict]:
+    return [
+        e["data"]
+        for e in events
+        if e["event"] == "tool_end" and e["data"].get("name") == name
+    ]
 
 
-def check_workspace_file(
-    session_id: str, agent_name: str, tool_call_id: str
-) -> tuple[bool, Path | None]:
-    """Check if the offloaded file exists on disk."""
-    workspace = workspace_dir(session_id) / agent_name / ".tool_results"
-    expected = workspace / f"{tool_call_id}.txt"
-    if expected.exists():
-        return True, expected
-    # Me scan dir if tool_call_id partial match
-    if workspace.exists():
-        matches = list(workspace.glob(f"{tool_call_id[:8]}*.txt"))
-        if matches:
-            return True, matches[0]
-        # Me list all files found
-        all_files = list(workspace.glob("*.txt"))
-        if all_files:
-            return True, all_files[0]
-    return False, None
+def _agent_name(base: str) -> str:
+    """Return the lead agent's name (first entry of ``GET /team/agents``)."""
+    response = httpx.get(f"{base}/team/agents", timeout=10)
+    response.raise_for_status()
+    agents = response.json().get("agents") or []
+    if not agents:
+        raise RuntimeError("GET /team/agents returned no agents")
+    return str(agents[0]["name"])
 
 
-def get_agent_name(base: str) -> str:
-    try:
-        r = httpx.get(f"{base}/chat/agent", timeout=5)
-        r.raise_for_status()
-        return r.json().get("name", "assistant")
-    except Exception:
-        return "assistant"
-
-
-def run(base: str, wait: int) -> None:
+def run(base: str, wait: int) -> int:
     print("=" * 60)
     print("ToolResultOffloadHook Manual Test")
     print("=" * 60)
 
-    agent_name = get_agent_name(base)
+    agent_name = _agent_name(base)
     print(f"Agent: {agent_name}")
 
     # ── Test 1: trigger offload via web_fetch ─────────────────────────────
@@ -115,87 +111,74 @@ def run(base: str, wait: int) -> None:
         f"Use web_fetch to fetch {LARGE_FILE_URL} "
         "and tell me the first function defined in the file."
     )
-    sid, events = post_and_wait(base, prompt, None, wait)
+    sid = _post_turn(base, prompt, None)
     print(f"  Session: {sid}")
+    events = _stream_events(base, sid, wait)
 
-    offloaded, tc_id = check_offload_in_events(events)
-    if offloaded:
-        print(
-            f"  [PASS] tool_end contains offload marker (tool_call_id prefix: {tc_id[:16]}...)"
-        )
-    else:
-        print("  [FAIL] No offload marker found in tool_end events")
-        print("         Either result was < threshold or hook not registered")
-        tool_ends = [e for e in events if e.get("type") == "tool_end"]
-        for te in tool_ends:
-            result_preview = (te.get("result") or "")[:120]
-            print(f"         tool_end result preview: {result_preview!r}")
-        return
+    web_fetch_ends = _tool_ends(events, "web_fetch")
+    offloaded_end = next(
+        (e for e in web_fetch_ends if OFFLOAD_MARKER in (e.get("result") or "")),
+        None,
+    )
+    if offloaded_end is None:
+        print("  [FAIL] No offload marker found in any web_fetch tool_end event")
+        for e in web_fetch_ends:
+            print(f"         preview: {(e.get('result') or '')[:120]!r}")
+        return 1
+    tc_id = str(offloaded_end.get("tool_call_id") or "")
+    print(f"  [PASS] tool_end carries offload marker (tool_call_id={tc_id[:16]}...)")
 
     # ── Test 2: check file on disk ────────────────────────────────────────
-    print("\n[2/3] Checking workspace for offloaded file...")
-    found, offload_path = check_workspace_file(sid, agent_name, tc_id)
-    if found and offload_path:
+    print("\n[2/3] Checking session artifacts for the offloaded file...")
+    offload_path: Path = tool_results_dir(agent_name, sid) / f"{tc_id}.txt"
+    if offload_path.exists():
         size = offload_path.stat().st_size
         lines = sum(1 for _ in offload_path.open())
         print(f"  [PASS] File exists: {offload_path}")
         print(f"         Size: {size:,} bytes · {lines:,} lines")
         print(f"         First 100 chars: {offload_path.read_text()[:100]!r}")
+        file_ok = True
     else:
-        workspace = workspace_dir(sid) / agent_name / ".tool_results"
-        print(f"  [FAIL] Offload file not found under: {workspace}")
-        print(f"         (workspace exists: {workspace.exists()})")
-        if workspace.exists():
-            print(f"         Files: {list(workspace.iterdir())}")
+        print(f"  [FAIL] Offload file not found: {offload_path}")
+        file_ok = False
 
-    # ── Test 3: agent can read offloaded file (no circular loop) ──────────
-    print("\n[3/3] Verifying agent can read_file the offloaded path...")
-    rel_path = (
-        f"{agent_name}/.tool_results/{offload_path.name}"
-        if offload_path
-        else f"{agent_name}/.tool_results/{tc_id}.txt"
+    # ── Test 3: agent can `read` the offloaded file (no circular loop) ────
+    print("\n[3/3] Verifying the agent can `read` the offloaded path...")
+    prompt2 = f"Use read to read '{offload_path}' and tell me the first 3 lines."
+    sid = _post_turn(base, prompt2, sid)
+    events2 = _stream_events(base, sid, wait)
+
+    read_ends = _tool_ends(events2, "read")
+    read_offloaded = any(
+        OFFLOAD_MARKER in (e.get("result") or "") for e in read_ends
     )
-    prompt2 = f"Use read_file to read '{rel_path}' and tell me the first 3 lines."
-    _, events2 = post_and_wait(base, prompt2, sid, wait)
+    done_ok = any(e["event"] == "done" for e in events2)
 
-    # Me check no offload in read_file result — that would be the circular loop bug
-    read_offloaded, _ = check_offload_in_events(events2)
-    read_ends = [
-        e
-        for e in events2
-        if e.get("type") == "tool_end" and e.get("tool_name") == "read_file"
-    ]
-    done_ok = any(e.get("type") == "done" for e in events2)
-
-    if done_ok and not read_offloaded:
-        print(
-            "  [PASS] read_file completed without triggering offload (no circular loop)"
-        )
+    if done_ok and read_ends and not read_offloaded:
+        print("  [PASS] read completed without triggering a second offload")
+        read_ok = True
     elif read_offloaded:
-        print("  [FAIL] read_file result was also offloaded — circular loop bug!")
-    elif not done_ok:
-        print("  [FAIL] Did not reach done event — agent may be stuck in loop")
-
+        print("  [FAIL] read result was itself offloaded — circular loop bug!")
+        read_ok = False
+    else:
+        print("  [FAIL] turn did not complete a `read` tool call as expected")
+        read_ok = False
     if read_ends:
-        preview = (read_ends[0].get("result") or "")[:200]
-        print(f"  read_file result preview: {preview!r}")
+        print(f"  read result preview: {(read_ends[0].get('result') or '')[:200]!r}")
 
-    # ── Summary ───────────────────────────────────────────────────────────
     print("\n" + "=" * 60)
-    t1 = "PASS" if offloaded else "FAIL"
-    t2 = "PASS" if (found and offload_path) else "FAIL"
-    t3 = "PASS" if (done_ok and not read_offloaded) else "FAIL"
-    print(f"[{t1}] Offload fires on large web_fetch result")
-    print(f"[{t2}] File written to workspace")
-    print(f"[{t3}] read_file can access offloaded file without loop")
+    print(f"[{'PASS' if offloaded_end else 'FAIL'}] Offload fires on large web_fetch result")
+    print(f"[{'PASS' if file_ok else 'FAIL'}] File written to session artifacts")
+    print(f"[{'PASS' if read_ok else 'FAIL'}] read can access the offloaded file without looping")
     print("=" * 60)
+    return 0 if (offloaded_end and file_ok and read_ok) else 1
 
 
 if __name__ == "__main__":
     p = argparse.ArgumentParser(description="Test ToolResultOffloadHook")
-    p.add_argument("--base", default=BASE, help="Backend URL")
+    p.add_argument("--base", default=BASE, help="API base URL")
     p.add_argument(
-        "--wait", type=int, default=DEFAULT_WAIT, help="Timeout per request (seconds)"
+        "--wait", type=int, default=DEFAULT_WAIT, help="Timeout per turn (seconds)"
     )
     args = p.parse_args()
-    run(args.base, args.wait)
+    raise SystemExit(run(args.base.rstrip("/"), args.wait))

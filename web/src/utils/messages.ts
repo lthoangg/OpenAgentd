@@ -1,5 +1,23 @@
 import type { AgentUsage, ContentBlock, MessageResponse } from '@/api/types'
 
+/**
+ * A ``role='tool'`` result row whose matching assistant ``tool_calls`` row was
+ * not in the same parsed batch.
+ *
+ * History fetches cut at arbitrary row boundaries — the pagination cursor can
+ * split a call/result pair across pages, and a turn-tail delta can carry only
+ * the result when a mid-turn reconcile already adopted the assistant row (it
+ * is persisted before its tools finish). ``parseTeamBlocks`` used to drop such
+ * rows silently, losing the result and leaving the card stuck "running".
+ * Callers collect them here and attach via {@link applyOrphanToolResults}
+ * once the owning card is in reach.
+ */
+export interface OrphanToolResult {
+  content: string
+  serverDurationMs?: number
+  mcpApp?: Record<string, unknown>
+}
+
 // Me sort messages by timestamp asc, assistant before tool on ties
 
 /** Legacy-row guard: pre-2026-05 summary rows had a hardcoded
@@ -12,23 +30,19 @@ function stripCompactionPrefix(content: string): string {
   return content.startsWith(prefix) ? content.slice(prefix.length) : content
 }
 
-function continuationSeparator(left: string, right: string): string {
-  if (!left || !right) return ''
-  if (/\s$/.test(left) || /^\s/.test(right)) return ''
-  return ' '
-}
-
-function shellDisplayContent(msg: MessageResponse): string {
-  const command = msg.extra?.command
-  if (msg.extra?.kind === 'user_shell' && typeof command === 'string' && command.trim()) {
-    return command.trim().startsWith('!') ? command.trim() : `!${command.trim()}`
-  }
-  return msg.content || ''
-}
-
 function sortMessages(msgs: MessageResponse[]): MessageResponse[] {
   const indexed = msgs.map((m, i) => ({ m, i }))
   indexed.sort((a, b) => {
+    // seq is the canonical position (anchored rows — compaction summaries,
+    // healed tool stubs — sit at their logical spot, not insertion time).
+    // Fall back to created_at for locally-built messages that lack it.
+    const sa = a.m.seq ?? 0
+    const sb = b.m.seq ?? 0
+    if (sa > 0 && sb > 0) {
+      if (sa !== sb) return sa - sb
+      if (a.m.id !== b.m.id) return a.m.id < b.m.id ? -1 : 1
+      return a.i - b.i
+    }
     const ta = a.m.created_at ? new Date(a.m.created_at).getTime() : 0
     const tb = b.m.created_at ? new Date(b.m.created_at).getTime() : 0
     if (ta !== tb) return ta - tb
@@ -45,7 +59,7 @@ function assistantBlocks(
 ): ContentBlock[] {
   const blocks: ContentBlock[] = []
 
-  if (msg.reasoning_content && !msg.extra?.is_continuation) {
+  if (msg.reasoning_content) {
     blocks.push({ id: `${msg.id}:thinking`, type: 'thinking', content: msg.reasoning_content, timestamp })
   }
 
@@ -100,24 +114,45 @@ function assistantBlocks(
  * Aggregate token usage across all assistant messages in a list.
  * Rules: input = last turn, output = sum all turns, cache = last turn.
  * Reads from message.extra.usage persisted by DatabaseHook.
+ *
+ * Summary rows (``is_summary``, role user) carry the summariser call's usage —
+ * a real, billed model call — so their output and cost accumulate too. When
+ * a summary row is the newest message, its output defines the current input
+ * context (the compacted size) so the user immediately sees the reduced usage.
  */
 export function sumUsageFromMessages(msgs: MessageResponse[]): AgentUsage {
-  const acc = { promptTokens: 0, completionTokens: 0, totalTokens: 0, cachedTokens: 0, estimatedCostUsd: 0 }
+  const acc: AgentUsage = { promptTokens: 0, completionTokens: 0, totalTokens: 0, cachedTokens: 0, estimatedCostUsd: 0 }
   let lastInput = 0
   let lastCache = 0
+  let lastCachePercent: number | undefined = undefined
   for (const msg of sortMessages(msgs)) {
-    if (msg.role !== 'assistant') continue
-    const extra = msg.extra as { usage?: { input?: number; output?: number; cache?: number; cost?: { estimated_usd?: number } } } | null
+    if (msg.role !== 'assistant' && !msg.is_summary) continue
+    const extra = msg.extra as { usage?: { input?: number; output?: number; cache?: number; cache_percent?: number; cost?: { estimated_usd?: number }; estimated_cost_usd?: number }; estimated_cost_usd?: number } | null
     if (!extra?.usage) continue
-    const i = extra.usage.input ?? 0
     const o = extra.usage.output ?? 0
+    const costUsd = extra.usage.cost?.estimated_usd ?? extra.usage.estimated_cost_usd ?? extra.estimated_cost_usd ?? 0
     acc.completionTokens += o
-    acc.estimatedCostUsd = Math.round((acc.estimatedCostUsd + (extra.usage.cost?.estimated_usd ?? 0)) * 1e8) / 1e8
-    lastInput = i
-    lastCache = extra.usage.cache ?? 0
+    acc.estimatedCostUsd = Math.round(((acc.estimatedCostUsd ?? 0) + costUsd) * 1e8) / 1e8
+    const inputForCache = typeof extra.usage.input === 'number' && extra.usage.input > 0 ? extra.usage.input : 0
+    const cacheTokens = typeof extra.usage.cache === 'number' ? extra.usage.cache : 0
+    const calcPercent = typeof extra.usage.cache_percent === 'number'
+      ? extra.usage.cache_percent
+      : typeof extra.usage.cache === 'number'
+      ? (inputForCache > 0 ? Math.round((cacheTokens / inputForCache) * 10000) / 100 : 0)
+      : undefined
+    if (msg.is_summary) {
+      lastInput = extra.usage.output ?? 0
+      lastCache = extra.usage.cache ?? 0
+      lastCachePercent = calcPercent
+    } else if (msg.role === 'assistant') {
+      lastInput = extra.usage.input ?? 0
+      lastCache = extra.usage.cache ?? 0
+      lastCachePercent = calcPercent
+    }
   }
   acc.promptTokens = lastInput
   acc.cachedTokens = lastCache
+  acc.cachedPercent = lastCachePercent
   acc.totalTokens  = lastInput + acc.completionTokens
   return acc
 }
@@ -127,8 +162,15 @@ export function sumUsageFromMessages(msgs: MessageResponse[]): AgentUsage {
  * User messages → type:'user' block (rendered as user bubble inline)
  * Assistant messages → thinking/tool/text blocks
  * Tool result messages → mutate matching tool block
+ *
+ * ``orphanToolResults`` (optional): collector for tool result rows whose
+ * assistant row is outside this batch — see {@link OrphanToolResult}. Without
+ * it those rows are dropped, matching the old behavior.
  */
-export function parseTeamBlocks(msgs: MessageResponse[]): ContentBlock[] {
+export function parseTeamBlocks(
+  msgs: MessageResponse[],
+  orphanToolResults?: Record<string, OrphanToolResult>,
+): ContentBlock[] {
   const result: ContentBlock[] = []
   const pendingToolBlocks: Map<string, ContentBlock> = new Map()
 
@@ -159,7 +201,7 @@ export function parseTeamBlocks(msgs: MessageResponse[]): ContentBlock[] {
       result.push({
         id: msg.id,
         type: 'user',
-        content: shellDisplayContent(msg),
+        content: msg.content || '',
         extra: Object.keys(extra).length > 0 ? extra : undefined,
         timestamp,
         attachments: msg.attachments ?? undefined,
@@ -185,6 +227,11 @@ export function parseTeamBlocks(msgs: MessageResponse[]): ContentBlock[] {
             mcp_app: extra.mcp_app,
           }
         }
+      } else if (orphanToolResults) {
+        const orphan: OrphanToolResult = { content: msg.content || '' }
+        if (typeof extra?.duration_ms === 'number') orphan.serverDurationMs = extra.duration_ms
+        if (extra?.mcp_app) orphan.mcpApp = extra.mcp_app
+        orphanToolResults[msg.tool_call_id] = orphan
       }
       continue
     }
@@ -192,15 +239,44 @@ export function parseTeamBlocks(msgs: MessageResponse[]): ContentBlock[] {
     if (msg.role === 'assistant') {
       const timestamp = msg.created_at ? new Date(msg.created_at) : new Date()
       for (const block of assistantBlocks(msg, pendingToolBlocks, timestamp)) {
-        const lastBlock = result[result.length - 1]
-        if (msg.extra?.is_continuation && block.type === 'text' && lastBlock?.type === 'text') {
-          lastBlock.content += continuationSeparator(lastBlock.content, block.content) + block.content
-        } else {
-          result.push(block)
-        }
+        result.push(block)
       }
     }
   }
 
   return result
+}
+
+/**
+ * Complete incomplete tool cards in ``blocks`` from ``orphans``, consuming
+ * every entry it applies (leftovers stay for a later batch to claim).
+ *
+ * Matched strictly by ``toolCallId`` and only onto cards that are not done —
+ * a finished card keeps its own result, so a stale orphan can never overwrite
+ * live state. Returns the original array untouched when nothing applies.
+ */
+export function applyOrphanToolResults(
+  blocks: ContentBlock[],
+  orphans: Record<string, OrphanToolResult>,
+): ContentBlock[] {
+  if (Object.keys(orphans).length === 0) return blocks
+  let result: ContentBlock[] | null = null
+  for (let i = 0; i < blocks.length; i++) {
+    const block = blocks[i]
+    if (block.type !== 'tool' || block.toolDone || !block.toolCallId) continue
+    const orphan = orphans[block.toolCallId]
+    if (!orphan) continue
+    if (result === null) result = [...blocks]
+    result[i] = {
+      ...block,
+      toolDone: true,
+      toolResult: orphan.content,
+      ...(orphan.serverDurationMs !== undefined
+        ? { serverDurationMs: orphan.serverDurationMs, durationMs: orphan.serverDurationMs }
+        : {}),
+      ...(orphan.mcpApp ? { extra: { ...(block.extra ?? {}), mcp_app: orphan.mcpApp } } : {}),
+    }
+    delete orphans[block.toolCallId]
+  }
+  return result ?? blocks
 }

@@ -9,6 +9,7 @@
 import { AlertCircle } from 'lucide-react'
 
 import { type ServerStatus } from '@/api/client'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 
 const STATE_COLOR: Record<ServerStatus['state'], string> = {
@@ -22,20 +23,32 @@ const STATE_COLOR: Record<ServerStatus['state'], string> = {
 export function McpStatusDot({ server }: { server: ServerStatus }) {
   if (server.state === 'error') {
     return (
-      <span
-        className="flex shrink-0 items-center text-(--color-error)"
-        title={server.error ?? 'Server failed to start'}
-        aria-label={`Error: ${server.error ?? 'unknown'}`}
-      >
-        <AlertCircle size={13} />
-      </span>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <span
+              className="flex shrink-0 items-center text-(--color-error)"
+              aria-label={`Error: ${server.error ?? 'unknown'}`}
+            >
+              <AlertCircle size={13} />
+            </span>
+          }
+        />
+        <TooltipContent>{server.error ?? 'Server failed to start'}</TooltipContent>
+      </Tooltip>
     )
   }
   return (
-    <span
-      className={cn('h-2 w-2 shrink-0 rounded-full', STATE_COLOR[server.state])}
-      title={server.state}
-      aria-label={`State: ${server.state}`}
-    />
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <span
+            className={cn('h-2 w-2 shrink-0 rounded-full', STATE_COLOR[server.state])}
+            aria-label={`State: ${server.state}`}
+          />
+        }
+      />
+      <TooltipContent>{server.state}</TooltipContent>
+    </Tooltip>
   )
 }

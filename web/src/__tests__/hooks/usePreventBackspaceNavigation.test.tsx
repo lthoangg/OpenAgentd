@@ -81,7 +81,7 @@ describe('usePreventBackspaceNavigation', () => {
     render(<Harness />)
 
     const e = new KeyboardEvent('keydown', { key: 'Backspace', bubbles: true, cancelable: true })
-    // Simulate a more specific handler (e.g. InputBar's shell-mode exit)
+    // Simulate a more specific handler (e.g. InputComposer's shell-mode exit)
     // having already claimed this keydown.
     e.preventDefault()
     window.dispatchEvent(e)

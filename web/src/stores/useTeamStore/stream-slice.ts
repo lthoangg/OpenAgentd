@@ -1,6 +1,6 @@
 import type { StateCreator } from 'zustand'
 import { postTeamChat, postTeamCommand, teamStream } from '@/api/client'
-import { applyQuestionResolution, applyRevertBoundary, isLiveStatus, markRestartPending } from './helpers'
+import { applyQuestionResolution, applyRevertBoundary, markRestartPending } from './helpers'
 import {
   applySSEDeltaBatch,
   createSSEHandler,
@@ -61,7 +61,6 @@ export type StreamSlice = Pick<
   | 'isTeamWorking'
   | 'pendingQuestion'
   | 'resolvedQuestions'
-  | 'isContinuing'
   | 'isConnected'
   | 'error'
   | 'setupRequired'
@@ -70,10 +69,10 @@ export type StreamSlice = Pick<
   | '_reconnectAttempts'
   | '_unloading'
   | 'cacheInvalidations'
-  | 'continueTeam'
   | 'compactTeam'
   | 'undoTeam'
   | 'redoTeam'
+  | 'redoAllTeam'
   | 'stopTeam'
   | 'connectStream'
   | 'resolveQuestion'
@@ -93,7 +92,6 @@ export const createStreamSlice: StateCreator<
   isTeamWorking: false,
   pendingQuestion: null,
   resolvedQuestions: {},
-  isContinuing: false,
   isConnected: false,
   error: null,
   setupRequired: null,
@@ -102,43 +100,6 @@ export const createStreamSlice: StateCreator<
   _reconnectAttempts: 0,
   _unloading: false,
   cacheInvalidations: [],
-
-  continueTeam: async () => {
-    const sessionId = get().sessionId
-    if (!sessionId) {
-      set((draft) => { draft.error = 'No active session to continue' })
-      return
-    }
-
-    try {
-      const submittedAt = Date.now()
-      set((draft) => {
-        draft.isTeamWorking = true
-        draft.isContinuing = true
-        draft.error = null
-        if (draft.leadName && draft.agentStreams[draft.leadName]) {
-          const lead = draft.agentStreams[draft.leadName]
-          lead._turnStartedAt = submittedAt
-          // Continue restarts the turn with no new user message, exactly like
-          // an answered question: without this nothing marks it live until the
-          // first token, and the turn reads as finished while it spins up.
-          // Mark the lead working optimistically too — `isTeamWorking` above
-          // already assumes the turn started, and leaving the lead `idle` until
-          // the server's `agent_status` lands contradicts it.
-          markRestartPending(lead)
-          if (!isLiveStatus(lead.status)) lead.status = 'working'
-        }
-      })
-      await postTeamCommand('continue', sessionId)
-      get().connectStream()
-    } catch (err) {
-      set((draft) => {
-        draft.error = err instanceof Error ? err.message : 'Failed to continue'
-        draft.isTeamWorking = false
-        draft.isContinuing = false
-      })
-    }
-  },
 
   compactTeam: async () => {
     const sessionId = get().sessionId
@@ -199,6 +160,7 @@ export const createStreamSlice: StateCreator<
       set((draft) => {
         draft._leadRevertTime = boundaryTime
         Object.values(draft.agentStreams).forEach((stream) => {
+          stream._unsyncedBlockIds = []
           applyRevertBoundary(stream, boundaryTime, {
             includeCurrent: true,
             boundaryId: response.message?.id ?? null,
@@ -225,49 +187,44 @@ export const createStreamSlice: StateCreator<
     const sessionId = get().sessionId
     if (!sessionId) {
       set((draft) => { draft.error = 'No active session to redo' })
-      return
+      return undefined
+    }
+    if (get().isTeamWorking) {
+      set((draft) => {
+        draft.error = 'Cannot redo while agents are working — /stop first'
+      })
+      return undefined
     }
 
-    const MAX_ITER = 200
-    const allChangedPaths = new Set<string>()
-    let sawChangedPaths = false
-    let sawMissingChangedPaths = false
-    let sawResponse = false
     try {
       set((draft) => { draft.error = null })
-      for (let i = 0; i < MAX_ITER; i++) {
-        const response = await postTeamCommand('redo', sessionId)
-        sawResponse = true
-        const boundaryIso = response.message?.created_at
-        const boundaryTime = boundaryIso ? new Date(boundaryIso).getTime() : null
-        set((draft) => {
-          draft._leadRevertTime = boundaryTime
-          Object.values(draft.agentStreams).forEach((stream) => {
-            applyRevertBoundary(stream, boundaryTime, {
-              boundaryId: response.message?.id ?? null,
-              boundaryContent: response.message?.content ?? null,
-            })
+      const response = await postTeamCommand('redo', sessionId)
+      const boundaryIso = response.message?.created_at
+      const boundaryTime = boundaryIso ? new Date(boundaryIso).getTime() : null
+      set((draft) => {
+        draft._leadRevertTime = boundaryTime
+        Object.values(draft.agentStreams).forEach((stream) => {
+          stream._unsyncedBlockIds = []
+          applyRevertBoundary(stream, boundaryTime, {
+            boundaryId: response.message?.id ?? null,
+            boundaryContent: response.message?.content ?? null,
           })
         })
-        if (response.changed_paths === undefined) {
-          sawMissingChangedPaths = true
-        } else {
-          sawChangedPaths = true
-        }
-        const merged = mergeChangedPaths(response.changed_paths)
-        merged?.forEach((p) => allChangedPaths.add(p))
-        if (response.message === null) break
-
-        if (i === MAX_ITER - 1) {
-          throw new Error('Redo did not reach the live tip')
-        }
-      }
+      })
+      enqueueWorkspaceInvalidation(
+        set,
+        get,
+        sessionId,
+        mergeChangedPaths(response.changed_paths),
+      )
+      return response
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       if (message.includes('No undone message to redo')) {
         set((draft) => {
           draft._leadRevertTime = null
           Object.values(draft.agentStreams).forEach((stream) => {
+            stream._unsyncedBlockIds = []
             applyRevertBoundary(stream, null)
           })
         })
@@ -276,21 +233,56 @@ export const createStreamSlice: StateCreator<
           draft.error = `Failed to redo: ${message}`
         })
       }
-    } finally {
-      if (sawMissingChangedPaths) {
-        enqueueWorkspaceInvalidation(set, get, sessionId)
-      } else if (allChangedPaths.size > 0) {
-        enqueueWorkspaceInvalidation(
-          set,
-          get,
-          sessionId,
-          [...allChangedPaths],
-        )
-      } else if (sawChangedPaths) {
-        enqueueWorkspaceInvalidation(set, get, sessionId, [])
-      } else if (sawResponse) {
-        enqueueWorkspaceInvalidation(set, get, sessionId)
+      return undefined
+    }
+  },
+
+  redoAllTeam: async () => {
+    const sessionId = get().sessionId
+    if (!sessionId) {
+      set((draft) => { draft.error = 'No active session to redo' })
+      return
+    }
+    if (get().isTeamWorking) {
+      set((draft) => {
+        draft.error = 'Cannot redo while agents are working — /stop first'
+      })
+      return
+    }
+
+    try {
+      set((draft) => { draft.error = null })
+      const response = await postTeamCommand('redo-all', sessionId)
+      set((draft) => {
+        draft._leadRevertTime = null
+        Object.values(draft.agentStreams).forEach((stream) => {
+          stream._unsyncedBlockIds = []
+          applyRevertBoundary(stream, null)
+        })
+      })
+      enqueueWorkspaceInvalidation(
+        set,
+        get,
+        sessionId,
+        mergeChangedPaths(response.changed_paths),
+      )
+      return response
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      if (message.includes('No undone message to redo')) {
+        set((draft) => {
+          draft._leadRevertTime = null
+          Object.values(draft.agentStreams).forEach((stream) => {
+            stream._unsyncedBlockIds = []
+            applyRevertBoundary(stream, null)
+          })
+        })
+      } else {
+        set((draft) => {
+          draft.error = `Failed to redo: ${message}`
+        })
       }
+      return undefined
     }
   },
 

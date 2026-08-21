@@ -29,13 +29,35 @@ def test_server_module_creates_app():
     assert isinstance(server_mod.app, Starlette)
 
 
+def _unload_app_server():
+    import sys
+
+    saved_mod = sys.modules.pop("app.server", None)
+    app_pkg = sys.modules.get("app")
+    saved_attr = None
+    if app_pkg is not None and hasattr(app_pkg, "server"):
+        saved_attr = getattr(app_pkg, "server")
+        delattr(app_pkg, "server")
+    return saved_mod, saved_attr
+
+
+def _restore_app_server(saved):
+    import sys
+
+    saved_mod, saved_attr = saved
+    if saved_mod is not None:
+        sys.modules["app.server"] = saved_mod
+    app_pkg = sys.modules.get("app")
+    if app_pkg is not None and saved_attr is not None:
+        setattr(app_pkg, "server", saved_attr)
+
+
+@pytest.mark.filterwarnings("ignore::RuntimeWarning")
 def test_server_main_block_calls_uvicorn_run():
     """The __main__ block invokes uvicorn.run with config values."""
     import runpy
-    import sys
 
-    # Remove cached module so runpy doesn't warn about re-executing it.
-    saved = sys.modules.pop("app.server", None)
+    saved = _unload_app_server()
     from app.core.config import settings
 
     old_host = settings.API_HOST
@@ -45,8 +67,7 @@ def test_server_main_block_calls_uvicorn_run():
             runpy.run_module("app.server", run_name="__main__", alter_sys=False)
     finally:
         settings.API_HOST = old_host
-        if saved is not None:
-            sys.modules["app.server"] = saved
+        _restore_app_server(saved)
 
     mock_run.assert_called_once_with(
         "app.server:app",
@@ -56,15 +77,15 @@ def test_server_main_block_calls_uvicorn_run():
     )
 
 
+@pytest.mark.filterwarnings("ignore::RuntimeWarning")
 def test_server_main_refuses_non_loopback_host_without_auth(monkeypatch):
     import runpy
-    import sys
 
     from app.core.config import settings
 
     monkeypatch.delenv("OPENAGENTD_DESKTOP_TOKEN", raising=False)
     monkeypatch.delenv("OPENAGENTD_ACCESS_KEY", raising=False)
-    saved = sys.modules.pop("app.server", None)
+    saved = _unload_app_server()
     old_host = settings.API_HOST
     settings.API_HOST = "0.0.0.0"
     try:
@@ -77,21 +98,20 @@ def test_server_main_refuses_non_loopback_host_without_auth(monkeypatch):
             runpy.run_module("app.server", run_name="__main__", alter_sys=False)
     finally:
         settings.API_HOST = old_host
-        if saved is not None:
-            sys.modules["app.server"] = saved
+        _restore_app_server(saved)
 
     mock_run.assert_not_called()
 
 
+@pytest.mark.filterwarnings("ignore::RuntimeWarning")
 def test_server_main_allows_explicit_insecure_development_lan(monkeypatch):
     import runpy
-    import sys
 
     from app.core.config import settings
 
     monkeypatch.delenv("OPENAGENTD_DESKTOP_TOKEN", raising=False)
     monkeypatch.delenv("OPENAGENTD_ACCESS_KEY", raising=False)
-    saved = sys.modules.pop("app.server", None)
+    saved = _unload_app_server()
     old_host = settings.API_HOST
     old_allow_insecure = settings.API_ALLOW_INSECURE_LAN
     settings.API_HOST = "0.0.0.0"
@@ -106,8 +126,7 @@ def test_server_main_allows_explicit_insecure_development_lan(monkeypatch):
     finally:
         settings.API_HOST = old_host
         settings.API_ALLOW_INSECURE_LAN = old_allow_insecure
-        if saved is not None:
-            sys.modules["app.server"] = saved
+        _restore_app_server(saved)
 
     mock_run.assert_called_once()
 

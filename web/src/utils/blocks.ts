@@ -22,21 +22,37 @@ function confirmedIdSet(blocks: ContentBlock[]): Set<string> {
   return ids
 }
 
+/**
+ * The live suffix of `currentBlocks` not yet folded into `blocks` — the
+ * part `mergeBlocks` appends. Exposed separately so callers that only need
+ * counts or the last block (scroll bookkeeping, turn partitioning) can
+ * derive them without allocating a copy of the full — potentially
+ * session-length — `blocks` array on every streamed delta.
+ *
+ * Defensive dedup: ids are stable identifiers now (server message id for
+ * user blocks, message/toolCall-derived ids for assistant sub-blocks — see
+ * parseTeamBlocks), so an id already present in `blocks` can only mean the
+ * live copy is a stale duplicate of a row that has since been confirmed.
+ * Drop it instead of trusting every upstream reconciliation path
+ * (loadSession, reconcileTurnTail, the SSE reducer) to have already removed
+ * it.
+ */
+export function liveBlockTail(
+  blocks: ContentBlock[],
+  currentBlocks: ContentBlock[],
+): ContentBlock[] {
+  if (currentBlocks.length === 0 || blocks.length === 0) return currentBlocks
+  const confirmedIds = confirmedIdSet(blocks)
+  return currentBlocks.filter((b) => !confirmedIds.has(b.id))
+}
+
 export function mergeBlocks(
   blocks: ContentBlock[],
   currentBlocks: ContentBlock[],
 ): ContentBlock[] {
   if (currentBlocks.length === 0) return blocks
   if (blocks.length === 0) return currentBlocks
-  // Defensive net at the render boundary: ids are stable identifiers now
-  // (server message id for user blocks, message/toolCall-derived ids for
-  // assistant sub-blocks — see parseTeamBlocks), so an id already present in
-  // `blocks` can only mean the live copy is a stale duplicate of a row that
-  // has since been confirmed. Drop it instead of trusting every upstream
-  // reconciliation path (loadSession, reconcileTurnTail, the SSE reducer) to
-  // have already removed it — this is the one place that actually renders.
-  const confirmedIds = confirmedIdSet(blocks)
-  const liveTail = currentBlocks.filter((b) => !confirmedIds.has(b.id))
+  const liveTail = liveBlockTail(blocks, currentBlocks)
   if (liveTail.length === 0) return blocks
   return [...blocks, ...liveTail]
 }
@@ -170,7 +186,7 @@ export function initTool(
       // already the stable identifier every reconciliation path matches on,
       // and parseTeamBlocks gives the eventual persisted tool block the same
       // id, so a live/confirmed duplicate becomes a real id collision that
-      // mergeBlocks' render-boundary dedup can actually catch.
+      // liveBlockTail's render-boundary dedup can actually catch.
       id: toolCallId ?? generateBlockId(),
       type: 'tool',
       content: '',
@@ -293,17 +309,13 @@ export function completeTool(
   return blocks
 }
 
-/** Trailing lines of live tool output retained for display. The live-output
- *  `<pre>` is capped at `max-h-40` (~7 lines) on mobile and `sm:max-h-64`
- *  (~12 lines) on desktop, so keeping more only buys invisible scrollback at
- *  the cost of a larger string to diff and repaint on every streamed delta.
- *  The full output arrives in `toolResult` when the tool completes.
+/** Trailing lines of live tool output retained for display.
  *  Mirrors `_LIVE_OUTPUT_MAX_LINES` in `app/agent/tools/builtin/shell.py`. */
-export const LIVE_OUTPUT_MAX_LINES = 10
+export const LIVE_OUTPUT_MAX_LINES = 100
 
 /** Max chars of live output retained — guards a single pathologically long
  *  line, which the line cap alone cannot bound. */
-const LIVE_OUTPUT_MAX_CHARS = 24_000
+export const LIVE_OUTPUT_MAX_CHARS = 100_000
 
 /** Count newlines in `s`, stopping as soon as `limit` is reached. Used to
  *  cheaply answer "does this have more than N lines?" without allocating a

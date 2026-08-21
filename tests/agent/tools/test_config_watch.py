@@ -22,7 +22,11 @@ from unittest.mock import patch
 
 import pytest
 
-from app.agent.sandbox import SandboxConfig, _sandbox_ctx, set_sandbox
+from app.agent.denied_paths import (
+    DeniedPathsConfig as SandboxConfig,
+    _denied_paths_ctx as _sandbox_ctx,
+    set_denied_paths as set_sandbox,
+)
 from app.core.config import settings
 from app.agent.tools.builtin.filesystem._config_watch import (
     _skills_roots,
@@ -111,7 +115,7 @@ class TestSkillsRoots:
         monkeypatch.setattr("app.core.config.settings.SKILLS_DIR", str(global_dir))
         # get_sandbox is imported lazily inside _skills_roots — patch at source
         monkeypatch.setattr(
-            "app.agent.sandbox.get_sandbox",
+            "app.agent.denied_paths.get_denied_paths",
             lambda: (_ for _ in ()).throw(LookupError("no sandbox")),
         )
 
@@ -439,7 +443,7 @@ class TestSkillsRootsDegradedResolution:
         global_dir = tmp_path / "global" / "skills"
         monkeypatch.setattr("app.core.config.settings.SKILLS_DIR", str(global_dir))
         monkeypatch.setattr(
-            "app.agent.sandbox.get_sandbox",
+            "app.agent.denied_paths.get_denied_paths",
             lambda: (_ for _ in ()).throw(RuntimeError("sandbox exploded")),
         )
 

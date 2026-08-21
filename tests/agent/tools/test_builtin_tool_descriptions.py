@@ -1,10 +1,11 @@
 """Contract tests for high-impact LLM-facing builtin tool descriptions."""
 
+from app.agent.tools.builtin.filesystem.grep import grep_files
+from app.agent.tools.builtin.filesystem.patch import patch_file
 from app.agent.tools.builtin.filesystem.read import read_file
-from app.agent.tools.builtin.date import get_date
 from app.agent.tools.builtin.lsp import lsp_navigation
 from app.agent.tools.builtin.schedule import schedule_task
-from app.agent.tools.builtin.shell import background_process, shell_tool
+from app.agent.tools.builtin.shell import shell_tool
 from app.agent.tools.builtin.skill import load_skill
 from app.agent.tools.builtin.todo import todo_manage, todo_manage_member
 from app.agent.tools.builtin.web import web_search
@@ -16,6 +17,48 @@ def test_read_description_only_claims_supported_document_formats():
     assert "PDF/DOCX" in read_file.description
     assert "PPTX" not in read_file.description
     assert "XLSX" not in read_file.description
+
+
+def test_read_description_advertises_directory_listing():
+    """`ls` was folded into `read`; the model only learns that from here."""
+    assert "directory" in read_file.description.lower()
+    path = read_file.definition["function"]["parameters"]["properties"]["path"]
+    assert "directory" in path["description"].lower()
+
+
+def test_read_description_promises_byte_exact_content():
+    """The copy-into-a-patch workflow depends on reads being verbatim."""
+    assert "byte-exact" in read_file.description
+
+
+def test_patch_description_states_it_is_the_only_mutation_tool():
+    """`edit`, `write`, and `rm` are gone. If this description does not say so,
+    the model has no way to know patch is how files are created and deleted."""
+    description = " ".join(patch_file.description.split())
+    assert "only tool" in description
+    assert "creates" in description and "deletes" in description
+    # All-or-nothing preflight is the non-obvious safety property.
+    assert "unless every section applies" in description
+    # The whole-file replace idiom is not derivable from the grammar.
+    assert "same envelope" in description
+    # Recursive directory removal has no patch equivalent.
+    assert "shell" in description
+
+
+def test_patch_text_description_keeps_grammar_and_replace_idiom():
+    patch_text = patch_file.definition["function"]["parameters"]["properties"][
+        "patch_text"
+    ]["description"]
+    assert "*** Begin Patch" in patch_text
+    assert "*** Add File:" in patch_text
+    assert "*** Move to:" in patch_text
+    # Context matching is exact — the model must not expect fuzzy fallback.
+    assert "exactly" in patch_text
+
+
+def test_grep_description_has_no_dangling_tool_references():
+    assert "glob" not in grep_files.description
+    assert "lsp" not in grep_files.description
 
 
 def test_read_description_says_html_comes_back_verbatim():
@@ -39,29 +82,13 @@ def test_shell_timeout_description_matches_runtime_default():
 
 def test_background_flag_description_steers_away_from_one_shot_commands():
     """25 of 29 observed background launches were one-shot builds, then blocked
-    on a capped `bg wait`. The flag must read as "for things that outlive the
+    on a capped `wait`. The flag must read as "for things that outlive the
     call", not as a generic runner."""
     background = shell_tool.definition["function"]["parameters"]["properties"][
         "background"
     ]["description"]
     assert "long-lived" in background
     assert "foreground" in background
-
-
-def test_background_pid_description_lists_every_pid_action():
-    pid = background_process.definition["function"]["parameters"]["properties"]["pid"]
-    assert "status, output, or stop" in pid["description"]
-    assert "wait" not in pid["description"]
-
-
-def test_bg_description_no_longer_advertises_wait():
-    """`wait` was removed: it duplicated foreground shell while capping at 300s."""
-    action = background_process.definition["function"]["parameters"]["properties"][
-        "action"
-    ]
-    assert action["enum"] == ["list", "status", "output", "stop"]
-    assert "wait" not in background_process.description
-    assert "foreground" in background_process.description
 
 
 def test_todo_descriptions_explain_assignment_claim_handoff():
@@ -109,8 +136,16 @@ def test_multimodal_descriptions_keep_output_and_cross_field_constraints():
 
 
 def test_simple_tools_do_not_repeat_examples_or_unstable_result_shapes():
-    assert get_date.description == "Get the current local date, time, and timezone."
     assert web_search.description == "Search the web."
+
+
+def test_shell_description_states_streams_are_combined():
+    """stderr is folded into stdout by the spawn (`stderr=STDOUT`).
+
+    Without this the model cannot tell whether a bare command loses error
+    output, and defensively appends `2>&1` to commands that never needed it.
+    """
+    assert "stderr" in shell_tool.description
 
 
 def test_shell_description_keeps_only_non_obvious_execution_constraints():
@@ -134,12 +169,16 @@ def test_schedule_description_keeps_self_routing_and_compact_loop_recipe():
 
 
 def test_lsp_description_distinguishes_semantic_and_text_search():
-    assert "Coding mode only" in lsp_navigation.description
-    assert "definitions, references, and symbols" in lsp_navigation.description
-    assert "grep/glob" in lsp_navigation.description
-    assert "text or filename patterns" in lsp_navigation.description
+    assert "Coding mode only" not in lsp_navigation.description
+    assert "definition" in lsp_navigation.description
+    assert "reference" in lsp_navigation.description
+    assert "symbol" in lsp_navigation.description
+    assert "grep for text search" in lsp_navigation.description
+    assert "glob for filename patterns" in lsp_navigation.description
     assert "workspace-relative locations" in lsp_navigation.description
     assert "up to 50" in lsp_navigation.description
+    assert "hover" in lsp_navigation.description
+    assert "kind" in lsp_navigation.description
 
 
 def test_tool_schemas_do_not_repeat_pydantic_titles():

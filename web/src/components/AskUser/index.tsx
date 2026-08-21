@@ -39,18 +39,35 @@ const PLACEHOLDER_PREFIX = 'Waiting for the user to answer'
 /**
  * Recovers the reason from the persisted sentence, which is all a cold load
  * has. Mirrors the non-answer entries of ``question_service._RESOLUTION_TEXT``;
- * an unrecognised sentence still resolves, just without a specific reason.
+ * plus the agent loop's refusal sentences (``ASK_BUDGET_EXHAUSTED`` /
+ * ``ASK_MERGED_INTO_PRIMARY`` in ``agent_loop/core.py``), which are written
+ * straight onto the tool row without a question ever opening; plus the loop's
+ * failure endings, which also never open a question: an ``Error: …`` result
+ * (argument validation runs before the tool body, and hook-chain failures are
+ * stringified the same way), the tool's own no-call-id refusal, and the
+ * synthetic stub ``heal_orphaned_tool_calls`` writes when a restart killed the
+ * turn between persisting the call and asking. An unrecognised sentence still
+ * resolves, just without a specific reason.
  */
 const RESOLUTION_PREFIXES: readonly (readonly [string, string])[] = [
   ['Question(s) being dismissed', 'dismissed'],
   ['Superseded', 'superseded'],
   ['This question is no longer relevant', 'expired'],
+  ['You already used your one interruption', 'refused'],
+  ['Merged into your other ask_user call', 'merged'],
+  ['Error:', 'failed'],
+  ['Your question could not be delivered', 'failed'],
+  ['Tool execution was interrupted before a result could be recorded', 'interrupted'],
 ]
 
 const REASON_LABEL: Record<string, string> = {
   dismissed: 'Dismissed',
   superseded: 'Superseded by your next message',
   expired: 'No longer relevant',
+  refused: 'Not asked — the agent already used its one question for this turn',
+  merged: 'Merged into the other question card',
+  failed: 'Not asked — the question failed to send, so the agent continued without it',
+  interrupted: 'Not asked — interrupted before the question went out',
 }
 
 function errorMessage(cause: unknown, fallback: string): string {

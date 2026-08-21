@@ -26,6 +26,15 @@ export function formatTime(date: Date): string {
   })
 }
 
+/**
+ * Me format a full date+time as "dd/MM/yyyy HH:mm:ss" — used anywhere a
+ * precise absolute timestamp is shown (e.g. tooltips), so it never falls
+ * back to the browser locale's (often MM/DD/YYYY) rendering.
+ */
+export function formatFullDateTime(date: Date): string {
+  return format(date, 'dd/MM/yyyy HH:mm:ss')
+}
+
 export function formatTokens(n: number): string {
   if (n >= 1000) {
     return (n / 1000).toFixed(1).replace(/\.0$/, '') + 'k'
@@ -186,6 +195,10 @@ import type { ContentBlock } from '@/api/types'
  * not response content. For a text block that ends with a sentinel the prefix
  * before the sentinel is kept (it may still contain real content).
  *
+ * If the turn contains a `tool` block, only text blocks *after* the last one
+ * count as the response — earlier text is narration the agent wrote before
+ * or between tool calls, not the final answer.
+ *
  * Returns empty string when there is no assistant text in the last turn.
  */
 export function lastTurnText(blocks: ContentBlock[]): string {
@@ -198,7 +211,16 @@ export function lastTurnText(blocks: ContentBlock[]): string {
     }
   }
 
-  const turnBlocks = blocks.slice(startIdx)
+  let turnBlocks = blocks.slice(startIdx)
+
+  // Keep only what follows the last tool call, if any.
+  for (let i = turnBlocks.length - 1; i >= 0; i--) {
+    if (turnBlocks[i].type === 'tool') {
+      turnBlocks = turnBlocks.slice(i + 1)
+      break
+    }
+  }
+
   const parts: string[] = []
 
   for (const block of turnBlocks) {

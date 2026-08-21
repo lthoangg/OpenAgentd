@@ -64,6 +64,7 @@ class TestMakeTeamMessageTool:
         assert "requested progress" in content_description
         assert "blockers" in content_description
         assert "routine status" in content_description
+        assert "concise" in content_description.lower()
 
 
 # ---------------------------------------------------------------------------

@@ -405,7 +405,8 @@ async def push_event(
 
 async def commit_agent_content(session_id: str, agent: str) -> None:
     """Drop ``content[agent]``, ``thinking[agent]`` and any ``tool_calls``
-    owned by *agent* from the state blob.
+    owned by *agent* from the state blob. Also drop a completed summarization
+    for that agent: its summary row is durable by the time this hook runs.
 
     Called by the checkpointer after an assistant message is persisted to
     the DB — once durable, a mid-turn reconnect must not replay it (the
@@ -416,6 +417,9 @@ async def commit_agent_content(session_id: str, agent: str) -> None:
         return
     state.content.pop(agent, None)
     state.thinking.pop(agent, None)
+    summary = state.summarization.get(agent)
+    if summary and summary.get("done") and not summary.get("error"):
+        state.summarization.pop(agent, None)
     # Me drop tool_calls owned by this agent.  AssistantMessage rows embed
     # their tool_calls as part of the assistant payload, so once that row is
     # in the DB the corresponding replay entries must go too — otherwise
@@ -568,6 +572,32 @@ async def attach(session_id: str) -> AsyncGenerator[dict[str, str], None]:
                     ThinkingEvent(agent=agent, text="".join(chunks))
                 ).to_wire()
 
+            # Me inbox events are NOT replayed — they are DB-persisted by
+            # _persist_inbox before emission, so the frontend's loadSession
+            # already populates the user bubbles.  A live subscriber
+            # connected mid-turn still receives them via the fan-out in
+            # push_event.
+
+            # Me replay accumulated content per-agent (see thinking note above).
+            #
+            # Content is replayed BEFORE the tool events on purpose: a model
+            # iteration streams its preamble text and only then announces the
+            # tool calls it wants to run, and the checkpointer drops both
+            # (``commit_agent_content``) as soon as that assistant row is
+            # persisted — so the un-committed blob replayed here is always
+            # "text first, tools second". A client attaching with no live
+            # state of its own (mid-turn reload, second tab, new device)
+            # rebuilds its blocks straight from this order, so emitting the
+            # tool events first rendered every tool card *above* the text that
+            # preceded it, the reverse of what the persisted row produces on
+            # the next full history load.
+            for agent, chunks in state.content.items():
+                if not chunks:
+                    continue
+                yield StreamEnvelope.from_event(
+                    MessageEvent(agent=agent, text="".join(chunks))
+                ).to_wire()
+
             # Me replay tool events
             for tc in state.tool_calls:
                 yield StreamEnvelope.from_event(
@@ -595,20 +625,6 @@ async def attach(session_id: str) -> AsyncGenerator[dict[str, str], None]:
                             result=tc.get("result"),
                         )
                     ).to_wire()
-
-            # Me inbox events are NOT replayed — they are DB-persisted by
-            # _persist_inbox before emission, so the frontend's loadSession
-            # already populates the user bubbles.  A live subscriber
-            # connected mid-turn still receives them via the fan-out in
-            # push_event.
-
-            # Me replay accumulated content per-agent (see thinking note above).
-            for agent, chunks in state.content.items():
-                if not chunks:
-                    continue
-                yield StreamEnvelope.from_event(
-                    MessageEvent(agent=agent, text="".join(chunks))
-                ).to_wire()
 
             # Me drain live events until sentinel.  Items on the queue are
             # already in wire shape (populated by push_event via to_wire()).

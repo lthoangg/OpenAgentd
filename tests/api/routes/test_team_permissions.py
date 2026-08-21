@@ -156,3 +156,19 @@ async def test_reply_unknown_request_is_404(client: AsyncClient, service):
         "/s1/permissions/does-not-exist/reply", json={"reply": "once"}
     )
     assert resp.status_code == 404
+
+
+async def test_reply_scoped_to_session(client: AsyncClient, service):
+    """A mismatched session id must not resolve another session's request.
+
+    ``list_permissions`` already scopes by session; ``reply`` must too, or a
+    client holding a stale session id can approve a shell/write prompt that
+    was raised by a different session.
+    """
+    req_id = await service.make_pending()
+    resp = await client.post(
+        f"/other-session/permissions/{req_id}/reply", json={"reply": "always"}
+    )
+    assert resp.status_code == 404
+    assert [r.id for r in service.svc.list_pending()] == [req_id]
+    assert service.svc.session_ruleset == []

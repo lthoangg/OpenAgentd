@@ -194,9 +194,19 @@ _BLOCKED_WORKSPACE_ROOTS: tuple[Path, ...] = (
 )
 
 
-def validate_workspace(workspace: str) -> str:
+def validate_workspace(workspace: str, *, require_exists: bool = True) -> str:
+    """Resolve and validate a workspace path.
+
+    Args:
+        workspace: The user-supplied workspace path.
+        require_exists: When ``False``, a path that is not an existing
+            directory is still accepted.  Only for callers that operate on
+            bookkeeping rather than the filesystem — hiding a stale sidebar
+            entry whose directory was deleted or unmounted outside the app.
+            The restricted-root rule is enforced either way.
+    """
     resolved = _resolve_workspace(workspace)
-    if not resolved.is_dir():
+    if require_exists and not resolved.is_dir():
         raise ValueError(f"Workspace does not exist or is not a directory: {resolved}")
     for blocked in _BLOCKED_WORKSPACE_ROOTS:
         try:

@@ -2,7 +2,7 @@
 title: Features
 description: Canonical, version-cited catalogue of shipped user-visible OpenAgentd features.
 status: stable
-updated: 2026-08-13
+updated: 2026-08-21
 ---
 
 # Features
@@ -14,7 +14,7 @@ release that introduced it (where known). When you ship something new, **add it 
 > double-clickable app that runs a team of AI agents on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 16 providers. Your keys.
 
-**Latest release:** v1.133.0 · August 13, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v1.133.0)
+**Latest release:** v2.0.0 · August 21, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v2.0.0)
 
 ---
 
@@ -30,7 +30,7 @@ narrative on slides and in the README:
 5. [Providers and models](#5-providers-and-models)
 6. [Built-in tools](#6-built-in-tools)
 7. [Extension surface](#7-extension-surface)
-8. [Sandbox and permissions](#8-sandbox-and-permissions)
+8. [Path denylist and permissions](#8-path-denylist-and-permissions)
 9. [Observability](#9-observability)
 10. [Voice](#10-voice)
 11. [Distribution and updates](#11-distribution-and-updates)
@@ -38,7 +38,7 @@ narrative on slides and in the README:
 
 Conventions used in this document:
 
-- `[v1.X.Y]` — release that shipped the feature (where known).
+- `[v2.X.Y]`, `[v1.X.Y]` — release that shipped the feature (where known).
 - `[since v1.0]` — present in the v1 line; no precise version known.
 - *(beta)* — experimental, may change. *(deprecated)* — removed or replaced.
 - Indented sub-bullets are user-visible details, not separate features.
@@ -100,7 +100,13 @@ run from the terminal.
   sessions, agents, files, slash commands, settings. Cleaner, faster with a
   tighter animation and a curated command set that drops low-value entries.
   Command and file search overlays use the compact warm-paper surface treatment
-  across desktop and mobile `[v1.74.0]`.
+  across desktop and mobile `[v1.74.0]`, with expanded desktop width and list height `[v2.0.0]`.
+- **Fullscreen view mode and traffic-light space reclamation** `[v2.0.0]` — automatically
+  detects macOS fullscreen mode and reclaims the window traffic-light header padding to
+  maximise message and diff reading area.
+- **Design token & UI corner-roundness ramp** `[v2.0.0]` — modernized design tokens with
+  a softer corner-roundness ramp across bubbles, composer pills, dialogs, badges, and
+  action states.
 - **Platform-aware keyboard shortcuts** `[v1.93.1]` — `⌘` on macOS, `Ctrl`
   elsewhere, applied consistently across in-app shortcuts, the Command
   Palette, and native Tauri menu accelerators. Session Settings moved to
@@ -116,6 +122,11 @@ run from the terminal.
   for toast notifications now pauses while the pointer or keyboard focus is on
   the toast, resuming with the remaining time once it clears, so a toast can no
   longer disappear mid-read.
+- **Categorized stream & execution error handling** `[v1.133.0]` — provider stream
+  errors (rate limits, auth 401, connection drops) are now displayed directly within
+  the chat transcript area as persistent error callout cards, while action validation
+  failures (e.g. undo/redo/compaction errors) surface targeted, categorized toast
+  notifications with contextual titles.
 - **Keyboard-operable overlays and dropdowns** `[v1.125.0]` — select/menu
   dropdowns navigate with `ArrowUp`/`ArrowDown`/`Home`/`End` and commit with
   `Enter`/`Space`, announcing the active option via `aria-activedescendant`
@@ -200,31 +211,30 @@ run from the terminal.
   now fetch their own session pages (`mode=normal` vs `mode=coding`) instead of
   sharing one mixed cache, preventing intermittent empty recent-session lists
   when prior conversations exist.
-- **Slash commands** `[since v1.0]` — `/init`, `/continue`, `/compact`, `/undo`,
-  `/redo`, plus user-defined commands.
+- **Slash commands** `[since v1.0]` — `/init`, `/compact`, `/undo`,
+  `/redo`, `/redo-all`, plus user-defined commands. Commands are contextually
+  filtered by active session and team state `[v2.0.0]`.
+  - **`/redo` and `/redo-all` slash commands** `[v2.0.0]` — restore undone chat turns
+    step-by-step or fast-forward completely back to the latest turn.
+  - **`/init` AGENTS.md analysis & generation** `[v1.9.0, v2.0.0]` — analyzes codebase
+    structure and generates standard `AGENTS.md` context files at repository root and
+    subdirectories with a guided analysis protocol.
   - **`/plan` slash command** `[v1.96.0]` — triggers a research-then-approve
     workflow: the agent investigates the problem space and proposes a step-by-step
     implementation plan, then waits for explicit approval before writing any code.
     Loaded via the `oad/plan` skill.
-- **Bang shell commands** `[v1.39.0]` — start a message with `!` to run the
-  remainder directly through the shell tool without a model turn; history stores
-  the run as structured shell tool output. Stop terminates active direct and
-  foreground shell process groups; acknowledged background PIDs remain managed
-  through `bg`. Background process lists, status, and final output render as
-  compact structured cards with bounded scroll regions on mobile and desktop
-  `[v1.113.0]`. Raw ANSI/CSI/OSC escape
+- **Bang shell commands** `[v1.39.0]` *(deprecated — removed in v2.0.0; use the coding
+  workspace terminal instead)* — start a message with `!` to run the
+  remainder directly through the shell tool without a model turn; history stored
+  the run as structured shell tool output.
+- **`shell` tool output handling** — Stop terminates active foreground
+  shell process groups; background commands started with `background=true` return
+  the spawned PID. Raw ANSI/CSI/OSC escape
   sequences (colors, cursor movement, hyperlinks) from color-forcing CLIs are
-  stripped from foreground results, live streamed output, and background
-  process buffers before reaching the LLM or the UI `[v1.120.0]`. Background
-  starts return as soon as the process exits or its first output settles
-  (previously a fixed 3-second wait); exited background processes stay
-  inspectable via `bg` for ~10 minutes after they stop; every `bg` action
-  and session interrupt stays bounded even when an orphaned child still holds
-  the output pipe; foreground output memory is bounded, with oversized output
-  streamed incrementally to a session spill file `[v1.120.1]`. The blocking
-  `bg wait` action is gone and foreground commands default to a 120-second
-  timeout instead of 60: agents poll `bg output` rather than parking a turn on
-  a wait that usually timed out anyway `[v1.131.3]`.
+  stripped from foreground results and live streamed output before reaching
+  the LLM or the UI `[v1.120.0]`. Foreground output memory is bounded, with
+  oversized output streamed incrementally to a session spill file `[v1.120.1]`.
+  Foreground commands default to a 120-second timeout instead of 60 `[v1.131.3]`.
 - **Drag-and-drop files into chat** `[since v1.0, v1.82.0, v1.131.0]` — drag files (images, PDFs, text, etc.) anywhere onto the chat area (both cockpit and coding views) to show a drop overlay and attach them to the composer. Supports multi-file drops, file-type filtering, and cancellation. A drop no longer attaches the same file twice, folders dropped onto the chat are ignored instead of silently swallowed, and a file dropped outside the chat area no longer navigates the app away from the session `[v1.131.0]`.
 - **50 MB attachments with in-composer rejection** `[v1.131.0]` — every attachment
   type shares one 50 MB per-message ceiling instead of the previous mix of
@@ -245,6 +255,22 @@ run from the terminal.
   Full-screen diagrams keep the chrome minimal while supporting keyboard,
   wheel/trackpad and pinch zoom, double-click/double-tap, and drag-to-pan;
   diagram text selection is disabled so gestures stay responsive.
+- **LaTeX math rendering** `[v1.133.0]` — inline math (`$math$` and `\(math\)`),
+  display math (`$$math$$` and `\[math\]`), and fenced code blocks (`math`, `katex`)
+  render formatted LaTeX mathematics via KaTeX. Distinguishes mathematical
+  formulas from currency amounts ($50 and $100) and escaped dollar signs (\$50),
+  with scrollable containers for wide formulas and theme-aware styling across
+  light and dark modes.
+- **Fast TanStack Markdown & unified syntax highlighting** `[v2.0.0]` — chat markdown
+  rendering is powered by `@tanstack/markdown` and code fences are highlighted with
+  `@tanstack/highlight`, sharing one unified highlighter and caching highlights across
+  re-renders for fluid scrolling and streaming.
+- **Pin chat transcript via CSS `overflow-anchor`** `[v2.0.0]` — pins chat transcript
+  scrolling using native browser `overflow-anchor` instead of per-frame JS `scrollTop`
+  calculations, eliminating stream stutter and CPU churn during fast agent output.
+- **On-demand bundle splitting for heavy components** `[v2.0.0]` — xterm.js, Mermaid
+  diagrams, and PDF.js load lazily on demand when first needed, accelerating cold-start
+  boot time and reducing initial bundle memory.
 - **Stream auto-stick restored after scroll-to-bottom on mobile** `[v1.77.0]` —
   tapping the scroll-to-bottom button no longer detaches the stream
   auto-follow; direction-based detach logic removed from `onScroll` (was
@@ -273,8 +299,8 @@ run from the terminal.
   copy and timing metadata.
 - **`@file` / `@folder` mentions in composer** `[v1.17.0]` — files render blue,
   folders render orange. Mentioned files inject inline hidden context on the
-  turn without becoming uploads; mentioned folders inject a lightweight `ls`-
-  style listing without becoming uploads. In coding sessions,
+  turn without becoming uploads; mentioned folders inject a lightweight directory
+  listing without becoming uploads. In coding sessions,
   clicked file mentions in sent user messages open that file in the workspace
   files sidebar. Caps at 20 mentions / 20 MB / ~32k chars per turn. Persists
   on queued messages.
@@ -302,10 +328,14 @@ run from the terminal.
   away from the app `[v1.52.0]`. Image and video previews in the coding
   workspace panel now open in the shared full-screen lightbox on click
   `[v1.93.1]`.
-- **Header context meter** `[v1.53.0]` — desktop and mobile chat headers show an
+- **Header context meter** `[v1.53.0, v2.0.0]` — desktop and mobile chat headers show an
   icon-sized input-token progress ring against the backend's model-aware
   summarization trigger; hover, focus, or tap/click reveals input/output/cache
-  details and the estimated USD used across the active session `[v1.107.0]`; the estimate sums provider-reported input, output, cache-read, and cache-write usage at the active model's registry rates, so compaction never reduces previously incurred spend. Token rows describe the lead while `session cost` covers every agent; live values are published per completed model call from the same usage snapshot the transcript and telemetry store, so the meter no longer disagrees with them, and it stays visible for the duration of a live turn `[v1.132.0]`.
+  details, cache hit rate percentage, reduced compaction input tokens, and estimated USD used across the active session `[v1.107.0, v2.0.0]`; the estimate sums provider-reported input, output, cache-read, and cache-write usage at the active model's registry rates, so compaction never reduces previously incurred spend. Token rows describe the lead while `session cost` covers every agent; live values are published per completed model call from the same usage snapshot the transcript and telemetry store, so the meter no longer disagrees with them, and it stays visible for the duration of a live turn `[v1.132.0]`.
+  The summarizer's own LLM call now counts too: its usage (with cost) is
+  persisted on the compaction summary row and published as a live usage frame,
+  so the running session cost stays `previous cost + current turn cost` across
+  compactions, on the live meter and after reload alike `[v2.0.0]`.
 - **Todos panel** `[since v1.0]` — task board with a topbar progress badge
   `<finished>/<total>` `[v1.17.0]`. Live invalidation.
 - **Mobile / phone-first layout** `[since v1.0]` — breakpoints, safe areas, drawer
@@ -353,12 +383,18 @@ spawns specialist members on demand.
   lead plus any assignees the completion unblocks (dependency results ride
   along as the handoff). After a restart or session restore, members holding
   open assigned or in-progress tasks are re-woken automatically.
+- **High-throughput chat persistence engine** `[v2.0.0]` — remodeled `session_messages`
+  onto derived state (`seq` + `kind` + `pinned`) with partial SQL indexing,
+  single-allocation checkpointers, and SQL-level compaction keep-tail calculation.
+- **Incremental session history hydration** `[v2.0.0]` — hydrates session histories
+  incrementally and materializes SQLite query-planner statistics (`ANALYZE`) after
+  migrations for sub-millisecond query planning.
 - **Split-pane live view** `[since v1.0]` — each active agent gets its own pane,
   streamed independently. See live whose turn is current, who's idle.
 - **Unified team view** `[since v1.0]` — single chronological transcript across
   the whole team for reading or sharing.
-- **`/continue` resumes interrupted work** `[v1.5.0]` — restores the team's
-  pending plan and resumes streaming from the last turn. Available in the
+- **`/continue` resumes interrupted work** `[v1.5.0]` *(deprecated — removed)* — restores
+  the team's pending plan and resumes streaming from the last turn. Available in the
   command palette and assistant footer. Continuations use the session's model
   and reasoning settings.
 - **Automatic empty-after-tool recovery** `[v1.36.0]` — if a provider returns
@@ -471,6 +507,13 @@ team against it.
   and deleting session `[v1.117.0]`; repository/worktree context menu / action sheet includes
   copying the repo or worktree's absolute path `[v1.120.0]`; scroll-triggered pagination replaces
   the Load more button.
+- **Anchored & regex-optimized filesystem search** `[v2.0.0]` — `glob` pattern matching
+  anchors walks at the literal prefix (up to 50x faster), `grep` pre-filters files using
+  literal scanning and streams matches asynchronously off the main loop, and non-ignored
+  paths are filtered using a compiled union regex.
+- **Non-blocking asynchronous file I/O & atomic patch operations** `[v2.0.0]` — file
+  reads, directory scans, and patch applications run off the asyncio event loop with async
+  lock protection, preventing UI latency during large multi-file operations.
 - **Changed-file highlights in the workspace tree** `[v1.30.0]` — modified and
   untracked files are marked directly in the Files tab, parent folders show a
   changed-state indicator, and the tab badge reports the changed-file count.
@@ -504,9 +547,23 @@ team against it.
 - **Git-backed `/undo` and `/redo`** `[v1.11.0]` — restore workspace files
   (created, modified, deleted) to the exact prior state from any prior turn in
   chat history. Different from editor undo: this is tied to chat turns.
-- **`/init` scaffolds AGENTS.md** `[v1.9.0]` — writes AGENTS.md files at the
-  repo root and meaningful subfolders from the workspace.
-- **Inline patch tool for multi-file edits** `[v1.5.0]` — structured patches
+  `/redo` restores one undone turn; `/redo-all` `[v2.0.0]` restores all undone turns back
+  to the live tip.
+- **`/init` AGENTS.md analysis & generation** `[v1.9.0, v2.0.0]` — analyzes codebase
+  structure and generates standard `AGENTS.md` context files at repository root and
+  subdirectories with a guided analysis protocol.
+- **Consolidated filesystem toolset** `[v2.0.0]` — the agent now sees two
+  filesystem tools instead of six. `read` handles files *and* directory
+  listings, and `patch` is the single way to create, edit, delete, or move a
+  file. `write`, `edit`, `ls`, and `rm` are removed, as is `date` (the current
+  date is already injected into the system prompt every turn). Fewer
+  overlapping schemas means fewer tokens per request and no ambiguity about
+  which tool to reach for when changing a file. Two consequences worth
+  knowing: recursive directory deletion is now a `shell` command, and patches
+  are matched strictly — context lines must be copied exactly from a `read`.
+  Agent `.md` files that still list a removed tool are cleaned up
+  automatically the first time they load.
+- **Inline patch tool for multi-file edits** `[v1.5.0, v2.0.0]` — structured patches
   with multiple hunks, real line numbers, collapsible previews. The `patch`
   tool accepts a `*** Begin Patch` / `*** End Patch` envelope with
   `*** Add File:`, `*** Update File:`, `*** Delete File:`, and `*** Move to:`
@@ -516,9 +573,13 @@ team against it.
   code blocks or surrounding commentary, and falls back to line-aligned fuzzy
   context matching when whitespace doesn't match exactly, without
   mis-patching an earlier occurrence of the same text or rewriting file line
-  endings `[v1.120.0]`. The activity header lists the comma-separated,
+  endings `[v1.120.0]`. An update section that would change nothing — no
+  hunk line marked `-` or `+`, so every line reads as unchanged context — is
+  rejected with guidance instead of reporting success without writing,
+  which previously sent the agent into a silent retry loop `[v2.0.0]`.
+  The activity header lists the comma-separated,
   deduplicated basenames of every touched file instead of collapsing
-  multi-file patches into a bare count `[v1.120.0]`.
+  multi-file patches into a bare count `[v1.120.0]`, with operation-aware header labels (`Create`, `Update`, `Move`, `Delete`), color-coded action badges, per-file line delta counters, and multi-file expand/collapse controls `[v2.0.0]`.
 - **Interactive terminal tab** `[v1.98.1]` — a real PTY shell (backend
   `subprocess.Popen` + `pty.openpty()`, streamed over WebSocket to an
   xterm.js instance) attached to the coding workspace panel, alongside
@@ -552,6 +613,10 @@ OpenAgentd carries context across sessions via rolling-window summarization.
 - **`AGENTS.md` at repo root and subfolders** `[v1.9.0]` — written by `/init`;
   standard repo- and folder-scoped agent context files. Coding workspaces fall
   back to root `CLAUDE.md` when root `AGENTS.md` is absent.
+- **Workspace root injected into coding-mode system prompt** `[v1.133.0]` —
+  coding-team agents (lead and members) are told their workspace's absolute
+  path unconditionally, not only when an `AGENTS.md`/`CLAUDE.md` happens to
+  exist.
 - **Per-message provider metadata** `[v1.17.0]` — assistant messages persist
   the model that generated each reply (visible in inspector).
 
@@ -601,6 +666,9 @@ agnostic by design.
   Converse and the access-key/secret-key Settings path were removed. This is an
   explicit user-approved hard conversion, so it did not follow the normal
   feature deprecation period.
+- **Pure-Python SigV4 AWS Bedrock token generator** `[v2.0.0]` — replaces `botocore`
+  with a pure-Python SigV4 token generator, dropping AWS bundle strip overhead and
+  runtime memory footprint.
 - **Anthropic-compatible custom endpoints** `[v1.16.0]` — providers needing
   custom headers or alternate message endpoints are supported.
 - **Anthropic prompt caching + full input accounting** `[v1.66.0]` — Claude
@@ -666,15 +734,15 @@ MCP.
 
 | Category | Tools |
 |---|---|
-| Filesystem | `read`, `write`, `edit`, `patch`, `ls`, `glob`, `grep`, `rm` |
-| Shell | `shell`, `bg` (background processes) |
-| Web | `web_search`, `web_fetch` |
+| Filesystem | `read` (files + directory listings), `patch` (create/edit/delete/move), `glob`, `grep` |
+| Shell | `shell` (supports `background=true` returning spawned PID `[v2.0.0]`) |
+| Web | `web_search`, `web_fetch` (fast HTML extraction via `trafilatura` `[v2.0.0]`) |
 | Generation | `generate_image`, `generate_video` |
 | Scheduling | `schedule_task` (reminders + self-scheduling agentic loops) `[v1.70.0]` |
 | Tasks | `todo_manage` |
 | Team coordination | `team_message`, `team_manage` |
 | Ask the user | `ask_user` (coding-mode lead only) `[v1.131.0]` |
-| Utility | `date`, `skill` |
+| Utility | `skill` |
 
 - **`ask_user` — durable suspend and resume** `[v1.131.0]` — in
   **coding mode**, the lead can stop mid-turn and ask you 1–4 questions rather
@@ -693,9 +761,14 @@ MCP.
   else are the only ways to move it — there is no timeout. Members keep working
   throughout and are never interrupted by an answer. One question per turn;
   scheduled sessions never get the tool, because a cron job has nobody to ask.
+- **Fast HTML & document extraction** `[v2.0.0]` — `web_fetch` uses `trafilatura` for
+  clean HTML-to-markdown extraction, and `read` uses `anydoc` for robust document
+  conversion, dropping `markitdown`.
+- **50k character read limit** `[v2.0.0]` — expanded `read` tool context limit to
+  50,000 characters for reviewing larger source files in a single pass.
 
-- **Real-time LSP diagnostics injection** `[v1.89.0, v1.105.0]` — in **coding mode**, after a
-  `write`, `edit`, or `patch` tool modifies one or more files, OpenAgentd runs the
+- **Real-time LSP diagnostics injection** `[v1.89.0, v1.105.0, v2.0.0]` — in **coding mode**, after the
+  `patch` tool modifies one or more files, OpenAgentd runs the
   matching language server(s) over the changed files and injects the resulting
   errors/warnings straight into the tool result as a compact `[LSP Diagnostics]`
   block, so the agent sees and fixes problems on the very next turn. Servers run
@@ -706,6 +779,11 @@ MCP.
   (`lsp:`) → built-in defaults**. Python is special-cased to run *multiple*
   complementary servers and merge results — a type checker (`ty`/`pyright`) **and**
   a linter (`ruff`) — because neither alone catches both type errors and lint;
+  `ruff`/`ty` are **not bundled** with the runtime: when a project pins them (or
+  declares them bare), the backend silently downloads the checksum-verified
+  wheel for the project's exact `==` pin (PyPI latest for ranges) into the user
+  cache (`{cache}/lsp/python/{tool}-{version}/`), so the desktop sidecar stays
+  ~22 MB lighter; a failed or disabled install degrades to `pyright`/`pylsp`.
   every other language uses its single canonical server (`gopls`,
   `typescript-language-server`, `clangd`). Multi-file `patch` checks run
   concurrently, the report is capped per file (errors first, then a `…and N more`
@@ -721,6 +799,54 @@ MCP.
 - **Semantic LSP navigation** `[v1.133.0]` — coding-team agents can find definitions,
   references, document symbols, and workspace symbols through the language server,
   using compact workspace-relative results instead of text search for code navigation.
+  Results include a readable symbol kind (`Widget (class)`, `run (function)`) when the
+  language server reports one; a file's own symbols list in source order (top-to-bottom),
+  while cross-file results (references, workspace-wide symbol search) stay alphabetically
+  sorted for determinism across multiple language-server clients. A `hover` operation
+  returns type/signature/docstring info for a position (flattening `MarkupContent` and
+  `MarkedString` shapes across servers); an optional `kind` filter narrows
+  `document_symbol`/`workspace_symbol` results to one symbol kind (e.g. `function`,
+  `class`, and accepting several at once, e.g. `function, method`); files with no
+  mapped language server (anything outside
+  `.py .ts .tsx .js .jsx .go .c .cpp .h .hpp`) get an explicit "no language server
+  support" message instead of a misleading empty result. A `find_implementations`
+  operation resolves interfaces, protocols, abstract classes, and overridable
+  members, and `find_references` tags each hit `[definition]`/`[read]`/`[write]`
+  when the server reports it. Empty results explain themselves instead of a bare
+  "No results.": a cursor on whitespace, a comment, a keyword, or past the end of
+  the file says so, and a position that is already the declaration reports
+  "already at its definition site". Symbol resolution follows the project's own
+  setup — `tsconfig.json` `paths`/`baseUrl` are forwarded to the TypeScript
+  server and a project virtualenv (`.venv`/`venv`/`env`) is detected for Python,
+  so aliased and site-packages imports resolve; `go_to_definition` falls back to
+  `textDocument/declaration` and `textDocument/typeDefinition` when the primary
+  request comes back empty. The chat UI's tool-call
+  header/args display covers `hover` (position header, e.g. "Hover at path:line:col"),
+  `find_implementations` ("Implementations at path:line:col"), and the `kind` filter
+  (surfaced in both the `document_symbol`/`workspace_symbol` header and the expanded
+  args), matching the existing per-operation formatting for
+  `go_to_definition`/`find_references`/`document_symbol`/`workspace_symbol`.
+  Position results (`go_to_definition`, `find_references`, `find_implementations`)
+  carry the matching source line (trimmed, capped at 120 chars) next to each
+  location, so an import, call, or annotation can be told apart without a
+  follow-up read — the chat UI renders it as a muted second line under the path.
+  `workspace_symbol` hits are tagged `[exact]`/`[prefix]` against the query and
+  ranked by match quality ahead of fuzzy matches; results beyond the 50-item cap
+  end with an explicit `… truncated: showing 50 of N results` note instead of
+  silently disappearing. Empty results stay honest: `find_implementations` reports
+  a cursor position problem (whitespace, comment, keyword, out-of-bounds) as such
+  rather than claiming the symbol is not overridable, and a missing path says paths
+  are workspace-relative and points at glob.
+  Fixed a position-accuracy bug: the LSP client didn't advertise
+  `hierarchicalDocumentSymbolSupport`, so servers (pyright, ty) fell back to
+  flat `SymbolInformation` and `document_symbol`/`workspace_symbol` reported
+  the start of the whole declaration (e.g. the `async`/`def` keyword) instead
+  of the identifier — a position that then failed when fed into
+  `go_to_definition`/`find_references`/`hover`. The client now requests
+  hierarchical results and the manager prefers each symbol's
+  `selectionRange` (the identifier) over its full `range`, so a
+  `document_symbol` location now round-trips correctly into the other
+  operations.
 - **Clean tool argument validation errors** `[v1.77.0]` — when a tool call
   fails Pydantic validation, the LLM receives a compact `field: message`
   summary instead of the full Pydantic noise (type codes, raw input value,
@@ -743,7 +869,7 @@ MCP.
 - **Tool result offload** `[since v1.0]` — bulky tool outputs (large file
   reads, shell spills) move to `{OPENAGENTD_DATA_DIR}/sessions/{id}/.tool_results/` and the inspector
   links to them.
-- **`.gitignore`-aware file tools** `[v1.20.1, v1.131.3]` — `glob`, `grep`, and
+- **`.gitignore`-aware file tools** `[v1.20.1, v1.131.3, v2.0.0]` — `glob`, `grep`, and
   workspace file browsing respect `.gitignore` and skip dependency and cache
   directories. Workspace file listings (file tagging, the command palette, the
   files sidebar) come from git itself in a git work tree, so tracked files no
@@ -752,7 +878,11 @@ MCP.
   and caches are searchable, `.env`-style secrets stay excluded, and `glob`
   understands `{ts,tsx}` brace patterns, finds bare patterns at any depth, and
   names the directory when a pattern matched one instead of dead-ending
-  `[v1.131.3]`.
+  `[v1.131.3]`. Naming a generated directory in the pattern itself
+  (`web/node_modules/@scope/pkg/**`) is treated as an explicit request and
+  searched rather than silently pruned, and an anchored pattern walks only its
+  own subtree — 2.6x–50x faster, and 35x on a pattern pointing into a
+  dependency `[v2.0.0]`.
 
 ---
 
@@ -779,8 +909,7 @@ Four orthogonal ways to add capability.
     a plain-text wall. MCP servers that include formatted descriptions in their tool
     schemas benefit automatically; plain-text descriptions render identically to before.
     The tool inventory is grouped by origin (built-in, then one group per MCP server)
-    and collapsed by default so it no longer pushes the model and MCP controls out of
-    view; the name/description filter appears past eight tools `[v1.125.0]`.
+    and open by default so available tools are immediately visible; the name/description filter appears past eight tools `[v1.125.0]`.
 - **Sandboxed UI artifacts** `[v1.36.0]` *(beta)* — tool-produced HTML UI
   resources render as sandboxed sibling chat artifacts. The first producer is
   MCP Apps: MCP tools that declare `_meta.ui.resourceUri` can render `ui://`
@@ -833,14 +962,14 @@ Four orthogonal ways to add capability.
 
 ---
 
-## 8. Sandbox and permissions
+## 8. Path denylist and permissions
 
 Single-user trust model. The host is trusted. The operator is the user.
 
 - **Path denylist** `[since v1.0]` — absolute paths anywhere on disk are accepted
   *unless* they resolve under a denied root (`OPENAGENTD_DATA_DIR`,
   `OPENAGENTD_STATE_DIR`, `OPENAGENTD_CACHE_DIR`) or match a user-defined glob
-  in `sandbox.yaml`. User-defined sandbox globs are enforced inside the active
+  in `denied_paths.yaml`. User-defined deny globs are enforced inside the active
   workspace too, not only outside it `[v1.74.0]`. Symlinks are rejected only
   when targeting a denied root. Tilde paths are always rejected.
 - **Self-diagnostic carve-outs** `[v1.120.4]` — agents can read their own
@@ -849,7 +978,7 @@ Single-user trust model. The host is trusted. The operator is the user.
   (per-turn context-window dumps), plus the current session's own artifact dir.
   Credentials (`OPENAGENTD_CACHE_DIR`), the SQLite DB, undo/redo snapshots, and
   other sessions' artifacts stay denied. This is what makes the
-  `oad/debug-prod` log/telemetry workflow usable without disabling the sandbox.
+  `oad/debug-prod` log/telemetry workflow usable without disabling the path denylist.
 - **Permission system: allow / deny / ask** `[since v1.0]` — wildcard rule
   matching per tool. Auto-allow, blocking on user reply, or persistent rules.
 - **Shell command pre-scan** `[since v1.0]` — best-effort path-token scan
@@ -873,8 +1002,9 @@ Everything stays local. No third-party telemetry SaaS.
   `o200k_base` counts for the assembled static system prompt, compact tool-schema
   JSON, every first-party base prompt, each tool, and bundled skill bodies;
   `make prompt-budget-json` emits a stable machine-readable baseline for CI.
-- **DuckDB-backed query API** `[since v1.0]` — `/api/observability/*` queries
-  the local DuckDB span store.
+- **Fast JSONL-backed query API** `[v2.0.0]` — `/api/observability/*` queries
+  local OpenTelemetry span logs directly using `orjson` parsing, delivering faster
+  query execution and lower latency without DuckDB binary dependency weight.
 - **Two-tier logging** `[since v1.0]` — app log at `{STATE_DIR}/logs/app/`,
   per-session JSONL transcript at `{STATE_DIR}/logs/sessions/{id}/`. Rotated,
   loguru-based. `FILE_LOG_LEVEL` `[v1.130.0]` sets the app-log threshold
@@ -897,9 +1027,9 @@ Everything stays local. No third-party telemetry SaaS.
 
 Client-side speech recognition. OpenAgentd does not run backend microphone transcription.
 
-- **Mic button in composer** `[since v1.0]` — click to start listening, click to
+- **Mic button in composer** `[since v1.0]` *(deprecated — removed in v2.0.0)* — click to start listening, click to
   stop. Transcript text is inserted into the chat input for review before sending.
-- **Browser / OS speech recognition** `[v1.34.0]` — uses the current browser or
+- **Browser / OS speech recognition** `[v1.34.0]` *(deprecated — removed in v2.0.0)* — uses the current browser or
   app WebView speech recognizer when available. No `/api/speech/*` backend,
   `speech.yaml`, or bundled `faster-whisper`.
 

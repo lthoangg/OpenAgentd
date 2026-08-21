@@ -16,7 +16,7 @@ export const queryKeys = {
       detail: (id: string) => ['team', 'sessions', id] as const,
     },
     // Workspace-files listing per session — powers the Artifacts panel *and*
-    // the InputBar @-mention picker. Both go through the shared query options
+    // the InputComposer @-mention picker. Both go through the shared query options
     // in ``queries/workspace-files.ts``; do not add a second key for the same
     // endpoint, or the ``workspace_files`` invalidation will only reach one of
     // them and the expensive directory walk will run twice.
@@ -77,7 +77,8 @@ export const queryKeys = {
     detail: (name: string) => ['mcp', 'detail', name] as const,
   },
   settings: {
-    sandbox: () => ['settings', 'sandbox'] as const,
+    deniedPaths: () => ['settings', 'denied-paths'] as const,
+    sandbox: () => ['settings', 'denied-paths'] as const,
     summarization: () => ['settings', 'summarization'] as const,
     titleGeneration: () => ['settings', 'titleGeneration'] as const,
     multimodal: () => ['settings', 'multimodal'] as const,

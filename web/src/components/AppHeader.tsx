@@ -1,5 +1,5 @@
 /**
- * AppHeader — shared 40 px application header.
+ * AppHeader — shared 36 px application header.
  *
  *   ┌────────────────────────────────────────────────────┐
  *   │ [traffic-lights]  [🏠] [☰]  Title       ● local  │
@@ -10,10 +10,11 @@
  * `useTauriDrag` to make the header act as the window-drag region.
  */
 import { Link } from '@tanstack/react-router'
-import { Home, Menu } from 'lucide-react'
+import { Home, PanelLeft } from 'lucide-react'
 import { useEffect, type ReactNode } from 'react'
 
 import { cn } from '@/lib/utils'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { usePlatform } from '@/hooks/use-platform'
 import { useTauriDrag } from '@/hooks/use-tauri-drag'
 
@@ -31,11 +32,10 @@ export interface AppHeaderProps {
   className?: string
 }
 
-// Base is 44×44 (Apple HIG / Material touch minimum) so the two most-used
-// nav controls are comfortably tappable on phones; desktop collapses to a
-// dense 28px. Ring is `ring-2` to match every other control (see button.tsx).
+// Keep the controls inside the compact header while retaining a slightly
+// larger touch target on phones. All header icon buttons share this geometry.
 const ICON_BUTTON =
-  'flex h-11 w-11 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 md:h-7 md:w-7'
+  'flex h-11 w-11 items-center justify-center rounded-sm text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 md:h-7 md:w-7'
 
 function DefaultStatus() {
   return (
@@ -75,20 +75,33 @@ export function AppHeader({
       )}
     >
       <div className="flex min-w-0 shrink items-center gap-1 pl-2">
-        <Link to={homeTo} aria-label="Home" title="Home" className={ICON_BUTTON}>
-          <Home size={14} aria-hidden="true" />
-        </Link>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Link to={homeTo} aria-label="Home" className={ICON_BUTTON}>
+                <Home size={14} strokeWidth={1.8} aria-hidden="true" />
+              </Link>
+            }
+          />
+          <TooltipContent>Home</TooltipContent>
+        </Tooltip>
 
         {onToggleSidebar && (
-          <button
-            type="button"
-            onClick={onToggleSidebar}
-            aria-label="Toggle sidebar"
-            title={toggleShortcut ? `Toggle sidebar (${toggleShortcut})` : 'Toggle sidebar'}
-            className={ICON_BUTTON}
-          >
-            <Menu size={14} aria-hidden="true" />
-          </button>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <button
+                  type="button"
+                  onClick={onToggleSidebar}
+                  aria-label="Toggle sidebar"
+                  className={ICON_BUTTON}
+                >
+                  <PanelLeft size={14} strokeWidth={1.8} aria-hidden="true" />
+                </button>
+              }
+            />
+            <TooltipContent>{toggleShortcut ? `Toggle sidebar (${toggleShortcut})` : 'Toggle sidebar'}</TooltipContent>
+          </Tooltip>
         )}
 
         {title && (

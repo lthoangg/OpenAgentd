@@ -1,6 +1,6 @@
 """Filesystem-tool post-mutation hook for config caches.
 
-Filesystem tools (``write``, ``edit``, ``rm``) call :func:`notify_fs_change`
+The ``patch`` tool calls :func:`notify_fs_change`
 after a successful mutation.  The hook decides whether the path falls
 under one of the config trees that have process-level caches, and
 invalidates the right cache.
@@ -35,14 +35,14 @@ def _skills_roots() -> list[Path]:
 
     Mirrors the precedence list in ``_iter_skill_roots()`` — any path whose
     ``SKILL.md`` files are tracked by the discover cache must be listed here
-    so a write/edit/rm inside it triggers an eager cache clear.
+    so a patch inside it triggers an eager cache clear.
     """
     roots: list[Path] = []
 
     # Global skills dir from settings.
     #
     # The two guards below stay deliberately broad: resolving an *optional*
-    # cache-invalidation root must never fail the write/edit/rm call that
+    # cache-invalidation root must never fail the patch call that
     # triggered it, and both settings construction and path resolution can
     # fail in unrelated ways (missing settings in some test contexts, an
     # unreadable mount, a non-string SKILLS_DIR).  They are logged rather
@@ -61,9 +61,9 @@ def _skills_roots() -> list[Path]:
     # ``get_sandbox()`` itself falls back to a default rather than raising, so
     # a failure here means the import or path resolution broke.
     try:
-        from app.agent.sandbox import get_sandbox
+        from app.agent.denied_paths import get_denied_paths
 
-        workspace = get_sandbox().workspace_root.resolve()
+        workspace = get_denied_paths().workspace_root.resolve()
         roots.append((workspace / ".openagentd" / "skills").resolve())
         roots.append((workspace / ".opencode" / "skills").resolve())
     except Exception as exc:  # noqa: BLE001 — see note above
@@ -75,8 +75,8 @@ def _skills_roots() -> list[Path]:
 def notify_fs_change(resolved_path: Path) -> None:
     """Inform config-aware caches that *resolved_path* was created/edited/deleted.
 
-    Safe to call unconditionally after every successful ``write`` / ``edit``
-    / ``rm`` — the helper only does work when the path is inside a known
+    Safe to call unconditionally after every successful ``patch`` — the
+    helper only does work when the path is inside a known
     config tree.  Exceptions are swallowed and logged because cache
     invalidation must never fail the tool call.
     """

@@ -23,6 +23,7 @@ import { formatRelativeDate } from '@/utils/format'
 import { ThemeToggle } from './ThemeToggle'
 import { Skeleton } from './ui/skeleton'
 import { HealthDot } from './HealthDot'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { SidebarItem } from '@/components/ui/sidebar-item'
 import {
@@ -422,17 +423,24 @@ export function Sidebar({
                 palette open. */}
             {!showIconOnly && onCommandPalette && (
               <div className="px-3 pt-3">
-                <button
-                  type="button"
-                  onClick={onCommandPalette}
-                  className="flex h-8 w-full items-center gap-2 rounded-md border border-(--color-border) bg-(--bg-page) px-2.5 text-left text-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)"
-                  aria-label="Open command palette"
-                  title={`Open command palette (${formatShortcut('P', os)})`}
-                >
-                  <Search size={13} aria-hidden="true" />
-                  <span className="flex-1">Search…</span>
-                  <kbd className="font-mono text-[10px] text-(--color-text-subtle)">^P</kbd>
-                </button>
+                <Tooltip className="w-full">
+                  <TooltipTrigger
+                    className="w-full"
+                    render={
+                      <button
+                        type="button"
+                        onClick={onCommandPalette}
+                        className="flex h-8 w-full items-center gap-2 rounded-md border border-(--color-border) bg-(--bg-page) px-2.5 text-left text-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)"
+                        aria-label="Open command palette"
+                      >
+                        <Search size={13} aria-hidden="true" />
+                        <span className="flex-1">Search…</span>
+                        <kbd className="font-mono text-[10px] text-(--color-text-subtle)">^P</kbd>
+                      </button>
+                    }
+                  />
+                  <TooltipContent>{`Open command palette (${formatShortcut('P', os)})`}</TooltipContent>
+                </Tooltip>
               </div>
             )}
 
@@ -477,14 +485,20 @@ export function Sidebar({
                     <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-(--color-text-muted)">
                       Recent
                     </span>
-                    <button
-                      onClick={() => refetchSessions()}
-                      className="rounded p-1 text-(--color-text-subtle) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-muted)"
-                      aria-label="Refresh sessions"
-                      title="Refresh sessions"
-                    >
-                      <RefreshCw size={12} className={sessions.isFetching ? 'animate-spin' : ''} />
-                    </button>
+                    <Tooltip>
+                      <TooltipTrigger
+                        render={
+                          <button
+                            onClick={() => refetchSessions()}
+                            className="rounded-xs p-1 text-(--color-text-subtle) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-muted)"
+                            aria-label="Refresh sessions"
+                          >
+                            <RefreshCw size={12} className={sessions.isFetching ? 'animate-spin' : ''} />
+                          </button>
+                        }
+                      />
+                      <TooltipContent>Refresh sessions</TooltipContent>
+                    </Tooltip>
                   </div>
 
                   <div
@@ -551,59 +565,74 @@ export function Sidebar({
                 {sessions.isSuccess && normalSessions.slice(0, 8).map((session) => {
                   const isActive = session.id === currentSessionId
                   return (
-                    <button
-                      key={session.id}
-                      onMouseDown={(e) => {
-                        if (!isModifiedPrimaryClick(e)) return
-                        handleSelect(session.id, e)
-                      }}
-                      onClick={(e) => {
-                        if (isModifiedPrimaryClick(e)) return
-                        handleSelect(session.id, e)
-                      }}
-                      title={session.title || 'Untitled'}
-                      className={`flex h-8 w-8 items-center justify-center rounded-md transition-colors ${
-                        isActive
-                          ? 'bg-(--bg-key) text-(--color-accent)'
-                          : 'text-(--color-text-subtle) hover:bg-(--bg-key) hover:text-(--color-text-2)'
-                      }`}
-                    >
-                      <div className="h-1.5 w-1.5 rounded-full bg-current" />
-                    </button>
+                    <Tooltip key={session.id}>
+                      <TooltipTrigger
+                        render={
+                          <button
+                            onMouseDown={(e) => {
+                              if (!isModifiedPrimaryClick(e)) return
+                              handleSelect(session.id, e)
+                            }}
+                            onClick={(e) => {
+                              if (isModifiedPrimaryClick(e)) return
+                              handleSelect(session.id, e)
+                            }}
+                            aria-label={session.title || 'Untitled'}
+                            className={`flex h-8 w-8 items-center justify-center rounded-md transition-colors ${
+                              isActive
+                                ? 'bg-(--bg-key) text-(--color-accent)'
+                                : 'text-(--color-text-subtle) hover:bg-(--bg-key) hover:text-(--color-text-2)'
+                            }`}
+                          >
+                            <div className="h-1.5 w-1.5 rounded-full bg-current" />
+                          </button>
+                        }
+                      />
+                      <TooltipContent>{session.title || 'Untitled'}</TooltipContent>
+                    </Tooltip>
                   )
                 })}
               </div>
             )}
 
-            {/* Footer — wireframe trio: Settings · Help (palette) · ThemeToggle.
-                HealthDot is the small status dot tucked between the icon group
-                and the theme toggle. Collapsed mode keeps only the theme
-                cycler so the rail stays at 56px wide. */}
-            <div className={`flex items-center gap-2 border-t border-(--color-border) px-3 py-2 pb-safe ${showIconOnly ? 'justify-center' : 'justify-between'}`}>
+            {/* Mobile drawer footer — on desktop this lives in AppFooter status bar */}
+            <div className={`flex md:hidden items-center gap-2 border-t border-(--color-border) px-3 py-2 pb-safe ${showIconOnly ? 'justify-center' : 'justify-between'}`}>
               {showIconOnly ? (
                 <ThemeToggle collapsed />
               ) : (
                 <>
                   <div className="flex items-center gap-1">
-                    <button
-                      type="button"
-                      onClick={() => { openSettings(); onMobileClose?.() }}
-                      className="flex h-8 w-8 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
-                      aria-label="Settings"
-                      title={`Settings (${formatShortcut(',', os)})`}
-                    >
-                      <Settings size={14} aria-hidden="true" />
-                    </button>
+                    <Tooltip>
+                      <TooltipTrigger
+                        render={
+                          <button
+                            type="button"
+                            onClick={() => { openSettings(); onMobileClose?.() }}
+                            className="flex h-11 w-11 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
+                            aria-label="Settings"
+                          >
+                            <Settings size={14} aria-hidden="true" />
+                          </button>
+                        }
+                      />
+                      <TooltipContent>{`Settings (${formatShortcut(',', os)})`}</TooltipContent>
+                    </Tooltip>
                     {onCommandPalette && (
-                      <button
-                        type="button"
-                        onClick={onCommandPalette}
-                        className="flex h-8 w-8 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
-                        aria-label="Help and shortcuts"
-                        title={`Help and shortcuts (${formatShortcut('P', os)})`}
-                      >
-                        <HelpCircle size={14} aria-hidden="true" />
-                      </button>
+                      <Tooltip>
+                        <TooltipTrigger
+                          render={
+                            <button
+                              type="button"
+                              onClick={onCommandPalette}
+                              className="flex h-11 w-11 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
+                              aria-label="Help and shortcuts"
+                            >
+                              <HelpCircle size={14} aria-hidden="true" />
+                            </button>
+                          }
+                        />
+                        <TooltipContent>{`Help and shortcuts (${formatShortcut('P', os)})`}</TooltipContent>
+                      </Tooltip>
                     )}
                   </div>
                   <div className="flex items-center gap-2">
@@ -629,34 +658,34 @@ export function Sidebar({
             <div
               role="menu"
               aria-label={`Actions for ${desktopSessionActions.session.title || 'Untitled'}`}
-              className="fixed min-w-44 rounded-lg border border-(--color-border) bg-(--bg-card) p-1 text-sm text-(--color-text) shadow-xl"
+              className="fixed min-w-44 rounded-sm border border-(--color-border) bg-(--bg-card) p-1 text-xs text-(--color-text) shadow-md"
               style={{ left: desktopSessionActions.x, top: desktopSessionActions.y }}
               onClick={(event) => event.stopPropagation()}
             >
               <button
                 type="button"
                 role="menuitem"
-                className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none"
+                className="flex w-full items-center gap-2 rounded-xs px-2 py-1 text-left text-xs hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none"
                 onClick={() => {
                   const { session } = desktopSessionActions
                   setDesktopSessionActions(null)
                   handleEdit(session)
                 }}
               >
-                <Pencil size={14} aria-hidden="true" />
+                <Pencil size={12} aria-hidden="true" />
                 Edit title
               </button>
               <button
                 type="button"
                 role="menuitem"
-                className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-(--color-error) hover:bg-(--color-error-subtle) focus-visible:bg-(--color-error-subtle) focus-visible:outline-none"
+                className="flex w-full items-center gap-2 rounded-xs px-2 py-1 text-left text-xs text-(--color-error) hover:bg-(--color-error-subtle) focus-visible:bg-(--color-error-subtle) focus-visible:outline-none"
                 onClick={() => {
                   const { session } = desktopSessionActions
                   setDesktopSessionActions(null)
                   setDeleteTarget(session)
                 }}
               >
-                <Trash2 size={14} aria-hidden="true" />
+                <Trash2 size={12} aria-hidden="true" />
                 Delete session
               </button>
             </div>
@@ -839,7 +868,7 @@ const SessionRow = memo(function SessionRow({ session, isActive, onSelect, onDel
               </motion.p>
             </AnimatePresence>
             {isScheduled && (
-              <span className="shrink-0 rounded px-1 py-px text-[10px] leading-tight bg-(--bg-key) text-(--color-text-subtle)">
+              <span className="shrink-0 rounded-xs px-1 py-px text-[10px] leading-tight bg-(--bg-key) text-(--color-text-subtle)">
                 sched
               </span>
             )}
@@ -850,7 +879,7 @@ const SessionRow = memo(function SessionRow({ session, isActive, onSelect, onDel
             )}
             {needsInput && (
               <span
-                className="shrink-0 rounded px-1 py-px text-[10px] leading-tight bg-(--color-warning)/15 text-(--color-warning)"
+                className="shrink-0 rounded-xs px-1 py-px text-[10px] leading-tight bg-(--color-warning)/15 text-(--color-warning)"
                 aria-label="Session needs your input"
               >
                 asks
@@ -873,7 +902,7 @@ const SessionRow = memo(function SessionRow({ session, isActive, onSelect, onDel
           e.stopPropagation()
           onEdit(session)
         }}
-        className="absolute right-7 top-1/2 flex -translate-y-1/2 items-center justify-center rounded p-1 text-(--color-text-subtle) opacity-0 transition-all hover:bg-(--bg-key) hover:text-(--color-text) group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:opacity-100"
+        className="absolute right-7 top-1/2 flex -translate-y-1/2 items-center justify-center rounded-xs p-1 text-(--color-text-subtle) opacity-0 transition-all hover:bg-(--bg-key) hover:text-(--color-text) group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:opacity-100"
         aria-label={`Edit session ${session.title || 'Untitled'}`}
       >
         <Pencil size={12} />
@@ -882,7 +911,7 @@ const SessionRow = memo(function SessionRow({ session, isActive, onSelect, onDel
       {/* Delete on hover */}
       <button
         onClick={(e) => onDelete(e, session)}
-        className="absolute right-1.5 top-1/2 flex -translate-y-1/2 items-center justify-center rounded p-1 text-(--color-text-subtle) opacity-0 transition-all hover:bg-(--color-error-subtle) hover:text-(--color-error) group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:opacity-100"
+        className="absolute right-1.5 top-1/2 flex -translate-y-1/2 items-center justify-center rounded-xs p-1 text-(--color-text-subtle) opacity-0 transition-all hover:bg-(--color-error-subtle) hover:text-(--color-error) group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:opacity-100"
         aria-label={`Delete session ${session.title || 'Untitled'}`}
       >
         <Trash2 size={12} />

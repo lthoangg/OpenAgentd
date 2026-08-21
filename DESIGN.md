@@ -153,14 +153,14 @@ typography:
 
 rounded:
   none: 0px
-  xs: 2px
-  sm: 4px
-  md: 6px
-  lg: 8px
-  xl: 10px
-  2xl: 12px
-  3xl: 16px
-  4xl: 20px
+  xs: 4px
+  sm: 6px
+  md: 8px
+  lg: 12px
+  xl: 16px
+  2xl: 20px
+  3xl: 24px
+  4xl: 28px
   full: 9999px
 
 spacing:
@@ -177,7 +177,7 @@ spacing:
   mac-traffic-inset: 70px
   content-max: 768px
   overlay-max: 860px
-  palette-max: 480px
+  palette-max: 600px
 
 components:
   button-default:
@@ -189,6 +189,11 @@ components:
     padding: 12px
   button-default-hover:
     backgroundColor: "{colors.bg-key}"
+  button-subtle:
+    backgroundColor: "{colors.bg-card}"
+    textColor: "{colors.on-surface-muted}"
+    typography: "{typography.body-sm}"
+    rounded: "{rounded.md}"
   button-primary:
     backgroundColor: "{colors.bg-key}"
     textColor: "{colors.on-surface}"
@@ -198,11 +203,6 @@ components:
     padding: 12px
   button-primary-hover:
     backgroundColor: "{colors.surface-2}"
-  button-subtle:
-    backgroundColor: "{colors.bg-card}"
-    textColor: "{colors.on-surface-muted}"
-    typography: "{typography.body-sm}"
-    rounded: "{rounded.md}"
   button-ghost:
     backgroundColor: "{colors.bg-page}"
     textColor: "{colors.on-surface-muted}"
@@ -216,6 +216,11 @@ components:
     textColor: "{colors.error}"
     typography: "{typography.body-sm}"
     rounded: "{rounded.md}"
+  button-danger-subtle:
+    backgroundColor: "{colors.bg-card}"
+    textColor: "{colors.error}"
+    typography: "{typography.body-sm}"
+    rounded: "{rounded.md}"
   button-link:
     backgroundColor: "{colors.bg-card}"
     textColor: "{colors.accent-blue-text}"
@@ -225,14 +230,49 @@ components:
     rounded: "{rounded.xs}"
     height: 24px
     padding: 8px
+  button-sm:
+    typography: "{typography.body-sm}"
+    rounded: "{rounded.sm}"
+    height: 32px
+    padding: 10px
   button-icon:
     rounded: "{rounded.md}"
     size: 36px
+  button-icon-sm:
+    rounded: "{rounded.sm}"
+    size: 32px
+  button-icon-xs:
+    rounded: "{rounded.xs}"
+    size: 24px
   button-send:
     backgroundColor: "{colors.bg-send}"
     textColor: "{colors.on-accent}"
     rounded: "{rounded.full}"
     size: 32px
+  menu-panel:
+    backgroundColor: "{colors.bg-card}"
+    borderColor: "{colors.border}"
+    rounded: "{rounded.sm}"
+    padding: 4px
+  menu-item:
+    textColor: "{colors.on-surface-2}"
+    typography: "{typography.body-sm}"
+    rounded: "{rounded.xs}"
+    height: 28px
+    padding: 8px
+  menu-item-hover:
+    backgroundColor: "{colors.bg-key}"
+    textColor: "{colors.on-surface}"
+  segmented-control:
+    backgroundColor: "{colors.bg-key}"
+    borderColor: "{colors.border}"
+    rounded: "{rounded.sm}"
+    padding: 2px
+  segmented-item-active:
+    backgroundColor: "{colors.bg-card}"
+    borderColor: "{colors.border-strong}"
+    textColor: "{colors.on-surface}"
+    rounded: "{rounded.xs}"
   input:
     backgroundColor: "{colors.bg-input}"
     textColor: "{colors.on-surface}"
@@ -373,17 +413,23 @@ these when `color-scheme: dark`:
 
 | Token | Light | Dark |
 |---|---|---|
-| `bg-page` | `#FAF6EC` | `#15110D` |
+| `bg-page` / `bg-input` | `#FAF6EC` | `#15110D` |
 | `bg-sidebar` / `bg-card` | `#F5EFDD` / `#FFFBF1` | `#1C1813` |
 | `bg-key` | `#F0E9D4` | `#2A2219` |
 | `bg-send` | `#2D241B` | `#F5EBD8` |
 | `surface` / `surface-2` | `#FFFDF7` / `#F5EBD8` | `#221C16` / `#2A2219` |
+| `color-bg-elevated` | `#FFFDF7` | `#1C1813` |
 | `border-subtle` / `border` / `border-strong` | `#E7DCBF` / `#D9CFA9` / `#B8A47E` | `#2C231A` / `#3A2F23` / `#5C4B36` |
 | `on-surface` | `#1A1714` | `#F5EBD8` |
 | `on-surface-2` | `#4B3E32` | `#C5B59A` |
 | `on-surface-muted` | `#6E604F` | `#9C8A72` |
 | `on-surface-subtle` | `#7A6A54` | `#8E7D66` |
 | `primary` (accent) | `#3F3429` | `#F5EBD8` |
+| `accent-blue` (solid / soft / text) | `#5AA8E2` / `#DCEEFB` / `#174A73` | `#7CC2F0` / `#1E3A52` / `#9DD0F5` |
+| `accent-green` (solid / soft / text) | `#3DA66A` / `#E2F2E5` / `#15573D` | `#5DC487` / `#1F3A2A` / `#92E0B0` |
+| `accent-orange` (solid / soft / text) | `#F59E3B` / `#FFF1D8` / `#873E05` | `#FDB75D` / `#3D2D14` / `#FCC780` |
+| `diff-add` (bg / text) | `rgba(22, 163, 74, 0.16)` / `#166534` | `rgba(16, 185, 129, 0.10)` / `#86EFAC` |
+| `diff-del` (bg / text) | `rgba(185, 28, 28, 0.14)` / `#991B1B` | `rgba(239, 68, 68, 0.10)` / `#FCA5A5` |
 | `error` | `#B91C1C` | `#F87171` |
 | `overlay` | `rgba(26,23,20,.40)` | `#00000099` |
 
@@ -438,7 +484,7 @@ desktop-first and walk styles back down.
 - `mac-traffic-inset` (70px) — left inset that clears the macOS traffic-light
   overlay (12px origin + ~58px button group).
 - `content-max` (768px) — reading measure for transcripts and prose.
-- `overlay-max` (860px) — default modal width cap; `palette-max` (480px) for the
+- `overlay-max` (860px) — default modal width cap; `palette-max` (600px) for the
   command palette.
 
 **Safe areas are non-negotiable.** Every outermost shell and overlay applies
@@ -487,21 +533,24 @@ for layout (no `translateX(-50%)` centering) — center fixed elements with
 
 ## Shapes
 
-The shape language is **restrained softness**. Radii are small enough to feel
-engineered, large enough to avoid harshness — the system's most-used radius is
-4px, and nothing structural exceeds 8px.
+The shape language is **flexible softness**. Radii are proportional to element
+scale — small enough to feel precise and engineered, large enough to feel
+contemporary and approachable. The system's baseline control radius is 6px,
+buttons sit at 8px, and structural panels and modals scale up to 12px.
 
 Radius maps to element scale, not to taste:
 
-- `xs` (2px) — 24px controls, badges, inline tags.
-- `sm` (4px) — the default. Cards, inputs, list rows, 32px controls.
-- `md` (6px) — 36px+ buttons and icon buttons.
-- `lg` (8px) — overlays and modals. This is the ceiling for panels; every
+- `xs` (4px) — 24px controls, badges, keyboard shortcut caps, inline tags.
+- `sm` (6px) — the default. Cards, inputs, list rows, 32px controls, code blocks.
+- `md` (8px) — 36px+ buttons, icon buttons, dropdown triggers.
+- `lg` (12px) — overlays, sheets, and modals. This is the ceiling for panels; every
   `AppOverlay` panel shares it so the whole overlay family reads as one system.
+- `xl` (16px) — larger floating popovers and content previews.
+- `2xl` (20px) — app icon and prominent media previews.
 - `full` — pills only: agent chips, status chips, avatars, the send button.
 
-`xl` through `4xl` exist for illustration and marketing surfaces and should not
-appear in application chrome.
+`xl` through `4xl` exist for larger containers, media previews, illustration, and
+marketing surfaces.
 
 ## Components
 
@@ -509,16 +558,47 @@ Primitives are hand-rolled — plain elements plus variant maps and CSS custom
 properties. No component framework, no `cva`. The shared language across all of
 them is: **warm paper surface · crisp 1px border · muted text · keycap hover.**
 
-**Buttons** ship eight variants (`default`, `subtle`, `primary`, `ghost`,
-`danger`, `danger-subtle`, `link`) across eight sizes (`xs`, `sm`, `default`,
-`lg`, `trigger`, `icon`, `icon-xs`, `icon-sm`). `primary` is a *tonal* emphasis —
+**Buttons** ship seven variants (`default`, `subtle`, `primary`, `ghost`,
+`danger`, `danger-subtle`, `link`) across eight standard sizes (`xs`, `sm`, `default`,
+`lg`, `trigger`, `icon`, `icon-sm`, `icon-xs`). `primary` is a *tonal* emphasis —
 `bg-key` with a `border-strong` — not a saturated fill. Hover darkens toward the
 keycap wash; active goes one step further. Every variant keeps its border so
 buttons never shift size between states.
 
+**Button Size Metrics Binding (Strict)**:
+
+| Size Token | Control Height | Padding | Icon Size | Label Font | Radius | Primary Use |
+|---|---|---|---|---|---|---|
+| `xs` | **24px** (`h-6`) | `px-2` | 11px | `11px` (`label-sm`) | `rounded-xs` (4px) | Inline table actions, compact badges |
+| `sm` | **32px** (`h-8`) | `px-2.5` | 13px | `12px` (`body-sm`) | `rounded-sm` (6px) | Toolbar actions, form secondary buttons |
+| `default` | **36px** (`h-9`) | `px-3` | 14px | `12px` (`body-sm`) | `rounded-md` (8px) | Standard form buttons, dialog triggers |
+| `lg` | **40px** (`h-10`) | `px-4` | 16px | `14px` (`body-md`) | `rounded-md` (8px) | Modal primary actions, main CTA |
+| `trigger` | **auto** | `px-2 py-1` | 11px | `12px` (`body-sm`) | `rounded-md` (8px) | Dropdown & select trigger |
+| `icon-xs` | **24×24px** | `p-0` | 11px | — | `rounded-xs` (4px) | Inline row utilities (copy, delete) |
+| `icon-sm` | **32×32px** | `p-0` | 13px | — | `rounded-sm` (6px) | Toolbar icon buttons |
+| `icon` | **36×36px** | `p-0` | 14px | — | `rounded-md` (8px) | Standard standalone icon actions |
+
+**Mobile Touch Parity Scaling**: On touch devices (`pointer: coarse` / mobile shell), standalone icon actions scale up to a **44×44px touch target** (`h-11 w-11`), while on desktop (`md:`) they collapse to dense **28–32px** (`md:h-7 md:w-7` or `md:h-8 md:w-8`).
+
 **Inputs** use `bg-input` (matching the page, not the card) with a 1px border.
 Focus shifts the border to `focus-ring` and adds a 30% ring. Borders never change
 width on hover — that causes a 1px layout jump.
+
+**Floating Menus & Context Menus**:
+- **Panel**: `rounded-sm`, 1px `border-(--color-border)`, `bg-(--bg-card)`, `p-1`, `shadow-depth`.
+- **Items**: `rounded-xs`, 28px height (`px-2 py-1.5`), `text-xs`, text `on-surface-2`, hover/focus `bg-(--bg-key)` and `on-surface`.
+- **Destructive Items**: `text-(--color-error)`, hover `bg-(--color-error-subtle)`.
+- **Dividers**: `1px border-t border-(--color-border-subtle) my-1`.
+
+**Segmented Controls & Connected Tabs**:
+- **Container**: `rounded-sm`, 1px `border-(--color-border)`, `bg-(--bg-key)` (or `bg-card`), `p-0.5`.
+- **Active Segment**: `rounded-xs`, `bg-(--bg-card)` (or `bg-page`), 1px `border-(--color-border-strong)`, `text-(--color-text)`, `font-medium`.
+- **Inactive Segment**: `rounded-xs`, 1px `border-transparent`, `text-(--color-text-muted)`, hover `text-(--color-text-2)`.
+
+**Badges & Counters**:
+- **Agent / Status Chip**: `rounded-full`, 20px height, `px-2 py-0.5`, `label-sm` (11px).
+- **Counter / Sync Badge**: `rounded-full`, `bg-(--bg-key)`, `text-(--color-text-subtle)`, JetBrains Mono 11px, `px-1.5 py-0.5`.
+- **Kbd Shortcut Badge**: `rounded-xs`, 1px `border-(--color-border)`, `bg-(--bg-card)` (or `bg-key`), JetBrains Mono 10–11px, `px-1.5 py-0.5`.
 
 **Section cards** are the dominant grouping pattern: a bordered `bg-card`
 container, a `bg-key` header strip in `label-caps`, then `divide-y` rows that
@@ -527,9 +607,9 @@ lift toward `bg-page` on hover.
 **Agent chips** are `full`-radius pills using the identity triplet — soft
 background, tuned text tone, solid dot.
 
-**Overlays** come in three geometries — `modal` (centered card, capped at
+**Overlays & Dialogs** come in three geometries — `modal` (centered card, capped at
 `overlay-max`), `sheet` (edge drawer), and `palette` (compact 480px search card).
-All three are `position: fixed`, share `rounded-lg` and a 1px border, and go
+All three are `position: fixed`, share `rounded-lg` (8px — the panel ceiling) and a 1px border, and go
 edge-to-edge below 768px.
 
 ## Platform Shell

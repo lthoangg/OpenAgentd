@@ -14,9 +14,11 @@ Design parity with opencode's bash.ts:
 - ``workdir`` parameter (optional): run the command in a specific directory.
   Relative paths resolve inside the sandbox workspace. Absolute paths are
   allowed when the caller intentionally needs to run outside the workspace.
-- Abort via task cancellation: foreground commands and background commands still
-  in startup are killed as a process group before cancellation propagates.
-- Foreground commands default to a 60-second timeout; callers can raise it explicitly.
+- Abort via task cancellation: foreground commands are killed as a process group
+  before cancellation propagates.
+- Foreground commands default to ``_DEFAULT_TIMEOUT_SECONDS``; callers can raise it
+  explicitly. On timeout the command is SIGTERMed, given a short grace period to
+  clean up, then SIGKILLed.
 - Background mode preserved for long-running processes (dev servers etc.).
 
 Output format (foreground)::
@@ -44,19 +46,19 @@ import asyncio
 import os
 import re
 import signal
+import subprocess
 import sys
-import time
 import uuid
 from collections import deque
 from collections.abc import Awaitable, Callable
 from pathlib import Path
-from typing import Annotated, Any, BinaryIO, Literal
+from typing import Annotated, Any, BinaryIO
 
 from loguru import logger
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field
 
 from app.agent.artifacts import shell_output_dir
-from app.agent.sandbox import get_sandbox
+from app.agent.denied_paths import get_denied_paths
 
 # Import the sibling module directly — going through the package __init__
 # (``from app.agent.tools.builtin import shell_runtime``) reads an attribute
@@ -73,15 +75,10 @@ _SHELL_CAPABILITIES = (
 )
 _SHELL_DESCRIPTION = (
     f"Run a command through the user's {_SHELL_KIND}; supports {_SHELL_CAPABILITIES}. "
+    "Returns stdout and stderr combined. "
     "stdin is /dev/null, so use non-interactive flags for commands that may prompt. "
-    "Use background=true only for long-lived processes, then manage the PID with bg. "
+    "Use background=true only for long-lived processes. "
     "Prefer file tools for file operations."
-)
-
-_BG_DESCRIPTION = (
-    "Inspect or stop long-lived processes started with shell(background=true). "
-    "Exited processes remain inspectable for about 10 minutes. Use foreground shell "
-    "with a larger timeout when you need the command result."
 )
 
 
@@ -111,59 +108,26 @@ class ShellArgs(BaseModel):
     background: bool = Field(
         default=False,
         description=(
-            "Only for long-lived processes; returns a PID for bg. Stay in the "
+            "Only for long-lived processes; returns the PID. Stay in the "
             "foreground when you need the command result."
         ),
     )
-
-
-class BgArgs(BaseModel):
-    """Arguments for the bg tool."""
-
-    action: Literal["list", "status", "output", "stop"] = Field(
-        description="Process action; list needs no PID."
-    )
-    pid: int | None = Field(
-        default=None, description="PID for status, output, or stop."
-    )
-    last_n_lines: int | None = Field(
-        default=None,
-        ge=1,
-        le=200,
-        description="Output lines to return; omit for all retained lines.",
-    )
-
-    @model_validator(mode="after")
-    def _validate_pid(self) -> BgArgs:
-        if self.action in ("status", "output", "stop"):
-            if self.pid is None:
-                raise ValueError(f"pid is required for action='{self.action}'")
-        return self
 
 
 # ── Constants ────────────────────────────────────────────────────────────────
 
 # 60 s pushed models to background test suites just to dodge the timeout (25 of
 # 29 observed background launches were one-shot builds), then block on a capped
-# `bg wait`. The foreground path has no ceiling, so a roomier default plus an
+# `wait`. The foreground path has no ceiling, so a roomier default plus an
 # explicit `timeout_seconds` hint removes the incentive.
 _DEFAULT_TIMEOUT_SECONDS = 120
-_BG_OUTPUT_MAX_LINES = 200  # ring-buffer per background process
-_BG_OUTPUT_MAX_LINE_BYTES = 24_000
-_BG_OUTPUT_MAX_BYTES = 262_144  # total byte budget across buffered lines (256 KB)
-_BG_COMPLETED_TTL_SECONDS = 10 * 60
-_BG_MAX_COMPLETED_PROCESSES = 100
-# Background startup observation: poll up to POLLS × INTERVAL (~3 s), returning
-# early when the process exits or its initial output has settled.
-_BG_WARMUP_POLLS = 30
-_BG_WARMUP_POLL_SECONDS = 0.1
-_BG_WARMUP_SETTLED_POLLS = 3
-# Bound on awaiting the stdout reader task: stdout EOF can lag process exit
-# indefinitely when a child inherited the pipe and outlived the tracked shell.
-_READER_DRAIN_TIMEOUT_SECONDS = 2.0
 # Bound on reaping after SIGKILL — a D-state (uninterruptible I/O) process can
 # survive it; log instead of hanging the tool call.
 _POST_KILL_WAIT_SECONDS = 5.0
+# Grace given to a timed-out foreground command between SIGTERM and SIGKILL.
+# Long enough for a trap handler or interpreter shutdown hook to run, short
+# enough that a hung command does not visibly extend the timeout.
+_TIMEOUT_TERM_GRACE_SECONDS = 2.0
 
 # Maximum lines and bytes to include inline in the result
 _OUTPUT_MAX_LINES = 300
@@ -177,231 +141,12 @@ _SPILL_MAX_BYTES = 10 * 1024 * 1024
 # Two updates per second keeps progress readable without forcing the chat transcript,
 # terminal row, and auto-follow observers through four layout cycles per second.
 _OUTPUT_STREAM_INTERVAL_SECONDS = 0.5
-_LIVE_OUTPUT_MAX_CHARS = 24_000
-# The chat UI keeps only the trailing N lines of live tool output (see
-# ``LIVE_OUTPUT_MAX_LINES`` in ``web/src/utils/blocks.ts``). Streaming more
-# than that spends SSE bandwidth, an immer transaction, and a React
-# re-render on bytes the client drops on arrival — a ``bun test`` run emits
-# ~290 lines per flush.
-#
-# 10 lines is deliberate: the live-output ``<pre>`` is capped at ``max-h-40``
-# (~7 lines) on mobile and ``sm:max-h-64`` (~12 lines) on desktop, so this
-# fills the visible box without paying for invisible scrollback. The
-# complete output still reaches the user in the final ``tool_end`` result
-# (300 lines / 128 KB inline, plus the spill file for anything larger).
-# Keep this in sync with the frontend constant.
-_LIVE_OUTPUT_MAX_LINES = 10
+_LIVE_OUTPUT_MAX_CHARS = 100_000
+_LIVE_OUTPUT_MAX_LINES = 100
 _LIVE_OUTPUT_TRUNCATED = "... [truncated live output] ...\n"
 _WINDOWS_CREATE_NEW_PROCESS_GROUP = 0x0000_0200
 _WINDOWS_CREATE_NO_WINDOW = 0x0800_0000
 _FORCE_KILL_SIGNAL = getattr(signal, "SIGKILL", signal.SIGTERM)
-
-
-# ── Background process registry ──────────────────────────────────────────────
-
-
-class _BgProcess:
-    """Tracks a single background subprocess and its ring-buffer output."""
-
-    __slots__ = (
-        "proc",
-        "command",
-        "session_id",
-        "output",
-        "completed_at",
-        "_output_bytes",
-        "_reader_task",
-    )
-
-    def __init__(
-        self,
-        proc: asyncio.subprocess.Process,
-        command: str,
-        session_id: str | None,
-    ) -> None:
-        self.proc = proc
-        self.command = command
-        self.session_id = session_id
-        self.output: deque[str] = deque(maxlen=_BG_OUTPUT_MAX_LINES)
-        self.completed_at: float | None = None
-        self._output_bytes = 0
-        self._reader_task = asyncio.create_task(self._drain())
-
-    async def _drain(self) -> None:
-        """Read bounded lines from stdout until EOF."""
-        assert self.proc.stdout is not None
-        pending = b""
-        pending_was_cut = False
-
-        def append_line(raw: bytes, was_cut: bool = False) -> None:
-            if len(raw) > _BG_OUTPUT_MAX_LINE_BYTES:
-                raw = raw[-_BG_OUTPUT_MAX_LINE_BYTES:]
-                was_cut = True
-            decoded = _strip_ansi(raw.rstrip(b"\r").decode("utf-8", errors="replace"))
-            if was_cut:
-                decoded = _LIVE_OUTPUT_TRUNCATED.rstrip("\n") + decoded
-            if len(self.output) == self.output.maxlen:
-                self._output_bytes -= len(self.output[0])
-            self.output.append(decoded)
-            self._output_bytes += len(decoded)
-            # Line-count cap alone admits ~4.8 MB (200 × 24 KB); enforce a
-            # total byte budget so hot loggers stay cheap to retain.
-            while self._output_bytes > _BG_OUTPUT_MAX_BYTES and len(self.output) > 1:
-                self._output_bytes -= len(self.output.popleft())
-
-        try:
-            while True:
-                chunk = await self.proc.stdout.read(8192)
-                if not chunk:
-                    break
-                parts = (pending + chunk).split(b"\n")
-                pending = parts.pop()
-                for index, line in enumerate(parts):
-                    append_line(line, pending_was_cut and index == 0)
-                if parts:
-                    pending_was_cut = False
-                if len(pending) > _BG_OUTPUT_MAX_LINE_BYTES:
-                    pending = pending[-_BG_OUTPUT_MAX_LINE_BYTES:]
-                    pending_was_cut = True
-            if pending or pending_was_cut:
-                append_line(pending, pending_was_cut)
-        except Exception as exc:
-            # Reader is best-effort: a dead transport just ends capture.
-            logger.debug("background_shell_reader_stopped error={!r}", exc)
-        finally:
-            if not self.alive:
-                self.completed_at = time.monotonic()
-
-    @property
-    def pid(self) -> int:
-        return self.proc.pid
-
-    @property
-    def alive(self) -> bool:
-        return self.proc.returncode is None
-
-    def read_output(self, last_n: int | None = None) -> str:
-        lines = list(self.output)
-        if last_n is not None:
-            lines = lines[-last_n:]
-        return "\n".join(lines)
-
-    async def drain(self, timeout: float | None = None) -> bool:
-        """Await the stdout reader with a bound; True when fully drained.
-
-        stdout EOF can lag process exit indefinitely when a child inherited
-        the pipe (``cmd &``), so callers must never await the reader task
-        unbounded.  ``shield`` keeps the reader capturing on timeout.
-        """
-        if timeout is None:
-            timeout = _READER_DRAIN_TIMEOUT_SECONDS
-        if self._reader_task.done():
-            return True
-        try:
-            await asyncio.wait_for(asyncio.shield(self._reader_task), timeout)
-            return True
-        except asyncio.TimeoutError:
-            return False
-        except asyncio.CancelledError:
-            if self._reader_task.cancelled():
-                return True  # reader was closed underneath us, not our caller
-            raise
-
-    def close(self) -> None:
-        """Release the reader task; call when the record leaves the registry."""
-        if not self._reader_task.done():
-            self._reader_task.cancel()
-        if self.completed_at is None and not self.alive:
-            self.completed_at = time.monotonic()
-
-    async def stop(self) -> int | None:
-        if self.alive:
-            await _kill_process_group(self.proc, signal.SIGTERM)
-            try:
-                await _wait_exit(self.proc, 5)
-            except asyncio.TimeoutError:
-                await _kill_process_group(self.proc, _FORCE_KILL_SIGNAL)
-                await _wait_after_kill(self.proc)
-        elif not self._reader_task.done() and os.name != "nt":
-            # The leader already exited but stdout is still open: a child
-            # inherited the pipe (``cmd &``).  The group id (== leader pid,
-            # from start_new_session) survives while members live — kill it.
-            _signal_posix_group(self.pid, _FORCE_KILL_SIGNAL)
-        if not await self.drain():
-            self.close()  # pipe still held by an unkillable process — stop reading
-        if self.completed_at is None:
-            self.completed_at = time.monotonic()
-        return self.proc.returncode
-
-
-def _limited_bg_output(text: str) -> str:
-    """Return background output capped to the same inline limits as shell."""
-    limited, was_cut = _tail_text(text, _OUTPUT_MAX_LINES, _OUTPUT_MAX_BYTES)
-    if was_cut:
-        return "...output truncated...\n" + limited
-    return limited
-
-
-# Module-level registry: PID → _BgProcess
-_bg_processes: dict[int, _BgProcess] = {}
-
-
-def _prune_completed_bg_processes(
-    *, clock: Callable[[], float] = time.monotonic
-) -> None:
-    """Bound retained completed jobs without ever evicting live processes."""
-    now = clock()
-    completed: list[tuple[int, _BgProcess]] = []
-    expired: list[int] = []
-    for pid, bg in _bg_processes.items():
-        if bg.alive:
-            continue
-        if bg.completed_at is None:
-            bg.completed_at = now
-        if now - bg.completed_at > _BG_COMPLETED_TTL_SECONDS:
-            expired.append(pid)
-            continue
-        completed.append((pid, bg))
-
-    for pid in expired:
-        _bg_processes.pop(pid).close()
-
-    overflow = len(completed) - _BG_MAX_COMPLETED_PROCESSES
-    if overflow > 0:
-        for pid, record in sorted(completed, key=lambda item: item[1].completed_at)[
-            :overflow
-        ]:
-            del _bg_processes[pid]
-            record.close()
-
-
-def _session_bg_processes() -> dict[int, _BgProcess]:
-    """Return processes owned by the active tool-call session."""
-    session_id = get_sandbox().session_id
-    return {pid: bg for pid, bg in _bg_processes.items() if bg.session_id == session_id}
-
-
-async def stop_background_processes_for_session(session_id: str) -> int:
-    """Stop and remove background processes owned by one session."""
-    _prune_completed_bg_processes()
-    matching = [
-        (pid, bg) for pid, bg in _bg_processes.items() if bg.session_id == session_id
-    ]
-    stopped = 0
-    for pid, bg in matching:
-        try:
-            await bg.stop()
-        except Exception as exc:
-            logger.warning(
-                "background_shell_session_stop_failed pid={} session_id={} error={}",
-                pid,
-                session_id,
-                exc,
-            )
-            continue
-        _bg_processes.pop(pid, None)
-        stopped += 1
-    return stopped
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -440,7 +185,28 @@ def _scrubbed_env() -> dict[str, str]:
     tool — and shadows other Python tools' own packages.  We strip the
     known leak vars before spawning the user's shell command.
     """
-    return {k: v for k, v in os.environ.items() if k not in _PYTHON_ENV_LEAK_KEYS}
+    env = {k: v for k, v in os.environ.items() if k not in _PYTHON_ENV_LEAK_KEYS}
+    env["PYTHONUNBUFFERED"] = "1"
+    return env
+
+
+def _format_exit_code(returncode: int | None) -> str:
+    """Render an exit code the way the user's own shell would.
+
+    ``asyncio`` reports a signal death as a negative number (``-9``), a Python
+    convention no shell uses. Shells report ``128 + signal``, so a SIGKILL is
+    the widely recognised ``137``. Naming the signal keeps the common causes
+    (OOM killer, our own timeout) diagnosable.
+    """
+    if returncode is None:
+        return "unknown"
+    if returncode >= 0:
+        return str(returncode)
+    signum = -returncode
+    try:
+        return f"{128 + signum} ({signal.Signals(signum).name})"
+    except ValueError:
+        return str(128 + signum)
 
 
 def _signal_posix_group(pid: int, sig: signal.Signals) -> bool:
@@ -458,6 +224,63 @@ def _signal_posix_group(pid: int, sig: signal.Signals) -> bool:
         return True
     except (ProcessLookupError, PermissionError, OSError):
         return False
+
+
+def _pid_ppid_table() -> dict[int, int]:
+    """Return ``{pid: ppid}`` for every process, via ``ps`` (no extra dependency).
+
+    Same flags work on both macOS and Linux. Best-effort: an empty table on
+    failure just means the PPID-based fallback below finds nothing, leaving
+    the process-group signal above as the only effect.
+    """
+    try:
+        out = subprocess.run(
+            ["ps", "-Ao", "pid=,ppid="],
+            capture_output=True,
+            text=True,
+            timeout=3,
+            check=False,
+        ).stdout
+    except (OSError, subprocess.SubprocessError):
+        return {}
+    table: dict[int, int] = {}
+    for line in out.splitlines():
+        parts = line.split()
+        if len(parts) != 2:
+            continue
+        try:
+            table[int(parts[0])] = int(parts[1])
+        except ValueError:
+            continue
+    return table
+
+
+def _descendant_pids(root_pid: int) -> list[int]:
+    """Return every live descendant of *root_pid*, direct or not.
+
+    Utilities like ``timeout``, ``setsid``, and ``sudo`` deliberately move the
+    command they launch into a *new* process group so their own supervision
+    logic can manage it — which also makes that subtree invisible to a
+    ``killpg`` aimed at whatever group launched them. ``setpgid``/``setsid``
+    only ever change the group/session id, never the parent/child link, so
+    walking PPID finds it regardless of which group it escaped into.
+    """
+    table = _pid_ppid_table()
+    if not table:
+        return []
+    children: dict[int, list[int]] = {}
+    for pid, ppid in table.items():
+        children.setdefault(ppid, []).append(pid)
+    result: list[int] = []
+    frontier = [root_pid]
+    while frontier:
+        next_frontier: list[int] = []
+        for pid in frontier:
+            for child in children.get(pid, ()):
+                result.append(child)
+                next_frontier.append(child)
+        frontier = next_frontier
+    return result
 
 
 async def _taskkill_tree(pid: int) -> bool:
@@ -484,7 +307,15 @@ async def _taskkill_tree(pid: int) -> bool:
 async def _kill_process_group(
     proc: asyncio.subprocess.Process, sig: signal.Signals
 ) -> None:
-    """Send *sig* to the process group led by *proc*, falling back to direct kill."""
+    """Send *sig* to the process group led by *proc*, plus the real descendant tree.
+
+    Process-group signalling alone misses a descendant that re-grouped itself
+    (``timeout``'s and ``sudo``'s monitored child both do this on purpose).
+    Walking the PPID chain catches it regardless of which group it escaped
+    into — but only if captured *before* the signal: killing the group
+    reparents an already-orphaned descendant to init almost instantly,
+    which would erase the very chain a query made afterwards needs.
+    """
     pid = proc.pid
     if pid is None:
         return
@@ -496,12 +327,40 @@ async def _kill_process_group(
         except (ProcessLookupError, OSError):
             pass
         return
-    if _signal_posix_group(pid, sig):
-        return
+    # Snapshot the tree *before* signalling anything: killing the launched
+    # shell reparents an already-escaped descendant to init almost instantly
+    # (POSIX orphan handling), which erases the very PPID chain a query made
+    # afterwards would need to find it.
+    descendants = await asyncio.to_thread(_descendant_pids, pid)
+    _signal_posix_group(pid, sig)
+    for descendant in descendants:
+        try:
+            os.kill(descendant, sig)
+        except (ProcessLookupError, PermissionError, OSError):
+            pass
     try:
         proc.send_signal(sig)
     except (ProcessLookupError, OSError):
         pass
+
+
+async def _terminate_after_timeout(proc: asyncio.subprocess.Process) -> None:
+    """End a timed-out foreground command, letting it clean up if it can.
+
+    SIGKILL cannot be trapped, so killing outright strands whatever the command
+    was mid-way through — temp files, child processes, an unflushed log — and
+    discards its teardown output. Escalating mirrors the
+    ``timeout(1)`` convention. Windows has no graceful equivalent for a process
+    tree, so it goes straight to the forceful path.
+    """
+    if os.name == "nt":
+        await _kill_process_group(proc, _FORCE_KILL_SIGNAL)
+        return
+    await _kill_process_group(proc, signal.SIGTERM)
+    try:
+        await _wait_exit(proc, _TIMEOUT_TERM_GRACE_SECONDS)
+    except asyncio.TimeoutError:
+        await _kill_process_group(proc, _FORCE_KILL_SIGNAL)
 
 
 async def _wait_exit(proc: asyncio.subprocess.Process, timeout: float) -> int:
@@ -750,10 +609,10 @@ def _resolve_workdir(workdir: str | None) -> Path:
     Raises:
         PermissionError: when the resolved path falls under a denied root.
     """
-    sandbox = get_sandbox()
+    denied_paths = get_denied_paths()
     if workdir is None:
-        return sandbox.workspace_root
-    return sandbox.validate_path(os.path.expanduser(workdir))
+        return denied_paths.workspace_root
+    return denied_paths.validate_path(os.path.expanduser(workdir))
 
 
 def _live_output_window(text: str) -> tuple[str, bool]:
@@ -825,20 +684,18 @@ async def _shell(
     the full output is saved to the XDG session artifact directory.
     Set ``background=true`` for long-running processes.
     """
-    sandbox = get_sandbox()
+    denied_paths = get_denied_paths()
 
-    # ── Sandbox path scan ─────────────────────────────────────────────
+    # ── Path scan ─────────────────────────────────────────────────────
     # Best-effort: walk path-like tokens in the command and reject if
     # any resolve under a denied root or match a deny pattern. Mirrors
-    # how file tools self-validate via sandbox.validate_path. See
-    # SandboxConfig.check_command for limitations (no $VAR/$()/base64
+    # how file tools self-validate via denied_paths.validate_path. See
+    # DeniedPathsConfig.check_command for limitations (no $VAR/$()/base64
     # evaluation — OS perms remain the last line of defence).
-    hit = sandbox.check_command(command)
+    hit = denied_paths.check_command(command)
     if hit is not None:
-        resolved, denied = hit
         raise PermissionError(
-            f"Sandbox blocked 'shell': command would touch "
-            f"'{resolved}' (denied by '{denied}')."
+            f"Sandbox blocked 'shell': command would touch denied path or pattern '{hit}'."
         )
 
     cwd = _resolve_workdir(workdir)
@@ -870,6 +727,27 @@ async def _shell(
         # is launched from a GUI/launchd context where PATH is minimal.
         # See ``shell_runtime.build_argv`` for details.
         argv = _shell_mod.build_argv(shell_bin, command)
+
+        # ── Background mode ───────────────────────────────────────────
+        if background:
+            proc = await asyncio.create_subprocess_exec(
+                shell_bin,
+                *argv,
+                stdin=asyncio.subprocess.DEVNULL,
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.DEVNULL,
+                cwd=str(cwd),
+                env=_scrubbed_env(),
+                **_subprocess_platform_kwargs(),
+            )
+            logger.info(
+                "shell_background_started pid={} command={}",
+                proc.pid,
+                command[:200],
+            )
+            return f"PID: {proc.pid}"
+
+        # ── Foreground mode — streaming read ──────────────────────────
         proc = await asyncio.create_subprocess_exec(
             shell_bin,
             *argv,
@@ -881,73 +759,6 @@ async def _shell(
             **_subprocess_platform_kwargs(),
         )
 
-        # ── Background mode ───────────────────────────────────────────
-        if background:
-            _prune_completed_bg_processes()
-            # The OS recycles PIDs; a retained completed record with this
-            # PID belongs to a dead process — evict it instead of silently
-            # shadowing it (it may belong to another session).
-            stale = _bg_processes.pop(proc.pid, None)
-            if stale is not None:
-                stale.close()
-                logger.info(
-                    "background_shell_pid_recycled pid={} previous_session={}",
-                    proc.pid,
-                    stale.session_id,
-                )
-            bg = _BgProcess(proc, command, sandbox.session_id)
-            _bg_processes[bg.pid] = bg
-
-            # Observe startup: return as soon as the process exits or its
-            # initial output has settled, up to ~3s for silent starters.
-            try:
-                settled = 0
-                for _ in range(_BG_WARMUP_POLLS):
-                    await asyncio.sleep(_BG_WARMUP_POLL_SECONDS)
-                    if not bg.alive:
-                        break
-                    if bg.output:
-                        settled += 1
-                        if settled >= _BG_WARMUP_SETTLED_POLLS:
-                            break
-            except asyncio.CancelledError:
-                await _kill_process_group(proc, _FORCE_KILL_SIGNAL)
-                await _wait_after_kill(proc)
-                bg.close()
-                _bg_processes.pop(bg.pid, None)
-                raise
-
-            if not bg.alive:
-                await bg.drain(1)  # capture trailing output from the fast exit
-                bg.close()
-                _bg_processes.pop(bg.pid, None)
-                exit_code = proc.returncode if proc.returncode is not None else 1
-                initial = bg.read_output()
-                if exit_code == 0:
-                    return (
-                        "[Succeeded]\n\nBackground command completed during "
-                        f"startup:\n{initial}"
-                    )
-                status = f"[Failed — exit code {exit_code}]"
-                return f"{status}\n\nProcess exited immediately:\n{initial}"
-
-            initial = bg.read_output()
-            logger.info(
-                "shell_background_started pid={} command={}",
-                bg.pid,
-                command[:200],
-            )
-            lines = [
-                f"[Background — PID {bg.pid}]",
-                f"Command: {command}",
-                "",
-                "Use bg tool with this PID to check output, status, or stop it.",
-            ]
-            if initial:
-                lines.append(f"\nInitial output:\n{initial}")
-            return "\n".join(lines)
-
-        # ── Foreground mode — streaming read ──────────────────────────
         # Read incrementally into a bounded head+tail collector; overflow
         # streams to a spill file so memory stays flat for huge outputs.
         assert proc.stdout is not None
@@ -1004,12 +815,14 @@ async def _shell(
                 await proc.wait()
 
         except asyncio.TimeoutError:
-            await _kill_process_group(proc, _FORCE_KILL_SIGNAL)
+            await _terminate_after_timeout(proc)
             # Drain any remaining output after kill
             try:
                 async with asyncio.timeout(2):
-                    remaining = await proc.stdout.read()
-                    if remaining:
+                    while True:
+                        remaining = await proc.stdout.read(8192)
+                        if not remaining:
+                            break
                         collector.add(remaining)
                         buffer_live(remaining)
             except Exception as exc:
@@ -1046,7 +859,7 @@ async def _shell(
             else (
                 f"[Timed out after {timeout}s]"
                 if aborted
-                else f"[Failed — exit code {exit_code}]"
+                else f"[Failed — exit code {_format_exit_code(exit_code)}]"
             )
         )
 
@@ -1063,7 +876,10 @@ async def _shell(
                 header = f"{status}\n\n...output truncated\n\n"
             result = header + inline
         else:
-            result = f"{status}\n\n{inline}"
+            if aborted and not inline.strip():
+                result = f"{status}\n\n(No output before timeout)"
+            else:
+                result = f"{status}\n\n{inline}" if inline else status
 
         if aborted:
             result += (
@@ -1092,67 +908,4 @@ shell_tool = Tool(
     name="shell",
     description=_SHELL_DESCRIPTION,
     args_schema=ShellArgs,
-)
-
-
-# ── Background process management tool ────────────────────────────────────────
-
-
-async def _background_process(
-    action: Literal["list", "status", "output", "stop"],
-    pid: int | None = None,
-    last_n_lines: int | None = None,
-) -> str:
-    """Manage background processes started with shell(background=true)."""
-    _prune_completed_bg_processes()
-    processes = _session_bg_processes()
-    if action == "list":
-        if not processes:
-            return "No background processes running."
-        lines = ["PID     | Status  | Command"]
-        lines.append("--------|---------|--------")
-        for pid_key, bg in processes.items():
-            status = "running" if bg.alive else f"exited ({bg.proc.returncode})"
-            lines.append(f"{pid_key:<7} | {status:<7} | {bg.command[:60]}")
-        return "\n".join(lines)
-
-    if pid is None:
-        return "Error: 'pid' is required for action '{}'.".format(action)
-
-    bg = processes.get(pid)
-    if bg is None:
-        known = ", ".join(str(p) for p in processes) if processes else "none"
-        return (
-            f"Error: No tracked background process with PID {pid}. Known PIDs: {known}."
-        )
-
-    if action == "status":
-        if bg.alive:
-            return f"PID {pid}: running\nCommand: {bg.command}\nBuffered lines: {len(bg.output)}"
-        else:
-            return f"PID {pid}: exited (code {bg.proc.returncode})\nCommand: {bg.command}\nBuffered lines: {len(bg.output)}"
-
-    if action == "output":
-        if not bg.alive:
-            await bg.drain()  # bounded: a child may still hold the pipe open
-        text = bg.read_output(last_n=last_n_lines)
-        if not text:
-            return f"PID {pid}: no output captured yet."
-        return f"PID {pid} output:\n{_limited_bg_output(text)}"
-
-    # Exited records stay registered after stop so follow-up output/status calls
-    # keep working; TTL pruning collects them.
-    # action == "stop"
-    exit_code = await bg.stop()
-    text = bg.read_output(last_n=last_n_lines)
-    if not text:
-        return f"PID {pid}: stopped (exit code {exit_code})\nNo output captured."
-    return f"PID {pid}: stopped (exit code {exit_code})\nFinal output:\n{_limited_bg_output(text)}"
-
-
-background_process = Tool(
-    _background_process,
-    name="bg",
-    description=_BG_DESCRIPTION,
-    args_schema=BgArgs,
 )

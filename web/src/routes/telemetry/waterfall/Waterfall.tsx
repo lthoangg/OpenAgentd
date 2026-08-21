@@ -15,6 +15,7 @@ import {
   type SpanNode,
 } from '@/utils/traceTree'
 import { formatMs } from '@/utils/telemetryFormat'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { EmptyTable } from '../primitives'
 import { categoryBarClass, categoryDotClass } from './categories'
 
@@ -45,7 +46,7 @@ export function Waterfall({
         </span>
         <span>Total {formatMs(bounds.duration_ms)}</span>
       </div>
-      <div className="overflow-x-auto rounded border border-(--color-border) bg-(--bg-card)">
+      <div className="overflow-x-auto rounded-sm border border-(--color-border) bg-(--bg-card)">
         <div className="min-w-[480px]">
           <div className="flex border-b border-(--color-border)/60 bg-(--bg-key)/25 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-(--color-text-muted)">
             <div className="w-48 shrink-0 sm:w-64">Span</div>
@@ -101,14 +102,20 @@ function WaterfallRow({
           className={`h-2 w-2 shrink-0 rounded-full ${categoryDotClass(category)}`}
           aria-hidden
         />
-        <span
-          className={`truncate font-medium ${
-            isError ? 'text-(--color-error)' : 'text-(--color-text)'
-          }`}
-          title={node.span.name}
-        >
-          {node.span.name}
-        </span>
+        <Tooltip className="min-w-0">
+          <TooltipTrigger
+            render={
+              <span
+                className={`truncate font-medium ${
+                  isError ? 'text-(--color-error)' : 'text-(--color-text)'
+                }`}
+              >
+                {node.span.name}
+              </span>
+            }
+          />
+          <TooltipContent>{node.span.name}</TooltipContent>
+        </Tooltip>
       </div>
       <div className="relative h-5 flex-1">
         <div

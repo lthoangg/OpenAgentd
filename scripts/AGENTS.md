@@ -1,63 +1,56 @@
-# scripts/ — Agent Instructions
+# Maintainer Scripts Guide
 
-Maintainer scripts for benchmarks, sidecar packaging, updater keys, and release manifest generation.
+This subtree owns repository validation, release/version maintenance, sidecar
+packaging, icon generation, updater helpers, benchmarks, and code-health
+analysis.
 
-## Tech stack
+## Ownership
 
-- Python scripts are run with the repo's `uv` environment unless the script explicitly documents otherwise.
-- Shell helper: `generate_updater_keys.sh`.
+- `validate_docs.py`: Markdown links/frontmatter and documented Make target
+  contracts.
+- `codehealth/`: stdlib analyzer for Python/TypeScript size, complexity,
+  coupling, and import cycles; invoke through `make health` or
+  `make health-json`.
+- `build_sidecar.py`: generated desktop Python sidecar bundle.
+- `generate_icons.py`: shared source-icon conversion for native targets.
+- `make_updater_manifest.py` and `generate_updater_keys.sh`: desktop updater
+  metadata and local key setup.
+- `bump_version.sh`, `check_version_consistency.sh`, and
+  `release_commits_since_last_tag.sh`: synchronized release metadata and
+  release-note inputs.
+- `bench_chat_db.py`: local persistence benchmark, not a correctness test.
 
-## Scripts
+Python scripts use the repository `uv` environment unless the script's help or
+owning Make target explicitly uses system Python. Keep scripts non-interactive
+by default, repository-root-relative, and portable across supported platforms.
 
-```
-build_sidecar.py              Build the desktop Python sidecar bundle
-make_updater_manifest.py      Generate updater release manifests
-validate_docs.py              Verify Markdown links, metadata, and Make targets
-codehealth/                   Rank god files + map deps + detect import cycles
-bump_version.sh               Update release-facing versions and refresh lockfiles
-check_version_consistency.sh  Verify all release-facing versions stay in sync
-generate_updater_keys.sh      Tauri updater signing key helper
-```
+## Safety and generated outputs
 
-### codehealth — refactor targeting
-
-Stdlib-only analyzer (Python `ast` + regex for TS/TSX). Scores files by a blend
-of LOC, longest-function LOC, peak cyclomatic complexity, and coupling
-(`fan_in * fan_out`) so genuine "god files" outrank merely-long ones. Also runs
-Tarjan SCC over the intra-project import graph to surface circular imports.
-
-```bash
-make health                                   # ranked text report (top 25)
-make health-json                              # JSON (baselines / CI diffs)
-uv run python -m scripts.codehealth --help
-uv run python -m scripts.codehealth --lang python --top 15
-uv run python -m scripts.codehealth --lang ts --top 15
-# CI gate: fail the build if anything regresses past budget or a cycle appears
-uv run python -m scripts.codehealth --max-score 1300 --fail-on-cycles
-```
-
-Use it *before* a refactor to pick targets and *after* to confirm the score
-dropped and no new cycles were introduced. Implementation is Python (not shell)
-because it parses ASTs, builds an import graph, and must run on Windows too.
-
-## Essential commands
-
-```bash
-scripts/bump_version.sh --help
-scripts/check_version_consistency.sh
-scripts/render_release_install_block.sh --help
-uv run python scripts/build_sidecar.py --help
-uv run python scripts/make_updater_manifest.py --help
-make -C desktop sidecar
-```
-
-## Conventions
-
-- Keep scripts non-interactive by default and safe to run from the repo root.
-- Prefer argparse help text over separate usage comments.
-- Do not embed signing keys, tokens, or machine-specific paths.
-- Packaging scripts should preserve cross-platform behavior for macOS, Linux, and Windows.
+- Do not run version bump, signing-key, manifest, publish, or release helpers
+  merely to verify documentation. Inspect `--help` or source and use the
+  smallest non-mutating path.
+- Never embed signing material, tokens, or machine-local paths. Updater private
+  keys remain outside the repository.
+- Sidecar bundles, Cargo targets, web distributions, and generated native
+  platform trees are build output. Change source inputs and rerun their owning
+  script/Make target.
+- Version changes must use the release workflow so Python, web, desktop,
+  mobile, Tauri configs, lockfiles, and feature-catalogue metadata stay in
+  sync. `make verify-version` is the gate.
 
 ## Checks
 
-Run the script's `--help` and the smallest focused dry-run or target command available. For sidecar changes, also use `make -C desktop sidecar` when feasible.
+Choose the focused safe command, then the owning repository target:
+
+```bash
+uv run python scripts/validate_docs.py
+uv run python scripts/build_sidecar.py --help
+uv run python scripts/make_updater_manifest.py --help
+uv run python -m scripts.codehealth --help
+make verify-docs
+make verify-version
+```
+
+For sidecar changes, run `make -C desktop sidecar` when feasible. For icon,
+release, updater, or packaging changes, report any platform/signing step that
+could not be exercised locally.

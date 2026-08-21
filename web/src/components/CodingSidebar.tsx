@@ -50,6 +50,7 @@ import { workspaceLabel } from '@/utils/workspace'
 import { ThemeToggle } from './ThemeToggle'
 import { HealthDot } from './HealthDot'
 import { Button } from '@/components/ui/button'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useToastStore } from '@/stores/useToastStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import {
@@ -676,17 +677,24 @@ export function CodingSidebar({
       {/* Search trigger — opens the command palette (⌘P / Ctrl+P). */}
       {onCommandPalette && (
         <div className={isMobile ? 'px-3 pt-3' : 'px-3 py-3'}>
-          <button
-            type="button"
-            onClick={onCommandPalette}
-            className="flex h-8 w-full items-center gap-2 rounded-md border border-(--color-border) bg-(--bg-page) px-2.5 text-left text-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)"
-            aria-label="Open command palette"
-            title={`Open command palette (${formatShortcut('P', os)})`}
-          >
-            <Search size={13} aria-hidden="true" />
-            <span className="flex-1">Search…</span>
-            <kbd className="font-mono text-[10px] text-(--color-text-subtle)">^P</kbd>
-          </button>
+          <Tooltip className="w-full">
+            <TooltipTrigger
+              className="w-full"
+              render={
+                <button
+                  type="button"
+                  onClick={onCommandPalette}
+                  className="flex h-8 w-full items-center gap-2 rounded-md border border-(--color-border) bg-(--bg-page) px-2.5 text-left text-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)"
+                  aria-label="Open command palette"
+                >
+                  <Search size={13} aria-hidden="true" />
+                  <span className="flex-1">Search…</span>
+                  <kbd className="font-mono text-[10px] text-(--color-text-subtle)">^P</kbd>
+                </button>
+              }
+            />
+            <TooltipContent>{`Open command palette (${formatShortcut('P', os)})`}</TooltipContent>
+          </Tooltip>
         </div>
       )}
 
@@ -711,49 +719,68 @@ export function CodingSidebar({
           return (
             <div key={path} className="relative">
               <div className="group mx-2 flex h-7 items-center rounded-md border border-transparent">
-                <LongPressButton
-                  enabled={mobileLongPressActions}
-                  onLongPress={() => setMobileWorkspaceActions({ path, kind: 'main' })}
-                  type="button"
-                  onClick={() => toggleWorkspaceExpanded(path)}
-                  onContextMenu={(event) => {
-                    if (mobileLongPressActions) return
-                    event.preventDefault()
-                    setDesktopWorkspaceActions({ path, kind: 'main', x: event.clientX, y: event.clientY })
-                  }}
-                  className="flex min-w-0 flex-1 items-center gap-1.5 truncate rounded px-1.5 py-1 text-left text-xs"
-                  aria-expanded={sourceIsExpanded}
-                  aria-label={`${sourceIsExpanded ? 'Collapse' : 'Expand'} repository ${workspaceLabel(path)}`}
-                  title={path}
-                >
-                  <Folder size={11} className="shrink-0 text-(--color-accent)" aria-hidden="true" />
-                  <span className={`truncate font-mono ${sourceIsActive ? 'font-semibold text-(--color-text)' : 'text-(--color-text-2) group-hover:text-(--color-text)'}`}>
-                    {workspaceLabel(path)}
-                  </span>
-                  {sourceIsPending && (
-                    <span>
-                      <Loader2 size={11} className="shrink-0 animate-spin text-(--color-text-muted)" aria-hidden="true" />
-                    </span>
-                  )}
-                </LongPressButton>
-                <button
-                  type="button"
-                  onClick={() => { void selectWorkspace(path, { create: true }) }}
-                  className={`ml-1 flex h-6 w-6 shrink-0 items-center justify-center rounded border border-(--color-border) text-(--color-text-muted) transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) ${mobileLongPressActions ? 'hidden' : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:opacity-100'}`}
-                  aria-label={`New session in ${workspaceLabel(path)}`}
-                  title="New session"
-                >
-                  <Plus size={11} aria-hidden="true" />
-                </button>
-                <button
-                  type="button"
-                  onClick={(event) => setDesktopWorkspaceActions({ path, kind: 'main', x: event.clientX, y: event.clientY })}
-                  className={`mr-1 flex h-6 w-6 shrink-0 items-center justify-center rounded text-(--color-text-subtle) transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) ${mobileLongPressActions ? 'hidden' : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:opacity-100'}`}
-                  aria-label={`Actions for ${workspaceLabel(path)}`}
-                  title="Workspace actions"
-                >
-                  <MoreHorizontal size={12} aria-hidden="true" />
-                </button>
+                <Tooltip className="min-w-0 flex-1">
+                  <TooltipTrigger
+                    className="min-w-0 flex-1"
+                    render={
+                      <LongPressButton
+                        enabled={mobileLongPressActions}
+                        onLongPress={() => setMobileWorkspaceActions({ path, kind: 'main' })}
+                        type="button"
+                        onClick={() => toggleWorkspaceExpanded(path)}
+                        onContextMenu={(event) => {
+                          if (mobileLongPressActions) return
+                          event.preventDefault()
+                          setDesktopWorkspaceActions({ path, kind: 'main', x: event.clientX, y: event.clientY })
+                        }}
+                        className="flex min-w-0 flex-1 items-center gap-1.5 truncate rounded-sm px-1.5 py-1 text-left text-xs"
+                        aria-expanded={sourceIsExpanded}
+                        aria-label={`${sourceIsExpanded ? 'Collapse' : 'Expand'} repository ${workspaceLabel(path)}`}
+                      >
+                        <Folder size={11} className="shrink-0 text-(--color-accent)" aria-hidden="true" />
+                        <span className={`truncate font-mono ${sourceIsActive ? 'font-semibold text-(--color-text)' : 'text-(--color-text-2) group-hover:text-(--color-text)'}`}>
+                          {workspaceLabel(path)}
+                        </span>
+                        {sourceIsPending && (
+                          <span>
+                            <Loader2 size={11} className="shrink-0 animate-spin text-(--color-text-muted)" aria-hidden="true" />
+                          </span>
+                        )}
+                      </LongPressButton>
+                    }
+                  />
+                  <TooltipContent>{path}</TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <button
+                        type="button"
+                        onClick={() => { void selectWorkspace(path, { create: true }) }}
+                        className={`ml-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-xs border border-(--color-border) text-(--color-text-muted) transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) ${mobileLongPressActions ? 'hidden' : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:opacity-100'}`}
+                        aria-label={`New session in ${workspaceLabel(path)}`}
+                      >
+                        <Plus size={11} aria-hidden="true" />
+                      </button>
+                    }
+                  />
+                  <TooltipContent>New session</TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <button
+                        type="button"
+                        onClick={(event) => setDesktopWorkspaceActions({ path, kind: 'main', x: event.clientX, y: event.clientY })}
+                        className={`mr-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-xs text-(--color-text-subtle) transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) ${mobileLongPressActions ? 'hidden' : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:opacity-100'}`}
+                        aria-label={`Actions for ${workspaceLabel(path)}`}
+                      >
+                        <MoreHorizontal size={12} aria-hidden="true" />
+                      </button>
+                    }
+                  />
+                  <TooltipContent>Workspace actions</TooltipContent>
+                </Tooltip>
               </div>
 
               {(sourceIsExpanded || sourceHasRunningSession) && (
@@ -784,60 +811,85 @@ export function CodingSidebar({
                     return (
                       <div key={directory} className="mt-1">
                         <div className="group mx-2 flex h-7 items-center rounded-md">
-                          <LongPressButton
-                            enabled={mobileLongPressActions}
-                            onLongPress={() => setMobileWorkspaceActions({ path: directory, kind: 'worktree', source: path, worktree: worktreeInfo })}
-                            type="button"
-                            onClick={() => toggleWorkspaceExpanded(directory)}
-                            onContextMenu={(event) => {
-                              if (mobileLongPressActions) return
-                              event.preventDefault()
-                              setDesktopWorkspaceActions({ path: directory, kind: 'worktree', source: path, worktree: worktreeInfo, x: event.clientX, y: event.clientY })
-                            }}
-                            className={`flex min-w-0 flex-1 items-center gap-1.5 rounded px-1.5 py-0.5 text-left text-xs transition-colors ${isActive ? 'text-(--color-accent)' : 'text-(--color-text-2)'}`}
-                            aria-expanded={isExpanded}
-                            aria-label={`${isExpanded ? 'Collapse' : 'Expand'} worktree ${item.name}`}
-                            title={directory}
-                          >
-                            <ChevronRight size={11} className={`shrink-0 text-(--color-text-subtle) transition-transform ${isExpanded ? 'rotate-90' : ''}`} aria-hidden="true" />
-                            <GitBranch size={12} className="shrink-0 text-(--accent-orange-text)" aria-hidden="true" />
-                            <span className="min-w-0 flex-1 truncate font-mono">{item.name}</span>
-                            {!item.managed && <span className="shrink-0 rounded-full bg-(--bg-key) px-1.5 py-0.5 text-[9px] text-(--color-text-subtle)">external</span>}
-                            {isPending && (
-                              <span>
-                                <Loader2 size={11} className="shrink-0 animate-spin text-(--color-text-muted)" aria-hidden="true" />
-                              </span>
-                            )}
-                          </LongPressButton>
-                          <button
-                            type="button"
-                            onClick={() => { void selectWorkspace(directory, { create: true }) }}
-                            className={`ml-1 flex h-6 w-6 shrink-0 items-center justify-center rounded border border-(--color-border) text-(--color-text-muted) transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) ${mobileLongPressActions ? 'hidden' : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:opacity-100'}`}
-                            aria-label={`New session in worktree ${item.name}`}
-                            title={`New session in worktree ${item.name}`}
-                          >
-                            <Plus size={11} aria-hidden="true" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleWorktreeEdit(worktreeInfo)}
-                            className={`ml-1 flex h-6 w-6 shrink-0 items-center justify-center rounded text-(--color-text-subtle) transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) ${mobileLongPressActions ? 'hidden' : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:opacity-100'}`}
-                            aria-label={`Edit worktree title ${item.name}`}
-                            title="Edit worktree title"
-                          >
-                            <Pencil size={11} aria-hidden="true" />
-                          </button>
+                          <Tooltip className="min-w-0 flex-1">
+                            <TooltipTrigger
+                              className="min-w-0 flex-1"
+                              render={
+                                <LongPressButton
+                                  enabled={mobileLongPressActions}
+                                  onLongPress={() => setMobileWorkspaceActions({ path: directory, kind: 'worktree', source: path, worktree: worktreeInfo })}
+                                  type="button"
+                                  onClick={() => toggleWorkspaceExpanded(directory)}
+                                  onContextMenu={(event) => {
+                                    if (mobileLongPressActions) return
+                                    event.preventDefault()
+                                    setDesktopWorkspaceActions({ path: directory, kind: 'worktree', source: path, worktree: worktreeInfo, x: event.clientX, y: event.clientY })
+                                  }}
+                                  className={`flex min-w-0 flex-1 items-center gap-1.5 rounded-sm px-1.5 py-0.5 text-left text-xs transition-colors ${isActive ? 'text-(--color-accent)' : 'text-(--color-text-2)'}`}
+                                  aria-expanded={isExpanded}
+                                  aria-label={`${isExpanded ? 'Collapse' : 'Expand'} worktree ${item.name}`}
+                                >
+                                  <ChevronRight size={11} className={`shrink-0 text-(--color-text-subtle) transition-transform ${isExpanded ? 'rotate-90' : ''}`} aria-hidden="true" />
+                                  <GitBranch size={12} className="shrink-0 text-(--accent-orange-text)" aria-hidden="true" />
+                                  <span className="min-w-0 flex-1 truncate font-mono">{item.name}</span>
+                                  {!item.managed && <span className="shrink-0 rounded-full bg-(--bg-key) px-1.5 py-0.5 text-[9px] text-(--color-text-subtle)">external</span>}
+                                  {isPending && (
+                                    <span>
+                                      <Loader2 size={11} className="shrink-0 animate-spin text-(--color-text-muted)" aria-hidden="true" />
+                                    </span>
+                                  )}
+                                </LongPressButton>
+                              }
+                            />
+                            <TooltipContent>{directory}</TooltipContent>
+                          </Tooltip>
+                          <Tooltip>
+                            <TooltipTrigger
+                              render={
+                                <button
+                                  type="button"
+                                  onClick={() => { void selectWorkspace(directory, { create: true }) }}
+                                  className={`ml-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-xs border border-(--color-border) text-(--color-text-muted) transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) ${mobileLongPressActions ? 'hidden' : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:opacity-100'}`}
+                                  aria-label={`New session in worktree ${item.name}`}
+                                >
+                                  <Plus size={11} aria-hidden="true" />
+                                </button>
+                              }
+                            />
+                            <TooltipContent>{`New session in worktree ${item.name}`}</TooltipContent>
+                          </Tooltip>
+                          <Tooltip>
+                            <TooltipTrigger
+                              render={
+                                <button
+                                  type="button"
+                                  onClick={() => handleWorktreeEdit(worktreeInfo)}
+                                  className={`ml-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-xs text-(--color-text-subtle) transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) ${mobileLongPressActions ? 'hidden' : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:opacity-100'}`}
+                                  aria-label={`Edit worktree title ${item.name}`}
+                                >
+                                  <Pencil size={11} aria-hidden="true" />
+                                </button>
+                              }
+                            />
+                            <TooltipContent>Edit worktree title</TooltipContent>
+                          </Tooltip>
                           {item.managed ? (
-                            <button
-                              type="button"
-                              onClick={() => setRemoveWorktreeTarget(worktreeInfo)}
-                              disabled={worktreeRemoving === directory}
-                              className={`ml-1 flex h-6 w-6 shrink-0 items-center justify-center rounded text-(--color-text-subtle) transition-all hover:bg-(--color-error-subtle) hover:text-(--color-error) disabled:opacity-50 ${mobileLongPressActions ? 'hidden' : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:opacity-100'}`}
-                              aria-label={`Remove worktree ${item.name}`}
-                              title="Remove managed worktree"
-                            >
-                              {worktreeRemoving === directory ? <Loader2 size={11} className="animate-spin" aria-hidden="true" /> : <Trash2 size={11} aria-hidden="true" />}
-                            </button>
+                            <Tooltip>
+                              <TooltipTrigger
+                                render={
+                                  <button
+                                    type="button"
+                                    onClick={() => setRemoveWorktreeTarget(worktreeInfo)}
+                                    disabled={worktreeRemoving === directory}
+                                    className={`ml-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-xs text-(--color-text-subtle) transition-all hover:bg-(--color-error-subtle) hover:text-(--color-error) disabled:opacity-50 ${mobileLongPressActions ? 'hidden' : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:opacity-100'}`}
+                                    aria-label={`Remove worktree ${item.name}`}
+                                  >
+                                    {worktreeRemoving === directory ? <Loader2 size={11} className="animate-spin" aria-hidden="true" /> : <Trash2 size={11} aria-hidden="true" />}
+                                  </button>
+                                }
+                              />
+                              <TooltipContent>Remove managed worktree</TooltipContent>
+                            </Tooltip>
                           ) : null}
                         </div>
                         {(isExpanded || hasRunningSession) && (
@@ -867,41 +919,58 @@ export function CodingSidebar({
         })}
 
         {/* + Open folder… */}
-        <button
-          type="button"
-          onClick={() => { void openWorkspaceDialog() }}
-          className="mx-2 flex h-8 items-center gap-2 rounded-md px-2.5 text-left text-xs font-medium text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
-          aria-label="Open folder"
-          title="Open a new workspace folder"
-        >
-          <Plus size={13} aria-hidden="true" />
-          <span>Open folder…</span>
-        </button>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <button
+                type="button"
+                onClick={() => { void openWorkspaceDialog() }}
+                className="mx-2 flex h-8 items-center gap-2 rounded-md px-2.5 text-left text-xs font-medium text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
+                aria-label="Open folder"
+              >
+                <Plus size={13} aria-hidden="true" />
+                <span>Open folder…</span>
+              </button>
+            }
+          />
+          <TooltipContent>Open a new workspace folder</TooltipContent>
+        </Tooltip>
       </div>
 
-      {/* Footer trio — Settings · Help · HealthDot + ThemeToggle. Mirrors
-          the cockpit sidebar so both feel like the same shell. */}
-      <div className="flex items-center justify-between gap-2 border-t border-(--color-border) px-3 py-2 pb-safe">
+      {/* Mobile drawer footer — on desktop this lives in AppFooter status bar */}
+      <div className="flex md:hidden items-center justify-between gap-2 border-t border-(--color-border) px-3 py-2 pb-safe">
         <div className="flex items-center gap-1">
-          <button
-            type="button"
-            onClick={() => { openSettings(); onMobileClose?.() }}
-            className="flex h-8 w-8 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
-            aria-label="Settings"
-            title={`Settings (${formatShortcut(',', os)})`}
-          >
-            <Settings size={14} aria-hidden="true" />
-          </button>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <button
+                  type="button"
+                  onClick={() => { openSettings(); onMobileClose?.() }}
+                  className="flex h-11 w-11 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
+                  aria-label="Settings"
+                >
+                  <Settings size={14} aria-hidden="true" />
+                </button>
+              }
+            />
+            <TooltipContent>{`Settings (${formatShortcut(',', os)})`}</TooltipContent>
+          </Tooltip>
           {onCommandPalette && (
-            <button
-              type="button"
-              onClick={onCommandPalette}
-              className="flex h-8 w-8 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
-              aria-label="Help and shortcuts"
-              title={`Help and shortcuts (${formatShortcut('P', os)})`}
-            >
-              <HelpCircle size={14} aria-hidden="true" />
-            </button>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <button
+                    type="button"
+                    onClick={onCommandPalette}
+                    className="flex h-11 w-11 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
+                    aria-label="Help and shortcuts"
+                  >
+                    <HelpCircle size={14} aria-hidden="true" />
+                  </button>
+                }
+              />
+              <TooltipContent>{`Help and shortcuts (${formatShortcut('P', os)})`}</TooltipContent>
+            </Tooltip>
           )}
         </div>
         <div className="flex items-center gap-2">
@@ -975,7 +1044,7 @@ export function CodingSidebar({
                   {parentPath && (
                     <button
                       type="button"
-                      className="w-full rounded-md px-2 py-1.5 text-left text-sm hover:bg-(--bg-key)"
+                      className="w-full rounded-xs px-2 py-1.5 text-left text-sm hover:bg-(--bg-key)"
                       onClick={() => void loadBrowser(parentPath)}
                     >
                       ..
@@ -991,7 +1060,7 @@ export function CodingSidebar({
                     <button
                       type="button"
                       key={dir.path}
-                      className="flex w-full min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-(--bg-key)"
+                      className="flex w-full min-w-0 items-center gap-2 rounded-xs px-2 py-1.5 text-left text-sm hover:bg-(--bg-key)"
                       onClick={() => void loadBrowser(dir.path)}
                     >
                       <Folder size={14} className="shrink-0" />
@@ -1128,7 +1197,7 @@ export function CodingSidebar({
                 <button
                   type="button"
                   onClick={() => setWorktreeTarget(null)}
-                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
+                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-7 md:w-7"
                   aria-label="Close create worktree dialog"
                 >
                   <X size={14} aria-hidden="true" />
@@ -1136,14 +1205,22 @@ export function CodingSidebar({
               </div>
             </DialogHeader>
             <div className="min-h-0 flex-1 space-y-2.5 overflow-y-auto px-3 py-3 sm:px-4">
-              <div className="rounded-md border border-(--color-border) bg-(--bg-page) px-2.5 py-1.5">
+              <div className="rounded-sm border border-(--color-border) bg-(--bg-page) px-2.5 py-1.5">
                 <div className="mb-0.5 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-(--color-text-subtle)">
                   <Folder size={12} aria-hidden="true" />
                   Source workspace
                 </div>
-                <p className="truncate font-mono text-[11px] text-(--color-text-muted)" title={worktreeTarget ?? undefined}>
-                  {worktreeTarget}
-                </p>
+                {worktreeTarget ? (
+                  <Tooltip className="min-w-0">
+                    <TooltipTrigger
+                      className="min-w-0"
+                      render={<p className="truncate font-mono text-[11px] text-(--color-text-muted)">{worktreeTarget}</p>}
+                    />
+                    <TooltipContent>{worktreeTarget}</TooltipContent>
+                  </Tooltip>
+                ) : (
+                  <p className="truncate font-mono text-[11px] text-(--color-text-muted)" />
+                )}
               </div>
               <div className="grid gap-2.5 sm:grid-cols-2">
                 <label className="block space-y-1 text-xs font-medium text-(--color-text-2)">
@@ -1152,7 +1229,7 @@ export function CodingSidebar({
                     value={worktreeName}
                     onChange={(e) => setWorktreeName(e.target.value)}
                     placeholder="feature-login"
-                    className="min-h-11 w-full min-w-0 rounded-md border border-(--color-border) bg-(--bg-page) px-2.5 py-1 font-mono text-sm text-(--color-text) outline-none transition-colors placeholder:text-(--color-text-subtle) focus-visible:border-(--focus-ring) focus-visible:ring-2 focus-visible:ring-(--focus-ring)/25 md:min-h-8"
+                    className="min-h-11 w-full min-w-0 rounded-sm border border-(--color-border) bg-(--bg-page) px-2.5 py-1 font-mono text-sm text-(--color-text) outline-none transition-colors placeholder:text-(--color-text-subtle) focus-visible:border-(--focus-ring) focus-visible:ring-2 focus-visible:ring-(--focus-ring)/25 md:min-h-8"
                     maxLength={80}
                     autoFocus
                   />
@@ -1164,13 +1241,13 @@ export function CodingSidebar({
                     value={worktreeBranch}
                     onChange={(e) => setWorktreeBranch(e.target.value)}
                     placeholder="openagentd/feature-login"
-                    className="min-h-11 w-full min-w-0 rounded-md border border-(--color-border) bg-(--bg-page) px-2.5 py-1 font-mono text-sm text-(--color-text) outline-none transition-colors placeholder:text-(--color-text-subtle) focus-visible:border-(--focus-ring) focus-visible:ring-2 focus-visible:ring-(--focus-ring)/25 md:min-h-8"
+                    className="min-h-11 w-full min-w-0 rounded-sm border border-(--color-border) bg-(--bg-page) px-2.5 py-1 font-mono text-sm text-(--color-text) outline-none transition-colors placeholder:text-(--color-text-subtle) focus-visible:border-(--focus-ring) focus-visible:ring-2 focus-visible:ring-(--focus-ring)/25 md:min-h-8"
                     maxLength={255}
                   />
                   <p className="text-[10px] font-normal text-(--color-text-subtle)">Blank defaults to openagentd/name.</p>
                 </label>
               </div>
-              <div className="rounded-md border border-(--color-border) bg-(--bg-page) px-2.5 py-2 text-xs text-(--color-text-muted)">
+              <div className="rounded-sm border border-(--color-border) bg-(--bg-page) px-2.5 py-2 text-xs text-(--color-text-muted)">
                 <div className="mb-1 flex items-center justify-between gap-2">
                     <p className="font-medium text-(--color-text-2)">Existing worktrees</p>
                     <span className="rounded-full bg-(--bg-key) px-2 py-0.5 text-[10px] text-(--color-text-subtle)">{worktreeOptions.length}</span>
@@ -1180,23 +1257,37 @@ export function CodingSidebar({
                 ) : (
                   <ul className="max-h-32 space-y-0.5 overflow-y-auto pr-1">
                       {worktreeOptions.map((item) => (
-                        <li key={item.directory} className="group flex min-w-0 items-center gap-2 rounded-md px-2 py-1 hover:bg-(--bg-key)" title={item.directory}>
+                        <li key={item.directory} className="group flex min-w-0 items-center gap-2 rounded-xs px-2 py-1 hover:bg-(--bg-key)">
                           <GitBranch size={12} className="shrink-0 text-(--color-text-subtle)" aria-hidden="true" />
-                          <div className="min-w-0 flex-1">
-                            <p className="truncate text-(--color-text-2)">{item.name}</p>
-                            {item.branch && <p className="truncate text-[11px] text-(--color-text-subtle)">{item.branch}</p>}
-                          </div>
+                          <Tooltip className="min-w-0 flex-1">
+                            <TooltipTrigger
+                              className="min-w-0 flex-1"
+                              render={
+                                <div className="min-w-0 flex-1">
+                                  <p className="truncate text-(--color-text-2)">{item.name}</p>
+                                  {item.branch && <p className="truncate text-[11px] text-(--color-text-subtle)">{item.branch}</p>}
+                                </div>
+                              }
+                            />
+                            <TooltipContent>{item.directory}</TooltipContent>
+                          </Tooltip>
                           {item.managed ? (
-                            <button
-                              type="button"
-                              onClick={() => setRemoveWorktreeTarget(item)}
-                              disabled={worktreeRemoving === item.directory}
-                              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-(--color-text-subtle) opacity-100 transition-colors hover:bg-(--color-error-subtle) hover:text-(--color-error) disabled:opacity-50 md:opacity-0 md:group-hover:opacity-100"
-                              aria-label={`Remove worktree ${item.name}`}
-                              title="Remove managed worktree"
-                            >
-                              {worktreeRemoving === item.directory ? <Loader2 size={12} className="animate-spin" aria-hidden="true" /> : <Trash2 size={12} aria-hidden="true" />}
-                            </button>
+                            <Tooltip>
+                              <TooltipTrigger
+                                render={
+                                  <button
+                                    type="button"
+                                    onClick={() => setRemoveWorktreeTarget(item)}
+                                    disabled={worktreeRemoving === item.directory}
+                                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xs text-(--color-text-subtle) opacity-100 transition-colors hover:bg-(--color-error-subtle) hover:text-(--color-error) disabled:opacity-50 md:opacity-0 md:group-hover:opacity-100"
+                                    aria-label={`Remove worktree ${item.name}`}
+                                  >
+                                    {worktreeRemoving === item.directory ? <Loader2 size={12} className="animate-spin" aria-hidden="true" /> : <Trash2 size={12} aria-hidden="true" />}
+                                  </button>
+                                }
+                              />
+                              <TooltipContent>Remove managed worktree</TooltipContent>
+                            </Tooltip>
                           ) : (
                             <span className="rounded-full bg-(--bg-key) px-2 py-0.5 text-[10px] text-(--color-text-subtle)">external</span>
                           )}
@@ -1205,7 +1296,7 @@ export function CodingSidebar({
                   </ul>
                 )}
               </div>
-              {error && <p className="rounded-md border border-(--color-error)/30 bg-(--color-error-subtle) px-3 py-2 text-xs text-(--color-error)">{error}</p>}
+              {error && <p className="mt-2 text-xs text-(--color-error)">{error}</p>}
             </div>
             <DialogFooter className="mx-0 mb-0 shrink-0 flex-row justify-end gap-2 rounded-none border-t border-(--color-border) bg-(--bg-page) px-3 py-2.5 sm:px-4">
               <Button type="button" size="sm" variant="default" onClick={() => setWorktreeTarget(null)}>Cancel</Button>
@@ -1236,27 +1327,27 @@ export function CodingSidebar({
             <button
               type="button"
               role="menuitem"
-              className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none"
+              className="flex w-full items-center gap-2 rounded-xs px-2 py-1 text-left text-xs hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none"
               onClick={() => {
                 const action = desktopWorkspaceActions
                 setDesktopWorkspaceActions(null)
                 void selectWorkspace(action.path, { create: true })
               }}
             >
-              <Plus size={14} aria-hidden="true" />
+              <Plus size={12} aria-hidden="true" />
               New session
             </button>
             <button
               type="button"
               role="menuitem"
-              className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none"
+              className="flex w-full items-center gap-2 rounded-xs px-2 py-1 text-left text-xs hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none"
               onClick={() => {
                 const action = desktopWorkspaceActions
                 setDesktopWorkspaceActions(null)
                 void navigator.clipboard.writeText(action.path)
               }}
             >
-              <Copy size={14} aria-hidden="true" />
+              <Copy size={12} aria-hidden="true" />
               Copy repo absolute path
             </button>
             {desktopWorkspaceActions.kind === 'main' ? (
@@ -1264,27 +1355,27 @@ export function CodingSidebar({
                 <button
                   type="button"
                   role="menuitem"
-                  className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none"
+                  className="flex w-full items-center gap-2 rounded-xs px-2 py-1 text-left text-xs hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none"
                   onClick={() => {
                     const action = desktopWorkspaceActions
                     setDesktopWorkspaceActions(null)
                     void openWorktreeDialog(action.path)
                   }}
                 >
-                  <GitBranch size={14} aria-hidden="true" />
+                  <GitBranch size={12} aria-hidden="true" />
                   Create worktree
                 </button>
                 <button
                   type="button"
                   role="menuitem"
-                  className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-(--color-error) hover:bg-(--color-error-subtle) focus-visible:bg-(--color-error-subtle) focus-visible:outline-none"
+                  className="flex w-full items-center gap-2 rounded-xs px-2 py-1 text-left text-xs text-(--color-error) hover:bg-(--color-error-subtle) focus-visible:bg-(--color-error-subtle) focus-visible:outline-none"
                   onClick={() => {
                     const action = desktopWorkspaceActions
                     setDesktopWorkspaceActions(null)
                     setRemoveWorkspaceTarget(action.path)
                   }}
                 >
-                  <Trash2 size={14} aria-hidden="true" />
+                  <Trash2 size={12} aria-hidden="true" />
                   Remove from sidebar
                 </button>
               </>
@@ -1293,28 +1384,28 @@ export function CodingSidebar({
                 <button
                   type="button"
                   role="menuitem"
-                  className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none"
+                  className="flex w-full items-center gap-2 rounded-xs px-2 py-1 text-left text-xs hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none"
                   onClick={() => {
                     const item = desktopWorkspaceActions.worktree
                     setDesktopWorkspaceActions(null)
                     if (item) handleWorktreeEdit(item)
                   }}
                 >
-                  <Pencil size={14} aria-hidden="true" />
+                  <Pencil size={12} aria-hidden="true" />
                   Edit title
                 </button>
                 {desktopWorkspaceActions.worktree.managed ? (
                   <button
                     type="button"
                     role="menuitem"
-                    className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-(--color-error) hover:bg-(--color-error-subtle) focus-visible:bg-(--color-error-subtle) focus-visible:outline-none"
+                    className="flex w-full items-center gap-2 rounded-xs px-2 py-1 text-left text-xs text-(--color-error) hover:bg-(--color-error-subtle) focus-visible:bg-(--color-error-subtle) focus-visible:outline-none"
                     onClick={() => {
                       const item = desktopWorkspaceActions.worktree
                       setDesktopWorkspaceActions(null)
                       if (item) setRemoveWorktreeTarget(item)
                     }}
                   >
-                    <Trash2 size={14} aria-hidden="true" />
+                    <Trash2 size={12} aria-hidden="true" />
                     Remove worktree
                   </button>
                 ) : null}
@@ -1343,27 +1434,27 @@ export function CodingSidebar({
             <button
               type="button"
               role="menuitem"
-              className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none"
+              className="flex w-full items-center gap-2 rounded-xs px-2 py-1 text-left text-xs hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none"
               onClick={() => {
                 const { session } = desktopSessionActions
                 setDesktopSessionActions(null)
                 handleSessionEdit(session)
               }}
             >
-              <Pencil size={14} aria-hidden="true" />
+              <Pencil size={12} aria-hidden="true" />
               Edit title
             </button>
             <button
               type="button"
               role="menuitem"
-              className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-(--color-error) hover:bg-(--color-error-subtle) focus-visible:bg-(--color-error-subtle) focus-visible:outline-none"
+              className="flex w-full items-center gap-2 rounded-xs px-2 py-1 text-left text-xs text-(--color-error) hover:bg-(--color-error-subtle) focus-visible:bg-(--color-error-subtle) focus-visible:outline-none"
               onClick={() => {
                 const { session } = desktopSessionActions
                 setDesktopSessionActions(null)
                 setDeleteTarget(session)
               }}
             >
-              <Trash2 size={14} aria-hidden="true" />
+              <Trash2 size={12} aria-hidden="true" />
               Delete session
             </button>
           </div>
@@ -1427,7 +1518,7 @@ export function CodingSidebar({
                 ref={editTitleInputRef}
                 value={editTitle}
                 onChange={(e) => setEditTitle(e.target.value)}
-                className="min-h-11 w-full min-w-0 rounded-md border border-(--color-border) bg-(--bg-page) px-2.5 py-1 text-sm text-(--color-text) outline-none focus-visible:border-(--focus-ring) focus-visible:ring-2 focus-visible:ring-(--focus-ring)/25 md:min-h-8"
+                className="min-h-11 w-full min-w-0 rounded-sm border border-(--color-border) bg-(--bg-page) px-2.5 py-1 text-sm text-(--color-text) outline-none focus-visible:border-(--focus-ring) focus-visible:ring-2 focus-visible:ring-(--focus-ring)/25 md:min-h-8"
                 aria-label="Session title"
                 maxLength={255}
               />
@@ -1453,16 +1544,24 @@ export function CodingSidebar({
           <form onSubmit={submitWorktreeTitle} className="space-y-3">
             <DialogHeader className="gap-1 pr-8">
               <DialogTitle className="text-sm leading-5">Edit worktree title</DialogTitle>
-              <DialogDescription className="max-w-full truncate text-xs leading-4" title={worktreeEditTarget?.directory}>
-                {worktreeEditTarget?.directory ? workspaceLabel(worktreeEditTarget.directory) : 'Rename this sidebar item.'}
-              </DialogDescription>
+              {worktreeEditTarget?.directory ? (
+                <Tooltip className="min-w-0">
+                  <TooltipTrigger
+                    className="min-w-0"
+                    render={<DialogDescription className="max-w-full truncate text-xs leading-4">{workspaceLabel(worktreeEditTarget.directory)}</DialogDescription>}
+                  />
+                  <TooltipContent>{worktreeEditTarget.directory}</TooltipContent>
+                </Tooltip>
+              ) : (
+                <DialogDescription className="max-w-full truncate text-xs leading-4">Rename this sidebar item.</DialogDescription>
+              )}
             </DialogHeader>
             <div>
               <input
                 ref={worktreeEditInputRef}
                 value={worktreeEditTitle}
                 onChange={(e) => setWorktreeEditTitle(e.target.value)}
-                className="min-h-11 w-full min-w-0 rounded-md border border-(--color-border) bg-(--bg-page) px-2.5 py-1 text-sm text-(--color-text) outline-none focus-visible:border-(--focus-ring) focus-visible:ring-2 focus-visible:ring-(--focus-ring)/25 md:min-h-8"
+                className="min-h-11 w-full min-w-0 rounded-sm border border-(--color-border) bg-(--bg-page) px-2.5 py-1 text-sm text-(--color-text) outline-none focus-visible:border-(--focus-ring) focus-visible:ring-2 focus-visible:ring-(--focus-ring)/25 md:min-h-8"
                 aria-label="Worktree title"
                 maxLength={255}
               />

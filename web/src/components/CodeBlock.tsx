@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Check, Copy } from 'lucide-react'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 
 interface CodeBlockProps {
   children: React.ReactNode
@@ -22,19 +23,25 @@ export function CodeBlock({ children, language, rawText, noHeader = false }: Cod
   }
 
   const copyButton = (
-    <button
-      type="button"
-      onClick={handleCopy}
-      className="flex h-8 w-8 items-center justify-center rounded-md text-(--color-text-muted) opacity-100 transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) md:h-6 md:w-6 md:opacity-0 md:group-hover:opacity-100"
-      aria-label="Copy code"
-      title="Copy"
-    >
-      {copied ? (
-        <Check size={13} className="text-(--color-success)" />
-      ) : (
-        <Copy size={13} />
-      )}
-    </button>
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <button
+            type="button"
+            onClick={handleCopy}
+            className="flex h-11 w-11 items-center justify-center rounded-md text-(--color-text-muted) opacity-100 transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) md:h-6 md:w-6 md:opacity-0 md:group-hover:opacity-100"
+            aria-label="Copy code"
+          >
+            {copied ? (
+              <Check size={13} className="text-(--color-success)" />
+            ) : (
+              <Copy size={13} />
+            )}
+          </button>
+        }
+      />
+      <TooltipContent>Copy</TooltipContent>
+    </Tooltip>
   )
 
   if (noHeader) {

@@ -10,18 +10,18 @@ import pytest
 
 from app.agent.artifacts import session_artifact_dir
 from app.agent.errors import ToolArgumentError, ToolExecutionError
-from app.agent.sandbox import SandboxConfig, set_sandbox
+from app.agent.denied_paths import (
+    DeniedPathsConfig as SandboxConfig,
+    set_denied_paths as set_sandbox,
+)
 from app.agent.state import AgentState
 from app.core.config import settings
 from app.agent.tools.builtin.filesystem import (
     glob_files,
     grep_files,
-    list_directory,
     read_file,
-    write_file,
 )
 from app.agent.tools.builtin.filesystem.grep import _grep_files
-from app.agent.tools.builtin.filesystem.rm import _remove_path
 from app.agent.tools.builtin.filesystem.glob import _glob_files as _search_files
 
 
@@ -35,7 +35,7 @@ def sandbox(tmp_path):
     sb = SandboxConfig(workspace=str(tmp_path))
     token = set_sandbox(sb)
     yield sb, tmp_path
-    from app.agent.sandbox import _sandbox_ctx
+    from app.agent.denied_paths import _denied_paths_ctx as _sandbox_ctx
 
     _sandbox_ctx.reset(token)
 
@@ -64,26 +64,16 @@ def workspace(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# write_file / read_file — integration
+# read_file — integration
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_write_and_read_file(sandbox_workspace):
-    result = await write_file.arun(path="test.txt", content="hello world")
-    assert "Written" in result
-    assert f"Resolved path: {sandbox_workspace / 'test.txt'}" in result
-    assert (sandbox_workspace / "test.txt").read_text() == "hello world"
+async def test_read_file(sandbox_workspace):
+    (sandbox_workspace / "test.txt").write_text("hello world")
 
     read_content = await read_file.arun(path="test.txt")
     assert read_content == "hello world"
-
-
-@pytest.mark.asyncio
-async def test_write_file_no_overwrite(sandbox_workspace):
-    (sandbox_workspace / "existing.txt").write_text("old")
-    with pytest.raises(ToolExecutionError):
-        await write_file.arun(path="existing.txt", content="new", overwrite=False)
 
 
 @pytest.mark.asyncio
@@ -93,10 +83,44 @@ async def test_read_file_not_found(sandbox_workspace):
 
 
 @pytest.mark.asyncio
-async def test_read_file_is_directory(sandbox_workspace):
+async def test_read_directory_lists_children(sandbox_workspace):
     (sandbox_workspace / "subdir").mkdir()
-    with pytest.raises(ToolExecutionError):
-        await read_file.arun(path="subdir")
+    (sandbox_workspace / "subdir" / "inner").mkdir()
+    (sandbox_workspace / "subdir" / "note.txt").write_text("hi")
+
+    result = await read_file.arun(path="subdir")
+
+    assert "[d] inner/" in result
+    assert "[f] note.txt  (2 bytes)" in result
+
+
+@pytest.mark.asyncio
+async def test_read_directory_sorts_dirs_before_files(sandbox_workspace):
+    (sandbox_workspace / "zeta").mkdir()
+    (sandbox_workspace / "alpha.txt").write_text("a")
+
+    result = await read_file.arun(path=".")
+
+    assert result.index("[d] zeta/") < result.index("[f] alpha.txt")
+
+
+@pytest.mark.asyncio
+async def test_read_empty_directory(sandbox_workspace):
+    (sandbox_workspace / "hollow").mkdir()
+
+    result = await read_file.arun(path="hollow")
+
+    assert result == "(empty directory)"
+
+
+@pytest.mark.asyncio
+async def test_read_directory_ignores_offset_and_limit(sandbox_workspace):
+    (sandbox_workspace / "dir").mkdir()
+    (sandbox_workspace / "dir" / "one.txt").write_text("1")
+
+    result = await read_file.arun(path="dir", offset=5, limit=1)
+
+    assert "[f] one.txt  (1 bytes)" in result
 
 
 @pytest.mark.asyncio
@@ -115,6 +139,7 @@ async def test_read_file_caps_large_text_for_context(sandbox_workspace, monkeypa
     read_file_module = importlib.import_module(
         "app.agent.tools.builtin.filesystem.read"
     )
+    assert read_file_module._MAX_CONTEXT_CHARS == 50_000
     monkeypatch.setattr(read_file_module, "_MAX_CONTEXT_CHARS", 10)
     (sandbox_workspace / "material-icons.json").write_text("A" * 50)
 
@@ -145,14 +170,17 @@ async def test_read_file_pagination(sandbox_workspace):
 
 
 @pytest.mark.asyncio
-async def test_read_file_default_returns_raw_text(sandbox_workspace):
-    """Default reads should not add pagination headers."""
-    content = "line1\nline2\nline3"
-    (sandbox_workspace / "plain.txt").write_text(content)
+async def test_read_file_returns_content_byte_exact(sandbox_workspace):
+    """Reads are verbatim so a line can be copied straight into a patch hunk.
+
+    Line-number prefixes were measured at +14-28% tokens per read while
+    `patch` matches on content, not position — the cost bought nothing.
+    """
+    (sandbox_workspace / "plain.txt").write_text("line1\nline2\nline3")
 
     result = await read_file.arun(path="plain.txt")
 
-    assert result == content
+    assert result == "line1\nline2\nline3"
 
 
 @pytest.mark.asyncio
@@ -165,34 +193,43 @@ async def test_read_file_offset_matches_grep_line_numbers(sandbox_workspace):
     assert result == "[3-3/4]\ngamma\n"
 
 
-# ---------------------------------------------------------------------------
-# list_directory — integration
-# ---------------------------------------------------------------------------
+@pytest.mark.asyncio
+async def test_read_file_offset_past_eof_reports_clearly(sandbox_workspace):
+    """`[99-2/2]` is nonsense — say what actually happened instead."""
+    (sandbox_workspace / "two.txt").write_text("a\nb\n")
+
+    result = await read_file.arun(path="two.txt", offset=99, limit=5)
+
+    assert "99" in result and "2 lines" in result
+    assert "[99-2/2]" not in result
 
 
 @pytest.mark.asyncio
-async def test_list_directory(sandbox_workspace):
-    (sandbox_workspace / "dir1").mkdir()
-    (sandbox_workspace / "file1.txt").write_text("f1")
-    (sandbox_workspace / "file2.txt").write_text("f2")
+async def test_read_file_truncates_absurdly_long_lines(sandbox_workspace):
+    """One minified line must not consume the whole context budget."""
+    from app.agent.tools.builtin.filesystem.read import _MAX_LINE_CHARS
 
-    result = await list_directory.arun(path=".")
-    assert "[d] dir1/" in result
-    assert "[f] file1.txt  (2 bytes)" in result
-    assert "[f] file2.txt  (2 bytes)" in result
+    (sandbox_workspace / "min.js").write_text("x" * (_MAX_LINE_CHARS + 500))
+
+    result = await read_file.arun(path="min.js")
+
+    assert "line truncated" in result
+    assert len(result) < _MAX_LINE_CHARS + 200
 
 
 @pytest.mark.asyncio
-async def test_list_directory_not_found(sandbox_workspace):
+async def test_read_file_keeps_short_lines_intact(sandbox_workspace):
+    (sandbox_workspace / "short.txt").write_text("fine\n")
+
+    result = await read_file.arun(path="short.txt")
+
+    assert result == "fine\n"
+
+
+@pytest.mark.asyncio
+async def test_read_directory_not_found(sandbox_workspace):
     with pytest.raises(ToolExecutionError):
-        await list_directory.arun(path="nonexistent_dir")
-
-
-@pytest.mark.asyncio
-async def test_list_directory_on_file(sandbox_workspace):
-    (sandbox_workspace / "file.txt").write_text("x")
-    with pytest.raises(ToolExecutionError):
-        await list_directory.arun(path="file.txt")
+        await read_file.arun(path="nonexistent_dir")
 
 
 # ---------------------------------------------------------------------------
@@ -254,7 +291,7 @@ async def test_glob_miss_without_matching_directory_stays_terse(sandbox_workspac
 
 @pytest.mark.asyncio
 async def test_read_allows_active_session_artifact_path_only(sandbox_workspace):
-    from app.agent.sandbox import _sandbox_ctx
+    from app.agent.denied_paths import _denied_paths_ctx as _sandbox_ctx
 
     session_id = "session-read-artifact"
     token = set_sandbox(
@@ -291,7 +328,7 @@ async def test_read_allows_active_session_artifact_path_only(sandbox_workspace):
 
 @pytest.mark.asyncio
 async def test_read_rejects_data_dir_outside_active_session(sandbox_workspace):
-    from app.agent.sandbox import _sandbox_ctx
+    from app.agent.denied_paths import _denied_paths_ctx as _sandbox_ctx
 
     token = set_sandbox(SandboxConfig(workspace=str(sandbox_workspace), session_id="s"))
     try:
@@ -307,7 +344,7 @@ async def test_read_rejects_data_dir_outside_active_session(sandbox_workspace):
 
 @pytest.mark.asyncio
 async def test_read_allows_log_paths(sandbox_workspace):
-    from app.agent.sandbox import _sandbox_ctx
+    from app.agent.denied_paths import _denied_paths_ctx as _sandbox_ctx
 
     token = set_sandbox(SandboxConfig(workspace=str(sandbox_workspace), session_id="s"))
     try:
@@ -349,9 +386,9 @@ async def test_sandbox_validation(sandbox_workspace, tmp_path):
     with pytest.raises(ToolExecutionError):
         await read_file.arun(path="missing.txt")
 
-    # Writing into a denied root is rejected by the sandbox itself.
+    # Reading inside a denied root is rejected by the sandbox itself.
     with pytest.raises(ToolExecutionError):
-        await write_file.arun(path=str(denied / "evil.txt"), content="evil")
+        await read_file.arun(path=str(denied / "secret.txt"))
 
 
 # ---------------------------------------------------------------------------
@@ -433,6 +470,27 @@ class TestGrepFiles:
         with pytest.raises(ToolExecutionError):
             await grep_files.arun(pattern="test", directory="nonexistent.py")
 
+    async def test_grep_returns_matches_found_before_an_undecodable_byte(
+        self, workspace
+    ):
+        """Streaming means a bad byte late in a file no longer discards the
+        matches already found earlier in it."""
+        (workspace / "mostly_text.py").write_bytes(
+            b"def keeper():\n    pass\n" + b"\xff\xfe\n"
+        )
+
+        result = await grep_files.arun(pattern="keeper", directory=".")
+
+        assert "mostly_text.py:1" in result
+
+    async def test_grep_skips_binary_files(self, workspace):
+        """A NUL in the first block means binary — do not spew bytes at the model."""
+        (workspace / "blob.py").write_bytes(b"keeper\x00\x01\x02binary junk")
+
+        result = await grep_files.arun(pattern="keeper", directory=".")
+
+        assert "blob.py" not in result
+
     async def test_grep_max_results(self, workspace):
         result = await grep_files.arun(pattern=".", directory=".", max_results=2)
         assert len(result.strip().split("\n")) == 2
@@ -461,7 +519,7 @@ class TestGrepFiles:
     async def test_grep_never_reads_sandbox_denied_files(self, tmp_path):
         """Dot files are searchable now, so the sandbox denylist — not the dot
         prefix — is what keeps ``.env`` secrets out of grep output."""
-        from app.agent.sandbox import _sandbox_ctx
+        from app.agent.denied_paths import _denied_paths_ctx as _sandbox_ctx
 
         sb = SandboxConfig(
             workspace=str(tmp_path), denied_patterns=["**/.env", "**/.env.*"]
@@ -484,7 +542,7 @@ class TestGrepFiles:
     async def test_grep_does_not_leak_denied_files_through_a_symlink(self, tmp_path):
         """A symlink with an innocuous name must not smuggle ``.env`` contents
         into the transcript — the denylist follows the link."""
-        from app.agent.sandbox import _sandbox_ctx
+        from app.agent.denied_paths import _denied_paths_ctx as _sandbox_ctx
 
         sb = SandboxConfig(workspace=str(tmp_path), denied_patterns=["**/.env"])
         token = set_sandbox(sb)
@@ -557,6 +615,67 @@ class TestGrepFiles:
         assert "No matches" in result
         assert "ruff" not in result
         assert ".pytest_cache" not in result
+
+    # ── literal prefilter ────────────────────────────────────────────────
+    #
+    # Two thirds of real patterns are a bare literal or an alternation of
+    # literals, so a byte scan can rule a file out before it is decoded. The
+    # prefilter must never change *which* lines are reported.
+
+    async def test_grep_literal_spanning_a_read_boundary_is_still_found(
+        self, workspace
+    ):
+        """The match must survive a literal straddling two internal chunks.
+
+        A chunked byte scan that forgets to overlap its reads splits the
+        needle in half and silently reports "No matches".
+        """
+        target = workspace / "big.txt"
+        needle = "NEEDLE_ACROSS_BOUNDARY"
+        # Bury the needle at several offsets so one lands on whatever chunk
+        # boundary the implementation picks. Padding is many short lines so the
+        # needle stays on a line of its own and is not truncated in the output.
+        filler = "x" * 79 + "\n"
+        parts: list[str] = []
+        for pad_bytes in (65536, 131072, 262144):
+            parts.append(filler * (pad_bytes // len(filler)))
+            parts.append(needle + "\n")
+        target.write_text("".join(parts), encoding="utf-8")
+
+        result = await grep_files.arun(pattern=needle, directory=".")
+        assert "No matches" not in result
+        assert result.count(needle) >= 3
+
+    async def test_grep_literal_alternation_finds_every_branch(self, workspace):
+        (workspace / "a.py").write_text("alpha here\n")
+        (workspace / "b.py").write_text("bravo here\n")
+        (workspace / "c.py").write_text("charlie here\n")
+
+        result = await grep_files.arun(pattern="alpha|bravo", directory=".")
+        assert "a.py" in result
+        assert "b.py" in result
+        assert "c.py" not in result
+
+    async def test_grep_case_insensitive_flag_still_matches(self, workspace):
+        """`(?i)` must disable the prefilter, not defeat the search."""
+        (workspace / "a.py").write_text("SHOUTING loudly\n")
+
+        result = await grep_files.arun(pattern="(?i)shouting", directory=".")
+        assert "a.py" in result
+
+    async def test_grep_regex_metacharacters_still_match(self, workspace):
+        (workspace / "a.py").write_text("value = 42\nother = x\n")
+
+        result = await grep_files.arun(pattern=r"value\s*=\s*\d+", directory=".")
+        assert "a.py" in result
+        assert "other" not in result
+
+    async def test_grep_literal_is_matched_case_sensitively(self, workspace):
+        """A prefilter comparing bytes must not become accidentally lax."""
+        (workspace / "a.py").write_text("Alpha\n")
+
+        result = await grep_files.arun(pattern="alpha", directory=".")
+        assert "No matches" in result
 
 
 # ---------------------------------------------------------------------------
@@ -656,7 +775,7 @@ class TestGlobFiles:
         assert ".eslintrc.json" in result
 
     async def test_glob_never_lists_sandbox_denied_files(self, tmp_path):
-        from app.agent.sandbox import _sandbox_ctx
+        from app.agent.denied_paths import _denied_paths_ctx as _sandbox_ctx
 
         sb = SandboxConfig(workspace=str(tmp_path), denied_patterns=["**/.env"])
         token = set_sandbox(sb)
@@ -715,88 +834,63 @@ class TestGlobFiles:
         assert "ruff" not in result
         assert ".pytest_cache" not in result
 
+    async def test_glob_honours_an_explicitly_named_generated_dir(self, workspace):
+        """Naming a pruned directory in the pattern is an explicit request.
 
-# ---------------------------------------------------------------------------
-# _remove_path: internal unit tests
-# ---------------------------------------------------------------------------
+        Reading a dependency's own source is legitimate. Production shows
+        models asking for `web/node_modules/@scope/pkg/**/*` and being told
+        "No files matching" while the files sat right there — a refusal
+        that reads exactly like "it does not exist".
+        """
+        pkg = workspace / "node_modules" / "@scope" / "pkg"
+        pkg.mkdir(parents=True)
+        (pkg / "index.d.ts").write_text("export {}\n")
 
+        result = await glob_files.arun(
+            pattern="node_modules/@scope/pkg/**/*", directory="."
+        )
+        assert "index.d.ts" in result
 
-@pytest.mark.asyncio
-async def test_remove_path_file(sandbox):
-    _, tmp_path = sandbox
-    f = tmp_path / "del.txt"
-    f.write_text("bye")
-    result = await _remove_path("del.txt")
-    assert '@@ openagentd-diff-meta {"path":"del.txt","deleted_lines":1}' in result
-    assert "Removed file" in result
-    assert f"Resolved path: {f}" in result
-    assert not f.exists()
+    async def test_glob_honours_a_generated_dir_named_mid_pattern(self, workspace):
+        """The literal segment can sit behind a wildcard, as in `**/node_modules/**`."""
+        pkg = workspace / "web" / "node_modules" / "pkg"
+        pkg.mkdir(parents=True)
+        (pkg / "types.d.ts").write_text("export {}\n")
 
+        result = await glob_files.arun(
+            pattern="**/node_modules/**/*.d.ts", directory="."
+        )
+        assert "types.d.ts" in result
 
-@pytest.mark.asyncio
-async def test_remove_path_binary_file_still_deletes(sandbox):
-    _, tmp_path = sandbox
-    f = tmp_path / "binary.bin"
-    f.write_bytes(b"\xff\xfe\n\x00")
-    result = await _remove_path("binary.bin")
-    assert '"deleted_lines":2' in result
-    assert not f.exists()
+    async def test_glob_anchored_pattern_still_honours_gitignore_below_it(
+        self, workspace
+    ):
+        """Anchoring the walk must not skip .gitignore rules inside the subtree.
 
+        The rules are relative to the search root, so a walk that starts deeper
+        has to keep reporting paths relative to that root or every anchored
+        pattern quietly stops honouring .gitignore.
+        """
+        (workspace / ".gitignore").write_text("src/generated/\n", encoding="utf-8")
+        (workspace / "src" / "generated").mkdir(parents=True)
+        (workspace / "src" / "generated" / "bundle.py").write_text("x")
+        (workspace / "src" / "real.py").write_text("y")
 
-@pytest.mark.asyncio
-async def test_remove_path_symlink_to_workspace_target_allowed(sandbox):
-    """Symlinks pointing to workspace-internal targets are now allowed.
+        result = await glob_files.arun(pattern="src/**/*.py", directory=".")
+        assert "real.py" in result
+        assert "bundle.py" not in result
 
-    `validate_path` resolves through the symlink, so removing it operates on
-    the resolved target.  Both the link and the target are gone afterwards
-    (the symlink becomes dangling, and `unlink()` is called on the target).
-    """
-    _, tmp_path = sandbox
-    target = tmp_path / "target.txt"
-    target.write_text("data")
-    link = tmp_path / "link.txt"
-    link.symlink_to(target)
-    result = await _remove_path("link.txt")
-    assert "Removed file" in result
-    # The resolved target was removed; the dangling link still exists as an
-    # entry but its target is gone.
-    assert not target.exists()
+    async def test_glob_anchored_pattern_still_honours_an_ignored_ancestor(
+        self, workspace
+    ):
+        """Pointing a pattern straight into an ignored directory must stay empty.
 
+        A walk rooted at the pattern's literal prefix never visits the ignored
+        ancestor, so the rule has to be checked on the way down.
+        """
+        (workspace / ".gitignore").write_text("build/\n", encoding="utf-8")
+        (workspace / "build" / "out").mkdir(parents=True)
+        (workspace / "build" / "out" / "app.js").write_text("x")
 
-@pytest.mark.asyncio
-async def test_remove_path_not_found_raises(sandbox):
-    with pytest.raises(FileNotFoundError, match="Path not found"):
-        await _remove_path("missing.txt")
-
-
-@pytest.mark.asyncio
-async def test_remove_path_empty_dir(sandbox):
-    _, tmp_path = sandbox
-    d = tmp_path / "emptydir"
-    d.mkdir()
-    result = await _remove_path("emptydir")
-    assert "Removed directory" in result
-    assert not d.exists()
-
-
-@pytest.mark.asyncio
-async def test_remove_path_nonempty_dir_no_recursive_raises(sandbox):
-    _, tmp_path = sandbox
-    d = tmp_path / "filled"
-    d.mkdir()
-    (d / "file.txt").write_text("x")
-    with pytest.raises(OSError, match="recursive=true"):
-        await _remove_path("filled", recursive=False)
-
-
-@pytest.mark.asyncio
-async def test_remove_path_recursive(sandbox):
-    _, tmp_path = sandbox
-    d = tmp_path / "tree"
-    d.mkdir()
-    (d / "a.txt").write_text("a")
-    (d / "sub").mkdir()
-    (d / "sub" / "b.txt").write_text("b")
-    result = await _remove_path("tree", recursive=True)
-    assert "Removed directory" in result
-    assert not d.exists()
+        result = await glob_files.arun(pattern="build/**/*.js", directory=".")
+        assert "app.js" not in result

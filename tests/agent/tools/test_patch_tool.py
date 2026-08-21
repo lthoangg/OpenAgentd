@@ -1,9 +1,15 @@
 from __future__ import annotations
 
+import asyncio
+from unittest.mock import patch
+
 import pytest
 
-from app.agent.errors import ToolExecutionError
-from app.agent.sandbox import SandboxConfig, set_sandbox
+from app.agent.errors import ToolArgumentError, ToolExecutionError
+from app.agent.denied_paths import (
+    DeniedPathsConfig as SandboxConfig,
+    set_denied_paths as set_sandbox,
+)
 from app.agent.tools.builtin.filesystem import patch_file
 from app.agent.tools.builtin.filesystem.patch import PatchArgs, _parse_patch
 
@@ -13,7 +19,7 @@ def sandbox_workspace(tmp_path):
     config = SandboxConfig(workspace=str(tmp_path))
     token = set_sandbox(config)
     yield tmp_path
-    from app.agent.sandbox import _sandbox_ctx
+    from app.agent.denied_paths import _denied_paths_ctx as _sandbox_ctx
 
     _sandbox_ctx.reset(token)
 
@@ -120,7 +126,7 @@ async def test_patch_rejects_ambiguous_update(sandbox_workspace):
     target = sandbox_workspace / "repeat.txt"
     target.write_text("same\nsame\n", encoding="utf-8")
 
-    with pytest.raises(ToolExecutionError):
+    with pytest.raises(ToolExecutionError) as exc_info:
         await patch_file.arun(
             patch_text="""*** Begin Patch
 *** Update File: repeat.txt
@@ -130,7 +136,38 @@ async def test_patch_rejects_ambiguous_update(sandbox_workspace):
 *** End Patch"""
         )
 
+    err_str = str(exc_info.value)
+    assert "Patch context is ambiguous in repeat.txt." in err_str
+    assert "Found 2 matching locations at line 1, line 2." in err_str
+    assert "The ambiguous block was:" in err_str
+    assert "| same" in err_str
+    assert "Add more surrounding context lines" in err_str
     assert target.read_text(encoding="utf-8") == "same\nsame\n"
+
+
+@pytest.mark.asyncio
+async def test_patch_ambiguous_context_diagnostic_many_matches(sandbox_workspace):
+    target = sandbox_workspace / "many_repeats.txt"
+    target.write_text("item\n" * 8, encoding="utf-8")
+
+    with pytest.raises(ToolExecutionError) as exc_info:
+        await patch_file.arun(
+            patch_text="""*** Begin Patch
+*** Update File: many_repeats.txt
+@@
+-item
++item_changed
+*** End Patch"""
+        )
+
+    err_str = str(exc_info.value)
+    assert "Patch context is ambiguous in many_repeats.txt." in err_str
+    assert (
+        "Found 8 matching locations at line 1, line 2, line 3, line 4, line 5 (and 3 more)."
+        in err_str
+    )
+    assert "The ambiguous block was:" in err_str
+    assert "| item" in err_str
 
 
 # ── schema description ────────────────────────────────────────────────────────
@@ -370,3 +407,354 @@ async def test_patch_args_supports_parameter_aliases(sandbox_workspace):
     assert (sandbox_workspace / "alias.txt").read_text(
         encoding="utf-8"
     ) == "alias content\n"
+
+
+@pytest.mark.asyncio
+async def test_concurrent_patches_to_one_file_do_not_lose_updates(sandbox_workspace):
+    """Two patches touching the same file must both land.
+
+    The agent loop dispatches up to ``MAX_CONCURRENT_TOOLS`` tool calls in
+    parallel, so a read-modify-write with no lock can interleave: both calls
+    read the same original bytes and the second write clobbers the first.
+    """
+    target = sandbox_workspace / "shared.txt"
+    target.write_text("alpha\nbeta\n", encoding="utf-8")
+
+    await asyncio.gather(
+        patch_file.arun(
+            patch_text="""*** Begin Patch
+*** Update File: shared.txt
+@@
+-alpha
++ALPHA
+*** End Patch"""
+        ),
+        patch_file.arun(
+            patch_text="""*** Begin Patch
+*** Update File: shared.txt
+@@
+-beta
++BETA
+*** End Patch"""
+        ),
+    )
+
+    assert target.read_text(encoding="utf-8") == "ALPHA\nBETA\n"
+
+
+@pytest.mark.asyncio
+async def test_patch_write_is_atomic_on_failure(sandbox_workspace):
+    """A write that fails mid-flight must not leave a truncated file."""
+    target = sandbox_workspace / "atomic.txt"
+    original = "one\ntwo\nthree\n"
+    target.write_text(original, encoding="utf-8")
+
+    with patch(
+        "app.agent.tools.builtin.filesystem.patch.os.replace",
+        side_effect=OSError("disk full"),
+    ):
+        with pytest.raises(ToolExecutionError):
+            await patch_file.arun(
+                patch_text="""*** Begin Patch
+*** Update File: atomic.txt
+@@
+-two
++TWO
+*** End Patch"""
+            )
+
+    assert target.read_text(encoding="utf-8") == original
+    assert list(sandbox_workspace.glob("*.tmp*")) == []
+
+
+@pytest.mark.asyncio
+async def test_patch_strips_line_number_prefixes_from_context(sandbox_workspace):
+    """`read` returns `N: content`; models paste that straight into a hunk.
+
+    Stripping a leading line-number prefix is a narrow, unambiguous repair —
+    much safer than general fuzzy matching, and it saves a whole turn.
+    """
+    target = sandbox_workspace / "prefixed.py"
+    target.write_text("def foo():\n    return 1\n", encoding="utf-8")
+
+    result = await patch_file.arun(
+        patch_text="""*** Begin Patch
+*** Update File: prefixed.py
+@@
+ 1: def foo():
+-2:     return 1
++2:     return 2
+*** End Patch"""
+    )
+
+    assert "Patch applied successfully" in result
+    assert target.read_text(encoding="utf-8") == "def foo():\n    return 2\n"
+
+
+@pytest.mark.asyncio
+async def test_patch_prefers_a_literal_match_over_prefix_stripping(sandbox_workspace):
+    """A file whose real content looks like numbered output must win literally."""
+    target = sandbox_workspace / "literal.txt"
+    target.write_text("1: alpha\n2: beta\n", encoding="utf-8")
+
+    await patch_file.arun(
+        patch_text="""*** Begin Patch
+*** Update File: literal.txt
+@@
+-1: alpha
++1: ALPHA
+*** End Patch"""
+    )
+
+    assert target.read_text(encoding="utf-8") == "1: ALPHA\n2: beta\n"
+
+
+@pytest.mark.asyncio
+async def test_patch_does_not_strip_when_it_would_break_a_match(sandbox_workspace):
+    """Stripping must never turn a clean no-match into a wrong match."""
+    target = sandbox_workspace / "nomatch.txt"
+    target.write_text("hello\n", encoding="utf-8")
+
+    with pytest.raises(ToolExecutionError):
+        await patch_file.arun(
+            patch_text="""*** Begin Patch
+*** Update File: nomatch.txt
+@@
+-42: goodbye
++42: farewell
+*** End Patch"""
+        )
+
+    assert target.read_text(encoding="utf-8") == "hello\n"
+
+
+# ── no-op envelopes must not report success ───────────────────────────────────
+#
+# A section that writes nothing but reports "Patch applied successfully" sends
+# the model into a retry loop: it re-reads the file, sees the old content, and
+# resends the identical envelope. Every shape below must fail loudly instead.
+
+
+@pytest.mark.asyncio
+async def test_patch_rejects_update_section_without_a_hunk(sandbox_workspace):
+    target = sandbox_workspace / "a.py"
+    target.write_text("def foo():\n    return 1\n", encoding="utf-8")
+
+    with pytest.raises(ToolArgumentError, match="@@"):
+        await patch_file.arun(
+            patch_text="""*** Begin Patch
+*** Update File: a.py
+*** End Patch"""
+        )
+
+    assert target.read_text(encoding="utf-8") == "def foo():\n    return 1\n"
+
+
+@pytest.mark.asyncio
+async def test_patch_rejects_hunk_with_no_change_prefixes(sandbox_workspace):
+    """The common failure: the model forgets the '-'/'+' markers entirely.
+
+    Unprefixed lines parse as context, so the hunk asks for no change at all.
+    """
+    target = sandbox_workspace / "a.py"
+    target.write_text("def foo():\n    return 1\n", encoding="utf-8")
+
+    with pytest.raises(ToolArgumentError, match="context"):
+        await patch_file.arun(
+            patch_text="""*** Begin Patch
+*** Update File: a.py
+@@
+def foo():
+    return 2
+*** End Patch"""
+        )
+
+    assert target.read_text(encoding="utf-8") == "def foo():\n    return 1\n"
+
+
+@pytest.mark.asyncio
+async def test_patch_rejects_context_only_hunk(sandbox_workspace):
+    target = sandbox_workspace / "a.py"
+    target.write_text("def foo():\n    return 1\n", encoding="utf-8")
+
+    with pytest.raises(ToolArgumentError, match="context"):
+        await patch_file.arun(
+            patch_text="""*** Begin Patch
+*** Update File: a.py
+@@
+ def foo():
+     return 1
+*** End Patch"""
+        )
+
+    assert target.read_text(encoding="utf-8") == "def foo():\n    return 1\n"
+
+
+@pytest.mark.asyncio
+async def test_patch_rejects_empty_hunk_as_the_only_change(sandbox_workspace):
+    target = sandbox_workspace / "a.py"
+    target.write_text("def foo():\n    return 1\n", encoding="utf-8")
+
+    with pytest.raises(ToolArgumentError):
+        await patch_file.arun(
+            patch_text="""*** Begin Patch
+*** Update File: a.py
+@@
+*** End Patch"""
+        )
+
+    assert target.read_text(encoding="utf-8") == "def foo():\n    return 1\n"
+
+
+@pytest.mark.asyncio
+async def test_patch_rejects_a_bare_block_the_model_meant_to_delete(sandbox_workspace):
+    """Observed in production: the model pastes the block it wants *removed*.
+
+    Without '-' markers those lines read as context, so the old parser dropped
+    the chunk and reported success while the block stayed in the file.
+    """
+    target = sandbox_workspace / "diffUtils.ts"
+    original = (
+        "export interface PatchOperationsStats {\n"
+        "  adds: number\n"
+        "}\n"
+        "export function getPatchOperationsStats() {\n"
+        "  return null\n"
+        "}\n"
+    )
+    target.write_text(original, encoding="utf-8")
+
+    with pytest.raises(ToolArgumentError, match="removed with '-'"):
+        await patch_file.arun(
+            patch_text="""*** Begin Patch
+*** Update File: diffUtils.ts
+@@
+export interface PatchOperationsStats {
+  adds: number
+}
+export function getPatchOperationsStats() {
+  return null
+}
+*** End Patch"""
+        )
+
+    assert target.read_text(encoding="utf-8") == original
+
+
+@pytest.mark.asyncio
+async def test_patch_keeps_the_bare_hunk_locator_idiom(sandbox_workspace):
+    """A context-only chunk *beside a real one* is a locator, not a lost edit.
+
+    493 of these appear across 18% of recorded envelopes: a bare '@@' block
+    naming the enclosing scope, then the '@@' hunk that changes it. Rejecting
+    them would break far more envelopes than the no-op guard fixes.
+    """
+    target = sandbox_workspace / "prompts.py"
+    target.write_text(
+        'AGENTS = {\n    "coder": {\n        "prompt": "old",\n    },\n}\n',
+        encoding="utf-8",
+    )
+
+    result = await patch_file.arun(
+        patch_text="""*** Begin Patch
+*** Update File: prompts.py
+@@
+    "coder": {
+@@
+-        "prompt": "old",
++        "prompt": "new",
+*** End Patch"""
+    )
+
+    assert "Patch applied successfully" in result
+    assert '"prompt": "new"' in target.read_text(encoding="utf-8")
+
+
+@pytest.mark.asyncio
+async def test_patch_allows_rename_without_any_hunk(sandbox_workspace):
+    """A pure rename legitimately changes no content — it must still apply."""
+    source = sandbox_workspace / "old.txt"
+    source.write_text("keep me\n", encoding="utf-8")
+
+    result = await patch_file.arun(
+        patch_text="""*** Begin Patch
+*** Update File: old.txt
+*** Move to: new.txt
+*** End Patch"""
+    )
+
+    assert "Patch applied successfully" in result
+    assert not source.exists()
+    assert (sandbox_workspace / "new.txt").read_text(encoding="utf-8") == "keep me\n"
+
+
+@pytest.mark.asyncio
+async def test_patch_tolerates_a_stray_empty_hunk_beside_a_real_one(sandbox_workspace):
+    """A trailing bare '@@' is a harmless artefact, not a lost edit."""
+    target = sandbox_workspace / "a.py"
+    target.write_text("alpha\nbeta\n", encoding="utf-8")
+
+    result = await patch_file.arun(
+        patch_text="""*** Begin Patch
+*** Update File: a.py
+@@
+-alpha
++ALPHA
+@@
+*** End Patch"""
+    )
+
+    assert "Patch applied successfully" in result
+    assert target.read_text(encoding="utf-8") == "ALPHA\nbeta\n"
+
+
+@pytest.mark.asyncio
+async def test_patch_handles_verbatim_indented_context_without_space_prefix(
+    sandbox_workspace,
+):
+    """When LLM copies context lines verbatim without diff's leading space, it must match."""
+    target = sandbox_workspace / "foo.py"
+    target.write_text(
+        "class Foo:\n    def fn():\n        return 42\n", encoding="utf-8"
+    )
+
+    patch_text = """*** Begin Patch
+*** Update File: foo.py
+@@
+class Foo:
+    def fn():
+-        return 42
++        return 100
+*** End Patch"""
+
+    result = await patch_file.arun(patch_text=patch_text)
+    assert "Patch applied successfully" in result
+    assert (
+        target.read_text(encoding="utf-8")
+        == "class Foo:\n    def fn():\n        return 100\n"
+    )
+
+
+@pytest.mark.asyncio
+async def test_patch_diagnostic_error_on_context_miss(sandbox_workspace):
+    """Context miss error includes the expected block and line numbers if similar text exists."""
+    target = sandbox_workspace / "main.py"
+    target.write_text(
+        "import sys\ndef main():\n    print(sys.argv)\n", encoding="utf-8"
+    )
+
+    patch_text = """*** Begin Patch
+*** Update File: main.py
+@@
+def main(arg):
+-    print(arg)
++    print(arg.upper())
+*** End Patch"""
+
+    with pytest.raises(ToolExecutionError) as exc_info:
+        await patch_file.arun(patch_text=patch_text)
+
+    err_str = str(exc_info.value)
+    assert "Could not find patch context in main.py" in err_str
+    assert "The patch was looking for this block:" in err_str
+    assert "def main(arg):" in err_str

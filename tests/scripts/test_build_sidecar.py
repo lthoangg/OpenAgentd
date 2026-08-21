@@ -156,11 +156,11 @@ def test_install_packages_forwards_extras_to_export_and_project(tmp_path, monkey
         python_bin=tmp_path / "python" / "bin" / "python3",
         project_root=tmp_path,
         site_packages=tmp_path / "site-packages",
-        extras=["audio", "azure-doc-intel"],
+        extras=["extra-one", "extra-two"],
     )
 
     export, _deps, project = calls
 
     assert export.count("--extra") == 2
-    assert "audio" in export and "azure-doc-intel" in export
-    assert project[-1] == ".[audio,azure-doc-intel]"
+    assert "extra-one" in export and "extra-two" in export
+    assert project[-1] == ".[extra-one,extra-two]"

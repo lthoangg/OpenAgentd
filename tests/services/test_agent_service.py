@@ -19,7 +19,6 @@ from app.services.agent_service import (
     _validate_ext_mime_consistency,
     _validate_magic_bytes,
     categorize,
-    dispatch_user_shell_command,
     dispatch_user_message,
     interrupt_team,
     require_team,
@@ -753,114 +752,6 @@ async def test_interrupt_team_survives_a_failed_question_dismissal():
 
     assert names == ["worker-a"]
     working.interrupt.assert_called_once()
-
-
-async def test_interrupt_team_stops_session_background_processes():
-    team = MagicMock()
-    team.members = {}
-    team.all_members = []
-    team.lead.session_id = None
-
-    with (
-        patch(
-            "app.agent.tools.builtin.shell.stop_background_processes_for_session",
-            new=AsyncMock(return_value=1),
-        ) as stop_background,
-        patch("app.services.agent_service.stream_store.push_event", new=AsyncMock()),
-        patch("app.services.agent_service.stream_store.mark_done", new=AsyncMock()),
-    ):
-        await interrupt_team(team, session_id="sess-1")
-
-    stop_background.assert_awaited_once_with("sess-1")
-
-
-async def test_interrupt_team_signals_members_before_waiting_for_background_cleanup():
-    signalled = asyncio.Event()
-    working = MagicMock()
-    working.state = "working"
-    working.name = "worker-a"
-    working.interrupt.side_effect = signalled.set
-
-    team = MagicMock()
-    team.members = {}
-    team.all_members = [working]
-
-    async def cleanup_after_interrupt(_session_id: str) -> int:
-        await signalled.wait()
-        return 0
-
-    with (
-        patch(
-            "app.agent.tools.builtin.shell.stop_background_processes_for_session",
-            side_effect=cleanup_after_interrupt,
-        ),
-        patch("app.services.agent_service.stream_store.push_event", new=AsyncMock()),
-        patch("app.services.agent_service.stream_store.mark_done", new=AsyncMock()),
-    ):
-        await asyncio.wait_for(interrupt_team(team, session_id="sess-1"), timeout=1)
-
-    working.interrupt.assert_called_once()
-
-
-async def test_interrupt_team_continues_when_background_cleanup_fails():
-    working = MagicMock()
-    working.state = "working"
-    working.name = "worker-a"
-
-    team = MagicMock()
-    team.members = {}
-    team.all_members = [working]
-
-    with (
-        patch(
-            "app.agent.tools.builtin.shell.stop_background_processes_for_session",
-            new=AsyncMock(side_effect=RuntimeError("cleanup failed")),
-        ),
-        patch("app.services.agent_service.stream_store.push_event", new=AsyncMock()),
-        patch("app.services.agent_service.stream_store.mark_done", new=AsyncMock()),
-    ):
-        names = await interrupt_team(team, session_id="sess-1")
-
-    assert names == ["worker-a"]
-    working.interrupt.assert_called_once()
-
-
-async def test_interrupt_team_cancels_direct_user_shell_task():
-    started = asyncio.Event()
-    cancelled = asyncio.Event()
-
-    async def blocking_shell(*args, **kwargs):
-        started.set()
-        try:
-            await asyncio.Event().wait()
-        except asyncio.CancelledError:
-            cancelled.set()
-            raise
-
-    team = MagicMock()
-    team.members = {}
-    team.all_members = []
-    team.lead.session_id = None
-
-    with (
-        patch(
-            "app.services.agent_service.dispatch_shell_command",
-            side_effect=blocking_shell,
-        ),
-        patch("app.services.agent_service.stream_store.init_turn", new=AsyncMock()),
-        patch("app.services.agent_service.stream_store.push_event", new=AsyncMock()),
-        patch("app.services.agent_service.stream_store.mark_done", new=AsyncMock()),
-    ):
-        await dispatch_user_shell_command(
-            team,
-            command="sleep 60",
-            session_id="sess-1",
-        )
-        await asyncio.wait_for(started.wait(), timeout=1)
-
-        await interrupt_team(team, session_id="sess-1")
-
-    assert cancelled.is_set()
 
 
 @pytest.mark.asyncio

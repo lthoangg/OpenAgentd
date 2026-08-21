@@ -244,13 +244,26 @@ class PermissionService:
                     Rule(permission=tool, pattern=p, action="allow")
                 )
 
-    def reply(self, request_id: str, reply: Reply) -> bool:
+    def reply(
+        self, request_id: str, reply: Reply, *, session_id: str | None = None
+    ) -> bool:
         """Resolve a pending permission request with *reply*.
 
-        Returns True if the request was found and resolved, False if unknown.
+        Args:
+            request_id: Id of the pending request to resolve.
+            reply: The user's decision.
+            session_id: When given, the request is resolved only if it belongs
+                to that session.  Callers that take a session id from an
+                untrusted source (the HTTP layer) must pass it, so a stale or
+                forged id cannot approve another session's prompt.
+
+        Returns True if the request was found and resolved, False if unknown
+        or owned by a different session.
         """
         req = self.pending.get(request_id)
         if req is None:
+            return False
+        if session_id is not None and req.session_id != session_id:
             return False
         if req._future is not None and not req._future.done():
             req._future.set_result(reply)

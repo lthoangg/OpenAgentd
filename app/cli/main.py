@@ -250,7 +250,23 @@ def build_parser() -> argparse.ArgumentParser:
     p_lsp_install = lsp_sub.add_parser(
         "install", help="Install a managed LSP component"
     )
-    p_lsp_install.add_argument("component", choices=("typescript",))
+    p_lsp_install.add_argument("component", choices=("typescript", "python"))
+    p_lsp_install.add_argument(
+        "tool",
+        nargs="?",
+        choices=("ruff", "ty"),
+        help="Python tool to install (ruff | ty) — required for component=python",
+    )
+    p_lsp_install.add_argument(
+        "--version",
+        default=None,
+        help="Exact PyPI version to install (default: latest when unpinned)",
+    )
+    p_lsp_install.add_argument(
+        "--force",
+        action="store_true",
+        help="Re-download even when the version is already installed",
+    )
     p_lsp.set_defaults(func=cmd_lsp)
 
     # ── version ───────────────────────────────────────────────────────────────

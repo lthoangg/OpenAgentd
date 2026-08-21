@@ -26,6 +26,7 @@ from loguru import logger
 from pydantic import Field
 
 from app.agent.tools.registry import InjectedArg, Tool
+from app.agent.tools.builtin.todo import ActionModel
 
 if TYPE_CHECKING:
     from app.agent.mode.team.team import AgentTeam
@@ -181,7 +182,7 @@ def resumable_tasks(store: dict, actor: str) -> list[dict]:
 
 def _format_ready_message(event: TaskReady) -> str:
     lines = [
-        f"[system]: Task {event.task_id} is ready for you: {event.content}",
+        f"[system]: {event.task_id} is ready for you: {event.content}",
     ]
     if event.instructions:
         lines.append(f"Instructions: {event.instructions}")
@@ -215,7 +216,7 @@ def format_resume_message(tasks: list[dict]) -> str:
 
 def _format_completed_message(event: TaskCompleted) -> str:
     who = event.completed_by or "unknown"
-    lines = [f"[system]: {who} completed task {event.task_id}: {event.content}"]
+    lines = [f"[system]: {who} completed {event.task_id}: {event.content}"]
     if event.result:
         lines.append(f"Result: {event.result}")
     else:
@@ -318,7 +319,7 @@ def make_team_todo_tool(
     actor_state = SimpleNamespace(metadata={"agent_name": agent_name})
 
     async def todo_manage(
-        actions: list,
+        actions: list[ActionModel],
         end_turn: bool = False,
         _state: Annotated[Any, InjectedArg()] = None,
     ) -> str:

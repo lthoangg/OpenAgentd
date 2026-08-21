@@ -55,6 +55,18 @@ def _set_sqlite_pragmas(dbapi_conn, connection_record):
     # waits for the lock instead of failing fast with "database is locked".
     # Mirrors the test engine hook in tests/conftest.py.
     cursor.execute("PRAGMA busy_timeout=5000")
+    # Bound the WAL file: long-lived readers (SSE polls, history loads) can
+    # starve auto-checkpoints, and without a limit the -wal grows unbounded
+    # on busy sessions. After a successful checkpoint the file is truncated
+    # back to this size instead of being left fully allocated.
+    cursor.execute("PRAGMA journal_size_limit=67108864")  # 64 MiB
+    # Sort/temp B-trees (window ORDER BYs, history pagination) in memory
+    # instead of temp files.
+    cursor.execute("PRAGMA temp_store=MEMORY")
+    # Serve reads through a shared mmap of the DB file — page-cache hits are
+    # shared across all pooled connections instead of each connection warming
+    # its own private page cache. No effect on write serialisation.
+    cursor.execute("PRAGMA mmap_size=268435456")  # 256 MiB
     cursor.close()
 
 
@@ -116,8 +128,39 @@ def run_migrations() -> None:
     if _db_path and _db_path != ":memory:":
         with _sqlite_migration_lock(Path(_db_path).expanduser()):
             _run_alembic_upgrade(cfg)
+        _optimize_sqlite(Path(_db_path).expanduser())
     else:
         _run_alembic_upgrade(cfg)
+
+
+def _optimize_sqlite(db_path: Path) -> None:
+    """Materialise/refresh query-planner statistics (best-effort).
+
+    Without ``ANALYZE`` statistics SQLite plans every join and index choice
+    from fixed heuristics. ``PRAGMA optimize=0x10002`` runs a bounded ANALYZE
+    over all tables (``analysis_limit`` caps the rows sampled, so this stays
+    cheap even on multi-GB databases) and is a no-op when stats are already
+    fresh. Runs once per startup, right after migrations; failures are
+    swallowed — stale or missing stats degrade plans, not correctness.
+    """
+    import sqlite3
+
+    try:
+        conn = sqlite3.connect(db_path)
+        try:
+            conn.execute("PRAGMA analysis_limit=1000")
+            conn.execute("PRAGMA optimize=0x10002")
+            # Fold the WAL back into the DB and truncate it. Startup is the
+            # one moment no readers/writers are live, so the checkpoint
+            # cannot be starved; steady-state auto-checkpoints then keep the
+            # file near zero instead of inheriting yesterday's high-water
+            # mark (journal_size_limit bounds it between restarts).
+            conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+            conn.commit()
+        finally:
+            conn.close()
+    except sqlite3.Error as exc:
+        logger.debug("sqlite_optimize_skipped error={}", exc)
 
 
 def _run_alembic_upgrade(cfg: Config) -> None:

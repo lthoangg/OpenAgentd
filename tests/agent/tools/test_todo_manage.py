@@ -20,7 +20,10 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
-from app.agent.sandbox import SandboxConfig, set_sandbox
+from app.agent.denied_paths import (
+    DeniedPathsConfig as SandboxConfig,
+    set_denied_paths as set_sandbox,
+)
 from app.agent.tools.builtin.todo import (
     AnyAction,
     ClaimAction,
@@ -225,7 +228,7 @@ async def test_todos_are_isolated_by_sandbox_session(tmp_path: Path) -> None:
             _state=None,
         )
     finally:
-        from app.agent.sandbox import _sandbox_ctx
+        from app.agent.denied_paths import _denied_paths_ctx as _sandbox_ctx
 
         _sandbox_ctx.reset(token_one)
 
@@ -234,7 +237,7 @@ async def test_todos_are_isolated_by_sandbox_session(tmp_path: Path) -> None:
     try:
         result = await _todo_manage(actions=[ReadAction(action="read")], _state=None)
     finally:
-        from app.agent.sandbox import _sandbox_ctx
+        from app.agent.denied_paths import _denied_paths_ctx as _sandbox_ctx
 
         _sandbox_ctx.reset(token_two)
 
@@ -606,6 +609,23 @@ async def test_lead_tool_schema_excludes_member_claim_action() -> None:
     assert '"claim"' not in schema_text
     assert '"create"' in schema_text
     assert '"delete"' in schema_text
+
+
+@pytest.mark.asyncio
+async def test_update_action_omit_semantics_stated_once_not_per_field() -> None:
+    """ "omit to keep unchanged" is optional-field boilerplate; stating it once
+
+    on the action (docstring) instead of on every one of its optional fields
+    keeps the schema — sent on every LLM call — smaller without losing the
+    guidance.
+    """
+    for tool, key in (
+        (todo_manage, "properties"),
+        (todo_manage_member, "properties"),
+    ):
+        actions_schema = tool.definition["function"]["parameters"][key]["actions"]
+        schema_text = json.dumps(actions_schema)
+        assert schema_text.count("unchanged") == 1
 
 
 @pytest.mark.asyncio

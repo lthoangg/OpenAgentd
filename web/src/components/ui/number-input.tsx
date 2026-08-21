@@ -76,7 +76,7 @@ function NumberInputGroup({ className, ...props }: ComponentPropsWithRef<'div'>)
     <div
       data-slot="number-input-group"
       className={cn(
-        'flex h-9 w-full overflow-hidden rounded-md border border-(--color-border) bg-(--bg-input) text-sm text-(--color-text) transition-colors focus-within:ring-2 focus-within:ring-(--focus-ring)/30',
+        'flex h-9 w-full overflow-hidden rounded-sm border border-(--color-border) bg-(--bg-input) text-sm text-(--color-text) transition-colors focus-within:ring-2 focus-within:ring-(--focus-ring)/30',
         className,
       )}
       {...props}

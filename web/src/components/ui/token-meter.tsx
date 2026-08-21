@@ -8,6 +8,7 @@
 
 import { createPortal } from 'react-dom'
 import { useEffect, useRef, useState } from 'react'
+import { useHotkey } from '@tanstack/react-hotkeys'
 
 import { cn } from '@/lib/utils'
 
@@ -24,10 +25,13 @@ export interface TokenMeterProps {
   input: number
   output: number
   cached?: number
+  cachedPercent?: number
   /** Estimated USD cost accumulated across the active session. */
   sessionCostUsd?: number
   trigger?: number
   pulsing?: boolean
+  /** Compact layout for status bar / app footer. */
+  compact?: boolean
   className?: string
   /** Title attribute override (defaults to a verbose tooltip). */
   title?: string
@@ -37,9 +41,11 @@ export function TokenMeter({
   input,
   output,
   cached = 0,
+  cachedPercent,
   sessionCostUsd,
   trigger = DEFAULT_SUMMARY_TRIGGER_TOKENS,
   pulsing: _pulsing = false,
+  compact = false,
   className,
   title,
 }: TokenMeterProps) {
@@ -56,10 +62,12 @@ export function TokenMeter({
   const radius = 7
   const circumference = 2 * Math.PI * radius
   const dashOffset = circumference * (1 - progress)
+  const cachePercentValue = cachedPercent ?? (cached > 0 && input > 0 ? (cached / input) * 100 : undefined)
+  const cachePercentFormatted = cachePercentValue !== undefined ? `${cachePercentValue.toFixed(2)}%` : `${cached.toLocaleString()}%`
   const tooltip =
     title ??
     `Input: ${input.toLocaleString()} / ${safeTrigger.toLocaleString()} (${percent}%) · Output: ${output.toLocaleString()}${
-      cached > 0 ? ` · Cache: ${cached.toLocaleString()}` : ''
+      (cachePercentValue !== undefined && cachePercentValue > 0) || cached > 0 ? ` · Cache: ${cachePercentFormatted}` : ''
     }`
 
   const open = hoverOpen || pinnedOpen
@@ -128,23 +136,20 @@ export function TokenMeter({
       setPinnedOpen(false)
       setHoverOpen(false)
     }
-    const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        setPinnedOpen(false)
-        setHoverOpen(false)
-      }
-    }
 
     document.addEventListener('mousedown', handlePointerDown)
     document.addEventListener('touchstart', handlePointerDown)
-    document.addEventListener('keydown', handleEscape)
 
     return () => {
       document.removeEventListener('mousedown', handlePointerDown)
       document.removeEventListener('touchstart', handlePointerDown)
-      document.removeEventListener('keydown', handleEscape)
     }
   }, [pinnedOpen])
+
+  useHotkey('Escape', () => {
+    setPinnedOpen(false)
+    setHoverOpen(false)
+  }, { enabled: pinnedOpen })
 
   return (
     <div
@@ -155,7 +160,12 @@ export function TokenMeter({
       <button
         ref={triggerRef}
         type="button"
-        className="relative flex h-9 min-w-9 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:outline-none md:h-7 md:min-w-7 md:rounded-sm"
+        className={cn(
+          'relative flex items-center justify-center text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) aria-expanded:bg-(--bg-key) aria-expanded:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40',
+          compact
+            ? 'h-5 w-5 min-w-5 rounded-xs'
+            : 'h-8 min-w-8 rounded-md md:h-7 md:min-w-7 md:rounded-sm'
+        )}
         aria-label={tooltip}
         aria-expanded={open}
         onClick={() => {
@@ -170,7 +180,7 @@ export function TokenMeter({
         onFocus={openHoverTooltip}
         onBlur={closeHoverTooltip}
       >
-        <svg className="h-[17px] w-[17px] -rotate-90" viewBox="0 0 18 18" aria-hidden="true">
+        <svg className={cn('-rotate-90', compact ? 'h-3.5 w-3.5' : 'h-4 w-4')} viewBox="0 0 18 18" aria-hidden="true">
           <circle
             cx="9"
             cy="9"
@@ -196,7 +206,7 @@ export function TokenMeter({
       {open && tooltipPosition && createPortal(
         <div
           ref={tooltipRef}
-          className="fixed z-50 min-w-40 rounded-md border border-(--color-border) bg-(--bg-page) px-3 py-2 font-mono text-[11px] leading-5 text-(--color-text) shadow-lg"
+          className="fixed z-50 min-w-40 rounded-sm border border-(--color-border) bg-(--bg-page) px-3 py-2 font-mono text-[11px] leading-5 text-(--color-text) shadow-lg"
           style={{ top: tooltipPosition.top, left: tooltipPosition.left }}
           role="tooltip"
           onMouseEnter={openHoverTooltip}
@@ -206,7 +216,7 @@ export function TokenMeter({
           <div className="flex justify-between gap-4"><span className="text-(--color-text-muted)">trigger</span><span>{safeTrigger.toLocaleString()}</span></div>
           <div className="flex justify-between gap-4"><span className="text-(--color-text-muted)">used</span><span>{percent}%</span></div>
           <div className="flex justify-between gap-4"><span className="text-(--color-text-muted)">output</span><span>{output.toLocaleString()}</span></div>
-          <div className="flex justify-between gap-4"><span className="text-(--color-text-muted)">cache</span><span>{cached.toLocaleString()}</span></div>
+          <div className="flex justify-between gap-4"><span className="text-(--color-text-muted)">cache</span><span>{cachePercentFormatted}</span></div>
           {/* Scope differs from the rows above on purpose: those describe this
               agent, while cost is summed across every agent in the session.
               Labelled so the two are not read as the same scope. */}

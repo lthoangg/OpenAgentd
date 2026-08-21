@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Check, Copy, FileText } from 'lucide-react'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { truncateForDisplay, parsePartialJSON } from './displayText'
 
 interface ReadViewProps {
@@ -74,28 +75,34 @@ export function ReadView({ args, result, onCollapse }: ReadViewProps) {
         <span className="shrink-0 px-1 text-[10px] font-normal text-(--color-text-muted) uppercase">
           {label}
         </span>
-        <button
-          type="button"
-          onPointerDown={(event) => event.stopPropagation()}
-          onMouseDown={(event) => event.stopPropagation()}
-          onClick={(event) => {
-            event.stopPropagation()
-            void copyBody()
-          }}
-          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-sm text-(--color-text-muted) transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-2 focus-visible:outline-(--focus-ring)/40 md:h-6 md:w-6"
-          aria-label="Copy read result"
-          title="Copy read result"
-        >
-          {copied ? (
-            <Check size={12} className="text-(--color-success)" aria-hidden />
-          ) : (
-            <Copy size={12} aria-hidden />
-          )}
-        </button>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <button
+                type="button"
+                onPointerDown={(event) => event.stopPropagation()}
+                onMouseDown={(event) => event.stopPropagation()}
+                onClick={(event) => {
+                  event.stopPropagation()
+                  void copyBody()
+                }}
+                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-sm text-(--color-text-muted) transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-2 focus-visible:outline-(--focus-ring)/40 md:h-6 md:w-6"
+                aria-label="Copy read result"
+              >
+                {copied ? (
+                  <Check size={12} className="text-(--color-success)" aria-hidden />
+                ) : (
+                  <Copy size={12} aria-hidden />
+                )}
+              </button>
+            }
+          />
+          <TooltipContent>Copy read result</TooltipContent>
+        </Tooltip>
       </div>
 
       {expanded && (
-        <div className="overflow-y-auto  bg-(--bg-input) font-mono text-xs leading-relaxed">
+        <div className="overflow-y-auto overscroll-contain touch-pan-y bg-(--bg-input) font-mono text-xs leading-relaxed">
           <div className="min-w-0">
             {lines.map((line, idx) => (
               <div key={idx} className="flex items-stretch text-(--color-text)">

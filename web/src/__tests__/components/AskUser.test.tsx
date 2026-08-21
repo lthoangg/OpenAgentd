@@ -378,6 +378,121 @@ describe('AskUser — closed without an answer', () => {
 
     expect(screen.getByText(/dismissed/i)).toBeInTheDocument()
   })
+
+  /**
+   * The agent loop refuses a second ``ask_user`` in a resumed turn and writes
+   * ``ASK_BUDGET_EXHAUSTED`` as the tool result (core.py). The card must not
+   * present that as a question the user somehow missed — nothing was ever
+   * open, so "Closed without an answer" reads as a bug.
+   */
+  it('labels a budget-refused ask as not asked, not as closed without an answer', () => {
+    useTeamStore.setState({ pendingQuestion: null, resolvedQuestions: {} })
+
+    const { container } = render(
+      <AskUser
+        toolCallId="call-1"
+        args={JSON.stringify({ questions: QUESTION.questions })}
+        result={
+          'You already used your one interruption for this turn. Continue with your ' +
+          'best judgment, or finish and raise anything outstanding in your reply.'
+        }
+      />,
+    )
+
+    expect(container.textContent).not.toContain('Closed without an answer')
+    expect(screen.getByText(/not asked/i)).toBeInTheDocument()
+    expect(screen.getByText('Which package manager?')).toBeInTheDocument()
+    // Resolved framing, not an outstanding request.
+    expect(screen.queryByText(/needs your input/i)).toBeNull()
+  })
+
+  /**
+   * Parallel ``ask_user`` calls are folded into one card; the duplicates get
+   * ``ASK_MERGED_INTO_PRIMARY`` as their result. Same rule: never "Closed
+   * without an answer" for a question the primary card actually carried.
+   */
+  it('labels a merged duplicate ask as merged, not as closed without an answer', () => {
+    useTeamStore.setState({ pendingQuestion: null, resolvedQuestions: {} })
+
+    const { container } = render(
+      <AskUser
+        toolCallId="call-2"
+        args={JSON.stringify({ questions: QUESTION.questions })}
+        result={
+          'Merged into your other ask_user call — the user sees a single card ' +
+          'with every question.'
+        }
+      />,
+    )
+
+    expect(container.textContent).not.toContain('Closed without an answer')
+    expect(screen.getByText(/merged/i)).toBeInTheDocument()
+    expect(screen.queryByText(/needs your input/i)).toBeNull()
+  })
+})
+
+/**
+ * Loop-side endings that never opened a question. Each writes its own
+ * sentence onto the tool row (schema validation runs before the tool body,
+ * ``ask_user`` refuses without a call id, and a restart heals the orphaned
+ * call with a stub) — none of which involve the user, so "Closed without an
+ * answer" misreports every one of them as a question the user lost.
+ */
+describe('AskUser — asks that failed before a question opened', () => {
+  it('labels an args-validation failure as never asked', () => {
+    useTeamStore.setState({ pendingQuestion: null, resolvedQuestions: {} })
+
+    const { container } = render(
+      <AskUser
+        toolCallId="call-1"
+        args={JSON.stringify({ questions: QUESTION.questions })}
+        result={
+          "Error: Invalid arguments for tool 'ask_user': questions -> 3 -> " +
+          'options -> 0 -> description: String should have at most 200 characters'
+        }
+      />,
+    )
+
+    expect(container.textContent).not.toContain('Closed without an answer')
+    expect(screen.getByText(/not asked/i)).toBeInTheDocument()
+    expect(screen.getByText('Which package manager?')).toBeInTheDocument()
+    expect(screen.queryByText(/needs your input/i)).toBeNull()
+  })
+
+  it('labels an undeliverable ask (no tool call id) as never asked', () => {
+    useTeamStore.setState({ pendingQuestion: null, resolvedQuestions: {} })
+
+    const { container } = render(
+      <AskUser
+        toolCallId="call-1"
+        args={JSON.stringify({ questions: QUESTION.questions })}
+        result={
+          'Your question could not be delivered (no tool call id). ' +
+          'Continue with your best judgment.'
+        }
+      />,
+    )
+
+    expect(container.textContent).not.toContain('Closed without an answer')
+    expect(screen.getByText(/not asked/i)).toBeInTheDocument()
+    expect(screen.queryByText(/needs your input/i)).toBeNull()
+  })
+
+  it('labels a restart-healed ask as interrupted, not closed without an answer', () => {
+    useTeamStore.setState({ pendingQuestion: null, resolvedQuestions: {} })
+
+    const { container } = render(
+      <AskUser
+        toolCallId="call-1"
+        args={JSON.stringify({ questions: QUESTION.questions })}
+        result="Tool execution was interrupted before a result could be recorded."
+      />,
+    )
+
+    expect(container.textContent).not.toContain('Closed without an answer')
+    expect(screen.getByText(/interrupted/i)).toBeInTheDocument()
+    expect(screen.queryByText(/needs your input/i)).toBeNull()
+  })
 })
 
 /**

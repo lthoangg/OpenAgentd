@@ -24,7 +24,7 @@ function PreviewFrame({
   children: React.ReactNode
 }) {
   return (
-    <div className="rounded-[10px] border border-(--color-border) bg-(--bg-page) p-4">
+    <div className="rounded-sm border border-(--color-border) bg-(--bg-page) p-4">
       <div className="mb-2">
         <h3 className="font-mono text-xs font-semibold uppercase tracking-wider text-(--color-text-2)">
           {title}
@@ -38,7 +38,7 @@ function PreviewFrame({
 
 export function ToolCallPreview() {
   return (
-    <section className="grid gap-5 rounded-[14px] border border-(--color-border) bg-(--bg-card) p-5 text-(--color-text)">
+    <section className="grid gap-5 rounded-sm border border-(--color-border) bg-(--bg-card) p-5 text-(--color-text)">
       <div>
         <h2 className="font-hand text-3xl font-bold">ToolCall lifecycle</h2>
         <p className="text-sm text-(--color-text-2)">

@@ -1,8 +1,9 @@
 import { memo, type Dispatch, type HTMLAttributes, type SetStateAction } from 'react'
-import { Home, FolderOpen, ListTodo, Menu, SlidersHorizontal } from 'lucide-react'
+import { Home, ListTodo, PanelLeft, PanelRight, SlidersHorizontal } from 'lucide-react'
 import type { NavigateFn } from '@tanstack/react-router'
 
 import { AgentTopbar, type AgentTopbarTokens } from '@/components/AgentTopbar'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { MobileHeaderAction } from './MobileHeaderAction'
 import { MobileChatActions } from './MobileChatActions'
 import { TodosPopover } from '@/components/TodosPopover'
@@ -84,8 +85,8 @@ export const TeamChatHeader = memo(function TeamChatHeader({
   onSelectAgent,
   onToggleScheduler,
   onCloseMobileActionsMenu,
-  viewMode,
-  onViewModeChange,
+  viewMode: _viewMode,
+  onViewModeChange: _onViewModeChange,
 }: TeamChatHeaderProps) {
   const activeTodoCount = todos.filter((todo) => todo.status === 'pending' || todo.status === 'in_progress').length
   const { os } = usePlatform()
@@ -93,7 +94,7 @@ export const TeamChatHeader = memo(function TeamChatHeader({
   return (
     <header
       {...dragHandlers}
-      className={`mobile-safe-header flex h-10 shrink-0 items-center overflow-hidden border-b border-(--color-border) bg-(--bg-page) ${
+      className={`mobile-safe-header flex h-(--spacing-app-header) shrink-0 items-center overflow-hidden border-b border-(--color-border) bg-(--bg-page) ${
         isMacOverlay ? 'select-none pl-[70px]' : ''
       }`}
     >
@@ -105,14 +106,13 @@ export const TeamChatHeader = memo(function TeamChatHeader({
             <a
               href="/"
               aria-label="Home"
-              title="Home"
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-sm text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-7 md:w-7"
               onClick={(event) => {
                 event.preventDefault()
                 navigate({ to: '/' })
               }}
             >
-              <Home size={16} aria-hidden="true" />
+              <Home size={14} strokeWidth={1.8} aria-hidden="true" />
             </a>
           )}
 
@@ -132,31 +132,40 @@ export const TeamChatHeader = memo(function TeamChatHeader({
               }
             }}
             aria-label="Toggle sidebar"
-            title={`Toggle sidebar (${formatShortcut('B', os)})`}
-            className="flex h-9 w-9 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-8 md:w-8"
+            className="flex h-8 w-8 items-center justify-center rounded-sm text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-7 md:w-7"
           >
-            <Menu size={16} aria-hidden="true" />
+            <PanelLeft size={14} strokeWidth={1.8} aria-hidden="true" />
           </button>
           {mode === 'coding' && workspace && !isMobile ? (
-            <span
-              className="ml-1 flex min-w-0 max-w-xs items-baseline gap-1 text-sm lg:max-w-md xl:max-w-xl"
-              title={sessionTitle ? `${workspaceLabel(workspace)}: ${sessionTitle}` : workspace}
-            >
-              <span className="shrink-0 font-semibold text-(--color-text)">{workspaceLabel(workspace)}</span>
-              {sessionTitle && (
-                <>
-                  <span className="shrink-0 text-(--color-text-muted)">·</span>
-                  <span className="truncate text-(--color-text-muted)">{sessionTitle}</span>
-                </>
-              )}
-            </span>
+            <Tooltip className="ml-1 min-w-0 max-w-xs lg:max-w-md xl:max-w-xl">
+              <TooltipTrigger
+                className="min-w-0 max-w-xs lg:max-w-md xl:max-w-xl"
+                render={
+                  <span className="flex min-w-0 max-w-xs items-baseline gap-1 text-sm lg:max-w-md xl:max-w-xl">
+                    <span className="shrink-0 font-semibold text-(--color-text)">{workspaceLabel(workspace)}</span>
+                    {sessionTitle && (
+                      <>
+                        <span className="shrink-0 text-(--color-text-muted)">·</span>
+                        <span className="truncate text-(--color-text-muted)">{sessionTitle}</span>
+                      </>
+                    )}
+                  </span>
+                }
+              />
+              <TooltipContent>{sessionTitle ? `${workspaceLabel(workspace)}: ${sessionTitle}` : workspace}</TooltipContent>
+            </Tooltip>
           ) : mode !== 'coding' && sessionTitle && !isMobile ? (
-            <span
-              className="ml-1 min-w-0 max-w-xs truncate text-sm font-semibold text-(--color-text) lg:max-w-md xl:max-w-xl"
-              title={sessionTitle}
-            >
-              {sessionTitle}
-            </span>
+            <Tooltip className="ml-1 min-w-0 max-w-xs lg:max-w-md xl:max-w-xl">
+              <TooltipTrigger
+                className="min-w-0 max-w-xs lg:max-w-md xl:max-w-xl"
+                render={
+                  <span className="min-w-0 max-w-xs truncate text-sm font-semibold text-(--color-text) lg:max-w-md xl:max-w-xl">
+                    {sessionTitle}
+                  </span>
+                }
+              />
+              <TooltipContent>{sessionTitle}</TooltipContent>
+            </Tooltip>
           ) : null}
         </div>
 
@@ -183,7 +192,7 @@ export const TeamChatHeader = memo(function TeamChatHeader({
 
         {/* Right cluster — desktop gets the full action row. Mobile keeps
             frequent actions visible and leaves secondary panels in More. */}
-        <div className="flex shrink-0 items-center gap-0.5">
+        <div className="flex shrink-0 items-center gap-0.5 md:pr-1">
         {isMobile ? (
           <>
             {headerTokens && (
@@ -191,6 +200,7 @@ export const TeamChatHeader = memo(function TeamChatHeader({
                 input={headerTokens.input}
                 output={headerTokens.output}
                 cached={headerTokens.cached}
+                cachedPercent={headerTokens.cachedPercent}
                 sessionCostUsd={headerTokens.sessionCostUsd}
                 trigger={headerTokens.trigger}
                 pulsing={headerTokens.pulsing}
@@ -206,7 +216,7 @@ export const TeamChatHeader = memo(function TeamChatHeader({
               active={showTodos}
             />
             <MobileHeaderAction
-              Icon={FolderOpen}
+              Icon={PanelRight}
               label={mode === 'coding' ? 'Workspace files' : 'Session files'}
               onClick={mode === 'coding'
                 ? workspace ? onWorkspaceFiles : undefined
@@ -237,8 +247,6 @@ export const TeamChatHeader = memo(function TeamChatHeader({
           <AgentTopbar
             isMobile={false}
             tokens={headerTokens}
-            viewMode={viewMode}
-            onViewModeChange={onViewModeChange}
             todosSlot={
               <TodosPopover
                 open={showTodos}
@@ -249,27 +257,20 @@ export const TeamChatHeader = memo(function TeamChatHeader({
             }
             filesAction={mode === 'coding'
               ? workspace ? {
-                  Icon: FolderOpen,
+                  Icon: PanelRight,
                   onClick: onWorkspaceFiles,
                   title: codingPanel === null ? 'Changed files and workspace files' : 'Close changed files and workspace files',
                   ariaLabel: 'Changed files and workspace files',
                   className: codingPanel !== null ? 'border border-(--color-border-strong) bg-(--bg-key) text-(--color-text)' : undefined,
                 } : undefined
               : {
-                  Icon: FolderOpen,
+                  Icon: PanelRight,
                   onClick: () => setShowFilesPanel((v) => !v),
                   disabled: !sessionId,
                   title: sessionId ? `Workspace files (${formatShortcut('F', os)})` : 'No active session',
                   ariaLabel: 'Workspace files',
                   className: showFilesPanel ? 'border border-(--color-border-strong) bg-(--bg-key) text-(--color-text)' : undefined,
                 }}
-            agentsAction={{
-              Icon: SlidersHorizontal,
-              onClick: onToggleAgentCapabilities,
-              title: `Session settings (${formatShortcut('A', os, { shift: true })})`,
-              ariaLabel: 'Session settings',
-              className: agentCapabilitiesOpen ? 'mr-2 bg-(--bg-key) text-(--color-text)' : 'mr-2',
-            }}
           />
         )}
         </div>

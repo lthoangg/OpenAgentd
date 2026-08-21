@@ -11,7 +11,10 @@ from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 from app.agent.hooks.lsp import LspHook
-from app.agent.sandbox import SandboxConfig, set_sandbox
+from app.agent.denied_paths import (
+    DeniedPathsConfig as SandboxConfig,
+    set_denied_paths as set_sandbox,
+)
 from app.agent.schemas.chat import ToolCall, FunctionCall
 from app.services.lsp.managed import managed_lsp_tools
 from app.services.lsp.manager import LspManager, check_lsp_diagnostics, lsp_manager
@@ -109,20 +112,27 @@ async def run_mocked_scenarios(tmp_path):
                 id="call_1",
                 type="function",
                 function=FunctionCall(
-                    name="write",
+                    name="patch",
                     arguments=json.dumps(
-                        {"path": "mock_test.py", "content": "def foo(\n"}
+                        {
+                            "patch_text": (
+                                "*** Begin Patch\n"
+                                "*** Add File: mock_test.py\n"
+                                "+def foo(\n"
+                                "*** End Patch\n"
+                            )
+                        }
                     ),
                 ),
             )
 
             async def handler(ctx, state, tool_call):
-                return "Written 9 bytes to mock_test.py"
+                return "Patch applied successfully. Updated paths:\nmock_test.py"
 
             res = await hook.wrap_tool_call(None, None, tc, handler)
             check(
                 "Mocked 4: hook result contains tool output",
-                "Written 9 bytes to mock_test.py" in res,
+                "Patch applied successfully" in res,
                 True,
             )
             check(

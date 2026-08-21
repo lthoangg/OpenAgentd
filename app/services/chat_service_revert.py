@@ -1,14 +1,40 @@
+"""Derived message-window logic: active summary, LLM window, undo/redo.
+
+The old model stored context membership as mutable flags
+(``exclude_from_context``, ``extra.hidden_from_user``) that compaction and
+revert flipped across many rows. This module derives everything from two
+immutable-ish columns instead:
+
+* ``seq``  — sparse per-session position; ordering key ``(seq, id)``.
+* ``kind`` — chat | note | queued | summary | reverted (+ ``pinned`` bool).
+
+Rules
+-----
+* **Active summary** — the ``kind='summary'`` row with the highest ``id``
+  (uuid7 encodes creation time, so the newest summary always supersedes older
+  ones no matter where they are anchored positionally). Under an undo
+  boundary, only summaries positioned before the boundary are candidates —
+  undoing past a summary therefore reactivates the previous one with no row
+  mutation at all.
+* **LLM window** — ``pinned`` rows, plus every ``chat``/``note``/``queued``
+  row positioned at/after the active summary, plus the active summary itself.
+  ``reverted`` rows and non-active summaries never appear.
+* **Undo/redo** — the boundary is a message row; all comparisons are
+  ``(seq, id)`` tuple tests. Nothing is restored or re-excluded dynamically:
+  the window under a boundary falls out of the same two rules above.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
 from uuid import UUID
 
+import sqlalchemy as sa
 from sqlmodel import col, or_, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.core.paths import session_workspace_dir
-from app.models.chat import ChatSession, SessionMessage
+from app.models.chat import ChatSession, MessageKind, SessionMessage
 from app.services import snapshot_service
 
 
@@ -21,6 +47,66 @@ class BoundaryShift:
     added: list[str] = field(default_factory=list)
     modified: list[str] = field(default_factory=list)
     removed: list[str] = field(default_factory=list)
+
+
+# ── Position helpers ──────────────────────────────────────────────────────────
+
+
+def _pos() -> sa.Tuple:
+    """The ``(seq, id)`` ordering key as a SQL row value.
+
+    Row-value comparisons (``(seq, id) < (?, ?)``) compile to a single range
+    bound on ``ix_session_messages_session_seq_id``; the equivalent OR-chain
+    (``seq < ? OR (seq = ? AND id < ?)``) only bounds the index on ``seq``
+    and evaluates the tie-break as a residual filter.
+    """
+    return sa.tuple_(col(SessionMessage.seq), col(SessionMessage.id))
+
+
+def _pos_value(seq: int, message_id: UUID) -> sa.Tuple:
+    """A concrete ``(seq, id)`` row value with correctly typed binds."""
+    return sa.tuple_(
+        sa.literal(seq),
+        # ``SessionMessage.id`` maps to ``sa.Uuid()`` — bind with the same
+        # type so the literal serialises to the stored 32-char hex form.
+        sa.literal(message_id, type_=sa.Uuid()),
+    )
+
+
+def before_pos(row: SessionMessage):
+    """SQL predicate: strictly before *row* in ``(seq, id)`` order."""
+    return _pos() < _pos_value(row.seq, row.id)
+
+
+def at_or_after_pos(row: SessionMessage):
+    """SQL predicate: at/after *row* in ``(seq, id)`` order."""
+    return _pos() >= _pos_value(row.seq, row.id)
+
+
+def after_pos(row: SessionMessage):
+    """SQL predicate: strictly after *row* in ``(seq, id)`` order."""
+    return _pos() > _pos_value(row.seq, row.id)
+
+
+def before_cursor_predicate(seq: int, message_id: UUID):
+    """SQL predicate: strictly before the ``(seq, id)`` cursor."""
+    return _pos() < _pos_value(seq, message_id)
+
+
+def after_cursor_predicate(seq: int, message_id: UUID):
+    """SQL predicate: strictly after the ``(seq, id)`` cursor."""
+    return _pos() > _pos_value(seq, message_id)
+
+
+def order_by_pos(stmt, *, desc: bool = False):
+    if desc:
+        return stmt.order_by(
+            col(SessionMessage.seq).desc(), col(SessionMessage.id).desc()
+        )
+    return stmt.order_by(col(SessionMessage.seq).asc(), col(SessionMessage.id).asc())
+
+
+# ── Revert boundary ───────────────────────────────────────────────────────────
 
 
 def revert_message_id(session: ChatSession | None) -> UUID | None:
@@ -47,131 +133,118 @@ async def revert_boundary(db: AsyncSession, session_id: UUID) -> SessionMessage 
     return row
 
 
-async def boundary_created_at(db: AsyncSession, session_id: UUID) -> datetime | None:
-    boundary = await revert_boundary(db, session_id)
-    return boundary.created_at if boundary else None
+# ── Active summary and window statements ─────────────────────────────────────
 
 
-def before_boundary(stmt, boundary: datetime | None):
-    if boundary is None:
-        return stmt
-    return stmt.where(col(SessionMessage.created_at) < boundary)
-
-
-def history_messages_stmt(session_id: UUID, boundary: datetime | None = None):
-    stmt = select(SessionMessage).where(col(SessionMessage.session_id) == session_id)
-    if boundary is not None:
-        stmt = before_boundary(stmt, boundary)
-    return stmt.order_by(
-        col(SessionMessage.created_at).asc(), col(SessionMessage.id).asc()
-    )
-
-
-def llm_history_messages_stmt(session_id: UUID):
-    """Select the rows needed for the ordinary, non-reverted LLM window."""
-    queued = col(SessionMessage.extra)["queue_status"].as_string() == "queued"
-    return (
-        select(SessionMessage)
-        .where(col(SessionMessage.session_id) == session_id)
-        .where(
-            or_(
-                ~col(SessionMessage.exclude_from_context),
-                col(SessionMessage.is_summary),
-                queued,
-            )
-        )
-        .order_by(col(SessionMessage.created_at).asc(), col(SessionMessage.id).asc())
-    )
-
-
-async def get_dynamically_visible_messages(
+async def get_active_summary(
     db: AsyncSession,
     session_id: UUID,
-    boundary: datetime | None,
-    rows: list[SessionMessage],
-) -> list[SessionMessage]:
-    """Filter rows dynamically taking the latest active summary into account.
-
-    If the latest summary is at or after the boundary it is excluded from rows
-    and therefore not active.  The latest active summary is the last summary
-    remaining in rows.  When an undo is in effect (boundary is not None) any
-    message that was excluded *only* because of a summary that has itself been
-    undone is dynamically restored.
-
-    Over-restore guard: we only un-exclude a message when the *nearest* undone
-    summary that would have excluded it is the summary being undone — not just
-    any summary beyond the boundary.  Concretely, a message is restorable when
-    the boundary falls inside a range (prev_summary.created_at, undone_summary
-    .created_at] — meaning no still-active summary sits between the message and
-    the boundary.
-    """
-    # Collect the created_at of the immediately-undone summary (the one at or
-    # just after the boundary).  We only want the *earliest* one >= boundary so
-    # we avoid restoring messages that belong to a later, still-active summary.
-    undone_summary_time: datetime | None = None
-    if boundary is not None:
-        result = (
-            await db.exec(
-                select(SessionMessage.created_at)
-                .where(col(SessionMessage.session_id) == session_id)
-                .where(col(SessionMessage.is_summary))
-                .where(col(SessionMessage.created_at) >= boundary)
-                .order_by(col(SessionMessage.created_at).asc())
-                .limit(1)
-            )
-        ).first()
-        undone_summary_time = result  # None when no summary was undone
-
-    # Find the latest active summary still visible in rows (i.e., not undone).
-    active_summary = None
-    for row in reversed(rows):
-        if row.is_summary and not is_hidden_from_user(row):
-            active_summary = row
-            break
-
-    # Compute the lower bound below which a restored message must not fall.
-    # If there is still an active summary, messages at or before it that are
-    # excluded remain excluded (they belong to that summary's compaction window).
-    restore_floor: datetime | None = (
-        active_summary.created_at if active_summary is not None else None
+    boundary: SessionMessage | None = None,
+) -> SessionMessage | None:
+    """Newest-created summary row, optionally restricted to before *boundary*."""
+    stmt = (
+        select(SessionMessage)
+        .where(col(SessionMessage.session_id) == session_id)
+        .where(col(SessionMessage.kind) == MessageKind.SUMMARY)
+        .order_by(col(SessionMessage.id).desc())
+        .limit(1)
     )
-
-    visible: list[SessionMessage] = []
-    for row in rows:
-        # Queued messages are never excluded from visibility.
-        if row.extra and row.extra.get("queue_status") == "queued":
-            is_excluded = False
-        else:
-            is_excluded = row.exclude_from_context
-            if is_excluded and undone_summary_time is not None:
-                # Restore only if this message was compacted by the undone
-                # summary (its created_at < undone_summary_time) and it is not
-                # covered by a still-active summary below the boundary.
-                before_undone = row.created_at < undone_summary_time
-                above_floor = restore_floor is None or row.created_at > restore_floor
-                if before_undone and above_floor:
-                    is_excluded = False
-
-        if row.is_summary:
-            if active_summary is not None and row.id == active_summary.id:
-                visible.append(row)
-            # All other summary rows (older or hidden) are excluded.
-        elif not is_excluded:
-            visible.append(row)
-
-    return visible
+    if boundary is not None:
+        stmt = stmt.where(before_pos(boundary))
+    return (await db.exec(stmt)).first()
 
 
-def is_hidden_from_user(row: SessionMessage) -> bool:
-    return bool(row.extra and row.extra.get("hidden_from_user"))
+def history_messages_stmt(session_id: UUID, boundary: SessionMessage | None = None):
+    """Every row of the session in position order (audit view)."""
+    stmt = select(SessionMessage).where(col(SessionMessage.session_id) == session_id)
+    if boundary is not None:
+        stmt = stmt.where(before_pos(boundary))
+    return order_by_pos(stmt)
+
+
+def llm_window_stmt(
+    session_id: UUID,
+    summary: SessionMessage | None,
+    boundary: SessionMessage | None = None,
+):
+    """Rows of the derived LLM window in position order.
+
+    Callers obtain *summary* via :func:`get_active_summary` (with the same
+    *boundary*) so the two queries agree on which summary is active.
+    """
+    return _apply_llm_window(select(SessionMessage), session_id, summary, boundary)
+
+
+def llm_tool_pair_stmt(
+    session_id: UUID,
+    summary: SessionMessage | None,
+    boundary: SessionMessage | None = None,
+):
+    """Narrow LLM-window projection used by orphaned tool-call healing."""
+    stmt = select(
+        SessionMessage.seq,
+        SessionMessage.tool_calls,
+        SessionMessage.tool_call_id,
+        SessionMessage.created_at,
+    )
+    return _apply_llm_window(stmt, session_id, summary, boundary)
+
+
+def _apply_llm_window(
+    stmt,
+    session_id: UUID,
+    summary: SessionMessage | None,
+    boundary: SessionMessage | None,
+):
+    """Apply derived-window filters/order to a model or column projection."""
+    stmt = stmt.where(col(SessionMessage.session_id) == session_id).where(
+        col(SessionMessage.kind) != MessageKind.REVERTED
+    )
+    if summary is not None:
+        stmt = stmt.where(
+            or_(col(SessionMessage.pinned), at_or_after_pos(summary))
+        ).where(
+            or_(
+                col(SessionMessage.kind) != MessageKind.SUMMARY,
+                col(SessionMessage.id) == summary.id,
+            )
+        )
+    else:
+        # No active summary (none exist, or all sit beyond the boundary /
+        # were reverted) — those rows are excluded by the predicates below.
+        stmt = stmt.where(col(SessionMessage.kind) != MessageKind.SUMMARY)
+    if boundary is not None:
+        stmt = stmt.where(before_pos(boundary))
+    return order_by_pos(stmt)
+
+
+def user_visible_predicate():
+    """SQL predicate for rows the user-facing transcript shows."""
+    return col(SessionMessage.kind).notin_((MessageKind.NOTE, MessageKind.REVERTED))
+
+
+# ── Undo / redo ───────────────────────────────────────────────────────────────
+
+
+def _real_user_predicate():
+    """Rows authored by the human user (not another agent).
+
+    ``from_agent`` lives in ``extra`` — it is only consulted by these cold,
+    LIMIT-1 undo/redo lookups, never on a hot path.
+    """
+    from_agent = col(SessionMessage.extra)["from_agent"].as_string()
+    return sa.and_(
+        col(SessionMessage.role) == "user",
+        or_(from_agent.is_(None), from_agent == "user"),
+    )
 
 
 def is_undo_target(row: SessionMessage) -> bool:
-    if is_hidden_from_user(row):
+    if row.kind not in (MessageKind.CHAT, MessageKind.SUMMARY):
         return False
     if row.extra and row.extra.get("from_agent") not in (None, "user"):
         return False
-    return row.is_summary or not row.exclude_from_context
+    return True
 
 
 def message_snapshot(row: SessionMessage | None) -> str | None:
@@ -194,25 +267,27 @@ async def undo_session_messages(db: AsyncSession, session_id: UUID) -> BoundaryS
     if session is None:
         return BoundaryShift(applied=False)
     boundary = await revert_boundary(db, session_id)
-    from_agent = col(SessionMessage.extra)["from_agent"].as_string()
-    hidden_from_user = col(SessionMessage.extra)["hidden_from_user"].as_boolean()
+
+    # Undo targets: real user messages still in the LLM window (rows compacted
+    # below the active summary are not targets — same as the old model), plus
+    # any summary row (undoing "to" a summary reverts the compaction itself).
+    active = await get_active_summary(db, session_id)
     stmt = (
         select(SessionMessage)
         .where(col(SessionMessage.session_id) == session_id)
-        .where(col(SessionMessage.role) == "user")
-        .where(or_(from_agent.is_(None), from_agent == "user"))
-        .where(or_(hidden_from_user.is_(None), hidden_from_user.is_(False)))
-        .where(
+        .where(_real_user_predicate())
+        .where(col(SessionMessage.kind).in_((MessageKind.CHAT, MessageKind.SUMMARY)))
+    )
+    if active is not None:
+        stmt = stmt.where(
             or_(
-                col(SessionMessage.is_summary),
-                ~col(SessionMessage.exclude_from_context),
+                col(SessionMessage.kind) == MessageKind.SUMMARY,
+                at_or_after_pos(active),
             )
         )
-        .order_by(col(SessionMessage.created_at).desc())
-        .limit(1)
-    )
     if boundary is not None:
-        stmt = stmt.where(col(SessionMessage.created_at) < boundary.created_at)
+        stmt = stmt.where(before_pos(boundary))
+    stmt = order_by_pos(stmt, desc=True).limit(1)
     rows = (await db.exec(stmt)).all()
     target = next((row for row in rows if is_undo_target(row)), None)
     if target is None:
@@ -238,7 +313,10 @@ async def undo_session_messages(db: AsyncSession, session_id: UUID) -> BoundaryS
         )
         added, modified, removed = result.added, result.modified, result.removed
 
-    revert_state: dict = {"message_id": str(target.id)}
+    revert_state: dict = {
+        "message_id": str(target.id),
+        "created_at": target.created_at.isoformat(),
+    }
     if anchor:
         revert_state["snapshot"] = anchor
     session.revert = revert_state
@@ -259,16 +337,15 @@ async def redo_session_messages(db: AsyncSession, session_id: UUID) -> BoundaryS
     if session is None or boundary is None:
         return BoundaryShift(applied=False)
     anchor = redo_anchor(session)
-    from_agent = col(SessionMessage.extra)["from_agent"].as_string()
     next_user = (
         await db.exec(
-            select(SessionMessage)
-            .where(col(SessionMessage.session_id) == session_id)
-            .where(col(SessionMessage.role) == "user")
-            .where(col(SessionMessage.created_at) > boundary.created_at)
-            .where(or_(from_agent.is_(None), from_agent == "user"))
-            .order_by(col(SessionMessage.created_at).asc())
-            .limit(1)
+            order_by_pos(
+                select(SessionMessage)
+                .where(col(SessionMessage.session_id) == session_id)
+                .where(_real_user_predicate())
+                .where(col(SessionMessage.kind) == MessageKind.CHAT)
+                .where(after_pos(boundary))
+            ).limit(1)
         )
     ).first()
 
@@ -288,7 +365,10 @@ async def redo_session_messages(db: AsyncSession, session_id: UUID) -> BoundaryS
                 str(session_id), workspace, next_snapshot
             )
             added, modified, removed = result.added, result.modified, result.removed
-        revert_state: dict = {"message_id": str(next_user.id)}
+        revert_state: dict = {
+            "message_id": str(next_user.id),
+            "created_at": next_user.created_at.isoformat(),
+        }
         if anchor:
             revert_state["snapshot"] = anchor
         session.revert = revert_state
@@ -303,63 +383,53 @@ async def redo_session_messages(db: AsyncSession, session_id: UUID) -> BoundaryS
     )
 
 
+async def redo_all_session_messages(
+    db: AsyncSession, session_id: UUID
+) -> BoundaryShift:
+    session = await db.get(ChatSession, session_id)
+    boundary = await revert_boundary(db, session_id)
+    if session is None or boundary is None:
+        return BoundaryShift(applied=False)
+    anchor = redo_anchor(session)
+    workspace = session_workspace_dir(str(session_id), session.workspace)
+    added: list[str] = []
+    modified: list[str] = []
+    removed: list[str] = []
+    if anchor:
+        result = await snapshot_service.restore(str(session_id), workspace, anchor)
+        added, modified, removed = result.added, result.modified, result.removed
+    session.revert = None
+    db.add(session)
+    await db.flush()
+    return BoundaryShift(
+        applied=True,
+        target=None,
+        added=added,
+        modified=modified,
+        removed=removed,
+    )
+
+
 async def cleanup_reverted_tail(db: AsyncSession, session_id: UUID) -> int:
+    """Materialise an undo: everything at/after the boundary becomes ``reverted``.
+
+    Queued rows survive (they belong to the *next* turn). No restoration
+    bookkeeping is needed for anything else: with the tail reverted, the
+    previous summary — and the rows it kept — are back in the derived window
+    automatically.
+    """
     session = await db.get(ChatSession, session_id)
     boundary = await revert_boundary(db, session_id)
     if session is None or boundary is None:
         return 0
-    rows = (
-        await db.exec(
-            select(SessionMessage)
-            .where(col(SessionMessage.session_id) == session_id)
-            .where(col(SessionMessage.created_at) >= boundary.created_at)
-        )
-    ).all()
-    cleaned = 0
-    for row in rows:
-        if row.extra and row.extra.get("queue_status") == "queued":
-            continue
-        extra = dict(row.extra or {})
-        extra["hidden_from_user"] = True
-        row.extra = extra
-        row.exclude_from_context = True
-        db.add(row)
-        cleaned += 1
-    if boundary.is_summary:
-        previous_summaries = (
-            await db.exec(
-                select(SessionMessage)
-                .where(col(SessionMessage.session_id) == session_id)
-                .where(col(SessionMessage.is_summary))
-                .where(col(SessionMessage.created_at) < boundary.created_at)
-                .order_by(col(SessionMessage.created_at).desc())
-            )
-        ).all()
-        previous_summary = next(
-            (row for row in previous_summaries if not is_hidden_from_user(row)), None
-        )
-        if previous_summary is not None:
-            previous_summary.exclude_from_context = False
-            db.add(previous_summary)
-        restored = (
-            await db.exec(
-                select(SessionMessage)
-                .where(col(SessionMessage.session_id) == session_id)
-                .where(col(SessionMessage.created_at) < boundary.created_at)
-                .where(~col(SessionMessage.is_summary))
-                .where(col(SessionMessage.exclude_from_context))
-            )
-        ).all()
-        for row in restored:
-            if is_hidden_from_user(row):
-                continue
-            if (
-                previous_summary is not None
-                and row.created_at <= previous_summary.created_at
-            ):
-                continue
-            row.exclude_from_context = False
-            db.add(row)
+    result = await db.exec(
+        sa.update(SessionMessage)
+        .where(col(SessionMessage.session_id) == session_id)
+        .where(at_or_after_pos(boundary))
+        .where(col(SessionMessage.kind) != MessageKind.QUEUED)
+        .values(kind=MessageKind.REVERTED)
+    )
+    cleaned = int(getattr(result, "rowcount", 0) or 0)
     session.revert = None
     db.add(session)
     await db.flush()
@@ -372,49 +442,90 @@ async def exclude_messages_before_summary(
     summary_message_id: UUID,
     keep_last_n: int = 0,
 ) -> int:
+    """Anchor a freshly saved summary so it covers all but the last *n* rows.
+
+    The caller has already saved the summary row (it is the newest summary, so
+    it is the active one by construction). Compaction coverage is positional:
+    reposition the summary's ``seq`` directly before the ``keep_last_n``-th
+    visible row from the end, and clear ``pinned`` on anything left below it —
+    a manual compact keeps nothing scattered.
+
+    Returns the number of rows that left the LLM window.
+    """
     summary_msg = await db.get(SessionMessage, summary_message_id)
-    if summary_msg is None:
+    if summary_msg is None or summary_msg.session_id != session_id:
         return 0
 
-    old_summaries_stmt = (
-        select(SessionMessage)
-        .where(col(SessionMessage.session_id) == session_id)
-        .where(col(SessionMessage.is_summary))
-        .where(col(SessionMessage.id) != summary_message_id)
-        .where(~col(SessionMessage.exclude_from_context))
-    )
-    old_summaries = list((await db.exec(old_summaries_stmt)).all())
-    for row in old_summaries:
-        row.exclude_from_context = True
-        db.add(row)
+    previous = await get_active_summary(db, session_id)
 
-    stmt = (
-        select(SessionMessage)
+    # Candidate rows: window kinds positioned before the summary — rows after
+    # it belong to the ongoing conversation and are never covered. When the
+    # caller compacts with a non-newest summary (legacy path), restrict to
+    # the current active summary's window, mirroring what the derived view
+    # considers live.
+    def _candidates_stmt(stmt):
+        stmt = (
+            stmt.where(col(SessionMessage.session_id) == session_id)
+            .where(
+                col(SessionMessage.kind).in_(
+                    (MessageKind.CHAT, MessageKind.NOTE, MessageKind.QUEUED)
+                )
+            )
+            .where(before_pos(summary_msg))
+        )
+        if previous is not None and previous.id != summary_msg.id:
+            stmt = stmt.where(
+                or_(col(SessionMessage.pinned), at_or_after_pos(previous))
+            )
+        return stmt
+
+    total_before = (
+        await db.exec(
+            _candidates_stmt(select(sa.func.count()).select_from(SessionMessage))
+        )
+    ).first() or 0
+
+    # ``first_kept`` is the keep_last_n-th candidate from the end (or the
+    # oldest candidate when fewer exist) — fetched directly instead of
+    # loading the whole window into memory.
+    first_kept: SessionMessage | None = None
+    if keep_last_n > 0 and total_before > 0:
+        first_kept = (
+            await db.exec(
+                order_by_pos(_candidates_stmt(select(SessionMessage)), desc=True)
+                .limit(1)
+                .offset(min(keep_last_n, total_before) - 1)
+            )
+        ).first()
+    covered = total_before if keep_last_n <= 0 else max(0, total_before - keep_last_n)
+
+    if first_kept is not None:
+        prev_seq_result = await db.exec(
+            select(sa.func.max(SessionMessage.seq))
+            .where(col(SessionMessage.session_id) == session_id)
+            .where(col(SessionMessage.seq) < first_kept.seq)
+        )
+        prev_seq = prev_seq_result.first() or 0
+        gap = first_kept.seq - prev_seq
+        summary_msg.seq = prev_seq + gap // 2 if gap >= 2 else prev_seq
+        db.add(summary_msg)
+
+    # A manual compact retains nothing below the summary.
+    await db.exec(
+        sa.update(SessionMessage)
         .where(col(SessionMessage.session_id) == session_id)
+        .where(col(SessionMessage.pinned))
         .where(
             or_(
-                col(SessionMessage.created_at) < summary_msg.created_at,
-                (
-                    col(SessionMessage.created_at) == summary_msg.created_at
-                    and col(SessionMessage.id) != summary_msg.id
-                    and ~col(SessionMessage.is_summary)
+                col(SessionMessage.seq) < summary_msg.seq,
+                sa.and_(
+                    col(SessionMessage.seq) == summary_msg.seq,
+                    col(SessionMessage.id) < summary_msg.id,
                 ),
             )
         )
-        .where(~col(SessionMessage.exclude_from_context))
-        .where(~col(SessionMessage.is_summary))
-        .order_by(col(SessionMessage.created_at).asc())
+        .values(pinned=False)
     )
-    rows = list((await db.exec(stmt)).all())
-
-    if keep_last_n > 0 and len(rows) > keep_last_n:
-        rows_to_exclude = rows[:-keep_last_n]
-    else:
-        rows_to_exclude = rows if keep_last_n == 0 else []
-
-    for row in rows_to_exclude:
-        row.exclude_from_context = True
-        db.add(row)
 
     await db.flush()
-    return len(old_summaries) + len(rows_to_exclude)
+    return covered

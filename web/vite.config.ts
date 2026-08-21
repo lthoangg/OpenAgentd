@@ -19,7 +19,7 @@ export default defineConfig({
   ],
   resolve: {
     alias: {
-      "@": path.resolve(__dirname, "./src"),
+      "@": path.resolve(import.meta.dirname, "./src"),
     },
   },
   server: {
@@ -54,9 +54,10 @@ export default defineConfig({
             // Animation (framer-motion is large ~150 kB gz).
             { name: "motion", test: /node_modules[\\/]framer-motion[\\/]/, priority: 90 },
             // Syntax highlighting — separate from "markdown" because the app
-            // shell statically imports highlight.js (ToolCall shell commands,
-            // CodingFileViewerPanel); shared by the lazy markdown chunk.
-            { name: "syntax", test: /node_modules[\\/](highlight\.js|lowlight)[\\/]/, priority: 85 },
+            // shell statically imports the highlighter (ToolCall shell
+            // commands, CodingFileViewerPanel); shared by the lazy markdown
+            // chunk.
+            { name: "syntax", test: /node_modules[\\/]@tanstack[\\/]highlight[\\/]/, priority: 85 },
             // Markdown remains behind LazyMarkdownBlock's dynamic import.
             // Do not force its dependency graph into a named group: Rolldown
             // can otherwise emit a vendor chunk that imports its own dynamic

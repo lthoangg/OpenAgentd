@@ -14,7 +14,7 @@
  *     (goTo / onClose) or when scale needs to reset between items.
  *
  * No framer-motion used here — it is kept only for the components that already
- * use it (Sidebar, InputBar, ToastStack…). This component uses only the
+ * use it (Sidebar, InputComposer, ToastStack…). This component uses only the
  * platform: CSS transitions + the Composite layer via transform/opacity.
  */
 
@@ -22,6 +22,7 @@ import {
   useCallback, useEffect, useLayoutEffect, useRef, useState,
   type ReactNode,
 } from 'react'
+import { useHotkey } from '@tanstack/react-hotkeys'
 import { createPortal } from 'react-dom'
 import { ChevronLeft, ChevronRight, Download, ExternalLink, File, X } from 'lucide-react'
 import { haptic } from '@/lib/haptics'
@@ -387,12 +388,6 @@ export function FileLightbox({ items, index = 0, isOpen, onClose, labelMode = 'f
   /** The <img> element inside FileLightboxImage — transformed for drag/zoom. */
   const imgRef      = useRef<HTMLImageElement>(null)
 
-  // Direction ref (1 = forward/next, -1 = backward/prev) — read in the slide
-  // useLayoutEffect, updated synchronously in goTo before setCurrent.
-  const directionRef  = useRef(1)
-  // Stores the pending rAF id for the slide animation so rapid navigation doesn't queue stale frames.
-  const slideRafRef   = useRef<number>(0)
-
   // ── Gallery gesture state (image pan/zoom is owned by usePanZoom) ───────
   const touchStartXRef = useRef(0)
   const touchStartYRef = useRef(0)
@@ -406,53 +401,15 @@ export function FileLightbox({ items, index = 0, isOpen, onClose, labelMode = 'f
     if (slideRef.current) slideRef.current.style.transform = `translate3d(${dx}px, ${dy}px, 0)`
   }, [])
 
-  // Tracks the last rendered current value to check if we actually changed current index.
-  const lastCurrentRef  = useRef<number | null>(null)
-
   // ── Overlay fade-in ─────────────────────────────────────────────────────────
   useLayoutEffect(() => {
-    if (!isOpen) {
-      lastCurrentRef.current = null
-      return
-    }
+    if (!isOpen) return
     const el = overlayRef.current
     if (!el) return
     el.style.opacity = '0'
     const id = requestAnimationFrame(() => { el.style.opacity = '1' })
     return () => cancelAnimationFrame(id)
   }, [isOpen])
-
-  // ── Gallery slide animation ────────────────────────────────────────────────
-  useLayoutEffect(() => {
-    if (!isOpen) return
-    const el = slideRef.current
-    if (!el) return
-
-    if (lastCurrentRef.current === null || lastCurrentRef.current === current) {
-      lastCurrentRef.current = current
-      el.style.transition = 'none'
-      el.style.transform  = 'translate3d(0, 0, 0)'
-      el.style.opacity    = '1'
-      return
-    }
-
-    cancelAnimationFrame(slideRafRef.current)
-    const dir = directionRef.current
-    el.style.transition = 'none'
-    el.style.transform  = `translate3d(${dir * 32}px, 0, 0)`
-    el.style.opacity    = '0'
-
-    // Force reflow so browser registers starting state before transition starts
-    void el.offsetWidth
-
-    slideRafRef.current = requestAnimationFrame(() => {
-      el.style.transition = `transform 240ms cubic-bezier(0.25, 0.46, 0.45, 0.94), opacity 240ms cubic-bezier(0.25, 0.46, 0.45, 0.94)`
-      el.style.transform  = 'translate3d(0, 0, 0)'
-      el.style.opacity    = '1'
-    })
-    lastCurrentRef.current = current
-    return () => cancelAnimationFrame(slideRafRef.current)
-  }, [current, isOpen])
 
   // ── Index sync on (re)open ─────────────────────────────────────────────────
   useEffect(() => {
@@ -468,8 +425,6 @@ export function FileLightbox({ items, index = 0, isOpen, onClose, labelMode = 'f
     setCurrent((prev) => {
       const target = ((next % items.length) + items.length) % items.length
       if (target !== prev) {
-        const forward = next > prev || (prev === items.length - 1 && next === 0)
-        directionRef.current = forward ? 1 : -1
         haptic('select')
       }
       return target
@@ -484,25 +439,23 @@ export function FileLightbox({ items, index = 0, isOpen, onClose, labelMode = 'f
   const goPrev = useCallback(() => goTo(current - 1), [current, goTo])
   const goNext = useCallback(() => goTo(current + 1), [current, goTo])
 
-  // ── Keyboard nav + scroll lock ─────────────────────────────────────────────
+  // ── Scroll lock + Keyboard nav ──────────────────────────────────────────────
   useEffect(() => {
     if (!isOpen) return
-    const handle = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
-      else if (hasMultiple && e.key === 'ArrowLeft')  { e.preventDefault(); goPrev() }
-      else if (hasMultiple && e.key === 'ArrowRight') { e.preventDefault(); goNext() }
-      else if (activeTypeRef.current === 'image' && (e.key === '+' || e.key === '=')) { e.preventDefault(); zoomIn() }
-      else if (activeTypeRef.current === 'image' && e.key === '-') { e.preventDefault(); zoomOut() }
-      else if (activeTypeRef.current === 'image' && e.key === '0') { e.preventDefault(); resetZoom() }
-    }
     const prev = document.body.style.overflow
     document.body.style.overflow = 'hidden'
-    document.addEventListener('keydown', handle)
     return () => {
-      document.removeEventListener('keydown', handle)
       document.body.style.overflow = prev
     }
-  }, [isOpen, onClose, hasMultiple, goPrev, goNext, zoomIn, zoomOut, resetZoom])
+  }, [isOpen])
+
+  useHotkey('Escape', onClose, { enabled: isOpen })
+  useHotkey('ArrowLeft', goPrev, { enabled: Boolean(isOpen && hasMultiple), preventDefault: true })
+  useHotkey('ArrowRight', goNext, { enabled: Boolean(isOpen && hasMultiple), preventDefault: true })
+  useHotkey({ key: '+' }, zoomIn, { enabled: Boolean(isOpen && activeTypeRef.current === 'image'), preventDefault: true })
+  useHotkey('=', zoomIn, { enabled: Boolean(isOpen && activeTypeRef.current === 'image'), preventDefault: true })
+  useHotkey('-', zoomOut, { enabled: Boolean(isOpen && activeTypeRef.current === 'image'), preventDefault: true })
+  useHotkey('0', resetZoom, { enabled: Boolean(isOpen && activeTypeRef.current === 'image'), preventDefault: true })
 
   // ── Close ──────────────────────────────────────────────────────────────────
   const closeLightbox = useCallback(() => {

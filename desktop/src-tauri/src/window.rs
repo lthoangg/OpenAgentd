@@ -26,7 +26,7 @@ pub const ZOOM_DEFAULT: f64 = 1.0;
 /// from Rust because the JSON config value is ignored when the window is
 /// built via ``WebviewWindowBuilder``. ``y`` is a *bottom* inset (tao
 /// resizes the native title-bar to ``button_height + y`` — tao 0.35.x,
-/// macos/view.rs:1152); 22 pt centres against our 40 pt header.
+/// macos/view.rs:1152); 20 pt centres against our 36 pt header.
 pub fn configure_window_chrome(
     builder: WebviewWindowBuilder<'_, tauri::Wry, AppHandle>,
 ) -> WebviewWindowBuilder<'_, tauri::Wry, AppHandle> {
@@ -36,7 +36,7 @@ pub fn configure_window_chrome(
         builder
             .title_bar_style(TitleBarStyle::Overlay)
             .hidden_title(true)
-            .traffic_light_position(LogicalPosition::new(12.0, 22.0))
+            .traffic_light_position(LogicalPosition::new(12.0, 20.0))
     }
     #[cfg(not(target_os = "macos"))]
     {

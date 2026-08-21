@@ -1,4 +1,5 @@
 import { FileText, FileType, File as FileIcon, X } from 'lucide-react'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { openExternalUrl } from '@/lib/open-external'
 
 interface FileCardProps {
@@ -49,32 +50,44 @@ export function FileCard({
 
   return (
     <div className="group relative inline-block">
-      <button
-        onClick={handleClick}
-        disabled={!clickable}
-        className={`flex items-center gap-2 rounded-sm border border-(--color-border) bg-(--bg-card) px-2.5 py-1.5 text-xs text-(--color-text) transition-colors ${
-          clickable ? 'cursor-pointer hover:border-(--color-border-strong) hover:bg-(--bg-key)/40' : ''
-        }`}
-        title={name}
-      >
-        <span className="flex-shrink-0 text-(--color-text-muted)">
-          {getFileIcon(mediaType)}
-        </span>
-        <span className="flex-shrink-0 font-medium">{displayName}</span>
-      </button>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <button
+              onClick={handleClick}
+              disabled={!clickable}
+              className={`flex items-center gap-2 rounded-sm border border-(--color-border) bg-(--bg-card) px-2.5 py-1.5 text-xs text-(--color-text) transition-colors ${
+                clickable ? 'cursor-pointer hover:border-(--color-border-strong) hover:bg-(--bg-key)/40' : ''
+              }`}
+            >
+              <span className="flex-shrink-0 text-(--color-text-muted)">
+                {getFileIcon(mediaType)}
+              </span>
+              <span className="flex-shrink-0 font-medium">{displayName}</span>
+            </button>
+          }
+        />
+        <TooltipContent>{name}</TooltipContent>
+      </Tooltip>
 
       {removable && onRemove && (
-        <button
-          onClick={(e) => {
-            e.stopPropagation()
-            onRemove()
-          }}
-          className="absolute -right-2 -top-2 flex h-7 w-7 items-center justify-center rounded-sm border border-(--color-border) bg-(--bg-card) text-(--color-text-muted) shadow-sm opacity-100 transition-colors hover:border-(--color-border-strong) hover:text-(--color-text) md:-right-1.5 md:-top-1.5 md:h-4 md:w-4 md:opacity-0 md:group-hover:opacity-100"
-          aria-label="Remove file"
-          title="Remove"
-        >
-          <X size={12} className="md:h-2.5 md:w-2.5" />
-        </button>
+        <Tooltip className="absolute -right-2 -top-2 z-10 md:-right-1.5 md:-top-1.5">
+          <TooltipTrigger
+            render={
+              <button
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onRemove()
+                }}
+                className="flex h-7 w-7 items-center justify-center rounded-sm border border-(--color-border) bg-(--bg-card) text-(--color-text-muted) shadow-sm opacity-100 transition-colors hover:border-(--color-border-strong) hover:text-(--color-text) md:h-4 md:w-4 md:opacity-0 md:group-hover:opacity-100"
+                aria-label="Remove file"
+              >
+                <X size={12} className="md:h-2.5 md:w-2.5" />
+              </button>
+            }
+          />
+          <TooltipContent>Remove</TooltipContent>
+        </Tooltip>
       )}
     </div>
   )

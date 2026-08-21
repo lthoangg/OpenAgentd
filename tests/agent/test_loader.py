@@ -13,7 +13,9 @@ from app.agent.loader import (
     AgentConfig,
     _build_agent,
     _default_tool_registry,
+    _FRONTMATTER_RE,
     parse_agent_md,
+    rebuild_agent_from_disk,
 )
 
 
@@ -172,11 +174,10 @@ def test_default_tool_registry_keys():
     expected = {
         "web_search",
         "web_fetch",
-        "date",
         "read",
-        "write",
-        "ls",
+        "patch",
         "glob",
+        "grep",
         "shell",
         "skill",
         "todo_manage",
@@ -781,7 +782,7 @@ def test_coding_explorer_builtin_member_profile_checks_codebase(tmp_path):
     assert coding_agent.system_prompt == profile["prompt"]
     assert "current codebase" in coding_agent.system_prompt
     assert "grep" in coding_agent._tools
-    assert "write" not in coding_agent._tools
+    assert "patch" not in coding_agent._tools
 
 
 def test_openagentd_coding_lead_uses_coding_builtin_prompt(tmp_path):
@@ -1306,3 +1307,122 @@ def test_todo_and_schedule_injected_into_lead():
     agent = _build_agent(cfg, {}, factory)
     assert "todo_manage" in agent._tools
     assert "schedule_task" in agent._tools
+
+
+# ---------------------------------------------------------------------------
+# Unknown-tool pruning from user agent files
+# ---------------------------------------------------------------------------
+
+
+def test_unknown_tools_are_pruned_from_agent_file(tmp_path):
+    """Tools no longer in the registry are stripped from the .md on load."""
+    f = _write_agent_md(
+        tmp_path / "worker.md",
+        {
+            "name": "worker",
+            "role": "member",
+            "model": "zai:glm-5-turbo",
+            "tools": ["read", "write", "grep", "ls"],
+        },
+        "Do the work.",
+    )
+    factory, _ = _make_provider_factory()
+
+    agent = rebuild_agent_from_disk(f, provider_factory=factory)
+
+    assert "read" in agent._tools
+    assert "grep" in agent._tools
+
+    pruned = yaml.safe_load(_FRONTMATTER_RE.match(f.read_text()).group(1))
+    assert pruned["tools"] == ["read", "grep"]
+    # Everything else in the file survives untouched.
+    assert pruned["name"] == "worker"
+    assert pruned["model"] == "zai:glm-5-turbo"
+    assert "Do the work." in f.read_text()
+
+
+@pytest.mark.parametrize("injected", ["lsp", "team_message", "team_manage", "ask_user"])
+def test_context_injected_tools_are_not_pruned(tmp_path, injected):
+    """Tools supplied by team/mode context survive pruning.
+
+    ``lsp`` (coding-mode teams) and the team tools are attached in
+    ``AgentTeam._builtin_team_tools``, never via ``_default_tool_registry``.
+    Treating them as unknown would delete valid names from a user's file.
+    """
+    f = _write_agent_md(
+        tmp_path / "worker.md",
+        {
+            "name": "worker",
+            "role": "member",
+            "model": "zai:glm-5-turbo",
+            "tools": ["read", injected, "grep"],
+        },
+    )
+    before = f.read_text()
+    factory, _ = _make_provider_factory()
+
+    agent = rebuild_agent_from_disk(f, provider_factory=factory)
+
+    assert f.read_text() == before
+    # Exemption means "skip", never "grant": these tools stay gated by team
+    # mode and role in AgentTeam.get_injected_tools. Listing `lsp` in a
+    # normal-mode agent must not hand it the tool.
+    assert injected not in agent._tools
+    assert "read" in agent._tools
+
+
+def test_pruning_leaves_file_alone_when_all_tools_are_known(tmp_path):
+    f = _write_agent_md(
+        tmp_path / "worker.md",
+        {
+            "name": "worker",
+            "role": "member",
+            "model": "zai:glm-5-turbo",
+            "tools": ["read", "grep"],
+        },
+    )
+    before = f.read_text()
+    factory, _ = _make_provider_factory()
+
+    rebuild_agent_from_disk(f, provider_factory=factory)
+
+    assert f.read_text() == before
+
+
+def test_pruning_removes_the_tools_key_when_nothing_remains(tmp_path):
+    f = _write_agent_md(
+        tmp_path / "worker.md",
+        {
+            "name": "worker",
+            "role": "member",
+            "model": "zai:glm-5-turbo",
+            "tools": ["write", "rm"],
+        },
+    )
+    factory, _ = _make_provider_factory()
+
+    rebuild_agent_from_disk(f, provider_factory=factory)
+
+    pruned = yaml.safe_load(_FRONTMATTER_RE.match(f.read_text()).group(1))
+    assert "tools" not in pruned
+
+
+def test_pruning_does_not_touch_mcp_entries(tmp_path):
+    """MCP servers can be mid-restart, so unknown ones must survive."""
+    f = _write_agent_md(
+        tmp_path / "worker.md",
+        {
+            "name": "worker",
+            "role": "member",
+            "model": "zai:glm-5-turbo",
+            "tools": ["read", "write"],
+            "mcp": ["some-offline-server"],
+        },
+    )
+    factory, _ = _make_provider_factory()
+
+    rebuild_agent_from_disk(f, provider_factory=factory)
+
+    pruned = yaml.safe_load(_FRONTMATTER_RE.match(f.read_text()).group(1))
+    assert pruned["mcp"] == ["some-offline-server"]
+    assert pruned["tools"] == ["read"]

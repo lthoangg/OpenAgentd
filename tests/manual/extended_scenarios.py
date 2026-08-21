@@ -17,6 +17,7 @@ from app.agent.schemas.chat import (
     ToolMessage,
 )
 from app.agent.providers.anthropic.anthropic import _split_messages
+from app.models.chat import MessageKind
 from app.services.chat_service import (
     create_chat_session,
     save_message,
@@ -24,6 +25,7 @@ from app.services.chat_service import (
     get_messages_for_llm,
     undo_session_messages,
     heal_orphaned_tool_calls,
+    hide_messages_before_summary,
 )
 
 PASS = "✅ PASS"
@@ -45,19 +47,19 @@ def check(label, got, expected):
 async def run(engine):
     factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
-    # ── H: no undo in effect (boundary=None) — no over-restore occurs ────────
-    print("\n── H: boundary=None, excluded msgs stay excluded ──")
+    # ── H: no undo in effect (boundary=None) — reverted rows stay hidden ─────
+    print("\n── H: boundary=None, reverted msgs stay hidden ──")
     async with factory() as s:
         sess = await create_chat_session(s)
         hidden = await save_message(s, sess.id, HumanMessage(content="hidden"))
-        hidden.exclude_from_context = True
+        hidden.kind = MessageKind.REVERTED
         s.add(hidden)
         await save_message(s, sess.id, AssistantMessage(content="visible"))
         await s.commit()
 
         msgs = await get_messages(s, sess.id)
         check(
-            "H1: excluded msg stays hidden without undo",
+            "H1: reverted msg stays hidden without undo",
             [m.content for m in msgs],
             ["visible"],
         )
@@ -65,32 +67,31 @@ async def run(engine):
         llm = await get_messages_for_llm(s, sess.id)
         check("H2: LLM also hides it", [m.content for m in llm], ["visible"])
 
-    # ── I: hidden_from_user summary is NOT treated as active_summary ──────────
-    print("\n── I: hidden_from_user summary excluded from active_summary ──")
+    # ── I: reverted summary is NOT treated as active_summary ─────────────────
+    print("\n── I: reverted summary excluded from active_summary ──")
     async with factory() as s:
         sess = await create_chat_session(s)
         await save_message(s, sess.id, HumanMessage(content="u1"))
-        hidden_sum = await save_message(
+        dead_sum = await save_message(
             s, sess.id, HumanMessage(content="old_summary"), is_summary=True
         )
-        extra = dict(hidden_sum.extra or {})
-        extra["hidden_from_user"] = True
-        hidden_sum.extra = extra
-        s.add(hidden_sum)
+        # Simulate a materialised undo of the compaction turn.
+        dead_sum.kind = MessageKind.REVERTED
+        s.add(dead_sum)
         await save_message(s, sess.id, HumanMessage(content="u2"))
         await s.commit()
 
-        # The hidden summary should not act as active_summary
+        # The reverted summary should not act as active_summary
         msgs = await get_messages(s, sess.id)
         check(
-            "I1: hidden summary excluded from user view",
+            "I1: reverted summary excluded from user view",
             [m.content for m in msgs],
             ["u1", "u2"],
         )
 
         llm = await get_messages_for_llm(s, sess.id)
         check(
-            "I2: LLM sees u1, u2 (not the hidden summary)",
+            "I2: LLM sees u1, u2 (not the reverted summary)",
             [m.content for m in llm],
             ["u1", "u2"],
         )
@@ -99,8 +100,8 @@ async def run(engine):
     print("\n── J: heal_orphaned respects undo boundary ──")
     async with factory() as s:
         sess = await create_chat_session(s)
-        u1 = await save_message(s, sess.id, HumanMessage(content="u1"))
-        a1 = await save_message(
+        await save_message(s, sess.id, HumanMessage(content="u1"))
+        await save_message(
             s,
             sess.id,
             AssistantMessage(
@@ -113,10 +114,10 @@ async def run(engine):
             ),
         )
         # No tool result → orphaned
-        await save_message(s, sess.id, HumanMessage(content="summary"), is_summary=True)
-        for row in (u1, a1):
-            row.exclude_from_context = True
-            s.add(row)
+        summary = await save_message(
+            s, sess.id, HumanMessage(content="summary"), is_summary=True
+        )
+        await hide_messages_before_summary(s, sess.id, summary.id)
         await s.commit()
 
         # Before undo: only summary visible, heal should see no orphans (a1 excluded)
@@ -137,21 +138,19 @@ async def run(engine):
     print("\n── K: double undo — two layers of undo ──")
     async with factory() as s:
         sess = await create_chat_session(s)
-        u0 = await save_message(s, sess.id, HumanMessage(content="u0"))
-        a0 = await save_message(s, sess.id, AssistantMessage(content="a0"))
-        u1 = await save_message(s, sess.id, HumanMessage(content="u1"))
-        a1 = await save_message(s, sess.id, AssistantMessage(content="a1"))
+        await save_message(s, sess.id, HumanMessage(content="u0"))
+        await save_message(s, sess.id, AssistantMessage(content="a0"))
+        await save_message(s, sess.id, HumanMessage(content="u1"))
+        await save_message(s, sess.id, AssistantMessage(content="a1"))
         sum1 = await save_message(
             s, sess.id, HumanMessage(content="sum1"), is_summary=True
         )
+        await hide_messages_before_summary(s, sess.id, sum1.id)
         u2 = await save_message(s, sess.id, HumanMessage(content="u2"))
-        for row in (u0, a0, u1, a1):
-            row.exclude_from_context = True
-            s.add(row)
         await s.commit()
 
-        # u2 is the latest user message that is_undo_target (not excluded, not hidden).
-        # sum1 is also is_undo_target (is_summary=True), but u2 comes later → first undo = u2.
+        # u2 is the latest undo target still in the LLM window; sum1 is also a
+        # target (summary), but u2 sits later in position → first undo = u2.
         shift1 = await undo_session_messages(s, sess.id)
         await s.commit()
         check(
@@ -160,8 +159,8 @@ async def run(engine):
             True,
         )
 
-        # After undoing u2: boundary = u2.created_at. sum1 is still active (before boundary).
-        # u0/a0/u1/a1 are still compacted by sum1 → dynamic restore only sees [sum1].
+        # After undoing u2: boundary = u2. sum1 is still active (before the
+        # boundary); u0/a0/u1/a1 sit below its anchor → view is [sum1].
         after_first_undo = await get_messages(s, sess.id)
         check(
             "K2: after first undo — sum1 active, compacted msgs still hidden",
@@ -169,13 +168,13 @@ async def run(engine):
             ["sum1"],
         )
 
-        # Second undo → latest is_undo_target before u2.created_at is sum1 (is_summary=True).
+        # Second undo → latest undo target positioned before u2 is sum1.
         shift2 = await undo_session_messages(s, sess.id)
         await s.commit()
         check("K3: second undo target is sum1", shift2.target.id == sum1.id, True)
 
-        # Now sum1 is undone: boundary = sum1.created_at. No active summary below boundary.
-        # u0/a0/u1/a1 were compacted by sum1 (now undone) → all restored.
+        # Now sum1 is undone: boundary = sum1. No active summary below the
+        # boundary → u0/a0/u1/a1 (compacted by sum1) are all back.
         after_second_undo = await get_messages(s, sess.id)
         check(
             "K4: after second undo — all compacted msgs restored",
@@ -183,22 +182,21 @@ async def run(engine):
             ["u0", "a0", "u1", "a1"],
         )
 
-    # ── L: undo with keep_last_n — kept msgs visible, others NOT ─────────────
-    print("\n── L: undo with keep_last_n=2 — over-restore guard ──")
+    # ── L: undo with keep_last_n — summary anchored before the kept tail ─────
+    print("\n── L: undo with keep_last_n=2 — divider-anchored summary ──")
     async with factory() as s:
         sess = await create_chat_session(s)
-        u1 = await save_message(s, sess.id, HumanMessage(content="u1"))
-        a1 = await save_message(s, sess.id, AssistantMessage(content="a1"))
+        await save_message(s, sess.id, HumanMessage(content="u1"))
+        await save_message(s, sess.id, AssistantMessage(content="a1"))
         u2 = await save_message(s, sess.id, HumanMessage(content="u2"))  # kept
         await save_message(s, sess.id, AssistantMessage(content="a2"))  # kept
         sum1 = await save_message(
             s, sess.id, HumanMessage(content="sum1"), is_summary=True
         )
+        # Compact u1/a1, keep u2/a2 — sum1 is re-anchored before the kept tail
+        # (divider position), exactly like automatic compaction.
+        await hide_messages_before_summary(s, sess.id, sum1.id, keep_last_n=2)
         await save_message(s, sess.id, AssistantMessage(content="after"))
-        # Compact only u1/a1 (keep_last_n=2 kept u2/a2)
-        for row in (u1, a1):
-            row.exclude_from_context = True
-            s.add(row)
         await s.commit()
 
         # Before undo: LLM = [sum1, u2, a2, after]
@@ -209,27 +207,33 @@ async def run(engine):
             ["sum1", "u2", "a2", "after"],
         )
 
-        # Undo sum1
+        # First undo: the summary sits *before* the kept tail, so the latest
+        # undo target in the window is the kept user turn u2, not sum1.
         shift = await undo_session_messages(s, sess.id)
         await s.commit()
-        check("L2: undo target is sum1", shift.target.id == sum1.id, True)
+        check("L2: first undo target is u2 (kept tail)", shift.target.id == u2.id, True)
 
-        # After undo of sum1: boundary = sum1.created_at.
-        # history_messages_stmt fetches only messages < boundary, so 'after' (saved after sum1)
-        # is in the undone tail and correctly absent.
-        # u1/a1 were compacted by sum1 (undone) → restored. u2/a2 were never excluded.
+        # Boundary = u2: sum1 stays active, u1/a1 stay compacted below its
+        # anchor, and the kept tail is in the undone region.
         after_undo = await get_messages(s, sess.id)
         check(
-            "L3: after undo — u1/a1 restored, u2/a2 present, 'after' in undone tail (absent)",
+            "L3: after first undo — only the active summary remains",
             [m.content for m in after_undo],
-            ["u1", "a1", "u2", "a2"],
+            ["sum1"],
         )
+
+        # Second undo targets sum1 itself; the boundary moves to the divider,
+        # so the compacted u1/a1 are restored while the kept tail (positioned
+        # after the divider) stays in the undone region.
+        shift2 = await undo_session_messages(s, sess.id)
+        await s.commit()
+        check("L4: second undo target is sum1", shift2.target.id == sum1.id, True)
 
         llm_after = await get_messages_for_llm(s, sess.id)
         check(
-            "L4: LLM after undo — no summary, 'after' absent (beyond boundary)",
+            "L5: LLM after second undo — compacted rows restored, tail undone",
             [m.content for m in llm_after],
-            ["u1", "a1", "u2", "a2"],
+            ["u1", "a1"],
         )
 
     # ── M: no messages at all → empty returns ─────────────────────────────────
@@ -251,7 +255,7 @@ async def run(engine):
     print("\n── N: undo plain user message (no compaction involved) ──")
     async with factory() as s:
         sess = await create_chat_session(s)
-        u1 = await save_message(s, sess.id, HumanMessage(content="u1"))
+        await save_message(s, sess.id, HumanMessage(content="u1"))
         await save_message(s, sess.id, AssistantMessage(content="a1"))
         u2 = await save_message(s, sess.id, HumanMessage(content="u2"))
         await save_message(s, sess.id, AssistantMessage(content="a2"))

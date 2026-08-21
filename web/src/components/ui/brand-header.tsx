@@ -18,6 +18,7 @@
 
 import { PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 import { OPENAGENTD_APP_ICON } from '@/lib/brand-assets'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 
 export interface BrandHeaderProps {
@@ -63,29 +64,42 @@ export function BrandHeader({
   return (
     <div className={cn('flex h-16 items-center gap-3 px-1 py-2', className)}>
       {onBrandClick ? (
-        <button
-          type="button"
-          onClick={onBrandClick}
-          title="Home"
-          className="flex min-w-0 flex-1 items-center gap-3 rounded-md p-1 -ml-1 text-left transition-colors hover:bg-(--bg-key)"
-        >
-          {brandContent}
-        </button>
+        <Tooltip className="min-w-0 flex-1">
+          <TooltipTrigger
+            className="min-w-0 flex-1"
+            render={
+              <button
+                type="button"
+                onClick={onBrandClick}
+                className="flex min-w-0 flex-1 items-center gap-3 rounded-md p-1 -ml-1 text-left transition-colors hover:bg-(--bg-key)"
+              >
+                {brandContent}
+              </button>
+            }
+          />
+          <TooltipContent>Home</TooltipContent>
+        </Tooltip>
       ) : (
         <div className="flex min-w-0 flex-1 items-center gap-3">
           {brandContent}
         </div>
       )}
       {!hideToggle && onToggle && (
-        <button
-          type="button"
-          onClick={onToggle}
-          aria-label={expanded ? 'Collapse sidebar' : 'Expand sidebar'}
-          title={expanded ? 'Collapse sidebar' : 'Expand sidebar'}
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-sm border border-(--color-border-subtle) text-(--color-text-2) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
-        >
-          <ToggleIcon size={16} aria-hidden="true" />
-        </button>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <button
+                type="button"
+                onClick={onToggle}
+                aria-label={expanded ? 'Collapse sidebar' : 'Expand sidebar'}
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-sm border border-(--color-border-subtle) text-(--color-text-2) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
+              >
+                <ToggleIcon size={16} aria-hidden="true" />
+              </button>
+            }
+          />
+          <TooltipContent>{expanded ? 'Collapse sidebar' : 'Expand sidebar'}</TooltipContent>
+        </Tooltip>
       )}
     </div>
   )

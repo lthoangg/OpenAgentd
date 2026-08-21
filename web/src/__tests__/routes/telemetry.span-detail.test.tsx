@@ -53,19 +53,4 @@ describe('SpanDetailPanel', () => {
 
     expect(screen.queryByText('Estimated cost')).toBeNull()
   })
-
-  it('keeps close action large enough for touch before desktop compact sizing', () => {
-    render(
-      <SpanDetailPanel
-        span={span({ 'gen_ai.usage.input_tokens': 1000 })}
-        onClose={() => {}}
-      />,
-    )
-
-    const closeButton = screen.getByLabelText('Close span detail')
-    expect(closeButton.className).toContain('h-7')
-    expect(closeButton.className).toContain('w-7')
-    expect(closeButton.className).toContain('items-center')
-    expect(closeButton.className).toContain('rounded-sm')
-  })
 })

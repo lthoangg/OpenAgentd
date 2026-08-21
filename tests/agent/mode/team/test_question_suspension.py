@@ -108,14 +108,6 @@ async def test_member_message_stays_queued_while_the_lead_is_suspended():
     assert team.lead._active_task is None
 
 
-def test_continue_is_refused_while_suspended():
-    team = _make_team()
-    team.lead.state = "waiting_input"
-
-    with pytest.raises(AlreadyWorkingError):
-        team.lead.activate_for_continuation()
-
-
 def test_compaction_is_refused_while_suspended():
     team = _make_team()
     team.lead.state = "waiting_input"

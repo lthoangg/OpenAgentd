@@ -7,20 +7,24 @@
  */
 
 import { memo, useMemo, useState } from 'react'
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
-import remarkMath from 'remark-math'
-import rehypeHighlight from 'rehype-highlight'
-import rehypeKatex from 'rehype-katex'
-import 'katex/dist/katex.min.css'
+import { Markdown } from '@tanstack/markdown/react'
+import { streamingMarkdownExtension } from '@tanstack/markdown/extensions/streaming'
 import { ImageOff, FileVideo } from 'lucide-react'
 import { resolveApiUrl } from '@/api/client'
 import { apiUrl } from '@/api/base-url'
 import { withTokenParam } from '@/api/auth'
 import { ImageLightbox } from '@/components/ImageLightbox'
 import { CodeBlock } from '@/components/CodeBlock'
+import { tokenizeCode } from '@/utils/code-highlight'
 import { MermaidBlock } from '@/utils/MermaidBlock'
 import { isVideoSrc } from '@/utils/workspace'
+import {
+  MathBlock,
+  MathSpan,
+  mathMarkdownExtension,
+  MATH_INLINE_SENTINEL,
+  MATH_BLOCK_SENTINEL,
+} from '@/utils/markdown-math'
 
 // ── fixNestedFences ───────────────────────────────────────────────────────────
 
@@ -140,21 +144,80 @@ function markClosedStreamingMermaidFences(content: string): string {
   return lines.join('\n')
 }
 
-// ── extractText ───────────────────────────────────────────────────────────────
+// ── HighlightedCode ───────────────────────────────────────────────────────────
 
-// Me rehype-highlight wraps code in spans — recursively collect text nodes
-// eslint-disable-next-line react-refresh/only-export-components
-export function extractText(node: unknown): string {
-  if (typeof node === 'string') return node
-  if (Array.isArray(node)) return (node as unknown[]).map(extractText).join('')
-  if (node !== null && typeof node === 'object' && 'props' in node) {
-    const el = node as { props: { children?: unknown } }
-    return extractText(el.props.children)
-  }
-  return ''
-}
+/** A fenced code block, syntax-highlighted from a token stream.
+ *
+ * **Why highlighting lives here rather than in the markdown pipeline**: the
+ * renderer re-parses the whole accumulated response on every streamed delta,
+ * so a parser-level highlighter (the old ``rehype-highlight`` plugin) re-ran
+ * the highlighter over *every* code block in the message on *every* token.
+ * Hoisting it into a memoized component keyed on the code text means a fence
+ * is highlighted once and then skipped until its content actually changes —
+ * only the block still being written costs anything.
+ *
+ * Tokens become React elements rather than an HTML string, so model-authored
+ * code is escaped by React and never reaches ``dangerouslySetInnerHTML``. An
+ * unrecognised language tokenises to a single unclassified span, which renders
+ * as plain text.
+ */
+const HighlightedCode = memo(function HighlightedCode({
+  code,
+  language,
+}: {
+  code: string
+  language?: string
+}) {
+  const content = useMemo((): React.ReactNode => {
+    const tokens = tokenizeCode(code, language)
+    return tokens.map((token, index) =>
+      token.className ? (
+        <span key={index} className={`th-token th-${token.className}`}>
+          {token.value}
+        </span>
+      ) : (
+        token.value
+      ),
+    )
+  }, [code, language])
+
+  return (
+    <CodeBlock language={language} rawText={code}>
+      {content}
+    </CodeBlock>
+  )
+})
 
 // ── resolveImageSrc ───────────────────────────────────────────────────────────
+
+/**
+ * Extract the display filename from a markdown media ``src`` or raw markdown URL.
+ *
+ * Examples:
+ * - "chart.png" -> "chart.png"
+ * - "output/plots/density.png" -> "density.png"
+ * - "http://example.com/demo.mp4?v=1#t=0" -> "demo.mp4"
+ * - "my%20file.png" -> "my file.png"
+ * - "data:image/png;base64,..." -> null
+ * - "blob:..." -> null
+ */
+// eslint-disable-next-line react-refresh/only-export-components
+export function extractFileName(rawSrc?: string, resolvedSrc?: string): string | null {
+  const target = rawSrc || resolvedSrc
+  if (!target) return null
+  if (target.startsWith('data:') || target.startsWith('blob:')) return null
+  const pathOnly = target.split('?')[0].split('#')[0]
+  if (!pathOnly) return null
+  const cleaned = pathOnly.replace(/\/+$/, '')
+  if (!cleaned) return null
+  const lastSegment = cleaned.substring(cleaned.lastIndexOf('/') + 1)
+  if (!lastSegment) return null
+  try {
+    return decodeURIComponent(lastSegment)
+  } catch {
+    return lastSegment
+  }
+}
 
 /**
  * Rewrite a markdown media ``src`` for rendering.
@@ -224,46 +287,63 @@ const MarkdownVideo = memo(function MarkdownVideo({
   src,
   alt,
   title,
+  rawSrc,
 }: {
   src: string
   alt: string
   title?: string
+  rawSrc?: string
 }) {
   const [errored, setErrored] = useState(false)
+  const fileName = extractFileName(rawSrc, src)
 
   if (errored) {
     return (
-      <span
-        className="my-2 inline-flex items-center gap-2 rounded-lg border border-(--color-border) bg-(--bg-card) px-3 py-2 text-xs text-(--color-text-muted)"
-        title={alt || 'Video unavailable'}
-      >
-        <FileVideo size={14} />
-        {alt || 'Video unavailable'}
+      <span className="my-2 inline-block max-w-full">
+        <span
+          className="inline-flex items-center gap-2 rounded-sm border border-(--color-border) bg-(--bg-card) px-3 py-2 text-xs text-(--color-text-muted)"
+          title={alt || 'Video unavailable'}
+        >
+          <FileVideo size={14} />
+          {alt || 'Video unavailable'}
+        </span>
+        {fileName && (
+          <span className="mt-1 block text-center text-xs text-(--color-text-muted) break-all">
+            {fileName}
+          </span>
+        )}
       </span>
     )
   }
 
   return (
-    <video
-      src={src}
-      title={title ?? alt}
-      controls
-      preload="metadata"
-      playsInline
-      onError={(e) => {
-        // Only treat as terminal when the element reports NO_SOURCE.
-        // Transient errors during buffering/codec negotiation are otherwise
-        // ignored to avoid a flicker loop with the fallback placeholder.
-        const el = e.currentTarget
-        if (el.networkState === el.NETWORK_NO_SOURCE) {
-          setErrored(true)
-        }
-      }}
-      className="my-2 max-h-[80vh] max-w-full rounded-lg border border-(--color-border) bg-black"
-    >
-      {/* Fallback text for environments without <video> support (rare). */}
-      {alt || 'Video content'}
-    </video>
+    <span className="my-2 inline-block max-w-full">
+      <video
+        src={src}
+        title={title ?? alt}
+        controls
+        preload="metadata"
+        playsInline
+        onError={(e) => {
+          // Only treat as terminal when the element reports NO_SOURCE.
+          // Transient errors during buffering/codec negotiation are otherwise
+          // ignored to avoid a flicker loop with the fallback placeholder.
+          const el = e.currentTarget
+          if (el.networkState === el.NETWORK_NO_SOURCE) {
+            setErrored(true)
+          }
+        }}
+        className="block max-h-[80vh] max-w-full rounded-sm border border-(--color-border) bg-black"
+      >
+        {/* Fallback text for environments without <video> support (rare). */}
+        {alt || 'Video content'}
+      </video>
+      {fileName && (
+        <span className="mt-1 block text-center text-xs text-(--color-text-muted) break-all">
+          {fileName}
+        </span>
+      )}
+    </span>
   )
 })
 
@@ -284,22 +364,32 @@ function MarkdownImage({
   src,
   alt,
   title,
+  rawSrc,
 }: {
   src: string | undefined
   alt: string
   title?: string
+  rawSrc?: string
 }) {
   const [lightboxOpen, setLightboxOpen] = useState(false)
   const [errored, setErrored] = useState(false)
+  const fileName = extractFileName(rawSrc, src)
 
   if (!src || errored) {
     return (
-      <span
-        className="my-2 inline-flex items-center gap-2 rounded-lg border border-(--color-border) bg-(--bg-card) px-3 py-2 text-xs text-(--color-text-muted)"
-        title={alt || 'Image unavailable'}
-      >
-        <ImageOff size={14} />
-        {alt || 'Image unavailable'}
+      <span className="my-2 inline-block max-w-full">
+        <span
+          className="inline-flex items-center gap-2 rounded-sm border border-(--color-border) bg-(--bg-card) px-3 py-2 text-xs text-(--color-text-muted)"
+          title={alt || 'Image unavailable'}
+        >
+          <ImageOff size={14} />
+          {alt || 'Image unavailable'}
+        </span>
+        {fileName && (
+          <span className="mt-1 block text-center text-xs text-(--color-text-muted) break-all">
+            {fileName}
+          </span>
+        )}
       </span>
     )
   }
@@ -308,15 +398,15 @@ function MarkdownImage({
   // render as <video> — extension-based routing keeps the markdown authoring
   // contract identical for image and video tools.
   if (isVideoSrc(src)) {
-    return <MarkdownVideo src={src} alt={alt} title={title} />
+    return <MarkdownVideo src={src} alt={alt} title={title} rawSrc={rawSrc} />
   }
 
   return (
-    <>
+    <span className="my-2 inline-block max-w-full">
       <button
         type="button"
         onClick={() => setLightboxOpen(true)}
-        className="my-2 block focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 focus-visible:outline-none"
+        className="block focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 focus-visible:outline-none"
         aria-label={alt ? `Open image preview: ${alt}` : 'Open image preview'}
       >
         <img
@@ -326,16 +416,21 @@ function MarkdownImage({
           loading="lazy"
           decoding="async"
           onError={() => setErrored(true)}
-          className="max-h-[80vh] max-w-full cursor-zoom-in object-contain transition-opacity hover:opacity-90"
+          className="max-h-[80vh] max-w-full cursor-zoom-in object-contain rounded-sm border border-(--color-border) transition-opacity hover:opacity-90"
         />
       </button>
+      {fileName && (
+        <span className="mt-1 block text-center text-xs text-(--color-text-muted) break-all">
+          {fileName}
+        </span>
+      )}
       <ImageLightbox
         src={src}
         alt={alt}
         isOpen={lightboxOpen}
         onClose={() => setLightboxOpen(false)}
       />
-    </>
+    </span>
   )
 }
 
@@ -391,7 +486,7 @@ export const MarkdownBlock = memo(function MarkdownBlock({
   isStreaming?: boolean
 }) {
   // Me: the ``components`` map MUST be referentially stable across renders.
-  // If we rebuild it inline every render, ReactMarkdown treats each call
+  // If we rebuild it inline every render, the renderer treats each call
   // as a new custom-component type and unmounts+remounts every ``<img>`` /
   // ``<MarkdownVideo>`` subtree — which restarts ``<video>`` buffering and
   // causes a visible flicker whenever the parent re-renders (e.g. on every
@@ -400,24 +495,41 @@ export const MarkdownBlock = memo(function MarkdownBlock({
   // function identities as long as the session doesn't change.
   const components = useMemo(
     () => ({
-      pre: (props: React.HTMLAttributes<HTMLPreElement>) => {
-        const codeEl = props.children as React.ReactElement<{
-          children?: unknown
-          className?: string
-        }>
-        const codeText = extractText(codeEl?.props?.children)
-        const language = codeEl?.props?.className?.match(/(?:^|\s)language-([^\s]+)/)?.[1]
+      // The renderer hands ``pre`` the fence language on ``data-lang`` and the
+      // raw source as the ``<code>`` element's single string child — no
+      // highlighter is configured, so nothing has wrapped it in spans yet.
+      pre: (props: React.HTMLAttributes<HTMLPreElement> & { 'data-lang'?: string }) => {
+        const codeEl = props.children as React.ReactElement<{ children?: unknown }>
+        const codeText = typeof codeEl?.props?.children === 'string' ? codeEl.props.children : ''
+        // ``data-lang`` falls back to "plaintext" for a bare fence, where the
+        // old pipeline left the language undefined — and CodeBlock keys its
+        // header row off exactly that.
+        const rawLanguage = props['data-lang']
+        const language = !rawLanguage || rawLanguage === 'plaintext' ? undefined : rawLanguage
         const normalizedLanguage = language?.toLowerCase()
         const isMermaid = normalizedLanguage === 'mermaid'
           || normalizedLanguage === STREAMING_MERMAID_LANGUAGE
         if (isMermaid && (!isStreaming || normalizedLanguage === STREAMING_MERMAID_LANGUAGE)) {
-          return <MermaidBlock source={codeText} highlightedCode={codeEl?.props?.children as React.ReactNode} />
+          return <MermaidBlock source={codeText} highlightedCode={codeText} />
         }
-        return (
-          <CodeBlock language={language} rawText={codeText}>
-            {codeEl?.props?.children as React.ReactNode}
-          </CodeBlock>
-        )
+        if (normalizedLanguage === 'math' || normalizedLanguage === 'katex') {
+          return <MathBlock math={codeText} />
+        }
+        return <HighlightedCode code={codeText} language={language} />
+      },
+      'math-block': (props: React.HTMLAttributes<HTMLElement> & { 'data-math'?: string }) => (
+        <MathBlock math={props['data-math'] ?? ''} />
+      ),
+      code: ({ children, ...props }: React.HTMLAttributes<HTMLElement>) => {
+        if (typeof children === 'string') {
+          if (children.startsWith(MATH_INLINE_SENTINEL)) {
+            return <MathSpan math={children.slice(MATH_INLINE_SENTINEL.length)} />
+          }
+          if (children.startsWith(MATH_BLOCK_SENTINEL)) {
+            return <MathBlock math={children.slice(MATH_BLOCK_SENTINEL.length)} />
+          }
+        }
+        return <code {...props}>{children}</code>
       },
       table: (props: React.HTMLAttributes<HTMLTableElement>) => (
         <div className="oa-table-wrap">
@@ -435,6 +547,7 @@ export const MarkdownBlock = memo(function MarkdownBlock({
       ),
       img: ({ src, alt, title }: React.ImgHTMLAttributes<HTMLImageElement>) => (
         <MarkdownImage
+          rawSrc={typeof src === 'string' ? src : undefined}
           src={resolveImageSrc(typeof src === 'string' ? src : undefined, sessionId)}
           alt={alt ?? ''}
           title={typeof title === 'string' ? title : undefined}
@@ -454,22 +567,29 @@ export const MarkdownBlock = memo(function MarkdownBlock({
 
   return (
     <div className="oa-prose text-sm">
-      <ReactMarkdown
-        remarkPlugins={_REMARK_PLUGINS}
-        rehypePlugins={_REHYPE_PLUGINS}
+      <Markdown
+        extensions={_EXTENSIONS}
+        frontmatter={false}
+        headingIds={false}
         components={components}
       >
         {renderedContent}
-      </ReactMarkdown>
+      </Markdown>
     </div>
   )
 })
 
-// Me: module-level constants so ReactMarkdown sees the same plugin array
-// identity across every ``MarkdownBlock`` instance and every render — it
-// shallow-compares plugins to decide whether to rebuild its processor.
-const _REMARK_PLUGINS = [remarkGfm, remarkMath]
-const _REHYPE_PLUGINS: React.ComponentProps<typeof ReactMarkdown>['rehypePlugins'] = [
-  [rehypeHighlight, { detect: false }],
-  rehypeKatex,
-]
+// Me: module-level constant so every ``MarkdownBlock`` instance shares one
+// extension array identity across renders.
+//
+// ``streamingMarkdownExtension`` suppresses the empty trailing heading /
+// blockquote / list item that a half-typed line produces, so a response does
+// not flash a stray bullet or ``<h2>`` on its way in. It stays enabled after
+// the stream closes: a genuinely empty trailing heading is not something an
+// agent response ever means.
+//
+// ``frontmatter`` is off so a completed ``---`` later in a response cannot
+// retroactively reinterpret its opening lines as metadata, and ``headingIds``
+// is off because a streamed heading would otherwise change its own element id
+// on every delta.
+const _EXTENSIONS = [streamingMarkdownExtension(), mathMarkdownExtension()]

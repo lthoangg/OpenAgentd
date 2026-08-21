@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useHotkey } from '@tanstack/react-hotkeys'
 import {
   AppBridge,
   buildAllowAttribute,
@@ -18,6 +19,7 @@ import {
 import type { Transport, TransportSendOptions } from '@modelcontextprotocol/sdk/shared/transport.js'
 import { ExternalLink, Maximize2, X } from 'lucide-react'
 import { callMcpAppTool } from '@/api/client'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { openExternalUrl } from '@/lib/open-external'
 
 interface MCPAppPayload {
@@ -225,18 +227,17 @@ export function MCPAppResult({ mcpApp, sessionId, toolCallId }: MCPAppResultProp
     }
   }, [])
 
+  useHotkey('Escape', () => setDisplayMode(INLINE_DISPLAY_MODE), {
+    enabled: displayMode === FULLSCREEN_DISPLAY_MODE,
+  })
+
   useEffect(() => {
     if (displayMode !== FULLSCREEN_DISPLAY_MODE) return undefined
 
     const previousOverflow = document.body.style.overflow
-    const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setDisplayMode(INLINE_DISPLAY_MODE)
-    }
     document.body.style.overflow = 'hidden'
-    document.addEventListener('keydown', handleEscape)
     return () => {
       document.body.style.overflow = previousOverflow
-      document.removeEventListener('keydown', handleEscape)
     }
   }, [displayMode])
 
@@ -389,11 +390,21 @@ export function MCPAppResult({ mcpApp, sessionId, toolCallId }: MCPAppResultProp
       {...(isFullscreen ? { 'data-swipe-ignore': true } : {})}
     >
       <div className={isFullscreen ? 'hidden' : 'flex items-center justify-between gap-2 font-mono text-[10px] text-(--color-text-muted)'}>
-        <span className="min-w-0 truncate" title={resourceUri}>{title}{resourceUri ? ` · ${String(resourceUri)}` : ''}</span>
+        {resourceUri ? (
+          <Tooltip className="min-w-0">
+            <TooltipTrigger
+              className="min-w-0"
+              render={<span className="min-w-0 truncate">{title}{` · ${String(resourceUri)}`}</span>}
+            />
+            <TooltipContent>{String(resourceUri)}</TooltipContent>
+          </Tooltip>
+        ) : (
+          <span className="min-w-0 truncate">{title}</span>
+        )}
         <button
           type="button"
           onClick={() => setDisplayMode(FULLSCREEN_DISPLAY_MODE)}
-          className="inline-flex shrink-0 cursor-pointer items-center gap-1 rounded-full border border-(--color-border) px-1.5 py-0.5 text-[9px] uppercase tracking-wide transition-colors hover:bg-(--bg-key) focus-visible:ring-2 focus-visible:ring-(--focus-ring) focus-visible:outline-none"
+          className="inline-flex shrink-0 cursor-pointer items-center gap-1 rounded-full border border-(--color-border) px-1.5 py-0.5 text-[10px] uppercase tracking-wide transition-colors hover:bg-(--bg-key) focus-visible:ring-2 focus-visible:ring-(--focus-ring) focus-visible:outline-none"
           aria-label={`Open ${title} fullscreen`}
         >
           <Maximize2 size={9} aria-hidden /> MCP App
@@ -417,7 +428,7 @@ export function MCPAppResult({ mcpApp, sessionId, toolCallId }: MCPAppResultProp
           <button
             type="button"
             onClick={() => setDisplayMode(INLINE_DISPLAY_MODE)}
-            className="absolute right-4 top-4 flex h-11 w-11 cursor-pointer items-center justify-center rounded-sm border border-(--color-border) bg-(--bg-card) text-(--color-text) transition-colors hover:bg-(--bg-key) focus-visible:ring-2 focus-visible:ring-(--color-text) focus-visible:outline-none [[data-mobile-shell='ios']_&]:top-[max(4rem,calc(env(safe-area-inset-top)+1rem))]"
+            className="absolute right-4 top-4 flex h-11 w-11 cursor-pointer items-center justify-center rounded-sm border border-(--color-border) bg-(--bg-card) text-(--color-text) transition-colors hover:bg-(--bg-key) focus-visible:ring-2 focus-visible:ring-(--color-text) focus-visible:outline-none [[data-mobile-shell]_&]:top-[max(4rem,calc(env(safe-area-inset-top)+1rem))]"
             aria-label="Close fullscreen MCP app"
           >
             <X size={18} aria-hidden />

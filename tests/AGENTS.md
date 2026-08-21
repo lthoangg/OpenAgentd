@@ -1,43 +1,36 @@
-# tests/ — Agent Instructions
+# Backend Test Guide
 
-Pytest suite for the FastAPI backend and agent runtime. Tests mirror `app/` with the redundant `app/` prefix dropped.
+Pytest tests mirror `app/` with the redundant `app/` prefix removed, for
+example `app/services/chat_service.py` ->
+`tests/services/test_chat_service.py`.
 
-## Tech stack
+## Environment and fixtures
 
-- Pytest, pytest-asyncio, respx, FastAPI dependency overrides.
-- In-memory SQLite fixtures redirect `app.core.db`; tests should not require an external database.
+- `pytest.ini` redirects data/config/state/cache into `.tests/`; xdist workers
+  receive isolated suffixes.
+- `tests/conftest.py` uses one temporary, file-backed SQLite database for the
+  session and clears rows between tests. Do not create a second `:memory:`
+  engine: separate connections would see an empty schema.
+- Shared fixtures redirect `app.core.db`, restore `os.environ`, seed provider
+  metadata without network access, and clear inherited desktop/access-key
+  auth.
+- Prefer real async session factories and FastAPI dependency overrides over
+  mocked context managers or patched route internals.
+- Patch sleeps/timeouts instead of waiting. CLI tests that reach `os.execvp`
+  replace it with a terminating fake.
 
-## Layout
-
-```
-agent/      Tests for agent loop, hooks, providers, tools, teams, MCP, plugins
-api/        Route tests
-cli/        CLI command tests
-core/       Config, paths, DB, auth, telemetry tests
-models/     SQLModel schema tests
-scheduler/  Scheduled task runtime tests
-services/   Service-layer tests
-conftest.py Shared fixtures and DB redirection
-```
-
-## Essential commands
+## Commands
 
 ```bash
-uv run pytest --no-cov -q
-uv run pytest --no-cov tests/path/test_file.py::test_name -q
-uv run pytest --no-cov --durations=0 -q
-uv run ruff check app/ tests/
-uv run ruff format --check app/ tests/
+uv run pytest tests/path/test_file.py -q
+uv run pytest tests/path/test_file.py::test_name -q
+uv run pytest -n 4 -q
+make coverage
+make verify-backend
 ```
 
-## Conventions
-
-- Put tests for `app/<path>/<module>.py` in `tests/<path>/test_<module>.py`.
-- Prefer real async session factories from fixtures over mock context managers.
-- Override FastAPI dependencies with `app.dependency_overrides[dep] = override`.
-- Mock sleeps/timeouts in production code; do not wait out real delays.
-- Fake `os.execvp` in CLI tests by raising `SystemExit(0)`.
-
-## Source of truth
-
-- Test commands and conventions are defined in this file, the Makefile, and the tests themselves.
+The final backend target also runs Ruff and `ty`. Add focused regression tests
+for changed behavior, then run the relevant subtree plus the full target.
+Windows process/sidecar behavior also has a focused CI smoke subset in
+`.github/workflows/core.yml`; keep those tests portable when changing shell or
+process handling.

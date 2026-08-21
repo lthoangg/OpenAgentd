@@ -1,6 +1,6 @@
 import { describe, it, expect, spyOn } from "bun:test";
 import { render, screen } from "@testing-library/react";
-import { fixNestedFences, extractText, MarkdownBlock } from "@/utils/markdown";
+import { fixNestedFences, MarkdownBlock } from "@/utils/markdown";
 
 // ---------------------------------------------------------------------------
 // fixNestedFences
@@ -312,111 +312,6 @@ describe("fixNestedFences", () => {
 });
 
 // ---------------------------------------------------------------------------
-// extractText
-// ---------------------------------------------------------------------------
-
-describe("extractText", () => {
-  it("returns a string input directly", () => {
-    expect(extractText("hello world")).toBe("hello world");
-  });
-
-  it("returns empty string for an empty string input", () => {
-    expect(extractText("")).toBe("");
-  });
-
-  it("joins an array of strings", () => {
-    expect(extractText(["foo", "bar", "baz"])).toBe("foobarbaz");
-  });
-
-  it("returns empty string for an empty array", () => {
-    expect(extractText([])).toBe("");
-  });
-
-  it("extracts text from an object with props.children string", () => {
-    const node = { props: { children: "hello" } };
-    expect(extractText(node)).toBe("hello");
-  });
-
-  it("extracts text from an object with props.children array", () => {
-    const node = { props: { children: ["foo", " ", "bar"] } };
-    expect(extractText(node)).toBe("foo bar");
-  });
-
-  it("extracts text from nested objects (props.children is another object)", () => {
-    const node = {
-      props: {
-        children: {
-          props: {
-            children: "deep text",
-          },
-        },
-      },
-    };
-    expect(extractText(node)).toBe("deep text");
-  });
-
-  it("handles deeply nested object tree", () => {
-    const node = {
-      props: {
-        children: {
-          props: {
-            children: {
-              props: {
-                children: "very deep",
-              },
-            },
-          },
-        },
-      },
-    };
-    expect(extractText(node)).toBe("very deep");
-  });
-
-  it("handles array of mixed strings and objects", () => {
-    const node = [
-      "prefix ",
-      { props: { children: "middle" } },
-      " suffix",
-    ];
-    expect(extractText(node)).toBe("prefix middle suffix");
-  });
-
-  it("handles array of nested objects", () => {
-    const node = [
-      { props: { children: "a" } },
-      { props: { children: ["b", "c"] } },
-    ];
-    expect(extractText(node)).toBe("abc");
-  });
-
-  it("returns empty string for null", () => {
-    expect(extractText(null)).toBe("");
-  });
-
-  it("returns empty string for undefined", () => {
-    expect(extractText(undefined)).toBe("");
-  });
-
-  it("returns empty string for a number", () => {
-    expect(extractText(42)).toBe("");
-  });
-
-  it("returns empty string for a plain object without props", () => {
-    expect(extractText({ foo: "bar" })).toBe("");
-  });
-
-  it("handles object with props.children undefined", () => {
-    const node = { props: {} };
-    expect(extractText(node)).toBe("");
-  });
-
-  it("handles object with props.children null", () => {
-    const node = { props: { children: null } };
-    expect(extractText(node)).toBe("");
-  });
-});
-
-// ---------------------------------------------------------------------------
 // MarkdownBlock GFM tables
 // ---------------------------------------------------------------------------
 
@@ -492,6 +387,56 @@ describe("MarkdownBlock code fences", () => {
 
     const pre = screen.getByText("plain text").closest("pre");
     expect(pre?.previousElementSibling?.textContent).not.toBe("plain text");
+  });
+
+  it("applies token classes to a fence with a known grammar", () => {
+    render(
+      <MarkdownBlock content={["```python", "def go(x):", "    return None", "```"].join("\n")} />,
+    );
+
+    const pre = document.querySelector("pre");
+    expect(pre?.querySelector(".th-keyword")?.textContent).toBe("def");
+    expect(pre?.textContent).toContain("def go(x):");
+  });
+
+  it("renders a fence whose grammar is not registered as plain text", () => {
+    render(
+      <MarkdownBlock content={["```brainfuck", "++[->+<]", "```"].join("\n")} />,
+    );
+
+    const pre = document.querySelector("pre");
+    expect(pre?.textContent).toBe("++[->+<]");
+    expect(pre?.querySelector(".th-token")).toBeNull();
+  });
+
+  it("escapes markup in an unhighlighted fence instead of injecting it", () => {
+    render(
+      <MarkdownBlock
+        content={["```brainfuck", '<img src=x onerror="boom">', "```"].join("\n")}
+      />,
+    );
+
+    const pre = document.querySelector("pre");
+    expect(pre?.querySelector("img")).toBeNull();
+    expect(pre?.textContent).toBe('<img src=x onerror="boom">');
+  });
+
+  it("escapes markup inside a highlighted fence", () => {
+    render(
+      <MarkdownBlock
+        content={["```yaml", 'key: <img src=x onerror="boom">', "```"].join("\n")}
+      />,
+    );
+
+    const pre = document.querySelector("pre");
+    expect(pre?.querySelector("img")).toBeNull();
+    expect(pre?.textContent).toBe('key: <img src=x onerror="boom">');
+  });
+
+  it("resolves fence aliases to their grammar", () => {
+    render(<MarkdownBlock content={["```py", "import os", "```"].join("\n")} />);
+
+    expect(document.querySelector("pre .th-keyword")?.textContent).toBe("import");
   });
 
 });

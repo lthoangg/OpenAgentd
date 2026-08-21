@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 
 const originalEnv = import.meta.env.VITE_API_BASE_URL
 
@@ -9,15 +9,25 @@ declare global {
   }
 }
 
+beforeEach(() => {
+  delete window.__OAD_API_BASE_URL__
+  delete window.__OAD_BACKEND_UNAVAILABLE__
+  delete import.meta.env.VITE_API_BASE_URL
+})
+
 afterEach(() => {
   delete window.__OAD_API_BASE_URL__
   delete window.__OAD_BACKEND_UNAVAILABLE__
-  import.meta.env.VITE_API_BASE_URL = originalEnv
+  if (originalEnv !== undefined) {
+    import.meta.env.VITE_API_BASE_URL = originalEnv
+  } else {
+    delete import.meta.env.VITE_API_BASE_URL
+  }
 })
 
 describe('apiBaseUrl', () => {
   it('defaults to same-origin /api when no desktop or env override exists', async () => {
-    import.meta.env.VITE_API_BASE_URL = undefined
+    delete import.meta.env.VITE_API_BASE_URL
     const { apiBaseUrl, apiUrl } = await import('@/api/base-url')
 
     expect(apiBaseUrl()).toBe('/api')
@@ -45,7 +55,7 @@ describe('apiBaseUrl', () => {
     const { apiBaseUrl, apiUrl } = await import('@/api/base-url')
 
     expect(apiBaseUrl()).toBe('http://localhost:4082/api')
-    expect(apiUrl('/settings/sandbox')).toBe('http://localhost:4082/api/settings/sandbox')
+    expect(apiUrl('/settings/denied-paths')).toBe('http://localhost:4082/api/settings/denied-paths')
   })
 
   it('updates the desktop API base URL at runtime and notifies listeners', async () => {

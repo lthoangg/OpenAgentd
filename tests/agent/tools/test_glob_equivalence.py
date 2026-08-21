@@ -16,7 +16,11 @@ from __future__ import annotations
 
 import pytest
 
-from app.agent.sandbox import SandboxConfig, set_sandbox, _sandbox_ctx
+from app.agent.denied_paths import (
+    DeniedPathsConfig as SandboxConfig,
+    _denied_paths_ctx as _sandbox_ctx,
+    set_denied_paths as set_sandbox,
+)
 from app.agent.errors import ToolExecutionError
 from app.agent.tools.builtin.filesystem import glob_files
 

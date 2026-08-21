@@ -76,11 +76,11 @@ mock.module('@/components/TeamChatView/useTeamCommands', () => ({ useTeamCommand
 
 // Stands in for the composer: a submit button that fires ``onSubmit`` exactly
 // as the real bar does, plus the restore entry point under test.
-mock.module('@/components/FloatingInputBar', () => ({
-  FloatingInputBar: forwardRef<
+mock.module('@/components/FloatingInputComposer', () => ({
+  FloatingInputComposer: forwardRef<
     Record<string, (...args: never[]) => void>,
     { onSubmit: (content: string, files?: File[], mentions?: string[]) => void | Promise<void> }
-  >(function FloatingInputBarMock({ onSubmit }, ref) {
+  >(function FloatingInputComposerMock({ onSubmit }, ref) {
     useImperativeHandle(ref, () => ({
       focus: () => {},
       setValue: () => {},
@@ -107,7 +107,6 @@ mock.module('@/stores/useTeamStore', () => {
       sentMessages.push(content)
       return sendSucceeds
     },
-    continueTeam: async () => {},
     beginResolvedSession: () => {},
     consumeResolvedSessionReady: () => false,
     setActiveAgent: () => {},

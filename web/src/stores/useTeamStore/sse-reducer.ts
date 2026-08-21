@@ -21,7 +21,7 @@ import {
   applyQuestionResolution,
   extractToolPaths,
 } from './helpers'
-import type { CacheInvalidation, TeamStore } from './types'
+import type { CacheInvalidation, TeamError, TeamStore } from './types'
 import type { ContentBlock, PendingQuestion, QuestionItem } from '@/api/types'
 
 type Setter = (fn: (draft: TeamStore) => void) => void
@@ -404,6 +404,11 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
           const promptTokens = (d.prompt_tokens as number) || 0
           const completionTokens = (d.completion_tokens as number) || 0
           const cachedTokens = d.cached_tokens as number | undefined
+          const cachePercent = (d.cache_percent as number | undefined) ?? (
+            typeof (d as Record<string, unknown>).cache_percent === 'number'
+              ? (d as Record<string, unknown>).cache_percent as number
+              : undefined
+          )
           if (meta?.turn_total) {
             u.turnPromptTokens = promptTokens
             u.turnCompletionTokens = completionTokens
@@ -411,13 +416,28 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
             u.turnCachedTokens = cachedTokens ?? 0
             return
           }
-          u.promptTokens     = promptTokens
-          u.completionTokens = u.completionTokens + completionTokens
+          // A compaction frame's prompt is the PRE-compaction context the
+          // summariser read (and its cache read belongs to that old context),
+          // while its output is the compacted summary context. Displaying
+          // input as the output of the summarisation turn lets the user
+          // immediately see compaction usage (input) being reduced. This
+          // mirrors `sumUsageFromMessages` on reload.
+          if (meta?.summarization) {
+            u.promptTokens   = completionTokens
+          } else {
+            u.promptTokens   = promptTokens
+          }
           // Absent means "this call read nothing from cache" — providers coerce
           // 0 to None, so `usage_to_dict` drops the key. Carrying the previous
           // value forward diverged from `sumUsageFromMessages`, which reads the
           // last message's cache as 0 on reload.
           u.cachedTokens     = cachedTokens ?? 0
+          u.cachedPercent    = typeof cachePercent === 'number'
+            ? cachePercent
+            : cachedTokens !== undefined && promptTokens > 0
+            ? Math.round((cachedTokens / promptTokens) * 10000) / 100
+            : undefined
+          u.completionTokens = u.completionTokens + completionTokens
           u.totalTokens      = u.promptTokens + u.completionTokens
           u.estimatedCostUsd = Math.round(((u.estimatedCostUsd ?? 0) + ((d.estimated_cost_usd as number) || 0)) * 1e8) / 1e8
         })
@@ -452,7 +472,6 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
           ensureAgent(draft, agent)
           if (agent !== draft.leadName || !draft.sessionId) return
           draft.isTeamWorking = true
-          draft.isContinuing = false
           draft.error = null
           draft.agentStreams[agent].status = 'working'
           const queued = draft._pendingMessages.filter((msg) => {
@@ -512,22 +531,54 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
           // blocks whose timestamp is at or after the revert boundary so they
           // do not re-appear as ghost messages in the chat area.
           const revertTime = draft._leadRevertTime
-          const newUserBlocks = messages
-            .filter((msg) => {
-              if (revertTime === null) return true
-              const t = msg.submittedAt ?? now
-              return t < revertTime
-            })
-            .map((msg) => ({
+          const filteredMessages = messages.filter((msg) => {
+            if (revertTime === null) return true
+            const t = msg.submittedAt ?? now
+            return t < revertTime
+          })
+
+          const newUserBlocks: ContentBlock[] = []
+          for (const msg of filteredMessages) {
+            const timestamp = new Date(msg.submittedAt ?? now)
+            const attachments = msg.attachments && msg.attachments.length > 0 ? msg.attachments : undefined
+
+            let matchIdx = stream.currentBlocks.findIndex((b) => b.id === msg.id)
+            if (matchIdx === -1) {
+              matchIdx = stream.currentBlocks.findIndex(
+                (b) => b.type === 'user' && !b.extra?.from_agent && b.id.startsWith('user-') && b.content === msg.content,
+              )
+            }
+
+            if (matchIdx !== -1) {
+              const existing = stream.currentBlocks[matchIdx]
+              stream.currentBlocks[matchIdx] = {
+                ...existing,
+                id: msg.id,
+                timestamp: existing.timestamp ?? timestamp,
+                attachments: attachments ?? existing.attachments,
+              }
+              continue
+            }
+
+            const existsInBlocks = stream.blocks.some(
+              (b) => b.id === msg.id || (b.type === 'user' && !b.extra?.from_agent && b.content === msg.content),
+            )
+            if (existsInBlocks) {
+              continue
+            }
+
+            newUserBlocks.push({
               id: msg.id,
               type: 'user' as const,
               content: msg.content,
-              timestamp: new Date(msg.submittedAt ?? now),
-              ...(msg.attachments && msg.attachments.length > 0
-                ? { attachments: msg.attachments }
-                : {}),
-            }))
-          stream.currentBlocks.push(...newUserBlocks)
+              timestamp,
+              ...(attachments ? { attachments } : {}),
+            })
+          }
+
+          if (newUserBlocks.length > 0) {
+            stream.currentBlocks.push(...newUserBlocks)
+          }
           stream._turnStartedAt = nextTurnStartedAt
           draft._pendingMessages = draft._pendingMessages.filter((msg) => !queuedIds.has(msg.id))
         })
@@ -566,10 +617,25 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
             draft.agentStreams[agent].status = 'offline'
             if (draft.liveAgentNames) draft.liveAgentNames = draft.liveAgentNames.filter((name) => name !== agent)
           } else if (status === 'error') {
+            const meta = d.metadata as Record<string, unknown> | undefined
+            const lastErr = (meta?.message as string) ?? null
+            const errTitle = meta?.title as string | undefined
+            const errCode = meta?.code as string | undefined
+            const errCategory = meta?.category as TeamError['category'] | undefined
+
             draft.agentStreams[agent].status = 'error'
-            draft.agentStreams[agent].lastError =
-              (d.metadata as Record<string, unknown>)?.message as string ?? null
+            draft.agentStreams[agent].lastError = lastErr
             if (draft.liveAgentNames && !draft.liveAgentNames.includes(agent)) draft.liveAgentNames.push(agent)
+
+            if (lastErr && !draft.error) {
+              draft.error = {
+                title: errTitle || `Agent '${agent}' error`,
+                message: lastErr,
+                code: errCode,
+                category: errCategory || 'system',
+                agent,
+              }
+            }
           }
           if (status !== 'working' && status !== 'waiting_input') {
             draft.isTeamWorking = anyAgentLive(draft.agentStreams)
@@ -619,7 +685,6 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
           // fully answerable, so closing it here would show a resolution the
           // server never made. Real endings (answer, dismiss, supersede, stop)
           // all broadcast their own resolution.
-          draft.isContinuing = false
           const completedAtMs = Date.now()
           const completedAt = new Date(completedAtMs)
           const revertTime = draft._leadRevertTime
@@ -656,10 +721,44 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
       }
 
       case 'error': {
+        const message = (d.message as string) || 'An error occurred'
+        const title = d.title as string | undefined
+        const code = d.code as string | undefined
+        const category = d.category as TeamError['category'] | undefined
+        const agent = d.agent as string | undefined
+
         set((draft) => {
-          draft.error = d.message as string
+          draft.error = title || code || category || agent
+            ? { title, message, code, category, agent }
+            : message
           draft.isTeamWorking = false
-          draft.isContinuing = false
+
+          const effectiveAgent = agent || draft.leadName || Object.keys(draft.agentStreams)[0] || 'lead'
+          const isProvider = category === 'provider' ||
+            code?.startsWith('provider_') ||
+            `${title ?? ''} ${message}`.toLowerCase().includes('provider') ||
+            `${title ?? ''} ${message}`.toLowerCase().includes('rate limit') ||
+            `${title ?? ''} ${message}`.toLowerCase().includes('invalid api key')
+
+          if (isProvider) {
+            ensureAgent(draft, effectiveAgent)
+            const stream = draft.agentStreams[effectiveAgent]
+            const errorBlock: ContentBlock = {
+              id: generateBlockId(),
+              type: 'provider_status',
+              content: message,
+              extra: {
+                type: 'provider_status',
+                status: 'error',
+                title: title || 'Provider Error',
+                message,
+                code,
+                category: 'provider',
+              },
+              timestamp: new Date(),
+            }
+            appendLocalBlocks(stream, [errorBlock])
+          }
         })
         break
       }

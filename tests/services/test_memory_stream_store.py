@@ -742,6 +742,24 @@ class TestCommitAgentContent:
         assert remaining[0]["agent"] == "bob"
 
     @pytest.mark.asyncio
+    async def test_commit_drops_completed_summarization_for_agent(self):
+        """Persisted summaries must not replay after history hydration."""
+        await store.init_turn("sid-1")
+        _turns["sid-1"].summarization = {
+            "alice": {"text": "persisted summary", "done": True, "error": False},
+            "bob": {"text": "still streaming", "done": False, "error": False},
+            "charlie": {"text": "failed summary", "done": True, "error": True},
+        }
+
+        await store.commit_agent_content("sid-1", "alice")
+        await store.commit_agent_content("sid-1", "bob")
+        await store.commit_agent_content("sid-1", "charlie")
+
+        assert "alice" not in _turns["sid-1"].summarization
+        assert _turns["sid-1"].summarization["bob"]["text"] == "still streaming"
+        assert _turns["sid-1"].summarization["charlie"]["error"] is True
+
+    @pytest.mark.asyncio
     async def test_commit_idempotent_when_agent_missing(self):
         """Calling commit for an agent with no buffered content is a no-op."""
         await store.init_turn("sid-1")
@@ -1150,6 +1168,49 @@ class TestAttach:
         first_status_idx = types.index("agent_status")
         first_message_idx = types.index("message")
         assert first_status_idx < first_message_idx
+
+    @pytest.mark.asyncio
+    async def test_attach_replays_content_before_tool_calls(self):
+        """Replay order must match production order: thinking → text → tools.
+
+        A model iteration streams its preamble text and *then* announces the
+        tool calls it wants to run.  A client that reconnects with no live
+        state of its own (mid-turn page reload, second tab, new device)
+        rebuilds its blocks purely from the replay order, so emitting the tool
+        events first renders the tool card *above* the text that preceded it —
+        the reverse of what the next full history load produces from the
+        persisted assistant row.
+        """
+        await store.init_turn("sid-1")
+        await store.push_event(
+            "sid-1",
+            StreamEnvelope.from_parts("thinking", {"agent": "bot", "text": "plan"}),
+        )
+        await store.push_event(
+            "sid-1",
+            StreamEnvelope.from_parts(
+                "message", {"agent": "bot", "text": "Let me look that up."}
+            ),
+        )
+        await store.push_event(
+            "sid-1",
+            StreamEnvelope.from_parts(
+                "tool_call",
+                {"agent": "bot", "tool_call_id": "tc1", "name": "search"},
+            ),
+        )
+
+        async def _mark_done():
+            await asyncio.sleep(0.05)
+            await store.mark_done("sid-1")
+
+        task = asyncio.create_task(_mark_done())
+        events = [e async for e in store.attach("sid-1")]
+        await task
+
+        types = [e["event"] for e in events]
+        assert types.index("thinking") < types.index("message")
+        assert types.index("message") < types.index("tool_call")
 
     @pytest.mark.asyncio
     async def test_attach_skips_invalid_agent_status(self):

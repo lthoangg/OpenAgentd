@@ -8,12 +8,21 @@
 import { getPlatform } from '@/hooks/use-platform'
 import { useToastStore } from '@/stores/useToastStore'
 
-async function blobToBase64(blob: Blob): Promise<string> {
-  const buf = await blob.arrayBuffer()
-  const bytes = new Uint8Array(buf)
-  let binary = ''
-  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i])
-  return btoa(binary)
+/** Chunk size for `String.fromCharCode`, comfortably inside the engine's
+ *  argument limit. */
+const BASE64_CHUNK_SIZE = 0x8000
+
+export async function blobToBase64(blob: Blob): Promise<string> {
+  const bytes = new Uint8Array(await blob.arrayBuffer())
+  // Appending one character at a time builds a rope node per byte — tens
+  // of millions of them for a large attachment, which stalls the webview
+  // and thrashes GC. Encoding in chunks does the same work in a few
+  // thousand calls.
+  const chunks: string[] = []
+  for (let offset = 0; offset < bytes.length; offset += BASE64_CHUNK_SIZE) {
+    chunks.push(String.fromCharCode(...bytes.subarray(offset, offset + BASE64_CHUNK_SIZE)))
+  }
+  return btoa(chunks.join(''))
 }
 
 function anchorDownload(url: string, filename: string): void {

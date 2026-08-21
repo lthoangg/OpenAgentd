@@ -5,12 +5,14 @@ from __future__ import annotations
 import asyncio
 import fnmatch
 import os
+import re
 from pathlib import Path, PurePosixPath
-from typing import Literal
+import pathlib
+from typing import Callable, Literal
 
 from pydantic import BaseModel, Field
 
-from app.agent.sandbox import get_sandbox
+from app.agent.denied_paths import get_denied_paths
 from app.agent.tools.builtin.filesystem._ignore import (
     NOISE_DIR_NAMES,
     is_gitignored,
@@ -145,7 +147,101 @@ def _validate_pattern(pattern: str) -> None:
         )
 
 
-def _visible_files(root: Path, rules: list[tuple[str, bool]]) -> list[tuple[str, Path]]:
+def _compile_glob_matcher(pattern: str) -> Callable[[str], bool]:
+    """Precompile a glob pattern into a fast matcher function."""
+    globber_cls = getattr(pathlib, "_StringGlobber", None)
+    if globber_cls is not None:
+        globber = globber_cls("/", True, recursive=True)
+        matcher = globber.compile(pattern)
+        return lambda s: matcher(s) is not None
+    pure = PurePosixPath(pattern)
+    return lambda s: PurePosixPath(s).full_match(pure)
+
+
+def _explicitly_named_noise_dirs(patterns: list[str]) -> frozenset[str]:
+    """Generated-directory names the caller wrote literally into the pattern.
+
+    Pruning ``node_modules`` out of ``**/*.ts`` is what makes this tool usable
+    at all. Pruning it out of ``web/node_modules/@scope/pkg/**`` answers a
+    question nobody asked: reading a dependency's own source is legitimate,
+    and the silent refusal was indistinguishable from "no such file".
+    A literal path segment is an explicit request, so honour it.
+    """
+    return frozenset(
+        segment
+        for pattern in patterns
+        for segment in PurePosixPath(pattern).parts
+        if segment in NOISE_DIR_NAMES
+    )
+
+
+_WILDCARD_RE = re.compile(r"[*?\[\]]")
+
+
+def _literal_dir_prefix(pattern: str) -> PurePosixPath:
+    """Leading wildcard-free directories of *pattern*.
+
+    Nothing outside this prefix can match, so the walk can start there rather
+    than at the search root. That is the difference between enumerating a whole
+    repository and enumerating one package directory — the reason
+    ``web/node_modules/@scope/pkg/**`` took 10s.
+    """
+    parts = PurePosixPath(pattern).parts
+    literal: list[str] = []
+    for segment in parts:
+        if _WILDCARD_RE.search(segment):
+            break
+        literal.append(segment)
+    else:
+        # No wildcard anywhere, so the last segment is the filename itself.
+        literal = literal[:-1]
+    return PurePosixPath(*literal)
+
+
+def _shared_prefix(prefixes: list[PurePosixPath]) -> PurePosixPath:
+    """Deepest directory common to every brace variant."""
+    if not prefixes:
+        return PurePosixPath()
+    common = prefixes[0].parts
+    for prefix in prefixes[1:]:
+        parts = prefix.parts
+        limit = min(len(common), len(parts))
+        index = 0
+        while index < limit and common[index] == parts[index]:
+            index += 1
+        common = common[:index]
+        if not common:
+            break
+    return PurePosixPath(*common)
+
+
+def _prefix_is_reachable(
+    prefix: PurePosixPath,
+    rules: list[tuple[str, bool]],
+    allowed_noise: frozenset[str],
+) -> bool:
+    """True when every directory on the way down to ``prefix`` is visible.
+
+    A walk that starts at the prefix never visits its ancestors, so the prune
+    and ``.gitignore`` rules those ancestors would have triggered have to be
+    applied here instead — otherwise ``build/**/*.js`` starts reporting files
+    from an ignored ``build/``.
+    """
+    parts = prefix.parts
+    for index, name in enumerate(parts):
+        if name in NOISE_DIR_NAMES and name not in allowed_noise:
+            return False
+        if is_gitignored("/".join(parts[: index + 1]), is_dir=True, rules=rules):
+            return False
+    return True
+
+
+def _visible_files(
+    root: Path,
+    rules: list[tuple[str, bool]],
+    allowed_noise: frozenset[str] = frozenset(),
+    rel_base: Path | None = None,
+) -> list[tuple[str, Path]]:
     """Every file under ``root`` this tool may report, as ``(rel_posix, path)``.
 
     Pruning happens *during* traversal, which is the whole point of not using
@@ -155,24 +251,35 @@ def _visible_files(root: Path, rules: list[tuple[str, bool]]) -> list[tuple[str,
 
     Directories are visited with ordinary names before dot-prefixed ones so the
     natural traversal order already approximates :func:`_rank`.
+
+    ``allowed_noise`` names generated directories the caller asked for by name;
+    those are walked instead of pruned.
+
+    ``rel_base`` is what returned paths are relative to. It differs from
+    ``root`` when the walk is anchored at a pattern's literal prefix: the
+    ``.gitignore`` rules were loaded relative to the search root, so reporting
+    paths relative to anything else would silently stop matching them.
     """
+    base = rel_base or root
     found: list[tuple[str, Path]] = []
     for dirpath, dirnames, filenames in os.walk(root):
         current = Path(dirpath)
-        rel_dir = current.relative_to(root)
+        rel_dir = current.relative_to(base).as_posix()
         dirnames[:] = sorted(
             (
                 name
                 for name in dirnames
-                if name not in NOISE_DIR_NAMES
+                if (name not in NOISE_DIR_NAMES or name in allowed_noise)
                 and not is_gitignored(
-                    (rel_dir / name).as_posix(), is_dir=True, rules=rules
+                    f"{rel_dir}/{name}" if rel_dir != "." else name,
+                    is_dir=True,
+                    rules=rules,
                 )
             ),
             key=lambda name: (name.startswith("."), name),
         )
         for fname in sorted(filenames):
-            rel = (rel_dir / fname).as_posix()
+            rel = f"{rel_dir}/{fname}" if rel_dir != "." else fname
             if is_gitignored(rel, is_dir=False, rules=rules):
                 continue
             found.append((rel, current / fname))
@@ -186,15 +293,20 @@ async def _glob_files(
     max_results: int = 200,
 ) -> str:
     """Find files by glob pattern, honouring gitignore and skip rules."""
-    sandbox = get_sandbox()
-    resolved = sandbox.validate_path(directory)
+    denied_paths = get_denied_paths()
+    resolved = denied_paths.validate_path(directory)
     if not resolved.is_dir():
-        raise NotADirectoryError(f"Not a directory: {sandbox.display_path(resolved)}")
+        raise NotADirectoryError(
+            f"Not a directory: {denied_paths.display_path(resolved)}"
+        )
     if match == "path":
         _validate_pattern(pattern)
     gitignore_rules = load_gitignore_rules(resolved)
 
     variants = expand_braces(pattern)
+    # ``.git`` stays pruned regardless: it is an implementation detail of the
+    # repository, not source the caller can act on, and walking it is slow.
+    allowed_noise = _explicitly_named_noise_dirs(variants) - {".git"}
 
     def _select(
         candidates: list[tuple[str, Path]], patterns: list[str]
@@ -220,10 +332,9 @@ async def _glob_files(
             # would turn ``**/`` into ``**`` and match the entire tree.
             hit = []
         else:
+            matchers = [_compile_glob_matcher(p) for p in patterns]
             hit = [
-                (rel, path)
-                for rel, path in candidates
-                if any(PurePosixPath(rel).full_match(p) for p in patterns)
+                (rel, path) for rel, path in candidates if any(m(rel) for m in matchers)
             ]
         hit.sort(key=lambda item: _rank(item[0]))
         return hit
@@ -242,12 +353,29 @@ async def _glob_files(
             for parent in PurePosixPath(rel).parents:
                 if parent.name:
                     dirs.add(parent.as_posix())
-        return sorted(
-            d for d in dirs if any(PurePosixPath(d).full_match(p) for p in patterns)
-        )
+        if not dirs:
+            return []
+        matchers = [_compile_glob_matcher(p) for p in patterns]
+        return sorted(d for d in dirs if any(m(d) for m in matchers))
 
     def _scan() -> tuple[list[str], list[str]]:
-        candidates = _visible_files(resolved, gitignore_rules)
+        # Only files under the pattern's literal prefix can match, so start the
+        # walk there. ``match='name'`` compares basenames and has no anchor, and
+        # a separator-free pattern may be widened below, so both keep the root.
+        prefix = PurePosixPath()
+        if match == "path":
+            prefix = _shared_prefix([_literal_dir_prefix(p) for p in variants])
+        walk_root = resolved / prefix if prefix.parts else resolved
+        if prefix.parts and not _prefix_is_reachable(
+            prefix, gitignore_rules, allowed_noise
+        ):
+            return [], []
+        if not walk_root.is_dir():
+            return [], []
+
+        candidates = _visible_files(
+            walk_root, gitignore_rules, allowed_noise, rel_base=resolved
+        )
         matched = _select(candidates, variants)
 
         # A pattern with no separator only matches the top level, so `*title*`
@@ -265,9 +393,9 @@ async def _glob_files(
         for _rel, path in matched:
             # Symlinks to directories and dangling links are not results, and a
             # sandbox-denied file must never be named in the output.
-            if not path.is_file() or sandbox.is_denied_path(path):
+            if not path.is_file() or denied_paths.is_denied_path(path):
                 continue
-            hits.append(sandbox.display_path(path))
+            hits.append(denied_paths.display_path(path))
             if len(hits) >= max_results:
                 break
         if hits or match == "name":
@@ -277,7 +405,7 @@ async def _glob_files(
     matches, dir_hints = await asyncio.to_thread(_scan)
 
     if not matches:
-        miss = f"No files matching '{pattern}' in {sandbox.display_path(resolved)}"
+        miss = f"No files matching '{pattern}' in {denied_paths.display_path(resolved)}"
         if dir_hints:
             # This tool reports files, so a pattern that names a directory looks
             # identical to a typo. Say which, and how to list it.

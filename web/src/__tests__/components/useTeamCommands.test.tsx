@@ -151,6 +151,19 @@ describe("useTeamCommands — dispatchShortcutKey synthetic events", () => {
     }
     expect(captured.map((e) => e.key)).toEqual(["s"])
   })
+
+  it("dispatched events reach document-level shortcut handlers", () => {
+    const { result } = renderHook(() => useTeamCommands(makeArgs()))
+    const captured: KeyboardEvent[] = []
+    const handler = (e: Event) => captured.push(e as KeyboardEvent)
+    document.addEventListener("keydown", handler)
+    try {
+      byId(result.current, "collapse-sidebar").action()
+    } finally {
+      document.removeEventListener("keydown", handler)
+    }
+    expect(captured.map((e) => e.key)).toEqual(["b"])
+  })
 })
 
 // ════════════════════════════════════════════════════════════════════════════

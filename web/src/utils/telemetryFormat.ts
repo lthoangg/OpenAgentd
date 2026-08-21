@@ -5,6 +5,8 @@
  * (required for React Fast Refresh) and so the helpers are easy to unit-test.
  */
 
+import { formatFullDateTime } from '@/utils/format'
+
 const intFmt = new Intl.NumberFormat('en-US')
 const compactFmt = new Intl.NumberFormat('en-US', {
   notation: 'compact',
@@ -61,7 +63,7 @@ export function timeAgo(pastMs: number, nowMs: number): string {
   if (hr < 24) return `${hr}h ago`
   const day = Math.floor(hr / 24)
   if (day < 7) return `${day}d ago`
-  return new Date(pastMs).toLocaleDateString()
+  return formatFullDateTime(new Date(pastMs)).split(' ')[0]
 }
 
 /**

@@ -29,7 +29,7 @@ import { setTraySession } from '@/lib/tray'
 import { isEditableTarget } from '@/lib/is-editable-target'
 import { attachmentToFile } from './helpers'
 import { isDirectUserBlock } from '@/stores/useTeamStore/helpers'
-import type { InputBarHandle } from '../InputBar'
+import type { InputComposerHandle } from '../InputComposer'
 import type { MessageAttachment } from '@/api/types'
 
 interface SessionDraft {
@@ -50,7 +50,7 @@ export interface UseSessionBootstrapArgs {
   sessionThinkingLevel: string | null
   sessionTitle: string | null
   isTeamWorking: boolean
-  inputRef: RefObject<InputBarHandle | null>
+  inputRef: RefObject<InputComposerHandle | null>
   navigate: ReturnType<typeof useNavigate>
   queryClient: QueryClient
   connectStream: () => AbortController
@@ -227,7 +227,7 @@ export function useSessionBootstrap({
     abortRef.current?.abort()
     abortRef.current = null
     // Eagerly delete the current session's draft before beginResolvedSession
-    // resets store.sessionId to null. The InputBar's onValueChange('') effect
+    // resets store.sessionId to null. The InputComposer's onValueChange('') effect
     // fires asynchronously after setValue(''), so by the time it calls
     // handleDraftValueChange the session id is already gone and the delete
     // never happens — leaving the old '/new' text to reappear on switch-back.

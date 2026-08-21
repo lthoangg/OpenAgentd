@@ -26,6 +26,7 @@ export type SettingsSection =
   | 'mcp-new'
   | 'mcp-edit'
   | 'providers'
+  | 'denied_paths'
   | 'sandbox'
   // Replaced the former 'multimodal' | 'summarization' | 'title-generation'
   // sections, which are now collapsible groups on one Automation page.

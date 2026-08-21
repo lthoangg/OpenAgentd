@@ -71,9 +71,9 @@ const VARIANT: Record<string, string> = {
 // /rounded-sm). xs/icon-xs use radius-xs, sm/icon-sm use radius-sm, everything
 // else uses radius-md — matching the most common hand-rolled icon-button radius.
 const SIZE: Record<string, string> = {
-  xs:       'h-6 px-2 text-[10.5px] rounded-xs gap-1',
+  xs:       'h-6 px-2 text-[11px] rounded-xs gap-1',
   trigger:  'px-2 py-1 text-xs rounded-md gap-1.5',
-  sm:       'h-8 px-2.5 text-[0.8rem] rounded-sm',
+  sm:       'h-8 px-2.5 text-xs rounded-sm',
   default:  'h-9 px-3 text-xs rounded-md',
   lg:       'h-10 px-4 text-sm rounded-md',
   icon:     'size-9 p-0 rounded-md',

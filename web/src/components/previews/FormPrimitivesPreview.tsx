@@ -39,7 +39,7 @@ export function LowLevelComponentsPreview() {
   const [enabled, setEnabled] = useState(true)
 
   return (
-    <section className="grid gap-5 rounded-[14px] border border-(--color-border) bg-(--bg-card) p-5 text-(--color-text)">
+    <section className="grid gap-5 rounded-sm border border-(--color-border) bg-(--bg-card) p-5 text-(--color-text)">
       <div>
         <h2 className="font-hand text-3xl font-bold">Low-Level UI Components</h2>
         <p className="text-sm text-(--color-text-2)">Tokenized primitive controls from the OpenAgentd color panel.</p>
@@ -84,7 +84,7 @@ export function LowLevelComponentsPreview() {
 
         <div className="grid gap-2">
           <span className="text-xs font-medium text-(--color-text-muted)">Toggles</span>
-          <div className="flex items-center gap-5 rounded-[10px] border border-(--color-border) bg-(--bg-page) px-3 py-2">
+          <div className="flex items-center gap-5 rounded-sm border border-(--color-border) bg-(--bg-page) px-3 py-2">
             <label className="flex items-center gap-2 text-sm">
               <Checkbox defaultChecked /> Check
             </label>
@@ -132,7 +132,7 @@ export function CreateTaskFormPreview() {
   const [enabled, setEnabled] = useState(true)
 
   return (
-    <section className="max-w-lg rounded-[14px] border border-(--color-border) bg-(--bg-card) p-6 text-(--color-text) shadow-[0_8px_32px_rgba(26,23,20,0.12)]">
+    <section className="max-w-lg rounded-sm border border-(--color-border) bg-(--bg-card) p-6 text-(--color-text) shadow-[0_8px_32px_rgba(26,23,20,0.12)]">
       <div className="mb-5">
         <h2 className="font-hand text-3xl font-bold">Create scheduled task</h2>
         <p className="text-sm text-(--color-text-2)">Composite preview assembled from the low-level primitives.</p>
@@ -175,7 +175,7 @@ export function CreateTaskFormPreview() {
           <Textarea placeholder="Summarize yesterday's work and draft today's priorities." />
         </PreviewField>
 
-        <label className="flex items-center justify-between rounded-[10px] border border-(--color-border) bg-(--bg-page) px-3 py-2 text-sm">
+        <label className="flex items-center justify-between rounded-sm border border-(--color-border) bg-(--bg-page) px-3 py-2 text-sm">
           <span>
             Enabled
             <span className="block text-xs text-(--color-text-muted)">Run this schedule after saving.</span>

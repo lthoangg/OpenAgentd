@@ -3,7 +3,6 @@
 Tests for edge cases, error paths, and untested code paths:
 - AgentState.capabilities and tool_names default values
 - _has_vision() edge cases
-- _convert_with_markitdown() timeout and error paths
 - handle_document() with oversized PDFs and vision gating
 - ToolMessage and ToolResult edge cases (empty parts, image-only)
 - Provider handling of edge case ToolMessages
@@ -13,11 +12,14 @@ from __future__ import annotations
 
 import base64
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 import pytest
 
-from app.agent.sandbox import SandboxConfig, set_sandbox
+from app.agent.denied_paths import (
+    DeniedPathsConfig as SandboxConfig,
+    set_denied_paths as set_sandbox,
+)
 from app.agent.schemas.chat import (
     ImageDataBlock,
     TextBlock,
@@ -25,10 +27,7 @@ from app.agent.schemas.chat import (
     ToolResult,
 )
 from app.agent.tools.builtin.filesystem import read_file
-from app.agent.tools.builtin.filesystem.handlers import (
-    handle_document,
-    _convert_with_markitdown,
-)
+from app.agent.tools.builtin.filesystem.handlers import handle_document
 from app.agent.providers.capabilities import ModelCapabilities, ModelInputCapabilities
 from app.agent.state import AgentState
 
@@ -83,122 +82,6 @@ class TestAgentStateDefaults:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# _convert_with_markitdown() timeout path
-# ─────────────────────────────────────────────────────────────────────────────
-
-
-class TestConvertWithMarkitdownTimeout:
-    """Test _convert_with_markitdown() timeout handling."""
-
-    def test_timeout_returns_none(self):
-        """When markitdown conversion times out, return None."""
-        # Mock the thread to simulate timeout by not completing
-        with patch(
-            "app.agent.tools.builtin.filesystem.handlers.threading.Thread"
-        ) as mock_thread_class:
-            mock_thread = MagicMock()
-            mock_thread.is_alive.return_value = True  # Simulate timeout
-            mock_thread_class.return_value = mock_thread
-
-            result = _convert_with_markitdown(
-                b"test data", "application/pdf", "test.pdf"
-            )
-
-            assert result is None
-            mock_thread.start.assert_called_once()
-            mock_thread.join.assert_called_once()
-
-    def test_timeout_logs_warning(self):
-        """When timeout occurs, a warning is logged."""
-        with patch(
-            "app.agent.tools.builtin.filesystem.handlers.threading.Thread"
-        ) as mock_thread_class:
-            mock_thread = MagicMock()
-            mock_thread.is_alive.return_value = True
-            mock_thread_class.return_value = mock_thread
-
-            with patch(
-                "app.agent.tools.builtin.filesystem.handlers.logger"
-            ) as mock_logger:
-                _convert_with_markitdown(b"test", "application/pdf", "test.pdf")
-                mock_logger.warning.assert_called_once()
-                call_args = mock_logger.warning.call_args
-                assert "markitdown_timeout" in call_args[0][0]
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# _convert_with_markitdown() error path
-# ─────────────────────────────────────────────────────────────────────────────
-
-
-class TestConvertWithMarkitdownError:
-    """Test _convert_with_markitdown() error handling."""
-
-    def test_exception_in_thread_returns_none(self):
-        """When markitdown raises an exception, return None."""
-        with patch(
-            "app.agent.tools.builtin.filesystem.handlers.threading.Thread"
-        ) as mock_thread_class:
-            mock_thread = MagicMock()
-            mock_thread.is_alive.return_value = False
-            mock_thread_class.return_value = mock_thread
-
-            # Patch markitdown import inside the function
-            with patch("markitdown.MarkItDown") as mock_md:
-                mock_md.side_effect = RuntimeError("Conversion failed")
-
-                # Actually call the real function but with mocked MarkItDown
-                result = _convert_with_markitdown(
-                    b"bad pdf", "application/pdf", "bad.pdf"
-                )
-
-                # Should return None on error
-                assert result is None
-
-    def test_empty_conversion_result_returns_none(self):
-        """When markitdown returns empty text, return None."""
-        with patch(
-            "app.agent.tools.builtin.filesystem.handlers.threading.Thread"
-        ) as mock_thread_class:
-            mock_thread = MagicMock()
-            mock_thread.is_alive.return_value = False
-            mock_thread_class.return_value = mock_thread
-
-            # Simulate successful conversion but empty result
-            with patch("markitdown.MarkItDown") as mock_md:
-                mock_result = MagicMock()
-                mock_result.text_content = ""  # Empty
-                mock_md.return_value.convert_stream.return_value = mock_result
-
-                result = _convert_with_markitdown(
-                    b"empty", "application/pdf", "empty.pdf"
-                )
-
-                # Empty text should return None
-                assert result is None
-
-    def test_whitespace_only_conversion_returns_none(self):
-        """When markitdown returns only whitespace, return None."""
-        with patch(
-            "app.agent.tools.builtin.filesystem.handlers.threading.Thread"
-        ) as mock_thread_class:
-            mock_thread = MagicMock()
-            mock_thread.is_alive.return_value = False
-            mock_thread_class.return_value = mock_thread
-
-            with patch("markitdown.MarkItDown") as mock_md:
-                mock_result = MagicMock()
-                mock_result.text_content = "   \n\t  "  # Only whitespace
-                mock_md.return_value.convert_stream.return_value = mock_result
-
-                result = _convert_with_markitdown(
-                    b"whitespace", "application/pdf", "ws.pdf"
-                )
-
-                assert result is None
-
-
-# ─────────────────────────────────────────────────────────────────────────────
 # handle_document() with oversized PDF and vision=True
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -212,7 +95,7 @@ class TestHandleDocumentOversizedPdf:
         big_pdf.write_bytes(b"%PDF-1.4" + b"\x00" * (10_485_760 + 1))
 
         with patch(
-            "app.agent.tools.builtin.filesystem.handlers._convert_with_markitdown"
+            "app.agent.tools.builtin.filesystem.handlers._convert_document"
         ) as m:
             m.return_value = None
             result = handle_document(big_pdf, Path("big.pdf"))
@@ -228,7 +111,7 @@ class TestHandleDocumentOversizedPdf:
         pdf.write_bytes(b"%PDF-1.4" + b"\x00" * (10_485_760 - 8))
 
         with patch(
-            "app.agent.tools.builtin.filesystem.handlers._convert_with_markitdown"
+            "app.agent.tools.builtin.filesystem.handlers._convert_document"
         ) as m:
             m.return_value = None
             result = handle_document(pdf, Path("at_limit.pdf"))
@@ -528,11 +411,11 @@ class TestReadFileWithoutState:
 
     @pytest.mark.asyncio
     async def test_document_without_state_still_converts(self, workspace):
-        """Documents still get markitdown conversion without state."""
+        """Documents still get document conversion without state."""
         (workspace / "doc.pdf").write_bytes(b"%PDF-1.4" + b"\x00" * 100)
 
         with patch(
-            "app.agent.tools.builtin.filesystem.handlers._convert_with_markitdown"
+            "app.agent.tools.builtin.filesystem.handlers._convert_document"
         ) as m:
             m.return_value = "# Content"
             result = await read_file.arun(path="doc.pdf")

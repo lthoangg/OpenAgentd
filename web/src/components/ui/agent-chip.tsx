@@ -26,7 +26,7 @@
 import { cn } from '@/lib/utils'
 import type { AgentRole } from '@/lib/agent-roles'
 
-const CHIP_BASE = 'inline-flex items-center gap-2 rounded-md px-3 py-1.5 font-mono text-xs leading-none transition-all'
+const CHIP_BASE = 'inline-flex items-center gap-2 rounded-full px-3 py-1.5 font-mono text-xs leading-none transition-all'
 
 const ACTIVE_BORDER: Record<AgentRole, string> = {
   openagentd: 'border-transparent',

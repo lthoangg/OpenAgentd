@@ -27,7 +27,7 @@ export function AgentTabs({
             key={name}
             type="button"
             onClick={() => onSelect(name)}
-            className={`flex items-center gap-1.5 rounded-xs border border-transparent px-2.5 py-1 font-mono text-[10px] font-semibold tracking-wide uppercase transition-colors outline-none ${
+            className={`flex items-center gap-1.5 rounded-xs border border-transparent px-2.5 py-1 font-mono text-[10px] font-semibold tracking-wide uppercase transition-colors outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 active:bg-(--bg-key)/80 ${
               isActive
                 ? 'border-(--color-border-strong) bg-(--bg-key) text-(--color-text)'
                 : 'text-(--color-text-subtle) hover:bg-(--bg-key)/40 hover:text-(--color-text-2)'

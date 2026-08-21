@@ -348,7 +348,7 @@ class TestOnDemandActivation:
         lead.register(team)
         monkeypatch.setattr(lead.agent, "run", fake_run)
 
-        await lead._handle_messages(is_continuation=True)
+        await lead._handle_messages()
 
         assert captured == {
             "factory_model": "codex:gpt-5.4",
@@ -402,7 +402,7 @@ class TestOnDemandActivation:
         lead.register(team)
         monkeypatch.setattr(lead.agent, "run", fake_run)
 
-        await lead._handle_messages(is_continuation=True)
+        await lead._handle_messages()
 
         assert captured == {
             "factory_model": "grok:grok-4.5",

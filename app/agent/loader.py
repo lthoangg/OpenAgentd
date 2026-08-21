@@ -26,7 +26,7 @@ Each file::
     description: Coordinates the team.
         model: googlegenai:gemini-3.1-pro-preview
         thinking_level: low
-    tools: [date, read, ls]
+    tools: [read, grep, patch]
     skills: [mcp-installer]
     ---
 
@@ -318,43 +318,50 @@ def _is_retired_builtin_member(mode: str, name: str) -> bool:
 # Built-in tool registry
 # ---------------------------------------------------------------------------
 
+# Tool names that are valid in an agent's ``tools:`` list but are never present
+# in ``_default_tool_registry()``, because they are attached later from runtime
+# context: ``skill``/``todo_manage``/``schedule_task`` are bound per agent in
+# ``_build_agent``, while ``lsp`` and the team tools come from
+# ``AgentTeam._builtin_team_tools`` based on mode and role. They must be
+# exempt from unknown-tool pruning or a valid name would be deleted from the
+# user's file whenever the agent is loaded outside that context.
+_CONTEXT_INJECTED_TOOLS = frozenset(
+    {
+        "skill",
+        "todo_manage",
+        "schedule_task",
+        "lsp",
+        "team_message",
+        "team_manage",
+        "ask_user",
+    }
+)
+
 
 def _default_tool_registry() -> dict[str, Tool]:
     from app.agent.mcp import mcp_manager
     from app.agent.tools.builtin import (
-        background_process,
-        edit_file,
-        get_date,
         glob_files,
         grep_files,
-        list_directory,
         load_skill,
         patch_file,
         read_file,
-        remove_path,
         schedule_task,
         shell_tool,
         todo_manage,
         web_fetch,
         web_search,
-        write_file,
     )
     from app.agent.tools.multimodalities import generate_image, generate_video
 
     registry: dict[str, Tool] = {
         "web_search": web_search,
         "web_fetch": web_fetch,
-        "date": get_date,
         "read": read_file,
-        "write": write_file,
-        "edit": edit_file,
-        "ls": list_directory,
         "grep": grep_files,
         "glob": glob_files,
         "patch": patch_file,
-        "rm": remove_path,
         "shell": shell_tool,
-        "bg": background_process,
         "skill": load_skill,
         "schedule_task": schedule_task,
         "todo_manage": todo_manage,
@@ -370,6 +377,54 @@ def _default_tool_registry() -> dict[str, Tool]:
 # ---------------------------------------------------------------------------
 # Internal agent builder
 # ---------------------------------------------------------------------------
+
+
+def _prune_unknown_tools_from_file(path: Path, unknown: list[str]) -> None:
+    """Strip *unknown* tool names from ``path``'s frontmatter ``tools:`` list.
+
+    Called when an agent file names tools that no longer exist — typically a
+    file written before a builtin tool was removed. Rewriting the file makes
+    the config self-healing instead of warning on every single load.
+
+    Only the ``tools`` key is touched. ``mcp`` entries are deliberately left
+    alone: an MCP server can be disabled or mid-restart, so an unknown server
+    name is frequently transient in a way a missing builtin tool is not.
+
+    Best-effort — a failure here must never break agent load, so every error
+    is logged and swallowed.
+    """
+    try:
+        text = path.read_text(encoding="utf-8")
+        match = _FRONTMATTER_RE.match(text)
+        if not match:
+            return
+        meta = yaml.safe_load(match.group(1)) or {}
+        listed = meta.get("tools")
+        if not isinstance(listed, list):
+            return
+
+        dropped = set(unknown)
+        kept = [t for t in listed if t not in dropped]
+        if kept == listed:
+            return
+
+        if kept:
+            meta["tools"] = kept
+        else:
+            meta.pop("tools", None)
+
+        body = match.group(2)
+        _atomic_write_text(
+            path, f"---\n{yaml.safe_dump(meta, sort_keys=False)}---\n\n{body}"
+        )
+        logger.warning(
+            "agent_tools_pruned agent={} file={} removed={}",
+            meta.get("name", path.stem),
+            path.name,
+            sorted(dropped & set(listed)),
+        )
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("agent_tools_prune_failed file={} error={}", path, exc)
 
 
 def _build_agent(
@@ -424,14 +479,14 @@ def _build_agent(
     seen: set[str] = {t.name for t in tools}
     cfg.tools = list(dict.fromkeys(cfg.tools))
     cfg.mcp = list(dict.fromkeys(cfg.mcp))
+    unknown_tools: list[str] = []
     for tool_name in cfg.tools:
-        if tool_name in ("skill", "todo_manage", "schedule_task"):
+        if tool_name in _CONTEXT_INJECTED_TOOLS:
             continue
         if tool_name not in tool_registry:
-            # Soft-skip: settings/self-healing edits and disabled-then-rebuild
-            # flows can leave a name in frontmatter briefly after the
-            # underlying tool/MCP server disappears between loads.
-
+            # Soft-skip so this load still succeeds, then prune the name from
+            # the file below so it stops recurring.
+            unknown_tools.append(tool_name)
             logger.warning(
                 "agent_unknown_tool agent={} tool={} available={}",
                 cfg.name,
@@ -443,6 +498,9 @@ def _build_agent(
             continue
         seen.add(tool_name)
         tools.append(tool_registry[tool_name])
+
+    if unknown_tools and source_path is not None:
+        _prune_unknown_tools_from_file(source_path, unknown_tools)
 
     # MCP servers: each entry grants the agent access to *all* tools exposed
     # by that server. Unknown / not-ready servers are warn-and-skip so the

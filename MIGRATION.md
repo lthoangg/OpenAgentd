@@ -73,6 +73,28 @@ There is no automatic Codex CLI importer yet. Migrate reusable setup manually:
 
 Codex CLI credentials are not imported because OpenAgentd stores its own OAuth token at `~/.cache/openagentd/codex_oauth.json`.
 
+## Filesystem Tool Consolidation (v1.134.0)
+
+`write`, `edit`, `ls`, `rm`, and `date` were removed. `read` now lists
+directories, and `patch` is the only tool that creates, edits, deletes, or
+moves files.
+
+Nothing is required of you: agent files under
+`~/.config/openagentd/agents/` that still list a removed tool are pruned
+automatically the first time they load, and the agent keeps working in the
+meantime.
+
+Two behaviours changed if you relied on them:
+
+| Before | Now |
+|--------|-----|
+| `rm` with `recursive: true` | run `rm -rf` through the `shell` tool |
+| `date` tool for the current time | the UTC date is injected into the prompt each turn; use `shell` with `date` for local wall-clock time |
+
+Custom agents that listed only removed tools fall back to the built-in
+defaults for their mode. Skills or plugins whose instructions tell the model
+to "use the write tool" should be reworded to reference `patch`.
+
 ## Existing OpenAgentd Installs
 
 If you already use OpenAgentd before `1.0.0`, you do not need to uninstall first. Install or update OpenAgentd normally, then launch the desktop app or run `openagentd`.

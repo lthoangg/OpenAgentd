@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "openagentd"
-version = "1.133.0"  # keep in sync with app/version.txt
+version = "2.0.0"  # keep in sync with app/version.txt
 description = "Self-hosted AI agents — streaming chat, tool use, persistent memory, multi-agent teams"
 readme = "README.md"
 requires-python = ">=3.14"
@@ -34,10 +34,19 @@ dependencies = [
     # breaks on Apple Silicon.
     "greenlet>=3.3.2",
     "ddgs>=9.12.0",
-    # Document conversion ships with only the formats used by the slim sidecar:
-    # PDF and DOCX via extras, plus HTML through markitdown core. Heavier
-    # features stay behind optional extras to keep the desktop bundle small.
-    "markitdown[pdf,docx]>=0.1.5",
+    # Binary documents (PDF/DOCX/office) for both `read` and `web_fetch`.
+    # A Rust library, 55-100x faster than markitdown on the same files, which
+    # releases the GIL so concurrent sessions convert in parallel and reports
+    # typed failures (encrypted, image-only) instead of an empty string.
+    "firecrawl-anydoc>=0.1.9",
+    # HTML for `web_fetch`. Extraction drops navigation, sidebars, and inline
+    # script/style bodies that a plain converter emits verbatim — on one real
+    # docs page markitdown returned 1,106,641 characters where this returns
+    # 10,655 for the same article.
+    # Imported lazily inside the web tools: the transitive chain (lxml, babel
+    # via courlan, dateparser) costs ~287ms to import and is only needed once
+    # a fetch actually runs.
+    "trafilatura>=2.2.0",
     "pyyaml>=6.0.3",
     "fastapi>=0.135.2",
     "uvicorn>=0.42.0",
@@ -70,15 +79,16 @@ dependencies = [
     # does first — so those modules migrate only when respx gains httpx2
     # support (or the mocking layer is replaced).
     "httpx2>=2.5.0",
-    "aws-bedrock-token-generator>=1.1.0",
-    "botocore[crt]>=1.43.1",
-    "duckdb>=1.1.0",
-    # Python diagnostics are part of the runtime product, not dev-only checks.
-    # Their native console binaries are discovered in uv-tool and desktop
-    # sidecar layouts by app.services.lsp.managed.
-    "ruff==0.16.1",
-    "ty==0.0.69",
+    "orjson>=3.10.0",
+    "pathspec>=1.1.1",
 ]
+
+[project.optional-dependencies]
+# Pre-bundle Python diagnostics (ruff/ty) where shipping them is preferred
+# over the on-demand per-project install (app.services.lsp.managed). The
+# desktop sidecar omits this extra: its bundle stays ~22MB smaller and
+# downloads the project-pinned version into the user cache on first use.
+python-lsp = ["ruff==0.16.1", "ty==0.0.69"]
 
 [project.urls]
 Repository = "https://github.com/lthoangg/openagentd"
@@ -99,6 +109,11 @@ dev = [
     "pytest-xdist>=3.6.1",
     "respx>=0.22.0",
     "tiktoken>=0.12.0",
+    # Python diagnostics for this repo's own lint/type checks. The runtime
+    # installs them on demand per coding project instead of shipping them.
+    "ruff==0.16.1",
+    "ty==0.0.69",
+    "pytest-timeout>=2.4.0",
 ]
 experiment = [
     "sentence-transformers>=5.6.0",
@@ -113,20 +128,6 @@ packages = ["app"]
 # not embedded in the FastAPI server wheel.
 [tool.hatch.build.targets.wheel.force-include]
 "app/alembic.ini" = "app/alembic.ini"
-
-[project.optional-dependencies]
-# Azure Document Intelligence routing in markitdown — server-side OCR fallback.
-# Brings in the azure-ai-* SDK family. Adds ~30 MB.
-azure-doc-intel = ["markitdown[az-doc-intel]>=0.1.5"]
-
-# Audio transcription via markitdown's audio backend
-# (speech_recognition + pydub). Adds ~50 MB and handles file-attached audio;
-# live microphone input uses client-side speech recognition instead.
-audio = ["markitdown[audio-transcription]>=0.1.5"]
-
-# Convenience: everything-but-the-kitchen-sink. Used by
-# ``uv tool install openagentd[full]`` for users who don't care about size.
-full = ["openagentd[audio,azure-doc-intel]"]
 
 [tool.uv]
 package = true

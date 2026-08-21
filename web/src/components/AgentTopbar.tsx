@@ -9,14 +9,15 @@
 
 import {
   CalendarClock,
-  FolderOpen,
   ListChecks,
+  PanelRight,
   Users,
   type LucideIcon,
 } from 'lucide-react'
 
 import { TopbarAction } from '@/components/ui/topbar-action'
 import { TokenMeter } from '@/components/ui/token-meter'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { ViewToggle, type ViewMode } from '@/components/ui/view-toggle'
 import { cn } from '@/lib/utils'
 
@@ -24,6 +25,7 @@ export interface AgentTopbarTokens {
   input: number
   output: number
   cached?: number
+  cachedPercent?: number
   sessionCostUsd?: number
   trigger?: number
   pulsing?: boolean
@@ -101,7 +103,7 @@ export function AgentTopbar({
   return (
     <div
       className={cn(
-        // py-0 keeps the element within h-10 on desktop so the
+        // py-0 keeps the element within the compact app header on desktop so the
         // AgentTopbar never grows the header's intrinsic height —
         // an oversized header confuses AppKit's titlebar measurement
         // and pushes the macOS traffic lights off-centre.
@@ -114,6 +116,7 @@ export function AgentTopbar({
           input={tokens.input}
           output={tokens.output}
           cached={tokens.cached}
+          cachedPercent={tokens.cachedPercent}
           sessionCostUsd={tokens.sessionCostUsd}
           trigger={tokens.trigger}
           pulsing={tokens.pulsing}
@@ -130,7 +133,7 @@ export function AgentTopbar({
         <AgentTopbarActionButton action={schedulerAction} fallbackIcon={CalendarClock} />
       )}
       {filesAction && (
-        <AgentTopbarActionButton action={filesAction} fallbackIcon={FolderOpen} />
+        <AgentTopbarActionButton action={filesAction} fallbackIcon={PanelRight} />
       )}
       {agentsAction && (
         <AgentTopbarActionButton action={agentsAction} fallbackIcon={Users} />
@@ -149,17 +152,23 @@ function AgentTopbarActionButton({
   fallbackIcon: LucideIcon
 }) {
   const Icon = action.Icon ?? fallbackIcon
-  return (
+  const button = (
     <TopbarAction
       Icon={Icon}
       label={action.label}
       onClick={action.onClick}
       disabled={action.disabled}
       className={action.className}
-      title={action.title}
       aria-label={action.ariaLabel ?? action.label ?? action.title}
       indicator={action.indicator}
       indicatorClassName={action.indicatorClassName}
     />
+  )
+  if (!action.title) return button
+  return (
+    <Tooltip>
+      <TooltipTrigger render={button} />
+      <TooltipContent>{action.title}</TooltipContent>
+    </Tooltip>
   )
 }

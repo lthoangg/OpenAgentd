@@ -14,7 +14,9 @@ import { Pencil, TerminalSquare, X } from 'lucide-react'
 
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { LongPressButton } from '@/components/ui/long-press-button'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { softHapticFeedback } from '@/lib/haptics'
 import { cn } from '@/lib/utils'
 import { useTerminalStore, type TerminalSessionMeta } from '@/stores/useTerminalStore'
@@ -69,26 +71,33 @@ export function TerminalTabButton({
           className,
         )}
       >
-        <LongPressButton
-          ref={buttonRef}
-          type="button"
-          enabled={mobile}
-          onLongPress={() => {
-            softHapticFeedback()
-            setMobileSheetOpen(true)
-          }}
-          onContextMenu={(e) => {
-            if (mobile) return
-            e.preventDefault()
-            setDesktopMenuAt({ x: e.clientX, y: e.clientY })
-          }}
-          onClick={onActivate}
-          className="flex min-w-0 flex-1 items-center gap-1.5 truncate"
-          title={meta.title}
-        >
-          <TerminalSquare size={12} className="shrink-0" aria-hidden="true" />
-          <span className="truncate font-mono">{meta.title}</span>
-        </LongPressButton>
+        <Tooltip className="min-w-0 flex-1">
+          <TooltipTrigger
+            className="min-w-0 flex-1"
+            render={
+              <LongPressButton
+                ref={buttonRef}
+                type="button"
+                enabled={mobile}
+                onLongPress={() => {
+                  softHapticFeedback()
+                  setMobileSheetOpen(true)
+                }}
+                onContextMenu={(e) => {
+                  if (mobile) return
+                  e.preventDefault()
+                  setDesktopMenuAt({ x: e.clientX, y: e.clientY })
+                }}
+                onClick={onActivate}
+                className="flex min-w-0 flex-1 items-center gap-1.5 truncate"
+              >
+                <TerminalSquare size={12} className="shrink-0" aria-hidden="true" />
+                <span className="truncate font-mono">{meta.title}</span>
+              </LongPressButton>
+            }
+          />
+          <TooltipContent>{meta.title}</TooltipContent>
+        </Tooltip>
         {!mobile && (
           <span
             role="button"
@@ -104,7 +113,7 @@ export function TerminalTabButton({
                 useTerminalStore.getState().close(meta.id)
               }
             }}
-            className="ml-0.5 shrink-0 rounded p-0.5 text-(--color-text-subtle) opacity-70 hover:text-(--color-text) md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100"
+            className="ml-0.5 shrink-0 rounded-xs p-0.5 text-(--color-text-subtle) opacity-70 hover:text-(--color-text) md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100"
             aria-label={`Close ${meta.title}`}
           >
             <X size={11} aria-hidden="true" />
@@ -122,7 +131,7 @@ export function TerminalTabButton({
           <div
             role="menu"
             aria-label={`Actions for ${meta.title}`}
-            className="fixed min-w-40 rounded-lg border border-(--color-border) bg-(--bg-card) p-1 text-sm text-(--color-text) shadow-xl"
+            className="fixed min-w-40 rounded-sm border border-(--color-border) bg-(--bg-card) p-1 text-xs text-(--color-text) shadow-md"
             style={{
               left: Math.min(desktopMenuAt.x, window.innerWidth - 170 - 8),
               top: Math.min(desktopMenuAt.y, window.innerHeight - 90 - 8),
@@ -132,22 +141,22 @@ export function TerminalTabButton({
             <button
               type="button"
               role="menuitem"
-              className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none"
+              className="flex w-full items-center gap-2 rounded-xs px-2 py-1 text-left text-xs hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none"
               onClick={() => { setDesktopMenuAt(null); openRename() }}
             >
-              <Pencil size={14} aria-hidden="true" />
+              <Pencil size={12} aria-hidden="true" />
               Rename
             </button>
             <button
               type="button"
               role="menuitem"
-              className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-(--color-error) hover:bg-(--color-error-subtle) focus-visible:bg-(--color-error-subtle) focus-visible:outline-none"
+              className="flex w-full items-center gap-2 rounded-xs px-2 py-1 text-left text-xs text-(--color-error) hover:bg-(--color-error-subtle) focus-visible:bg-(--color-error-subtle) focus-visible:outline-none"
               onClick={() => {
                 setDesktopMenuAt(null)
                 useTerminalStore.getState().close(meta.id)
               }}
             >
-              <X size={14} aria-hidden="true" />
+              <X size={12} aria-hidden="true" />
               Close
             </button>
           </div>
@@ -203,11 +212,10 @@ export function TerminalTabButton({
               <DialogDescription>Give this session a memorable name.</DialogDescription>
             </DialogHeader>
             <div className="px-3 py-2">
-              <input
+              <Input
                 ref={renameInputRef}
                 value={draftTitle}
                 onChange={(e) => setDraftTitle(e.target.value)}
-                className="min-h-11 w-full min-w-0 rounded-md border border-(--color-border) bg-(--bg-page) px-3 py-1 text-sm text-(--color-text) outline-none focus-visible:border-(--focus-ring) focus-visible:ring-2 focus-visible:ring-(--focus-ring)/25 md:min-h-9"
                 aria-label="Terminal name"
                 maxLength={64}
                 autoFocus

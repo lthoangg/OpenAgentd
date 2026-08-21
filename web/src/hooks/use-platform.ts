@@ -1,3 +1,5 @@
+import { useSyncExternalStore } from 'react'
+
 /**
  * Runtime platform detection.
  *
@@ -9,9 +11,10 @@
  * the legacy property.
  *
  * `isMacOverlay` — macOS + Tauri: the OS overlays the traffic-light
- * buttons over our WebView content, so chrome must reserve a left
- * inset and provide a manual drag region. This is the only platform
- * combination that needs special handling.
+ * buttons over our WebView content when windowed, so chrome must
+ * reserve a left inset (70px) and provide a manual drag region.
+ * In macOS fullscreen, the OS hides the traffic lights, so
+ * `isMacOverlay` resolves to false and the 70px space is reclaimed.
  */
 
 export type OS = 'macos' | 'windows' | 'linux' | 'ios' | 'android' | 'unknown'
@@ -20,10 +23,59 @@ export interface PlatformInfo {
   isTauri: boolean
   os: OS
   isMacOverlay: boolean
+  isFullscreen: boolean
 }
 
 interface UAClientHints {
   platform?: string
+}
+
+let isFullscreenState = typeof document !== 'undefined' ? Boolean(document.fullscreenElement) : false
+const listeners = new Set<() => void>()
+
+function notify() {
+  listeners.forEach((l) => l())
+}
+
+function subscribe(callback: () => void) {
+  listeners.add(callback)
+  return () => {
+    listeners.delete(callback)
+  }
+}
+
+function getFullscreenSnapshot(): boolean {
+  return isFullscreenState
+}
+
+export function _setFullscreenState(val: boolean): void {
+  if (isFullscreenState !== val) {
+    isFullscreenState = val
+    notify()
+  }
+}
+
+if (typeof window !== 'undefined') {
+  document.addEventListener('fullscreenchange', () => {
+    _setFullscreenState(Boolean(document.fullscreenElement))
+  })
+
+  if ('__TAURI_INTERNALS__' in window) {
+    void import('@tauri-apps/api/window')
+      .then(({ getCurrentWindow }) => {
+        const win = getCurrentWindow()
+        void win.isFullscreen().then((fs) => _setFullscreenState(fs)).catch(() => {})
+        void win.onResized(async () => {
+          try {
+            const fs = await win.isFullscreen()
+            _setFullscreenState(fs)
+          } catch {
+            // Ignore errors in non-standard window contexts
+          }
+        }).catch(() => {})
+      })
+      .catch(() => {})
+  }
 }
 
 function detectOS(): OS {
@@ -67,14 +119,21 @@ function detectTauri(): boolean {
 
 // Recomputed per call so tests can patch navigator / window between
 // cases without busting the module cache. Cost is negligible.
-function compute(): PlatformInfo {
+function compute(fsState = isFullscreenState): PlatformInfo {
   const os = detectOS()
   const isTauri = detectTauri()
-  return { isTauri, os, isMacOverlay: os === 'macos' && isTauri }
+  const isFullscreen = fsState
+  return {
+    isTauri,
+    os,
+    isFullscreen,
+    isMacOverlay: os === 'macos' && isTauri && !isFullscreen,
+  }
 }
 
 export function usePlatform(): PlatformInfo {
-  return compute()
+  const isFullscreen = useSyncExternalStore(subscribe, getFullscreenSnapshot, () => false)
+  return compute(isFullscreen)
 }
 
 /** Non-hook accessor for code paths that can't call hooks. */

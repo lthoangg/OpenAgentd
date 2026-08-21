@@ -54,6 +54,7 @@ from __future__ import annotations
 
 import json
 import time
+from collections.abc import Sequence
 from typing import TYPE_CHECKING, Awaitable, Callable
 
 from loguru import logger
@@ -65,6 +66,7 @@ from app.agent.providers.base import LLMProviderBase
 from app.agent.providers.model_metadata import get_model_limits
 from app.agent.schemas.chat import (
     AssistantMessage,
+    ChatMessage,
     HumanMessage,
     SystemMessage,
     ToolMessage,
@@ -73,6 +75,7 @@ from app.agent.schemas.events import (
     SummarizationContentEvent,
     SummarizationEndEvent,
     SummarizationStartEvent,
+    UsageEvent,
 )
 from app.core.otel import get_tracer
 from app.services.stream_envelope import StreamEnvelope
@@ -205,7 +208,7 @@ _MERGE_REQUEST = (
 )
 
 
-def _find_assistant_cutoff(msgs: list, keep_last: int) -> int:
+def _find_assistant_cutoff(msgs: Sequence[ChatMessage], keep_last: int) -> int:
     """Return the index of the Nth-from-last assistant message in *msgs*.
 
     Messages at or after this index are protected from summarisation; the
@@ -233,7 +236,9 @@ def _find_assistant_cutoff(msgs: list, keep_last: int) -> int:
     return 0  # not enough assistant turns — protect everything
 
 
-def _expand_tool_pair_ids(messages: list, seed_ids: set[int]) -> set[int]:
+def _expand_tool_pair_ids(
+    messages: Sequence[ChatMessage], seed_ids: set[int]
+) -> set[int]:
     """Expand *seed_ids* so assistant/tool-call pairs stay together.
 
     Compaction must not hide only one side of an assistant→tool exchange: OpenAI
@@ -278,7 +283,7 @@ def _expand_tool_pair_ids(messages: list, seed_ids: set[int]) -> set[int]:
     return expanded
 
 
-def _skill_tool_pair_ids(messages: list) -> set[int]:
+def _skill_tool_pair_ids(messages: Sequence[ChatMessage]) -> set[int]:
     """Return ids for the first visible assistant→skill tool-result pair per skill.
 
     Skill tool results contain active instruction text. During compaction they
@@ -760,7 +765,7 @@ class SummarizationHook(BaseAgentHook):
             on_delta = self._make_delta_emitter(emit_session_id, agent_name)
 
         try:
-            summary_text = await self._call_llm(
+            summary_text, summariser_usage = await self._call_llm(
                 ctx,
                 summariser_messages,
                 tools=state.tool_defs or None,
@@ -798,6 +803,11 @@ class SummarizationHook(BaseAgentHook):
         for m in state.messages:
             if id(m) in to_summarise_set and id(m) not in retained_skill_ids:
                 m.exclude_from_context = True
+                # Compacted rows lose position-independent membership — a
+                # previously retained skill pair that just got superseded by a
+                # newer load of the same skill compacts away like anything
+                # else. The checkpointer flushes the flip.
+                m.pinned = False
 
         # Exclude any prior summary still in the kept window — the new
         # summary supersedes it, and two summaries in a row can produce
@@ -817,15 +827,45 @@ class SummarizationHook(BaseAgentHook):
                 len(state.messages),
             )
 
+        # Invariant for the derived DB window: no excluded message may sit
+        # *after* the summary's position — coverage is positional
+        # (seq >= summary), so a straddled excluded row above the anchor
+        # would silently re-enter the window on reload. Tool-pair expansion
+        # can exclude rows past the first kept one; place the summary after
+        # the last excluded row in that case.
+        last_excluded_idx = next(
+            (
+                i
+                for i in range(len(state.messages) - 1, -1, -1)
+                if state.messages[i].exclude_from_context
+            ),
+            -1,
+        )
+        first_kept_idx = max(first_kept_idx, last_excluded_idx + 1)
+
+        # Everything that survives *below* the summary's anchor position is
+        # position-independent by definition (retained skill pairs, permanent
+        # notes, and any kept row the anchor ended up past). Pin them so the
+        # derived DB window — pinned rows + rows at/after the summary —
+        # reproduces exactly this in-memory window on reload.
+        for m in state.messages[:first_kept_idx]:
+            if not m.exclude_from_context and not isinstance(m, SystemMessage):
+                m.pinned = True
+
         # HumanMessage as the summary anchor: ZAI and most OpenAI-compat
         # APIs require system → user → … so this shape is safe regardless
         # of what the kept window starts with. The summary text itself is
         # stored verbatim — no prefix — so it renders cleanly in the UI
         # divider; the ``is_summary=True`` flag is the marker the LLM and
         # the frontend both key off of.
+        # The summariser's own usage (a real, billed model call) rides along
+        # in ``extra["usage"]`` — the same shape every assistant row persists —
+        # so the client's reload path (``sumUsageFromMessages``) keeps the
+        # compaction cost in the session's running sum.
         summary_msg = HumanMessage(
             content=summary_text,
             is_summary=True,
+            extra={"usage": summariser_usage} if summariser_usage else None,
         )
         state.messages.insert(first_kept_idx, summary_msg)
         # checkpointer.sync() (called by the loop after before_model)
@@ -839,6 +879,8 @@ class SummarizationHook(BaseAgentHook):
         span.set_status(StatusCode.OK)
 
         if emit_session_id:
+            if summariser_usage:
+                await self._emit_usage(emit_session_id, agent_name, summariser_usage)
             await self._emit_end(emit_session_id, agent_name, summary=summary_text)
 
         logger.info(
@@ -887,6 +929,43 @@ class SummarizationHook(BaseAgentHook):
         except Exception as exc:
             logger.debug("summarization_emit_end_failed error={}", exc)
 
+    async def _emit_usage(self, session_id: str, agent: str, usage: dict) -> None:
+        """Publish the summariser call's usage so the live cost meter adds it.
+
+        Mirrors ``StreamPublisherHook._publish_usage``: per-call values from
+        the same dict the summary message persists, so the live running sum
+        and a reload replay cannot disagree about the compaction cost.
+        ``metadata.summarization`` lets the client treat the prompt size as
+        the *pre-compaction* context rather than the current one.
+        """
+        from app.services import memory_stream_store as stream_store
+
+        cost = usage.get("cost")
+        estimated_cost = cost.get("estimated_usd") if isinstance(cost, dict) else None
+        metadata: dict = {"agent": agent, "summarization": True}
+        model_id = self._model_id or getattr(self._llm_provider, "model", None)
+        if isinstance(model_id, str) and model_id:
+            metadata["model"] = model_id
+        prompt_tokens = int(usage.get("input") or 0)
+        completion_tokens = int(usage.get("output") or 0)
+        try:
+            await stream_store.push_event(
+                session_id,
+                StreamEnvelope.from_event(
+                    UsageEvent(
+                        prompt_tokens=prompt_tokens,
+                        completion_tokens=completion_tokens,
+                        total_tokens=prompt_tokens + completion_tokens,
+                        cached_tokens=usage.get("cache"),
+                        thoughts_tokens=usage.get("thoughts"),
+                        estimated_cost_usd=estimated_cost,
+                        metadata=metadata,
+                    )
+                ),
+            )
+        except Exception as exc:
+            logger.debug("summarization_emit_usage_failed error={}", exc)
+
     def _make_delta_emitter(
         self, session_id: str, agent: str
     ) -> Callable[[str], Awaitable[None]]:
@@ -912,8 +991,13 @@ class SummarizationHook(BaseAgentHook):
         *,
         tools: list[dict] | None = None,
         on_delta: Callable[[str], Awaitable[None]] | None = None,
-    ) -> str:
-        """Stream the summariser LLM and return the full text response.
+    ) -> tuple[str, dict | None]:
+        """Stream the summariser LLM; return the full text and its usage dict.
+
+        The usage dict is ``usage_to_dict``'s shape (input/output/cache/cost),
+        or ``None`` when the provider never reported usage. Callers persist it
+        on the summary message and publish it as a ``usage`` event so the
+        summarisation cost enters the session's running cost sum.
 
         Passes max_token_length to the LLM provider if set. When ``on_delta``
         is supplied each non-empty content chunk is forwarded to it — used
@@ -993,6 +1077,7 @@ class SummarizationHook(BaseAgentHook):
             elapsed = time.monotonic() - t0
             span.set_attribute("summarization.llm_duration_s", round(elapsed, 3))
             span.set_attribute("summarization.response_length", len(full_text))
+            usage_dict: dict | None = None
             if last_usage is not None:
                 usage_dict = usage_to_dict(last_usage, model_id)
                 logger.info(
@@ -1004,4 +1089,4 @@ class SummarizationHook(BaseAgentHook):
                 )
                 set_usage_span_attributes(span, usage_dict)
             span.set_status(StatusCode.OK)
-            return full_text.strip()
+            return full_text.strip(), usage_dict

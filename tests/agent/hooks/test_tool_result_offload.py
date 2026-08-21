@@ -7,7 +7,10 @@ from unittest.mock import AsyncMock, patch
 
 from app.agent.artifacts import TOOL_RESULTS_DIR, tool_results_dir
 from app.agent.hooks.tool_result_offload import ToolResultOffloadHook, _NEVER_OFFLOAD
-from app.agent.sandbox import SandboxConfig, set_sandbox
+from app.agent.denied_paths import (
+    DeniedPathsConfig as SandboxConfig,
+    set_denied_paths as set_sandbox,
+)
 from app.agent.schemas.chat import FunctionCall, ToolCall
 from app.agent.state import AgentState, RunContext
 
@@ -48,7 +51,7 @@ class TestSmallResult:
             result = await hook.wrap_tool_call(ctx, state, tc, handler)
             assert result == "short result"
         finally:
-            from app.agent.sandbox import _sandbox_ctx
+            from app.agent.denied_paths import _denied_paths_ctx as _sandbox_ctx
 
             _sandbox_ctx.reset(token)
 
@@ -67,7 +70,7 @@ class TestSmallResult:
             offload_file = tool_results_dir("test-agent", "s_no_file") / "tc_1.txt"
             assert not offload_file.exists()
         finally:
-            from app.agent.sandbox import _sandbox_ctx
+            from app.agent.denied_paths import _denied_paths_ctx as _sandbox_ctx
 
             _sandbox_ctx.reset(token)
 
@@ -86,7 +89,7 @@ class TestSmallResult:
             result = await hook.wrap_tool_call(ctx, state, tc, handler)
             assert result == exact_result
         finally:
-            from app.agent.sandbox import _sandbox_ctx
+            from app.agent.denied_paths import _denied_paths_ctx as _sandbox_ctx
 
             _sandbox_ctx.reset(token)
 
@@ -112,7 +115,7 @@ class TestLargeResult:
 
             assert "offloaded" in result.lower()
         finally:
-            from app.agent.sandbox import _sandbox_ctx
+            from app.agent.denied_paths import _denied_paths_ctx as _sandbox_ctx
 
             _sandbox_ctx.reset(token)
 
@@ -132,7 +135,7 @@ class TestLargeResult:
             assert "myagent" in result
             assert "tc_path.txt" in result
         finally:
-            from app.agent.sandbox import _sandbox_ctx
+            from app.agent.denied_paths import _denied_paths_ctx as _sandbox_ctx
 
             _sandbox_ctx.reset(token)
 
@@ -150,7 +153,7 @@ class TestLargeResult:
 
             assert "Size:" in result
         finally:
-            from app.agent.sandbox import _sandbox_ctx
+            from app.agent.denied_paths import _denied_paths_ctx as _sandbox_ctx
 
             _sandbox_ctx.reset(token)
 
@@ -172,7 +175,7 @@ class TestLargeResult:
             # With head+tail preview, both ends should appear
             assert "Preview (last):" in result
         finally:
-            from app.agent.sandbox import _sandbox_ctx
+            from app.agent.denied_paths import _denied_paths_ctx as _sandbox_ctx
 
             _sandbox_ctx.reset(token)
 
@@ -198,7 +201,7 @@ class TestLargeResult:
             tail_section = result.split("Preview (last):\n")[1].split("\n")[0]
             assert len(tail_section) <= preview_chars
         finally:
-            from app.agent.sandbox import _sandbox_ctx
+            from app.agent.denied_paths import _denied_paths_ctx as _sandbox_ctx
 
             _sandbox_ctx.reset(token)
 
@@ -219,7 +222,7 @@ class TestLargeResult:
             assert dest.exists()
             assert dest.read_text() == full_content
         finally:
-            from app.agent.sandbox import _sandbox_ctx
+            from app.agent.denied_paths import _denied_paths_ctx as _sandbox_ctx
 
             _sandbox_ctx.reset(token)
 
@@ -243,7 +246,7 @@ class TestLargeResult:
             assert "lines" in meta
             assert "chars" in meta
         finally:
-            from app.agent.sandbox import _sandbox_ctx
+            from app.agent.denied_paths import _denied_paths_ctx as _sandbox_ctx
 
             _sandbox_ctx.reset(token)
 
@@ -270,7 +273,7 @@ class TestNeverOffload:
             # Me result returned unchanged — no offload
             assert result == big_result
         finally:
-            from app.agent.sandbox import _sandbox_ctx
+            from app.agent.denied_paths import _denied_paths_ctx as _sandbox_ctx
 
             _sandbox_ctx.reset(token)
 
@@ -301,7 +304,7 @@ class TestThresholdZero:
 
             assert result == big_result
         finally:
-            from app.agent.sandbox import _sandbox_ctx
+            from app.agent.denied_paths import _denied_paths_ctx as _sandbox_ctx
 
             _sandbox_ctx.reset(token)
 
@@ -329,7 +332,7 @@ class TestWriteFailure:
             # Me original result returned — no exception raised
             assert result == big_result
         finally:
-            from app.agent.sandbox import _sandbox_ctx
+            from app.agent.denied_paths import _denied_paths_ctx as _sandbox_ctx
 
             _sandbox_ctx.reset(token)
 
@@ -351,7 +354,7 @@ class TestWriteFailure:
 
             assert result is not None
         finally:
-            from app.agent.sandbox import _sandbox_ctx
+            from app.agent.denied_paths import _denied_paths_ctx as _sandbox_ctx
 
             _sandbox_ctx.reset(token)
 
@@ -375,7 +378,7 @@ class TestWriteOffload:
             assert path.parent.name == "myagent"
             assert path.parent.parent.name == TOOL_RESULTS_DIR
         finally:
-            from app.agent.sandbox import _sandbox_ctx
+            from app.agent.denied_paths import _denied_paths_ctx as _sandbox_ctx
 
             _sandbox_ctx.reset(token)
 
@@ -388,6 +391,6 @@ class TestWriteOffload:
 
             assert not str(path).startswith(str(tmp_path))
         finally:
-            from app.agent.sandbox import _sandbox_ctx
+            from app.agent.denied_paths import _denied_paths_ctx as _sandbox_ctx
 
             _sandbox_ctx.reset(token)

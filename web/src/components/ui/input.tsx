@@ -19,7 +19,7 @@ function Input({ className, ref, ...props }: InputProps) {
       data-slot="input"
       className={cn(
         // Layout
-        'w-full min-w-0 rounded border',
+        'w-full min-w-0 rounded-sm border',
         // Surface
         'border-(--color-border) bg-(--bg-input)',
         // Typography

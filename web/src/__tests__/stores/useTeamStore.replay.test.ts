@@ -198,4 +198,56 @@ describe("attach replay snapshots", () => {
     emit("message", { agent: "newcomer", text: "partial output" })
     expect(textOf("newcomer")).toBe("partial output")
   })
+
+  it("retains single tool call block on reconnect replay", () => {
+    emit("tool_call", { agent: "lead", name: "shell", tool_call_id: "tc-100" })
+    emit("tool_start", { agent: "lead", name: "shell", tool_call_id: "tc-100", arguments: '{"command":"ls"}' })
+    simulateAttach()
+    emit("tool_call", { agent: "lead", name: "shell", tool_call_id: "tc-100" })
+    emit("tool_start", { agent: "lead", name: "shell", tool_call_id: "tc-100", arguments: '{"command":"ls"}' })
+    emit("tool_end", { agent: "lead", name: "shell", tool_call_id: "tc-100", result: "file.txt" })
+
+    const blocks = useTeamStore.getState().agentStreams.lead.currentBlocks
+    const toolBlocks = blocks.filter((b) => b.type === "tool")
+    expect(toolBlocks).toHaveLength(1)
+    expect(toolBlocks[0].toolCallId).toBe("tc-100")
+    expect(toolBlocks[0].toolDone).toBe(true)
+    expect(toolBlocks[0].toolResult).toBe("file.txt")
+  })
+
+  it("keeps ask_user open across a stream reconnect mid-wait", () => {
+    emit("tool_call", { agent: "lead", name: "ask_user", tool_call_id: "tc-ask-1" })
+    emit("question_asked", {
+      question_id: "q-1",
+      session_id: "s1",
+      tool_call_id: "tc-ask-1",
+      questions: [{ question: "Proceed?", header: "Confirmation", multiple: false, custom: true, options: [] }],
+    })
+    emit("agent_status", { agent: "lead", status: "waiting_input" })
+
+    simulateAttach()
+    emit("agent_status", { agent: "lead", status: "waiting_input" })
+
+    const state = useTeamStore.getState()
+    expect(state.pendingQuestion?.id).toBe("q-1")
+    expect(state.agentStreams.lead.status).toBe("waiting_input")
+    expect(state.isTeamWorking).toBe(true)
+  })
+
+  it("updates ask_user to resolved on reconnect when question was resolved elsewhere", () => {
+    emit("tool_call", { agent: "lead", name: "ask_user", tool_call_id: "tc-ask-2" })
+    emit("question_asked", {
+      question_id: "q-2",
+      session_id: "s1",
+      tool_call_id: "tc-ask-2",
+      questions: [{ question: "Deploy?", header: "Deploy", multiple: false, custom: true, options: [] }],
+    })
+
+    simulateAttach()
+    emit("question_answered", { question_id: "q-2", answers: [["Yes"]] })
+
+    const state = useTeamStore.getState()
+    expect(state.pendingQuestion).toBeNull()
+    expect(state.resolvedQuestions["tc-ask-2"]?.answers).toEqual([["Yes"]])
+  })
 })

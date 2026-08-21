@@ -1,34 +1,14 @@
 import { useEffect, useMemo, useRef, useState, memo } from 'react'
 import { FileLightbox } from './FileLightbox'
-import hljs from 'highlight.js/lib/core'
-import bash from 'highlight.js/lib/languages/bash'
-import c from 'highlight.js/lib/languages/c'
-import cpp from 'highlight.js/lib/languages/cpp'
-import css from 'highlight.js/lib/languages/css'
-import go from 'highlight.js/lib/languages/go'
-import ini from 'highlight.js/lib/languages/ini'
-import java from 'highlight.js/lib/languages/java'
-import javascript from 'highlight.js/lib/languages/javascript'
-import json from 'highlight.js/lib/languages/json'
-import kotlin from 'highlight.js/lib/languages/kotlin'
-import markdown from 'highlight.js/lib/languages/markdown'
-import php from 'highlight.js/lib/languages/php'
-import python from 'highlight.js/lib/languages/python'
-import ruby from 'highlight.js/lib/languages/ruby'
-import rust from 'highlight.js/lib/languages/rust'
-import scss from 'highlight.js/lib/languages/scss'
-import sql from 'highlight.js/lib/languages/sql'
-import swift from 'highlight.js/lib/languages/swift'
-import typescript from 'highlight.js/lib/languages/typescript'
-import xml from 'highlight.js/lib/languages/xml'
-import yaml from 'highlight.js/lib/languages/yaml'
 import { motion } from 'framer-motion'
 import { Check, Copy, Download, ExternalLink, FileText, Loader2, Plus, X } from 'lucide-react'
 import { codingWorkspaceFileUrl } from '@/api/client'
 import { downloadCodingWorkspaceFile } from '@/lib/coding-workspace-download'
 import { cn } from '@/lib/utils'
 import { formatBytes } from '@/utils/format'
+import { highlightLines } from '@/utils/code-highlight'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useResizableWidth } from '@/hooks/use-resizable-width'
 import { isVideoSrc } from '@/utils/workspace'
 import { PdfThumbnail } from './PdfThumbnail'
@@ -48,17 +28,6 @@ const TEXT_EXTENSIONS = new Set([
 const IMAGE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp'])
 const MAX_TEXT_PREVIEW_BYTES = 512 * 1024
 const GUTTER_WIDTH_CH = 4
-
-// `highlight.js/lib/common` eagerly registers 37 grammars. The coding file
-// viewer supports a known extension set, so register only its 21 actual
-// languages — same visible coverage with less JS for every desktop/mobile
-// app startup (the viewer is part of the eager app shell).
-for (const [name, grammar] of Object.entries({
-  bash, c, cpp, css, go, ini, java, javascript, json, kotlin, markdown,
-  php, python, ruby, rust, scss, sql, swift, typescript, xml, yaml,
-})) {
-  hljs.registerLanguage(name, grammar)
-}
 
 function extOf(name: string): string {
   const i = name.lastIndexOf('.')
@@ -108,16 +77,22 @@ export function CopyButton({ workspace, file }: { workspace: string; file: Works
 
   const label = tooLarge ? 'File too large to copy' : copied ? 'Copied!' : 'Copy file contents'
   return (
-    <button
-      type="button"
-      onClick={handleCopy}
-      disabled={busy || tooLarge}
-      title={label}
-      aria-label={label}
-      className="flex h-9 min-w-9 items-center justify-center gap-1 rounded px-2 text-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2) disabled:cursor-not-allowed disabled:opacity-40 md:h-auto md:min-w-0 md:py-1"
-    >
-      {copied ? <Check size={12} className="text-(--color-success)" /> : busy ? <Loader2 size={12} className="animate-spin" /> : <Copy size={12} />}
-    </button>
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <button
+            type="button"
+            onClick={handleCopy}
+            disabled={busy || tooLarge}
+            aria-label={label}
+            className="flex h-9 min-w-9 items-center justify-center gap-1 rounded-md px-2 text-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 md:h-auto md:min-w-0 md:py-1"
+          >
+            {copied ? <Check size={12} className="text-(--color-success)" /> : busy ? <Loader2 size={12} className="animate-spin" /> : <Copy size={12} />}
+          </button>
+        }
+      />
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
   )
 }
 
@@ -134,58 +109,46 @@ function LineGutter({ value }: { value: number }) {
 }
 
 // ---------------------------------------------------------------------------
-// Syntax highlighting via highlight.js (already bundled for markdown blocks)
+// Syntax highlighting (shared with chat markdown — see utils/code-highlight)
 // ---------------------------------------------------------------------------
 
 /**
- * Map common file extensions to highlight.js language names.
- * hljs uses its own canonical names — this covers every ext in TEXT_EXTENSIONS
- * plus a few extras. Unknown extensions fall back to plaintext.
+ * Map file extensions to the grammar names in ``utils/code-highlight``.
+ *
+ * Covers every ext in TEXT_EXTENSIONS plus a few extras. Unknown extensions
+ * fall back to plaintext — the highlighter escapes and returns the source
+ * unstyled rather than throwing.
  */
-const EXT_TO_HLJS_LANG: Record<string, string> = {
+const EXT_TO_LANG: Record<string, string> = {
   // Web
-  ts: 'typescript', tsx: 'typescript', js: 'javascript', jsx: 'javascript',
-  mjs: 'javascript', cjs: 'javascript',
+  ts: 'ts', tsx: 'tsx', js: 'js', jsx: 'jsx',
+  mjs: 'js', cjs: 'js',
   html: 'html', css: 'css', scss: 'scss', sass: 'scss',
   // Data / config
   json: 'json', jsonl: 'json', yaml: 'yaml', yml: 'yaml',
-  toml: 'ini', ini: 'ini', env: 'ini',
-  xml: 'xml', svg: 'xml',
+  toml: 'toml', ini: 'ini', env: 'env',
+  xml: 'html', svg: 'html',
   // Markup / docs
   md: 'markdown', markdown: 'markdown', rst: 'plaintext',
   // Shell
-  sh: 'bash', bash: 'bash', zsh: 'bash', fish: 'bash',
+  sh: 'shell', bash: 'shell', zsh: 'shell', fish: 'shell',
   // Systems / compiled
   rs: 'rust', go: 'go', c: 'c', cpp: 'cpp', h: 'cpp', hpp: 'cpp',
   java: 'java', kt: 'kotlin', swift: 'swift',
   // Scripting
   py: 'python', rb: 'ruby', php: 'php',
   // Query
-  sql: 'sql',
-  // Data files (no highlighting)
-  csv: 'plaintext', tsv: 'plaintext', log: 'plaintext', txt: 'plaintext',
+  sql: 'sql', graphql: 'graphql', gql: 'graphql',
+  // Build / infra — newly highlightable now that chat and the viewer share
+  // one grammar registry.
+  dockerfile: 'dockerfile', mk: 'makefile', diff: 'diff', patch: 'diff',
+  // Data files
+  csv: 'csv', tsv: 'csv', log: 'plaintext', txt: 'plaintext',
   gitignore: 'plaintext',
 }
 
-/**
- * Highlight the full file content with hljs, returning one HTML string per
- * line. hljs preserves newlines in its output, so splitting on \n is safe.
- * Falls back to plain text if the language is unknown or highlighting fails.
- */
-function highlightFile(content: string, ext: string): string[] {
-  const lang = EXT_TO_HLJS_LANG[ext]
-  try {
-    const result = lang && lang !== 'plaintext'
-      ? hljs.highlight(content, { language: lang, ignoreIllegals: true })
-      : hljs.highlightAuto(content, ['javascript', 'typescript', 'python', 'bash', 'json', 'yaml', 'sql', 'css', 'html', 'rust', 'go'])
-    return result.value.split('\n')
-  } catch {
-    return content.split('\n')
-  }
-}
-
-// Memoized so re-selection of a line doesn't re-highlight the entire file.
-// hljs output is safe — user content is HTML-entity-escaped by highlight.js.
+// Memoized so re-selection of a line doesn't re-render every other line.
+// Token text is HTML-escaped by the highlighter before it gets here.
 const HighlightedCode = memo(function HighlightedCode({ html }: { html: string }) {
   return <span className="min-w-0 flex-1" dangerouslySetInnerHTML={{ __html: html || ' ' }} />
 })
@@ -293,11 +256,11 @@ function TextPreview({
     }
   }, [workspace, file.path, tooLarge, deleted])
 
-  // Run hljs on the full content, then split into per-line HTML strings.
+  // Highlight the full content, split into per-line HTML strings.
   // Must be above early returns to satisfy Rules of Hooks.
   const ext = extOf(file.name)
   const highlightedLines = useMemo(
-    () => content !== null ? highlightFile(content, ext) : [],
+    () => content !== null ? highlightLines(content, EXT_TO_LANG[ext]) : [],
     [content, ext],
   )
 
@@ -343,19 +306,25 @@ function TextPreview({
               )}
             >
               {selected && lineNo === selectedEnd && selectedStart !== null ? (
-                <button
-                  type="button"
-                  onMouseDown={(event) => event.stopPropagation()}
-                  onClick={(event) => {
-                    event.stopPropagation()
-                    onAddComment?.(file.path, selectedStart, selectedEnd)
-                  }}
-                  className="absolute left-[calc(0.75rem+4ch+0.25rem)] top-1 z-10 flex h-4 w-4 items-center justify-center rounded border border-(--color-border-strong) bg-(--bg-card) text-(--color-text-muted) shadow hover:bg-(--bg-key) hover:text-(--color-text)"
-                  aria-label={selectedStart === selectedEnd ? `Add comment for line ${selectedStart}` : `Add comment for lines ${selectedStart}-${selectedEnd}`}
-                  title={selectedStart === selectedEnd ? `Comment line ${selectedStart}` : `Comment lines ${selectedStart}-${selectedEnd}`}
-                >
-                  <Plus size={13} aria-hidden="true" />
-                </button>
+                <Tooltip className="absolute left-[calc(0.75rem+4ch+0.25rem)] top-1 z-10">
+                  <TooltipTrigger
+                    render={
+                      <button
+                        type="button"
+                        onMouseDown={(event) => event.stopPropagation()}
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          onAddComment?.(file.path, selectedStart, selectedEnd)
+                        }}
+                        className="flex h-4 w-4 items-center justify-center rounded-xs border border-(--color-border-strong) bg-(--bg-card) text-(--color-text-muted) shadow hover:bg-(--bg-key) hover:text-(--color-text)"
+                        aria-label={selectedStart === selectedEnd ? `Add comment for line ${selectedStart}` : `Add comment for lines ${selectedStart}-${selectedEnd}`}
+                      >
+                        <Plus size={13} aria-hidden="true" />
+                      </button>
+                    }
+                  />
+                  <TooltipContent>{selectedStart === selectedEnd ? `Comment line ${selectedStart}` : `Comment lines ${selectedStart}-${selectedEnd}`}</TooltipContent>
+                </Tooltip>
               ) : null}
               <button
                 type="button"
@@ -390,7 +359,7 @@ function ImagePreview({ workspace, file }: { workspace: string; file: WorkspaceF
         className="flex h-full min-h-0 w-full items-center justify-center overflow-auto overscroll-contain touch-pan-y bg-(--bg-page) p-4"
         aria-label={`Open ${file.name} preview in lightbox`}
       >
-        <img src={url} alt={file.name} className="block max-h-full max-w-full rounded border border-(--color-border) object-contain" />
+        <img src={url} alt={file.name} className="block max-h-full max-w-full rounded-sm border border-(--color-border) object-contain" />
       </button>
       <FileLightbox
         items={[{ type: 'image', src: url, name: file.name }]}
@@ -419,7 +388,7 @@ function VideoPreview({ workspace, file }: { workspace: string; file: WorkspaceF
           controls
           preload="metadata"
           playsInline
-          className="block max-h-full max-w-full rounded border border-(--color-border) bg-black object-contain"
+          className="block max-h-full max-w-full rounded-sm border border-(--color-border) bg-black object-contain"
         />
       </button>
       <FileLightbox
@@ -450,7 +419,7 @@ function PdfPreview({ workspace, file }: { workspace: string; file: WorkspaceFil
         <PdfThumbnail
           src={url}
           className="flex h-full w-full items-center justify-center"
-          canvasClassName="max-h-full max-w-full rounded border border-(--color-border) object-contain"
+          canvasClassName="max-h-full max-w-full rounded-sm border border-(--color-border) object-contain"
         />
       </button>
       <FileLightbox
@@ -591,7 +560,7 @@ export function DiffPreview({ diff }: { diff: string }) {
                 <div className="sticky left-0 z-[1] shrink-0 border-r border-(--color-border)/40 bg-inherit">
                   <span className="block w-9 py-0.5" />
                 </div>
-                <span className="px-3 py-0.5 text-[10px] italic text-(--color-text-subtle)/50">
+                <span className="px-3 py-0.5 text-[10px] italic text-(--color-text-subtle)">
                   {p.text}
                 </span>
               </div>
@@ -599,6 +568,11 @@ export function DiffPreview({ diff }: { diff: string }) {
           }
 
           if (p.kind === 'hunk') {
+            // No skipped lines to report (e.g. the first hunk starts at the
+            // top of the file) — rendering the empty separator anyway left a
+            // blank bordered strip between the file header row and the
+            // first real diff line, reading as a stray gap.
+            if (p.skipped <= 0) return null
             return (
               <div
                 key={index}
@@ -607,8 +581,8 @@ export function DiffPreview({ diff }: { diff: string }) {
                 <div className="sticky left-0 z-[1] shrink-0 border-r border-(--color-border)/40 bg-inherit">
                   <span className="block w-9 py-0.5" />
                 </div>
-                <span className="px-3 py-0.5 text-[10px] italic text-(--color-text-subtle)/50">
-                  {p.skipped > 0 ? `${p.skipped} line${p.skipped === 1 ? '' : 's'} unchanged` : ''}
+                <span className="px-3 py-0.5 text-[10px] italic text-(--color-text-subtle)">
+                  {p.skipped} line{p.skipped === 1 ? '' : 's'} unchanged
                 </span>
               </div>
             )
@@ -720,15 +694,28 @@ export function CodingFileViewerPanel({
         <header className="flex shrink-0 items-center justify-between gap-3 border-b border-(--color-border) px-3 py-3">
           <div className="min-w-0 flex-1">
             <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-(--color-text-subtle)">File</p>
-            <p className="mt-1 truncate font-mono text-xs text-(--color-text)" title={file.path}>{file.path}</p>
+            <p className="mt-1 truncate font-mono text-xs text-(--color-text)">{file.path}</p>
             <p className="mt-0.5 text-[10px] text-(--color-text-subtle)">{formatBytes(file.size)} · {file.mime}</p>
           </div>
           <div className="flex shrink-0 items-center gap-1">
-            <button type="button" onClick={() => void downloadCodingWorkspaceFile(workspace, file)} disabled={deleted} title={deleted ? 'File deleted from workspace' : 'Download'} className="flex h-11 w-11 items-center justify-center rounded text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) disabled:cursor-not-allowed disabled:opacity-40 md:h-7 md:w-7">
-              <Download size={14} />
-            </button>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <button
+                    type="button"
+                    onClick={() => void downloadCodingWorkspaceFile(workspace, file)}
+                    disabled={deleted}
+                    aria-label={deleted ? 'File deleted from workspace' : 'Download'}
+                    className="flex h-11 w-11 items-center justify-center rounded-sm text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 active:bg-(--bg-key)/80 disabled:cursor-not-allowed disabled:opacity-40 md:h-7 md:w-7"
+                  >
+                    <Download size={14} />
+                  </button>
+                }
+              />
+              <TooltipContent>{deleted ? 'File deleted from workspace' : 'Download'}</TooltipContent>
+            </Tooltip>
             {kind === 'text' && !deleted && <CopyButton workspace={workspace} file={file} />}
-            <button type="button" onClick={onClose} className="flex h-11 w-11 items-center justify-center rounded text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-7 md:w-7" aria-label="Close file viewer">
+            <button type="button" onClick={onClose} className="flex h-11 w-11 items-center justify-center rounded-sm text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 active:bg-(--bg-key)/80 md:h-7 md:w-7" aria-label="Close file viewer">
               <X size={14} />
             </button>
           </div>

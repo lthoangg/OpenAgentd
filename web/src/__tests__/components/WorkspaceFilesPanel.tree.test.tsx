@@ -59,6 +59,15 @@ function renderPanel(files: WorkspaceFileInfo[], onClose = () => {}) {
   )
 }
 
+// File rows no longer carry a native `title` attribute (moved to a hover
+// Tooltip) — locate the row's button via its visible name text instead.
+async function findFileButton(name: string): Promise<HTMLButtonElement> {
+  return (await screen.findByText(name)).closest('button') as HTMLButtonElement
+}
+function getFileButton(name: string): HTMLButtonElement {
+  return screen.getByText(name).closest('button') as HTMLButtonElement
+}
+
 // ── Structure ─────────────────────────────────────────────────────────────────
 
 describe('WorkspaceFilesPanel tree — structure', () => {
@@ -195,8 +204,8 @@ describe('WorkspaceFilesPanel tree — indentation', () => {
   it('files inside a folder have more paddingLeft than root-level files', async () => {
     renderPanel([f('root.ts'), f('nested/child.ts')])
 
-    const rootBtn = await screen.findByTitle('root.ts')
-    const childBtn = screen.getByTitle('nested/child.ts')
+    const rootBtn = await findFileButton('root.ts')
+    const childBtn = getFileButton('child.ts')
 
     const rootPL = parseInt(rootBtn.style.paddingLeft || '0', 10)
     const childPL = parseInt(childBtn.style.paddingLeft || '0', 10)
@@ -206,8 +215,8 @@ describe('WorkspaceFilesPanel tree — indentation', () => {
   it('deeper nesting adds progressively more paddingLeft', async () => {
     renderPanel([f('a/b.ts'), f('a/c/d.ts')])
 
-    const shallowBtn = await screen.findByTitle('a/b.ts')
-    const deepBtn = screen.getByTitle('a/c/d.ts')
+    const shallowBtn = await findFileButton('b.ts')
+    const deepBtn = getFileButton('d.ts')
 
     const shallowPL = parseInt(shallowBtn.style.paddingLeft || '0', 10)
     const deepPL = parseInt(deepBtn.style.paddingLeft || '0', 10)
@@ -222,7 +231,7 @@ describe('WorkspaceFilesPanel tree — file selection', () => {
     const user = userEvent.setup()
     renderPanel([f('notes.md')])
 
-    await user.click(await screen.findByTitle('notes.md'))
+    await user.click(await findFileButton('notes.md'))
 
     // The preview header renders the file path
     await waitFor(() => {
@@ -235,8 +244,8 @@ describe('WorkspaceFilesPanel tree — file selection', () => {
     const user = userEvent.setup()
     renderPanel([f('a.ts'), f('b.ts')])
 
-    const aBtn = await screen.findByTitle('a.ts')
-    const bBtn = screen.getByTitle('b.ts')
+    const aBtn = await findFileButton('a.ts')
+    const bBtn = getFileButton('b.ts')
 
     await user.click(aBtn)
 
@@ -248,8 +257,8 @@ describe('WorkspaceFilesPanel tree — file selection', () => {
     const user = userEvent.setup()
     renderPanel([f('a.ts'), f('b.ts')])
 
-    const aBtn = await screen.findByTitle('a.ts')
-    const bBtn = screen.getByTitle('b.ts')
+    const aBtn = await findFileButton('a.ts')
+    const bBtn = getFileButton('b.ts')
 
     await user.click(aBtn)
     expect(aBtn.className).toContain('text-(--color-accent)')
@@ -286,7 +295,7 @@ describe('WorkspaceFilesPanel tree — selection cleared on file removal', () =>
     )
 
     // Select the file
-    await user.click(await screen.findByTitle('temp.txt'))
+    await user.click(await findFileButton('temp.txt'))
     await waitFor(() => expect(screen.queryAllByText('temp.txt').length).toBeGreaterThanOrEqual(1))
 
     // Remove the file and trigger a re-fetch by toggling open

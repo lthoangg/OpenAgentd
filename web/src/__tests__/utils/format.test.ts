@@ -1,5 +1,5 @@
 import { describe, it, expect } from "bun:test";
-import { formatTokens, formatRelativeDate, formatDate, isSleepMessage, extractSleepPrefix, shortId, formatTime, lastTurnText } from "@/utils/format";
+import { formatTokens, formatRelativeDate, formatDate, isSleepMessage, extractSleepPrefix, shortId, formatTime, formatFullDateTime, lastTurnText } from "@/utils/format";
 
 // ---------------------------------------------------------------------------
 // formatTokens
@@ -86,6 +86,22 @@ describe("formatDate", () => {
     expect(result).toBeInstanceOf(Date);
     expect(result.getTime()).toBeGreaterThanOrEqual(before);
     expect(result.getTime()).toBeLessThanOrEqual(after);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// formatFullDateTime
+// ---------------------------------------------------------------------------
+
+describe("formatFullDateTime", () => {
+  it("formats as DD/MM/YYYY HH:mm:ss regardless of locale", () => {
+    const date = new Date(2024, 0, 15, 9, 5, 3); // 15 Jan 2024 09:05:03
+    expect(formatFullDateTime(date)).toBe("15/01/2024 09:05:03");
+  });
+
+  it("pads single-digit day and month", () => {
+    const date = new Date(2023, 2, 5, 8, 3, 0); // 5 Mar 2023 08:03:00
+    expect(formatFullDateTime(date)).toBe("05/03/2023 08:03:00");
   });
 });
 
@@ -317,6 +333,45 @@ describe("lastTurnText", () => {
       block("user", "hi"),
       block("tool", ""),
       block("thinking", "..."),
+    ];
+    expect(lastTurnText(blocks)).toBe("");
+  });
+});
+
+describe("lastTurnText — only the final response after the last tool call", () => {
+  it("drops narration text that precedes a tool call", () => {
+    const blocks = [
+      block("text", "Let me check that for you."),
+      block("tool", ""),
+      block("text", "Here is the answer."),
+    ];
+    expect(lastTurnText(blocks)).toBe("Here is the answer.");
+  });
+
+  it("keeps only the text after the last of several tool calls", () => {
+    const blocks = [
+      block("text", "plan"),
+      block("tool", ""),
+      block("text", "intermediate note"),
+      block("tool", ""),
+      block("text", "final answer"),
+    ];
+    expect(lastTurnText(blocks)).toBe("final answer");
+  });
+
+  it("joins multiple text blocks that all follow the last tool call", () => {
+    const blocks = [
+      block("tool", ""),
+      block("text", "part one"),
+      block("text", "part two"),
+    ];
+    expect(lastTurnText(blocks)).toBe("part one\n\npart two");
+  });
+
+  it("returns empty string when the turn ends on a tool call with no trailing text", () => {
+    const blocks = [
+      block("text", "working on it"),
+      block("tool", ""),
     ];
     expect(lastTurnText(blocks)).toBe("");
   });

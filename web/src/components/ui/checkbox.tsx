@@ -16,7 +16,7 @@ function Checkbox({ className, onChange, onCheckedChange, checkClassName, ...pro
         type="checkbox"
         data-slot="checkbox"
         className={cn(
-          'peer size-[18px] appearance-none rounded-[4px] border border-(--color-border-strong) bg-(--bg-page) transition-colors outline-none',
+          'peer size-[18px] appearance-none rounded-sm border border-(--color-border-strong) bg-(--bg-page) transition-colors outline-none',
           'checked:border-(--accent-blue) checked:bg-(--accent-blue)',
           'focus-visible:ring-2 focus-visible:ring-(--focus-ring)/25 disabled:cursor-not-allowed disabled:opacity-50',
           'aria-invalid:border-(--color-error) aria-invalid:ring-2 aria-invalid:ring-(--color-error)/20',
@@ -30,7 +30,7 @@ function Checkbox({ className, onChange, onCheckedChange, checkClassName, ...pro
       />
       <Check
         className={cn(
-          'pointer-events-none absolute inset-0 m-auto hidden size-3 text-white peer-checked:block',
+          'pointer-events-none absolute inset-0 m-auto hidden size-3 text-(--color-text-on-accent) peer-checked:block',
           checkClassName,
         )}
         aria-hidden="true"

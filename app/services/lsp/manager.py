@@ -1,9 +1,11 @@
 import asyncio
 import json
 import os
+import re
 import shutil
 from contextlib import suppress
 from pathlib import Path
+from typing import Any
 
 from loguru import logger
 
@@ -18,6 +20,7 @@ from app.services.lsp.managed import (
 _CACHED_USER_PATH: str | None = None
 _USER_PATH_LOCK = asyncio.Lock()
 _USER_PATH_TIMEOUT_SECONDS = 3.0
+_CLIENT_START_TIMEOUT_SECONDS = 15.0
 _PATH_OUTPUT_PREFIX = "__OPENAGENTD_PATH__"
 
 
@@ -283,17 +286,7 @@ def _python_tools_from_pyproject(project_root: Path) -> list[list[str]]:
     def declares(name: str) -> bool:
         if name in tool_tables:
             return True
-        return any(
-            dep.split("[")[0]
-            .split(">")[0]
-            .split("=")[0]
-            .split("<")[0]
-            .split("~")[0]
-            .strip()
-            .lower()
-            == name
-            for dep in haystack
-        )
+        return any(_split_dep_spec(dep)[0] == name for dep in haystack)
 
     cmds: list[list[str]] = []
     # ``ty`` — Astral's type checker, speaks LSP via ``ty server``.
@@ -309,6 +302,60 @@ def _python_tools_from_pyproject(project_root: Path) -> list[list[str]]:
     if declares("python-lsp-server") or declares("pylsp"):
         cmds.append(["pylsp"])
     return cmds
+
+
+def _split_dep_spec(dep: str) -> tuple[str, str | None]:
+    """Split a PEP 508-ish dependency string into (name, exact-version-or-None).
+
+    ``ruff==0.16.1`` → (``"ruff"``, ``"0.16.1"``); ``ty>=0.0.33,<0.1`` and a
+    bare ``ty`` → (``"ty"``, ``None``). Extras and environment markers are
+    stripped before the version is read.
+    """
+    base = dep.split(";", 1)[0].strip()
+    base = re.split(r"\[[^\]]*\]", base, maxsplit=1)[0].strip()
+    match = re.match(r"^([A-Za-z0-9_.-]+)", base)
+    if match is None:
+        return "", None
+    name = match.group(1).lower()
+    rest = base[match.end() :].strip()
+    if rest.startswith("==="):
+        return name, rest[3:].strip()
+    if rest.startswith("=="):
+        return name, rest[2:].strip()
+    return name, None
+
+
+def detect_project_python_tool_versions(project_root: Path) -> dict[str, str | None]:
+    """Exact versions pinned for ty/ruff in the project's pyproject.toml.
+
+    Returns ``{tool: version}`` where *version* is the exact ``==`` pin, or
+    ``None`` for ranges and bare declarations (the installer resolves PyPI
+    latest at install time). Empty when the project declares neither tool.
+    """
+    pyproject = project_root / "pyproject.toml"
+    if not pyproject.exists():
+        return {}
+    try:
+        import tomllib
+
+        with pyproject.open("rb") as f:
+            data = tomllib.load(f)
+    except Exception:
+        return {}
+
+    project = data.get("project", {})
+    haystack: list[str] = [str(d) for d in project.get("dependencies", [])]
+    for group in (project.get("optional-dependencies", {}) or {}).values():
+        haystack += [str(d) for d in group]
+    for group in (data.get("dependency-groups", {}) or {}).values():
+        haystack += [str(d) for d in group]
+
+    versions: dict[str, str | None] = {}
+    for dep in haystack:
+        name, spec = _split_dep_spec(dep)
+        if name in {"ty", "ruff"}:
+            versions.setdefault(name, spec)
+    return versions
 
 
 def detect_project_lsp_commands(lang_id: str, project_root: Path) -> list[list[str]]:
@@ -366,10 +413,13 @@ def _build_ts_init_options(project_root: Path) -> dict:
             with tsconfig_path.open(encoding="utf-8") as f:
                 tsconfig = json.load(f)
             compiler_opts = tsconfig.get("compilerOptions", {})
+            target_opts = options.setdefault("compilerOptions", {})
             if "types" in compiler_opts:
-                options.setdefault("compilerOptions", {})["types"] = list(
-                    compiler_opts["types"]
-                )
+                target_opts["types"] = list(compiler_opts["types"])
+            if "paths" in compiler_opts:
+                target_opts["paths"] = compiler_opts["paths"]
+            if "baseUrl" in compiler_opts:
+                target_opts["baseUrl"] = compiler_opts["baseUrl"]
         except Exception as e:
             logger.warning("Failed to read tsconfig for LSP init options: {}", e)
 
@@ -384,6 +434,27 @@ def _build_ts_init_options(project_root: Path) -> dict:
     return options
 
 
+def _build_python_init_options(project_root: Path) -> dict | None:
+    """Build initializationOptions for Python language servers (virtualenv detection)."""
+    opts: dict = {}
+    for venv in (
+        project_root / ".venv",
+        project_root / "venv",
+        project_root / "env",
+        project_root / ".env",
+    ):
+        if venv.is_dir():
+            python_bin = venv / "bin" / "python"
+            if not python_bin.exists():
+                python_bin = venv / "Scripts" / "python.exe"
+            if python_bin.exists():
+                opts["pythonPath"] = str(python_bin)
+                opts["venvPath"] = str(venv.parent)
+                opts["venv"] = venv.name
+                break
+    return opts if opts else None
+
+
 def _build_init_options(lang_id: str, project_root: Path) -> dict | None:
     """Return server-specific initializationOptions for *lang_id*, or None.
 
@@ -393,6 +464,8 @@ def _build_init_options(lang_id: str, project_root: Path) -> dict | None:
     """
     if lang_id in {"typescript", "typescriptreact", "javascript", "javascriptreact"}:
         return _build_ts_init_options(project_root)
+    if lang_id == "python":
+        return _build_python_init_options(project_root)
     return None
 
 
@@ -423,6 +496,22 @@ class LspManager:
 
     def _mark_unsupported(self, lang_id: str) -> None:
         self._unsupported_langs[lang_id] = asyncio.get_running_loop().time()
+
+    async def _ensure_python_tool(self, name: str, version: str | None) -> None:
+        """Silently ensure a managed ty/ruff binary for a declared project.
+
+        Failures are logged and degrade to the generic fallback servers on the
+        next resolution pass rather than surfacing to the caller.
+        """
+        try:
+            await managed_lsp_tools.ensure_python_tool(name, version)
+        except Exception as exc:
+            logger.warning(
+                "managed_python_tool_ensure_failed name={} version={} error={!r}",
+                name,
+                version,
+                exc,
+            )
 
     def start(self):
         if self._cleanup_task is None:
@@ -493,11 +582,22 @@ class LspManager:
         """
         user_path = await _get_user_path()
 
+        declared_versions: dict[str, str | None] = {}
+        if lang_id == "python" and project_root is not None:
+            declared_versions = detect_project_python_tool_versions(project_root)
+
         def resolve(cmd: list[str]) -> list[str] | None:
             if shutil.which(cmd[0], path=user_path) is not None:
                 return cmd
             if cmd[0] in {"ty", "ruff"}:
-                return find_packaged_python_command(cmd[0])
+                packaged = find_packaged_python_command(cmd[0])
+                if packaged is not None:
+                    return packaged
+                managed = managed_lsp_tools.python_tool_command(
+                    cmd[0], declared_versions.get(cmd[0])
+                )
+                if managed is not None:
+                    return managed
             return None
 
         def supports_semantic_navigation(cmd: list[str]) -> bool:
@@ -508,17 +608,40 @@ class LspManager:
 
         # 1. Project-config-aware detection (may yield several for Python).
         if project_root is not None:
-            project_cmds = [
-                resolved
-                for cmd in detect_project_lsp_commands(lang_id, project_root)
-                if (resolved := resolve(cmd)) is not None
-                and (not semantic_only or supports_semantic_navigation(resolved))
-            ]
-            if project_cmds:
+            root: Path = project_root
+
+            def project_cmds() -> list[list[str]]:
+                return [
+                    resolved
+                    for cmd in detect_project_lsp_commands(lang_id, root)
+                    if (resolved := resolve(cmd)) is not None
+                    and (not semantic_only or supports_semantic_navigation(resolved))
+                ]
+
+            project_cmds_first = project_cmds()
+            if project_cmds_first:
                 logger.info(
-                    "Using project-configured LSP for {}: {}", lang_id, project_cmds
+                    "Using project-configured LSP for {}: {}",
+                    lang_id,
+                    project_cmds_first,
                 )
-                return project_cmds
+                return project_cmds_first
+
+            # Declared-but-unavailable Python tooling (ty/ruff): silently
+            # install the project's pinned version (or PyPI latest) into the
+            # managed cache, then re-resolve. Only project declarations
+            # trigger downloads — a bare workspace never auto-installs.
+            if lang_id == "python" and declared_versions:
+                for tool, version in declared_versions.items():
+                    await self._ensure_python_tool(tool, version)
+                project_cmds_second = project_cmds()
+                if project_cmds_second:
+                    logger.info(
+                        "Using managed Python LSP for {}: {}",
+                        lang_id,
+                        project_cmds_second,
+                    )
+                    return project_cmds_second
 
         # 2. Runtime settings (settings.yaml) — global fallback.
         try:
@@ -620,13 +743,26 @@ class LspManager:
                     env={**os.environ, "PATH": await _get_user_path()},
                 )
                 try:
-                    await client.start()
+                    await asyncio.wait_for(
+                        client.start(), timeout=_CLIENT_START_TIMEOUT_SECONDS
+                    )
                     self._clients[key] = client
                     clients.append(client)
+                except TimeoutError:
+                    logger.warning(
+                        "Timed out starting LSP client {} for {} after {}s",
+                        cmd,
+                        lang_id,
+                        _CLIENT_START_TIMEOUT_SECONDS,
+                    )
                 except Exception as e:
                     logger.warning(
                         "Failed to start LSP client {} for {}: {}", cmd, lang_id, e
                     )
+                finally:
+                    if client not in clients:
+                        with suppress(Exception):
+                            await client.stop()
 
             if not clients:
                 # Every candidate failed to start — back off so we don't retry
@@ -687,6 +823,8 @@ class LspManager:
             "find_references": "textDocument/references",
             "document_symbol": "textDocument/documentSymbol",
             "workspace_symbol": "workspace/symbol",
+            "hover": "textDocument/hover",
+            "find_implementations": "textDocument/implementation",
         }
         method = methods[operation]
         if file_path is not None:
@@ -718,43 +856,59 @@ class LspManager:
             if operation == "find_references":
                 params["context"] = {"includeDeclaration": True}
 
-        async def request(client: LspClient):
+        async def request(client: LspClient, req_method: str = method):
             async with client.diagnostics_lock(uri):
                 try:
                     await client.open_or_update_document(uri, lang_id, content)
                     return await asyncio.wait_for(
-                        client.send_request(method, params), timeout=5.0
+                        client.send_request(req_method, params), timeout=5.0
                     )
                 finally:
                     if file_path is not None:
                         with suppress(Exception):
                             await client.close_document(uri)
 
+        def _collect(response_list: list[Any]) -> list[dict]:
+            collected: list[dict] = []
+            for resp in response_list:
+
+                def flatten(symbol: dict) -> None:
+                    if operation == "document_symbol" and "location" not in symbol:
+                        name_range = symbol.get("selectionRange", symbol.get("range"))
+                        if isinstance(name_range, dict):
+                            symbol = {
+                                **symbol,
+                                "location": {"uri": uri, "range": name_range},
+                            }
+                    collected.append(symbol)
+                    if operation == "document_symbol":
+                        for child in symbol.get("children", []):
+                            if isinstance(child, dict):
+                                flatten(child)
+
+                if isinstance(resp, list):
+                    for item in resp:
+                        if isinstance(item, dict):
+                            flatten(item)
+                elif isinstance(resp, dict):
+                    flatten(resp)
+            return collected
+
         responses = await asyncio.gather(
             *(request(client) for client in clients), return_exceptions=True
         )
-        results: list[dict] = []
-        for response in responses:
+        has_exceptions = any(isinstance(r, BaseException) for r in responses)
+        results = _collect(responses)
 
-            def flatten(symbol: dict) -> None:
-                if operation == "document_symbol" and "location" not in symbol:
-                    if isinstance(symbol.get("range"), dict):
-                        symbol = {
-                            **symbol,
-                            "location": {"uri": uri, "range": symbol["range"]},
-                        }
-                results.append(symbol)
-                if operation == "document_symbol":
-                    for child in symbol.get("children", []):
-                        if isinstance(child, dict):
-                            flatten(child)
+        # Fall back to declaration/typeDefinition if definition yielded no results and no error occurred
+        if operation == "go_to_definition" and not results and not has_exceptions:
+            fallback_responses = await asyncio.gather(
+                *(request(client, "textDocument/declaration") for client in clients),
+                *(request(client, "textDocument/typeDefinition") for client in clients),
+                return_exceptions=True,
+            )
+            results = _collect(fallback_responses)
 
-            if isinstance(response, list):
-                for item in response:
-                    if isinstance(item, dict):
-                        flatten(item)
-            elif isinstance(response, dict):
-                flatten(response)
         return results
 
     async def _diagnostics_from(

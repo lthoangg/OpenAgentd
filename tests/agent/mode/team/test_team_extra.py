@@ -523,6 +523,10 @@ class TestHandleUserMessageSessionRestore:
         with (
             patch("app.services.memory_stream_store.push_event", new=AsyncMock()),
             patch("app.services.memory_stream_store.init_turn", new=AsyncMock()),
+            patch(
+                "app.agent.mode.team.team.heal_orphaned_tool_calls",
+                new=AsyncMock(return_value=0),
+            ),
         ):
             await team.handle_user_message("hello", session_id=str(lead_uuid))
 

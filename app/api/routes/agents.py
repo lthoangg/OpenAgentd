@@ -28,6 +28,7 @@ from app.agent.providers.opencode.access import model_is_accessible
 from app.agent.providers.opencode.constants import PROVIDER_IDS as OPENCODE_PROVIDER_IDS
 from app.core.runtime_settings import (
     ProviderUiSettings,
+    effective_visible_models,
     load_runtime_settings,
     set_provider_cached_models,
 )
@@ -396,7 +397,7 @@ async def get_registry(request: Request) -> RegistryResponse:
         has_credentials = provider not in OPENCODE_PROVIDER_IDS or (
             _provider_is_configured(entry)
         )
-        visible = set(provider_ui.visible_models)
+        visible = set(effective_visible_models(provider_ui))
         # 1. Add cached/discovered agent models
         for model in provider_ui.cached_models:
             if not model_is_accessible(
@@ -453,7 +454,7 @@ async def is_registered_model_id(model_id: str) -> bool:
     if provider_ui.is_disconnected:
         return False
 
-    visible = set(provider_ui.visible_models)
+    visible = set(effective_visible_models(provider_ui))
     if visible and model not in visible:
         return False
     has_credentials = provider not in OPENCODE_PROVIDER_IDS or (

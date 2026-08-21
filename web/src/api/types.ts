@@ -158,6 +158,10 @@ export interface MessageResponse {
   tool_calls: Array<Partial<ToolCall> & { id: string; function?: Partial<ToolCall['function']> }> | null
   tool_call_id: string | null
   name: string | null
+  /** Canonical ordering key within a session — sort by (seq, id), not created_at. */
+  seq?: number
+  /** Row kind: chat | note | queued | summary | reverted. */
+  kind?: string
   is_summary: boolean
   is_hidden: boolean
   extra: Record<string, unknown> | null
@@ -316,6 +320,7 @@ export interface AgentUsage {
   completionTokens: number
   totalTokens: number
   cachedTokens: number
+  cachedPercent?: number
   /** Estimated USD cost accumulated for this agent in the active session. */
   estimatedCostUsd?: number
   turnPromptTokens?: number
@@ -448,7 +453,7 @@ export interface ChangedPaths {
 export interface TeamCommandResponse {
   status: string
   session_id: string
-  command: 'continue' | 'compact' | 'undo' | 'redo'
+  command: 'continue' | 'compact' | 'undo' | 'redo' | 'redo-all' | 'redo_all'
   message?: MessageResponse
   /**
    * Present on ``undo`` / ``redo`` responses only. The client uses

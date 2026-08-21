@@ -1,4 +1,5 @@
 import { createRootRoute, createRoute, createRouter } from '@tanstack/react-router'
+import { z } from 'zod'
 import { Root, NotFound } from './routes/__root'
 import { HomePage } from './routes/index'
 import { TeamLayout, CodingLayout } from './routes/cockpit'
@@ -60,10 +61,21 @@ const codingSessionRoute = createRoute({
   component: () => null,
 })
 
+const telemetrySearchSchema = z.object({
+  days: z.number().optional(),
+  traceId: z.string().optional(),
+})
+
+const schedulerSearchSchema = z.object({
+  q: z.string().optional(),
+  task: z.string().optional(),
+})
+
 // /telemetry — standalone observability page (span aggregates & latency)
 const telemetryRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/telemetry',
+  validateSearch: (search) => telemetrySearchSchema.parse(search),
   component: TelemetryPage,
 })
 
@@ -71,6 +83,7 @@ const telemetryRoute = createRoute({
 const schedulerRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/scheduler',
+  validateSearch: (search) => schedulerSearchSchema.parse(search),
   component: SchedulerPage,
 })
 

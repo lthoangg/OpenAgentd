@@ -186,7 +186,7 @@ describe("AgentView — UserBubble collapse feature", () => {
 
     const buttons = screen.queryAllByRole("button")
     const collapseBtn = buttons.find((btn) => btn.getAttribute("aria-expanded") !== null)
-    expect(collapseBtn?.getAttribute("title")).toBe("Expand")
+    expect(collapseBtn?.getAttribute("aria-label")).toBe("Expand")
   })
 
   // ── Expand behavior ──────────────────────────────────────────────────────
@@ -258,7 +258,7 @@ describe("AgentView — UserBubble collapse feature", () => {
 
     await user.click(collapseBtn!)
 
-    expect(collapseBtn?.getAttribute("title")).toBe("Collapse")
+    expect(collapseBtn?.getAttribute("aria-label")).toBe("Collapse")
   })
 
   // ── Collapse again ───────────────────────────────────────────────────────
@@ -402,13 +402,13 @@ describe("AgentView — UserBubble collapse feature", () => {
 
     // Find the timestamp span by looking for the time text
     const timeSpan = screen.getByText("12:00")
-    expect(timeSpan.parentElement?.className).toContain("opacity-0")
+    expect(timeSpan.closest("div")?.className).toContain("opacity-0")
 
     // Hover over the group
     await user.hover(groupDiv!)
 
     // Timestamp should now have opacity-100
-    expect(timeSpan.parentElement?.className).toContain("opacity-100")
+    expect(timeSpan.closest("div")?.className).toContain("opacity-100")
   })
 
   it("shows the model from user message metadata on hover", async () => {
@@ -425,13 +425,15 @@ describe("AgentView — UserBubble collapse feature", () => {
 
     const { container } = render(<AgentView blocks={blocks} currentBlocks={[]} isWorking={false} />)
     const modelLabel = screen.getByText("claude-sonnet-4.5")
-    expect(modelLabel.parentElement?.className).toContain("opacity-0")
+    expect(modelLabel.closest("div")?.className).toContain("opacity-0")
 
     const groupDiv = container.querySelector("div[class*='group']")
     await user.hover(groupDiv!)
 
-    expect(modelLabel.parentElement?.className).toContain("opacity-100")
-    expect(modelLabel).toHaveAttribute("title", "openrouter:anthropic/claude-sonnet-4.5")
+    expect(modelLabel.closest("div")?.className).toContain("opacity-100")
+    // The shortened model name is shown as plain text — no hover tooltip with
+    // the full provider-prefixed id (removed as redundant).
+    expect(screen.queryByRole("tooltip")).toBeNull()
   })
 
   it("does not show a model label for legacy user messages without metadata", async () => {
@@ -473,11 +475,11 @@ describe("AgentView — UserBubble collapse feature", () => {
 
     // Hover in
     await user.hover(groupDiv!)
-    expect(timeSpan.parentElement?.className).toContain("opacity-100")
+    expect(timeSpan.closest("div")?.className).toContain("opacity-100")
 
     // Hover out
     await user.unhover(groupDiv!)
-    expect(timeSpan.parentElement?.className).toContain("opacity-0")
+    expect(timeSpan.closest("div")?.className).toContain("opacity-0")
   })
 
   // ── Gradient fade overlay ────────────────────────────────────────────────
@@ -526,6 +528,25 @@ describe("AgentView — UserBubble collapse feature", () => {
     // Gradient fade should be gone (removed from DOM)
     gradientFade = container.querySelector("div[class*='pointer-events-none'][class*='inset-x-0'][class*='bottom-0']")
     expect(gradientFade).toBeNull()
+  })
+
+  it("positions collapse button at the top right of the user bubble with room for text", () => {
+    const longContent = Array.from({ length: 15 }, (_, i) => `line${i + 1}`).join("\n")
+    const blocks: ContentBlock[] = [
+      {
+        id: "1",
+        type: "user",
+        content: longContent,
+        timestamp: new Date(),
+      },
+    ]
+
+    const { container } = render(<AgentView blocks={blocks} currentBlocks={[]} isWorking={false} />)
+
+    const tooltipWrapper = container.querySelector("span[class*='absolute'][class*='top-1.5'][class*='right-1.5']")
+    expect(tooltipWrapper).toBeTruthy()
+    const text = container.querySelector("p[class*='pr-6']")
+    expect(text).toBeTruthy()
   })
 })
 
@@ -711,6 +732,31 @@ describe("AgentPane — UserBubble collapse feature", () => {
     // Collapse
     await user.click(collapseBtn!)
     expect(screen.queryByText(/line15/)).toBeNull()
+  })
+
+  it("positions compact collapse button at the top right of the agent pane user bubble", () => {
+    const longContent = Array.from({ length: 15 }, (_, i) => `line${i + 1}`).join("\n")
+    const blocks: ContentBlock[] = [
+      {
+        id: "1",
+        type: "user",
+        content: longContent,
+        timestamp: new Date(),
+      },
+    ]
+
+    const { container } = render(
+      <AgentPane
+        name="TestAgent"
+        stream={createMockStream(blocks)}
+        isLead={true}
+      />
+    )
+
+    const tooltipWrapper = container.querySelector("span[class*='absolute'][class*='top-1'][class*='right-1']")
+    expect(tooltipWrapper).toBeTruthy()
+    const text = container.querySelector("p[class*='pr-5']")
+    expect(text).toBeTruthy()
   })
 
   // ── Copy button behavior ─────────────────────────────────────────────────
@@ -1050,13 +1096,13 @@ describe("AgentPane — UserBubble collapse feature", () => {
 
     // Find the timestamp span by looking for the time text
     const timeSpan = screen.getByText("12:00")
-    expect(timeSpan.parentElement?.className).toContain("opacity-0")
+    expect(timeSpan.closest("div")?.className).toContain("opacity-0")
 
     // Hover over the group
     await user.hover(groupDiv!)
 
     // Timestamp should now have opacity-100
-    expect(timeSpan.parentElement?.className).toContain("opacity-100")
+    expect(timeSpan.closest("div")?.className).toContain("opacity-100")
   })
 
   // ── Gradient fade overlay ────────────────────────────────────────────────

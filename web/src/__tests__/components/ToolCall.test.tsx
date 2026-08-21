@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, beforeEach } from "bun:test"
-import { render, screen, cleanup, waitFor } from "@testing-library/react"
+import { render, screen, cleanup, waitFor, fireEvent } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { ToolCall } from "@/components/ToolCall"
 
@@ -158,7 +158,7 @@ describe("ToolCall — shell display", () => {
     render(<ToolCall name="shell" args={args} done={false} liveOutput={"hi\n"} />)
 
     expect(screen.getByText("terminal")).toBeTruthy()
-    // "hi" may be a hljs keyword span — query the pre's full textContent
+    // "hi" may be wrapped in a token span — query the pre's full textContent
     const pre = document.querySelector("pre")
     expect(pre).toBeTruthy()
     expect(pre!.textContent).toContain("hi")
@@ -183,7 +183,7 @@ describe("ToolCall — shell display", () => {
     expect(screen.getAllByRole("button")[0].getAttribute("aria-expanded")).toBe("false")
   })
 
-  it("renders the latest live shell tail without forcing an inner scroll on each update", () => {
+  it("renders the latest live shell tail and scrolls on each update", () => {
     const args = JSON.stringify({ command: "printf live" })
     const { rerender } = render(
       <ToolCall name="shell" args={args} done={false} liveOutput={"line-1\n"} />,
@@ -201,7 +201,40 @@ describe("ToolCall — shell display", () => {
     )
 
     expect(pre.textContent).toContain("line-2")
-    expect(scrollWrites).toBe(0)
+    expect(scrollWrites).toBeGreaterThan(0)
+  })
+
+  it("pauses auto-scroll when the user scrolls up in the live output", () => {
+    const args = JSON.stringify({ command: "printf live" })
+    const { rerender } = render(
+      <ToolCall name="shell" args={args} done={false} liveOutput={"line-1\n"} />,
+    )
+    const pre = document.querySelector("pre") as HTMLPreElement
+    let currentScrollTop = 0
+    let scrollWrites = 0
+    Object.defineProperty(pre, "scrollHeight", { configurable: true, get: () => 500 })
+    Object.defineProperty(pre, "clientHeight", { configurable: true, get: () => 100 })
+    Object.defineProperty(pre, "scrollTop", {
+      configurable: true,
+      get: () => currentScrollTop,
+      set: (val: number) => {
+        currentScrollTop = val
+        scrollWrites += 1
+      },
+    })
+
+    // Simulate user scrolling up (scrollTop = 50, so distFromBottom = 500 - 50 - 100 = 350 > 30)
+    currentScrollTop = 50
+    fireEvent.scroll(pre)
+
+    const writesBefore = scrollWrites
+    rerender(
+      <ToolCall name="shell" args={args} done={false} liveOutput={"line-1\nline-2\n"} />,
+    )
+
+    expect(pre.textContent).toContain("line-2")
+    // Should NOT force scroll to bottom because user detached
+    expect(scrollWrites).toBe(writesBefore)
   })
 })
 
@@ -229,55 +262,6 @@ describe("ToolCall — web_search display", () => {
 })
 
 describe("ToolCall — diff stats", () => {
-  it("summarizes write content instead of rendering full file contents as args", async () => {
-    const user = userEvent.setup()
-    const content = Array.from({ length: 20 }, (_, index) => `line ${index + 1}`).join("\n")
-    const args = JSON.stringify({ path: "src/generated.txt", content })
-
-    render(<ToolCall name="write" args={args} done={false} />)
-    await user.click(screen.getByRole("button", { name: "Expand write details" }))
-
-    expect(screen.getByText(/content: 20 lines/)).toBeTruthy()
-    expect(screen.queryByText("line 20")).toBeNull()
-  })
-
-
-  it("collapses the whole edit result when clicking the diff file header", async () => {
-    const user = userEvent.setup()
-    const args = JSON.stringify({
-      path: "src/main.py",
-      old_string: "old line",
-      new_string: "new line",
-    })
-
-    render(<ToolCall name="edit" args={args} done={true} result="Edit applied successfully" />)
-
-    await user.click(screen.getByRole("button", { name: "Expand edit details" }))
-    expect(screen.getByRole("button", { name: "Collapse diff for src/main.py" })).toBeTruthy()
-
-    await user.click(screen.getByRole("button", { name: "Collapse diff for src/main.py" }))
-
-    await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Expand edit details" })).toBeTruthy()
-    })
-  })
-
-  it("collapses the whole write result when clicking the diff file header", async () => {
-    const user = userEvent.setup()
-    const args = JSON.stringify({ path: "src/new.py", content: "new line" })
-
-    render(<ToolCall name="write" args={args} done={true} result="Tool applied successfully" />)
-
-    await user.click(screen.getByRole("button", { name: "Expand write details" }))
-    expect(screen.getByRole("button", { name: "Collapse diff for src/new.py" })).toBeTruthy()
-
-    await user.click(screen.getByRole("button", { name: "Collapse diff for src/new.py" }))
-
-    await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Expand write details" })).toBeTruthy()
-    })
-  })
-
   it("renders read results with write/edit-style file chrome", async () => {
     const user = userEvent.setup()
     const args = JSON.stringify({ path: "src/main.py", offset: 12, limit: 9 })
@@ -333,18 +317,6 @@ describe("ToolCall — diff stats", () => {
     await waitFor(() => expect(copiedText).toBe("hello\nworld"))
   })
 
-  it("shows deleted line count for rm from result metadata", () => {
-    const args = JSON.stringify({ path: "src/old.txt" })
-    const result = [
-      '@@ openagentd-diff-meta {"path":"src/old.txt","deleted_lines":3}',
-      'Removed file: src/old.txt',
-      'Resolved path: /tmp/src/old.txt',
-    ].join("\n")
-
-    render(<ToolCall name="rm" args={args} done={true} result={result} />)
-
-    expect(screen.getByText("-3")).toBeTruthy()
-  })
 })
 
 describe("ToolCall — file search display", () => {
@@ -852,6 +824,15 @@ describe("ToolCall — todo_manage display", () => {
     await user.click(screen.getByRole("button"))
     expect(screen.queryByText("arguments")).toBeNull()
   })
+
+  it("shows concise clear summary", async () => {
+    const user = userEvent.setup()
+    const args = JSON.stringify({ actions: [{ action: "clear", statuses: ["completed"] }] })
+    render(<ToolCall name="todo_manage" args={args} done={false} />)
+
+    expect(getHeader("Clearing finished todos…")).toBeTruthy()
+    await user.click(screen.getByRole("button"))
+  })
 })
 
 describe("ToolCall — schedule_task display", () => {
@@ -938,20 +919,6 @@ describe("ToolCall — concise tool labels", () => {
     expect(title).toBeTruthy()
     expect(title!.endsWith("…")).toBe(true)
     expect(title!.length).toBeLessThan(80)
-  })
-
-  it("uses Remove rather than the rm command name", () => {
-    render(<ToolCall name="rm" args={JSON.stringify({ path: "tmp/output.txt" })} done={false} />)
-
-    expect(screen.getByText("Remove")).toBeTruthy()
-    expect(screen.queryByText("Rm")).toBeNull()
-  })
-
-  it("uses List without repeating Listing in the ls header", () => {
-    render(<ToolCall name="ls" args={JSON.stringify({ path: "src" })} done={false} />)
-
-    expect(getHeader("List: src")).toBeTruthy()
-    expect(screen.queryByText(/Listing/)).toBeNull()
   })
 
   it("describes a team roster list without implying a mutation", () => {
@@ -1191,8 +1158,8 @@ describe("ToolCall — shell terminal label and formatting", () => {
     const pre = document.querySelector("pre")
     expect(pre).toBeTruthy()
     expect(pre!.textContent).toContain("$ npm test")
-    // The command is wrapped in a <code class="hljs"> for syntax highlighting
-    const code = pre!.querySelector("code.hljs")
+    // The command is wrapped in a <code> for syntax highlighting
+    const code = pre!.querySelector("code")
     expect(code).toBeTruthy()
   })
 
@@ -1270,18 +1237,19 @@ describe("ToolCall — shell terminal label and formatting", () => {
 })
 
 // ---------------------------------------------------------------------------
-// Shell syntax highlighting — ShellCommand uses hljs bash to tokenise the
-// command string.  Tokens end up as <span class="hljs-*"> children inside a
-// <code class="hljs"> element; the pre's textContent stays intact for copy.
+// Shell syntax highlighting — ShellCommand tokenises the command string with
+// the shared highlighter.  Tokens end up as <span class="th-token th-*">
+// children inside a <code> element; the pre's textContent stays intact for
+// copy.
 // ---------------------------------------------------------------------------
 
 describe("ToolCall — shell syntax highlighting", () => {
-  it("wraps the command in <code class='hljs'> for syntax highlighting", async () => {
+  it("wraps the command in a <code> element for syntax highlighting", async () => {
     const user = userEvent.setup()
     const args = JSON.stringify({ command: "git status", description: "Check status" })
     render(<ToolCall name="shell" args={args} done={false} />)
     await user.click(screen.getByRole("button"))
-    const code = document.querySelector("code.hljs")
+    const code = document.querySelector("pre code")
     expect(code).toBeTruthy()
     expect(code!.textContent).toContain("git status")
   })
@@ -1295,23 +1263,23 @@ describe("ToolCall — shell syntax highlighting", () => {
     expect(pre!.textContent).toContain("bun run build --minify")
   })
 
-  it("hljs tokenises bash keywords into hljs-built_in spans", async () => {
+  it("tokenises shell keywords into keyword spans", async () => {
     const user = userEvent.setup()
-    // "export" is a recognised bash built-in
+    // "export" is a recognised shell keyword
     const args = JSON.stringify({ command: "export NODE_ENV=production", description: "Set env" })
     render(<ToolCall name="shell" args={args} done={false} />)
     await user.click(screen.getByRole("button"))
-    const builtIn = document.querySelector("code.hljs .hljs-built_in")
-    expect(builtIn).toBeTruthy()
-    expect(builtIn!.textContent).toBe("export")
+    const keyword = document.querySelector("pre code .th-keyword")
+    expect(keyword).toBeTruthy()
+    expect(keyword!.textContent).toBe("export")
   })
 
-  it("hljs tokenises quoted strings into hljs-string spans", async () => {
+  it("tokenises quoted strings into string spans", async () => {
     const user = userEvent.setup()
     const args = JSON.stringify({ command: 'echo "hello world"', description: "Echo" })
     render(<ToolCall name="shell" args={args} done={false} />)
     await user.click(screen.getByRole("button"))
-    const str = document.querySelector("code.hljs .hljs-string")
+    const str = document.querySelector("pre code .th-string")
     expect(str).toBeTruthy()
     expect(str!.textContent).toContain("hello world")
   })
@@ -1632,22 +1600,9 @@ describe("ToolCall with incomplete JSON args (streaming)", () => {
     expect(screen.getByText("ToolResult.tsx")).toBeTruthy()
   })
 
-  it("extracts and displays file name for write tool immediately", () => {
-    render(<ToolCall name="write" args='{"path": "src/components/ToolResult.tsx", "content": "hello' done={false} />)
-    expect(screen.getByText("ToolResult.tsx")).toBeTruthy()
-  })
-
   it("extracts and displays query for web_search immediately", () => {
     render(<ToolCall name="web_search" args='{"query": "how to build a react' done={false} />)
     expect(screen.getByText(/"how to build a react"/)).toBeTruthy()
-  })
-
-  it("renders diff view and displays path for edit tool immediately when streaming", async () => {
-    const user = userEvent.setup()
-    render(<ToolCall name="edit" args='{"path": "src/components/ToolResult.tsx", "old_string": "hello", "new_string": "hello world"' done={false} />)
-    expect(screen.getByText("ToolResult.tsx")).toBeTruthy()
-    await user.click(screen.getByRole("button"))
-    expect(screen.getByText("src/components/ToolResult.tsx")).toBeTruthy()
   })
 
   it("renders diff view and displays path for patch tool immediately when streaming", async () => {

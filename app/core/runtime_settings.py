@@ -57,11 +57,24 @@ class RuntimeSettings(BaseModel):
     lsp: dict[str, list[str]] = Field(default_factory=dict)
 
 
+def effective_visible_models(ui: ProviderUiSettings) -> list[str]:
+    """``visible_models`` limited to models the provider currently lists.
+
+    The visible set acts as a whitelist when non-empty, so a stale entry — a
+    model the provider dropped from its list — would hide every remaining
+    model of that provider in pickers while leaving no UI row behind to
+    un-select it. When no models have been listed yet there is nothing to
+    judge against, so the selection is passed through untouched.
+    """
+    if not ui.cached_models:
+        return ui.visible_models
+    available = set(ui.cached_models)
+    return [model for model in ui.visible_models if model in available]
+
+
 def provider_visible_models(provider_id: str) -> list[str]:
-    return (
-        load_runtime_settings()
-        .providers.get(provider_id, ProviderUiSettings())
-        .visible_models
+    return effective_visible_models(
+        load_runtime_settings().providers.get(provider_id, ProviderUiSettings())
     )
 
 
@@ -84,8 +97,17 @@ def set_provider_cached_models(provider_id: str, models: list[str]) -> None:
     cfg = load_runtime_settings()
     current = cfg.providers.get(provider_id, ProviderUiSettings())
     cleaned = sorted({model.strip() for model in models if model.strip()})
+    # Persist the pruned selection (see effective_visible_models): a visible
+    # model the provider no longer lists is removed rather than kept around
+    # to whitelist nothing.
+    available = set(cleaned)
+    visible = [model for model in current.visible_models if model in available]
     next_settings = current.model_copy(
-        update={"cached_models": cleaned, "last_listed_at": int(time.time())}
+        update={
+            "cached_models": cleaned,
+            "visible_models": visible,
+            "last_listed_at": int(time.time()),
+        }
     )
     if (
         cleaned

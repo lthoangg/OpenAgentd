@@ -168,7 +168,14 @@ async def test_workspace_instructions_hook_prefers_agents_md_over_claude_md(tmp_
 
 
 @pytest.mark.asyncio
-async def test_workspace_instructions_hook_skips_missing_instruction_files(tmp_path):
+async def test_workspace_instructions_hook_injects_workspace_root_even_without_agents_md(
+    tmp_path,
+):
+    """The absolute workspace root is injected unconditionally in coding mode
+
+    (no AGENTS.md/CLAUDE.md required) so read/ls/grep/glob/edit/write/shell
+    calls can use workspace-relative paths without guessing the root.
+    """
     hook = WorkspaceInstructionsHook(str(tmp_path))
     seen: dict[str, str] = {}
 
@@ -184,7 +191,8 @@ async def test_workspace_instructions_hook_skips_missing_instruction_files(tmp_p
 
     await hook.wrap_model_call(None, None, Request(), handler)  # type: ignore[arg-type]
 
-    assert seen["prompt"] == "Base prompt"
+    assert "Base prompt" in seen["prompt"]
+    assert str(tmp_path.resolve()) in seen["prompt"]
 
 
 @pytest.mark.asyncio
@@ -197,7 +205,7 @@ async def test_workspace_instructions_hook_skips_blank_agents_md(tmp_path):
         system_prompt = "Base prompt"
 
         def override(self, **kwargs):
-            raise AssertionError("blank AGENTS.md should not override the request")
+            return SimpleNamespace(**kwargs)
 
     async def handler(request):
         seen["prompt"] = request.system_prompt
@@ -205,7 +213,8 @@ async def test_workspace_instructions_hook_skips_blank_agents_md(tmp_path):
 
     await hook.wrap_model_call(None, None, Request(), handler)  # type: ignore[arg-type]
 
-    assert seen["prompt"] == "Base prompt"
+    assert "Base prompt" in seen["prompt"]
+    assert "\t" not in seen["prompt"]
 
 
 @pytest.mark.asyncio
@@ -220,7 +229,28 @@ async def test_workspace_instructions_hook_skips_oversized_agents_md(tmp_path):
         system_prompt = "Base prompt"
 
         def override(self, **kwargs):
-            raise AssertionError("oversized AGENTS.md should not override the request")
+            return SimpleNamespace(**kwargs)
+
+    async def handler(request):
+        seen["prompt"] = request.system_prompt
+        return SimpleNamespace(content="ok")
+
+    await hook.wrap_model_call(None, None, Request(), handler)  # type: ignore[arg-type]
+
+    assert "Base prompt" in seen["prompt"]
+    assert "x" * 100 not in seen["prompt"]
+
+
+@pytest.mark.asyncio
+async def test_workspace_instructions_hook_is_noop_without_a_workspace():
+    hook = WorkspaceInstructionsHook(None)
+    seen: dict[str, str] = {}
+
+    class Request:
+        system_prompt = "Base prompt"
+
+        def override(self, **kwargs):
+            raise AssertionError("no workspace configured — must not override")
 
     async def handler(request):
         seen["prompt"] = request.system_prompt

@@ -81,12 +81,31 @@ def app_with_team(test_team):
 
 @pytest.fixture
 def app_without_team():
-    from app.api.app import create_app
-    from app.services.team_manager import set_team
+    """App whose agents directory is genuinely empty.
 
-    app = create_app()
-    set_team(None)
-    return app
+    ``set_team(None)`` only drops the cached team; the next request rebuilds
+    one from ``settings.AGENTS_DIR``. That is the ambient XDG config dir —
+    populated on a plain run, per-worker and empty under ``pytest -n`` — so
+    "no team configured" held only by accident of how the suite was invoked.
+    """
+    import shutil
+    import tempfile
+
+    from app.api.app import create_app
+    from app.core.config import settings
+    from app.services import team_manager
+
+    with pytest.MonkeyPatch.context() as mp:
+        empty_agents = tempfile.mkdtemp(prefix="openagentd-no-agents-")
+        mp.setattr(settings, "AGENTS_DIR", empty_agents)
+        team_manager.reset_agents_dir_validation_cache()
+        team_manager.set_team(None)
+        try:
+            yield create_app()
+        finally:
+            team_manager.set_team(None)
+            team_manager.reset_agents_dir_validation_cache()
+            shutil.rmtree(empty_agents, ignore_errors=True)
 
 
 # ---------------------------------------------------------------------------
@@ -195,7 +214,7 @@ class TestTeamAgentsRouteExtra:
         assert rebuild.call_count == 2
 
     def test_agents_reads_settings_once_regardless_of_agent_count(
-        self, app_with_team, test_team, tmp_path
+        self, app_with_team, test_team, tmp_path, monkeypatch
     ):
         """settings.yaml is read once per request, not once per serialized agent.
 
@@ -203,11 +222,20 @@ class TestTeamAgentsRouteExtra:
         a request paid a file read plus a YAML parse for every member *and*
         every blueprint. The route now hoists it and threads the value down.
         """
+        from app.core.config import settings
+
         source_path = tmp_path / "executor.md"
         source_path.write_text(
             "---\nname: executor\nrole: member\nmodel: mock:model\n---\nBlueprint\n",
             encoding="utf-8",
         )
+        # Pin the agents dir to this test's tmp dir, as the sibling blueprint
+        # tests do. Without it the route also discovers the ambient
+        # ``.tests/config/agents/executor.md``, which is a *different* path
+        # under the same name, so the assertion below saw two ``executor``
+        # blueprints. That directory is empty under ``pytest -n`` (each xdist
+        # worker gets its own), so the test only failed on a plain run.
+        monkeypatch.setattr(settings, "AGENTS_DIR", str(tmp_path))
         test_team.blueprints["executor"] = MemberBlueprint(
             name="executor", description="writes code", source_path=source_path
         )
@@ -914,18 +942,26 @@ class TestTeamHistoryRouteExtra:
     def test_history_before_cursor_accepts_compound_and_legacy_forms(
         self, app_with_team, monkeypatch
     ):
-        """``before`` accepts ``<iso>|<uuid>`` and a bare ISO timestamp."""
+        """``before`` accepts ``<seq>|<uuid>``, ``<iso>|<uuid>``, and bare ISO."""
         captured: dict[str, object] = {}
 
         async def fake_get_team_history(
-            db, requested_id, *, before=None, before_id=None
+            db, requested_id, *, before_seq=None, before_id=None
         ):
-            captured["before"] = before
+            captured["before_seq"] = before_seq
             captured["before_id"] = before_id
             return None  # 404s out; we only care about cursor parsing
 
         monkeypatch.setattr(
             "app.api.routes.team.chat.get_team_history", fake_get_team_history
+        )
+
+        async def fake_resolve(db, session_id, before, before_id):
+            captured["legacy"] = (before, before_id)
+            return (777, before_id)
+
+        monkeypatch.setattr(
+            "app.api.routes.team.chat.resolve_legacy_history_cursor", fake_resolve
         )
         client = TestClient(app_with_team)
         sid = uuid.uuid7()
@@ -933,11 +969,21 @@ class TestTeamHistoryRouteExtra:
 
         resp = client.get(
             f"/api/team/{sid}/history",
+            params={"before": f"4096|{msg_id}"},
+        )
+        assert resp.status_code == 404
+        assert captured["before_seq"] == 4096
+        assert captured["before_id"] == msg_id
+
+        resp = client.get(
+            f"/api/team/{sid}/history",
             params={"before": f"2025-01-01T00:00:00+00:00|{msg_id}"},
         )
         assert resp.status_code == 404
         assert captured["before_id"] == msg_id
-        assert captured["before"].year == 2025
+        # Legacy timestamp cursors are resolved to their (seq, id) position.
+        assert captured["before_seq"] == 777
+        assert captured["legacy"][0].year == 2025
 
         resp = client.get(
             f"/api/team/{sid}/history", params={"before": "2025-01-01T00:00:00+00:00"}

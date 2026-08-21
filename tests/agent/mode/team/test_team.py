@@ -426,6 +426,64 @@ class TestAgentTeamDoneDetection:
         ]
         team.mailbox.send.assert_awaited_once()
 
+    async def test_activate_queued_messages_preserves_stream_when_member_working(
+        self, basic_team
+    ):
+        """A lead-idle queue handoff must not reset the shared stream blob
+        while a delegated member is still streaming.
+
+        ``init_turn(keep_subscribers=True)`` clears the member's accumulated
+        tool calls, content, and ``working`` agent_status, which makes their
+        tool cards vanish and drops the working status on the next reconnect.
+        """
+        team = basic_team
+        team.lead.state = "idle"
+        team.members["member_a"].state = "working"
+        team.members["member_b"].state = "idle"
+        queued = [MagicMock(id=uuid.uuid7(), content="queued")]
+        team.mailbox.send = AsyncMock()
+
+        with (
+            patch(
+                "app.agent.mode.team.team.pop_queued_user_messages",
+                new=AsyncMock(return_value=queued),
+            ),
+            patch(
+                "app.agent.mode.team.team.stream_store.init_turn",
+                new=AsyncMock(),
+            ) as init_turn,
+        ):
+            activated = await team._activate_queued_user_messages(team.lead.session_id)
+
+        assert activated is True
+        init_turn.assert_not_awaited()
+
+    async def test_activate_queued_messages_resets_stream_when_team_idle(
+        self, basic_team
+    ):
+        """The normal post-turn drain starts a fresh turn blob."""
+        team = basic_team
+        team.lead.state = "idle"
+        for member in team.members.values():
+            member.state = "idle"
+        queued = [MagicMock(id=uuid.uuid7(), content="queued")]
+        team.mailbox.send = AsyncMock()
+
+        with (
+            patch(
+                "app.agent.mode.team.team.pop_queued_user_messages",
+                new=AsyncMock(return_value=queued),
+            ),
+            patch(
+                "app.agent.mode.team.team.stream_store.init_turn",
+                new=AsyncMock(),
+            ) as init_turn,
+        ):
+            activated = await team._activate_queued_user_messages(team.lead.session_id)
+
+        assert activated is True
+        init_turn.assert_awaited_once_with(team.lead.session_id, keep_subscribers=True)
+
     async def test_activates_queued_messages_after_lead_done_before_members_idle(
         self, basic_team
     ):
@@ -579,15 +637,16 @@ class TestAgentTeamToolInjection:
     # it is not in any prompt, registry, or agent config — so these are the
     # assertions that decide whether the feature exists at runtime at all.
 
-    async def test_coding_agents_get_lsp(self, basic_team):
+    async def test_coding_agents_do_not_get_lsp(self, basic_team):
+        """lsp injection is temporarily detached (see AgentTeam.get_injected_tools)."""
         team = basic_team
         team.mode = "coding"
 
         lead_names = {t.name for t in team.get_injected_tools("lead")}
         member_names = {t.name for t in team.get_injected_tools("member_a")}
 
-        assert "lsp" in lead_names
-        assert "lsp" in member_names
+        assert "lsp" not in lead_names
+        assert "lsp" not in member_names
 
     async def test_normal_agents_do_not_get_lsp(self, basic_team):
         team = basic_team

@@ -9,18 +9,19 @@
  * `settings/sections.ts`. Only the content switch is here, because each
  * section takes different props.
  */
-import { useEffect } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { ArrowLeft, X, type LucideIcon } from 'lucide-react'
+import { useHotkey } from '@tanstack/react-hotkeys'
 
 import { Button } from '@/components/ui/button'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { useSettingsStore, type SettingsSection } from '@/stores/useSettingsStore'
 import {
   useAgentFilesQuery,
+  useDeniedPathsSettingsQuery,
   useMcpServersQuery,
-  useSandboxSettingsQuery,
   useSkillFilesQuery,
 } from '@/queries'
 import {
@@ -45,7 +46,7 @@ import { McpListPage } from '@/components/settings/pages/settings.mcp'
 import { NewMcpServerPage } from '@/components/settings/pages/settings.mcp.new'
 import { McpServerDetailPage } from '@/components/settings/pages/settings.mcp.$name'
 import { ProvidersSettingsPage } from '@/components/settings/pages/settings.providers'
-import { SandboxSettingsPage } from '@/components/settings/pages/settings.sandbox'
+import { DeniedPathsSettingsPage } from '@/components/settings/pages/settings.denied_paths'
 import { AutomationSettingsPage } from '@/components/settings/pages/settings.automation'
 import { NotificationSettingsPage } from '@/components/settings/pages/settings.notifications'
 import { TerminalSettingsPage } from '@/components/settings/pages/settings.terminal'
@@ -93,7 +94,7 @@ function SidebarRow({
       {count !== undefined && count !== null && (
         <span
           className={cn(
-            'shrink-0 font-mono text-[10px] tabular-nums px-1.5 py-0.5 rounded border transition-colors',
+            'shrink-0 font-mono text-[10px] tabular-nums px-1.5 py-0.5 rounded-xs border transition-colors',
             active
               ? 'font-semibold text-(--color-text) bg-(--bg-page) border-(--color-border-strong)'
               : 'text-(--color-text-muted) bg-(--bg-key)/50 border-(--color-border)',
@@ -124,14 +125,15 @@ function ModalSidebar({
   const agentsQ = useAgentFilesQuery()
   const skillsQ = useSkillFilesQuery()
   const mcpQ = useMcpServersQuery()
-  const sandboxQ = useSandboxSettingsQuery()
+  const deniedPathsQ = useDeniedPathsSettingsQuery()
   const active = parentSection(section)
 
   const counts: Partial<Record<TopLevelSection, number | null>> = {
     agents: agentsQ.data?.agents.length ?? null,
     skills: skillsQ.data?.skills.length ?? null,
     mcp: mcpQ.data?.servers.length ?? null,
-    sandbox: sandboxQ.data?.denied_patterns.length ?? null,
+    denied_paths: deniedPathsQ.data?.denied_patterns.length ?? null,
+    sandbox: deniedPathsQ.data?.denied_patterns.length ?? null,
   }
 
   return (
@@ -288,7 +290,8 @@ function SectionContent({
         <McpServerDetailPage name={selectedName} onBack={() => setSection('mcp')} />
       ) : null
     case 'providers':    return <ProvidersSettingsPage />
-    case 'sandbox':      return <SandboxSettingsPage />
+    case 'denied_paths':
+    case 'sandbox':      return <DeniedPathsSettingsPage />
     case 'automation':   return <AutomationSettingsPage />
     case 'notifications': return <NotificationSettingsPage />
     case 'terminal':     return <TerminalSettingsPage />
@@ -322,12 +325,7 @@ export function SettingsModal() {
   const panel = prefersReducedMotion ? PANEL_VARIANTS_REDUCED : PANEL_VARIANTS
 
   // Escape to close.
-  useEffect(() => {
-    if (!open) return
-    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') closeSettings() }
-    window.addEventListener('keydown', handler)
-    return () => window.removeEventListener('keydown', handler)
-  }, [open, closeSettings])
+  useHotkey('Escape', closeSettings, { enabled: open })
 
   return (
     <AnimatePresence>
@@ -380,15 +378,21 @@ export function SettingsModal() {
                 <span className="text-base font-semibold text-(--color-text)">Settings</span>
               </div>
 
-              <button
-                type="button"
-                onClick={closeSettings}
-                className="flex h-11 w-11 items-center justify-center rounded-sm text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text) transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) md:h-7 md:w-7"
-                aria-label="Close settings"
-                title="Close (Esc)"
-              >
-                <X size={ICON_SIZE_INLINE} aria-hidden="true" />
-              </button>
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <button
+                      type="button"
+                      onClick={closeSettings}
+                      className="flex h-11 w-11 items-center justify-center rounded-sm text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text) transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) md:h-7 md:w-7"
+                      aria-label="Close settings"
+                    >
+                      <X size={14} aria-hidden="true" />
+                    </button>
+                  }
+                />
+                <TooltipContent>Close (Esc)</TooltipContent>
+              </Tooltip>
             </div>
 
             {/* Body */}

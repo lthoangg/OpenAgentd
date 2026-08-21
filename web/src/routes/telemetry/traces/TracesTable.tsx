@@ -4,10 +4,11 @@
  */
 
 import { useRef, useState } from 'react'
-import { tableFeatures, useTable } from '@tanstack/react-table'
+import { createColumnHelper, tableFeatures, useTable } from '@tanstack/react-table'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { ChevronRight, Copy } from 'lucide-react'
 import type { TraceListItem } from '@/api/client'
+import { formatFullDateTime } from '@/utils/format'
 import {
   formatCompact,
   formatMs,
@@ -17,6 +18,7 @@ import {
   timeAgo,
 } from '@/utils/telemetryFormat'
 import { Td, Th } from '../primitives'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { usePlatform } from '@/hooks/use-platform'
 import { mediumHapticFeedback } from '@/lib/haptics'
@@ -24,7 +26,20 @@ import { mediumHapticFeedback } from '@/lib/haptics'
 const TRACE_LONG_PRESS_MS = 520
 const TRACE_LONG_PRESS_MOVE_TOLERANCE = 10
 const traceTableFeatures = tableFeatures({})
-const traceColumns = [{ id: 'trace' }] as const
+
+const columnHelper = createColumnHelper<typeof traceTableFeatures, TraceListItem>()
+const traceColumns = [
+  columnHelper.accessor('start_ms', { id: 'when', header: 'When' }),
+  columnHelper.accessor('session_id', { id: 'session', header: 'Session' }),
+  columnHelper.accessor('agent_name', { id: 'agent', header: 'Agent' }),
+  columnHelper.accessor((row) => row.provider_model ?? row.model, { id: 'model', header: 'Provider:model' }),
+  columnHelper.accessor('duration_ms', { id: 'duration', header: 'Duration' }),
+  columnHelper.accessor((row) => `${row.input_tokens}/${row.output_tokens}`, { id: 'tokens', header: 'Input / output' }),
+  columnHelper.accessor('cached_tokens', { id: 'cache', header: 'Cache hit' }),
+  columnHelper.accessor('estimated_cost_usd', { id: 'cost', header: 'Cost' }),
+  columnHelper.accessor('error', { id: 'status', header: 'Status' }),
+  columnHelper.display({ id: 'actions' }),
+]
 
 export function TracesTable({
   traces,
@@ -41,14 +56,15 @@ export function TracesTable({
   // — keeps the render pure (no Date.now() call during render) while still
   // giving fresh labels whenever the table unmounts/remounts on refetch.
   const [now] = useState(() => Date.now())
-  const table = useTable({
+  const table = useTable<typeof traceTableFeatures, TraceListItem>({
     features: traceTableFeatures,
     data: traces,
-    columns: traceColumns,
+    columns: traceColumns as never,
     getRowId: (trace) => trace.span_id,
   })
   const rows = table.getRowModel().rows
   const shouldVirtualize = embedded && scrollElement !== null && scrollElement !== undefined
+  // eslint-disable-next-line react-hooks/incompatible-library
   const rowVirtualizer = useVirtualizer({
     count: shouldVirtualize ? rows.length : 0,
     getScrollElement: () => scrollElement ?? null,
@@ -106,7 +122,7 @@ export function TracesTable({
   if (embedded) return tableElement
 
   return (
-    <div className="overflow-x-auto rounded border border-(--color-border) bg-(--bg-card)">
+    <div className="overflow-x-auto rounded-sm border border-(--color-border) bg-(--bg-card)">
       {tableElement}
     </div>
   )
@@ -183,9 +199,10 @@ function TraceRow({
         className="cursor-pointer border-b border-(--color-border)/40 transition-colors last:border-b-0 hover:bg-(--bg-key)/35 focus:bg-(--bg-key)/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-(--focus-ring)/40"
       >
         <Td>
-          <span title={new Date(trace.start_ms).toLocaleString()}>
-            {timeAgo(trace.start_ms, now)}
-          </span>
+          <Tooltip>
+            <TooltipTrigger render={<span>{timeAgo(trace.start_ms, now)}</span>} />
+            <TooltipContent>{formatFullDateTime(new Date(trace.start_ms))}</TooltipContent>
+          </Tooltip>
         </Td>
         <Td muted mono>
           {trace.session_id ? formatShortId(trace.session_id) : '—'}
@@ -229,7 +246,7 @@ function TraceRow({
               <div
                 role="menu"
                 aria-label={`Actions for trace ${formatShortId(trace.trace_id)}`}
-                className="fixed min-w-44 rounded-sm border border-(--color-border) bg-(--bg-card) p-1 text-sm text-(--color-text) shadow-xl"
+                className="fixed min-w-44 rounded-sm border border-(--color-border) bg-(--bg-card) p-1 text-xs text-(--color-text) shadow-md"
                 style={{ left: actionsPoint.x, top: actionsPoint.y }}
                 onClick={(event) => event.stopPropagation()}
               >
@@ -242,7 +259,7 @@ function TraceRow({
                     openTrace()
                   }}
                 >
-                  <ChevronRight size={14} aria-hidden="true" />
+                  <ChevronRight size={12} aria-hidden="true" />
                   Open trace
                 </button>
                 <button
@@ -254,7 +271,7 @@ function TraceRow({
                     void copyTraceId()
                   }}
                 >
-                  <Copy size={14} aria-hidden="true" />
+                  <Copy size={12} aria-hidden="true" />
                   Copy trace ID
                 </button>
               </div>

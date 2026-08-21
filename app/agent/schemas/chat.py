@@ -113,9 +113,25 @@ class BaseMessage(BaseModel):
     # Me: internal flags — never sent to LLM provider
     exclude_from_context: bool = Field(default=False, exclude=True)
     is_summary: bool = Field(default=False, exclude=True)
+    # Row kind mirror of ``SessionMessage.kind`` (chat | note | queued |
+    # summary | reverted). ``is_summary`` is kept as a convenience alias —
+    # the validator below keeps the two in sync in both directions.
+    kind: str = Field(default="chat", exclude=True)
+    # Position-independent LLM membership (mirror of ``SessionMessage.pinned``):
+    # retained skill tool pairs and permanent internal notes survive
+    # compaction. Managed by SummarizationHook, persisted by the checkpointer.
+    pinned: bool = Field(default=False, exclude=True)
     extra: dict | None = Field(default=None, exclude=True)
     db_id: UUID | None = Field(default=None, exclude=True)
     model_config = ConfigDict(extra="ignore")
+
+    @model_validator(mode="after")
+    def _sync_summary_kind(self) -> Self:
+        if self.is_summary and self.kind == "chat":
+            self.kind = "summary"
+        elif self.kind == "summary":
+            self.is_summary = True
+        return self
 
     def model_dump_full(self, *, exclude_none: bool = True) -> dict:
         """Dump all fields including exclude=True ones — use for DB persistence and telemetry.

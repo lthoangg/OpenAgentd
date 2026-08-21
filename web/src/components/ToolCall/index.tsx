@@ -16,22 +16,21 @@
  * this module owns only the chrome (collapse, copy, motion).
  */
 
-import { useEffect, useRef, useState, useMemo, memo } from 'react'
+import { useEffect, useRef, useState, useMemo, useCallback, memo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { ChevronRight, Copy, Check } from 'lucide-react'
-import hljs from 'highlight.js/lib/core'
-import bash from 'highlight.js/lib/languages/bash'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { ToolResult } from '../ToolResult'
 import { AskUser } from '../AskUser'
 import { DURATIONS_S, EASINGS } from '@/lib/motion'
+import { tokenizeCode } from '@/utils/code-highlight'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { getToolDisplay } from './display'
 import { DiffView } from './DiffView'
 import { ReadView } from './ReadView'
 import { getDiffStats } from './diffUtils'
+import { isFailedResult } from './toolResultStatus'
 import type { ToolCallState } from './types'
-
-hljs.registerLanguage('bash', bash)
 
 /** Matches ``app.agent.agent_loop.core.ASK_USER``. */
 const ASK_USER = 'ask_user'
@@ -48,23 +47,12 @@ interface ToolCallProps {
   toolCallId?: string
 }
 
-function isFailedResult(result: string | undefined): boolean {
-  if (!result) return false
-  const firstLine = result.trimStart().split('\n', 1)[0]?.toLowerCase() ?? ''
-  return (
-    firstLine.startsWith('[failed') ||
-    firstLine.startsWith('[error') ||
-    firstLine.includes('exit code 1') ||
-    firstLine.includes('exit 1')
-  )
-}
-
 function formatShellResult(result: string | undefined): { statusLine: string | null; body: string | null } {
   if (!result) return { statusLine: null, body: null }
 
   const firstNewline = result.indexOf('\n')
   const firstLine = firstNewline >= 0 ? result.slice(0, firstNewline).trim() : result.trim()
-  const hasStatusLine = /^\[(Succeeded|Failed|Error)/i.test(firstLine)
+  const hasStatusLine = /^\[(Succeeded|Failed|Error|Timed out)/i.test(firstLine)
 
   if (!hasStatusLine) {
     return { statusLine: null, body: result }
@@ -77,8 +65,6 @@ function formatShellResult(result: string | undefined): { statusLine: string | n
 function formatToolLabel(name: string): string {
   if (!name) return 'Tool'
   if (name === 'lsp') return 'LSP'
-  if (name === 'rm') return 'Remove'
-  if (name === 'ls') return 'List'
   return name
     .split('_')
     .filter(Boolean)
@@ -131,26 +117,41 @@ function parseJsonStrings(val: unknown): unknown {
   return val
 }
 
+const MAX_LIVE_LINES = 100
+
+function clampLiveOutput(output: string | undefined): string | undefined {
+  if (!output) return undefined
+  if (output.length < 50_000) return output
+  const lines = output.split('\n')
+  if (lines.length <= MAX_LIVE_LINES) return output
+  return `… [${lines.length - MAX_LIVE_LINES} earlier lines hidden while streaming]\n` + lines.slice(-MAX_LIVE_LINES).join('\n')
+}
+
 /**
- * Syntax-highlights a bash command string using highlight.js.
+ * Syntax-highlights a shell command string.
  *
  * Rendered inline inside the `<pre>` terminal block — sits right after the
- * `$ ` prompt. Uses `dangerouslySetInnerHTML` because hljs returns an HTML
- * string; the input is the tool's own `command` arg (never user-supplied
- * free text arriving from the network), so XSS risk is negligible.
+ * `$ ` prompt. Commands are short, so tokens are rendered as React elements
+ * rather than injected HTML — the text is escaped by React, and the element
+ * count stays trivial.
  */
-function ShellCommand({ command }: { command: string }) {
-  const highlighted = useMemo(() => {
-    try {
-      return hljs.highlight(command, { language: 'bash' }).value
-    } catch {
-      // hljs can throw on pathological input — fall back to escaped plain text
-      return command.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-    }
-  }, [command])
+const ShellCommand = memo(function ShellCommand({ command }: { command: string }) {
+  const highlighted = useMemo(
+    () =>
+      tokenizeCode(command, 'shell').map((token, index) =>
+        token.className ? (
+          <span key={index} className={`th-token th-${token.className}`}>
+            {token.value}
+          </span>
+        ) : (
+          token.value
+        ),
+      ),
+    [command],
+  )
 
-  return <code className="hljs" dangerouslySetInnerHTML={{ __html: highlighted }} />
-}
+  return <code>{highlighted}</code>
+})
 
 export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, result, durationMs, startedAt, toolCallId }: ToolCallProps) {
   // Hooks must be called unconditionally — before any early returns
@@ -162,6 +163,7 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
   const [copiedArgs, setCopiedArgs] = useState(false)
   const [copiedResult, setCopiedResult] = useState(false)
   const liveOutputRef = useRef<HTMLPreElement>(null)
+  const isAttachedRef = useRef(true)
   const [now, setNow] = useState(() => Date.now())
 
   // Determine status: start (name only) → running (args) → success/failed (result)
@@ -198,10 +200,10 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
     const operation = (parsed as Record<string, unknown>).operation
     return typeof operation === 'string' ? operation : undefined
   }, [name, args])
-  const usesDiffView = name === 'edit' || name === 'patch' || (name === 'write' && done)
+  const usesDiffView = name === 'patch'
   const usesReadView = name === 'read'
   const diffStats = useMemo(
-    () => (usesDiffView || name === 'rm') && args ? getDiffStats(name, args, result) : null,
+    () => usesDiffView && args && !isFailedResult(result) ? getDiffStats(name, args, result) : null,
     [usesDiffView, name, args, result],
   )
   // Pending-state header comes from getToolDisplay's no-args branch
@@ -211,7 +213,8 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
   // below, preserving the previous behaviour for every other tool.
   const visibleHeader = header
   const shownResult = suppressResult ? undefined : result
-  const shownLiveOutput = shownResult ? undefined : liveOutput
+  const rawLiveOutput = (suppressResult || shownResult) ? undefined : liveOutput
+  const shownLiveOutput = done ? rawLiveOutput : clampLiveOutput(rawLiveOutput)
   const hasReadResult = usesReadView
   const isBackgroundProcess = name === 'bg'
   const isScheduleTaskList = name === 'schedule_task' && shownResult?.startsWith('Scheduled tasks (')
@@ -226,14 +229,18 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
     return () => window.clearInterval(id)
   }, [done, startedAt])
 
+  const handleScroll = useCallback((e: React.UIEvent<HTMLPreElement>) => {
+    const el = e.currentTarget
+    const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
+    isAttachedRef.current = distFromBottom <= 30
+  }, [])
+
   useEffect(() => {
-    // Shell output is already a bounded trailing window and is bottom-anchored
-    // with CSS below. Avoid a synchronous scrollHeight read + scrollTop write
-    // on every shell delta; the outer chat ResizeObserver owns auto-follow.
-    if (isShellTerminal) return
     const el = liveOutputRef.current
-    if (el) el.scrollTop = el.scrollHeight
-  }, [isShellTerminal, shownLiveOutput])
+    if (el && isAttachedRef.current) {
+      el.scrollTop = el.scrollHeight
+    }
+  }, [shownLiveOutput, shellOutput])
 
   const handleCopyArgs = async (e: React.MouseEvent) => {
     e.stopPropagation()
@@ -262,18 +269,24 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
   }
 
   const resultCopyButton = (
-    <button
-      onClick={handleCopyResult}
-      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-sm text-(--color-text-muted) opacity-100 transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-2 focus-visible:outline-(--focus-ring)/40 md:h-6 md:w-6 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100"
-      aria-label="Copy result"
-      title="Copy result"
-    >
-      {copiedResult ? (
-        <Check size={12} className="text-(--color-success)" />
-      ) : (
-        <Copy size={12} />
-      )}
-    </button>
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <button
+            onClick={handleCopyResult}
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-sm text-(--color-text-muted) opacity-100 transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-2 focus-visible:outline-(--focus-ring)/40 md:h-6 md:w-6 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100"
+            aria-label="Copy result"
+          >
+            {copiedResult ? (
+              <Check size={12} className="text-(--color-success)" />
+            ) : (
+              <Copy size={12} />
+            )}
+          </button>
+        }
+      />
+      <TooltipContent>Copy result</TooltipContent>
+    </Tooltip>
   )
 
   const hasDetails = Boolean(formattedArgs || shownLiveOutput || shownResult || hasReadResult)
@@ -281,7 +294,13 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
   const displayName = name || 'tool'
   const toolLabel = formatToolLabel(displayName)
   const title = headerTitle ? `${toolLabel}: ${headerTitle}` : toolLabel
-  const headerClassName = `min-w-0 truncate font-mono text-(--color-text) ${state === 'running' ? 'animate-pulse text-(--color-marker-orange)' : ''}`
+  const headerClassName = `min-w-0 truncate font-mono text-(--color-text) ${
+    state === 'running'
+      ? 'animate-pulse text-(--color-marker-orange)'
+      : state === 'failed'
+        ? 'text-(--color-error)'
+        : ''
+  }`
   const elapsedMs = durationMs ?? (!done && startedAt ? now - startedAt : undefined)
 
   // ``ask_user`` owns its whole card — frame and label included, since
@@ -336,9 +355,7 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
         </span>
 
         {elapsedMs !== undefined && (
-          <span className="shrink-0 font-mono text-[10px] text-(--color-text-muted)" title="Duration">
-            {formatDuration(elapsedMs)}
-          </span>
+          <span className="shrink-0 font-mono text-[10px] text-(--color-text-muted)">{formatDuration(elapsedMs)}</span>
         )}
 
         {hasDetails && (
@@ -384,23 +401,31 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
                         <span className="font-mono text-[10px] font-semibold uppercase tracking-wider text-(--color-text-muted) transition-colors group-hover/result-header:text-(--color-text)">
                           {isShellTerminal ? 'terminal' : 'arguments'}
                         </span>
-                        <button
-                          onClick={handleCopyArgs}
-                          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-sm text-(--color-text-muted) opacity-100 transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-2 focus-visible:outline-(--focus-ring)/40 md:h-6 md:w-6 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100"
-                          aria-label="Copy arguments"
-                          title="Copy"
-                        >
-                          {copiedArgs ? (
-                            <Check size={12} className="text-(--color-success)" />
-                          ) : (
-                            <Copy size={12} />
-                          )}
-                        </button>
+                        <Tooltip>
+                          <TooltipTrigger
+                            render={
+                              <button
+                                onClick={handleCopyArgs}
+                                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-sm text-(--color-text-muted) opacity-100 transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-2 focus-visible:outline-(--focus-ring)/40 md:h-6 md:w-6 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100"
+                                aria-label="Copy arguments"
+                              >
+                                {copiedArgs ? (
+                                  <Check size={12} className="text-(--color-success)" />
+                                ) : (
+                                  <Copy size={12} />
+                                )}
+                              </button>
+                            }
+                          />
+                          <TooltipContent>Copy</TooltipContent>
+                        </Tooltip>
                       </div>
                       {isShellTerminal ? (
                         <div className="flex flex-col gap-1 bg-(--bg-input) p-2.5">
                           <pre
-                            className={`max-h-40 sm:max-h-64 whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-(--color-text) ${shownLiveOutput ? 'flex flex-col justify-end overflow-hidden' : 'overflow-auto'}`}
+                            ref={liveOutputRef}
+                            onScroll={handleScroll}
+                            className="max-h-40 sm:max-h-64 overflow-auto touch-pan-y whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-(--color-text)"
                           >
                             <span className="block"><span className="select-none text-(--color-text-muted)">$ </span><ShellCommand command={formattedArgs} />{shellOutput ? `\n${shellOutput}` : ''}</span>
                           </pre>
@@ -433,7 +458,8 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
                       </div>
                       <pre
                         ref={liveOutputRef}
-                        className="max-h-40 overflow-auto sm:max-h-64 whitespace-pre-wrap break-words bg-(--bg-input) px-3 py-2.5 font-mono text-[11px] leading-relaxed text-(--color-text)"
+                        onScroll={handleScroll}
+                        className="max-h-40 overflow-auto touch-pan-y sm:max-h-64 whitespace-pre-wrap break-words bg-(--bg-input) px-3 py-2.5 font-mono text-[11px] leading-relaxed text-(--color-text)"
                       >
                         {shownLiveOutput}
                       </pre>

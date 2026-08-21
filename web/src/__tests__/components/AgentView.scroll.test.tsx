@@ -797,3 +797,121 @@ describe("AgentView — escaping auto-follow without a wheel event", () => {
     }
   })
 })
+
+// ── streaming compositor blank ────────────────────────────────────────────
+//
+// During a live stream with no user input, ResizeObserver used to assign
+// `scrollTop` on every markdown reflow. Chromium/WebKit then drop the
+// scroller's compositor tiles — the transcript paints blank until the user
+// scrolls. Native overflow-anchor on a stable bottom sentinel pins the view
+// without those writes; JS scrollTop is reserved for viewport changes,
+// content shrink, and explicit jumps.
+
+describe("AgentView — streaming auto-follow without compositor churn", () => {
+  it("opts the transcript scroller out of overflow-anchor and pins a bottom sentinel", () => {
+    const { container } = renderStream({ blocks: [makeTextBlock("b1", "Hi")] })
+    const el = container.querySelector(".overflow-y-auto") as HTMLDivElement
+    const anchor = el.querySelector("[data-chat-scroll-anchor]") as HTMLElement
+
+    expect(el.className).toContain("oa-chat-scroll")
+    expect(anchor).toBeTruthy()
+    expect(anchor.getAttribute("aria-hidden")).toBe("true")
+    expect(anchor.style.overflowAnchor).toBe("auto")
+  })
+
+  it("pins a bottom sentinel in AgentPane as well", () => {
+    const { container } = render(
+      <AgentPane name="researcher" stream={makeAgentStream([makeTextBlock("b1", "Hi")])} isLead={false} />,
+    )
+    const el = container.querySelector(".overflow-y-auto") as HTMLDivElement
+    const anchor = el.querySelector("[data-chat-scroll-anchor]") as HTMLElement
+
+    expect(el.className).toContain("oa-chat-scroll")
+    expect(anchor).toBeTruthy()
+    expect(anchor.style.overflowAnchor).toBe("auto")
+  })
+
+  it("disables the sentinel's overflow-anchor when the user detaches, and restores it on re-attach", async () => {
+    const { container } = renderStream({ blocks: [makeTextBlock("b1", "Hi")] })
+    const el = container.querySelector(".overflow-y-auto") as HTMLDivElement
+    const anchor = el.querySelector("[data-chat-scroll-anchor]") as HTMLElement
+
+    await fireScroll(el, 200)
+    expect(container.querySelector('button[aria-label="Scroll to bottom"]')).toBeTruthy()
+    expect(anchor.style.overflowAnchor).toBe("none")
+
+    const btn = container.querySelector('button[aria-label="Scroll to bottom"]') as HTMLButtonElement
+    await act(async () => { btn.click() })
+    expect(anchor.style.overflowAnchor).toBe("auto")
+  })
+
+  it("does not assign scrollTop from ResizeObserver when already pinned to the bottom", async () => {
+    const originalResizeObserver = globalThis.ResizeObserver
+    const observers: Array<{ callback: ResizeObserverCallback; targets: Element[] }> = []
+    globalThis.ResizeObserver = class {
+      private readonly entry: (typeof observers)[number]
+      constructor(callback: ResizeObserverCallback) {
+        this.entry = { callback, targets: [] }
+        observers.push(this.entry)
+      }
+      observe(target: Element) { this.entry.targets.push(target) }
+      unobserve() {}
+      disconnect() {}
+    } as unknown as typeof globalThis.ResizeObserver
+
+    try {
+      const { container } = renderStream({
+        blocks: [makeTextBlock("b1", "Hi")],
+        currentBlocks: [makeTextBlock("b2", "Streaming…")],
+        isWorking: true,
+      })
+      const el = container.querySelector(".overflow-y-auto") as HTMLDivElement
+      const content = el.querySelector(".mx-auto") as HTMLDivElement
+      const observer = observers.find((o) => o.targets.includes(el) || o.targets.includes(content))
+      expect(observer).toBeTruthy()
+
+      const scrollHeight = 1200
+      const clientHeight = 500
+      let scrollTop = scrollHeight - clientHeight
+      let contentHeight = 1000
+      let assignments = 0
+      Object.defineProperties(el, {
+        scrollHeight: { configurable: true, get: () => scrollHeight },
+        clientHeight: { configurable: true, get: () => clientHeight },
+        scrollTop: {
+          configurable: true,
+          get: () => scrollTop,
+          set: (value: number) => {
+            assignments += 1
+            scrollTop = value
+          },
+        },
+      })
+      content.getBoundingClientRect = () => ({
+        x: 0, y: 0, width: 800, height: contentHeight, top: 0, right: 800, bottom: contentHeight, left: 0, toJSON: () => ({}),
+      })
+
+      await act(async () => {
+        // First observation establishes the baseline height.
+        observer!.callback(
+          [{ target: content } as unknown as ResizeObserverEntry],
+          {} as ResizeObserver,
+        )
+        await new Promise((r) => requestAnimationFrame(() => r(undefined)))
+        assignments = 0
+
+        // Stream growth: content grows while the view stays pinned at bottom.
+        contentHeight = 1500
+        observer!.callback(
+          [{ target: content } as unknown as ResizeObserverEntry],
+          {} as ResizeObserver,
+        )
+        await new Promise((r) => requestAnimationFrame(() => r(undefined)))
+      })
+
+      expect(assignments).toBe(0)
+    } finally {
+      globalThis.ResizeObserver = originalResizeObserver
+    }
+  })
+})

@@ -256,6 +256,42 @@ async def test_lsp_manager_starts_unrelated_workspace_clients_concurrently(tmp_p
 
 
 @pytest.mark.asyncio
+async def test_lsp_manager_times_out_and_stops_hung_client_start(tmp_path):
+    """A server that hangs during initialize must not block callers forever."""
+    manager = LspManager()
+    stopped = False
+
+    class HangingClient:
+        def __init__(self, command, workspace_root, **kwargs):
+            self.process = None
+
+        async def start(self):
+            await asyncio.Event().wait()
+
+        async def stop(self):
+            nonlocal stopped
+            stopped = True
+
+    async def timeout(awaitable, timeout):
+        awaitable.close()
+        raise TimeoutError
+
+    with (
+        patch.object(
+            manager,
+            "_detect_commands",
+            new_callable=AsyncMock,
+            return_value=[["mock-lsp"]],
+        ),
+        patch("app.services.lsp.manager.LspClient", HangingClient),
+        patch("app.services.lsp.manager.asyncio.wait_for", side_effect=timeout),
+    ):
+        assert await manager.get_clients(tmp_path, "python") == []
+
+    assert stopped
+
+
+@pytest.mark.asyncio
 async def test_lsp_manager_starts_same_workspace_client_once(tmp_path):
     """Concurrent callers for one workspace/language share its startup."""
     manager = LspManager()
@@ -682,7 +718,10 @@ async def test_lsp_hook_intercepts_and_formats(tmp_path):
         file_path.write_text("import os\n", encoding="utf-8")
 
         # Set up active sandbox context
-        from app.agent.sandbox import SandboxConfig, set_sandbox
+        from app.agent.denied_paths import (
+            DeniedPathsConfig as SandboxConfig,
+            set_denied_paths as set_sandbox,
+        )
 
         sandbox = SandboxConfig(workspace=str(tmp_path))
         set_sandbox(sandbox)
@@ -695,21 +734,30 @@ async def test_lsp_hook_intercepts_and_formats(tmp_path):
                 id="call_1",
                 type="function",
                 function=FunctionCall(
-                    name="write",
-                    arguments=json.dumps({"path": "test.py", "content": "import os\n"}),
+                    name="patch",
+                    arguments=json.dumps(
+                        {
+                            "patch_text": (
+                                "*** Begin Patch\n"
+                                "*** Add File: test.py\n"
+                                "+import os\n"
+                                "*** End Patch\n"
+                            )
+                        }
+                    ),
                 ),
             )
 
             # Mock handler that returns the original tool output
             async def handler(ctx, state, tool_call):
-                return "Written 10 bytes to test.py"
+                return "Patch applied successfully. Updated paths:\ntest.py"
 
             ctx = MagicMock()
             state = MagicMock()
 
             result = await hook.wrap_tool_call(ctx, state, tc, handler)
 
-            assert "Written 10 bytes to test.py" in result
+            assert "Patch applied successfully" in result
             assert "[LSP Diagnostics]" in result
             assert "- test.py:3:6: error: Syntax error (pyright)" in result
         finally:
@@ -900,6 +948,38 @@ def test_detect_project_lsp_commands_no_pyproject(tmp_path):
     assert detect_project_lsp_commands("typescript", tmp_path) == []
 
 
+def test_detect_project_python_tool_versions(tmp_path):
+    """Exact ``==`` pins are captured; ranges and bare declarations resolve to
+    ``None`` (PyPI latest) at install time."""
+    from app.services.lsp.manager import detect_project_python_tool_versions
+
+    (tmp_path / "pyproject.toml").write_text(
+        """
+[project]
+name = "demo"
+dependencies = ["ruff==0.16.1"]
+
+[project.optional-dependencies]
+dev = ["ty"]
+
+[dependency-groups]
+dev = ["ty>=0.0.33,<0.1", "pytest>=9"]
+""",
+        encoding="utf-8",
+    )
+
+    assert detect_project_python_tool_versions(tmp_path) == {
+        "ruff": "0.16.1",
+        "ty": None,
+    }
+
+
+def test_detect_project_python_tool_versions_no_pyproject(tmp_path):
+    from app.services.lsp.manager import detect_project_python_tool_versions
+
+    assert detect_project_python_tool_versions(tmp_path) == {}
+
+
 def test_detect_project_lsp_commands_typescript(tmp_path):
     from app.services.lsp.manager import detect_project_lsp_commands
 
@@ -929,6 +1009,74 @@ async def test_detect_commands_prefers_project_config(tmp_path):
     with patch("shutil.which", side_effect=lambda exe, path=None: f"/usr/bin/{exe}"):
         cmds = await manager._detect_commands("python", project_root=tmp_path)
         assert cmds == [["ty", "server"]]
+
+
+@pytest.mark.asyncio
+async def test_detect_commands_auto_installs_declared_missing_python_tool(
+    tmp_path, monkeypatch
+):
+    """A project that declares ty/ruff but has none on PATH or bundled gets a
+    silent managed install of the pinned version, then runs that server."""
+    import app.services.lsp.manager as manager_mod
+
+    manager = LspManager()
+    (tmp_path / "pyproject.toml").write_text(
+        '[dependency-groups]\ndev = ["ty==0.0.33"]\n', encoding="utf-8"
+    )
+    monkeypatch.setattr(manager_mod.shutil, "which", lambda command, path=None: None)
+    monkeypatch.setattr(
+        manager_mod, "find_packaged_python_command", lambda command: None
+    )
+
+    installed: dict[str, bool] = {}
+    ensured: list[tuple[str, str | None]] = []
+
+    def fake_python_tool_command(name, version):
+        return [f"/managed/{name}", "server"] if installed.get(name) else None
+
+    async def fake_ensure(name, version):
+        ensured.append((name, version))
+        installed[name] = True
+
+    monkeypatch.setattr(
+        manager_mod.managed_lsp_tools, "python_tool_command", fake_python_tool_command
+    )
+    monkeypatch.setattr(
+        manager_mod.managed_lsp_tools, "ensure_python_tool", fake_ensure
+    )
+
+    cmds = await manager._detect_commands("python", project_root=tmp_path)
+
+    assert cmds == [["/managed/ty", "server"]]
+    assert ensured == [("ty", "0.0.33")]
+
+
+@pytest.mark.asyncio
+async def test_detect_commands_does_not_auto_install_without_declaration(
+    tmp_path, monkeypatch
+):
+    """Silent installs only happen for project-declared tools; a bare workspace
+    with nothing installed must not trigger a download."""
+    import app.services.lsp.manager as manager_mod
+
+    manager = LspManager()
+    monkeypatch.setattr(manager_mod.shutil, "which", lambda command, path=None: None)
+    monkeypatch.setattr(
+        manager_mod, "find_packaged_python_command", lambda command: None
+    )
+    ensured: list[tuple[str, str | None]] = []
+
+    async def fake_ensure(name, version):
+        ensured.append((name, version))
+
+    monkeypatch.setattr(
+        manager_mod.managed_lsp_tools, "ensure_python_tool", fake_ensure
+    )
+
+    cmds = await manager._detect_commands("python", project_root=tmp_path)
+
+    assert cmds == []
+    assert ensured == []
 
 
 @pytest.mark.asyncio
@@ -1248,6 +1396,53 @@ async def test_lsp_client_sends_workspace_folders_in_initialize(tmp_path):
     # Workspace capability must be advertised.
     caps = params.get("capabilities", {})
     assert caps.get("workspace", {}).get("workspaceFolders") is True
+
+
+@pytest.mark.asyncio
+async def test_lsp_client_advertises_hierarchical_document_symbol_support(tmp_path):
+    """Without this capability, servers (pyright, ty) fall back to flat
+
+    SymbolInformation — location = the whole declaration (e.g. starting at
+    "async"/"def") with no identifier-only position available. Hierarchical
+    DocumentSymbol adds selectionRange (just the identifier), which
+    LspManager.navigation's flatten() needs to report a position that
+    actually resolves in a follow-up go_to_definition/find_references/hover
+    call.
+    """
+    stdout = MockStreamReader()
+    captured_params: list[dict] = []
+
+    def on_write(data):
+        parts = data.split(b"\r\n\r\n", 1)
+        if len(parts) < 2:
+            return
+        try:
+            msg = json.loads(parts[1].decode("utf-8"))
+        except Exception:
+            return
+        if msg.get("method") == "initialize":
+            captured_params.append(msg.get("params", {}))
+            stdout.feed_message(
+                {"jsonrpc": "2.0", "id": msg["id"], "result": {"capabilities": {}}}
+            )
+
+    stdin = MockStreamWriter(on_write=on_write)
+    proc = MockProcess(stdout, stdin)
+
+    with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec:
+        mock_exec.return_value = proc
+        client = LspClient(["mock-lsp"], tmp_path)
+        await client.start()
+        await client.stop()
+
+    assert len(captured_params) == 1
+    caps = captured_params[0].get("capabilities", {})
+    assert (
+        caps.get("textDocument", {})
+        .get("documentSymbol", {})
+        .get("hierarchicalDocumentSymbolSupport")
+        is True
+    )
 
 
 @pytest.mark.asyncio

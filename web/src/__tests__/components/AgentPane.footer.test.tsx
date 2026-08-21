@@ -68,10 +68,11 @@ describe("AgentPane — AssistantFooter", () => {
           completionTokens: 200,
           totalTokens: 1700,
           cachedTokens: 30,
+          cachedPercent: 2,
         },
       })
       renderPanel(stream)
-      expect(screen.getByLabelText("Input: 1,500 / 250,000 (1%) · Output: 200 · Cache: 30")).toBeTruthy()
+      expect(screen.getByLabelText("Input: 1,500 / 250,000 (1%) · Output: 200 · Cache: 2.00%")).toBeTruthy()
     })
 
     it("does not show the usage counter for the lead pane", () => {
@@ -81,10 +82,11 @@ describe("AgentPane — AssistantFooter", () => {
           completionTokens: 200,
           totalTokens: 1700,
           cachedTokens: 30,
+          cachedPercent: 2,
         },
       })
       renderPanel(stream, { isLead: true, name: "lead" })
-      expect(screen.queryByLabelText("Input: 1,500 / 250,000 (1%) · Output: 200 · Cache: 30")).toBeNull()
+      expect(screen.queryByLabelText("Input: 1,500 / 250,000 (1%) · Output: 200 · Cache: 2.00%")).toBeNull()
     })
   })
 
@@ -165,14 +167,16 @@ describe("AgentPane — AssistantFooter", () => {
       expect(copyBtn.getAttribute("aria-label")).toBe("Copy response")
     })
 
-    it("copy button has correct title attribute", () => {
+    it("copy button shows a 'Copy' tooltip on hover", async () => {
+      const user = userEvent.setup()
       const stream = makeStream({
         status: "idle",
         blocks: [makeTextBlock("b1", "Hello world")],
       })
       renderPanel(stream)
       const copyBtn = screen.getByRole("button", { name: /copy response/i })
-      expect(copyBtn.getAttribute("title")).toBe("Copy")
+      await user.hover(copyBtn)
+      expect((await screen.findByRole("tooltip")).textContent).toBe("Copy")
     })
   })
 
@@ -287,7 +291,9 @@ describe("AgentPane — AssistantFooter", () => {
       const { container } = renderPanel(stream)
       const footer = container.querySelector(".mt-0\\.5.flex.items-center.gap-1")
       expect(footer).toBeTruthy()
-      const timeEl = footer?.querySelector("span")
+      const timeEl = Array.from(footer?.querySelectorAll("span") ?? []).find((el) =>
+        /\d+:\d+/.test(el.textContent ?? ""),
+      )
       expect(timeEl?.textContent).toMatch(/\d+:\d+/)
     })
 
@@ -305,7 +311,9 @@ describe("AgentPane — AssistantFooter", () => {
       const { container } = renderPanel(stream)
       const footer = container.querySelector(".mt-0\\.5.flex.items-center.gap-1")
       expect(footer).toBeTruthy()
-      const timeEl = footer?.querySelector("span")
+      const timeEl = Array.from(footer?.querySelectorAll("span") ?? []).find((el) =>
+        /\d+:\d+/.test(el.textContent ?? ""),
+      )
       expect(timeEl?.textContent).toMatch(/\d+:\d+/)
     })
 
@@ -318,8 +326,10 @@ describe("AgentPane — AssistantFooter", () => {
       const copyBtn = screen.getByRole("button", { name: /copy response/i })
       expect(copyBtn).toBeTruthy()
       const footer = container.querySelector(".mt-0\\.5.flex.items-center.gap-1")
-      const timeSpan = footer?.querySelector("span")
-      expect(timeSpan).toBeNull()
+      const timeSpan = Array.from(footer?.querySelectorAll("span") ?? []).find((el) =>
+        /\d+:\d+/.test(el.textContent ?? ""),
+      )
+      expect(timeSpan).toBeUndefined()
     })
 
     it("renders timestamp from tool block if it's the last non-user block", () => {
@@ -334,7 +344,9 @@ describe("AgentPane — AssistantFooter", () => {
       const { container } = renderPanel(stream)
       const footer = container.querySelector(".mt-0\\.5.flex.items-center.gap-1")
       expect(footer).toBeTruthy()
-      const timeEl = footer?.querySelector("span")
+      const timeEl = Array.from(footer?.querySelectorAll("span") ?? []).find((el) =>
+        /\d+:\d+/.test(el.textContent ?? ""),
+      )
       expect(timeEl?.textContent).toMatch(/\d+:\d+/)
     })
   })
@@ -354,7 +366,9 @@ describe("AgentPane — AssistantFooter", () => {
       expect(footer).toBeTruthy()
       const copyBtn = screen.getByRole("button", { name: /copy response/i })
       expect(copyBtn).toBeTruthy()
-      const timeEl = footer?.querySelector("span")
+      const timeEl = Array.from(footer?.querySelectorAll("span") ?? []).find((el) =>
+        /\d+:\d+/.test(el.textContent ?? ""),
+      )
       expect(timeEl?.textContent).toMatch(/\d+:\d+/)
     })
 

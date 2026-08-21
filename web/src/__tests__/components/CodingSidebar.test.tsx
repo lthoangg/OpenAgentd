@@ -913,7 +913,7 @@ describe('CodingSidebar workspace trust flow', () => {
 
     await renderCodingSidebarForSessions()
 
-    fireEvent.mouseDown(screen.getByTitle(/selected session ·/i), { button: 0, metaKey: true })
+    fireEvent.mouseDown(screen.getByRole('button', { name: 'Selected session' }), { button: 0, metaKey: true })
 
     await waitFor(() => {
       expect(invokeMock).toHaveBeenCalledWith('app_new_window', {

@@ -14,10 +14,13 @@
  *   in_progress → pending → completed → cancelled
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Check, Circle, ListTodo, Loader2, Minus } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
+import { useHotkey } from '@tanstack/react-hotkeys'
 import { TopbarAction } from '@/components/ui/topbar-action'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useDeferredUnmount } from '@/components/ui/_use-deferred-unmount'
 import { cn } from '@/lib/utils'
 import { usePlatform } from '@/hooks/use-platform'
@@ -55,6 +58,24 @@ function getAgentLabel(todo: TodoItem): string | null {
 interface DesktopPopoverPosition {
   top: number
   left: number
+}
+
+function computeDesktopPosition(
+  triggerEl: HTMLElement | null,
+  panelEl: HTMLElement | null,
+): DesktopPopoverPosition | null {
+  if (!triggerEl) return null
+  const triggerRect = triggerEl.getBoundingClientRect()
+  const panelWidth = panelEl?.offsetWidth ?? Math.min(window.innerWidth - 16, 320)
+  const panelHeight = panelEl?.offsetHeight ?? 280
+  const gap = 8
+  const left = Math.max(8, Math.min(triggerRect.right - panelWidth, window.innerWidth - panelWidth - 8))
+  const preferredTop = triggerRect.bottom + gap
+  const top = preferredTop + panelHeight > window.innerHeight
+    ? Math.max(8, triggerRect.top - panelHeight - gap)
+    : preferredTop
+
+  return { top, left }
 }
 
 // ── Component ────────────────────────────────────────────────────────────────
@@ -98,28 +119,15 @@ export function TodosPopover({
   const desktopPanelRef = useRef<HTMLDivElement | null>(null)
   const [desktopPosition, setDesktopPosition] = useState<DesktopPopoverPosition | null>(null)
 
-  useEffect(() => {
-    if (!trigger || !open) {
+  useLayoutEffect(() => {
+    if (!trigger || !mounted) {
       setDesktopPosition(null)
       return
     }
 
     const updateDesktopPosition = () => {
-      const triggerEl = triggerRef.current
-      const panelEl = desktopPanelRef.current
-      if (!triggerEl) return
-
-      const triggerRect = triggerEl.getBoundingClientRect()
-      const panelWidth = panelEl?.offsetWidth ?? Math.min(window.innerWidth - 16, 320)
-      const panelHeight = panelEl?.offsetHeight ?? 280
-      const gap = 8
-      const left = Math.max(8, Math.min(triggerRect.right - panelWidth, window.innerWidth - panelWidth - 8))
-      const preferredTop = triggerRect.bottom + gap
-      const top = preferredTop + panelHeight > window.innerHeight
-        ? Math.max(8, triggerRect.top - panelHeight - gap)
-        : preferredTop
-
-      setDesktopPosition({ top, left })
+      const next = computeDesktopPosition(triggerRef.current, desktopPanelRef.current)
+      if (next) setDesktopPosition(next)
     }
 
     updateDesktopPosition()
@@ -130,7 +138,9 @@ export function TodosPopover({
       window.removeEventListener('resize', updateDesktopPosition)
       window.removeEventListener('scroll', updateDesktopPosition, { capture: true })
     }
-  }, [open, trigger])
+  }, [open, trigger, mounted])
+
+  useHotkey('Escape', () => onOpenChange(false), { enabled: Boolean(trigger && open) })
 
   useEffect(() => {
     if (!trigger || !open) return
@@ -141,16 +151,10 @@ export function TodosPopover({
       onOpenChange(false)
     }
 
-    const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onOpenChange(false)
-    }
-
     document.addEventListener('mousedown', handlePointerDown)
-    document.addEventListener('keydown', handleEscape)
 
     return () => {
       document.removeEventListener('mousedown', handlePointerDown)
-      document.removeEventListener('keydown', handleEscape)
     }
   }, [onOpenChange, open, trigger])
 
@@ -218,35 +222,43 @@ export function TodosPopover({
               <li
                 key={todo.task_id}
                 className={cn(
-                  'group flex items-start gap-2 rounded-md px-2 py-1.5 transition-colors',
+                  'group flex gap-2 rounded-sm px-2 py-1.5 transition-colors',
+                  agent ? 'items-start' : 'items-center',
                   isInProgress
-                    ? 'bg-(--color-info-subtle)/12'
+                    ? 'bg-(--color-info-subtle) text-(--color-text)'
                     : 'hover:bg-(--bg-key)/50'
                 )}
               >
-                <span className="mt-0.5 flex h-3.5 w-3.5 shrink-0 items-center justify-center">
-                  <Icon
-                    size={11}
-                    aria-hidden="true"
-                    className={cn(
-                      STATUS_ICON_COLOR[todo.status],
-                      isInProgress && 'animate-spin'
-                    )}
-                  />
-                </span>
+                <Icon
+                  size={12}
+                  aria-hidden="true"
+                  className={cn(
+                    'shrink-0',
+                    agent && 'mt-0.5',
+                    STATUS_ICON_COLOR[todo.status],
+                    isInProgress && 'animate-spin'
+                  )}
+                />
                 <div className="min-w-0 flex-1">
-                  <div
-                    className={cn(
-                      'truncate text-[12px] leading-4',
-                      isStruck
-                        ? 'text-(--color-text-subtle) line-through decoration-(--color-text-subtle)/40'
-                        : isInProgress
-                          ? 'font-medium text-(--color-text)'
-                          : 'text-(--color-text-2)'
-                    )}
-                  >
-                    {todo.content}
-                  </div>
+                  <Tooltip className="w-full">
+                    <TooltipTrigger
+                      render={
+                        <div
+                          className={cn(
+                            'truncate text-[12px] leading-4',
+                            isStruck
+                              ? 'text-(--color-text-subtle) line-through decoration-(--color-text-subtle)/40'
+                              : isInProgress
+                                ? 'font-medium text-(--color-text)'
+                                : 'text-(--color-text-2)'
+                          )}
+                        >
+                          {todo.content}
+                        </div>
+                      }
+                    />
+                    <TooltipContent>{todo.content}</TooltipContent>
+                  </Tooltip>
                   {agent && (
                     <div className="mt-0.5 text-[10px] text-(--color-text-subtle)">
                       {agent}
@@ -306,29 +318,39 @@ export function TodosPopover({
   return (
     <>
       {trigger && (
-        <TopbarAction
-          ref={triggerRef}
-          Icon={ListTodo}
-          indicator={hasInProgress}
-          badge={progressLabel}
-          title={sessionId ? `Task list (${formatShortcut('T', os)})` : 'No active session'}
-          aria-label="Task list"
-          aria-expanded={open}
-          disabled={!sessionId}
-          onClick={() => {
-            if (!sessionId) return
-            onOpenChange(!open)
-          }}
-          data-state={open ? 'open' : 'closed'}
-          className={
-            open
-              ? 'border border-(--color-border-strong) bg-(--bg-key) text-(--color-text)'
-              : undefined
-          }
-        />
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <TopbarAction
+                ref={triggerRef}
+                Icon={ListTodo}
+                indicator={hasInProgress}
+                indicatorClassName="bg-(--color-info)"
+                badge={progressLabel}
+                aria-label="Task list"
+                aria-expanded={open}
+                disabled={!sessionId}
+                onClick={() => {
+                  if (!sessionId) return
+                  if (!open && triggerRef.current) {
+                    setDesktopPosition(computeDesktopPosition(triggerRef.current, desktopPanelRef.current))
+                  }
+                  onOpenChange(!open)
+                }}
+                data-state={open ? 'open' : 'closed'}
+                className={
+                  open
+                    ? 'border border-(--color-border-strong) bg-(--bg-key) text-(--color-text)'
+                    : undefined
+                }
+              />
+            }
+          />
+          <TooltipContent>{sessionId ? `Task list (${formatShortcut('T', os)})` : 'No active session'}</TooltipContent>
+        </Tooltip>
       )}
 
-      {trigger && mounted && (
+      {trigger && mounted && createPortal(
         <div
           ref={desktopPanelRef}
           data-slot="popover-content"
@@ -339,13 +361,13 @@ export function TodosPopover({
               : 'animate-in fade-in-0 duration-100 ease-out'
           )}
           style={{
-            top: desktopPosition?.top ?? 0,
-            left: desktopPosition?.left ?? 0,
-            visibility: desktopPosition ? 'visible' : 'hidden',
+            top: desktopPosition?.top ?? (triggerRef.current ? triggerRef.current.getBoundingClientRect().bottom + 8 : 48),
+            left: desktopPosition?.left ?? (triggerRef.current ? Math.max(8, Math.min(triggerRef.current.getBoundingClientRect().right - 320, window.innerWidth - 328)) : window.innerWidth - 328),
           }}
         >
           {content}
-        </div>
+        </div>,
+        document.body,
       )}
     </>
   )

@@ -11,8 +11,7 @@ import { useTeamStore } from "@/stores/useTeamStore"
  * Coding Workspace Sidebar.
  *
  * ``shell`` / ``patch`` / ``generate_image`` always invalidate the
- * workspace regardless of args. ``write`` / ``edit`` / ``rm`` to a
- * ``wiki/`` path are now treated as regular workspace paths.
+ * workspace regardless of args.
  */
 
 function primeBlock(
@@ -55,28 +54,6 @@ function resetStore(overrides: Partial<ReturnType<typeof useTeamStore.getState>>
 describe("useTeamStore — coding_workspace invalidation", () => {
   beforeEach(() => resetStore())
 
-  it("emits SCOPED coding_workspace_paths event when `write` carries a path in coding mode", () => {
-    // Path-bearing tools (write/edit/rm/patch) carry the touched file
-    // in their args — the SSE reducer extracts it and emits the
-    // scoped event so the cache bridge can fetch a per-file diff
-    // instead of triggering a whole-repo refetch.
-    resetStore({ sessionId: "sess-c1", _workspace: "/Users/me/proj" })
-    primeBlock("claude", "write", "tc-1", { path: "src/app.ts", content: "..." })
-    useTeamStore.getState()._handleSSEEvent("tool_end", {
-      name: "write",
-      agent: "claude",
-      tool_call_id: "tc-1",
-      result: "Written 42 bytes",
-    })
-    expect(useTeamStore.getState().cacheInvalidations).toEqual([
-      {
-        kind: "coding_workspace_paths",
-        workspace: "/Users/me/proj",
-        paths: ["src/app.ts"],
-      },
-    ])
-  })
-
   it("emits coding_workspace event when `shell` runs in coding mode (no path arg required)", () => {
     resetStore({ sessionId: "sess-c2", _workspace: "/tmp/proj" })
     primeBlock("claude", "shell", "tc-2", { command: "mkdir build && touch build/out" })
@@ -91,11 +68,10 @@ describe("useTeamStore — coding_workspace invalidation", () => {
     ])
   })
 
-  it.each(["bg", "generate_image", "generate_video"] as const)(
+  it.each(["generate_image", "generate_video"] as const)(
     "emits broad coding_workspace event when `%s` finishes in coding mode (no extractable path)",
     (toolName) => {
-      // ``bg`` is shell-like (arbitrary path mutations); the
-      // multimodal generators don't surface deterministic output
+      // The multimodal generators don't surface deterministic output
       // paths in their args. All fall back to broad invalidation.
       resetStore({ sessionId: "sess-c3", _workspace: "/tmp/proj" })
       primeBlock("claude", toolName, `tc-${toolName}`, { foo: "bar" })
@@ -140,6 +116,49 @@ describe("useTeamStore — coding_workspace invalidation", () => {
     ])
   })
 
+  it("falls back to workspace_files (session-scoped) when _workspace is unset", () => {
+    resetStore({ sessionId: "sess-n1", _workspace: null })
+    const envelope = ["*** Begin Patch", "*** Add File: out.txt", "+hi", "*** End Patch"].join(
+      "\n",
+    )
+    primeBlock("claude", "patch", "tc-n1", { patch_text: envelope })
+    useTeamStore.getState()._handleSSEEvent("tool_end", {
+      name: "patch",
+      agent: "claude",
+      tool_call_id: "tc-n1",
+      result: "Patch applied successfully. Updated paths:\nout.txt",
+    })
+    expect(useTeamStore.getState().cacheInvalidations).toEqual([
+      { kind: "workspace_files", sessionId: "sess-n1" },
+    ])
+  })
+
+  it("queues one scoped event per patch across a burst (each carries its own path)", () => {
+    resetStore({ sessionId: "sess-c6", _workspace: "/tmp/proj" })
+    const state = useTeamStore.getState()
+    for (let i = 0; i < 3; i++) {
+      const tcid = `tc-burst-${i}`
+      const envelope = [
+        "*** Begin Patch",
+        `*** Add File: f${i}.txt`,
+        "+x",
+        "*** End Patch",
+      ].join("\n")
+      primeBlock("claude", "patch", tcid, { patch_text: envelope })
+      state._handleSSEEvent("tool_end", {
+        name: "patch",
+        agent: "claude",
+        tool_call_id: tcid,
+        result: `Patch applied successfully. Updated paths:\nf${i}.txt`,
+      })
+    }
+    expect(useTeamStore.getState().cacheInvalidations).toEqual([
+      { kind: "coding_workspace_paths", workspace: "/tmp/proj", paths: ["f0.txt"] },
+      { kind: "coding_workspace_paths", workspace: "/tmp/proj", paths: ["f1.txt"] },
+      { kind: "coding_workspace_paths", workspace: "/tmp/proj", paths: ["f2.txt"] },
+    ])
+  })
+
   it("falls back to broad coding_workspace when patch args are unparseable", () => {
     // Streaming tool_start may deliver partial JSON — args never
     // fully resolve. The reducer must NOT emit a half-baked path
@@ -157,69 +176,4 @@ describe("useTeamStore — coding_workspace invalidation", () => {
     ])
   })
 
-  it("emits coding_workspace_paths when `write` targets wiki/ in coding mode", () => {
-    resetStore({ sessionId: "sess-c4", _workspace: "/tmp/proj" })
-    primeBlock("claude", "write", "tc-w", { path: "wiki/topics/x.md", content: "y" })
-    useTeamStore.getState()._handleSSEEvent("tool_end", {
-      name: "write",
-      agent: "claude",
-      tool_call_id: "tc-w",
-      result: "Written",
-    })
-    expect(useTeamStore.getState().cacheInvalidations).toEqual([
-      { kind: "coding_workspace_paths", workspace: "/tmp/proj", paths: ["wiki/topics/x.md"] },
-    ])
-  })
-
-  it("falls back to workspace_files (session-scoped) when _workspace is unset", () => {
-    resetStore({ sessionId: "sess-n1", _workspace: null })
-    primeBlock("claude", "write", "tc-n1", { path: "out.txt", content: "..." })
-    useTeamStore.getState()._handleSSEEvent("tool_end", {
-      name: "write",
-      agent: "claude",
-      tool_call_id: "tc-n1",
-      result: "Written",
-    })
-    expect(useTeamStore.getState().cacheInvalidations).toEqual([
-      { kind: "workspace_files", sessionId: "sess-n1" },
-    ])
-  })
-
-  it("emits coding_workspace_paths when `edit` targets wiki/ in coding mode", () => {
-    resetStore({ sessionId: "sess-c5", _workspace: "/tmp/proj" })
-    primeBlock("claude", "edit", "tc-w2", {
-      path: "wiki/system/USER.md",
-      old_string: "a",
-      new_string: "b",
-    })
-    useTeamStore.getState()._handleSSEEvent("tool_end", {
-      name: "edit",
-      agent: "claude",
-      tool_call_id: "tc-w2",
-      result: "Edit applied",
-    })
-    expect(useTeamStore.getState().cacheInvalidations).toEqual([
-      { kind: "coding_workspace_paths", workspace: "/tmp/proj", paths: ["wiki/system/USER.md"] },
-    ])
-  })
-
-  it("queues one scoped event per write across a burst (each carries its own path)", () => {
-    resetStore({ sessionId: "sess-c6", _workspace: "/tmp/proj" })
-    const state = useTeamStore.getState()
-    for (let i = 0; i < 3; i++) {
-      const tcid = `tc-burst-${i}`
-      primeBlock("claude", "write", tcid, { path: `f${i}.txt`, content: "x" })
-      state._handleSSEEvent("tool_end", {
-        name: "write",
-        agent: "claude",
-        tool_call_id: tcid,
-        result: "Written",
-      })
-    }
-    expect(useTeamStore.getState().cacheInvalidations).toEqual([
-      { kind: "coding_workspace_paths", workspace: "/tmp/proj", paths: ["f0.txt"] },
-      { kind: "coding_workspace_paths", workspace: "/tmp/proj", paths: ["f1.txt"] },
-      { kind: "coding_workspace_paths", workspace: "/tmp/proj", paths: ["f2.txt"] },
-    ])
-  })
 })

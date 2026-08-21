@@ -47,9 +47,11 @@ export {
   useConnectMcpOAuthMutation,
 } from './useMcpQuery'
 export {
+  useDeniedPathsSettingsQuery,
   useSandboxSettingsQuery,
+  useUpdateDeniedPathsSettingsMutation,
   useUpdateSandboxSettingsMutation,
-} from './useSandboxSettingsQuery'
+} from './useDeniedPathsSettingsQuery'
 export {
   useProvidersQuery,
   useProviderModelsMutation,

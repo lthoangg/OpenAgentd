@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import base64
 import json
+import stat
+import sys
 import time
 import urllib.parse
 from concurrent.futures import ThreadPoolExecutor
@@ -528,3 +530,51 @@ class TestLogin:
         with patch("app.agent.providers.codex.oauth._device_login") as mock_device:
             login(path, device=True)
             mock_device.assert_called_once_with(path)
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="POSIX mode bits are not meaningful on Windows"
+)
+class TestTokenFilePermissions:
+    """The file holds a live access token and a refresh token."""
+
+    def test_saved_token_file_is_owner_only(self, tmp_path):
+        path = tmp_path / "codex_oauth.json"
+        CodexOAuth(
+            access_token=SecretStr("access-token"),
+            refresh_token=SecretStr("refresh-token"),
+            expires_at=time.time() + 3600,
+        ).save(path)
+
+        assert stat.S_IMODE(path.stat().st_mode) == 0o600
+
+    def test_existing_loose_token_file_is_tightened(self, tmp_path):
+        """A file written before this rule existed must not stay readable."""
+        path = tmp_path / "codex_oauth.json"
+        path.write_text("{}", encoding="utf-8")
+        path.chmod(0o644)
+
+        CodexOAuth(
+            access_token=SecretStr("access-token"),
+            refresh_token=SecretStr("refresh-token"),
+            expires_at=time.time() + 3600,
+        ).save(path)
+
+        assert stat.S_IMODE(path.stat().st_mode) == 0o600
+
+    def test_save_round_trips_through_load(self, tmp_path):
+        """Guard the on-disk format while changing how the file is written."""
+        path = tmp_path / "codex_oauth.json"
+        CodexOAuth(
+            access_token=SecretStr("access-token"),
+            refresh_token=SecretStr("refresh-token"),
+            expires_at=1234.5,
+            account_id="acct-1",
+        ).save(path)
+
+        loaded = CodexOAuth.load(path)
+        assert loaded is not None
+        assert loaded.access_token.get_secret_value() == "access-token"
+        assert loaded.refresh_token.get_secret_value() == "refresh-token"
+        assert loaded.expires_at == 1234.5
+        assert loaded.account_id == "acct-1"

@@ -22,10 +22,6 @@ import { useDeepLinkRouter } from '@/hooks/useDeepLinkRouter'
 import { GlobalEventStream } from '@/hooks/use-global-event-stream'
 import { LspInstallPrompt } from '@/components/LspInstallPrompt'
 
-const TanStackDevtools = import.meta.env.DEV
-  ? (await import('@/components/TanStackDevtools')).TanStackDevtools
-  : null
-
 export function Root() {
   useMobileViewportGuards()
   useDesktopCommands()
@@ -102,7 +98,6 @@ export function Root() {
       <SettingsModal />
       <LspInstallPrompt />
       <ToastStack />
-      {TanStackDevtools && <TanStackDevtools />}
     </QueryClientProvider>
   )
 }
@@ -110,7 +105,13 @@ export function Root() {
 function RouteLoadingFallback() {
   return (
     <div className="mobile-safe-shell mobile-viewport flex h-dvh items-center justify-center bg-(--bg-page)" role="status" aria-label="Loading OpenAgentd" aria-live="polite">
-      <img src={OPENAGENTD_APP_ICON} width={88} height={88} alt="" aria-hidden="true" className="rounded-2xl" />
+      <div className="flex flex-col items-center gap-4 text-center">
+        <div className="relative flex items-center justify-center">
+          <div className="absolute -inset-2.5 rounded-3xl bg-(--bg-key)/50 blur-xl animate-pulse" />
+          <img src={OPENAGENTD_APP_ICON} width={88} height={88} alt="OpenAgentd" className="relative rounded-2xl shadow-sm" />
+        </div>
+        <p className="text-sm font-medium text-(--color-text-muted) animate-pulse">Loading OpenAgentd…</p>
+      </div>
     </div>
   )
 }

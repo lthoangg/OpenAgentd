@@ -1,7 +1,9 @@
 import { useMemo, useState } from 'react'
-import { FileCode, ArrowRight, Trash2, PlusCircle, ChevronRight } from 'lucide-react'
-import { diffLines, parseDiffMeta, parsePatchText, type DiffLine, type FileDiff } from './diffUtils'
+import { ArrowRight, Trash2, PlusCircle, ChevronRight, FileEdit } from 'lucide-react'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { parseDiffMeta, parsePatchText, type DiffLine, type FileDiff } from './diffUtils'
 import { parsePartialJSON } from './displayText'
+import { isFailedResult } from './toolResultStatus'
 import { parseLspDiagnostics, LspDiagnosticsView } from '../ToolResult'
 
 interface SingleFileDiffProps {
@@ -16,6 +18,7 @@ interface SingleFileDiffProps {
 
 function SingleFileDiff({ path, kind, moveTo, lines, oldStart = 1, newStart = 1, onCollapse }: SingleFileDiffProps) {
   const [expanded, setExpanded] = useState(true)
+
   const linesWithNumbers = useMemo(() => {
     let oldLineNum = oldStart
     let newLineNum = newStart
@@ -33,13 +36,38 @@ function SingleFileDiff({ path, kind, moveTo, lines, oldStart = 1, newStart = 1,
     })
   }, [lines, oldStart, newStart])
 
-  const Icon = kind === 'add' ? PlusCircle : kind === 'delete' ? Trash2 : FileCode
+  const { additions, deletions } = useMemo(() => {
+    let additions = 0
+    let deletions = 0
+    for (const line of lines) {
+      if (line.type === 'added') additions++
+      if (line.type === 'removed') deletions++
+    }
+    return { additions, deletions }
+  }, [lines])
+
+  const Icon = kind === 'add' ? PlusCircle : kind === 'delete' ? Trash2 : moveTo ? ArrowRight : FileEdit
   const iconColor =
     kind === 'add'
       ? 'text-(--color-success)'
       : kind === 'delete'
         ? 'text-(--color-error)'
-        : 'text-(--color-text-muted)'
+        : moveTo
+          ? 'text-(--color-accent)'
+          : 'text-(--color-text-muted)'
+
+  let badgeLabel = 'UPDATE'
+  let badgeClass = 'bg-(--bg-key) text-(--color-text-2) border border-(--color-border)/50'
+  if (kind === 'add') {
+    badgeLabel = 'CREATE'
+    badgeClass = 'bg-[var(--color-diff-add-bg)] text-[var(--color-diff-add-text)] border border-(--color-success)/20'
+  } else if (kind === 'delete') {
+    badgeLabel = 'DELETE'
+    badgeClass = 'bg-[var(--color-diff-del-bg)] text-[var(--color-diff-del-text)] border border-(--color-error)/20'
+  } else if (moveTo) {
+    badgeLabel = additions > 0 || deletions > 0 ? 'MOVE & EDIT' : 'MOVE'
+    badgeClass = 'bg-(--accent-purple-soft) text-(--accent-purple) border border-(--accent-purple)/20'
+  }
 
   return (
     <div className="flex max-h-56 sm:max-h-80 flex-col overflow-hidden border-b border-(--color-border) last:border-b-0">
@@ -51,25 +79,37 @@ function SingleFileDiff({ path, kind, moveTo, lines, oldStart = 1, newStart = 1,
             onCollapse()
             return
           }
-          setExpanded((value) => !value)
+          setExpanded(!expanded)
         }}
-        className="flex w-full shrink-0 items-center gap-2 border-b border-(--color-border) bg-(--bg-sidebar) px-3 py-1.5 text-left font-mono text-xs font-semibold text-(--color-text-2) shadow-sm transition-colors hover:text-(--color-text) focus-visible:outline-2 focus-visible:outline-(--focus-ring)/40"
+        className="flex w-full shrink-0 items-center gap-1.5 border-b border-(--color-border) bg-(--bg-sidebar) px-2.5 py-1 text-left font-mono text-[11px] font-semibold text-(--color-text-2) transition-colors hover:text-(--color-text) focus-visible:outline-2 focus-visible:outline-(--focus-ring)/40"
         aria-expanded={expanded}
         aria-label={`${expanded ? 'Collapse' : 'Expand'} diff for ${path}`}
       >
-        <Icon size={14} className={iconColor} />
-        <span className="truncate">{path}</span>
+        <Icon size={12} className={`${iconColor} shrink-0`} />
+        <Tooltip className="min-w-0">
+          <TooltipTrigger className="min-w-0" render={<span className="truncate">{path}</span>} />
+          <TooltipContent>{path}</TooltipContent>
+        </Tooltip>
         {moveTo && (
           <>
-            <ArrowRight size={12} className="text-(--color-text-muted)" />
-            <span className="truncate text-(--color-accent)">{moveTo}</span>
+            <ArrowRight size={12} className="shrink-0 text-(--color-text-muted)" />
+            <Tooltip className="min-w-0">
+              <TooltipTrigger className="min-w-0" render={<span className="truncate font-semibold text-(--color-accent)">{moveTo}</span>} />
+              <TooltipContent>{moveTo}</TooltipContent>
+            </Tooltip>
           </>
         )}
-        <span className="ml-auto text-[10px] font-normal text-(--color-text-muted) uppercase">
-          {kind}
+        {(additions > 0 || deletions > 0) && (
+          <span className="ml-auto inline-flex items-center gap-1 font-mono text-[10px] font-semibold select-none shrink-0">
+            {additions > 0 && <span className="text-[var(--color-diff-add-text)]">+{additions}</span>}
+            {deletions > 0 && <span className="text-[var(--color-diff-del-text)]">-{deletions}</span>}
+          </span>
+        )}
+        <span className={`rounded-xs px-1 py-px text-[9px] font-semibold tracking-wide uppercase select-none ${badgeClass} ${additions === 0 && deletions === 0 ? 'ml-auto' : ''}`}>
+          {badgeLabel}
         </span>
         <ChevronRight
-          size={13}
+          size={12}
           className={`shrink-0 text-(--color-text-muted) transition-transform duration-(--motion-fast) ease-(--ease-out) ${expanded ? 'rotate-90' : ''}`}
           aria-hidden
         />
@@ -85,9 +125,26 @@ function SingleFileDiff({ path, kind, moveTo, lines, oldStart = 1, newStart = 1,
         <div className="min-h-0 overflow-hidden">
           <div className="h-full touch-pan-y overflow-y-auto bg-(--bg-input) font-mono text-xs leading-relaxed">
               {linesWithNumbers.length === 0 ? (
-                <div className="px-3 py-4 text-center text-(--color-text-muted) italic">
-                  No content changes
-                </div>
+                kind === 'delete' ? (
+                  <div className="flex items-center justify-center gap-2 px-3 py-4 font-mono text-xs text-[var(--color-diff-del-text)] bg-[var(--color-diff-del-bg)]/30 italic">
+                    <Trash2 size={13} />
+                    <span>File deleted</span>
+                  </div>
+                ) : moveTo ? (
+                  <div className="flex items-center justify-center gap-2 px-3 py-4 font-mono text-xs text-(--color-accent) bg-(--bg-key)/50 italic">
+                    <ArrowRight size={13} />
+                    <span>File moved to {moveTo} (no content changes)</span>
+                  </div>
+                ) : kind === 'add' ? (
+                  <div className="flex items-center justify-center gap-2 px-3 py-4 font-mono text-xs text-[var(--color-diff-add-text)] bg-[var(--color-diff-add-bg)]/30 italic">
+                    <PlusCircle size={13} />
+                    <span>Empty file created</span>
+                  </div>
+                ) : (
+                  <div className="px-3 py-4 text-center text-(--color-text-muted) italic font-mono text-xs">
+                    No content changes
+                  </div>
+                )
               ) : (
                 <div className="min-w-0">
                   {linesWithNumbers.map((line, idx) => {
@@ -171,45 +228,14 @@ export function DiffView({ toolName, args, result, onCollapse }: DiffViewProps) 
   const lspData = useMemo(() => result ? parseLspDiagnostics(result) : null, [result])
 
   const model = useMemo<DiffModel | null>(() => {
-    const hasPath = typeof parsed?.path === 'string' && parsed.path.trim().length > 0
     const hasPatchText =
       typeof parsed?.patch_text === 'string' && parsed.patch_text.trim().length > 0
 
     if (
       !parsed ||
-      (toolName === 'edit' && !hasPath) ||
-      (toolName === 'write' && !hasPath) ||
       (toolName === 'patch' && !hasPatchText)
     ) {
       return { kind: 'raw', text: args, variant: 'args' }
-    }
-
-    if (toolName === 'edit') {
-      const oldStr = typeof parsed.old_string === 'string' ? parsed.old_string : ''
-      const newStr = typeof parsed.new_string === 'string' ? parsed.new_string : ''
-      return {
-        kind: 'single',
-        path: typeof parsed.path === 'string' ? parsed.path : 'unknown',
-        fileKind: 'update',
-        lines: diffLines(oldStr, newStr),
-        oldStart: diffMeta?.old_start ?? 1,
-        newStart: diffMeta?.new_start ?? 1,
-      }
-    }
-
-    if (toolName === 'write') {
-      const content = typeof parsed.content === 'string' ? parsed.content : ''
-      return {
-        kind: 'single',
-        path: typeof parsed.path === 'string' ? parsed.path : 'unknown',
-        fileKind: 'add',
-        lines: content
-          .replace(/\r\n/g, '\n')
-          .split('\n')
-          .map((line: string) => ({ type: 'added' as const, value: line })),
-        oldStart: 1,
-        newStart: 1,
-      }
     }
 
     if (toolName === 'patch') {
@@ -223,9 +249,22 @@ export function DiffView({ toolName, args, result, onCollapse }: DiffViewProps) 
     return null
   }, [toolName, args, parsed, diffMeta])
 
+  // A rejected patch never touched disk — nothing here was actually applied.
+  // Rendering `model` (derived purely from the *requested* patch_text) would
+  // show the model's intended edit as if it had landed, and the diffMeta this
+  // relies on for hunk line numbers is only ever emitted on success anyway.
+  // Show the tool's own error instead of a diff nobody applied.
+  const failed = toolName === 'patch' && isFailedResult(result)
+
   let viewContent: React.ReactNode = null
 
-  if (model?.kind === 'raw') {
+  if (failed) {
+    viewContent = (
+      <pre className="overflow-auto overscroll-contain touch-pan-y p-3 whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-(--color-error)">
+        {result}
+      </pre>
+    )
+  } else if (model?.kind === 'raw') {
     viewContent =
       model.variant === 'patch' ? (
         <pre className="overflow-auto overscroll-contain touch-pan-y p-3 font-mono text-xs leading-relaxed text-(--color-text-2)">

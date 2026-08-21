@@ -1,12 +1,16 @@
 """Smoke-test provider-neutral fast_mode handling on /team/chat.
 
-The script uses direct shell dispatch (``shell=true``) so it verifies the API
-request/persistence path without consuming LLM tokens. It sends:
+Asks the agent to run a trivial shell command (a real, deterministic tool
+call — there is no server-side "direct shell dispatch" bypass) and checks
+the persisted user message's ``extra.service_tier``. It sends:
 
-1. A non-Codex model with ``fast_mode=true`` and asserts the turn succeeds but
-   does not persist ``extra.service_tier``.
-2. Optionally, a Codex model with ``fast_mode=true`` and asserts the persisted
-   user message records ``extra.service_tier == "fast"``.
+1. A non-Codex model with ``fast_mode=true`` and asserts the turn succeeds and
+   the persisted user message still records ``extra.service_tier == "fast"``
+   (persistence is transport-level and does not depend on provider support —
+   only whether the *outbound provider request* honours it does, which this
+   script cannot observe).
+2. Optionally, a Codex model with ``fast_mode=true`` and asserts the same
+   ``extra.service_tier == "fast"`` persistence.
 
 Usage:
   uv run python -m manual.fast_mode
@@ -47,6 +51,8 @@ def _first_registered_model(base: str, *, codex: bool) -> str | None:
     response = httpx.get(f"{base}/agents/registry", timeout=30)
     response.raise_for_status()
     for entry in response.json().get("models", []):
+        if entry.get("output_image") or entry.get("output_video"):
+            continue  # image/video-only models don't accept chat turns
         model_id = str(entry.get("id") or "")
         if bool(model_id.startswith("codex:")) == codex:
             return model_id
@@ -58,11 +64,10 @@ def _post_shell_turn(
     *,
     model: str | None,
     fast_mode: bool,
-    command: str,
+    message: str,
 ) -> str:
     payload: dict[str, str] = {
-        "message": f"!{command}",
-        "shell": "true",
+        "message": message,
         "session_id": str(uuid.uuid7()),
     }
     if model is not None:
@@ -125,16 +130,13 @@ def _lead_history(base: str, session_id: str) -> list[dict]:
     return list(response.json()["lead"]["messages"])
 
 
-def _user_shell_extra(history: Iterable[dict], command: str) -> dict:
-    expected_content = f"!{command}"
+def _user_message_extra(history: Iterable[dict], expected_content: str) -> dict:
     for message in history:
         if (
             message.get("role") == "user"
             and (message.get("content") or "").strip() == expected_content
         ):
-            extra = message.get("extra") or {}
-            if extra.get("kind") == "user_shell":
-                return dict(extra)
+            return dict(message.get("extra") or {})
     raise AssertionError(f"did not find persisted shell user row for {expected_content!r}")
 
 
@@ -151,8 +153,9 @@ def _run_case(
 ) -> None:
     print(f"case: {label}")
     print(f"  model={model or '<session default>'} fast_mode={fast_mode}")
+    message = f"Use the shell tool to run exactly this command and report its stdout: {command}"
     session_id = _post_shell_turn(
-        base, model=model, fast_mode=fast_mode, command=command
+        base, model=model, fast_mode=fast_mode, message=message
     )
     print(f"  session={session_id}")
 
@@ -160,7 +163,7 @@ def _run_case(
     if expect_output not in output:
         raise AssertionError(f"shell output missing {expect_output!r}: {output!r}")
 
-    extra = _user_shell_extra(_lead_history(base, session_id), command)
+    extra = _user_message_extra(_lead_history(base, session_id), message)
     actual_service_tier = extra.get("service_tier")
     if actual_service_tier != expect_service_tier:
         raise AssertionError(

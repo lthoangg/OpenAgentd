@@ -7,6 +7,7 @@ from fastapi import Request
 
 from app.agent.errors import (
     AgentConfigError,
+    DeniedPathError,
     OpenAgentdError,
     ProviderAuthenticationError,
     ProviderConnectionError,
@@ -21,13 +22,13 @@ from app.agent.errors import (
 from app.core.exception_handlers import (
     EXCEPTION_HANDLERS,
     _agent_config,
+    _denied_path,
     _openagentd_fallback,
     _provider_authentication,
     _provider_connection,
     _provider_rate_limit,
     _provider_request,
     _routing,
-    _sandbox,
     _session_not_found,
     _tool_argument,
     _tool_execution,
@@ -176,17 +177,17 @@ class TestToolExecution:
         assert b"Tool execution failed" in resp.body
 
 
-class TestSandbox:
+class TestDeniedPath:
     @pytest.mark.asyncio
     async def test_returns_403(self):
         req = _make_request()
-        resp = await _sandbox(req, SandboxError("path escape"))
+        resp = await _denied_path(req, DeniedPathError("path escape"))
         assert resp.status_code == 403
 
     @pytest.mark.asyncio
     async def test_body_contains_message(self):
         req = _make_request()
-        resp = await _sandbox(req, SandboxError("path escape"))
+        resp = await _denied_path(req, DeniedPathError("path escape"))
         assert b"path escape" in resp.body
 
 
@@ -248,6 +249,7 @@ class TestExceptionHandlersDict:
             ProviderConnectionError,
             ToolArgumentError,
             ToolExecutionError,
+            DeniedPathError,
             SandboxError,
             RoutingError,
             AgentConfigError,
@@ -265,7 +267,8 @@ class TestExceptionHandlersDict:
         assert EXCEPTION_HANDLERS[ProviderConnectionError] is _provider_connection
         assert EXCEPTION_HANDLERS[ToolArgumentError] is _tool_argument
         assert EXCEPTION_HANDLERS[ToolExecutionError] is _tool_execution
-        assert EXCEPTION_HANDLERS[SandboxError] is _sandbox
+        assert EXCEPTION_HANDLERS[DeniedPathError] is _denied_path
+        assert EXCEPTION_HANDLERS[SandboxError] is _denied_path
         assert EXCEPTION_HANDLERS[RoutingError] is _routing
         assert EXCEPTION_HANDLERS[AgentConfigError] is _agent_config
         assert EXCEPTION_HANDLERS[OpenAgentdError] is _openagentd_fallback

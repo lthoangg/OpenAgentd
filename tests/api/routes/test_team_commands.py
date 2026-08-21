@@ -20,7 +20,7 @@ import app.core.db as _db
 from app.agent.agent_loop import Agent
 from app.agent.mode.team.member import TeamLead
 from app.agent.mode.team.team import AgentTeam
-from app.models.chat import ChatSession, SessionMessage
+from app.models.chat import ChatSession, MessageKind, SessionMessage
 from app.services.chat_service import get_messages_for_llm
 from tests.api.routes.test_team_db import MockProvider
 
@@ -82,85 +82,6 @@ async def _seed_session_and_messages(
 
 
 class TestPostTeamCommands:
-    @pytest.mark.asyncio
-    async def test_continue_returns_409_for_unknown_session(
-        self, app_with_lead_only_team
-    ):
-        client = TestClient(app_with_lead_only_team)
-        resp = client.post(
-            "/api/team/commands",
-            json={"command": "continue", "session_id": str(uuid.uuid7())},
-        )
-        assert resp.status_code == 409
-        assert "not found" in resp.json()["detail"].lower()
-
-    @pytest.mark.asyncio
-    async def test_continue_returns_409_when_last_message_is_user(
-        self, app_with_lead_only_team
-    ):
-        sid = uuid.uuid7()
-        await _seed_session_and_messages(sid, [("user", "hello", None)])
-
-        client = TestClient(app_with_lead_only_team)
-        resp = client.post(
-            "/api/team/commands",
-            json={"command": "continue", "session_id": str(sid)},
-        )
-        assert resp.status_code == 409
-        assert "not an assistant message" in resp.json()["detail"].lower()
-
-    @pytest.mark.asyncio
-    async def test_continue_returns_202_when_assistant_has_tool_calls(
-        self, app_with_lead_only_team, monkeypatch
-    ):
-        sid = uuid.uuid7()
-        team = app_with_lead_only_team.state.test_team
-
-        async def fake_continue(session_id: str) -> str:
-            return session_id
-
-        monkeypatch.setattr(team, "handle_continue", fake_continue)
-
-        client = TestClient(app_with_lead_only_team)
-        resp = client.post(
-            "/api/team/commands",
-            json={"command": "continue", "session_id": str(sid)},
-        )
-        assert resp.status_code == 202
-        body = resp.json()
-        assert body["status"] == "accepted"
-        assert body["session_id"] == str(sid)
-        assert body["command"] == "continue"
-
-    @pytest.mark.asyncio
-    async def test_continue_returns_202_on_happy_path(
-        self, app_with_lead_only_team, monkeypatch
-    ):
-        """Happy path returns 202 + session_id; activation runs in background.
-
-        The actual streaming behaviour is tested in
-        ``test_team_continue.py::test_handle_continue_happy_path_stamps_assistant_row``.
-        Here we only assert the route's HTTP contract.
-        """
-        sid = uuid.uuid7()
-        team = app_with_lead_only_team.state.test_team
-
-        async def fake_continue(session_id: str) -> str:
-            return session_id
-
-        monkeypatch.setattr(team, "handle_continue", fake_continue)
-
-        client = TestClient(app_with_lead_only_team)
-        resp = client.post(
-            "/api/team/commands",
-            json={"command": "continue", "session_id": str(sid)},
-        )
-        assert resp.status_code == 202
-        body = resp.json()
-        assert body["status"] == "accepted"
-        assert body["session_id"] == str(sid)
-        assert body["command"] == "continue"
-
     @pytest.mark.asyncio
     async def test_compact_returns_202_on_happy_path(
         self, app_with_lead_only_team, monkeypatch
@@ -292,20 +213,101 @@ class TestPostTeamCommands:
             ).all()
             llm_messages = await get_messages_for_llm(db, sid)
         assert session is not None
-        assert session.revert == {"message_id": body["message"]["id"]}
-        assert [row.content for row in rows if row.exclude_from_context] == []
+        assert session.revert["message_id"] == body["message"]["id"]
+        assert [row.content for row in rows if row.kind == MessageKind.REVERTED] == []
         assert [msg.content for msg in llm_messages] == ["first", "first answer"]
 
         history = client.get(f"/api/team/{sid}/history")
         assert history.status_code == 200
         history_body = history.json()
-        assert history_body["lead"]["revert"] == {"message_id": body["message"]["id"]}
+        assert history_body["lead"]["revert"]["message_id"] == body["message"]["id"]
         assert [msg["content"] for msg in history_body["lead"]["messages"]] == [
             "first",
             "first answer",
             "second",
             "second answer",
         ]
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("command", ["undo", "redo", "redo-all"])
+    async def test_command_uses_coding_team_for_coding_session(
+        self, app_with_lead_only_team, monkeypatch, tmp_path, command
+    ):
+        """Regression test: undo/redo must not run against the default team
+        for a coding session. Previously only ``compact`` re-resolved to the
+        coding team; ``undo``/``redo``/``redo-all`` ran on the workspace-less
+        default team, which then got cached in ``_session_teams`` and
+        silently replaced the coding team binding for every later turn of
+        the session.
+        """
+        sid = uuid.uuid7()
+        workspace = str(tmp_path)
+        await _seed_session_and_messages(
+            sid,
+            [
+                ("user", "first", None),
+                ("assistant", "first answer", None),
+                ("user", "second", None),
+                ("assistant", "second answer", None),
+            ],
+        )
+        async with _db.async_session_factory() as db:
+            async with db.begin():
+                session = await db.get(ChatSession, sid)
+                session.mode = "coding"
+                session.workspace = workspace
+
+        default_team = app_with_lead_only_team.state.test_team
+        coding_team = AgentTeam(
+            lead=TeamLead(
+                Agent(name="lead", llm_provider=MockProvider(), system_prompt="Lead"),
+                db_factory=_db.async_session_factory,
+            ),
+            members={},
+            mode="coding",
+            workspace=workspace,
+        )
+        await coding_team.start()
+        called: dict[str, object] = {}
+
+        async def fake_get_or_start_coding_team(requested_workspace, session_id):
+            called["workspace"] = requested_workspace
+            called["session_id"] = session_id
+            return coding_team
+
+        async def _fail(*_args, **_kwargs):
+            raise AssertionError(f"default team must not handle coding {command}")
+
+        monkeypatch.setattr(default_team, "handle_undo", _fail)
+        monkeypatch.setattr(default_team, "handle_redo", _fail)
+        monkeypatch.setattr(default_team, "handle_redo_all", _fail)
+        monkeypatch.setattr(
+            "app.api.routes.team.chat.team_manager.get_or_start_coding_team",
+            fake_get_or_start_coding_team,
+        )
+
+        try:
+            client = TestClient(app_with_lead_only_team)
+            if command in ("redo", "redo-all"):
+                # Need a real undone turn to redo — drive it through the
+                # (unmocked) coding team directly.
+                for _ in range(2 if command == "redo-all" else 1):
+                    prep = client.post(
+                        "/api/team/commands",
+                        json={"command": "undo", "session_id": str(sid)},
+                    )
+                    assert prep.status_code == 202
+                called.clear()
+            resp = client.post(
+                "/api/team/commands",
+                json={"command": command, "session_id": str(sid)},
+            )
+        finally:
+            await coding_team.stop()
+
+        assert resp.status_code == 202
+        assert called["workspace"] == workspace
+        assert called["session_id"] == str(sid)
 
     @pytest.mark.asyncio
     async def test_redo_restores_next_undone_turn(self, app_with_lead_only_team):
@@ -369,12 +371,62 @@ class TestPostTeamCommands:
             llm_messages = await get_messages_for_llm(db, sid)
         assert session is not None
         assert session.revert is None
-        assert [row.content for row in rows if row.exclude_from_context] == []
+        assert [row.content for row in rows if row.kind == MessageKind.REVERTED] == []
         assert [msg.content for msg in llm_messages] == [
             "first",
             "first answer",
             "second",
             "second answer",
+        ]
+
+    @pytest.mark.asyncio
+    async def test_redo_all_restores_all_undone_turns(self, app_with_lead_only_team):
+        sid = uuid.uuid7()
+        await _seed_session_and_messages(
+            sid,
+            [
+                ("user", "first", None),
+                ("assistant", "first answer", None),
+                ("user", "second", None),
+                ("assistant", "second answer", None),
+                ("user", "third", None),
+                ("assistant", "third answer", None),
+            ],
+        )
+
+        client = TestClient(app_with_lead_only_team)
+        # Undo two turns
+        client.post(
+            "/api/team/commands",
+            json={"command": "undo", "session_id": str(sid)},
+        )
+        client.post(
+            "/api/team/commands",
+            json={"command": "undo", "session_id": str(sid)},
+        )
+
+        # Redo-all restores directly to the live tip in one step
+        redo_all = client.post(
+            "/api/team/commands",
+            json={"command": "redo-all", "session_id": str(sid)},
+        )
+        assert redo_all.status_code == 202
+        redo_body = redo_all.json()
+        assert redo_body["command"] == "redo-all"
+        assert redo_body["message"] is None
+
+        async with _db.async_session_factory() as db:
+            session = await db.get(ChatSession, sid)
+            llm_messages = await get_messages_for_llm(db, sid)
+        assert session is not None
+        assert session.revert is None
+        assert [msg.content for msg in llm_messages] == [
+            "first",
+            "first answer",
+            "second",
+            "second answer",
+            "third",
+            "third answer",
         ]
 
     @pytest.mark.asyncio

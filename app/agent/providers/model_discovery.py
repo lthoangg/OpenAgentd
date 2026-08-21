@@ -6,7 +6,6 @@ import os
 from collections.abc import Mapping
 
 import httpx
-from botocore.credentials import CredentialProvider, Credentials
 from loguru import logger
 
 from app.agent.providers.catalog import ProviderEntry
@@ -35,14 +34,6 @@ _NON_AGENT_MODEL_MARKERS = (
     "sora",
     "veo",
 )
-
-
-class _ProfileCredentialsProvider(CredentialProvider):
-    def __init__(self, credentials: Credentials | None) -> None:
-        self._credentials = credentials
-
-    def load(self) -> Credentials | None:
-        return self._credentials
 
 
 def _secret_value(value: object) -> str:
@@ -212,20 +203,10 @@ def _bedrock_bearer_token(overrides: Mapping[str, str] | None, region: str) -> s
     if bearer_token:
         return bearer_token
 
-    from aws_bedrock_token_generator import provide_token
+    from app.agent.providers.bedrock.token import generate_bedrock_bearer_token
 
     profile = _resolve(overrides, "AWS_BEDROCK_PROFILE")
-    if not profile:
-        return provide_token(region=region)
-
-    from botocore.session import Session
-
-    credentials = Session(profile=profile).get_credentials()
-
-    return provide_token(
-        region=region,
-        aws_credentials_provider=_ProfileCredentialsProvider(credentials),
-    )
+    return generate_bedrock_bearer_token(region=region, profile_name=profile)
 
 
 async def _bedrock_models(overrides: Mapping[str, str] | None = None) -> list[str]:

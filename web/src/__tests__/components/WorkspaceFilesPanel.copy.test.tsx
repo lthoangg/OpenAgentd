@@ -65,12 +65,13 @@ describe("CopyContentsButton", () => {
     expect((btn as HTMLButtonElement).disabled).toBe(false)
   })
 
-  it("uses the copy tooltip on title and aria-label", () => {
+  it("uses the copy tooltip on hover and aria-label", async () => {
     mockClipboard()
     render(<CopyContentsButton sessionId={SID} file={makeFile()} />)
     const btn = screen.getByRole("button", { name: /copy file contents/i })
-    expect(btn.getAttribute("title")).toBe("Copy file contents")
     expect(btn.getAttribute("aria-label")).toBe("Copy file contents")
+    await userEvent.hover(btn)
+    expect((await screen.findByRole("tooltip")).textContent).toBe("Copy file contents")
   })
 
   // ── happy path ───────────────────────────────────────────────────────────────
@@ -126,15 +127,17 @@ describe("CopyContentsButton", () => {
 
   // ── size cap ────────────────────────────────────────────────────────────────
 
-  it("disables the button and explains why when the file exceeds 512 KB", () => {
+  it("disables the button and explains why when the file exceeds 512 KB", async () => {
     mockClipboard()
     const big = makeFile({ size: 600 * 1024 }) // > 512 KB cap
     render(<CopyContentsButton sessionId={SID} file={big} />)
 
     const btn = screen.getByRole("button", { name: /file too large to copy/i })
     expect((btn as HTMLButtonElement).disabled).toBe(true)
-    expect(btn.getAttribute("title")).toMatch(/file too large to copy/i)
-    expect(btn.getAttribute("title")).toMatch(/512/)
+    await userEvent.hover(btn)
+    const tooltipText = (await screen.findByRole("tooltip")).textContent ?? ""
+    expect(tooltipText).toMatch(/file too large to copy/i)
+    expect(tooltipText).toMatch(/512/)
   })
 
   it("does not call fetch or clipboard when oversized", async () => {

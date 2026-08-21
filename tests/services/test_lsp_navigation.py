@@ -127,6 +127,47 @@ async def test_navigation_uses_workspace_symbol_protocol_and_flattens_symbols(
     assert all(symbol["location"]["uri"] == source.as_uri() for symbol in symbols)
 
 
+async def test_navigation_flattens_document_symbol_using_selection_range(
+    tmp_path: Path,
+):
+    """A DocumentSymbol's ``range`` spans the whole declaration (e.g. starting
+
+    at ``async``/``def``); ``selectionRange`` is just the identifier. Callers
+    feed a reported location straight back into go_to_definition/hover, so
+    the flattened location must point at the identifier, not the keyword.
+    """
+    source = tmp_path / "main.py"
+    source.write_text("async def health_check():\n    ...\n", encoding="utf-8")
+    client = MagicMock()
+    client.diagnostics_lock.return_value = __import__("asyncio").Lock()
+    client.open_or_update_document = AsyncMock()
+    client.close_document = AsyncMock()
+    client.send_request = AsyncMock(
+        return_value=[
+            {
+                "name": "health_check",
+                "range": {
+                    "start": {"line": 23, "character": 0},
+                    "end": {"line": 24, "character": 8},
+                },
+                "selectionRange": {
+                    "start": {"line": 23, "character": 10},
+                    "end": {"line": 23, "character": 22},
+                },
+            }
+        ]
+    )
+    manager = LspManager()
+    manager.get_clients = AsyncMock(return_value=[client])
+
+    symbols = await manager.navigation("document_symbol", tmp_path, file_path=source)
+
+    assert symbols[0]["location"]["range"]["start"] == {
+        "line": 23,
+        "character": 10,
+    }
+
+
 async def test_navigation_sends_references_context(tmp_path: Path):
     source = tmp_path / "main.py"
     source.write_text("answer()\n", encoding="utf-8")
@@ -170,3 +211,31 @@ async def test_navigation_sends_workspace_symbol_query(tmp_path: Path):
     client.send_request.assert_awaited_once_with(
         "workspace/symbol", {"query": "answer"}
     )
+
+
+def test_ts_init_options_propagates_paths_and_baseurl(tmp_path: Path):
+    from app.services.lsp.manager import _build_ts_init_options
+
+    tsconfig = tmp_path / "tsconfig.json"
+    tsconfig.write_text(
+        '{"compilerOptions": {"baseUrl": ".", "paths": {"@/*": ["src/*"]}}}',
+        encoding="utf-8",
+    )
+
+    options = _build_ts_init_options(tmp_path)
+    compiler_opts = options.get("compilerOptions", {})
+    assert compiler_opts.get("baseUrl") == "."
+    assert compiler_opts.get("paths") == {"@/*": ["src/*"]}
+
+
+def test_python_init_options_detects_virtualenv(tmp_path: Path):
+    from app.services.lsp.manager import _build_python_init_options
+
+    venv_bin = tmp_path / ".venv" / "bin"
+    venv_bin.mkdir(parents=True)
+    (venv_bin / "python").write_text("#!/bin/sh\n", encoding="utf-8")
+
+    options = _build_python_init_options(tmp_path)
+    assert options is not None
+    assert str(tmp_path / ".venv" / "bin" / "python") in options.get("pythonPath", "")
+    assert options.get("venv") == ".venv"

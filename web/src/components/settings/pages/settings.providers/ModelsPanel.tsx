@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from 'react'
 import fuzzysort from 'fuzzysort'
 import { Check, ChevronDown, Copy, Loader2 } from 'lucide-react'
 import { SearchBar } from '@/components/ui/search-bar'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { usePlatform } from '@/hooks/use-platform'
 import { mediumHapticFeedback } from '@/lib/haptics'
@@ -36,7 +37,14 @@ export function ModelsPanel({
   savingVisibleModels: boolean
 }) {
   const push = useToastStore((s) => s.push)
-  const visibleSet = useMemo(() => new Set(visibleModels), [visibleModels])
+  // Drop visibility selections for models the provider no longer lists: a
+  // stale entry would whitelist nothing, hide every remaining model of the
+  // provider in pickers, and leave no row behind to un-select it. The model
+  // list is the single authority for which ids can be visible.
+  const visibleSet = useMemo(() => {
+    const inList = new Set(models)
+    return new Set(visibleModels.filter((id) => inList.has(id)))
+  }, [models, visibleModels])
   const allVisible = visibleSet.size === 0
 
   const handleCopy = async (qualifiedId: string) => {
@@ -62,7 +70,7 @@ export function ModelsPanel({
   const visibleCount = allVisible ? indexed.length : visibleSet.size
 
   const toggleVisibleModel = (modelId: string) => {
-    const next = new Set(visibleModels)
+    const next = new Set(visibleSet)
     if (next.has(modelId)) next.delete(modelId)
     else next.add(modelId)
     void onSaveVisibleModels(Array.from(next).sort())
@@ -194,33 +202,43 @@ function ModelRow({
       onPointerLeave={clearLongPress}
     >
       {/* Model ID */}
-      <span className="min-w-0 flex-1 truncate font-mono text-[10.5px] text-(--color-text)">
-        {qualifiedId}
-      </span>
+      <Tooltip className="min-w-0 flex-1">
+        <TooltipTrigger
+          className="min-w-0 flex-1"
+          render={<span className="min-w-0 flex-1 truncate font-mono text-[10.5px] text-(--color-text)">{qualifiedId}</span>}
+        />
+        <TooltipContent>{qualifiedId}</TooltipContent>
+      </Tooltip>
 
       {/* Visibility toggle */}
-      <button
-        type="button"
-        onClick={onToggleVisible}
-        disabled={savingVisibleModels}
-        aria-label={`${selected ? 'Remove' : 'Show'} ${qualifiedId} in model pickers`}
-        title={selected ? 'Remove from visible models' : 'Add to visible models'}
-        className={cn(
-          'flex h-8 min-w-[3.5rem] items-center justify-center gap-1 rounded-xs px-2 md:h-6 md:min-w-[3.5rem] md:px-1.5',
-          'text-[10px] font-medium transition-colors',
-          selected
-            ? 'bg-(--color-success-subtle) text-(--color-success)'
-            : 'text-(--color-text-muted) hover:bg-(--bg-card) hover:text-(--color-text)',
-          savingVisibleModels && 'opacity-50 cursor-not-allowed',
-        )}
-      >
-        {savingVisibleModels
-          ? <Loader2 size={10} className="animate-spin" aria-hidden="true" />
-          : selected
-            ? <Check size={10} aria-hidden="true" />
-            : null}
-        {selected ? 'Visible' : 'Show'}
-      </button>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <button
+              type="button"
+              onClick={onToggleVisible}
+              disabled={savingVisibleModels}
+              aria-label={`${selected ? 'Remove' : 'Show'} ${qualifiedId} in model pickers`}
+              className={cn(
+                'flex h-8 min-w-[3.5rem] items-center justify-center gap-1 rounded-xs px-2 md:h-6 md:min-w-[3.5rem] md:px-1.5',
+                'text-[10px] font-medium transition-colors',
+                selected
+                  ? 'bg-(--color-success-subtle) text-(--color-success)'
+                  : 'text-(--color-text-muted) hover:bg-(--bg-card) hover:text-(--color-text)',
+                savingVisibleModels && 'opacity-50 cursor-not-allowed',
+              )}
+            >
+              {savingVisibleModels
+                ? <Loader2 size={10} className="animate-spin" aria-hidden="true" />
+                : selected
+                  ? <Check size={10} aria-hidden="true" />
+                  : null}
+              {selected ? 'Visible' : 'Show'}
+            </button>
+          }
+        />
+        <TooltipContent>{selected ? 'Remove from visible models' : 'Add to visible models'}</TooltipContent>
+      </Tooltip>
 
       {/* Copy button */}
       <button
@@ -247,14 +265,14 @@ function ModelRow({
           <div
             role="menu"
             aria-label={`Actions for ${qualifiedId}`}
-            className="fixed min-w-40 rounded-sm border border-(--color-border) bg-(--bg-card) p-1 shadow-lg text-xs text-(--color-text)"
+            className="fixed min-w-40 rounded-sm border border-(--color-border) bg-(--bg-card) p-1 shadow-md text-xs text-(--color-text)"
             style={{ left: actionsPoint.x, top: actionsPoint.y }}
             onClick={(e) => e.stopPropagation()}
           >
             <button
               type="button"
               role="menuitem"
-              className="flex w-full items-center gap-2 rounded-xs px-2 py-1.5 text-left hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none"
+              className="flex w-full items-center gap-2 rounded-xs px-2 py-1 text-left text-xs hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none"
               onClick={() => { setActionsPoint(null); void onCopy(qualifiedId) }}
             >
               <Copy size={12} aria-hidden="true" />

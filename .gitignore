@@ -191,6 +191,7 @@ logs
 *.db-journal
 
 workspace/
+uploads/
 # Dev-mode XDG layout created by application startup. Treat the tree as generated:
 #  - data/state/cache/memory/workspace/uploads = pure runtime, never tracked
 #  - config/ = user-editable runtime configuration and generated agent profiles

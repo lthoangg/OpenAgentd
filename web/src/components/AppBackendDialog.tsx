@@ -3,6 +3,7 @@ import { Server } from 'lucide-react'
 import { AppOverlay } from '@/components/ui/app-overlay'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { SectionCard, SectionCardHeader, SectionCardRows, SectionCardRow, SectionCardBadge } from '@/components/ui/section-card'
 
 import { apiBaseUrl, setApiBaseUrl } from '@/api/base-url'
@@ -213,7 +214,7 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
 
         <div className="relative min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain touch-pan-y px-5 py-4">
           {/* Connected backend status line */}
-          <div className="rounded border border-(--color-border) bg-(--bg-card) p-3 font-mono text-[11px] text-(--color-text-muted) flex items-center justify-between select-none">
+          <div className="rounded-sm border border-(--color-border) bg-(--bg-card) p-3 font-mono text-[11px] text-(--color-text-muted) flex items-center justify-between select-none">
             <span className="truncate">
               Connected: <span className="text-(--color-text) font-semibold">{status?.base_url || apiBaseUrl().replace(/\/api$/, '')}</span>
             </span>
@@ -231,7 +232,7 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
                   <button
                     type="button"
                     onClick={() => {}}
-                    className="flex min-w-0 flex-1 items-center gap-2 text-left focus:outline-none"
+                    className="flex min-w-0 flex-1 items-center gap-2 rounded-xs text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40"
                     disabled={pending}
                   >
                     <ServerStatusDot status={status?.sidecar_running ? 'online' : undefined} />
@@ -286,7 +287,7 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
                     <button
                       type="button"
                       onClick={() => { editServer(normalizedServerUrl, server.name ?? '') }}
-                      className="flex min-w-0 flex-1 items-center gap-2 text-left focus:outline-none"
+                      className="flex min-w-0 flex-1 items-center gap-2 rounded-xs text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40"
                       disabled={pending}
                     >
                       <ServerStatusDot status={serverHealth[normalizedServerUrl] ?? serverHealth[server.base_url]} />
@@ -400,13 +401,13 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
           </p>
 
           {testedBaseUrl === normalizeServerBaseUrl(baseUrl) ? (
-            <div className="rounded border border-(--color-success)/25 bg-(--color-success-subtle) px-3.5 py-2.5 text-xs text-(--color-success)" role="status">
+            <div className="rounded-sm border border-(--color-success)/25 bg-(--color-success-subtle) px-3.5 py-2.5 text-xs text-(--color-success)" role="status">
               Connection successful.
             </div>
           ) : null}
 
           {error ? (
-            <div className="rounded border border-(--color-error)/25 bg-(--color-error-subtle) px-3.5 py-2.5 text-xs text-(--color-error)" role="alert">
+            <div className="rounded-sm border border-(--color-error)/25 bg-(--color-error-subtle) px-3.5 py-2.5 text-xs text-(--color-error)" role="alert">
               {error}
             </div>
           ) : null}
@@ -495,5 +496,10 @@ function ServerStatusDot({ status }: { status: 'checking' | 'online' | 'offline'
       ? 'bg-(--color-error)'
       : 'animate-pulse bg-(--color-text-muted)'
   const label = status === 'online' ? 'Online' : status === 'offline' ? 'Offline' : 'Checking'
-  return <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${className}`} title={label} aria-label={label} />
+  return (
+    <Tooltip>
+      <TooltipTrigger render={<span className={`h-1.5 w-1.5 shrink-0 rounded-full ${className}`} aria-label={label} />} />
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
+  )
 }

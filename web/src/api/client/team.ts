@@ -46,7 +46,6 @@ export async function postTeamChat(
   workspace?: string | null,
   model?: string | null,
   thinkingLevel?: string | null,
-  shell = false,
   fastMode = false,
   mentions?: string[],
 ): Promise<TeamChatResponse> {
@@ -75,9 +74,6 @@ export async function postTeamChat(
   if (fastMode) {
     formData.append('fast_mode', 'true')
   }
-  if (shell) {
-    formData.append('shell', 'true')
-  }
   if (mentions && mentions.length > 0) {
     formData.append('mentions', JSON.stringify(mentions))
   }
@@ -97,7 +93,7 @@ export async function postTeamChat(
 }
 
 export async function postTeamCommand(
-  command: 'continue' | 'compact' | 'undo' | 'redo',
+  command: 'continue' | 'compact' | 'undo' | 'redo' | 'redo-all' | 'redo_all',
   sessionId: string,
 ): Promise<TeamCommandResponse> {
   const res = await fetch(`${apiBaseUrl()}/team/commands`, {
@@ -421,7 +417,8 @@ export async function teamHistory(sessionId: string, before?: string): Promise<T
 }
 
 /**
- * Messages persisted after ``since`` only — the post-turn reconciliation path.
+ * Rows created after the opaque uuid7 ``since`` cursor — the post-turn
+ * reconciliation path.
  *
  * A full page carries up to 100 lead messages plus 100 per member with complete
  * tool output (over a megabyte on an active session), nearly all of which the

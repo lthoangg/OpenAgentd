@@ -50,12 +50,13 @@ import { usePlatform } from '@/hooks/use-platform'
 import { useTauriDrag } from '@/hooks/use-tauri-drag'
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
-import { type InputBarHandle } from '../InputBar'
-import { FloatingInputBar } from '../FloatingInputBar'
+import { type InputComposerHandle } from '../InputComposer'
+import { FloatingInputComposer } from '../FloatingInputComposer'
 import type { AgentCapabilities as AgentCapabilitiesType } from '@/api/types'
 import { SplitGrid } from './SplitGrid'
 import { TeamChatHeader } from './TeamChatHeader'
 import { TeamChatPanels } from './TeamChatPanels'
+import { AppFooter } from '../AppFooter'
 import { AgentTabs } from './AgentTabs'
 import { type ViewMode } from './types'
 import { workspaceLabel } from '@/utils/workspace'
@@ -64,6 +65,7 @@ import { useOverlayState } from './useOverlayState'
 import { useSessionBootstrap } from './useSessionBootstrap'
 import { useSlashCommands } from './useSlashCommands'
 import { useCommandPalette } from './useCommandPalette'
+import { parseBuiltInSlashCommand } from './helpers'
 
 interface TeamChatViewProps {
   sessionId?: string
@@ -83,7 +85,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
   // The hook returns `{}` outside Tauri so the spread is a no-op in
   // browsers. See ``useTauriDrag`` for details.
   const dragHandlers = useTauriDrag()
-  const inputRef = useRef<InputBarHandle>(null)
+  const inputRef = useRef<InputComposerHandle>(null)
   const mainColumnRef = useRef<HTMLDivElement>(null)
 
   const [fileRefsEnabled, setFileRefsEnabled] = useState(false)
@@ -103,7 +105,6 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
         loadTeamStatus: s.loadTeamStatus,
         loadSession: s.loadSession,
         sendMessage: s.sendMessage,
-        continueTeam: s.continueTeam,
         beginResolvedSession: s.beginResolvedSession,
         consumeResolvedSessionReady: s.consumeResolvedSessionReady,
         setActiveAgent: s.setActiveAgent,
@@ -118,6 +119,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
         sessionModel: s.sessionModel,
         sessionThinkingLevel: s.sessionThinkingLevel,
         leadName: s.leadName,
+        sessionFastMode: s.sessionFastMode,
 
         activeBlocks: activeStream?.blocks ?? EMPTY_BLOCKS,
         activeCurrentBlocks: activeStream?.currentBlocks ?? EMPTY_BLOCKS,
@@ -127,10 +129,12 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
 
         leadRevertedCount: leadStream?.revertedCount ?? 0,
         leadRevertedMessages: leadStream?.revertedMessages ?? EMPTY_REVERTED_MESSAGES,
+        leadHasVisibleBlocks: (leadStream?.blocks.length ?? 0) > 0,
 
         leadPromptTokens: leadStream?.usage.promptTokens ?? 0,
         leadCompletionTokens: leadStream?.usage.completionTokens ?? 0,
         leadCachedTokens: leadStream?.usage.cachedTokens ?? 0,
+        leadCachedPercent: leadStream?.usage.cachedPercent,
         leadTotalTokens: leadStream?.usage.totalTokens ?? 0,
         sessionCostUsd: Math.round(s.agentNames.reduce(
           (total, name) => total + (s.agentStreams[name]?.usage.estimatedCostUsd ?? 0),
@@ -145,7 +149,6 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
     loadTeamStatus,
     loadSession,
     sendMessage,
-    continueTeam,
     beginResolvedSession,
     consumeResolvedSessionReady,
     setActiveAgent,
@@ -169,10 +172,12 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
 
     leadRevertedCount,
     leadRevertedMessages,
+    leadHasVisibleBlocks,
 
     leadPromptTokens,
     leadCompletionTokens,
     leadCachedTokens,
+    leadCachedPercent,
     leadTotalTokens,
     sessionCostUsd,
   } = storeState
@@ -281,10 +286,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
     }
     return leadAgent?.summary_trigger_tokens
   }, [sessionModel, registryData, leadAgent])
-  const voiceEnabled = true
-  const voiceUnavailableReason = null
-
-  // Workspace file/folder list for the InputBar's @-mention picker. Fetched
+  // Workspace file/folder list for the InputComposer's @-mention picker. Fetched
   // lazily — the query is keyed on workspace/session so coding and normal
   // modes don't share cache entries.
   const { refs: fileRefs } = useFileRefsQuery({
@@ -303,6 +305,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
         input: leadPromptTokens,
         output: leadCompletionTokens,
         cached: leadCachedTokens,
+        cachedPercent: leadCachedPercent,
         trigger: summaryTriggerTokens,
         pulsing: isTeamWorking,
         sessionCostUsd,
@@ -350,6 +353,9 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
     agentWorkspace,
     inputRef,
     handleNewSession,
+    isTeamWorking,
+    revertedCount: leadRevertedCount,
+    hasVisibleMessages: leadHasVisibleBlocks,
   })
 
   const {
@@ -468,7 +474,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
         >
           {isDraggingFile && (
             <div className="absolute inset-0 z-50 p-4 pointer-events-none drag-overlay-enter">
-              <div className="w-full h-full rounded-xl border-2 border-dashed border-(--color-accent)/30 bg-(--bg-card)/80 backdrop-blur-xs flex flex-col items-center justify-center gap-2 drag-card-enter">
+              <div className="w-full h-full rounded-lg border-2 border-dashed border-(--color-accent)/30 bg-(--bg-card)/80 backdrop-blur-xs flex flex-col items-center justify-center gap-2 drag-card-enter">
                 <FileUp size={24} className="text-(--color-accent) animate-pulse" />
                 <span className="text-sm font-medium text-(--color-text)">
                   Drop files to attach
@@ -523,7 +529,6 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
             <SplitGrid
               agentNames={splitAgentNames}
               leadName={leadName}
-              onContinue={continueTeam}
             />
           </div>
         ) : isCodingSessionLoading ? (
@@ -567,12 +572,11 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
               currentBlocks={activeCurrentBlocks}
               isWorking={activeStatus === 'working'}
               // A lead suspended on `ask_user` is not streaming, but its turn
-              // is still open — no duration, no Continue, no pending dots.
+              // is still open — no duration, no pending dots.
               isTurnOpen={activeStatus === 'working' || activeStatus === 'waiting_input'}
               isAwaitingRestart={activeAwaitingRestart}
               isError={activeStatus === 'error'}
               lastError={activeLastError}
-              onContinue={activeAgent === leadName ? continueTeam : undefined}
               onMentionFileOpen={mode === 'coding' ? handleMentionFileOpen : undefined}
               emptyState={
                 mode === 'coding' && workspace ? (
@@ -590,13 +594,18 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
         ) : null}
 
         {(mode !== 'coding' || workspace) && (
-          <FloatingInputBar
+          <FloatingInputComposer
             ref={inputRef}
             boundsRef={mainColumnRef}
             onSubmit={async (content: string, files?: File[], mentions?: string[]) => {
-              const shell = content.startsWith('!')
-              const command = shell ? content.slice(1).trim() : content
-              const expanded = shell ? `!${command}` : await expandUserCommand(content)
+              if (!files || files.length === 0) {
+                const builtInCmd = parseBuiltInSlashCommand(content)
+                if (builtInCmd) {
+                  handleSlashCommand(builtInCmd)
+                  return
+                }
+              }
+              const expanded = await expandUserCommand(content)
               const current = useTeamStore.getState()
               const delivered = await sendMessage(expanded, files, {
                 mode,
@@ -604,7 +613,6 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
                 model: current.sessionId ? current.sessionModel || null : null,
                 thinkingLevel: current.sessionId ? current.sessionThinkingLevel || null : null,
                 fastMode: current.sessionFastMode,
-                shell,
                 mentions,
               })
               // The composer cleared itself the moment this handler was
@@ -632,11 +640,10 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
                   : 'Message the team…'
             }
             capabilities={leadCapabilities}
-            voiceEnabled={voiceEnabled}
-            voiceUnavailableReason={voiceUnavailableReason}
             revertedCount={leadRevertedCount}
             revertedMessages={leadRevertedMessages}
             onRedo={() => { void handleSlashCommand('redo') }}
+            onRedoAll={() => { void handleSlashCommand('redo-all') }}
           />
         )}
         </main>
@@ -685,6 +692,21 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
           )}
         </AnimatePresence>
       </div>
+
+      <AppFooter
+        mode={mode}
+        workspace={workspace}
+        sessionId={sessionIdState}
+        sessionModel={sessionModel}
+        sessionThinkingLevel={sessionThinkingLevel}
+        sessionFastMode={storeState.sessionFastMode}
+        viewMode={viewMode}
+        onViewModeChange={setViewMode}
+        onToggleScheduler={handleToggleScheduler}
+        onToggleSessionSettings={handleToggleAgentCapabilities}
+        onTogglePalette={handleTogglePalette}
+        onOpenGitChanges={mode === 'coding' && workspace ? handleWorkspaceFiles : undefined}
+      />
 
       <TeamChatPanels
         agentCapabilitiesOpen={agentCapabilitiesOpen}

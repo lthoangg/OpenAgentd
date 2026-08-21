@@ -1,6 +1,7 @@
 import type { StateCreator } from 'zustand'
 import { teamStatus, teamHistory, teamHistorySince } from '@/api/client'
-import { parseTeamBlocks, sumUsageFromMessages } from '@/utils/messages'
+import { applyOrphanToolResults, parseTeamBlocks, sumUsageFromMessages } from '@/utils/messages'
+import type { OrphanToolResult } from '@/utils/messages'
 import { createDefaultAgentStream } from './defaults'
 import { applyRevertBoundary, revokeBlobUrlsFromBlocks } from './helpers'
 import { toPendingQuestion } from './sse-reducer'
@@ -8,7 +9,11 @@ import { clearReconnectTimer } from './stream-slice'
 import type { AgentStream, TeamStore } from './types'
 import type { ContentBlock, MessageResponse } from '@/api/types'
 
-function revertBoundaryTime(session: { revert?: { message_id?: string } | null; messages: MessageResponse[] }): number | null {
+function revertBoundaryTime(session: { revert?: { message_id?: string; created_at?: string } | null; messages: MessageResponse[] }): number | null {
+  if (!session.revert) return null
+  if (session.revert.created_at) {
+    return new Date(session.revert.created_at).getTime()
+  }
   const boundaryId = session.revert?.message_id
   if (!boundaryId) return null
   const boundary = session.messages.find((msg) => msg.id === boundaryId)
@@ -60,8 +65,10 @@ function newestMessageAt(history: {
   let newest: string | null = null
   const consider = (msgs: MessageResponse[]) => {
     for (const msg of msgs) {
-      if (!msg.created_at) continue
-      if (newest === null || msg.created_at > newest) newest = msg.created_at
+      // Message ids are uuid7: globally creation-ordered across lead/member
+      // sessions. Unlike per-session seq or display-only created_at, this
+      // watermark also discovers a newly anchored compaction summary.
+      if (newest === null || msg.id > newest) newest = msg.id
     }
   }
   consider(history.lead.messages)
@@ -253,8 +260,7 @@ function removePersistedOptimisticUserBlocks(stream: AgentStream) {
   // common path the id already matches the persisted row exactly — no need
   // to infer "same message?" from content + a clock-skew time window at all.
   // The heuristic below stays as a fallback for rows that predate that fix,
-  // shell-command messages (dispatched via a fire-and-forget task that does
-  // not yet return an id), and any other id-less edge case.
+  // and any other id-less edge case.
   const persistedIds = new Set(persistedUsers.map((b) => b.id))
 
   stream.currentBlocks = stream.currentBlocks.filter((block) => {
@@ -288,12 +294,11 @@ function removePersistedOptimisticUserBlocks(stream: AgentStream) {
 /**
  * True when this turn compacted and the divider is still client-only.
  *
- * A summary row is stored at the *boundary* it marks — one microsecond ahead of
- * the oldest message the summariser kept, which is several turns back (see
- * ``_summary_anchor_ids`` in ``app/agent/checkpointer.py``). That is older than
- * the delta watermark, so ``teamHistorySince`` can never return it: swapping the
- * tail would drop the locally-created divider with nothing to replace it, and
- * the "Session compacted" marker would disappear until the next full load.
+ * A summary row is created after the delta's uuid7 watermark, so the backend
+ * does return it. Its logical ``seq`` is anchored several turns back, however,
+ * and parsed UI blocks do not retain sequence positions. Tail-splicing would
+ * append the divider instead of inserting it at the boundary it marks, so a
+ * compacted turn still needs one canonical full-page reconciliation.
  *
  * Local blocks are only ever appended, so they form a suffix of ``blocks`` —
  * stop at the first confirmed row rather than scanning the whole session.
@@ -331,7 +336,6 @@ export function resetSessionState(
   state.isTeamWorking = false
   state.pendingQuestion = null
   state.resolvedQuestions = {}
-  state.isContinuing = false
   state.isConnected = false
   state.error = null
   state.setupRequired = null
@@ -372,6 +376,7 @@ export function resetSessionState(
       state.agentStreams[name].revertedMessages = []
       state.agentStreams[name]._revertedSuffix = []
       state.agentStreams[name]._unsyncedBlockIds = []
+      state.agentStreams[name]._orphanToolResults = {}
   })
 }
 
@@ -430,7 +435,6 @@ async function loadSessionImpl(
   set((draft) => {
     if (draft.sessionId !== sessionId) {
       draft.isTeamWorking = false
-      draft.isContinuing = false
     }
   })
   try {
@@ -454,7 +458,7 @@ async function loadSessionImpl(
       })
 
       const memberNames = history.members.map((m) => m.name)
-      const leadName = history.lead.agent_name ?? liveNames?.[0] ?? draft.leadName
+      const leadName = history.lead.agent_name ?? liveNames?.[0] ?? draft.leadName ?? 'lead'
       draft.leadName = leadName
       if (liveNames !== null) draft.liveAgentNames = liveNames
 
@@ -499,7 +503,6 @@ async function loadSessionImpl(
         // ``running`` is false while the question row says otherwise. The row is
         // the durable half, so it wins.
         draft.isTeamWorking = history.lead.running === true || awaitingAnswer
-        draft.isContinuing = false
       }
 
       if (leadName) {
@@ -507,8 +510,20 @@ async function loadSessionImpl(
           draft.agentStreams[leadName] = createDefaultAgentStream()
         }
         const leadStream = draft.agentStreams[leadName]
+        const leadLocalErrors = [...leadStream.blocks, ...leadStream.currentBlocks].filter(
+          (b) => b.type === 'provider_status' && (b.extra?.status === 'error' || b.extra?.status === 'exhausted' || b.extra?.category === 'provider'),
+        )
         if (!leadHadNewerActivity) revokeBlobUrlsFromBlocks(leadStream.currentBlocks)
-        leadStream.blocks = parseTeamBlocks(history.lead.messages)
+        const leadOrphans: Record<string, OrphanToolResult> = {}
+        leadStream.blocks = parseTeamBlocks(history.lead.messages, leadOrphans)
+        // Results whose calls sit in older, not-yet-loaded pages — parked for
+        // loadOlderMessages to attach when the owning card scrolls in.
+        leadStream._orphanToolResults = leadOrphans
+        if (leadLocalErrors.length > 0) {
+          const existingIds = new Set(leadStream.blocks.map((b) => b.id))
+          const toKeep = leadLocalErrors.filter((b) => !existingIds.has(b.id))
+          leadStream.blocks = [...leadStream.blocks, ...toKeep]
+        }
         leadStream._revertedSuffix = []
         applyRevertBoundary(leadStream, leadRevertTime, {
           boundaryId,
@@ -544,7 +559,14 @@ async function loadSessionImpl(
         // when a reconnecting client missed the whole resumed turn.
         const leadVisibleMsgs = messagesBeforeRevert(history.lead)
         const leadUsage = sumUsageFromMessages(leadVisibleMsgs)
-        leadStream.usage = leadUsage
+        if (!leadHadNewerActivity) {
+          leadStream.usage = leadUsage
+        } else {
+          leadStream.usage.completionTokens = Math.max(leadStream.usage.completionTokens, leadUsage.completionTokens)
+          leadStream.usage.estimatedCostUsd = Math.round(Math.max(leadStream.usage.estimatedCostUsd ?? 0, leadUsage.estimatedCostUsd ?? 0) * 1e8) / 1e8
+          leadStream.usage.promptTokens = leadStream.usage.promptTokens || leadUsage.promptTokens
+          leadStream.usage.totalTokens = leadStream.usage.promptTokens + leadStream.usage.completionTokens
+        }
       }
 
       const queued = queuedMessagesFromHistory(sessionId, history.lead.messages)
@@ -562,8 +584,18 @@ async function loadSessionImpl(
         }
         const memberStream = draft.agentStreams[member.name]
         const memberHadNewerActivity = hasLiveContent(memberStream, draft.isTeamWorking, fetchStartedAt)
+        const memberLocalErrors = [...memberStream.blocks, ...memberStream.currentBlocks].filter(
+          (b) => b.type === 'provider_status' && (b.extra?.status === 'error' || b.extra?.status === 'exhausted' || b.extra?.category === 'provider'),
+        )
         if (!memberHadNewerActivity) revokeBlobUrlsFromBlocks(memberStream.currentBlocks)
-        memberStream.blocks = parseTeamBlocks(member.messages)
+        const memberOrphans: Record<string, OrphanToolResult> = {}
+        memberStream.blocks = parseTeamBlocks(member.messages, memberOrphans)
+        memberStream._orphanToolResults = memberOrphans
+        if (memberLocalErrors.length > 0) {
+          const existingIds = new Set(memberStream.blocks.map((b) => b.id))
+          const toKeep = memberLocalErrors.filter((b) => !existingIds.has(b.id))
+          memberStream.blocks = [...memberStream.blocks, ...toKeep]
+        }
         memberStream._revertedSuffix = []
         applyRevertBoundary(memberStream, leadRevertTime, {
           boundaryId,
@@ -584,7 +616,14 @@ async function loadSessionImpl(
         }
         const memberVisibleMsgs = messagesBeforeTime(member.messages, leadRevertTime)
         const memberUsage = sumUsageFromMessages(memberVisibleMsgs)
-        memberStream.usage = memberUsage
+        if (!memberHadNewerActivity) {
+          memberStream.usage = memberUsage
+        } else {
+          memberStream.usage.completionTokens = Math.max(memberStream.usage.completionTokens, memberUsage.completionTokens)
+          memberStream.usage.estimatedCostUsd = Math.round(Math.max(memberStream.usage.estimatedCostUsd ?? 0, memberUsage.estimatedCostUsd ?? 0) * 1e8) / 1e8
+          memberStream.usage.promptTokens = memberStream.usage.promptTokens || memberUsage.promptTokens
+          memberStream.usage.totalTokens = memberStream.usage.promptTokens + memberStream.usage.completionTokens
+        }
       })
 
       if (!draft.activeAgent || !allNames.includes(draft.activeAgent)) {
@@ -612,7 +651,6 @@ async function loadSessionImpl(
     if (get()._sessionGeneration !== gen) return
     set((draft) => {
       draft.error = err instanceof Error ? err.message : 'Failed to load session'
-      draft.isContinuing = false
     })
   }
 }
@@ -799,7 +837,8 @@ export const createSessionSlice: StateCreator<
     const since = state._syncedThrough
 
     // No confirmed baseline, a turn is still producing content, or the turn
-    // compacted: a delta cannot be spliced safely, so take the full page.
+    // compacted: an anchored summary cannot be tail-spliced safely, so take
+    // the full page.
     if (
       state.sessionId !== sessionId ||
       since === null ||
@@ -867,10 +906,18 @@ export const createSessionSlice: StateCreator<
         const stream = draft.agentStreams[name]
         if (!stream) return
         const unsynced = new Set(stream._unsyncedBlockIds ?? [])
-        const confirmed = unsynced.size > 0
-          ? stream.blocks.filter((block) => !unsynced.has(block.id))
+        const confirmedRaw = unsynced.size > 0
+          ? stream.blocks.filter((block) => !unsynced.has(block.id) || block.type === 'provider_status')
           : stream.blocks
-        stream.blocks = [...confirmed, ...visible(parseTeamBlocks(messages))]
+        // The delta can carry a tool result whose assistant row predates the
+        // watermark (a mid-turn loadSession adopted it before the tool
+        // finished). Attach such orphans to the already-confirmed card, or it
+        // stays "running" forever when the live tool_end was missed.
+        const orphans = { ...(stream._orphanToolResults ?? {}) }
+        const tail = visible(parseTeamBlocks(messages, orphans))
+        const confirmed = applyOrphanToolResults(confirmedRaw, orphans)
+        stream.blocks = [...confirmed, ...tail]
+        stream._orphanToolResults = orphans
         stream._unsyncedBlockIds = []
       }
 
@@ -924,14 +971,30 @@ export const createSessionSlice: StateCreator<
         draft.nextCursor = history.next_cursor
         if (leadName && draft.agentStreams[leadName]) {
           const filtered = messagesBeforeTime(history.lead.messages, _leadRevertTime)
-          const older = parseTeamBlocks(filtered)
-          draft.agentStreams[leadName].blocks = [...older, ...draft.agentStreams[leadName].blocks]
+          const leadStream = draft.agentStreams[leadName]
+          // Claim results orphaned by the page boundary: the newer page may
+          // hold a tool result whose call row is in this older page.
+          const orphans = { ...(leadStream._orphanToolResults ?? {}) }
+          const older = applyOrphanToolResults(parseTeamBlocks(filtered, orphans), orphans)
+          leadStream.blocks = [...older, ...leadStream.blocks]
+          leadStream._orphanToolResults = orphans
+          const olderUsage = sumUsageFromMessages(filtered)
+          draft.agentStreams[leadName].usage.completionTokens += olderUsage.completionTokens
+          draft.agentStreams[leadName].usage.estimatedCostUsd = Math.round(((draft.agentStreams[leadName].usage.estimatedCostUsd ?? 0) + (olderUsage.estimatedCostUsd ?? 0)) * 1e8) / 1e8
+          draft.agentStreams[leadName].usage.totalTokens = draft.agentStreams[leadName].usage.promptTokens + draft.agentStreams[leadName].usage.completionTokens
         }
         history.members.forEach((member) => {
           if (draft.agentStreams[member.name]) {
             const filtered = messagesBeforeTime(member.messages, _leadRevertTime)
-            const older = parseTeamBlocks(filtered)
-            draft.agentStreams[member.name].blocks = [...older, ...draft.agentStreams[member.name].blocks]
+            const memberStream = draft.agentStreams[member.name]
+            const orphans = { ...(memberStream._orphanToolResults ?? {}) }
+            const older = applyOrphanToolResults(parseTeamBlocks(filtered, orphans), orphans)
+            memberStream.blocks = [...older, ...memberStream.blocks]
+            memberStream._orphanToolResults = orphans
+            const olderUsage = sumUsageFromMessages(filtered)
+            draft.agentStreams[member.name].usage.completionTokens += olderUsage.completionTokens
+            draft.agentStreams[member.name].usage.estimatedCostUsd = Math.round(((draft.agentStreams[member.name].usage.estimatedCostUsd ?? 0) + (olderUsage.estimatedCostUsd ?? 0)) * 1e8) / 1e8
+            draft.agentStreams[member.name].usage.totalTokens = draft.agentStreams[member.name].usage.promptTokens + draft.agentStreams[member.name].usage.completionTokens
           }
         })
       })

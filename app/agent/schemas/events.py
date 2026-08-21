@@ -150,6 +150,10 @@ class ErrorEvent(BaseModel):
 
     type: Literal["error"] = "error"
     message: str
+    title: str | None = None
+    code: str | None = None
+    category: str | None = None
+    agent: str | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 

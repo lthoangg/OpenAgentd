@@ -97,10 +97,10 @@ const sideOut: Record<SheetSide, string> = {
   right:  'slide-out-to-right',
 }
 const sideLayout: Record<SheetSide, string> = {
-  top:    'inset-x-0 top-0 border-b rounded-b-xl',
-  bottom: 'inset-x-0 bottom-0 border-t rounded-t-xl',
-  left:   'inset-y-0 left-0 h-full w-3/4 max-w-sm border-r rounded-r-xl',
-  right:  'inset-y-0 right-0 h-full w-3/4 max-w-sm border-l rounded-l-xl',
+  top:    'inset-x-0 top-0 border-b rounded-b-lg',
+  bottom: 'inset-x-0 bottom-0 border-t rounded-t-lg',
+  left:   'inset-y-0 left-0 h-full w-3/4 max-w-sm border-r rounded-r-lg',
+  right:  'inset-y-0 right-0 h-full w-3/4 max-w-sm border-l rounded-l-lg',
 }
 
 function SheetContent({ className, children, side = 'right', showCloseButton = true, ...props }: SheetContentProps) {
@@ -152,7 +152,7 @@ function SheetContent({ className, children, side = 'right', showCloseButton = t
         className={cn(
           'fixed z-50 flex flex-col overflow-y-auto overscroll-contain',
           'border border-(--color-border) bg-(--bg-card)',
-          'text-sm text-(--color-text) shadow-xl outline-none',
+          'text-sm text-(--color-text) shadow-md outline-none',
           'duration-200',
           sideLayout[side],
           closing

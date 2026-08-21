@@ -19,7 +19,7 @@ import { useState, useRef, useEffect, useCallback, useMemo, memo } from 'react'
 import OctobotMascot from '@/assets/brand/octobot-agentd-source.png'
 
 import { LazyMarkdownBlock } from '@/utils/LazyMarkdownBlock'
-import { ChevronDown, ChevronUp } from 'lucide-react'
+import { ChevronDown, ChevronUp, AlertCircle } from 'lucide-react'
 import { Thinking } from './Thinking'
 import { ToolCall } from './ToolCall'
 import { MCPAppResult } from './MCPAppResult'
@@ -28,23 +28,14 @@ import { CompactionDivider } from './CompactionDivider'
 import { AssistantTurn } from './AssistantTurnFooter'
 import { PendingMessageQueue } from './PendingMessageQueue'
 import { appendCurrentTurns, getVisibleTurnWindow, partitionTurns } from '@/utils/turns'
-import { latestDirectUserBlockIdFromParts, mergeBlocks } from '@/utils/blocks'
+import { latestDirectUserBlockIdFromParts, liveBlockTail } from '@/utils/blocks'
 import { extractSleepPrefix } from '@/utils/format'
 import { latestMCPAppResourceBlockIdsFromParts, latestMCPAppResources, mcpAppResourceUri } from '@/utils/mcp-app-artifacts'
 import { useTeamStore } from '@/stores/useTeamStore'
 import type { ContentBlock } from '@/api/types'
 import { UserBubble } from './AgentView/UserBubble'
+import { useAutoFollowScroll } from '@/hooks/useAutoFollowScroll'
 
-const SCROLL_THRESHOLD = 40
-// How long a wheel-up / touch-drag gesture keeps the view detached from the
-// stream. During heavy stream growth the auto-follow ResizeObserver rewrites
-// scrollTop to the bottom before the scroll listener runs, so scroll events
-// alone cannot see the user's upward movement — input events carry the intent.
-const USER_SCROLL_INTENT_MS = 250
-const LOAD_OLDER_THRESHOLD = 300
-/** Keys that move the viewport upward without emitting wheel/touch events. */
-const SCROLL_UP_KEYS = new Set(['PageUp', 'Home', 'ArrowUp'])
-const EDITABLE_TAGS = new Set(['INPUT', 'TEXTAREA', 'SELECT'])
 const INITIAL_RENDERED_TURNS = 80
 const TURN_RENDER_STEP = 80
 
@@ -86,8 +77,6 @@ interface AgentViewProps {
   isError?: boolean
   /** Error message to display when isError is true. */
   lastError?: string | null
-  /** Continue from the trailing assistant turn. */
-  onContinue?: () => void
   /** Optional slot rendered in place of the default mascot empty state. */
   emptyState?: React.ReactNode
   /** Open a mentioned workspace file in the coding workspace sidebar. */
@@ -103,8 +92,7 @@ const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionI
         return <InboxBubble content={block.content} fromAgent={fromAgent} />
       }
       const blockModel = typeof block.extra?.model === 'string' ? block.extra.model : null
-      const shell = block.extra?.kind === 'user_shell'
-      return <UserBubble content={block.content} timestamp={block.timestamp} attachments={block.attachments} onRevert={onRevert} modelId={blockModel} shell={shell} onMentionFileOpen={onMentionFileOpen} mentions={block.extra?.mentions as string[] | undefined} />
+      return <UserBubble content={block.content} timestamp={block.timestamp} attachments={block.attachments} onRevert={onRevert} modelId={blockModel} onMentionFileOpen={onMentionFileOpen} mentions={block.extra?.mentions as string[] | undefined} />
     }
     case 'thinking':
       return <Thinking content={block.content} isStreaming={isStreaming} />
@@ -123,6 +111,21 @@ const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionI
     }
     case 'provider_status': {
       const status = block.extra?.status
+      const title = (block.extra?.title as string) || (status === 'error' || status === 'exhausted' ? 'Provider Error' : undefined)
+      const customMsg = block.extra?.message as string | undefined
+
+      if (status === 'error' || status === 'exhausted' || block.extra?.category === 'provider') {
+        return (
+          <div className="my-2 rounded-md border border-(--color-error)/30 bg-(--color-error-subtle) px-3 py-2 text-xs">
+            <div className="flex items-center gap-1.5 font-medium text-(--color-error)">
+              <AlertCircle size={14} className="shrink-0" />
+              <span>{title || 'Provider Error'}</span>
+            </div>
+            <p className="mt-1 text-(--color-error)/90 leading-relaxed break-words">{customMsg || block.content}</p>
+          </div>
+        )
+      }
+
       const model = block.extra?.model
       const attempt = block.extra?.attempt
       const maxAttempts = block.extra?.max_attempts
@@ -134,9 +137,6 @@ const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionI
         const delayText = typeof delay === 'number' ? ` Waiting ${delay.toFixed(1)}s.` : ''
         const errorText = errorType ? ` after ${String(errorType)}${statusCode ? ` ${String(statusCode)}` : ''}` : ''
         message = `Retrying ${String(model ?? 'model')} (${String(attempt ?? '?')}/${String(maxAttempts ?? '?')})${errorText}.${delayText}`
-      } else if (status === 'exhausted') {
-        const errorText = errorType ? ` after ${String(errorType)}${statusCode ? ` ${String(statusCode)}` : ''}` : ''
-        message = `${String(model ?? 'Model')} exhausted retry attempts${errorText}.`
       }
       return <p className="rounded-sm border border-(--color-border) bg-(--bg-card) px-3 py-2 text-xs text-(--color-text-muted)">{message}</p>
     }
@@ -184,37 +184,11 @@ const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionI
   }
 })
 
-export function AgentView({ blocks, currentBlocks, isWorking, isTurnOpen = isWorking, isAwaitingRestart = false, isError, lastError, onContinue, emptyState, onMentionFileOpen }: AgentViewProps) {
-  const scrollRef = useRef<HTMLDivElement>(null)
-  const contentRef = useRef<HTMLDivElement>(null)
-  // attachedRef: true = follow the stream.
-  //   → true:  user sends a message, clicks the button, or scrolls to the bottom
-  //   → false: user scrolls up and is no longer at the bottom
-  const attachedRef = useRef(true)
-  const isProgrammaticScrollRef = useRef(false)
-  const lastScrollTopRef = useRef(0)
-  // Timestamp (ms) until which a user scroll-up gesture (wheel / touch) is
-  // considered "in flight" — suppresses the at-bottom re-attach so small
-  // trackpad deltas can escape the auto-follow snap during streaming.
-  const userScrollIntentUntilRef = useRef(0)
-  // True while a pointer is held inside the transcript — a scrollbar drag or a
-  // text selection. Neither produces wheel/touch events, so auto-follow must
-  // stand down for the duration or it fights the gesture every time output
-  // arrives (twice a second for a streaming shell command).
-  const pointerDownRef = useRef(false)
-  const [showScrollBtn, setShowScrollBtn] = useState(false)
+export function AgentView({ blocks, currentBlocks, isWorking, isTurnOpen = isWorking, isAwaitingRestart = false, isError, lastError, emptyState, onMentionFileOpen }: AgentViewProps) {
   const [renderedTurnCount, setRenderedTurnCount] = useState(INITIAL_RENDERED_TURNS)
   const sessionId = useTeamStore((s) => s.sessionId) ?? undefined
   const prevScrollHeightRef = useRef<number | null>(null)
-  // Me mirror store _loadingOlder in a ref so the wheel handler can check
-  // it synchronously without subscribing to store state changes.
   const loadingOlderRef = useRef(false)
-  // Me keep live refs for values the onScroll closure needs to read without
-  // requiring the scroll useEffect to re-register its listeners every time
-  // hiddenTurnCount or showEarlierTurns identity changes. Stale closures
-  // over these caused loadOlderMessages to never fire after a page loaded
-  // (the effect re-ran with a fresh hiddenTurnCount > 0, so every
-  // subsequent scroll-to-top called showEarlierTurns instead of fetching).
   const hiddenTurnCountRef = useRef(0)
   const showEarlierTurnsRef = useRef<() => void>(() => {})
 
@@ -230,20 +204,21 @@ export function AgentView({ blocks, currentBlocks, isWorking, isTurnOpen = isWor
     })
   }, [])
 
-  const allBlocks = useMemo(() => mergeBlocks(blocks, currentBlocks), [blocks, currentBlocks])
-  const visibleBlocks = useMemo(
-    () => allBlocks.filter((block) => block.type !== 'compaction'),
-    [allBlocks],
-  )
-  const totalLen = allBlocks.length
+  // Live blocks not yet folded into `blocks`, deduped against confirmed ids.
+  // Both scroll bookkeeping and turn partitioning below read from this same
+  // array, so they can never disagree about what actually renders (a merged
+  // `[...blocks, ...liveTail]` copy is never needed here — nothing reads full
+  // merged content, only counts and the last block).
+  const liveTail = useMemo(() => liveBlockTail(blocks, currentBlocks), [blocks, currentBlocks])
+  const totalLen = blocks.length + liveTail.length
   const latestUserBlockId = useMemo(
     () => latestDirectUserBlockIdFromParts(blocks, currentBlocks),
     [blocks, currentBlocks],
   )
   const finalizedTurnItems = useMemo(() => partitionTurns(blocks), [blocks])
   const turnItems = useMemo(
-    () => appendCurrentTurns(finalizedTurnItems, blocks.length, currentBlocks),
-    [blocks.length, currentBlocks, finalizedTurnItems],
+    () => appendCurrentTurns(finalizedTurnItems, blocks.length, liveTail),
+    [blocks.length, liveTail, finalizedTurnItems],
   )
   const { hiddenTurnCount, visibleTurnItems } = useMemo(
     () => getVisibleTurnWindow(turnItems, renderedTurnCount),
@@ -255,6 +230,44 @@ export function AgentView({ blocks, currentBlocks, isWorking, isTurnOpen = isWor
     [currentBlocks, finalizedMCPAppResources],
   )
 
+  const lastBlock = liveTail.length > 0 ? liveTail[liveTail.length - 1] : blocks[blocks.length - 1]
+  const lastContent = lastBlock?.content ?? ''
+  const isUserMessage = lastBlock ? isDirectUserBlock(lastBlock) : false
+  const isEmpty = !isWorking &&
+    !blocks.some((b) => b.type !== 'compaction') &&
+    !liveTail.some((b) => b.type !== 'compaction')
+
+  const handleLoadOlderTop = useCallback(() => {
+    if (hiddenTurnCountRef.current > 0) {
+      showEarlierTurnsRef.current()
+    } else if (useTeamStore.getState().hasMore && !loadingOlderRef.current) {
+      loadingOlderRef.current = true
+      const el = scrollRef.current
+      if (el) prevScrollHeightRef.current = el.scrollHeight
+      pendingRestoreRef.current = true
+      void useTeamStore.getState().loadOlderMessages().finally(() => {
+        loadingOlderRef.current = false
+      })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const {
+    scrollRef,
+    contentRef,
+    anchorRef,
+    attachedRef,
+    showScrollBtn,
+    scrollToBottom,
+  } = useAutoFollowScroll({
+    totalLen,
+    lastContent,
+    sessionId,
+    isUserMessage,
+    isEmpty,
+    onLoadOlderTop: handleLoadOlderTop,
+  })
+
   const showEarlierTurns = useCallback(() => {
     const el = scrollRef.current
     if (el) {
@@ -262,180 +275,14 @@ export function AgentView({ blocks, currentBlocks, isWorking, isTurnOpen = isWor
       pendingRestoreRef.current = true
     }
     setRenderedTurnCount((count) => Math.min(turnItems.length, count + TURN_RENDER_STEP))
-  }, [turnItems.length])
+  }, [scrollRef, turnItems.length])
 
   // Keep the refs in sync every render so the scroll handler always sees
   // the latest values without needing to re-register listeners.
   hiddenTurnCountRef.current = hiddenTurnCount
   showEarlierTurnsRef.current = showEarlierTurns
 
-  const scrollToBottom = useCallback((behavior: ScrollBehavior = 'auto') => {
-    const el = scrollRef.current
-    if (!el) return
-    const bottom = Math.max(0, el.scrollHeight - el.clientHeight)
-    attachedRef.current = true
-    userScrollIntentUntilRef.current = 0 // explicit attach cancels any gesture
-    setShowScrollBtn(false)
-    if (behavior === 'smooth' && typeof el.scrollTo === 'function') {
-      isProgrammaticScrollRef.current = true
-      el.scrollTo({ top: bottom, behavior: 'smooth' })
-      let finished = false
-      const finish = () => {
-        if (finished) return
-        finished = true
-        isProgrammaticScrollRef.current = false
-        el.removeEventListener('scrollend', finish)
-        // WKWebView (macOS desktop + iOS) can silently no-op a smooth
-        // scrollTo (see AGENTS.md). Recompute the bottom — the stream may
-        // have grown during the animation — and jump instantly if the view
-        // did not actually get there, so the button always lands the user
-        // at the stream tail.
-        const target = Math.max(0, el.scrollHeight - el.clientHeight)
-        if (Math.abs(el.scrollTop - target) > 1) {
-          el.scrollTop = target
-          lastScrollTopRef.current = el.scrollTop
-        }
-      }
-      el.addEventListener('scrollend', finish)
-      setTimeout(finish, 500)
-    } else {
-      el.scrollTop = bottom
-      lastScrollTopRef.current = el.scrollTop
-    }
-  }, [])
-
-  useEffect(() => {
-    const el = scrollRef.current
-    if (!el) return
-    lastScrollTopRef.current = el.scrollTop
-
-    const onScroll = () => {
-      const currentScrollTop = el.scrollTop
-      const prevScrollTop = lastScrollTopRef.current
-      lastScrollTopRef.current = currentScrollTop
-
-      if (isProgrammaticScrollRef.current) return
-      const dist = el.scrollHeight - currentScrollTop - el.clientHeight
-      const atBottom = dist <= SCROLL_THRESHOLD
-
-      if (atBottom) {
-        // Don't re-attach while a user scroll-up gesture is in flight — small
-        // wheel/trackpad deltas land within SCROLL_THRESHOLD (or the
-        // auto-follow already snapped the view back) and re-attaching here
-        // would let the ResizeObserver eat the gesture.
-        if (Date.now() >= userScrollIntentUntilRef.current) {
-          attachedRef.current = true
-          setShowScrollBtn(false)
-        }
-      } else if (attachedRef.current) {
-        // Don't detach when the virtual keyboard opened (viewport shrink, not user scroll),
-        // but keep processing the event so scroll-to-top pagination still works.
-        if (!document.documentElement.hasAttribute('data-keyboard-open')) {
-          // We only detach if the user scrolled UP (meaning scrollTop decreased).
-          // If scrollTop increased or stayed the same, it could be due to layout/ResizeObserver/smooth scroll
-          // and we want to remain attached.
-          const isScrollUp = currentScrollTop < prevScrollTop
-          if (isScrollUp) {
-            attachedRef.current = false
-            setShowScrollBtn(true)
-          }
-        }
-      }
-
-      // Load older messages when scrolled to the top.
-      if (currentScrollTop <= LOAD_OLDER_THRESHOLD) {
-        if (hiddenTurnCountRef.current > 0) {
-          showEarlierTurnsRef.current()
-        } else if (useTeamStore.getState().hasMore && !loadingOlderRef.current) {
-          loadingOlderRef.current = true
-          prevScrollHeightRef.current = el.scrollHeight
-          pendingRestoreRef.current = true
-          void useTeamStore.getState().loadOlderMessages().finally(() => {
-            loadingOlderRef.current = false
-          })
-        }
-      }
-    }
-
-    // Detach on direct user input. During heavy stream growth (e.g. a shell
-    // tool result flushing a large block) the auto-follow ResizeObserver
-    // rewrites scrollTop to the bottom before the scroll listener runs, so
-    // onScroll never observes the upward movement — wheel/touch events are
-    // the only reliable signal of the user's intent to scroll up.
-    const detachForUserScrollUp = () => {
-      userScrollIntentUntilRef.current = Date.now() + USER_SCROLL_INTENT_MS
-      if (!attachedRef.current) return
-      if (el.scrollHeight - el.clientHeight <= 1) return // nothing to scroll
-      attachedRef.current = false
-      setShowScrollBtn(true)
-    }
-    const onWheel = (e: WheelEvent) => {
-      if (e.deltaY < 0) detachForUserScrollUp()
-    }
-    let lastTouchY: number | null = null
-    const onTouchStart = (e: TouchEvent) => {
-      lastTouchY = e.touches[0]?.clientY ?? null
-    }
-    const onTouchMove = (e: TouchEvent) => {
-      const y = e.touches[0]?.clientY
-      if (y === undefined) return
-      // Finger moving down the screen scrolls the content up.
-      if (lastTouchY !== null && y > lastTouchY) detachForUserScrollUp()
-      lastTouchY = y
-    }
-
-    // Keyboard scrolling (PageUp / Home / arrows) moves the viewport without a
-    // wheel or touch event, so it needs its own detach — otherwise the next
-    // ResizeObserver tick drags the user straight back to the bottom.
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (!SCROLL_UP_KEYS.has(e.key)) return
-      const target = e.target as HTMLElement | null
-      // Only keys aimed at the transcript scroll it. A menu, dialog or model
-      // picker moving its own selection with the arrows is navigating itself;
-      // `body` is the target when nothing holds focus, which is the case the
-      // browser actually scrolls.
-      if (target && target !== document.body && !el.contains(target)) return
-      // Caret movement inside the composer is not transcript scrolling.
-      if (target && (target.isContentEditable || EDITABLE_TAGS.has(target.tagName))) return
-      detachForUserScrollUp()
-    }
-
-    // Pointer held down: scrollbar drag or selection drag. The RO consults
-    // this and stops snapping; on release we re-pin only if the gesture left
-    // us attached (i.e. the user never actually scrolled away).
-    const onPointerDown = () => { pointerDownRef.current = true }
-    const onPointerUp = () => {
-      if (!pointerDownRef.current) return
-      pointerDownRef.current = false
-      if (!attachedRef.current) return
-      el.scrollTop = Math.max(0, el.scrollHeight - el.clientHeight)
-      lastScrollTopRef.current = el.scrollTop
-    }
-
-    el.addEventListener('scroll', onScroll, { passive: true })
-    el.addEventListener('wheel', onWheel, { passive: true })
-    el.addEventListener('touchstart', onTouchStart, { passive: true })
-    el.addEventListener('touchmove', onTouchMove, { passive: true })
-    el.addEventListener('pointerdown', onPointerDown, { passive: true })
-    window.addEventListener('pointerup', onPointerUp, { passive: true })
-    window.addEventListener('pointercancel', onPointerUp, { passive: true })
-    document.addEventListener('keydown', onKeyDown)
-    return () => {
-      el.removeEventListener('scroll', onScroll)
-      el.removeEventListener('wheel', onWheel)
-      el.removeEventListener('touchstart', onTouchStart)
-      el.removeEventListener('touchmove', onTouchMove)
-      el.removeEventListener('pointerdown', onPointerDown)
-      window.removeEventListener('pointerup', onPointerUp)
-      window.removeEventListener('pointercancel', onPointerUp)
-      document.removeEventListener('keydown', onKeyDown)
-    }
-  }, [])
-
-  // Me restore scroll position after older messages are prepended.
-  // We track a "pending restore" flag separately from blocks.length so
-  // that SSE flushes (which also grow blocks) never accidentally trigger
-  // a scroll-position restore.
+  // Restore scroll position after older messages are prepended.
   const pendingRestoreRef = useRef(false)
   useEffect(() => {
     const el = scrollRef.current
@@ -444,73 +291,12 @@ export function AgentView({ blocks, currentBlocks, isWorking, isTurnOpen = isWor
     attachedRef.current = false
     el.scrollTop = el.scrollHeight - prevScrollHeightRef.current
     prevScrollHeightRef.current = null
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [blocks.length, renderedTurnCount])
-
-  // Me re-attach on session switch. A detach is a statement about *this*
-  // conversation; carrying it into the next one left newly opened sessions
-  // sitting mid-transcript and not following their live stream.
-  useEffect(() => {
-    pendingRestoreRef.current = false
-    prevScrollHeightRef.current = null
-    attachedRef.current = true
-    setShowScrollBtn(false)
-    scrollToBottom()
-  }, [sessionId, scrollToBottom])
-
-  // Me single scroll effect — block count or last block text changed
-  const lastContent = allBlocks[allBlocks.length - 1]?.content ?? ''
-  useEffect(() => {
-    const lastBlock = allBlocks[allBlocks.length - 1]
-    if (lastBlock && isDirectUserBlock(lastBlock)) {
-      attachedRef.current = true
-    }
-    if (attachedRef.current) scrollToBottom()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [totalLen, lastContent])
-
-  const isEmpty = visibleBlocks.length === 0 && !isWorking
-
-  useEffect(() => {
-    if (!isEmpty) return
-    attachedRef.current = true
-    setShowScrollBtn(false)
-    if (scrollRef.current) scrollRef.current.scrollTop = 0
-  }, [isEmpty])
-
-  // ResizeObserver: when attached and content grows, keep the stream pinned to
-  // the bottom. Skip scrollport-height changes while the keyboard is open — on
-  // mobile those fire every frame during manual chat scrolling, and forcing
-  // scrollTop there fights the user's gesture and flickers the scrollbar.
-  useEffect(() => {
-    const el = scrollRef.current
-    const content = contentRef.current
-    if (!el || !content || typeof ResizeObserver === 'undefined') return
-    let lastContentHeight = content.getBoundingClientRect().height
-    let lastClientHeight = el.clientHeight
-    const ro = new ResizeObserver((entries) => {
-      if (!attachedRef.current) return
-      // Mid-gesture (scrollbar drag, selection drag): leave the scroll
-      // position alone. `onPointerUp` re-pins if the user stayed attached.
-      if (pointerDownRef.current) return
-      const nextContentHeight = content.getBoundingClientRect().height
-      const nextClientHeight = el.clientHeight
-      const contentGrew = nextContentHeight > lastContentHeight
-      const viewportChanged = nextClientHeight !== lastClientHeight
-      const contentChanged = entries.some((entry) => entry.target === content)
-      lastContentHeight = nextContentHeight
-      lastClientHeight = nextClientHeight
-      if (document.documentElement.hasAttribute('data-keyboard-open') && viewportChanged && !contentGrew && !contentChanged) return
-      el.scrollTop = Math.max(0, el.scrollHeight - el.clientHeight)
-      lastScrollTopRef.current = el.scrollTop
-    })
-    ro.observe(content)
-    ro.observe(el)
-    return () => ro.disconnect()
-  }, [])
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
-    <div ref={scrollRef} className="flex-1 overflow-y-auto">
+    <div ref={scrollRef} className="oa-chat-scroll flex-1 overflow-y-auto">
       <div ref={contentRef} className="mx-auto max-w-3xl px-3 py-5 sm:px-4 sm:py-6">
         {isEmpty && (
            emptyState ?? (
@@ -570,9 +356,8 @@ export function AgentView({ blocks, currentBlocks, isWorking, isTurnOpen = isWor
                      isWorking={isWorking}
                      isTurnOpen={isTurnOpen}
                      isTrailingTurn={isTrailingTurn}
-                      totalBlocks={allBlocks.length}
+                      totalBlocks={totalLen}
                       size="roomy"
-                      onContinue={onContinue}
                       renderBlock={({ block, isStreaming }) => (
                        <BlockRenderer
                          block={block}
@@ -612,6 +397,8 @@ export function AgentView({ blocks, currentBlocks, isWorking, isTurnOpen = isWor
                <p className="text-xs text-(--color-error)">{lastError}</p>
              </div>
            )}
+
+           <div ref={anchorRef} data-chat-scroll-anchor aria-hidden="true" />
          </div>
       </div>
     </div>

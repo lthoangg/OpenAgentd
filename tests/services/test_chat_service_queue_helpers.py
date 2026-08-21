@@ -91,7 +91,7 @@ async def test_release_queued_messages_clears_queue_metadata(session: AsyncSessi
     assert [row.id for row in released] == [queued.id]
     row = await session.get(SessionMessage, queued.id)
     assert row is not None
-    assert row.exclude_from_context is False
+    assert row.kind == "chat"
     assert row.extra == {"kind": "user_shell"}
 
 
@@ -123,7 +123,7 @@ async def test_pop_queued_messages_clears_queue_metadata(session: AsyncSession):
     assert [row.id for row in released] == [queued.id]
     row = await session.get(SessionMessage, queued.id)
     assert row is not None
-    assert row.exclude_from_context is False
+    assert row.kind == "chat"
     assert row.extra == {
         "attachments": [
             {
@@ -326,7 +326,6 @@ async def test_cancel_queued_message_deletes_synthetic_attachment_rows(
         session,
         chat_session.id,
         HumanMessage(content="[File: a.txt]\nhello\n[End file: a.txt]"),
-        exclude_from_context=False,
         extra={
             "hidden_from_user": True,
             "hidden_from_summary": True,
@@ -337,7 +336,6 @@ async def test_cancel_queued_message_deletes_synthetic_attachment_rows(
         session,
         chat_session.id,
         HumanMessage(content="[File: other.txt]\nkeep\n[End file: other.txt]"),
-        exclude_from_context=False,
         extra={
             "hidden_from_user": True,
             "hidden_from_summary": True,

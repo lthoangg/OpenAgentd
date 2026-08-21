@@ -6,6 +6,15 @@ import type {
   QuestionItem,
   TeamCommandResponse,
 } from '@/api/types'
+import type { OrphanToolResult } from '@/utils/messages'
+
+export interface TeamError {
+  title?: string
+  message: string
+  code?: string
+  category?: 'provider' | 'network' | 'tool' | 'user_action' | 'system' | 'denied_paths' | 'sandbox'
+  agent?: string
+}
 
 export interface PendingMessage {
   id: string
@@ -98,6 +107,16 @@ export interface AgentStream {
    */
   _unsyncedBlockIds?: string[]
   /**
+   * Tool result rows waiting for their card. A history fetch cuts at
+   * arbitrary rows, so a ``role='tool'`` result can arrive in a batch that
+   * does not contain the assistant row carrying the matching ``tool_calls``
+   * (pagination boundary, or a turn-tail delta after a mid-turn reconcile
+   * already adopted the assistant row). Parked here keyed by ``toolCallId``
+   * until the owning card shows up — ``loadOlderMessages`` claims them for
+   * prepended pages, ``reconcileTurnTail`` for already-confirmed cards.
+   */
+  _orphanToolResults?: Record<string, OrphanToolResult>
+  /**
    * Per-kind "the next streamed chunk may be a full replay snapshot" flag.
    *
    * ``memory_stream_store.attach`` replays the whole accumulated turn text as
@@ -147,9 +166,8 @@ export interface TeamStoreState {
    * immediately, from structured data rather than by re-parsing a sentence.
    */
   resolvedQuestions: Record<string, ResolvedQuestion>
-  isContinuing: boolean
   isConnected: boolean
-  error: string | null
+  error: TeamError | string | null
   setupRequired: SetupRequiredNotice | null
   _pendingMessages: PendingMessage[]
   _sessionGeneration: number
@@ -173,12 +191,12 @@ export interface TeamStoreState {
 
 export interface TeamStoreActions {
   /** Resolves ``true`` when the backend accepted the message, ``false`` otherwise. */
-  sendMessage: (content: string, files?: File[], options?: { mode?: string; workspace?: string | null; model?: string | null; thinkingLevel?: string | null; fastMode?: boolean; shell?: boolean; mentions?: string[] }) => Promise<boolean>
+  sendMessage: (content: string, files?: File[], options?: { mode?: string; workspace?: string | null; model?: string | null; thinkingLevel?: string | null; fastMode?: boolean; mentions?: string[] }) => Promise<boolean>
   setSessionModelSettings: (model: string | null, thinkingLevel: string | null, fastMode?: boolean) => void
-  continueTeam: () => Promise<void>
   compactTeam: () => Promise<void>
   undoTeam: () => Promise<TeamCommandResponse | undefined>
-  redoTeam: () => Promise<void>
+  redoTeam: () => Promise<TeamCommandResponse | undefined>
+  redoAllTeam: () => Promise<TeamCommandResponse | undefined>
   stopTeam: () => Promise<void>
   connectStream: () => AbortController
   /**

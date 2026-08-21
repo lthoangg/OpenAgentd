@@ -174,7 +174,7 @@ function SettingsSkeleton() {
       {[0, 1].map((i) => (
         <div
           key={i}
-          className="overflow-hidden rounded border border-(--color-border) bg-(--bg-card)"
+          className="overflow-hidden rounded-sm border border-(--color-border) bg-(--bg-card)"
         >
           <div className="h-7 border-b border-(--color-border)/60 bg-(--bg-key)/30" />
           <div className="space-y-2.5 px-3 py-3">
@@ -190,7 +190,7 @@ function SettingsSkeleton() {
 function SettingsError({ error }: { error: unknown }) {
   return (
     <div
-      className="flex items-start gap-2 rounded border border-(--color-error)/20 bg-(--color-error-subtle) p-3 text-(--color-error)"
+      className="flex items-start gap-2 rounded-sm border border-(--color-error)/20 bg-(--color-error-subtle) p-3 text-(--color-error)"
       role="alert"
     >
       <AlertCircle size={ICON_SIZE} aria-hidden="true" className="mt-px shrink-0" />

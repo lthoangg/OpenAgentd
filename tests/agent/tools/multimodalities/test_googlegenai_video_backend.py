@@ -30,7 +30,10 @@ from pathlib import Path
 import httpx2
 import pytest
 
-from app.agent.sandbox import SandboxConfig, set_sandbox
+from app.agent.denied_paths import (
+    DeniedPathsConfig as SandboxConfig,
+    set_denied_paths as set_sandbox,
+)
 from app.agent.tools.multimodalities import _config as mm_config
 from app.agent.tools.multimodalities.backends import googlegenai_video as ggv
 from app.agent.tools.multimodalities.video import _generate_video

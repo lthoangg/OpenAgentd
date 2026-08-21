@@ -114,6 +114,41 @@ describe('DiffPreview content parsing', () => {
     expect(container.textContent).toContain('Binary files a/logo.png and b/logo.png differ')
   })
 
+  it('omits the hunk separator when there are no skipped lines to report', async () => {
+    // First (and only) hunk starts at line 1, so there is nothing "unchanged"
+    // to report above it. Rendering an empty separator here used to leave a
+    // blank bordered strip between the file header and the first diff line.
+    const diff = [
+      'diff --git a/a.txt b/a.txt',
+      'index 1111111..2222222 100644',
+      '--- a/a.txt',
+      '+++ b/a.txt',
+      '@@ -1 +1 @@',
+      '-old',
+      '+new',
+    ].join('\n')
+
+    const { container } = await renderDiff(diff)
+
+    expect(container.textContent).not.toContain('unchanged')
+  })
+
+  it('still shows the hunk separator when lines were actually skipped', async () => {
+    const diff = [
+      'diff --git a/a.txt b/a.txt',
+      'index 1111111..2222222 100644',
+      '--- a/a.txt',
+      '+++ b/a.txt',
+      '@@ -10 +10 @@',
+      '-old',
+      '+new',
+    ].join('\n')
+
+    const { container } = await renderDiff(diff)
+
+    expect(container.textContent).toContain('9 lines unchanged')
+  })
+
   it('handles rename headers without leaking them as content', async () => {
     const diff = [
       'diff --git a/old.ts b/new.ts',

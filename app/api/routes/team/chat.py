@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import UTC, datetime
+import json
 from pathlib import Path
 from typing import AsyncGenerator, Literal
 from uuid import UUID
@@ -26,6 +27,7 @@ from app.api.routes.team._helpers import (
     build_mention_context_blocks,
     persist_queued_user_message,
     resolve_chat_team,
+    resolve_team_for_existing_session,
     validate_model_settings,
 )
 from app.api.routes.agents import is_registered_model_id
@@ -83,6 +85,8 @@ from app.services.chat_service import (
     get_team_history_since,
     get_latest_top_level_session,
     list_sessions_page,
+    resolve_legacy_delta_cursor,
+    resolve_legacy_history_cursor,
     save_message,
     save_queued_user_message,
     update_session_title,
@@ -149,7 +153,11 @@ def _serialize_agent(
     """
     from app.agent.hooks.summarization import resolve_prompt_token_threshold
     from app.agent.mcp import mcp_manager
-    from app.agent.sandbox import SandboxConfig, _sandbox_ctx, set_sandbox
+    from app.agent.denied_paths import (
+        DeniedPathsConfig,
+        _denied_paths_ctx,
+        set_denied_paths,
+    )
 
     _custom = (
         _custom_prompt_token_threshold()
@@ -166,7 +174,7 @@ def _serialize_agent(
         tools_by_name[tool.name] = tool
 
     sandbox_token = (
-        set_sandbox(SandboxConfig(workspace=workspace)) if workspace else None
+        set_denied_paths(DeniedPathsConfig(workspace=workspace)) if workspace else None
     )
     try:
         tools_payload = [
@@ -175,7 +183,7 @@ def _serialize_agent(
         ]
     finally:
         if sandbox_token is not None:
-            _sandbox_ctx.reset(sandbox_token)
+            _denied_paths_ctx.reset(sandbox_token)
 
     return {
         "name": agent.name,
@@ -298,31 +306,6 @@ async def team_chat(
         return TeamChatResponse(status="interrupted", session_id=session_id)
 
     assert message is not None
-    if body.shell:
-        if files:
-            raise HTTPException(
-                status_code=422,
-                detail="Shell commands cannot include file uploads.",
-            )
-        command = message.strip()
-        if command.startswith("!"):
-            command = command[1:].strip()
-        if not command:
-            raise HTTPException(status_code=422, detail="Shell command is required.")
-        sid = await agent_service.dispatch_user_shell_command(
-            team_obj,
-            command=command,
-            session_id=session_id,
-            mode=mode,
-            workspace=workspace,
-            model=model,
-            model_provided=model_provided,
-            thinking_level=thinking_level,
-            thinking_level_provided=thinking_level_provided,
-            service_tier=fast_mode_service_tier,
-        )
-        logger.info("team_chat_shell_received session_id={}", sid)
-        return TeamChatResponse(status="accepted", session_id=sid)
 
     # Materialise the multipart uploads into transport-neutral attachments
     # so agent_service can validate + persist them without knowing about
@@ -426,7 +409,7 @@ async def cancel_queued_message(
 class CommandRequest(BaseModel):
     """Request body for ``POST /team/commands``."""
 
-    command: Literal["continue", "compact", "undo", "redo"]
+    command: Literal["compact", "undo", "redo", "redo-all", "redo_all"]
     session_id: str
 
 
@@ -439,11 +422,6 @@ async def team_command(
 
     Currently supported:
 
-    * ``continue`` — resume from the last assistant turn.  The provider
-      sees the existing history (ending in the prior assistant message)
-      and keeps generating; the resulting first assistant row is flagged
-      ``extra["is_continuation"] = True`` so the UI can render it tight
-      against the prior bubble.
     * ``compact`` — force the existing summariser before the next model call
       without adding a visible user message.
     * ``undo`` / ``redo`` — move the visible conversation boundary backward or
@@ -452,37 +430,15 @@ async def team_command(
     Returns 202 with the session_id.  Subscribe to
     ``GET /team/stream/{session_id}`` for the SSE feed.
 
-    Returns 409 with a human-readable ``detail`` when the session can't
-    be continued (no assistant message, last message has unfinished tool
-    calls, lead is already working, etc.).
+    Returns 409 with a human-readable ``detail`` when the command cannot
+    be executed (lead is already working, invalid session state, etc.).
     """
-    team_obj = await team_manager.get_or_start_team_for_session(body.session_id)
-    team_obj = _require_team(team_obj)
-
-    if body.command == "compact":
-        try:
-            session_uuid = UUID(body.session_id)
-        except ValueError as exc:
-            raise HTTPException(status_code=422, detail="Invalid session id.") from exc
-        async with db.begin():
-            existing = await db.get(ChatSession, session_uuid)
-        if existing and existing.mode == "coding" and existing.workspace:
-            try:
-                team_obj = await team_manager.get_or_start_coding_team(
-                    _validate_workspace_or_422(existing.workspace), body.session_id
-                )
-            except ValueError as exc:
-                raise HTTPException(status_code=422, detail=str(exc)) from exc
-
-    if body.command == "continue":
-        try:
-            sid = await team_obj.handle_continue(body.session_id)
-        except ContinuePreconditionError as exc:
-            raise HTTPException(status_code=exc.status, detail=exc.reason) from exc
-        logger.info("team_command_continue session_id={}", sid)
-        return TeamCommandResponse(
-            status="accepted", session_id=sid, command="continue"
-        )
+    # A coding session's team binding is authoritative regardless of which
+    # command is being run — every branch shares one lookup so a new
+    # command can't reintroduce the bug where only ``compact`` re-resolved
+    # to the coding team and ``undo``/``redo``/``redo-all`` silently ran
+    # (and got cached) against the workspace-less default team instead.
+    team_obj = await resolve_team_for_existing_session(db, body.session_id)
 
     if body.command == "compact":
         try:
@@ -520,6 +476,20 @@ async def team_command(
             message=(
                 _message_response(shift.target) if shift.target is not None else None
             ),
+            changed_paths=ChangedPathsPayload(**_changed_paths_payload(shift)),
+        )
+
+    if body.command in ("redo-all", "redo_all"):
+        try:
+            sid, shift = await team_obj.handle_redo_all(body.session_id)
+        except ContinuePreconditionError as exc:
+            raise HTTPException(status_code=exc.status, detail=exc.reason) from exc
+        logger.info("team_command_redo_all session_id={}", sid)
+        return TeamCommandResponse(
+            status="accepted",
+            session_id=sid,
+            command="redo-all",
+            message=None,
             changed_paths=ChangedPathsPayload(**_changed_paths_payload(shift)),
         )
 
@@ -573,9 +543,21 @@ async def team_stream(session_id: str, request: Request, db: DbSession):
                 }
         except Exception as exc:
             logger.exception("team_stream_error type={}", type(exc).__name__)
+            from app.agent.errors import format_agent_error
+
+            err_info = format_agent_error(exc)
+            payload = json.dumps(
+                {
+                    "type": "error",
+                    "title": err_info.get("title", "Stream Error"),
+                    "message": f"stream_error:{type(exc).__name__}",
+                    "code": err_info.get("code", "stream_error"),
+                    "category": err_info.get("category", "network"),
+                }
+            )
             yield {
                 "event": "error",
-                "data": f'{{"type":"error","message":"stream_error:{type(exc).__name__}"}}',
+                "data": payload,
             }
 
     return EventSourceResponse(_gen())
@@ -718,15 +700,15 @@ async def list_team_sessions(
     db: DbSession,
     before: str | None = Query(
         None,
-        description="ISO 8601 created_at cursor — return sessions older than this.",
+        description="Opaque pagination cursor — return sessions older than this.",
     ),
     limit: int = Query(20, ge=1, le=100),
     mode: str | None = Query(None),
     workspace: str | None = Query(None),
 ) -> SessionPageResponse:
-    """List team lead sessions newest-first, cursor-paginated by created_at.
+    """List team lead sessions newest-first with an opaque cursor.
 
-    Pass ``before=<created_at_iso>`` (the ``next_cursor`` from the previous
+    Pass ``before=<next_cursor>`` from the previous
     page) to retrieve the next batch.  Omit to start from the newest.
     """
     if mode is not None and mode not in {"normal", "coding"}:
@@ -745,7 +727,7 @@ async def list_team_sessions(
     except ValueError:
         raise HTTPException(
             status_code=422,
-            detail="Invalid 'before' cursor — expected ISO 8601 datetime.",
+            detail="Invalid 'before' cursor.",
         )
 
     running_session_ids = stream_store.running_session_ids()
@@ -859,10 +841,12 @@ async def resolve_team_session(
 async def update_coding_workspace_visibility(
     body: TeamWorkspaceVisibilityRequest, db: DbSession
 ) -> CodingWorkspaceVisibilityResponse:
-    workspace = (
-        str(Path(body.workspace).expanduser().resolve())
-        if body.hidden
-        else _validate_workspace_or_422(body.workspace)
+    # Hiding tolerates a workspace whose directory is gone (deleted or
+    # unmounted outside the app) so a stale sidebar entry stays removable;
+    # the restricted-root rule still applies. Unhiding requires a real
+    # directory. Both go through the single validation authority.
+    workspace = _validate_workspace_or_422(
+        body.workspace, require_exists=not body.hidden
     )
     async with db.begin():
         if body.hidden:
@@ -969,25 +953,38 @@ def _parse_cursor(raw: str, field: str) -> datetime:
     return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=UTC)
 
 
-def _parse_before_cursor(raw: str) -> tuple[datetime, UUID | None]:
-    """Parse a ``before`` cursor into its ``(created_at, id)`` components.
-
-    Accepts both the compound ``"<iso>|<uuid>"`` form emitted by
-    :func:`team_history` and the legacy bare-ISO form, so cursors a client
-    persisted before the id component existed keep working (they just cannot
-    break ``created_at`` ties). Clients treat the cursor as an opaque string
-    and echo it back verbatim.
-    """
-    timestamp, _, raw_id = raw.partition("|")
-    parsed = _parse_cursor(timestamp, "before")
-    if not raw_id:
-        return parsed, None
+def _parse_since_cursor(raw: str) -> UUID | datetime:
+    """Parse the current uuid7 delta cursor or a legacy ISO timestamp."""
     try:
-        return parsed, UUID(raw_id)
-    except ValueError as exc:
-        raise HTTPException(
-            status_code=422, detail=f"Invalid before cursor: {raw}"
-        ) from exc
+        return UUID(raw)
+    except ValueError:
+        return _parse_cursor(raw, "since")
+
+
+def _parse_before_cursor(
+    raw: str,
+) -> tuple[int | None, datetime | None, UUID | None]:
+    """Parse an opaque ``before`` cursor.
+
+    Current form is ``"<seq>|<uuid>"``. Two legacy forms are still accepted —
+    ``"<created_at-iso>|<uuid>"`` and a bare ISO timestamp — because clients
+    treat the cursor as an opaque string and may echo back one persisted
+    before the seq remodel. Returns ``(seq, legacy_created_at, id)`` with
+    exactly one of the first two set.
+    """
+    head, _, raw_id = raw.partition("|")
+    message_id: UUID | None = None
+    if raw_id:
+        try:
+            message_id = UUID(raw_id)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=422, detail=f"Invalid before cursor: {raw}"
+            ) from exc
+    try:
+        return int(head), None, message_id
+    except ValueError:
+        return None, _parse_cursor(head, "before"), message_id
 
 
 @router.get("/{session_id}/history")
@@ -998,19 +995,18 @@ async def team_history(
     before: str | None = Query(default=None),
     since: str | None = Query(
         default=None,
-        description="ISO 8601 created_at cursor — return only messages newer than this.",
+        description="Opaque uuid7 cursor — return only rows created after it.",
     ),
 ) -> TeamHistoryResponse:
     """Return a page of turn history (cursor-based, newest-first page).
 
     Pass ``before`` (the opaque ``next_cursor`` from the previous response) to
-    load an older page. The cursor encodes ``"<created_at-iso>|<message-id>"``;
-    the id breaks ``created_at`` ties, which team turns produce routinely by
-    batch-inserting lead and member rows. A bare ISO timestamp is still
-    accepted for older clients.
+    load an older page. The cursor encodes ``"<seq>|<message-id>"``; the id
+    breaks ``seq`` ties. Legacy timestamp cursors persisted by older clients
+    are transparently resolved to their ``(seq, id)`` position.
 
-    Pass ``since`` (``created_at`` of the newest message the caller already
-    holds) to fetch only what was persisted after it.  That is how the frontend
+    Pass ``since`` (the id of the newest-created row the caller already holds)
+    to fetch only what was persisted after it.  That is how the frontend
     adopts canonical message ids after a turn completes without re-downloading
     the whole visible page, which exceeds a megabyte on an active session and
     duplicates content the client already received over SSE.  A delta reports
@@ -1024,16 +1020,25 @@ async def team_history(
 
     if since is not None:
         return await _team_history_delta(
-            db, team, session_id, _parse_cursor(since, "since")
+            db, team, session_id, _parse_since_cursor(since)
         )
 
-    before_dt: datetime | None = None
+    before_seq: int | None = None
     before_id: UUID | None = None
     if before is not None:
-        before_dt, before_id = _parse_before_cursor(before)
+        before_seq, legacy_dt, before_id = _parse_before_cursor(before)
+        if before_seq is None and legacy_dt is not None:
+            resolved = await resolve_legacy_history_cursor(
+                db, session_id, legacy_dt, before_id
+            )
+            if resolved is None:
+                before_seq, before_id = None, None
+                before = None
+            else:
+                before_seq, before_id = resolved
 
     history = await get_team_history(
-        db, session_id, before=before_dt, before_id=before_id
+        db, session_id, before_seq=before_seq, before_id=before_id
     )
     if history is None:
         raise HTTPException(status_code=404, detail="Lead session not found.")
@@ -1068,15 +1073,15 @@ async def team_history(
     ]
 
     next_cursor = (
-        f"{history.next_cursor.isoformat()}|{history.next_cursor_id}"
-        if history.next_cursor and history.next_cursor_id
+        f"{history.next_cursor}|{history.next_cursor_id}"
+        if history.next_cursor is not None and history.next_cursor_id
         else None
     )
     # Only a first page can be a cold load, and only a cold load needs to learn
     # about an open question — paging backwards through history never does.
     pending_row = (
         None
-        if before_dt is not None
+        if before is not None
         else await question_service.get_pending_question(db, session_id)
     )
 
@@ -1095,7 +1100,7 @@ async def _team_history_delta(
     db: DbSession,
     team: TeamDep,
     session_id: UUID,
-    since: datetime,
+    since: UUID | datetime,
 ) -> TeamHistoryResponse:
     """Serve ``GET /{sid}/history?since=`` — messages newer than the cursor.
 
@@ -1103,7 +1108,12 @@ async def _team_history_delta(
     session still gets its team started, keeping the two paths interchangeable
     from the caller's point of view.
     """
-    delta = await get_team_history_since(db, session_id, since=since)
+    since_id = (
+        await resolve_legacy_delta_cursor(db, session_id, since)
+        if isinstance(since, datetime)
+        else since
+    )
+    delta = await get_team_history_since(db, session_id, since_id=since_id)
     if delta is None:
         raise HTTPException(status_code=404, detail="Lead session not found.")
     if delta.lead_session.mode == "coding" and delta.lead_session.workspace:

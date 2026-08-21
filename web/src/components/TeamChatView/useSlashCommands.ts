@@ -5,9 +5,9 @@
  * Owns:
  *   - Fetching user-defined commands + snippets (workspace-scoped queries).
  *   - Assembling the ``SlashCommand[]`` / ``SnippetCommand[]`` lists the
- *     ``InputBar`` renders in its picker (built-ins + backend-discovered).
+ *     ``InputComposer`` renders in its picker (built-ins + backend-discovered).
  *   - Dispatching a picked slash command (``stop`` / ``continue`` /
- *     ``compact`` / ``undo`` / ``redo`` / ``new`` / ``init`` — team-lifecycle
+ *     ``compact`` / ``undo`` / ``redo`` / ``redo-all`` / ``new`` / ``init`` — team-lifecycle
  *     actions read straight off ``useTeamStore.getState()`` since they're
  *     one-shot imperative calls, not part of the render subscription).
  *   - Expanding a user-defined ``/command`` at submit time by rendering it
@@ -21,15 +21,18 @@ import { useSnippetsQuery } from '@/queries/useSnippetsQuery'
 import { renderCommand, renderSnippet } from '@/api/client'
 import { useTeamStore } from '@/stores/useTeamStore'
 import { useToastStore } from '@/stores/useToastStore'
-import { type InputBarHandle, type SlashCommand, type SnippetCommand } from '../InputBar'
-import { BASE_SLASH_COMMANDS, attachmentToFile } from './helpers'
+import { type InputComposerHandle, type SlashCommand, type SnippetCommand } from '../InputComposer'
+import { filterBaseSlashCommands, attachmentToFile } from './helpers'
 
 export interface UseSlashCommandsArgs {
   mode: 'normal' | 'coding'
   /** Coding workspace path, or `null` in normal mode / no workspace attached. */
   agentWorkspace: string | null
-  inputRef: RefObject<InputBarHandle | null>
+  inputRef: RefObject<InputComposerHandle | null>
   handleNewSession: () => void
+  isTeamWorking?: boolean
+  revertedCount?: number
+  hasVisibleMessages?: boolean
 }
 
 export interface UseSlashCommandsResult {
@@ -49,10 +52,12 @@ export function useSlashCommands({
   agentWorkspace,
   inputRef,
   handleNewSession,
+  isTeamWorking = false,
+  revertedCount = 0,
+  hasVisibleMessages = false,
 }: UseSlashCommandsArgs): UseSlashCommandsResult {
   const pushToast = useToastStore((s) => s.push)
 
-  // Shell shortcut: start a message with `!` to run the rest as a shell command.
   // Slash commands for the input bar (type / to trigger).
   // Built-ins execute immediately on pick; user-defined commands are inserted
   // into the textarea (``keepInputOpen``) so the user can append
@@ -63,8 +68,20 @@ export function useSlashCommands({
     () => new Set<string>((commandsQ.data?.commands ?? []).map((c) => c.name)),
     [commandsQ.data],
   )
+  const baseCommands = useMemo(
+    () =>
+      filterBaseSlashCommands({
+        isTeamWorking,
+        revertedCount,
+        hasVisibleMessages,
+        mode,
+        hasWorkspace: Boolean(agentWorkspace),
+      }),
+    [isTeamWorking, revertedCount, hasVisibleMessages, mode, agentWorkspace],
+  )
+
   const slashCommands: SlashCommand[] = useMemo(() => [
-    ...BASE_SLASH_COMMANDS,
+    ...baseCommands,
     ...(commandsQ.data?.commands ?? []).map((c) => {
       const displayName = c.name.replace('/', ':')
       return {
@@ -77,7 +94,7 @@ export function useSlashCommands({
         keepInputOpen: true,
       }
     }),
-  ], [commandsQ.data?.commands])
+  ], [baseCommands, commandsQ.data?.commands])
 
   const snippetCommands: SnippetCommand[] = (snippetsQ.data?.snippets ?? []).map((item) => ({
     id: item.name,
@@ -106,9 +123,6 @@ export function useSlashCommands({
       case 'stop':
         useTeamStore.getState().stopTeam()
         break
-      case 'continue':
-        useTeamStore.getState().continueTeam()
-        break
       case 'compact':
         useTeamStore.getState().compactTeam()
         break
@@ -127,6 +141,12 @@ export function useSlashCommands({
         break
       case 'redo':
         void useTeamStore.getState().redoTeam().then(() => {
+          inputRef.current?.setValue('')
+          inputRef.current?.setFiles([])
+        })
+        break
+      case 'redo-all':
+        void useTeamStore.getState().redoAllTeam().then(() => {
           inputRef.current?.setValue('')
           inputRef.current?.setFiles([])
         })

@@ -21,6 +21,8 @@ from typing import TYPE_CHECKING
 from loguru import logger
 
 if TYPE_CHECKING:
+    from collections.abc import Awaitable
+
     from app.agent.schemas.chat import ToolCall
 
 
@@ -29,7 +31,7 @@ _detached_tool_tasks: set[asyncio.Future] = set()
 
 
 async def gather_or_cancel(
-    coros: list,
+    coros: list[Awaitable[tuple[ToolCall, str]]],
     interrupt_event: asyncio.Event | None,
     tc_list: list[ToolCall],
     agent_name: str,
@@ -124,8 +126,8 @@ async def gather_or_cancel(
                 agent_name,
                 tc.function.name,
             )
-        elif task.exception() is not None:
-            results.append(task.exception())  # type: ignore[arg-type]
+        elif (exc := task.exception()) is not None:
+            results.append(exc)
         else:
             results.append(task.result())
     return results

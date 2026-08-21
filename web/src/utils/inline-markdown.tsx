@@ -2,13 +2,13 @@
  * Inline-only markdown for short, model-authored strings.
  *
  * Deliberately its own module rather than a call to ``LazyMarkdownBlock``,
- * which already code-splits the full ``markdown.tsx`` graph (react-markdown,
- * KaTeX, highlight.js, Mermaid) into an on-demand chunk. So the reason is *not*
- * initial bundle size — that chunk is never in the eager path. It is:
+ * which already code-splits the full ``markdown.tsx`` graph
+ * (@tanstack/markdown, Mermaid) into an on-demand chunk. So the reason is
+ * *not* initial bundle size — that chunk is never in the eager path. It is:
  *
  * - **No async boundary for one line.** Going through the lazy renderer means a
- *   ~134 kB gzip chunk fetch plus a Suspense fallback to draw a question label;
- *   the card would visibly reflow on open.
+ *   chunk fetch plus a Suspense fallback to draw a question label; the card
+ *   would visibly reflow on open.
  * - **Block markup is wrong here.** That renderer emits an ``oa-prose``
  *   wrapper and ``<p>`` elements, which break a compact card's layout.
  * - **No links, by design.** See ``INLINE_MARKERS`` below: these strings are
@@ -16,7 +16,8 @@
  *   clickable target the model chose is a phishing surface.
  * - **Cheap tests.** Components rendering this need no markdown graph loaded.
  */
-import { useMemo } from 'react'
+import { memo, useMemo } from 'react'
+import { MathSpan } from '@/utils/markdown-math'
 
 
 
@@ -39,13 +40,13 @@ import { useMemo } from 'react'
  * keeps ``snake_case_names`` intact.
  */
 const INLINE_MARKERS =
-  /`([^`\n]+)`|\*\*(\S(?:[^*\n]*\S)?)\*\*|\*(\S(?:[^*\n]*\S)?)\*|(?<![A-Za-z0-9])_(\S(?:[^_\n]*\S)?)_(?![A-Za-z0-9])/g
+  /`([^`\n]+)`|\$(?!\s)([^$\n]+?)(?<![\s\\])\$|\*\*(\S(?:[^*\n]*\S)?)\*\*|\*(\S(?:[^*\n]*\S)?)\*|(?<![A-Za-z0-9])_(\S(?:[^_\n]*\S)?)_(?![A-Za-z0-9])/g
 
 /** Code-only subset, for text where emphasis would just be noise. */
 const INLINE_CODE_ONLY = /`([^`\n]+)`/g
 
 const INLINE_CODE_CLASS =
-  'rounded bg-(--bg-key) px-1 py-0.5 font-mono text-[0.9em] text-(--color-text)'
+  'rounded-sm bg-(--bg-key) px-1 py-0.5 font-mono text-[0.9em] text-(--color-text)'
 
 function tokenizeInline(text: string, variant: 'full' | 'code'): React.ReactNode[] {
   const pattern = variant === 'code' ? INLINE_CODE_ONLY : INLINE_MARKERS
@@ -58,18 +59,32 @@ function tokenizeInline(text: string, variant: 'full' | 'code'): React.ReactNode
 
   while ((match = pattern.exec(text)) !== null) {
     if (match.index > cursor) nodes.push(text.slice(cursor, match.index))
-    const [, code, bold, star, underscore] = match
-    const key = `${match.index}`
-    if (code !== undefined) {
-      nodes.push(
-        <code key={key} className={INLINE_CODE_CLASS}>
-          {code}
-        </code>,
-      )
-    } else if (bold !== undefined) {
-      nodes.push(<strong key={key}>{bold}</strong>)
+    if (variant === 'code') {
+      const [, code] = match
+      const key = `${match.index}`
+      if (code !== undefined) {
+        nodes.push(
+          <code key={key} className={INLINE_CODE_CLASS}>
+            {code}
+          </code>,
+        )
+      }
     } else {
-      nodes.push(<em key={key}>{star ?? underscore}</em>)
+      const [, code, math, bold, star, underscore] = match
+      const key = `${match.index}`
+      if (code !== undefined) {
+        nodes.push(
+          <code key={key} className={INLINE_CODE_CLASS}>
+            {code}
+          </code>,
+        )
+      } else if (math !== undefined) {
+        nodes.push(<MathSpan key={key} math={math} />)
+      } else if (bold !== undefined) {
+        nodes.push(<strong key={key}>{bold}</strong>)
+      } else {
+        nodes.push(<em key={key}>{star ?? underscore}</em>)
+      }
     }
     cursor = match.index + match[0].length
   }
@@ -87,7 +102,7 @@ function tokenizeInline(text: string, variant: 'full' | 'code'): React.ReactNode
  *
  * ``variant="code"`` renders inline code and nothing else.
  */
-export function InlineMarkdown({
+export const InlineMarkdown = memo(function InlineMarkdown({
   text,
   variant = 'full',
   className,
@@ -98,4 +113,4 @@ export function InlineMarkdown({
 }) {
   const nodes = useMemo(() => tokenizeInline(text, variant), [text, variant])
   return <span className={className}>{nodes}</span>
-}
+})

@@ -22,7 +22,7 @@ use tauri::{
     menu::MenuItem,
     AppHandle, Emitter, Manager, RunEvent, Runtime, WindowEvent, Wry,
 };
-use tauri_plugin_log::{Target, TargetKind};
+use tauri_plugin_log::{RotationStrategy, Target, TargetKind};
 use tokio::sync::Mutex;
 
 use crate::sidecar::Sidecar;
@@ -165,6 +165,9 @@ pub struct CachedUpdateState {
 }
 
 pub const NORMAL_SHUTDOWN_GRACE: Duration = Duration::from_secs(5);
+/// Size cap for one `desktop.log` generation. The plugin's 40 KB default
+/// kept less than a day of history.
+pub const DESKTOP_LOG_MAX_BYTES: u128 = 5 * 1024 * 1024;
 /// First execution of the freshly installed 400+ MB sidecar can spend tens
 /// of seconds in OS security scanning before Python emits any stdout.
 pub const SIDECAR_HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(60);
@@ -569,6 +572,13 @@ fn main() {
 
     let log_plugin = tauri_plugin_log::Builder::new()
         .level(log::LevelFilter::Info)
+        // The plugin defaults to a 40 KB cap with `KeepOne`, which silently
+        // discards the previous file — a production `desktop.log` held under
+        // a day of history, so anything older than the last 40 KB was gone
+        // before a user could report it. "View Desktop Log" is the primary
+        // support artifact; give it room and keep a few generations.
+        .max_file_size(DESKTOP_LOG_MAX_BYTES)
+        .rotation_strategy(RotationStrategy::KeepSome(3))
         .targets([
             Target::new(TargetKind::Stdout),
             Target::new(TargetKind::LogDir {
@@ -597,7 +607,6 @@ fn main() {
         .manage(state)
         .on_menu_event(|app, event| handle_desktop_menu(app, event.id().as_ref()))
         .invoke_handler(tauri::generate_handler![
-            commands::request_voice_permissions,
             commands::show_desktop_notification,
             commands::secure_get_access_key,
             commands::secure_set_access_key,
@@ -633,6 +642,9 @@ fn main() {
             );
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
+                // Bundles from previous runs are unreachable (`update_state`
+                // is in-memory and starts empty), so reclaim their disk.
+                updater::purge_cached_updates(&handle);
                 let updater_handle = handle.clone();
                 tauri::async_runtime::spawn(async move {
                     tokio::time::sleep(Duration::from_secs(5)).await;
@@ -738,7 +750,7 @@ mod tests {
     use std::path::Path;
     use tauri_plugin_dialog::MessageDialogResult;
     use crate::window::{frontend_init_script, inherited_external_base_url, new_window_init_script};
-    use crate::updater::{dialog_result_is_accept, format_update_prompt, format_download_progress, validate_install_preconditions};
+    use crate::updater::{dialog_result_is_accept, format_update_prompt, format_download_progress, should_emit_progress, silent_check_is_due, validate_install_preconditions};
     use crate::config::AppBackendConfig;
 
     #[test]
@@ -948,6 +960,91 @@ mod tests {
     #[test]
     fn first_run_sidecar_handshake_allows_cold_security_scans() {
         assert_eq!(SIDECAR_HANDSHAKE_TIMEOUT, Duration::from_secs(60));
+    }
+
+    // ── silent_check_is_due ─────────────────────────────────────────────────
+    //
+    // `UpdateCard.tsx` keeps its 6h schedule in component refs that reseed to
+    // "now" on every mount, so each window/reload/foreground event fired a
+    // fresh check — production logs showed 5-10 GitHub requests per hour.
+    // This gate is the process-wide backstop.
+
+    const ONE_HOUR: i64 = 60 * 60;
+
+    #[test]
+    fn the_first_automatic_check_of_a_launch_is_always_due() {
+        // `LAST_SILENT_CHECK` starts at 0, so a fresh process never waits.
+        assert!(silent_check_is_due(1_760_000_000, 0));
+    }
+
+    #[test]
+    fn a_second_automatic_check_inside_the_gap_is_skipped() {
+        let last = 1_760_000_000;
+
+        // The startup double-fire seen in production: two checks one second apart.
+        assert!(!silent_check_is_due(last + 1, last));
+        assert!(!silent_check_is_due(last + ONE_HOUR - 1, last));
+    }
+
+    #[test]
+    fn an_automatic_check_is_due_again_once_the_gap_elapses() {
+        let last = 1_760_000_000;
+
+        assert!(silent_check_is_due(last + ONE_HOUR, last));
+    }
+
+    #[test]
+    fn a_backwards_clock_step_does_not_wedge_automatic_checks() {
+        // Saturating arithmetic: a clock that jumped backwards must not
+        // produce a huge positive gap and let every check through, nor
+        // underflow. It simply reads as "not due yet".
+        let last = 1_760_000_000;
+
+        assert!(!silent_check_is_due(last - ONE_HOUR, last));
+    }
+
+    // ── should_emit_progress ────────────────────────────────────────────────
+    //
+    // The updater plugin calls the progress closure once per network chunk,
+    // so a 200 MB bundle produced thousands of IPC emits and thousands of
+    // main-thread menu updates.
+
+    #[test]
+    fn the_first_chunk_always_reports_progress() {
+        assert!(should_emit_progress(None, 8_192, Some(200_000_000)));
+    }
+
+    #[test]
+    fn chunks_inside_the_interval_are_coalesced() {
+        assert!(!should_emit_progress(
+            Some(Duration::from_millis(10)),
+            8_192,
+            Some(200_000_000)
+        ));
+    }
+
+    #[test]
+    fn progress_reports_resume_once_the_interval_elapses() {
+        assert!(should_emit_progress(
+            Some(Duration::from_millis(250)),
+            8_192,
+            Some(200_000_000)
+        ));
+    }
+
+    #[test]
+    fn the_final_chunk_always_reports_so_the_bar_completes() {
+        assert!(should_emit_progress(
+            Some(Duration::from_millis(1)),
+            200_000_000,
+            Some(200_000_000)
+        ));
+    }
+
+    #[test]
+    fn an_unknown_total_still_throttles_on_time() {
+        assert!(!should_emit_progress(Some(Duration::from_millis(10)), 8_192, None));
+        assert!(should_emit_progress(Some(Duration::from_millis(300)), 8_192, None));
     }
 
     #[cfg(not(target_os = "macos"))]

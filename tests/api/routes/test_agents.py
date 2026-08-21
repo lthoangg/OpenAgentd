@@ -161,10 +161,8 @@ async def test_list_materialized_coding_explorer_uses_builtin_tools(
     rows = {row["name"]: row for row in res.json()["agents"]}
     explorer = rows["coding/explorer"]
     assert explorer["description"].startswith("Checks the current codebase")
-    assert set(["date", "glob", "grep", "ls", "read", "shell", "skill"]).issubset(
-        explorer["tools"]
-    )
-    assert "write" not in explorer["tools"]
+    assert set(["glob", "grep", "read", "shell", "skill"]).issubset(explorer["tools"])
+    assert "patch" not in explorer["tools"]
 
 
 @pytest.mark.asyncio
@@ -250,7 +248,7 @@ async def test_registry_returns_catalog(
     assert "tools" in body and "skills" in body and "models" in body
     tool_names = {t["name"] for t in body["tools"]}
     # A few builtins we know must exist.
-    assert {"read", "write", "shell", "date"}.issubset(tool_names)
+    assert {"read", "patch", "shell", "grep"}.issubset(tool_names)
     assert {"skill", "todo_manage", "schedule_task", "note"}.isdisjoint(tool_names)
     assert isinstance(body["providers"], list) and body["providers"]
 
@@ -431,6 +429,43 @@ async def test_registry_filters_cached_models_using_refreshed_visible_models(
     assert "openai:shown-model" in model_ids
     assert "openai:hidden-model" not in model_ids
     assert load_settings.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_registry_ignores_visible_models_no_longer_listed(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """A stale visible entry (the provider dropped the model) must not hide
+    the provider's remaining models — the visible whitelist is limited to
+    models the provider still lists."""
+    from app.api.routes import agents as agents_routes
+    from app.core.runtime_settings import ProviderUiSettings, RuntimeSettings
+
+    load_settings = Mock(
+        return_value=RuntimeSettings(
+            providers={
+                "openai": ProviderUiSettings(
+                    cached_models=["shown-model", "hidden-model"],
+                    visible_models=["retired-model"],
+                )
+            }
+        )
+    )
+    monkeypatch.setattr(agents_routes, "load_runtime_settings", load_settings)
+    monkeypatch.setattr(
+        agents_routes,
+        "all_providers",
+        lambda: [{"id": "openai", "kind": "api_key", "label": "OpenAI"}],
+    )
+    monkeypatch.setattr(agents_routes, "_provider_is_configured", lambda _entry: False)
+    monkeypatch.setattr(agents_routes, "is_agent_model_id", lambda _model_id: True)
+
+    request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace()))
+    registry = await agents_routes.get_registry(request)
+
+    model_ids = {model.id for model in registry.models}
+    assert "openai:shown-model" in model_ids
+    assert "openai:hidden-model" in model_ids
 
 
 @pytest.mark.asyncio

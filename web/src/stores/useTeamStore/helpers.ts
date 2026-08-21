@@ -113,12 +113,8 @@ export function applyLocalBlockTransform(
 }
 
 export const FS_MUTATING_TOOLS = new Set([
-  'write',
-  'edit',
-  'rm',
   'patch',
   'shell',
-  'bg',
   'generate_image',
   'generate_video',
 ])
@@ -127,7 +123,7 @@ export const SCHEDULER_MUTATING_TOOLS = new Set(['schedule_task'])
 
 export const TODO_MUTATING_TOOLS = new Set(['todo_manage'])
 
-const PATH_BEARING_TOOLS = new Set(['write', 'edit', 'rm', 'patch'])
+const PATH_BEARING_TOOLS = new Set(['patch'])
 
 const PATCH_PATH_RE = /^\*\*\* (?:Add|Update|Delete) File: (.+)$/gm
 
@@ -211,7 +207,7 @@ export function applyRevertBoundary(
     stream.status = 'idle'
   }
 
-  if (boundaryTime === null) {
+  if (boundaryTime === null && !options.boundaryId && !options.boundaryContent) {
     stream.blocks = all
     stream._revertedSuffix = []
     stream.revertedCount = 0
@@ -225,11 +221,13 @@ export function applyRevertBoundary(
   // `done` stamps them: an unstamped block reads as t=0, but it trails a stamped
   // one in append order, so the split lands before it either way.
   let splitIdx = all.length
-  for (let i = 0; i < all.length; i++) {
-    const t = all[i].timestamp?.getTime() ?? 0
-    if (t >= boundaryTime) {
-      splitIdx = i
-      break
+  if (boundaryTime !== null) {
+    for (let i = 0; i < all.length; i++) {
+      const t = all[i].timestamp?.getTime() ?? 0
+      if (t >= boundaryTime) {
+        splitIdx = i
+        break
+      }
     }
   }
 
@@ -255,6 +253,9 @@ export function applyRevertBoundary(
           break
         }
       }
+    } else if (boundaryTime === null) {
+      // Boundary id specified but not in `all` (e.g. paged out) and no timestamp
+      splitIdx = 0
     }
   } else if (options.boundaryContent) {
     for (let i = all.length - 1; i >= 0; i--) {

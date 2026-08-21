@@ -38,18 +38,42 @@ from app.services.agent_service import (
 #   bytes via ``GET /api/team/{sid}/uploads/{filename}`` instead.
 _INTERNAL_ATTACHMENT_FIELDS = frozenset({"converted_text", "path", "workspace_path"})
 
+# Top-level ``extra`` keys stripped from display responses.
+#
+# ``parts`` is persisted for ``ToolMessage`` rows only (see
+# ``chat_service.save_message``) and holds the base64 ``image_data`` blocks the
+# provider replays for vision — several MB on a single ``read`` of an image.
+# Clients render ``content`` (``[Image: uploads/x.png]``) and fetch the bytes
+# from the uploads endpoint, exactly as they do for attachments, so shipping
+# the blob is pure transfer cost.
+#
+# ``ChatMessage.parts`` is already ``Field(exclude=True)`` to keep base64 out
+# of generic serialization; this closes the same hole on the display path,
+# which serialises the ORM row rather than the deserialised message. The
+# context path (``get_messages_for_llm``) reads ``parts`` off the row directly
+# and is unaffected.
+_DISPLAY_STRIPPED_EXTRA_FIELDS = frozenset({"parts"})
+
 
 def _message_response(m) -> MessageResponse:
     resp = MessageResponse.model_validate(m)
-    if m.extra and m.extra.get("is_continuation"):
+    extra = m.extra
+    if extra and extra.get("is_continuation"):
         resp.reasoning_content = None
-    if m.extra and isinstance(m.extra.get("attachments"), list):
+    if extra and _DISPLAY_STRIPPED_EXTRA_FIELDS & extra.keys():
+        # Rebuild rather than mutate: ``resp.extra`` may alias the ORM row's
+        # dict, and that row is reused by the context path.
+        extra = {
+            k: v for k, v in extra.items() if k not in _DISPLAY_STRIPPED_EXTRA_FIELDS
+        }
+        resp.extra = extra or None
+    if extra and isinstance(extra.get("attachments"), list):
         public_attachments = [
             {k: v for k, v in att.items() if k not in _INTERNAL_ATTACHMENT_FIELDS}
-            for att in m.extra["attachments"]
+            for att in extra["attachments"]
         ]
         resp.attachments = public_attachments
-        resp.extra = {**m.extra, "attachments": public_attachments}
+        resp.extra = {**extra, "attachments": public_attachments}
         resp.file_message = True
     return resp
 
@@ -61,7 +85,7 @@ def _require_team(team: AgentTeam | None) -> AgentTeam:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
-def _validate_workspace_or_422(workspace: str) -> str:
+def _validate_workspace_or_422(workspace: str, *, require_exists: bool = True) -> str:
     """Route ``workspace`` through the single validation authority.
 
     ``team_manager.validate_workspace`` is the sole authority for workspace
@@ -70,7 +94,7 @@ def _validate_workspace_or_422(workspace: str) -> str:
     ``Path(workspace).resolve()`` anywhere else.
     """
     try:
-        return team_manager.validate_workspace(workspace)
+        return team_manager.validate_workspace(workspace, require_exists=require_exists)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
@@ -112,6 +136,38 @@ class ResolvedChatTeam:
     session_uuid: UUID | None
     mode: str
     workspace: str | None
+
+
+async def resolve_team_for_existing_session(
+    db: AsyncSession, session_id: str
+) -> AgentTeam:
+    """Return the team that owns an *already-persisted* session.
+
+    A coding session's persisted workspace is always authoritative — every
+    command dispatched against the session (``compact``, ``undo``, ``redo``,
+    ``redo-all``, ...) must resolve to the same coding team, never the
+    workspace-less default team. Sharing this lookup (rather than each
+    command branch re-implementing it) is what keeps that guarantee from
+    silently regressing when a new command is added.
+
+    Raises :class:`HTTPException` (422 invalid session id / workspace) as
+    the callers previously did inline.
+    """
+    try:
+        session_uuid = UUID(session_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="Invalid session id.") from exc
+    async with db.begin():
+        existing = await db.get(ChatSession, session_uuid)
+    if existing and existing.mode == "coding" and existing.workspace:
+        try:
+            return await team_manager.get_or_start_coding_team(
+                _validate_workspace_or_422(existing.workspace), session_id
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+    team_obj = await team_manager.get_or_start_team_for_session(session_id)
+    return _require_team(team_obj)
 
 
 async def resolve_chat_team(

@@ -9,6 +9,7 @@ import pytest
 
 from app.services.commands import (
     discover_commands,
+    get_builtin_command,
     render_command,
 )
 
@@ -405,3 +406,40 @@ def test_commands_three_levels_deep_ignored(roots):
     result = discover_commands(workspace=cwd)
 
     assert result == {}
+
+
+# ── Builtin commands ────────────────────────────────────────────────────────
+
+
+def test_get_builtin_command_init():
+    cmd = get_builtin_command("init")
+    assert cmd is not None
+    assert cmd.name == "init"
+    assert cmd.source == "builtin"
+    assert cmd.description == "Create or update AGENTS.md for this project."
+    assert "# AGENTS.md Repository Analyzer & Generator" in cmd.body
+    assert "operational map for coding agents" in cmd.body
+    assert "1. Core Principles" in cmd.body
+    assert "1.1 Evidence Over Assumptions" in cmd.body
+    assert "1.2 Prefer Executable Truth" in cmd.body
+    assert "1.3 Root = Defaults, Child = Delta" in cmd.body
+    assert "1.4 Keep Context Small" in cmd.body
+    assert "1.5 Document Meaning, Not Trivia" in cmd.body
+    assert "2. Phase One — Discover Existing Instructions" in cmd.body
+    assert "3. Phase Two — Inspect Repository Tooling" in cmd.body
+    assert "4. Phase Three — Build an Internal Repository Model" in cmd.body
+    assert "5. Phase Four — Determine Instruction Scopes" in cmd.body
+    assert "14. Verify Commands" in cmd.body
+    assert "22. AGENTS.md Quality Gate" in cmd.body
+    assert "23. Fresh-Agent Usability Test" in cmd.body
+    assert "30. Final Response" in cmd.body
+    assert "## AGENTS.md Changes" in cmd.body
+    assert "## Repository Conventions Discovered" in cmd.body
+    assert "## Verification" in cmd.body
+    assert "## Conflicts or Drift" in cmd.body
+    assert "## Mechanical Enforcement Candidates" in cmd.body
+    assert "31. Execution Requirement" in cmd.body
+
+
+def test_get_builtin_command_unknown():
+    assert get_builtin_command("unknown") is None

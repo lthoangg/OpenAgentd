@@ -228,7 +228,7 @@ function ListCard({ row }: { row: ListViewRow }) {
 
           {/* Role / type badge */}
           {row.badge && (
-            <span className="shrink-0 rounded border border-(--color-border) bg-(--bg-key) px-1.5 py-px font-mono text-[9px] font-semibold uppercase tracking-wide text-(--color-text-muted) select-none">
+            <span className="shrink-0 rounded-xs border border-(--color-border) bg-(--bg-key) px-1.5 py-px font-mono text-[9px] font-semibold uppercase tracking-wide text-(--color-text-muted) select-none">
               {row.badge}
             </span>
           )}

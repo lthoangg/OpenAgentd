@@ -7,9 +7,9 @@ clients only receive events published while they are connected.
 from __future__ import annotations
 
 import asyncio
-import json
 from collections.abc import AsyncGenerator
 from typing import Any, cast
+import orjson
 
 from loguru import logger
 
@@ -20,7 +20,7 @@ _subscribers: set[asyncio.Queue[dict[str, str] | object]] = set()
 
 async def publish(event: str, data: dict[str, Any]) -> None:
     """Fan out one global event to current subscribers without retaining it."""
-    wire = {"event": event, "data": json.dumps(data)}
+    wire = {"event": event, "data": orjson.dumps(data).decode("utf-8")}
     dead: list[asyncio.Queue[dict[str, str] | object]] = []
     for queue in tuple(_subscribers):
         try:

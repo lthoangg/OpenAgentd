@@ -1,7 +1,5 @@
 # Automatically generated - DO NOT EDIT!
 
-"$schema" = "../schemas/schema.json"
-
 [[permission]]
 identifier = "allow-app-use-external-backend"
 description = "Enables the app_use_external_backend command without any pre-configured scope."

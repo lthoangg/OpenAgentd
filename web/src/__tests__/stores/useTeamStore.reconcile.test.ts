@@ -104,14 +104,67 @@ beforeEach(() => {
 describe('reconcileTurnTail', () => {
   it('fetches only the delta using the synced watermark', async () => {
     await seedLoadedSession()
-    expect(useTeamStore.getState()._syncedThrough).toBe('2026-07-01T00:00:01Z')
+    expect(useTeamStore.getState()._syncedThrough).toBe('m2')
     mockTeamHistory.mockClear()
 
     await useTeamStore.getState().reconcileTurnTail('lead-sess')
 
-    expect(mockTeamHistorySince).toHaveBeenCalledWith('lead-sess', '2026-07-01T00:00:01Z')
+    expect(mockTeamHistorySince).toHaveBeenCalledWith('lead-sess', 'm2')
     // The whole point: no full page refetch.
     expect(mockTeamHistory).not.toHaveBeenCalled()
+  })
+
+  // Delta-boundary regression: a mid-turn loadSession advances the watermark
+  // past the assistant row (persisted before its tools finish), so the
+  // end-of-turn delta carries only the tool *result* row. That orphaned
+  // result must complete the already-confirmed card instead of being
+  // silently dropped — otherwise the card stays "running" forever when the
+  // live tool_end event was missed (tab sleep / reconnect).
+  it('completes a confirmed running tool card from a result-only delta', async () => {
+    await seedLoadedSession()
+    // The card a mid-turn loadSession reconciled: confirmed, not yet done.
+    useTeamStore.setState((state) => {
+      const stream = state.agentStreams.lead
+      stream.blocks = [
+        ...stream.blocks,
+        {
+          id: 'call-9',
+          type: 'tool',
+          content: '',
+          toolName: 'shell',
+          toolCallId: 'call-9',
+          toolDone: false,
+          timestamp: new Date('2026-07-01T00:00:03Z'),
+        },
+      ]
+      return state
+    })
+    mockTeamHistorySince.mockImplementation(() =>
+      Promise.resolve(
+        deltaHistory({
+          lead: leadSession({
+            messages: [
+              {
+                id: 'tr-9',
+                role: 'tool',
+                tool_call_id: 'call-9',
+                content: 'late result',
+                extra: { duration_ms: 5 },
+                created_at: '2026-07-01T00:00:06Z',
+              },
+            ],
+          }),
+        }),
+      ),
+    )
+
+    await useTeamStore.getState().reconcileTurnTail('lead-sess')
+
+    const blocks = useTeamStore.getState().agentStreams.lead.blocks
+    const tool = blocks.find((b) => b.type === 'tool' && b.toolCallId === 'call-9')
+    expect(tool?.toolDone).toBe(true)
+    expect(tool?.toolResult).toBe('late result')
+    expect(tool?.serverDurationMs).toBe(5)
   })
 
   it('replaces stream-committed blocks with the canonical rows', async () => {
@@ -128,12 +181,34 @@ describe('reconcileTurnTail', () => {
     expect(useTeamStore.getState().agentStreams.lead._unsyncedBlockIds).toEqual([])
   })
 
+  it('preserves provider_status error blocks when reconcileTurnTail runs', async () => {
+    await seedLoadedSession()
+    useTeamStore.setState((draft) => {
+      const stream = draft.agentStreams.lead
+      const providerBlock = {
+        id: 'provider-err-1',
+        type: 'provider_status' as const,
+        content: '429 Rate Limit Exceeded',
+        extra: { type: 'provider_status', status: 'error', title: 'Rate Limit Exceeded', category: 'provider' },
+        timestamp: new Date(),
+      }
+      stream.blocks.push(providerBlock)
+      stream._unsyncedBlockIds = [providerBlock.id]
+    })
+
+    await useTeamStore.getState().reconcileTurnTail('lead-sess')
+
+    const blocks = useTeamStore.getState().agentStreams.lead.blocks
+    expect(blocks.some((b) => b.id === 'provider-err-1')).toBe(true)
+    expect(blocks.find((b) => b.id === 'provider-err-1')?.content).toBe('429 Rate Limit Exceeded')
+  })
+
   it('advances the watermark so the next delta starts from the new tail', async () => {
     await seedLoadedSession()
 
     await useTeamStore.getState().reconcileTurnTail('lead-sess')
 
-    expect(useTeamStore.getState()._syncedThrough).toBe('2026-07-01T00:00:05Z')
+    expect(useTeamStore.getState()._syncedThrough).toBe('m3')
   })
 
   it('keeps the older-history pagination cursor a delta knows nothing about', async () => {
@@ -261,9 +336,9 @@ describe('reconcileTurnTail', () => {
     // canonical parse of that same content right after — duplicating the
     // pre-compaction reply (and doubling the compaction divider).
     //
-    // A compacted turn now routes through the full page (the summary row is
-    // stored behind the delta watermark — see the test below), so this asserts
-    // the same no-duplication guarantee on that path.
+    // A compacted turn routes through the full page because the summary's
+    // anchored seq cannot be inserted by the tail-only delta splice (see the
+    // test below), so this asserts the same no-duplication guarantee there.
     await seedLoadedSession()
 
     useTeamStore.setState((state) => {
@@ -332,14 +407,11 @@ describe('reconcileTurnTail', () => {
     expect(useTeamStore.getState().agentStreams.lead.currentBlocks).toHaveLength(0)
   })
 
-  it('takes a full page when the turn compacted, because the summary row predates the delta', async () => {
-    // The summary row is stored at the compaction *boundary* — one microsecond
-    // ahead of the oldest message the summariser kept (see
-    // `_summary_anchor_ids` in app/agent/checkpointer.py). That boundary sits
-    // several turns back, so the row is *older* than the delta watermark and
-    // `teamHistorySince` cannot return it. Swapping the tail would then drop the
-    // locally-created divider with nothing to replace it, and the "Session
-    // compacted" marker would vanish until the next full page load.
+  it('takes a full page when an anchored summary cannot be tail-spliced', async () => {
+    // The uuid7 delta does return the newly-created summary even though its
+    // logical seq is anchored several turns back. UI blocks do not retain seq,
+    // so the delta splice cannot insert that divider into the confirmed prefix;
+    // one full page is required to establish canonical order.
     await seedLoadedSession()
 
     useTeamStore.setState({ isTeamWorking: true })
@@ -359,10 +431,11 @@ describe('reconcileTurnTail', () => {
         ],
       }),
     })))
-    // The delta can only ever see what postdates the watermark.
+    // The delta sees the new anchored summary, but cannot place it before m2.
     mockTeamHistorySince.mockImplementation(() => Promise.resolve(deltaHistory({
       lead: leadSession({
         messages: [
+          { id: 's1', role: 'user', content: 'summary text', is_summary: true, created_at: '2026-07-01T00:00:00.999Z' },
           { id: 'a2', role: 'assistant', content: 'post-compaction reply', created_at: '2026-07-01T00:00:04Z' },
         ],
       }),

@@ -8,7 +8,6 @@ credential chain for each request; generated tokens are never persisted or logge
 
 from __future__ import annotations
 
-import os
 import re
 from collections.abc import AsyncIterator
 from typing import Any
@@ -28,29 +27,19 @@ _AWS_REGION = re.compile(r"[a-z]{2}(?:-[a-z0-9]+)+-\d")
 
 def resolve_bedrock_region(region_name: str | None) -> str:
     """Resolve and validate the region used to construct the Mantle host."""
-    from app.core.config import settings
+    from app.agent.providers.bedrock.token import resolve_aws_region
 
-    region = (
-        region_name
-        or settings.AWS_BEDROCK_REGION
-        or os.getenv("AWS_DEFAULT_REGION")
-        or "us-east-1"
-    )
+    region = resolve_aws_region(region_name)
     if _AWS_REGION.fullmatch(region) is None:
         raise ValueError(f"Invalid AWS Bedrock region: {region!r}")
     return region
 
 
 def _generate_profile_token(region: str, profile_name: str | None) -> str:
-    """Generate one bearer token from a named profile or botocore's default chain."""
-    from importlib import import_module
+    """Generate one bearer token from a named profile or environment credentials."""
+    from app.agent.providers.bedrock.token import generate_bedrock_bearer_token
 
-    from botocore.session import Session
-
-    generator_module: Any = import_module("aws_bedrock_token_generator")
-    session = Session(profile=profile_name) if profile_name else Session()
-    credentials = session.get_credentials()
-    return generator_module.BedrockTokenGenerator().get_token(credentials, region)
+    return generate_bedrock_bearer_token(region=region, profile_name=profile_name)
 
 
 def _is_anthropic_model(model: str) -> bool:

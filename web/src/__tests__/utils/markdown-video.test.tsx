@@ -101,6 +101,10 @@ describe("MarkdownBlock video rendering", () => {
     const video = document.querySelector("video");
     expect(video).not.toBeNull();
     expect(video).toHaveAttribute("controls");
+
+    const caption = screen.getByText("clip.mp4");
+    expect(caption).not.toBeNull();
+    expect(caption.className).toContain("text-center");
   });
 
   it("renders <video> element for .webm src", () => {

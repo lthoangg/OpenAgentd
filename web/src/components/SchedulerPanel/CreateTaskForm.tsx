@@ -73,24 +73,26 @@ export function CreateTaskForm({
   }, [form, isSessionCompatible, values.sessionType])
 
   return (
-    <div className="flex flex-col overflow-hidden bg-(--bg-page)">
+    <div className="flex flex-1 flex-col overflow-hidden bg-(--bg-page)">
       {/* Header */}
-      <div className="border-b border-(--color-border) bg-(--bg-sidebar) px-3 py-3 sm:px-5 sm:py-4">
+      <div className="border-b border-(--color-border) bg-(--bg-sidebar) px-4 py-2.5 sm:px-5">
         <div className="flex items-center gap-2">
-          <Plus size={18} className="text-(--color-accent)" />
-          <h2 className="text-base font-semibold text-(--color-text)">Create Task</h2>
+          <div className="flex h-6 w-6 items-center justify-center rounded-sm border border-(--color-accent)/30 bg-(--color-accent)/10 text-(--color-accent)">
+            <Plus size={13} />
+          </div>
+          <h2 className="text-sm font-bold text-(--color-text)">Create Task</h2>
         </div>
       </div>
 
       {/* Form */}
-      <form onSubmit={handleSubmit} className="flex flex-1 flex-col overflow-y-auto px-3 py-4 sm:px-5">
-        <div className="space-y-4">
+      <form onSubmit={handleSubmit} className="flex flex-1 flex-col overflow-y-auto p-4 sm:p-5">
+        <div className="space-y-3.5">
           {/* Title */}
           <div>
-            <label htmlFor="task-title" className="block text-sm font-medium text-(--color-text)">Task Title</label>
+            <label htmlFor="task-title" className="mb-1 block text-xs font-medium text-(--color-text-2)">Task Title</label>
             <Input
               id="task-title"
-              className={`mt-1 ${FIELD_CLASS}`}
+              className={`h-8 ${FIELD_CLASS}`}
               value={values.title}
               onChange={(e) => form.setFieldValue('title', e.target.value)}
               placeholder="e.g., Daily Standup Report"
@@ -100,18 +102,16 @@ export function CreateTaskForm({
             />
             {fieldErrors.title && <p id="task-title-error" className="mt-1 text-xs text-(--color-error)">{fieldErrors.title}</p>}
             {values.title && (
-              <p className="mt-1 text-xs text-(--color-text-muted)">
-                Slug identifier:{' '}
-                <code className="rounded bg-(--bg-key) px-1 py-0.5 font-mono text-[11px] text-(--color-text-2)">
+              <div className="mt-1 flex items-center gap-1.5 text-xs text-(--color-text-muted)">
+                <span>Slug identifier:</span>
+                <code className="rounded-xs border border-(--color-border-subtle) bg-(--bg-key)/80 px-1.5 py-0.5 font-mono text-[10.5px] text-(--color-text-2)">
                   {slugify(values.title)}
                 </code>
-              </p>
+              </div>
             )}
           </div>
 
-          {/* Routing — mode + workspace (mode is auto-injected into the
-              schedule_task tool when fired; here the user sets where the
-              task should route once the timer fires). */}
+          {/* Routing */}
           <ModeWorkspaceFields
             mode={values.mode ?? 'normal'}
             workspace={values.workspace ?? null}
@@ -125,123 +125,108 @@ export function CreateTaskForm({
 
           {/* Schedule Type & Detail */}
           {values.schedule_type === 'every' ? (
-            <div>
-              <div className="flex flex-wrap items-start gap-4">
-                <div className="shrink-0">
-                  <label className="block text-sm font-medium text-(--color-text)">Schedule Type</label>
-                  <div className="mt-1">
-                    <ScheduleTypeSegmented
-                      value={values.schedule_type}
-                      onChange={(v) => form.setFieldValue('schedule_type', v)}
-                    />
-                  </div>
-                </div>
-                <div className="w-full sm:w-56 sm:shrink-0">
-                  <label htmlFor="task-every-seconds" className="block text-sm font-medium text-(--color-text)">Interval (seconds)</label>
-                  <Input
-                    id="task-every-seconds"
-                    className={`mt-1 w-full ${FIELD_CLASS}`}
-                    type="number"
-                    min="1"
-                    value={values.every_seconds ?? 3600}
-                    onChange={(e) =>
-                      form.setFieldValue('every_seconds', parseInt(e.target.value) || 0)
-                    }
-                    aria-invalid={!!fieldErrors.every_seconds}
-                    aria-describedby={fieldErrors.every_seconds ? 'task-every-seconds-error' : 'task-every-seconds-help'}
-                  />
-                  {fieldErrors.every_seconds && <p id="task-every-seconds-error" className="mt-1 text-xs text-(--color-error)">{fieldErrors.every_seconds}</p>}
-                  <p id="task-every-seconds-help" className="mt-1 text-xs text-(--color-text-muted)">e.g., 3600 = 1 hour, 86400 = 1 day</p>
-                </div>
+            <div className="grid gap-3 sm:grid-cols-2 sm:items-start">
+              <div>
+                <label className="mb-1 block text-xs font-medium text-(--color-text-2)">Schedule Type</label>
+                <ScheduleTypeSegmented
+                  value={values.schedule_type}
+                  onChange={(v) => form.setFieldValue('schedule_type', v)}
+                />
+              </div>
+              <div>
+                <label htmlFor="task-every-seconds" className="mb-1 block text-xs font-medium text-(--color-text-2)">Interval (seconds)</label>
+                <Input
+                  id="task-every-seconds"
+                  className={`h-8 w-full ${FIELD_CLASS}`}
+                  type="number"
+                  min="1"
+                  value={values.every_seconds ?? 3600}
+                  onChange={(e) =>
+                    form.setFieldValue('every_seconds', parseInt(e.target.value) || 0)
+                  }
+                  aria-invalid={!!fieldErrors.every_seconds}
+                  aria-describedby={fieldErrors.every_seconds ? 'task-every-seconds-error' : 'task-every-seconds-help'}
+                />
+                {fieldErrors.every_seconds && <p id="task-every-seconds-error" className="mt-1 text-xs text-(--color-error)">{fieldErrors.every_seconds}</p>}
+                <p id="task-every-seconds-help" className="mt-1 text-xs text-(--color-text-muted)">e.g., 3600 = 1 hour, 86400 = 1 day</p>
               </div>
             </div>
           ) : (
-            <>
-              <div>
-                <label className="block text-sm font-medium text-(--color-text)">Schedule Type</label>
-                <div className="mt-1">
-                  <ScheduleTypeSegmented
-                    value={values.schedule_type}
-                    onChange={(v) => form.setFieldValue('schedule_type', v)}
-                  />
-                </div>
-              </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-(--color-text-2)">Schedule Type</label>
+              <ScheduleTypeSegmented
+                value={values.schedule_type}
+                onChange={(v) => form.setFieldValue('schedule_type', v)}
+              />
 
               {values.schedule_type === 'at' && (
-                <div>
-                  <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_11rem] sm:items-end">
-                    <div className="flex-1">
-                      <label htmlFor="task-at-datetime" className="block text-sm font-medium text-(--color-text)">Date & Time</label>
-                      <div className="mt-1">
-                        <DateTimePicker
-                          id="task-at-datetime"
-                          value={values.at_datetime ?? ''}
-                          onChange={(v) => form.setFieldValue('at_datetime', v)}
-                          triggerClassName="h-8 rounded-sm bg-(--bg-card) px-2 text-xs hover:bg-(--bg-key)/30"
-                          aria-invalid={!!fieldErrors.at_datetime}
-                          aria-describedby={fieldErrors.at_datetime ? 'task-at-datetime-error' : undefined}
-                        />
-                      </div>
-                      {fieldErrors.at_datetime && <p id="task-at-datetime-error" className="mt-1 text-xs text-(--color-error)">{fieldErrors.at_datetime}</p>}
-                    </div>
-                    <div className="w-full min-w-0">
-                      <label htmlFor="task-timezone" className="block text-sm font-medium text-(--color-text)">Timezone</label>
-                      <Input
-                        id="task-timezone"
-                        className={`mt-1 ${FIELD_CLASS}`}
-                        value={values.timezone}
-                        onChange={(e) => form.setFieldValue('timezone', e.target.value)}
-                        placeholder={localTz}
-                      />
-                    </div>
+                <div className="mt-3 grid gap-3 sm:grid-cols-[minmax(0,1fr)_12rem] sm:items-start">
+                  <div>
+                    <label htmlFor="task-at-datetime" className="mb-1 block text-xs font-medium text-(--color-text-2)">Date & Time</label>
+                    <DateTimePicker
+                      id="task-at-datetime"
+                      value={values.at_datetime ?? ''}
+                      onChange={(v) => form.setFieldValue('at_datetime', v)}
+                      triggerClassName="h-8 rounded-sm text-xs bg-(--bg-page)"
+                      aria-invalid={!!fieldErrors.at_datetime}
+                      aria-describedby={fieldErrors.at_datetime ? 'task-at-datetime-error' : undefined}
+                    />
+                    {fieldErrors.at_datetime && <p id="task-at-datetime-error" className="mt-1 text-xs text-(--color-error)">{fieldErrors.at_datetime}</p>}
                   </div>
-                  <p className="mt-1 text-xs text-(--color-text-muted)">IANA timezone (e.g., America/New_York)</p>
+                  <div>
+                    <label htmlFor="task-timezone" className="mb-1 block text-xs font-medium text-(--color-text-2)">Timezone</label>
+                    <Input
+                      id="task-timezone"
+                      className={`h-8 ${FIELD_CLASS}`}
+                      value={values.timezone}
+                      onChange={(e) => form.setFieldValue('timezone', e.target.value)}
+                      placeholder={localTz}
+                    />
+                  </div>
                 </div>
               )}
 
               {values.schedule_type === 'cron' && (
-                <div>
-                  <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_11rem] sm:items-end">
-                    <div className="flex-1">
-                      <label htmlFor="task-cron-expression" className="block text-sm font-medium text-(--color-text)">Cron Expression</label>
-                      <Input
-                        id="task-cron-expression"
-                        className={`mt-1 ${FIELD_CLASS}`}
-                        value={values.cron_expression ?? ''}
-                        onChange={(e) => form.setFieldValue('cron_expression', e.target.value)}
-                        placeholder="e.g., 0 9 * * MON-FRI"
-                        aria-invalid={!!fieldErrors.cron_expression}
-                        aria-describedby={fieldErrors.cron_expression ? 'task-cron-expression-error' : undefined}
-                      />
-                      {fieldErrors.cron_expression && <p id="task-cron-expression-error" className="mt-1 text-xs text-(--color-error)">{fieldErrors.cron_expression}</p>}
-                    </div>
-                    <div className="w-full min-w-0">
-                      <label htmlFor="task-timezone" className="block text-sm font-medium text-(--color-text)">Timezone</label>
-                      <Input
-                        id="task-timezone"
-                        className={`mt-1 ${FIELD_CLASS}`}
-                        value={values.timezone}
-                        onChange={(e) => form.setFieldValue('timezone', e.target.value)}
-                        placeholder={localTz}
-                      />
-                    </div>
+                <div className="mt-3 grid gap-3 sm:grid-cols-[minmax(0,1fr)_12rem] sm:items-start">
+                  <div>
+                    <label htmlFor="task-cron-expression" className="mb-1 block text-xs font-medium text-(--color-text-2)">Cron Expression</label>
+                    <Input
+                      id="task-cron-expression"
+                      className={`h-8 ${FIELD_CLASS}`}
+                      value={values.cron_expression ?? ''}
+                      onChange={(e) => form.setFieldValue('cron_expression', e.target.value)}
+                      placeholder="e.g., 0 9 * * MON-FRI"
+                      aria-invalid={!!fieldErrors.cron_expression}
+                      aria-describedby={fieldErrors.cron_expression ? 'task-cron-expression-error' : undefined}
+                    />
+                    {fieldErrors.cron_expression && <p id="task-cron-expression-error" className="mt-1 text-xs text-(--color-error)">{fieldErrors.cron_expression}</p>}
+                    <p className="mt-1 text-xs text-(--color-text-muted)">Standard 5-field cron format (e.g. 0 9 * * MON-FRI)</p>
                   </div>
-                  <p className="mt-1 text-xs text-(--color-text-muted)">IANA timezone (e.g., America/New_York)</p>
+                  <div>
+                    <label htmlFor="task-timezone" className="mb-1 block text-xs font-medium text-(--color-text-2)">Timezone</label>
+                    <Input
+                      id="task-timezone"
+                      className={`h-8 ${FIELD_CLASS}`}
+                      value={values.timezone}
+                      onChange={(e) => form.setFieldValue('timezone', e.target.value)}
+                      placeholder={localTz}
+                    />
+                  </div>
                 </div>
               )}
-            </>
+            </div>
           )}
 
           {/* Prompt */}
           <div>
-            <label htmlFor="task-prompt" className="block text-sm font-medium text-(--color-text)">Prompt</label>
+            <label htmlFor="task-prompt" className="mb-1 block text-xs font-medium text-(--color-text-2)">Prompt</label>
             <Textarea
               id="task-prompt"
-              className={`mt-1 ${FIELD_CLASS}`}
+              className={`font-mono text-xs leading-relaxed ${FIELD_CLASS}`}
               value={values.prompt}
               onChange={(e) => form.setFieldValue('prompt', e.target.value)}
               placeholder="Message to deliver to the team lead when the task fires."
-              rows={4}
+              rows={3}
               aria-invalid={!!fieldErrors.prompt}
               aria-describedby={fieldErrors.prompt ? 'task-prompt-error' : undefined}
             />
@@ -249,15 +234,15 @@ export function CreateTaskForm({
           </div>
 
           {/* Session Target & Max Runs */}
-          <div className="flex flex-wrap items-start gap-4">
-            <div className="w-full max-w-md">
-              <label htmlFor="session-target" className="block text-sm font-medium text-(--color-text)">Session Target</label>
+          <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_9rem] sm:items-start">
+            <div>
+              <label htmlFor="session-target" className="mb-1 block text-xs font-medium text-(--color-text-2)">Session Target</label>
               <Dropdown
                 id="session-target"
                 value={values.sessionType}
                 onValueChange={(v) => form.setFieldValue('sessionType', v as 'new' | 'auto' | 'current' | 'custom')}
                 trigger="Session Target"
-                className="mt-1 w-full px-2 py-1 text-[11px]"
+                className="h-8 w-full rounded-sm border-(--color-border) bg-(--bg-page) px-2.5 text-xs"
               >
                 <DropdownItem value="new">New Session</DropdownItem>
                 <DropdownItem value="auto">Persistent Task Session</DropdownItem>
@@ -280,7 +265,7 @@ export function CreateTaskForm({
                   <label htmlFor="custom-session-id" className="sr-only">Session UUID</label>
                   <Input
                     id="custom-session-id"
-                    className={FIELD_CLASS}
+                    className={`h-8 ${FIELD_CLASS}`}
                     value={values.customSessionId}
                     onChange={(e) => form.setFieldValue('customSessionId', e.target.value)}
                     placeholder="Enter session UUID (e.g. 123e4567-e89b-12d3-a456-426614174000)"
@@ -292,13 +277,13 @@ export function CreateTaskForm({
               )}
             </div>
 
-            <div className="w-full min-w-0">
-              <label htmlFor="task-max-runs" className="block text-sm font-medium text-(--color-text)">Max runs (optional)</label>
+            <div>
+              <label htmlFor="task-max-runs" className="mb-1 block text-xs font-medium text-(--color-text-2)">Max runs (optional)</label>
               <Input
                 id="task-max-runs"
                 type="number"
                 min="1"
-                className={`mt-1 w-full ${FIELD_CLASS}`}
+                className={`h-8 w-full ${FIELD_CLASS}`}
                 value={values.max_runs ?? ''}
                 onChange={(e) => form.setFieldValue('max_runs', e.target.value ? Number(e.target.value) : null)}
                 placeholder="Unlimited"
@@ -306,43 +291,43 @@ export function CreateTaskForm({
                 aria-describedby={fieldErrors.max_runs ? 'task-max-runs-error' : undefined}
               />
               {fieldErrors.max_runs && <p id="task-max-runs-error" className="mt-1 text-xs text-(--color-error)">{fieldErrors.max_runs}</p>}
-              <p className="mt-1 text-xs text-(--color-text-muted)">Stop after this many successful firings.</p>
+              <p className="mt-1 text-xs text-(--color-text-muted)">Stop after N runs.</p>
             </div>
           </div>
 
           {/* Error message */}
           {validationSummary && <p role="alert" className="sr-only">Please correct the highlighted fields.</p>}
           {error && (
-            <div role="alert" className="flex gap-2 rounded-sm border border-(--color-error) bg-(--color-error-subtle) p-3">
-              <AlertCircle size={16} className="shrink-0 text-(--color-error)" />
-              <p className="text-sm text-(--color-error)">{error}</p>
+            <div role="alert" className="flex gap-2.5 rounded-sm border border-(--color-error)/40 bg-(--color-error-subtle) p-2.5">
+              <AlertCircle size={15} className="shrink-0 text-(--color-error)" />
+              <p className="text-xs text-(--color-error)">{error}</p>
             </div>
           )}
         </div>
 
         {/* Submit */}
-        <Button
-          type="submit"
-          variant="primary"
-          disabled={createMutation.isPending}
-          size="sm"
-          className="mt-6 w-full sm:w-auto sm:self-end"
-        >
-          {createMutation.isPending ? (
-            <>
-              <Loader2 size={14} className="animate-spin" />
-              Creating…
-            </>
-          ) : (
-            <>
-              <Plus size={14} />
-              Create Task
-            </>
-          )}
-        </Button>
+        <div className="mt-5 flex justify-end">
+          <Button
+            type="submit"
+            variant="primary"
+            disabled={createMutation.isPending}
+            size="sm"
+            className="h-8 min-w-28 text-xs font-medium"
+          >
+            {createMutation.isPending ? (
+              <>
+                <Loader2 size={13} className="animate-spin" />
+                Creating…
+              </>
+            ) : (
+              <>
+                <Plus size={13} />
+                Create Task
+              </>
+            )}
+          </Button>
+        </div>
       </form>
     </div>
   )
 }
-
-// ── Task detail view ────────────────────────────────────────────────────────

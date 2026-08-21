@@ -153,7 +153,9 @@ describe('CodingWorkspacePanel – commit body expand/collapse', () => {
     )
 
     // Collapse (click the same card again)
-    await user.click(screen.getByText('fix: handle null session'))
+    // getAllByText — the first click opened the subject's Tooltip, which
+    // portals a second element with the same text into document.body.
+    await user.click(screen.getAllByText('fix: handle null session')[0])
     await waitFor(() => expect(screen.queryByText(/Without this guard/)).toBeNull())
   })
 
@@ -401,9 +403,7 @@ describe('CodingWorkspacePanel – commits_ahead badge', () => {
     await renderWithCommitsSubtab(3)
 
     await waitFor(() => {
-      expect(screen.getByText((_, el) =>
-        el?.tagName === 'SPAN' && el.textContent === '3↑'
-      )).toBeTruthy()
+      expect(screen.getByText('3↑')).toBeTruthy()
     })
   })
 
@@ -412,14 +412,14 @@ describe('CodingWorkspacePanel – commits_ahead badge', () => {
 
     // Give queries time to settle then assert no badge present
     await waitFor(() => expect(screen.getByText('Commits')).toBeTruthy())
-    expect(document.querySelector('[title*="ahead of origin"]')).toBeNull()
+    expect(screen.queryByText(/↑$/)).toBeNull()
   })
 
   it('hides the badge when commits_ahead is null (no upstream configured)', async () => {
     await renderWithCommitsSubtab(null)
 
     await waitFor(() => expect(screen.getByText('Commits')).toBeTruthy())
-    expect(document.querySelector('[title*="ahead of origin"]')).toBeNull()
+    expect(screen.queryByText(/↑$/)).toBeNull()
   })
 
   it('badge is sourced from /workspace/status — visible without the history query firing', async () => {
@@ -464,46 +464,40 @@ describe('CodingWorkspacePanel – commits_ahead badge', () => {
 
     // Badge should appear in the trigger immediately
     await waitFor(() => {
-      expect(screen.getByText((_, el) =>
-        el?.tagName === 'SPAN' && el.textContent === '2↑'
-      )).toBeTruthy()
+      expect(screen.getByText('2↑')).toBeTruthy()
     })
   })
 
   it('badge title uses singular "commit" for count of 1', async () => {
     await renderWithCommitsSubtab(1)
 
-    await waitFor(() => {
-      const badge = document.querySelector('[title*="ahead of origin"]')
-      expect(badge).toBeTruthy()
-      expect(badge?.getAttribute('title')).toBe('1 local commit ahead of origin')
-    })
+    const badge = await screen.findByText('1↑')
+    await userEvent.hover(badge)
+    expect((await screen.findByRole('tooltip')).textContent).toBe('1 local commit ahead of origin')
   })
 
   it('badge title uses plural "commits" for count > 1', async () => {
     await renderWithCommitsSubtab(5)
 
-    await waitFor(() => {
-      const badge = document.querySelector('[title*="ahead of origin"]')
-      expect(badge?.getAttribute('title')).toBe('5 local commits ahead of origin')
-    })
+    const badge = await screen.findByText('5↑')
+    await userEvent.hover(badge)
+    expect((await screen.findByRole('tooltip')).textContent).toBe('5 local commits ahead of origin')
   })
 
   it('shows both ahead and behind badges when the branch diverged from origin', async () => {
     await renderWithCommitsSubtab(3, 2)
 
     await waitFor(() => {
-      expect(screen.getByText((_, el) => el?.tagName === 'SPAN' && el.textContent === '3↑')).toBeTruthy()
-      expect(screen.getByText((_, el) => el?.tagName === 'SPAN' && el.textContent === '2↓')).toBeTruthy()
+      expect(screen.getByText('3↑')).toBeTruthy()
+      expect(screen.getByText('2↓')).toBeTruthy()
     })
   })
 
   it('uses origin in the behind badge title', async () => {
     await renderWithCommitsSubtab(0, 1)
 
-    await waitFor(() => {
-      const badge = document.querySelector('[title="1 commit behind origin"]')
-      expect(badge).toBeTruthy()
-    })
+    const badge = await screen.findByText('1↓')
+    await userEvent.hover(badge)
+    expect((await screen.findByRole('tooltip')).textContent).toBe('1 commit behind origin')
   })
 })

@@ -96,6 +96,12 @@ async def _create_member_session(db, session_id, parent_id, agent_name="worker")
 
 
 async def _add_message(db, session_id, role="user", content="test", **kwargs):
+    # Mirror save_message's kind derivation for rows built directly.
+    if "kind" not in kwargs:
+        if kwargs.pop("is_summary", False):
+            kwargs["kind"] = "summary"
+        elif (kwargs.get("extra") or {}).get("hidden_from_user"):
+            kwargs["kind"] = "note"
     msg = SessionMessage(
         session_id=session_id,
         role=role,
@@ -509,6 +515,34 @@ class TestResolveTeamSession:
         assert tree.status_code == 200
         assert tree.json()["repositories"] == []
 
+    @pytest.mark.asyncio
+    async def test_workspace_visibility_rejects_restricted_root_when_hiding(
+        self, app_with_team
+    ):
+        """Hiding must not persist a path inside a restricted system directory.
+
+        The hide branch skips the *existence* check on purpose (see
+        ``test_workspace_visibility_can_hide_missing_workspace``), but it must
+        still enforce the blocked-root rule — ``hide_coding_workspace`` inserts
+        a row when no workspace matches, so an unvalidated path would land in
+        the database.
+        """
+        import app.core.db as _db
+        from sqlmodel import select
+
+        from app.models.chat import CodingWorkspace
+
+        client = TestClient(app_with_team)
+        resp = client.patch(
+            "/api/team/workspace/visibility",
+            json={"workspace": "/etc", "hidden": True},
+        )
+        assert resp.status_code == 422
+
+        async with _db.async_session_factory() as db:
+            rows = (await db.exec(select(CodingWorkspace))).all()
+        assert rows == []
+
 
 # ---------------------------------------------------------------------------
 # DELETE /team/sessions/{session_id}
@@ -791,34 +825,6 @@ class TestTeamHistoryWithData:
         assert summary_msg["is_summary"] is True
 
     @pytest.mark.asyncio
-    async def test_history_excludes_reasoning_for_continuation_rows(
-        self, app_with_team
-    ):
-        import app.core.db as _db
-
-        lead_id = uuid.uuid7()
-        async with _db.async_session_factory() as db:
-            async with db.begin():
-                await _create_team_session(db, lead_id)
-                await _add_message(
-                    db,
-                    lead_id,
-                    role="assistant",
-                    content="continued answer",
-                    reasoning_content="hidden thinking",
-                    extra={"is_continuation": True},
-                )
-
-        client = TestClient(app_with_team)
-        resp = client.get(f"/api/team/{lead_id}/history")
-        data = resp.json()
-
-        msg = data["lead"]["messages"][0]
-        assert msg["content"] == "continued answer"
-        assert "reasoning_content" not in msg
-        assert msg["extra"] == {"is_continuation": True}
-
-    @pytest.mark.asyncio
     async def test_history_excludes_hidden_from_user_rows(self, app_with_team):
         import app.core.db as _db
 
@@ -972,6 +978,36 @@ class TestListTeamSessionsCursorPagination:
 
         # Me no overlap between pages
         assert ids_page1.isdisjoint(ids_page2)
+
+    @pytest.mark.asyncio
+    async def test_cursor_does_not_skip_sessions_with_equal_timestamps(
+        self, app_with_team
+    ):
+        """The uuid tie-break carries all equal-created_at rows across pages."""
+        import app.core.db as _db
+
+        created_at = datetime(2026, 8, 20, 10, 0, tzinfo=timezone.utc)
+        ids = [uuid.uuid7() for _ in range(4)]
+        async with _db.async_session_factory() as db:
+            async with db.begin():
+                for sid in ids:
+                    db.add(ChatSession(id=sid, created_at=created_at))
+
+        client = TestClient(app_with_team)
+        seen: list[str] = []
+        before: str | None = None
+        while True:
+            suffix = f"&before={before}" if before else ""
+            response = client.get(f"/api/team/sessions?limit=2{suffix}")
+            assert response.status_code == 200
+            page = response.json()
+            seen.extend(row["id"] for row in page["data"])
+            if not page["has_more"]:
+                break
+            before = page["next_cursor"]
+
+        assert {str(sid) for sid in ids}.issubset(seen)
+        assert len(seen) == len(set(seen))
 
     @pytest.mark.asyncio
     async def test_invalid_before_returns_422(self, app_with_team):

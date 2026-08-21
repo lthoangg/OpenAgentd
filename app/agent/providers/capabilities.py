@@ -30,7 +30,7 @@ Usage::
 
     caps = get_capabilities("googlegenai:gemini-3.1-pro-preview")
     caps.input.vision          # True
-    caps.input.document_text   # True  (always — markitdown handles this)
+    caps.input.document_text   # True  (always — conversion handles this)
     caps.output.text           # True
     caps.to_dict()             # {"input": {...}, "output": {...}}
 """
@@ -55,7 +55,7 @@ class ModelInputCapabilities:
 
     # Vision — accepts image/* attachments (png/jpg/gif/webp).
     vision: bool = False
-    # Document text — markitdown converts pdf/docx/txt/csv/json/md to
+    # Document text — conversion turns pdf/docx/txt/csv/json/md into
     # text before the model sees it. True for every model: the
     # conversion happens on the client side, not at the model boundary.
     document_text: bool = True

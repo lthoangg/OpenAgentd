@@ -118,10 +118,10 @@ describe("ToolResult — shell", () => {
 })
 
 // ---------------------------------------------------------------------------
-// filesystem list renderers (ls, glob, grep)
+// filesystem list renderers (glob, grep)
 // ---------------------------------------------------------------------------
 
-const LIST_TOOLS = ["ls", "glob", "grep"] as const
+const LIST_TOOLS = ["glob", "grep"] as const
 
 describe("ToolResult — file list tools", () => {
   LIST_TOOLS.forEach((toolName) => {
@@ -146,13 +146,6 @@ describe("ToolResult — file list tools", () => {
       expect(screen.getByText(/1 entry/)).toBeTruthy()
       cleanup()
     })
-  })
-
-  it("parses JSON array result", () => {
-    const result = JSON.stringify(["a/b.ts", "c/d.ts"])
-    render(<ToolResult toolName="ls" result={result} />)
-    expect(screen.getByText("a/b.ts")).toBeTruthy()
-    expect(screen.getByText("c/d.ts")).toBeTruthy()
   })
 
 })
@@ -437,6 +430,39 @@ describe("ToolResult — todo_manage", () => {
   it("renders the empty board message", () => {
     render(<ToolResult toolName="todo_manage" result="No todos." />)
     expect(screen.getByText("No todos.")).toBeTruthy()
+  })
+
+  it("renders claim result with outcome line and claimed task card", () => {
+    const claimResult = [
+      "claimed task_1",
+      "[task_1] [in_progress] (high) claimed=executor#1 Write a concurrency haiku",
+      "    instructions: Create haiku.txt and verify it exists.",
+    ].join("\n")
+
+    render(<ToolResult toolName="todo_manage" result={claimResult} />)
+    expect(screen.getByText("claimed task_1")).toBeTruthy()
+    expect(screen.getByText(/Write a concurrency haiku/)).toBeTruthy()
+    expect(screen.getByText("task_1")).toBeTruthy()
+    expect(screen.getByText("high")).toBeTruthy()
+    expect(screen.getByText(/Create haiku\.txt and verify it exists\./)).toBeTruthy()
+  })
+
+  it("renders outcome lines from mutations cleanly", () => {
+    const outcomesResult = [
+      "created task_1, task_2",
+      "cleared 1 completed",
+      "blocked task_3: waiting for task_1",
+    ].join("\n")
+
+    render(<ToolResult toolName="todo_manage" result={outcomesResult} />)
+    expect(screen.getByText("created task_1, task_2")).toBeTruthy()
+    expect(screen.getByText("cleared 1 completed")).toBeTruthy()
+    expect(screen.getByText("blocked task_3: waiting for task_1")).toBeTruthy()
+  })
+
+  it("tolerates trailing newlines and blank lines", () => {
+    render(<ToolResult toolName="todo_manage" result={boardResult + "\n\n"} />)
+    expect(screen.getByText(/Write a concurrency haiku/)).toBeTruthy()
   })
 
   it("falls back to generic text for unparseable results", () => {

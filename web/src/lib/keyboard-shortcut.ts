@@ -67,7 +67,11 @@ export function findSelectContainer(el: Element | null): Element | null {
  */
 export function dispatchShortcutKey(key: string, os: OS, opts: { shift?: boolean } = {}): void {
   const mac = isPrimaryModifierOS(os)
-  window.dispatchEvent(
+  // Dispatch from the document rather than window. Consumers such as the
+  // sidebar's `useHotkey` listener attach to `document`; an event dispatched
+  // on window cannot bubble down to that listener, so toolbar buttons that
+  // synthesize shortcuts would appear not to work.
+  document.dispatchEvent(
     new KeyboardEvent('keydown', {
       key,
       ctrlKey: !mac,

@@ -38,6 +38,7 @@ from app.api.schemas.mcp import (
 )
 from app.api.deps import DbSession
 from app.core.config import settings
+from app.core.secret_files import write_secret_file
 from app.models.chat import SessionMessage
 
 router = APIRouter()
@@ -151,8 +152,7 @@ def _save_env_values(values: dict[str, str]) -> None:
         if key not in seen:
             next_lines.append(f"{key}={_quote_env_value(value)}")
         os.environ[key] = value
-    env_path.write_text("\n".join(next_lines) + "\n", encoding="utf-8")
-    os.chmod(env_path, 0o600)
+    write_secret_file(env_path, "\n".join(next_lines) + "\n")
 
 
 def _store_oauth_secrets(name: str, cfg: HttpServerConfig) -> HttpServerConfig:

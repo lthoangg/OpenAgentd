@@ -1,45 +1,41 @@
-# app/services/ — Agent Instructions
+# Service Layer Guide
 
-Service-layer code shared by API routes, CLI commands, scheduler jobs, and the agent runtime.
+Services hold application behavior shared by API routes, CLI commands,
+scheduler jobs, and the agent runtime. Keep them independent of FastAPI unless
+the service explicitly implements an API transport boundary.
 
-## Where to look first
+## Navigation
 
-```
-chat_service.py          Chat/session orchestration
-team_manager.py          Team construction and session routing
-stream_envelope.py       SSE envelope helpers
-memory_stream_store.py   In-memory stream state
-event_broadcaster.py     Live-only global app event fan-out (scheduler/title/notifications)
-agent_fs.py              Agent/workspace filesystem helpers
-snapshot_service.py      Workspace/session snapshot support
-commands.py              Command handling helpers
-title_service.py         Title generation
-lsp/                     On-demand LSP servers + diagnostics injection (coding mode)
-provider_connection.py   Shared "is this provider connected?" check (Settings UI + tray usage)
-provider_usage.py        Per-provider usage dispatch + connected-provider usage-summary aggregator (stale-while-revalidate cache, per-provider last-known-good fallback, user-disconnect exclusion, visible-model limit filtering)
-```
+- `chat_service.py`: session/history orchestration; adjacent modules own
+  revert/undo behavior and persisted stream history.
+- `team_manager.py`: team lifecycle, routing, and the authoritative
+  `validate_workspace()` check.
+- `stream_envelope.py`, `memory_stream_store.py`, and
+  `event_broadcaster.py`: per-session and app-global live event behavior.
+- `agent_fs.py`, `snapshot_service.py`, and coding-workspace services:
+  workspace filesystem and snapshot behavior.
+- `lsp/`: managed language servers, clients, diagnostics, and formatting;
+  `app/agent/hooks/lsp.py` injects diagnostics into coding turns.
+- `provider_connection.py` and `provider_usage.py`: provider connection and
+  usage aggregation shared with UI/native surfaces.
 
-The LSP subsystem (`lsp/client.py`, `lsp/manager.py`) is driven by
-`app/agent/hooks/lsp.py`; managed language-server provisioning lives in
-`lsp/managed.py`.
+## Conventions and risk
 
-## Common feature checks
+- Preserve async boundaries and use real
+  `async_sessionmaker[AsyncSession]` factories in DB-facing tests.
+- Do not add real sleeps to tests; inject or patch timing behavior.
+- Workspace/file changes require traversal, symlink, media, and route tests.
+  Do not create another workspace-root validator beside
+  `team_manager.validate_workspace()`.
+- Session/history changes must account for SQLModel tables, stream state,
+  scheduler/team consumers, and frontend assumptions. Add a new Alembic
+  revision when persisted schema changes.
 
-- Route behavior change: keep HTTP validation in `app/api/`, durable logic here, and add route/service tests.
-- Session/history change: inspect `chat_service.py`, DB models, stream store, and web store assumptions.
-- File/workspace change: check traversal protection, symlink behavior, media endpoints, and tests under `tests/api/routes/test_team_*`.
-
-## Commands
+## Checks
 
 ```bash
-uv run pytest --no-cov -q tests/services
-uv run pytest --no-cov -q tests/api/routes
+uv run pytest tests/services tests/api/routes -q
 uv run ruff check app/services tests/services
 uv run ty check app/
+make verify-backend
 ```
-
-## Gotchas
-
-- Keep services framework-light unless they are explicitly API-facing.
-- Preserve async boundaries and pass real `async_sessionmaker[AsyncSession]` in tests.
-- Avoid real sleeps/timeouts in tests; inject or patch timing behavior.

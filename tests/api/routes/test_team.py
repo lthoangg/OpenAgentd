@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import shutil
+import tempfile
 import uuid
 from unittest.mock import AsyncMock, patch
 
@@ -11,7 +13,7 @@ from fastapi.testclient import TestClient
 
 from app.agent.agent_loop import Agent
 from app.agent.providers.base import LLMProviderBase
-from app.agent.tools.builtin.date import get_date
+from app.agent.tools.builtin.filesystem.read import read_file
 from app.agent.mode.team.member import TeamLead, TeamMember
 from app.agent.mode.team.team import AgentTeam
 from app.api.routes.team._helpers import _message_response
@@ -50,6 +52,77 @@ def test_message_response_strips_internal_attachment_paths():
     ]
     assert resp.attachments == expected
     assert resp.extra == {"attachments": expected}
+
+
+def test_message_response_strips_tool_result_parts():
+    """``extra.parts`` never reaches the client.
+
+    ``parts`` is persisted for ``ToolMessage`` only (see
+    ``chat_service.save_message``) and holds base64 ``image_data`` blocks —
+    3.6 MB on a single production row. The web UI renders ``content`` (here
+    ``[Image: uploads/x.png]``) and fetches the bytes from the uploads
+    endpoint; it never reads ``parts``. Shipping it wasted the whole blob on
+    every history load and defeated the ``Field(exclude=True)`` guard on
+    ``ChatMessage.parts`` — the display path bypasses that guard by
+    serialising the ORM row rather than the deserialised message.
+    """
+    msg = SessionMessage(
+        session_id=uuid.uuid7(),
+        role="tool",
+        name="read",
+        tool_call_id="call_1",
+        content="[Image: uploads/x.png]",
+        extra={
+            "duration_ms": 12,
+            "parts": [
+                {"type": "text", "text": "[Image: uploads/x.png]"},
+                {"type": "image_data", "media_type": "image/png", "data": "A" * 4096},
+            ],
+        },
+    )
+
+    resp = _message_response(msg)
+
+    assert resp.extra == {"duration_ms": 12}
+    assert "image_data" not in resp.model_dump_json()
+
+
+def test_message_response_keeps_extra_without_parts_untouched():
+    """Rows carrying no ``parts`` pass through unchanged."""
+    msg = SessionMessage(
+        session_id=uuid.uuid7(),
+        role="tool",
+        name="shell",
+        tool_call_id="call_2",
+        content="ok",
+        extra={"duration_ms": 5, "mcp_app": {"url": "https://example.test"}},
+    )
+
+    resp = _message_response(msg)
+
+    assert resp.extra == {"duration_ms": 5, "mcp_app": {"url": "https://example.test"}}
+
+
+def test_message_response_does_not_mutate_the_orm_row():
+    """Stripping must not clear ``parts`` on the persisted row.
+
+    The same ``SessionMessage`` instance stays in the session identity map and
+    is reused by the context path, which *does* need ``parts`` to replay images
+    to the provider.
+    """
+    parts = [{"type": "image_data", "media_type": "image/png", "data": "A" * 64}]
+    msg = SessionMessage(
+        session_id=uuid.uuid7(),
+        role="tool",
+        name="read",
+        tool_call_id="call_3",
+        content="[Image: uploads/y.png]",
+        extra={"parts": parts},
+    )
+
+    _message_response(msg)
+
+    assert msg.extra == {"parts": parts}
 
 
 class MockTestProvider(LLMProviderBase):
@@ -133,13 +206,35 @@ def app_with_team(test_team, monkeypatch):
 
 @pytest.fixture
 def app_without_team():
-    """Create FastAPI app without team."""
-    from app.api.app import create_app
-    from app.services.team_manager import set_team
+    """Create a FastAPI app whose agents directory is genuinely empty.
 
-    app = create_app()
-    set_team(None)
-    return app
+    ``set_team(None)`` only drops the *cached* team. The next request calls
+    ``get_or_start_team*``, which rebuilds one from ``settings.AGENTS_DIR`` —
+    so "no team" only held when that directory happened to be empty. It is the
+    ambient XDG config dir: populated on a plain ``pytest`` run (the session
+    fixture materialises agents into ``.tests/config``), but per-worker and
+    empty under ``pytest -n``. These tests therefore passed under xdist and
+    failed standalone, purely on how the suite was invoked.
+
+    Pointing ``AGENTS_DIR`` at an empty directory makes the precondition real
+    and exercises the actual "no agents configured" path rather than stubbing
+    the team lookup.
+    """
+    from app.api.app import create_app
+    from app.core.config import settings
+    from app.services import team_manager
+
+    with pytest.MonkeyPatch.context() as mp:
+        empty_agents = tempfile.mkdtemp(prefix="openagentd-no-agents-")
+        mp.setattr(settings, "AGENTS_DIR", empty_agents)
+        team_manager.reset_agents_dir_validation_cache()
+        team_manager.set_team(None)
+        try:
+            yield create_app()
+        finally:
+            team_manager.set_team(None)
+            team_manager.reset_agents_dir_validation_cache()
+            shutil.rmtree(empty_agents, ignore_errors=True)
 
 
 class TestTeamChatRoute:
@@ -232,24 +327,6 @@ class TestTeamChatRoute:
         assert response.status_code == 202
         test_team.handle_user_message.assert_awaited_once()
         assert test_team.handle_user_message.call_args.kwargs["content"] == "Hello team"
-
-    def test_team_chat_shell_dispatches_bang_command(self, app_with_team, test_team):
-        client = TestClient(app_with_team)
-        session_id = str(uuid.uuid7())
-        with patch(
-            "app.api.routes.team.chat.agent_service.dispatch_user_shell_command",
-            AsyncMock(return_value=session_id),
-        ) as dispatch_shell:
-            response = client.post(
-                "/api/team/chat",
-                data={"message": "!ls -la", "session_id": session_id, "shell": "true"},
-            )
-
-        assert response.status_code == 202
-        assert response.json()["session_id"] == session_id
-        dispatch_shell.assert_awaited_once()
-        assert dispatch_shell.call_args.kwargs["command"] == "ls -la"
-        assert dispatch_shell.call_args.kwargs["session_id"] == session_id
 
     def test_team_chat_passes_model_settings(self, app_with_team, test_team):
         test_team.handle_user_message = AsyncMock(
@@ -715,16 +792,16 @@ class TestTeamAgentsRoute:
                 enabled=True,
                 state="ready",
             ),
-            tools=[get_date],
+            tools=[read_file],
         )
-        runner.status.tool_names = [get_date.name]
+        runner.status.tool_names = [read_file.name]
         monkeypatch.setattr(mcp_manager, "_runners", {"filesystem": runner})
 
         client = TestClient(app_with_team)
         data = client.get("/api/team/agents").json()
         lead_entry = next(a for a in data["agents"] if a["name"] == "lead")
         tool_names = {tool["name"] for tool in lead_entry["tools"]}
-        assert get_date.name in tool_names
+        assert read_file.name in tool_names
 
     def test_team_agents_lists_the_tools_injected_at_run_time(
         self, app_with_team, test_team

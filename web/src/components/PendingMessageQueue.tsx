@@ -3,6 +3,7 @@ import { ChevronDown, ChevronUp, Paperclip, X } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useTeamStore } from '@/stores/useTeamStore'
 import type { MessageAttachment } from '@/api/types'
+import { cn } from '@/lib/utils'
 
 const QUEUED_COLLAPSE_LINES = 10
 const QUEUED_COLLAPSE_CHARS = 700
@@ -42,14 +43,14 @@ function QueuedMessageContent({ content, attachments }: { content: string; attac
   return (
     <div className="relative overflow-hidden rounded-sm border border-(--color-border) bg-(--bg-card) px-4 py-3 text-sm leading-relaxed text-(--color-text) opacity-75 shadow-sm">
       {needsCollapse && (
-        <Tooltip>
+        <Tooltip className="absolute top-1.5 right-1.5 z-10">
           <TooltipTrigger
             render={
               <button
                 onClick={() => setExpanded((v) => !v)}
                 aria-expanded={expanded}
                 aria-label={expanded ? 'Collapse' : 'Expand'}
-                className="absolute top-1.5 right-1.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-sm bg-(--bg-key) text-(--color-text-2) transition-all duration-150 hover:text-(--color-text) active:scale-90 md:h-5 md:w-5"
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-sm bg-(--bg-key) text-(--color-text-2) transition-all duration-150 hover:text-(--color-text) active:scale-90 md:h-5 md:w-5"
               >
                 {expanded ? <ChevronUp size={14} className="md:h-3 md:w-3" /> : <ChevronDown size={14} className="md:h-3 md:w-3" />}
               </button>
@@ -58,7 +59,7 @@ function QueuedMessageContent({ content, attachments }: { content: string; attac
           <TooltipContent>{expanded ? 'Collapse' : 'Expand'}</TooltipContent>
         </Tooltip>
       )}
-      <p className="min-w-0 break-words whitespace-pre-wrap [overflow-wrap:anywhere]">{visibleContent}</p>
+      <p className={cn('min-w-0 break-words whitespace-pre-wrap [overflow-wrap:anywhere]', needsCollapse && 'pr-12 md:pr-6')}>{visibleContent}</p>
       {attachments && attachments.length > 0 && <QueuedAttachmentList attachments={attachments} />}
       {needsCollapse && !expanded && (
         <div

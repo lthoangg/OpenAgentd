@@ -529,6 +529,25 @@ describe("AgentView — UserBubble collapse feature", () => {
     gradientFade = container.querySelector("div[class*='pointer-events-none'][class*='inset-x-0'][class*='bottom-0']")
     expect(gradientFade).toBeNull()
   })
+
+  it("positions collapse button at the top right of the user bubble with room for text", () => {
+    const longContent = Array.from({ length: 15 }, (_, i) => `line${i + 1}`).join("\n")
+    const blocks: ContentBlock[] = [
+      {
+        id: "1",
+        type: "user",
+        content: longContent,
+        timestamp: new Date(),
+      },
+    ]
+
+    const { container } = render(<AgentView blocks={blocks} currentBlocks={[]} isWorking={false} />)
+
+    const tooltipWrapper = container.querySelector("span[class*='absolute'][class*='top-1.5'][class*='right-1.5']")
+    expect(tooltipWrapper).toBeTruthy()
+    const text = container.querySelector("p[class*='pr-6']")
+    expect(text).toBeTruthy()
+  })
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -713,6 +732,31 @@ describe("AgentPane — UserBubble collapse feature", () => {
     // Collapse
     await user.click(collapseBtn!)
     expect(screen.queryByText(/line15/)).toBeNull()
+  })
+
+  it("positions compact collapse button at the top right of the agent pane user bubble", () => {
+    const longContent = Array.from({ length: 15 }, (_, i) => `line${i + 1}`).join("\n")
+    const blocks: ContentBlock[] = [
+      {
+        id: "1",
+        type: "user",
+        content: longContent,
+        timestamp: new Date(),
+      },
+    ]
+
+    const { container } = render(
+      <AgentPane
+        name="TestAgent"
+        stream={createMockStream(blocks)}
+        isLead={true}
+      />
+    )
+
+    const tooltipWrapper = container.querySelector("span[class*='absolute'][class*='top-1'][class*='right-1']")
+    expect(tooltipWrapper).toBeTruthy()
+    const text = container.querySelector("p[class*='pr-5']")
+    expect(text).toBeTruthy()
   })
 
   // ── Copy button behavior ─────────────────────────────────────────────────

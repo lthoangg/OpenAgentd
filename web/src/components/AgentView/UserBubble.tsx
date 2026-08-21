@@ -9,6 +9,7 @@ import { resolveApiUrl } from '@/api/client'
 import { openExternalUrl } from '@/lib/open-external'
 import { formatTime, formatFullDateTime } from '@/utils/format'
 import type { MessageAttachment } from '@/api/types'
+import { cn } from '@/lib/utils'
 
 /** Matches http:// and https:// URLs (greedy, stops at whitespace or common trailing punctuation). */
 const URL_RE = /https?:\/\/[^\s<>"')\]]+/g
@@ -232,14 +233,14 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
           <div className="relative min-w-0 max-w-full overflow-hidden rounded-sm border border-(--color-border) bg-(--bg-card) px-3 py-2.5 text-sm leading-relaxed text-(--color-text) shadow-sm selectable-text">
            {/* Expand / collapse button — top-right inside bubble */}
            {needsCollapse && (
-             <Tooltip>
+             <Tooltip className="absolute top-1.5 right-1.5 z-10">
                <TooltipTrigger
                  render={
                    <button
                      onClick={() => setExpanded((v) => !v)}
                      aria-expanded={expanded}
                      aria-label={expanded ? 'Collapse' : 'Expand'}
-                     className="absolute top-1.5 right-1.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-sm bg-(--bg-key) text-(--color-text-2) transition-all duration-150 hover:text-(--color-text) active:scale-90"
+                     className="flex h-5 w-5 shrink-0 items-center justify-center rounded-sm bg-(--bg-key) text-(--color-text-2) transition-all duration-150 hover:text-(--color-text) active:scale-90"
                    >
                      {expanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
                    </button>
@@ -248,7 +249,7 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
                <TooltipContent>{expanded ? 'Collapse' : 'Expand'}</TooltipContent>
              </Tooltip>
            )}
-           <p className="min-w-0 break-words whitespace-pre-wrap [overflow-wrap:anywhere]">{renderMentionSegments(visibleContent, onMentionFileOpen, mentions)}</p>
+           <p className={cn('min-w-0 break-words whitespace-pre-wrap [overflow-wrap:anywhere]', needsCollapse && 'pr-6')}>{renderMentionSegments(visibleContent, onMentionFileOpen, mentions)}</p>
            {/* Gradient fade at bottom when collapsed */}
            {needsCollapse && !expanded && (
              <div

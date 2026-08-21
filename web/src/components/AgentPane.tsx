@@ -36,6 +36,7 @@ import type { AgentStream } from '@/stores/useTeamStore'
 import { resolveApiUrl } from '@/api/client'
 import { openExternalUrl } from '@/lib/open-external'
 import type { ContentBlock, MessageAttachment } from '@/api/types'
+import { cn } from '@/lib/utils'
 
 interface AgentPaneProps {
   name: string
@@ -200,14 +201,14 @@ const UserBubble = memo(function UserBubble({ content, timestamp, attachments, o
           <div className="relative min-w-0 max-w-full overflow-hidden rounded-sm border border-(--color-border) bg-(--bg-card) px-3 py-2 text-xs leading-relaxed text-(--color-text) shadow-sm selectable-text">
            {/* Expand / collapse button — top-right inside bubble (compact) */}
            {needsCollapse && (
-             <Tooltip>
+             <Tooltip className="absolute top-1 right-1 z-10">
                <TooltipTrigger
                  render={
                    <button
                      onClick={() => setExpanded((v) => !v)}
                      aria-expanded={expanded}
                      aria-label={expanded ? 'Collapse' : 'Expand'}
-                     className="absolute top-1 right-1 flex h-4 w-4 shrink-0 items-center justify-center rounded-sm bg-(--bg-key) text-(--color-text-2) transition-all duration-150 hover:text-(--color-text) active:scale-90"
+                     className="flex h-4 w-4 shrink-0 items-center justify-center rounded-sm bg-(--bg-key) text-(--color-text-2) transition-all duration-150 hover:text-(--color-text) active:scale-90"
                    >
                      {expanded ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
                    </button>
@@ -216,7 +217,7 @@ const UserBubble = memo(function UserBubble({ content, timestamp, attachments, o
                <TooltipContent>{expanded ? 'Collapse' : 'Expand'}</TooltipContent>
              </Tooltip>
            )}
-           <p className="min-w-0 break-words whitespace-pre-wrap [overflow-wrap:anywhere]">{renderMentionSegments(visibleContent, mentions)}</p>
+           <p className={cn('min-w-0 break-words whitespace-pre-wrap [overflow-wrap:anywhere]', needsCollapse && 'pr-5')}>{renderMentionSegments(visibleContent, mentions)}</p>
            {/* Gradient fade at bottom when collapsed */}
            {needsCollapse && !expanded && (
              <div

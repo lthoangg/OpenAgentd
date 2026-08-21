@@ -77,8 +77,8 @@ function Tooltip({ children, className }: { children: ReactNode; className?: str
        * (`min-w-0`, `flex-1`, `shrink-0`, `truncate`, …) onto this wrapper so
        * wrapping a non-button trigger in a Tooltip doesn't change how it
        * participates in the surrounding layout. */}
-      <span ref={anchorRef} className={cn('relative inline-flex min-w-0', className)}>{children}</span>
-    </TooltipContext.Provider>
+       <span ref={anchorRef} className={cn('inline-flex min-w-0', className)}>{children}</span>
+     </TooltipContext.Provider>
   )
 }
 

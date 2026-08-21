@@ -63,6 +63,50 @@ describe("AssistantTurn — which blocks count as streaming", () => {
     expect(streaming["tool-1"]).toBe(false)
     expect(streaming["text-1"]).toBe(false)
   })
+
+  it("marks a compaction block as streaming while compacting and working", () => {
+    const compactionBlocks: ContentBlock[] = [
+      { id: "comp-1", type: "compaction", content: "Summarizing...", extra: { state: "compacting" } },
+    ]
+    const streaming: Record<string, boolean> = {}
+    render(
+      <AssistantTurn
+        blocks={compactionBlocks}
+        startIndex={0}
+        finalizedCount={compactionBlocks.length}
+        isWorking={true}
+        isTrailingTurn
+        totalBlocks={compactionBlocks.length}
+        renderBlock={({ block, isStreaming }) => {
+          streaming[block.id] = isStreaming
+          return null
+        }}
+      />,
+    )
+    expect(streaming["comp-1"]).toBe(true)
+  })
+
+  it("marks a compacted block as not streaming even if isWorking is true", () => {
+    const compactionBlocks: ContentBlock[] = [
+      { id: "comp-1", type: "compaction", content: "Summary", extra: { state: "compacted" } },
+    ]
+    const streaming: Record<string, boolean> = {}
+    render(
+      <AssistantTurn
+        blocks={compactionBlocks}
+        startIndex={0}
+        finalizedCount={compactionBlocks.length}
+        isWorking={true}
+        isTrailingTurn
+        totalBlocks={compactionBlocks.length}
+        renderBlock={({ block, isStreaming }) => {
+          streaming[block.id] = isStreaming
+          return null
+        }}
+      />,
+    )
+    expect(streaming["comp-1"]).toBe(false)
+  })
 })
 
 describe("AssistantTurnFooter", () => {

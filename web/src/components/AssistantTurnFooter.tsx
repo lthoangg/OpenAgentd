@@ -171,7 +171,10 @@ export const AssistantTurn = memo(function AssistantTurn({
         // flagging them too gave every one of them a typewriter rAF loop with
         // nothing to animate. `appendStreamed` only ever fills the last block
         // of a kind, so the block taking deltas is always the trailing one.
-        const isStreaming = isWorking && absoluteIdx >= finalizedCount && isLast
+        // Compaction blocks live in `blocks` directly, so their active streaming
+        // state is indicated by `block.extra?.state === 'compacting'`.
+        const isCompactionStreaming = isWorking && block.type === 'compaction' && block.extra?.state === 'compacting'
+        const isStreaming = isCompactionStreaming || (isWorking && absoluteIdx >= finalizedCount && isLast)
         return (
           <div key={block.id}>
             {renderBlock({

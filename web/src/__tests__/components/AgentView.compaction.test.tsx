@@ -122,6 +122,16 @@ describe('AgentView — compaction block rendering', () => {
     expect(dividerCalls[0].isStreaming).toBe(true)
   })
 
+  it('passes isStreaming=true to CompactionDivider for a compacting block in finalized blocks while working', () => {
+    // Compaction blocks live in `stream.blocks` in the real store during summarization_start/content.
+    renderView({
+      blocks: [makeCompactionBlock('c1', 'Partial summary in blocks…', 'compacting')],
+      currentBlocks: [],
+      isWorking: true,
+    })
+    expect(dividerCalls[0].isStreaming).toBe(true)
+  })
+
   it('passes isStreaming=false to CompactionDivider for a finalized compacted block', () => {
     renderView({
       blocks: [makeCompactionBlock('c1', 'Final summary', 'compacted')],
@@ -199,6 +209,17 @@ describe('AgentPane — compaction block rendering', () => {
       makeStream({
         blocks: [],
         currentBlocks: [makeCompactionBlock('c1', 'Streaming…', 'compacting')],
+        status: 'working',
+      }),
+    )
+    expect(dividerCalls[0].isStreaming).toBe(true)
+  })
+
+  it('passes isStreaming=true to CompactionDivider for a compacting block in blocks while working', () => {
+    renderPane(
+      makeStream({
+        blocks: [makeCompactionBlock('c1', 'Streaming in blocks…', 'compacting')],
+        currentBlocks: [],
         status: 'working',
       }),
     )

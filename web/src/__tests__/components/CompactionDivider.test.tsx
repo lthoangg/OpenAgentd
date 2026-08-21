@@ -170,4 +170,11 @@ describe('CompactionDivider — isStreaming forwarding (regression)', () => {
     render(<CompactionDivider state="compacted" summary="Some text" sessionId="sess-abc" />)
     expect(lastLazyProps.sessionId).toBe('sess-abc')
   })
+
+  it('passes untrimmed summary to LazyMarkdownBlock during active streaming to preserve smooth typewriter animation', () => {
+    lastLazyProps = {}
+    render(<CompactionDivider state="compacting" summary="Streaming text with trailing space " isStreaming={true} />)
+    expect(lastLazyProps.content).toBe('Streaming text with trailing space ')
+    expect(lastLazyProps.isStreaming).toBe(true)
+  })
 })

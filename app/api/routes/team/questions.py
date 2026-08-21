@@ -274,12 +274,13 @@ async def _end_turn(session_id: str) -> None:
 
 
 async def _start_team_for_session(session_id: str, db: DbSession):
-    """Boot the coding team that owns *session_id*, or ``None``.
+    """Boot the team (coding or cockpit) that owns *session_id*, or ``None``.
 
     The suspension is durable, so answering has to work after a daemon restart
     — and the resumed turn reads its history from the database, so a cold team
-    can run it. ``ask_user`` is coding-mode-lead-only, so a session that has a
-    question always has a workspace to start against.
+    can run it. ``ask_user`` is lead-only in both coding and cockpit mode, so
+    this dispatches on the session's stored mode to boot the right kind of
+    team.
     """
     from app.models.chat import ChatSession
     from app.services import team_manager
@@ -289,15 +290,39 @@ async def _start_team_for_session(session_id: str, db: DbSession):
     except Exception as exc:
         logger.warning("question_resume_session_lookup_failed error={}", exc)
         return None
-    if row is None or row.mode != "coding" or not row.workspace:
+    if row is None:
+        logger.warning(
+            "question_resume_session_not_resumable session_id={} mode=None", session_id
+        )
+        return None
+    if row.mode == "coding":
+        if not row.workspace:
+            logger.warning(
+                "question_resume_session_not_resumable session_id={} mode={}",
+                session_id,
+                row.mode,
+            )
+            return None
+        try:
+            return await team_manager.get_or_start_coding_team(
+                row.workspace, session_id
+            )
+        except Exception as exc:
+            logger.warning(
+                "question_resume_team_start_failed session_id={} error={}",
+                session_id,
+                exc,
+            )
+            return None
+    if row.mode != "normal":
         logger.warning(
             "question_resume_session_not_resumable session_id={} mode={}",
             session_id,
-            None if row is None else row.mode,
+            row.mode,
         )
         return None
     try:
-        return await team_manager.get_or_start_coding_team(row.workspace, session_id)
+        return await team_manager.get_or_start_team_for_session(session_id)
     except Exception as exc:
         logger.warning(
             "question_resume_team_start_failed session_id={} error={}", session_id, exc

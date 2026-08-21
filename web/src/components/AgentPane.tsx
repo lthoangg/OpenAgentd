@@ -449,7 +449,9 @@ const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionI
   )
 
   const lastBlock = liveTail.length > 0 ? liveTail[liveTail.length - 1] : stream.blocks[stream.blocks.length - 1]
-  const lastBlockContent = lastBlock?.content ?? ''
+  const lastBlockContent = lastBlock
+    ? `${lastBlock.content ?? ''}:${lastBlock.toolOutput ?? ''}:${lastBlock.toolResult ?? ''}:${lastBlock.toolArgs ?? ''}`
+    : ''
   const isUserMessage = lastBlock ? isDirectUserBlock(lastBlock) : false
   const isEmpty = totalLen === 0
 

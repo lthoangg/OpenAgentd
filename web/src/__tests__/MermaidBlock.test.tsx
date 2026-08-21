@@ -40,7 +40,13 @@ describe('MermaidBlock', () => {
 
   it('renders a single header with Mermaid label, tabs, and copy button', async () => {
     const source = 'graph TD; A-->B;'
-    render(<MermaidBlock source={source} highlightedCode={<span>{source}</span>} />)
+    const { container } = render(<MermaidBlock source={source} highlightedCode={<span>{source}</span>} />)
+
+    // Verify container has borders and no roundness
+    const outerDiv = container.firstElementChild as HTMLElement
+    expect(outerDiv.className).toContain('border')
+    expect(outerDiv.className).toContain('border-(--color-border)')
+    expect(outerDiv.className).not.toContain('rounded')
 
     // Verify language label
     expect(screen.getByText('Mermaid')).toBeTruthy()

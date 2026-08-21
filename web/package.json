@@ -1,7 +1,7 @@
 {
   "name": "openagentd-web",
   "private": true,
-  "version": "2.0.0",
+  "version": "2.1.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -9,7 +9,8 @@
     "check:chunks": "bun scripts/check-chunk-cycles.mjs",
     "build:analyze": "tsc -b && ANALYZE=1 vite build",
     "typecheck": "tsc -b --noEmit",
-    "lint": "eslint .",
+    "lint": "oxlint --type-aware -c .oxlintrc.json",
+    "lint:fix": "oxlint --type-aware --fix -c .oxlintrc.json",
     "preview": "vite preview",
     "test": "bun test --parallel src/__tests__",
     "test:file": "bun test --parallel"
@@ -60,7 +61,6 @@
     "zustand": "^5.0.15"
   },
   "devDependencies": {
-    "@eslint/js": "^10.0.1",
     "@happy-dom/global-registrator": "^20.11.6",
     "@tailwindcss/vite": "^4.3.3",
     "@testing-library/jest-dom": "^7.0.1",
@@ -70,15 +70,12 @@
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
     "@vitejs/plugin-react": "6.1.0",
-    "eslint": "^10.8.1",
-    "eslint-plugin-react-hooks": "^7.1.1",
-    "eslint-plugin-react-refresh": "^0.5.4",
-    "globals": "^17.11.0",
     "msw": "^2.15.0",
+    "oxlint": "^1.79.0",
+    "oxlint-tsgolint": "^7.0.2001",
     "rollup-plugin-visualizer": "^7.1.1",
     "tailwindcss": "^4.3.3",
-    "typescript": "~6.0.3",
-    "typescript-eslint": "^8.67.0",
+    "typescript": "~7.0.2",
     "vite": "^8.2.2",
     "vite-plugin-svgr": "^5.2.0"
   }

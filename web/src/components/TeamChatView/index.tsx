@@ -135,7 +135,6 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
         leadCompletionTokens: leadStream?.usage.completionTokens ?? 0,
         leadCachedTokens: leadStream?.usage.cachedTokens ?? 0,
         leadCachedPercent: leadStream?.usage.cachedPercent,
-        leadTotalTokens: leadStream?.usage.totalTokens ?? 0,
         sessionCostUsd: Math.round(s.agentNames.reduce(
           (total, name) => total + (s.agentStreams[name]?.usage.estimatedCostUsd ?? 0),
           0,
@@ -178,7 +177,6 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
     leadCompletionTokens,
     leadCachedTokens,
     leadCachedPercent,
-    leadTotalTokens,
     sessionCostUsd,
   } = storeState
 
@@ -297,20 +295,15 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
   })
 
 
-  // Usage only lands when a model call completes, so a totals-only gate hid
-  // the meter for the entire first response of a new session. A live turn is
-  // reason enough to show it.
-  const headerTokens = leadTotalTokens > 0 || isTeamWorking
-    ? {
-        input: leadPromptTokens,
-        output: leadCompletionTokens,
-        cached: leadCachedTokens,
-        cachedPercent: leadCachedPercent,
-        trigger: summaryTriggerTokens,
-        pulsing: isTeamWorking,
-        sessionCostUsd,
-      }
-    : undefined
+  const headerTokens = {
+    input: leadPromptTokens,
+    output: leadCompletionTokens,
+    cached: leadCachedTokens,
+    cachedPercent: leadCachedPercent,
+    trigger: summaryTriggerTokens,
+    pulsing: isTeamWorking,
+    sessionCostUsd,
+  }
 
   const {
     handleNewSession,

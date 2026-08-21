@@ -14,7 +14,7 @@ release that introduced it (where known). When you ship something new, **add it 
 > double-clickable app that runs a team of AI agents on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 16 providers. Your keys.
 
-**Latest release:** v2.0.0 · August 21, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v2.0.0)
+**Latest release:** v2.1.0 · August 21, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v2.1.0)
 
 ---
 
@@ -332,7 +332,7 @@ run from the terminal.
   icon-sized input-token progress ring against the backend's model-aware
   summarization trigger; hover, focus, or tap/click reveals input/output/cache
   details, cache hit rate percentage, reduced compaction input tokens, and estimated USD used across the active session `[v1.107.0, v2.0.0]`; the estimate sums provider-reported input, output, cache-read, and cache-write usage at the active model's registry rates, so compaction never reduces previously incurred spend. Token rows describe the lead while `session cost` covers every agent; live values are published per completed model call from the same usage snapshot the transcript and telemetry store, so the meter no longer disagrees with them, and it stays visible for the duration of a live turn `[v1.132.0]`.
-  The summarizer's own LLM call now counts too: its usage (with cost) is
+  The meter remains displayed even without any messages or usage in the session `[v2.0.0]`. The summarizer's own LLM call now counts too: its usage (with cost) is
   persisted on the compaction summary row and published as a live usage frame,
   so the running session cost stays `previous cost + current turn cost` across
   compactions, on the live meter and after reload alike `[v2.0.0]`.
@@ -741,11 +741,11 @@ MCP.
 | Scheduling | `schedule_task` (reminders + self-scheduling agentic loops) `[v1.70.0]` |
 | Tasks | `todo_manage` |
 | Team coordination | `team_message`, `team_manage` |
-| Ask the user | `ask_user` (coding-mode lead only) `[v1.131.0]` |
+| Ask the user | `ask_user` (coding/cockpit leads) `[v1.131.0, v2.1.0]` |
 | Utility | `skill` |
 
-- **`ask_user` — durable suspend and resume** `[v1.131.0]` — in
-  **coding mode**, the lead can stop mid-turn and ask you 1–4 questions rather
+- **`ask_user` — durable suspend and resume** `[v1.131.0, v2.1.0]` — in
+  **coding or cockpit mode** `[v2.1.0]`, the lead can stop mid-turn and ask you 1–4 questions rather
   than guessing on a decision that would cost real work to undo. Each question
   carries up to 5 options with optional descriptions, single- or multi-select,
   a "Recommended" badge on the agent's preferred choice, and an optional

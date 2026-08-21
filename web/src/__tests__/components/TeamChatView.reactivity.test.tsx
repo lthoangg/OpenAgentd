@@ -257,9 +257,9 @@ describe('TeamChatView reactive derived state', () => {
     expect(screen.queryByTestId('session-cost')).not.toBeNull()
   })
 
-  it('hides the header meter when idle with no usage', () => {
+  it('shows the header meter even when idle with no usage', () => {
     render(<TeamChatView sessionId="session-1" />)
 
-    expect(screen.queryByTestId('session-cost')).toBeNull()
+    expect(screen.queryByTestId('session-cost')).not.toBeNull()
   })
 })

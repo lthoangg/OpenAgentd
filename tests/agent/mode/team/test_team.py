@@ -604,6 +604,7 @@ class TestAgentTeamToolInjection:
         tools = team.get_injected_tools("lead")
         names = {t.name for t in tools}
         assert names == {
+            "ask_user",
             "team_message",
             "todo_manage",
             "team_manage",
@@ -666,14 +667,14 @@ class TestAgentTeamToolInjection:
 
         assert "ask_user" in names
 
-    async def test_lead_does_not_get_ask_user_outside_coding(self, basic_team):
-        """Normal mode is conversational — a wrong guess costs nothing to redo."""
+    async def test_normal_lead_gets_ask_user(self, basic_team):
+        """Cockpit (normal) mode also lets the lead interrupt the user."""
         team = basic_team
         team.mode = "normal"
 
         names = {t.name for t in team.get_injected_tools("lead")}
 
-        assert "ask_user" not in names
+        assert "ask_user" in names
 
     async def test_members_never_get_ask_user(self, basic_team):
         """Members escalate through ``team_message``; only the lead owns the user."""

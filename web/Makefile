@@ -9,7 +9,7 @@ build: ## Build the web UI into dist/
 typecheck: ## Run TypeScript type checking
 	bun run typecheck
 
-lint: ## Run ESLint
+lint: ## Run Oxlint
 	bun run lint
 
 test: ## Run Bun tests

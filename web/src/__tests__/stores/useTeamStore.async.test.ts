@@ -2464,6 +2464,53 @@ describe("loadSession", () => {
     expect(useTeamStore.getState().isTeamWorking).toBe(false)
   })
 
+  it("never reduces estimatedCostUsd or completionTokens on loadSession for the same session", async () => {
+    mockTeamHistory.mockImplementation(() =>
+      Promise.resolve({
+        lead: {
+          id: "lead-sess",
+          agent_name: "lead",
+          title: null,
+          created_at: null,
+          updated_at: null,
+          sub_sessions: [],
+          messages: [
+            {
+              id: "m1",
+              role: "assistant",
+              content: "hi",
+              extra: { usage: { input: 100, output: 20, cost: { estimated_usd: 0.001 } } },
+            },
+          ],
+        },
+        members: [],
+        has_more: true,
+        next_cursor: 1,
+      })
+    )
+    useTeamStore.setState({
+      sessionId: "sess-1",
+      isTeamWorking: false,
+      agentStreams: {
+        lead: makeStream({
+          usage: {
+            promptTokens: 100,
+            completionTokens: 80,
+            totalTokens: 180,
+            cachedTokens: 0,
+            estimatedCostUsd: 0.005,
+          },
+        }),
+      },
+    })
+
+    await useTeamStore.getState().loadSession("sess-1")
+
+    const usage = useTeamStore.getState().agentStreams.lead.usage
+    expect(usage.estimatedCostUsd).toBe(0.005)
+    expect(usage.completionTokens).toBe(80)
+  })
+
   it("resets lead agent status to idle when switching away from streaming session", async () => {
     useTeamStore.setState({
       isTeamWorking: true,

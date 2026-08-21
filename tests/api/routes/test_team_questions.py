@@ -677,6 +677,43 @@ async def test_answer_starts_a_team_when_none_is_live(client, team, monkeypatch)
     assert started.lead.resumed == 1
 
 
+async def test_answer_starts_a_normal_mode_team_when_none_is_live(
+    client, team, monkeypatch
+):
+    """Cockpit (normal-mode) sessions resume a cold team the same as coding."""
+    from app.core import db as core_db
+    from app.models.chat import ChatSession
+
+    session_id = uuid.uuid4()
+    question_id = await _seed(session_id)
+    async with core_db.async_session_factory() as db:
+        row = await db.get(ChatSession, session_id)
+        row.mode = "normal"
+        db.add(row)
+        await db.commit()
+
+    team["team"] = None
+    started = _FakeTeam(str(session_id))
+    started.lead.state = "waiting_input"
+
+    async def fake_start(sid: str):
+        started.started_with = sid
+        return started
+
+    monkeypatch.setattr(
+        "app.services.team_manager.get_or_start_team_for_session", fake_start
+    )
+
+    resp = await client.post(
+        f"/{session_id}/question/{question_id}/answer",
+        json={"answers": [["pnpm"], ["lint"]]},
+    )
+
+    assert resp.json()["resumed"] is True
+    assert started.started_with == str(session_id)
+    assert started.lead.resumed == 1
+
+
 async def test_a_failed_resume_frees_the_lead(client, team):
     """A lead left parked with no question wedges the session.
 

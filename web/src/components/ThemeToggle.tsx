@@ -53,7 +53,7 @@ export function ThemeToggle({
               className={cn(
                 'interactive-weight flex text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40',
                 compact
-                  ? 'h-5 w-5 items-center justify-center rounded-xs'
+                  ? 'h-5 w-5 items-center justify-center rounded-sm'
                   : 'h-11 w-11 items-center justify-center rounded-md md:h-8 md:w-8',
                 className,
               )}
@@ -85,7 +85,7 @@ export function ThemeToggle({
                   aria-checked={active}
                   aria-label={label}
                   onClick={() => setPreference(value)}
-                  className={`interactive-weight inline-flex h-7 w-7 items-center justify-center rounded-sm transition-colors ${
+                  className={`interactive-weight inline-flex h-7 w-7 items-center justify-center rounded-md transition-colors ${
                     active
                       ? 'bg-(--color-surface-2) text-(--color-text)'
                       : 'text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text-2)'

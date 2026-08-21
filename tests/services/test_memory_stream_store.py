@@ -812,6 +812,40 @@ class TestCommitAgentContent:
             assert ev["event"] not in {"tool_call", "tool_start", "tool_end"}
 
     @pytest.mark.asyncio
+    async def test_attach_replays_tool_started_after_commit(self):
+        """Tool calls starting after assistant message commit are replayed on reconnect."""
+        await store.init_turn("sid-1")
+        await store.commit_agent_content("sid-1", "alice")
+
+        await store.push_event(
+            "sid-1",
+            StreamEnvelope.from_parts(
+                "tool_start",
+                {
+                    "type": "tool_start",
+                    "agent": "alice",
+                    "tool_call_id": "tc-new",
+                    "name": "shell",
+                    "arguments": '{"command":"echo hi"}',
+                },
+            ),
+        )
+
+        events = []
+
+        async def collect():
+            async for ev in store.attach("sid-1"):
+                events.append(ev)
+
+        task = asyncio.create_task(collect())
+        await asyncio.sleep(0.05)
+        await store.mark_done("sid-1")
+        await task
+
+        types = [e["event"] for e in events]
+        assert "tool_start" in types
+
+    @pytest.mark.asyncio
     async def test_commit_tool_calls_without_agent_field_preserved(self):
         """Tool calls with no 'agent' field are NOT dropped."""
         await store.init_turn("sid-1")

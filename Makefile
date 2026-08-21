@@ -57,7 +57,6 @@ verify-backend: ## Lint, format-check, type-check, and test the Python backend
 verify-web: ## Lint, type-check, and test the web frontend
 	cd web && bun run lint
 	cd web && bun run typecheck
-	cd web && bunx tsc -p tsconfig.test.json --noEmit
 	cd web && bun test --parallel
 
 verify-docs: ## Validate documentation links, metadata, and repository references

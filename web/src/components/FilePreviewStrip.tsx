@@ -95,7 +95,7 @@ function RemoveButton({ onRemove, label = 'Remove file' }: { onRemove: () => voi
           <button
             type="button"
             onClick={(e) => { e.stopPropagation(); onRemove() }}
-            className="flex h-7 w-7 items-center justify-center rounded-sm border border-(--color-border) bg-(--bg-card) text-(--color-text-muted) shadow-sm opacity-100 transition-colors hover:border-(--color-border-strong) hover:text-(--color-text) md:h-4 md:w-4 md:opacity-0 md:group-hover:opacity-100"
+            className="flex h-7 w-7 items-center justify-center rounded-md border border-(--color-border) bg-(--bg-card) text-(--color-text-muted) shadow-sm opacity-100 transition-colors hover:border-(--color-border-strong) hover:text-(--color-text) md:h-4 md:w-4 md:opacity-0 md:group-hover:opacity-100"
             aria-label={label}
           >
             <X size={12} className="md:h-2.5 md:w-2.5" />
@@ -124,12 +124,12 @@ function ImageCard({ file, blobUrl, onRemove, onOpen }: CardProps) {
       <button
         type="button"
         onClick={onOpen}
-        className="overflow-hidden rounded-sm focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 focus-visible:outline-none"
+        className="overflow-hidden rounded-md focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 focus-visible:outline-none"
         aria-label={`Preview ${file.name}`}
       >
         {error
           ? (
-            <div className="flex h-[120px] w-[120px] items-center justify-center rounded-sm border border-(--color-border) bg-(--bg-card) text-xs text-(--color-text-muted)">
+            <div className="flex h-[120px] w-[120px] items-center justify-center rounded-md border border-(--color-border) bg-(--bg-card) text-xs text-(--color-text-muted)">
               Failed to load
             </div>
           )
@@ -140,7 +140,7 @@ function ImageCard({ file, blobUrl, onRemove, onOpen }: CardProps) {
               loading="lazy"
               decoding="async"
               onError={() => setError(true)}
-              className="max-h-[120px] max-w-[120px] rounded-sm object-cover"
+              className="max-h-[120px] max-w-[120px] rounded-md object-cover"
             />
           )}
       </button>
@@ -156,7 +156,7 @@ function VideoCard({ file, blobUrl, onRemove, onOpen }: CardProps) {
       <button
         type="button"
         onClick={onOpen}
-        className="flex flex-col overflow-hidden rounded-sm border border-(--color-border) bg-(--bg-card) focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 focus-visible:outline-none"
+        className="flex flex-col overflow-hidden rounded-md border border-(--color-border) bg-(--bg-card) focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 focus-visible:outline-none"
         aria-label={`Preview ${file.name}`}
       >
         <video
@@ -185,7 +185,7 @@ function AudioCard({ file, blobUrl, onRemove, onOpen }: CardProps) {
   const displayName = file.name.length > 22 ? `${file.name.slice(0, 19)}…` : file.name
   return (
     <div className="group relative inline-block">
-      <div className="flex flex-col gap-1.5 rounded-sm border border-(--color-border) bg-(--bg-card) px-2.5 py-2">
+      <div className="flex flex-col gap-1.5 rounded-md border border-(--color-border) bg-(--bg-card) px-2.5 py-2">
         <button
           type="button"
           onClick={onOpen}
@@ -220,7 +220,7 @@ function PdfCard({ file, blobUrl, onRemove, onOpen }: CardProps) {
       <button
         type="button"
         onClick={onOpen}
-        className="flex flex-col overflow-hidden rounded-sm border border-(--color-border) bg-(--bg-card) focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 focus-visible:outline-none"
+        className="flex flex-col overflow-hidden rounded-md border border-(--color-border) bg-(--bg-card) focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 focus-visible:outline-none"
         aria-label={`Preview ${file.name}`}
       >
         <PdfThumbnail
@@ -267,7 +267,7 @@ function TextCard({ file, onRemove, onOpen }: Omit<CardProps, 'blobUrl'> & { blo
       <button
         type="button"
         onClick={onOpen}
-        className="flex w-[190px] flex-col overflow-hidden rounded-sm border border-(--color-border) bg-(--bg-card) text-left focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 focus-visible:outline-none"
+        className="flex w-[190px] flex-col overflow-hidden rounded-md border border-(--color-border) bg-(--bg-card) text-left focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 focus-visible:outline-none"
         aria-label={`Preview ${file.name}`}
       >
         <div className="flex items-center gap-1.5 border-b border-(--color-border-subtle) px-2 py-1.5">

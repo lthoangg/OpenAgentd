@@ -845,7 +845,7 @@ describe("AgentView — streaming auto-follow without compositor churn", () => {
     expect(anchor.style.overflowAnchor).toBe("auto")
   })
 
-  it("does not assign scrollTop from ResizeObserver when already pinned to the bottom", async () => {
+  it("assigns scrollTop from ResizeObserver when stream content grows while attached", async () => {
     const originalResizeObserver = globalThis.ResizeObserver
     const observers: Array<{ callback: ResizeObserverCallback; targets: Element[] }> = []
     globalThis.ResizeObserver = class {
@@ -870,7 +870,7 @@ describe("AgentView — streaming auto-follow without compositor churn", () => {
       const observer = observers.find((o) => o.targets.includes(el) || o.targets.includes(content))
       expect(observer).toBeTruthy()
 
-      const scrollHeight = 1200
+      let scrollHeight = 1200
       const clientHeight = 500
       let scrollTop = scrollHeight - clientHeight
       let contentHeight = 1000
@@ -902,6 +902,7 @@ describe("AgentView — streaming auto-follow without compositor churn", () => {
 
         // Stream growth: content grows while the view stays pinned at bottom.
         contentHeight = 1500
+        scrollHeight = 1700
         observer!.callback(
           [{ target: content } as unknown as ResizeObserverEntry],
           {} as ResizeObserver,
@@ -909,7 +910,8 @@ describe("AgentView — streaming auto-follow without compositor churn", () => {
         await new Promise((r) => requestAnimationFrame(() => r(undefined)))
       })
 
-      expect(assignments).toBe(0)
+      expect(assignments).toBe(1)
+      expect(scrollTop).toBe(1200) // 1700 - 500
     } finally {
       globalThis.ResizeObserver = originalResizeObserver
     }

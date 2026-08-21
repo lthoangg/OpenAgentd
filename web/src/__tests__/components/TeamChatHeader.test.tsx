@@ -64,4 +64,18 @@ describe('TeamChatHeader', () => {
     expect(screen.getByText('Workspace A')).toBeInTheDocument()
     expect(screen.getByText('Fix updater restart')).toBeInTheDocument()
   })
+
+  it('renders token meter on mobile when headerTokens has zero usage', () => {
+    renderHeader({
+      isMobile: true,
+      headerTokens: { input: 0, output: 0, cached: 0 },
+    })
+
+    expect(screen.getByRole('button', { name: /Input: 0/i })).toBeInTheDocument()
+  })
+
+  it('hides token meter when headerTokens is undefined', () => {
+    renderHeader({ headerTokens: undefined })
+    expect(screen.queryByRole('button', { name: /Input:/i })).not.toBeInTheDocument()
+  })
 })

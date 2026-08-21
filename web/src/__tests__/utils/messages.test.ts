@@ -83,9 +83,11 @@ describe("sumUsageFromMessages", () => {
     const msgs = [
       makeMsg({ extra: { usage: { input: 10, output: 5, estimated_cost_usd: 0.0015 } } }),
       makeMsg({ extra: { usage: { input: 20, output: 8 }, estimated_cost_usd: 0.0025 } }),
+      makeMsg({ extra: { estimated_cost_usd: 0.003 } }),
+      makeMsg({ extra: { cost: { estimated_usd: 0.001 } } }),
     ];
 
-    expect(sumUsageFromMessages(msgs).estimatedCostUsd).toBe(0.004);
+    expect(sumUsageFromMessages(msgs).estimatedCostUsd).toBe(0.008);
   });
 
   it("restores the running session cost across 100 assistant messages", () => {

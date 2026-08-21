@@ -9,7 +9,7 @@ const listeners = new Set<() => void>()
 
 function normalizeBaseUrl(value: string | undefined): string {
   const trimmed = value?.trim()
-  if (!trimmed) return '/api'
+  if (!trimmed || trimmed === 'undefined') return '/api'
   const withoutTrailingSlash = trimmed.replace(/\/+$/, '')
   return withoutTrailingSlash.endsWith('/api')
     ? withoutTrailingSlash

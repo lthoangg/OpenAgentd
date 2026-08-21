@@ -12,18 +12,22 @@ declare global {
 beforeEach(() => {
   delete window.__OAD_API_BASE_URL__
   delete window.__OAD_BACKEND_UNAVAILABLE__
-  import.meta.env.VITE_API_BASE_URL = undefined
+  delete import.meta.env.VITE_API_BASE_URL
 })
 
 afterEach(() => {
   delete window.__OAD_API_BASE_URL__
   delete window.__OAD_BACKEND_UNAVAILABLE__
-  import.meta.env.VITE_API_BASE_URL = originalEnv
+  if (originalEnv !== undefined) {
+    import.meta.env.VITE_API_BASE_URL = originalEnv
+  } else {
+    delete import.meta.env.VITE_API_BASE_URL
+  }
 })
 
 describe('apiBaseUrl', () => {
   it('defaults to same-origin /api when no desktop or env override exists', async () => {
-    import.meta.env.VITE_API_BASE_URL = undefined
+    delete import.meta.env.VITE_API_BASE_URL
     const { apiBaseUrl, apiUrl } = await import('@/api/base-url')
 
     expect(apiBaseUrl()).toBe('/api')

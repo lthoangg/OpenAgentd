@@ -478,6 +478,85 @@ describe('UpdateCard — download flow', () => {
   })
 })
 
+describe('UpdateCard — minimize and movable flow', () => {
+  it('minimizes the card when the minimize button is clicked', async () => {
+    render(<UpdateCard />)
+
+    await waitFor(() => expect(capturedStatusListener).not.toBeNull())
+    act(() => emitStatus({ status: 'downloaded', version: '1.71.0', current_version: '1.70.0' }))
+
+    const minimizeBtn = await screen.findByRole('button', { name: /minimize/i })
+    await userEvent.click(minimizeBtn)
+
+    // Card details should be minimized into compact pill
+    expect(screen.getByText(/ready to install/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /expand/i })).toBeInTheDocument()
+    expect(screen.queryByText('OpenAgentd 1.71.0 is ready to install')).not.toBeInTheDocument()
+  })
+
+  it('expands back to full card when expand button is clicked', async () => {
+    render(<UpdateCard />)
+
+    await waitFor(() => expect(capturedStatusListener).not.toBeNull())
+    act(() => emitStatus({ status: 'downloaded', version: '1.71.0', current_version: '1.70.0' }))
+
+    const minimizeBtn = await screen.findByRole('button', { name: /minimize/i })
+    await userEvent.click(minimizeBtn)
+
+    const expandBtn = screen.getByRole('button', { name: /expand/i })
+    await userEvent.click(expandBtn)
+
+    expect(screen.getByText('OpenAgentd 1.71.0 is ready to install')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /install and restart/i })).toBeInTheDocument()
+  })
+
+  it('hides the card when Later is clicked from minimized view', async () => {
+    render(<UpdateCard />)
+
+    await waitFor(() => expect(capturedStatusListener).not.toBeNull())
+    act(() => emitStatus({ status: 'downloaded', version: '1.71.0', current_version: '1.70.0' }))
+
+    const minimizeBtn = await screen.findByRole('button', { name: /minimize/i })
+    await userEvent.click(minimizeBtn)
+
+    const laterBtn = screen.getByRole('button', { name: /later/i })
+    await userEvent.click(laterBtn)
+
+    expect(screen.queryByText(/ready to install/i)).not.toBeInTheDocument()
+  })
+
+  it('allows installing from the minimized quick action button', async () => {
+    installBehaviour = 'hang'
+    render(<UpdateCard />)
+
+    await waitFor(() => expect(capturedStatusListener).not.toBeNull())
+    act(() => emitStatus({ status: 'downloaded', version: '1.71.0', current_version: '1.70.0' }))
+
+    const minimizeBtn = await screen.findByRole('button', { name: /minimize/i })
+    await userEvent.click(minimizeBtn)
+
+    const installBtn = screen.getByRole('button', { name: /^install$/i })
+    await userEvent.click(installBtn)
+
+    await waitFor(() =>
+      expect(invokeCalls.some((c) => c.command === 'updater_install')).toBe(true),
+    )
+  })
+
+  it('provides a drag handle for moving the update card', async () => {
+    render(<UpdateCard />)
+
+    await waitFor(() => expect(capturedStatusListener).not.toBeNull())
+    act(() => emitStatus({ status: 'available', version: '1.71.0', current_version: '1.70.0' }))
+
+    const dragHandle = await screen.findByRole('button', { name: /drag update notification/i })
+    expect(dragHandle).toBeInTheDocument()
+
+    // Double click resets position
+    fireEvent.doubleClick(dragHandle)
+  })
+})
+
 describe('UpdateCard — listener lifecycle', () => {
   it('registers both updater-status and updater-check-requested listeners on mount', async () => {
     render(<UpdateCard />)

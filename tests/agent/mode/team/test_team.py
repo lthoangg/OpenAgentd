@@ -604,6 +604,7 @@ class TestAgentTeamToolInjection:
         tools = team.get_injected_tools("lead")
         names = {t.name for t in tools}
         assert names == {
+            "ask_user",
             "team_message",
             "todo_manage",
             "team_manage",

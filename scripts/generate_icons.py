@@ -11,13 +11,14 @@ from dirtying the git index, this script only regenerates icons if:
 3. The script is run with the --force flag.
 """
 
+import argparse
+import hashlib
 import os
 import shutil
+import struct
 import subprocess
 import sys
-import hashlib
-import argparse
-from PIL import Image
+import zlib
 
 # Define paths relative to the repository root
 ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -67,6 +68,184 @@ def get_md5(path):
         for chunk in iter(lambda: f.read(4096), b""):
             hasher.update(chunk)
     return hasher.hexdigest()
+
+
+def _read_png_rgba(path):
+    with open(path, "rb") as f:
+        data = f.read()
+    if data[:8] != b"\x89PNG\r\n\x1a\n":
+        raise ValueError(f"Not a valid PNG file: {path}")
+    idx = 8
+    width = height = None
+    idat = []
+    while idx < len(data):
+        length = struct.unpack(">I", data[idx : idx + 4])[0]
+        ctype = data[idx + 4 : idx + 8]
+        cdata = data[idx + 8 : idx + 8 + length]
+        idx += 12 + length
+        if ctype == b"IHDR":
+            width, height, bit_depth, color_type = struct.unpack(">IIBB", cdata[:10])
+            if bit_depth != 8 or color_type != 6:
+                raise ValueError(
+                    f"Unsupported PNG bit depth/color type: {bit_depth}/{color_type}"
+                )
+        elif ctype == b"IDAT":
+            idat.append(cdata)
+        elif ctype == b"IEND":
+            break
+    if width is None or height is None:
+        raise ValueError("Missing IHDR chunk in PNG")
+    raw = zlib.decompress(b"".join(idat))
+    stride = width * 4
+    pixels = bytearray(height * stride)
+    src_idx = 0
+    for y in range(height):
+        filter_type = raw[src_idx]
+        src_idx += 1
+        row = bytearray(raw[src_idx : src_idx + stride])
+        src_idx += stride
+        prev_row = pixels[(y - 1) * stride : y * stride] if y > 0 else None
+        if filter_type == 0:
+            pass
+        elif filter_type == 1:
+            for i in range(4, stride):
+                row[i] = (row[i] + row[i - 4]) & 0xFF
+        elif filter_type == 2:
+            if prev_row:
+                for i in range(stride):
+                    row[i] = (row[i] + prev_row[i]) & 0xFF
+        elif filter_type == 3:
+            for i in range(stride):
+                a = row[i - 4] if i >= 4 else 0
+                b = prev_row[i] if prev_row else 0
+                row[i] = (row[i] + ((a + b) >> 1)) & 0xFF
+        elif filter_type == 4:
+            for i in range(stride):
+                a = row[i - 4] if i >= 4 else 0
+                b = prev_row[i] if prev_row else 0
+                c = prev_row[i - 4] if prev_row and i >= 4 else 0
+                p = a + b - c
+                pa, pb, pc = abs(p - a), abs(p - b), abs(p - c)
+                pr = a if (pa <= pb and pa <= pc) else (b if pb <= pc else c)
+                row[i] = (row[i] + pr) & 0xFF
+        pixels[y * stride : (y + 1) * stride] = row
+    return width, height, pixels
+
+
+def _write_png_rgba(path, width, height, pixels):
+    stride = width * 4
+    raw = bytearray()
+    for y in range(height):
+        raw.append(0)  # Filter type 0 (None)
+        raw.extend(pixels[y * stride : (y + 1) * stride])
+    compressed = zlib.compress(raw, level=9)
+
+    def make_chunk(ctype, cdata):
+        crc = zlib.crc32(ctype + cdata) & 0xFFFFFFFF
+        return struct.pack(">I", len(cdata)) + ctype + cdata + struct.pack(">I", crc)
+
+    ihdr_data = struct.pack(">IIBBBBB", width, height, 8, 6, 0, 0, 0)
+    png_data = (
+        b"\x89PNG\r\n\x1a\n"
+        + make_chunk(b"IHDR", ihdr_data)
+        + make_chunk(b"IDAT", compressed)
+        + make_chunk(b"IEND", b"")
+    )
+    with open(path, "wb") as f:
+        f.write(png_data)
+
+
+def _composite_rgba_bg(width, height, pixels, bg_color):
+    bg_r, bg_g, bg_b, bg_a = bg_color
+    out = bytearray(len(pixels))
+    for i in range(0, len(pixels), 4):
+        r, g, b, a = pixels[i : i + 4]
+        if a == 255:
+            out[i] = r
+            out[i + 1] = g
+            out[i + 2] = b
+            out[i + 3] = 255
+        elif a == 0:
+            out[i] = bg_r
+            out[i + 1] = bg_g
+            out[i + 2] = bg_b
+            out[i + 3] = bg_a
+        else:
+            alpha = a / 255.0
+            inv = 1.0 - alpha
+            out[i] = min(255, max(0, int(r * alpha + bg_r * inv + 0.5)))
+            out[i + 1] = min(255, max(0, int(g * alpha + bg_g * inv + 0.5)))
+            out[i + 2] = min(255, max(0, int(b * alpha + bg_b * inv + 0.5)))
+            out[i + 3] = 255
+    return out
+
+
+def _resize_rgba_box(src_w, src_h, src_pixels, dst_w, dst_h):
+    block_x = src_w // dst_w
+    block_y = src_h // dst_h
+    block_pixels = block_x * block_y
+    dst_pixels = bytearray(dst_w * dst_h * 4)
+    src_stride = src_w * 4
+    dst_stride = dst_w * 4
+
+    for dy in range(dst_h):
+        sy_start = dy * block_y
+        for dx in range(dst_w):
+            sx_start = dx * block_x
+            r_sum = g_sum = b_sum = a_sum = 0
+            for sy in range(sy_start, sy_start + block_y):
+                row_offset = sy * src_stride
+                for sx in range(sx_start, sx_start + block_x):
+                    p_offset = row_offset + sx * 4
+                    r_sum += src_pixels[p_offset]
+                    g_sum += src_pixels[p_offset + 1]
+                    b_sum += src_pixels[p_offset + 2]
+                    a_sum += src_pixels[p_offset + 3]
+            dst_offset = dy * dst_stride + dx * 4
+            dst_pixels[dst_offset] = r_sum // block_pixels
+            dst_pixels[dst_offset + 1] = g_sum // block_pixels
+            dst_pixels[dst_offset + 2] = b_sum // block_pixels
+            dst_pixels[dst_offset + 3] = a_sum // block_pixels
+    return dst_pixels
+
+
+def generate_derived_images(master_path, tray_path, app_paths, bg_color):
+    try:
+        from PIL import Image
+
+        with Image.open(master_path) as master_img:
+            master_img = master_img.convert("RGBA")
+            print(
+                f"Generating transparent tray icon: {os.path.relpath(tray_path, ROOT_DIR)}"
+            )
+            os.makedirs(os.path.dirname(tray_path), exist_ok=True)
+            master_img.resize((64, 64), Image.Resampling.LANCZOS).save(tray_path, "PNG")
+            bg_img = Image.new("RGBA", master_img.size, bg_color)
+            app_icon_img = Image.alpha_composite(bg_img, master_img)
+            for target in app_paths:
+                target_dir = os.path.dirname(target)
+                os.makedirs(target_dir, exist_ok=True)
+                print(
+                    f"Compositing app icon with brand background for: {os.path.relpath(target, ROOT_DIR)}"
+                )
+                app_icon_img.save(target, "PNG")
+    except ImportError:
+        w, h, pixels = _read_png_rgba(master_path)
+        os.makedirs(os.path.dirname(tray_path), exist_ok=True)
+        print(
+            f"Generating transparent tray icon (pure Python): {os.path.relpath(tray_path, ROOT_DIR)}"
+        )
+        tray_pixels = _resize_rgba_box(w, h, pixels, 64, 64)
+        _write_png_rgba(tray_path, 64, 64, tray_pixels)
+
+        app_pixels = _composite_rgba_bg(w, h, pixels, bg_color)
+        for target in app_paths:
+            target_dir = os.path.dirname(target)
+            os.makedirs(target_dir, exist_ok=True)
+            print(
+                f"Compositing app icon with brand background for (pure Python): {os.path.relpath(target, ROOT_DIR)}"
+            )
+            _write_png_rgba(target, w, h, app_pixels)
 
 
 def main():
@@ -143,21 +322,7 @@ def main():
 
     # Keep the macOS template icon transparent, while platform app icons use
     # a solid canvas so the Dock does not draw a fallback gray tile.
-    with Image.open(MASTER_ICON) as master_img:
-        master_img = master_img.convert("RGBA")
-        print(
-            f"Generating transparent tray icon: {os.path.relpath(TRAY_ICON, ROOT_DIR)}"
-        )
-        master_img.resize((64, 64), Image.Resampling.LANCZOS).save(TRAY_ICON, "PNG")
-        bg_img = Image.new("RGBA", master_img.size, BRAND_BG_COLOR)
-        app_icon_img = Image.alpha_composite(bg_img, master_img)
-        for target in APP_COPIES:
-            target_dir = os.path.dirname(target)
-            os.makedirs(target_dir, exist_ok=True)
-            print(
-                f"Compositing app icon with brand background for: {os.path.relpath(target, ROOT_DIR)}"
-            )
-            app_icon_img.save(target, "PNG")
+    generate_derived_images(MASTER_ICON, TRAY_ICON, APP_COPIES, BRAND_BG_COLOR)
 
     # Check for tauri cli
     tauri_cmd = None

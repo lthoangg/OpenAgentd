@@ -15,26 +15,24 @@ repos:
       - id: check-added-large-files
         args: [--maxkb=500]
         exclude: ^documents/assets/
-      - id: mixed-line-ending
-        args: [--fix=lf]
 
   # ---------------------------------------------------------------------------
-  # Python – lint + format (app/, cli/, tests/)
-  # ---------------------------------------------------------------------------
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.15.9
-    hooks:
-      - id: ruff
-        args: [--fix]
-        files: ^(app|cli|tests)/
-      - id: ruff-format
-        files: ^(app|cli|tests)/
-
-  # ---------------------------------------------------------------------------
-  # Python – static type checking (ty, same version as dev dep)
+  # Python – lint, format & type check
   # ---------------------------------------------------------------------------
   - repo: local
     hooks:
+      - id: ruff
+        name: ruff check (python)
+        language: system
+        entry: uv run ruff check --fix --force-exclude
+        types: [python]
+        files: ^(app|cli|tests)/
+      - id: ruff-format
+        name: ruff format (python)
+        language: system
+        entry: uv run ruff format --force-exclude
+        types: [python]
+        files: ^(app|cli|tests)/
       - id: ty
         name: ty (app)
         language: system
@@ -44,25 +42,19 @@ repos:
         pass_filenames: false
 
   # ---------------------------------------------------------------------------
-  # Frontend – lint (ESLint)
+  # Frontend – lint (Oxlint) & type check (unified tsc -b)
   # ---------------------------------------------------------------------------
   - repo: local
     hooks:
-      - id: eslint
-        name: eslint (web)
+      - id: oxlint
+        name: oxlint (web)
         language: system
         entry: bash -c 'cd web && bun run lint'
         files: ^web/src/.*\.(ts|tsx)$
         pass_filenames: false
-      - id: tsc-app
-        name: tsc (app)
+      - id: tsc
+        name: tsc (web)
         language: system
         entry: bash -c 'cd web && bun run typecheck'
-        files: ^web/src/(?!__tests__/).*\.(ts|tsx)$
-        pass_filenames: false
-      - id: tsc-tests
-        name: tsc (tests)
-        language: system
-        entry: bash -c 'cd web && bunx tsc -p tsconfig.test.json --noEmit'
-        files: ^web/src/__tests__/.*\.(ts|tsx)$
+        files: ^web/src/.*\.(ts|tsx)$
         pass_filenames: false

@@ -31,15 +31,19 @@ $(IOS_ICON_STAMP): src-tauri/icons/icon.png
 		mkdir -p $(IOS_APPICONSET); \
 		cp src-tauri/icons/ios/*.png $(IOS_APPICONSET)/; \
 		touch $(IOS_ICON_STAMP); \
+	elif [ -d $(IOS_APPICONSET) ]; then \
+		touch $(IOS_ICON_STAMP); \
 	fi
 
 ios-icons: $(IOS_ICON_STAMP) ## Generate iOS AppIcon assets when missing or stale
 
 ios-icons-force: ## Force-regenerate iOS AppIcon assets from the shared OpenAgentd icon
-	python3 ../scripts/generate_icons.py
+	python3 ../scripts/generate_icons.py -f
 	@if [ -d src-tauri/icons/ios ]; then \
 		mkdir -p $(IOS_APPICONSET); \
 		cp src-tauri/icons/ios/*.png $(IOS_APPICONSET)/; \
+		touch $(IOS_ICON_STAMP); \
+	elif [ -d $(IOS_APPICONSET) ]; then \
 		touch $(IOS_ICON_STAMP); \
 	fi
 

@@ -116,7 +116,7 @@ make coverage                            # full run with coverage (htmlcov/)
 ```bash
 cd web
 bun dev                                  # dev server on :5173 (proxies /api → :8000)
-bun run lint                             # eslint
+bun run lint                             # oxlint (type-aware)
 bun run typecheck                        # tsc --noEmit
 bun test src/__tests__                   # unit tests
 bun run build                            # production build

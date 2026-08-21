@@ -16,7 +16,7 @@
     var root = document.documentElement;
     root.classList.toggle('dark', resolved === 'dark');
     root.classList.toggle('light', resolved === 'light');
-  } catch (e) {
+  } catch (_e) {
     // Fall back to light (the canonical default in index.css).
     document.documentElement.classList.add('light');
   }

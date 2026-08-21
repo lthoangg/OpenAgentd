@@ -106,7 +106,7 @@ export const TeamChatHeader = memo(function TeamChatHeader({
             <a
               href="/"
               aria-label="Home"
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-sm text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-7 md:w-7"
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-7 md:w-7"
               onClick={(event) => {
                 event.preventDefault()
                 navigate({ to: '/' })
@@ -132,7 +132,7 @@ export const TeamChatHeader = memo(function TeamChatHeader({
               }
             }}
             aria-label="Toggle sidebar"
-            className="flex h-8 w-8 items-center justify-center rounded-sm text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-7 md:w-7"
+            className="flex h-8 w-8 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-7 md:w-7"
           >
             <PanelLeft size={14} strokeWidth={1.8} aria-hidden="true" />
           </button>

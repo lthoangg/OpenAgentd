@@ -614,7 +614,7 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
   // disable animation. The transition is transform+color only — both
   // GPU-cheap, no layout.
   const actionBtnClass =
-    'flex h-11 w-11 shrink-0 items-center justify-center rounded-sm border border-(--color-border) bg-(--bg-card) text-(--color-text-2) transition duration-100 hover:bg-(--bg-key) hover:text-(--color-text) active:scale-90 active:bg-(--bg-key) motion-reduce:transition-none motion-reduce:active:scale-100 disabled:cursor-not-allowed disabled:opacity-50 md:h-7 md:w-7'
+    'flex h-11 w-11 shrink-0 items-center justify-center rounded-md border border-(--color-border) bg-(--bg-card) text-(--color-text-2) transition duration-100 hover:bg-(--bg-key) hover:text-(--color-text) active:scale-90 active:bg-(--bg-key) motion-reduce:transition-none motion-reduce:active:scale-100 disabled:cursor-not-allowed disabled:opacity-50 md:h-7 md:w-7'
 
   // Two states share one DOM tree: minimized, and expanded. Expanded always
   // puts the textarea on its own full-width row (the slot's flex-basis:100%)
@@ -664,7 +664,7 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
       type="button"
       onClick={(e) => { stopClick(e); onStop?.() }}
       aria-label="Stop generation"
-      className="flex h-11 w-11 shrink-0 items-center justify-center rounded-sm border border-(--color-error) bg-(--color-error) text-(--bg-page) transition duration-100 hover:opacity-90 active:scale-90 motion-reduce:transition-none motion-reduce:active:scale-100 md:h-7 md:w-7"
+      className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md border border-(--color-error) bg-(--color-error) text-(--bg-page) transition duration-100 hover:opacity-90 active:scale-90 motion-reduce:transition-none motion-reduce:active:scale-100 md:h-7 md:w-7"
     >
       <Square size={12} fill="currentColor" />
     </button>
@@ -677,7 +677,7 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
       }}
       disabled={!canSend}
       aria-label="Send message"
-      className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-sm border transition duration-100 active:scale-90 motion-reduce:transition-none motion-reduce:active:scale-100 disabled:cursor-not-allowed disabled:opacity-50 md:h-7 md:w-7 ${
+      className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-md border transition duration-100 active:scale-90 motion-reduce:transition-none motion-reduce:active:scale-100 disabled:cursor-not-allowed disabled:opacity-50 md:h-7 md:w-7 ${
         canSend
           // When there's something to send, promote the button to an accent
           // fill so the primary action reads clearly — a small but meaningful

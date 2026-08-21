@@ -92,7 +92,7 @@ export function BrandHeader({
                 type="button"
                 onClick={onToggle}
                 aria-label={expanded ? 'Collapse sidebar' : 'Expand sidebar'}
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-sm border border-(--color-border-subtle) text-(--color-text-2) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-(--color-border-subtle) text-(--color-text-2) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
               >
                 <ToggleIcon size={16} aria-hidden="true" />
               </button>

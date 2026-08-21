@@ -117,12 +117,12 @@ export const AppFooter = memo(function AppFooter({
                   <button
                     type="button"
                     onClick={onOpenGitChanges}
-                    className="flex h-5 max-w-[180px] items-center gap-1 rounded-xs px-1.5 font-mono text-[10.5px] text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-(--focus-ring)"
+                    className="flex h-5 max-w-[180px] items-center gap-1 rounded-sm px-1.5 font-mono text-[10.5px] text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-(--focus-ring)"
                   >
                     <GitBranch size={11} className="shrink-0 text-(--color-text-subtle)" />
                     <span className="truncate">{branch}</span>
                     {dirtyTotal > 0 && (
-                      <span className="shrink-0 rounded-xs bg-(--accent-orange-soft) px-1 font-mono text-[9px] font-semibold text-(--accent-orange-text)">*{dirtyTotal}</span>
+                      <span className="shrink-0 rounded-sm bg-(--accent-orange-soft) px-1 font-mono text-[9px] font-semibold text-(--accent-orange-text)">*{dirtyTotal}</span>
                     )}
                   </button>
                 }
@@ -141,7 +141,7 @@ export const AppFooter = memo(function AppFooter({
                   <button
                     type="button"
                     onClick={onToggleSessionSettings}
-                    className="flex h-5 max-w-[340px] lg:max-w-[480px] xl:max-w-[600px] items-center gap-1 rounded-xs px-1.5 font-mono text-[10.5px] text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-(--focus-ring)"
+                    className="flex h-5 max-w-[340px] lg:max-w-[480px] xl:max-w-[600px] items-center gap-1 rounded-sm px-1.5 font-mono text-[10.5px] text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-(--focus-ring)"
                   >
                     <Sparkles size={11} className="shrink-0 text-(--color-accent)" />
                     <span className="truncate">{formatModelDisplay(sessionModel)}</span>
@@ -160,7 +160,7 @@ export const AppFooter = memo(function AppFooter({
           <Tooltip>
             <TooltipTrigger
               render={
-                <span className="inline-flex h-4 items-center gap-0.5 rounded-xs bg-(--accent-orange-soft) px-1 font-mono text-[9px] font-medium text-(--accent-orange-text)">
+                <span className="inline-flex h-4 items-center gap-0.5 rounded-sm bg-(--accent-orange-soft) px-1 font-mono text-[9px] font-medium text-(--accent-orange-text)">
                   <Zap size={8.5} />
                   <span>fast</span>
                 </span>
@@ -191,7 +191,7 @@ export const AppFooter = memo(function AppFooter({
                 <button
                   type="button"
                   onClick={onToggleScheduler}
-                  className="flex h-5 w-5 items-center justify-center rounded-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
+                  className="flex h-5 w-5 items-center justify-center rounded-sm text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
                   aria-label="Scheduler"
                 >
                   <CalendarClock size={12} aria-hidden="true" />
@@ -211,7 +211,7 @@ export const AppFooter = memo(function AppFooter({
                 <button
                   type="button"
                   onClick={onTogglePalette}
-                  className="flex h-5 w-5 items-center justify-center rounded-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
+                  className="flex h-5 w-5 items-center justify-center rounded-sm text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
                   aria-label="Help and shortcuts"
                 >
                   <HelpCircle size={12} aria-hidden="true" />
@@ -228,7 +228,7 @@ export const AppFooter = memo(function AppFooter({
               <button
                 type="button"
                 onClick={() => openSettings()}
-                className="flex h-5 w-5 items-center justify-center rounded-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
+                className="flex h-5 w-5 items-center justify-center rounded-sm text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
                 aria-label="Settings"
               >
                 <Settings size={12} aria-hidden="true" />

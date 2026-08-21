@@ -823,6 +823,17 @@ html[data-mobile-shell][data-vp-anim] .settings-modal-shell {
 }
 
 /* ─────────────────────────────────────────────────────────────
+ * Background UI Throttling
+ * When window/tab is hidden or minimized, freeze CSS animations
+ * to release compositor threads and prevent display link wakeups.
+ * ───────────────────────────────────────────────────────────── */
+html[data-app-hidden="true"] *,
+html[data-app-hidden="true"] *::before,
+html[data-app-hidden="true"] *::after {
+  animation-play-state: paused !important;
+}
+
+/* ─────────────────────────────────────────────────────────────
  * Drag and drop panel styles
  * ───────────────────────────────────────────────────────────── */
 .panel-dragging {

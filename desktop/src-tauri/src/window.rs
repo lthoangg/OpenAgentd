@@ -19,6 +19,20 @@ pub const ZOOM_MAX: f64 = 3.0;
 pub const ZOOM_STEP: f64 = 1.2;
 pub const ZOOM_DEFAULT: f64 = 1.0;
 
+pub const THROTTLE_RESUME_SCRIPT: &str = r#"
+try {
+    document.documentElement.removeAttribute('data-app-hidden');
+    document.dispatchEvent(new Event('visibilitychange'));
+} catch (_) {}
+"#;
+
+pub const THROTTLE_PAUSE_SCRIPT: &str = r#"
+try {
+    document.documentElement.setAttribute('data-app-hidden', 'true');
+    document.dispatchEvent(new Event('visibilitychange'));
+} catch (_) {}
+"#;
+
 /// Apply platform-specific window chrome.
 ///
 /// macOS uses an overlay title-bar; the React app reserves a 70 pt left
@@ -49,6 +63,7 @@ pub fn show_main_window(app: &AppHandle) {
         let _ = window.unminimize();
         let _ = window.show();
         let _ = window.set_focus();
+        let _ = window.eval(THROTTLE_RESUME_SCRIPT);
     }
 }
 
@@ -79,6 +94,7 @@ pub fn show_target_window(app: &AppHandle) {
         let _ = window.unminimize();
         let _ = window.show();
         let _ = window.set_focus();
+        let _ = window.eval(THROTTLE_RESUME_SCRIPT);
     } else {
         show_main_window(app);
     }
@@ -100,6 +116,7 @@ pub async fn show_target_window_async(app: &AppHandle) {
         let _ = window.unminimize();
         let _ = window.show();
         let _ = window.set_focus();
+        let _ = window.eval(THROTTLE_RESUME_SCRIPT);
     } else {
         show_main_window(app);
     }

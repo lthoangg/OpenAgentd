@@ -28,7 +28,7 @@ use tokio::sync::Mutex;
 use crate::sidecar::Sidecar;
 use crate::config::{load_app_backend_config, save_window_state};
 use crate::window::{
-    build_app_window, backend_unavailable_init_script, MAIN_WINDOW, SECONDARY_WINDOW_PREFIX,
+    build_app_window, backend_unavailable_init_script, MAIN_WINDOW, SECONDARY_WINDOW_PREFIX, THROTTLE_PAUSE_SCRIPT,
     ZOOM_DEFAULT, show_main_window, target_webview_window, frontend_init_script,
     show_target_window,
 };
@@ -692,6 +692,7 @@ fn main() {
                     api.prevent_close();
                     if label == MAIN_WINDOW {
                         if let Some(window) = app.get_webview_window(MAIN_WINDOW) {
+                            let _ = window.eval(THROTTLE_PAUSE_SCRIPT);
                             let _ = window.hide();
                         }
                     } else if let Some(window) = app.get_webview_window(label.as_str()) {

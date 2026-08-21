@@ -225,8 +225,17 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
 
   useEffect(() => {
     if (done || !startedAt) return
-    const id = window.setInterval(() => setNow(Date.now()), 1000)
-    return () => window.clearInterval(id)
+    const tick = () => {
+      if (typeof document === 'undefined' || !document.hidden) {
+        setNow(Date.now())
+      }
+    }
+    const id = window.setInterval(tick, 1000)
+    const handleVisibility = () => {
+      if (typeof document === 'undefined' || !document.hidden) setNow(Date.now())
+    }
+    document.addEventListener('visibilitychange', handleVisibility)
+    return () => { window.clearInterval(id); document.removeEventListener('visibilitychange', handleVisibility) }
   }, [done, startedAt])
 
   const handleScroll = useCallback((e: React.UIEvent<HTMLPreElement>) => {

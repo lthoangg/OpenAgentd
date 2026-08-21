@@ -332,7 +332,7 @@ run from the terminal.
   icon-sized input-token progress ring against the backend's model-aware
   summarization trigger; hover, focus, or tap/click reveals input/output/cache
   details, cache hit rate percentage, reduced compaction input tokens, and estimated USD used across the active session `[v1.107.0, v2.0.0]`; the estimate sums provider-reported input, output, cache-read, and cache-write usage at the active model's registry rates, so compaction never reduces previously incurred spend. Token rows describe the lead while `session cost` covers every agent; live values are published per completed model call from the same usage snapshot the transcript and telemetry store, so the meter no longer disagrees with them, and it stays visible for the duration of a live turn `[v1.132.0]`.
-  The summarizer's own LLM call now counts too: its usage (with cost) is
+  The meter remains displayed even without any messages or usage in the session `[v2.0.0]`. The summarizer's own LLM call now counts too: its usage (with cost) is
   persisted on the compaction summary row and published as a live usage frame,
   so the running session cost stays `previous cost + current turn cost` across
   compactions, on the live meter and after reload alike `[v2.0.0]`.

@@ -50,7 +50,7 @@ export interface AgentTopbarActionDescriptor {
 }
 
 export interface AgentTopbarProps {
-  /** Token totals; when omitted (or all zero) the TokenMeter is hidden. */
+  /** Token totals; when omitted the TokenMeter is hidden. */
   tokens?: AgentTopbarTokens
   /** Current view mode; when undefined the ViewToggle is hidden. */
   viewMode?: ViewMode
@@ -94,10 +94,7 @@ export function AgentTopbar({
   extraActions,
   className,
 }: AgentTopbarProps) {
-  const totalAll = tokens
-    ? tokens.input + tokens.output + (tokens.cached ?? 0)
-    : 0
-  const showTokens = !isMobile && tokens && totalAll > 0
+  const showTokens = !isMobile && Boolean(tokens)
   const showViewToggle = !isMobile && viewMode && onViewModeChange
 
   return (

@@ -192,13 +192,15 @@ async def test_builtin_init_mentions_subfolder_agents_md(client):
 
     assert res.status_code == 200
     content = res.json()["content"]
-    assert "future coding agent" in content
-    assert "Where to start for a given change" in content
-    assert "Child AGENTS.md files are read only on demand" in content
-    assert (
-        "Create a child AGENTS.md only when a subtree has local conventions" in content
-    )
-    assert "Verify documented commands when feasible" in content
+    assert "fresh coding agent" in content
+    assert "operational map for coding agents" in content
+    assert "Evidence Over Assumptions" in content
+    assert "Prefer Executable Truth" in content
+    assert "Root = Defaults, Child = Delta" in content
+    assert "Nested AGENTS.md" in content
+    assert "Verify Commands" in content
+    assert "Fresh-Agent Usability Test" in content
+    assert "## Mechanical Enforcement Candidates" in content
 
 
 @pytest.mark.asyncio

@@ -594,6 +594,14 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
             ref={inputRef}
             boundsRef={mainColumnRef}
             onSubmit={async (content: string, files?: File[], mentions?: string[]) => {
+              const trimmed = content.trim()
+              if (trimmed.startsWith('/') && (!files || files.length === 0)) {
+                const cmdName = trimmed.slice(1).trim().toLowerCase()
+                if (cmdName === 'undo' || cmdName === 'redo' || cmdName === 'redo-all' || cmdName === 'redo_all' || cmdName === 'compact' || cmdName === 'new' || cmdName === 'stop') {
+                  handleSlashCommand(cmdName === 'redo_all' ? 'redo-all' : cmdName)
+                  return
+                }
+              }
               const expanded = await expandUserCommand(content)
               const current = useTeamStore.getState()
               const delivered = await sendMessage(expanded, files, {

@@ -193,6 +193,27 @@ describe("applyRevertBoundary", () => {
     expect(s._revertedSuffix).toHaveLength(1)
   })
 
+  it("splits by boundaryId when boundaryTime is null and boundaryId exists in stream", () => {
+    const t1 = block("b1", "user", "first", "2024-01-01T00:00:00Z")
+    const t2 = block("b2", "user", "second", "2024-01-01T00:00:02Z")
+    const t3 = block("b3", "text", "reply", "2024-01-01T00:00:03Z")
+    const s = makeStream({ blocks: [t1, t2, t3] })
+
+    applyRevertBoundary(s, null, { boundaryId: "b2" })
+    expect(s.blocks.map((b) => b.id)).toEqual(["b1"])
+    expect(s._revertedSuffix?.map((b) => b.id)).toEqual(["b2", "b3"])
+  })
+
+  it("reverts all loaded blocks when boundaryId is older than loaded messages and boundaryTime is null", () => {
+    const t1 = block("b10", "user", "tenth", "2024-01-01T00:00:10Z")
+    const t2 = block("b11", "text", "reply", "2024-01-01T00:00:11Z")
+    const s = makeStream({ blocks: [t1, t2] })
+
+    applyRevertBoundary(s, null, { boundaryId: "b1" })
+    expect(s.blocks).toEqual([])
+    expect(s._revertedSuffix?.map((b) => b.id)).toEqual(["b10", "b11"])
+  })
+
   it("recombines blocks + suffix before splitting (idempotent across calls)", () => {
     const t1 = block("b1", "user", "u1", "2024-01-01T00:00:00Z")
     const t2 = block("b2", "user", "u2", "2024-01-01T00:00:02Z")

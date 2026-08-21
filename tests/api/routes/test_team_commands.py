@@ -213,14 +213,14 @@ class TestPostTeamCommands:
             ).all()
             llm_messages = await get_messages_for_llm(db, sid)
         assert session is not None
-        assert session.revert == {"message_id": body["message"]["id"]}
+        assert session.revert["message_id"] == body["message"]["id"]
         assert [row.content for row in rows if row.kind == MessageKind.REVERTED] == []
         assert [msg.content for msg in llm_messages] == ["first", "first answer"]
 
         history = client.get(f"/api/team/{sid}/history")
         assert history.status_code == 200
         history_body = history.json()
-        assert history_body["lead"]["revert"] == {"message_id": body["message"]["id"]}
+        assert history_body["lead"]["revert"]["message_id"] == body["message"]["id"]
         assert [msg["content"] for msg in history_body["lead"]["messages"]] == [
             "first",
             "first answer",

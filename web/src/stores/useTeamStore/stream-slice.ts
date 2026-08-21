@@ -160,6 +160,7 @@ export const createStreamSlice: StateCreator<
       set((draft) => {
         draft._leadRevertTime = boundaryTime
         Object.values(draft.agentStreams).forEach((stream) => {
+          stream._unsyncedBlockIds = []
           applyRevertBoundary(stream, boundaryTime, {
             includeCurrent: true,
             boundaryId: response.message?.id ?? null,
@@ -203,6 +204,7 @@ export const createStreamSlice: StateCreator<
       set((draft) => {
         draft._leadRevertTime = boundaryTime
         Object.values(draft.agentStreams).forEach((stream) => {
+          stream._unsyncedBlockIds = []
           applyRevertBoundary(stream, boundaryTime, {
             boundaryId: response.message?.id ?? null,
             boundaryContent: response.message?.content ?? null,
@@ -222,6 +224,7 @@ export const createStreamSlice: StateCreator<
         set((draft) => {
           draft._leadRevertTime = null
           Object.values(draft.agentStreams).forEach((stream) => {
+            stream._unsyncedBlockIds = []
             applyRevertBoundary(stream, null)
           })
         })
@@ -253,6 +256,7 @@ export const createStreamSlice: StateCreator<
       set((draft) => {
         draft._leadRevertTime = null
         Object.values(draft.agentStreams).forEach((stream) => {
+          stream._unsyncedBlockIds = []
           applyRevertBoundary(stream, null)
         })
       })
@@ -269,6 +273,7 @@ export const createStreamSlice: StateCreator<
         set((draft) => {
           draft._leadRevertTime = null
           Object.values(draft.agentStreams).forEach((stream) => {
+            stream._unsyncedBlockIds = []
             applyRevertBoundary(stream, null)
           })
         })

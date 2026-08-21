@@ -313,7 +313,10 @@ async def undo_session_messages(db: AsyncSession, session_id: UUID) -> BoundaryS
         )
         added, modified, removed = result.added, result.modified, result.removed
 
-    revert_state: dict = {"message_id": str(target.id)}
+    revert_state: dict = {
+        "message_id": str(target.id),
+        "created_at": target.created_at.isoformat(),
+    }
     if anchor:
         revert_state["snapshot"] = anchor
     session.revert = revert_state
@@ -362,7 +365,10 @@ async def redo_session_messages(db: AsyncSession, session_id: UUID) -> BoundaryS
                 str(session_id), workspace, next_snapshot
             )
             added, modified, removed = result.added, result.modified, result.removed
-        revert_state: dict = {"message_id": str(next_user.id)}
+        revert_state: dict = {
+            "message_id": str(next_user.id),
+            "created_at": next_user.created_at.isoformat(),
+        }
         if anchor:
             revert_state["snapshot"] = anchor
         session.revert = revert_state

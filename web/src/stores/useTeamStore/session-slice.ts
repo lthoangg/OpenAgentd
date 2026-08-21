@@ -9,7 +9,11 @@ import { clearReconnectTimer } from './stream-slice'
 import type { AgentStream, TeamStore } from './types'
 import type { ContentBlock, MessageResponse } from '@/api/types'
 
-function revertBoundaryTime(session: { revert?: { message_id?: string } | null; messages: MessageResponse[] }): number | null {
+function revertBoundaryTime(session: { revert?: { message_id?: string; created_at?: string } | null; messages: MessageResponse[] }): number | null {
+  if (!session.revert) return null
+  if (session.revert.created_at) {
+    return new Date(session.revert.created_at).getTime()
+  }
   const boundaryId = session.revert?.message_id
   if (!boundaryId) return null
   const boundary = session.messages.find((msg) => msg.id === boundaryId)
@@ -454,7 +458,7 @@ async function loadSessionImpl(
       })
 
       const memberNames = history.members.map((m) => m.name)
-      const leadName = history.lead.agent_name ?? liveNames?.[0] ?? draft.leadName
+      const leadName = history.lead.agent_name ?? liveNames?.[0] ?? draft.leadName ?? 'lead'
       draft.leadName = leadName
       if (liveNames !== null) draft.liveAgentNames = liveNames
 

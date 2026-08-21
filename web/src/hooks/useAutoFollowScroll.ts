@@ -242,19 +242,15 @@ export function useAutoFollowScroll(options: UseAutoFollowScrollOptions = {}) {
       const contentGrew = nextContentHeight > lastContentHeight
       const viewportChanged = nextClientHeight !== lastClientHeight
       const contentChanged = entries.some((entry) => entry.target === content)
-      const anchorChanged = entries.some((entry) => entry.target === anchorRef.current)
 
       lastContentHeight = nextContentHeight
       lastClientHeight = nextClientHeight
       if (document.documentElement.hasAttribute('data-keyboard-open') && viewportChanged && !contentGrew && !contentChanged) return
-      // While attached to a live stream the browser's overflow-anchor keeps
-      // the view pinned as content grows; assigning ``scrollTop`` each reflow
-      // is what drops compositor tiles and blanks the transcript. Only jump
-      // when the viewport itself changed or content shrank — those are not
-      // things overflow-anchor can pin against.
-      if (contentChanged && contentGrew && !viewportChanged && !anchorChanged) return
-      el.scrollTop = Math.max(0, el.scrollHeight - el.clientHeight)
-      lastScrollTopRef.current = el.scrollTop
+      const target = Math.max(0, el.scrollHeight - el.clientHeight)
+      if (Math.abs(el.scrollTop - target) > 0.5) {
+        el.scrollTop = target
+        lastScrollTopRef.current = el.scrollTop
+      }
     })
     ro.observe(content)
     ro.observe(el)

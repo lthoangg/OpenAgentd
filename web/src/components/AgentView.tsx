@@ -231,7 +231,9 @@ export function AgentView({ blocks, currentBlocks, isWorking, isTurnOpen = isWor
   )
 
   const lastBlock = liveTail.length > 0 ? liveTail[liveTail.length - 1] : blocks[blocks.length - 1]
-  const lastContent = lastBlock?.content ?? ''
+  const lastContent = lastBlock
+    ? `${lastBlock.content ?? ''}:${lastBlock.toolOutput ?? ''}:${lastBlock.toolResult ?? ''}:${lastBlock.toolArgs ?? ''}`
+    : ''
   const isUserMessage = lastBlock ? isDirectUserBlock(lastBlock) : false
   const isEmpty = !isWorking &&
     !blocks.some((b) => b.type !== 'compaction') &&

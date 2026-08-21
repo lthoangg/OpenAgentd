@@ -71,6 +71,7 @@
     "@types/react-dom": "^19.2.4",
     "@vitejs/plugin-react": "6.1.0",
     "msw": "^2.15.0",
+    "oxc-transform-react": "^0.145.0",
     "oxlint": "^1.79.0",
     "oxlint-tsgolint": "^7.0.2001",
     "rollup-plugin-visualizer": "^7.1.1",

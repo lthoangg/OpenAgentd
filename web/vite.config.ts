@@ -8,7 +8,15 @@ import { visualizer } from "rollup-plugin-visualizer"
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [
-    react(),
+    react({
+      // React Compiler via the native oxc-transform-react backend:
+      // auto-memoizes components/hooks (~400 compiled, landing in the
+      // index and markdown chunks — the streaming render hot path) for
+      // +3.6% total JS. Note: `bun test` transpiles with Bun, so unit
+      // tests exercise the uncompiled sources; the compiled output is
+      // covered by tsc + this build.
+      compiler: true,
+    }),
     tailwindcss(),
     svgr(),
     // Bundle analysis — opt-in only (`bun run build:analyze`), never part of

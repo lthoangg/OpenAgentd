@@ -126,7 +126,7 @@ async def test_patch_rejects_ambiguous_update(sandbox_workspace):
     target = sandbox_workspace / "repeat.txt"
     target.write_text("same\nsame\n", encoding="utf-8")
 
-    with pytest.raises(ToolExecutionError):
+    with pytest.raises(ToolExecutionError) as exc_info:
         await patch_file.arun(
             patch_text="""*** Begin Patch
 *** Update File: repeat.txt
@@ -136,7 +136,38 @@ async def test_patch_rejects_ambiguous_update(sandbox_workspace):
 *** End Patch"""
         )
 
+    err_str = str(exc_info.value)
+    assert "Patch context is ambiguous in repeat.txt." in err_str
+    assert "Found 2 matching locations at line 1, line 2." in err_str
+    assert "The ambiguous block was:" in err_str
+    assert "| same" in err_str
+    assert "Add more surrounding context lines" in err_str
     assert target.read_text(encoding="utf-8") == "same\nsame\n"
+
+
+@pytest.mark.asyncio
+async def test_patch_ambiguous_context_diagnostic_many_matches(sandbox_workspace):
+    target = sandbox_workspace / "many_repeats.txt"
+    target.write_text("item\n" * 8, encoding="utf-8")
+
+    with pytest.raises(ToolExecutionError) as exc_info:
+        await patch_file.arun(
+            patch_text="""*** Begin Patch
+*** Update File: many_repeats.txt
+@@
+-item
++item_changed
+*** End Patch"""
+        )
+
+    err_str = str(exc_info.value)
+    assert "Patch context is ambiguous in many_repeats.txt." in err_str
+    assert (
+        "Found 8 matching locations at line 1, line 2, line 3, line 4, line 5 (and 3 more)."
+        in err_str
+    )
+    assert "The ambiguous block was:" in err_str
+    assert "| item" in err_str
 
 
 # ── schema description ────────────────────────────────────────────────────────

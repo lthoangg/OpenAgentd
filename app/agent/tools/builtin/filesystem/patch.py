@@ -377,6 +377,27 @@ def _format_context_miss_error(
     )
 
 
+def _format_ambiguous_context_error(
+    path: str, starts: list[int], old_lines: list[str]
+) -> str:
+    """Build a helpful diagnostic error message when patch context matches multiple locations."""
+    preview_len = min(5, len(old_lines))
+    expected_sample = "\n".join(f"  | {line}" for line in old_lines[:preview_len])
+    if len(old_lines) > preview_len:
+        expected_sample += f"\n  | ... ({len(old_lines) - preview_len} more lines)"
+
+    lines_str = ", ".join(f"line {idx + 1}" for idx in starts[:5])
+    if len(starts) > 5:
+        lines_str += f" (and {len(starts) - 5} more)"
+
+    return (
+        f"Patch context is ambiguous in {path}.\n"
+        f"Found {len(starts)} matching locations at {lines_str}.\n"
+        f"The ambiguous block was:\n{expected_sample}\n"
+        f"Add more surrounding context lines above or below this block to uniquely identify the target location."
+    )
+
+
 def _apply_chunks_with_meta(
     content: str, chunks: list[Chunk], path: str
 ) -> tuple[str, list[dict[str, int]]]:
@@ -436,7 +457,7 @@ def _apply_chunks_with_meta(
         if not starts:
             raise ValueError(_format_context_miss_error(path, content_lines, chunk.old))
         if len(starts) > 1:
-            raise ValueError(f"Patch context is ambiguous in {path}.")
+            raise ValueError(_format_ambiguous_context_error(path, starts, chunk.old))
 
         start = starts[0]
         new_start = start + 1

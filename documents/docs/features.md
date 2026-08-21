@@ -2,7 +2,7 @@
 title: Features
 description: Canonical, version-cited catalogue of shipped user-visible OpenAgentd features.
 status: stable
-updated: 2026-08-20
+updated: 2026-08-21
 ---
 
 # Features
@@ -14,7 +14,7 @@ release that introduced it (where known). When you ship something new, **add it 
 > double-clickable app that runs a team of AI agents on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 16 providers. Your keys.
 
-**Latest release:** v2.0.0 · August 20, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v2.0.0)
+**Latest release:** v2.0.0 · August 21, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v2.0.0)
 
 ---
 
@@ -38,7 +38,7 @@ narrative on slides and in the README:
 
 Conventions used in this document:
 
-- `[v1.X.Y]` — release that shipped the feature (where known).
+- `[v2.X.Y]`, `[v1.X.Y]` — release that shipped the feature (where known).
 - `[since v1.0]` — present in the v1 line; no precise version known.
 - *(beta)* — experimental, may change. *(deprecated)* — removed or replaced.
 - Indented sub-bullets are user-visible details, not separate features.
@@ -100,7 +100,7 @@ run from the terminal.
   sessions, agents, files, slash commands, settings. Cleaner, faster with a
   tighter animation and a curated command set that drops low-value entries.
   Command and file search overlays use the compact warm-paper surface treatment
-  across desktop and mobile `[v1.74.0]`.
+  across desktop and mobile `[v1.74.0]`, with expanded desktop width and list height `[v2.0.0]`.
 - **Platform-aware keyboard shortcuts** `[v1.93.1]` — `⌘` on macOS, `Ctrl`
   elsewhere, applied consistently across in-app shortcuts, the Command
   Palette, and native Tauri menu accelerators. Session Settings moved to
@@ -206,12 +206,18 @@ run from the terminal.
   sharing one mixed cache, preventing intermittent empty recent-session lists
   when prior conversations exist.
 - **Slash commands** `[since v1.0]` — `/init`, `/compact`, `/undo`,
-  `/redo`, `/redo-all`, plus user-defined commands.
+  `/redo`, `/redo-all`, plus user-defined commands. Commands are contextually
+  filtered by active session and team state `[v2.0.0]`.
+  - **`/redo` and `/redo-all` slash commands** `[v2.0.0]` — restore undone chat turns
+    step-by-step or fast-forward completely back to the latest turn.
+  - **`/init` AGENTS.md analysis & generation** `[v1.9.0, v2.0.0]` — analyzes codebase
+    structure and generates standard `AGENTS.md` context files at repository root and
+    subdirectories with a guided analysis protocol.
   - **`/plan` slash command** `[v1.96.0]` — triggers a research-then-approve
     workflow: the agent investigates the problem space and proposes a step-by-step
     implementation plan, then waits for explicit approval before writing any code.
     Loaded via the `oad/plan` skill.
-- **Bang shell commands** `[v1.39.0]` *(deprecated — removed; use the coding
+- **Bang shell commands** `[v1.39.0]` *(deprecated — removed in v2.0.0; use the coding
   workspace terminal instead)* — start a message with `!` to run the
   remainder directly through the shell tool without a model turn; history stored
   the run as structured shell tool output.
@@ -306,14 +312,14 @@ run from the terminal.
   away from the app `[v1.52.0]`. Image and video previews in the coding
   workspace panel now open in the shared full-screen lightbox on click
   `[v1.93.1]`.
-- **Header context meter** `[v1.53.0]` — desktop and mobile chat headers show an
+- **Header context meter** `[v1.53.0, v2.0.0]` — desktop and mobile chat headers show an
   icon-sized input-token progress ring against the backend's model-aware
   summarization trigger; hover, focus, or tap/click reveals input/output/cache
-  details and the estimated USD used across the active session `[v1.107.0]`; the estimate sums provider-reported input, output, cache-read, and cache-write usage at the active model's registry rates, so compaction never reduces previously incurred spend. Token rows describe the lead while `session cost` covers every agent; live values are published per completed model call from the same usage snapshot the transcript and telemetry store, so the meter no longer disagrees with them, and it stays visible for the duration of a live turn `[v1.132.0]`.
+  details, cache hit rate percentage, reduced compaction input tokens, and estimated USD used across the active session `[v1.107.0, v2.0.0]`; the estimate sums provider-reported input, output, cache-read, and cache-write usage at the active model's registry rates, so compaction never reduces previously incurred spend. Token rows describe the lead while `session cost` covers every agent; live values are published per completed model call from the same usage snapshot the transcript and telemetry store, so the meter no longer disagrees with them, and it stays visible for the duration of a live turn `[v1.132.0]`.
   The summarizer's own LLM call now counts too: its usage (with cost) is
   persisted on the compaction summary row and published as a live usage frame,
   so the running session cost stays `previous cost + current turn cost` across
-  compactions, on the live meter and after reload alike `[v1.134.0]`.
+  compactions, on the live meter and after reload alike `[v2.0.0]`.
 - **Todos panel** `[since v1.0]` — task board with a topbar progress badge
   `<finished>/<total>` `[v1.17.0]`. Live invalidation.
 - **Mobile / phone-first layout** `[since v1.0]` — breakpoints, safe areas, drawer
@@ -512,11 +518,12 @@ team against it.
 - **Git-backed `/undo` and `/redo`** `[v1.11.0]` — restore workspace files
   (created, modified, deleted) to the exact prior state from any prior turn in
   chat history. Different from editor undo: this is tied to chat turns.
-  `/redo` restores one undone turn; `/redo-all` restores all undone turns back
+  `/redo` restores one undone turn; `/redo-all` `[v2.0.0]` restores all undone turns back
   to the live tip.
-- **`/init` scaffolds AGENTS.md** `[v1.9.0]` — writes AGENTS.md files at the
-  repo root and meaningful subfolders from the workspace.
-- **Consolidated filesystem toolset** `[v1.134.0]` — the agent now sees two
+- **`/init` AGENTS.md analysis & generation** `[v1.9.0, v2.0.0]` — analyzes codebase
+  structure and generates standard `AGENTS.md` context files at repository root and
+  subdirectories with a guided analysis protocol.
+- **Consolidated filesystem toolset** `[v2.0.0]` — the agent now sees two
   filesystem tools instead of six. `read` handles files *and* directory
   listings, and `patch` is the single way to create, edit, delete, or move a
   file. `write`, `edit`, `ls`, and `rm` are removed, as is `date` (the current
@@ -527,7 +534,7 @@ team against it.
   are matched strictly — context lines must be copied exactly from a `read`.
   Agent `.md` files that still list a removed tool are cleaned up
   automatically the first time they load.
-- **Inline patch tool for multi-file edits** `[v1.5.0]` — structured patches
+- **Inline patch tool for multi-file edits** `[v1.5.0, v2.0.0]` — structured patches
   with multiple hunks, real line numbers, collapsible previews. The `patch`
   tool accepts a `*** Begin Patch` / `*** End Patch` envelope with
   `*** Add File:`, `*** Update File:`, `*** Delete File:`, and `*** Move to:`
@@ -540,10 +547,10 @@ team against it.
   endings `[v1.120.0]`. An update section that would change nothing — no
   hunk line marked `-` or `+`, so every line reads as unchanged context — is
   rejected with guidance instead of reporting success without writing,
-  which previously sent the agent into a silent retry loop `[v1.134.0]`.
+  which previously sent the agent into a silent retry loop `[v2.0.0]`.
   The activity header lists the comma-separated,
   deduplicated basenames of every touched file instead of collapsing
-  multi-file patches into a bare count `[v1.120.0]`, with operation-aware header labels (`Create`, `Update`, `Move`, `Delete`), color-coded action badges, per-file line delta counters, and multi-file expand/collapse controls `[v1.134.0]`.
+  multi-file patches into a bare count `[v1.120.0]`, with operation-aware header labels (`Create`, `Update`, `Move`, `Delete`), color-coded action badges, per-file line delta counters, and multi-file expand/collapse controls `[v2.0.0]`.
 - **Interactive terminal tab** `[v1.98.1]` — a real PTY shell (backend
   `subprocess.Popen` + `pty.openpty()`, streamed over WebSocket to an
   xterm.js instance) attached to the coding workspace panel, alongside
@@ -696,8 +703,8 @@ MCP.
 | Category | Tools |
 |---|---|
 | Filesystem | `read` (files + directory listings), `patch` (create/edit/delete/move), `glob`, `grep` |
-| Shell | `shell` (supports `background=true`) |
-| Web | `web_search`, `web_fetch` |
+| Shell | `shell` (supports `background=true` returning spawned PID `[v2.0.0]`) |
+| Web | `web_search`, `web_fetch` (fast HTML extraction via `trafilatura` `[v2.0.0]`) |
 | Generation | `generate_image`, `generate_video` |
 | Scheduling | `schedule_task` (reminders + self-scheduling agentic loops) `[v1.70.0]` |
 | Tasks | `todo_manage` |
@@ -723,7 +730,7 @@ MCP.
   throughout and are never interrupted by an answer. One question per turn;
   scheduled sessions never get the tool, because a cron job has nobody to ask.
 
-- **Real-time LSP diagnostics injection** `[v1.89.0, v1.105.0, v1.134.0]` — in **coding mode**, after the
+- **Real-time LSP diagnostics injection** `[v1.89.0, v1.105.0, v2.0.0]` — in **coding mode**, after the
   `patch` tool modifies one or more files, OpenAgentd runs the
   matching language server(s) over the changed files and injects the resulting
   errors/warnings straight into the tool result as a compact `[LSP Diagnostics]`
@@ -825,7 +832,7 @@ MCP.
 - **Tool result offload** `[since v1.0]` — bulky tool outputs (large file
   reads, shell spills) move to `{OPENAGENTD_DATA_DIR}/sessions/{id}/.tool_results/` and the inspector
   links to them.
-- **`.gitignore`-aware file tools** `[v1.20.1, v1.131.3]` — `glob`, `grep`, and
+- **`.gitignore`-aware file tools** `[v1.20.1, v1.131.3, v2.0.0]` — `glob`, `grep`, and
   workspace file browsing respect `.gitignore` and skip dependency and cache
   directories. Workspace file listings (file tagging, the command palette, the
   files sidebar) come from git itself in a git work tree, so tracked files no
@@ -838,7 +845,7 @@ MCP.
   (`web/node_modules/@scope/pkg/**`) is treated as an explicit request and
   searched rather than silently pruned, and an anchored pattern walks only its
   own subtree — 2.6x–50x faster, and 35x on a pattern pointing into a
-  dependency `[v1.134.0]`.
+  dependency `[v2.0.0]`.
 
 ---
 
@@ -934,7 +941,7 @@ Single-user trust model. The host is trusted. The operator is the user.
   (per-turn context-window dumps), plus the current session's own artifact dir.
   Credentials (`OPENAGENTD_CACHE_DIR`), the SQLite DB, undo/redo snapshots, and
   other sessions' artifacts stay denied. This is what makes the
-  `oad/debug-prod` log/telemetry workflow usable without disabling the sandbox.
+  `oad/debug-prod` log/telemetry workflow usable without disabling the path denylist.
 - **Permission system: allow / deny / ask** `[since v1.0]` — wildcard rule
   matching per tool. Auto-allow, blocking on user reply, or persistent rules.
 - **Shell command pre-scan** `[since v1.0]` — best-effort path-token scan
@@ -958,8 +965,9 @@ Everything stays local. No third-party telemetry SaaS.
   `o200k_base` counts for the assembled static system prompt, compact tool-schema
   JSON, every first-party base prompt, each tool, and bundled skill bodies;
   `make prompt-budget-json` emits a stable machine-readable baseline for CI.
-- **DuckDB-backed query API** `[since v1.0]` — `/api/observability/*` queries
-  the local DuckDB span store.
+- **Fast JSONL-backed query API** `[v2.0.0]` — `/api/observability/*` queries
+  local OpenTelemetry span logs directly using `orjson` parsing, delivering faster
+  query execution and lower latency without DuckDB binary dependency weight.
 - **Two-tier logging** `[since v1.0]` — app log at `{STATE_DIR}/logs/app/`,
   per-session JSONL transcript at `{STATE_DIR}/logs/sessions/{id}/`. Rotated,
   loguru-based. `FILE_LOG_LEVEL` `[v1.130.0]` sets the app-log threshold
@@ -982,9 +990,9 @@ Everything stays local. No third-party telemetry SaaS.
 
 Client-side speech recognition. OpenAgentd does not run backend microphone transcription.
 
-- **Mic button in composer** `[since v1.0]` *(deprecated — removed)* — click to start listening, click to
+- **Mic button in composer** `[since v1.0]` *(deprecated — removed in v2.0.0)* — click to start listening, click to
   stop. Transcript text is inserted into the chat input for review before sending.
-- **Browser / OS speech recognition** `[v1.34.0]` *(deprecated — removed)* — uses the current browser or
+- **Browser / OS speech recognition** `[v1.34.0]` *(deprecated — removed in v2.0.0)* — uses the current browser or
   app WebView speech recognizer when available. No `/api/speech/*` backend,
   `speech.yaml`, or bundled `faster-whisper`.
 

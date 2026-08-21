@@ -381,7 +381,7 @@ export function MermaidBlock({ source, highlightedCode }: MermaidBlockProps) {
   }
 
   return (
-    <div className="surface-raised group my-1.5 overflow-hidden rounded-sm border border-(--color-border) bg-(--bg-card)">
+    <div className="surface-raised group my-1.5 overflow-hidden border border-(--color-border) bg-(--bg-card)">
       <Tabs value={view} onValueChange={setView} className="gap-0">
         <div className="flex items-center justify-between gap-3 border-b border-(--color-border) bg-(--bg-key) py-0.5 pr-1.5 pl-3">
           <div className="flex items-center gap-2">

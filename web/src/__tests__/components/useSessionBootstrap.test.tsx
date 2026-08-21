@@ -15,10 +15,12 @@ function Harness({
   sessionId = 'session-1',
   beginResolvedSession = mock(() => {}),
   inputRef,
+  isMobile = true,
 }: {
   loadSession: (sessionId: string, workspace?: string | null) => Promise<void>
   connectStream: () => AbortController
   sessionId?: string
+  isMobile?: boolean
   beginResolvedSession?: UseSessionBootstrapArgs['beginResolvedSession']
   inputRef?: RefObject<InputComposerHandle | null>
 }) {
@@ -29,7 +31,7 @@ function Harness({
     agentWorkspace: null,
     hasCodingWorkspace: false,
     isCodingSessionLoading: false,
-    isMobile: true,
+    isMobile,
     paletteOpen: false,
     sessionIdState: sessionId,
     sessionModel: null,
@@ -79,6 +81,32 @@ describe('useSessionBootstrap foreground resume', () => {
 
     await waitFor(() => expect(loadSession).toHaveBeenCalledWith('session-1', null))
     expect(connectStream).toHaveBeenCalledTimes(1)
+  })
+
+  it('does NOT abort or replace a live connected stream on visibilitychange when on desktop (non-mobile)', async () => {
+    const loadSession = mock(async () => {})
+    const connectStream = mock(() => new AbortController())
+    render(<Harness loadSession={loadSession} connectStream={connectStream} isMobile={false} />)
+
+    await waitFor(() => expect(loadSession).toHaveBeenCalledWith('session-1', null))
+    expect(connectStream).toHaveBeenCalledTimes(1)
+
+    loadSession.mockClear()
+    connectStream.mockClear()
+
+    useTeamStore.setState({
+      sessionId: 'session-1',
+      _workspace: null,
+      isConnected: true,
+      isTeamWorking: true,
+    })
+
+    // Simulate returning to the app on desktop
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' })
+    document.dispatchEvent(new Event('visibilitychange'))
+
+    expect(loadSession).not.toHaveBeenCalled()
+    expect(connectStream).not.toHaveBeenCalled()
   })
 })
 

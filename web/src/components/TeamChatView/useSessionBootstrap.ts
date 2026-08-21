@@ -189,6 +189,13 @@ export function useSessionBootstrap({
       if (state._workspace !== agentWorkspace) return
       if (resumeInFlightRef.current) return
 
+      // On desktop or browser builds, a localhost SSE connection remains alive
+      // while backgrounded. If connected and an active turn is in flight, do
+      // not abort the stream or clobber in-flight tool cards and text.
+      if (!isMobile && state.isConnected && (state.isTeamWorking || abortRef.current !== null)) {
+        return
+      }
+
       // Mobile webviews may freeze a fetch-based SSE connection while the app
       // is backgrounded without closing it. In that case isConnected remains
       // true even though the stream can no longer deliver events. Always
@@ -217,7 +224,7 @@ export function useSessionBootstrap({
       document.removeEventListener('visibilitychange', handleVisibilityChange)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionId, agentWorkspace])
+  }, [sessionId, agentWorkspace, isMobile])
 
   // ── Commands / shortcuts ───────────────────────────────────────────────────
 

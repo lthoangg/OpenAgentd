@@ -2731,6 +2731,64 @@ describe("loadSession", () => {
     expect(visibleUserBlocks).toHaveLength(1)
     expect(stream.currentBlocks.some((block) => block.type === "text" && block.content === "partial response")).toBe(true)
   })
+
+  it("preserves in-flight live tool calls and streaming text without timestamps when loadSession runs mid-turn", async () => {
+    useTeamStore.setState({
+      sessionId: "sess-1",
+      leadName: "lead",
+      agentNames: ["lead"],
+      isTeamWorking: true,
+      agentStreams: {
+        lead: {
+          ...makeStream(),
+          status: "working",
+          currentBlocks: [
+            {
+              id: "call_1",
+              type: "tool",
+              content: "",
+              toolName: "shell",
+              toolArgs: '{"command": "pytest"}',
+              toolCallId: "call_1",
+              toolDone: false,
+            },
+            {
+              id: "text_1",
+              type: "text",
+              content: "Running tests...",
+            },
+          ],
+        },
+      },
+    })
+
+    mockTeamHistory.mockImplementation(() =>
+      Promise.resolve({
+        lead: {
+          id: "lead-sess",
+          agent_name: "lead",
+          title: null,
+          created_at: null,
+          updated_at: null,
+          sub_sessions: [],
+          running: true,
+          messages: [
+            makeMessageResponse({ id: "m-1", role: "user", content: "run tests" }),
+          ],
+        },
+        members: [],
+        has_more: false,
+        next_cursor: null,
+      }),
+    )
+
+    await useTeamStore.getState().loadSession("sess-1")
+
+    const leadStream = useTeamStore.getState().agentStreams["lead"]
+    const allBlocks = [...leadStream.blocks, ...leadStream.currentBlocks]
+    expect(allBlocks.some((b) => b.type === "tool" && b.toolCallId === "call_1")).toBe(true)
+    expect(allBlocks.some((b) => b.type === "text" && b.content === "Running tests...")).toBe(true)
+  })
 })
 
 // ── loadOlderMessages ─────────────────────────────────────────────────────────

@@ -103,8 +103,13 @@ function hasVisibleBlocks(stream: AgentStream | undefined): boolean {
 // local state instead of clobbering it with the stale fetch.
 function hasLiveContent(stream: AgentStream | undefined, isWorking: boolean, sinceMs: number): boolean {
   if (!stream) return false
-  if (isWorking && stream.currentBlocks.length > 0) return true
-  return stream.currentBlocks.some((block) => (block.timestamp?.getTime() ?? 0) >= sinceMs)
+  if (stream.currentBlocks.length === 0) return false
+  if (isWorking || stream.status === 'working' || stream._turnStartedAt !== null) return true
+  return stream.currentBlocks.some((block) => {
+    if (block.type === 'tool' && !block.toolDone) return true
+    if (!block.timestamp) return true
+    return block.timestamp.getTime() >= sinceMs
+  })
 }
 
 /**

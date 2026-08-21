@@ -25,6 +25,7 @@ export interface TokenMeterProps {
   input: number
   output: number
   cached?: number
+  cachedPercent?: number
   /** Estimated USD cost accumulated across the active session. */
   sessionCostUsd?: number
   trigger?: number
@@ -40,6 +41,7 @@ export function TokenMeter({
   input,
   output,
   cached = 0,
+  cachedPercent,
   sessionCostUsd,
   trigger = DEFAULT_SUMMARY_TRIGGER_TOKENS,
   pulsing: _pulsing = false,
@@ -60,10 +62,12 @@ export function TokenMeter({
   const radius = 7
   const circumference = 2 * Math.PI * radius
   const dashOffset = circumference * (1 - progress)
+  const cachePercentValue = cachedPercent ?? (cached > 0 && input > 0 ? (cached / input) * 100 : undefined)
+  const cachePercentFormatted = cachePercentValue !== undefined ? `${cachePercentValue.toFixed(2)}%` : `${cached.toLocaleString()}%`
   const tooltip =
     title ??
     `Input: ${input.toLocaleString()} / ${safeTrigger.toLocaleString()} (${percent}%) · Output: ${output.toLocaleString()}${
-      cached > 0 ? ` · Cache: ${cached.toLocaleString()}` : ''
+      (cachePercentValue !== undefined && cachePercentValue > 0) || cached > 0 ? ` · Cache: ${cachePercentFormatted}` : ''
     }`
 
   const open = hoverOpen || pinnedOpen
@@ -212,7 +216,7 @@ export function TokenMeter({
           <div className="flex justify-between gap-4"><span className="text-(--color-text-muted)">trigger</span><span>{safeTrigger.toLocaleString()}</span></div>
           <div className="flex justify-between gap-4"><span className="text-(--color-text-muted)">used</span><span>{percent}%</span></div>
           <div className="flex justify-between gap-4"><span className="text-(--color-text-muted)">output</span><span>{output.toLocaleString()}</span></div>
-          <div className="flex justify-between gap-4"><span className="text-(--color-text-muted)">cache</span><span>{cached.toLocaleString()}</span></div>
+          <div className="flex justify-between gap-4"><span className="text-(--color-text-muted)">cache</span><span>{cachePercentFormatted}</span></div>
           {/* Scope differs from the rows above on purpose: those describe this
               agent, while cost is summed across every agent in the session.
               Labelled so the two are not read as the same scope. */}

@@ -495,6 +495,7 @@ const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionI
                input={stream.usage.promptTokens}
                output={stream.usage.completionTokens}
                cached={stream.usage.cachedTokens}
+               cachedPercent={stream.usage.cachedPercent}
              />
            )}
             <span aria-label={isWaiting ? 'Agent status: waiting for your input' : `Agent status: ${stream.status}`} className={`h-1.5 w-1.5 rounded-full ${

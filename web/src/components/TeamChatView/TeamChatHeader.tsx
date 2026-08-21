@@ -200,6 +200,7 @@ export const TeamChatHeader = memo(function TeamChatHeader({
                 input={headerTokens.input}
                 output={headerTokens.output}
                 cached={headerTokens.cached}
+                cachedPercent={headerTokens.cachedPercent}
                 sessionCostUsd={headerTokens.sessionCostUsd}
                 trigger={headerTokens.trigger}
                 pulsing={headerTokens.pulsing}

@@ -143,16 +143,19 @@ describe("sumUsageFromMessages", () => {
     expect(result.cachedTokens).toBe(40);
   });
 
-  it("summary as newest row (coding mode) does not define context size or cache", () => {
+  it("summary as newest row sets promptTokens to summary output so compaction reduction is immediately visible", () => {
     const t = (s: number) => new Date(Date.UTC(2026, 0, 1, 0, 0, s)).toISOString();
     const msgs = [
       makeMsg({ created_at: t(1), extra: { usage: { input: 500, output: 20, cache: 10, cost: { estimated_usd: 0.001 } } } }),
-      makeMsg({ role: "user", is_summary: true, created_at: t(2), extra: { usage: { input: 250000, output: 400, cache: 9999, cost: { estimated_usd: 0.0005 } } } }),
+      makeMsg({ role: "user", is_summary: true, created_at: t(2), extra: { usage: { input: 250000, output: 400, cache: 200000, cost: { estimated_usd: 0.0005 } } } }),
     ];
     const result = sumUsageFromMessages(msgs);
     expect(result.estimatedCostUsd).toBe(0.0015);
-    expect(result.promptTokens).toBe(500);
-    expect(result.cachedTokens).toBe(10);
+    expect(result.promptTokens).toBe(400);
+    expect(result.cachedTokens).toBe(200000);
+    expect(result.cachedPercent).toBe(80.0);
+    expect(result.completionTokens).toBe(420);
+    expect(result.totalTokens).toBe(820);
   });
 
   it("keeps the running sum across multiple turns and compactions", () => {

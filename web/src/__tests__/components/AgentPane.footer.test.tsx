@@ -68,10 +68,11 @@ describe("AgentPane — AssistantFooter", () => {
           completionTokens: 200,
           totalTokens: 1700,
           cachedTokens: 30,
+          cachedPercent: 2,
         },
       })
       renderPanel(stream)
-      expect(screen.getByLabelText("Input: 1,500 / 250,000 (1%) · Output: 200 · Cache: 30")).toBeTruthy()
+      expect(screen.getByLabelText("Input: 1,500 / 250,000 (1%) · Output: 200 · Cache: 2.00%")).toBeTruthy()
     })
 
     it("does not show the usage counter for the lead pane", () => {
@@ -81,10 +82,11 @@ describe("AgentPane — AssistantFooter", () => {
           completionTokens: 200,
           totalTokens: 1700,
           cachedTokens: 30,
+          cachedPercent: 2,
         },
       })
       renderPanel(stream, { isLead: true, name: "lead" })
-      expect(screen.queryByLabelText("Input: 1,500 / 250,000 (1%) · Output: 200 · Cache: 30")).toBeNull()
+      expect(screen.queryByLabelText("Input: 1,500 / 250,000 (1%) · Output: 200 · Cache: 2.00%")).toBeNull()
     })
   })
 

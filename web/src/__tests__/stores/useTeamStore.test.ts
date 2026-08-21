@@ -614,7 +614,7 @@ describe("_handleSSEEvent: usage", () => {
     expect(useTeamStore.getState().agentStreams.lead.usage.estimatedCostUsd).toBe(0.0035);
   });
 
-  it("summarization usage adds cost and output but not the pre-compaction context", () => {
+  it("summarization usage sets promptTokens to completion_tokens so compaction reduction is immediately visible", () => {
     useTeamStore.getState()._handleSSEEvent("usage", {
       prompt_tokens: 1200, completion_tokens: 30, total_tokens: 1230,
       cached_tokens: 100, estimated_cost_usd: 0.002, metadata: { agent: "lead" },
@@ -626,13 +626,14 @@ describe("_handleSSEEvent: usage", () => {
     });
 
     const usage = useTeamStore.getState().agentStreams.lead.usage;
-    // The summariser reads the OLD context — showing 9000 as the current
-    // context size (or 8000 as its cache read) would misreport the meter.
-    expect(usage.promptTokens).toBe(1200);
-    expect(usage.cachedTokens).toBe(100);
-    // But its generation and cost are real and accumulate.
+    // Input is displayed as the output of the summarisation turn (50 tokens)
+    // so the user immediately sees the compaction usage (input) being reduced.
+    expect(usage.promptTokens).toBe(50);
+    expect(usage.cachedTokens).toBe(8000);
+    expect(usage.cachedPercent).toBe(88.89);
+    // Generation and cost are real and accumulate.
     expect(usage.completionTokens).toBe(80);
-    expect(usage.totalTokens).toBe(1280);
+    expect(usage.totalTokens).toBe(130);
     expect(usage.estimatedCostUsd).toBe(0.0025);
   });
 

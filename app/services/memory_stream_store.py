@@ -280,6 +280,7 @@ async def push_event(
                 data.get("tool_call_id"),
                 data.get("name", ""),
                 arguments=data.get("arguments"),
+                agent=envelope.agent,
             )
 
         elif event_type == "tool_end":
@@ -288,6 +289,7 @@ async def push_event(
                 data.get("tool_call_id"),
                 data.get("name", ""),
                 data.get("result"),
+                agent=envelope.agent,
             )
 
         elif event_type == "usage":

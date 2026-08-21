@@ -69,6 +69,12 @@ describe('useSessionBootstrap foreground resume', () => {
     const connectStream = mock(() => new AbortController())
     render(<Harness loadSession={loadSession} connectStream={connectStream} />)
 
+    await waitFor(() => expect(loadSession).toHaveBeenCalledWith('session-1', null))
+    expect(connectStream).toHaveBeenCalledTimes(1)
+
+    loadSession.mockClear()
+    connectStream.mockClear()
+
     window.dispatchEvent(new Event('pageshow'))
 
     await waitFor(() => expect(loadSession).toHaveBeenCalledWith('session-1', null))
@@ -180,5 +186,32 @@ describe('useSessionBootstrap undo draft-restore', () => {
 
     expect(setValueMock).toHaveBeenCalledWith('the real undone message')
     expect(setValueMock).not.toHaveBeenCalledWith('Session compacted')
+  })
+})
+
+describe('useSessionBootstrap remount on screen switch', () => {
+  it('loads history and connects stream when mounting for an already-active session', async () => {
+    useTeamStore.setState({
+      sessionId: 'session-1',
+      _workspace: null,
+      isConnected: true,
+      isTeamWorking: true,
+      _unloading: false,
+      _abortController: null,
+    })
+
+    const loadSession = mock(async () => {})
+    const connectStream = mock(() => new AbortController())
+
+    render(
+      <Harness
+        sessionId="session-1"
+        loadSession={loadSession}
+        connectStream={connectStream}
+      />,
+    )
+
+    await waitFor(() => expect(loadSession).toHaveBeenCalledWith('session-1', null))
+    expect(connectStream).toHaveBeenCalledTimes(1)
   })
 })

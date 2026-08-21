@@ -101,7 +101,7 @@ export function useSessionBootstrap({
     if (isCodingSessionLoading) return
     if (!sessionId) return
     const store = useTeamStore.getState()
-    if (store.sessionId === sessionId && (store.isConnected || store.isTeamWorking)) return
+    if (abortRef.current && store.sessionId === sessionId && (store.isConnected || store.isTeamWorking)) return
 
     if (store.sessionId !== sessionId) {
       // Switching chats: reset through the store (aborts the old SSE, bumps
@@ -175,6 +175,7 @@ export function useSessionBootstrap({
     return () => {
       cancelled = true
       abortRef.current?.abort()
+      abortRef.current = null
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId, agentWorkspace, hasCodingWorkspace, isCodingSessionLoading])

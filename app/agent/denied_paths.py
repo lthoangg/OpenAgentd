@@ -126,7 +126,7 @@ class DeniedPathsConfig:
                 Path(settings.OPENAGENTD_STATE_DIR).resolve(),
                 Path(settings.OPENAGENTD_CACHE_DIR).resolve(),
             ]
-        self.denied_roots: list[Path] = list(denied_roots)
+        self.denied_roots: list[Path] = [Path(p).resolve() for p in denied_roots]
 
         if denied_patterns is None:
             try:
@@ -283,7 +283,8 @@ class DeniedPathsConfig:
         except ValueError:
             return None
 
-        for token in tokens:
+        for raw_token in tokens:
+            token = raw_token.strip("\"'")
             if not _looks_path_like(token):
                 continue
             p = Path(token)

@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 
 const originalEnv = import.meta.env.VITE_API_BASE_URL
 
@@ -8,6 +8,12 @@ declare global {
     __OAD_BACKEND_UNAVAILABLE__?: boolean
   }
 }
+
+beforeEach(() => {
+  delete window.__OAD_API_BASE_URL__
+  delete window.__OAD_BACKEND_UNAVAILABLE__
+  import.meta.env.VITE_API_BASE_URL = undefined
+})
 
 afterEach(() => {
   delete window.__OAD_API_BASE_URL__

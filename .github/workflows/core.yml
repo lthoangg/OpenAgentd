@@ -101,5 +101,5 @@ jobs:
           tests/agent/tools/test_shell.py::test_windows_kill_terminates_entire_process_tree
           tests/agent/tools/test_shell.py::test_windows_kill_falls_back_when_taskkill_fails
           tests/agent/tools/test_shell.py::test_windows_shell_executes_native_command
-          tests/agent/test_sandbox_commands.py::test_looks_path_like_positive
-          tests/agent/test_sandbox_commands.py::test_blocks_quoted_windows_path_under_denied_root
+          tests/agent/test_denied_paths_commands.py::test_looks_path_like_positive
+          tests/agent/test_denied_paths_commands.py::test_blocks_quoted_windows_path_under_denied_root

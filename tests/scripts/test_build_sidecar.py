@@ -183,3 +183,22 @@ def test_strip_bundle_preserves_windows_stdlib_threading(tmp_path):
 
     assert threading_py.exists(), "threading.py must not be stripped on Windows"
     assert not idlelib_dir.exists(), "idlelib should be stripped"
+
+
+def test_strip_bundle_prunes_static_archives_and_stdlib_tests(tmp_path):
+    module = _load_module()
+    site_packages = tmp_path / "site-packages"
+    site_packages.mkdir()
+    python_target = tmp_path / "python"
+    py_lib = python_target / "lib" / "python3.14"
+    py_lib.mkdir(parents=True)
+    static_lib = python_target / "lib" / "libpython3.14.a"
+    static_lib.write_bytes(b"archive")
+    test_dir = py_lib / "test"
+    test_dir.mkdir()
+    (test_dir / "test_os.py").write_text("# test\n")
+
+    module.strip_bundle(site_packages, python_target)
+
+    assert not static_lib.exists(), "static archives (*.a) must be pruned"
+    assert not test_dir.exists(), "stdlib test suite must be pruned"

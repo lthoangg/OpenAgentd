@@ -316,7 +316,11 @@ def strip_bundle(site_packages: Path, python_target: Path | None = None) -> int:
         for p in site_packages.glob(meta_pattern):
             if p.exists():
                 try:
-                    size = sum(f.stat().st_size for f in p.rglob("*") if f.is_file()) if p.is_dir() else p.stat().st_size
+                    size = (
+                        sum(f.stat().st_size for f in p.rglob("*") if f.is_file())
+                        if p.is_dir()
+                        else p.stat().st_size
+                    )
                     if p.is_dir():
                         shutil.rmtree(p, ignore_errors=True)
                     else:
@@ -339,8 +343,20 @@ def strip_bundle(site_packages: Path, python_target: Path | None = None) -> int:
         py_include = python_target / "include"
         if py_include.is_dir():
             try:
-                size = sum(f.stat().st_size for f in py_include.rglob("*") if f.is_file())
+                size = sum(
+                    f.stat().st_size for f in py_include.rglob("*") if f.is_file()
+                )
                 shutil.rmtree(py_include, ignore_errors=True)
+                removed += size
+            except OSError:
+                pass
+
+        # Prune share directory (manpages, info, docs)
+        py_share = python_target / "share"
+        if py_share.is_dir():
+            try:
+                size = sum(f.stat().st_size for f in py_share.rglob("*") if f.is_file())
+                shutil.rmtree(py_share, ignore_errors=True)
                 removed += size
             except OSError:
                 pass
@@ -349,7 +365,9 @@ def strip_bundle(site_packages: Path, python_target: Path | None = None) -> int:
         py_tcl_root = python_target / "tcl"
         if py_tcl_root.is_dir():
             try:
-                size = sum(f.stat().st_size for f in py_tcl_root.rglob("*") if f.is_file())
+                size = sum(
+                    f.stat().st_size for f in py_tcl_root.rglob("*") if f.is_file()
+                )
                 shutil.rmtree(py_tcl_root, ignore_errors=True)
                 removed += size
             except OSError:
@@ -363,12 +381,26 @@ def strip_bundle(site_packages: Path, python_target: Path | None = None) -> int:
 
         for py_std in stdlib_dirs:
             if py_std.is_dir():
-                for unused_name in ("ensurepip", "idlelib", "tkinter", "pydoc_data", "unittest", "turtle.py"):
+                for unused_name in (
+                    "ensurepip",
+                    "idlelib",
+                    "tkinter",
+                    "pydoc_data",
+                    "unittest",
+                    "turtle.py",
+                    "turtledemo",
+                    "test",
+                    "tests",
+                ):
                     unused_path = py_std / unused_name
                     if unused_path.exists():
                         try:
                             size = (
-                                sum(f.stat().st_size for f in unused_path.rglob("*") if f.is_file())
+                                sum(
+                                    f.stat().st_size
+                                    for f in unused_path.rglob("*")
+                                    if f.is_file()
+                                )
                                 if unused_path.is_dir()
                                 else unused_path.stat().st_size
                             )
@@ -382,11 +414,22 @@ def strip_bundle(site_packages: Path, python_target: Path | None = None) -> int:
                 for cfg in py_std.glob("config-3.*"):
                     if cfg.is_dir():
                         try:
-                            size = sum(f.stat().st_size for f in cfg.rglob("*") if f.is_file())
+                            size = sum(
+                                f.stat().st_size for f in cfg.rglob("*") if f.is_file()
+                            )
                             shutil.rmtree(cfg, ignore_errors=True)
                             removed += size
                         except OSError:
                             pass
+
+        # Prune static libraries (*.a) — unused linker archives (~50MB)
+        for a_file in python_target.rglob("*.a"):
+            if a_file.is_file() and not a_file.is_symlink():
+                try:
+                    removed += a_file.stat().st_size
+                    a_file.unlink()
+                except OSError:
+                    pass
 
         # Prune tcl/tk library directories under lib/
         py_lib = python_target / "lib"
@@ -399,7 +442,9 @@ def strip_bundle(site_packages: Path, python_target: Path | None = None) -> int:
                     or tcl_dir.name.startswith("tdbc")
                 ):
                     try:
-                        size = sum(f.stat().st_size for f in tcl_dir.rglob("*") if f.is_file())
+                        size = sum(
+                            f.stat().st_size for f in tcl_dir.rglob("*") if f.is_file()
+                        )
                         shutil.rmtree(tcl_dir, ignore_errors=True)
                         removed += size
                     except OSError:
@@ -419,7 +464,9 @@ def strip_bundle(site_packages: Path, python_target: Path | None = None) -> int:
         for target in targets_to_strip:
             try:
                 orig_sz = target.stat().st_size
-                res = subprocess.run([strip_tool, *strip_args, str(target)], capture_output=True)
+                res = subprocess.run(
+                    [strip_tool, *strip_args, str(target)], capture_output=True
+                )
                 if res.returncode == 0:
                     diff = orig_sz - target.stat().st_size
                     if diff > 0:

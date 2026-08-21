@@ -19,6 +19,19 @@ export const BASE_SLASH_COMMANDS: SlashCommand[] = [
   { id: 'init', label: 'Init', description: 'Create or update AGENTS.md for this project' },
 ]
 
+export const BUILT_IN_SLASH_COMMAND_IDS = new Set<string>(
+  BASE_SLASH_COMMANDS.map((cmd) => cmd.id).concat(['redo_all']),
+)
+
+/** Extract and normalize a built-in slash command from user input, or return null. */
+export function parseBuiltInSlashCommand(content: string): string | null {
+  const trimmed = content.trim()
+  if (!trimmed.startsWith('/')) return null
+  const command = trimmed.slice(1).trim().toLowerCase()
+  if (command === 'redo_all') return 'redo-all'
+  return BUILT_IN_SLASH_COMMAND_IDS.has(command) ? command : null
+}
+
 export interface FilterSlashCommandsContext {
   isTeamWorking?: boolean
   revertedCount?: number

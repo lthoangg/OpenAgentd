@@ -65,6 +65,7 @@ import { useOverlayState } from './useOverlayState'
 import { useSessionBootstrap } from './useSessionBootstrap'
 import { useSlashCommands } from './useSlashCommands'
 import { useCommandPalette } from './useCommandPalette'
+import { parseBuiltInSlashCommand } from './helpers'
 
 interface TeamChatViewProps {
   sessionId?: string
@@ -594,11 +595,10 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
             ref={inputRef}
             boundsRef={mainColumnRef}
             onSubmit={async (content: string, files?: File[], mentions?: string[]) => {
-              const trimmed = content.trim()
-              if (trimmed.startsWith('/') && (!files || files.length === 0)) {
-                const cmdName = trimmed.slice(1).trim().toLowerCase()
-                if (cmdName === 'undo' || cmdName === 'redo' || cmdName === 'redo-all' || cmdName === 'redo_all' || cmdName === 'compact' || cmdName === 'new' || cmdName === 'stop') {
-                  handleSlashCommand(cmdName === 'redo_all' ? 'redo-all' : cmdName)
+              if (!files || files.length === 0) {
+                const builtInCmd = parseBuiltInSlashCommand(content)
+                if (builtInCmd) {
+                  handleSlashCommand(builtInCmd)
                   return
                 }
               }

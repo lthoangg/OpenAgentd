@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { cleanup, renderHook } from '@testing-library/react'
-import { BASE_SLASH_COMMANDS, filterBaseSlashCommands } from '@/components/TeamChatView/helpers'
+import { BASE_SLASH_COMMANDS, filterBaseSlashCommands, parseBuiltInSlashCommand } from '@/components/TeamChatView/helpers'
 import { useSlashCommands } from '@/components/TeamChatView/useSlashCommands'
 import { useTeamStore } from '@/stores/useTeamStore'
 
@@ -184,5 +184,23 @@ describe('useSlashCommands', () => {
     expect(redoAllTeamMock).toHaveBeenCalledTimes(1)
     expect(inputRef.current.setValue).toHaveBeenCalledWith('')
     expect(inputRef.current.setFiles).toHaveBeenCalledWith([])
+  })
+})
+
+describe('parseBuiltInSlashCommand', () => {
+  it('extracts known built-in slash commands', () => {
+    expect(parseBuiltInSlashCommand('/undo')).toBe('undo')
+    expect(parseBuiltInSlashCommand('/redo')).toBe('redo')
+    expect(parseBuiltInSlashCommand('/redo-all')).toBe('redo-all')
+    expect(parseBuiltInSlashCommand('/redo_all')).toBe('redo-all')
+    expect(parseBuiltInSlashCommand('  /compact  ')).toBe('compact')
+    expect(parseBuiltInSlashCommand('/stop')).toBe('stop')
+    expect(parseBuiltInSlashCommand('/new')).toBe('new')
+  })
+
+  it('returns null for non-command or custom command text', () => {
+    expect(parseBuiltInSlashCommand('hello world')).toBeNull()
+    expect(parseBuiltInSlashCommand('/custom-command')).toBeNull()
+    expect(parseBuiltInSlashCommand('')).toBeNull()
   })
 })

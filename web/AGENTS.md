@@ -1,51 +1,63 @@
-# web/ — Agent Instructions
+# Web Frontend Guide
 
-React/Vite frontend for OpenAgentd, embedded in the Tauri shell and served by the backend in packaged builds.
+This Bun/Vite React application is shared by browsers and both Tauri shells.
+It uses strict TypeScript, Tailwind, TanStack Router/Query, and Zustand. Tests
+run with Bun, Happy DOM, and Testing Library.
 
-## Tech stack
+## Development
 
-- Bun, React 19, TypeScript 5.9, Vite 7, Tailwind v4 + `tw-animate-css`.
-- TanStack Router/Query, Zustand + Immer, Tauri JS plugins.
-- Bounded TanStack pilots: Table + Virtual power the telemetry trace list;
-  Form owns the sidebar title and scheduler create/edit forms; Hotkeys owns
-  fixed global commands and the workspace-panel close shortcut; Pacer debounces
-  scheduler search. TanStack DB is not part of the current state model;
-  Query remains server state and Zustand remains client/stream state.
-- UI primitives are **zero-dependency** hand-rolled components in `src/components/ui/`
-  (no shadcn, no Base UI, no CVA, no clsx/tailwind-merge — see `src/AGENTS.md`).
-- Tests use Bun test with Happy DOM and Testing Library.
-
-## Layout
-
-```
-src/           Application code, routes, components, stores, queries, tests
-public/        Static assets
-vite.config.ts Vite config and API/SSE dev proxy
-eslint.config.js ESLint config
-```
-
-## Code style
-
-- ESM only; no `require()`.
-- Import app modules through `@/`.
-- Prefer functional components with explicit props.
-- Use TanStack Query for server state and Zustand stores for client state.
-- Keep UI mobile-first and consistent with existing Tailwind v4 patterns.
-- **Multi-platform / multi-screen:** the same components run on Tauri
-  mobile (iOS/Android), Tauri desktop (macOS/Linux), and the browser.
-  Author base styles for the smallest viewport, then enhance with
-  `sm:`/`md:`/`lg:`. Desktop side-panels/splits must collapse to overlay
-  drawers or a single column on mobile. Branch behaviour with
-  `useIsMobile()` / `usePlatform()`, route touch gestures through
-  `use-edge-swipe` (see *Mobile touch gestures* in `src/AGENTS.md`), and
-  verify every change on both a narrow (≤768px) and a wide viewport.
-
-## Running tests
-
-Always run with `--parallel` — the suite is isolated per file and runs ~4× faster:
+From `web/`:
 
 ```bash
-bun test --parallel
+bun install --frozen-lockfile
+bun dev
+bun run lint
+bun run typecheck
+bunx tsc -p tsconfig.test.json --noEmit
+bun run test
+bun run test:file src/__tests__/path/to/file.test.tsx
+bun run build
 ```
 
-All other dev commands (`bun dev`, `bun run lint`, `bun run typecheck`, `bun run build`, …) are in the root `Makefile`. Run `make help` for a full list.
+`bun run build` includes the TypeScript build, Vite production bundle, and the
+chunk-cycle guard. The root `make build-web` performs a frozen install before
+building packaging assets. Do not edit `web/dist/` directly.
+
+Before finishing frontend changes, run `make verify-web` from the repository
+root. The `web/Makefile` is a convenience wrapper for package scripts; the root
+Makefile owns the pre-merge contract.
+
+## Architecture
+
+- `src/api/` owns backend URLs, auth injection, request/response handling, and
+  SSE parsing.
+- `src/queries/` owns TanStack Query hooks/mutations and cache updates for
+  server state.
+- `src/stores/` owns client state and streamed session/team state.
+- `src/routes/` contains pages; register and validate route/search state in
+  `src/router.ts`.
+- `src/components/` owns shared and feature UI; `src/hooks/` owns reusable
+  behavior. Prefer colocated feature hooks/modules before expanding a large
+  component.
+
+Use static ESM imports and the `@/` alias for application modules. Keep
+same-origin `/api` desktop-token injection intact; do not attach native access
+tokens to arbitrary remote URLs.
+
+## UI constraints
+
+- Read root `DESIGN.md` and reuse tokens from `src/index.css` and existing
+  primitives before adding colors, spacing, type, radius, elevation, or motion.
+- Build the shared UI mobile-first. Gate platform behavior through existing
+  `useIsMobile()` / `usePlatform()` hooks, account for safe areas and desktop
+  chrome, and provide touch equivalents for hover/right-click behavior.
+- Manually inspect narrow and wide layouts for visual changes; this is not
+  covered by `make verify-web`.
+- `src/components/ui/` contains intentionally dependency-free primitives. Do
+  not introduce shadcn/Base UI/CVA/clsx/tailwind-merge for those primitives;
+  follow the local maps and class helpers.
+- Route mobile drawer gestures through the shared edge-swipe controller rather
+  than adding competing component-local touch handlers.
+
+Backend API/SSE changes require matching frontend client/store tests and both
+`make verify-backend` and `make verify-web`.

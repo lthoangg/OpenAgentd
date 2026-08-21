@@ -1,182 +1,57 @@
-# manual/ — Agent Instructions
+# Live and Provider Diagnostics Guide
 
-Manual smoke-test scripts for openagentd.
+`manual/` contains operator/developer smoke scripts. It is not the pytest
+suite: scripts may require a running local server, configured providers, a
+local database/log tree, or external credentials.
 
-- **Run as:** `uv run python -m manual.<script> [args]` (try-providers: `uv run python -m manual.try_providers.<script>`).
-- **Default target:** dev API at `http://localhost:8000/api`. Source-checkout runs now default to `APP_ENV=development`, so most `uv run python -m manual.<script>` commands hit `.openagentd/dev/` automatically. HTTP smoke scripts should still fail fast rather than accidentally target a production server; override `--base URL` only intentionally.
-- **Server needed?** Most scripts need a running server (`make run`). Scripts marked **(no server)** run in-process or read the DB/logs directly.
-- **Discoverability:** every script supports `-h/--help`. This file is a map, not a full flag reference.
+## Running safely
 
----
+- Run modules from the repository root as
+  `uv run python -m manual.<module> --help`.
+- Most HTTP scripts default to the development API under
+  `http://localhost:8000/api`; start it with `make run` or `make dev`.
+  Override `--base` only intentionally and never aim mutation scripts at a
+  production server for routine testing.
+- Modules under `manual.try_providers` call external provider APIs and may
+  incur cost. Run them only with the intended model/account credentials.
+- Scripts marked no-server in their module help operate in process or inspect
+  local state. Use `--env production` only when production data is the explicit
+  target.
+- Do not print, persist, or add provider keys, access tokens, or copied `.env`
+  contents. Put generated captures under ignored `.openagentd/` state or a
+  temporary directory.
 
-## Team & sessions
+## Navigation
 
-Multi-agent turns, history, todos, lifecycle, stop/undo, queued messages.
+- Session/team lifecycle and SSE: `team_chat`, `team_sessions`, `team_history`,
+  `team_timeline`, `team_sse`, `team_spawn`, `team_todos`, queued/stop/undo
+  scripts, and durable-question diagnostics.
+- Runtime health and observability: `health`, `backend_log`, `otel_inspect`,
+  `skill_tool_analytics`, `provider_models`, and `scheduler`.
+- Prompt/compaction behavior: `inspect_prompt`, `compaction_cache`,
+  `summarization_sse`, `summarization_improvements_test`, and `skill_dedupe`.
+- Tool/LSP/media paths: `patch_tool`, `shell_output_delta`, `lsp_smoketest`,
+  attachment scripts, image/video smoke tests, and result-offload checks.
+- Provider transport probes: `try_providers/`; use each module's `--help` for
+  model, streaming, tool, and authentication options.
 
-| Script | Purpose | Key flags |
-|--------|---------|-----------|
-| `team_chat` | Send a team message, wait for done, print history | `--session`, `--wait` |
-| `team_sessions` | List team sessions or inspect one | `--id`, `--all` |
-| `session_resolve` | Verify resolve-or-create for normal + coding sessions | `--workspace`, `--base` |
-| `team_history` | Print lead + member messages for a session | `SESSION_ID` |
-| `team_timeline` | Chronological cross-agent timeline (reads DB) | `SESSION_ID`, `--full`, `--env production` |
-| `team_todos` | Print session todos; flag dependency/claim issues | `SESSION_ID` |
-| `team_usage` | Per-message usage metadata for a session | `SESSION_ID`, `--base` |
-| `team_sse` | Capture + pretty-print every SSE event (incl. lifecycle states) | `--session`, `--wait`, `--out`, `--no-summary` |
-| `global_events` | Capture app-global scheduler/title/notification SSE; optionally trigger an action and assert event types | `--trigger-task`, `--message`, `--expect`, `--wait`, `--out`, `--key` |
-| `team_spawn` | Exercise `team_manage` spawn/dismiss; stream per-agent content | `--message`, `--session`, `--wait`, `--out` |
-| `team_roster_lifecycle` | Fresh sessions carry no roster; stop → members `offline` | `--base`, `--wait` |
-| `team_message_idempotency` | Assert each turn's LLM window is an append-only prefix of the next (prompt-cache invariant); summarization rewrites treated as expected | `--session`, `--messages`, `--wait` |
-| `team_history_n1_verify` | **(no server)** Differential check that batched member-page query equals the old N+1 loop on seeded edge cases | — |
-| `team_open_task_nudge` | Member claims a todo then stops without `team_message`; `--direct` fails unless the hidden nudge fires | `--direct`, `--session`, `--wait` |
-| `stop_mid_stream` | User-stop matrix (early/text/tool × undo) with invariant checks | `--only`, `--skip-undo` |
-| `support_interrupt` | Provider `support_interrupt` flag contracts; `--live` also hits the API | `--live`, `--base` |
-| `stop_additive` | Stop + "I forgot to add…" — final reply must include both messages | `--wait` |
-| `queued_injection` | Queued follow-ups splice into a running turn before `done` | `--queue-delay`, `--followup`, `--expect`, `--wait` |
-| `cancel_queued_message` | × cancel hard-deletes a queued row (204 → 404, absent from history) | `--queue-delay`, `--base` |
-| `queued_file_attach` | Explicit file uploads are accepted on queued messages; cancel deletes persisted files | `--scenario a\|b\|both`, `--base` |
-| `undo_mid_second_turn` | Interrupt turn 2, `/undo` (202), boundary rolls back for a clean follow-up | `--base` |
-| `fast_mode` | `fast_mode=true` always persists `extra.service_tier=fast` on the user message, regardless of provider | `--non-codex-model`, `--codex-model` |
-| `mention_attachments` | `@`-mention auto-attach: text fenced + head/tail truncated, image/folder reference-only | `--base` |
-
-```bash
-uv run python -m manual.team_chat "Research the latest Python release"
-uv run python -m manual.team_chat "Summarise findings" --session <ID>    # follow-up
-uv run python -m manual.team_history <SESSION_ID>
-uv run python -m manual.team_sse "Ask the explorer to scan memory/" --out .openagentd/sse.jsonl
-uv run python -m manual.global_events --trigger-task daily-check --expect session_turn_started --expect desktop_notification
-uv run python -m manual.global_events --message "Explain Python context managers" --expect title_update --wait 180
-uv run python -m manual.team_open_task_nudge --direct                    # deterministic, no server
-uv run python -m manual.stop_mid_stream --only tool                      # single case
-uv run python -m manual.fast_mode --codex-model codex:gpt-5.4
-```
-
----
-
-## Observability & utilities
-
-| Script | Purpose | Key flags |
-|--------|---------|-----------|
-| `health` | `GET /health/ready` + agent roster (tools/skills/vision) | `--base` |
-| `provider_models` | List discovered provider models (falls back to catalog) | provider IDs, `--limit` |
-| `backend_log` | **(no server)** Summarise repeated WARNING/ERROR/CRITICAL in structured logs | `--env production`, `--path`, `--level`, `--contains`, `--limit`, `--samples` |
-| `inspect_prompt` | **(no server)** Reconstruct prompt + tools and count exact tiktoken budgets for the selected payload, every builtin prompt, each tool, and bundled skill bodies | `--dir`, `--agent`, `--encoding`, `--skills-scope`, `--no-team-protocol`, `--out`, `--stats-only`, `--json` |
-| `otel_inspect` | Read OTel spans/metrics from `.openagentd/dev/state/otel/*.jsonl` by default | `--env production`, `--session`, `--trace`, `--metrics` |
-| `skill_tool_analytics` | **(no server)** Real tool/skill usage frequency from persisted `tool_calls`, split by mode (the DB is the only complete source) | `--env production`, `--since-days`, `--only`, `--top` |
-| `scheduler` | Smoke-test the scheduler API (create/trigger/pause/resume/delete + demos) | `list\|create\|trigger\|…`, `--type`, `--every`, `--cron`, `--at`, `--prompt` |
-| `patch_tool` | Agent uses filesystem `patch`; verify the tool call | `--base`, `--wait` |
-| `lsp_smoketest` | E2E check of LSP diagnostics injection; `--direct` checks bundled Python + managed TypeScript without a server | `--direct`, `--base`, `--wait` |
-| `shell_output_delta` | Verify live `tool_output_delta` events from shell output | `--base`, `--message`, `--wait` |
-| `tool_result_offload_test` | Verify large tool results are offloaded to session artifacts and re-readable via `read` | `--base`, `--wait` |
+Representative commands:
 
 ```bash
 uv run python -m manual.health
-uv run python -m manual.provider_models openai googlegenai openrouter codex
-uv run python -m manual.backend_log --contains drop_partial_tool_call_bad_json
-make prompt-budget                                                       # stable human-readable baseline
-make prompt-budget-json                                                  # stable JSON for tracking/CI
-uv run python -m manual.inspect_prompt --stats-only                      # current configured lead
-uv run python -m manual.inspect_prompt --agent explorer --out .openagentd/chat/payload.json
-uv run python -m manual.skill_tool_analytics --since-days 7
-uv run python -m manual.skill_tool_analytics --env production --since-days 7
-uv run python -m manual.otel_inspect --session <ID>                      # or --trace <ID> / --metrics
-uv run python -m manual.otel_inspect --env production --session <ID>
-uv run python -m manual.scheduler create --type every --every 60 --prompt "Say hello"
-uv run python -m manual.tool_result_offload_test
+uv run python -m manual.team_sse "message" --session <ID>
+uv run python -m manual.backend_log --contains <event>
+uv run python -m manual.otel_inspect --session <ID>
+uv run python -m manual.lsp_smoketest --direct
+make prompt-budget
 ```
 
----
+## Adding or changing scripts
 
-## Summarization & skills
-
-Most require a low `DEFAULT_PROMPT_TOKEN_THRESHOLD` in `app/agent/hooks/summarization.py` to trigger; **(no server)** ones run in-process with a mock LLM.
-
-| Script | Purpose | Key flags |
-|--------|---------|-----------|
-| `summarization_improvements_test` | **(no server)** P2 tool-result context, P5 merge-vs-fresh, P6 min-delta guard | — |
-| `summarization_sse` | Capture `summarization_start/_content/_end` SSE; deltas reconstruct the summary | `--session`, `--warmup`, `--wait`, `--out` |
-| `compaction_cache` | Cache-first summarization; `--direct` (no server) checks prefix shape + multi-skill retention; live checks prompt-cache reads | `--direct`, `--turns`, `--wait`, `--min-cache-ratio` |
-| `skill_dedupe` | **(no server)** Duplicate skill loads replay the body; summarization keeps only the first full skill pair | — |
-
-`summarization_test` / `summarization_max_tokens_test` were removed: both posted to
-dead `/chat`-family endpoints and assumed the API zeroes out every `is_summary`
-row, which is no longer true (the active summary is shown to the user). Use
-`summarization_sse` for a live end-to-end check and `compaction_cache --direct`
-for prefix/threshold assertions instead; `max_token_length` itself is covered by
-`tests/agent/hooks/test_build_summarization_hook.py` and
-`tests/agent/hooks/test_summarization_hook.py`.
-
-```bash
-uv run python -m manual.summarization_improvements_test                  # no server
-uv run python -m manual.summarization_sse --out .openagentd/state/summ_sse.jsonl
-uv run python -m manual.compaction_cache --direct                        # no server
-uv run python -m manual.compaction_cache --turns 6 --wait 180 --min-cache-ratio 0.10
-uv run python -m manual.skill_dedupe
-```
-
----
-
-## Media generation
-
-Exercise the image/video backends and the `generate_image` tool directly — **no server, no agent loop**. Require provider keys (`OPENAI_API_KEY` / `GOOGLE_API_KEY`); outputs land in `/tmp/`.
-
-| Script | Purpose | Key flags |
-|--------|---------|-----------|
-| `image_tool_smoketest` | Full `generate_image` tool path (load inputs → backend → sandbox write → markdown) | `--model` |
-| `image_edit_smoketest` | OpenAI image **edit** backend (generate 2 PNGs → compose) | `--model` |
-| `video_smoketest` | Veo video backend | `--mode text\|image\|interp\|ref`, `--img`, `--model` |
-
-```bash
-uv run python -m manual.image_tool_smoketest
-uv run python -m manual.video_smoketest --mode text
-```
-
----
-
-## Provider tests (`try_providers/`)
-
-Hit LLM provider APIs directly — **no server required**, uses API keys from `.env`. Most accept `--model`, `--tools`/`--real-tools`, `--level`, `--no-stream`, `--simple`. OpenRouter/Copilot/Codex exit `2` for expected provider-side errors (insufficient credits, unsupported model).
-
-| Script | Notes |
-|--------|-------|
-| `try_openai` | Completions + Responses (`--responses`) |
-| `try_openai_chat_completions_tools` | Chat Completions API with tools (no Responses) |
-| `try_openai_responses_tools` | Responses API with tools |
-| `try_openrouter` | Via retry/error classification |
-| `try_copilot` | Run `uv run openagentd auth copilot` first |
-| `try_codex` | Run `uv run openagentd auth codex` first |
-| `try_googlegenai` | Gemini |
-| `try_vertexai` | Vertex AI |
-| `try_bedrock` | AWS Bedrock; auth via `AWS_BEDROCK_PROFILE`/`--profile`, region `AWS_BEDROCK_REGION`/`--region` |
-| `try_bedrock_mantle` | Bedrock Mantle `/v1` or `/openai/v1`: Chat, Responses, and models; set `AWS_BEARER_TOKEN_BEDROCK` directly or mint from `AWS_BEDROCK_PROFILE`/`--profile` |
-| `try_zai` | ZAI |
-| `try_deepseek` | DeepSeek (`DEEPSEEK_API_KEY`) |
-| `try_ollama` | Local daemon; cloud via `-cloud` model suffix after `ollama signin` |
-| `try_xai` | xAI/Grok; Chat Completions or Responses via `--level` |
-| `try_grok` | Grok Build OAuth; supports live model listing, billing usage, Responses, streaming, and tools |
-| `try_router9` | Local 9Router; requires a model ID exposed by the running router |
-| `try_continue_probe` | Probe whether providers continue from a trailing-assistant message (informs `/continue` design); `--model` |
-
-```bash
-uv run python -m manual.try_providers.try_openai
-uv run python -m manual.try_providers.try_codex --model gpt-5.5 --level low
-uv run python -m manual.try_providers.try_grok --list-models
-uv run python -m manual.try_providers.try_grok --usage
-uv run python -m manual.try_providers.try_googlegenai --real-tools
-uv run python -m manual.try_providers.try_ollama --model kimi-k2.6-cloud --simple
-```
-
----
-
-## Recipe: verify date injection is frozen at session creation
-
-```bash
-uv run python -m manual.team_chat "What date is in your system prompt? Reply with just the date."
-uv run python -m manual.team_chat "What date is in your system prompt now?" --session <ID>   # must match
-
-# Decode the expected date from the UUIDv7 session id
-uv run python -c "
-from uuid import UUID; from datetime import datetime, timezone
-ts_ms = UUID('<ID>').int >> 80
-print(datetime.fromtimestamp(ts_ms/1000, tz=timezone.utc).strftime('%Y-%m-%d'))"
-```
+- Reuse `manual/_common.py` for shared base-URL/session helpers.
+- Keep scripts import-safe, expose argparse `--help`, fail non-zero on violated
+  assertions, and make mutating/external behavior explicit in help text.
+- Prefer deterministic pytest or `tests/manual/` coverage for regressions;
+  keep this subtree for live integration/diagnostic paths.
+- Run the module's `--help` plus the smallest safe focused scenario. Document
+  any server, credential, platform, or provider limitation in the result.

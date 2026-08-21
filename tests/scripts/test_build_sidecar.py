@@ -164,3 +164,22 @@ def test_install_packages_forwards_extras_to_export_and_project(tmp_path, monkey
     assert export.count("--extra") == 2
     assert "extra-one" in export and "extra-two" in export
     assert project[-1] == ".[extra-one,extra-two]"
+
+
+def test_strip_bundle_preserves_windows_stdlib_threading(tmp_path):
+    module = _load_module()
+    site_packages = tmp_path / "site-packages"
+    site_packages.mkdir()
+    python_target = tmp_path / "python"
+    win_lib = python_target / "Lib"
+    win_lib.mkdir(parents=True)
+    threading_py = win_lib / "threading.py"
+    threading_py.write_text("import os\n")
+    idlelib_dir = win_lib / "idlelib"
+    idlelib_dir.mkdir()
+    (idlelib_dir / "idle.py").write_text("# idle\n")
+
+    module.strip_bundle(site_packages, python_target)
+
+    assert threading_py.exists(), "threading.py must not be stripped on Windows"
+    assert not idlelib_dir.exists(), "idlelib should be stripped"

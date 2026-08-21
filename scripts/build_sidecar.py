@@ -337,14 +337,41 @@ def strip_bundle(site_packages: Path, python_target: Path | None = None) -> int:
     # Prune Python runtime unused components (include, tcl/tk, ensurepip, etc.)
     if python_target and python_target.is_dir():
         py_include = python_target / "include"
-        py_lib = python_target / "lib"
-        for py_std in py_lib.glob("python3.*"):
+        if py_include.is_dir():
+            try:
+                size = sum(f.stat().st_size for f in py_include.rglob("*") if f.is_file())
+                shutil.rmtree(py_include, ignore_errors=True)
+                removed += size
+            except OSError:
+                pass
+
+        # Windows root tcl directory
+        py_tcl_root = python_target / "tcl"
+        if py_tcl_root.is_dir():
+            try:
+                size = sum(f.stat().st_size for f in py_tcl_root.rglob("*") if f.is_file())
+                shutil.rmtree(py_tcl_root, ignore_errors=True)
+                removed += size
+            except OSError:
+                pass
+
+        # Find stdlib directories across POSIX (lib/python3.x) and Windows (Lib)
+        stdlib_dirs = list((python_target / "lib").glob("python3.*"))
+        win_lib = python_target / "Lib"
+        if win_lib.is_dir():
+            stdlib_dirs.append(win_lib)
+
+        for py_std in stdlib_dirs:
             if py_std.is_dir():
                 for unused_name in ("ensurepip", "idlelib", "tkinter", "pydoc_data", "unittest", "turtle.py"):
                     unused_path = py_std / unused_name
                     if unused_path.exists():
                         try:
-                            size = sum(f.stat().st_size for f in unused_path.rglob("*") if f.is_file()) if unused_path.is_dir() else unused_path.stat().st_size
+                            size = (
+                                sum(f.stat().st_size for f in unused_path.rglob("*") if f.is_file())
+                                if unused_path.is_dir()
+                                else unused_path.stat().st_size
+                            )
                             if unused_path.is_dir():
                                 shutil.rmtree(unused_path, ignore_errors=True)
                             else:
@@ -361,40 +388,34 @@ def strip_bundle(site_packages: Path, python_target: Path | None = None) -> int:
                         except OSError:
                             pass
 
-        if py_include.is_dir():
-            try:
-                size = sum(f.stat().st_size for f in py_include.rglob("*") if f.is_file())
-                shutil.rmtree(py_include, ignore_errors=True)
-                removed += size
-            except OSError:
-                pass
-
-        for tcl_pattern in ("*tcl*", "*tk*", "itcl*", "thread*"):
-            for p in list(py_lib.glob(tcl_pattern)):
-                if p.exists():
+        # Prune tcl/tk library directories under lib/
+        py_lib = python_target / "lib"
+        if py_lib.is_dir():
+            for tcl_dir in py_lib.iterdir():
+                if tcl_dir.is_dir() and (
+                    tcl_dir.name.startswith("tcl")
+                    or tcl_dir.name.startswith("tk")
+                    or tcl_dir.name.startswith("itcl")
+                    or tcl_dir.name.startswith("tdbc")
+                ):
                     try:
-                        size = sum(f.stat().st_size for f in p.rglob("*") if f.is_file()) if p.is_dir() else p.stat().st_size
-                        if p.is_dir():
-                            shutil.rmtree(p, ignore_errors=True)
-                        else:
-                            p.unlink()
+                        size = sum(f.stat().st_size for f in tcl_dir.rglob("*") if f.is_file())
+                        shutil.rmtree(tcl_dir, ignore_errors=True)
                         removed += size
                     except OSError:
                         pass
 
-    # Strip native binary symbols using system strip tool
+    # Strip native binary symbols in site_packages ONLY using system strip tool.
+    # (Never strip python_target: python-build-standalone binaries on Linux rely on
+    # ELF symbol versioning headers that standard strip corrupts).
     strip_tool = shutil.which("strip")
     if strip_tool:
         strip_args = ["-x"] if platform.system() == "Darwin" else ["--strip-unneeded"]
         targets_to_strip: list[Path] = []
-        roots = [site_packages]
-        if python_target:
-            roots.append(python_target)
-        for r in roots:
-            for p in r.rglob("*"):
-                if p.is_file() and not p.is_symlink():
-                    if p.suffix in (".so", ".dylib", ".pyd") or (p.parent.name == "bin" and os.access(p, os.X_OK)):
-                        targets_to_strip.append(p)
+        for p in site_packages.rglob("*"):
+            if p.is_file() and not p.is_symlink():
+                if p.suffix in (".so", ".dylib"):
+                    targets_to_strip.append(p)
         for target in targets_to_strip:
             try:
                 orig_sz = target.stat().st_size

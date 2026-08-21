@@ -153,14 +153,14 @@ typography:
 
 rounded:
   none: 0px
-  xs: 2px
-  sm: 4px
-  md: 6px
-  lg: 8px
-  xl: 10px
-  2xl: 12px
-  3xl: 16px
-  4xl: 20px
+  xs: 4px
+  sm: 6px
+  md: 8px
+  lg: 12px
+  xl: 16px
+  2xl: 20px
+  3xl: 24px
+  4xl: 28px
   full: 9999px
 
 spacing:
@@ -533,21 +533,24 @@ for layout (no `translateX(-50%)` centering) — center fixed elements with
 
 ## Shapes
 
-The shape language is **restrained softness**. Radii are small enough to feel
-engineered, large enough to avoid harshness — the system's most-used radius is
-4px, and nothing structural exceeds 8px.
+The shape language is **flexible softness**. Radii are proportional to element
+scale — small enough to feel precise and engineered, large enough to feel
+contemporary and approachable. The system's baseline control radius is 6px,
+buttons sit at 8px, and structural panels and modals scale up to 12px.
 
 Radius maps to element scale, not to taste:
 
-- `xs` (2px) — 24px controls, badges, inline tags.
-- `sm` (4px) — the default. Cards, inputs, list rows, 32px controls.
-- `md` (6px) — 36px+ buttons and icon buttons.
-- `lg` (8px) — overlays and modals. This is the ceiling for panels; every
+- `xs` (4px) — 24px controls, badges, keyboard shortcut caps, inline tags.
+- `sm` (6px) — the default. Cards, inputs, list rows, 32px controls, code blocks.
+- `md` (8px) — 36px+ buttons, icon buttons, dropdown triggers.
+- `lg` (12px) — overlays, sheets, and modals. This is the ceiling for panels; every
   `AppOverlay` panel shares it so the whole overlay family reads as one system.
+- `xl` (16px) — larger floating popovers and content previews.
+- `2xl` (20px) — app icon and prominent media previews.
 - `full` — pills only: agent chips, status chips, avatars, the send button.
 
-`xl` through `4xl` exist for illustration and marketing surfaces and should not
-appear in application chrome.
+`xl` through `4xl` exist for larger containers, media previews, illustration, and
+marketing surfaces.
 
 ## Components
 
@@ -566,14 +569,14 @@ buttons never shift size between states.
 
 | Size Token | Control Height | Padding | Icon Size | Label Font | Radius | Primary Use |
 |---|---|---|---|---|---|---|
-| `xs` | **24px** (`h-6`) | `px-2` | 11px | `11px` (`label-sm`) | `rounded-xs` (2px) | Inline table actions, compact badges |
-| `sm` | **32px** (`h-8`) | `px-2.5` | 13px | `12px` (`body-sm`) | `rounded-sm` (4px) | Toolbar actions, form secondary buttons |
-| `default` | **36px** (`h-9`) | `px-3` | 14px | `12px` (`body-sm`) | `rounded-md` (6px) | Standard form buttons, dialog triggers |
-| `lg` | **40px** (`h-10`) | `px-4` | 16px | `14px` (`body-md`) | `rounded-md` (6px) | Modal primary actions, main CTA |
-| `trigger` | **auto** | `px-2 py-1` | 11px | `12px` (`body-sm`) | `rounded-md` (6px) | Dropdown & select trigger |
-| `icon-xs` | **24×24px** | `p-0` | 11px | — | `rounded-xs` (2px) | Inline row utilities (copy, delete) |
-| `icon-sm` | **32×32px** | `p-0` | 13px | — | `rounded-sm` (4px) | Toolbar icon buttons |
-| `icon` | **36×36px** | `p-0` | 14px | — | `rounded-md` (6px) | Standard standalone icon actions |
+| `xs` | **24px** (`h-6`) | `px-2` | 11px | `11px` (`label-sm`) | `rounded-xs` (4px) | Inline table actions, compact badges |
+| `sm` | **32px** (`h-8`) | `px-2.5` | 13px | `12px` (`body-sm`) | `rounded-sm` (6px) | Toolbar actions, form secondary buttons |
+| `default` | **36px** (`h-9`) | `px-3` | 14px | `12px` (`body-sm`) | `rounded-md` (8px) | Standard form buttons, dialog triggers |
+| `lg` | **40px** (`h-10`) | `px-4` | 16px | `14px` (`body-md`) | `rounded-md` (8px) | Modal primary actions, main CTA |
+| `trigger` | **auto** | `px-2 py-1` | 11px | `12px` (`body-sm`) | `rounded-md` (8px) | Dropdown & select trigger |
+| `icon-xs` | **24×24px** | `p-0` | 11px | — | `rounded-xs` (4px) | Inline row utilities (copy, delete) |
+| `icon-sm` | **32×32px** | `p-0` | 13px | — | `rounded-sm` (6px) | Toolbar icon buttons |
+| `icon` | **36×36px** | `p-0` | 14px | — | `rounded-md` (8px) | Standard standalone icon actions |
 
 **Mobile Touch Parity Scaling**: On touch devices (`pointer: coarse` / mobile shell), standalone icon actions scale up to a **44×44px touch target** (`h-11 w-11`), while on desktop (`md:`) they collapse to dense **28–32px** (`md:h-7 md:w-7` or `md:h-8 md:w-8`).
 
@@ -607,7 +610,7 @@ background, tuned text tone, solid dot.
 **Overlays & Dialogs** come in three geometries — `modal` (centered card, capped at
 `overlay-max`), `sheet` (edge drawer), and `palette` (compact 480px search card).
 All three are `position: fixed`, share `rounded-lg` (8px — the panel ceiling) and a 1px border, and go
-edge-to-edge below 768px. `rounded-xl` through `rounded-4xl` are strictly banned from application chrome.
+edge-to-edge below 768px.
 
 ## Platform Shell
 

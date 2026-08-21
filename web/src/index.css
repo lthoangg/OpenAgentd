@@ -51,14 +51,14 @@
     --font-hand: 'Caveat', 'Bradley Hand', cursive;
 
 
-    --radius-xs: 2px;
-    --radius-sm: 4px;
-    --radius-md: 6px;
-    --radius-lg: 8px;
-    --radius-xl: 10px;
-    --radius-2xl: 12px;
-    --radius-3xl: 16px;
-    --radius-4xl: 20px;
+    --radius-xs: 4px;
+    --radius-sm: 6px;
+    --radius-md: 8px;
+    --radius-lg: 12px;
+    --radius-xl: 16px;
+    --radius-2xl: 20px;
+    --radius-3xl: 24px;
+    --radius-4xl: 28px;
 
     /* App header — 36 px shared bar. The 70 px inset clears the
      * macOS traffic-light overlay (x=12 origin + ~58 button group). */
@@ -664,7 +664,7 @@ html[data-mobile-shell][data-vp-anim] .settings-modal-shell {
   }
   ::-webkit-scrollbar-thumb {
     background: transparent;
-    border-radius: 3px;
+    border-radius: var(--radius-xs);
     transition: background-color 0.15s ease;
   }
   :hover::-webkit-scrollbar-thumb,
@@ -868,7 +868,7 @@ html[data-mobile-shell][data-vp-anim] .settings-modal-shell {
 .oa-prose code {
   background: var(--bg-key);
   border: 1px solid var(--color-border);
-  border-radius: 4px;
+  border-radius: var(--radius-xs);
   padding: 0.15em 0.4em;
   font-size: 0.85em;
   font-family: var(--font-mono);
@@ -907,8 +907,8 @@ html[data-mobile-shell][data-vp-anim] .settings-modal-shell {
 .oa-mermaid-diagram .node rect,
 .oa-mermaid-diagram .node circle,
 .oa-mermaid-diagram .node polygon {
-  rx: 4px;
-  ry: 4px;
+  rx: var(--radius-xs);
+  ry: var(--radius-xs);
 }
 
 .oa-mermaid-diagram text,
@@ -946,7 +946,7 @@ html[data-mobile-shell][data-vp-anim] .settings-modal-shell {
 .oa-prose a:focus-visible {
   outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
-  border-radius: 2px;
+  border-radius: var(--radius-xs);
 }
 .oa-prose blockquote {
   border-left: 2px solid var(--color-border-strong);

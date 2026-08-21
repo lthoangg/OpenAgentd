@@ -202,3 +202,28 @@ def test_strip_bundle_prunes_static_archives_and_stdlib_tests(tmp_path):
 
     assert not static_lib.exists(), "static archives (*.a) must be pruned"
     assert not test_dir.exists(), "stdlib test suite must be pruned"
+
+
+def test_strip_bundle_prunes_internal_site_packages_and_extra_binaries(tmp_path):
+    module = _load_module()
+    site_packages = tmp_path / "site-packages"
+    site_packages.mkdir()
+    python_target = tmp_path / "python"
+    py_bin = python_target / "bin"
+    py_bin.mkdir(parents=True)
+    (py_bin / "python3.14").write_bytes(b"exe")
+    (py_bin / "pip3.14").write_bytes(b"pip")
+    (py_bin / "pydoc3").write_bytes(b"pydoc")
+    (py_bin / "python3-config").write_bytes(b"cfg")
+
+    py_sp = python_target / "lib" / "python3.14" / "site-packages" / "pip"
+    py_sp.mkdir(parents=True)
+    (py_sp / "__init__.py").write_text("# pip")
+
+    module.strip_bundle(site_packages, python_target)
+
+    assert (py_bin / "python3.14").exists()
+    assert not (py_bin / "pip3.14").exists()
+    assert not (py_bin / "pydoc3").exists()
+    assert not (py_bin / "python3-config").exists()
+    assert not py_sp.exists()

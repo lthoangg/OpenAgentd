@@ -449,6 +449,56 @@ def strip_bundle(site_packages: Path, python_target: Path | None = None) -> int:
                         removed += size
                     except OSError:
                         pass
+                elif tcl_dir.is_file() and any(
+                    tcl_dir.name.startswith(p)
+                    for p in ("libtcl", "libtk", "libitcl", "libtdbc")
+                ):
+                    try:
+                        size = sum(
+                            f.stat().st_size for f in tcl_dir.rglob("*") if f.is_file()
+                        )
+                        shutil.rmtree(tcl_dir, ignore_errors=True)
+                        removed += size
+                    except OSError:
+                        pass
+
+        # Prune internal stdlib site-packages (pip, wheel) inside the standalone
+        # runtime; application dependencies live in the outer site-packages/ bundle.
+        for sp in python_target.glob("lib/python3.*/site-packages"):
+            if sp.is_dir():
+                for item in sp.iterdir():
+                    try:
+                        if item.is_dir():
+                            size = sum(
+                                f.stat(follow_symlinks=False).st_size
+                                for f in item.rglob("*")
+                                if f.is_file() or f.is_symlink()
+                            )
+                            shutil.rmtree(item, ignore_errors=True)
+                        elif item.is_file() or item.is_symlink():
+                            size = item.stat(follow_symlinks=False).st_size
+                            item.unlink()
+                        else:
+                            size = 0
+                        removed += size
+                    except OSError:
+                        pass
+
+        # Prune extra CLI entry points in bin/ (pip, idle, pydoc, configs)
+        py_bin_dir = python_target / "bin"
+        if py_bin_dir.is_dir():
+            for entry in py_bin_dir.iterdir():
+                if entry.name not in (
+                    "python",
+                    "python3",
+                ) and not entry.name.startswith("python3."):
+                    try:
+                        removed += entry.stat(follow_symlinks=False).st_size
+                        entry.unlink() if (
+                            entry.is_file() or entry.is_symlink()
+                        ) else shutil.rmtree(entry, ignore_errors=True)
+                    except OSError:
+                        pass
 
     # Strip native binary symbols in site_packages ONLY using system strip tool.
     # (Never strip python_target: python-build-standalone binaries on Linux rely on
@@ -731,7 +781,13 @@ def human_bytes(n: int) -> str:
 
 
 def report_size(root: Path, label: str) -> None:
-    total = sum(p.stat().st_size for p in root.rglob("*") if p.is_file())
+    # follow_symlinks=False so symlinks pointing to large binaries (e.g.
+    # bin/python -> bin/python3.14) are not counted multiple times.
+    total = sum(
+        p.stat(follow_symlinks=False).st_size
+        for p in root.rglob("*")
+        if p.is_file() or p.is_symlink()
+    )
     print(f"  {label}: {human_bytes(total)}")
 
 

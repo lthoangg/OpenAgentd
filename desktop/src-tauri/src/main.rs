@@ -15,7 +15,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
-    Arc,
+    Arc, Mutex as StdMutex,
 };
 use std::time::Duration;
 use tauri::{
@@ -35,9 +35,6 @@ use crate::window::{
 use crate::menu::{install_desktop_menus, update_tray_status, handle_desktop_menu};
 use crate::commands::wait_for_health;
 
-#[cfg(not(target_os = "macos"))]
-use crate::window::show_target_window_async;
-
 /// Shared application state.
 pub struct AppState {
     pub sidecar: Arc<Mutex<Option<Sidecar>>>,
@@ -52,16 +49,22 @@ pub struct AppState {
     /// webview that attached after the one-shot backend-error event can still
     /// show recovery immediately from app_backend_status.
     pub backend_failed: Arc<AtomicBool>,
-    pub window_backend_base_urls: Arc<Mutex<HashMap<String, String>>>,
+    /// Plain-data window metadata (std mutexes, not tokio): the critical
+    /// sections are short clone/insert/remove only and are never held
+    /// across an `await`, so the main-thread event handlers (focus, close,
+    /// menu) can lock them directly instead of `block_on`-ing the async
+    /// runtime — which stalls the UI thread whenever a background task
+    /// holds the lock.
+    pub window_backend_base_urls: Arc<StdMutex<HashMap<String, String>>>,
     pub force_reloading: Arc<AtomicBool>,
     pub quitting: Arc<AtomicBool>,
     pub tray_status: Arc<Mutex<Option<MenuItem<Wry>>>>,
     pub tray_session: Arc<Mutex<Option<MenuItem<Wry>>>>,
     pub update_state: Arc<Mutex<Option<CachedUpdateState>>>,
-    pub active_window_label: Arc<Mutex<String>>,
+    pub active_window_label: Arc<StdMutex<String>>,
     /// Current webview zoom factor per desktop window, mutated by the
     /// View > Zoom menu items. Session-only — not persisted across restarts.
-    pub window_zoom_factors: Arc<Mutex<HashMap<String, f64>>>,
+    pub window_zoom_factors: Arc<StdMutex<HashMap<String, f64>>>,
     /// "Usage Limits" tray submenu handle. Its dynamic rows are mutated
     /// in place (insert/remove) on every poll — see `menu::update_tray_usage`.
     pub usage_submenu: Arc<Mutex<Option<tauri::menu::Submenu<Wry>>>>,
@@ -190,14 +193,6 @@ pub fn persist_active_window_state(app: &AppHandle) {
     }
 }
 
-pub async fn persist_active_window_state_async(app: &AppHandle) {
-    if let Some(window) = crate::window::target_webview_window_async(app).await {
-        if let Err(e) = save_window_state(app, &window) {
-            log::warn!("failed to save window state: {e:#}");
-        }
-    }
-}
-
 pub fn quit_app(app: &AppHandle) {
     persist_active_window_state(app);
     let state: tauri::State<'_, AppState> = app.state();
@@ -218,16 +213,16 @@ pub fn force_reload_app(app: &AppHandle) {
         return;
     }
 
-    let active_window_label = tauri::async_runtime::block_on(async {
-        state.active_window_label.lock().await.clone()
-    });
-    let using_external_backend = tauri::async_runtime::block_on(async {
+    // Runs on the menu-event (main) thread — plain std mutexes, no
+    // `block_on` of the async runtime here (see the AppState field docs).
+    let using_external_backend = {
+        let active_window_label = state.active_window_label.lock().unwrap().clone();
         state
             .window_backend_base_urls
             .lock()
-            .await
+            .unwrap()
             .contains_key(active_window_label.as_str())
-    });
+    };
 
     if using_external_backend {
         reload_main_window(app);
@@ -309,7 +304,7 @@ async fn restart_sidecar_and_reload_window(app: &AppHandle) -> Result<()> {
 
     let init_script = frontend_init_script(Some(&token), &base);
     let existing_windows: Vec<tauri::WebviewWindow> = app.webview_windows().into_values().collect();
-    let external_windows = state.window_backend_base_urls.lock().await.clone();
+    let external_windows = state.window_backend_base_urls.lock().unwrap().clone();
     for window in existing_windows {
         if !external_windows.contains_key(window.label()) {
             window
@@ -330,7 +325,7 @@ async fn restart_sidecar_and_reload_window(app: &AppHandle) -> Result<()> {
                 .context("navigate app window")?;
         }
     }
-    show_target_window_async(app).await;
+    show_target_window(app);
 
     let _ = state.desktop_token.lock().await.replace(token.clone());
     let _ = state
@@ -409,7 +404,7 @@ async fn start_backend_and_window(app: AppHandle) -> Result<()> {
                     state
                         .window_backend_base_urls
                         .lock()
-                        .await
+                        .unwrap()
                         .insert(MAIN_WINDOW.to_string(), base.clone());
                     if let Some(window) = app.get_webview_window(MAIN_WINDOW) {
                         window
@@ -549,14 +544,14 @@ fn main() {
         backend_mode: Arc::new(Mutex::new(BackendMode::Bundled)),
         backend_starting: Arc::new(AtomicBool::new(false)),
         backend_failed: Arc::new(AtomicBool::new(false)),
-        window_backend_base_urls: Arc::new(Mutex::new(HashMap::new())),
+        window_backend_base_urls: Arc::new(StdMutex::new(HashMap::new())),
         force_reloading: Arc::new(AtomicBool::new(false)),
         quitting: Arc::new(AtomicBool::new(false)),
         tray_status: Arc::new(Mutex::new(None)),
         tray_session: Arc::new(Mutex::new(None)),
         update_state: Arc::new(Mutex::new(None)),
-        active_window_label: Arc::new(Mutex::new(MAIN_WINDOW.to_string())),
-        window_zoom_factors: Arc::new(Mutex::new(HashMap::from([(
+        active_window_label: Arc::new(StdMutex::new(MAIN_WINDOW.to_string())),
+        window_zoom_factors: Arc::new(StdMutex::new(HashMap::from([(
             MAIN_WINDOW.to_string(),
             ZOOM_DEFAULT,
         )]))),
@@ -678,9 +673,7 @@ fn main() {
                 ..
             } if label == MAIN_WINDOW || label.starts_with(SECONDARY_WINDOW_PREFIX) => {
                 let state: tauri::State<'_, AppState> = app.state();
-                tauri::async_runtime::block_on(async {
-                    *state.active_window_label.lock().await = label.to_string();
-                });
+                *state.active_window_label.lock().unwrap() = label.to_string();
             }
             RunEvent::WindowEvent {
                 label,
@@ -697,19 +690,17 @@ fn main() {
                         }
                     } else if let Some(window) = app.get_webview_window(label.as_str()) {
                         let _ = window.destroy();
-                        tauri::async_runtime::block_on(async {
-                            state
-                                .window_backend_base_urls
-                                .lock()
-                                .await
-                                .remove(label.as_str());
-                            state
-                                .window_zoom_factors
-                                .lock()
-                                .await
-                                .remove(label.as_str());
-                            *state.active_window_label.lock().await = MAIN_WINDOW.to_string();
-                        });
+                        state
+                            .window_backend_base_urls
+                            .lock()
+                            .unwrap()
+                            .remove(label.as_str());
+                        state
+                            .window_zoom_factors
+                            .lock()
+                            .unwrap()
+                            .remove(label.as_str());
+                        *state.active_window_label.lock().unwrap() = MAIN_WINDOW.to_string();
                     }
                 }
             }
@@ -1057,8 +1048,10 @@ mod tests {
 
     #[test]
     fn saved_backend_config_can_mark_external_backend_active() {
-        let mut config = AppBackendConfig::default();
-        config.active_base_url = Some("http://192.168.1.10:4082".to_string());
+        let config = AppBackendConfig {
+            active_base_url: Some("http://192.168.1.10:4082".to_string()),
+            ..Default::default()
+        };
 
         let serialized = serde_json::to_string(&config).expect("serialize config");
         let parsed: AppBackendConfig = serde_json::from_str(&serialized).expect("parse config");

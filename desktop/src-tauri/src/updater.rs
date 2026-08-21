@@ -8,7 +8,7 @@ use tauri_plugin_updater::UpdaterExt;
 #[cfg(test)]
 use tauri_plugin_dialog::MessageDialogResult;
 
-use crate::{AppState, CachedUpdateState, persist_active_window_state_async};
+use crate::{AppState, CachedUpdateState, persist_active_window_state};
 use crate::menu::{now_unix, update_tray_status};
 use crate::window::show_target_window;
 use crate::shutdown_sidecar_now;
@@ -571,7 +571,7 @@ pub async fn run_update_install(app: AppHandle) -> Result<(), String> {
     // `CloseRequested` handler stops calling `prevent_close()`. If it did not,
     // the bundle swap below could leave a hidden window alive and trap the exit
     // half-way, which is one way the relaunch silently fails.
-    persist_active_window_state_async(&app).await;
+    persist_active_window_state(&app);
     state.quitting.store(true, Ordering::SeqCst);
 
     // Shut the Python sidecar down *before* the bundle swap so the child
@@ -656,7 +656,10 @@ pub async fn fetch_release_notes(version: &str) -> Result<ReleaseNotesResponse, 
         format!("v{version}")
     };
     let url = format!("https://api.github.com/repos/lthoangg/openagentd/releases/tags/{tag}");
-    let release = reqwest::Client::new()
+    // Shared process-wide client (see `usage::shared_client`) — reuses the
+    // warm connection pool and, unlike a bare `Client::new()`, carries a
+    // 10s total timeout so a stalled GitHub API call can't pend forever.
+    let release = crate::usage::shared_client()
         .get(&url)
         .header(reqwest::header::USER_AGENT, "OpenAgentd updater")
         .send()

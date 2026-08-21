@@ -77,8 +77,7 @@ pub fn target_webview_window(app: &AppHandle) -> Option<tauri::WebviewWindow> {
         return Some(window);
     }
     let state: tauri::State<'_, AppState> = app.state();
-    let label =
-        tauri::async_runtime::block_on(async { state.active_window_label.lock().await.clone() });
+    let label = state.active_window_label.lock().unwrap().clone();
     app.get_webview_window(&label)
         .or_else(|| app.get_webview_window(MAIN_WINDOW))
 }
@@ -91,28 +90,6 @@ pub fn focused_webview_window(app: &AppHandle) -> Option<tauri::WebviewWindow> {
 
 pub fn show_target_window(app: &AppHandle) {
     if let Some(window) = target_webview_window(app) {
-        let _ = window.unminimize();
-        let _ = window.show();
-        let _ = window.set_focus();
-        let _ = window.eval(THROTTLE_RESUME_SCRIPT);
-    } else {
-        show_main_window(app);
-    }
-}
-
-pub async fn target_webview_window_async(app: &AppHandle) -> Option<tauri::WebviewWindow> {
-    if let Some(window) = focused_webview_window(app) {
-        return Some(window);
-    }
-    let state: tauri::State<'_, AppState> = app.state();
-    let label = state.active_window_label.lock().await.clone();
-    app.get_webview_window(&label)
-        .or_else(|| app.get_webview_window(MAIN_WINDOW))
-}
-
-#[cfg(not(target_os = "macos"))]
-pub async fn show_target_window_async(app: &AppHandle) {
-    if let Some(window) = target_webview_window_async(app).await {
         let _ = window.unminimize();
         let _ = window.show();
         let _ = window.set_focus();
@@ -270,7 +247,7 @@ pub async fn build_app_window(
     let zoom = state
         .window_zoom_factors
         .lock()
-        .await
+        .unwrap()
         .get(win.label())
         .copied()
         .unwrap_or(ZOOM_DEFAULT);
@@ -307,8 +284,8 @@ pub async fn create_app_window(
     let state: tauri::State<'_, AppState> = app.state();
     let bundled_base_url = state.backend_base_url.lock().await.clone();
     let desktop_token = state.desktop_token.lock().await.clone();
-    let external_window_base_urls = state.window_backend_base_urls.lock().await.clone();
-    let active_window_label = state.active_window_label.lock().await.clone();
+    let external_window_base_urls = state.window_backend_base_urls.lock().unwrap().clone();
+    let active_window_label = state.active_window_label.lock().unwrap().clone();
     let init_script = new_window_init_script(
         bundled_base_url.as_deref(),
         desktop_token.as_deref(),
@@ -331,7 +308,7 @@ pub async fn create_app_window(
         state
             .window_backend_base_urls
             .lock()
-            .await
+            .unwrap()
             .insert(window_label.clone(), base);
     }
     build_app_window(app, window_label, init_script).await
@@ -339,7 +316,8 @@ pub async fn create_app_window(
 
 pub fn target_window_label(app: &AppHandle) -> String {
     let state: tauri::State<'_, AppState> = app.state();
-    tauri::async_runtime::block_on(async { state.active_window_label.lock().await.clone() })
+    let label = state.active_window_label.lock().unwrap().clone();
+    label
 }
 
 /// Multiply the active window's zoom factor by ``factor`` and apply it,
@@ -355,21 +333,19 @@ pub fn set_zoom(app: &AppHandle, value: f64) {
     set_window_zoom(app, &label, move |_| value);
 }
 
-pub fn set_window_zoom(app: &AppHandle, label: &str, update: impl FnOnce(f64) -> f64 + Send + 'static) {
+pub fn set_window_zoom(app: &AppHandle, label: &str, update: impl FnOnce(f64) -> f64) {
+    // Synchronous: the zoom map is a plain std mutex, so a ⌘+/⌘- press
+    // applies immediately from the menu handler instead of taking a
+    // spawn → lock → apply detour through the async runtime.
     let state: tauri::State<'_, AppState> = app.state();
-    let zooms = state.window_zoom_factors.clone();
-    let app_for_apply = app.clone();
-    let label = label.to_string();
-    tauri::async_runtime::spawn(async move {
-        let next = {
-            let mut guard = zooms.lock().await;
-            let current = *guard.get(&label).unwrap_or(&ZOOM_DEFAULT);
-            let next = update(current).clamp(ZOOM_MIN, ZOOM_MAX);
-            guard.insert(label.clone(), next);
-            next
-        };
-        apply_zoom_to_window(&app_for_apply, &label, next);
-    });
+    let next = {
+        let mut guard = state.window_zoom_factors.lock().unwrap();
+        let current = *guard.get(label).unwrap_or(&ZOOM_DEFAULT);
+        let next = update(current).clamp(ZOOM_MIN, ZOOM_MAX);
+        guard.insert(label.to_string(), next);
+        next
+    };
+    apply_zoom_to_window(app, label, next);
 }
 
 pub fn apply_zoom_to_window(app: &AppHandle, label: &str, factor: f64) {

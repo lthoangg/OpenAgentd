@@ -544,7 +544,7 @@ async fn resolve_backend_endpoint(app: &AppHandle) -> Option<(String, Option<Str
     if let Some(base) = state
         .window_backend_base_urls
         .lock()
-        .await
+        .unwrap()
         .get(crate::window::MAIN_WINDOW)
         .cloned()
     {

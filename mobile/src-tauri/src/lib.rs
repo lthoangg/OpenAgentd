@@ -1,5 +1,5 @@
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 
 use anyhow::{anyhow, Context, Result};
@@ -10,6 +10,22 @@ const MAX_DOWNLOAD_BYTES: usize = 100 * 1024 * 1024;
 const MAX_FILENAME_COLLISION_ATTEMPTS: usize = 1000;
 
 const ACCESS_KEY_SERVICE: &str = "openagentd.backend-access-key";
+
+/// Process-wide HTTP client shared by the backend health check and file
+/// downloads. Building a `reqwest::Client` per request throws away its
+/// connection pool (and pays a fresh TLS handshake) every time — mirrors
+/// the desktop shell's `usage::shared_client`. Operation-specific
+/// deadlines are applied per request via `.timeout(...)`.
+static HTTP_CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
+
+fn shared_client() -> &'static reqwest::Client {
+    HTTP_CLIENT.get_or_init(|| {
+        reqwest::Client::builder()
+            .connect_timeout(Duration::from_secs(10))
+            .build()
+            .unwrap_or_default()
+    })
+}
 
 fn access_key_entry(origin: &str) -> Result<keyring::Entry, String> {
     let parsed = url::Url::parse(origin).map_err(|_| "invalid backend origin".to_string())?;
@@ -202,13 +218,9 @@ fn normalize_base_url(base_url: &str) -> Result<String> {
 /// races a sidecar that is still starting and therefore retries — mobile
 /// only ever talks to an already-running remote server.
 async fn ensure_backend_reachable(base_url: &str) -> Result<(), String> {
-    let client = reqwest::Client::builder()
-        .connect_timeout(Duration::from_secs(5))
-        .timeout(Duration::from_secs(10))
-        .build()
-        .map_err(|e| format!("Check backend: {e}"))?;
-    client
+    shared_client()
         .get(format!("{}/api/health/live", base_url.trim_end_matches('/')))
+        .timeout(Duration::from_secs(10))
         .send()
         .await
         .map_err(|e| format!("Backend is not reachable: {e}"))?
@@ -388,13 +400,9 @@ async fn save_workspace_file(
             bytes
         }
         (None, Some(url)) => {
-            let client = reqwest::Client::builder()
-                .connect_timeout(Duration::from_secs(10))
-                .timeout(Duration::from_secs(60))
-                .build()
-                .map_err(|e| format!("Fetch file: {e}"))?;
-            let mut response = client
+            let mut response = shared_client()
                 .get(&url)
+                .timeout(Duration::from_secs(60))
                 .send()
                 .await
                 .map_err(|e| format!("Fetch file: {e}"))?
@@ -403,7 +411,14 @@ async fn save_workspace_file(
             ensure_content_length_limit(response.content_length())
                 .map_err(|e| format!("Fetch file: {e}"))?;
 
-            let mut bytes = Vec::new();
+            // Pre-reserve from the (already cap-checked) Content-Length so
+            // a large body doesn't pay repeated doubling reallocations; the
+            // `min` keeps a lying header from over-allocating.
+            let mut bytes = Vec::with_capacity(
+                response
+                    .content_length()
+                    .map_or(0, |length| length.min(MAX_DOWNLOAD_BYTES as u64) as usize),
+            );
             while let Some(chunk) = response
                 .chunk()
                 .await
@@ -426,14 +441,20 @@ async fn save_workspace_file(
         .path()
         .app_cache_dir()
         .map_err(|e| format!("Get cache dir: {e}"))?;
-    std::fs::create_dir_all(&cache_dir)
-        .with_context(|| format!("Create cache dir {}", cache_dir.display()))
-        .map_err(|e| format!("{e:#}"))?;
-    let path = unique_cache_path(&cache_dir, &filename).map_err(|e| format!("{e}"))?;
-
-    std::fs::write(&path, &bytes)
-        .with_context(|| format!("Write {}", path.display()))
-        .map_err(|e| format!("{e:#}"))?;
+    // Directory scan + up-to-100 MB write are blocking FS work — keep them
+    // off the async runtime's worker threads.
+    let path = tauri::async_runtime::spawn_blocking(move || -> Result<PathBuf, String> {
+        std::fs::create_dir_all(&cache_dir)
+            .with_context(|| format!("Create cache dir {}", cache_dir.display()))
+            .map_err(|e| format!("{e:#}"))?;
+        let path = unique_cache_path(&cache_dir, &filename).map_err(|e| format!("{e}"))?;
+        std::fs::write(&path, &bytes)
+            .with_context(|| format!("Write {}", path.display()))
+            .map_err(|e| format!("{e:#}"))?;
+        Ok(path)
+    })
+    .await
+    .map_err(|e| format!("Write task failed: {e}"))??;
 
     #[cfg(target_os = "ios")]
     {

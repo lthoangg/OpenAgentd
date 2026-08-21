@@ -224,7 +224,14 @@ async fn resolve_download_bytes(request: &SaveWorkspaceFileRequest) -> Result<Ve
             }
             // Stream so a server that under-reports (or omits)
             // Content-Length still cannot push us past the cap.
-            let mut bytes = Vec::new();
+            // Pre-reserve from the (already cap-checked) Content-Length so
+            // a ~100 MB body doesn't pay ~27 doubling reallocations; the
+            // `min` keeps a lying header from over-allocating.
+            let mut bytes = Vec::with_capacity(
+                response
+                    .content_length()
+                    .map_or(0, |length| length.min(MAX_DOWNLOAD_BYTES as u64) as usize),
+            );
             while let Some(chunk) = response
                 .chunk()
                 .await
@@ -252,13 +259,20 @@ pub async fn save_workspace_file(
         .filter(|name| !name.is_empty())
         .unwrap_or("download")
         .to_string();
-    let target = app
-        .dialog()
+    // Callback + oneshot instead of `blocking_save_file`, which parks a
+    // tokio worker thread for as long as the user leaves the dialog open.
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    app.dialog()
         .file()
         .set_title("Save file")
         .set_file_name(filename)
-        .blocking_save_file();
-    let Some(target) = target else {
+        .save_file(move |path| {
+            let _ = tx.send(path);
+        });
+    let Some(target) = rx
+        .await
+        .map_err(|_| "Save dialog closed unexpectedly".to_string())?
+    else {
         return Ok(false);
     };
     let path = target
@@ -312,7 +326,7 @@ pub async fn app_backend_status_for_window(
     let window_base_url = state
         .window_backend_base_urls
         .lock()
-        .await
+        .unwrap()
         .get(window_label)
         .cloned();
     let external = window_base_url.is_some();
@@ -393,7 +407,7 @@ pub async fn app_use_external_backend(
     state
         .window_backend_base_urls
         .lock()
-        .await
+        .unwrap()
         .insert(window.label().to_string(), normalized.clone());
 
     if persist.unwrap_or(true) {
@@ -463,7 +477,7 @@ pub async fn app_remove_backend_server(
     state
         .window_backend_base_urls
         .lock()
-        .await
+        .unwrap()
         .retain(|_, active| {
             normalize_external_base_url(active).map_or(true, |active| active != normalized)
         });
@@ -558,7 +572,7 @@ pub async fn app_use_bundled_backend(
     state
         .window_backend_base_urls
         .lock()
-        .await
+        .unwrap()
         .remove(window.label());
     // Only clear the persisted `active_base_url` when the *main* window
     // switched back to bundled — that field is only ever read at startup and

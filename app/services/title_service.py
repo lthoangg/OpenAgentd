@@ -69,6 +69,7 @@ def _is_terminal_llm_error(exc: Exception) -> bool:
         ProviderAuthenticationError,
         ProviderConnectionError,
         ProviderRateLimitError,
+        ProviderRequestError,
     )
     from app.agent.providers.unconfigured import UnconfiguredProviderError
 
@@ -81,9 +82,24 @@ def _is_terminal_llm_error(exc: Exception) -> bool:
     ):
         return True
 
+    if isinstance(exc, ProviderRequestError):
+        msg = str(exc).lower()
+        if any(
+            term in msg
+            for term in (
+                "quota",
+                "balance",
+                "insufficient",
+                "payment",
+                "unauthorized",
+                "forbidden",
+            )
+        ):
+            return True
+
     if isinstance(exc, httpx.HTTPStatusError):
         if (
-            exc.response.status_code in (401, 403, 429)
+            exc.response.status_code in (401, 402, 403, 404, 429)
             or exc.response.status_code >= 500
         ):
             return True
@@ -117,6 +133,12 @@ async def generate_and_save_title(
 
     session_id_str = str(session_id)
     user_text = user_message[:_MAX_CONTENT_CHARS]
+    model_name = getattr(provider, "model", None) or ""
+    provider_name = (
+        getattr(provider, "provider_name", None)
+        or getattr(provider, "provider", None)
+        or ""
+    )
 
     tracer = get_tracer()
     with tracer.start_as_current_span(
@@ -124,6 +146,8 @@ async def generate_and_save_title(
         kind=SpanKind.INTERNAL,
         attributes={
             "gen_ai.conversation.id": session_id_str,
+            "gen_ai.provider.name": provider_name,
+            "gen_ai.request.model": model_name,
             "title_generation.user_message_length": len(user_text),
         },
     ) as span:

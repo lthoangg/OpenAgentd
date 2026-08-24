@@ -905,6 +905,16 @@ async def test_read_file_accepts_aliases(sandbox_workspace):
 
 
 @pytest.mark.asyncio
+async def test_read_file_coerces_string_offset_and_limit(sandbox_workspace):
+    (sandbox_workspace / "lines.txt").write_text("line1\nline2\nline3\nline4\nline5")
+    res = await read_file.arun(path="lines.txt", offset="2", limit="2")
+    assert res == "[2-3/5]\nline2\nline3\n"
+
+    res_all = await read_file.arun(path="lines.txt", offset="1-indexed", limit="all")
+    assert res_all == "line1\nline2\nline3\nline4\nline5"
+
+
+@pytest.mark.asyncio
 async def test_glob_files_accepts_aliases(workspace):
     res1 = await glob_files.arun(glob="*.py", dir=".")
     assert "hello.py" in res1

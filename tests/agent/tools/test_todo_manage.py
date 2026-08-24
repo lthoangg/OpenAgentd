@@ -1568,3 +1568,30 @@ def test_todo_manage_schema_is_flat_and_free_of_combinators() -> None:
     assert "assigned_to" in items_props
     assert "instructions" in items_props
     assert "result" in items_props
+
+
+@pytest.mark.asyncio
+async def test_todo_action_normalizes_aliases(
+    tmp_sandbox: SandboxConfig, todos_file: Path
+) -> None:
+    """Actions like add, remove, list are normalized to create, delete, read."""
+    # 'add' -> create
+    res1 = await _todo_manage(
+        actions=[{"action": "add", "content": "Task via add alias"}],
+        _state=None,
+    )
+    assert "created task_1" in res1
+
+    # 'list' -> read
+    res2 = await _todo_manage(
+        actions=[{"action": "list"}],
+        _state=None,
+    )
+    assert "Task via add alias" in res2
+
+    # 'remove' -> delete
+    res3 = await _todo_manage(
+        actions=[{"action": "remove", "task_id": "task_1"}],
+        _state=None,
+    )
+    assert "deleted task_1" in res3

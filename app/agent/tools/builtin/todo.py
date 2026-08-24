@@ -98,6 +98,20 @@ class TodoAction(BaseModel):
         description="Outcome/deliverable summary, set when completing the task.",
     )
 
+    @field_validator("action", mode="before")
+    @classmethod
+    def _normalize_action(cls, v: Any) -> Any:
+        if isinstance(v, str):
+            v_lower = v.strip().lower()
+            if v_lower in ("add", "insert", "new"):
+                return "create"
+            if v_lower in ("remove", "rm", "del"):
+                return "delete"
+            if v_lower in ("list", "get", "view", "show"):
+                return "read"
+            return v_lower
+        return v
+
     @field_validator("content")
     @classmethod
     def _not_blank(cls, v: str | None) -> str | None:
@@ -167,6 +181,16 @@ class MemberTodoAction(BaseModel):
             "was done, where, and how it was verified."
         ),
     )
+
+    @field_validator("action", mode="before")
+    @classmethod
+    def _normalize_action(cls, v: Any) -> Any:
+        if isinstance(v, str):
+            v_lower = v.strip().lower()
+            if v_lower in ("list", "get", "view", "show"):
+                return "read"
+            return v_lower
+        return v
 
     @field_validator("content")
     @classmethod

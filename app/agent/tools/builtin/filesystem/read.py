@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Any, Annotated
 
 from loguru import logger
-from pydantic import AliasChoices, BaseModel, Field
+from pydantic import AliasChoices, BaseModel, Field, field_validator
 
 from app.agent.schemas.chat import ToolResult
 from app.agent.denied_paths import get_denied_paths
@@ -65,6 +65,30 @@ class ReadArgs(BaseModel):
             "when path is a directory."
         ),
     )
+
+    @field_validator("offset", mode="before")
+    @classmethod
+    def _coerce_offset(cls, v: Any) -> Any:
+        if v is None or v == "":
+            return 1
+        if isinstance(v, str):
+            digits = "".join(ch for ch in v if ch.isdigit())
+            if digits:
+                return max(1, int(digits))
+            return 1
+        return v
+
+    @field_validator("limit", mode="before")
+    @classmethod
+    def _coerce_limit(cls, v: Any) -> Any:
+        if v is None or v == "" or (isinstance(v, str) and v.strip().lower() == "all"):
+            return None
+        if isinstance(v, str):
+            digits = "".join(ch for ch in v if ch.isdigit())
+            if digits:
+                return max(1, int(digits))
+            return None
+        return v
 
 
 def _format_directory(resolved: Path) -> str:

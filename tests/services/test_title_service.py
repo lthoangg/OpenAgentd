@@ -550,6 +550,11 @@ class TestGenerateAndSaveTitle:
         for error in [
             ProviderRateLimitError("Rate limit reached"),
             httpx.HTTPStatusError(
+                "402 Payment Required",
+                request=MagicMock(),
+                response=MagicMock(status_code=402),
+            ),
+            httpx.HTTPStatusError(
                 "429 Too Many Requests",
                 request=MagicMock(),
                 response=MagicMock(status_code=429),

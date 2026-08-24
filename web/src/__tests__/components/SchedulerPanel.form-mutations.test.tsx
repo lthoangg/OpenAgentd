@@ -29,7 +29,7 @@ function renderWithQuery(ui: React.ReactNode) {
 
 function task(overrides: Partial<ScheduledTaskResponse> = {}): ScheduledTaskResponse {
   return {
-    id: 'task-id', slug: 'existing-task', name: 'Existing task', mode: 'normal', workspace: null,
+    id: 'task-id', slug: 'existing-task', name: 'Existing task', workspace: '/repo/app',
     schedule_type: 'every', at_datetime: null, every_seconds: 3600, cron_expression: null,
     timezone: 'UTC', prompt: 'Existing prompt', session_id: null, max_runs: null, enabled: true,
     status: 'pending', run_count: 0, last_run_at: null, last_error: null, next_fire_at: null,
@@ -55,7 +55,7 @@ describe('scheduler TanStack Form mutations', () => {
   afterEach(() => cleanup())
 
   it('links a missing coding workspace error to its selector', () => {
-    renderWithQuery(<CreateTaskForm contextMode="coding" contextWorkspace={null} onSuccess={() => {}} />)
+    renderWithQuery(<CreateTaskForm contextWorkspace={null} onSuccess={() => {}} />)
 
     fireEvent.change(screen.getByLabelText('Task Title'), { target: { value: 'Coding task' } })
     fireEvent.change(screen.getByLabelText('Prompt'), { target: { value: 'Run in a workspace' } })
@@ -64,12 +64,12 @@ describe('scheduler TanStack Form mutations', () => {
     const workspace = screen.getByRole('button', { name: 'Select workspace' })
     expect(workspace.getAttribute('aria-invalid')).toBe('true')
     expect(workspace.getAttribute('aria-describedby')).toBe('task-workspace-error')
-    expect(screen.getByText('Workspace is required for coding mode').getAttribute('id')).toBe('task-workspace-error')
+    expect(screen.getByText('Workspace is required').getAttribute('id')).toBe('task-workspace-error')
     expect(createMutate).not.toHaveBeenCalled()
   })
 
   it('creates an every task with an exact exclusive payload', () => {
-    renderWithQuery(<CreateTaskForm contextMode="normal" contextWorkspace={null} onSuccess={() => {}} />)
+    renderWithQuery(<CreateTaskForm contextWorkspace="/repo/app" onSuccess={() => {}} />)
 
     fireEvent.change(screen.getByLabelText('Task Title'), { target: { value: 'Repeating task' } })
     fireEvent.change(screen.getByLabelText('Prompt'), { target: { value: 'Run repeatedly' } })
@@ -79,7 +79,7 @@ describe('scheduler TanStack Form mutations', () => {
     expect(createMutate).toHaveBeenCalledTimes(1)
     const payload = createMutate.mock.calls[0][0] as Record<string, unknown>
     expect(payload).toEqual({
-      name: 'Repeating task', mode: 'normal', workspace: null, schedule_type: 'every', timezone: 'UTC',
+      name: 'Repeating task', workspace: '/repo/app', schedule_type: 'every', timezone: 'UTC',
       prompt: 'Run repeatedly', session_id: null, max_runs: null, enabled: true, every_seconds: 120,
     })
     expect('at_datetime' in payload).toBe(false)
@@ -99,7 +99,7 @@ describe('scheduler TanStack Form mutations', () => {
     expect(updateMutate.mock.calls[0][0]).toEqual({
       slug: 'existing-task',
       body: {
-        mode: 'normal', workspace: null, schedule_type: 'every', timezone: 'UTC',
+        workspace: '/repo/app', schedule_type: 'every', timezone: 'UTC',
         prompt: 'Updated prompt', session_id: 'auto', max_runs: null, enabled: true,
         every_seconds: 120,
       },

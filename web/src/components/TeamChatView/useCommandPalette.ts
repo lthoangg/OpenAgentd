@@ -16,7 +16,6 @@ import { useQuery } from '@tanstack/react-query'
 import {
   WORKSPACE_FILES_STALE_MS,
   codingWorkspaceFilesQueryOptions,
-  workspaceFilesQueryOptions,
 } from '@/queries/workspace-files'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { getPlatform } from '@/hooks/use-platform'
@@ -27,7 +26,6 @@ import { useTeamCommands } from './useTeamCommands'
 import { VIEW_MODES, type ViewMode } from './types'
 
 export interface UseCommandPaletteArgs {
-  mode: 'normal' | 'coding'
   workspace: string | null
   quickOpenOpen: boolean
   sessionIdState: string | null
@@ -49,8 +47,6 @@ export interface UseCommandPaletteArgs {
   setCodingFileViewerDetached: Dispatch<SetStateAction<boolean>>
   setCodingFileOpenKey: Dispatch<SetStateAction<number>>
   setCodingPanel: Dispatch<SetStateAction<null | 'changed' | 'files'>>
-  setShowFilesPanel: Dispatch<SetStateAction<boolean>>
-  setWorkspaceFileViewer: Dispatch<SetStateAction<WorkspaceFileInfo | null>>
 }
 
 export interface UseCommandPaletteResult {
@@ -63,7 +59,6 @@ export interface UseCommandPaletteResult {
 }
 
 export function useCommandPalette({
-  mode,
   workspace,
   quickOpenOpen,
   sessionIdState,
@@ -83,8 +78,6 @@ export function useCommandPalette({
   setCodingFileViewerDetached,
   setCodingFileOpenKey,
   setCodingPanel,
-  setShowFilesPanel,
-  setWorkspaceFileViewer,
 }: UseCommandPaletteArgs): UseCommandPaletteResult {
   const isMobile = useIsMobile()
 
@@ -101,9 +94,8 @@ export function useCommandPalette({
     setShowTodos: handleSetShowTodos,
     handleWorkspaceFiles,
     handleCodingSidebarToggle,
-    mode,
     handleNewSession,
-    handleOpenTerminal: mode === 'coding' && workspace ? handleOpenTerminal : undefined,
+    handleOpenTerminal,
     navigate,
   })
 
@@ -112,10 +104,8 @@ export function useCommandPalette({
   // Fetch the active workspace file listing when Quick Open is open. We reuse
   // the same query key as the @-mention picker so the two
   // share a cache entry — no extra network request when both are warm.
-  const hasQuickOpenWorkspace = mode === 'coding' ? Boolean(workspace) : Boolean(sessionIdState)
-  const quickOpenQueryOptions = mode === 'coding'
-    ? codingWorkspaceFilesQueryOptions(workspace ?? '')
-    : workspaceFilesQueryOptions(sessionIdState ?? '')
+  const hasQuickOpenWorkspace = Boolean(workspace)
+  const quickOpenQueryOptions = codingWorkspaceFilesQueryOptions(workspace ?? '')
   const { data: paletteFilesData } = useQuery<
     { files: WorkspaceFileInfo[]; truncated?: boolean },
     Error,
@@ -133,16 +123,11 @@ export function useCommandPalette({
   const quickOpenFilesTruncated = quickOpenOpen && Boolean(paletteFilesData?.truncated)
 
   const handleQuickOpenFileOpen = useCallback((file: WorkspaceFileInfo) => {
-    if (mode !== 'coding') {
-      setWorkspaceFileViewer(file)
-      setShowFilesPanel(true)
-      return
-    }
     setCodingFileViewer(file)
     setCodingFileViewerDetached(false)
     setCodingFileOpenKey((k) => k + 1)
     setCodingPanel((prev) => prev ?? 'files')
-  }, [mode, setCodingFileViewer, setCodingFileViewerDetached, setCodingFileOpenKey, setCodingPanel, setShowFilesPanel, setWorkspaceFileViewer])
+  }, [setCodingFileViewer, setCodingFileViewerDetached, setCodingFileOpenKey, setCodingPanel])
 
   const { os } = getPlatform()
   useHotkeys(
@@ -153,9 +138,9 @@ export function useCommandPalette({
       { hotkey: 'Mod+T', callback: () => handleSetShowTodos((v) => !v), options: { enabled: Boolean(sessionIdState), meta: { name: 'Todos' } } },
       { hotkey: 'Mod+P', callback: handleToggleQuickOpen, options: { enabled: !isMobile && hasQuickOpenWorkspace, meta: { name: 'Quick Open' } } },
       { hotkey: 'Mod+Shift+P', callback: handleTogglePalette, options: { enabled: !isMobile, meta: { name: 'Command palette' } } },
-      // Normal-mode Mod+B belongs to Sidebar. Only the coding sidebar owns this
+      // Mod+B belongs to the general sidebar. Only the coding sidebar owns this
       // registration when coding mode is active, preventing duplicate handlers.
-      { hotkey: 'Mod+B', callback: handleCodingSidebarToggle, options: { enabled: mode === 'coding', meta: { name: 'Coding sidebar' } } },
+      { hotkey: 'Mod+B', callback: handleCodingSidebarToggle, options: { meta: { name: 'Coding sidebar' } } },
       { hotkey: 'Mod+Shift+V', callback: cycleViewMode, options: { meta: { name: 'View mode' } } },
       { hotkey: 'Mod+S', callback: handleToggleScheduler, options: { meta: { name: 'Scheduler' } } },
       { hotkey: 'Mod+I', callback: () => window.dispatchEvent(new CustomEvent('focus-chat-input')), options: { meta: { name: 'Focus chat input' } } },

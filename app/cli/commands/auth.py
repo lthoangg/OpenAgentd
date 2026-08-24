@@ -71,7 +71,7 @@ def cmd_auth(args: argparse.Namespace) -> None:
     if args.list_providers or not args.provider:
         _list_providers()
         return
-    _run_login(args.provider)
+    _run_login(args.provider, device=args.device)
 
 
 # -- Standalone CLI entrypoint (``python -m app.cli.commands.auth``) ---------

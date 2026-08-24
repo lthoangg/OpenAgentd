@@ -25,21 +25,6 @@ describe('fetchTerminalTicket', () => {
     expect(body).toEqual({ workspace: '/tmp/ws', rows: 40, cols: 120 })
   })
 
-  it('posts session_id for a cockpit target', async () => {
-    let captured: { init?: RequestInit } | null = null
-    globalThis.fetch = mock(async (_url: unknown, init: unknown) => {
-      captured = { init: init as RequestInit }
-      return new Response(JSON.stringify({ ticket: 'tkt_s', expires_in: 30 }), {
-        status: 200,
-      })
-    }) as typeof fetch
-
-    const ticket = await fetchTerminalTicket({ sessionId: 'sid-123' })
-    expect(ticket).toBe('tkt_s')
-    const body = JSON.parse(String(captured!.init?.body))
-    expect(body).toEqual({ session_id: 'sid-123', rows: 24, cols: 80 })
-  })
-
   it('throws with server detail on failure', async () => {
     globalThis.fetch = mock(async () => {
       return new Response(JSON.stringify({ detail: 'Workspace does not exist' }), {

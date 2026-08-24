@@ -28,13 +28,12 @@ interface UseTeamCommandsArgs {
   setShowTodos: (fn: (v: boolean) => boolean) => void
   handleWorkspaceFiles: () => void
   handleCodingSidebarToggle: () => void
-  mode?: 'normal' | 'coding'
 
   // Session
   handleNewSession: () => void
 
   /** Coding mode with an attached workspace only — opens the terminal tab. */
-  handleOpenTerminal?: () => void
+  handleOpenTerminal: () => void
 
   // Navigation
   navigate: ReturnType<typeof useNavigate>
@@ -46,7 +45,6 @@ export function useTeamCommands({
   setShowTodos,
   handleWorkspaceFiles,
   handleCodingSidebarToggle,
-  mode = 'normal',
   handleNewSession,
   handleOpenTerminal,
   navigate,
@@ -63,16 +61,11 @@ export function useTeamCommands({
     // Bare ⌘A is "Select All" on macOS, so Session Settings requires Shift.
     { id: 'agent-info',       group: 'View',       label: 'Session Settings', description: 'Show session model settings and lead context', shortcut: formatShortcut('A', os, { shift: true }), action: toggleAgentCapabilities },
     { id: 'todos',            group: 'View',       label: 'Task List',          description: 'View agent todos and progress', shortcut: formatShortcut('T', os), action: () => setShowTodos((v) => !v) },
-    { id: 'workspace-files',  group: 'View',       label: mode === 'coding' ? 'Open Changed & Files' : 'Toggle Workspace Files', description: mode === 'coding' ? 'Browse changed files and workspace files' : 'Browse files the agent has produced', shortcut: formatShortcut('F', os), action: handleWorkspaceFiles },
-    mode === 'coding'
-      ? { id: 'collapse-sidebar', group: 'View', label: 'Toggle Coding Sidebar', description: 'Collapse or expand workspaces and sessions', shortcut: formatShortcut('B', os), action: handleCodingSidebarToggle }
-      : { id: 'collapse-sidebar', group: 'View', label: 'Toggle Sidebar', description: '', shortcut: formatShortcut('B', os), action: () => dispatchShortcutKey('b', os) },
+    { id: 'workspace-files',  group: 'View',       label: 'Open Changed & Files', description: 'Browse changed files and workspace files', shortcut: formatShortcut('F', os), action: handleWorkspaceFiles },
+    { id: 'collapse-sidebar', group: 'View', label: 'Toggle Coding Sidebar', description: 'Collapse or expand workspaces and sessions', shortcut: formatShortcut('B', os), action: handleCodingSidebarToggle },
     { id: 'scheduled-tasks',  group: 'View',       label: 'Scheduled Tasks',   description: 'Manage cron and scheduled agent tasks', shortcut: formatShortcut('S', os), action: () => dispatchShortcutKey('s', os) },
-    ...(handleOpenTerminal
-      ? [{ id: 'open-terminal', group: 'View' as const, label: 'Open Terminal', description: 'Interactive shell in the workspace (runs on the connected server)', shortcut: formatShortcut('`', os, { shift: true }), action: handleOpenTerminal }]
-      : []),
+    { id: 'open-terminal', group: 'View' as const, label: 'Open Terminal', description: 'Interactive shell in the workspace (runs on the connected server)', shortcut: formatShortcut('`', os, { shift: true }), action: handleOpenTerminal },
     { id: 'go-home',     group: 'Navigation', label: 'Go to Home',     description: '', action: () => navigate({ to: '/' }) },
-    ...(mode === 'normal' ? [{ id: 'go-coding', group: 'Navigation', label: 'Go to Coding Mode', description: 'Open the coding workbench', action: () => navigate({ to: '/coding' }) }] : []),
     { id: 'go-settings', group: 'Navigation', label: 'Open Settings',  description: 'Manage agents, skills, providers & more', shortcut: formatShortcut(',', os), action: () => openSettings('agents') },
-  ], [os, viewMode, toggleAgentCapabilities, setShowTodos, handleWorkspaceFiles, handleCodingSidebarToggle, mode, handleNewSession, handleOpenTerminal, navigate, openSettings])
+  ], [os, viewMode, toggleAgentCapabilities, setShowTodos, handleWorkspaceFiles, handleCodingSidebarToggle, handleNewSession, handleOpenTerminal, navigate, openSettings])
 }

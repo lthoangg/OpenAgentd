@@ -677,10 +677,10 @@ async def test_answer_starts_a_team_when_none_is_live(client, team, monkeypatch)
     assert started.lead.resumed == 1
 
 
-async def test_answer_starts_a_normal_mode_team_when_none_is_live(
+async def test_answer_starts_a_workspace_team_when_none_is_live(
     client, team, monkeypatch
 ):
-    """Cockpit (normal-mode) sessions resume a cold team the same as coding."""
+    """Workspace sessions resume a cold team when none is live."""
     from app.core import db as core_db
     from app.models.chat import ChatSession
 
@@ -688,7 +688,7 @@ async def test_answer_starts_a_normal_mode_team_when_none_is_live(
     question_id = await _seed(session_id)
     async with core_db.async_session_factory() as db:
         row = await db.get(ChatSession, session_id)
-        row.mode = "normal"
+        row.workspace = "/tmp"
         db.add(row)
         await db.commit()
 
@@ -696,12 +696,12 @@ async def test_answer_starts_a_normal_mode_team_when_none_is_live(
     started = _FakeTeam(str(session_id))
     started.lead.state = "waiting_input"
 
-    async def fake_start(sid: str):
+    async def fake_start(_workspace: str, sid: str):
         started.started_with = sid
         return started
 
     monkeypatch.setattr(
-        "app.services.team_manager.get_or_start_team_for_session", fake_start
+        "app.services.team_manager.get_or_start_coding_team", fake_start
     )
 
     resp = await client.post(

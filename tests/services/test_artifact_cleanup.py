@@ -85,6 +85,30 @@ async def test_cleanup_targets_orphaned_session_artifacts(tmp_path, monkeypatch)
 
 
 @pytest.mark.asyncio
+async def test_cleanup_ignores_legacy_workspace_directories(tmp_path, monkeypatch):
+    from app.core import db as core_db
+    from app.core.config import settings
+
+    workspace_root = tmp_path / "workspace"
+    monkeypatch.setattr(settings, "OPENAGENTD_WORKSPACE_DIR", str(workspace_root))
+    legacy = workspace_root / str(uuid.uuid4())
+    legacy.mkdir(parents=True)
+    (legacy / "user-file.txt").write_text("keep", encoding="utf-8")
+    old_time = (datetime.now(timezone.utc) - timedelta(days=30)).timestamp()
+    os.utime(legacy, (old_time, old_time))
+
+    async with core_db.async_session_factory() as session:
+        result = await cleanup_generated_artifacts(
+            session, older_than_days=7, dry_run=False
+        )
+
+    assert legacy not in [candidate.path for candidate in result.candidates]
+    assert legacy not in result.deleted
+    assert legacy.exists()
+    assert (legacy / "user-file.txt").exists()
+
+
+@pytest.mark.asyncio
 async def test_cleanup_keeps_live_session_artifacts(tmp_path, monkeypatch):
     from app.core import db as core_db
     from app.core.config import settings
@@ -166,7 +190,7 @@ async def test_cleanup_falls_back_when_chat_sessions_query_fails(tmp_path, monke
 
 
 @pytest.mark.asyncio
-async def test_cleanup_apply_deletes_old_normal_sessions_and_linked_storage(
+async def test_cleanup_apply_deletes_old_sessions_and_linked_storage(
     tmp_path, monkeypatch
 ):
     from app.core import db as core_db
@@ -221,10 +245,10 @@ async def test_cleanup_apply_deletes_old_normal_sessions_and_linked_storage(
         remaining_messages = (await session.exec(select(SessionMessage))).all()
 
     deleted_paths = set(result.deleted)
-    assert old_workspace in deleted_paths
+    assert old_workspace not in deleted_paths
     assert old_artifacts in deleted_paths
     assert old_snapshot in deleted_paths
-    assert not old_workspace.exists()
+    assert old_workspace.exists()
     assert not old_artifacts.exists()
     assert not old_snapshot.exists()
     assert new_workspace.exists()

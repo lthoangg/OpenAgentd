@@ -3,13 +3,12 @@ import { workspaceLabel } from '@/utils/workspace'
 const APP_NAME = 'OpenAgentd'
 
 export function buildDesktopWindowTitle(options: {
-  mode: 'normal' | 'coding'
   workspace?: string | null
   sessionTitle?: string | null
 }): string {
   const title = options.sessionTitle?.trim()
   if (title) return title
-  if (options.mode === 'coding' && options.workspace) {
+  if (options.workspace) {
     return workspaceLabel(options.workspace)
   }
   return APP_NAME
@@ -25,7 +24,6 @@ export function buildDesktopWindowTitle(options: {
  * `configure_window_chrome`) and is invisible to the user inside the app.
  */
 export function syncDesktopWindowTitle(options: {
-  mode: 'normal' | 'coding'
   workspace?: string | null
   sessionTitle?: string | null
 }): void {

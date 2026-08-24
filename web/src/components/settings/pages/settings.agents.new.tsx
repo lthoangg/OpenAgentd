@@ -1,14 +1,11 @@
 import { useState } from 'react'
 
 import { useCreateAgentMutation } from '@/queries'
-import { Button } from '@/components/ui/button'
 import { useToastStore } from '@/stores/useToastStore'
 import { ApiValidationError } from '@/api/client'
 import { AgentForm } from '@/components/settings/AgentForm'
 import { EditorSubHeader } from '@/components/settings/EditorSubHeader'
 import { validateAgentDraft } from '@/components/settings/schema'
-
-type AgentMode = 'normal' | 'coding'
 
 const TEMPLATE = `---
 name: new_agent
@@ -29,15 +26,13 @@ You are "new_agent" — a helpful team member.
 `
 
 interface NewAgentPageProps {
-  initialMode?: AgentMode
   onBack: () => void
   onCreated: (name: string) => void
 }
 
-export function NewAgentPage({ initialMode = 'normal', onBack, onCreated }: NewAgentPageProps) {
+export function NewAgentPage({ onBack, onCreated }: NewAgentPageProps) {
   const [draft, setDraft] = useState(TEMPLATE)
   const [name, setName] = useState('new_agent')
-  const [agentMode, setAgentMode] = useState<AgentMode>(initialMode)
   const createMut = useCreateAgentMutation()
   const push = useToastStore((s) => s.push)
   const [saveError, setSaveError] = useState<string | null>(null)
@@ -60,7 +55,7 @@ export function NewAgentPage({ initialMode = 'normal', onBack, onCreated }: NewA
       return
     }
     try {
-      const agentName = agentMode === 'coding' ? `coding/${name}` : name
+      const agentName = `coding/${name}`
       await createMut.mutateAsync({ name: agentName, content: draft })
       push({ tone: 'success', title: `Created "${agentName}"`, description: 'Active on next turn.' })
       onCreated(agentName)
@@ -89,26 +84,9 @@ export function NewAgentPage({ initialMode = 'normal', onBack, onCreated }: NewA
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto max-w-3xl p-3 sm:p-5">
-          <div className="mb-4 rounded-sm border border-(--color-border) bg-(--bg-card) px-4 py-3">
-            <p className="text-xs font-medium text-(--color-text)">Create in</p>
-            <div className="mt-2 flex gap-2">
-              <Button type="button" size="xs" className="min-h-11 md:min-h-0"
-                variant={agentMode === 'normal' ? 'default' : 'subtle'}
-                onClick={() => setAgentMode('normal')}>
-                Normal
-              </Button>
-              <Button type="button" size="xs" className="min-h-11 md:min-h-0"
-                variant={agentMode === 'coding' ? 'default' : 'subtle'}
-                onClick={() => setAgentMode('coding')}>
-                Coding
-              </Button>
-            </div>
-            <p className="mt-2 text-[11px] text-(--color-text-muted)">
-              {agentMode === 'coding'
-                ? `Will create coding/${name}.md for coding sessions.`
-                : `Will create ${name}.md for normal sessions.`}
-            </p>
-          </div>
+          <p className="mb-4 text-[11px] text-(--color-text-muted)">
+            Will create coding/{name}.md for coding sessions.
+          </p>
           <AgentForm
             initial={TEMPLATE}
             onChange={handleDraftChange}

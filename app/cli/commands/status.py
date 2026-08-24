@@ -1,4 +1,4 @@
-"""``openagentd status`` — report whether a background openagentd is running."""
+"""``openagentd server status`` — report whether the background server runs."""
 
 from __future__ import annotations
 
@@ -32,6 +32,7 @@ def cmd_status(_args: argparse.Namespace) -> None:
     else:
         print(f"  {_dim('Status:')} {_yellow('stopped')}")
         print(
-            f"  {_dim('Start:')}  {_bold('openagentd start')}  or  {_bold('openagentd start --lan')}"
+            f"  {_dim('Start:')}  {_bold('openagentd server start')}  or  "
+            f"{_bold('openagentd server start --lan')}"
         )
     print()

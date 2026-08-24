@@ -24,10 +24,10 @@ from app.agent.mode.team.team import AgentTeam
 from app.agent.providers.base import LLMProviderBase
 from app.api.routes.team._helpers import (
     QueuedMessageResult,
-    ResolvedChatTeam,
     _validate_workspace_or_422,
     persist_queued_user_message,
     resolve_chat_team,
+    resolve_team_for_existing_session,
     validate_model_settings,
 )
 from app.models.chat import ChatSession
@@ -138,41 +138,12 @@ async def test_validate_model_settings_rejects_unregistered_model():
 
 
 @pytest.mark.asyncio
-async def test_resolve_chat_team_mints_session_id_for_normal_mode(monkeypatch):
-    import app.core.db as _db
-
-    team = _make_team()
-
-    async def fake_get_or_start_team_for_session(session_id: str):
-        return team
-
-    monkeypatch.setattr(
-        "app.api.routes.team._helpers.team_manager.get_or_start_team_for_session",
-        fake_get_or_start_team_for_session,
-    )
-
-    async with _db.async_session_factory() as db:
-        result = await resolve_chat_team(
-            db, session_id=None, mode="normal", workspace=None
-        )
-
-    assert isinstance(result, ResolvedChatTeam)
-    assert result.team is team
-    assert result.mode == "normal"
-    assert result.workspace is None
-    assert result.session_uuid is None
-    uuid.UUID(result.session_id)  # must not raise
-
-
-@pytest.mark.asyncio
 async def test_resolve_chat_team_raises_422_for_invalid_session_id():
     import app.core.db as _db
 
     async with _db.async_session_factory() as db:
         with pytest.raises(HTTPException) as exc_info:
-            await resolve_chat_team(
-                db, session_id="not-a-uuid", mode="normal", workspace=None
-            )
+            await resolve_chat_team(db, session_id="not-a-uuid", workspace="/tmp")
     assert exc_info.value.status_code == 422
     assert exc_info.value.detail == "Invalid session id."
 
@@ -197,15 +168,39 @@ async def test_resolve_chat_team_starts_coding_team_for_new_session(
     )
 
     async with _db.async_session_factory() as db:
-        result = await resolve_chat_team(
-            db, session_id=None, mode="coding", workspace=str(tmp_path)
-        )
+        result = await resolve_chat_team(db, session_id=None, workspace=str(tmp_path))
 
     assert result.team is team
-    assert result.mode == "coding"
     assert result.workspace == str(tmp_path.resolve())
     assert captured["workspace"] == str(tmp_path.resolve())
     assert captured["session_id"] == result.session_id
+
+
+@pytest.mark.asyncio
+async def test_existing_session_without_workspace_is_not_routed_to_a_default_team(
+    monkeypatch,
+):
+    """Legacy rows cannot reactivate the removed workspace-less runtime."""
+    import app.core.db as _db
+
+    session_id = uuid.uuid7()
+    async with _db.async_session_factory() as db:
+        async with db.begin():
+            db.add(ChatSession(id=session_id, agent_name="lead"))
+
+    async def unexpected_default_team(_session_id: str):
+        raise AssertionError("workspace-less session must not start a default team")
+
+    monkeypatch.setattr(
+        "app.api.routes.team._helpers.team_manager.get_or_start_coding_team",
+        unexpected_default_team,
+    )
+
+    async with _db.async_session_factory() as db:
+        with pytest.raises(HTTPException) as exc_info:
+            await resolve_team_for_existing_session(db, str(session_id))
+
+    assert exc_info.value.status_code == 404
 
 
 @pytest.mark.asyncio
@@ -227,7 +222,6 @@ async def test_resolve_chat_team_persisted_workspace_wins_over_matching_request(
                 ChatSession(
                     id=session_id,
                     agent_name="lead",
-                    mode="coding",
                     workspace=str(workspace),
                 )
             )
@@ -244,11 +238,9 @@ async def test_resolve_chat_team_persisted_workspace_wins_over_matching_request(
         result = await resolve_chat_team(
             db,
             session_id=str(session_id),
-            mode="coding",
             workspace=str(workspace),
         )
 
-    assert result.mode == "coding"
     assert result.workspace == str(workspace.resolve())
     assert result.session_uuid == session_id
 
@@ -271,7 +263,6 @@ async def test_resolve_chat_team_raises_409_for_workspace_mismatch(tmp_path):
                 ChatSession(
                     id=session_id,
                     agent_name="lead",
-                    mode="coding",
                     workspace=str(persisted_workspace),
                 )
             )
@@ -281,7 +272,6 @@ async def test_resolve_chat_team_raises_409_for_workspace_mismatch(tmp_path):
             await resolve_chat_team(
                 db,
                 session_id=str(session_id),
-                mode="coding",
                 workspace=str(other_workspace),
             )
     assert exc_info.value.status_code == 409

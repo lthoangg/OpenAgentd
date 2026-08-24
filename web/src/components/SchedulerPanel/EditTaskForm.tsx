@@ -37,8 +37,7 @@ export function EditTaskForm({
   const updateMutation = useUpdateScheduledTaskMutation()
   const form = useForm({ defaultValues: defaults, onSubmit: () => {} })
   const values = useStore(form.store, (state) => state.values)
-  const activeSessionMode = activeSessionWorkspace ? 'coding' : 'normal'
-  const isSessionCompatible = !!currentSessionId && values.mode === activeSessionMode && (values.mode !== 'coding' || values.workspace === activeSessionWorkspace)
+  const isSessionCompatible = !!currentSessionId && values.workspace === activeSessionWorkspace
 
   useEffect(() => {
     if (!isSessionCompatible && values.sessionType === 'current') form.setFieldValue('sessionType', 'new')
@@ -98,12 +97,8 @@ export function EditTaskForm({
         <div className="space-y-3.5">
           {/* Routing */}
           <ModeWorkspaceFields
-            mode={values.mode ?? 'normal'}
             workspace={values.workspace ?? null}
-            onChange={(next) => {
-              form.setFieldValue('mode', next.mode)
-              form.setFieldValue('workspace', next.workspace)
-            }}
+            onChange={(workspace) => form.setFieldValue('workspace', workspace ?? '')}
             workspaceError={fieldErrors.workspace}
             workspaceErrorId="edit-task-workspace-error"
           />

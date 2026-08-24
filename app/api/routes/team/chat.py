@@ -215,7 +215,7 @@ def _serialize_blueprint(
             bp.source_path,
             provider_factory=team_obj._provider_factory,
             extra_tools=team_obj._extra_tools,
-            mode=team_obj.mode,
+            mode="coding",
         )
     else:
         fingerprint = (str(bp.source_path), stat.st_mtime_ns, stat.st_size)
@@ -229,7 +229,7 @@ def _serialize_blueprint(
                 bp.source_path,
                 provider_factory=team_obj._provider_factory,
                 extra_tools=team_obj._extra_tools,
-                mode=team_obj.mode,
+                mode="coding",
             )
             bp._serialized_agent = agent
             bp._serialized_agent_fingerprint = fingerprint
@@ -267,8 +267,8 @@ async def team_chat(
 ) -> TeamChatResponse:
     """Deliver a message to the team lead (202). Accepts multipart/form-data.
 
-    Modes:
-    - **Normal send** (``interrupt=false``, ``message`` required):
+    Actions:
+    - **Standard send** (``interrupt=false``, ``message`` required):
       Deliver message to team lead and start a new turn.
     - **Interrupt-only** (``interrupt=true``, ``message`` omitted):
       Cancel all working members. Partial output already saved by checkpointer.
@@ -290,12 +290,11 @@ async def team_chat(
     )
 
     resolved = await resolve_chat_team(
-        db, session_id=body.session_id, mode=body.mode, workspace=body.workspace
+        db, session_id=body.session_id, workspace=body.workspace
     )
     team_obj = resolved.team
     session_id = resolved.session_id
     session_uuid = resolved.session_uuid
-    mode = resolved.mode
     workspace = resolved.workspace
 
     fast_mode_service_tier = "fast" if body.fast_mode else None
@@ -372,7 +371,6 @@ async def team_chat(
                 session_id=session_id,
                 attachments=attachments,
                 mention_context_blocks=mention_context_blocks,
-                mode=mode,
                 workspace=workspace,
                 model=model,
                 model_provided=model_provided,
@@ -617,7 +615,7 @@ async def list_team_agents(
         _serialize_blueprint(team_obj, bp, custom_threshold=custom_threshold)
         for bp in team_obj.blueprints.values()
     ]
-    # The injected set is role- and mode-dependent (only a lead on a
+    # The injected set is role-dependent (only a lead on a
     # human-owned session gets ``ask_user``), but within one role every agent
     # gets the same tool *names and descriptions* — only the closure binding
     # differs, and this listing reads nothing else. Building them per member cost
@@ -645,7 +643,7 @@ async def list_team_agents(
             for m in all_members
         ],
         blueprints=[BlueprintInfoResponse(**bp) for bp in blueprints],
-        mode=team_obj.mode,
+        mode="coding",
         workspace=team_obj.workspace,
     )
 
@@ -707,7 +705,6 @@ async def list_team_sessions(
         description="Opaque pagination cursor — return sessions older than this.",
     ),
     limit: int = Query(20, ge=1, le=100),
-    mode: str | None = Query(None),
     workspace: str | None = Query(None),
 ) -> SessionPageResponse:
     """List team lead sessions newest-first with an opaque cursor.
@@ -715,17 +712,11 @@ async def list_team_sessions(
     Pass ``before=<next_cursor>`` from the previous
     page) to retrieve the next batch.  Omit to start from the newest.
     """
-    if mode is not None and mode not in {"normal", "coding"}:
-        raise HTTPException(status_code=422, detail="Invalid mode")
-    if workspace is not None and mode != "coding":
-        raise HTTPException(status_code=422, detail="workspace requires mode=coding")
-
     try:
         sessions, next_cursor, has_more = await list_sessions_page(
             db,
             before=before,
             limit=limit,
-            mode=mode,
             workspace=workspace,
         )
     except ValueError:
@@ -757,10 +748,6 @@ async def resolve_team_session(
     body: TeamSessionResolveRequest, db: DbSession
 ) -> TeamSessionResolveResponse:
     """Return the newest matching top-level session, creating one if absent."""
-    if body.mode not in {"normal", "coding"}:
-        raise HTTPException(
-            status_code=422, detail="mode must be 'normal' or 'coding'."
-        )
     model, thinking_level = await validate_model_settings(
         body.model,
         body.thinking_level,
@@ -768,13 +755,7 @@ async def resolve_team_session(
     )
 
     workspace = body.workspace
-    if body.mode == "normal":
-        workspace = None
-        if body.worktree_from or body.worktree_name or body.worktree_branch:
-            raise HTTPException(
-                status_code=422, detail="worktree options require mode='coding'."
-            )
-    elif body.worktree_from or body.worktree_name or body.worktree_branch:
+    if body.worktree_from or body.worktree_name or body.worktree_branch:
         if not body.worktree_from or not body.worktree_name:
             raise HTTPException(
                 status_code=422,
@@ -791,10 +772,6 @@ async def resolve_team_session(
         # A worktree request always represents a new coding workspace/session,
         # even if the caller omitted create=true.
         body.create = True
-    elif not workspace:
-        raise HTTPException(
-            status_code=422, detail="workspace is required when mode='coding'."
-        )
     else:
         workspace = _validate_workspace_or_422(workspace)
 
@@ -802,18 +779,17 @@ async def resolve_team_session(
         session = None
         if not body.create:
             session = await get_latest_top_level_session(
-                db, mode=body.mode, workspace=workspace
+                db, mode="coding", workspace=workspace
             )
         created = session is None
         if session is None:
             session = ChatSession(
-                mode=body.mode,
                 workspace=workspace,
                 model=model,
                 thinking_level=thinking_level,
             )
             db.add(session)
-        if body.mode == "coding" and workspace:
+        if workspace:
             managed_source = await find_managed_worktree_source(Path(workspace))
             if managed_source:
                 await upsert_coding_workspace(
@@ -1046,7 +1022,7 @@ async def team_history(
     )
     if history is None:
         raise HTTPException(status_code=404, detail="Lead session not found.")
-    if history.lead_session.mode == "coding" and history.lead_session.workspace:
+    if history.lead_session.workspace:
         try:
             await team_manager.get_or_start_coding_team(
                 history.lead_session.workspace, str(history.lead_session.id)
@@ -1120,7 +1096,7 @@ async def _team_history_delta(
     delta = await get_team_history_since(db, session_id, since_id=since_id)
     if delta is None:
         raise HTTPException(status_code=404, detail="Lead session not found.")
-    if delta.lead_session.mode == "coding" and delta.lead_session.workspace:
+    if delta.lead_session.workspace:
         try:
             await team_manager.get_or_start_coding_team(
                 delta.lead_session.workspace, str(delta.lead_session.id)

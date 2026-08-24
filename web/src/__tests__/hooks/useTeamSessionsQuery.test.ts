@@ -3,7 +3,7 @@
  *
  * Two contracts matter:
  * 1. getNextPageParam — tells TanStack Query whether to fetch another page
- * 2. flattenPages — what the Sidebar renders
+ * 2. flattenPages — what the coding sidebar renders
  */
 
 import { describe, it, expect } from "bun:test"
@@ -39,7 +39,7 @@ describe("getNextPageParam", () => {
   })
 })
 
-describe("flattenPages (Sidebar allSessions)", () => {
+describe("flattenPages (coding sidebar sessions)", () => {
   it("concatenates pages in order", () => {
     const page1 = makePage(["a", "b"], { has_more: true, next_cursor: "t1" })
     const page2 = makePage(["c", "d"], { has_more: false })
@@ -49,10 +49,6 @@ describe("flattenPages (Sidebar allSessions)", () => {
 })
 
 describe("query key selection", () => {
-  it("uses the normal infinite key for cockpit sessions", () => {
-    expect(queryKeys.team.sessions.infinite()).toEqual(["team", "sessions", "infinite"])
-  })
-
   it("has a distinct key for the coding-only aggregate list", () => {
     expect(queryKeys.team.sessions.workspace("__all_coding__")).toEqual([
       "team",

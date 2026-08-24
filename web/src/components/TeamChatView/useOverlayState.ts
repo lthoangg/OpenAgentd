@@ -3,7 +3,7 @@
  *
  * Owns every "big surface" toggle in the chat layout: the session
  * sidebar, the coding workspace panel + detached file viewer, the
- * (normal-mode) workspace files panel, todos popover, mobile chat-actions
+ * workspace files panel, todos popover, mobile chat-actions
  * menu, and the mobile edge-swipe drawer controller that ties sidebar /
  * actions / coding-panel together as a single-open-at-a-time group.
  *
@@ -11,7 +11,7 @@
  *
  * On mobile every large surface — the session sidebar, chat-actions menu,
  * coding workspace panel, session settings (agent capabilities), the
- * scheduler, todos, the (normal-mode) files panel and the command palette
+ * scheduler, todos, the files panel and the command palette
  * — is a full-screen or near-full-screen overlay. Having two open at once
  * is always a layering bug, so opening any one closes all the others.
  *
@@ -37,9 +37,7 @@ import { overlaysToClose, type MobileOverlay } from './mobileOverlays'
 
 export interface UseOverlayStateArgs {
   isMobile: boolean
-  mode: 'normal' | 'coding'
   workspace: string | null
-  sessionIdState: string | null
   toggleScheduler: () => void
   toggleAgentCapabilities: () => void
   togglePalette: () => void
@@ -49,10 +47,6 @@ export interface UseOverlayStateArgs {
 export interface UseOverlayStateResult {
   mobileSidebarOpen: boolean
   setMobileSidebarOpen: Dispatch<SetStateAction<boolean>>
-  showFilesPanel: boolean
-  setShowFilesPanel: Dispatch<SetStateAction<boolean>>
-  workspaceFileViewer: WorkspaceFileInfo | null
-  setWorkspaceFileViewer: Dispatch<SetStateAction<WorkspaceFileInfo | null>>
   codingPanel: null | 'changed' | 'files'
   setCodingPanel: Dispatch<SetStateAction<null | 'changed' | 'files'>>
   codingFileViewer: WorkspaceFileInfo | null
@@ -96,9 +90,7 @@ export interface UseOverlayStateResult {
 
 export function useOverlayState({
   isMobile,
-  mode,
   workspace,
-  sessionIdState,
   toggleScheduler,
   toggleAgentCapabilities,
   togglePalette,
@@ -106,13 +98,11 @@ export function useOverlayState({
 }: UseOverlayStateArgs): UseOverlayStateResult {
   const queryClient = useQueryClient()
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
-  const [showFilesPanel, setShowFilesPanel] = useState(false)
-  const [workspaceFileViewer, setWorkspaceFileViewer] = useState<WorkspaceFileInfo | null>(null)
   const [codingPanel, setCodingPanel] = useState<null | 'changed' | 'files'>(null)
   const [codingFileViewer, setCodingFileViewer] = useState<WorkspaceFileInfo | null>(null)
   const [codingFileViewerDetached, setCodingFileViewerDetached] = useState(false)
   const [codingFileOpenKey, setCodingFileOpenKey] = useState(0)
-  // Terminal is coding-mode only for now — cockpit mode has no terminal UI.
+  // Terminal is available in coding workspaces.
   const [terminalOpenKey, setTerminalOpenKey] = useState(0)
   const handledTerminalOpenKeyRef = useRef(0)
   const [codingSidebarCollapsed, setCodingSidebarCollapsed] = useState(true)
@@ -128,7 +118,6 @@ export function useOverlayState({
   useEffect(() => {
     if (isMobile) {
       useUIStore.getState().closeAgentCapabilities()
-      setShowFilesPanel(false)
     }
   }, [isMobile])
 
@@ -142,7 +131,6 @@ export function useOverlayState({
       setCodingFileViewerDetached(false)
     }
     if (toClose.has('todos')) setShowTodos(false)
-    if (toClose.has('files')) setShowFilesPanel(false)
     const ui = useUIStore.getState()
     if (toClose.has('scheduler')) ui.closeScheduler()
     if (toClose.has('capabilities')) ui.closeAgentCapabilities()
@@ -153,8 +141,7 @@ export function useOverlayState({
   }, [isMobile])
 
   const handleWorkspaceFiles = useCallback(() => {
-    if (mode === 'coding') {
-      if (workspace) {
+    if (workspace) {
         if (isMobile) { setMobileSidebarOpen(false); closeOtherMobileOverlays('coding-panel') }
         setCodingPanel((value) => {
           const next = value === null ? 'changed' : null
@@ -165,16 +152,7 @@ export function useOverlayState({
         setCodingSidebarCollapsed(false)
         setOpenWorkspaceDialogKey((value) => value + 1)
       }
-      return
-    }
-    if (sessionIdState) {
-      setShowFilesPanel((value) => {
-        const next = !value
-        if (next) closeOtherMobileOverlays('files')
-        return next
-      })
-    }
-  }, [closeOtherMobileOverlays, isMobile, mode, workspace, sessionIdState])
+  }, [closeOtherMobileOverlays, isMobile, workspace])
 
   const handleCodingSidebarToggle = useCallback(() => {
     if (isMobile) {
@@ -201,7 +179,7 @@ export function useOverlayState({
   }, [])
 
   const handleMentionFileOpen = useCallback(async (path: string) => {
-    if (mode !== 'coding' || !workspace) return
+    if (!workspace) return
     const cleanPath = path.split('#', 1)[0]
     if (!cleanPath) return
     const current = codingFileViewer?.path === cleanPath ? codingFileViewer : null
@@ -228,7 +206,7 @@ export function useOverlayState({
     } catch {
       // Keep the current panel state; the panel query will surface listing errors.
     }
-  }, [codingFileViewer, mode, queryClient, workspace])
+  }, [codingFileViewer, queryClient, workspace])
 
   const closeMobileActionsMenu = useCallback(() => setShowMobileActions(false), [])
 
@@ -274,24 +252,17 @@ export function useOverlayState({
     })
   }, [closeOtherMobileOverlays])
 
-  const handleToggleFilesPanel = useCallback(() => {
-    if (!sessionIdState) return
-    setShowFilesPanel((prev) => {
-      const next = !prev
-      if (next) closeOtherMobileOverlays('files')
-      return next
-    })
-  }, [closeOtherMobileOverlays, sessionIdState])
+  const handleToggleFilesPanel = handleWorkspaceFiles
 
   // Open (or focus) a terminal — coding mode only for now. Ensures the
   // workspace panel is visible, then bumps the key so CodingWorkspacePanel
-  // focuses/opens its terminal tab (cwd = project). Cockpit mode has no
+  // focuses/opens its terminal tab (cwd = project).
   // terminal UI (kept simple; may return later behind its own entry point).
   const handleOpenTerminal = useCallback(() => {
-    if (mode !== 'coding' || !workspace) return
+    if (!workspace) return
     setCodingPanel((prev) => prev ?? 'files')
     setTerminalOpenKey((k) => k + 1)
-  }, [mode, workspace])
+  }, [workspace])
 
   // ── Mobile edge-swipe drawers ──────────────────────────────────────────────
   //
@@ -303,7 +274,7 @@ export function useOverlayState({
   // Right-edge target depends on context: in a coding workspace it opens
   // the workspace panel (changed files / tree); otherwise the chat-actions
   // menu. Left-edge always opens the session sidebar.
-  const codingPanelOpenForSwipe = mode === 'coding' && Boolean(workspace)
+  const codingPanelOpenForSwipe = Boolean(workspace)
 
   // Single source of truth for "what is open right now". Closing routes to
   // whichever drawer the id names, so swipe-to-close hits the right one.
@@ -327,12 +298,10 @@ export function useOverlayState({
     // Opening the sidebar must vacate every other overlay first.
     closeOtherMobileOverlays('sidebar')
     setShowMobileActions(false)
-    if (mode === 'coding') {
-      setCodingPanel(null)
-      setCodingFileViewer(null)
-    }
+    setCodingPanel(null)
+    setCodingFileViewer(null)
     setMobileSidebarOpen(true)
-  }, [closeOtherMobileOverlays, mode])
+  }, [closeOtherMobileOverlays])
 
   const openRightDrawer = useCallback(() => {
     // Opening a right drawer must vacate the sidebar + other overlays first.
@@ -363,10 +332,6 @@ export function useOverlayState({
   return {
     mobileSidebarOpen,
     setMobileSidebarOpen,
-    showFilesPanel,
-    setShowFilesPanel,
-    workspaceFileViewer,
-    setWorkspaceFileViewer,
     codingPanel,
     setCodingPanel,
     codingFileViewer,

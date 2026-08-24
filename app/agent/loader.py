@@ -241,10 +241,7 @@ def ensure_builtin_openagentd_lead(agents_dir: Path, *, mode: str) -> bool:
     if target.exists():
         return False
 
-    from app.agent.builtin_prompts import (
-        CODING_OPENAGENTD_DESCRIPTION,
-        NORMAL_OPENAGENTD_DESCRIPTION,
-    )
+    from app.agent.builtin_prompts import CODING_OPENAGENTD_DESCRIPTION
     from app.core.config import PROVIDER_MODEL_TOKEN
 
     _atomic_write_text(
@@ -252,11 +249,7 @@ def ensure_builtin_openagentd_lead(agents_dir: Path, *, mode: str) -> bool:
         _builtin_agent_md(
             name="openagentd",
             role="lead",
-            description=(
-                CODING_OPENAGENTD_DESCRIPTION
-                if mode == "coding"
-                else NORMAL_OPENAGENTD_DESCRIPTION
-            ),
+            description=CODING_OPENAGENTD_DESCRIPTION,
             model=PROVIDER_MODEL_TOKEN,
         ),
     )
@@ -433,7 +426,7 @@ def _build_agent(
     provider_factory: ProviderFactory,
     *,
     source_path: Path | None = None,
-    mode: str = "normal",
+    mode: str = "coding",
 ) -> Agent:
     """Construct one Agent.  ``source_path`` enables drift detection."""
     system_prompt = cfg.system_prompt
@@ -592,7 +585,7 @@ def load_team_from_dir(
     provider_factory: ProviderFactory | None = None,
     extra_tools: dict[str, Tool] | None = None,
     db_factory: DbFactory | None = None,
-    mode: str = "normal",
+    mode: str = "coding",
     workspace: str | None = None,
 ) -> "AgentTeam | None":
     """Load an AgentTeam from a directory of per-agent ``.md`` files.
@@ -616,9 +609,8 @@ def load_team_from_dir(
     if not md_files:
         return None
 
-    if mode in ("normal", "coding"):
-        ensure_builtin_agent_blueprints(agents_dir, mode=mode)
-        md_files = sorted(agents_dir.glob("*.md"))
+    ensure_builtin_agent_blueprints(agents_dir, mode="coding")
+    md_files = sorted(agents_dir.glob("*.md"))
 
     # Carry source path so _build_agent can stamp config dependencies.
     agent_configs: list[tuple[AgentConfig, Path]] = []
@@ -724,7 +716,6 @@ def load_team_from_dir(
         provider_factory=provider_factory,
         extra_tools=extra_tools,
         db_factory=db_factory,
-        mode=mode,
         workspace=workspace,
     )
     logger.info(
@@ -745,7 +736,7 @@ def rebuild_agent_from_disk(
     *,
     provider_factory: ProviderFactory | None = None,
     extra_tools: dict[str, Tool] | None = None,
-    mode: str = "normal",
+    mode: str = "coding",
 ) -> Agent:
     """Re-parse one agent ``.md`` and return a fresh :class:`Agent`.
 

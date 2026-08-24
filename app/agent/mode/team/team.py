@@ -228,7 +228,6 @@ class AgentTeam:
         provider_factory: "ProviderFactory | None" = None,
         extra_tools: dict[str, Tool] | None = None,
         db_factory: DbFactory | None = None,
-        mode: str = "normal",
         workspace: str | None = None,
         # Back-compat: callers (especially older tests) can still pass a
         # pre-built members map.  These instances are registered as if they
@@ -243,7 +242,6 @@ class AgentTeam:
         self._provider_factory = provider_factory
         self._extra_tools = extra_tools
         self._db_factory = db_factory
-        self.mode = mode
         self.workspace = workspace
 
         self.mailbox = TeamMailbox(on_message=self._on_message)
@@ -303,7 +301,6 @@ class AgentTeam:
         self.lead.session_id = session_id
         await self.lead._ensure_db_session(
             title=title,
-            mode=self.mode,
             workspace=self.workspace,
         )
 
@@ -489,7 +486,6 @@ class AgentTeam:
             return
 
         title: str | None = None
-        mode: str | None = None
         workspace: str | None = None
         try:
             db_factory = resolve_db_factory(self.lead.db_factory)
@@ -497,7 +493,6 @@ class AgentTeam:
                 row = await db.get(ChatSession, session_uuid)
                 if row is not None:
                     title = row.title
-                    mode = row.mode
                     workspace = row.workspace
         except Exception as exc:
             logger.warning(
@@ -506,9 +501,7 @@ class AgentTeam:
                 exc,
             )
 
-        workspace_name = (
-            Path(workspace).name if mode == "coding" and workspace else None
-        )
+        workspace_name = Path(workspace).name if workspace else None
         notification_title = (
             f"Session completed - {workspace_name}"
             if workspace_name
@@ -528,7 +521,6 @@ class AgentTeam:
                 "metadata": {
                     "session_id": session_id,
                     "title": title,
-                    "mode": mode,
                     "workspace": workspace,
                 },
             },
@@ -634,7 +626,6 @@ class AgentTeam:
         interrupt: bool = False,
         attachment_metas: list[dict] | None = None,
         mention_context_blocks: list[str] | None = None,
-        mode: str | None = None,
         workspace: str | None = None,
         model: str | None = None,
         model_provided: bool = False,
@@ -660,8 +651,6 @@ class AgentTeam:
         """
         # Update the lead's active session
 
-        if mode is not None:
-            self.mode = mode
         if workspace is not None:
             self.workspace = workspace
 
@@ -713,8 +702,7 @@ class AgentTeam:
                 thinking_level if thinking_level_provided else None
             )
             if lead_row is not None:
-                lead_row.mode = self.mode
-                lead_row.workspace = self.workspace
+                lead_row.workspace = self.workspace or ""
                 if model_provided:
                     lead_row.model = model
                 if thinking_level_provided:
@@ -845,7 +833,7 @@ class AgentTeam:
         return session_id, str(saved_user_msg.id)
 
     async def handle_compact(self, session_id: str) -> str:
-        """Start a normal lead turn that forces summarization before the model call."""
+        """Start a standard lead turn that forces summarization before the model call."""
         if self._has_active_turn:
             raise ContinuePreconditionError("Lead is already working.")
 
@@ -1228,7 +1216,7 @@ class AgentTeam:
             bp.source_path,
             provider_factory=self._provider_factory,
             extra_tools=self._extra_tools,
-            mode=self.mode,
+            mode="coding",
         )
         # The blueprint name on disk is e.g. ``executor``; the runtime name
         # (mailbox key, DB ``agent_name``) is the instance handle.
@@ -1245,7 +1233,7 @@ class AgentTeam:
         # Ensure the row exists (idempotent on restore) and parent it
         # under the current lead session so the team-history endpoint
         # and the counter reconciler can find it.
-        await member._ensure_db_session(mode=self.mode, workspace=self.workspace)
+        await member._ensure_db_session(workspace=self.workspace)
         await self._parent_member_session(member)
 
         # Register with mailbox.  The team is currently started iff the
@@ -1540,7 +1528,7 @@ class AgentTeam:
 
         # LSP navigation tool is temporarily detached — agents were not using
         # it. Code kept in app/agent/tools/builtin/lsp.py for future reuse.
-        # if self.mode == "coding":
+        # Coding workspaces may receive LSP navigation when reattached.
         #     from app.agent.tools.builtin.lsp import lsp_navigation
         #
         #     tools.append(lsp_navigation)
@@ -1665,9 +1653,8 @@ class AgentTeam:
     def _question_tool_enabled(self) -> bool:
         """Whether the lead may interrupt the user with ``ask_user``.
 
-        Available in both coding and cockpit (normal) mode — either way a
-        wrong guess costs real work, and the human answering is on the other
-        end of the same session either way. Lead only (members escalate
+        Available to the lead; a wrong guess costs real work, and the human
+        answering is on the other end of the same session. Members escalate
         through ``team_message``), and never on a scheduler-owned session — a
         cron job has no one to answer, and a tool the model cannot usefully
         call is better left out of the schema than offered and refused.

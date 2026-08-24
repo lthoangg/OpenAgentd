@@ -867,7 +867,7 @@ describe("ToolCall — schedule_task display", () => {
 
   it("renders scheduled task lists as a table without internal IDs", async () => {
     const user = userEvent.setup()
-    const result = "Scheduled tasks (1):\n  slug=daily-standup | name=Daily standup | mode=normal | schedule=cron '0 8 * * 1-5' (UTC) | status=enabled/pending | runs=2/5 | next=2026-07-20 08:00:00+00:00"
+    const result = "Scheduled tasks (1):\n  slug=daily-standup | name=Daily standup | schedule=cron '0 8 * * 1-5' (UTC) | status=enabled/pending | runs=2/5 | next=2026-07-20 08:00:00+00:00"
 
     render(<ToolCall name="schedule_task" args={JSON.stringify({ action: "list" })} done result={result} />)
 

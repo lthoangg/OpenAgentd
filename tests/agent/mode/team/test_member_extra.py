@@ -7,6 +7,7 @@ import uuid
 from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock
 
+import inspect
 import pytest
 
 from app.agent.mode.team.mailbox import Message, TeamMailbox
@@ -209,6 +210,14 @@ class TestTeamMemberStop:
 
 
 class TestEnsureDbSession:
+    def test_session_persistence_is_coding_workspace_only(self):
+        from app.agent.mode.team.member import TeamMemberBase
+
+        assert (
+            "mode"
+            not in inspect.signature(TeamMemberBase._ensure_db_session).parameters
+        )
+
     @pytest.mark.asyncio
     async def test_creates_session_when_not_exists(self):
         from app.agent.agent_loop import Agent

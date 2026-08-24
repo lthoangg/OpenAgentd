@@ -326,7 +326,6 @@ export function resetSessionState(
     model?: string | null
     thinkingLevel?: string | null
     fastMode?: boolean
-    mode?: string
     workspace?: string | null
   },
 ) {
@@ -354,7 +353,7 @@ export function resetSessionState(
   state.nextCursor = null
   state._leadRevertTime = null
   state._syncedThrough = null
-  state._workspace = options.mode === 'coding' ? (options.workspace ?? null) : null
+  state._workspace = options.workspace ?? null
   state._loadingOlder = false
   state._resolvedSessionReadyId = null
   state.agentNames = leadName ? [leadName] : []
@@ -729,7 +728,7 @@ export const createSessionSlice: StateCreator<
           state.sessionThinkingLevel = options?.thinkingLevel ?? state.sessionThinkingLevel
         }
         if (options?.fastMode !== undefined) state.sessionFastMode = options.fastMode
-        if (options?.mode === 'coding') state._workspace = options.workspace ?? null
+        if (options?.workspace) state._workspace = options.workspace
         if (options?.skipInitialRestore && sessionId) state._resolvedSessionReadyId = sessionId
       })
       return
@@ -743,7 +742,6 @@ export const createSessionSlice: StateCreator<
         model: preserveLocalSettings ? localModel : options?.model,
         thinkingLevel: preserveLocalSettings ? localThinkingLevel : options?.thinkingLevel,
         fastMode: options?.fastMode,
-        mode: options?.mode,
         workspace: options?.workspace,
       })
       if (options?.skipInitialRestore) state._resolvedSessionReadyId = sessionId

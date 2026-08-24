@@ -31,10 +31,7 @@ class ChatForm(BaseModel):
         False,
         description="Interrupt the running agent. Mutually exclusive with message.",
     )
-    mode: str = Field("normal", description="Chat mode: normal or coding.")
-    workspace: str | None = Field(
-        None, description="Workspace directory for coding mode."
-    )
+    workspace: str = Field(..., min_length=1, description="Workspace directory.")
     model: str | None = Field(None, description="Per-session lead model override.")
     thinking_level: str | None = Field(
         None, description="Per-session lead thinking level override."
@@ -53,8 +50,7 @@ class ChatForm(BaseModel):
         message: str | None = Form(None),
         session_id: str | None = Form(None),
         interrupt: bool = Form(False),
-        mode: str = Form("normal"),
-        workspace: str | None = Form(None),
+        workspace: str = Form(...),
         model: str | None = Form(None),
         thinking_level: str | None = Form(None),
         fast_mode: bool = Form(False),
@@ -77,7 +73,6 @@ class ChatForm(BaseModel):
                 message=message,
                 session_id=session_id,
                 interrupt=interrupt,
-                mode=mode,
                 workspace=workspace,
                 model=model,
                 thinking_level=thinking_level,
@@ -99,10 +94,6 @@ class ChatForm(BaseModel):
             raise ValueError("message is required when interrupt=false.")
         if self.message is not None and len(self.message.strip()) == 0:
             raise ValueError("message must not be blank.")
-        if self.mode not in {"normal", "coding"}:
-            raise ValueError("mode must be 'normal' or 'coding'.")
-        if self.mode == "coding" and not self.workspace:
-            raise ValueError("workspace is required when mode='coding'.")
         if (
             self.model is not None
             and self.model.strip()

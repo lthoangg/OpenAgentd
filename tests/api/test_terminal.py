@@ -53,42 +53,6 @@ class TestTicket:
         assert r.status_code == 400
 
 
-class TestSessionTicket:
-    """Cockpit path: ticket minted from a session_id, not a client path."""
-
-    def test_session_ticket_creates_and_uses_session_workspace(
-        self, client, tmp_path, monkeypatch
-    ):
-        monkeypatch.setattr(
-            "app.api.routes.terminal.workspace_dir",
-            lambda sid: tmp_path / "sessions" / sid,
-        )
-        sid = "1b4e28ba-2fa1-11d2-883f-b9a761bde3fb"
-        r = client.post("/api/terminal/ticket", json={"session_id": sid})
-        assert r.status_code == 200
-        # Directory is created lazily so the shell has a valid cwd.
-        assert (tmp_path / "sessions" / sid).is_dir()
-        assert _TICKETS[r.json()["ticket"]][0] == str(tmp_path / "sessions" / sid)
-
-    def test_session_ticket_rejects_non_uuid(self, client):
-        r = client.post("/api/terminal/ticket", json={"session_id": "../../etc"})
-        assert r.status_code == 422
-
-    def test_ticket_requires_exactly_one_source(self, client, tmp_path):
-        # Neither provided.
-        r = client.post("/api/terminal/ticket", json={})
-        assert r.status_code == 422
-        # Both provided.
-        r = client.post(
-            "/api/terminal/ticket",
-            json={
-                "workspace": str(tmp_path),
-                "session_id": "1b4e28ba-2fa1-11d2-883f-b9a761bde3fb",
-            },
-        )
-        assert r.status_code == 422
-
-
 class TestTicketHonorsInitialSize:
     """The ticket carries the client's rows/cols so the very first PTY
     spawn is sized correctly — without this, every terminal starts at

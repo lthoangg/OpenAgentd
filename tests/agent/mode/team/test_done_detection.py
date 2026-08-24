@@ -9,7 +9,7 @@ Covers:
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
-from pathlib import Path
+import tempfile
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -46,7 +46,7 @@ def _make_agent(name):
     return Agent(name=name, llm_provider=MockTeamProvider(), system_prompt=name)
 
 
-def _make_team(session=None):
+def _make_team(session=None, workspace=None):
     """Create a test team."""
     lead_agent = _make_agent("lead")
     member_agent = _make_agent("worker")
@@ -57,7 +57,11 @@ def _make_team(session=None):
         db_factory=db_factory,
     )
     member = TeamMember(member_agent, session_id="worker-sid", db_factory=db_factory)
-    team = AgentTeam(lead=lead, members={"worker": member})
+    team = AgentTeam(
+        lead=lead,
+        members={"worker": member},
+        workspace=workspace or tempfile.mkdtemp(prefix="openagentd-team-"),
+    )
     return team
 
 
@@ -65,14 +69,16 @@ class TestDoneDetectionMixedStates:
     """Test _try_emit_done with various state combinations."""
 
     @pytest.mark.asyncio
-    async def test_completion_notification_uses_coding_workspace_and_title(self):
+    async def test_completion_notification_uses_coding_workspace_and_title(
+        self, tmp_path
+    ):
         """Assistant completion notification names the coding workspace and session."""
         session = MagicMock(
             title="Fix desktop notifications",
             mode="coding",
-            workspace=str(Path("/repo/openagentd")),
+            workspace=str(tmp_path),
         )
-        team = _make_team(session=session)
+        team = _make_team(session=session, workspace=str(tmp_path))
         team._has_active_turn = True
         team.lead.state = "idle"
         team.members["worker"].state = "idle"
@@ -99,13 +105,12 @@ class TestDoneDetectionMixedStates:
         assert notification["kind"] == "assistant_done"
         assert notification["session_id"] == "018f0000-0000-7000-8000-000000000001"
         assert notification["notification_id"]
-        assert notification["title"] == "Session completed - openagentd"
+        assert notification["title"] == f"Session completed - {tmp_path.name}"
         assert notification["body"] == "Fix desktop notifications"
         assert notification["metadata"] == {
             "session_id": "018f0000-0000-7000-8000-000000000001",
             "title": "Fix desktop notifications",
-            "mode": "coding",
-            "workspace": str(Path("/repo/openagentd")),
+            "workspace": str(tmp_path),
         }
         event2, payload2 = notifications[1]
         assert event2 == "session_turn_completed"
@@ -116,10 +121,12 @@ class TestDoneDetectionMixedStates:
         assert [event.event for event in pushed] == ["done"]
 
     @pytest.mark.asyncio
-    async def test_completion_notification_falls_back_to_session_id_without_title(self):
+    async def test_completion_notification_falls_back_to_session_id_without_title(
+        self, tmp_path
+    ):
         """Untitled sessions still emit useful completion text."""
-        session = MagicMock(title="   ", mode="chat", workspace="/repo/openagentd")
-        team = _make_team(session=session)
+        session = MagicMock(title="   ", mode="coding", workspace=str(tmp_path))
+        team = _make_team(session=session, workspace=str(tmp_path))
         team._has_active_turn = True
         team.lead.state = "idle"
         team.members["worker"].state = "idle"
@@ -143,7 +150,7 @@ class TestDoneDetectionMixedStates:
         assert len(notifications) == 2
         event, notification = notifications[0]
         assert event == "desktop_notification"
-        assert notification["title"] == "Session completed"
+        assert notification["title"] == f"Session completed - {tmp_path.name}"
         assert notification["body"] == "Session 018f0000"
         event2, payload2 = notifications[1]
         assert event2 == "session_turn_completed"

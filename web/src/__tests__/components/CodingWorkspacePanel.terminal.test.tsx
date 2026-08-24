@@ -170,7 +170,7 @@ describe('CodingWorkspacePanel terminal tabs', () => {
   })
 
   it('sessions from other contexts are not adopted', async () => {
-    useTerminalStore.getState().open({ sessionId: 'sid-1' }, 'session:sid-1')
+    useTerminalStore.getState().open({ workspace: '/workspace/project' }, 'workspace:/workspace/project')
     await renderPanel(0)
     expect(screen.queryByRole('button', { name: /Close Terminal/ })).toBeNull()
   })

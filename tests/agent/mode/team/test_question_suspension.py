@@ -9,6 +9,7 @@ half-finished turn and feed the model a placeholder tool result.
 from __future__ import annotations
 
 import uuid
+import tempfile
 from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock
 
@@ -48,7 +49,7 @@ def _make_db_factory():
     return factory
 
 
-def _make_team(mode: str = "coding") -> AgentTeam:
+def _make_team() -> AgentTeam:
     db_factory = _make_db_factory()
     lead = TeamLead(
         Agent(name="openagentd", llm_provider=MockTeamProvider()),
@@ -60,7 +61,11 @@ def _make_team(mode: str = "coding") -> AgentTeam:
         session_id="018f0000-0000-7000-8000-000000000002",
         db_factory=db_factory,
     )
-    team = AgentTeam(lead=lead, members={"coder#1": member}, mode=mode)
+    team = AgentTeam(
+        lead=lead,
+        members={"coder#1": member},
+        workspace=tempfile.mkdtemp(prefix="openagentd-team-"),
+    )
     lead.register(team)
     member.register(team)
     return team
@@ -151,7 +156,7 @@ def test_a_suspended_lead_still_counts_as_an_active_user_turn():
 
 
 def test_coding_lead_gets_the_question_tool():
-    team = _make_team(mode="coding")
+    team = _make_team()
 
     names = {tool.name for tool in team.get_injected_tools("openagentd")}
 
@@ -159,24 +164,16 @@ def test_coding_lead_gets_the_question_tool():
 
 
 def test_members_never_get_the_question_tool():
-    team = _make_team(mode="coding")
+    team = _make_team()
 
     names = {tool.name for tool in team.get_injected_tools("coder#1")}
 
     assert "ask_user" not in names
 
 
-def test_normal_mode_lead_gets_the_question_tool():
-    team = _make_team(mode="normal")
-
-    names = {tool.name for tool in team.get_injected_tools("openagentd")}
-
-    assert "ask_user" in names
-
-
 def test_scheduler_owned_session_does_not_get_the_question_tool():
     """Nobody is there to answer a cron job's question."""
-    team = _make_team(mode="coding")
+    team = _make_team()
     team.lead.is_scheduler_session = True
 
     names = {tool.name for tool in team.get_injected_tools("openagentd")}

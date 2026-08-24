@@ -200,7 +200,7 @@ async def test_rejects_denied_source_symlink_and_filters_denied_result_symlink(
 
 
 @pytest.mark.asyncio
-async def test_rejects_outside_path_and_normal_mode(tmp_path: Path):
+async def test_rejects_outside_path(tmp_path: Path):
     source = tmp_path / "symbols.py"
     source.write_text("", encoding="utf-8")
     _sandbox(tmp_path)
@@ -209,12 +209,6 @@ async def test_rejects_outside_path_and_normal_mode(tmp_path: Path):
             operation="document_symbol",
             path="../secret.py",
             _injected={"_mode": "coding", "_workspace": str(tmp_path)},
-        )
-    with pytest.raises(ToolExecutionError, match="only available in coding mode"):
-        await lsp_navigation.arun(
-            operation="workspace_symbol",
-            path="symbols.py",
-            _injected={"_mode": "normal", "_workspace": str(tmp_path)},
         )
 
 

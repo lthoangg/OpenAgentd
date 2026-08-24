@@ -105,7 +105,7 @@ describe("beginResolvedSession", () => {
     });
 
     useTeamStore.getState().beginResolvedSession("new-sid", {
-      mode: "normal",
+      workspace: "/repo/app",
       model: "openai:gpt-5.5",
       thinkingLevel: "high",
     });
@@ -121,7 +121,7 @@ describe("beginResolvedSession", () => {
     useTeamStore.getState().setSessionModelSettings("anthropic:claude-sonnet", "high")
 
     useTeamStore.getState().beginResolvedSession("new-sid", {
-      mode: "normal",
+      workspace: "/repo/app",
       model: "openai:gpt-4o",
       thinkingLevel: "low",
     })
@@ -152,7 +152,7 @@ describe("beginResolvedSession", () => {
       },
     });
 
-    useTeamStore.getState().beginResolvedSession("session-b", { mode: "normal" });
+    useTeamStore.getState().beginResolvedSession("session-b", { workspace: "/repo/app" });
 
     const s = useTeamStore.getState();
     expect(s.sessionId).toBe("session-b");
@@ -178,7 +178,7 @@ describe("beginResolvedSession", () => {
       },
     });
 
-    useTeamStore.getState().beginResolvedSession("session-a", { mode: "normal" });
+    useTeamStore.getState().beginResolvedSession("session-a", { workspace: "/repo/app" });
 
     const s = useTeamStore.getState();
     expect(s.isTeamWorking).toBe(true);
@@ -197,7 +197,6 @@ describe("beginResolvedSession", () => {
     });
 
     useTeamStore.getState().beginResolvedSession("coding-sid", {
-      mode: "coding",
       workspace: "/repo/app",
     });
 

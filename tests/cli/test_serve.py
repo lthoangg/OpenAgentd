@@ -34,8 +34,8 @@ from app.cli.main import build_parser
 class TestParserWiring:
     def test_serve_subcommand_exists(self):
         parser = build_parser()
-        args = parser.parse_args(["serve"])
-        assert args.command == "serve"
+        args = parser.parse_args(["server", "serve"])
+        assert args.command == "server"
         # Defaults: dynamic port, no handshake unless asked.
         assert args.port == 0
         assert args.handshake is False
@@ -46,6 +46,7 @@ class TestParserWiring:
         parser = build_parser()
         args = parser.parse_args(
             [
+                "server",
                 "serve",
                 "--host",
                 "127.0.0.1",

@@ -1,4 +1,5 @@
 import re
+import logging
 from logging.config import fileConfig
 from pathlib import Path
 
@@ -16,6 +17,8 @@ config = context.config
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
+if config.get_main_option("openagentd.quiet_alembic") == "true":
+    logging.getLogger("alembic").setLevel(logging.WARNING)
 
 target_metadata = SQLModel.metadata
 

@@ -9,7 +9,7 @@ afterEach(() => {
 })
 
 describe('workspaceMediaUrl', () => {
-  it('returns a media proxy URL without token in normal web mode', () => {
+  it('returns a media proxy URL without token in browser mode', () => {
     expect(workspaceMediaUrl('sid', 'output/chart.png')).toBe('/api/team/sid/media/output/chart.png')
   })
 
@@ -38,16 +38,16 @@ describe('resolveApiUrl', () => {
 })
 
 describe('postTeamChat', () => {
-  it('uses backend detail for non-coding 409 errors', async () => {
+  it('uses backend detail for invalid 409 errors', async () => {
     globalThis.fetch = mock(() => Promise.resolve(new Response(JSON.stringify({ detail: 'conflict' }), { status: 409 }))) as typeof fetch
 
-    await expect(postTeamChat('hello')).rejects.toThrow('conflict')
+    await expect(postTeamChat('hello', null, false, '/repo/app')).rejects.toThrow('conflict')
   })
 
   it('uses backend detail for coding 409 errors', async () => {
     globalThis.fetch = mock(() => Promise.resolve(new Response(JSON.stringify({ detail: 'Session belongs to a different coding workspace' }), { status: 409 }))) as typeof fetch
 
-    await expect(postTeamChat('hello', null, false, undefined, 'coding', '/repo/app')).rejects.toThrow(
+    await expect(postTeamChat('hello', null, false, '/repo/app')).rejects.toThrow(
       'Session belongs to a different coding workspace',
     )
   })
@@ -58,21 +58,20 @@ describe('postTeamChat', () => {
       { status: 422 },
     ))) as typeof fetch
 
-    await expect(postTeamChat('hello')).rejects.toThrow('message is required when interrupt=false.')
+    await expect(postTeamChat('hello', null, false, '/repo/app')).rejects.toThrow('message is required when interrupt=false.')
   })
 
-  it('sends coding mode and workspace with the chat form', async () => {
+  it('sends workspace with the chat form', async () => {
     let body: BodyInit | null | undefined
     globalThis.fetch = mock((_url, init) => {
       body = (init as RequestInit | undefined)?.body
       return Promise.resolve(new Response(JSON.stringify({ status: 'accepted', session_id: 'sid' })))
     }) as typeof fetch
 
-    await postTeamChat('hello', null, false, undefined, 'coding', '/repo/app')
+    await postTeamChat('hello', null, false, '/repo/app')
 
     expect(body).toBeInstanceOf(FormData)
     const form = body as FormData
-    expect(form.get('mode')).toBe('coding')
     expect(form.get('workspace')).toBe('/repo/app')
   })
 
@@ -83,7 +82,7 @@ describe('postTeamChat', () => {
       return Promise.resolve(new Response(JSON.stringify({ status: 'accepted', session_id: 'sid' })))
     }) as typeof fetch
 
-    await postTeamChat('hello')
+    await postTeamChat('hello', null, false, '/repo/app')
 
     const init = (globalThis.fetch as unknown as ReturnType<typeof mock>).mock.calls[0][1] as RequestInit | undefined
     expect(init?.headers).toEqual({ Accept: 'application/json' })
@@ -99,7 +98,7 @@ describe('postTeamChat', () => {
       return Promise.resolve(new Response(JSON.stringify({ status: 'accepted', session_id: 'sid' })))
     }) as typeof fetch
 
-    await postTeamChat('hello', 'sid', false, undefined, 'normal', null, null, null)
+    await postTeamChat('hello', 'sid', false, '/tmp', undefined, null, null, false)
 
     const form = body as FormData
     expect(form.has('model')).toBe(true)
@@ -115,7 +114,7 @@ describe('postTeamChat', () => {
       return Promise.resolve(new Response(JSON.stringify({ status: 'accepted', session_id: 'sid' })))
     }) as typeof fetch
 
-    await postTeamChat('hello', 'sid', false, undefined, 'normal', null, 'openai:gpt-5.5', 'high')
+    await postTeamChat('hello', 'sid', false, '/tmp', undefined, 'openai:gpt-5.5', 'high')
 
     const form = body as FormData
     expect(form.get('model')).toBe('openai:gpt-5.5')
@@ -129,7 +128,7 @@ describe('postTeamChat', () => {
       return Promise.resolve(new Response(JSON.stringify({ status: 'accepted', session_id: 'sid' })))
     }) as typeof fetch
 
-    await postTeamChat('hello', 'sid', false, undefined, 'normal', null, 'codex:gpt-5.4', null, true)
+    await postTeamChat('hello', 'sid', false, '/tmp', undefined, 'codex:gpt-5.4', null, true)
 
     const form = body as FormData
     expect(form.get('fast_mode')).toBe('true')
@@ -201,7 +200,6 @@ describe('resolveTeamSession', () => {
         id: 'sid',
         title: null,
         agent_name: null,
-        mode: 'coding',
         workspace: '/repo/app',
         model: 'openai:gpt-5.5',
         thinking_level: 'high',
@@ -212,7 +210,6 @@ describe('resolveTeamSession', () => {
     }) as typeof fetch
 
     const result = await resolveTeamSession({
-      mode: 'coding',
       workspace: '/repo/app',
       model: 'openai:gpt-5.5',
       thinkingLevel: 'high',
@@ -226,7 +223,6 @@ describe('resolveTeamSession', () => {
     expect(init?.method).toBe('POST')
     expect(init?.headers).toEqual({ 'Content-Type': 'application/json' })
     expect(JSON.parse(init?.body as string)).toEqual({
-      mode: 'coding',
       workspace: '/repo/app',
       model: 'openai:gpt-5.5',
       thinking_level: 'high',
@@ -241,11 +237,11 @@ describe('resolveTeamSession', () => {
 
   it('throws backend detail when backend rejects resolve request', async () => {
     globalThis.fetch = mock(() => Promise.resolve(new Response(
-      JSON.stringify({ detail: "workspace is required when mode='coding'." }),
+      JSON.stringify({ detail: 'workspace is required.' }),
       { status: 422 },
     ))) as typeof fetch
 
-    await expect(resolveTeamSession({ mode: 'coding' })).rejects.toThrow("workspace is required when mode='coding'.")
+    await expect(resolveTeamSession({ workspace: '/repo/app' })).rejects.toThrow('workspace is required.')
   })
 })
 

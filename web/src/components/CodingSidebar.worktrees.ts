@@ -66,7 +66,7 @@ export async function submitWorktreeSession(options: {
 }): Promise<SubmitWorktreeResult> {
   const state = useTeamStore.getState()
   const session = await resolveTeamSession({
-    mode: 'coding',
+    workspace: options.worktreeTarget,
     worktreeFrom: options.worktreeTarget,
     worktreeName: options.worktreeName || 'session',
     worktreeBranch: options.worktreeBranch || null,
@@ -78,7 +78,6 @@ export async function submitWorktreeSession(options: {
   saveLastCodingWorkspace(path)
   const nextState = useTeamStore.getState()
   nextState.beginResolvedSession(session.id, {
-    mode: 'coding',
     workspace: path,
     model: session.model ?? nextState.sessionModel,
     thinkingLevel: session.thinking_level ?? nextState.sessionThinkingLevel,

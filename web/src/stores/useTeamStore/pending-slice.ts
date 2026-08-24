@@ -6,8 +6,7 @@ import type { PendingMessage, TeamStore } from './types'
 import type { MessageAttachment } from '@/api/types'
 
 interface SendOptions {
-  mode?: string
-  workspace?: string | null
+  workspace: string
   model?: string | null
   thinkingLevel?: string | null
   fastMode?: boolean
@@ -116,7 +115,7 @@ export const createPendingSlice: StateCreator<
    * text and attachments being silently destroyed — see the restore in
    * ``TeamChatView``.
    */
-  sendMessage: async (content: string, files?: File[], options?: { mode?: string; workspace?: string | null; model?: string | null; thinkingLevel?: string | null; fastMode?: boolean; mentions?: string[] }): Promise<boolean> => {
+  sendMessage: async (content: string, files: File[] | undefined, options: { workspace: string; model?: string | null; thinkingLevel?: string | null; fastMode?: boolean; mentions?: string[] }): Promise<boolean> => {
     const { leadName, agentStreams } = get()
     const leadWorking = leadName ? agentStreams[leadName]?.status === 'working' : false
 
@@ -131,9 +130,8 @@ export const createPendingSlice: StateCreator<
           content,
           get().sessionId,
           false,
+          options.workspace,
           files,
-          options?.mode ?? 'normal',
-          options?.workspace ?? null,
           options?.model ?? get().sessionModel,
           options?.thinkingLevel ?? get().sessionThinkingLevel,
           options?.fastMode ?? get().sessionFastMode,
@@ -229,9 +227,8 @@ export const createPendingSlice: StateCreator<
         content,
         get().sessionId,
         false,
+        options.workspace,
         files,
-        options?.mode ?? 'normal',
-        options?.workspace ?? null,
         options?.model ?? get().sessionModel,
         options?.thinkingLevel ?? get().sessionThinkingLevel,
         options?.fastMode ?? get().sessionFastMode,

@@ -27,7 +27,10 @@ export const TEAM_AGENTS_STALE_MS = 30_000
 export function teamAgentsQueryOptions(workspace?: string | null) {
   return {
     queryKey: queryKeys.teamAgents(workspace),
-    queryFn: (): Promise<TeamAgentsResponse> => listTeamAgents(workspace),
+    queryFn: (): Promise<TeamAgentsResponse> => {
+      if (!workspace) throw new Error('Coding workspace is required')
+      return listTeamAgents(workspace)
+    },
     // Baseline freshness policy lives here so every consumer of this shared
     // entry inherits it. `staleTime` is per-observer in TanStack Query, so a
     // consumer that spreads these options and omits it used to silently fall

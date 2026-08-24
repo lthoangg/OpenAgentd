@@ -14,7 +14,7 @@ function createClient() {
 }
 
 describe('preloadConnectedApp', () => {
-  it('warms the shared cockpit and coding entry data after a connection', () => {
+  it('warms coding entry data after a connection', () => {
     const { client, prefetchQuery, prefetchInfiniteQuery } = createClient()
 
     preloadConnectedApp(client)
@@ -27,9 +27,8 @@ describe('preloadConnectedApp', () => {
       queryKeys.settings.providers(),
       queryKeys.coding.tree(),
     ])
-    expect(prefetchInfiniteQuery).toHaveBeenCalledTimes(2)
+    expect(prefetchInfiniteQuery).toHaveBeenCalledTimes(1)
     expect(prefetchInfiniteQuery.mock.calls.map(([options]) => (options as { queryKey: readonly unknown[] }).queryKey)).toEqual([
-      queryKeys.team.sessions.infinite(),
       queryKeys.team.sessions.workspace('__all_coding__'),
     ])
   })

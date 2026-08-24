@@ -130,8 +130,7 @@ describe('reduced motion — MobileChatActions drawer', () => {
   const props = {
     open: true,
     onOpenChange: () => {},
-    mode: 'normal' as const,
-    workspace: null,
+    workspace: '/repo/app',
     activeAgent: null,
     agents: [],
     onSelectAgent: () => {},

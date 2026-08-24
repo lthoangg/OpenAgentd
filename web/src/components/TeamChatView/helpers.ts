@@ -36,7 +36,6 @@ export interface FilterSlashCommandsContext {
   isTeamWorking?: boolean
   revertedCount?: number
   hasVisibleMessages?: boolean
-  mode?: 'normal' | 'coding'
   hasWorkspace?: boolean
 }
 
@@ -45,7 +44,7 @@ export function filterBaseSlashCommands(ctx: FilterSlashCommandsContext): SlashC
   const isWorking = ctx.isTeamWorking ?? false
   const revertedCount = ctx.revertedCount ?? 0
   const hasVisible = ctx.hasVisibleMessages ?? false
-  const isCoding = ctx.mode === 'coding' && (ctx.hasWorkspace ?? false)
+  const isCoding = ctx.hasWorkspace ?? false
 
   return BASE_SLASH_COMMANDS.filter((cmd) => {
     switch (cmd.id) {

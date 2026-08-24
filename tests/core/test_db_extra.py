@@ -169,3 +169,18 @@ def test_run_migrations_upgrade_error_is_reraised(tmp_path):
 
         with pytest.raises(RuntimeError, match="migrate failed"):
             db_module.run_migrations()
+
+
+def test_run_migrations_sets_quiet_alembic_option_when_requested(monkeypatch):
+    """Foreground callers can suppress Alembic INFO after config loading."""
+    import app.core.db as db_module
+
+    cfg = MagicMock()
+    monkeypatch.setattr(db_module, "_db_path", ":memory:")
+    with (
+        patch("alembic.config.Config", return_value=cfg),
+        patch("app.core.db._run_alembic_upgrade"),
+    ):
+        db_module.run_migrations(quiet_alembic=True)
+
+    cfg.set_main_option.assert_any_call("openagentd.quiet_alembic", "true")

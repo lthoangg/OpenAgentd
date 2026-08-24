@@ -147,7 +147,7 @@ beforeEach(() => {
 describe('TeamChatView send failure', () => {
   it('restores the draft when the send is rejected', async () => {
     sendSucceeds = false
-    render(<TeamChatView sessionId="test-session" />)
+    render(<TeamChatView sessionId="test-session" workspace="/repo/project" />)
 
     fireEvent.click(screen.getByText('submit'))
 
@@ -156,7 +156,7 @@ describe('TeamChatView send failure', () => {
 
   it('leaves the cleared composer alone when the send succeeds', async () => {
     sendSucceeds = true
-    render(<TeamChatView sessionId="test-session" />)
+    render(<TeamChatView sessionId="test-session" workspace="/repo/project" />)
 
     fireEvent.click(screen.getByText('submit'))
 

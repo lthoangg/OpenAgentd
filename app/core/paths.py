@@ -68,7 +68,7 @@ def uploads_dir(session_id: str) -> Path:
 def session_uploads_dir(session_id: str, workspace: str | None = None) -> Path:
     """Return uploads storage for the session or coding workspace.
 
-    Normal mode stores uploads under the app-managed per-session workspace.
+    Interactive uploads are stored under the app-managed per-session workspace.
     Coding mode stores uploads under the selected workspace so the agent can
     reach them directly as ``uploads/<filename>`` from its sandbox root.
     """

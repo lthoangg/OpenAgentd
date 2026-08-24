@@ -25,8 +25,7 @@ import { type InputComposerHandle, type SlashCommand, type SnippetCommand } from
 import { filterBaseSlashCommands, attachmentToFile } from './helpers'
 
 export interface UseSlashCommandsArgs {
-  mode: 'normal' | 'coding'
-  /** Coding workspace path, or `null` in normal mode / no workspace attached. */
+  /** Coding workspace path, or `null` while no workspace is attached. */
   agentWorkspace: string | null
   inputRef: RefObject<InputComposerHandle | null>
   handleNewSession: () => void
@@ -48,7 +47,6 @@ export interface UseSlashCommandsResult {
 }
 
 export function useSlashCommands({
-  mode,
   agentWorkspace,
   inputRef,
   handleNewSession,
@@ -63,7 +61,7 @@ export function useSlashCommands({
   // into the textarea (``keepInputOpen``) so the user can append
   // ``$ARGUMENTS`` before submitting.
   const commandsQ = useCommandsQuery(agentWorkspace)
-  const snippetsQ = useSnippetsQuery(mode === 'coding' ? agentWorkspace : null)
+  const snippetsQ = useSnippetsQuery(agentWorkspace)
   const userCommandNames = useMemo(
     () => new Set<string>((commandsQ.data?.commands ?? []).map((c) => c.name)),
     [commandsQ.data],
@@ -74,10 +72,9 @@ export function useSlashCommands({
         isTeamWorking,
         revertedCount,
         hasVisibleMessages,
-        mode,
         hasWorkspace: Boolean(agentWorkspace),
       }),
-    [isTeamWorking, revertedCount, hasVisibleMessages, mode, agentWorkspace],
+    [isTeamWorking, revertedCount, hasVisibleMessages, agentWorkspace],
   )
 
   const slashCommands: SlashCommand[] = useMemo(() => [
@@ -157,10 +154,10 @@ export function useSlashCommands({
       case 'init':
         // Prompt body lives on the backend so it can be tweaked without a
         // web rebuild and stays the single source of truth.
+        if (!agentWorkspace) break
         void renderCommand('init', '', agentWorkspace)
           .then((res) =>
             useTeamStore.getState().sendMessage(res.content, undefined, {
-              mode,
               workspace: agentWorkspace,
             }),
           )
@@ -173,7 +170,7 @@ export function useSlashCommands({
           )
         break
     }
-  }, [handleNewSession, inputRef, mode, agentWorkspace, pushToast])
+  }, [handleNewSession, inputRef, agentWorkspace, pushToast])
 
   /** If *content* starts with a known user-defined command, render server-side
    *  and return the expanded body; otherwise return *content* unchanged. */

@@ -1,15 +1,14 @@
 /**
  * Workspace file/folder list for the InputComposer's @-mention picker.
  *
- * Hits one of two existing endpoints depending on mode:
- *   - coding:  GET /api/team/workspace/files/list?workspace=...
- *   - normal:  GET /api/team/{session_id}/files
+ * Hits the coding workspace endpoint:
+ *   GET /api/team/workspace/files/list?workspace=...
  *
  * Both return a flat list of files (max 5,000, gitignore-aware). Folder entries
  * are derived client-side from the path prefixes so the user can also reference
  * directories with `@some/dir/`.
  *
- * The query shares its cache entry with the workspace file trees in both modes
+ * The query shares its cache entry with the workspace file tree
  * (see ``queries/workspace-files.ts``) — the listing is an expensive recursive
  * walk, so the picker must never fetch its own copy, and sharing the key is
  * what makes the ``workspace_files`` / ``coding_workspace`` invalidations
@@ -24,10 +23,8 @@ import { useQuery } from '@tanstack/react-query'
 import type { WorkspaceFileInfo } from '@/api/types'
 import type { FileRef } from '@/components/InputComposer.mentions'
 /**
- * The picker only reads ``files``, and the two endpoints' responses differ in
- * their other fields. Typing the reader against this common supertype lets one
- * ``useQuery`` call serve both modes; the value written to the cache is still
- * the full, unmodified response object (see ``workspace-files.ts``).
+ * The picker only reads ``files``; the value written to the cache is still the
+ * full, unmodified response object (see ``workspace-files.ts``).
  */
 interface WorkspaceFileListing {
   files: WorkspaceFileInfo[]
@@ -35,12 +32,9 @@ interface WorkspaceFileListing {
 import {
   WORKSPACE_FILES_STALE_MS,
   codingWorkspaceFilesQueryOptions,
-  workspaceFilesQueryOptions,
 } from './workspace-files'
 
 interface UseFileRefsQueryArgs {
-  mode: 'normal' | 'coding'
-  sessionId?: string | null
   workspace?: string | null
   /** Only fetch when the input bar wants the list (focus / @ keystroke). */
   enabled?: boolean
@@ -66,22 +60,15 @@ function basename(p: string): string {
 }
 
 export function useFileRefsQuery({
-  mode,
-  sessionId,
   workspace,
   enabled = true,
 }: UseFileRefsQueryArgs) {
-  const isCoding = mode === 'coding'
-  const hasWorkspace = isCoding ? Boolean(workspace) : Boolean(sessionId)
-
-  const options = isCoding
-    ? codingWorkspaceFilesQueryOptions(workspace ?? '')
-    : workspaceFilesQueryOptions(sessionId ?? '')
+  const options = codingWorkspaceFilesQueryOptions(workspace ?? '')
 
   const query = useQuery<WorkspaceFileListing, Error, WorkspaceFileListing, readonly unknown[]>({
     queryKey: options.queryKey,
     queryFn: options.queryFn,
-    enabled: enabled && hasWorkspace,
+    enabled: enabled && Boolean(workspace),
     // Files change frequently while an agent writes them, but the cache-
     // invalidation bridge refreshes this entry on every file-mutating tool_end
     // and after /undo + /redo, so time-based staleness only has to cover

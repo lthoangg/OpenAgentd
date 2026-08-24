@@ -10,14 +10,14 @@ import { loadLastCodingWorkspace, removeCodingWorkspace, saveLastCodingWorkspace
 import { syncDesktopWindowTitle } from '@/lib/window-title'
 
 /**
- * Layout route for /cockpit, /coding, and their session routes.
+ * Coding workspace layout for /coding and its session routes.
  * Stays mounted across URL changes — handles navigation when a new
  * team session_id arrives from POST /team/chat.
  */
-function TeamLayoutBase({ forcedMode }: { forcedMode?: 'normal' | 'coding' }) {
+function TeamLayoutBase() {
   const params = useParams({ strict: false }) as Record<string, string>
   const sessionId = params.sessionId as string | undefined
-  const mode = forcedMode ?? 'normal'
+  const mode = 'coding' as const
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const cachedSessionPages = queryClient.getQueryData<{
@@ -31,10 +31,10 @@ function TeamLayoutBase({ forcedMode }: { forcedMode?: 'normal' | 'coding' }) {
   const sessionQuery = useQuery({
     queryKey: queryKeys.team.sessions.detail(sessionId ?? ''),
     queryFn: () => getTeamSession(sessionId as string),
-    enabled: mode === 'coding' && Boolean(sessionId) && !cachedSession?.workspace,
+    enabled: Boolean(sessionId) && !cachedSession?.workspace,
     staleTime: 30_000,
   })
-  const workspace = workspaceFromSession(mode, sessionId, cachedSession?.workspace ?? sessionQuery.data?.workspace)
+  const workspace = workspaceFromSession(sessionId, cachedSession?.workspace ?? sessionQuery.data?.workspace)
 
   const navigateRef = useRef(navigate)
   const sessionIdRef = useRef(sessionId)
@@ -48,30 +48,29 @@ function TeamLayoutBase({ forcedMode }: { forcedMode?: 'normal' | 'coding' }) {
   })
 
   useEffect(() => {
-    if (mode === 'coding' && workspace) saveLastCodingWorkspace(workspace)
+    if (workspace) saveLastCodingWorkspace(workspace)
   }, [mode, workspace])
 
   useEffect(() => {
-    syncDesktopWindowTitle({ mode, workspace, sessionTitle: useTeamStore.getState().sessionTitle })
+    syncDesktopWindowTitle({ workspace, sessionTitle: useTeamStore.getState().sessionTitle })
     return useTeamStore.subscribe((state, prev) => {
       if (state.sessionTitle !== prev.sessionTitle) {
-        syncDesktopWindowTitle({ mode, workspace, sessionTitle: state.sessionTitle })
+        syncDesktopWindowTitle({ workspace, sessionTitle: state.sessionTitle })
       }
     })
   }, [mode, workspace])
 
   useEffect(() => {
-    if (mode !== 'coding' || sessionId) return
+    if (sessionId) return
     let cancelled = false
     const restore = window.setTimeout(() => {
-      if (!shouldRestoreLastCodingWorkspace(mode, sessionId, window.location.pathname)) return
+      if (!shouldRestoreLastCodingWorkspace(sessionId, window.location.pathname)) return
       const lastWorkspace = loadLastCodingWorkspace()
       if (!lastWorkspace) return
       ;(async () => {
         const current = useTeamStore.getState()
         try {
           const session = await resolveTeamSession({
-            mode: 'coding',
             workspace: lastWorkspace.path,
             model: current.sessionModel,
             thinkingLevel: current.sessionThinkingLevel,
@@ -83,7 +82,6 @@ function TeamLayoutBase({ forcedMode }: { forcedMode?: 'normal' | 'coding' }) {
           // here would silently clobber that choice the moment it resolves.
           const latest = useTeamStore.getState()
           latest.beginResolvedSession(session.id, {
-            mode: 'coding',
             workspace: session.workspace ?? lastWorkspace.path,
             model: session.model ?? latest.sessionModel,
             thinkingLevel: session.thinking_level ?? latest.sessionThinkingLevel,
@@ -119,7 +117,6 @@ function TeamLayoutBase({ forcedMode }: { forcedMode?: 'normal' | 'coding' }) {
   // and invalidate the wrong query key, leaving the Coding Workspace
   // sidebar Files / Diff panels stale until the next manual refresh.
   useLayoutEffect(() => {
-    if (mode !== 'coding') return
     useTeamStore.setState((state) => {
       state._workspace = workspace ?? null
     })
@@ -127,7 +124,7 @@ function TeamLayoutBase({ forcedMode }: { forcedMode?: 'normal' | 'coding' }) {
 
   useEffect(() => {
     if (sessionId) return
-    if (mode === 'coding' && !workspace) return
+    if (!workspace) return
     let cancelled = false
     ;(async () => {
       const current = useTeamStore.getState()
@@ -135,8 +132,7 @@ function TeamLayoutBase({ forcedMode }: { forcedMode?: 'normal' | 'coding' }) {
       const thinkingLevel = current.sessionId ? current.sessionThinkingLevel : null
       try {
         const session = await resolveTeamSession({
-          mode,
-          workspace: mode === 'coding' ? workspace : null,
+          workspace,
           model,
           thinkingLevel,
         })
@@ -147,26 +143,17 @@ function TeamLayoutBase({ forcedMode }: { forcedMode?: 'normal' | 'coding' }) {
         // overwrite that choice the instant the resolve completes.
         const latest = useTeamStore.getState()
         latest.beginResolvedSession(session.id, {
-          mode,
           workspace: session.workspace ?? workspace,
           model: session.model ?? latest.sessionModel,
           thinkingLevel: session.thinking_level ?? latest.sessionThinkingLevel,
         })
         void queryClient.invalidateQueries({ queryKey: queryKeys.team.sessions.all() })
-        if (mode === 'coding') {
-          if (workspace) saveLastCodingWorkspace(workspace)
-          navigate({
-            to: '/coding/$sessionId',
-            params: { sessionId: session.id },
-            replace: true,
-          })
-        } else {
-          navigate({
-            to: '/cockpit/$sessionId',
-            params: { sessionId: session.id },
-            replace: true,
-          })
-        }
+        if (workspace) saveLastCodingWorkspace(workspace)
+        navigate({
+          to: '/coding/$sessionId',
+          params: { sessionId: session.id },
+          replace: true,
+        })
       } catch (err) {
         if (cancelled) return
         useTeamStore.setState((state) => {
@@ -185,21 +172,13 @@ function TeamLayoutBase({ forcedMode }: { forcedMode?: 'normal' | 'coding' }) {
       if (state.sessionId && state.sessionId !== prev.sessionId && !sessionIdRef.current) {
         void queryClient.invalidateQueries({ queryKey: queryKeys.team.sessions.all() })
         void queryClient.refetchQueries({ queryKey: queryKeys.team.sessions.infinite(), type: 'active' })
-        if (modeRef.current === 'coding') {
-          const workspace = workspaceRef.current
-          if (workspace) saveLastCodingWorkspace(workspace)
-          navigateRef.current({
-            to: '/coding/$sessionId',
-            params: { sessionId: state.sessionId },
-            replace: true,
-          })
-        } else {
-          navigateRef.current({
-            to: '/cockpit/$sessionId',
-            params: { sessionId: state.sessionId },
-            replace: true,
-          })
-        }
+        const workspace = workspaceRef.current
+        if (workspace) saveLastCodingWorkspace(workspace)
+        navigateRef.current({
+          to: '/coding/$sessionId',
+          params: { sessionId: state.sessionId },
+          replace: true,
+        })
       }
 
       // When title_update arrives, patch the cached team session list
@@ -234,7 +213,6 @@ function TeamLayoutBase({ forcedMode }: { forcedMode?: 'normal' | 'coding' }) {
     <>
       <TeamChatView
         sessionId={sessionId}
-        mode={mode}
         workspace={workspace}
         codingSessionLoading={mode === 'coding' && Boolean(sessionId) && !workspace && sessionQuery.isLoading}
       />
@@ -243,10 +221,6 @@ function TeamLayoutBase({ forcedMode }: { forcedMode?: 'normal' | 'coding' }) {
   )
 }
 
-export function TeamLayout() {
-  return <TeamLayoutBase />
-}
-
 export function CodingLayout() {
-  return <TeamLayoutBase forcedMode="coding" />
+  return <TeamLayoutBase />
 }

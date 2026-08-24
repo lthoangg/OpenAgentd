@@ -15,10 +15,12 @@
   *   • Scheduler shortcut button
   *   • ThemeToggle (collapsed 3-way cycler)
   *   • Help button (Command Palette ⌘⇧P)
+ *   • Telemetry link
  *   • Settings button (Settings modal ⌘,)
  */
 import { memo } from 'react'
 import {
+  Activity,
   CalendarClock,
   GitBranch,
   HelpCircle,
@@ -40,7 +42,6 @@ import { getCodingWorkspaceStatus } from '@/api/client'
 import { cn } from '@/lib/utils'
 
 export interface AppFooterProps {
-  mode?: 'normal' | 'coding'
   workspace?: string | null
   sessionId?: string | null
   sessionModel?: string | null
@@ -60,7 +61,6 @@ function formatModelDisplay(model: string): string {
 }
 
 export const AppFooter = memo(function AppFooter({
-  mode = 'normal',
   workspace,
   sessionId: _sessionId,
   sessionModel,
@@ -77,7 +77,7 @@ export const AppFooter = memo(function AppFooter({
   const { os } = usePlatform()
   const openSettings = useSettingsStore((s) => s.openSettings)
 
-  const isCoding = mode === 'coding' && Boolean(workspace)
+  const isCoding = Boolean(workspace)
   const statusQuery = useQuery({
     queryKey: queryKeys.coding.status(workspace ?? ''),
     queryFn: () => getCodingWorkspaceStatus(workspace!),
@@ -203,6 +203,21 @@ export const AppFooter = memo(function AppFooter({
         )}
 
         <ThemeToggle collapsed compact />
+
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <a
+                href="/telemetry"
+                className="flex h-5 w-5 items-center justify-center rounded-sm text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
+                aria-label="Telemetry"
+              >
+                <Activity size={12} aria-hidden="true" />
+              </a>
+            }
+          />
+          <TooltipContent>Telemetry</TooltipContent>
+        </Tooltip>
 
         {onTogglePalette && (
           <Tooltip>

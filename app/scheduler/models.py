@@ -22,16 +22,10 @@ class ScheduledTask(SQLModel, table=True):
     name: str = Field(
         sa_column=Column(sa.String(100), nullable=False, unique=True, index=True)
     )
-    # Routing target — every task delivers to the lead of the chosen team.
-    # ``normal`` → default team; ``coding`` → per-workspace team. ``workspace``
-    # is required when ``mode == 'coding'`` (validated in the API schema).
-    mode: str = Field(
-        default="normal",
-        sa_column=Column(sa.String(20), nullable=False, server_default="normal"),
-    )
-    workspace: str | None = Field(
-        default=None, sa_column=Column(sa.String, nullable=True)
-    )
+    # Every task delivers to the coding team for its workspace.
+    # API and scheduler validation require a real workspace. Keep direct ORM
+    # construction representable with an invalid sentinel until validation.
+    workspace: str = Field(default="", sa_column=Column(sa.String, nullable=False))
 
     # Schedule — exactly one of these must be set
     schedule_type: str = Field(sa_column=Column(sa.String(20), nullable=False))

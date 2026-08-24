@@ -265,7 +265,7 @@ class TestAgentTeamUserMessage:
             await engine.dispose()
 
     async def test_handle_user_message_reset_clears_session_override_but_stamps_default_model(
-        self, basic_team
+        self, basic_team, tmp_path
     ):
         engine = create_async_engine("sqlite+aiosqlite:///:memory:")
         async with engine.begin() as conn:
@@ -283,6 +283,8 @@ class TestAgentTeamUserMessage:
                 ChatSession(
                     id=session_uuid,
                     agent_name="lead",
+                    mode="coding",
+                    workspace=str(tmp_path),
                     model="openai:gpt-5.5",
                     thinking_level="high",
                 )
@@ -461,7 +463,7 @@ class TestAgentTeamDoneDetection:
     async def test_activate_queued_messages_resets_stream_when_team_idle(
         self, basic_team
     ):
-        """The normal post-turn drain starts a fresh turn blob."""
+        """The post-turn drain starts a fresh turn blob."""
         team = basic_team
         team.lead.state = "idle"
         for member in team.members.values():
@@ -641,17 +643,6 @@ class TestAgentTeamToolInjection:
     async def test_coding_agents_do_not_get_lsp(self, basic_team):
         """lsp injection is temporarily detached (see AgentTeam.get_injected_tools)."""
         team = basic_team
-        team.mode = "coding"
-
-        lead_names = {t.name for t in team.get_injected_tools("lead")}
-        member_names = {t.name for t in team.get_injected_tools("member_a")}
-
-        assert "lsp" not in lead_names
-        assert "lsp" not in member_names
-
-    async def test_normal_agents_do_not_get_lsp(self, basic_team):
-        team = basic_team
-        team.mode = "normal"
 
         lead_names = {t.name for t in team.get_injected_tools("lead")}
         member_names = {t.name for t in team.get_injected_tools("member_a")}
@@ -661,16 +652,6 @@ class TestAgentTeamToolInjection:
 
     async def test_coding_lead_gets_ask_user(self, basic_team):
         team = basic_team
-        team.mode = "coding"
-
-        names = {t.name for t in team.get_injected_tools("lead")}
-
-        assert "ask_user" in names
-
-    async def test_normal_lead_gets_ask_user(self, basic_team):
-        """Cockpit (normal) mode also lets the lead interrupt the user."""
-        team = basic_team
-        team.mode = "normal"
 
         names = {t.name for t in team.get_injected_tools("lead")}
 
@@ -679,7 +660,6 @@ class TestAgentTeamToolInjection:
     async def test_members_never_get_ask_user(self, basic_team):
         """Members escalate through ``team_message``; only the lead owns the user."""
         team = basic_team
-        team.mode = "coding"
 
         names = {t.name for t in team.get_injected_tools("member_a")}
 
@@ -688,7 +668,6 @@ class TestAgentTeamToolInjection:
     async def test_scheduler_session_lead_does_not_get_ask_user(self, basic_team):
         """A cron-owned session has nobody to answer, so the tool is withheld."""
         team = basic_team
-        team.mode = "coding"
         team.lead.is_scheduler_session = True
 
         names = {t.name for t in team.get_injected_tools("lead")}

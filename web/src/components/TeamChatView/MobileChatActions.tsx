@@ -12,7 +12,6 @@ export interface MobileChatActionsProps {
   onOpenChange: (open: boolean) => void
   /** Live edge-swipe drag offset (px, positive = pushed off-screen right). */
   dragOffset?: number | null
-  mode: 'normal' | 'coding'
   workspace: string | null
   activeAgent: string | null
   agents: string[]
@@ -25,7 +24,6 @@ export function MobileChatActions({
   open,
   onOpenChange,
   dragOffset = null,
-  mode,
   workspace,
   activeAgent,
   agents,
@@ -93,7 +91,7 @@ export function MobileChatActions({
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <p className="truncate text-sm font-semibold text-(--color-text)">
-                      {mode === 'coding' && workspace ? workspaceLabel(workspace) : 'Chat actions'}
+                      {workspace ? workspaceLabel(workspace) : 'Choose a workspace'}
                     </p>
                     {activeAgent && (
                       <p className="mt-1 truncate font-mono text-xs text-(--color-text-muted)">Active: {activeAgent}</p>

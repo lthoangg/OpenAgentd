@@ -47,6 +47,7 @@ async def create_chat_session(
     title: str | None = None,
     parent_session_id: UUID | None = None,
     agent_name: str | None = None,
+    workspace: str | None = None,
 ) -> ChatSession:
     """Creates a new chat session.
 
@@ -63,6 +64,7 @@ async def create_chat_session(
             title=title,
             parent_session_id=parent_session_id,
             agent_name=agent_name,
+            workspace=workspace or "",
         )
         db.add(session)
         await db.flush()
@@ -624,8 +626,6 @@ async def list_sessions_page(
         .order_by(col(ChatSession.created_at).desc(), col(ChatSession.id).desc())
     )
 
-    if mode is not None:
-        stmt = stmt.where(col(ChatSession.mode) == mode)
     if workspace is not None:
         stmt = stmt.where(col(ChatSession.workspace) == workspace)
 
@@ -673,16 +673,10 @@ async def get_latest_top_level_session(
     """Return the newest top-level session for a mode/workspace pair."""
     stmt = (
         select(ChatSession)
-        .where(
-            col(ChatSession.parent_session_id).is_(None),
-            ChatSession.mode == mode,
-        )
+        .where(col(ChatSession.parent_session_id).is_(None))
         .order_by(col(ChatSession.created_at).desc())
     )
-    if workspace is None:
-        stmt = stmt.where(col(ChatSession.workspace).is_(None))
-    else:
-        stmt = stmt.where(ChatSession.workspace == workspace)
+    stmt = stmt.where(ChatSession.workspace == (workspace or ""))
     return (await db.exec(stmt.limit(1))).first()
 
 
@@ -735,15 +729,15 @@ async def delete_session(db: AsyncSession, session_id: UUID) -> bool:
         )
         descendants = set((await db.exec(select(descendants_cte.c.id))).all())
         managed_workspace_ids = {
-            str(row.id)
-            for row in (
+            str(session_id)
+            for session_id, workspace in (
                 await db.exec(
                     select(ChatSession.id, ChatSession.workspace).where(
                         col(ChatSession.id).in_(descendants)
                     )
                 )
             ).all()
-            if row.workspace is None
+            if workspace is None
         }
 
     # Stop producers before rows disappear so they cannot persist a late turn.

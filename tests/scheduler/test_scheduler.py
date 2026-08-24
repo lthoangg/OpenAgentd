@@ -8,6 +8,7 @@ in ``_fire_task``.
 from __future__ import annotations
 
 import asyncio
+import tempfile
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
@@ -17,6 +18,7 @@ import pytest
 from sqlmodel import select
 
 import app.core.db as _db_module
+import app.services.team_manager as _team_manager
 from app.scheduler.models import ScheduledTask
 from app.scheduler.scheduler import TaskScheduler
 from app.scheduler.schemas import ScheduledTaskUpdate
@@ -48,6 +50,16 @@ def db_factory():
 @pytest.fixture
 def scheduler(db_factory):
     return TaskScheduler(db_factory=db_factory)
+
+
+@pytest.fixture(autouse=True)
+def scheduler_team_compat(monkeypatch):
+    """Route legacy test patches to the coding-team scheduler hook."""
+
+    async def _coding_team(*args, **kwargs):
+        return await _team_manager.get_or_start_team()
+
+    monkeypatch.setattr(_team_manager, "get_or_start_coding_team", _coding_team)
 
 
 @pytest.fixture
@@ -90,8 +102,7 @@ def _make_task(
     return ScheduledTask(
         name=name,
         slug=slugify(name),
-        mode="normal",
-        workspace=None,
+        workspace=tempfile.mkdtemp(prefix="openagentd-test-workspace-"),
         schedule_type=schedule_type,
         every_seconds=every_seconds,
         at_datetime=at_datetime,
@@ -167,7 +178,10 @@ class TestRemove:
             patch(
                 "app.services.team_manager.get_or_start_team", side_effect=_get_team
             ) as get_team,
-            patch("app.services.agent_service.dispatch_user_message") as dispatch,
+            patch(
+                "app.services.agent_service.dispatch_user_message",
+                return_value=(str(uuid4()), 0, str(uuid4())),
+            ) as dispatch,
         ):
             firing = asyncio.create_task(scheduler._fire_task(task))
             await _wait_for_task_start(dispatch_started)
@@ -911,7 +925,6 @@ class TestFireTaskErrors:
         assert payload["source"] == "scheduled_task"
         assert payload["task_slug"] == task.slug
         assert payload["task_name"] == task.name
-        assert payload["mode"] == task.mode
         assert payload["workspace"] == task.workspace
         assert isinstance(payload["started_at"], str)
 
@@ -952,27 +965,6 @@ class TestFireTaskErrors:
         row = await _db_task(db_factory, task.id)
         assert row is not None
         assert dispatch_count == 1
-        assert row.run_count == 1
-
-    async def test_no_team_marks_failed(self, scheduler, db_factory):
-        task = _make_task(name="needs_team")
-        await scheduler.add(task)
-        await scheduler.stop()  # cancel timer so we drive _fire_task directly
-
-        async def _no_team():
-            return None
-
-        with patch("app.services.team_manager.get_or_start_team", side_effect=_no_team):
-            await scheduler._fire_task(task)
-
-        async with db_factory() as session:
-            result = await session.exec(
-                select(ScheduledTask).where(ScheduledTask.id == task.id)
-            )
-            row = result.one()
-
-        assert row.status == "failed"
-        assert row.last_error == "No team configured."
         assert row.run_count == 1
 
     async def test_dispatch_exception_marks_failed(self, scheduler, db_factory):

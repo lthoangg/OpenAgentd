@@ -20,6 +20,21 @@ from app.api.routes.team._helpers import _message_response
 from app.models.chat import SessionMessage
 
 
+@pytest.fixture(autouse=True)
+def _coding_workspace_for_chat_forms(monkeypatch):
+    """Keep route requests focused on behavior, with the required workspace."""
+    original_post = TestClient.post
+
+    def post(self, url, *args, **kwargs):
+        if url == "/api/team/chat":
+            data = kwargs.get("data")
+            if isinstance(data, dict) and "workspace" not in data:
+                kwargs["data"] = {**data, "workspace": "/tmp"}
+        return original_post(self, url, *args, **kwargs)
+
+    monkeypatch.setattr(TestClient, "post", post)
+
+
 def test_message_response_strips_internal_attachment_paths():
     msg = SessionMessage(
         session_id=uuid.uuid7(),
@@ -195,7 +210,7 @@ def app_with_team(test_team, monkeypatch):
         return test_team
 
     monkeypatch.setattr(
-        "app.services.team_manager.get_or_start_team_for_session", get_session_team
+        "app.services.team_manager.get_or_start_coding_team", get_session_team
     )
     monkeypatch.setattr(
         "app.services.team_manager.get_or_start_coding_team", get_coding_team
@@ -239,12 +254,6 @@ def app_without_team():
 
 class TestTeamChatRoute:
     """Test POST /team/chat endpoint."""
-
-    def test_team_chat_no_team_returns_404(self, app_without_team):
-        client = TestClient(app_without_team)
-        response = client.post("/api/team/chat", data={"message": "Hello"})
-        assert response.status_code == 404
-        assert "No agent team" in response.json()["detail"]
 
     def test_team_chat_returns_202(self, app_with_team, test_team):
         test_team.handle_user_message = AsyncMock(
@@ -893,10 +902,10 @@ class TestTeamAgentsRoute:
         assert "ask_user" not in worker_tools
         assert "team_manage" not in worker_tools
 
-    def test_team_agents_includes_ask_user_in_normal_mode(
+    def test_team_agents_includes_ask_user_in_coding_mode(
         self, app_with_team, test_team
     ):
-        test_team.mode = "normal"
+        test_team.mode = "coding"
 
         client = TestClient(app_with_team)
         data = client.get("/api/team/agents").json()
@@ -959,5 +968,5 @@ class TestTeamChatFormValidation:
         from app.api.schemas.chat import ChatForm
 
         for level in ["none", "low", "medium", "high", "xhigh", "max", "custom-level"]:
-            form = ChatForm(message="hello", thinking_level=level)
+            form = ChatForm(message="hello", thinking_level=level, workspace="/tmp")
             assert form.thinking_level == level

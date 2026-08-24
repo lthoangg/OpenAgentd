@@ -39,8 +39,8 @@ describe('listTeamAgents coalescing', () => {
     setApiBaseUrl('')
     const { calls, release } = deferredFetch()
 
-    const a = listTeamAgents()
-    const b = listTeamAgents()
+    const a = listTeamAgents('/tmp/workspace')
+    const b = listTeamAgents('/tmp/workspace')
     release()
     const [ra, rb] = await Promise.all([a, b])
 
@@ -53,8 +53,8 @@ describe('listTeamAgents coalescing', () => {
     setApiBaseUrl('')
     const { calls, release } = deferredFetch()
 
-    const viaStore = teamStatus()
-    const viaQuery = listTeamAgents()
+    const viaStore = teamStatus('/tmp/workspace')
+    const viaQuery = listTeamAgents('/tmp/workspace')
     release()
     const [status, agents] = await Promise.all([viaStore, viaQuery])
 
@@ -79,12 +79,12 @@ describe('listTeamAgents coalescing', () => {
     setApiBaseUrl('')
     const { calls, release } = deferredFetch()
 
-    const first = listTeamAgents()
+    const first = listTeamAgents('/tmp/workspace')
     release()
     await first
 
     const { calls: secondCalls, release: releaseSecond } = deferredFetch()
-    const second = listTeamAgents()
+    const second = listTeamAgents('/tmp/workspace')
     releaseSecond()
     await second
 
@@ -98,9 +98,9 @@ describe('listTeamAgents coalescing', () => {
       new Response('nope', { status: 500 }),
     ) as unknown as typeof fetch
 
-    await expect(listTeamAgents()).rejects.toBeDefined()
+    await expect(listTeamAgents('/tmp/workspace')).rejects.toBeDefined()
     // A stuck rejected promise would poison every later caller.
-    await expect(listTeamAgents()).rejects.toBeDefined()
+    await expect(listTeamAgents('/tmp/workspace')).rejects.toBeDefined()
     expect(globalThis.fetch).toHaveBeenCalledTimes(2)
   })
 })

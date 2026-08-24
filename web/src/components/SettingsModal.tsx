@@ -236,13 +236,12 @@ function SectionContent({
         <AgentsListPage
           selectedName={selectedName}
           onSelect={(name) => setSection('agents-edit', name)}
-          onNew={(mode) => setSection('agents-new', mode ?? 'normal')}
+          onNew={() => setSection('agents-new')}
         />
       )
     case 'agents-new':
       return (
         <NewAgentPage
-          initialMode={selectedName === 'coding' ? 'coding' : 'normal'}
           onBack={() => setSection('agents')}
           onCreated={(name) => setSection('agents-edit', name)}
         />

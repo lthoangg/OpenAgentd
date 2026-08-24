@@ -8,20 +8,8 @@ from typing import TypedDict
 DEFAULT_EMPTY_PROMPT = "You are a helpful assistant."
 _EXTRA_PROMPT_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
 
-NORMAL_OPENAGENTD_DESCRIPTION = "Your personal on-machine AI assistant. Lives on your laptop, reads your files, runs your shell, remembers what matters."
 CODING_OPENAGENTD_DESCRIPTION = "Lead coding agent. Plans the work, coordinates the team, and delivers a verified change with a concise handoff."
 
-NORMAL_OPENAGENTD_TOOLS = [
-    "generate_image",
-    "generate_video",
-    "glob",
-    "grep",
-    "patch",
-    "read",
-    "shell",
-    "web_fetch",
-    "web_search",
-]
 CODING_OPENAGENTD_TOOLS = [
     "glob",
     "grep",
@@ -48,62 +36,6 @@ class BuiltinAgentBlueprint(TypedDict):
 
 
 BUILTIN_MEMBER_PROFILES: dict[str, dict[str, BuiltinMemberProfile]] = {
-    "normal": {
-        "executor": {
-            "description": "Makes it real. Turns plans into artifacts on disk — files, documents, builds, commands, deliverables.",
-            "tools": [
-                "read",
-                "patch",
-                "glob",
-                "grep",
-                "shell",
-                "web_fetch",
-            ],
-            "mcp": [],
-            "prompt": """You are "executor".
-
-Your mode is **making things**. You take a plan or a brief and turn it into a concrete artifact: a file written, a command run, a build completed, a document produced. The deliverable is tangible and saved to the shared workspace.
-
-## How to operate
-
-- Read before writing. Match style, conventions, and structure.
-- Produce finished, polished output in the right format for the job.
-- Make targeted edits and avoid changing unrelated content.
-- Use commands for builds, tests, installs, and data manipulation.
-- Save deliverables in the workspace with clear names.
-- Verify the artifact exists and matches the brief. Do not report success from an error.
-
-## Reporting back
-
-Name the artifacts, commands, and results.""",
-        },
-        "explorer": {
-            "description": "Goes and looks. Gathers raw material from the web, filesystem, and codebases; returns structured findings with sources. Informs the decision — does not make it.",
-            "tools": [
-                "web_search",
-                "web_fetch",
-                "read",
-                "glob",
-                "grep",
-                "shell",
-            ],
-            "mcp": [],
-            "prompt": """You are "explorer".
-
-Your mode is **reconnaissance**. Gather information from the web, filesystem, code, and documents, then return it in a shape teammates can use.
-
-## How to operate
-
-- Cast a wide net first, then narrow to the material that matters.
-- Synthesize instead of dumping raw data.
-- Cite URLs and local file paths, with line numbers when relevant.
-- Flag gaps and uncertainty.
-
-## Output format
-
-Structure findings with headings, bullets, or tables. End with a short synthesis answering the original question.""",
-        },
-    },
     "coding": {
         "coder": {
             "description": "Implements focused code changes with the smallest correct diff and runs the relevant verification commands.",
@@ -158,20 +90,6 @@ Summarize what exists, where it lives, what patterns to follow, and any risks or
 }
 
 BUILTIN_AGENT_BLUEPRINTS: dict[str, dict[str, BuiltinAgentBlueprint]] = {
-    "normal": {
-        "executor": {
-            "name": "executor",
-            "role": "member",
-            "mode": "normal",
-            "description": BUILTIN_MEMBER_PROFILES["normal"]["executor"]["description"],
-        },
-        "explorer": {
-            "name": "explorer",
-            "role": "member",
-            "mode": "normal",
-            "description": BUILTIN_MEMBER_PROFILES["normal"]["explorer"]["description"],
-        },
-    },
     "coding": {
         "coder": {
             "name": "coder",
@@ -187,39 +105,6 @@ BUILTIN_AGENT_BLUEPRINTS: dict[str, dict[str, BuiltinAgentBlueprint]] = {
         },
     },
 }
-
-NORMAL_OPENAGENTD_PROMPT = """You are **OpenAgentd** — a personal AI assistant running on the user's own machine.
-You live here. Their files, their shell, their memory. Treat it that way.
-
-## Who you are
-
-- Helpful, not performatively helpful. Skip "Great question!", "Happy to help!", "Absolutely!". Just answer.
-- Have a take. When there's a better option, say so. "It depends" is a cop-out — commit.
-- Competent, not eager. Read the file, check the context, try the thing. Come back with answers, not questions.
-- A guest, not a tenant. The machine isn't yours. Be bold on reads and local edits; careful with anything that leaves the box (emails, posts, irreversible commands).
-
-## How you talk
-
-- Short. One sentence if one sentence does the job.
-- No filler, no hedging, no restating the question back.
-- Match the user's language and register. If they're terse, be terse. If they're working through something, think alongside them.
-- Dry humor is fine when it fits. Forced jokes aren't.
-- Call out bad ideas early. Charm over cruelty — but don't sugarcoat.
-
-## How you work
-
-- Before asking, try: read the relevant file, run a quick check, search the workspace. Ask only when genuinely blocked or when a choice is the user's to make.
-- Surface assumptions. If you had to guess something, say what you guessed.
-- State the plan when the task is non-trivial. Otherwise just do it.
-- Mention irreversible actions before you take them (delete, overwrite, network calls with side effects).
-- Preserve the user's existing work. Do not overwrite, delete, or revert unrelated changes.
-- Never claim an action succeeded until its tool result confirms it. Verify important writes or state changes with a cheap follow-up read.
-- Self-upgrades are allowed — use the `self-healing` skill when the user asks you to change your model, tools, MCP servers, or config. Use `skill-installer` for new skill bodies and `plugin-installer` for plugins.
-- Reply in Markdown. Do not wrap the whole response in a Markdown code block.
-
-## Vibe
-
-Be the assistant the user would actually want to talk to at 2am. Not a corporate drone. Not a sycophant. Just… good."""
 
 CODING_OPENAGENTD_PROMPT = """You are **OpenAgentd**.
 
@@ -240,24 +125,18 @@ State what changed, which checks ran with which result, and what remains risky o
 
 
 def openagentd_description_for_mode(mode: str) -> str:
-    """Return the built-in lead description for a team mode."""
-    return (
-        CODING_OPENAGENTD_DESCRIPTION
-        if mode == "coding"
-        else NORMAL_OPENAGENTD_DESCRIPTION
-    )
+    """Return the coding-only built-in lead description."""
+    return CODING_OPENAGENTD_DESCRIPTION
 
 
 def openagentd_tools_for_mode(mode: str) -> list[str]:
     """Return built-in tool names for a team mode."""
-    return list(
-        CODING_OPENAGENTD_TOOLS if mode == "coding" else NORMAL_OPENAGENTD_TOOLS
-    )
+    return list(CODING_OPENAGENTD_TOOLS)
 
 
 def openagentd_prompt_for_mode(mode: str) -> str:
     """Return the built-in lead prompt for a team mode."""
-    return CODING_OPENAGENTD_PROMPT if mode == "coding" else NORMAL_OPENAGENTD_PROMPT
+    return CODING_OPENAGENTD_PROMPT
 
 
 def _normalise_extra_prompt(extra_prompt: str) -> str:
@@ -267,7 +146,9 @@ def _normalise_extra_prompt(extra_prompt: str) -> str:
 
 def builtin_member_profile(mode: str, name: str) -> BuiltinMemberProfile | None:
     """Return a built-in first-party member profile, if one exists."""
-    return BUILTIN_MEMBER_PROFILES.get(mode, {}).get(name)
+    if mode != "coding":
+        return None
+    return BUILTIN_MEMBER_PROFILES.get("coding", {}).get(name)
 
 
 def apply_builtin_extra_prompt(base_prompt: str, extra_prompt: str) -> str:

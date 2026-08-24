@@ -183,7 +183,7 @@ const { TeamChatView } = await import('@/components/TeamChatView')
 
 describe('TeamChatView reactive derived state', () => {
   it('updates composer history when finalized lead blocks load without changing the lead name', () => {
-    render(<TeamChatView sessionId="session-1" />)
+    render(<TeamChatView sessionId="session-1" workspace="/repo/project" />)
     expect(screen.getByTestId('history-prompts').textContent).toBe('')
 
     act(() => {
@@ -196,7 +196,7 @@ describe('TeamChatView reactive derived state', () => {
   })
 
   it('removes an offline member from desktop tabs and mobile action inputs', () => {
-    render(<TeamChatView sessionId="session-1" />)
+    render(<TeamChatView sessionId="session-1" workspace="/repo/project" />)
     expect(screen.getByTestId('agent-tabs').textContent).toBe('lead,worker#1')
     expect(screen.getByTestId('header-agents').textContent).toBe('lead,worker#1')
 
@@ -239,7 +239,7 @@ describe('TeamChatView reactive derived state', () => {
       }
     })
 
-    render(<TeamChatView sessionId="session-1" />)
+    render(<TeamChatView sessionId="session-1" workspace="/repo/project" />)
 
     expect(screen.getByTestId('session-cost').textContent).toBe('0.0035')
   })
@@ -252,13 +252,13 @@ describe('TeamChatView reactive derived state', () => {
       state.agentStreams.lead.status = 'working'
     })
 
-    render(<TeamChatView sessionId="session-1" />)
+    render(<TeamChatView sessionId="session-1" workspace="/repo/project" />)
 
     expect(screen.queryByTestId('session-cost')).not.toBeNull()
   })
 
   it('shows the header meter even when idle with no usage', () => {
-    render(<TeamChatView sessionId="session-1" />)
+    render(<TeamChatView sessionId="session-1" workspace="/repo/project" />)
 
     expect(screen.queryByTestId('session-cost')).not.toBeNull()
   })

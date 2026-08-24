@@ -479,7 +479,7 @@ def test_load_team_from_dir_valid_minimal(tmp_path):
     team = load_team_from_dir(d, provider_factory=factory)
     assert team is not None
     assert team.lead.name == "lead"
-    assert set(team.blueprints) == {"executor", "explorer"}
+    assert set(team.blueprints) == {"coder", "explorer"}
     assert team.members == {}
 
 
@@ -548,7 +548,7 @@ def test_coding_mode_hides_retired_executor_member(tmp_path):
 
 
 def test_openagentd_lead_uses_builtin_prompt_with_extra(tmp_path):
-    from app.agent.builtin_prompts import NORMAL_OPENAGENTD_PROMPT
+    from app.agent.builtin_prompts import CODING_OPENAGENTD_PROMPT
     from app.agent.loader import load_team_from_dir
 
     d = _make_agents_dir(
@@ -565,18 +565,17 @@ def test_openagentd_lead_uses_builtin_prompt_with_extra(tmp_path):
     factory, _ = _make_provider_factory()
     team = load_team_from_dir(d, provider_factory=factory)
     assert team is not None
-    assert team.lead.agent.system_prompt.startswith(NORMAL_OPENAGENTD_PROMPT)
+    assert team.lead.agent.system_prompt.startswith(CODING_OPENAGENTD_PROMPT)
     assert "## User extra prompt" in team.lead.agent.system_prompt
     assert "Prefer concise answers." in team.lead.agent.system_prompt
     assert team.lead.agent.description is not None
-    assert "personal on-machine AI assistant" in team.lead.agent.description
+    assert "Lead coding agent" in team.lead.agent.description
     assert "shell" in team.lead.agent._tools
-    assert "generate_image" in team.lead.agent._tools
     assert team.lead.agent.mcp_servers == []
 
 
 def test_openagentd_seed_comment_is_not_injected_as_extra_prompt(tmp_path):
-    from app.agent.builtin_prompts import NORMAL_OPENAGENTD_PROMPT
+    from app.agent.builtin_prompts import CODING_OPENAGENTD_PROMPT
     from app.agent.loader import load_team_from_dir
 
     d = _make_agents_dir(
@@ -593,7 +592,7 @@ def test_openagentd_seed_comment_is_not_injected_as_extra_prompt(tmp_path):
     factory, _ = _make_provider_factory()
     team = load_team_from_dir(d, provider_factory=factory)
     assert team is not None
-    assert team.lead.agent.system_prompt.startswith(NORMAL_OPENAGENTD_PROMPT)
+    assert team.lead.agent.system_prompt.startswith(CODING_OPENAGENTD_PROMPT)
     assert "## User extra prompt" not in team.lead.agent.system_prompt
     assert "Add extra prompt text below" not in team.lead.agent.system_prompt
 
@@ -667,35 +666,10 @@ def test_openagentd_user_description_overrides_builtin_description(tmp_path):
     assert team.lead.agent.description == "My local lead."
 
 
-def test_builtin_member_profile_uses_code_defaults_with_extra(tmp_path):
-    from app.agent.builtin_prompts import BUILTIN_MEMBER_PROFILES
-    from app.agent.loader import rebuild_agent_from_disk
-
-    f = _write_agent_md(
-        tmp_path / "executor.md",
-        {
-            "name": "executor",
-            "role": "member",
-            "model": "zai:glm-5-turbo",
-            "tools": ["generate_image"],
-        },
-        "Prefer Markdown deliverables.",
-    )
-    factory, _ = _make_provider_factory()
-    agent = rebuild_agent_from_disk(f, provider_factory=factory)
-    profile = BUILTIN_MEMBER_PROFILES["normal"]["executor"]
-    assert agent.description == profile["description"]
-    assert agent.system_prompt.startswith(str(profile["prompt"]))
-    assert "## User extra prompt" in agent.system_prompt
-    assert "Prefer Markdown deliverables." in agent.system_prompt
-    assert "shell" in agent._tools
-    assert "generate_image" in agent._tools
-
-
 def test_builtin_member_profiles_are_curated_to_default_agents():
     from app.agent.builtin_prompts import BUILTIN_MEMBER_PROFILES
 
-    assert set(BUILTIN_MEMBER_PROFILES["normal"]) == {"executor", "explorer"}
+    assert set(BUILTIN_MEMBER_PROFILES["coding"]) == {"coder", "explorer"}
     assert set(BUILTIN_MEMBER_PROFILES["coding"]) == {"coder", "explorer"}
 
 
@@ -709,7 +683,7 @@ def test_builtin_agent_blueprints_use_default_thinking(tmp_path):
     from app.agent.loader import ensure_builtin_agent_blueprints
 
     agents_dir = tmp_path / "agents"
-    written = ensure_builtin_agent_blueprints(agents_dir, mode="normal")
+    written = ensure_builtin_agent_blueprints(agents_dir, mode="coding")
     assert written  # sanity: files were materialized
 
     for name in written:
@@ -722,7 +696,7 @@ def test_builtin_openagentd_lead_uses_default_thinking(tmp_path):
 
     agents_dir = tmp_path / "agents"
     agents_dir.mkdir()
-    assert ensure_builtin_openagentd_lead(agents_dir, mode="normal")
+    assert ensure_builtin_openagentd_lead(agents_dir, mode="coding")
 
     cfg = parse_agent_md(agents_dir / "openagentd.md")
     assert cfg.thinking_level is None
@@ -757,10 +731,8 @@ def test_coding_builtin_member_profile_is_mode_scoped(tmp_path):
         "<!-- Add extra prompt text below. -->",
     )
     factory, _ = _make_provider_factory()
-    normal_agent = rebuild_agent_from_disk(f, provider_factory=factory)
     coding_agent = rebuild_agent_from_disk(f, provider_factory=factory, mode="coding")
     profile = BUILTIN_MEMBER_PROFILES["coding"]["coder"]
-    assert normal_agent.system_prompt == "<!-- Add extra prompt text below. -->"
     assert coding_agent.description == profile["description"]
     assert coding_agent.system_prompt == profile["prompt"]
     assert "shell" in coding_agent._tools
@@ -809,49 +781,6 @@ def test_openagentd_coding_lead_uses_coding_builtin_prompt(tmp_path):
     assert "Lead coding agent" in team.lead.agent.description
     assert "shell" in team.lead.agent._tools
     assert "generate_image" not in team.lead.agent._tools
-
-
-def test_openagentd_legacy_seed_prompt_is_not_appended(tmp_path):
-    from app.agent.builtin_prompts import NORMAL_OPENAGENTD_PROMPT
-    from app.agent.loader import load_team_from_dir
-
-    legacy_body = """You are **OpenAgentd** — a personal AI assistant running on the user's own machine.
-
-Old shipped prompt body that should be replaced by the code-owned base prompt.
-"""
-    d = _make_agents_dir(
-        tmp_path,
-        [
-            {
-                "name": "openagentd",
-                "role": "lead",
-                "model": "zai:glm-5-turbo",
-                "_body": legacy_body,
-            },
-        ],
-    )
-    factory, _ = _make_provider_factory()
-    team = load_team_from_dir(d, provider_factory=factory)
-    assert team is not None
-    assert team.lead.agent.system_prompt.startswith(NORMAL_OPENAGENTD_PROMPT)
-    assert "## User extra prompt" not in team.lead.agent.system_prompt
-    assert "Old shipped prompt body" not in team.lead.agent.system_prompt
-
-
-def test_builtin_member_legacy_seed_prompt_is_not_appended(tmp_path):
-    from app.agent.builtin_prompts import BUILTIN_MEMBER_PROFILES
-    from app.agent.loader import rebuild_agent_from_disk
-
-    f = _write_agent_md(
-        tmp_path / "executor.md",
-        {"name": "executor", "role": "member", "model": "zai:glm-5-turbo"},
-        'You are "executor".\n\nOld shipped executor prompt body.',
-    )
-    factory, _ = _make_provider_factory()
-    agent = rebuild_agent_from_disk(f, provider_factory=factory)
-    assert (
-        agent.system_prompt == BUILTIN_MEMBER_PROFILES["normal"]["executor"]["prompt"]
-    )
 
 
 def test_load_team_from_dir_degrades_when_lead_provider_missing_key(tmp_path):
@@ -1032,7 +961,7 @@ def test_load_team_discovers_all_agents(tmp_path):
     assert team is not None
     assert team.lead.name == "lead"
     # Members are lazy blueprints; nothing is live until spawned.
-    assert set(team.blueprints.keys()) == {"executor", "explorer", "worker", "helper"}
+    assert set(team.blueprints.keys()) == {"coder", "explorer", "worker", "helper"}
     assert team.members == {}
 
 
@@ -1054,7 +983,7 @@ def test_load_team_skips_unconfigured_members(tmp_path):
     factory, _ = _make_provider_factory()
     team = load_team_from_dir(d, provider_factory=factory)
     assert team is not None
-    assert set(team.blueprints.keys()) == {"executor", "explorer", "worker"}
+    assert set(team.blueprints.keys()) == {"coder", "explorer", "worker"}
 
 
 def test_load_team_parse_error_raises(tmp_path):
@@ -1366,7 +1295,7 @@ def test_context_injected_tools_are_not_pruned(tmp_path, injected):
     assert f.read_text() == before
     # Exemption means "skip", never "grant": these tools stay gated by team
     # mode and role in AgentTeam.get_injected_tools. Listing `lsp` in a
-    # normal-mode agent must not hand it the tool.
+    # non-coding agent must not hand it the tool.
     assert injected not in agent._tools
     assert "read" in agent._tools
 

@@ -380,12 +380,11 @@ async def _lsp_navigation(
             )
         ),
     ] = "",
-    _mode: Annotated[Literal["normal", "coding"], InjectedArg()] = "normal",
     _workspace: Annotated[str | None, InjectedArg()] = None,
 ) -> str:
     """Navigate code with the workspace language server."""
-    if _mode != "coding" or not _workspace:
-        raise PermissionError("LSP navigation is only available in coding mode")
+    if not _workspace:
+        raise PermissionError("LSP navigation requires a coding workspace")
     workspace = get_denied_paths().workspace_root.resolve()
     if Path(_workspace).resolve() != workspace:
         raise PermissionError("coding workspace is unavailable")

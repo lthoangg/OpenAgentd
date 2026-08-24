@@ -135,7 +135,7 @@ def test_tool_definition_hides_injected_arguments():
     assert set(properties) == {"questions"}
 
 
-async def test_calling_the_tool_persists_the_question_and_suspends():
+async def test_calling_the_tool_persists_the_question_and_suspends(tmp_path):
     from app.core import db as core_db
 
     session_id = uuid.uuid4()
@@ -163,7 +163,7 @@ async def test_calling_the_tool_persists_the_question_and_suspends():
     assert row.payload["questions"][0]["header"] == "Package manager"
 
 
-async def test_tool_refuses_without_a_resolvable_tool_call_id():
+async def test_tool_refuses_without_a_resolvable_tool_call_id(tmp_path):
     """A suspension with no call to resume would strand the turn."""
     from app.core import db as core_db
 
@@ -180,7 +180,7 @@ async def test_tool_refuses_without_a_resolvable_tool_call_id():
 
 
 async def test_asking_emits_the_event_and_a_notification(
-    monkeypatch, mock_stream_store
+    monkeypatch, mock_stream_store, tmp_path
 ):
     """Live clients render from the SSE event; absent users get a nudge.
 
@@ -199,7 +199,7 @@ async def test_asking_emits_the_event_and_a_notification(
                 id=session_id,
                 agent_name="openagentd",
                 mode="coding",
-                workspace="/tmp/demo-project",
+                workspace=str(tmp_path),
             )
         )
         await db.commit()
@@ -229,11 +229,11 @@ async def test_asking_emits_the_event_and_a_notification(
     assert event == "desktop_notification"
     assert payload["kind"] == "input_needed"
     assert payload["session_id"] == str(session_id)
-    assert "demo-project" in payload["title"]
+    assert tmp_path.name in payload["title"]
     # Clicking the notification routes by mode + workspace, exactly like the
     # completion notification — without them the click opens the wrong view.
     assert payload["metadata"]["mode"] == "coding"
-    assert payload["metadata"]["workspace"] == "/tmp/demo-project"
+    assert payload["metadata"]["workspace"] == str(tmp_path)
 
 
 async def test_a_failed_event_fanout_does_not_break_the_suspension(

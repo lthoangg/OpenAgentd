@@ -6,7 +6,6 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { useCreateScheduledTaskMutation } from '@/queries'
-import type { ScheduledTaskMode } from '@/api/types'
 import { FIELD_CLASS, slugify } from './utils'
 import { createTaskDefaults, toCreatePayload, validateTaskValues, type TaskFormErrors } from './taskForm'
 import { ScheduleTypeSegmented } from './ScheduleTypeSegmented'
@@ -15,16 +14,14 @@ import { useTeamStore } from '@/stores/useTeamStore'
 import { Dropdown, DropdownItem } from '@/components/ui/dropdown'
 
 export function CreateTaskForm({
-  contextMode,
   contextWorkspace,
   onSuccess,
 }: {
-  contextMode: ScheduledTaskMode
   contextWorkspace: string | null
   onSuccess: () => void
 }) {
   const localTz = Intl.DateTimeFormat().resolvedOptions().timeZone
-  const defaults = createTaskDefaults(contextMode, contextWorkspace, localTz)
+  const defaults = createTaskDefaults(contextWorkspace, localTz)
   const [error, setError] = useState<string | null>(null)
   const [fieldErrors, setFieldErrors] = useState<TaskFormErrors>({})
   const validationSummary = Object.values(fieldErrors)[0]
@@ -39,11 +36,9 @@ export function CreateTaskForm({
     onSubmit: () => {},
   })
   const values = useStore(form.store, (state) => state.values)
-  const activeSessionMode = activeSessionWorkspace ? 'coding' : 'normal'
   const isSessionCompatible =
     !!currentSessionId &&
-    values.mode === activeSessionMode &&
-    (values.mode !== 'coding' || values.workspace === activeSessionWorkspace)
+    values.workspace === activeSessionWorkspace
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -113,12 +108,8 @@ export function CreateTaskForm({
 
           {/* Routing */}
           <ModeWorkspaceFields
-            mode={values.mode ?? 'normal'}
             workspace={values.workspace ?? null}
-            onChange={(next) => {
-              form.setFieldValue('mode', next.mode)
-              form.setFieldValue('workspace', next.workspace)
-            }}
+            onChange={(workspace) => form.setFieldValue('workspace', workspace ?? '')}
             workspaceError={fieldErrors.workspace}
             workspaceErrorId="task-workspace-error"
           />

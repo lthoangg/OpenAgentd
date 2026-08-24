@@ -1,4 +1,4 @@
-"""``openagentd export`` — pack config for migration to another server.
+"""``openagentd transfer export`` — pack config for migration to another server.
 
 Creates a timestamped ``.tar.gz`` archive containing the portable config
 layer:
@@ -266,5 +266,5 @@ def cmd_export(args: argparse.Namespace) -> None:
         print(f"    {marker} {f}{suffix}")
     print()
     print(f"  {_bold('To import on the target server:')}")
-    print(f"    openagentd import {result.archive_path.name}")
+    print(f"    openagentd transfer import {result.archive_path.name}")
     print()

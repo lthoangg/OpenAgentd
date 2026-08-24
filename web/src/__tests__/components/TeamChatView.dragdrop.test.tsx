@@ -139,7 +139,7 @@ beforeEach(() => {
 
 describe('TeamChatView coding workspace panel', () => {
   it('renders the panel inside an exit-animation boundary', () => {
-    render(<TeamChatView sessionId="test-session" mode="coding" workspace="/repo/project" />)
+    render(<TeamChatView sessionId="test-session" workspace="/repo/project" />)
 
     fireEvent.click(screen.getByRole('button', { name: 'Toggle workspace panel' }))
 
@@ -158,7 +158,7 @@ describe('TeamChatView drag-and-drop files', () => {
   })
 
   it('shows and hides overlay on drag events, and adds files on drop', () => {
-    const { container, queryByText } = render(<TeamChatView sessionId="test-session" />)
+    const { container, queryByText } = render(<TeamChatView sessionId="test-session" workspace="/repo/project" />)
 
     const mainEl = container.querySelector('#main')
     expect(mainEl).not.toBeNull()

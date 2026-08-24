@@ -55,7 +55,7 @@ describe('useDeepLinkRouter Tauri deep-link bridge', () => {
         body: JSON.stringify({ code: 'cold-code' }),
       }))
       expect(invalidateQueries).toHaveBeenCalledTimes(1)
-      expect(navigate).toHaveBeenCalledWith({ href: '/cockpit/cold-session' })
+      expect(navigate).toHaveBeenCalledWith({ href: '/coding/cold-session' })
       expect(pushToast).toHaveBeenCalledWith({ tone: 'success', title: 'Authentication connected' })
     })
     expect(getCurrent).toHaveBeenCalledTimes(1)
@@ -74,7 +74,7 @@ describe('useDeepLinkRouter Tauri deep-link bridge', () => {
     await waitFor(() => expect(openUrls).toBeDefined())
 
     await act(async () => openUrls?.(['openagentd://session/warm-session']))
-    await waitFor(() => expect(navigate).toHaveBeenCalledWith({ href: '/cockpit/warm-session' }))
+    await waitFor(() => expect(navigate).toHaveBeenCalledWith({ href: '/coding/warm-session' }))
 
     view.unmount()
     expect(unlisten).toHaveBeenCalledTimes(1)

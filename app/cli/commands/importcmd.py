@@ -1,6 +1,6 @@
-"""``openagentd import`` — unpack a migration archive on the target server.
+"""``openagentd transfer import`` — unpack a migration archive on the target server.
 
-Accepts a ``.tar.gz`` produced by ``openagentd export`` and extracts its
+Accepts a ``.tar.gz`` produced by ``openagentd transfer export`` and extracts its
 contents into ``{OPENAGENTD_CONFIG_DIR}``.
 
 Safety rules
@@ -11,7 +11,7 @@ Safety rules
   outside ``config_dir`` is rejected with a hard error before any extraction
   begins.
 - **Prefix validation** — the archive must have the ``openagentd-export/``
-  root prefix that ``openagentd export`` always sets.  Bare or foreign
+  root prefix that ``openagentd transfer export`` always sets.  Bare or foreign
   archives are rejected.
 """
 
@@ -53,7 +53,7 @@ def import_config(
     Parameters
     ----------
     archive_path
-        Path to a ``.tar.gz`` produced by ``openagentd export``.
+        Path to a ``.tar.gz`` produced by ``openagentd transfer export``.
     config_dir
         Target ``{OPENAGENTD_CONFIG_DIR}`` on the destination machine.
     force

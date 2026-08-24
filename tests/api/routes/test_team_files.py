@@ -21,6 +21,8 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
+from app.models.chat import ChatSession
+
 pytestmark = pytest.mark.usefixtures("setup_db")
 
 
@@ -45,7 +47,21 @@ def session_id() -> str:
     return str(uuid.uuid7())
 
 
+def _use_coding_workspace(monkeypatch, team_routes, root):
+    async def load_session(_session_id):
+        return ChatSession(workspace=str(root))
+
+    monkeypatch.setattr(team_routes, "_session_row", load_session)
+
+
 class TestWorkspaceMedia:
+    def test_workspace_media_requires_persisted_session_workspace(
+        self, client, session_id
+    ):
+        resp = client.get(f"/api/team/{session_id}/media/secret.txt")
+
+        assert resp.status_code == 404
+
     def test_workspace_media_defaults_to_inline_for_previews(
         self, client, session_id, tmp_path, monkeypatch
     ):
@@ -55,7 +71,7 @@ class TestWorkspaceMedia:
 
         from app.api.routes.team import files as team_routes
 
-        monkeypatch.setattr(team_routes, "workspace_dir", lambda sid: fake_root)
+        _use_coding_workspace(monkeypatch, team_routes, fake_root)
 
         resp = client.get(f"/api/team/{session_id}/media/chart.png")
         assert resp.status_code == 200
@@ -70,7 +86,7 @@ class TestWorkspaceMedia:
 
         from app.api.routes.team import files as team_routes
 
-        monkeypatch.setattr(team_routes, "workspace_dir", lambda sid: fake_root)
+        _use_coding_workspace(monkeypatch, team_routes, fake_root)
 
         resp = client.get(f"/api/team/{session_id}/media/chart.png?download=1")
         assert resp.status_code == 200
@@ -120,7 +136,7 @@ class TestWorkspaceFilesListing:
 
         from app.api.routes.team import files as team_routes
 
-        monkeypatch.setattr(team_routes, "workspace_dir", lambda sid: fake_root)
+        _use_coding_workspace(monkeypatch, team_routes, fake_root)
 
         resp = client.get(f"/api/team/{session_id}/files")
         assert resp.status_code == 200
@@ -137,7 +153,7 @@ class TestWorkspaceFilesListing:
 
         from app.api.routes.team import files as team_routes
 
-        monkeypatch.setattr(team_routes, "workspace_dir", lambda sid: fake_root)
+        _use_coding_workspace(monkeypatch, team_routes, fake_root)
 
         resp = client.get(f"/api/team/{session_id}/files")
         assert resp.status_code == 200
@@ -162,7 +178,7 @@ class TestWorkspaceFilesListing:
 
         from app.api.routes.team import files as team_routes
 
-        monkeypatch.setattr(team_routes, "workspace_dir", lambda sid: fake_root)
+        _use_coding_workspace(monkeypatch, team_routes, fake_root)
 
         resp = client.get(f"/api/team/{session_id}/files")
         assert resp.status_code == 200
@@ -181,7 +197,7 @@ class TestWorkspaceFilesListing:
 
         from app.api.routes.team import files as team_routes
 
-        monkeypatch.setattr(team_routes, "workspace_dir", lambda sid: fake_root)
+        _use_coding_workspace(monkeypatch, team_routes, fake_root)
 
         resp = client.get(f"/api/team/{session_id}/files")
         by_name = {f["name"]: f for f in resp.json()["files"]}
@@ -203,7 +219,7 @@ class TestWorkspaceFilesListing:
 
         from app.api.routes.team import files as team_routes
 
-        monkeypatch.setattr(team_routes, "workspace_dir", lambda sid: fake_root)
+        _use_coding_workspace(monkeypatch, team_routes, fake_root)
 
         resp = client.get(f"/api/team/{session_id}/files")
         by_name = {f["name"]: f for f in resp.json()["files"]}
@@ -219,7 +235,7 @@ class TestWorkspaceFilesListing:
 
         from app.api.routes.team import files as team_routes
 
-        monkeypatch.setattr(team_routes, "workspace_dir", lambda sid: fake_root)
+        _use_coding_workspace(monkeypatch, team_routes, fake_root)
 
         resp = client.get(f"/api/team/{session_id}/media/main.ts")
         assert resp.status_code == 200
@@ -250,7 +266,7 @@ class TestWorkspaceFilesListing:
 
         from app.api.routes.team import files as team_routes
 
-        monkeypatch.setattr(team_routes, "workspace_dir", lambda sid: fake_root)
+        _use_coding_workspace(monkeypatch, team_routes, fake_root)
 
         resp = client.get(f"/api/team/{session_id}/files")
         paths = sorted(f["path"] for f in resp.json()["files"])
@@ -285,7 +301,7 @@ class TestWorkspaceFilesListing:
 
         from app.api.routes.team import files as team_routes
 
-        monkeypatch.setattr(team_routes, "workspace_dir", lambda sid: fake_root)
+        _use_coding_workspace(monkeypatch, team_routes, fake_root)
 
         resp = client.get(f"/api/team/{session_id}/files")
         paths = sorted(f["path"] for f in resp.json()["files"])
@@ -351,7 +367,7 @@ class TestWorkspaceFilesListing:
 
         from app.api.routes.team import files as team_routes
 
-        monkeypatch.setattr(team_routes, "workspace_dir", lambda sid: fake_root)
+        _use_coding_workspace(monkeypatch, team_routes, fake_root)
 
         resp = client.get(f"/api/team/{session_id}/files")
         paths = [f["path"] for f in resp.json()["files"]]
@@ -372,7 +388,7 @@ class TestWorkspaceFilesListing:
         for i in range(cap + 5):
             (fake_root / f"f{i:04d}.txt").write_text("x")
 
-        monkeypatch.setattr(team_routes, "workspace_dir", lambda sid: fake_root)
+        _use_coding_workspace(monkeypatch, team_routes, fake_root)
 
         resp = client.get(f"/api/team/{session_id}/files")
         body = resp.json()
@@ -440,7 +456,7 @@ class TestGitBackedListing:
         (deep / "notes.tmp").write_text("keep me")
         (fake_root / "docs" / "scratch.tmp").write_text("ignored")
 
-        monkeypatch.setattr(team_routes, "workspace_dir", lambda sid: fake_root)
+        _use_coding_workspace(monkeypatch, team_routes, fake_root)
 
         paths = sorted(
             f["path"]
@@ -469,7 +485,7 @@ class TestGitBackedListing:
         (fake_root / "main.py").write_text("x = 1\n")
         self._commit_all(fake_root)
 
-        monkeypatch.setattr(team_routes, "workspace_dir", lambda sid: fake_root)
+        _use_coding_workspace(monkeypatch, team_routes, fake_root)
 
         paths = sorted(
             f["path"]
@@ -491,7 +507,7 @@ class TestGitBackedListing:
         (pkg / "secret.txt").write_text("hide")
         (pkg / "app.py").write_text("ok")
 
-        monkeypatch.setattr(team_routes, "workspace_dir", lambda sid: fake_root)
+        _use_coding_workspace(monkeypatch, team_routes, fake_root)
 
         paths = sorted(
             f["path"]
@@ -513,7 +529,7 @@ class TestGitBackedListing:
         (fake_root / "node_modules" / "pkg" / "index.js").write_text("x")
         (fake_root / "app.js").write_text("x")
 
-        monkeypatch.setattr(team_routes, "workspace_dir", lambda sid: fake_root)
+        _use_coding_workspace(monkeypatch, team_routes, fake_root)
 
         paths = sorted(
             f["path"]
@@ -537,7 +553,7 @@ class TestGitBackedListing:
         fake_root.mkdir(parents=True)
         (fake_root / "report.md").write_text("# hi")
 
-        monkeypatch.setattr(team_routes, "workspace_dir", lambda sid: fake_root)
+        _use_coding_workspace(monkeypatch, team_routes, fake_root)
 
         paths = sorted(
             f["path"]
@@ -584,7 +600,7 @@ class TestGitBackedListing:
         if added.returncode != 0:
             pytest.skip("submodule creation unsupported in this environment")
 
-        monkeypatch.setattr(team_routes, "workspace_dir", lambda sid: fake_root)
+        _use_coding_workspace(monkeypatch, team_routes, fake_root)
 
         paths = sorted(
             f["path"]
@@ -603,7 +619,7 @@ class TestGitBackedListing:
         for i in range(6):
             (fake_root / f"f{i}.txt").write_text("x")
 
-        monkeypatch.setattr(team_routes, "workspace_dir", lambda sid: fake_root)
+        _use_coding_workspace(monkeypatch, team_routes, fake_root)
 
         monkeypatch.setattr(team_routes, "_MAX_FILES_LISTED", 4)
         body = client.get(f"/api/team/{session_id}/files").json()
@@ -635,7 +651,7 @@ class TestGitBackedListing:
         (fake_root / "__pycache__" / "m.pyc").write_bytes(b"\x00")
         (fake_root / "app.py").write_text("x")
 
-        monkeypatch.setattr(team_routes, "workspace_dir", lambda sid: fake_root)
+        _use_coding_workspace(monkeypatch, team_routes, fake_root)
 
         paths = sorted(
             f["path"]

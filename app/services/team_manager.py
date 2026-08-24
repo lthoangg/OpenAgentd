@@ -91,9 +91,6 @@ class TeamDiff:
 
 _team: "AgentTeam | None" = None
 _team_last_used: float = 0.0
-_session_teams: dict[str, "AgentTeam"] = {}
-_session_team_last_used: dict[str, float] = {}
-_session_start_locks: dict[str, asyncio.Lock] = {}
 _coding_teams: dict[tuple[str, str], "AgentTeam"] = {}
 _coding_team_last_used: dict[tuple[str, str], float] = {}
 _coding_start_locks: dict[tuple[str, str], asyncio.Lock] = {}
@@ -251,24 +248,6 @@ def _maybe_pop_idle_default_team_locked(
     return expired
 
 
-def _pop_idle_session_teams_locked(now: float) -> list[tuple[str, "AgentTeam"]]:
-    expired = [
-        session_id
-        for session_id, last_used in _session_team_last_used.items()
-        if now - last_used > _DEFAULT_TEAM_IDLE_SECONDS
-        and (team := _session_teams.get(session_id)) is not None
-        and _team_is_idle(team)
-    ]
-    popped: list[tuple[str, "AgentTeam"]] = []
-    for session_id in expired:
-        team = _session_teams.pop(session_id, None)
-        _session_team_last_used.pop(session_id, None)
-        _session_start_locks.pop(session_id, None)
-        if team is not None:
-            popped.append((session_id, team))
-    return popped
-
-
 def _pop_idle_coding_teams_locked(
     now: float,
 ) -> list[tuple[tuple[str, str], "AgentTeam"]]:
@@ -309,30 +288,13 @@ async def _stop_coding_teams(
             )
 
 
-async def _stop_session_teams(teams: list[tuple[str, "AgentTeam"]]) -> None:
-    for session_id, team in teams:
-        try:
-            await team.stop()
-        except Exception:
-            logger.exception("team_session_idle_stop_error session_id={}", session_id)
-        else:
-            logger.info("team_session_idle_stopped session_id={}", session_id)
-
-
 async def evict_session_teams(session_ids: set[str]) -> None:
-    """Stop and evict normal and coding teams for deleted sessions.
+    """Stop and evict coding teams for deleted sessions.
 
     This deliberately only removes cached team instances; it never touches a
     coding workspace on disk.
     """
     async with _lock:
-        normal = [
-            (session_id, _session_teams.pop(session_id))
-            for session_id in session_ids
-            if session_id in _session_teams
-        ]
-        for session_id in session_ids:
-            _session_team_last_used.pop(session_id, None)
         coding = [
             (key, _coding_teams.pop(key))
             for key in list(_coding_teams)
@@ -340,7 +302,6 @@ async def evict_session_teams(session_ids: set[str]) -> None:
         ]
         for key, _team in coding:
             _coding_team_last_used.pop(key, None)
-    await _stop_session_teams(normal)
     await _stop_coding_teams(coding)
 
 
@@ -457,56 +418,6 @@ async def get_or_start_team() -> "AgentTeam | None":
     return result
 
 
-async def get_or_start_team_for_session(session_id: str) -> "AgentTeam | None":
-    """Return the default-mode team instance dedicated to one chat session."""
-    global _team_last_used
-
-    # Startup can load providers and plugins, so never hold the registry lock
-    # across ``await candidate.start()``. A per-session lock still prevents two
-    # simultaneous requests for the same cold session from creating teams
-    # twice, while unrelated sessions can start concurrently.
-    session_lock = _session_start_locks.setdefault(session_id, asyncio.Lock())
-    async with session_lock:
-        async with _lock:
-            now = time.monotonic()
-            expired_default = _maybe_pop_idle_default_team_locked(now)
-            expired_sessions = _pop_idle_session_teams_locked(now)
-            existing = _session_teams.get(session_id)
-            if existing is not None:
-                _session_team_last_used[session_id] = now
-                candidate = None
-            else:
-                candidate = load_team_from_dir(_resolve_agents_dir())
-
-        if candidate is None:
-            result: "AgentTeam | None" = existing
-            if result is None:
-                logger.warning("team_manager_no_agents path={}", _resolve_agents_dir())
-        else:
-            await candidate.start()
-            async with _lock:
-                _session_teams[session_id] = candidate
-                _session_team_last_used[session_id] = now
-                _team_last_used = now
-            logger.info(
-                "team_manager_session_started session_id={} lead={}",
-                session_id,
-                candidate.lead.name,
-            )
-            result = candidate
-
-    if expired_default is not None:
-        try:
-            await expired_default.stop()
-        except Exception:
-            logger.exception("team_manager_idle_stop_error")
-        else:
-            logger.info("team_manager_idle_stopped")
-    await _stop_session_teams(expired_sessions)
-
-    return result
-
-
 async def stop() -> None:
     """Stop the current team (if any) on server shutdown."""
     global _team, _team_last_used
@@ -518,16 +429,6 @@ async def stop() -> None:
                 logger.exception("team_manager_stop_error")
             _team = None
             _team_last_used = 0.0
-        for session_id, team in list(_session_teams.items()):
-            try:
-                await team.stop()
-            except Exception:
-                logger.exception(
-                    "team_session_manager_stop_error session_id={}", session_id
-                )
-        _session_teams.clear()
-        _session_team_last_used.clear()
-        _session_start_locks.clear()
         for (workspace, session_id), team in list(_coding_teams.items()):
             try:
                 await team.stop()
@@ -562,9 +463,6 @@ def find_live_team_serving_session(session_id: str) -> "AgentTeam | None":
     Both registries hold a handful of live teams, and the session-keyed one is
     a direct hit, so the coding scan is a short fallback rather than the norm.
     """
-    direct = _session_teams.get(session_id)
-    if direct is not None:
-        return direct
     for (_workspace, owner_session), team in _coding_teams.items():
         if owner_session == session_id or team.lead.session_id == session_id:
             return team
@@ -734,9 +632,9 @@ def refresh_blueprints(team: "AgentTeam") -> None:
     """Rediscover member ``.md`` files for *team* and update its blueprint
     registry in place.
 
-    The source directory is derived from ``team.mode`` so callers
-    (currently just ``GET /team/agents``) don't need to know whether they
-    hold a default or a coding team. Without this, a user who creates a
+    The source directory is the coding profile directory, so callers
+    (currently just ``GET /team/agents``) don't need to know its location.
+    Without this, a user who creates a
     new member through the Settings → Agents page wouldn't see it appear
     in the spawnable roster until the team object is evicted and rebuilt
     — typically a server restart.
@@ -759,9 +657,7 @@ def refresh_blueprints(team: "AgentTeam") -> None:
     from app.agent.loader import member_model_is_configured, parse_agent_md
     from app.agent.mode.team.team import MemberBlueprint
 
-    agents_dir = (
-        _resolve_coding_agents_dir() if team.mode == "coding" else _resolve_agents_dir()
-    )
+    agents_dir = _resolve_coding_agents_dir()
     if not agents_dir.exists():
         return
 

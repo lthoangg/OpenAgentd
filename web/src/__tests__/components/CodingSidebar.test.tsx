@@ -160,6 +160,7 @@ mock.module('@/lib/app-backend', () => ({
 
 const Icon = () => null
 mock.module('lucide-react', () => ({
+  Activity: Icon,
   Check: Icon,
   ChevronDown: Icon,
   ChevronRight: Icon,
@@ -617,6 +618,18 @@ describe('CodingSidebar helpers', () => {
 })
 
 describe('CodingSidebar workspace trust flow', () => {
+  it('exposes Telemetry in mobile primary navigation and closes the drawer', async () => {
+    isMobile = true
+    const onMobileClose = mock(() => {})
+
+    await renderCodingSidebarWithProps({ mobileOpen: true, onMobileClose })
+
+    const telemetry = screen.getAllByRole('button', { name: 'Telemetry' })[0]
+    fireEvent.click(telemetry)
+    expect(navigate).toHaveBeenCalledWith({ to: '/telemetry' })
+    expect(onMobileClose).toHaveBeenCalledTimes(1)
+  })
+
   beforeEach(() => {
     localStorage.clear()
     sessionsData = []
@@ -780,7 +793,6 @@ describe('CodingSidebar workspace trust flow', () => {
       })
     })
     expect(resolveBody).toEqual({
-      mode: 'coding',
       workspace: '/repo/project',
       model: null,
       thinking_level: null,
@@ -1230,7 +1242,6 @@ describe('CodingSidebar workspace trust flow', () => {
 
     await waitFor(() => {
       expect(resolveBody).toEqual({
-        mode: 'coding',
         workspace: '/data/worktrees/project/task-a',
         model: null,
         thinking_level: null,

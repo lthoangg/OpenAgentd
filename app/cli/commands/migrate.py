@@ -1,4 +1,4 @@
-"""``openagentd migrate`` — import configs from other local agent tools."""
+"""``openagentd transfer migrate`` — import configs from local agent tools."""
 
 from __future__ import annotations
 

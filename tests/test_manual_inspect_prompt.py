@@ -86,9 +86,6 @@ def test_builtin_prompt_budgets_include_every_first_party_profile():
     prompts = _builtin_prompt_budgets(encoding)
 
     assert {item["name"] for item in prompts} == {
-        "normal/openagentd",
-        "normal/executor",
-        "normal/explorer",
         "coding/openagentd",
         "coding/coder",
         "coding/explorer",

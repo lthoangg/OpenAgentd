@@ -2,7 +2,7 @@
  * Terminal WebSocket client.
  *
  * Connect flow:
- *   1. POST /api/terminal/ticket (normal fetch — desktop token / access
+ *   1. POST /api/terminal/ticket (desktop token / access
  *      key attached automatically by installDesktopAuth's fetch patch).
  *   2. Open ws(s)://…/api/terminal/ws?ticket=…&_token=… — the single-use
  *      ticket authorizes the session; `_token` additionally satisfies the
@@ -35,21 +35,16 @@ interface TicketResponse {
 }
 
 /**
- * Where the PTY should start:
- * - `{ workspace }` — coding mode: absolute project path (validated server-side).
- * - `{ sessionId }` — cockpit mode: server derives the per-session sandbox dir.
+ * The PTY starts at the validated absolute project workspace path.
  */
-export type TerminalTarget = { workspace: string } | { sessionId: string }
+export type TerminalTarget = { workspace: string }
 
 export async function fetchTerminalTicket(
   target: TerminalTarget,
   rows = 24,
   cols = 80,
 ): Promise<string> {
-  const source =
-    'workspace' in target
-      ? { workspace: target.workspace }
-      : { session_id: target.sessionId }
+  const source = { workspace: target.workspace }
   const res = await fetch(apiUrl('/terminal/ticket'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

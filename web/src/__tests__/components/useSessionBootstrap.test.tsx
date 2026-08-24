@@ -26,10 +26,9 @@ function Harness({
 }) {
   useSessionBootstrap({
     sessionId,
-    mode: 'normal',
-    workspace: null,
-    agentWorkspace: null,
-    hasCodingWorkspace: false,
+    workspace: '/repo/app',
+    agentWorkspace: '/repo/app',
+    hasCodingWorkspace: true,
     isCodingSessionLoading: false,
     isMobile,
     paletteOpen: false,
@@ -71,15 +70,16 @@ describe('useSessionBootstrap foreground resume', () => {
     const connectStream = mock(() => new AbortController())
     render(<Harness loadSession={loadSession} connectStream={connectStream} />)
 
-    await waitFor(() => expect(loadSession).toHaveBeenCalledWith('session-1', null))
+    await waitFor(() => expect(loadSession).toHaveBeenCalledWith('session-1', '/repo/app'))
     expect(connectStream).toHaveBeenCalledTimes(1)
 
     loadSession.mockClear()
     connectStream.mockClear()
+    useTeamStore.setState({ _workspace: '/repo/app' })
 
     window.dispatchEvent(new Event('pageshow'))
 
-    await waitFor(() => expect(loadSession).toHaveBeenCalledWith('session-1', null))
+    await waitFor(() => expect(loadSession).toHaveBeenCalledWith('session-1', '/repo/app'))
     expect(connectStream).toHaveBeenCalledTimes(1)
   })
 
@@ -88,7 +88,7 @@ describe('useSessionBootstrap foreground resume', () => {
     const connectStream = mock(() => new AbortController())
     render(<Harness loadSession={loadSession} connectStream={connectStream} isMobile={false} />)
 
-    await waitFor(() => expect(loadSession).toHaveBeenCalledWith('session-1', null))
+    await waitFor(() => expect(loadSession).toHaveBeenCalledWith('session-1', '/repo/app'))
     expect(connectStream).toHaveBeenCalledTimes(1)
 
     loadSession.mockClear()
@@ -141,7 +141,7 @@ describe('useSessionBootstrap session switch', () => {
       />,
     )
 
-    await waitFor(() => expect(loadSession).toHaveBeenCalledWith('session-2', null))
+    await waitFor(() => expect(loadSession).toHaveBeenCalledWith('session-2', '/repo/app'))
     const state = useTeamStore.getState()
     expect(state.sessionId).toBe('session-2')
     expect(state.isTeamWorking).toBe(false)
@@ -209,7 +209,7 @@ describe('useSessionBootstrap undo draft-restore', () => {
       />,
     )
 
-    await waitFor(() => expect(loadSession).toHaveBeenCalledWith('session-2', null))
+    await waitFor(() => expect(loadSession).toHaveBeenCalledWith('session-2', '/repo/app'))
     await waitFor(() => expect(setValueMock).toHaveBeenCalledWith('the real undone message'))
 
     expect(setValueMock).toHaveBeenCalledWith('the real undone message')
@@ -239,7 +239,7 @@ describe('useSessionBootstrap remount on screen switch', () => {
       />,
     )
 
-    await waitFor(() => expect(loadSession).toHaveBeenCalledWith('session-1', null))
+    await waitFor(() => expect(loadSession).toHaveBeenCalledWith('session-1', '/repo/app'))
     expect(connectStream).toHaveBeenCalledTimes(1)
   })
 })

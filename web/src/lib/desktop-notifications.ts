@@ -12,7 +12,6 @@ export type DesktopNotificationStatus = 'sent' | 'disabled' | 'unsupported' | 'p
 export interface DesktopNotificationPayload {
   kind: DesktopNotificationKind
   sessionId?: string
-  mode?: 'normal' | 'coding'
   title: string
   body: string
 }
@@ -104,7 +103,6 @@ export async function sendDesktopNotification(
       payload: {
         kind: payload.kind,
         ...(payload.sessionId ? { sessionId: payload.sessionId } : {}),
-        ...(payload.mode ? { mode: payload.mode } : {}),
         title: payload.title,
         body: payload.body,
       },

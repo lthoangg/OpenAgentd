@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
-from uuid import UUID, uuid4
+import tempfile
 
 import pytest
 from fastapi import FastAPI
@@ -11,7 +11,6 @@ from httpx import ASGITransport, AsyncClient
 
 import app.core.db as _db_module
 from app.api.routes.scheduler import get_scheduler, router
-from app.models.chat import ChatSession
 from app.scheduler.scheduler import TaskScheduler
 
 
@@ -45,7 +44,7 @@ async def client(fresh_scheduler):
 def _create_payload(**overrides) -> dict:
     payload = {
         "name": "task1",
-        "mode": "normal",
+        "workspace": tempfile.mkdtemp(prefix="openagentd-test-workspace-"),
         "schedule_type": "every",
         "every_seconds": 60,
         "prompt": "hello",
@@ -65,20 +64,12 @@ class TestCreate:
         assert resp.status_code == 201, resp.text
         body = resp.json()
         assert body["name"] == "task1"
-        assert body["mode"] == "normal"
-        assert body["workspace"] is None
+        assert body["workspace"]
         assert body["schedule_type"] == "every"
         assert body["every_seconds"] == 60
         assert body["enabled"] is True
         assert body["status"] == "pending"
         assert body["next_fire_at"] is not None
-
-    async def test_coding_mode_requires_workspace(self, client):
-        resp = await client.post(
-            "/api/scheduler/tasks", json=_create_payload(mode="coding")
-        )
-        assert resp.status_code == 422
-        assert "workspace is required" in resp.text
 
     async def test_coding_mode_invalid_workspace_422(self, client, tmp_path):
         # Workspace must exist on disk.
@@ -99,7 +90,6 @@ class TestCreate:
         )
         assert resp.status_code == 201, resp.text
         body = resp.json()
-        assert body["mode"] == "coding"
         # Server normalises the workspace path (resolves symlinks, etc.) so
         # compare loosely.
         assert body["workspace"].endswith("ws")
@@ -121,7 +111,7 @@ class TestCreate:
             "/api/scheduler/tasks",
             json={
                 "name": "bad",
-                "mode": "normal",
+                "workspace": tempfile.mkdtemp(prefix="openagentd-test-workspace-"),
                 "schedule_type": "at",
                 "prompt": "hi",
             },
@@ -236,20 +226,6 @@ class TestUpdate:
         assert resp.status_code == 200
         assert resp.json()["max_runs"] is None
 
-    async def test_update_to_coding_requires_workspace(self, client):
-        created = await client.post(
-            "/api/scheduler/tasks", json=_create_payload(name="upd2")
-        )
-        task_slug = created.json()["slug"]
-
-        # Existing task has workspace=None; switching to mode=coding without
-        # supplying a workspace must 422.
-        resp = await client.put(
-            f"/api/scheduler/tasks/{task_slug}",
-            json={"mode": "coding"},
-        )
-        assert resp.status_code == 422
-
     async def test_update_to_coding_with_workspace(self, client, tmp_path):
         ws = tmp_path / "ws"
         ws.mkdir()
@@ -260,10 +236,9 @@ class TestUpdate:
 
         resp = await client.put(
             f"/api/scheduler/tasks/{task_slug}",
-            json={"mode": "coding", "workspace": str(ws)},
+            json={"workspace": str(ws)},
         )
         assert resp.status_code == 200
-        assert resp.json()["mode"] == "coding"
 
     async def test_schedule_type_change_requires_its_schedule_field(self, client):
         created = await client.post(
@@ -405,7 +380,7 @@ class TestAtTask:
             "/api/scheduler/tasks",
             json={
                 "name": "at_one",
-                "mode": "normal",
+                "workspace": tempfile.mkdtemp(prefix="openagentd-test-workspace-"),
                 "schedule_type": "at",
                 "at_datetime": target,
                 "prompt": "hi",
@@ -429,7 +404,7 @@ class TestCronTask:
             "/api/scheduler/tasks",
             json={
                 "name": "cron_one",
-                "mode": "normal",
+                "workspace": tempfile.mkdtemp(prefix="openagentd-test-workspace-"),
                 "schedule_type": "cron",
                 "cron_expression": "0 0 * * *",
                 "prompt": "hi",
@@ -445,126 +420,10 @@ class TestCronTask:
             "/api/scheduler/tasks",
             json={
                 "name": "bad_cron",
-                "mode": "normal",
+                "workspace": tempfile.mkdtemp(prefix="openagentd-test-workspace-"),
                 "schedule_type": "cron",
                 "cron_expression": "totally bogus",
                 "prompt": "hi",
             },
         )
         assert resp.status_code == 422
-
-
-# ---------------------------------------------------------------------------
-# session_id compatibility with mode/workspace
-# ---------------------------------------------------------------------------
-
-
-async def _seed_session(
-    sid: UUID, *, mode: str = "normal", workspace: str | None = None
-) -> None:
-    async with _db_module.async_session_factory() as db:
-        db.add(ChatSession(id=sid, mode=mode, workspace=workspace))
-        await db.commit()
-
-
-class TestSessionCompat:
-    async def test_create_rejects_mismatched_session_mode(self, client, tmp_path):
-        # Session is 'normal'; task asks for 'coding' on a real workspace.
-        # Target validation passes, session-compat validation must reject.
-        ws = tmp_path / "ws"
-        ws.mkdir()
-        sid = uuid4()
-        await _seed_session(sid, mode="normal")
-        resp = await client.post(
-            "/api/scheduler/tasks",
-            json=_create_payload(
-                name="mismatch1",
-                mode="coding",
-                workspace=str(ws),
-                session_id=str(sid),
-            ),
-        )
-        assert resp.status_code == 422
-        assert "mode" in resp.json()["detail"]
-
-    async def test_create_rejects_mismatched_workspace(self, client, tmp_path):
-        ws_a = tmp_path / "a"
-        ws_a.mkdir()
-        ws_b = tmp_path / "b"
-        ws_b.mkdir()
-        sid = uuid4()
-        await _seed_session(sid, mode="coding", workspace=str(ws_a.resolve()))
-
-        resp = await client.post(
-            "/api/scheduler/tasks",
-            json=_create_payload(
-                name="ws_mismatch",
-                mode="coding",
-                workspace=str(ws_b),
-                session_id=str(sid),
-            ),
-        )
-        assert resp.status_code == 422
-        assert "workspace" in resp.json()["detail"]
-
-    async def test_create_accepts_matching_session(self, client, tmp_path):
-        ws = tmp_path / "ws"
-        ws.mkdir()
-        ws_resolved = str(ws.resolve())
-        sid = uuid4()
-        await _seed_session(sid, mode="coding", workspace=ws_resolved)
-
-        resp = await client.post(
-            "/api/scheduler/tasks",
-            json=_create_payload(
-                name="ok_match",
-                mode="coding",
-                workspace=ws_resolved,
-                session_id=str(sid),
-            ),
-        )
-        assert resp.status_code == 201, resp.text
-
-    async def test_create_allows_nonexistent_session(self, client):
-        # First-fire-creates-it case: explicit UUID not yet in DB → pass.
-        resp = await client.post(
-            "/api/scheduler/tasks",
-            json=_create_payload(name="ghost_sid", session_id=str(uuid4())),
-        )
-        assert resp.status_code == 201
-
-    async def test_create_allows_auto_session_id(self, client):
-        resp = await client.post(
-            "/api/scheduler/tasks",
-            json=_create_payload(name="auto_sid", session_id="auto"),
-        )
-        assert resp.status_code == 201
-
-    async def test_create_rejects_garbage_session_id(self, client):
-        resp = await client.post(
-            "/api/scheduler/tasks",
-            json=_create_payload(name="bad_sid", session_id="not-a-uuid"),
-        )
-        assert resp.status_code == 422
-
-    async def test_update_mode_conflicts_with_existing_session(self, client, tmp_path):
-        # Create a task bound to a 'normal' session; switching it to 'coding'
-        # must now fail because the session row is 'normal'.
-        sid = uuid4()
-        await _seed_session(sid, mode="normal")
-        ws = tmp_path / "ws"
-        ws.mkdir()
-
-        created = await client.post(
-            "/api/scheduler/tasks",
-            json=_create_payload(name="upd_conflict", session_id=str(sid)),
-        )
-        assert created.status_code == 201, created.text
-        task_slug = created.json()["slug"]
-
-        resp = await client.put(
-            f"/api/scheduler/tasks/{task_slug}",
-            json={"mode": "coding", "workspace": str(ws)},
-        )
-        assert resp.status_code == 422
-        assert "mode" in resp.json()["detail"]

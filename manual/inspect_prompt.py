@@ -197,11 +197,9 @@ def _builtin_prompt_budgets(encoding) -> list[dict[str, int | str]]:
     from app.agent.builtin_prompts import (
         BUILTIN_MEMBER_PROFILES,
         CODING_OPENAGENTD_PROMPT,
-        NORMAL_OPENAGENTD_PROMPT,
     )
 
     prompts = {
-        "normal/openagentd": NORMAL_OPENAGENTD_PROMPT,
         "coding/openagentd": CODING_OPENAGENTD_PROMPT,
     }
     for mode, profiles in BUILTIN_MEMBER_PROFILES.items():

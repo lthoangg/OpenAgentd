@@ -11,8 +11,8 @@
   <a href="https://discord.gg/cz6GQHQUMg"><img src="https://img.shields.io/badge/Discord-Join%20Chat-5865F2?logo=discord&logoColor=white" alt="Discord"></a>
 </p>
 
-<p align="center"><strong>A local-first cockpit for AI agents.</strong><br>
-Run an agent team on your machine, see every tool call and diff, and keep your models, sessions, workspaces, and telemetry under your control.</p>
+<p align="center"><strong>A coding-first workspace for local AI agents.</strong><br>
+Run an agent team on your machine, see every tool call and diff, and keep your models, coding sessions, workspaces, and telemetry under your control.</p>
 
 <p align="center">
   <a href="#get-started">Get started</a> ·
@@ -23,11 +23,11 @@ Run an agent team on your machine, see every tool call and diff, and keep your m
   <a href="CONTRIBUTING.md">Contribute</a>
 </p>
 
-![OpenAgentd annotated multi-agent cockpit](https://raw.githubusercontent.com/lthoangg/openagentd/main/documents/assets/brand/openagentd-hero-annotated.png)
+![OpenAgentd annotated multi-agent coding workspace](https://raw.githubusercontent.com/lthoangg/openagentd/main/documents/assets/brand/openagentd-hero-annotated.png)
 
 ## Why OpenAgentd
 
-Most coding agents live in a terminal or an editor. OpenAgentd is the cockpit around them: a native desktop app and mobile companion where you can run a lead with specialists, follow work in real time, inspect what changed, and keep moving without losing context.
+Most coding agents live in a terminal or an editor. OpenAgentd is a coding-first native desktop app and mobile companion where you can run a lead with specialists, follow work in real time, inspect what changed, and keep moving without losing context.
 
 - **See the work.** Streamed replies, tool calls, arguments, results, timings, files, diffs, terminal output, and agent status are visible in one interface.
 - **Run a team.** A lead can delegate to specialists, coordinate them through an async mailbox, and let you watch individual or unified timelines.
@@ -71,12 +71,25 @@ printed local address and add a provider in Settings. For a phone or another
 computer on your network:
 
 ```bash
-openagentd start --lan --key
-openagentd address
-openagentd health
+openagentd server start --lan --key
+openagentd server address
+openagentd server health
 ```
 
 `--key` protects non-loopback access. Use `openagentd --help` and `<command> --help` for the current command reference.
+
+Run one agent turn directly against the current project directory when you need
+a pipe-friendly terminal response:
+
+```bash
+openagentd run --model openai:gpt-5.5 --thinking high --prompt "Summarize this project"
+```
+
+The command validates the current directory as a coding workspace, persists a
+new session for the turn, and streams the lead agent's response text to standard
+output. Tool-permission events follow the runtime's existing auto-allow policy;
+interactive agent questions stop the non-interactive command. It does not
+support workspace selection or session resume.
 
 ### From source
 
@@ -98,7 +111,7 @@ cd web && bun dev
 
 | A conversation that can act | A workspace that stays in view |
 | --- | --- |
-| ![Split cockpit view with lead and worker agents](documents/assets/readme/cockpit-split-view.png) | ![Coding workspace with files and diffs](documents/assets/readme/coding-workspace.png) |
+| ![Split view with lead and worker agents](documents/assets/readme/cockpit-split-view.png) | ![Coding workspace with files and diffs](documents/assets/readme/coding-workspace.png) |
 
 | Inspect changes | Keep an eye on local usage |
 | --- | --- |
@@ -110,7 +123,7 @@ cd web && bun dev
 
 **Build and inspect.** Attach files, browse a coding workspace, use `@` mentions, review real-time diffs, and inspect structured tool output without leaving the conversation.
 
-**Operate with confidence.** Manage providers, MCP servers, skills, path denylist permissions, scheduled tasks, todos, and local telemetry from the cockpit. OpenAgentd supports desktop, browser, and touch-first mobile clients against the same API.
+**Operate with confidence.** Manage providers, MCP servers, skills, path denylist permissions, scheduled tasks, todos, and local telemetry from the coding workspace. OpenAgentd supports desktop, browser, and touch-first mobile clients against the same API.
 
 ## For users and contributors
 

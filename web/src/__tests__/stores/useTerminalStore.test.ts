@@ -140,7 +140,7 @@ describe('useTerminalStore', () => {
     const s = useTerminalStore.getState()
     const a = s.open({ workspace: '/tmp/ws' }, '/tmp/ws')
     const b = s.open({ workspace: '/tmp/ws' }, '/tmp/ws')
-    const c = s.open({ sessionId: 'sid-1' }, 'session:sid-1')
+    const c = s.open({ workspace: '/workspace/project' }, 'workspace:/workspace/project')
     const sessions = useTerminalStore.getState().sessions
     expect(sessions[a]?.title).toBe('Terminal 1')
     expect(sessions[b]?.title).toBe('Terminal 2')
@@ -220,7 +220,7 @@ describe('useTerminalStore', () => {
   it('syncTheme swaps the xterm theme on every live session', async () => {
     const s = useTerminalStore.getState()
     s.open({ workspace: '/tmp/ws' }, '/tmp/ws')
-    s.open({ sessionId: 'sid-1' }, 'session:sid-1')
+    s.open({ workspace: '/workspace/project' }, 'workspace:/workspace/project')
     await flush()
     s.syncTheme('light')
     for (const t of createdTerms) {
@@ -234,7 +234,7 @@ describe('useTerminalStore', () => {
   it('syncFont swaps the xterm fontFamily on every live session', async () => {
     const s = useTerminalStore.getState()
     s.open({ workspace: '/tmp/ws' }, '/tmp/ws')
-    s.open({ sessionId: 'sid-1' }, 'session:sid-1')
+    s.open({ workspace: '/workspace/project' }, 'workspace:/workspace/project')
     await flush()
     s.syncFont('MesloLGS NF')
     for (const t of createdTerms) {
@@ -285,7 +285,7 @@ describe('useTerminalStore', () => {
   it('sessionsForContext returns only matching sessions in open order', async () => {
     const s = useTerminalStore.getState()
     const a = s.open({ workspace: '/tmp/ws' }, '/tmp/ws')
-    s.open({ sessionId: 'sid-1' }, 'session:sid-1')
+    s.open({ workspace: '/workspace/project' }, 'workspace:/workspace/project')
     const b = s.open({ workspace: '/tmp/ws' }, '/tmp/ws')
     const ids = useTerminalStore
       .getState()

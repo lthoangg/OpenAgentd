@@ -64,7 +64,7 @@ export function Root() {
     const initialRoute = target.__OAD_INITIAL_ROUTE__
     if (initialRoute) {
       delete target.__OAD_INITIAL_ROUTE__
-      navigate({ to: initialRoute, replace: true })
+      navigate({ to: closestRestorableRoute(initialRoute), replace: true })
       return
     }
 

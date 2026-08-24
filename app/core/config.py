@@ -114,7 +114,7 @@ class Settings(BaseSettings):
     # Vertex AI API key (Google Cloud key, NOT an AI Studio key)
     # Obtain from: https://console.cloud.google.com/expressmode
     VERTEXAI_API_KEY: SecretStr | None = None
-    # Optional: set both to use normal mode (project-scoped URL + full model catalog)
+    # Optional: set both to use the project-scoped URL and full model catalog
     # Leave unset to use express mode (no project required)
     GOOGLE_CLOUD_PROJECT: str | None = None
     GOOGLE_CLOUD_LOCATION: str = "global"
@@ -123,7 +123,7 @@ class Settings(BaseSettings):
     # Values: "production" | "development"
     # Defaults to "development" so source-checkout runs are always safe
     # (writes to .openagentd/dev/, not ~/.local/share/openagentd).
-    # The CLI (openagentd start / serve) injects APP_ENV=production explicitly.
+    # The CLI (openagentd server start / openagentd server serve) injects APP_ENV=production explicitly.
     APP_ENV: str = "development"
 
     # API Server

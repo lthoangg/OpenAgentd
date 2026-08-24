@@ -1,4 +1,4 @@
-"""``openagentd serve`` — foreground server for desktop / embedded use.
+"""``openagentd server serve`` — foreground server for desktop / embedded use.
 
 Unlike :mod:`app.cli.commands.start`, which double-forks and writes a PID
 file so the user gets their shell back, ``serve`` runs uvicorn in the
@@ -70,7 +70,7 @@ def _add_serve_subparser(sub: argparse._SubParsersAction) -> None:
         description=(
             "Run the API server in the foreground. Intended for embedding "
             "(Tauri desktop shell, CI smoke tests). For a backgrounded "
-            "daemon use 'openagentd start' instead."
+            "daemon use 'openagentd server start' instead."
         ),
     )
     p.add_argument(

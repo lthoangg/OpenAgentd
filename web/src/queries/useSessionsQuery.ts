@@ -8,13 +8,11 @@ const PAGE_SIZE = 20
 const CODING_WORKSPACE_PAGE_SIZE = 5
 const CODING_WORKSPACE_SMOOTHING_MS = 5000
 
-export function useTeamSessionsQuery(mode?: 'normal' | 'coding') {
+export function useTeamSessionsQuery() {
   return useInfiniteQuery({
-    queryKey: mode === 'coding'
-      ? queryKeys.team.sessions.workspace('__all_coding__')
-      : queryKeys.team.sessions.infinite(),
+    queryKey: queryKeys.team.sessions.workspace('__all_coding__'),
     queryFn: ({ pageParam }: { pageParam: string | null }) =>
-      listTeamSessions(pageParam, PAGE_SIZE, mode ? { mode } : undefined),
+      listTeamSessions(pageParam, PAGE_SIZE),
     initialPageParam: null as string | null,
     getNextPageParam: (lastPage: SessionPageResponse) =>
       lastPage.has_more ? lastPage.next_cursor : undefined,
@@ -25,7 +23,7 @@ export function useCodingWorkspaceSessionsQuery(workspace: string, enabled = tru
   return useInfiniteQuery({
     queryKey: queryKeys.team.sessions.workspace(workspace),
     queryFn: ({ pageParam }: { pageParam: string | null }) =>
-      listTeamSessions(pageParam, CODING_WORKSPACE_PAGE_SIZE, { mode: 'coding', workspace }),
+      listTeamSessions(pageParam, CODING_WORKSPACE_PAGE_SIZE, { workspace }),
     initialPageParam: null as string | null,
     getNextPageParam: (lastPage: SessionPageResponse) =>
       lastPage.has_more ? lastPage.next_cursor : undefined,

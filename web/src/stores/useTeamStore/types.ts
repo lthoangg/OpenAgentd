@@ -80,7 +80,7 @@ export interface AgentStream {
    * user message — an answered `ask_user`, or `/continue` — or `null` when no
    * restart is outstanding.
    *
-   * A normal send shows "about to respond" dots because its optimistic user
+   * An interactive send shows "about to respond" dots because its optimistic user
    * block is the only thing in `currentBlocks`. A restart adds no block and
    * `currentBlocks` still holds the turn it is resuming, so neither dots
    * condition fires and the UI looks frozen until the first token.
@@ -191,7 +191,7 @@ export interface TeamStoreState {
 
 export interface TeamStoreActions {
   /** Resolves ``true`` when the backend accepted the message, ``false`` otherwise. */
-  sendMessage: (content: string, files?: File[], options?: { mode?: string; workspace?: string | null; model?: string | null; thinkingLevel?: string | null; fastMode?: boolean; mentions?: string[] }) => Promise<boolean>
+  sendMessage: (content: string, files: File[] | undefined, options: { workspace: string; model?: string | null; thinkingLevel?: string | null; fastMode?: boolean; mentions?: string[] }) => Promise<boolean>
   setSessionModelSettings: (model: string | null, thinkingLevel: string | null, fastMode?: boolean) => void
   compactTeam: () => Promise<void>
   undoTeam: () => Promise<TeamCommandResponse | undefined>
@@ -227,7 +227,7 @@ export interface TeamStoreActions {
    * Falls back to ``loadSession`` whenever a delta cannot be applied safely.
    */
   reconcileTurnTail: (sessionId: string, workspace?: string | null) => Promise<void>
-  beginResolvedSession: (sessionId: string | null, options?: { mode?: string; workspace?: string | null; model?: string | null; thinkingLevel?: string | null; fastMode?: boolean; skipInitialRestore?: boolean }) => void
+  beginResolvedSession: (sessionId: string | null, options: { workspace: string; model?: string | null; thinkingLevel?: string | null; fastMode?: boolean; skipInitialRestore?: boolean }) => void
   loadOlderMessages: () => Promise<void>
   setActiveAgent: (name: string) => void
   toggleSidebar: () => void

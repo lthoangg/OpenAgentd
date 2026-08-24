@@ -36,11 +36,11 @@ describe('parseDeepLinkUrl', () => {
     }
   })
 
-  it('parses navigation deep links for cockpit session', () => {
+  it('normalizes legacy cockpit deep links to coding', () => {
     const res = parseDeepLinkUrl('openagentd://cockpit/sess-999')
     expect(res).toEqual({
       kind: 'navigate',
-      path: '/cockpit/sess-999',
+      path: '/coding/sess-999',
     })
   })
 

@@ -10,11 +10,11 @@ updated: 2026-08-24
 The canonical source of truth for shipped user-visible capabilities. Every feature lists the
 release that introduced it (where known). When you ship something new, **add it here first** — README and external copy should cite this page.
 
-> **Headline.** OpenAgentd is the desktop cockpit for local AI agents — a
+> **Headline.** OpenAgentd is a coding-first desktop workspace for local AI agents — a
 > double-clickable app that runs a team of AI agents on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 16 providers. Your keys.
 
-**Latest release:** v2.3.0 · August 24, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v2.3.0)
+**Latest release:** v2.4.0 · August 24, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v2.4.0)
 
 ---
 
@@ -23,7 +23,7 @@ release that introduced it (where known). When you ship something new, **add it 
 Features are grouped by **pillar** — the same surfaces that drive the product
 narrative on slides and in the README:
 
-1. [The desktop cockpit](#1-the-desktop-cockpit)
+1. [The desktop coding workspace](#1-the-desktop-coding-workspace)
 2. [Agents and teams](#2-agents-and-teams)
 3. [The coding workspace](#3-the-coding-workspace)
 4. [Memory and context](#4-memory-and-context)
@@ -45,9 +45,9 @@ Conventions used in this document:
 
 ---
 
-## 1. The desktop cockpit
+## 1. The desktop coding workspace
 
-The product's primary surface. A native double-click app on macOS, Windows,
+The product's primary coding surface. A native double-click app on macOS, Windows,
 and Linux that hosts the same FastAPI sidecar + React UI you would otherwise
 run from the terminal.
 
@@ -62,9 +62,14 @@ run from the terminal.
   selection, and backend-log-path copy actions instead of waiting indefinitely;
   native startup failures surface immediately, and Retry re-spawns the builtin
   backend without allowing duplicate sidecar processes `[v1.113.0]`.
+- **Coding-only architecture and root redirect** `[v2.4.0]` — OpenAgentd operates
+  exclusively as a coding workspace. Root `/` and legacy Cockpit URLs redirect to `/coding`,
+  workspaces are required across chat, scheduler, terminals, and agent teams, and database
+  migration permanently removes legacy workspace-less records. Telemetry is accessible via the
+  desktop status footer and mobile navigation.
 - **Connection-ready screen warmup** `[v1.113.3]` — after either the bundled
-  sidecar or an external server connects, the app preloads shared Cockpit and
-  Coding data in the background so the first mode switch can render from cache.
+  sidecar or an external server connects, the app preloads coding data in the
+  background so the first session can render from cache.
   Packaged desktop launches also canonicalise the `index.html` entrypoint to Home
   instead of showing the client-side 404 screen.
 - **Grouped settings navigation with one save contract** `[v1.128.0]` — the
@@ -91,7 +96,7 @@ run from the terminal.
   scheduled reminders in the desktop app, plus local native
   notifications in the remote-backend mobile shell `[v1.34.0]`. Clicking a
   desktop completion or reminder notification restores OpenAgentd and opens
-  its linked Cockpit or Coding session `[v1.113.4]`. Per-session context
+  its linked coding session `[v1.113.4]`. Per-session context
   (coding workspace name when available). Settings → Notifications to toggle
   or send a test. Notification sounds are handled by the operating system;
   OpenAgentd does not play an extra in-app sound. Background-process completion
@@ -133,12 +138,12 @@ run from the terminal.
   focus trap). `Escape` now closes the innermost layer first, so dismissing an
   open list no longer closes the surrounding modal. Session Settings opens with
   focus in the model field instead of the close button.
-- **Type-to-focus composer** `[v1.40.0]` — in cockpit and coding chat, start
+- **Type-to-focus composer** `[v1.40.0]` — in coding chat, start
   typing on the chat surface to expand/focus the composer and capture the first
   character without pressing `⌘I`/`Ctrl+I` first.
 - **Developer-friendly word navigation in composer** `[v1.86.0]` *(deprecated — replaced by native browser word navigation; the custom interceptor that stopped at programming separators like `.`, `-`, `_` was removed so `Option + Arrow`/`Ctrl + Arrow` now follow each platform's standard word-jump semantics)*.
 - **Native menu/tray shortcuts** `[v1.39.0, v1.93.1]` — menubar shortcuts for Home,
-  Cockpit, Coding, Command Palette, Scheduled Tasks, Session Settings,
+  Coding, Command Palette, Scheduled Tasks, Session Settings,
   key settings pages, updates, reload, config folder, and backend log; compact
   tray dropdown for status, quick navigation, reload, settings, and quit.
   Command Palette, Scheduled Tasks, and Session Settings accelerators now use
@@ -189,7 +194,7 @@ run from the terminal.
   edge swipes on touch/pen devices: right from the left edge goes back, left
   from the right edge goes forward, while editable fields and scroll-like
   vertical gestures are ignored.
-- **Multiple desktop windows** `[v1.41.0]` — open additional cockpit windows from
+- **Multiple desktop windows** `[v1.41.0]` — open additional coding windows from
   File → New Window, the tray menu, or `⌘/Ctrl+N`; windows share the bundled
   sidecar and desktop auth token, while each window can independently switch to
   a saved external server `[v1.47.0]`. New windows now inherit the active
@@ -197,7 +202,7 @@ run from the terminal.
   is unavailable `[v1.64.1]`. View → Zoom In / Out / Reset now applies per
   desktop window instead of globally across all open windows `[v1.66.1]`. On
   macOS, each desktop window now updates its native title to the active coding
-  workspace name or cockpit session title so the Dock window list distinguishes
+  workspace name or session title so the Dock window list distinguishes
   open windows `[v1.66.1]`. Fixed a bug where switching one window's CLI server
   could still redirect other open windows onto the same server: the backend
   now targets its "backend ready" notification at the switching window only,
@@ -206,8 +211,8 @@ run from the terminal.
   - **Hold Command + click session to open in new window** `[v1.62.1, v1.64.1]` — in the desktop app, holding `Cmd` (macOS) or `Ctrl/Cmd` (Linux) and clicking a session in either sidebar opens that session directly in a new independent desktop window; failures now surface an in-app error toast instead of silently doing nothing.
 - **Editable session titles** `[v1.27.0]` — double-click a session card or use its
   edit affordance in the sidebar to rename saved sessions.
-- **Mode-scoped recent-session lists** `[v1.66.1]` — cockpit and coding sidebars
-  now fetch their own session pages (`mode=normal` vs `mode=coding`) instead of
+- **Mode-scoped recent-session lists** `[v1.66.1]` — session sidebars now fetch
+  their own coding session pages instead of
   sharing one mixed cache, preventing intermittent empty recent-session lists
   when prior conversations exist.
 - **Slash commands** `[since v1.0]` — `/init`, `/compact`, `/undo`,
@@ -234,7 +239,7 @@ run from the terminal.
   the LLM or the UI `[v1.120.0]`. Foreground output memory is bounded, with
   oversized output streamed incrementally to a session spill file `[v1.120.1]`.
   Foreground commands default to a 120-second timeout instead of 60 `[v1.131.3]`.
-- **Drag-and-drop files into chat** `[since v1.0, v1.82.0, v1.131.0]` — drag files (images, PDFs, text, etc.) anywhere onto the chat area (both cockpit and coding views) to show a drop overlay and attach them to the composer. Supports multi-file drops, file-type filtering, and cancellation. A drop no longer attaches the same file twice, folders dropped onto the chat are ignored instead of silently swallowed, and a file dropped outside the chat area no longer navigates the app away from the session `[v1.131.0]`.
+- **Drag-and-drop files into chat** `[since v1.0, v1.82.0, v1.131.0]` — drag files (images, PDFs, text, etc.) anywhere onto the coding chat area to show a drop overlay and attach them to the composer. Supports multi-file drops, file-type filtering, and cancellation. A drop no longer attaches the same file twice, folders dropped onto the chat are ignored instead of silently swallowed, and a file dropped outside the chat area no longer navigates the app away from the session `[v1.131.0]`.
 - **50 MB attachments with in-composer rejection** `[v1.131.0]` — every attachment
   type shares one 50 MB per-message ceiling instead of the previous mix of
   tighter per-category rules behind a smaller request-body cap. Oversize files
@@ -350,7 +355,7 @@ run from the terminal.
   the shared Web UI and connects to saved remote API servers. Foreground resume
   now reconciles missed history and replaces potentially frozen chat streams;
   remembered-server launches prefetch and reuse native credentials.
-- **LAN access key for external clients** `[v1.43.0, v1.103.0]` — `openagentd start --lan --key`
+- **LAN access key for external clients** `[v1.43.0, v1.103.0, v2.4.0]` — `openagentd server start --lan --key`
   stores the CLI server's bind address, port, and bearer key in `server.yaml`, separate from the desktop builtin sidecar's ephemeral token while agents, providers, sessions, and other settings remain shared. Restart and upgrade preserve that key without exposing it in process arguments. OpenAgentd-managed launchers refuse non-loopback binds without a configured key `[v1.101.0]`.
 - **Desktop server connection manager** `[v1.43.4, v1.99.8, v1.104.0]` — the desktop **Server connection** dialog switches the current window between the builtin sidecar and saved external servers, normalizes pasted `/api` URLs, and preserves other open windows' backend choices. Typed servers now require a successful health and access-key test before they can be named, saved, and connected. Saved LAN access keys are scoped per backend origin and stored in the native OS credential store on installed desktop/mobile shells; browser development keeps the per-origin localStorage fallback. Remembered external servers reconnect on app launch with sidecar fallback, while the desktop window opens immediately as backend startup continues asynchronously `[v1.57.1]`.
   - **Reload after switching backend servers** `[v1.98.1]` — after connecting a desktop window to a different saved or typed external server, the webview reloads so stale frontend state is discarded and the window comes back against the newly selected backend cleanly. Reconnecting to the already active backend does not reload.
@@ -476,7 +481,7 @@ team against it.
   list existing worktrees, edit sidebar titles without renaming git directories,
   and remove OpenAgentd-managed worktrees. Removing a worktree asks for confirmation
   first, warning that uncommitted changes will be lost `[v1.101.0]`.
-- **Warm-paper cockpit refresh** `[v1.74.0]` — coding panels, chat-adjacent
+- **Warm-paper workspace refresh** `[v1.74.0]` — coding panels, chat-adjacent
   surfaces, scheduled tasks, telemetry, home, provider/settings detail views,
   command/file search, and input attachments now share the custom warm-paper
   visual system: compact controls, crisp 1px borders, muted text hierarchy,
@@ -535,11 +540,11 @@ team against it.
 - **Workspace sidebar pagination** `[v1.18.0]` — each main/worktree list shows
   roughly 5 sessions and loads more when scrolled to the bottom, so one busy
   workspace doesn't crowd the others.
-- **`@file` / `@folder` auto-attach** `[v1.17.0]` — see [§1](#1-the-desktop-cockpit).
+- **`@file` / `@folder` auto-attach** `[v1.17.0]` — see [§1](#1-the-desktop-coding-workspace).
 - **Slash commands scoped to coding workspaces** `[v1.17.0]` — project-local
   commands in `.openagentd/commands/**/*.md` and `.opencode/commands/**/*.md`
   load only when a workspace is attached. Local commands win on name conflict.
-  Cockpit chat stays global-only.
+  Coding chat stays global-only.
 - **Snippet picker** `[v1.31.0]` — in coding workspaces, type `#` anywhere
   in the composer to pick prompt snippets from `.openagentd/snippets/**/*.md`
   or `{OPENAGENTD_CONFIG_DIR}/snippets/**/*.md` and insert the rendered body.
@@ -582,7 +587,7 @@ team against it.
 - **Interactive terminal tab** `[v1.98.1]` — a real PTY shell (backend
   `subprocess.Popen` + `pty.openpty()`, streamed over WebSocket to an
   xterm.js instance) attached to the coding workspace panel, alongside
-  Changes/Commits/file tabs. Coding-mode only — there is no cockpit-mode
+  Changes/Commits/file tabs. Coding-mode only — there is no separate general-chat mode
   terminal. The session survives tab switches (detached PTYs idle-close
   after 15 minutes of no input; the backend reaper is the 30-minute
   backstop). Includes PTY output backpressure, GPU-accelerated WebGL rendering `[v1.118.0]`,
@@ -741,11 +746,11 @@ MCP.
 | Scheduling | `schedule_task` (reminders + self-scheduling agentic loops) `[v1.70.0]` |
 | Tasks | `todo_manage` |
 | Team coordination | `team_message`, `team_manage` |
-| Ask the user | `ask_user` (coding/cockpit leads) `[v1.131.0, v2.1.0]` |
+| Ask the user | `ask_user` (coding leads) `[v1.131.0, v2.1.0]` |
 | Utility | `skill` |
 
 - **`ask_user` — durable suspend and resume** `[v1.131.0, v2.1.0]` — in
-  **coding or cockpit mode** `[v2.1.0]`, the lead can stop mid-turn and ask you 1–4 questions rather
+  **coding mode** `[v2.1.0]`, the lead can stop mid-turn and ask you 1–4 questions rather
   than guessing on a decision that would cost real work to undo. Each question
   carries up to 5 options with optional descriptions, single- or multi-select,
   a "Recommended" badge on the agent's preferred choice, and an optional
@@ -766,6 +771,10 @@ MCP.
   conversion, dropping `markitdown`.
 - **50k character read limit** `[v2.0.0]` — expanded `read` tool context limit to
   50,000 characters for reviewing larger source files in a single pass.
+- **Symbol outline mode for `read` tool** `[v2.4.0]` — `read` supports `outline=True`
+  to return high-level symbol outlines (classes, methods, functions, interfaces, types,
+  and markdown headers) with exact 1-based line numbers across Python, TypeScript/JavaScript,
+  Rust, Go, and Markdown files, enabling rapid codebase exploration before targeted pagination.
 
 - **Real-time LSP diagnostics injection** `[v1.89.0, v1.105.0, v2.0.0]` — in **coding mode**, after the
   `patch` tool modifies one or more files, OpenAgentd runs the
@@ -788,7 +797,7 @@ MCP.
   `typescript-language-server`, `clangd`). Multi-file `patch` checks run
   concurrently, the report is capped per file (errors first, then a `…and N more`
   summary) to protect the context window, and the whole hook is fail-safe — an LSP
-  error never crashes the tool. The cockpit renders the block as a compact,
+  error never crashes the tool. The coding workspace renders the block as a compact,
   color-coded `ERR`/`WARN` strip beneath the diff. Diagnostics depend on the server
   being available and on normal LSP scope rules (e.g. TypeScript honours `tsconfig.json`).
   Pinned `ty` + `ruff` now ship with the Python runtime, while TypeScript is a
@@ -1053,12 +1062,21 @@ Desktop is primary. CLI / server is the developer path.
   a non-MSI download before elevation, and invokes Windows Installer.
 - **Signed update manifests** `[v1.2.2+]` — minisign-signed `latest.json` at the
   rolling `latest-desktop` release; verified before install.
-- **In-app updater** `[v1.22.0]` — see [§1](#1-the-desktop-cockpit).
+- **In-app updater** `[v1.22.0]` — see [§1](#1-the-desktop-coding-workspace).
 - **CLI install** `[since v1.0]` — `uv tool install openagentd`, `pipx`, `pip`,
   `brew install lthoangg/tap/openagentd`.
-- **CLI server control** `[v1.41.0]` — `restart`, `address`, `health`, and
-  `start --lan --key` make the CLI the control plane for desktop/mobile backends.
-- **CLI start --wait / --watch** `[v1.73.0]` — starts the background server and polls `/api/health/ready` until the database connection and the agent team are fully ready.
+- **CLI server control** `[v1.41.0, v2.4.0]` — `openagentd server restart`,
+  `openagentd server address`, `openagentd server health`, and `openagentd server
+  start --lan --key` make the CLI the control plane for desktop/mobile backends.
+- **Foreground CLI agent execution** `[v2.4.0]` — `openagentd run --prompt "..."`
+  validates the current directory as a coding workspace, starts one persisted
+  team session, and streams only the lead agent's response text to standard
+  output. `--model provider:model` and `--thinking` apply per-turn overrides;
+  auto-approved tool permissions continue normally, while interactive agent
+  questions stop the non-interactive command instead of leaving a suspended run.
+- **CLI start --wait / --watch** `[v1.73.0, v2.4.0]` — `openagentd server start`
+  starts the background server and polls `/api/health/ready` until the database
+  connection and the agent team are fully ready.
 - **CLI upgrade** `[v1.41.0]` — `openagentd upgrade` stops the background
   server, delegates to the detected package manager, then restarts it when it
   was running.
@@ -1066,11 +1084,11 @@ Desktop is primary. CLI / server is the developer path.
   `docker-compose.yaml`, and the `ghcr.io/lthoangg/openagentd` image are
   no longer maintained. Use the CLI install paths above; revisit if there
   is concrete self-hoster demand.
-- **Migration imports** `[since v1.0]` — `openagentd migrate openclaw`,
-  `migrate hermes`. Imports identity + context Markdown into one lead agent.
-- **Server migration export/import** `[v1.97.0]` — `openagentd export` packs
+- **Migration imports** `[since v1.0, v2.4.0]` — `openagentd transfer migrate openclaw`,
+  `openagentd transfer migrate hermes`. Imports identity + context Markdown into one lead agent.
+- **Server migration export/import** `[v1.97.0, v2.4.0]` — `openagentd transfer export` packs
   agents, skills, commands, plugins, and config files into a timestamped
-  `.tar.gz` archive. `openagentd import <archive>` unpacks it on the target
+  `.tar.gz` archive. `openagentd transfer import <archive>` unpacks it on the target
   machine with fill-in-gaps merge (or `--force` to overwrite). API keys in
   `.env` are redacted by default; `--include-secrets` opts in for trusted
   channels. Imports resolve every destination inside the config root and reject
@@ -1083,8 +1101,8 @@ Desktop is primary. CLI / server is the developer path.
   sidecar, while bundled windows wait for backend readiness before the desktop
   UI finishes bootstrapping after reload.
 - **Closest restorable route fallback after backend switches** `[v1.68.0]` —
-  when reconnecting to a backend that does not have the previous coding or
-  cockpit session, desktop restore now lands on the nearest valid hub page
+  when reconnecting to a backend that does not have the previous
+  coding session, desktop restore now lands on the nearest valid hub page
   instead of reopening a stale session-specific route.
 
 

@@ -336,7 +336,6 @@ class TeamMemberBase(abc.ABC):
     async def _ensure_db_session(
         self,
         title: str | None = None,
-        mode: str = "normal",
         workspace: str | None = None,
     ) -> None:
         """Ensure a DB chat session row exists for self.session_id."""
@@ -350,8 +349,11 @@ class TeamMemberBase(abc.ABC):
                         id=session_uuid,
                         title=title or f"Team {self._role_label}: {self.name}",
                         agent_name=self.name,
-                        mode=mode,
-                        workspace=workspace,
+                        workspace=(
+                            workspace
+                            or (self._team.workspace if self._team else "")
+                            or ""
+                        ),
                     )
                     db.add(row)
                     await db.commit()
@@ -522,8 +524,7 @@ class TeamMemberBase(abc.ABC):
             return
 
         try:
-            mode = self._team.mode if self._team is not None else "normal"
-            new_agent = rebuild_agent_from_disk(source, mode=mode)
+            new_agent = rebuild_agent_from_disk(source, mode="coding")
         except Exception as exc:
             logger.warning(
                 "agent_config_refresh_failed name={} error={}",
@@ -982,15 +983,13 @@ class TeamMemberBase(abc.ABC):
         # LSP diagnostics injection is only meaningful in coding mode, where the
         # workspace is a real project tree. Decide once here so the hook needs
         # no per-tool-call DB lookups.
-        team_mode = self._team.mode if self._team is not None else "normal"
-
         hooks: list[BaseAgentHook] = [
             inject_current_date,
             team_prompt_hook,
             team_inbox_hook,
             publisher_hook,
             otel_hook,
-            LspHook(enabled=team_mode == "coding"),
+            LspHook(enabled=True),
         ]
         # Splice user-queued messages into the running turn — lead only, since
         # the user-facing queue lives on the lead's session.  Must precede
@@ -1007,8 +1006,7 @@ class TeamMemberBase(abc.ABC):
                     ).support_interrupt,
                 )
             )
-        if self._team.mode == "coding":
-            hooks.append(WorkspaceInstructionsHook(self._team.workspace))
+        hooks.append(WorkspaceInstructionsHook(self._team.workspace))
 
         # Title generation — lead only (members don't need session titles).
         # Returns None with a warning when the feature is disabled or
@@ -1039,7 +1037,7 @@ class TeamMemberBase(abc.ABC):
             summarization_model = runtime_model or self.agent.model_id
             summ_hook = build_summarization_hook(
                 summarization_provider,
-                mode=self._team.mode,
+                mode="coding",
                 model_id=summarization_model,
                 support_interrupt=summarization_provider.support_interrupt,
             )
@@ -1053,7 +1051,6 @@ class TeamMemberBase(abc.ABC):
         # schedule tool reads these as injected args so the LLM never has
         # to specify (or could lie about) the routing target.
         run_metadata: dict[str, object] = {
-            "team_mode": self._team.mode,
             "lead_session_id": lead_session_id,
         }
         if question_resume:

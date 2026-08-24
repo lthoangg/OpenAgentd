@@ -42,11 +42,11 @@ cmd_logs = _lazy_cmd("app.cli.commands.logs", "cmd_logs")
 cmd_lsp = _lazy_cmd("app.cli.commands.lsp", "cmd_lsp")
 cmd_migrate = _lazy_cmd("app.cli.commands.migrate", "cmd_migrate")
 cmd_restart = _lazy_cmd("app.cli.commands.restart", "cmd_restart")
+cmd_run = _lazy_cmd("app.cli.commands.run", "cmd_run")
 cmd_start = _lazy_cmd("app.cli.commands.start", "cmd_start")
 cmd_status = _lazy_cmd("app.cli.commands.status", "cmd_status")
 cmd_stop = _lazy_cmd("app.cli.commands.stop", "cmd_stop")
 cmd_upgrade = _lazy_cmd("app.cli.commands.upgrade", "cmd_upgrade")
-cmd_version = _lazy_cmd("app.cli.commands.version", "cmd_version")
 
 
 def _add_serve_subparser(sub: argparse._SubParsersAction) -> None:
@@ -63,51 +63,38 @@ def build_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "Examples:\n"
-            "  openagentd migrate openclaw --from ~/.openclaw/workspace --model openai:gpt-5.5\n"
-            "  openagentd migrate hermes --from ~/.hermes --model openai:gpt-5.5\n"
-            "  openagentd auth copilot   # authenticate with an OAuth provider\n"
-            "  openagentd                # start in background\n"
-            "  openagentd start --lan    # expose the server to desktop/mobile on your LAN\n"
-            "  openagentd stop           # stop background processes\n"
-            "  openagentd restart        # restart the background server\n"
-            "  openagentd status         # check if running\n"
-            "  openagentd address        # print local and LAN server URLs\n"
-            "  openagentd health         # run server/mobile diagnostics\n"
-            "  openagentd logs           # tail the server log\n"
-            "  openagentd doctor         # check system health\n"
-            "  openagentd lsp status     # inspect managed language servers\n"
-            "  openagentd cleanup        # dry-run generated artifact cleanup\n"
-            "  openagentd upgrade        # upgrade to the latest version\n"
-            "  openagentd export         # pack config for migration (agents, skills, commands, …)\n"
-            "  openagentd import archive.tar.gz  # unpack a migration archive on the target server\n"
+            "  openagentd server start --lan --key  # start for mobile/LAN clients\n"
+            "  openagentd server status             # check the background server\n"
+            "  openagentd auth copilot              # authenticate with an OAuth provider\n"
+            "  openagentd run --prompt 'Summarize this project'  # run an agent once\n"
+            "  openagentd transfer migrate openclaw --from ~/.openclaw/workspace --model openai:gpt-5.5\n"
+            "  openagentd transfer export           # pack config for migration\n"
+            "  openagentd doctor                    # check system health\n"
+            "  openagentd lsp status                # inspect managed language servers\n"
+            "  openagentd upgrade                   # upgrade to the latest version\n"
         ),
     )
     parser.add_argument("--version", action="version", version=f"openagentd v{VERSION}")
-    parser.add_argument(
-        "--host", default=None, help="Bind host (default: server.yaml host)"
+    parser.set_defaults(
+        func=cmd_start,
+        host=None,
+        port=None,
+        lan=False,
+        key=False,
+        wait=False,
+        watch=False,
     )
-    parser.add_argument(
-        "--port",
-        type=int,
-        default=None,
-        help="API port (default: server.yaml port)",
-    )
-    parser.add_argument(
-        "--lan",
-        action="store_true",
-        help="Bind on all interfaces for mobile/LAN clients (sets --host 0.0.0.0)",
-    )
-    parser.add_argument(
-        "--key",
-        action="store_true",
-        help="Prompt for an access key required by external clients.",
-    )
-    parser.set_defaults(func=cmd_start)
 
     sub = parser.add_subparsers(dest="command", metavar="command")
 
+    # ── transfer ────────────────────────────────────────────────────────────
+    p_transfer = sub.add_parser(
+        "transfer", help="Move agent configuration between installations"
+    )
+    transfer_sub = p_transfer.add_subparsers(dest="transfer_action", required=True)
+
     # ── migrate ───────────────────────────────────────────────────────────────
-    p_migrate = sub.add_parser(
+    p_migrate = transfer_sub.add_parser(
         "migrate",
         help="Import agent config from another local agent tool",
     )
@@ -157,10 +144,18 @@ def build_parser() -> argparse.ArgumentParser:
         dest="list_providers",
         help="List available OAuth providers",
     )
+    p_auth.add_argument(
+        "--device",
+        action="store_true",
+        help="Use the headless device-code flow when the provider supports it",
+    )
     p_auth.set_defaults(func=cmd_auth)
 
     def add_start_flags(
-        p: argparse.ArgumentParser, *, include_key: bool = True
+        p: argparse.ArgumentParser,
+        *,
+        include_key: bool = True,
+        include_wait: bool = True,
     ) -> None:
         p.add_argument(
             "--host",
@@ -186,54 +181,61 @@ def build_parser() -> argparse.ArgumentParser:
                 default=argparse.SUPPRESS,
                 help="Prompt for an access key required by external clients.",
             )
-        p.add_argument(
-            "--wait",
-            action="store_true",
-            default=argparse.SUPPRESS,
-            help="Wait/poll until the background server is fully started and ready.",
-        )
-        p.add_argument(
-            "--watch",
-            action="store_true",
-            default=argparse.SUPPRESS,
-            help="Alias for --wait.",
-        )
+        if include_wait:
+            p.add_argument(
+                "--wait",
+                action="store_true",
+                default=argparse.SUPPRESS,
+                help="Wait/poll until the background server is fully started and ready.",
+            )
+            p.add_argument(
+                "--watch",
+                action="store_true",
+                default=argparse.SUPPRESS,
+                help="Alias for --wait.",
+            )
+
+    # ── server ──────────────────────────────────────────────────────────────
+    p_server = sub.add_parser("server", help="Run and inspect the API server")
+    server_sub = p_server.add_subparsers(dest="server_action", required=True)
 
     # ── start ─────────────────────────────────────────────────────────────────
-    p_start = sub.add_parser("start", help="Start the background server")
+    p_start = server_sub.add_parser("start", help="Start the background server")
     add_start_flags(p_start)
     p_start.set_defaults(func=cmd_start)
 
     # ── serve (foreground; for desktop / embedding) ───────────────────────────
-    _add_serve_subparser(sub)
+    _add_serve_subparser(server_sub)
 
     # ── stop ──────────────────────────────────────────────────────────────────
-    sub.add_parser("stop", help="Stop background server and web UI").set_defaults(
+    server_sub.add_parser("stop", help="Stop the background server").set_defaults(
         func=cmd_stop
     )
 
     # ── restart ───────────────────────────────────────────────────────────────
-    p_restart = sub.add_parser("restart", help="Restart the background server")
+    p_restart = server_sub.add_parser("restart", help="Restart the background server")
     add_start_flags(p_restart)
     p_restart.set_defaults(func=cmd_restart)
 
     # ── status ────────────────────────────────────────────────────────────────
-    p_status = sub.add_parser("status", help="Show whether the server is running")
-    add_start_flags(p_status, include_key=False)
+    p_status = server_sub.add_parser(
+        "status", help="Show whether the server is running"
+    )
+    add_start_flags(p_status, include_key=False, include_wait=False)
     p_status.set_defaults(func=cmd_status)
 
     # ── address ───────────────────────────────────────────────────────────────
-    p_address = sub.add_parser("address", help="Show local and LAN server URLs")
-    add_start_flags(p_address, include_key=False)
+    p_address = server_sub.add_parser("address", help="Show local and LAN server URLs")
+    add_start_flags(p_address, include_key=False, include_wait=False)
     p_address.set_defaults(func=cmd_address)
 
     # ── health ────────────────────────────────────────────────────────────────
-    p_health = sub.add_parser("health", help="Run server and mobile diagnostics")
-    add_start_flags(p_health, include_key=False)
+    p_health = server_sub.add_parser("health", help="Run server and mobile diagnostics")
+    add_start_flags(p_health, include_key=False, include_wait=False)
     p_health.set_defaults(func=cmd_health)
 
     # ── logs ──────────────────────────────────────────────────────────────────
-    p_logs = sub.add_parser("logs", help="Tail the server log")
+    p_logs = server_sub.add_parser("logs", help="Tail the server log")
     p_logs.add_argument(
         "-n",
         "--lines",
@@ -269,15 +271,21 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_lsp.set_defaults(func=cmd_lsp)
 
-    # ── version ───────────────────────────────────────────────────────────────
-    sub.add_parser("version", help="Print version and exit").set_defaults(
-        func=cmd_version
-    )
-
     # ── doctor ────────────────────────────────────────────────────────────────
     sub.add_parser("doctor", help="Check system health and report issues").set_defaults(
         func=cmd_doctor
     )
+
+    # ── run ───────────────────────────────────────────────────────────────────
+    p_run = sub.add_parser(
+        "run", help="Run an agent in the current directory and print the lead response"
+    )
+    p_run.add_argument(
+        "--prompt", required=True, help="Prompt to send to the agent team"
+    )
+    p_run.add_argument("--model", help="Model override, e.g. openai:gpt-5.5")
+    p_run.add_argument("--thinking", help="Provider-neutral thinking level override")
+    p_run.set_defaults(func=cmd_run)
 
     # ── cleanup ───────────────────────────────────────────────────────────────
     p_cleanup = sub.add_parser(
@@ -310,7 +318,7 @@ def build_parser() -> argparse.ArgumentParser:
     ).set_defaults(func=cmd_upgrade)
 
     # ── export ────────────────────────────────────────────────────────────────
-    p_export = sub.add_parser(
+    p_export = transfer_sub.add_parser(
         "export",
         help="Pack config for migration to another server (agents, skills, commands, …)",
         description=(
@@ -342,11 +350,11 @@ def build_parser() -> argparse.ArgumentParser:
     p_export.set_defaults(func=cmd_export)
 
     # ── import ────────────────────────────────────────────────────────────────
-    p_import = sub.add_parser(
+    p_import = transfer_sub.add_parser(
         "import",
         help="Unpack a migration archive on the target server",
         description=(
-            "Extracts an archive produced by `openagentd export` into your config\n"
+            "Extracts an archive produced by `openagentd transfer export` into your config\n"
             "directory. Existing files are kept by default (fill-in-gaps); pass\n"
             "--force to overwrite them."
         ),
@@ -355,7 +363,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_import.add_argument(
         "archive",
         metavar="ARCHIVE",
-        help="Path to the .tar.gz archive produced by `openagentd export`",
+        help="Path to the .tar.gz archive produced by `openagentd transfer export`",
     )
     p_import.add_argument(
         "--force",

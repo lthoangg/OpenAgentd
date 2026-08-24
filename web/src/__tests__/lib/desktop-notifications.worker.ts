@@ -66,7 +66,6 @@ describe('desktop notification worker', () => {
       payload: {
         kind: 'assistant_done',
         sessionId: 'session-123',
-        mode: 'coding',
         title: 'Session completed - openagentd',
         body: 'Fix notification wording',
       },

@@ -1360,7 +1360,7 @@ def test_member_actions_accepts_json_string() -> None:
     """Member schema gets the same lenient coercion."""
     model = TodoMemberArgs(actions='[{"action": "read"}]')
     assert len(model.actions) == 1
-    assert isinstance(model.actions[0], ReadAction)
+    assert model.actions[0].action == "read"
 
 
 @pytest.mark.asyncio
@@ -1504,3 +1504,67 @@ async def test_batch_outcomes_are_consolidated_per_verb(
     # Reasoned/failed outcomes stay on their own line
     assert "not_found task_99" in lines
     assert result.count("updated") == 1
+
+
+@pytest.mark.asyncio
+async def test_todo_action_create_applies_sensible_defaults(
+    tmp_sandbox: SandboxConfig, todos_file: Path
+) -> None:
+    """Create action with only content defaults status to pending and priority to medium."""
+    result = await _todo_manage(
+        actions=[{"action": "create", "content": "Just a task"}],
+        _state=None,
+    )
+    assert "created task_1" in result
+    store = json.loads(todos_file.read_text())
+    item = store["items"][0]
+    assert item["status"] == "pending"
+    assert item["priority"] == "medium"
+
+
+@pytest.mark.asyncio
+async def test_todo_args_normalizes_top_level_action_kwargs(
+    tmp_sandbox: SandboxConfig, todos_file: Path
+) -> None:
+    """When the LLM calls todo_manage with top-level action kwargs, it runs seamlessly."""
+    result = await todo_manage.arun(
+        _injected={"_state": None},
+        action="create",
+        content="Direct top-level call",
+    )
+    assert "created task_1" in result
+    store = json.loads(todos_file.read_text())
+    assert store["items"][0]["content"] == "Direct top-level call"
+
+
+@pytest.mark.asyncio
+async def test_dependencies_coerced_from_comma_separated_string(
+    tmp_sandbox: SandboxConfig, todos_file: Path
+) -> None:
+    """Dependencies can be supplied as a comma-separated string or list."""
+    await _todo_manage(
+        actions=[
+            {"action": "create", "content": "First"},
+            {"action": "create", "content": "Second", "dependencies": "task_1"},
+        ],
+        _state=None,
+    )
+    store = json.loads(todos_file.read_text())
+    assert store["items"][1]["dependencies"] == ["task_1"]
+
+
+def test_todo_manage_schema_is_flat_and_free_of_combinators() -> None:
+    """Lead and member todo schemas must be flat objects inside items without oneOf/$defs."""
+    lead_params = todo_manage.definition["function"]["parameters"]
+    assert "oneOf" not in json.dumps(lead_params)
+    assert "$defs" not in json.dumps(lead_params)
+    assert "$ref" not in json.dumps(lead_params)
+    items_props = lead_params["properties"]["actions"]["items"]["properties"]
+    assert "action" in items_props
+    assert "content" in items_props
+    assert "status" in items_props
+    assert "priority" in items_props
+    assert "dependencies" in items_props
+    assert "assigned_to" in items_props
+    assert "instructions" in items_props
+    assert "result" in items_props

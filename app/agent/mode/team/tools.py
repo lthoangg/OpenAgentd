@@ -19,7 +19,7 @@ from __future__ import annotations
 import re
 from typing import Annotated, Any, TYPE_CHECKING, Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import AliasChoices, BaseModel, Field, field_validator
 
 from app.agent.tools.registry import InjectedArg, Tool
 
@@ -45,6 +45,7 @@ class TeamMessageArgs(BaseModel):
 
     to: list[str] = Field(
         min_length=1,
+        validation_alias=AliasChoices("to", "recipient", "recipients"),
         description=(
             "Exact live handles, or a bare blueprint name when exactly one instance "
             "is live. Use one call per audience."
@@ -52,6 +53,7 @@ class TeamMessageArgs(BaseModel):
     )
     content: str = Field(
         min_length=1,
+        validation_alias=AliasChoices("content", "message", "text", "body"),
         description=(
             "Message body for the listed recipients only: work output, instructions, "
             "questions, requested progress, or blockers. Be concise — state the point "

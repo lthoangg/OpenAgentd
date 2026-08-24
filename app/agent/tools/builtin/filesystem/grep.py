@@ -9,7 +9,7 @@ import os
 import re
 from pathlib import Path
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import AliasChoices, BaseModel, Field, field_validator
 
 from app.agent.denied_paths import get_denied_paths
 from app.agent.tools.builtin.filesystem._ignore import (
@@ -93,13 +93,17 @@ class GrepArgs(BaseModel):
     """Arguments for the grep tool."""
 
     pattern: str = Field(
-        description="Regex to match per line (e.g. 'def main', 'TODO|FIXME')."
+        validation_alias=AliasChoices("pattern", "query", "regex"),
+        description="Regex to match per line (e.g. 'def main', 'TODO|FIXME').",
     )
     directory: str = Field(
-        default=".", description="Search root; '.' is the workspace root."
+        default=".",
+        validation_alias=AliasChoices("directory", "dir", "path"),
+        description="Search root; '.' is the workspace root.",
     )
     include: str = Field(
         default="*",
+        validation_alias=AliasChoices("include", "glob", "file_pattern"),
         description="Filename glob to filter files (e.g. '*.py').",
     )
     max_results: int = Field(

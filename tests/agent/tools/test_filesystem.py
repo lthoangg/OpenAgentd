@@ -894,3 +894,27 @@ class TestGlobFiles:
 
         result = await glob_files.arun(pattern="build/**/*.js", directory=".")
         assert "app.js" not in result
+
+
+@pytest.mark.asyncio
+async def test_read_file_accepts_aliases(sandbox_workspace):
+    (sandbox_workspace / "alias_test.txt").write_text("content via alias")
+    assert await read_file.arun(file_path="alias_test.txt") == "content via alias"
+    assert await read_file.arun(filename="alias_test.txt") == "content via alias"
+    assert await read_file.arun(filepath="alias_test.txt") == "content via alias"
+
+
+@pytest.mark.asyncio
+async def test_glob_files_accepts_aliases(workspace):
+    res1 = await glob_files.arun(glob="*.py", dir=".")
+    assert "hello.py" in res1
+    res2 = await glob_files.arun(pattern="*.py", path=".")
+    assert "hello.py" in res2
+
+
+@pytest.mark.asyncio
+async def test_grep_files_accepts_aliases(workspace):
+    res1 = await grep_files.arun(query="def hello", file_pattern="*.py", dir=".")
+    assert "hello.py" in res1
+    res2 = await grep_files.arun(regex="def world", glob="*.py", path=".")
+    assert "world.py" in res2

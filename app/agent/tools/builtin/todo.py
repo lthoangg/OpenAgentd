@@ -50,13 +50,147 @@ from app.agent.tools.registry import InjectedArg, Tool
 # ---------------------------------------------------------------------------
 
 
-class CreateAction(BaseModel):
-    action: Literal["create"]
+from pydantic import model_validator
+
+
+class TodoAction(BaseModel):
+    """A single task action for the lead task board."""
+
+    action: Literal["create", "update", "delete", "read", "clear"] = Field(
+        description="Action to perform: create, update, delete, read, or clear."
+    )
+    task_id: str | None = Field(
+        default=None,
+        description="ID of the task to update or delete (e.g. 'task_1').",
+    )
+    content: str | None = Field(
+        default=None,
+        description="Task description (required for create; omit on update to leave unchanged).",
+    )
+    status: (
+        Literal["pending", "in_progress", "completed", "cancelled", "finished"] | None
+    ) = Field(
+        default=None,
+        description="Status for create/update ('pending', 'in_progress', 'completed', 'cancelled') or filter for clear ('finished', 'completed', 'cancelled').",
+    )
+    priority: Literal["high", "medium", "low"] | None = Field(
+        default=None,
+        description="Priority level ('high', 'medium', 'low'; defaults to 'medium' on create).",
+    )
+    dependencies: list[str] = Field(
+        default_factory=list,
+        description="Task IDs that must be completed before this task can start.",
+    )
+    assigned_to: str | None = Field(
+        default=None,
+        pattern=r"^[^#,/\s]+#\d+$",
+        description="Agent handle assigned to this task, if any.",
+    )
+    instructions: str | None = Field(
+        default=None,
+        description=(
+            "Delegation brief for the assignee: goal, constraints, and how to "
+            "verify. The assignee reads this when picking up the task."
+        ),
+    )
+    result: str | None = Field(
+        default=None,
+        description="Outcome/deliverable summary, set when completing the task.",
+    )
+
+    @field_validator("content")
+    @classmethod
+    def _not_blank(cls, v: str | None) -> str | None:
+        if v is not None and not v.strip():
+            raise ValueError("content must not be blank")
+        return v
+
+    @field_validator("dependencies", mode="before")
+    @classmethod
+    def _coerce_dependencies(cls, v: Any) -> list[str]:
+        if v is None:
+            return []
+        if isinstance(v, str):
+            v = [item.strip() for item in v.split(",") if item.strip()]
+        if isinstance(v, (list, tuple, set)):
+            return list(dict.fromkeys(str(x) for x in v))
+        return [str(v)]
+
+    @model_validator(mode="after")
+    def _validate_action(self) -> TodoAction:
+        if self.action == "create":
+            if not self.content:
+                raise ValueError("content is required for create action")
+            if self.status is None:
+                self.status = "pending"
+            elif self.status == "finished":
+                raise ValueError("status 'finished' is only valid for clear action")
+            if self.priority is None:
+                self.priority = "medium"
+        elif self.action in ("update", "delete"):
+            if not self.task_id:
+                raise ValueError(f"task_id is required for {self.action} action")
+            if self.action == "update" and self.status == "finished":
+                raise ValueError("status 'finished' is only valid for clear action")
+        elif self.action == "clear":
+            if self.status is None:
+                self.status = "finished"
+            elif self.status not in ("completed", "cancelled", "finished"):
+                raise ValueError(
+                    "status for clear must be 'completed', 'cancelled', or 'finished'"
+                )
+        return self
+
+
+class MemberTodoAction(BaseModel):
+    """A single task action for member agents."""
+
+    action: Literal["claim", "update", "read"] = Field(
+        description="Action to perform: claim, update, or read."
+    )
+    task_id: str | None = Field(
+        default=None,
+        description="ID of the claimed task to update or claim (e.g. 'task_1').",
+    )
+    content: str | None = Field(
+        default=None,
+        description="Task description (omit to leave unchanged).",
+    )
+    status: Literal["pending", "in_progress", "completed", "cancelled"] | None = Field(
+        default=None,
+        description="New status.",
+    )
+    result: str | None = Field(
+        default=None,
+        description=(
+            "Outcome/deliverable summary, set when completing the task: what "
+            "was done, where, and how it was verified."
+        ),
+    )
+
+    @field_validator("content")
+    @classmethod
+    def _not_blank(cls, v: str | None) -> str | None:
+        if v is not None and not v.strip():
+            raise ValueError("content must not be blank")
+        return v
+
+    @model_validator(mode="after")
+    def _validate_action(self) -> MemberTodoAction:
+        if self.action in ("claim", "update") and not self.task_id:
+            raise ValueError(f"task_id is required for {self.action} action")
+        return self
+
+
+class CreateAction(TodoAction):
+    action: Literal["create"] = "create"
     content: str = Field(description="Brief description of the task.")
     status: Literal["pending", "in_progress", "completed", "cancelled"] = Field(
+        default="pending",
         description="Initial status.",
     )
     priority: Literal["high", "medium", "low"] = Field(
+        default="medium",
         description="Priority level.",
     )
     dependencies: list[str] = Field(
@@ -76,107 +210,33 @@ class CreateAction(BaseModel):
         ),
     )
 
-    @field_validator("content")
-    @classmethod
-    def _not_blank(cls, v: str) -> str:
-        if not v.strip():
-            raise ValueError("content must not be blank")
-        return v
 
-    @field_validator("dependencies")
-    @classmethod
-    def _no_duplicates(cls, v: list[str]) -> list[str]:
-        return list(dict.fromkeys(v))
-
-
-class UpdateAction(BaseModel):
-    action: Literal["update"]
+class UpdateAction(TodoAction):
+    action: Literal["update"] = "update"
     task_id: str = Field(description="ID of the task to update (e.g. task_1).")
-    content: str | None = Field(
-        default=None,
-        description="New description (omit any field to leave it unchanged).",
-    )
-    status: Literal["pending", "in_progress", "completed", "cancelled"] | None = Field(
-        default=None, description="New status."
-    )
-    priority: Literal["high", "medium", "low"] | None = Field(
-        default=None, description="New priority."
-    )
-    dependencies: list[str] | None = Field(
-        default=None,
-        description="Replacement list of task IDs that must be completed first.",
-    )
-    assigned_to: str | None = Field(
-        default=None,
-        pattern=r"^[^#,/\s]+#\d+$",
-        description="Replacement agent handle assigned to this task.",
-    )
-    instructions: str | None = Field(
-        default=None,
-        description="Replacement delegation brief.",
-    )
-    result: str | None = Field(
-        default=None,
-        description="Outcome/deliverable summary, set when completing the task.",
-    )
-
-    @field_validator("content")
-    @classmethod
-    def _not_blank(cls, v: str | None) -> str | None:
-        if v is not None and not v.strip():
-            raise ValueError("content must not be blank")
-        return v
-
-    @field_validator("dependencies")
-    @classmethod
-    def _no_duplicates(cls, v: list[str] | None) -> list[str] | None:
-        if v is None:
-            return None
-        return list(dict.fromkeys(v))
 
 
-class MemberUpdateAction(BaseModel):
-    action: Literal["update"]
+class MemberUpdateAction(MemberTodoAction):
+    action: Literal["update"] = "update"
     task_id: str = Field(description="ID of the claimed task to update.")
-    content: str | None = Field(
-        default=None,
-        description="New description (omit any field to leave it unchanged).",
-    )
-    status: Literal["pending", "in_progress", "completed", "cancelled"] | None = Field(
-        default=None, description="New status."
-    )
-    result: str | None = Field(
-        default=None,
-        description=(
-            "Outcome/deliverable summary, set when completing the task: what "
-            "was done, where, and how it was verified."
-        ),
-    )
-
-    @field_validator("content")
-    @classmethod
-    def _not_blank(cls, v: str | None) -> str | None:
-        if v is not None and not v.strip():
-            raise ValueError("content must not be blank")
-        return v
 
 
-class ClaimAction(BaseModel):
-    action: Literal["claim"]
+class ClaimAction(MemberTodoAction):
+    action: Literal["claim"] = "claim"
     task_id: str = Field(description="ID of the task to claim (e.g. task_1).")
 
 
-class DeleteAction(BaseModel):
-    action: Literal["delete"]
+class DeleteAction(TodoAction):
+    action: Literal["delete"] = "delete"
     task_id: str = Field(description="ID of the task to remove (e.g. task_1).")
 
 
-class ReadAction(BaseModel):
-    action: Literal["read"]
+class ReadAction(TodoAction):
+    action: Literal["read"] = "read"
 
 
-class ClearAction(BaseModel):
-    action: Literal["clear"]
+class ClearAction(TodoAction):
+    action: Literal["clear"] = "clear"
     status: Literal["completed", "cancelled", "finished"] = Field(
         default="finished",
         description=(
@@ -187,18 +247,13 @@ class ClearAction(BaseModel):
     )
 
 
-AnyAction = Annotated[
-    CreateAction | UpdateAction | DeleteAction | ReadAction | ClearAction,
-    Field(discriminator="action"),
-]
-
-MemberAnyAction = Annotated[
-    MemberUpdateAction | ClaimAction | ReadAction,
-    Field(discriminator="action"),
-]
+AnyAction = TodoAction
+MemberAnyAction = MemberTodoAction
 
 ActionModel = (
-    CreateAction
+    TodoAction
+    | MemberTodoAction
+    | CreateAction
     | UpdateAction
     | MemberUpdateAction
     | ClaimAction
@@ -207,8 +262,22 @@ ActionModel = (
     | ClearAction
 )
 
+_LEAD_ACTION_CLS_MAP = {
+    "create": CreateAction,
+    "update": UpdateAction,
+    "delete": DeleteAction,
+    "read": ReadAction,
+    "clear": ClearAction,
+}
 
-def _coerce_actions(value: Any) -> Any:
+_MEMBER_ACTION_CLS_MAP = {
+    "claim": ClaimAction,
+    "update": MemberUpdateAction,
+    "read": MemberTodoAction,
+}
+
+
+def _coerce_actions(value: Any, role: Literal["lead", "member"] = "lead") -> Any:
     """Accept ``actions`` the way real models actually emit it.
 
     Some providers stringify nested-array arguments, sending ``actions`` as a
@@ -229,32 +298,61 @@ def _coerce_actions(value: Any) -> Any:
             return value
     # A single action object → wrap as a one-element list.
     if isinstance(value, dict):
-        return [value]
+        value = [value]
+    if isinstance(value, list):
+        cls_map = _LEAD_ACTION_CLS_MAP if role == "lead" else _MEMBER_ACTION_CLS_MAP
+        coerced: list[Any] = []
+        for item in value:
+            if isinstance(item, dict) and "action" in item:
+                act_name = item.get("action")
+                cls = cls_map.get(act_name)
+                if cls is not None:
+                    try:
+                        coerced.append(cls.model_validate(item))
+                        continue
+                    except Exception:
+                        pass
+            coerced.append(item)
+        return coerced
     return value
 
 
 class TodoArgs(BaseModel):
     """Arguments for the lead todo_manage tool."""
 
-    actions: list[AnyAction] = Field(description="Ordered list of actions to execute.")
+    actions: list[TodoAction] = Field(description="Ordered list of actions to execute.")
+
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_args(cls, values: Any) -> Any:
+        if isinstance(values, dict) and "actions" not in values and "action" in values:
+            return {"actions": [values]}
+        return values
 
     @field_validator("actions", mode="before")
     @classmethod
     def _coerce(cls, value: Any) -> Any:
-        return _coerce_actions(value)
+        return _coerce_actions(value, role="lead")
 
 
 class TodoMemberArgs(BaseModel):
     """Arguments for the member todo_manage tool."""
 
-    actions: list[MemberAnyAction] = Field(
+    actions: list[MemberTodoAction] = Field(
         description="Ordered list of claim/read/update actions to execute."
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_args(cls, values: Any) -> Any:
+        if isinstance(values, dict) and "actions" not in values and "action" in values:
+            return {"actions": [values]}
+        return values
 
     @field_validator("actions", mode="before")
     @classmethod
     def _coerce(cls, value: Any) -> Any:
-        return _coerce_actions(value)
+        return _coerce_actions(value, role="member")
 
 
 # ---------------------------------------------------------------------------
@@ -540,19 +638,39 @@ async def _apply_actions(
     # the claimer did not author the task, so this is new information.
     claimed_ids: list[str] = []
 
-    for act in actions:
-        if isinstance(act, ReadAction):
+    cls_map = _LEAD_ACTION_CLS_MAP if role == "lead" else _MEMBER_ACTION_CLS_MAP
+    normalized_actions: list[Any] = []
+    for item in actions:
+        if isinstance(item, dict):
+            act_name = item.get("action")
+            cls = cls_map.get(
+                act_name, TodoAction if role == "lead" else MemberTodoAction
+            )
+            try:
+                normalized_actions.append(cls.model_validate(item))
+                continue
+            except Exception:
+                pass
+        normalized_actions.append(item)
+
+    for act in normalized_actions:
+        act_type = getattr(act, "action", None)
+        if act_type == "read" or isinstance(act, ReadAction):
             # read is a no-op on the store — result is returned at the end
             pass
 
-        elif isinstance(act, CreateAction):
+        elif (act_type == "create" or isinstance(act, CreateAction)) and isinstance(
+            act, TodoAction
+        ):
+            if not act.content:
+                continue
             new_id = f"task_{store['counter'] + 1}"
-            dependencies = list(dict.fromkeys(act.dependencies))
+            dependencies = list(dict.fromkeys(act.dependencies or []))
             valid, error = _valid_dependencies(store, new_id, dependencies)
             if not valid:
                 log_parts.append(f"invalid_dependencies {new_id}: {error}")
                 continue
-            status = act.status
+            status = act.status or "pending"
             if status == "in_progress":
                 blocked = _blocked_dependencies(store, dependencies)
                 if blocked:
@@ -573,7 +691,7 @@ async def _apply_actions(
                     "task_id": new_id,
                     "content": act.content,
                     "status": status,
-                    "priority": act.priority,
+                    "priority": act.priority or "medium",
                     "dependencies": dependencies,
                     "assigned_to": act.assigned_to,
                     "claimed_by": actor if status == "in_progress" else None,
@@ -583,28 +701,30 @@ async def _apply_actions(
             )
             log_parts.append(f"created {new_id}")
 
-        elif isinstance(act, UpdateAction | MemberUpdateAction):
+        elif act_type == "update" or isinstance(act, UpdateAction | MemberUpdateAction):
+            task_id = act.task_id
+            if not task_id:
+                continue
             for item in store["items"]:
-                if item["task_id"] == act.task_id:
+                if item["task_id"] == task_id:
                     if role == "member" and not _can_member_update(item, actor):
-                        log_parts.append(f"not_claimed {act.task_id}")
+                        log_parts.append(f"not_claimed {task_id}")
                         break
                     dependencies = item.get("dependencies", [])
-                    if isinstance(act, UpdateAction) and act.dependencies is not None:
-                        dependencies = list(dict.fromkeys(act.dependencies))
-                        valid, error = _valid_dependencies(
-                            store, act.task_id, dependencies
-                        )
+                    act_deps = getattr(act, "dependencies", None)
+                    if act_deps is not None and act_deps != dependencies:
+                        dependencies = list(dict.fromkeys(act_deps))
+                        valid, error = _valid_dependencies(store, task_id, dependencies)
                         if not valid:
-                            log_parts.append(
-                                f"invalid_dependencies {act.task_id}: {error}"
-                            )
+                            log_parts.append(f"invalid_dependencies {task_id}: {error}")
                             break
                         item["dependencies"] = dependencies
-                    if isinstance(act, UpdateAction) and act.assigned_to is not None:
-                        item["assigned_to"] = act.assigned_to
-                    if isinstance(act, UpdateAction) and act.instructions is not None:
-                        item["instructions"] = act.instructions
+                    act_assigned_to = getattr(act, "assigned_to", None)
+                    if act_assigned_to is not None:
+                        item["assigned_to"] = act_assigned_to
+                    act_instructions = getattr(act, "instructions", None)
+                    if act_instructions is not None:
+                        item["instructions"] = act_instructions
                     if act.result is not None:
                         item["result"] = act.result
                     if act.content is not None:
@@ -614,7 +734,7 @@ async def _apply_actions(
                             blocked = _blocked_dependencies(store, dependencies)
                             if blocked:
                                 log_parts.append(
-                                    f"blocked {act.task_id}: waiting for {', '.join(blocked)}"
+                                    f"blocked {task_id}: waiting for {', '.join(blocked)}"
                                 )
                             elif item.get(
                                 "assigned_to"
@@ -622,79 +742,81 @@ async def _apply_actions(
                                 item.get("assigned_to"), actor
                             ):
                                 log_parts.append(
-                                    f"not_assigned {act.task_id}: assigned to {item.get('assigned_to')}"
+                                    f"not_assigned {task_id}: assigned to {item.get('assigned_to')}"
                                 )
                             else:
                                 item["status"] = act.status
                                 item["claimed_by"] = item.get("claimed_by") or actor
                         else:
                             item["status"] = act.status
-                    if isinstance(act, UpdateAction) and act.priority is not None:
-                        item["priority"] = act.priority
-                    log_parts.append(f"updated {act.task_id}")
+                    act_priority = getattr(act, "priority", None)
+                    if act_priority is not None:
+                        item["priority"] = act_priority
+                    log_parts.append(f"updated {task_id}")
                     break
             else:
-                log_parts.append(f"not_found {act.task_id}")
+                log_parts.append(f"not_found {task_id}")
 
-        elif isinstance(act, ClaimAction):
-            item = _find_item(store, act.task_id)
+        elif act_type == "claim" or isinstance(act, ClaimAction):
+            task_id = act.task_id
+            if not task_id:
+                continue
+            item = _find_item(store, task_id)
             if item is None:
-                log_parts.append(f"not_found {act.task_id}")
+                log_parts.append(f"not_found {task_id}")
                 continue
             if actor is None:
-                log_parts.append(f"claim_missing_actor {act.task_id}")
+                log_parts.append(f"claim_missing_actor {task_id}")
                 continue
             assigned_to = item.get("assigned_to")
             if assigned_to is not None and not _assignee_matches_actor(
                 assigned_to, actor
             ):
-                log_parts.append(
-                    f"not_assigned {act.task_id}: assigned to {assigned_to}"
-                )
+                log_parts.append(f"not_assigned {task_id}: assigned to {assigned_to}")
                 continue
             claimed_by = item.get("claimed_by")
             if claimed_by is not None and claimed_by != actor:
-                log_parts.append(
-                    f"already_claimed {act.task_id}: claimed by {claimed_by}"
-                )
+                log_parts.append(f"already_claimed {task_id}: claimed by {claimed_by}")
                 continue
             in_progress = [
                 other["task_id"]
                 for other in store.get("items", [])
                 if isinstance(other, dict)
-                and other.get("task_id") != act.task_id
+                and other.get("task_id") != task_id
                 and other.get("claimed_by") == actor
                 and other.get("status") == "in_progress"
             ]
             if in_progress:
                 log_parts.append(
-                    f"claim_busy {act.task_id}: finish {', '.join(in_progress)} first"
+                    f"claim_busy {task_id}: finish {', '.join(in_progress)} first"
                 )
                 continue
             blocked = _blocked_dependencies(store, item.get("dependencies", []))
             if blocked:
-                log_parts.append(
-                    f"blocked {act.task_id}: waiting for {', '.join(blocked)}"
-                )
+                log_parts.append(f"blocked {task_id}: waiting for {', '.join(blocked)}")
                 continue
             item["claimed_by"] = actor
             item["status"] = "in_progress"
-            log_parts.append(f"claimed {act.task_id}")
-            claimed_ids.append(act.task_id)
+            log_parts.append(f"claimed {task_id}")
+            claimed_ids.append(task_id)
 
-        elif isinstance(act, DeleteAction):
+        elif act_type == "delete" or isinstance(act, DeleteAction):
+            task_id = act.task_id
+            if not task_id:
+                continue
             before = len(store["items"])
-            store["items"] = [i for i in store["items"] if i["task_id"] != act.task_id]
+            store["items"] = [i for i in store["items"] if i["task_id"] != task_id]
             if len(store["items"]) < before:
-                log_parts.append(f"deleted {act.task_id}")
+                log_parts.append(f"deleted {task_id}")
             else:
-                log_parts.append(f"not_found {act.task_id}")
+                log_parts.append(f"not_found {task_id}")
 
-        elif isinstance(act, ClearAction):
-            if act.status == "finished":
+        elif act_type == "clear" or isinstance(act, ClearAction):
+            clear_status = getattr(act, "status", None) or "finished"
+            if clear_status == "finished":
                 drop = {"completed", "cancelled"}
             else:
-                drop = {act.status}
+                drop = {clear_status}
             before = len(store["items"])
             store["items"] = [i for i in store["items"] if i.get("status") not in drop]
             removed = before - len(store["items"])
@@ -711,7 +833,10 @@ async def _apply_actions(
     # full instructions/results) is token waste — and this surfaces
     # validation outcomes (blocked/not_found/…) that previously only reached
     # the log. An explicit `read` in the batch keeps the full listing.
-    has_read = any(isinstance(act, ReadAction) for act in actions)
+    has_read = any(
+        getattr(act, "action", None) == "read" or isinstance(act, ReadAction)
+        for act in actions
+    )
     if has_read or not actions:
         return _format_items(store["items"])
 

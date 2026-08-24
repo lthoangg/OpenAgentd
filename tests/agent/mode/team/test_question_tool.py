@@ -267,3 +267,20 @@ async def test_a_failed_event_fanout_does_not_break_the_suspension(
             )
         ).one()
     assert row.status == "pending"
+
+
+def test_ask_user_accepts_single_question_dict():
+    """AskUserArgs coerces a single question dict into a list."""
+    args = AskUserArgs.model_validate(_question())
+    assert len(args.questions) == 1
+    assert args.questions[0].header == "Package manager"
+
+
+def test_ask_user_accepts_json_string():
+    """AskUserArgs coerces a JSON-stringified question list."""
+    import json
+
+    payload = json.dumps([_question()])
+    args = AskUserArgs(questions=payload)  # type: ignore[arg-type]
+    assert len(args.questions) == 1
+    assert args.questions[0].header == "Package manager"

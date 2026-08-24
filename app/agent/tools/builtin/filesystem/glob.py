@@ -10,7 +10,7 @@ from pathlib import Path, PurePosixPath
 import pathlib
 from typing import Callable, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, Field
 
 from app.agent.denied_paths import get_denied_paths
 from app.agent.tools.builtin.filesystem._ignore import (
@@ -41,15 +41,18 @@ class GlobArgs(BaseModel):
     """Arguments for the glob tool."""
 
     pattern: str = Field(
+        validation_alias=AliasChoices("pattern", "glob"),
         description=(
             "Glob pattern. Use '**/*.py' or 'src/**/*.ts' to match by full path, "
             "or '*.py' with match='name' to match filename only. Brace "
             "alternation works: 'src/**/*.{ts,tsx}'. A pattern with no '/' is "
             "retried at any depth if nothing matches at the top level."
-        )
+        ),
     )
     directory: str = Field(
-        default=".", description="Search root; '.' is the workspace root."
+        default=".",
+        validation_alias=AliasChoices("directory", "dir", "path"),
+        description="Search root; '.' is the workspace root.",
     )
     match: Literal["path", "name"] = Field(
         default="path",

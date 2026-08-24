@@ -381,3 +381,27 @@ async def test_web_fetch_timeout_capped_at_120():
     )
 
     assert await web_fetch(url, timeout=9999) == "hi"
+
+
+@pytest.mark.asyncio
+async def test_web_search_accepts_aliases():
+    with patch("app.agent.tools.builtin.web.DDGS") as mock_ddgs_class:
+        mock_ddgs = mock_ddgs_class.return_value
+        mock_ddgs.text.return_value = [{"title": "res", "href": "h", "body": "b"}]
+        res1 = await web_search.arun(q="test query")
+        assert res1[0]["title"] == "res"
+        res2 = await web_search.arun(search_query="test query")
+        assert res2[0]["title"] == "res"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_web_fetch_accepts_aliases():
+    url = "https://example.com/alias"
+    respx.get(url).mock(
+        return_value=httpx.Response(
+            200, text="<p>alias text</p>", headers={"content-type": "text/html"}
+        )
+    )
+    assert await web_fetch.arun(uri="https://example.com/alias") == "alias text"
+    assert await web_fetch.arun(link="https://example.com/alias") == "alias text"

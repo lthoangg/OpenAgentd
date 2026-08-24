@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Any, Annotated
 
 from loguru import logger
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, Field
 
 from app.agent.schemas.chat import ToolResult
 from app.agent.denied_paths import get_denied_paths
@@ -46,10 +46,11 @@ class ReadArgs(BaseModel):
     """Arguments for the read tool."""
 
     path: str = Field(
+        validation_alias=AliasChoices("path", "file_path", "filename", "filepath"),
         description=(
             "Workspace-relative or permitted absolute path — a file to read, "
             "or a directory to list."
-        )
+        ),
     )
     offset: int = Field(
         default=1,

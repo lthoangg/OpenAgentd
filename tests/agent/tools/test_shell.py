@@ -1115,3 +1115,17 @@ class TestSandboxCommandScan:
         assert "[Succeeded]" in result
         assert "immediate_flush" in "".join(emitted_chunks)
         assert len(emitted_chunks) >= 1
+
+
+@pytest.mark.asyncio
+async def test_shell_tool_accepts_aliases(sandbox_workspace, monkeypatch):
+    monkeypatch.setattr(
+        "app.agent.tools.builtin.shell._shell_mod.acceptable", lambda: "/bin/sh"
+    )
+    result = await shell_tool.arun(
+        _injected={"_state": None},
+        cmd="echo hello_alias",
+        cwd=".",
+    )
+    assert "[Succeeded]" in result
+    assert "hello_alias" in result

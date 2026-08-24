@@ -6,7 +6,7 @@ import httpx
 import trafilatura
 from ddgs import DDGS
 from loguru import logger
-from pydantic import BaseModel, Field, field_validator
+from pydantic import AliasChoices, BaseModel, Field, field_validator
 
 from app.agent.tools.registry import tool
 
@@ -124,7 +124,10 @@ def _resolve_charset(content_bytes: bytes, declared: str | None) -> str | None:
 class WebSearchArgs(BaseModel):
     """Arguments for the web_search tool."""
 
-    query: str = Field(description="Search query string.")
+    query: str = Field(
+        validation_alias=AliasChoices("query", "q", "search_query"),
+        description="Search query string.",
+    )
     max_results: int = Field(default=5, ge=1, le=20, description="Results to return.")
     page: int = Field(default=1, ge=1, description="Results page number.")
     safesearch: Literal["on", "moderate", "off"] = Field(
@@ -203,7 +206,10 @@ async def web_search(
 class WebFetchArgs(BaseModel):
     """Arguments for the web_fetch tool."""
 
-    url: str = Field(description="URL to fetch. https:// prepended if no scheme.")
+    url: str = Field(
+        validation_alias=AliasChoices("url", "uri", "link"),
+        description="URL to fetch. https:// prepended if no scheme.",
+    )
     format: Literal["markdown", "html", "text"] = Field(  # noqa: A003
         default="markdown", description="Output format."
     )

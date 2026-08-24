@@ -99,3 +99,56 @@ def test_sanitize_tool_schema_flattens_allof() -> None:
         "b": {"type": "integer"},
     }
     assert res["required"] == ["a", "b"]
+
+
+def test_sanitize_tool_schema_unwraps_nullable_anyof() -> None:
+    schema = {
+        "type": "object",
+        "properties": {
+            "workdir": {
+                "anyOf": [{"type": "string"}, {"type": "null"}],
+                "default": None,
+                "description": "Working directory.",
+            },
+            "status": {
+                "anyOf": [
+                    {"type": "string", "enum": ["pending", "done"]},
+                    {"type": "null"},
+                ],
+                "default": None,
+                "description": "Status.",
+            },
+        },
+    }
+    res = sanitize_tool_schema(schema)
+    assert res["properties"]["workdir"] == {
+        "type": "string",
+        "default": None,
+        "description": "Working directory.",
+    }
+    assert res["properties"]["status"] == {
+        "type": "string",
+        "enum": ["pending", "done"],
+        "default": None,
+        "description": "Status.",
+    }
+
+
+def test_sanitize_tool_schema_unwraps_single_allof_wrapper() -> None:
+    schema = {
+        "type": "object",
+        "properties": {
+            "options": {
+                "allOf": [
+                    {"type": "object", "properties": {"opt": {"type": "string"}}}
+                ],
+                "description": "Options wrapper.",
+            }
+        },
+    }
+    res = sanitize_tool_schema(schema)
+    assert res["properties"]["options"] == {
+        "type": "object",
+        "properties": {"opt": {"type": "string"}},
+        "description": "Options wrapper.",
+    }

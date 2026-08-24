@@ -23,7 +23,7 @@ from typing import Annotated, Any
 import yaml
 
 from loguru import logger
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, Field
 
 from app.agent.denied_paths import get_denied_paths
 from app.agent.tools.registry import InjectedArg, tool
@@ -32,7 +32,10 @@ from app.agent.tools.registry import InjectedArg, tool
 class SkillArgs(BaseModel):
     """Arguments for the skill tool."""
 
-    skill_name: str = Field(description="Skill name from the available-skills list.")
+    skill_name: str = Field(
+        validation_alias=AliasChoices("skill_name", "name", "skill"),
+        description="Skill name from the available-skills list.",
+    )
 
 
 def _default_skills_dir() -> Path:

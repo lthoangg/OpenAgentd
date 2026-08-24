@@ -16,7 +16,7 @@ Layout produced under ``<out>/``::
 The Tauri shell runs a tiny bootstrap that adds
 ``sidecar-bundle/site-packages`` with ``site.addsitedir()`` so platform
 ``.pth`` files are processed, then runs
-``app/cli/__main__.py serve --handshake --generate-token --parent-pid …``.
+``app/cli/__main__.py server serve --handshake --generate-token --parent-pid …``.
 
 We deliberately do NOT use ``uv tool install`` — that produces an
 isolated venv with absolute paths inside it, which won't survive being
@@ -29,7 +29,7 @@ copied into ``Contents/Resources/``. Instead we:
    then install the project itself with ``--no-deps``. Dependencies come
    from ``uv.lock`` so the bundle matches what CI tested.
 3. Strip the ``site-packages/`` of caches, tests, docs.
-4. Smoke-test the bundle by invoking ``serve --port 0 --handshake``.
+4. Smoke-test the bundle by invoking ``server serve --port 0 --handshake``.
 
 Usage::
 
@@ -618,6 +618,7 @@ def smoke_test(python_bin: Path, site_packages: Path) -> None:
         bootstrap,
         str(site_packages),
         str(cli_entry),
+        "server",
         "serve",
         "--host",
         "127.0.0.1",

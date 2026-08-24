@@ -27,6 +27,7 @@ from app.agent.tools.builtin.filesystem.handlers import (
     handle_document,
     handle_image,
 )
+from app.agent.tools.builtin.filesystem.outline import generate_file_outline
 from app.agent.tools.registry import InjectedArg, Tool
 
 _MAX_READ_BYTES = 5_242_880  # 5 MB read cap
@@ -36,9 +37,10 @@ _MAX_LINE_CHARS = 2_000  # one minified line must not eat the whole budget
 _DESCRIPTION = (
     "Read a file, or list a directory's immediate children. Text comes back "
     "verbatim (including HTML), PNG/JPG/GIF/WebP images as vision input, and "
-    "PDF/DOCX as extracted text. Content is byte-exact, so a line can be "
-    "copied straight into a patch hunk. Call this in parallel when you "
-    "already know several files you need."
+    "PDF/DOCX as extracted text. Set outline=True to return a high-level symbol "
+    "outline (classes, functions, methods, headers) with exact line numbers. "
+    "Content is byte-exact, so a line can be copied straight into a patch hunk. "
+    "Call this in parallel when you already know several files you need."
 )
 
 
@@ -63,6 +65,15 @@ class ReadArgs(BaseModel):
         description=(
             "Maximum lines to return; omit for all remaining lines. Ignored "
             "when path is a directory."
+        ),
+    )
+    outline: bool = Field(
+        default=False,
+        description=(
+            "When true, returns a high-level symbol outline (classes, functions, "
+            "methods, interfaces, headings) with exact line numbers instead of "
+            "full content. Useful for exploring large or unfamiliar files before "
+            "targeted reading."
         ),
     )
 
@@ -177,6 +188,7 @@ async def _read_file(
     path: str,
     offset: int = 1,
     limit: int | None = None,
+    outline: bool = False,
     _state: Annotated[Any, InjectedArg()] = None,
 ) -> str | ToolResult:
     """Read a file, dispatching by kind (text, image, document).
@@ -204,6 +216,10 @@ async def _read_file(
 
     if not resolved.is_file():
         raise IsADirectoryError(f"Path is not a regular file: {rel}")
+
+    if outline:
+        logger.info("read_outline path={}", rel)
+        return await asyncio.to_thread(generate_file_outline, resolved, rel)
 
     category = classify_file(resolved)
 

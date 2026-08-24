@@ -766,6 +766,10 @@ MCP.
   conversion, dropping `markitdown`.
 - **50k character read limit** `[v2.0.0]` — expanded `read` tool context limit to
   50,000 characters for reviewing larger source files in a single pass.
+- **Symbol outline mode for `read` tool** `[v2.3.0]` — `read` supports `outline=True`
+  to return high-level symbol outlines (classes, methods, functions, interfaces, types,
+  and markdown headers) with exact 1-based line numbers across Python, TypeScript/JavaScript,
+  Rust, Go, and Markdown files, enabling rapid codebase exploration before targeted pagination.
 
 - **Real-time LSP diagnostics injection** `[v1.89.0, v1.105.0, v2.0.0]` — in **coding mode**, after the
   `patch` tool modifies one or more files, OpenAgentd runs the

@@ -1,4 +1,4 @@
-"""``openagentd stop`` — terminate background server and web processes."""
+"""``openagentd server stop`` — terminate the background server."""
 
 from __future__ import annotations
 

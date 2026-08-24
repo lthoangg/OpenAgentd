@@ -47,7 +47,6 @@ from app.cli import (
     cmd_restart,
     cmd_status,
     cmd_stop,
-    cmd_version,
 )
 
 
@@ -135,6 +134,13 @@ def test_lsp_cli_parses_status_and_typescript_install() -> None:
     assert status.lsp_action == "status"
     assert install.lsp_action == "install"
     assert install.component == "typescript"
+
+
+def test_auth_cli_parses_codex_device_flow() -> None:
+    args = build_parser().parse_args(["auth", "codex", "--device"])
+
+    assert args.provider == "codex"
+    assert args.device is True
 
 
 def test_cli_has_no_init_command() -> None:
@@ -395,72 +401,91 @@ class TestBuildParser:
         args = parser.parse_args([])
         assert args.func is cli.cmd_start
 
-    def test_start_subcommand_is_start(self):
+    def test_server_start_subcommand_is_start(self):
         parser = build_parser()
-        args = parser.parse_args(["start"])
+        args = parser.parse_args(["server", "start"])
         assert args.func is cli.cmd_start
 
-    def test_host_default(self):
-        args = build_parser().parse_args([])
+    def test_server_start_host_default(self):
+        args = build_parser().parse_args(["server", "start"])
         assert args.host is None
 
-    def test_port_default(self):
+    def test_server_start_port_default(self):
         # ``--port`` parses as ``None`` (sentinel) so cmd_start applies the
         # 4082 default. See app/cli/commands/start.py.
-        args = build_parser().parse_args([])
+        args = build_parser().parse_args(["server", "start"])
         assert args.port is None
 
     def test_custom_host_and_port(self):
-        args = build_parser().parse_args(["--host", "0.0.0.0", "--port", "9000"])
+        args = build_parser().parse_args(
+            ["server", "start", "--host", "0.0.0.0", "--port", "9000"]
+        )
         assert args.host == "0.0.0.0"
         assert args.port == 9000
 
     def test_lan_flag(self):
-        args = build_parser().parse_args(["--lan", "start"])
+        args = build_parser().parse_args(["server", "start", "--lan"])
         assert args.lan is True
 
     def test_wait_and_watch_flags(self):
-        args = build_parser().parse_args(["start", "--wait"])
+        args = build_parser().parse_args(["server", "start", "--wait"])
         assert args.wait is True
 
-        args = build_parser().parse_args(["start", "--watch"])
+        args = build_parser().parse_args(["server", "start", "--watch"])
         assert args.watch is True
 
-        args = build_parser().parse_args(["restart", "--wait"])
+        args = build_parser().parse_args(["server", "restart", "--wait"])
         assert args.wait is True
 
     def test_stop_subcommand(self):
-        args = build_parser().parse_args(["stop"])
+        args = build_parser().parse_args(["server", "stop"])
         assert args.func is cli.cmd_stop
 
     def test_restart_subcommand(self):
-        args = build_parser().parse_args(["restart"])
+        args = build_parser().parse_args(["server", "restart"])
         assert args.func is cli.cmd_restart
 
     def test_status_subcommand(self):
-        args = build_parser().parse_args(["status"])
+        args = build_parser().parse_args(["server", "status"])
         assert args.func is cli.cmd_status
 
     def test_address_subcommand(self):
-        args = build_parser().parse_args(["address"])
+        args = build_parser().parse_args(["server", "address"])
         assert args.func is cli.cmd_address
 
     def test_health_subcommand(self):
-        args = build_parser().parse_args(["health"])
+        args = build_parser().parse_args(["server", "health"])
         assert args.func is cli.cmd_health
 
     def test_logs_subcommand_defaults(self):
-        args = build_parser().parse_args(["logs"])
+        args = build_parser().parse_args(["server", "logs"])
         assert args.func is cli.cmd_logs
         assert args.lines == 50
 
     def test_logs_subcommand_custom_lines(self):
-        args = build_parser().parse_args(["logs", "-n", "200"])
+        args = build_parser().parse_args(["server", "logs", "-n", "200"])
         assert args.lines == 200
 
-    def test_version_subcommand(self):
-        args = build_parser().parse_args(["version"])
-        assert args.func is cli.cmd_version
+    @pytest.mark.parametrize(
+        "command",
+        (
+            "start",
+            "stop",
+            "restart",
+            "status",
+            "address",
+            "health",
+            "logs",
+            "serve",
+            "migrate",
+            "export",
+            "import",
+            "version",
+        ),
+    )
+    def test_legacy_flat_commands_are_rejected(self, command):
+        with pytest.raises(SystemExit):
+            build_parser().parse_args([command])
 
     def test_doctor_subcommand(self):
         args = build_parser().parse_args(["doctor"])
@@ -479,7 +504,7 @@ class TestBuildParser:
 
     def test_migrate_openclaw_subcommand(self):
         args = build_parser().parse_args(
-            ["migrate", "openclaw", "--model", "openai:gpt-5.5"]
+            ["transfer", "migrate", "openclaw", "--model", "openai:gpt-5.5"]
         )
         assert args.func is cli.cmd_migrate
         assert args.source == "openclaw"
@@ -488,7 +513,7 @@ class TestBuildParser:
 
     def test_migrate_hermes_subcommand(self):
         args = build_parser().parse_args(
-            ["migrate", "hermes", "--model", "openai:gpt-5.5"]
+            ["transfer", "migrate", "hermes", "--model", "openai:gpt-5.5"]
         )
         assert args.func is cli.cmd_migrate
         assert args.source == "hermes"
@@ -502,20 +527,6 @@ class TestBuildParser:
     def test_update_subcommand_removed(self):
         with pytest.raises(SystemExit):
             build_parser().parse_args(["update"])
-
-
-# ---------------------------------------------------------------------------
-# cmd_version
-# ---------------------------------------------------------------------------
-
-
-class TestCmdVersion:
-    def test_prints_version(self, capsys):
-        args = build_parser().parse_args(["version"])
-        cmd_version(args)
-        out = capsys.readouterr().out
-        assert "openagentd" in out
-        assert "v" in out
 
 
 # ---------------------------------------------------------------------------
@@ -535,7 +546,7 @@ class TestCmdStatus:
             ),
         )
 
-        args = build_parser().parse_args(["status"])
+        args = build_parser().parse_args(["server", "status"])
         cmd_status(args)
         out = capsys.readouterr().out
         assert str(own) in out
@@ -547,11 +558,11 @@ class TestCmdStatus:
     def test_not_running_shows_stopped(self, capsys, tmp_path, monkeypatch):
         monkeypatch.setenv("OPENAGENTD_STATE_DIR", str(tmp_path))
         # No PID file → nothing running
-        args = build_parser().parse_args(["status"])
+        args = build_parser().parse_args(["server", "status"])
         cmd_status(args)
         out = capsys.readouterr().out
         assert "stopped" in out
-        assert "openagentd start --lan" in out
+        assert "openagentd server start --lan" in out
 
 
 # ---------------------------------------------------------------------------
@@ -562,7 +573,7 @@ class TestCmdStatus:
 class TestCmdStop:
     def test_not_running_prints_message(self, capsys, tmp_path, monkeypatch):
         monkeypatch.setenv("OPENAGENTD_STATE_DIR", str(tmp_path))
-        args = build_parser().parse_args(["stop"])
+        args = build_parser().parse_args(["server", "stop"])
         cmd_stop(args)
         out = capsys.readouterr().out
         assert "not running" in out
@@ -590,7 +601,7 @@ class TestCmdStop:
             patch("app.cli.pids._pid_alive", side_effect=alive_fn),
         ):
             monkeypatch.setattr(os, "kill", fake_kill)
-            args = build_parser().parse_args(["stop"])
+            args = build_parser().parse_args(["server", "stop"])
             cmd_stop(args)
 
         assert (own, signal.SIGTERM) in killed
@@ -622,7 +633,7 @@ class TestCmdStop:
             patch.object(stop_mod.time, "monotonic", side_effect=monotonic_values),
             patch.object(stop_mod.time, "sleep"),
         ):
-            args = build_parser().parse_args(["stop"])
+            args = build_parser().parse_args(["server", "stop"])
             cmd_stop(args)
 
         assert (own, signal.SIGKILL) in killed
@@ -637,7 +648,7 @@ class TestCmdRestart:
     def test_restart_stops_when_running_then_starts(self, monkeypatch):
         import app.cli.commands.restart as restart_mod
 
-        args = build_parser().parse_args(["restart"])
+        args = build_parser().parse_args(["server", "restart"])
         calls: list[str] = []
 
         monkeypatch.setattr(restart_mod, "_find_pids", lambda: [1234])
@@ -653,7 +664,7 @@ class TestCmdRestart:
     def test_restart_starts_when_not_running(self, monkeypatch, capsys):
         import app.cli.commands.restart as restart_mod
 
-        args = build_parser().parse_args(["restart"])
+        args = build_parser().parse_args(["server", "restart"])
         calls: list[str] = []
 
         monkeypatch.setattr(restart_mod, "_find_pids", lambda: [])
@@ -848,9 +859,7 @@ class TestCmdUpgrade:
     def test_upgrade_stops_and_restarts_when_running(self, monkeypatch):
         from app.cli.commands import upgrade as upgrade_mod
 
-        args = build_parser().parse_args(
-            ["--host", "0.0.0.0", "--port", "9000", "upgrade"]
-        )
+        args = SimpleNamespace(host="0.0.0.0", port=9000, lan=False)
         stop = Mock()
         run_calls: list[list[str]] = []
 
@@ -875,18 +884,19 @@ class TestCmdUpgrade:
             ["pipx", "upgrade", "openagentd"],
             [
                 "/usr/local/bin/openagentd",
+                "server",
+                "start",
                 "--host",
                 "0.0.0.0",
                 "--port",
                 "9000",
-                "start",
             ],
         ]
 
     def test_upgrade_restart_preserves_lan_flag(self, monkeypatch):
         from app.cli.commands import upgrade as upgrade_mod
 
-        args = build_parser().parse_args(["--lan", "upgrade"])
+        args = SimpleNamespace(host=None, port=None, lan=True)
         run_calls: list[list[str]] = []
 
         monkeypatch.setattr(upgrade_mod, "_find_pids", lambda: [1234])
@@ -903,7 +913,7 @@ class TestCmdUpgrade:
 
         upgrade_mod.cmd_upgrade(args)
 
-        assert run_calls[-1] == ["openagentd", "--lan", "start"]
+        assert run_calls[-1] == ["openagentd", "server", "start", "--lan"]
 
     def test_upgrade_restart_falls_back_to_original_script_path(self, monkeypatch):
         from app.cli.commands import upgrade as upgrade_mod
@@ -932,7 +942,7 @@ class TestCmdUpgrade:
         assert run_calls == [
             ["brew", "update"],
             ["brew", "upgrade", "--formula", "lthoangg/tap/openagentd"],
-            [__file__, "start"],
+            [__file__, "server", "start"],
         ]
 
     def test_upgrade_exits_with_upgrade_failure_after_restart(self, monkeypatch):
@@ -971,7 +981,7 @@ class TestCmdAddress:
             ),
         )
 
-        args = build_parser().parse_args(["address"])
+        args = build_parser().parse_args(["server", "address"])
         cmd_address(args)
 
         out = capsys.readouterr().out
@@ -1008,7 +1018,7 @@ class TestCmdHealth:
 
         monkeypatch.setattr("app.cli.commands.health._fetch_json", fake_fetch)
 
-        args = build_parser().parse_args(["--lan", "health"])
+        args = build_parser().parse_args(["server", "health", "--lan"])
         cmd_health(args)
 
         out = capsys.readouterr().out
@@ -1030,7 +1040,7 @@ class TestCmdHealth:
             "app.cli.commands.health._fetch_json", lambda *_args: (0, None)
         )
 
-        args = build_parser().parse_args(["health"])
+        args = build_parser().parse_args(["server", "health"])
         with pytest.raises(SystemExit) as exc:
             cmd_health(args)
 
@@ -1060,7 +1070,7 @@ class TestCmdLogs:
             patch.object(logs_mod.os, "execvp", fake_execvp),
             patch("app.cli.commands.logs._server_log", return_value=log),
         ):
-            args = build_parser().parse_args(["logs", "-n", "100"])
+            args = build_parser().parse_args(["server", "logs", "-n", "100"])
             with pytest.raises(SystemExit):
                 cmd_logs(args)
 
@@ -1074,7 +1084,7 @@ class TestCmdLogs:
         with patch(
             "app.cli.commands.logs._server_log", return_value=tmp_path / "no.log"
         ):
-            args = build_parser().parse_args(["logs"])
+            args = build_parser().parse_args(["server", "logs"])
             with pytest.raises(SystemExit) as exc_info:
                 cmd_logs(args)
         assert exc_info.value.code == 1

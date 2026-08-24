@@ -97,7 +97,7 @@ def run_migrations() -> None:
     """Run pending Alembic migrations (upgrade head).
 
     Called once during server startup so users never need a separate
-    ``openagentd migrate`` step.  ``alembic.ini`` ships inside the ``app``
+    ``openagentd transfer migrate`` step.  ``alembic.ini`` ships inside the ``app``
     package so it is reachable from both source checkouts and installed
     wheels.
 

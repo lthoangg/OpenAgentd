@@ -18,7 +18,7 @@ upgrades are closed before ``accept()`` — Starlette then responds with
 HTTP 403 to the handshake.
 
 When the env var is **not** set, the middleware is a no-op. CLI/server
-users (``openagentd start``, etc.) keep the existing open-loopback
+users (``openagentd server start``, etc.) keep the existing open-loopback
 behaviour. This makes the desktop tier strictly opt-in.
 
 Routes exempted from the check:

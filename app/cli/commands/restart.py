@@ -1,4 +1,4 @@
-"""``openagentd restart`` — restart the background server."""
+"""``openagentd server restart`` — restart the background server."""
 
 from __future__ import annotations
 

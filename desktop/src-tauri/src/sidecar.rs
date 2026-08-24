@@ -1,6 +1,6 @@
 //! Python sidecar supervisor.
 //!
-//! Spawns `python -m app.cli serve --handshake --generate-token
+//! Spawns `python -m app.cli server serve --handshake --generate-token
 //! --parent-pid <us>`, parses the first JSON handshake line from stdout,
 //! and exposes the child for graceful shutdown.
 //!
@@ -189,6 +189,7 @@ impl Sidecar {
             .arg(bootstrap)
             .arg(site_packages.as_os_str())
             .arg(cli_entry.as_os_str())
+            .arg("server")
             .arg("serve")
             .arg("--host")
             .arg("127.0.0.1")

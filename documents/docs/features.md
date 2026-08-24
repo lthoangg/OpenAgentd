@@ -350,7 +350,7 @@ run from the terminal.
   the shared Web UI and connects to saved remote API servers. Foreground resume
   now reconciles missed history and replaces potentially frozen chat streams;
   remembered-server launches prefetch and reuse native credentials.
-- **LAN access key for external clients** `[v1.43.0, v1.103.0]` — `openagentd start --lan --key`
+- **LAN access key for external clients** `[v1.43.0, v1.103.0, v2.3.0]` — `openagentd server start --lan --key`
   stores the CLI server's bind address, port, and bearer key in `server.yaml`, separate from the desktop builtin sidecar's ephemeral token while agents, providers, sessions, and other settings remain shared. Restart and upgrade preserve that key without exposing it in process arguments. OpenAgentd-managed launchers refuse non-loopback binds without a configured key `[v1.101.0]`.
 - **Desktop server connection manager** `[v1.43.4, v1.99.8, v1.104.0]` — the desktop **Server connection** dialog switches the current window between the builtin sidecar and saved external servers, normalizes pasted `/api` URLs, and preserves other open windows' backend choices. Typed servers now require a successful health and access-key test before they can be named, saved, and connected. Saved LAN access keys are scoped per backend origin and stored in the native OS credential store on installed desktop/mobile shells; browser development keeps the per-origin localStorage fallback. Remembered external servers reconnect on app launch with sidecar fallback, while the desktop window opens immediately as backend startup continues asynchronously `[v1.57.1]`.
   - **Reload after switching backend servers** `[v1.98.1]` — after connecting a desktop window to a different saved or typed external server, the webview reloads so stale frontend state is discarded and the window comes back against the newly selected backend cleanly. Reconnecting to the already active backend does not reload.
@@ -1060,9 +1060,12 @@ Desktop is primary. CLI / server is the developer path.
 - **In-app updater** `[v1.22.0]` — see [§1](#1-the-desktop-cockpit).
 - **CLI install** `[since v1.0]` — `uv tool install openagentd`, `pipx`, `pip`,
   `brew install lthoangg/tap/openagentd`.
-- **CLI server control** `[v1.41.0]` — `restart`, `address`, `health`, and
-  `start --lan --key` make the CLI the control plane for desktop/mobile backends.
-- **CLI start --wait / --watch** `[v1.73.0]` — starts the background server and polls `/api/health/ready` until the database connection and the agent team are fully ready.
+- **CLI server control** `[v1.41.0, v2.3.0]` — `openagentd server restart`,
+  `openagentd server address`, `openagentd server health`, and `openagentd server
+  start --lan --key` make the CLI the control plane for desktop/mobile backends.
+- **CLI start --wait / --watch** `[v1.73.0, v2.3.0]` — `openagentd server start`
+  starts the background server and polls `/api/health/ready` until the database
+  connection and the agent team are fully ready.
 - **CLI upgrade** `[v1.41.0]` — `openagentd upgrade` stops the background
   server, delegates to the detected package manager, then restarts it when it
   was running.
@@ -1070,11 +1073,11 @@ Desktop is primary. CLI / server is the developer path.
   `docker-compose.yaml`, and the `ghcr.io/lthoangg/openagentd` image are
   no longer maintained. Use the CLI install paths above; revisit if there
   is concrete self-hoster demand.
-- **Migration imports** `[since v1.0]` — `openagentd migrate openclaw`,
-  `migrate hermes`. Imports identity + context Markdown into one lead agent.
-- **Server migration export/import** `[v1.97.0]` — `openagentd export` packs
+- **Migration imports** `[since v1.0, v2.3.0]` — `openagentd transfer migrate openclaw`,
+  `openagentd transfer migrate hermes`. Imports identity + context Markdown into one lead agent.
+- **Server migration export/import** `[v1.97.0, v2.3.0]` — `openagentd transfer export` packs
   agents, skills, commands, plugins, and config files into a timestamped
-  `.tar.gz` archive. `openagentd import <archive>` unpacks it on the target
+  `.tar.gz` archive. `openagentd transfer import <archive>` unpacks it on the target
   machine with fill-in-gaps merge (or `--force` to overwrite). API keys in
   `.env` are redacted by default; `--include-secrets` opts in for trusted
   channels. Imports resolve every destination inside the config root and reject

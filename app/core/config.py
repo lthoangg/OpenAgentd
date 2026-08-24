@@ -123,7 +123,7 @@ class Settings(BaseSettings):
     # Values: "production" | "development"
     # Defaults to "development" so source-checkout runs are always safe
     # (writes to .openagentd/dev/, not ~/.local/share/openagentd).
-    # The CLI (openagentd start / serve) injects APP_ENV=production explicitly.
+    # The CLI (openagentd server start / openagentd server serve) injects APP_ENV=production explicitly.
     APP_ENV: str = "development"
 
     # API Server

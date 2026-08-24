@@ -3,15 +3,9 @@
 Usage
 -----
   openagentd               Start server + web UI in the background
-  openagentd migrate       Import agent config from another local agent tool
+  openagentd server        Start, stop, and inspect the background server
   openagentd auth          Authenticate with an OAuth-based provider (e.g. copilot)
-  openagentd stop          Stop the background server and web UI
-  openagentd restart       Restart the background server
-  openagentd status        Show whether the server is running
-  openagentd address       Show local and LAN server URLs
-  openagentd health        Run server and mobile diagnostics
-  openagentd logs          Tail the server log
-  openagentd version       Print version and exit
+  openagentd transfer      Import, export, or migrate agent configuration
   openagentd doctor        Check system health and report issues
   openagentd lsp           Inspect or install managed language servers
   openagentd upgrade       Upgrade openagentd to the latest version
@@ -56,7 +50,6 @@ _LAZY_EXPORTS: dict[str, str] = {
     "cmd_status": "app.cli.main",
     "cmd_stop": "app.cli.main",
     "cmd_upgrade": "app.cli.main",
-    "cmd_version": "app.cli.main",
     # path helpers (kept public for tests)
     "_config_dir": "app.cli.paths",
     "_data_dir": "app.cli.paths",

@@ -71,9 +71,9 @@ printed local address and add a provider in Settings. For a phone or another
 computer on your network:
 
 ```bash
-openagentd start --lan --key
-openagentd address
-openagentd health
+openagentd server start --lan --key
+openagentd server address
+openagentd server health
 ```
 
 `--key` protects non-loopback access. Use `openagentd --help` and `<command> --help` for the current command reference.

@@ -69,7 +69,10 @@ def cmd_start(args: argparse.Namespace) -> None:
     # user for init questions only to refuse to start. ``_find_pids`` only
     # returns when at least one PID is still alive.
     if _find_pids():
-        print(f"  {_yellow('already running')}  (run {_bold('openagentd stop')} first)")
+        print(
+            f"  {_yellow('already running')}  "
+            f"(run {_bold('openagentd server stop')} first)"
+        )
         return
 
     server_settings = load_server_settings()
@@ -114,7 +117,7 @@ def cmd_start(args: argparse.Namespace) -> None:
     if addresses.lan:
         print(f"  {_dim('LAN:')}   {_bold(addresses.lan[0])}")
         print(f"  {_dim('Mobile:')} use the LAN address in the mobile app")
-    print(f"  {_dim('Stop:')}  {_bold('openagentd stop')}")
+    print(f"  {_dim('Stop:')}  {_bold('openagentd server stop')}")
     print()
 
     if getattr(args, "wait", False) or getattr(args, "watch", False):

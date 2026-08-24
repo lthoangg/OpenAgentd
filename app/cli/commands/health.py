@@ -1,4 +1,4 @@
-"""``openagentd health`` — server-focused diagnostics."""
+"""``openagentd server health`` — server-focused diagnostics."""
 
 from __future__ import annotations
 
@@ -106,7 +106,7 @@ def cmd_health(args: argparse.Namespace) -> None:
             Check(
                 "LAN binding",
                 "warn",
-                "local-only; use openagentd start --lan for mobile",
+                "local-only; use openagentd server start --lan for mobile",
             )
         )
 

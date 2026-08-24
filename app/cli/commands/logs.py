@@ -1,4 +1,4 @@
-"""``openagentd logs`` — tail the server log file."""
+"""``openagentd server logs`` — tail the server log file."""
 
 from __future__ import annotations
 

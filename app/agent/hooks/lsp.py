@@ -12,6 +12,21 @@ if TYPE_CHECKING:
     from app.agent.schemas.chat import ToolCall
 
 
+def _is_failed_result(result: str | None) -> bool:
+    """Check if tool output represents an error or failed execution."""
+    if not result:
+        return True
+    first_line = result.lstrip().split("\n", 1)[0].strip().lower()
+    return (
+        first_line.startswith("error:")
+        or first_line.startswith("[failed")
+        or first_line.startswith("[error")
+        or first_line.startswith("[timed out")
+        or "exit code 1" in first_line
+        or "exit 1" in first_line
+    )
+
+
 class LspHook(BaseAgentHook):
     """Agent hook that intercepts patch tool calls and injects LSP diagnostics.
 
@@ -40,6 +55,10 @@ class LspHook(BaseAgentHook):
 
         tool_name = tool_call.function.name
         if tool_name != "patch":
+            return result
+
+        # Do not run diagnostics if the tool execution failed or returned an error
+        if _is_failed_result(result):
             return result
 
         # A tool call truncated by the model's output-token cap can arrive with

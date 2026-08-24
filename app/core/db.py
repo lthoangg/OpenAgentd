@@ -93,13 +93,18 @@ def resolve_db_factory(factory: DbFactory | None) -> DbFactory:
     return factory if factory is not None else async_session_factory
 
 
-def run_migrations() -> None:
+def run_migrations(*, quiet_alembic: bool = False) -> None:
     """Run pending Alembic migrations (upgrade head).
 
     Called once during server startup so users never need a separate
     ``openagentd transfer migrate`` step.  ``alembic.ini`` ships inside the ``app``
     package so it is reachable from both source checkouts and installed
     wheels.
+
+    ``quiet_alembic`` suppresses only Alembic's routine INFO records after
+    its logging configuration has loaded. Foreground CLI execution uses it to
+    keep stdout/stderr focused on agent output; server startup keeps the
+    default visible diagnostics.
 
     Concurrent invocations on SQLite are serialised with an advisory file
     lock alongside the database file. Without this, two processes (e.g.
@@ -124,6 +129,8 @@ def run_migrations() -> None:
     # Override the DB URL so it always matches the runtime settings,
     # regardless of what alembic.ini has hardcoded.
     cfg.set_main_option("sqlalchemy.url", settings.DATABASE_URL.get_secret_value())
+    if quiet_alembic:
+        cfg.set_main_option("openagentd.quiet_alembic", "true")
 
     if _db_path and _db_path != ":memory:":
         with _sqlite_migration_lock(Path(_db_path).expanduser()):

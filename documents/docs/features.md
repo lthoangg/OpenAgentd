@@ -1063,6 +1063,12 @@ Desktop is primary. CLI / server is the developer path.
 - **CLI server control** `[v1.41.0, v2.3.0]` — `openagentd server restart`,
   `openagentd server address`, `openagentd server health`, and `openagentd server
   start --lan --key` make the CLI the control plane for desktop/mobile backends.
+- **Foreground CLI agent execution** `[v2.3.0]` — `openagentd run --prompt "..."`
+  validates the current directory as a coding workspace, starts one persisted
+  team session, and streams only the lead agent's response text to standard
+  output. `--model provider:model` and `--thinking` apply per-turn overrides;
+  auto-approved tool permissions continue normally, while interactive agent
+  questions stop the non-interactive command instead of leaving a suspended run.
 - **CLI start --wait / --watch** `[v1.73.0, v2.3.0]` — `openagentd server start`
   starts the background server and polls `/api/health/ready` until the database
   connection and the agent team are fully ready.

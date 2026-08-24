@@ -78,6 +78,19 @@ openagentd server health
 
 `--key` protects non-loopback access. Use `openagentd --help` and `<command> --help` for the current command reference.
 
+Run one agent turn directly against the current project directory when you need
+a pipe-friendly terminal response:
+
+```bash
+openagentd run --model openai:gpt-5.5 --thinking high --prompt "Summarize this project"
+```
+
+The command validates the current directory as a coding workspace, persists a
+new session for the turn, and streams the lead agent's response text to standard
+output. Tool-permission events follow the runtime's existing auto-allow policy;
+interactive agent questions stop the non-interactive command. It does not
+support workspace selection or session resume.
+
 ### From source
 
 ```bash

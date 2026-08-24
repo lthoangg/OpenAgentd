@@ -20,7 +20,7 @@ import signal
 import sys
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import Mock, patch
+from unittest.mock import ANY, AsyncMock, Mock, patch
 
 import httpx
 import pytest
@@ -396,6 +396,24 @@ class TestFindPids:
 
 
 class TestBuildParser:
+    def test_run_subcommand_parses_prompt_and_model_overrides(self):
+        args = build_parser().parse_args(
+            [
+                "run",
+                "--prompt",
+                "Summarize the repository.",
+                "--model",
+                "openai:gpt-5.5",
+                "--thinking",
+                "high",
+            ]
+        )
+
+        assert args.command == "run"
+        assert args.prompt == "Summarize the repository."
+        assert args.model == "openai:gpt-5.5"
+        assert args.thinking == "high"
+
     def test_default_command_is_start(self):
         parser = build_parser()
         args = parser.parse_args([])
@@ -527,6 +545,278 @@ class TestBuildParser:
     def test_update_subcommand_removed(self):
         with pytest.raises(SystemExit):
             build_parser().parse_args(["update"])
+
+
+class TestCmdRun:
+    @pytest.fixture(autouse=True)
+    def _skip_runtime_initialization(self, monkeypatch):
+        from app.cli.commands import run as run_mod
+
+        monkeypatch.setattr(run_mod, "ensure_workspace_initialized", lambda: None)
+        monkeypatch.setattr(run_mod, "run_migrations", lambda **_: None)
+
+    @pytest.mark.asyncio
+    async def test_run_dispatches_overrides_and_prints_only_lead_text(
+        self, monkeypatch, capsys
+    ):
+        from app.cli.commands import run as run_mod
+
+        args = SimpleNamespace(
+            prompt="Summarize the repository.",
+            model="openai:gpt-5.5",
+            thinking="high",
+        )
+        team = Mock()
+        team.lead.name = "lead"
+        dispatch = AsyncMock(return_value=("session-id", 0, "message-id"))
+
+        async def events(_session_id):
+            yield {
+                "event": "thinking",
+                "data": '{"agent":"lead","text":"private"}',
+            }
+            yield {
+                "event": "message",
+                "data": '{"agent":"worker","text":"hidden"}',
+            }
+            yield {
+                "event": "message",
+                "data": '{"agent":"lead","text":"Hello"}',
+            }
+            yield {
+                "event": "message",
+                "data": '{"agent":"lead","text":" world"}',
+            }
+            yield {"event": "done", "data": '{"type":"done"}'}
+
+        monkeypatch.setattr(
+            run_mod.team_manager,
+            "get_or_start_coding_team",
+            AsyncMock(return_value=team),
+        )
+        monkeypatch.setattr(
+            run_mod.team_manager, "validate_workspace", lambda _: "/repo"
+        )
+        monkeypatch.setattr(run_mod.agent_service, "dispatch_user_message", dispatch)
+        monkeypatch.setattr(run_mod.stream_store, "attach", events)
+        monkeypatch.setattr(
+            run_mod, "is_registered_model_id", AsyncMock(return_value=True)
+        )
+
+        await run_mod._run(args)
+
+        assert capsys.readouterr().out == "Hello world\n"
+        dispatch.assert_awaited_once_with(
+            team,
+            content="Summarize the repository.",
+            session_id=ANY,
+            mode="coding",
+            workspace="/repo",
+            model="openai:gpt-5.5",
+            thinking_level="high",
+        )
+
+    @pytest.mark.asyncio
+    async def test_run_uses_the_current_directory_as_a_coding_workspace(
+        self, monkeypatch
+    ):
+        from app.cli.commands import run as run_mod
+
+        args = SimpleNamespace(prompt="Hello", model=None, thinking=None)
+        team = Mock()
+        team.lead.name = "lead"
+        get_coding_team = AsyncMock(return_value=team)
+        dispatch = AsyncMock(return_value=("session-id", 0, "message-id"))
+
+        async def events(_session_id):
+            yield {"event": "done", "data": '{"type":"done"}'}
+
+        monkeypatch.setattr(
+            run_mod.team_manager, "validate_workspace", lambda _: "/repo"
+        )
+        monkeypatch.setattr(
+            run_mod.team_manager, "get_or_start_coding_team", get_coding_team
+        )
+        monkeypatch.setattr(run_mod.agent_service, "dispatch_user_message", dispatch)
+        monkeypatch.setattr(run_mod.stream_store, "attach", events)
+
+        await run_mod._run(args)
+
+        get_coding_team.assert_awaited_once_with("/repo", ANY)
+        dispatch.assert_awaited_once_with(
+            team,
+            content="Hello",
+            session_id=ANY,
+            mode="coding",
+            workspace="/repo",
+            model=None,
+            thinking_level=None,
+        )
+
+    @pytest.mark.asyncio
+    async def test_run_rejects_an_unregistered_model_before_starting_a_team(
+        self, monkeypatch
+    ):
+        from app.cli.commands import run as run_mod
+
+        args = SimpleNamespace(prompt="Hello", model="missing:model", thinking=None)
+        resolve_team = AsyncMock()
+        monkeypatch.setattr(
+            run_mod, "is_registered_model_id", AsyncMock(return_value=False)
+        )
+        monkeypatch.setattr(
+            run_mod.team_manager,
+            "get_or_start_team_for_session",
+            resolve_team,
+        )
+
+        with pytest.raises(SystemExit, match="Choose a model from the registry"):
+            await run_mod._run(args)
+
+        resolve_team.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_run_sanitizes_terminal_errors(self, monkeypatch, capsys):
+        from app.cli.commands import run as run_mod
+
+        args = SimpleNamespace(prompt="Hello", model=None, thinking=None)
+        team = Mock()
+        team.lead.name = "lead"
+
+        async def events(_session_id):
+            yield {
+                "event": "error",
+                "data": (
+                    '{"title":"Provider unavailable","code":"provider_error",'
+                    '"message":"token=secret"}'
+                ),
+            }
+            yield {"event": "done", "data": '{"type":"done"}'}
+
+        monkeypatch.setattr(
+            run_mod.team_manager,
+            "get_or_start_coding_team",
+            AsyncMock(return_value=team),
+        )
+        monkeypatch.setattr(
+            run_mod.team_manager, "validate_workspace", lambda _: "/repo"
+        )
+        monkeypatch.setattr(
+            run_mod.agent_service,
+            "dispatch_user_message",
+            AsyncMock(return_value=("session-id", 0, "message-id")),
+        )
+        monkeypatch.setattr(run_mod.stream_store, "attach", events)
+
+        with pytest.raises(SystemExit, match="Provider unavailable"):
+            await run_mod._run(args)
+
+        err = capsys.readouterr().err
+        assert "Provider unavailable" in err
+        assert "token=secret" not in err
+
+    @pytest.mark.asyncio
+    async def test_run_cancels_when_the_agent_requests_interaction(
+        self, monkeypatch, capsys
+    ):
+        from app.cli.commands import run as run_mod
+
+        args = SimpleNamespace(prompt="Hello", model=None, thinking=None)
+        team = Mock()
+        team.lead.name = "lead"
+        interrupt = AsyncMock()
+
+        async def events(_session_id):
+            yield {
+                "event": "question_asked",
+                "data": '{"type":"question_asked"}',
+            }
+
+        monkeypatch.setattr(
+            run_mod.team_manager,
+            "get_or_start_coding_team",
+            AsyncMock(return_value=team),
+        )
+        monkeypatch.setattr(
+            run_mod.team_manager, "validate_workspace", lambda _: "/repo"
+        )
+        monkeypatch.setattr(
+            run_mod.agent_service,
+            "dispatch_user_message",
+            AsyncMock(return_value=("session-id", 0, "message-id")),
+        )
+        monkeypatch.setattr(run_mod.agent_service, "interrupt_team", interrupt)
+        monkeypatch.setattr(run_mod.stream_store, "attach", events)
+
+        with pytest.raises(SystemExit, match="cannot answer agent questions"):
+            await run_mod._run(args)
+
+        interrupt.assert_awaited_once_with(team, "session-id")
+        assert "cannot answer agent questions" in capsys.readouterr().err
+
+    @pytest.mark.asyncio
+    async def test_run_ignores_auto_approved_permission_events(
+        self, monkeypatch, capsys
+    ):
+        from app.cli.commands import run as run_mod
+
+        args = SimpleNamespace(prompt="Hello", model=None, thinking=None)
+        team = Mock()
+        team.lead.name = "lead"
+        interrupt = AsyncMock()
+
+        async def events(_session_id):
+            yield {
+                "event": "permission_asked",
+                "data": '{"type":"permission_asked"}',
+            }
+            yield {
+                "event": "message",
+                "data": '{"agent":"lead","text":"Complete"}',
+            }
+            yield {"event": "done", "data": '{"type":"done"}'}
+
+        monkeypatch.setattr(
+            run_mod.team_manager, "validate_workspace", lambda _: "/repo"
+        )
+        monkeypatch.setattr(
+            run_mod.team_manager,
+            "get_or_start_coding_team",
+            AsyncMock(return_value=team),
+        )
+        monkeypatch.setattr(
+            run_mod.agent_service,
+            "dispatch_user_message",
+            AsyncMock(return_value=("session-id", 0, "message-id")),
+        )
+        monkeypatch.setattr(run_mod.agent_service, "interrupt_team", interrupt)
+        monkeypatch.setattr(run_mod.stream_store, "attach", events)
+
+        await run_mod._run(args)
+
+        interrupt.assert_not_awaited()
+        assert capsys.readouterr().out == "Complete\n"
+
+    def test_cmd_run_suppresses_runtime_logs(self, monkeypatch):
+        from app.cli.commands import run as run_mod
+
+        configure_logging = Mock()
+        monkeypatch.setattr(run_mod, "setup_logging", configure_logging)
+        monkeypatch.setattr(run_mod.asyncio, "run", lambda _coro: _coro.close())
+
+        run_mod.cmd_run(SimpleNamespace())
+
+        configure_logging.assert_called_once_with(log_level="ERROR")
+
+    def test_run_requests_quiet_alembic_migrations(self, monkeypatch):
+        from app.cli.commands import run as run_mod
+
+        migrate = Mock()
+        monkeypatch.setattr(run_mod, "run_migrations", migrate)
+
+        run_mod._run_migrations_quietly()
+
+        migrate.assert_called_once_with(quiet_alembic=True)
 
 
 # ---------------------------------------------------------------------------

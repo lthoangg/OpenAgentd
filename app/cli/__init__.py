@@ -46,6 +46,7 @@ _LAZY_EXPORTS: dict[str, str] = {
     "cmd_logs": "app.cli.main",
     "cmd_migrate": "app.cli.main",
     "cmd_restart": "app.cli.main",
+    "cmd_run": "app.cli.main",
     "cmd_start": "app.cli.main",
     "cmd_status": "app.cli.main",
     "cmd_stop": "app.cli.main",

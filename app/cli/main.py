@@ -42,6 +42,7 @@ cmd_logs = _lazy_cmd("app.cli.commands.logs", "cmd_logs")
 cmd_lsp = _lazy_cmd("app.cli.commands.lsp", "cmd_lsp")
 cmd_migrate = _lazy_cmd("app.cli.commands.migrate", "cmd_migrate")
 cmd_restart = _lazy_cmd("app.cli.commands.restart", "cmd_restart")
+cmd_run = _lazy_cmd("app.cli.commands.run", "cmd_run")
 cmd_start = _lazy_cmd("app.cli.commands.start", "cmd_start")
 cmd_status = _lazy_cmd("app.cli.commands.status", "cmd_status")
 cmd_stop = _lazy_cmd("app.cli.commands.stop", "cmd_stop")
@@ -65,6 +66,7 @@ def build_parser() -> argparse.ArgumentParser:
             "  openagentd server start --lan --key  # start for mobile/LAN clients\n"
             "  openagentd server status             # check the background server\n"
             "  openagentd auth copilot              # authenticate with an OAuth provider\n"
+            "  openagentd run --prompt 'Summarize this project'  # run an agent once\n"
             "  openagentd transfer migrate openclaw --from ~/.openclaw/workspace --model openai:gpt-5.5\n"
             "  openagentd transfer export           # pack config for migration\n"
             "  openagentd doctor                    # check system health\n"
@@ -273,6 +275,17 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("doctor", help="Check system health and report issues").set_defaults(
         func=cmd_doctor
     )
+
+    # ── run ───────────────────────────────────────────────────────────────────
+    p_run = sub.add_parser(
+        "run", help="Run an agent in the current directory and print the lead response"
+    )
+    p_run.add_argument(
+        "--prompt", required=True, help="Prompt to send to the agent team"
+    )
+    p_run.add_argument("--model", help="Model override, e.g. openai:gpt-5.5")
+    p_run.add_argument("--thinking", help="Provider-neutral thinking level override")
+    p_run.set_defaults(func=cmd_run)
 
     # ── cleanup ───────────────────────────────────────────────────────────────
     p_cleanup = sub.add_parser(

@@ -15,10 +15,12 @@
   *   • Scheduler shortcut button
   *   • ThemeToggle (collapsed 3-way cycler)
   *   • Help button (Command Palette ⌘⇧P)
+ *   • Telemetry link
  *   • Settings button (Settings modal ⌘,)
  */
 import { memo } from 'react'
 import {
+  Activity,
   CalendarClock,
   GitBranch,
   HelpCircle,
@@ -201,6 +203,21 @@ export const AppFooter = memo(function AppFooter({
         )}
 
         <ThemeToggle collapsed compact />
+
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <a
+                href="/telemetry"
+                className="flex h-5 w-5 items-center justify-center rounded-sm text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
+                aria-label="Telemetry"
+              >
+                <Activity size={12} aria-hidden="true" />
+              </a>
+            }
+          />
+          <TooltipContent>Telemetry</TooltipContent>
+        </Tooltip>
 
         {onTogglePalette && (
           <Tooltip>

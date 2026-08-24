@@ -24,7 +24,6 @@ use crate::AppState;
 
 pub const MENU_SHOW: &str = "show";
 pub const MENU_NEW_WINDOW: &str = "new_window";
-pub const MENU_HOME: &str = "home";
 pub const MENU_CODING: &str = "coding";
 pub const MENU_QUICK_OPEN: &str = "quick_open";
 pub const MENU_COMMAND_PALETTE: &str = "command_palette";
@@ -112,7 +111,6 @@ pub fn install_desktop_menus(app: &tauri::App) -> Result<()> {
         true,
         Some("CmdOrCtrl+Shift+N"),
     )?;
-    let app_home = MenuItem::with_id(app, MENU_HOME, "Home", true, None::<&str>)?;
     let app_settings = MenuItem::with_id(app, MENU_SETTINGS, "Settings", true, Some("CmdOrCtrl+,"))?;
     let app_open_config_dir = MenuItem::with_id(
         app,
@@ -143,7 +141,6 @@ pub fn install_desktop_menus(app: &tauri::App) -> Result<()> {
         true,
         Some("CmdOrCtrl+Shift+N"),
     )?;
-    let file_home = MenuItem::with_id(app, MENU_HOME, "Home", true, Some("CmdOrCtrl+Shift+H"))?;
     let file_coding =
         MenuItem::with_id(app, MENU_CODING, "Coding", true, Some("CmdOrCtrl+Shift+K"))?;
     let file_quit =
@@ -215,7 +212,6 @@ pub fn install_desktop_menus(app: &tauri::App) -> Result<()> {
         .separator()
         .item(&app_show)
         .item(&app_new_window)
-        .item(&app_home)
         .separator()
         .item(&app_settings)
         .separator()
@@ -228,7 +224,6 @@ pub fn install_desktop_menus(app: &tauri::App) -> Result<()> {
     let file_menu = SubmenuBuilder::new(app, "File")
         .item(&file_new_window)
         .separator()
-        .item(&file_home)
         .item(&file_coding)
         .separator()
         .item(&file_quit)
@@ -452,7 +447,6 @@ pub fn handle_desktop_menu(app: &AppHandle, id: &str) {
                 }
             });
         }
-        MENU_HOME => navigate_main_window(app, "/"),
         MENU_CODING => navigate_main_window(app, "/coding"),
         MENU_QUICK_OPEN => emit_frontend_command(app, "quick_open"),
         MENU_COMMAND_PALETTE => emit_frontend_command(app, "command_palette"),
@@ -812,7 +806,13 @@ pub async fn run_usage_poll_loop(app: AppHandle) {
 
 #[cfg(test)]
 mod tests {
-    use super::{external_usage_access_key, macos_tray_icon};
+    use super::{external_usage_access_key, macos_tray_icon, MENU_CODING, MENU_NEW_WINDOW};
+
+    #[test]
+    fn session_navigation_menu_keeps_coding_and_new_window_entries_only() {
+        assert_eq!(MENU_CODING, "coding");
+        assert_eq!(MENU_NEW_WINDOW, "new_window");
+    }
 
     #[test]
     fn macos_tray_template_icon_preserves_transparent_background() {

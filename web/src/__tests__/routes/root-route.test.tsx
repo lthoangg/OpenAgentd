@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'bun:test'
 import { closestRestorableRoute } from '@/lib/route-restore'
-import { HomePage } from '@/routes'
 import { router } from '@/router'
 
 describe('closestRestorableRoute', () => {
@@ -42,7 +41,7 @@ describe('closestRestorableRoute', () => {
 })
 
 describe('root route', () => {
-  it('keeps the Coding and Telemetry home page at /', () => {
-    expect(router.routesById['/'].options.component).toBe(HomePage)
+  it('redirects / to Coding', () => {
+    expect(typeof router.routesById['/'].options.beforeLoad).toBe('function')
   })
 })

@@ -28,12 +28,12 @@ import { formatShortcut } from '@/lib/keyboard-shortcut'
 import { useResizableWidth } from '@/hooks/use-resizable-width'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 import {
+  Activity,
   ChevronRight,
   Copy,
   Folder,
   GitBranch,
   HelpCircle,
-  Home,
   Loader2,
   MoreHorizontal,
   Pencil,
@@ -670,11 +670,11 @@ export function CodingSidebar({
         <nav aria-label="Primary" className="px-2 pt-3">
           <button
             type="button"
-            onClick={() => { navigate({ to: '/' }); onMobileClose?.() }}
+            onClick={() => { navigate({ to: '/telemetry' }); onMobileClose?.() }}
             className="flex h-9 w-full items-center gap-2 rounded-md px-2.5 text-left text-sm text-(--color-text-2) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
           >
-            <Home size={15} aria-hidden="true" />
-            <span>Home</span>
+            <Activity size={15} aria-hidden="true" />
+            <span>Telemetry</span>
           </button>
         </nav>
       )}
@@ -959,6 +959,21 @@ export function CodingSidebar({
               }
             />
             <TooltipContent>{`Settings (${formatShortcut(',', os)})`}</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <button
+                  type="button"
+                  onClick={() => { navigate({ to: '/telemetry' }); onMobileClose?.() }}
+                  className="flex h-11 w-11 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
+                  aria-label="Telemetry"
+                >
+                  <Activity size={14} aria-hidden="true" />
+                </button>
+              }
+            />
+            <TooltipContent>Telemetry</TooltipContent>
           </Tooltip>
           {onCommandPalette && (
             <Tooltip>

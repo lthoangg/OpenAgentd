@@ -117,4 +117,9 @@ describe('AppFooter', () => {
     fireEvent.click(settingsBtn)
     expect(mockOpenSettings).toHaveBeenCalledTimes(1)
   })
+
+  it('exposes telemetry navigation in the utility cluster', () => {
+    renderWithQueryClient(<AppFooter />)
+    expect(screen.getByRole('link', { name: 'Telemetry' })).toBeTruthy()
+  })
 })

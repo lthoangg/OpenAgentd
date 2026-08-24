@@ -1,7 +1,6 @@
-import { createRootRoute, createRoute, createRouter } from '@tanstack/react-router'
+import { createRootRoute, createRoute, createRouter, redirect } from '@tanstack/react-router'
 import { z } from 'zod'
 import { Root, NotFound } from './routes/__root'
-import { HomePage } from './routes'
 import { CodingLayout } from './routes/cockpit'
 import { TelemetryPage } from './routes/telemetry'
 import { SchedulerPage } from './routes/scheduler'
@@ -11,15 +10,17 @@ const rootRoute = createRootRoute({
   notFoundComponent: NotFound,
 })
 
-// / → Home (Coding and Telemetry entry points)
+// / → Coding workspace
 const indexRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/',
-  component: HomePage,
+  beforeLoad: () => {
+    throw redirect({ to: '/coding' })
+  },
 })
 
 // Tauri's packaged asset URL may surface as /index.html before the root
-// effect canonicalizes it. Render Home immediately instead of flashing the
+// effect canonicalizes it. Render Coding immediately instead of flashing the
 // not-found screen on a first desktop launch.
 const packagedIndexRoute = createRoute({
   getParentRoute: () => rootRoute,

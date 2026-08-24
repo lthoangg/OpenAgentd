@@ -23,6 +23,10 @@ from typing import Any
 from loguru import logger
 
 from app.agent.providers.base import LLMProviderBase
+from app.agent.providers.codex.catalog import (
+    cached_codex_catalog,
+    supports_reasoning_summary,
+)
 from app.agent.providers.codex.oauth import CODEX_ORIGINATOR, CodexOAuth
 from app.agent.providers.openai.responses import ResponsesHandler
 from app.agent.schemas.chat import (
@@ -47,6 +51,7 @@ _TURN_STATE_HEADER = "x-codex-turn-state"
 # Identify requests honestly as OpenAgentd.
 _DEFAULT_HEADERS = {
     "Content-Type": "application/json",
+    "Accept": "text/event-stream",
     "User-Agent": "openagentd/1.0.0",
     "originator": CODEX_ORIGINATOR,
 }
@@ -65,6 +70,14 @@ class _CodexResponsesHandler(ResponsesHandler):
         # Sticky-routing token for the turn currently in flight, or None
         # between turns.  Scoped to a turn, never across turns.
         self._turn_state: str | None = None
+        summary_capability = supports_reasoning_summary(
+            cached_codex_catalog(), self.model
+        )
+        self._supports_reasoning_summary = (
+            summary_capability
+            if summary_capability is not None
+            else self.model not in _NO_REASONING_SUMMARY_MODELS
+        )
 
     def convert_messages(self, messages: list[ChatMessage]) -> list[dict[str, Any]]:
         """Convert messages to Codex's stricter Responses item shape.
@@ -93,7 +106,7 @@ class _CodexResponsesHandler(ResponsesHandler):
         if not thinking_level:
             thinking_level = "medium"
         reasoning: dict[str, Any] = {"effort": thinking_level}
-        if self.model not in _NO_REASONING_SUMMARY_MODELS:
+        if self._supports_reasoning_summary:
             reasoning["summary"] = "auto"
         body["reasoning"] = reasoning
 
@@ -157,8 +170,13 @@ class _CodexResponsesHandler(ResponsesHandler):
         return body
 
     def _prepare_request_headers(self, body: dict[str, Any]) -> dict[str, str]:
-        """Echo the current turn's sticky-routing token, when the server gave one."""
-        headers = self.headers
+        """Attach Codex's routing headers for this Responses request."""
+        model = str(body.get("model") or self.model)
+        service_tier = body.get("service_tier")
+        routing_hint = f"model={model}"
+        if isinstance(service_tier, str) and service_tier:
+            routing_hint += f";tier={service_tier}"
+        headers = {**self.headers, "x-codex-routing-hint": routing_hint}
         if self._turn_state:
             headers = {**headers, _TURN_STATE_HEADER: self._turn_state}
         return headers

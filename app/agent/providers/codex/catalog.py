@@ -22,6 +22,7 @@ _CACHED_MODEL_FIELDS = (
     "max_context_window",
     "effective_context_window_percent",
     "auto_compact_token_limit",
+    "supports_reasoning_summary_parameter",
 )
 
 
@@ -123,6 +124,17 @@ def model_ids(data: Any) -> list[str]:
         for item in items
         if isinstance(item, dict) and isinstance(item.get("slug"), str)
     )
+
+
+def supports_reasoning_summary(data: Any, model: str) -> bool | None:
+    """Return a model's summary-parameter capability, when the catalog has it."""
+    items = data.get("models", []) if isinstance(data, dict) else []
+    for item in items:
+        if not isinstance(item, dict) or item.get("slug") != model:
+            continue
+        supported = item.get("supports_reasoning_summary_parameter")
+        return supported if isinstance(supported, bool) else None
+    return None
 
 
 def model_registry_overlay(data: Any) -> dict[str, dict[str, Any]]:

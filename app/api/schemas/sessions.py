@@ -16,8 +16,7 @@ class SessionCreate(BaseModel):
 
 
 class TeamSessionResolveRequest(BaseModel):
-    mode: str = "normal"
-    workspace: str | None = None
+    workspace: str = Field(..., min_length=1)
     model: str | None = None
     thinking_level: str | None = None
     create: bool = False
@@ -61,8 +60,7 @@ class SessionResponse(_ExcludeNoneModel):
     title: str | None = None
     agent_name: str | None = None
     scheduled_task_name: str | None = None
-    mode: str = "normal"
-    workspace: str | None = None
+    workspace: str
     model: str | None = None
     thinking_level: str | None = None
     revert: dict | None = None

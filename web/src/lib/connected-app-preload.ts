@@ -6,7 +6,7 @@ import { preloadHeavyRenderers } from '@/lib/optimistic-preload'
 
 const SESSION_PAGE_SIZE = 20
 
-/** Warm the data shared by the Cockpit and Coding entry surfaces. */
+/** Warm data needed by the coding workspace entry surface. */
 export function preloadConnectedApp(client: QueryClient): void {
   // Warm heavy rendering chunks (markdown, mermaid, pdfjs) during idle time.
   preloadHeavyRenderers()
@@ -28,15 +28,9 @@ export function preloadConnectedApp(client: QueryClient): void {
     staleTime: 30_000,
   })
   void client.prefetchInfiniteQuery({
-    queryKey: queryKeys.team.sessions.infinite(),
-    queryFn: ({ pageParam }: { pageParam: string | null }) =>
-      listTeamSessions(pageParam, SESSION_PAGE_SIZE, { mode: 'normal' }),
-    initialPageParam: null as string | null,
-  })
-  void client.prefetchInfiniteQuery({
     queryKey: queryKeys.team.sessions.workspace('__all_coding__'),
     queryFn: ({ pageParam }: { pageParam: string | null }) =>
-      listTeamSessions(pageParam, SESSION_PAGE_SIZE, { mode: 'coding' }),
+      listTeamSessions(pageParam, SESSION_PAGE_SIZE),
     initialPageParam: null as string | null,
   })
 }

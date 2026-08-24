@@ -126,15 +126,13 @@ async def validate_model_settings(
 class ResolvedChatTeam:
     """Result of resolving a ``POST /chat`` request to a team + session.
 
-    ``mode`` and ``workspace`` may differ from the request body — an
-    existing coding session's persisted workspace always wins (see
+    An existing coding session's persisted workspace always wins (see
     ``resolve_chat_team``).
     """
 
     team: AgentTeam
     session_id: str
     session_uuid: UUID | None
-    mode: str
     workspace: str | None
 
 
@@ -159,25 +157,23 @@ async def resolve_team_for_existing_session(
         raise HTTPException(status_code=422, detail="Invalid session id.") from exc
     async with db.begin():
         existing = await db.get(ChatSession, session_uuid)
-    if existing and existing.mode == "coding" and existing.workspace:
-        try:
-            return await team_manager.get_or_start_coding_team(
-                _validate_workspace_or_422(existing.workspace), session_id
-            )
-        except ValueError as exc:
-            raise HTTPException(status_code=422, detail=str(exc)) from exc
-    team_obj = await team_manager.get_or_start_team_for_session(session_id)
-    return _require_team(team_obj)
+    if existing is None or not existing.workspace:
+        raise HTTPException(status_code=404, detail="Session not found.")
+    try:
+        return await team_manager.get_or_start_coding_team(
+            _validate_workspace_or_422(existing.workspace), session_id
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 async def resolve_chat_team(
     db: AsyncSession,
     *,
     session_id: str | None,
-    mode: str,
     workspace: str | None,
 ) -> ResolvedChatTeam:
-    """Resolve the session id, reconcile mode/workspace, and start/attach a team.
+    """Resolve the session id and start/attach a coding team.
 
     Mirrors the exact branching of the former inline ``team_chat`` body:
 
@@ -187,8 +183,7 @@ async def resolve_chat_team(
        authoritative — a mismatched ``workspace`` in the request is a 409,
        never silently overridden (security-relevant: prevents a session id
        from being replayed against a different workspace).
-    3. Otherwise, mint a session id if omitted and start/attach the coding
-       or normal-mode team per the request's ``mode``.
+    3. Otherwise, mint a session id if omitted and start/attach the coding team.
 
     Raises :class:`HTTPException` (422 invalid session id / workspace,
     404 no team configured, 409 workspace mismatch) exactly as the inline
@@ -205,9 +200,9 @@ async def resolve_chat_team(
         async with db.begin():
             existing = await db.get(ChatSession, session_uuid)
 
-    if existing and existing.mode == "coding" and existing.workspace:
+    if existing and existing.workspace:
         persisted_workspace = _validate_workspace_or_422(existing.workspace)
-        if mode == "coding" and workspace is not None:
+        if workspace is not None:
             requested_workspace = _validate_workspace_or_422(workspace)
             if requested_workspace != persisted_workspace:
                 raise HTTPException(
@@ -217,7 +212,6 @@ async def resolve_chat_team(
                         f"{persisted_workspace}"
                     ),
                 )
-        mode = "coding"
         workspace = persisted_workspace
         assert session_id is not None
         try:
@@ -226,7 +220,7 @@ async def resolve_chat_team(
             )
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
-    elif mode == "coding":
+    else:
         if session_id is None:
             session_id = str(uuid7())
         assert workspace is not None
@@ -237,17 +231,10 @@ async def resolve_chat_team(
             )
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
-    else:
-        if session_id is None:
-            session_id = str(uuid7())
-        team_obj = await team_manager.get_or_start_team_for_session(session_id)
-        team_obj = _require_team(team_obj)
-
     return ResolvedChatTeam(
         team=team_obj,
         session_id=session_id,
         session_uuid=session_uuid,
-        mode=mode,
         workspace=workspace,
     )
 
@@ -393,7 +380,7 @@ async def _read_upload_as_attachment(file: UploadFile) -> RawAttachment | None:
 
 # ── @-mention context helpers ────────────────────────────────────────────────
 #
-# Tokens are resolved against the session workspace (normal session
+# Tokens are resolved against the session workspace
 # sandbox, or the coding workspace root if `workspace` is provided).
 # File mentions can be turned into hidden inline context blocks; folder
 # mentions can be turned into hidden directory-listing context blocks.

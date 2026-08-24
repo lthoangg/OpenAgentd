@@ -15,7 +15,7 @@ function hotkeyPlatform() {
  *
  * This drives the router's history stack directly (``router.history``,
  * TanStack Router's wrapper around the real ``window.history``), so it
- * works the same everywhere in the app — settings, telemetry, cockpit
+ * works the same everywhere in the app — settings, telemetry, coding workspaces,
  * and coding sessions — not just chat. Registered once, globally, in
  * ``__root.tsx``.
  */

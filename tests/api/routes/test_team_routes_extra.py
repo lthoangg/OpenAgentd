@@ -284,7 +284,6 @@ class TestTeamAgentsRouteExtra:
         self, app_without_team, test_team, monkeypatch
     ):
         async def fake_get_or_start_coding_team(workspace: str, session_id: str):
-            test_team.mode = "coding"
             test_team.workspace = workspace
             return test_team
 
@@ -298,7 +297,6 @@ class TestTeamAgentsRouteExtra:
             "/api/team/agents", params={"workspace": "/tmp/project"}
         ).json()
 
-        assert data["mode"] == "coding"
         assert data["workspace"] == "/tmp/project"
 
     def test_agents_workspace_validation_error_returns_422(
@@ -327,10 +325,22 @@ class TestTeamAgentsRouteExtra:
         from app.core.config import settings
 
         monkeypatch.setattr(settings, "AGENTS_DIR", str(tmp_path))
+
+        async def use_test_team(_workspace: str, _session_id: str):
+            return test_team
+
+        monkeypatch.setattr(
+            "app.services.team_manager.get_or_start_coding_team", use_test_team
+        )
         (tmp_path / "newcomer.md").write_text(
-            "---\nname: newcomer\nrole: member\nmodel: mock:model\n"
+            "---\nname: newcomer\nrole: coder\nmodel: mock:model\n"
             "description: just arrived\n---\nbody\n",
             encoding="utf-8",
+        )
+        test_team.blueprints["newcomer"] = MemberBlueprint(
+            name="newcomer",
+            description="just arrived",
+            source_path=tmp_path / "newcomer.md",
         )
 
         # ``_serialize_blueprint`` calls ``rebuild_agent_from_disk`` for
@@ -342,7 +352,11 @@ class TestTeamAgentsRouteExtra:
         with patch(
             "app.agent.loader.rebuild_agent_from_disk", return_value=blueprint_agent
         ):
-            data = TestClient(app_with_team).get("/api/team/agents").json()
+            data = (
+                TestClient(app_with_team)
+                .get("/api/team/agents", params={"workspace": str(tmp_path)})
+                .json()
+            )
 
         names = [bp["name"] for bp in data["blueprints"]]
         assert "newcomer" in names
@@ -404,7 +418,6 @@ class TestTeamAgentsRouteExtra:
         async def fake_get_or_start_coding_team(
             requested_workspace: str, requested_session_id: str
         ):
-            test_team.mode = "coding"
             test_team.workspace = requested_workspace
             return test_team
 
@@ -416,11 +429,14 @@ class TestTeamAgentsRouteExtra:
         client = TestClient(app_without_team)
         resp = client.post(
             "/api/team/chat",
-            data={"message": "continue", "session_id": str(session_id)},
+            data={
+                "message": "continue",
+                "session_id": str(session_id),
+                "workspace": str(workspace),
+            },
         )
 
         assert resp.status_code == 202
-        assert test_team.handle_user_message.call_args.kwargs["mode"] == "coding"
         assert test_team.handle_user_message.call_args.kwargs["workspace"] == str(
             workspace.resolve()
         )
@@ -846,7 +862,6 @@ class TestGetTeamSessionDetail:
         assert resp.status_code == 200
         data = resp.json()
         assert data["id"] == str(session_id)
-        assert data["mode"] == "coding"
         assert data["workspace"] == workspace
         assert data["messages"] == []
 

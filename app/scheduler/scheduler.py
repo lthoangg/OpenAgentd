@@ -42,7 +42,7 @@ class InvalidTaskTargetError(Exception):
     """
 
 
-def _validate_target(mode: str, workspace: str | None) -> None:
+def _validate_target(workspace: str | None) -> None:
     """Raise :exc:`InvalidTaskTargetError` if (mode, workspace) cannot route.
 
     Cheap on-disk check only — no team is loaded.  Pairs with the Pydantic
@@ -51,20 +51,18 @@ def _validate_target(mode: str, workspace: str | None) -> None:
     """
     from app.services import team_manager
 
-    if mode == "coding":
-        if not workspace:
-            raise InvalidTaskTargetError("workspace is required when mode='coding'")
-        try:
-            team_manager.validate_workspace(workspace)
-        except ValueError as exc:
-            raise InvalidTaskTargetError(str(exc)) from exc
+    if not workspace:
+        raise InvalidTaskTargetError("workspace is required")
+    try:
+        team_manager.validate_workspace(workspace)
+    except ValueError as exc:
+        raise InvalidTaskTargetError(str(exc)) from exc
 
 
 async def _validate_session_compat(
     db_factory: DbFactory,
     *,
     session_id: str | None,
-    mode: str,
     workspace: str | None,
 ) -> None:
     """Ensure ``session_id`` (if explicit) matches the task's (mode, workspace).
@@ -99,12 +97,7 @@ async def _validate_session_compat(
         row = await db.get(ChatSession, sid_uuid)
         if row is None:
             return  # session doesn't exist yet; first fire creates it
-        if row.mode != mode:
-            raise InvalidTaskTargetError(
-                f"Session {session_id} has mode='{row.mode}', "
-                f"but task has mode='{mode}'."
-            )
-        if mode == "coding" and row.workspace != workspace:
+        if row.workspace != workspace:
             raise InvalidTaskTargetError(
                 f"Session {session_id} is bound to workspace "
                 f"'{row.workspace}', but task targets '{workspace}'."
@@ -238,11 +231,10 @@ class TaskScheduler:
                 mode/workspace disagrees with the task.
             sqlalchemy.exc.IntegrityError: On duplicate task name.
         """
-        _validate_target(body.mode, body.workspace)
+        _validate_target(body.workspace)
         await _validate_session_compat(
             self._db,
             session_id=body.session_id,
-            mode=body.mode,
             workspace=body.workspace,
         )
         assert body.slug is not None
@@ -250,7 +242,6 @@ class TaskScheduler:
         task = ScheduledTask(
             name=body.name,
             slug=body.slug,
-            mode=body.mode,
             workspace=body.workspace,
             schedule_type=body.schedule_type,
             at_datetime=body.at_datetime,
@@ -286,29 +277,22 @@ class TaskScheduler:
         if task is None:
             raise TaskNotFoundError(slug)
 
-        new_mode = body.mode if body.mode is not None else task.mode
         new_workspace = body.workspace if body.workspace is not None else task.workspace
         new_session_id = (
             body.session_id if body.session_id is not None else task.session_id
         )
-        if body.mode is not None or body.workspace is not None:
-            _validate_target(new_mode, new_workspace)
-            task.mode = new_mode
+        if body.workspace is not None:
+            _validate_target(new_workspace)
             task.workspace = new_workspace
 
         # Re-validate the session pairing whenever any of (mode, workspace,
         # session_id) change.  A mode-only change can newly conflict with an
         # already-stored session_id, so we always check against the merged
         # state.
-        if (
-            body.mode is not None
-            or body.workspace is not None
-            or body.session_id is not None
-        ):
+        if body.workspace is not None or body.session_id is not None:
             await _validate_session_compat(
                 self._db,
                 session_id=new_session_id,
-                mode=new_mode,
                 workspace=new_workspace,
             )
 
@@ -687,18 +671,11 @@ class TaskScheduler:
         fired_sid: str | None = None
         dispatch_attempted = False
         try:
-            if task.mode == "coding":
-                if not task.workspace:
-                    raise NoTeamConfigured(
-                        "Task has mode='coding' but no workspace configured."
-                    )
-                team = await team_manager.get_or_start_coding_team(
-                    task.workspace, f"scheduler:{task.slug}"
-                )
-            else:
-                team = await team_manager.get_or_start_team()
-                if team is None:
-                    raise NoTeamConfigured("No team configured.")
+            if not task.workspace:
+                raise NoTeamConfigured("Task has no workspace configured.")
+            team = await team_manager.get_or_start_coding_team(
+                task.workspace, f"scheduler:{task.slug}"
+            )
             if self._fire_versions.get(task.id, 0) != fire_version:
                 return
             if resolved_sid is not None and team.has_active_user_turn() is True:
@@ -715,7 +692,6 @@ class TaskScheduler:
                 team,
                 content=f"[Scheduled Task: {task.name}]\n{task.prompt}",
                 session_id=resolved_sid,
-                mode=task.mode,
                 workspace=task.workspace,
                 # Machine origin: a live question is deferred, never superseded.
                 origin="scheduler",
@@ -728,7 +704,6 @@ class TaskScheduler:
                         "source": "scheduled_task",
                         "task_slug": task.slug,
                         "task_name": task.name,
-                        "mode": task.mode,
                         "workspace": task.workspace,
                         "started_at": datetime.now(_utc).isoformat(),
                     },
@@ -750,7 +725,7 @@ class TaskScheduler:
                 "scheduler_no_team task_slug={} name={} mode={} error={}",
                 task.slug,
                 task.name,
-                task.mode,
+                "coding",
                 exc,
             )
         except Exception as exc:

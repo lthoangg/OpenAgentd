@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import re
 from datetime import datetime
-from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -13,8 +12,6 @@ from app.scheduler.utils import slugify
 
 _NAME_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$")
 _SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{0,99}$")
-
-TaskMode = Literal["normal", "coding"]
 
 
 class ScheduledTaskCreate(BaseModel):
@@ -25,16 +22,7 @@ class ScheduledTaskCreate(BaseModel):
         default=None,
         description="Unique, URL-friendly identifier. Auto-generated from name if not provided.",
     )
-    mode: TaskMode = Field(
-        default="normal",
-        description="'normal' delivers to the default team lead; "
-        "'coding' delivers to the lead of the coding team for ``workspace``.",
-    )
-    workspace: str | None = Field(
-        default=None,
-        description="Absolute path to a workspace directory. "
-        "Required when mode='coding'.",
-    )
+    workspace: str = Field(..., min_length=1, description="Workspace directory.")
 
     schedule_type: str = Field(description='"at" | "every" | "cron"')
     at_datetime: datetime | None = Field(default=None)
@@ -65,11 +53,6 @@ class ScheduledTaskCreate(BaseModel):
                 )
         else:
             self.slug = slugify(self.name)
-
-        if self.mode == "coding" and not self.workspace:
-            raise ValueError("workspace is required when mode='coding'")
-        if self.mode == "normal" and self.workspace:
-            raise ValueError("workspace must be empty when mode='normal'")
 
         st = self.schedule_type
         if st == "at":
@@ -107,8 +90,7 @@ class ScheduledTaskUpdate(BaseModel):
     """Payload for PUT /scheduler/tasks/{slug} — all fields optional."""
 
     slug: str | None = None
-    mode: TaskMode | None = None
-    workspace: str | None = None
+    workspace: str | None = Field(default=None, min_length=1)
     schedule_type: str | None = None
     at_datetime: datetime | None = None
     every_seconds: int | None = Field(default=None, gt=0)
@@ -127,14 +109,6 @@ class ScheduledTaskUpdate(BaseModel):
                 raise ValueError(
                     "slug must consist of lowercase letters, numbers, hyphens, underscores, or dots, and start with a letter or number"
                 )
-
-        # Cross-field validation for mode/workspace: only enforce when both
-        # parts of the pair are present in the payload.  Otherwise the
-        # service layer validates against the merged row state.
-        if self.mode == "coding" and self.workspace == "":
-            raise ValueError("workspace is required when mode='coding'")
-        if self.mode == "normal" and self.workspace:
-            raise ValueError("workspace must be empty when mode='normal'")
 
         st = self.schedule_type
         if st is None:
@@ -179,8 +153,7 @@ class ScheduledTaskResponse(BaseModel):
     id: UUID
     slug: str
     name: str
-    mode: TaskMode
-    workspace: str | None
+    workspace: str
     schedule_type: str
     at_datetime: datetime | None
     every_seconds: int | None

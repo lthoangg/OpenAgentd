@@ -313,7 +313,9 @@ export const createStreamSlice: StateCreator<
     if (!sessionId || !get().isTeamWorking) return
 
     try {
-      await postTeamChat(null, sessionId, true)
+      const workspace = get()._workspace
+      if (!workspace) return
+      await postTeamChat(null, sessionId, true, workspace)
       // Reloads immediately. The interrupt POST only *signals* cancellation, so
       // the trailing `done` can still be seconds away (a cancelled shell tool
       // alone can spend 2s draining stdout plus 5s reaping) — but the reload no

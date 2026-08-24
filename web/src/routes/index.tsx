@@ -4,9 +4,8 @@ import { useNavigate } from '@tanstack/react-router'
 import { OPENAGENTD_APP_ICON } from '@/lib/brand-assets'
 
 import { AppBackendDialog } from '@/components/AppBackendDialog'
-import { Activity, AlertCircle, Code2, Gauge, Wifi } from 'lucide-react'
+import { Activity, AlertCircle, Code2, Wifi } from 'lucide-react'
 import { useHealthQuery } from '@/queries/useHealthQuery'
-import { useTeamStatusQuery } from '@/queries/useTeamStatusQuery'
 import { usePlatform } from '@/hooks/use-platform'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useTauriDrag } from '@/hooks/use-tauri-drag'
@@ -15,7 +14,6 @@ import { useReducedMotion } from '@/hooks/useReducedMotion'
 export function HomePage() {
   const navigate = useNavigate()
   const health = useHealthQuery()
-  const team = useTeamStatusQuery()
   // The home page is a splash screen with no AppHeader — without an
   // explicit drag region the user can't move the window on macOS Tauri
   // (the OS draws traffic-lights over the WebView but doesn't provide
@@ -31,8 +29,7 @@ export function HomePage() {
   const [backendDialogOpen, setBackendDialogOpen] = useState(false)
 
   const backendOk = health.isSuccess
-  const hasTeam = team.isSuccess && team.data !== null
-  const loading = health.isLoading || team.isLoading
+  const loading = health.isLoading
   const error = health.isError
 
   const openCodingMode = () => {
@@ -63,7 +60,7 @@ export function HomePage() {
             </div>
           </div>
           <div className="text-center">
-            <h1 className={`font-hand leading-none text-(--color-text) ${isTauriMobile ? 'text-4xl' : 'text-5xl'}`}>
+            <h1 className={`font-sans font-semibold leading-none tracking-tight text-(--color-text) ${isTauriMobile ? 'text-4xl' : 'text-5xl'}`}>
               OpenAgentd
             </h1>
             <p className="mt-1 text-sm text-(--color-text-muted)">
@@ -74,21 +71,6 @@ export function HomePage() {
 
         {/* Mode picker */}
         <div className={`flex flex-col ${isTauriMobile ? 'w-[min(100%,21rem)] gap-2.5' : 'w-full gap-3'}`}>
-          <ModeCard
-            icon={Gauge}
-            title="Cockpit"
-            description={
-              loading && !error
-                ? 'Checking team…'
-                : hasTeam
-                  ? `${[team.data!.lead, ...team.data!.members].length} agents ready`
-                  : 'No team configured'
-            }
-            disabled={!backendOk || !hasTeam}
-            loading={loading && !error}
-            compact={isTauriMobile}
-            onClick={() => navigate({ to: '/cockpit' })}
-          />
           <ModeCard
             icon={Code2}
             title="Coding"

@@ -32,13 +32,11 @@ import codecs
 import hmac
 import secrets
 import time
-import uuid
 
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 from loguru import logger
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field
 
-from app.core.paths import workspace_dir
 from app.services import team_manager, terminal_service
 
 router = APIRouter()
@@ -78,27 +76,15 @@ class TicketRequest(BaseModel):
     - ``workspace`` (coding mode): client-supplied absolute path, validated
       through ``team_manager.validate_workspace`` (must exist, blocklisted
       system roots rejected).
-    - ``session_id`` (cockpit mode): UUID only — the server derives the
+    - ``session_id`` (coding workspace): UUID only — the server derives the
       path from ``OPENAGENTD_WORKSPACE_DIR``, so no client-controlled path
       ever reaches the filesystem. Created lazily (the sandbox dir may not
       exist until an agent first writes to it).
     """
 
-    workspace: str | None = Field(default=None, min_length=1)
-    session_id: str | None = None
+    workspace: str = Field(..., min_length=1)
     rows: int = Field(default=24, ge=1, le=1000)
     cols: int = Field(default=80, ge=1, le=4000)
-
-    @model_validator(mode="after")
-    def _exactly_one_source(self) -> "TicketRequest":
-        if (self.workspace is None) == (self.session_id is None):
-            raise ValueError("Provide exactly one of 'workspace' or 'session_id'.")
-        if self.session_id is not None:
-            try:
-                uuid.UUID(self.session_id)
-            except ValueError as exc:
-                raise ValueError("session_id must be a UUID") from exc
-        return self
 
 
 class TicketResponse(BaseModel):
@@ -116,18 +102,10 @@ def _prune_expired_tickets() -> None:
 @router.post("/ticket", response_model=TicketResponse)
 async def issue_ticket(body: TicketRequest) -> TicketResponse:
     """Resolve the cwd source and mint a single-use WS connect ticket."""
-    if body.workspace is not None:
-        try:
-            resolved = team_manager.validate_workspace(body.workspace)
-        except ValueError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-    else:
-        # Server-derived path — session_id is UUID-validated by the model,
-        # so no client-controlled path component reaches the filesystem.
-        assert body.session_id is not None  # guaranteed by _exactly_one_source
-        root = workspace_dir(body.session_id)
-        root.mkdir(parents=True, exist_ok=True)
-        resolved = str(root)
+    try:
+        resolved = team_manager.validate_workspace(body.workspace)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     _prune_expired_tickets()
     if len(_TICKETS) >= _MAX_PENDING_TICKETS:

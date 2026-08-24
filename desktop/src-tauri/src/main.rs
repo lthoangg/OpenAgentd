@@ -801,13 +801,27 @@ mod tests {
             Some("desktop-token"),
             &StdHashMap::new(),
             MAIN_WINDOW,
-            Some("/cockpit/session-1"),
+            Some("/coding/session-1"),
         )
         .expect("bundled backend init script");
 
         assert!(script.contains("http://127.0.0.1:4082"));
         assert!(script.contains("desktop-token"));
-        assert!(script.contains("/cockpit/session-1"));
+        assert!(script.contains("/coding/session-1"));
+    }
+
+    #[test]
+    fn new_window_without_a_target_opens_coding() {
+        let script = new_window_init_script(
+            Some("http://127.0.0.1:4082"),
+            Some("desktop-token"),
+            &StdHashMap::new(),
+            MAIN_WINDOW,
+            None,
+        )
+        .expect("bundled backend init script");
+
+        assert!(script.contains("/coding"));
     }
 
     // ── inherited_external_base_url ──────────────────────────────────────────
@@ -918,6 +932,14 @@ mod tests {
         let script = frontend_init_script(None, "http://192.168.1.10:4082");
 
         assert!(script.contains("delete window.__OAD_TOKEN__"));
+    }
+
+    #[test]
+    fn unavailable_desktop_startup_opens_coding() {
+        let script = backend_unavailable_init_script();
+
+        assert!(script.contains("__OAD_INITIAL_ROUTE__"));
+        assert!(script.contains("/coding"));
     }
 
     #[test]

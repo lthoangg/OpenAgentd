@@ -333,7 +333,7 @@ describe("sendMessage", () => {
       agentStreams: { lead: makeStream() },
     })
 
-    await useTeamStore.getState().sendMessage("hello team")
+    await useTeamStore.getState().sendMessage("hello team", undefined, { workspace: "/repo/app" })
 
     const leadBlocks = useTeamStore.getState().agentStreams["lead"].currentBlocks
     expect(leadBlocks).toHaveLength(1)
@@ -348,7 +348,7 @@ describe("sendMessage", () => {
       agentStreams: { lead: makeStream({ model: "openai:gpt-5.5" }) },
     })
 
-    await useTeamStore.getState().sendMessage("hello team")
+    await useTeamStore.getState().sendMessage("hello team", undefined, { workspace: "/repo/app" })
 
     const leadBlocks = useTeamStore.getState().agentStreams["lead"].currentBlocks
     expect(leadBlocks[0].extra?.model).toBe("openai:gpt-5.5")
@@ -364,7 +364,7 @@ describe("sendMessage", () => {
       Promise.resolve({ status: "ok", session_id: "team-sid", message_id: "server-msg-1" })
     )
 
-    await useTeamStore.getState().sendMessage("hello team")
+    await useTeamStore.getState().sendMessage("hello team", undefined, { workspace: "/repo/app" })
 
     const block = useTeamStore.getState().agentStreams.lead.currentBlocks[0]
     expect(block.id).toBe("server-msg-1")
@@ -376,7 +376,7 @@ describe("sendMessage", () => {
       Promise.resolve({ status: "ok", session_id: "team-sid" })
     )
 
-    await useTeamStore.getState().sendMessage("hello team")
+    await useTeamStore.getState().sendMessage("hello team", undefined, { workspace: "/repo/app" })
 
     const block = useTeamStore.getState().agentStreams.lead.currentBlocks[0]
     expect(block.id).toMatch(/^user-/)
@@ -390,7 +390,7 @@ describe("sendMessage", () => {
       () => new Promise((res) => { resolvePost = res })
     )
 
-    const promise = useTeamStore.getState().sendMessage("hello")
+    const promise = useTeamStore.getState().sendMessage("hello", undefined, { workspace: "/repo/app" })
     expect(useTeamStore.getState().isTeamWorking).toBe(true)
 
     resolvePost({ status: "ok", session_id: "team-sid" })
@@ -399,14 +399,14 @@ describe("sendMessage", () => {
 
   it("calls postTeamChat with the message text", async () => {
     useTeamStore.setState({ leadName: "lead", agentStreams: { lead: makeStream() } })
-    await useTeamStore.getState().sendMessage("test message")
+    await useTeamStore.getState().sendMessage("test message", undefined, { workspace: "/repo/app" })
     expect(mockPostTeamChat).toHaveBeenCalledTimes(1)
     expect(mockPostTeamChat.mock.calls[0][0]).toBe("test message")
   })
 
   it("calls postTeamChat with interrupt=false when not working", async () => {
     useTeamStore.setState({ leadName: "lead", agentStreams: { lead: makeStream() } })
-    await useTeamStore.getState().sendMessage("hello")
+    await useTeamStore.getState().sendMessage("hello", undefined, { workspace: "/repo/app" })
     expect(mockPostTeamChat.mock.calls[0][2]).toBe(false)
   })
 
@@ -415,7 +415,7 @@ describe("sendMessage", () => {
       Promise.resolve({ status: "ok", session_id: "new-team-sid" })
     )
     useTeamStore.setState({ leadName: "lead", agentStreams: { lead: makeStream() } })
-    await useTeamStore.getState().sendMessage("hello")
+    await useTeamStore.getState().sendMessage("hello", undefined, { workspace: "/repo/app" })
     expect(useTeamStore.getState().sessionId).toBe("new-team-sid")
   })
 
@@ -425,7 +425,7 @@ describe("sendMessage", () => {
       agentStreams: { lead: makeStream() },
       sessionId: "team-sid",
     })
-    await useTeamStore.getState().sendMessage("hello")
+    await useTeamStore.getState().sendMessage("hello", undefined, { workspace: "/repo/app" })
     expect(mockTeamStream).toHaveBeenCalledTimes(1)
   })
 
@@ -434,7 +434,7 @@ describe("sendMessage", () => {
       Promise.reject(new Error("Network failure"))
     )
     useTeamStore.setState({ leadName: "lead", agentStreams: { lead: makeStream() } })
-    await useTeamStore.getState().sendMessage("hello")
+    await useTeamStore.getState().sendMessage("hello", undefined, { workspace: "/repo/app" })
 
     const state = useTeamStore.getState()
     expect(state.error).toBe("Network failure")
@@ -444,14 +444,14 @@ describe("sendMessage", () => {
   it("sets fallback error message for non-Error throws", async () => {
     mockPostTeamChat.mockImplementation(() => Promise.reject("unknown"))
     useTeamStore.setState({ leadName: "lead", agentStreams: { lead: makeStream() } })
-    await useTeamStore.getState().sendMessage("hello")
+    await useTeamStore.getState().sendMessage("hello", undefined, { workspace: "/repo/app" })
     expect(useTeamStore.getState().error).toBe("Failed to send message")
   })
 
   it("does not call connectStream when postTeamChat throws", async () => {
     mockPostTeamChat.mockImplementation(() => Promise.reject(new Error("fail")))
     useTeamStore.setState({ leadName: "lead", agentStreams: { lead: makeStream() } })
-    await useTeamStore.getState().sendMessage("hello")
+    await useTeamStore.getState().sendMessage("hello", undefined, { workspace: "/repo/app" })
     expect(mockTeamStream).not.toHaveBeenCalled()
   })
 
@@ -461,7 +461,7 @@ describe("sendMessage", () => {
   it("reports success so the caller can keep the cleared composer cleared", async () => {
     useTeamStore.setState({ leadName: "lead", agentStreams: { lead: makeStream() } })
 
-    const delivered = await useTeamStore.getState().sendMessage("hello")
+    const delivered = await useTeamStore.getState().sendMessage("hello", undefined, { workspace: "/repo/app" })
 
     expect(delivered).toBe(true)
   })
@@ -470,7 +470,7 @@ describe("sendMessage", () => {
     mockPostTeamChat.mockImplementation(() => Promise.reject(new Error("Network failure")))
     useTeamStore.setState({ leadName: "lead", agentStreams: { lead: makeStream() } })
 
-    const delivered = await useTeamStore.getState().sendMessage("hello")
+    const delivered = await useTeamStore.getState().sendMessage("hello", undefined, { workspace: "/repo/app" })
 
     expect(delivered).toBe(false)
   })
@@ -482,7 +482,7 @@ describe("sendMessage", () => {
       agentStreams: { lead: makeStream({ status: "working" }) },
     })
 
-    const delivered = await useTeamStore.getState().sendMessage("queued follow-up")
+    const delivered = await useTeamStore.getState().sendMessage("queued follow-up", undefined, { workspace: "/repo/app" })
 
     expect(delivered).toBe(false)
   })
@@ -498,7 +498,7 @@ describe("sendMessage with files", () => {
     useTeamStore.setState({ leadName: "lead", agentStreams: { lead: makeStream() } })
     const imageFile = new File(["data"], "photo.png", { type: "image/png" })
 
-    await useTeamStore.getState().sendMessage("see this", [imageFile])
+    await useTeamStore.getState().sendMessage("see this", [imageFile], { workspace: "/repo/app" })
 
     const block = useTeamStore.getState().agentStreams["lead"].currentBlocks[0]
     expect(block.attachments).toHaveLength(1)
@@ -513,7 +513,7 @@ describe("sendMessage with files", () => {
     useTeamStore.setState({ leadName: "lead", agentStreams: { lead: makeStream() } })
     const pdfFile = new File(["data"], "report.pdf", { type: "application/pdf" })
 
-    await useTeamStore.getState().sendMessage("see this", [pdfFile])
+    await useTeamStore.getState().sendMessage("see this", [pdfFile], { workspace: "/repo/app" })
 
     const block = useTeamStore.getState().agentStreams["lead"].currentBlocks[0]
     expect(block.attachments).toHaveLength(1)
@@ -524,8 +524,8 @@ describe("sendMessage with files", () => {
   it("passes files to postTeamChat", async () => {
     useTeamStore.setState({ leadName: "lead", agentStreams: { lead: makeStream() } })
     const file = new File(["data"], "doc.txt", { type: "text/plain" })
-    await useTeamStore.getState().sendMessage("with file", [file])
-    expect(mockPostTeamChat.mock.calls[0][3]).toEqual([file])
+    await useTeamStore.getState().sendMessage("with file", [file], { workspace: "/repo/app" })
+    expect(mockPostTeamChat.mock.calls[0][4]).toEqual([file])
   })
 })
 
@@ -541,12 +541,12 @@ describe("sendMessage: queue behaviour", () => {
       leadName: "lead",
       agentStreams: { lead: makeStream({ status: "working" as const }) },
     })
-    await useTeamStore.getState().sendMessage("queued message", undefined, { mode: "coding", workspace: "/repo/a" })
+    await useTeamStore.getState().sendMessage("queued message", undefined, { workspace: "/repo/a" })
     expect(mockPostTeamChat).toHaveBeenCalledTimes(1)
     expect(mockPostTeamChat.mock.calls[0][0]).toBe("queued message")
     expect(mockPostTeamChat.mock.calls[0][1]).toBe("session-a")
-    expect(mockPostTeamChat.mock.calls[0][4]).toBe("coding")
-    expect(mockPostTeamChat.mock.calls[0][5]).toBe("/repo/a")
+    expect(mockPostTeamChat.mock.calls[0][3]).toBe("/repo/a")
+    expect(mockPostTeamChat.mock.calls[0][4]).toBeUndefined()
     const pending = useTeamStore.getState()._pendingMessages
     expect(pending).toHaveLength(1)
     expect(pending[0].sessionId).toBe("session-a")
@@ -568,10 +568,10 @@ describe("sendMessage: queue behaviour", () => {
       agentStreams: { lead: makeStream({ status: "working" as const }) },
     })
 
-    await useTeamStore.getState().sendMessage("queued with file", [file])
+    await useTeamStore.getState().sendMessage("queued with file", [file], { workspace: "/repo/app" })
 
     expect(mockPostTeamChat).toHaveBeenCalledTimes(1)
-    expect(mockPostTeamChat.mock.calls[0][3]).toEqual([file])
+    expect(mockPostTeamChat.mock.calls[0][4]).toEqual([file])
     const pending = useTeamStore.getState()._pendingMessages
     expect(pending).toHaveLength(1)
     expect(pending[0].id).toBe("pm-file")
@@ -594,7 +594,7 @@ describe("sendMessage: queue behaviour", () => {
       agentStreams: { lead: makeStream({ status: "working" as const }) },
     })
 
-    await useTeamStore.getState().sendMessage("queued image", [image])
+    await useTeamStore.getState().sendMessage("queued image", [image], { workspace: "/repo/app" })
 
     expect(useTeamStore.getState()._pendingMessages[0].attachments).toEqual([
       { original_name: "photo.png", media_type: "image/png", category: "image" },
@@ -611,7 +611,7 @@ describe("sendMessage: queue behaviour", () => {
       agentStreams: { lead: makeStream({ status: "working" as const }) },
     })
 
-    await useTeamStore.getState().sendMessage("queued")
+    await useTeamStore.getState().sendMessage("queued", undefined, { workspace: "/repo/app" })
 
     expect(useTeamStore.getState()._pendingMessages).toHaveLength(0)
     expect(useTeamStore.getState().error).toBe("Backend did not return a queued message id")
@@ -625,7 +625,7 @@ describe("sendMessage: queue behaviour", () => {
         worker: makeStream({ status: "working" as const }),
       },
     })
-    await useTeamStore.getState().sendMessage("immediate message")
+    await useTeamStore.getState().sendMessage("immediate message", undefined, { workspace: "/repo/app" })
     expect(mockPostTeamChat).toHaveBeenCalledTimes(1)
     expect(useTeamStore.getState()._pendingMessages).toHaveLength(0)
   })
@@ -648,7 +648,7 @@ describe("sendMessage: queue behaviour", () => {
       },
     })
 
-    await useTeamStore.getState().sendMessage("only show me once")
+    await useTeamStore.getState().sendMessage("only show me once", undefined, { workspace: "/repo/app" })
 
     // Queued messages render from `_pendingMessages`, never as a live block.
     expect(useTeamStore.getState().agentStreams.lead.currentBlocks).toHaveLength(0)
@@ -678,7 +678,7 @@ describe("sendMessage: queue behaviour", () => {
       agentStreams: { lead: makeStream({ status: "working" as const }) },
     })
 
-    await useTeamStore.getState().sendMessage("go now")
+    await useTeamStore.getState().sendMessage("go now", undefined, { workspace: "/repo/app" })
 
     // Nothing is queued server-side, so no queued chip may linger — the turn
     // is running and only the optimistic block represents it.
@@ -701,7 +701,7 @@ describe("sendMessage: queue behaviour", () => {
       leadName: "lead",
       agentStreams: { lead: makeStream({ status: "working" as const }) },
     })
-    await useTeamStore.getState().sendMessage("queued")
+    await useTeamStore.getState().sendMessage("queued", undefined, { workspace: "/repo/app" })
     expect(useTeamStore.getState().agentStreams["lead"].currentBlocks).toHaveLength(0)
   })
 
@@ -714,9 +714,9 @@ describe("sendMessage: queue behaviour", () => {
       leadName: "lead",
       agentStreams: { lead: makeStream({ status: "working" as const }) },
     })
-    await useTeamStore.getState().sendMessage("first")
-    await useTeamStore.getState().sendMessage("second")
-    await useTeamStore.getState().sendMessage("third")
+    await useTeamStore.getState().sendMessage("first", undefined, { workspace: "/repo/app" })
+    await useTeamStore.getState().sendMessage("second", undefined, { workspace: "/repo/app" })
+    await useTeamStore.getState().sendMessage("third", undefined, { workspace: "/repo/app" })
     const pending = useTeamStore.getState()._pendingMessages
     expect(pending).toHaveLength(3)
     expect(pending[0].content).toBe("first")
@@ -1039,7 +1039,7 @@ describe("sendMessage: queue behaviour", () => {
       agentStreams: { lead: makeStream({ status: "working" as const }) },
     })
 
-    await useTeamStore.getState().sendMessage("queued")
+    await useTeamStore.getState().sendMessage("queued", undefined, { workspace: "/repo/app" })
 
     const [pending] = useTeamStore.getState()._pendingMessages
     expect(pending).toMatchObject({ id: "message-a", sessionId: "session-a", content: "queued" })
@@ -1078,7 +1078,6 @@ describe("sendMessage: queue behaviour", () => {
       agentStreams: { lead: makeStream() },
     })
     useTeamStore.getState().beginResolvedSession("new-session", {
-      mode: "coding",
       workspace: "/repo/project",
       skipInitialRestore: true,
     })
@@ -1095,7 +1094,6 @@ describe("sendMessage: queue behaviour", () => {
       agentStreams: { lead: makeStream() },
     })
     useTeamStore.getState().beginResolvedSession("existing-session", {
-      mode: "coding",
       workspace: "/repo/project",
     })
 
@@ -1109,7 +1107,6 @@ describe("sendMessage: queue behaviour", () => {
       agentStreams: { lead: makeStream() },
     })
     useTeamStore.getState().beginResolvedSession("new-session", {
-      mode: "coding",
       workspace: "/repo/project",
       skipInitialRestore: true,
     })
@@ -1132,7 +1129,7 @@ describe("sendMessage: queue behaviour", () => {
     )
 
     // User sends a message when sessionId is null (new session)
-    void useTeamStore.getState().sendMessage("message to new session")
+    void useTeamStore.getState().sendMessage("message to new session", undefined, { workspace: "/repo/app" })
 
     expect(useTeamStore.getState().isTeamWorking).toBe(true)
     const stream = useTeamStore.getState().agentStreams["lead"]
@@ -1140,6 +1137,7 @@ describe("sendMessage: queue behaviour", () => {
 
     // Concurrent beginResolvedSession resolves for the background session creation
     useTeamStore.getState().beginResolvedSession("new-created-session", {
+      workspace: "/repo/app",
       skipInitialRestore: true,
     })
 
@@ -1170,7 +1168,7 @@ describe("stopTeam", () => {
     // canonical reload already absorbed it), so Stop stays responsive.
     await useTeamStore.getState().stopTeam()
 
-    expect(mockPostTeamChat).toHaveBeenCalledWith(null, "session-a", true)
+    expect(mockPostTeamChat).toHaveBeenCalledWith(null, "session-a", true, "/repo/a")
     expect(mockTeamHistory).toHaveBeenCalledWith("session-a")
     expect(useTeamStore.getState()._workspace).toBe("/repo/a")
   })
@@ -1251,6 +1249,7 @@ describe("stopTeam", () => {
       leadName: "lead",
       agentNames: ["lead"],
       _pendingMessages: [{ id: "pm-b", sessionId: "sess-1", content: "message B" }],
+      _workspace: "/repo/a",
       agentStreams: {
         lead: makeStream({
           status: "working",
@@ -2647,7 +2646,7 @@ describe("loadSession", () => {
     const loadPromise = useTeamStore.getState().loadSession("sess-1")
 
     // A new message is sent *while the background fetch above is in flight*.
-    void useTeamStore.getState().sendMessage("second message")
+    void useTeamStore.getState().sendMessage("second message", undefined, { workspace: "/repo/app" })
     expect(
       useTeamStore.getState().agentStreams["lead"].currentBlocks.some(
         (b) => b.type === "user" && b.content === "second message",
@@ -2687,7 +2686,7 @@ describe("loadSession", () => {
       Promise.resolve({ status: "accepted", session_id: "sess-1" }),
     )
 
-    await useTeamStore.getState().sendMessage("only show me once")
+    await useTeamStore.getState().sendMessage("only show me once", undefined, { workspace: "/repo/app" })
     useTeamStore.getState()._handleSSEEvent("message", {
       agent: "lead",
       text: "partial response",

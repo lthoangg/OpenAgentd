@@ -61,7 +61,6 @@ async def _run(args: argparse.Namespace) -> None:
         team,
         content=prompt,
         session_id=session_id,
-        mode="coding",
         workspace=workspace,
         model=model,
         thinking_level=thinking_level,

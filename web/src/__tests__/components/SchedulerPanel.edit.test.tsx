@@ -310,7 +310,6 @@ describe('SchedulerPanel — Edit Task Form', () => {
           id: 'task-1',
           slug: 'daily-report',
           name: 'Daily report',
-          mode: 'normal',
           workspace: null,
           schedule_type: 'every',
           at_datetime: null,

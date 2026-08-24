@@ -10,7 +10,7 @@ import { useIsMobile } from '@/hooks/use-mobile'
 import { usePlatform } from '@/hooks/use-platform'
 import { mediumHapticFeedback } from '@/lib/haptics'
 import { formatScheduleLabel, slugify, TASK_LONG_PRESS_MOVE_TOLERANCE, TASK_LONG_PRESS_MS } from './utils'
-import { ModeBadge } from './ModeBadge'
+import { WorkspaceBadge } from './ModeBadge'
 
 export function TaskListItem({
   task,
@@ -139,7 +139,7 @@ export function TaskListItem({
           </div>
 
           <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-            <ModeBadge task={task} />
+            <WorkspaceBadge task={task} />
             <span className={`inline-flex items-center gap-1 rounded-xs border px-1.5 py-0.5 text-[10.5px] font-medium capitalize ${statusBadgeStyle}`}>
               <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${statusDotColor}`} aria-hidden="true" />
               <span className={statusColor}>{task.status}</span>

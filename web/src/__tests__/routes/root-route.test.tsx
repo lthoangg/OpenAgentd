@@ -1,13 +1,21 @@
 import { describe, expect, it } from 'bun:test'
 import { closestRestorableRoute } from '@/lib/route-restore'
+import { HomePage } from '@/routes'
+import { router } from '@/router'
 
 describe('closestRestorableRoute', () => {
   it('falls back stale coding session routes to the coding hub', () => {
     expect(closestRestorableRoute('/coding/session-123')).toBe('/coding')
   })
 
-  it('falls back stale cockpit session routes to the cockpit hub', () => {
-    expect(closestRestorableRoute('/cockpit/session-123')).toBe('/cockpit')
+  it('normalizes legacy cockpit routes to coding', () => {
+    expect(closestRestorableRoute('/cockpit/session-123')).toBe('/coding')
+    expect(closestRestorableRoute('/cockpit')).toBe('/coding')
+  })
+
+  it('keeps query and hash state when normalizing legacy cockpit routes', () => {
+    expect(closestRestorableRoute('/cockpit/session-123?tab=files#diff')).toBe('/coding?tab=files#diff')
+    expect(closestRestorableRoute('/cockpit?notice=ready#status')).toBe('/coding?notice=ready#status')
   })
 
   it('preserves stable top-level routes', () => {
@@ -24,7 +32,17 @@ describe('closestRestorableRoute', () => {
     expect(closestRestorableRoute('/settings')).toBe('/')
   })
 
+  it('provides normalized targets for native initial routes', () => {
+    expect(closestRestorableRoute('/settings/providers?section=auth#provider')).toBe('/')
+  })
+
   it('preserves query/hash suffixes when falling back', () => {
     expect(closestRestorableRoute('/coding/session-123?tab=files#diff')).toBe('/coding?tab=files#diff')
+  })
+})
+
+describe('root route', () => {
+  it('keeps the Coding and Telemetry home page at /', () => {
+    expect(router.routesById['/'].options.component).toBe(HomePage)
   })
 })

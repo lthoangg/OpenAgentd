@@ -12,7 +12,7 @@
  *   • Footer trio: ⚙ Settings · ❔ Help (palette) · 🌙 ThemeToggle.
  *
  * The 64 px icon rail from the previous design is gone — workspace
- * navigation now lives inline so the sidebar matches the cockpit's
+ * navigation now lives inline so the sidebar matches the coding workspace's
  * single-column shape. ``activeWorkspace`` is the workspace driving
  * the current chat; ``expandedWorkspaces`` is local UI state for which rows are
  * currently showing their sessions. Multiple workspaces can stay open
@@ -163,7 +163,7 @@ export function CodingSidebar({
   const queryClient = useQueryClient()
   const pushToast = useToastStore((s) => s.push)
   const openSettings = useSettingsStore((s) => s.openSettings)
-  const sessions = useTeamSessionsQuery('coding')
+  const sessions = useTeamSessionsQuery()
   const deleteSession = useDeleteTeamSessionMutation()
   const updateSessionTitle = useUpdateTeamSessionTitleMutation()
 

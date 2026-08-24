@@ -25,7 +25,6 @@ use crate::AppState;
 pub const MENU_SHOW: &str = "show";
 pub const MENU_NEW_WINDOW: &str = "new_window";
 pub const MENU_HOME: &str = "home";
-pub const MENU_CHAT: &str = "chat";
 pub const MENU_CODING: &str = "coding";
 pub const MENU_QUICK_OPEN: &str = "quick_open";
 pub const MENU_COMMAND_PALETTE: &str = "command_palette";
@@ -145,7 +144,6 @@ pub fn install_desktop_menus(app: &tauri::App) -> Result<()> {
         Some("CmdOrCtrl+Shift+N"),
     )?;
     let file_home = MenuItem::with_id(app, MENU_HOME, "Home", true, Some("CmdOrCtrl+Shift+H"))?;
-    let file_chat = MenuItem::with_id(app, MENU_CHAT, "Cockpit", true, Some("CmdOrCtrl+Shift+C"))?;
     let file_coding =
         MenuItem::with_id(app, MENU_CODING, "Coding", true, Some("CmdOrCtrl+Shift+K"))?;
     let file_quit =
@@ -231,7 +229,6 @@ pub fn install_desktop_menus(app: &tauri::App) -> Result<()> {
         .item(&file_new_window)
         .separator()
         .item(&file_home)
-        .item(&file_chat)
         .item(&file_coding)
         .separator()
         .item(&file_quit)
@@ -456,7 +453,6 @@ pub fn handle_desktop_menu(app: &AppHandle, id: &str) {
             });
         }
         MENU_HOME => navigate_main_window(app, "/"),
-        MENU_CHAT => navigate_main_window(app, "/cockpit"),
         MENU_CODING => navigate_main_window(app, "/coding"),
         MENU_QUICK_OPEN => emit_frontend_command(app, "quick_open"),
         MENU_COMMAND_PALETTE => emit_frontend_command(app, "command_palette"),

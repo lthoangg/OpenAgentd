@@ -17,13 +17,13 @@ describe('openNotificationSession', () => {
     })
   })
 
-  it('opens normal sessions in the cockpit and ignores malformed payloads', () => {
-    openNotificationSession({ sessionId: 'session-456', mode: 'normal' })
+  it('ignores malformed payloads', () => {
+    openNotificationSession({ sessionId: 'session-456', mode: 'coding' })
     openNotificationSession({ sessionId: 42, mode: 'coding' })
 
     expect(navigate).toHaveBeenCalledTimes(1)
     expect(navigate).toHaveBeenCalledWith({
-      to: '/cockpit/$sessionId',
+      to: '/coding/$sessionId',
       params: { sessionId: 'session-456' },
     })
   })

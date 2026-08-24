@@ -3,11 +3,21 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
 
-from app.scheduler.schemas import ScheduledTaskCreate, ScheduledTaskUpdate
+from app.scheduler.schemas import (
+    ScheduledTaskCreate as _ScheduledTaskCreate,
+    ScheduledTaskUpdate,
+)
+
+
+def ScheduledTaskCreate(*args, **kwargs):
+    """Build tasks with an explicitly supplied workspace."""
+    kwargs.setdefault("workspace", str(Path.cwd()))
+    return _ScheduledTaskCreate(*args, **kwargs)
 
 
 _UTC = timezone.utc
@@ -22,7 +32,6 @@ class TestNameValidation:
     def test_valid_simple_name(self):
         body = ScheduledTaskCreate(
             name="hello",
-            mode="normal",
             schedule_type="every",
             every_seconds=60,
             prompt="hi",
@@ -32,7 +41,6 @@ class TestNameValidation:
     def test_valid_with_dots_dashes_underscores(self):
         body = ScheduledTaskCreate(
             name="my.task-1_v2",
-            mode="normal",
             schedule_type="every",
             every_seconds=60,
             prompt="hi",
@@ -42,7 +50,6 @@ class TestNameValidation:
     def test_valid_friendly_title(self):
         body = ScheduledTaskCreate(
             name="Daily Standup Meeting 2026! / Backup",
-            mode="normal",
             schedule_type="every",
             every_seconds=60,
             prompt="hi",
@@ -61,7 +68,6 @@ class TestNameValidation:
         with pytest.raises(ValidationError) as excinfo:
             ScheduledTaskCreate(
                 name=bad,
-                mode="normal",
                 schedule_type="every",
                 every_seconds=60,
                 prompt="hi",
@@ -79,7 +85,6 @@ class TestCreateAt:
         target = datetime(2030, 1, 1, 12, 0, tzinfo=_UTC)
         body = ScheduledTaskCreate(
             name="t1",
-            mode="normal",
             schedule_type="at",
             at_datetime=target,
             prompt="hi",
@@ -90,7 +95,6 @@ class TestCreateAt:
         with pytest.raises(ValidationError, match="at_datetime is required"):
             ScheduledTaskCreate(
                 name="t1",
-                mode="normal",
                 schedule_type="at",
                 prompt="hi",
             )
@@ -99,7 +103,6 @@ class TestCreateAt:
         with pytest.raises(ValidationError, match="Only at_datetime"):
             ScheduledTaskCreate(
                 name="t1",
-                mode="normal",
                 schedule_type="at",
                 at_datetime=datetime(2030, 1, 1, tzinfo=_UTC),
                 every_seconds=60,
@@ -110,7 +113,6 @@ class TestCreateAt:
         with pytest.raises(ValidationError, match="Only at_datetime"):
             ScheduledTaskCreate(
                 name="t1",
-                mode="normal",
                 schedule_type="at",
                 at_datetime=datetime(2030, 1, 1, tzinfo=_UTC),
                 cron_expression="* * * * *",
@@ -127,7 +129,6 @@ class TestCreateEvery:
     def test_valid_every(self):
         body = ScheduledTaskCreate(
             name="t",
-            mode="normal",
             schedule_type="every",
             every_seconds=300,
             prompt="hi",
@@ -138,7 +139,6 @@ class TestCreateEvery:
         with pytest.raises(ValidationError, match="every_seconds is required"):
             ScheduledTaskCreate(
                 name="t",
-                mode="normal",
                 schedule_type="every",
                 prompt="hi",
             )
@@ -147,7 +147,6 @@ class TestCreateEvery:
         with pytest.raises(ValidationError, match="Only every_seconds"):
             ScheduledTaskCreate(
                 name="t",
-                mode="normal",
                 schedule_type="every",
                 every_seconds=60,
                 at_datetime=datetime(2030, 1, 1, tzinfo=_UTC),
@@ -158,7 +157,6 @@ class TestCreateEvery:
         with pytest.raises(ValidationError, match="Only every_seconds"):
             ScheduledTaskCreate(
                 name="t",
-                mode="normal",
                 schedule_type="every",
                 every_seconds=60,
                 cron_expression="* * * * *",
@@ -169,7 +167,6 @@ class TestCreateEvery:
         with pytest.raises(ValidationError):
             ScheduledTaskCreate(
                 name="t",
-                mode="normal",
                 schedule_type="every",
                 every_seconds=0,
                 prompt="hi",
@@ -179,7 +176,6 @@ class TestCreateEvery:
         with pytest.raises(ValidationError):
             ScheduledTaskCreate(
                 name="t",
-                mode="normal",
                 schedule_type="every",
                 every_seconds=60,
                 prompt="hi",
@@ -189,7 +185,6 @@ class TestCreateEvery:
     def test_max_runs_accepts_positive_cap(self):
         body = ScheduledTaskCreate(
             name="t",
-            mode="normal",
             schedule_type="every",
             every_seconds=60,
             prompt="hi",
@@ -207,7 +202,6 @@ class TestCreateCron:
     def test_valid_cron(self):
         body = ScheduledTaskCreate(
             name="t",
-            mode="normal",
             schedule_type="cron",
             cron_expression="0 0 * * *",
             prompt="hi",
@@ -218,7 +212,6 @@ class TestCreateCron:
         with pytest.raises(ValidationError, match="cron_expression is required"):
             ScheduledTaskCreate(
                 name="t",
-                mode="normal",
                 schedule_type="cron",
                 prompt="hi",
             )
@@ -227,7 +220,6 @@ class TestCreateCron:
         with pytest.raises(ValidationError, match="Only cron_expression"):
             ScheduledTaskCreate(
                 name="t",
-                mode="normal",
                 schedule_type="cron",
                 cron_expression="* * * * *",
                 at_datetime=datetime(2030, 1, 1, tzinfo=_UTC),
@@ -238,7 +230,6 @@ class TestCreateCron:
         with pytest.raises(ValidationError, match="Only cron_expression"):
             ScheduledTaskCreate(
                 name="t",
-                mode="normal",
                 schedule_type="cron",
                 cron_expression="* * * * *",
                 every_seconds=60,
@@ -249,7 +240,6 @@ class TestCreateCron:
         with pytest.raises(ValidationError, match="Invalid cron expression"):
             ScheduledTaskCreate(
                 name="t",
-                mode="normal",
                 schedule_type="cron",
                 cron_expression="not a cron",
                 prompt="hi",
@@ -266,7 +256,6 @@ class TestCreateUnknown:
         with pytest.raises(ValidationError, match="schedule_type must be"):
             ScheduledTaskCreate(
                 name="t",
-                mode="normal",
                 schedule_type="weekly",
                 prompt="hi",
             )
@@ -330,60 +319,3 @@ class TestUpdate:
     def test_max_runs_update_must_be_positive_when_provided(self):
         with pytest.raises(ValidationError):
             ScheduledTaskUpdate(max_runs=0)
-
-
-# ---------------------------------------------------------------------------
-# Cross-field: mode + workspace
-# ---------------------------------------------------------------------------
-
-
-class TestModeWorkspace:
-    def test_normal_mode_default_no_workspace(self):
-        body = ScheduledTaskCreate(
-            name="n", schedule_type="every", every_seconds=60, prompt="hi"
-        )
-        assert body.mode == "normal"
-        assert body.workspace is None
-
-    def test_coding_mode_requires_workspace(self):
-        with pytest.raises(ValidationError, match="workspace is required"):
-            ScheduledTaskCreate(
-                name="c",
-                mode="coding",
-                schedule_type="every",
-                every_seconds=60,
-                prompt="hi",
-            )
-
-    def test_normal_mode_rejects_workspace(self):
-        with pytest.raises(ValidationError, match="workspace must be empty"):
-            ScheduledTaskCreate(
-                name="c",
-                mode="normal",
-                workspace="/tmp/foo",
-                schedule_type="every",
-                every_seconds=60,
-                prompt="hi",
-            )
-
-    def test_coding_mode_with_workspace_accepted(self):
-        body = ScheduledTaskCreate(
-            name="c",
-            mode="coding",
-            workspace="/tmp/foo",
-            schedule_type="every",
-            every_seconds=60,
-            prompt="hi",
-        )
-        assert body.mode == "coding"
-        assert body.workspace == "/tmp/foo"
-
-    def test_update_normal_mode_rejects_workspace(self):
-        with pytest.raises(ValidationError, match="workspace must be empty"):
-            ScheduledTaskUpdate(mode="normal", workspace="/tmp/foo")
-
-    def test_update_mode_alone_accepted(self):
-        # Workspace not in payload — service layer merges with row state.
-        body = ScheduledTaskUpdate(mode="coding")
-        assert body.mode == "coding"
-        assert body.workspace is None

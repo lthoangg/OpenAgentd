@@ -173,13 +173,10 @@ def _fmt_task(task: Any) -> str:
     max_runs = getattr(task, "max_runs", None)
     next_fire = getattr(task, "next_fire_at", None)
     name = getattr(task, "name", "?")
-    mode = getattr(task, "mode", "normal")
     workspace = getattr(task, "workspace", None)
     slug = getattr(task, "slug", "?")
 
-    target = f"mode={mode}"
-    if mode == "coding" and workspace:
-        target += f" workspace={workspace}"
+    target = f"workspace={workspace}" if workspace else "coding workspace"
 
     parts = [
         f"slug={slug}",
@@ -213,12 +210,11 @@ async def _schedule_task(
     enabled: bool = True,
     slug: str | None = None,
     # ── injected ─────────────────────────────────────────────────────────────
-    # ``_mode`` / ``_workspace`` and current-session metadata are derived from
+    # ``_workspace`` and current-session metadata are derived from
     # the calling agent's runtime context by the tool executor — never accepted from LLM-supplied args.
     # See ``app.agent.agent_loop.tool_executor.make_tool_executor``.
     _state: Annotated[Any, InjectedArg()] = None,
-    _mode: Annotated[Literal["normal", "coding"], InjectedArg()] = "normal",
-    _workspace: Annotated[str | None, InjectedArg()] = None,
+    _workspace: Annotated[str, InjectedArg()] = "",
 ) -> str:
     """Create, list, or control the lead's scheduled reminders / loops."""
     from app.scheduler.scheduler import task_scheduler
@@ -226,24 +222,14 @@ async def _schedule_task(
     # ── scope helpers ────────────────────────────────────────────────────────
     # Every action other than ``create`` operates on tasks that already
     # exist in the DB. The agent calling this tool is bound to a specific
-    # routing context (``_mode`` + ``_workspace``), and must only see /
+    # coding workspace context, and must only see /
     # touch tasks that belong to that same context:
-    #
-    #   * Default-team lead (``_mode='normal'``)  → only ``mode='normal'``
-    #     tasks.
-    #   * Coding-team lead   (``_mode='coding'``) → only ``mode='coding'``
-    #     tasks with a matching ``workspace``.
     #
     # Cross-scope IDs are reported as "no task with id …" (not "forbidden")
     # so the agent has no way to enumerate or probe tasks outside its
     # scope — the surface is identical to a missing row.
     def _in_scope(task: Any) -> bool:
-        t_mode = getattr(task, "mode", "normal")
-        if t_mode != _mode:
-            return False
-        if _mode == "coding":
-            return getattr(task, "workspace", None) == _workspace
-        return True
+        return getattr(task, "workspace", None) == _workspace
 
     # ── list ─────────────────────────────────────────────────────────────────
     if action == "list":
@@ -330,8 +316,7 @@ async def _schedule_task(
             payload = ScheduledTaskCreate(
                 name=name,
                 slug=slug,
-                mode=_mode,
-                workspace=_workspace,
+                workspace=_workspace or "",
                 schedule_type=schedule_type,
                 at_datetime=at_dt,
                 every_seconds=every_seconds,
@@ -357,16 +342,13 @@ async def _schedule_task(
         _ = ScheduledTask
 
         logger.info(
-            "schedule_tool_create name={} mode={} workspace={} schedule_type={} next_fire={}",
+            "schedule_tool_create name={} workspace={} schedule_type={} next_fire={}",
             created.name,
-            created.mode,
             created.workspace,
             created.schedule_type,
             created.next_fire_at,
         )
-        target_line = f"  mode        : {created.mode}\n" + (
-            f"  workspace   : {created.workspace}\n" if created.workspace else ""
-        )
+        target_line = f"  workspace   : {created.workspace}\n"
         return (
             f"Scheduled task created.\n"
             f"  id          : {created.id}\n"

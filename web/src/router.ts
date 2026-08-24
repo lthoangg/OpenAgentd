@@ -1,8 +1,8 @@
 import { createRootRoute, createRoute, createRouter } from '@tanstack/react-router'
 import { z } from 'zod'
 import { Root, NotFound } from './routes/__root'
-import { HomePage } from './routes/index'
-import { TeamLayout, CodingLayout } from './routes/cockpit'
+import { HomePage } from './routes'
+import { CodingLayout } from './routes/cockpit'
 import { TelemetryPage } from './routes/telemetry'
 import { SchedulerPage } from './routes/scheduler'
 
@@ -11,7 +11,7 @@ const rootRoute = createRootRoute({
   notFoundComponent: NotFound,
 })
 
-// / → Home (mode picker)
+// / → Home (Coding and Telemetry entry points)
 const indexRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/',
@@ -24,24 +24,7 @@ const indexRoute = createRoute({
 const packagedIndexRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/index.html',
-  component: HomePage,
-})
-
-// /cockpit layout — persists across /cockpit and /cockpit/$sessionId
-const teamLayoutRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: '/cockpit',
-  component: TeamLayout,
-})
-const teamIndexRoute = createRoute({
-  getParentRoute: () => teamLayoutRoute,
-  path: '/',
-  component: () => null,
-})
-const teamSessionRoute = createRoute({
-  getParentRoute: () => teamLayoutRoute,
-  path: '$sessionId',
-  component: () => null,
+  component: CodingLayout,
 })
 
 // /coding layout — coding mode without query-string mode state
@@ -90,7 +73,6 @@ const schedulerRoute = createRoute({
 const routeTree = rootRoute.addChildren([
   indexRoute,
   packagedIndexRoute,
-  teamLayoutRoute.addChildren([teamIndexRoute, teamSessionRoute]),
   codingLayoutRoute.addChildren([codingIndexRoute, codingSessionRoute]),
   telemetryRoute,
   schedulerRoute,

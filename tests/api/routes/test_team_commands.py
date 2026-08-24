@@ -25,6 +25,17 @@ from app.services.chat_service import get_messages_for_llm
 from tests.api.routes.test_team_db import MockProvider
 
 
+@pytest.fixture(autouse=True)
+def _coding_team_constructor_compat(monkeypatch):
+    original_init = AgentTeam.__init__
+
+    def init(self, *args, **kwargs):
+        kwargs.pop("mode", None)
+        return original_init(self, *args, **kwargs)
+
+    monkeypatch.setattr(AgentTeam, "__init__", init)
+
+
 @pytest_asyncio.fixture
 async def app_with_lead_only_team():
     """App + a started team with one lead, no members.
@@ -50,7 +61,7 @@ async def app_with_lead_only_team():
     get_session_team = AsyncMock(return_value=team)
     with pytest.MonkeyPatch.context() as monkeypatch:
         monkeypatch.setattr(
-            "app.services.team_manager.get_or_start_team_for_session",
+            "app.services.team_manager.get_or_start_coding_team",
             get_session_team,
         )
         try:
@@ -69,7 +80,7 @@ async def _seed_session_and_messages(
 
     async with _db.async_session_factory() as db:
         async with db.begin():
-            db.add(ChatSession(id=session_id, agent_name="lead"))
+            db.add(ChatSession(id=session_id, agent_name="lead", workspace="/tmp"))
             for role, content, tool_calls in msgs:
                 db.add(
                     SessionMessage(
@@ -119,7 +130,6 @@ class TestPostTeamCommands:
                     ChatSession(
                         id=sid,
                         agent_name="lead",
-                        mode="coding",
                         workspace=workspace,
                     )
                 )
@@ -254,7 +264,6 @@ class TestPostTeamCommands:
         async with _db.async_session_factory() as db:
             async with db.begin():
                 session = await db.get(ChatSession, sid)
-                session.mode = "coding"
                 session.workspace = workspace
 
         default_team = app_with_lead_only_team.state.test_team

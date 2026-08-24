@@ -38,12 +38,11 @@ import type {
 } from '../types'
 
 export async function postTeamChat(
-  message?: string | null,
-  sessionId?: string | null,
+  message: string | null,
+  sessionId: string | null,
   interrupt = false,
+  workspace: string,
   files?: File[],
-  mode = 'normal',
-  workspace?: string | null,
   model?: string | null,
   thinkingLevel?: string | null,
   fastMode = false,
@@ -59,12 +58,7 @@ export async function postTeamChat(
   if (interrupt) {
     formData.append('interrupt', 'true')
   }
-  if (mode !== 'normal') {
-    formData.append('mode', mode)
-  }
-  if (workspace) {
-    formData.append('workspace', workspace)
-  }
+  formData.append('workspace', workspace)
   if (model !== undefined) {
     formData.append('model', model ?? '')
   }
@@ -131,11 +125,9 @@ export function teamStream(sessionId: string, callbacks: SSECallbacks, signal?: 
     .catch((err) => { if (err.name !== 'AbortError') callbacks.onError?.(err) })
 }
 
-async function fetchTeamAgents(workspace?: string | null): Promise<TeamAgentsResponse> {
-  const params = new URLSearchParams()
-  if (workspace) params.set('workspace', workspace)
-  const query = params.toString()
-  const res = await fetch(`${apiBaseUrl()}/team/agents${query ? `?${query}` : ''}`)
+async function fetchTeamAgents(workspace: string): Promise<TeamAgentsResponse> {
+  const params = new URLSearchParams({ workspace })
+  const res = await fetch(`${apiBaseUrl()}/team/agents?${params}`)
   if (!res.ok) await parseDetailOrThrow(res, 'listTeamAgents')
   return res.json()
 }
@@ -155,8 +147,8 @@ async function fetchTeamAgents(workspace?: string | null): Promise<TeamAgentsRes
  */
 const inFlightTeamAgents = new Map<string, Promise<TeamAgentsResponse>>()
 
-export function listTeamAgents(workspace?: string | null): Promise<TeamAgentsResponse> {
-  const key = workspace ?? ''
+export function listTeamAgents(workspace: string): Promise<TeamAgentsResponse> {
+  const key = workspace
   const existing = inFlightTeamAgents.get(key)
   if (existing) return existing
 
@@ -335,12 +327,11 @@ export async function revertCodingWorkspaceCommit(
 export async function listTeamSessions(
   before?: string | null,
   limit = 20,
-  filters?: { mode?: 'normal' | 'coding'; workspace?: string | null },
+  filters?: { workspace?: string | null },
 ): Promise<SessionPageResponse> {
   const params = new URLSearchParams()
   if (before) params.set('before', before)
   params.set('limit', String(limit))
-  if (filters?.mode) params.set('mode', filters.mode)
   if (filters?.workspace) params.set('workspace', filters.workspace)
   const res = await fetch(`${apiBaseUrl()}/team/sessions?${params}`)
   if (!res.ok) await parseDetailOrThrow(res, 'listTeamSessions')
@@ -364,8 +355,7 @@ export async function getTeamSession(id: string): Promise<SessionDetailResponse>
 }
 
 export async function resolveTeamSession(options: {
-  mode?: string
-  workspace?: string | null
+  workspace: string
   model?: string | null
   thinkingLevel?: string | null
   create?: boolean
@@ -373,10 +363,7 @@ export async function resolveTeamSession(options: {
   worktreeName?: string | null
   worktreeBranch?: string | null
 }): Promise<TeamSessionResolveResponse> {
-  const body: Record<string, string | boolean | null> = {
-    mode: options.mode ?? 'normal',
-  }
-  if (options.workspace !== undefined) body.workspace = options.workspace
+  const body: Record<string, string | boolean | null> = { workspace: options.workspace }
   if (options.model !== undefined) body.model = options.model
   if (options.thinkingLevel !== undefined) body.thinking_level = options.thinkingLevel
   if (options.create !== undefined) body.create = options.create

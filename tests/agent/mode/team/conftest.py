@@ -115,10 +115,11 @@ async def member_b() -> TeamMember:
 
 
 @pytest_asyncio.fixture
-async def basic_team(lead_member, member_a, member_b) -> AgentTeam:
+async def basic_team(lead_member, member_a, member_b, tmp_path) -> AgentTeam:
     """Create a basic team with lead and 2 members."""
     team = AgentTeam(
         lead=lead_member,
         members={"member_a": member_a, "member_b": member_b},
+        workspace=str(tmp_path),
     )
     return team

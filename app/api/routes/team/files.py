@@ -56,7 +56,7 @@ from app.api.schemas.team import (
     GitRevertResponse,
 )
 from app.core.db import async_session_factory
-from app.core.paths import session_uploads_dir, session_workspace_dir, workspace_dir
+from app.core.paths import session_workspace_dir
 from app.models.chat import ChatSession
 from app.services import team_manager
 
@@ -129,18 +129,11 @@ async def _session_row(session_id: str) -> ChatSession | None:
 
 
 async def _session_workspace(session_id: str) -> Path:
-    """Resolve a session's workspace root, tolerating absent DB rows.
-
-    Coding-mode sessions stash an absolute project path in
-    ``ChatSession.workspace``; normal sessions leave it ``NULL`` and fall
-    back to the per-session sandbox directory under
-    ``OPENAGENTD_WORKSPACE_DIR``. The fallback uses this module's local
-    ``workspace_dir`` reference so tests can monkey-patch it.
-    """
+    """Resolve the validated workspace persisted on a coding session."""
     row = await _session_row(session_id)
-    if row is not None and row.workspace:
-        return session_workspace_dir(session_id, row.workspace)
-    return workspace_dir(session_id)
+    if row is None or not row.workspace:
+        raise HTTPException(status_code=404, detail="Session not found.")
+    return session_workspace_dir(session_id, row.workspace)
 
 
 # ── Routes ────────────────────────────────────────────────────────────────────
@@ -161,11 +154,8 @@ async def get_uploaded_file(session_id: str, filename: str) -> FileResponse:
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid session id.")
 
-    row = await _session_row(session_id)
-    resolved = _safe_resolve(
-        session_uploads_dir(session_id, row.workspace if row is not None else None),
-        filename,
-    )
+    workspace = await _session_workspace(session_id)
+    resolved = _safe_resolve(workspace / "uploads", filename)
     return FileResponse(
         path=str(resolved),
         media_type=_guess_mime(resolved),

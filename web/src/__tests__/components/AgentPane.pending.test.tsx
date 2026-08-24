@@ -136,7 +136,7 @@ describe("AgentPane — pending dots indicator", () => {
   })
 
   it("renders an empty body with no bounce dots when idle with no blocks", () => {
-    // The cockpit redesign dropped the 'Waiting…' placeholder copy in
+    // The coding workspace redesign dropped the 'Waiting…' placeholder copy in
     // favour of a quiet empty pane until the agent emits its first
     // block. This test pins the new contract: the pane mounts cleanly
     // (header + agent name still render, asserted in other cases),

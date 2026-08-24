@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid7
 
@@ -23,6 +24,19 @@ def mock_task_scheduler():
     return AsyncMock()
 
 
+@pytest.fixture(autouse=True)
+def workspace_scope_for_legacy_calls(monkeypatch):
+    """Keep older direct tool calls inside the current workspace scope."""
+    original_arun = schedule_task.arun
+
+    async def arun(*args, **kwargs):
+        injected = dict(kwargs.pop("_injected", None) or {})
+        injected.setdefault("_workspace", str(Path.cwd()))
+        return await original_arun(*args, _injected=injected, **kwargs)
+
+    monkeypatch.setattr(schedule_task, "arun", arun)
+
+
 @pytest.fixture
 def sample_task():
     """Create a sample ScheduledTask-like object for testing."""
@@ -30,8 +44,7 @@ def sample_task():
     task.id = uuid7()
     task.slug = "test-task"
     task.name = "test-task"
-    task.mode = "normal"
-    task.workspace = None
+    task.workspace = str(Path.cwd())
     task.schedule_type = "every"
     task.every_seconds = 3600
     task.at_datetime = None
@@ -49,11 +62,17 @@ def sample_task():
 
 # Reusable ``_injected`` payloads — production runs receive these from the
 # tool executor; tests pass them in directly via ``Tool.arun``.
-_NORMAL_INJECTED = {"_mode": "normal", "_workspace": None}
+_WORKSPACE_INJECTED = {"_workspace": str(Path.cwd())}
 
 
-def _coding_injected(workspace: str) -> dict[str, object]:
-    return {"_mode": "coding", "_workspace": workspace}
+def _workspace_injected(workspace: str | None) -> dict[str, object]:
+    return {"_workspace": workspace}
+
+
+# Compatibility names for the legacy direct-call cases below; these payloads
+# now contain only workspace context.
+_NORMAL_INJECTED = _WORKSPACE_INJECTED
+_coding_injected = _workspace_injected
 
 
 # ---------------------------------------------------------------------------
@@ -85,7 +104,6 @@ async def test_list_single_task(mock_task_scheduler, sample_task, clean_db):
     assert f"id={sample_task.id}" not in result
     assert f"slug={sample_task.slug}" in result
     assert "name=test-task" in result
-    assert "mode=normal" in result
     assert "schedule=every 3600s" in result
     assert "status=enabled/pending" in result
     assert "runs=0" in result
@@ -104,18 +122,16 @@ async def test_list_task_with_max_runs(mock_task_scheduler, sample_task, clean_d
 
 @pytest.mark.asyncio
 async def test_list_includes_workspace_for_coding(mock_task_scheduler, sample_task):
-    """Coding tasks render workspace in the listing line when listed by the
-    matching coding-team lead."""
-    sample_task.mode = "coding"
+    """Tasks render workspace in the listing line for the matching workspace."""
     sample_task.workspace = "/tmp/project"
     mock_task_scheduler.list_tasks.return_value = [sample_task]
 
     with patch("app.scheduler.scheduler.task_scheduler", mock_task_scheduler):
         result = await schedule_task.arun(
-            action="list", _injected=_coding_injected("/tmp/project")
+            action="list", _injected=_workspace_injected("/tmp/project")
         )
 
-    assert "mode=coding workspace=/tmp/project" in result
+    assert "workspace=/tmp/project" in result
 
 
 @pytest.mark.asyncio
@@ -124,8 +140,7 @@ async def test_list_task_with_at_schedule(mock_task_scheduler):
     task = MagicMock()
     task.id = uuid7()
     task.name = "one-shot"
-    task.mode = "normal"
-    task.workspace = None
+    task.workspace = str(Path.cwd())
     task.schedule_type = "at"
     task.at_datetime = datetime(2026, 5, 1, 9, 0, 0, tzinfo=timezone.utc)
     task.every_seconds = None
@@ -253,7 +268,7 @@ async def test_create_invalid_cron_expression(mock_task_scheduler):
 
 @pytest.mark.asyncio
 async def test_create_every_success(mock_task_scheduler, sample_task, clean_db):
-    """Successfully creates an 'every' task with mode auto-injected as 'normal'."""
+    """Successfully creates an 'every' task in the current workspace."""
     mock_task_scheduler.create.return_value = sample_task
 
     with patch("app.scheduler.scheduler.task_scheduler", mock_task_scheduler):
@@ -269,22 +284,18 @@ async def test_create_every_success(mock_task_scheduler, sample_task, clean_db):
     assert "Scheduled task created." in result
     assert f"id          : {sample_task.id}" in result
     assert "name        : test-task" in result
-    assert "mode        : normal" in result
     assert "schedule    : every" in result
     assert "prompt      : 'Check email'" in result
     mock_task_scheduler.create.assert_called_once()
     payload = mock_task_scheduler.create.call_args[0][0]
-    assert payload.mode == "normal"
-    assert payload.workspace is None
+    assert payload.workspace == str(Path.cwd())
 
 
 @pytest.mark.asyncio
 async def test_create_in_coding_context_auto_injects_workspace(
     mock_task_scheduler, sample_task, clean_db
 ):
-    """When the calling agent runs in a coding team, the task inherits
-    ``mode='coding'`` and the team's workspace — no LLM-supplied value."""
-    sample_task.mode = "coding"
+    """When the calling agent supplies a workspace, the task inherits it."""
     sample_task.workspace = "/tmp/project"
     mock_task_scheduler.create.return_value = sample_task
 
@@ -299,10 +310,9 @@ async def test_create_in_coding_context_auto_injects_workspace(
         )
 
     assert "Scheduled task created." in result
-    assert "mode        : coding" in result
     assert "workspace   : /tmp/project" in result
     payload = mock_task_scheduler.create.call_args[0][0]
-    assert payload.mode == "coding"
+    assert payload.workspace == "/tmp/project"
     assert payload.workspace == "/tmp/project"
 
 
@@ -901,20 +911,6 @@ def test_build_agent_injects_schedule_task_for_lead(clean_db):
     assert tool.name == "schedule_task"
 
 
-def test_build_agent_does_not_inject_schedule_task_for_member(clean_db):
-    """_build_agent does NOT inject schedule_task for role='member' agents."""
-    from unittest.mock import MagicMock
-    from app.agent.loader import AgentConfig, _build_agent
-
-    factory = MagicMock()
-    factory.return_value = MagicMock()
-
-    cfg = AgentConfig(name="member-agent", role="member", system_prompt="Member prompt")
-    agent = _build_agent(cfg, {}, factory)
-
-    assert "schedule_task" not in agent._tools
-
-
 def test_build_agent_schedule_task_not_duplicated(clean_db):
     """If schedule_task is listed in cfg.tools, it is not duplicated."""
     from unittest.mock import MagicMock
@@ -938,7 +934,7 @@ def test_build_agent_schedule_task_not_duplicated(clean_db):
 # Scope filtering
 #
 # The scheduler tool is the calling agent's *personal* reminder queue —
-# a coding-team lead bound to ``/repo/a`` must never see, mutate, or even
+# a workspace-bound lead bound to ``/repo/a`` must never see, mutate, or even
 # learn about tasks owned by another workspace or by the default team.
 # These tests pin the cross-scope isolation contract: out-of-scope ids
 # present the same "not found" surface as truly missing ids, and
@@ -949,16 +945,14 @@ def test_build_agent_schedule_task_not_duplicated(clean_db):
 def _make_task(mode: str, workspace: str | None, name: str = "t") -> MagicMock:
     """Build a minimal mock task with controllable mode/workspace.
 
-    The default ``sample_task`` fixture hard-codes ``mode='normal'``, so
-    scope tests need a parameterized factory to mint coding tasks for
-    arbitrary workspaces and assert the filter against multiple
-    fixtures in the same scenario.
+    Scope tests need a parameterized factory to mint tasks for arbitrary
+    workspaces and assert the filter against multiple fixtures in one
+    scenario.
     """
     task = MagicMock()
     task.id = uuid7()
     task.slug = name
     task.name = name
-    task.mode = mode
     task.workspace = workspace
     task.schedule_type = "every"
     task.every_seconds = 60
@@ -976,41 +970,12 @@ def _make_task(mode: str, workspace: str | None, name: str = "t") -> MagicMock:
 
 
 @pytest.mark.asyncio
-async def test_list_default_team_only_sees_normal_tasks(mock_task_scheduler):
-    """The default-team lead (``_mode='normal'``) must filter out every
-    coding task, regardless of workspace. This prevents the
-    user-facing 'normal' chat lead from leaking the existence of any
-    workspace-scoped reminder."""
-    normal_a = _make_task("normal", None, name="normal-a")
-    coding_a = _make_task("coding", "/repo/a", name="coding-a")
-    coding_b = _make_task("coding", "/repo/b", name="coding-b")
-    mock_task_scheduler.list_tasks.return_value = [normal_a, coding_a, coding_b]
-
-    with patch("app.scheduler.scheduler.task_scheduler", mock_task_scheduler):
-        result = await schedule_task.arun(action="list", _injected=_NORMAL_INJECTED)
-
-    assert "Scheduled tasks (1):" in result
-    assert "name=normal-a" in result
-    # Critical: no leak of the existence of coding tasks — neither the
-    # name nor the workspace path may appear in the rendered output.
-    assert "coding-a" not in result
-    assert "coding-b" not in result
-    assert "/repo/a" not in result
-    assert "/repo/b" not in result
-
-
-@pytest.mark.asyncio
-async def test_list_coding_lead_only_sees_matching_workspace(mock_task_scheduler):
-    """A coding-team lead bound to ``/repo/a`` must filter out:
-       1. all normal tasks (different mode),
-       2. coding tasks for any *other* workspace.
-    Only ``mode='coding' AND workspace='/repo/a'`` survives the filter."""
-    normal_a = _make_task("normal", None, name="normal-a")
+async def test_list_workspace_lead_only_sees_matching_workspace(mock_task_scheduler):
+    """A workspace lead bound to ``/repo/a`` filters out other workspaces."""
     coding_a = _make_task("coding", "/repo/a", name="coding-a")
     coding_a2 = _make_task("coding", "/repo/a", name="coding-a2")
     coding_b = _make_task("coding", "/repo/b", name="coding-b")
     mock_task_scheduler.list_tasks.return_value = [
-        normal_a,
         coding_a,
         coding_a2,
         coding_b,
@@ -1024,8 +989,7 @@ async def test_list_coding_lead_only_sees_matching_workspace(mock_task_scheduler
     assert "Scheduled tasks (2):" in result
     assert "name=coding-a" in result
     assert "name=coding-a2" in result
-    # Confirm the cross-workspace and cross-mode rows are invisible.
-    assert "normal-a" not in result
+    # Confirm the cross-workspace row is invisible.
     assert "coding-b" not in result
     assert "/repo/b" not in result
 
@@ -1048,10 +1012,10 @@ async def test_list_filters_to_empty_string_when_all_out_of_scope(
 
 
 @pytest.mark.asyncio
-async def test_coding_lead_workspace_is_required_for_scope_match(
+async def test_workspace_is_required_for_scope_match(
     mock_task_scheduler,
 ):
-    """Defensive: a coding-team lead with ``_workspace=None`` (a
+    """Defensive: a workspace lead with ``_workspace=None`` (a
     misconfiguration the injection layer should never produce, but worth
     pinning) must not accidentally match every coding task — it must
     match nothing, because the workspace comparison is strict equality."""
@@ -1059,9 +1023,7 @@ async def test_coding_lead_workspace_is_required_for_scope_match(
     mock_task_scheduler.list_tasks.return_value = [coding_a]
 
     with patch("app.scheduler.scheduler.task_scheduler", mock_task_scheduler):
-        result = await schedule_task.arun(
-            action="list", _injected={"_mode": "coding", "_workspace": None}
-        )
+        result = await schedule_task.arun(action="list", _injected={"_workspace": None})
 
     assert result == "No scheduled tasks."
 
@@ -1227,7 +1189,7 @@ def test_max_runs_param_description_explains_bounded_loop():
 async def test_schedule_task_accepts_task_slug_alias():
     with patch("app.scheduler.scheduler.task_scheduler") as mock_sched:
         mock_task = MagicMock()
-        mock_task.mode = "normal"
+        mock_task.workspace = str(Path.cwd())
         mock_task.name = "My Task"
         mock_sched.get_task = AsyncMock(return_value=mock_task)
         mock_sched.remove = AsyncMock(return_value=True)

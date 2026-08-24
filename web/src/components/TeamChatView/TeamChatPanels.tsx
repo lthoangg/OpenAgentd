@@ -12,7 +12,6 @@ interface TeamChatPanelsProps {
   sessionThinkingLevel: string | null
   onSessionModelSettingsChange: (model: string | null, thinkingLevel: string | null) => void
   onCloseAgentCapabilities: () => void
-  mode: 'normal' | 'coding'
   isMobile: boolean
   showTodos: boolean
   onShowTodosChange: (open: boolean) => void
@@ -20,7 +19,6 @@ interface TeamChatPanelsProps {
   sessionId: string | null
   schedulerOpen: boolean
   onCloseScheduler: () => void
-  workspace: string | null
   showPalette: boolean
   paletteCommands: Command[]
   quickOpenOpen: boolean
@@ -39,7 +37,6 @@ export function TeamChatPanels({
   sessionThinkingLevel,
   onSessionModelSettingsChange,
   onCloseAgentCapabilities,
-  mode,
   isMobile,
   showTodos,
   onShowTodosChange,
@@ -47,7 +44,6 @@ export function TeamChatPanels({
   sessionId,
   schedulerOpen,
   onCloseScheduler,
-  workspace,
   showPalette,
   paletteCommands,
   quickOpenOpen,
@@ -77,8 +73,6 @@ export function TeamChatPanels({
       <SchedulerPanel
         open={schedulerOpen}
         onClose={onCloseScheduler}
-        contextMode={mode}
-        contextWorkspace={workspace ?? null}
       />
       {showPalette && (
         <CommandPalette commands={paletteCommands} onClose={onClosePalette} />

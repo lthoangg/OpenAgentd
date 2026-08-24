@@ -494,7 +494,6 @@ async def dispatch_user_message(
     session_id: str | None,
     attachments: list[RawAttachment] | None = None,
     mention_context_blocks: list[str] | None = None,
-    mode: str = "normal",
     workspace: str | None = None,
     model: str | None = None,
     model_provided: bool = False,
@@ -536,7 +535,6 @@ async def dispatch_user_message(
         mention_context_blocks=mention_context_blocks
         if mention_context_blocks
         else None,
-        mode=mode,
         workspace=workspace,
         model=model,
         model_provided=model_provided or model is not None,

@@ -40,6 +40,7 @@ export function shapeTeamStatus(data: TeamAgentsResponse): TeamStatusResponse | 
 }
 
 export async function teamStatus(workspace?: string | null): Promise<TeamStatusResponse | null> {
+  if (!workspace) return null
   try {
     return shapeTeamStatus(await listTeamAgents(workspace))
   } catch {

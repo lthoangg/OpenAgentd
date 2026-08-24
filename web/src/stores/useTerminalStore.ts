@@ -12,7 +12,7 @@
  * chunk (output goes straight to the persistent xterm instance).
  *
  * Sessions are keyed by a `contextKey` — the coding workspace path or
- * `session:{chatSessionId}` for cockpit — so each surface lists only its
+ * `session:{chatSessionId}` for coding workspaces — so each surface lists only its
  * own terminals while sharing one registry (and one backend session cap).
  *
  * Idle auto-close: detached sessions with no *user input* for

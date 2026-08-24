@@ -115,19 +115,17 @@ export function loadLastCodingWorkspace(): CodingWorkspaceEntry | null {
 }
 
 export function shouldRestoreLastCodingWorkspace(
-  mode: 'normal' | 'coding',
   sessionId: string | undefined,
   pathname: string,
 ): boolean {
-  return mode === 'coding' && !sessionId && pathname === '/coding'
+  return !sessionId && pathname === '/coding'
 }
 
 export function workspaceFromSession(
-  mode: 'normal' | 'coding',
   sessionId: string | undefined,
   sessionWorkspace: string | null | undefined,
 ): string | null {
-  if (mode !== 'coding' || !sessionId) return null
+  if (!sessionId) return null
   return sessionWorkspace ?? null
 }
 

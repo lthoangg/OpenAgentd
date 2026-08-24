@@ -18,7 +18,6 @@
  *     a keydown event with ``ctrlKey: true`` and ``metaKey: false`` on
  *     this non-mac test platform, so the global shortcut handler (which
  *     uses ``isPrimaryShortcut``) fires.
- *   - ``mode === 'coding'`` swaps the sidebar / workspace commands.
  *   - The list is *built each render* — re-running the hook with new
  *     inputs returns the new commands (no stale closures).
    *   - The view-cycle command carries the ⌘⇧V / Ctrl+Shift+V shortcut.
@@ -41,7 +40,7 @@ function makeArgs(overrides: Partial<Parameters<typeof useTeamCommands>[0]> = {}
     setShowTodos: noop,
     handleWorkspaceFiles: noop,
     handleCodingSidebarToggle: noop,
-    mode: "normal" as const,
+    handleOpenTerminal: noop,
     handleNewSession: noop,
     // navigate is only called inside action lambdas; tests that need
     // it pass their own spy.
@@ -84,7 +83,7 @@ describe("useTeamCommands — shortcut labels", () => {
 //  dispatchShortcutKey — synthetic event shape
 // ════════════════════════════════════════════════════════════════════════════
 describe("useTeamCommands — dispatchShortcutKey synthetic events", () => {
-  it("collapse-sidebar (normal mode) dispatches a primary-modifier 'b' keydown", () => {
+  it("collapse-sidebar invokes its direct toggle handler", () => {
     const { result } = renderHook(() => useTeamCommands(makeArgs()))
     const captured: KeyboardEvent[] = []
     const listener = (e: Event) => captured.push(e as KeyboardEvent)
@@ -94,11 +93,7 @@ describe("useTeamCommands — dispatchShortcutKey synthetic events", () => {
     } finally {
       window.removeEventListener("keydown", listener)
     }
-    expect(captured.length).toBe(1)
-    expect(captured[0].key).toBe("b")
-    expect(captured[0].ctrlKey).toBe(true)
-    expect(captured[0].metaKey).toBe(false)
-    expect(captured[0].bubbles).toBe(true)
+    expect(captured).toHaveLength(0)
   })
 
   it("toggle-view dispatches a primary-modifier Shift+'v' keydown", () => {
@@ -152,7 +147,7 @@ describe("useTeamCommands — dispatchShortcutKey synthetic events", () => {
     expect(captured.map((e) => e.key)).toEqual(["s"])
   })
 
-  it("dispatched events reach document-level shortcut handlers", () => {
+  it("collapse-sidebar does not dispatch a synthetic event", () => {
     const { result } = renderHook(() => useTeamCommands(makeArgs()))
     const captured: KeyboardEvent[] = []
     const handler = (e: Event) => captured.push(e as KeyboardEvent)
@@ -162,7 +157,7 @@ describe("useTeamCommands — dispatchShortcutKey synthetic events", () => {
     } finally {
       document.removeEventListener("keydown", handler)
     }
-    expect(captured.map((e) => e.key)).toEqual(["b"])
+    expect(captured).toHaveLength(0)
   })
 })
 
@@ -180,63 +175,13 @@ describe("useTeamCommands — viewMode-gated commands", () => {
 })
 
 // ════════════════════════════════════════════════════════════════════════════
-//  mode (normal vs coding) swap
-// ════════════════════════════════════════════════════════════════════════════
-describe("useTeamCommands — coding mode swap", () => {
-  it("normal mode shows 'Toggle Workspace Files' and 'Toggle Sidebar'", () => {
-    const { result } = renderHook(() => useTeamCommands(makeArgs({ mode: "normal" })))
-    expect(byId(result.current, "workspace-files").label).toBe("Toggle Workspace Files")
-    expect(byId(result.current, "collapse-sidebar").label).toBe("Toggle Sidebar")
-  })
-
-  it("coding mode shows 'Open Changed & Files' and 'Toggle Coding Sidebar'", () => {
-    const { result } = renderHook(() => useTeamCommands(makeArgs({ mode: "coding" })))
-    expect(byId(result.current, "workspace-files").label).toBe("Open Changed & Files")
-    expect(byId(result.current, "collapse-sidebar").label).toBe("Toggle Coding Sidebar")
-  })
-
-  it("coding mode collapse-sidebar uses the dedicated handler (not dispatchShortcutKey)", () => {
-    let invoked = 0
-    const handleCodingSidebarToggle = () => {
-      invoked++
-    }
-    const { result } = renderHook(() =>
-      useTeamCommands(makeArgs({ mode: "coding", handleCodingSidebarToggle })),
-    )
-    // Action should call the handler directly — NOT dispatch a Ctrl+b
-    // event (which would no-op in coding mode where there's no global
-    // Ctrl+b sidebar handler bound).
-    const captured: KeyboardEvent[] = []
-    const listener = (e: Event) => captured.push(e as KeyboardEvent)
-    window.addEventListener("keydown", listener)
-    try {
-      byId(result.current, "collapse-sidebar").action()
-    } finally {
-      window.removeEventListener("keydown", listener)
-    }
-    expect(invoked).toBe(1)
-    expect(captured.length).toBe(0)
-  })
-
-  it("coding mode hides the go-coding navigation command", () => {
-    const { result } = renderHook(() => useTeamCommands(makeArgs({ mode: "coding" })))
-    expect(result.current.find((c) => c.id === "go-coding")).toBeUndefined()
-  })
-
-  it("normal mode includes the go-coding navigation command", () => {
-    const { result } = renderHook(() => useTeamCommands(makeArgs({ mode: "normal" })))
-    expect(result.current.find((c) => c.id === "go-coding")).toBeDefined()
-  })
-})
-
-// ════════════════════════════════════════════════════════════════════════════
 //  Open Terminal command
 // ════════════════════════════════════════════════════════════════════════════
 describe("useTeamCommands — open-terminal", () => {
   it("appears with Ctrl+Shift+` shortcut when a handler is provided", () => {
     const handleOpenTerminal = mock(() => {})
     const { result } = renderHook(() =>
-      useTeamCommands(makeArgs({ mode: "coding", handleOpenTerminal })),
+      useTeamCommands(makeArgs({ handleOpenTerminal })),
     )
     const cmd = byId(result.current, "open-terminal")
     expect(cmd.shortcut).toBe("Ctrl+Shift+`")
@@ -244,10 +189,6 @@ describe("useTeamCommands — open-terminal", () => {
     expect(handleOpenTerminal).toHaveBeenCalledTimes(1)
   })
 
-  it("is absent when no handler is provided (normal mode / no workspace)", () => {
-    const { result } = renderHook(() => useTeamCommands(makeArgs({ mode: "normal" })))
-    expect(result.current.find((c) => c.id === "open-terminal")).toBeUndefined()
-  })
 })
 
 // ════════════════════════════════════════════════════════════════════════════

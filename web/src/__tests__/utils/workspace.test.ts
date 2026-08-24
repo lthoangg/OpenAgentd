@@ -58,21 +58,20 @@ describe('coding workspace persistence', () => {
   })
 
   it('restores the last workspace only on the bare coding route', () => {
-    expect(shouldRestoreLastCodingWorkspace('coding', undefined, '/coding')).toBe(true)
-    expect(shouldRestoreLastCodingWorkspace('coding', 'sid', '/coding')).toBe(false)
-    expect(shouldRestoreLastCodingWorkspace('normal', undefined, '/coding')).toBe(false)
+    expect(shouldRestoreLastCodingWorkspace(undefined, '/coding')).toBe(true)
+    expect(shouldRestoreLastCodingWorkspace('sid', '/coding')).toBe(false)
   })
 
   it('does not restore while navigating away from coding mode', () => {
-    expect(shouldRestoreLastCodingWorkspace('coding', undefined, '/')).toBe(false)
-    expect(shouldRestoreLastCodingWorkspace('coding', undefined, '/cockpit')).toBe(false)
+    expect(shouldRestoreLastCodingWorkspace(undefined, '/')).toBe(false)
+    expect(shouldRestoreLastCodingWorkspace(undefined, '/other')).toBe(false)
   })
 
   it('does not reuse a previous workspace while direct session details are loading', () => {
-    expect(workspaceFromSession('coding', 'sid', undefined)).toBeNull()
+    expect(workspaceFromSession('sid', undefined)).toBeNull()
   })
 
   it('uses loaded session workspace for direct coding session links', () => {
-    expect(workspaceFromSession('coding', 'sid', '/repo/session')).toBe('/repo/session')
+    expect(workspaceFromSession('sid', '/repo/session')).toBe('/repo/session')
   })
 })

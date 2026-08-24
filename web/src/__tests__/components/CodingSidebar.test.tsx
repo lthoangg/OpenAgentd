@@ -780,7 +780,6 @@ describe('CodingSidebar workspace trust flow', () => {
       })
     })
     expect(resolveBody).toEqual({
-      mode: 'coding',
       workspace: '/repo/project',
       model: null,
       thinking_level: null,
@@ -1230,7 +1229,6 @@ describe('CodingSidebar workspace trust flow', () => {
 
     await waitFor(() => {
       expect(resolveBody).toEqual({
-        mode: 'coding',
         workspace: '/data/worktrees/project/task-a',
         model: null,
         thinking_level: null,

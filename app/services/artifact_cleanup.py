@@ -96,8 +96,7 @@ def _is_missing_chat_sessions_table(exc: OperationalError) -> bool:
 @dataclass(frozen=True)
 class _CleanupSession:
     id: UUID
-    mode: str
-    workspace: str | None
+    workspace: str
     created_at: datetime
 
 
@@ -107,7 +106,6 @@ async def _session_rows(db: AsyncSession) -> Sequence[_CleanupSession] | None:
             await db.exec(
                 select(
                     ChatSession.id,
-                    ChatSession.mode,
                     ChatSession.workspace,
                     ChatSession.created_at,
                 )
@@ -129,7 +127,6 @@ async def cleanup_generated_artifacts(
     """Clean generated artifacts that are safe to derive or delete.
 
     The pass targets:
-    - normal session workspaces whose DB session no longer exists;
     - app-managed state logs/telemetry/OTEL directories older than the cutoff;
     - app-managed session artifact directories whose DB session no longer exists;
     - old snapshot repositories for sessions whose DB rows are gone;
@@ -141,49 +138,17 @@ async def cleanup_generated_artifacts(
     rows = await _session_rows(db)
     live_ids = {str(row.id) for row in rows} if rows is not None else set()
     expired_session_ids: set[str] = set()
-    normal_session_ids: set[str] = set()
     coding_session_ids: set[str] = set()
     coding_workspaces: set[str] = set()
     if rows is not None:
         for row in rows:
             sid = str(row.id)
-            if row.mode == "coding":
-                coding_session_ids.add(sid)
-                if row.workspace:
-                    coding_workspaces.add(str(Path(row.workspace).resolve()))
-            else:
-                normal_session_ids.add(sid)
+            coding_session_ids.add(sid)
+            coding_workspaces.add(str(Path(row.workspace).resolve()))
             if cutoff is not None and row.created_at < cutoff:
                 expired_session_ids.add(sid)
 
     candidates: list[CleanupCandidate] = []
-
-    workspace_root = Path(settings.OPENAGENTD_WORKSPACE_DIR)
-    for child in _safe_child_dirs(workspace_root):
-        if (
-            _is_uuid(child.name)
-            and child.name in expired_session_ids
-            and child.name in normal_session_ids
-        ):
-            candidates.append(
-                CleanupCandidate(
-                    child,
-                    "expired normal session workspace",
-                    await asyncio.to_thread(_dir_size, child),
-                )
-            )
-        elif (
-            child.name not in live_ids
-            and _is_uuid(child.name)
-            and _is_old_enough(child, cutoff)
-        ):
-            candidates.append(
-                CleanupCandidate(
-                    child,
-                    "orphaned normal session workspace",
-                    await asyncio.to_thread(_dir_size, child),
-                )
-            )
 
     state_root = Path(settings.OPENAGENTD_STATE_DIR)
     for rel, reason in (

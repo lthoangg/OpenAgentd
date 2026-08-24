@@ -24,7 +24,7 @@ export function useAgentCapabilities(): AgentCapabilities {
 
     const fetchCapabilities = async () => {
       try {
-        const data = await listTeamAgents()
+        const data = await listTeamAgents('')
         // Use the lead agent's capabilities, or the first agent's
         const lead = data.agents.find((a) => a.is_lead) ?? data.agents[0]
         if (mounted) {

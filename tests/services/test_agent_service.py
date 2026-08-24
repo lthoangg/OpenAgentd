@@ -610,7 +610,6 @@ async def test_dispatch_passes_session_model_settings():
         interrupt=False,
         attachment_metas=None,
         mention_context_blocks=None,
-        mode="normal",
         workspace=None,
         model="openai:gpt-5.5",
         model_provided=True,

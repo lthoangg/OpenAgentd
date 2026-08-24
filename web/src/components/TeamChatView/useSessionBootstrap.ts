@@ -38,7 +38,6 @@ interface SessionDraft {
 
 export interface UseSessionBootstrapArgs {
   sessionId?: string
-  mode: 'normal' | 'coding'
   workspace: string | null
   agentWorkspace: string | null
   hasCodingWorkspace: boolean
@@ -56,7 +55,7 @@ export interface UseSessionBootstrapArgs {
   connectStream: () => AbortController
   loadTeamStatus: (workspace?: string | null) => Promise<void>
   loadSession: (sessionId: string, workspace?: string | null) => Promise<void>
-  beginResolvedSession: (sessionId: string | null, options?: { mode?: string; workspace?: string | null; model?: string | null; thinkingLevel?: string | null; fastMode?: boolean; skipInitialRestore?: boolean }) => void
+  beginResolvedSession: (sessionId: string | null, options: { workspace: string; model?: string | null; thinkingLevel?: string | null; fastMode?: boolean; skipInitialRestore?: boolean }) => void
   consumeResolvedSessionReady: (sessionId: string, workspace?: string | null) => boolean
 }
 
@@ -69,7 +68,6 @@ export interface UseSessionBootstrapResult {
 
 export function useSessionBootstrap({
   sessionId,
-  mode,
   workspace,
   agentWorkspace,
   hasCodingWorkspace,
@@ -111,7 +109,8 @@ export function useSessionBootstrap({
       // and because `loadSession` reads them as newer-than-the-fetch local
       // content, the previous chat's stream kept rendering here even after
       // this session's history arrived.
-      beginResolvedSession(sessionId, { mode, workspace: agentWorkspace })
+      if (!agentWorkspace) return
+      beginResolvedSession(sessionId, { workspace: agentWorkspace })
     } else {
       useTeamStore.setState({ sessionId })
     }
@@ -182,7 +181,6 @@ export function useSessionBootstrap({
     agentWorkspace,
     hasCodingWorkspace,
     isCodingSessionLoading,
-    mode,
     loadTeamStatus,
     beginResolvedSession,
     consumeResolvedSessionReady,
@@ -241,6 +239,7 @@ export function useSessionBootstrap({
   const isEmptyIdleSession = useCallback(() => useTeamStore.getState().isEmptyIdleSession(), [])
 
   const handleNewSession = useCallback(() => {
+    if (!workspace) return
     if (isEmptyIdleSession()) return
     abortRef.current?.abort()
     abortRef.current = null
@@ -256,8 +255,7 @@ export function useSessionBootstrap({
     ;(async () => {
       try {
         const sessionOptions = {
-          mode,
-          workspace: mode === 'coding' ? workspace : null,
+          workspace,
           model: sessionIdState ? sessionModel : null,
           thinkingLevel: sessionIdState ? sessionThinkingLevel : null,
         }
@@ -272,7 +270,6 @@ export function useSessionBootstrap({
         // clicked would silently discard that choice.
         const latest = useTeamStore.getState()
         beginResolvedSession(session.id, {
-          mode,
           workspace: session.workspace ?? workspace,
           model: session.model ?? latest.sessionModel,
           thinkingLevel: session.thinking_level ?? latest.sessionThinkingLevel,
@@ -281,20 +278,16 @@ export function useSessionBootstrap({
         if (session.created) {
           prependSession(queryClient, session)
         }
-        if (mode === 'coding' && workspace) {
-          if (session.created) prependWorkspaceSession(queryClient, workspace, session)
-          saveLastCodingWorkspace(workspace)
-          navigate({ to: '/coding/$sessionId', params: { sessionId: session.id } })
-        } else {
-          navigate({ to: '/cockpit/$sessionId', params: { sessionId: session.id } })
-        }
+        if (session.created) prependWorkspaceSession(queryClient, workspace, session)
+        saveLastCodingWorkspace(workspace)
+        navigate({ to: '/coding/$sessionId', params: { sessionId: session.id } })
       } catch (err) {
         useTeamStore.setState((state) => {
           state.error = err instanceof Error ? err.message : 'Failed to create session'
         })
       }
     })()
-  }, [beginResolvedSession, inputRef, isEmptyIdleSession, mode, navigate, queryClient, sessionIdState, sessionModel, sessionThinkingLevel, workspace])
+  }, [beginResolvedSession, inputRef, isEmptyIdleSession, navigate, queryClient, sessionIdState, sessionModel, sessionThinkingLevel, workspace])
 
   // Focus the chat input. Callable directly (shortcut / Command Palette)
   // or indirectly via `window.dispatchEvent(new CustomEvent('focus-chat-input'))`
@@ -321,7 +314,7 @@ export function useSessionBootstrap({
   }, [focusInput])
 
   useEffect(() => {
-    if (isMobile || paletteOpen || (mode === 'coding' && (!workspace || isCodingSessionLoading))) return
+    if (isMobile || paletteOpen || !workspace || isCodingSessionLoading) return
 
     const handler = (e: KeyboardEvent) => {
       if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return
@@ -334,7 +327,7 @@ export function useSessionBootstrap({
 
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [isCodingSessionLoading, isMobile, mode, paletteOpen, workspace, inputRef])
+  }, [isCodingSessionLoading, isMobile, paletteOpen, workspace, inputRef])
 
   const handleAddFileComment = useCallback((path: string, startLine: number, endLine: number) => {
     const ref = startLine === endLine ? `@${path}#L${startLine}` : `@${path}#L${startLine}-L${endLine}`
@@ -390,18 +383,14 @@ export function useSessionBootstrap({
   //   - everything else → empty (tray shows ``No active session``)
   useEffect(() => {
     let label = ''
-    const identity = mode === 'coding' && workspace
-      ? workspaceLabel(workspace)
-      : sessionTitle ?? ''
+    const identity = workspace ? workspaceLabel(workspace) : sessionTitle ?? ''
     if (isTeamWorking) {
       label = identity ? `Working: ${identity}` : 'Working…'
-    } else if (mode === 'coding' && workspace) {
+    } else if (workspace) {
       label = `Coding: ${workspaceLabel(workspace)}`
-    } else if (sessionTitle) {
-      label = `Chat: ${sessionTitle}`
     }
     void setTraySession(label)
-  }, [mode, workspace, sessionTitle, isTeamWorking])
+  }, [workspace, sessionTitle, isTeamWorking])
 
   return {
     isEmptyIdleSession,

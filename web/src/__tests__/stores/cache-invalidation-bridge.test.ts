@@ -2,7 +2,7 @@
  * applyCacheInvalidations — pure event-to-invalidation mapping.
  *
  * The team store's SSE reducer enqueues ``CacheInvalidation`` events
- * onto its ``cacheInvalidations`` queue; ``routes/cockpit.tsx`` drains
+ * onto its ``cacheInvalidations`` queue; the coding route drains
  * the queue and hands events to ``applyCacheInvalidations``, which
  * translates them to ``queryClient.invalidateQueries`` calls.
  *
@@ -184,7 +184,7 @@ describe('applyCacheInvalidations', () => {
 
 // ─── patchSessionTitle ────────────────────────────────────────────────────
 //
-// Regression coverage for the title_update bridge in cockpit.tsx.  The
+// Regression coverage for the title_update bridge in the coding route.  The
 // session list is an *infinite* query, so cached data is shaped as
 // ``InfiniteData<SessionPageResponse>`` (``{ pages, pageParams }``) — an
 // earlier version typed it as ``SessionResponse[]`` and the updater

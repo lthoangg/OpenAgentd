@@ -175,7 +175,9 @@ async def test_delete_session_removes_descendants_messages_and_runtime_state(
     evict.assert_awaited_once_with(expected)
     assert {call.args[0] for call in clear.await_args_list} == expected
     assert {call.args[0] for call in snapshot.await_args_list} == expected
-    assert all(not any(root.iterdir()) for root in roots.values())
+    assert not any(roots["uploads"].iterdir())
+    assert not any(roots["metadata"].iterdir())
+    assert any(roots["workspace"].iterdir())
 
 
 @pytest.mark.asyncio

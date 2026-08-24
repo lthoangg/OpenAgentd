@@ -145,10 +145,6 @@ export async function handleGlobalEvent(
     if (!rememberNotification(id)) return true
     if (typeof event.title !== 'string' || typeof event.body !== 'string') return false
     const sessionId = typeof event.session_id === 'string' ? event.session_id : undefined
-    const mode = event.metadata && typeof event.metadata === 'object'
-      && (event.metadata as Record<string, unknown>).mode === 'coding'
-      ? 'coding'
-      : 'normal'
     // A question stops the agent until it is answered, so it must reach the user
     // even in a focused window — unless they are already looking at the session
     // that asked, where the card itself is the notification. ``force`` skips the
@@ -163,7 +159,7 @@ export async function handleGlobalEvent(
       kind === 'input_needed' && sessionId !== undefined
       && useTeamStore.getState().sessionId === sessionId
     await sendDesktopNotification(
-      { kind, sessionId, mode, title: event.title, body: event.body },
+      { kind, sessionId, title: event.title, body: event.body },
       { force: kind === 'input_needed' && !viewingAskingSession },
     )
     return true

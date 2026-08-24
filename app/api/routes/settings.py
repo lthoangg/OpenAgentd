@@ -545,7 +545,7 @@ async def get_provider_usage(
 async def save_provider_visible_models(
     provider_id: str, body: ProviderVisibleModelsRequest
 ) -> ProviderVisibleModelsResponse:
-    """Persist provider-local model IDs shown in normal model pickers."""
+    """Persist provider-local model IDs shown in model pickers."""
     from app.agent.providers.catalog import find
 
     entry = find(provider_id)
@@ -567,7 +567,7 @@ async def set_provider_disconnect(
 
     When ``disconnected=true`` the provider's models are hidden from all model
     pickers even though credentials are still saved on disk. Setting
-    ``disconnected=false`` restores normal visibility.
+    ``disconnected=false`` restores visibility.
     """
     from app.agent.providers.catalog import find
 

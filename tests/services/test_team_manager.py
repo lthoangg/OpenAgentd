@@ -51,6 +51,18 @@ async def reset_team_manager():
     await team_manager.stop()
 
 
+@pytest.fixture(autouse=True)
+def coding_workspace_agents_dir(monkeypatch):
+    """Use each test's real temporary AGENTS_DIR as coding config root."""
+    from app.core.config import settings
+
+    monkeypatch.setattr(
+        team_manager,
+        "_resolve_coding_agents_dir",
+        lambda: Path(settings.AGENTS_DIR).expanduser().resolve(),
+    )
+
+
 # ── get_or_start_team() ───────────────────────────────────────────────────────
 
 
@@ -93,89 +105,6 @@ async def test_get_or_start_team_is_idempotent(monkeypatch):
     assert first is second
     # start() on the underlying team should only have been called once
     fake_team.start.assert_awaited_once()
-
-
-@pytest.mark.asyncio
-async def test_get_or_start_team_for_session_is_idempotent(monkeypatch):
-    fake_team = _make_team()
-    monkeypatch.setattr(
-        "app.services.team_manager.load_team_from_dir", lambda _: fake_team
-    )
-
-    first = await team_manager.get_or_start_team_for_session("session-a")
-    second = await team_manager.get_or_start_team_for_session("session-a")
-
-    assert first is second
-    assert team_manager._session_teams.get("session-a") is fake_team
-    fake_team.start.assert_awaited_once()
-
-
-@pytest.mark.asyncio
-async def test_get_or_start_team_for_session_isolated_by_session(monkeypatch):
-    first_team = _make_team("lead-a")
-    second_team = _make_team("lead-b")
-    teams = iter([first_team, second_team])
-    monkeypatch.setattr(
-        "app.services.team_manager.load_team_from_dir", lambda _: next(teams)
-    )
-
-    first = await team_manager.get_or_start_team_for_session("session-a")
-    second = await team_manager.get_or_start_team_for_session("session-b")
-
-    assert first is first_team
-    assert second is second_team
-    assert first is not second
-    first_team.start.assert_awaited_once()
-    second_team.start.assert_awaited_once()
-
-
-@pytest.mark.asyncio
-async def test_get_or_start_team_for_session_does_not_block_other_session_start(
-    monkeypatch,
-):
-    """A slow cold start for one session must not hold the registry lock."""
-    first_team = _make_team("lead-a")
-    second_team = _make_team("lead-b")
-    first_started = asyncio.Event()
-    release_first = asyncio.Event()
-
-    async def start_first():
-        first_started.set()
-        await release_first.wait()
-
-    first_team.start = AsyncMock(side_effect=start_first)
-    second_team.start = AsyncMock()
-    teams = iter([first_team, second_team])
-    monkeypatch.setattr(
-        "app.services.team_manager.load_team_from_dir", lambda _: next(teams)
-    )
-
-    first_task = asyncio.create_task(
-        team_manager.get_or_start_team_for_session("session-a")
-    )
-    await first_started.wait()
-    second_task = asyncio.create_task(
-        team_manager.get_or_start_team_for_session("session-b")
-    )
-    try:
-        await asyncio.wait_for(second_task, timeout=0.2)
-    finally:
-        release_first.set()
-        await first_task
-    assert second_task.result() is second_team
-
-
-@pytest.mark.asyncio
-async def test_session_team_eviction_removes_start_lock():
-    session_id = "expired-session"
-    team_manager._session_teams[session_id] = _make_team()
-    team_manager._session_team_last_used[session_id] = 0
-    team_manager._session_start_locks[session_id] = asyncio.Lock()
-
-    expired = team_manager._pop_idle_session_teams_locked(float("inf"))
-
-    assert expired
-    assert session_id not in team_manager._session_start_locks
 
 
 async def test_coding_team_eviction_removes_start_lock(tmp_path):
@@ -293,25 +222,20 @@ async def test_stop_when_no_team_is_noop():
 
 
 @pytest.mark.asyncio
-async def test_evict_session_teams_stops_normal_and_coding_teams(tmp_path):
-    normal = _make_team("normal")
+async def test_evict_session_teams_stops_coding_teams(tmp_path):
     coding = _make_team("coding")
     session_id = "deleted-session"
-    team_manager._session_teams[session_id] = normal
-    team_manager._session_team_last_used[session_id] = 1
     team_manager._coding_teams[(str(tmp_path), session_id)] = coding
     team_manager._coding_team_last_used[(str(tmp_path), session_id)] = 1
 
     await team_manager.evict_session_teams({session_id})
 
-    normal.stop.assert_awaited_once()
     coding.stop.assert_awaited_once()
-    assert team_manager._session_teams.get(session_id) is None
     assert team_manager._coding_teams.get((str(tmp_path), session_id)) is None
 
 
 @pytest.mark.asyncio
-async def test_stop_clears_coding_teams_without_normal_team(tmp_path, monkeypatch):
+async def test_stop_clears_coding_teams(tmp_path, monkeypatch):
     from app.core.config import settings
 
     workspace = tmp_path / "project"
@@ -465,7 +389,7 @@ async def test_get_or_start_coding_team_uses_agents_dir_coding_agents(
     result = await team_manager.get_or_start_coding_team(str(workspace), "session-a")
 
     assert result is fake_team
-    assert seen["path"] == agents_dir / "coding"
+    assert seen["path"] == agents_dir
     assert seen["mode"] == "coding"
     assert seen["workspace"] == str(workspace.resolve())
 
@@ -535,12 +459,12 @@ def test_refresh_blueprints_adds_new_member_file(tmp_path, monkeypatch):
     team = _make_real_team()
     assert team.blueprints == {}
 
-    _write_member_md(tmp_path / "executor.md", "executor")
+    _write_member_md(tmp_path / "coder.md", "coder")
     team_manager.refresh_blueprints(team)
 
-    assert "executor" in team.blueprints
-    assert team.blueprints["executor"].source_path == tmp_path / "executor.md"
-    assert team.blueprints["executor"].description == "executor agent"
+    assert "coder" in team.blueprints
+    assert team.blueprints["coder"].source_path == tmp_path / "coder.md"
+    assert team.blueprints["coder"].description == "coder agent"
 
 
 def test_refresh_blueprints_reuses_unchanged_parsed_configs_and_invalidates_changes(
@@ -552,8 +476,8 @@ def test_refresh_blueprints_reuses_unchanged_parsed_configs_and_invalidates_chan
 
     monkeypatch.setattr(settings, "AGENTS_DIR", str(tmp_path))
     team = _make_real_team()
-    member = tmp_path / "executor.md"
-    _write_member_md(member, "executor")
+    member = tmp_path / "coder.md"
+    _write_member_md(member, "coder")
     parse_calls = 0
     original_parse = loader.parse_agent_md
 
@@ -569,22 +493,22 @@ def test_refresh_blueprints_reuses_unchanged_parsed_configs_and_invalidates_chan
     assert parse_calls == 1
 
     member.write_text(
-        member.read_text(encoding="utf-8").replace("executor agent", "updated agent"),
+        member.read_text(encoding="utf-8").replace("coder agent", "updated agent"),
         encoding="utf-8",
     )
     team_manager.refresh_blueprints(team)
     assert parse_calls == 2
-    assert "executor" in team.blueprints  # existing edited blueprints stay stable
+    assert "coder" in team.blueprints  # existing edited blueprints stay stable
 
     renamed = tmp_path / "renamed.md"
     member.rename(renamed)
     team_manager.refresh_blueprints(team)
     assert parse_calls == 3
-    assert team.blueprints["executor"].source_path == renamed
+    assert team.blueprints["coder"].source_path == renamed
 
     renamed.unlink()
     team_manager.refresh_blueprints(team)
-    assert "executor" not in team.blueprints
+    assert "coder" not in team.blueprints
 
     _write_member_md(tmp_path / "new.md", "new")
     team_manager.refresh_blueprints(team)
@@ -597,14 +521,14 @@ def test_refresh_blueprints_removes_blueprint_when_file_deleted(tmp_path, monkey
 
     monkeypatch.setattr(settings, "AGENTS_DIR", str(tmp_path))
     team = _make_real_team()
-    _write_member_md(tmp_path / "executor.md", "executor")
+    _write_member_md(tmp_path / "coder.md", "coder")
     team_manager.refresh_blueprints(team)
-    assert "executor" in team.blueprints
+    assert "coder" in team.blueprints
 
-    (tmp_path / "executor.md").unlink()
+    (tmp_path / "coder.md").unlink()
     team_manager.refresh_blueprints(team)
 
-    assert "executor" not in team.blueprints
+    assert "coder" not in team.blueprints
 
 
 def test_refresh_blueprints_keeps_removed_blueprint_with_live_instance(
@@ -619,20 +543,20 @@ def test_refresh_blueprints_keeps_removed_blueprint_with_live_instance(
 
     monkeypatch.setattr(settings, "AGENTS_DIR", str(tmp_path))
     team = _make_real_team()
-    _write_member_md(tmp_path / "executor.md", "executor")
+    _write_member_md(tmp_path / "coder.md", "coder")
     team_manager.refresh_blueprints(team)
 
     # Simulate a live instance spawned from the blueprint.
     instance = TeamMember(
-        Agent(name="executor#1", llm_provider=MockProvider(), system_prompt="Worker")
+        Agent(name="coder#1", llm_provider=MockProvider(), system_prompt="Worker")
     )
-    team.members["executor#1"] = instance
-    team._members_by_name["executor#1"] = instance
+    team.members["coder#1"] = instance
+    team._members_by_name["coder#1"] = instance
 
-    (tmp_path / "executor.md").unlink()
+    (tmp_path / "coder.md").unlink()
     team_manager.refresh_blueprints(team)
 
-    assert "executor" in team.blueprints  # kept because instance is live
+    assert "coder" in team.blueprints  # kept because instance is live
 
 
 def test_refresh_blueprints_skips_lead_file(tmp_path, monkeypatch):
@@ -710,7 +634,7 @@ def test_refresh_blueprints_noop_when_agents_dir_missing(tmp_path, monkeypatch):
 
 
 def test_validate_workspace_accepts_regular_directory(tmp_path):
-    """A normal directory that exists is accepted and returned as a string."""
+    """A regular coding workspace that exists is accepted and returned as a string."""
     result = team_manager.validate_workspace(str(tmp_path))
     assert result == str(tmp_path.resolve())
 

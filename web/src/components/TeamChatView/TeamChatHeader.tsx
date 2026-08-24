@@ -12,14 +12,11 @@ import type { AgentStream } from '@/stores/useTeamStore'
 import type { TodoItem } from '@/api/types'
 import type { ViewMode } from './types'
 import { workspaceLabel } from '@/utils/workspace'
-import { usePlatform } from '@/hooks/use-platform'
-import { dispatchShortcutKey, formatShortcut } from '@/lib/keyboard-shortcut'
 
 interface TeamChatHeaderProps {
   dragHandlers: HTMLAttributes<HTMLElement>
   isMacOverlay: boolean
   isMobile: boolean
-  mode: 'normal' | 'coding'
   workspace: string | null
   sessionTitle: string | null
   activeAgent: string | null
@@ -27,15 +24,11 @@ interface TeamChatHeaderProps {
   splitAgentCount: number
   navigate: NavigateFn
   onCodingSidebarToggle: () => void
-  onMobileSidebarOpen: () => void
   headerTokens?: AgentTopbarTokens
   sessionId: string | null
   todos: TodoItem[]
   showTodos: boolean
   setShowTodos: Dispatch<SetStateAction<boolean>>
-  showFilesPanel: boolean
-  setShowFilesPanel: Dispatch<SetStateAction<boolean>>
-  onToggleFilesPanel?: () => void
   codingPanel: null | 'changed' | 'files'
   onWorkspaceFiles: () => void
   agentCapabilitiesOpen: boolean
@@ -56,7 +49,6 @@ export const TeamChatHeader = memo(function TeamChatHeader({
   dragHandlers,
   isMacOverlay,
   isMobile,
-  mode,
   workspace,
   sessionTitle,
   activeAgent,
@@ -64,15 +56,11 @@ export const TeamChatHeader = memo(function TeamChatHeader({
   splitAgentCount,
   navigate,
   onCodingSidebarToggle,
-  onMobileSidebarOpen,
   headerTokens,
   sessionId,
   todos,
   showTodos,
   setShowTodos,
-  showFilesPanel,
-  setShowFilesPanel,
-  onToggleFilesPanel,
   codingPanel,
   onWorkspaceFiles,
   agentCapabilitiesOpen,
@@ -89,7 +77,6 @@ export const TeamChatHeader = memo(function TeamChatHeader({
   onViewModeChange: _onViewModeChange,
 }: TeamChatHeaderProps) {
   const activeTodoCount = todos.filter((todo) => todo.status === 'pending' || todo.status === 'in_progress').length
-  const { os } = usePlatform()
 
   return (
     <header
@@ -117,26 +104,19 @@ export const TeamChatHeader = memo(function TeamChatHeader({
           )}
 
           {/* Hamburger target depends on mode: coding sidebar toggle,
-              mobile drawer, or a synthetic ⌘B/Ctrl+B for the normal sidebar
+              mobile drawer, or a synthetic ⌘B/Ctrl+B for the general sidebar
               (whose collapse state is owned by Sidebar). */}
           <button
             type="button"
             onClick={() => {
-              if (mode === 'coding') {
-                onCodingSidebarToggle()
-              } else if (isMobile) {
-                onMobileSidebarOpen()
-              } else {
-                // Sidebar's own window listener owns the ⌘B/Ctrl+B toggle.
-                dispatchShortcutKey('b', os)
-              }
+              onCodingSidebarToggle()
             }}
             aria-label="Toggle sidebar"
             className="flex h-8 w-8 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-7 md:w-7"
           >
             <PanelLeft size={14} strokeWidth={1.8} aria-hidden="true" />
           </button>
-          {mode === 'coding' && workspace && !isMobile ? (
+          {workspace && !isMobile ? (
             <Tooltip className="ml-1 min-w-0 max-w-xs lg:max-w-md xl:max-w-xl">
               <TooltipTrigger
                 className="min-w-0 max-w-xs lg:max-w-md xl:max-w-xl"
@@ -154,18 +134,6 @@ export const TeamChatHeader = memo(function TeamChatHeader({
               />
               <TooltipContent>{sessionTitle ? `${workspaceLabel(workspace)}: ${sessionTitle}` : workspace}</TooltipContent>
             </Tooltip>
-          ) : mode !== 'coding' && sessionTitle && !isMobile ? (
-            <Tooltip className="ml-1 min-w-0 max-w-xs lg:max-w-md xl:max-w-xl">
-              <TooltipTrigger
-                className="min-w-0 max-w-xs lg:max-w-md xl:max-w-xl"
-                render={
-                  <span className="min-w-0 max-w-xs truncate text-sm font-semibold text-(--color-text) lg:max-w-md xl:max-w-xl">
-                    {sessionTitle}
-                  </span>
-                }
-              />
-              <TooltipContent>{sessionTitle}</TooltipContent>
-            </Tooltip>
           ) : null}
         </div>
 
@@ -175,10 +143,10 @@ export const TeamChatHeader = memo(function TeamChatHeader({
         <div className="flex min-w-0 flex-1 justify-start overflow-hidden px-1">
           {isMobile && (
             <div className="min-w-0 flex items-baseline gap-1 text-sm">
-              {mode === 'coding' && workspace ? (
+              {workspace ? (
                 <span className="truncate font-semibold text-(--color-text)">{workspaceLabel(workspace)}</span>
               ) : (
-                <span className="truncate font-semibold text-(--color-text)">{sessionTitle || 'Cockpit'}</span>
+                <span className="truncate font-semibold text-(--color-text)">Choose a workspace</span>
               )}
             </div>
           )}
@@ -217,12 +185,10 @@ export const TeamChatHeader = memo(function TeamChatHeader({
             />
             <MobileHeaderAction
               Icon={PanelRight}
-              label={mode === 'coding' ? 'Workspace files' : 'Session files'}
-              onClick={mode === 'coding'
-                ? workspace ? onWorkspaceFiles : undefined
-                : sessionId ? onToggleFilesPanel : undefined}
-              active={mode === 'coding' ? codingPanel !== null : showFilesPanel}
-              disabled={mode === 'coding' ? !workspace : !sessionId}
+              label="Workspace files"
+              onClick={workspace ? onWorkspaceFiles : undefined}
+              active={codingPanel !== null}
+              disabled={!workspace}
             />
             <MobileHeaderAction
               Icon={SlidersHorizontal}
@@ -234,7 +200,6 @@ export const TeamChatHeader = memo(function TeamChatHeader({
               open={showMobileActions}
               onOpenChange={setShowMobileActions}
               dragOffset={mobileActionsDragOffset}
-              mode={mode}
               workspace={workspace}
               activeAgent={activeAgent}
               agents={agentNames}
@@ -255,22 +220,13 @@ export const TeamChatHeader = memo(function TeamChatHeader({
                 sessionId={sessionId}
               />
             }
-            filesAction={mode === 'coding'
-              ? workspace ? {
+            filesAction={workspace ? {
                   Icon: PanelRight,
                   onClick: onWorkspaceFiles,
                   title: codingPanel === null ? 'Changed files and workspace files' : 'Close changed files and workspace files',
                   ariaLabel: 'Changed files and workspace files',
                   className: codingPanel !== null ? 'border border-(--color-border-strong) bg-(--bg-key) text-(--color-text)' : undefined,
-                } : undefined
-              : {
-                  Icon: PanelRight,
-                  onClick: () => setShowFilesPanel((v) => !v),
-                  disabled: !sessionId,
-                  title: sessionId ? `Workspace files (${formatShortcut('F', os)})` : 'No active session',
-                  ariaLabel: 'Workspace files',
-                  className: showFilesPanel ? 'border border-(--color-border-strong) bg-(--bg-key) text-(--color-text)' : undefined,
-                }}
+                } : undefined}
           />
         )}
         </div>

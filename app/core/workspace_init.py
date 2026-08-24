@@ -49,8 +49,8 @@ def ensure_workspace_initialized() -> None:
         configure_unconfigured_agent_models,
     )
 
-    default_written = ensure_builtin_agent_blueprints(agents_dir, mode="normal")
-    if ensure_builtin_openagentd_lead(agents_dir, mode="normal"):
+    default_written = ensure_builtin_agent_blueprints(agents_dir, mode="coding")
+    if ensure_builtin_openagentd_lead(agents_dir, mode="coding"):
         default_written.append("openagentd.md")
     coding_agents_dir = agents_dir / "coding"
     coding_written = ensure_builtin_agent_blueprints(coding_agents_dir, mode="coding")

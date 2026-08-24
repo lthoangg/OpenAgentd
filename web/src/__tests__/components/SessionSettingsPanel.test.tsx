@@ -85,7 +85,7 @@ function renderPanel() {
     <QueryClientProvider client={queryClient}>
       <SessionSettingsPanel
         open
-        workspace={null}
+        workspace="/repo/project"
         sessionModel={null}
         sessionThinkingLevel={null}
         onSessionModelSettingsChange={() => undefined}

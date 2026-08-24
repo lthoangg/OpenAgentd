@@ -518,16 +518,11 @@ export interface WorkspaceFilesResponse {
 
 // ── Scheduler ───────────────────────────────────────────────────────────────
 
-export type ScheduledTaskMode = 'normal' | 'coding'
-
 export interface ScheduledTaskResponse {
   id: string
   slug: string
   name: string
-  // Routing target — every task delivers to the team lead of the matching
-  // team (default lead for ``normal``, workspace lead for ``coding``).
-  mode: ScheduledTaskMode
-  workspace: string | null
+  workspace: string
   schedule_type: 'at' | 'every' | 'cron'
   at_datetime: string | null
   every_seconds: number | null
@@ -549,8 +544,7 @@ export interface ScheduledTaskResponse {
 export interface ScheduledTaskCreate {
   name: string
   slug?: string
-  mode?: ScheduledTaskMode
-  workspace?: string | null
+  workspace: string
   schedule_type: 'at' | 'every' | 'cron'
   at_datetime?: string | null
   every_seconds?: number | null

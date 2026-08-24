@@ -1441,7 +1441,7 @@ describe("sendMessage — clears _revertedSuffix and boundary", () => {
       },
     })
 
-    await useTeamStore.getState().sendMessage("new message")
+    await useTeamStore.getState().sendMessage("new message", undefined, { workspace: "/repo/app" })
 
     const stream = useTeamStore.getState().agentStreams.lead
     expect(stream._revertedSuffix).toEqual([])

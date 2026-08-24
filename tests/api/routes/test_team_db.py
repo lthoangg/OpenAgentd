@@ -178,11 +178,11 @@ class TestListTeamSessionsWithData:
         from app.services import question_service
 
         waiting_id = uuid.uuid7()
-        normal_id = uuid.uuid7()
+        idle_id = uuid.uuid7()
         async with _db.async_session_factory() as db:
             async with db.begin():
                 await _create_team_session(db, waiting_id)
-                await _create_team_session(db, normal_id)
+                await _create_team_session(db, idle_id)
 
         async with _db.async_session_factory() as db:
             await question_service.create_pending_question(
@@ -206,7 +206,7 @@ class TestListTeamSessionsWithData:
         by_id = {s["id"]: s for s in resp.json()["data"]}
 
         assert by_id[str(waiting_id)]["needs_input"] is True
-        assert by_id[str(normal_id)]["needs_input"] is False
+        assert by_id[str(idle_id)]["needs_input"] is False
 
     @pytest.mark.asyncio
     async def test_list_sessions_filters_coding_workspace(self, app_with_team):
@@ -214,7 +214,7 @@ class TestListTeamSessionsWithData:
 
         workspace_id = uuid.uuid7()
         other_workspace_id = uuid.uuid7()
-        normal_id = uuid.uuid7()
+        unrelated_id = uuid.uuid7()
         async with _db.async_session_factory() as db:
             async with db.begin():
                 await _create_team_session(
@@ -223,7 +223,9 @@ class TestListTeamSessionsWithData:
                 await _create_team_session(
                     db, other_workspace_id, mode="coding", workspace="/repo/other"
                 )
-                await _create_team_session(db, normal_id, mode="normal")
+                await _create_team_session(
+                    db, unrelated_id, mode="coding", workspace="/repo/other"
+                )
 
         client = TestClient(app_with_team)
         resp = client.get(
@@ -265,28 +267,28 @@ class TestListTeamSessionsWithData:
 
 
 class TestResolveTeamSession:
-    def test_resolve_creates_normal_session(self, app_with_team):
+    def test_resolve_rejects_missing_workspace(self, app_with_team):
         client = TestClient(app_with_team)
 
-        resp = client.post("/api/team/sessions/resolve", json={"mode": "normal"})
+        resp = client.post("/api/team/sessions/resolve", json={})
 
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["created"] is True
-        assert data["mode"] == "normal"
-        assert "workspace" not in data
+        assert resp.status_code == 422
 
     @pytest.mark.asyncio
-    async def test_resolve_reuses_latest_normal_session(self, app_with_team):
+    async def test_resolve_reuses_latest_workspace_session(
+        self, app_with_team, tmp_path
+    ):
         import app.core.db as _db
 
         lead_id = uuid.uuid7()
         async with _db.async_session_factory() as db:
             async with db.begin():
-                await _create_team_session(db, lead_id)
+                await _create_team_session(db, lead_id, workspace=str(tmp_path))
 
         client = TestClient(app_with_team)
-        resp = client.post("/api/team/sessions/resolve", json={"mode": "normal"})
+        resp = client.post(
+            "/api/team/sessions/resolve", json={"workspace": str(tmp_path)}
+        )
 
         assert resp.status_code == 200
         data = resp.json()
@@ -294,18 +296,20 @@ class TestResolveTeamSession:
         assert data["id"] == str(lead_id)
 
     @pytest.mark.asyncio
-    async def test_resolve_can_force_create_normal_session(self, app_with_team):
+    async def test_resolve_can_force_create_workspace_session(
+        self, app_with_team, tmp_path
+    ):
         import app.core.db as _db
 
         lead_id = uuid.uuid7()
         async with _db.async_session_factory() as db:
             async with db.begin():
-                await _create_team_session(db, lead_id)
+                await _create_team_session(db, lead_id, workspace=str(tmp_path))
 
         client = TestClient(app_with_team)
         resp = client.post(
             "/api/team/sessions/resolve",
-            json={"mode": "normal", "create": True},
+            json={"workspace": str(tmp_path), "create": True},
         )
 
         assert resp.status_code == 200
@@ -318,16 +322,15 @@ class TestResolveTeamSession:
 
         resp = client.post(
             "/api/team/sessions/resolve",
-            json={"mode": "coding", "workspace": str(tmp_path)},
+            json={"workspace": str(tmp_path)},
         )
 
         assert resp.status_code == 200
         data = resp.json()
         assert data["created"] is True
-        assert data["mode"] == "coding"
         assert data["workspace"] == str(tmp_path.resolve())
 
-    def test_resolve_requires_workspace_for_coding(self, app_with_team):
+    def test_resolve_rejects_legacy_mode_without_workspace(self, app_with_team):
         client = TestClient(app_with_team)
 
         resp = client.post("/api/team/sessions/resolve", json={"mode": "coding"})

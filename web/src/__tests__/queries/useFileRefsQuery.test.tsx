@@ -28,35 +28,12 @@ describe('useFileRefsQuery', () => {
     const client = makeClient()
 
     renderHook(
-      () => useFileRefsQuery({ mode: 'coding', workspace: '/work/project' }),
+      () => useFileRefsQuery({ workspace: '/work/project' }),
       { wrapper: wrapper(client) },
     )
 
     await waitFor(() =>
       expect(client.getQueryData(queryKeys.coding.files('/work/project'))).toBeDefined(),
-    )
-    expect(client.getQueryCache().getAll()).toHaveLength(1)
-  })
-
-  // Regression: normal mode used a dedicated ``fileRefs.session`` key while
-  // WorkspaceFilesPanel used ``team.files``. Same endpoint, same payload, two
-  // cache entries — so the expensive os.walk ran twice, and the
-  // ``workspace_files`` invalidation (which only targets ``team.files``) never
-  // reached the @-mention picker, leaving it serving a stale list after the
-  // agent wrote files.
-  it('shares the team.files key with the artifacts panel in normal mode', async () => {
-    globalThis.fetch = mock(async () =>
-      new Response(JSON.stringify({ session_id: 'sid-1', files: [], truncated: false })),
-    ) as typeof fetch
-    const client = makeClient()
-
-    renderHook(
-      () => useFileRefsQuery({ mode: 'normal', sessionId: 'sid-1' }),
-      { wrapper: wrapper(client) },
-    )
-
-    await waitFor(() =>
-      expect(client.getQueryData(queryKeys.team.files('sid-1'))).toBeDefined(),
     )
     expect(client.getQueryCache().getAll()).toHaveLength(1)
   })
@@ -68,7 +45,7 @@ describe('useFileRefsQuery', () => {
   it('caches the full response shape, not a narrowed { files } object', async () => {
     globalThis.fetch = mock(async () =>
       new Response(JSON.stringify({
-        session_id: 'sid-2',
+        workspace: '/work/project',
         files: [{ path: 'a.txt', name: 'a.txt', size: 1, modified_at: null }],
         truncated: true,
       })),
@@ -76,15 +53,15 @@ describe('useFileRefsQuery', () => {
     const client = makeClient()
 
     renderHook(
-      () => useFileRefsQuery({ mode: 'normal', sessionId: 'sid-2' }),
+      () => useFileRefsQuery({ workspace: '/work/project' }),
       { wrapper: wrapper(client) },
     )
 
     await waitFor(() =>
-      expect(client.getQueryData(queryKeys.team.files('sid-2'))).toBeDefined(),
+      expect(client.getQueryData(queryKeys.coding.files('/work/project'))).toBeDefined(),
     )
-    expect(client.getQueryData(queryKeys.team.files('sid-2'))).toMatchObject({
-      session_id: 'sid-2',
+    expect(client.getQueryData(queryKeys.coding.files('/work/project'))).toMatchObject({
+      workspace: '/work/project',
       truncated: true,
     })
   })
@@ -92,7 +69,7 @@ describe('useFileRefsQuery', () => {
   it('derives directory refs from file path prefixes', async () => {
     globalThis.fetch = mock(async () =>
       new Response(JSON.stringify({
-        session_id: 'sid-3',
+        workspace: '/work/project',
         files: [{ path: 'src/lib/util.ts', name: 'util.ts', size: 1, modified_at: null }],
         truncated: false,
       })),
@@ -100,7 +77,7 @@ describe('useFileRefsQuery', () => {
     const client = makeClient()
 
     const { result } = renderHook(
-      () => useFileRefsQuery({ mode: 'normal', sessionId: 'sid-3' }),
+      () => useFileRefsQuery({ workspace: '/work/project' }),
       { wrapper: wrapper(client) },
     )
 

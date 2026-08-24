@@ -90,16 +90,11 @@ class ChatSession(SQLModel, table=True):
         # created_at. Keep both the global and per-workspace hot paths out of
         # SQLite's temporary sort B-tree as personal histories grow.
         sa.Index(
-            "ix_chat_sessions_top_mode_created",
-            "parent_session_id",
-            "mode",
-            "created_at",
-            "id",
+            "ix_chat_sessions_top_created", "parent_session_id", "created_at", "id"
         ),
         sa.Index(
-            "ix_chat_sessions_top_mode_workspace_created",
+            "ix_chat_sessions_top_workspace_created",
             "parent_session_id",
-            "mode",
             "workspace",
             "created_at",
             "id",
@@ -142,18 +137,16 @@ class ChatSession(SQLModel, table=True):
     # Team-member sessions are children of their lead via parent_session_id.
     agent_name: str | None = Field(default=None, max_length=100)
     title: str | None = Field(default=None, max_length=255)
-    # Set when this session was created by the scheduler; None for normal chat.
+    # Set when this session was created by the scheduler; None for interactive chat.
     scheduled_task_name: str | None = Field(
         default=None,
         max_length=100,
         sa_column=Column(sa.String(100), nullable=True),
     )
-    mode: str = Field(
-        default="normal",
-        max_length=20,
-        sa_column=Column(sa.String(20), nullable=False, server_default="normal"),
-    )
-    workspace: str | None = Field(default=None)
+    # API and scheduler schemas require a validated workspace. The empty
+    # sentinel keeps direct ORM construction (notably historical transcript
+    # fixtures) representable until it is routed through that boundary.
+    workspace: str = Field(default="")
     model: str | None = Field(default=None, max_length=255)
     thinking_level: str | None = Field(default=None, max_length=50)
     revert: dict | None = Field(
@@ -358,7 +351,7 @@ class SessionMessage(SQLModel, table=True):
     # from (kind, seq) — see ``chat_service_revert.llm_window_rows`` — so
     # compaction and undo never mutate historical rows.
     #
-    #   chat     — normal message. UI ✓. LLM ✓ when positioned at/after the
+    #   chat     — interactive message. UI ✓. LLM ✓ when positioned at/after the
     #              active summary (or when no summary exists).
     #   note     — internal context for the LLM (mention blocks, truncation
     #              recovery, roster changes, team inbox copies). UI ✗, LLM

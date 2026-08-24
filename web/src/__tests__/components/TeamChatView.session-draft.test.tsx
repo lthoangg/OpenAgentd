@@ -137,7 +137,7 @@ describe('TeamChatView session drafts', () => {
     // store.sessionId=null before the onValueChange('') effect could fire.
     // handleDraftValueChange bailed early on !currentSessionId, leaving the
     // '/new' draft stored for the originating session. Switching back restored it.
-    const { rerender } = render(<TeamChatView sessionId="session-a" />)
+    const { rerender } = render(<TeamChatView sessionId="session-a" workspace="/repo/project" />)
 
     // User types '/new' — draft is saved for session-a
     latestOnValueChange?.('/new')
@@ -153,24 +153,24 @@ describe('TeamChatView session drafts', () => {
     latestOnValueChange?.('')
 
     // Navigate to new session (what handleNewSession does after resolveTeamSession)
-    rerender(<TeamChatView sessionId="new-session" />)
+    rerender(<TeamChatView sessionId="new-session" workspace="/repo/project" />)
 
     // Switch back to session-a — draft must be gone, not '/new'
-    rerender(<TeamChatView sessionId="session-a" />)
+    rerender(<TeamChatView sessionId="session-a" workspace="/repo/project" />)
     expect(setValueMock).toHaveBeenLastCalledWith('')
   })
 
   it('restores the unsent draft when switching back to a previous session', () => {
-    const { rerender } = render(<TeamChatView sessionId="session-a" />)
+    const { rerender } = render(<TeamChatView sessionId="session-a" workspace="/repo/project" />)
 
     expect(setValueMock).toHaveBeenLastCalledWith('')
     latestOnValueChange?.('draft for a')
 
-    rerender(<TeamChatView sessionId="session-b" />)
+    rerender(<TeamChatView sessionId="session-b" workspace="/repo/project" />)
     expect(setValueMock).toHaveBeenLastCalledWith('')
     latestOnValueChange?.('draft for b')
 
-    rerender(<TeamChatView sessionId="session-a" />)
+    rerender(<TeamChatView sessionId="session-a" workspace="/repo/project" />)
     expect(setValueMock).toHaveBeenLastCalledWith('draft for a')
   })
 })

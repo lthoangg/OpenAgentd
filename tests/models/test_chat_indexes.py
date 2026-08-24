@@ -6,8 +6,10 @@ message.
 """
 
 import os
+import sqlite3
 import subprocess
 import sys
+import uuid
 
 from app.models.chat import ChatSession, SessionMessage
 
@@ -19,18 +21,16 @@ def _index_map(model) -> dict[str, tuple[str, ...]]:
     }
 
 
-def test_chat_session_recent_list_indexes_cover_mode_and_workspace() -> None:
+def test_chat_session_recent_list_indexes_cover_workspace() -> None:
     indexes = _index_map(ChatSession)
 
-    assert indexes["ix_chat_sessions_top_mode_created"] == (
+    assert indexes["ix_chat_sessions_top_created"] == (
         "parent_session_id",
-        "mode",
         "created_at",
         "id",
     )
-    assert indexes["ix_chat_sessions_top_mode_workspace_created"] == (
+    assert indexes["ix_chat_sessions_top_workspace_created"] == (
         "parent_session_id",
-        "mode",
         "workspace",
         "created_at",
         "id",
@@ -120,6 +120,98 @@ def test_member_restore_index_is_comparable_by_autogenerate() -> None:
     assert not list(index.expressions or []) or all(
         hasattr(expr, "name") for expr in index.expressions
     )
+
+
+def test_coding_only_migration_removes_legacy_rows_and_mode_columns(tmp_path) -> None:
+    """The irreversible migration must not retain workspace-less runtime rows."""
+    db_path = tmp_path / "coding-only.db"
+    env = {**os.environ, "DATABASE_URL": f"sqlite+aiosqlite:///{db_path}"}
+
+    def alembic(*args: str) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            [sys.executable, "-m", "alembic", "-c", "app/alembic.ini", *args],
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+
+    assert alembic("upgrade", "00000020").returncode == 0
+    legacy_session = uuid.uuid4().hex
+    workspace_less_session = uuid.uuid4().hex
+    coding_session = uuid.uuid4().hex
+    legacy_task = uuid.uuid4().hex
+    workspace_less_task = uuid.uuid4().hex
+    coding_task = uuid.uuid4().hex
+    timestamp = "2026-08-24 00:00:00"
+    with sqlite3.connect(db_path) as db:
+        db.executemany(
+            """
+            INSERT INTO chat_sessions
+                (id, agent_name, created_at, updated_at, mode, workspace)
+            VALUES (?, 'lead', ?, ?, ?, ?)
+            """,
+            [
+                (legacy_session, timestamp, timestamp, "normal", None),
+                (workspace_less_session, timestamp, timestamp, "coding", None),
+                (coding_session, timestamp, timestamp, "coding", "/workspace"),
+            ],
+        )
+        db.executemany(
+            """
+            INSERT INTO scheduled_task
+                (id, name, slug, workspace, mode, schedule_type, every_seconds,
+                 prompt, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, 'every', 60, 'run', ?, ?)
+            """,
+            [
+                (legacy_task, "legacy", "legacy", None, "normal", timestamp, timestamp),
+                (
+                    workspace_less_task,
+                    "missing",
+                    "missing",
+                    None,
+                    "coding",
+                    timestamp,
+                    timestamp,
+                ),
+                (
+                    coding_task,
+                    "coding",
+                    "coding",
+                    "/workspace",
+                    "coding",
+                    timestamp,
+                    timestamp,
+                ),
+            ],
+        )
+
+    upgrade = alembic("upgrade", "head")
+    assert upgrade.returncode == 0, upgrade.stderr
+
+    with sqlite3.connect(db_path) as db:
+        assert db.execute("SELECT id FROM chat_sessions").fetchall() == [
+            (coding_session,)
+        ]
+        assert db.execute("SELECT id FROM scheduled_task").fetchall() == [
+            (coding_task,)
+        ]
+        assert "mode" not in {
+            row[1] for row in db.execute("PRAGMA table_info(chat_sessions)")
+        }
+        assert "mode" not in {
+            row[1] for row in db.execute("PRAGMA table_info(scheduled_task)")
+        }
+        assert next(
+            row
+            for row in db.execute("PRAGMA table_info(chat_sessions)")
+            if row[1] == "workspace"
+        )[3]
+        assert next(
+            row
+            for row in db.execute("PRAGMA table_info(scheduled_task)")
+            if row[1] == "workspace"
+        )[3]
 
 
 def test_migrations_match_the_models(tmp_path) -> None:

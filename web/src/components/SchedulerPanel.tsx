@@ -6,7 +6,6 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import {
   useScheduledTasksQuery,
 } from '@/queries'
-import type { ScheduledTaskMode } from '@/api/types'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { AppOverlay } from '@/components/ui/app-overlay'
 import { TaskListItem } from './SchedulerPanel/TaskListItem'
@@ -16,18 +15,13 @@ import { TaskDetailView } from './SchedulerPanel/TaskDetailView'
 interface SchedulerPanelProps {
   open: boolean
   onClose: () => void
-  /** Routing target inherited from the surrounding chat view. When the
-   *  scheduler is opened inside a coding workspace, the Create form
-   *  pre-fills mode='coding' + that workspace. Edit forms always start
-   *  from the task's own stored mode/workspace. */
-  contextMode?: ScheduledTaskMode
+  /** Workspace inherited from the surrounding coding chat view. */
   contextWorkspace?: string | null
 }
 
 export function SchedulerPanel({
   open,
   onClose,
-  contextMode = 'normal',
   contextWorkspace = null,
 }: SchedulerPanelProps) {
   const isMobile = useIsMobile()
@@ -57,7 +51,6 @@ export function SchedulerPanel({
     if (!q) return true
     return (
       task.name.toLowerCase().includes(q) ||
-      task.mode.toLowerCase().includes(q) ||
       (task.workspace ?? '').toLowerCase().includes(q)
     )
   })
@@ -142,7 +135,7 @@ export function SchedulerPanel({
                     className="min-w-0"
                     render={<p className="truncate text-[11px] text-(--color-text-muted)">All scheduled tasks</p>}
                   />
-                  <TooltipContent>Normal and coding scheduled tasks</TooltipContent>
+                  <TooltipContent>Scheduled tasks</TooltipContent>
                 </Tooltip>
               )}
             </div>
@@ -275,8 +268,7 @@ export function SchedulerPanel({
               />
             ) : (
               <CreateTaskForm
-                key={`create-${contextMode}-${contextWorkspace ?? ''}`}
-                contextMode={contextMode}
+                key={`create-${contextWorkspace ?? ''}`}
                 contextWorkspace={contextWorkspace}
                 onSuccess={handleCloseDetail}
               />

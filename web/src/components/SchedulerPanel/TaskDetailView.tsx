@@ -218,7 +218,7 @@ export function TaskDetailView({
             <div className="rounded-xs border border-(--color-border-subtle) bg-(--bg-page) p-2.5">
               <span className="text-[10.5px] font-medium text-(--color-text-muted)">Routing</span>
               <p className="mt-0.5 text-xs font-medium text-(--color-text)">
-                {task.mode === 'coding' ? (
+                {task.workspace ? (
                   <span className="inline-flex items-center gap-1.5">
                     <FolderOpen size={12} className="text-(--color-accent)" />
                     <span>Coding team</span>

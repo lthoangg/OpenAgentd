@@ -44,7 +44,7 @@ export function openNotificationSession(payload: unknown): void {
   if (!payload || typeof payload !== 'object') return
   const notification = payload as NotificationClickPayload
   if (typeof notification.sessionId !== 'string') return
-  const to = notification.mode === 'coding' ? '/coding/$sessionId' : '/cockpit/$sessionId'
+  const to = '/coding/$sessionId'
   void router.navigate({ to, params: { sessionId: notification.sessionId } })
 }
 

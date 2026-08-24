@@ -98,19 +98,6 @@ describe('SchedulerPanel — Title Slugification and Session Target Selector', (
     expect(screen.getByText('Runs all executions in a single dedicated chat session created for this task.')).toBeInTheDocument()
   })
 
-  it('displays Current Chat Session option when there is an active session in the store', async () => {
-    // Set active session in store
-    useTeamStore.setState({
-      sessionId: 'active-session-uuid-123',
-      sessionTitle: 'Sprint Planning Meeting',
-    })
-
-    renderSchedulerPanel()
-    // Switch to Current Chat Session
-    await chooseSessionTarget(/Current Chat Session/i)
-    expect(screen.getByText('Delivers the prompt directly into your active chat thread.')).toBeInTheDocument()
-  })
-
   it('displays custom Session ID input and validates UUID format on submission', async () => {
     renderSchedulerPanel()
     const user = userEvent.setup()
@@ -144,34 +131,4 @@ describe('SchedulerPanel — Title Slugification and Session Target Selector', (
     })
   })
 
-  it('hides Current Chat Session option when routing is incompatible with active session, and resets selection to new if current is active', async () => {
-    // 1. Set active session in normal mode (workspace = null)
-    useTeamStore.setState({
-      sessionId: 'active-session-uuid-123',
-      sessionTitle: 'Sprint Planning Meeting',
-      _workspace: null,
-    })
-
-    renderSchedulerPanel()
-    const user = userEvent.setup()
-
-    // Since default mode is 'normal' (matching active session's workspace = null),
-    // the "current" option should be present and selectable.
-    await chooseSessionTarget(/Current Chat Session/i)
-    expect(getSessionTargetTrigger().textContent).toContain('Current Chat Session')
-
-    // 2. Change routing mode to 'coding' in the form
-    const codingTab = screen.getByRole('tab', { name: 'Coding' })
-    await user.click(codingTab)
-
-    // Since the active session is in 'normal' mode, but the form's selected routing target
-    // is now 'coding', they are incompatible.
-    // The "current" option should be hidden, and the value should have auto-reset to 'new'.
-    expect(getSessionTargetTrigger().textContent).toContain('New Session')
-
-    // Verify the "current" option is no longer rendered in the menu options
-    fireEvent.click(getSessionTargetTrigger())
-    const currentOption = screen.queryByRole('menuitem', { name: /Current Chat Session/ })
-    expect(currentOption).toBeNull()
-  })
 })

@@ -26,13 +26,11 @@ export async function selectCodingWorkspace(options: {
 
   saveLastCodingWorkspace(options.path)
   state.beginResolvedSession(null, {
-    mode: 'coding',
     workspace: options.path,
     model: state.sessionModel,
     thinkingLevel: state.sessionThinkingLevel,
   })
   const session = await (options.resolveTeamSessionFn ?? resolveTeamSession)({
-    mode: 'coding',
     workspace: options.path,
     model: state.sessionModel,
     thinkingLevel: state.sessionThinkingLevel,
@@ -59,7 +57,6 @@ export async function applyResolvedWorkspaceSession(options: {
 }): Promise<void> {
   const state = useTeamStore.getState()
   state.beginResolvedSession(options.session.id, {
-    mode: 'coding',
     workspace: options.session.workspace ?? options.path,
     model: options.session.model ?? state.sessionModel,
     thinkingLevel: options.session.thinking_level ?? state.sessionThinkingLevel,

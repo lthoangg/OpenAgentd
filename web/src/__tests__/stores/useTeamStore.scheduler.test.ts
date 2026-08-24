@@ -7,7 +7,7 @@ import { useTeamStore } from "@/stores/useTeamStore"
  *
  * When a scheduler-mutating tool completes, the SSE reducer pushes a
  * ``{ kind: 'scheduler' }`` event onto ``cacheInvalidations``.  The
- * React-side bridge in ``routes/cockpit.tsx`` translates that into a
+ * React-side bridge in the coding route translates that into a
  * ``queryClient.invalidateQueries({ queryKey: scheduler.list() })``
  * call (covered by the bridge tests in
  * ``team-cache-bridge.test.tsx``).

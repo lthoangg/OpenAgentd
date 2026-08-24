@@ -610,7 +610,6 @@ class TestCmdRun:
             team,
             content="Summarize the repository.",
             session_id=ANY,
-            mode="coding",
             workspace="/repo",
             model="openai:gpt-5.5",
             thinking_level="high",
@@ -647,7 +646,6 @@ class TestCmdRun:
             team,
             content="Hello",
             session_id=ANY,
-            mode="coding",
             workspace="/repo",
             model=None,
             thinking_level=None,
@@ -666,7 +664,7 @@ class TestCmdRun:
         )
         monkeypatch.setattr(
             run_mod.team_manager,
-            "get_or_start_team_for_session",
+            "get_or_start_coding_team",
             resolve_team,
         )
 

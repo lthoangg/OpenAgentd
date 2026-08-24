@@ -45,6 +45,13 @@ def session_id() -> str:
     return str(uuid.uuid7())
 
 
+def _use_coding_workspace(monkeypatch, team_routes, workspace):
+    async def load_session(_session_id: str):
+        return SimpleNamespace(workspace=str(workspace))
+
+    monkeypatch.setattr(team_routes, "_session_row", load_session)
+
+
 # ── GET /api/team/{sid}/uploads/{filename} ───────────────────────────────────
 
 
@@ -96,13 +103,7 @@ class TestUploadsEndpoint:
 
         from app.api.routes.team import files as team_routes
 
-        async def fake_session_row(_sid: str):
-            return None
-
-        monkeypatch.setattr(team_routes, "_session_row", fake_session_row)
-        monkeypatch.setattr(
-            team_routes, "session_uploads_dir", lambda sid, workspace=None: fake_root
-        )
+        _use_coding_workspace(monkeypatch, team_routes, fake_root.parent)
 
         resp = client.get(f"/api/team/{session_id}/uploads/hello.png")
         assert resp.status_code == 200
@@ -170,13 +171,7 @@ class TestUploadsEndpoint:
 
         from app.api.routes.team import files as team_routes
 
-        async def fake_session_row(_sid: str):
-            return None
-
-        monkeypatch.setattr(team_routes, "_session_row", fake_session_row)
-        monkeypatch.setattr(
-            team_routes, "session_uploads_dir", lambda sid, workspace=None: fake_root
-        )
+        _use_coding_workspace(monkeypatch, team_routes, fake_root.parent)
 
         resp = client.get(f"/api/team/{session_id}/uploads/%2e%2e%2fsecret.txt")
         # The URL-encoded traversal should be rejected, not found, or hit SPA fallback
@@ -196,13 +191,7 @@ class TestUploadsEndpoint:
 
         from app.api.routes.team import files as team_routes
 
-        async def fake_session_row(_sid: str):
-            return None
-
-        monkeypatch.setattr(team_routes, "_session_row", fake_session_row)
-        monkeypatch.setattr(
-            team_routes, "session_uploads_dir", lambda sid, workspace=None: fake_root
-        )
+        _use_coding_workspace(monkeypatch, team_routes, fake_root.parent)
 
         resp = client.get(f"/api/team/{session_id}/uploads/photo.jpg")
         assert resp.status_code == 200
@@ -218,13 +207,7 @@ class TestUploadsEndpoint:
 
         from app.api.routes.team import files as team_routes
 
-        async def fake_session_row(_sid: str):
-            return None
-
-        monkeypatch.setattr(team_routes, "_session_row", fake_session_row)
-        monkeypatch.setattr(
-            team_routes, "session_uploads_dir", lambda sid, workspace=None: fake_root
-        )
+        _use_coding_workspace(monkeypatch, team_routes, fake_root.parent)
 
         resp = client.get(f"/api/team/{session_id}/uploads/image.webp")
         assert resp.status_code == 200
@@ -243,13 +226,7 @@ class TestUploadsEndpoint:
 
         from app.api.routes.team import files as team_routes
 
-        async def fake_session_row(_sid: str):
-            return None
-
-        monkeypatch.setattr(team_routes, "_session_row", fake_session_row)
-        monkeypatch.setattr(
-            team_routes, "session_uploads_dir", lambda sid, workspace=None: fake_uploads
-        )
+        _use_coding_workspace(monkeypatch, team_routes, tmp_path)
 
         # Try to access workspace file via uploads endpoint — must fail.
         resp = client.get(f"/api/team/{session_id}/uploads/secret.txt")
@@ -278,7 +255,7 @@ class TestWorkspaceMediaEndpoint:
 
         from app.api.routes.team import files as team_routes
 
-        monkeypatch.setattr(team_routes, "workspace_dir", lambda sid: fake_root)
+        _use_coding_workspace(monkeypatch, team_routes, fake_root)
 
         resp = client.get(f"/api/team/{session_id}/media/..%2Fsecret.txt")
         assert resp.status_code in (400, 404)
@@ -290,7 +267,7 @@ class TestWorkspaceMediaEndpoint:
 
         from app.api.routes.team import files as team_routes
 
-        monkeypatch.setattr(team_routes, "workspace_dir", lambda sid: fake_root)
+        _use_coding_workspace(monkeypatch, team_routes, fake_root)
 
         # FastAPI path converter normalises — simulate via a leading slash
         # encoded as part of the path segment.  The ``file_path`` value seen
@@ -310,7 +287,7 @@ class TestWorkspaceMediaEndpoint:
 
         from app.api.routes.team import files as team_routes
 
-        monkeypatch.setattr(team_routes, "workspace_dir", lambda sid: fake_root)
+        _use_coding_workspace(monkeypatch, team_routes, fake_root)
 
         resp = client.get(f"/api/team/{session_id}/media/output/chart.png")
         assert resp.status_code == 200
@@ -326,7 +303,7 @@ class TestWorkspaceMediaEndpoint:
 
         from app.api.routes.team import files as team_routes
 
-        monkeypatch.setattr(team_routes, "workspace_dir", lambda sid: fake_root)
+        _use_coding_workspace(monkeypatch, team_routes, fake_root)
 
         resp = client.get(f"/api/team/{session_id}/media/notes.txt")
         assert resp.status_code == 200
@@ -340,7 +317,7 @@ class TestWorkspaceMediaEndpoint:
 
         from app.api.routes.team import files as team_routes
 
-        monkeypatch.setattr(team_routes, "workspace_dir", lambda sid: fake_root)
+        _use_coding_workspace(monkeypatch, team_routes, fake_root)
 
         # A directory is not a file — 404 by our ``_safe_resolve`` contract.
         resp = client.get(f"/api/team/{session_id}/media/subdir")
@@ -353,7 +330,7 @@ class TestWorkspaceMediaEndpoint:
 
         from app.api.routes.team import files as team_routes
 
-        monkeypatch.setattr(team_routes, "workspace_dir", lambda sid: fake_root)
+        _use_coding_workspace(monkeypatch, team_routes, fake_root)
 
         resp = client.get(f"/api/team/{session_id}/media/")
         assert resp.status_code in (400, 404)
@@ -367,7 +344,7 @@ class TestWorkspaceMediaEndpoint:
 
         from app.api.routes.team import files as team_routes
 
-        monkeypatch.setattr(team_routes, "workspace_dir", lambda sid: fake_root)
+        _use_coding_workspace(monkeypatch, team_routes, fake_root)
 
         resp = client.get(f"/api/team/{session_id}/media/%20%20%20")
         assert resp.status_code == 400
@@ -381,7 +358,7 @@ class TestWorkspaceMediaEndpoint:
 
         from app.api.routes.team import files as team_routes
 
-        monkeypatch.setattr(team_routes, "workspace_dir", lambda sid: fake_root)
+        _use_coding_workspace(monkeypatch, team_routes, fake_root)
 
         resp = client.get(f"/api/team/{session_id}/media/C:file.txt")
         assert resp.status_code == 400
@@ -396,7 +373,7 @@ class TestWorkspaceMediaEndpoint:
 
         from app.api.routes.team import files as team_routes
 
-        monkeypatch.setattr(team_routes, "workspace_dir", lambda sid: fake_root)
+        _use_coding_workspace(monkeypatch, team_routes, fake_root)
 
         resp = client.get(f"/api/team/{session_id}/media/a/b/c/d/e/file.txt")
         assert resp.status_code == 200
@@ -411,7 +388,7 @@ class TestWorkspaceMediaEndpoint:
 
         from app.api.routes.team import files as team_routes
 
-        monkeypatch.setattr(team_routes, "workspace_dir", lambda sid: fake_root)
+        _use_coding_workspace(monkeypatch, team_routes, fake_root)
 
         resp = client.get(f"/api/team/{session_id}/media/diagram.svg")
         assert resp.status_code == 200
@@ -426,7 +403,7 @@ class TestWorkspaceMediaEndpoint:
 
         from app.api.routes.team import files as team_routes
 
-        monkeypatch.setattr(team_routes, "workspace_dir", lambda sid: fake_root)
+        _use_coding_workspace(monkeypatch, team_routes, fake_root)
 
         resp = client.get(f"/api/team/{session_id}/media/data.json")
         assert resp.status_code == 200
@@ -442,7 +419,7 @@ class TestWorkspaceMediaEndpoint:
 
         from app.api.routes.team import files as team_routes
 
-        monkeypatch.setattr(team_routes, "workspace_dir", lambda sid: fake_root)
+        _use_coding_workspace(monkeypatch, team_routes, fake_root)
 
         resp = client.get(f"/api/team/{session_id}/media/doc.pdf")
         assert resp.status_code == 200
@@ -461,7 +438,7 @@ class TestWorkspaceMediaEndpoint:
 
         from app.api.routes.team import files as team_routes
 
-        monkeypatch.setattr(team_routes, "workspace_dir", lambda sid: fake_workspace)
+        _use_coding_workspace(monkeypatch, team_routes, fake_workspace)
 
         # Try to access uploads file via media endpoint — must fail.
         resp = client.get(f"/api/team/{session_id}/media/secret.txt")
@@ -481,7 +458,7 @@ class TestWorkspaceMediaEndpoint:
 
         from app.api.routes.team import files as team_routes
 
-        monkeypatch.setattr(team_routes, "workspace_dir", lambda sid: fake_root)
+        _use_coding_workspace(monkeypatch, team_routes, fake_root)
 
         resp = client.get(f"/api/team/{session_id}/media/link.txt")
         assert resp.status_code == 200
@@ -498,7 +475,7 @@ class TestWorkspaceMediaEndpoint:
 
         from app.api.routes.team import files as team_routes
 
-        monkeypatch.setattr(team_routes, "workspace_dir", lambda sid: fake_root)
+        _use_coding_workspace(monkeypatch, team_routes, fake_root)
 
         resp = client.get(f"/api/team/{session_id}/media/escape.txt")
         assert resp.status_code == 400
@@ -515,7 +492,7 @@ class TestWorkspaceMediaEndpoint:
 
         from app.api.routes.team import files as team_routes
 
-        monkeypatch.setattr(team_routes, "workspace_dir", lambda sid: fake_root)
+        _use_coding_workspace(monkeypatch, team_routes, fake_root)
 
         resp = client.get(f"/api/team/{session_id}/media/%2e%2e%2fsecret.txt")
         assert resp.status_code in (400, 404)
@@ -530,7 +507,7 @@ class TestWorkspaceMediaEndpoint:
 
         from app.api.routes.team import files as team_routes
 
-        monkeypatch.setattr(team_routes, "workspace_dir", lambda sid: fake_root)
+        _use_coding_workspace(monkeypatch, team_routes, fake_root)
 
         resp = client.get(f"/api/team/{session_id}/media/./file.txt")
         assert resp.status_code == 200

@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { cleanup, renderHook } from '@testing-library/react'
 import { BASE_SLASH_COMMANDS, filterBaseSlashCommands, parseBuiltInSlashCommand } from '@/components/TeamChatView/helpers'
 import { useSlashCommands } from '@/components/TeamChatView/useSlashCommands'
-import { useTeamStore } from '@/stores/useTeamStore'
 
 mock.module('@/queries/useCommandsQuery', () => ({
   useCommandsQuery: () => ({ data: { commands: [] } }),
@@ -34,23 +33,21 @@ describe('BASE_SLASH_COMMANDS', () => {
 })
 
 describe('filterBaseSlashCommands', () => {
-  it('shows only /new on an empty idle normal session', () => {
+  it('shows only /new on an empty idle session', () => {
     const commands = filterBaseSlashCommands({
       isTeamWorking: false,
       revertedCount: 0,
       hasVisibleMessages: false,
-      mode: 'normal',
       hasWorkspace: false,
     })
     expect(commands.map((c) => c.id)).toEqual(['new'])
   })
 
-  it('shows /compact, /undo, /new on a normal session with messages', () => {
+  it('shows /compact, /undo, /new on a session with messages', () => {
     const commands = filterBaseSlashCommands({
       isTeamWorking: false,
       revertedCount: 0,
       hasVisibleMessages: true,
-      mode: 'normal',
       hasWorkspace: false,
     })
     expect(commands.map((c) => c.id)).toEqual(['compact', 'undo', 'new'])
@@ -61,7 +58,6 @@ describe('filterBaseSlashCommands', () => {
       isTeamWorking: false,
       revertedCount: 2,
       hasVisibleMessages: true,
-      mode: 'normal',
       hasWorkspace: false,
     })
     expect(commands.map((c) => c.id)).toEqual([
@@ -78,7 +74,6 @@ describe('filterBaseSlashCommands', () => {
       isTeamWorking: true,
       revertedCount: 2,
       hasVisibleMessages: true,
-      mode: 'normal',
       hasWorkspace: false,
     })
     expect(commands.map((c) => c.id)).toEqual(['stop', 'new'])
@@ -89,7 +84,6 @@ describe('filterBaseSlashCommands', () => {
       isTeamWorking: false,
       revertedCount: 0,
       hasVisibleMessages: true,
-      mode: 'coding',
       hasWorkspace: true,
     })
     expect(commands.map((c) => c.id)).toEqual(['compact', 'undo', 'new', 'init'])
@@ -100,7 +94,6 @@ describe('filterBaseSlashCommands', () => {
       isTeamWorking: false,
       revertedCount: 0,
       hasVisibleMessages: true,
-      mode: 'coding',
       hasWorkspace: false,
     })
     expect(commands.map((c) => c.id)).toEqual(['compact', 'undo', 'new'])
@@ -130,7 +123,6 @@ describe('useSlashCommands', () => {
   it('filters slashCommands according to contextual state', () => {
     const { result } = renderHook(() =>
       useSlashCommands({
-        mode: 'coding',
         agentWorkspace: '/tmp/project',
         inputRef,
         handleNewSession,
@@ -144,47 +136,6 @@ describe('useSlashCommands', () => {
     expect(ids).toEqual(['compact', 'undo', 'redo', 'redo-all', 'new', 'init'])
   })
 
-  it('dispatches redo to redoTeam and clears input', async () => {
-    const redoTeamMock = mock(async () => undefined)
-    useTeamStore.setState({ redoTeam: redoTeamMock })
-
-    const { result } = renderHook(() =>
-      useSlashCommands({
-        mode: 'normal',
-        agentWorkspace: null,
-        inputRef,
-        handleNewSession,
-      }),
-    )
-
-    result.current.handleSlashCommand('redo')
-    await Promise.resolve()
-
-    expect(redoTeamMock).toHaveBeenCalledTimes(1)
-    expect(inputRef.current.setValue).toHaveBeenCalledWith('')
-    expect(inputRef.current.setFiles).toHaveBeenCalledWith([])
-  })
-
-  it('dispatches redo-all to redoAllTeam and clears input', async () => {
-    const redoAllTeamMock = mock(async () => undefined)
-    useTeamStore.setState({ redoAllTeam: redoAllTeamMock })
-
-    const { result } = renderHook(() =>
-      useSlashCommands({
-        mode: 'normal',
-        agentWorkspace: null,
-        inputRef,
-        handleNewSession,
-      }),
-    )
-
-    result.current.handleSlashCommand('redo-all')
-    await Promise.resolve()
-
-    expect(redoAllTeamMock).toHaveBeenCalledTimes(1)
-    expect(inputRef.current.setValue).toHaveBeenCalledWith('')
-    expect(inputRef.current.setFiles).toHaveBeenCalledWith([])
-  })
 })
 
 describe('parseBuiltInSlashCommand', () => {

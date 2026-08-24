@@ -324,7 +324,7 @@ describe("useTeamStore — ask_user", () => {
       suspend()
       useTeamStore.getState().markTurnResuming()
 
-      useTeamStore.getState().beginResolvedSession(null)
+      useTeamStore.getState().beginResolvedSession(null, { workspace: "/repo/app" })
 
       expect(awaitingRestart()).toBe(false)
     })

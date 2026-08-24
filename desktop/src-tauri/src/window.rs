@@ -174,7 +174,7 @@ pub fn frontend_init_script_with_path(
 }
 
 pub fn backend_unavailable_init_script() -> String {
-    "Object.defineProperty(window, '__OAD_BACKEND_UNAVAILABLE__', { value: true, writable: true, configurable: true });".to_string()
+    "Object.defineProperty(window, '__OAD_BACKEND_UNAVAILABLE__', { value: true, writable: true, configurable: true });Object.defineProperty(window, '__OAD_INITIAL_ROUTE__', { value: \"/coding\", writable: true, configurable: true });".to_string()
 }
 
 pub fn new_window_init_script(
@@ -184,6 +184,7 @@ pub fn new_window_init_script(
     active_window_label: &str,
     initial_path: Option<&str>,
 ) -> Result<String> {
+    let initial_path = initial_path.or(Some("/coding"));
     if let Some(base) = external_window_base_urls.get(active_window_label) {
         return Ok(frontend_init_script_with_path(None, base, initial_path));
     }

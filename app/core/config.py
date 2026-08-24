@@ -114,7 +114,7 @@ class Settings(BaseSettings):
     # Vertex AI API key (Google Cloud key, NOT an AI Studio key)
     # Obtain from: https://console.cloud.google.com/expressmode
     VERTEXAI_API_KEY: SecretStr | None = None
-    # Optional: set both to use normal mode (project-scoped URL + full model catalog)
+    # Optional: set both to use the project-scoped URL and full model catalog
     # Leave unset to use express mode (no project required)
     GOOGLE_CLOUD_PROJECT: str | None = None
     GOOGLE_CLOUD_LOCATION: str = "global"

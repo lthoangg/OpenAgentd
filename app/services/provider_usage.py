@@ -28,6 +28,8 @@ _BUILTIN_USAGE_PROVIDERS: dict[str, str] = {
     "codex": "OpenAI Codex",
     "copilot": "GitHub Copilot",
     "grok": "Grok Build",
+    "openrouter": "OpenRouter",
+    "deepseek": "DeepSeek",
 }
 
 # Per-provider timeout for the *aggregate* summary. Individual usage
@@ -107,7 +109,26 @@ async def get_grok_usage() -> ProviderUsageResponse:
     return await get_usage()
 
 
-async def get_provider_usage(provider_id: str) -> ProviderUsageResponse:
+async def get_openrouter_usage(
+    api_key: str | None = None,
+) -> ProviderUsageResponse:
+    from app.agent.providers.openrouter.usage import get_usage
+
+    return await get_usage(api_key=api_key)
+
+
+async def get_deepseek_usage(
+    api_key: str | None = None,
+) -> ProviderUsageResponse:
+    from app.agent.providers.deepseek.usage import get_usage
+
+    return await get_usage(api_key=api_key)
+
+
+async def get_provider_usage(
+    provider_id: str,
+    api_key: str | None = None,
+) -> ProviderUsageResponse:
     if provider_id == "codex":
         from app.agent.providers.codex.usage import (
             CodexUsageCredentialsError,
@@ -145,6 +166,32 @@ async def get_provider_usage(provider_id: str) -> ProviderUsageResponse:
         except GrokUsageCredentialsError as exc:
             raise ProviderUsageCredentialsError(str(exc)) from exc
         except GrokUsageUnavailableError as exc:
+            raise ProviderUsageUnavailableError(str(exc)) from exc
+
+    if provider_id == "openrouter":
+        from app.agent.providers.openrouter.usage import (
+            OpenRouterUsageCredentialsError,
+            OpenRouterUsageUnavailableError,
+        )
+
+        try:
+            return await get_openrouter_usage(api_key=api_key)
+        except OpenRouterUsageCredentialsError as exc:
+            raise ProviderUsageCredentialsError(str(exc)) from exc
+        except OpenRouterUsageUnavailableError as exc:
+            raise ProviderUsageUnavailableError(str(exc)) from exc
+
+    if provider_id == "deepseek":
+        from app.agent.providers.deepseek.usage import (
+            DeepSeekUsageCredentialsError,
+            DeepSeekUsageUnavailableError,
+        )
+
+        try:
+            return await get_deepseek_usage(api_key=api_key)
+        except DeepSeekUsageCredentialsError as exc:
+            raise ProviderUsageCredentialsError(str(exc)) from exc
+        except DeepSeekUsageUnavailableError as exc:
             raise ProviderUsageUnavailableError(str(exc)) from exc
 
     plugin = find_provider_plugin(provider_id)

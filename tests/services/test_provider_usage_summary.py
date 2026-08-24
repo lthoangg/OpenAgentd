@@ -46,6 +46,8 @@ def _catalog_entries(configured: dict[str, bool]):
         "codex": {"id": "codex", "label": "OpenAI Codex", "kind": "oauth"},
         "copilot": {"id": "copilot", "label": "GitHub Copilot", "kind": "oauth"},
         "grok": {"id": "grok", "label": "Grok Build", "kind": "oauth"},
+        "openrouter": {"id": "openrouter", "label": "OpenRouter", "kind": "api_key"},
+        "deepseek": {"id": "deepseek", "label": "DeepSeek", "kind": "api_key"},
     }
 
     def _find(provider_id: str):
@@ -434,7 +436,12 @@ async def test_fresh_summary_loads_runtime_settings_once(monkeypatch, tmp_path):
     body = await provider_usage.get_connected_provider_usage_summary()
 
     assert load_calls == 1
-    assert [item.provider for item in body.items] == ["codex", "grok"]
+    assert [item.provider for item in body.items] == [
+        "codex",
+        "grok",
+        "openrouter",
+        "deepseek",
+    ]
     assert [limit.limit_id for limit in body.items[0].usage.limits] == ["model-a"]
 
 

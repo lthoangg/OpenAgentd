@@ -299,8 +299,9 @@ export async function saveProviderVisibleModels(
   return res.json()
 }
 
-export async function getProviderUsage(providerId: string): Promise<ProviderUsageResponse> {
-  const res = await fetch(`${apiBaseUrl()}/settings/providers/${encodeURIComponent(providerId)}/usage`)
+export async function getProviderUsage(providerId: string, apiKey?: string): Promise<ProviderUsageResponse> {
+  const query = apiKey ? `?api_key=${encodeURIComponent(apiKey)}` : ''
+  const res = await fetch(`${apiBaseUrl()}/settings/providers/${encodeURIComponent(providerId)}/usage${query}`)
   if (!res.ok) await parseDetailOrThrow(res, `GET /settings/providers/${providerId}/usage`)
   return res.json()
 }

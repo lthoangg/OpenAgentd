@@ -15,7 +15,7 @@ def test_provider_usage_import_defers_provider_implementations() -> None:
         "import sys; import app.services.provider_usage; "
         "eager = sorted(name for name in sys.modules "
         "if name in {'app.agent.providers.codex.usage', "
-        "'app.agent.providers.copilot.usage', 'app.agent.providers.grok.usage', "
+        "'app.agent.providers.copilot.usage', 'app.agent.providers.grok.usage', 'app.agent.providers.openrouter.usage', 'app.agent.providers.deepseek.usage', "
         "'app.agent.providers.plugin_registry'}); "
         "assert not eager, f'eager builtin usage imports: {eager}'"
     )
@@ -85,6 +85,8 @@ async def test_get_provider_usage_plugin_value_error_is_credentials_error(monkey
         ("codex", "CodexUsageCredentialsError"),
         ("copilot", "CopilotUsageCredentialsError"),
         ("grok", "GrokUsageCredentialsError"),
+        ("openrouter", "OpenRouterUsageCredentialsError"),
+        ("deepseek", "DeepSeekUsageCredentialsError"),
     ],
 )
 async def test_builtin_credentials_errors_are_mapped(
@@ -93,7 +95,7 @@ async def test_builtin_credentials_errors_are_mapped(
     module = importlib.import_module(f"app.agent.providers.{provider_id}.usage")
     error_type = getattr(module, error_name)
 
-    async def _raise_credentials_error():
+    async def _raise_credentials_error(*_args, **_kwargs):
         raise error_type("credentials missing")
 
     monkeypatch.setattr(
@@ -110,6 +112,8 @@ async def test_builtin_credentials_errors_are_mapped(
         ("codex", "CodexUsageUnavailableError"),
         ("copilot", "CopilotUsageUnavailableError"),
         ("grok", "GrokUsageUnavailableError"),
+        ("openrouter", "OpenRouterUsageUnavailableError"),
+        ("deepseek", "DeepSeekUsageUnavailableError"),
     ],
 )
 async def test_builtin_unavailable_errors_are_mapped(
@@ -118,7 +122,7 @@ async def test_builtin_unavailable_errors_are_mapped(
     module = importlib.import_module(f"app.agent.providers.{provider_id}.usage")
     error_type = getattr(module, error_name)
 
-    async def _raise_unavailable_error():
+    async def _raise_unavailable_error(*_args, **_kwargs):
         raise error_type("upstream unavailable")
 
     monkeypatch.setattr(

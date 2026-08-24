@@ -29,8 +29,9 @@ export function useSaveProviderMutation() {
   return useMutation({
     mutationFn: ({ providerId, body }: { providerId: string; body: ProviderSaveRequest }) =>
       saveProvider(providerId, body),
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       void client.invalidateQueries({ queryKey: queryKeys.settings.providers() })
+      void client.invalidateQueries({ queryKey: queryKeys.settings.providerUsage(variables.providerId) })
       void client.invalidateQueries({ queryKey: queryKeys.agentFiles.registry() })
     },
   })
@@ -71,10 +72,10 @@ export function useProviderModelsMutation() {
   })
 }
 
-export function useProviderUsageQuery(providerId: string, enabled: boolean) {
+export function useProviderUsageQuery(providerId: string, enabled: boolean, apiKey?: string) {
   return useQuery({
     queryKey: queryKeys.settings.providerUsage(providerId),
-    queryFn: () => getProviderUsage(providerId),
+    queryFn: () => getProviderUsage(providerId, apiKey),
     enabled,
     refetchInterval: enabled ? 60_000 : false,
     staleTime: 30_000,

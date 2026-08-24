@@ -96,11 +96,10 @@ run from the terminal.
   or send a test. Notification sounds are handled by the operating system;
   OpenAgentd does not play an extra in-app sound. Background-process completion
   alerts are deprecated and no longer emitted by app clients.
-- **Command palette** `[since v1.0, v1.61.0]` — `⌘P`/`Ctrl+P`. Search
-  sessions, agents, files, slash commands, settings. Cleaner, faster with a
-  tighter animation and a curated command set that drops low-value entries.
-  Command and file search overlays use the compact warm-paper surface treatment
-  across desktop and mobile `[v1.74.0]`, with expanded desktop width and list height `[v2.0.0]`.
+- **Quick Open and Command Palette** `[v2.2.1]` — `⌘P`/`Ctrl+P` searches and
+  opens files in the active workspace; `⌘⇧P`/`Ctrl+Shift+P` searches app actions.
+  Both use the compact warm-paper search surface, keyboard navigation, and a
+  visible warning when a capped workspace listing omits files.
 - **Fullscreen view mode and traffic-light space reclamation** `[v2.0.0]` — automatically
   detects macOS fullscreen mode and reclaims the window traffic-light header padding to
   maximise message and diff reading area.

@@ -24,12 +24,15 @@ interface UIStore {
   schedulerOpen: boolean
   agentCapabilitiesOpen: boolean
   paletteOpen: boolean
+  quickOpenOpen: boolean
   toggleScheduler: () => void
   toggleAgentCapabilities: () => void
   togglePalette: () => void
+  toggleQuickOpen: () => void
   closeScheduler: () => void
   closeAgentCapabilities: () => void
   closePalette: () => void
+  closeQuickOpen: () => void
   closeAll: () => void
 }
 
@@ -38,6 +41,7 @@ export const useUIStore = create<UIStore>()(
     schedulerOpen: false,
     agentCapabilitiesOpen: false,
     paletteOpen: false,
+    quickOpenOpen: false,
     toggleScheduler: () => {
       set((state) => {
         const nextOpen = !state.schedulerOpen
@@ -45,6 +49,7 @@ export const useUIStore = create<UIStore>()(
         if (nextOpen) {
           state.agentCapabilitiesOpen = false
           state.paletteOpen = false
+          state.quickOpenOpen = false
         }
       })
       if (useUIStore.getState().schedulerOpen) _closeSettings?.()
@@ -56,6 +61,7 @@ export const useUIStore = create<UIStore>()(
         if (nextOpen) {
           state.schedulerOpen = false
           state.paletteOpen = false
+          state.quickOpenOpen = false
         }
       })
       if (useUIStore.getState().agentCapabilitiesOpen) _closeSettings?.()
@@ -67,17 +73,32 @@ export const useUIStore = create<UIStore>()(
         if (nextOpen) {
           state.schedulerOpen = false
           state.agentCapabilitiesOpen = false
+          state.quickOpenOpen = false
         }
       })
       if (useUIStore.getState().paletteOpen) _closeSettings?.()
     },
+    toggleQuickOpen: () => {
+      set((state) => {
+        const nextOpen = !state.quickOpenOpen
+        state.quickOpenOpen = nextOpen
+        if (nextOpen) {
+          state.schedulerOpen = false
+          state.agentCapabilitiesOpen = false
+          state.paletteOpen = false
+        }
+      })
+      if (useUIStore.getState().quickOpenOpen) _closeSettings?.()
+    },
     closeScheduler: () => set((state) => { state.schedulerOpen = false }),
     closeAgentCapabilities: () => set((state) => { state.agentCapabilitiesOpen = false }),
     closePalette: () => set((state) => { state.paletteOpen = false }),
+    closeQuickOpen: () => set((state) => { state.quickOpenOpen = false }),
     closeAll: () => set((state) => {
       state.schedulerOpen = false
       state.agentCapabilitiesOpen = false
       state.paletteOpen = false
+      state.quickOpenOpen = false
     }),
   }))
 )

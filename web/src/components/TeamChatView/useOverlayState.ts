@@ -43,6 +43,7 @@ export interface UseOverlayStateArgs {
   toggleScheduler: () => void
   toggleAgentCapabilities: () => void
   togglePalette: () => void
+  toggleQuickOpen: () => void
 }
 
 export interface UseOverlayStateResult {
@@ -50,6 +51,8 @@ export interface UseOverlayStateResult {
   setMobileSidebarOpen: Dispatch<SetStateAction<boolean>>
   showFilesPanel: boolean
   setShowFilesPanel: Dispatch<SetStateAction<boolean>>
+  workspaceFileViewer: WorkspaceFileInfo | null
+  setWorkspaceFileViewer: Dispatch<SetStateAction<WorkspaceFileInfo | null>>
   codingPanel: null | 'changed' | 'files'
   setCodingPanel: Dispatch<SetStateAction<null | 'changed' | 'files'>>
   codingFileViewer: WorkspaceFileInfo | null
@@ -77,6 +80,7 @@ export interface UseOverlayStateResult {
   handleToggleAgentCapabilities: () => void
   handleToggleScheduler: () => void
   handleTogglePalette: () => void
+  handleToggleQuickOpen: () => void
   handleSetShowTodos: Dispatch<SetStateAction<boolean>>
   handleToggleFilesPanel: () => void
   handleOpenTerminal: () => void
@@ -98,10 +102,12 @@ export function useOverlayState({
   toggleScheduler,
   toggleAgentCapabilities,
   togglePalette,
+  toggleQuickOpen,
 }: UseOverlayStateArgs): UseOverlayStateResult {
   const queryClient = useQueryClient()
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
   const [showFilesPanel, setShowFilesPanel] = useState(false)
+  const [workspaceFileViewer, setWorkspaceFileViewer] = useState<WorkspaceFileInfo | null>(null)
   const [codingPanel, setCodingPanel] = useState<null | 'changed' | 'files'>(null)
   const [codingFileViewer, setCodingFileViewer] = useState<WorkspaceFileInfo | null>(null)
   const [codingFileViewerDetached, setCodingFileViewerDetached] = useState(false)
@@ -140,7 +146,10 @@ export function useOverlayState({
     const ui = useUIStore.getState()
     if (toClose.has('scheduler')) ui.closeScheduler()
     if (toClose.has('capabilities')) ui.closeAgentCapabilities()
-    if (toClose.has('palette')) ui.closePalette()
+    if (toClose.has('palette')) {
+      ui.closePalette()
+      ui.closeQuickOpen()
+    }
   }, [isMobile])
 
   const handleWorkspaceFiles = useCallback(() => {
@@ -252,6 +261,11 @@ export function useOverlayState({
     togglePalette()
   }, [closeOtherMobileOverlays, togglePalette])
 
+  const handleToggleQuickOpen = useCallback(() => {
+    if (!useUIStore.getState().quickOpenOpen) closeOtherMobileOverlays('palette')
+    toggleQuickOpen()
+  }, [closeOtherMobileOverlays, toggleQuickOpen])
+
   const handleSetShowTodos = useCallback<typeof setShowTodos>((value) => {
     setShowTodos((prev) => {
       const next = typeof value === 'function' ? value(prev) : value
@@ -351,6 +365,8 @@ export function useOverlayState({
     setMobileSidebarOpen,
     showFilesPanel,
     setShowFilesPanel,
+    workspaceFileViewer,
+    setWorkspaceFileViewer,
     codingPanel,
     setCodingPanel,
     codingFileViewer,
@@ -378,6 +394,7 @@ export function useOverlayState({
     handleToggleAgentCapabilities,
     handleToggleScheduler,
     handleTogglePalette,
+    handleToggleQuickOpen,
     handleSetShowTodos,
     handleToggleFilesPanel,
     handleOpenTerminal,

@@ -1,4 +1,4 @@
-import { CommandPalette } from '../CommandPalette'
+import { CommandPalette, QuickOpen } from '../CommandPalette'
 import { SchedulerPanel } from '../SchedulerPanel'
 import { SessionSettingsPanel } from '../SessionSettingsPanel'
 import { TodosPopover } from '../TodosPopover'
@@ -23,11 +23,13 @@ interface TeamChatPanelsProps {
   workspace: string | null
   showPalette: boolean
   paletteCommands: Command[]
-  paletteWorkspaceFiles: WorkspaceFileInfo[]
-  /** Backend hit its file cap — the palette says so instead of silently hiding. */
-  paletteFilesTruncated?: boolean
-  onPaletteFileOpen: (file: WorkspaceFileInfo) => void
+  quickOpenOpen: boolean
+  quickOpenWorkspaceFiles: WorkspaceFileInfo[]
+  /** Backend hit its file cap — Quick Open says so instead of silently hiding. */
+  quickOpenFilesTruncated?: boolean
+  onQuickOpenFileOpen: (file: WorkspaceFileInfo) => void
   onClosePalette: () => void
+  onCloseQuickOpen: () => void
 }
 
 export function TeamChatPanels({
@@ -48,10 +50,12 @@ export function TeamChatPanels({
   workspace,
   showPalette,
   paletteCommands,
-  paletteWorkspaceFiles,
-  paletteFilesTruncated,
-  onPaletteFileOpen,
+  quickOpenOpen,
+  quickOpenWorkspaceFiles,
+  quickOpenFilesTruncated,
+  onQuickOpenFileOpen,
   onClosePalette,
+  onCloseQuickOpen,
 }: TeamChatPanelsProps) {
   return (
     <>
@@ -77,7 +81,10 @@ export function TeamChatPanels({
         contextWorkspace={workspace ?? null}
       />
       {showPalette && (
-        <CommandPalette commands={paletteCommands} workspaceFiles={paletteWorkspaceFiles} filesTruncated={paletteFilesTruncated} onFileOpen={onPaletteFileOpen} onClose={onClosePalette} />
+        <CommandPalette commands={paletteCommands} onClose={onClosePalette} />
+      )}
+      {quickOpenOpen && (
+        <QuickOpen workspaceFiles={quickOpenWorkspaceFiles} filesTruncated={quickOpenFilesTruncated} onFileOpen={onQuickOpenFileOpen} onClose={onCloseQuickOpen} />
       )}
     </>
   )

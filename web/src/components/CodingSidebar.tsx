@@ -679,7 +679,7 @@ export function CodingSidebar({
         </nav>
       )}
 
-      {/* Search trigger — opens the command palette (⌘P / Ctrl+P). */}
+      {/* Search trigger — opens Quick Open (⌘P / Ctrl+P). */}
       {onCommandPalette && (
         <div className={isMobile ? 'px-3 pt-3' : 'px-3 py-3'}>
           <Tooltip className="w-full">
@@ -690,7 +690,7 @@ export function CodingSidebar({
                   type="button"
                   onClick={onCommandPalette}
                   className="flex h-8 w-full items-center gap-2 rounded-md border border-(--color-border) bg-(--bg-page) px-2.5 text-left text-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)"
-                  aria-label="Open command palette"
+                  aria-label="Open Quick Open"
                 >
                   <Search size={13} aria-hidden="true" />
                   <span className="flex-1">Search…</span>
@@ -698,7 +698,7 @@ export function CodingSidebar({
                 </button>
               }
             />
-            <TooltipContent>{`Open command palette (${formatShortcut('P', os)})`}</TooltipContent>
+            <TooltipContent>{`Open Quick Open (${formatShortcut('P', os)})`}</TooltipContent>
           </Tooltip>
         </div>
       )}

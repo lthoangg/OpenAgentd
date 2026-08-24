@@ -185,18 +185,23 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
   const schedulerOpen = useUIStore((s) => s.schedulerOpen)
   const agentCapabilitiesOpen = useUIStore((s) => s.agentCapabilitiesOpen)
   const paletteOpen = useUIStore((s) => s.paletteOpen)
+  const quickOpenOpen = useUIStore((s) => s.quickOpenOpen)
   const toggleScheduler = useUIStore((s) => s.toggleScheduler)
   const toggleAgentCapabilities = useUIStore((s) => s.toggleAgentCapabilities)
   const togglePalette = useUIStore((s) => s.togglePalette)
+  const toggleQuickOpen = useUIStore((s) => s.toggleQuickOpen)
   const closeScheduler = useUIStore((s) => s.closeScheduler)
   const closeAgentCapabilities = useUIStore((s) => s.closeAgentCapabilities)
   const closePalette = useUIStore((s) => s.closePalette)
+  const closeQuickOpen = useUIStore((s) => s.closeQuickOpen)
 
   const {
     mobileSidebarOpen,
     setMobileSidebarOpen,
     showFilesPanel,
     setShowFilesPanel,
+    workspaceFileViewer,
+    setWorkspaceFileViewer,
     codingPanel,
     setCodingPanel,
     codingFileViewer,
@@ -222,6 +227,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
     handleToggleAgentCapabilities,
     handleToggleScheduler,
     handleTogglePalette,
+    handleToggleQuickOpen,
     handleSetShowTodos,
     handleToggleFilesPanel,
     handleOpenTerminal,
@@ -238,6 +244,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
     toggleScheduler,
     toggleAgentCapabilities,
     togglePalette,
+    toggleQuickOpen,
   })
 
   // Agents whose stream isn't `offline` (i.e. not dismissed from the live
@@ -353,13 +360,13 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
 
   const {
     paletteCommands,
-    paletteWorkspaceFiles,
-    paletteFilesTruncated,
-    handlePaletteFileOpen,
+    quickOpenWorkspaceFiles,
+    quickOpenFilesTruncated,
+    handleQuickOpenFileOpen,
   } = useCommandPalette({
     mode,
     workspace,
-    paletteOpen,
+    quickOpenOpen,
     sessionIdState,
     viewMode,
     setViewMode,
@@ -370,12 +377,15 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
     handleToggleAgentCapabilities,
     handleSetShowTodos,
     handleTogglePalette,
+    handleToggleQuickOpen,
     handleToggleScheduler,
     handleOpenTerminal,
     setCodingFileViewer,
     setCodingFileViewerDetached,
     setCodingFileOpenKey,
     setCodingPanel,
+    setShowFilesPanel,
+    setWorkspaceFileViewer,
   })
 
   // ── Render ─────────────────────────────────────────────────────────────────
@@ -436,7 +446,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
             workspace={workspace}
             onCollapse={() => setCodingSidebarCollapsed(true)}
             openWorkspaceDialogKey={openWorkspaceDialogKey}
-            onCommandPalette={handleTogglePalette}
+            onCommandPalette={handleToggleQuickOpen}
             desktopCollapsed={codingSidebarCollapsed}
             mobileOpen={mobileSidebarOpen}
             mobileDragOffset={sidebarDragOffset}
@@ -445,7 +455,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
         ) : (
           <Sidebar
             currentSessionId={sessionIdState || undefined}
-            onCommandPalette={handleTogglePalette}
+            onCommandPalette={handleToggleQuickOpen}
             onNewChat={handleNewSession}
             mobileOpen={mobileSidebarOpen}
             mobileDragOffset={sidebarDragOffset}
@@ -647,6 +657,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
           <WorkspaceFilesPanel
             open={showFilesPanel}
             sessionId={sessionIdState}
+            selectedFile={workspaceFileViewer}
             onClose={() => setShowFilesPanel(false)}
           />
         )}
@@ -676,7 +687,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
               handledTerminalOpenKeyRef={handledTerminalOpenKeyRef}
               onFileSelect={handleCodingFileSelect}
               onAddComment={handleAddFileComment}
-              onOpenPalette={handleTogglePalette}
+              onOpenPalette={handleToggleQuickOpen}
               onClose={() => {
                 setCodingPanel(null)
                 setCodingFileViewerDetached(false)
@@ -719,10 +730,12 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
         workspace={workspace}
         showPalette={paletteOpen}
         paletteCommands={paletteCommands}
-        paletteWorkspaceFiles={paletteWorkspaceFiles}
-        paletteFilesTruncated={paletteFilesTruncated}
-        onPaletteFileOpen={handlePaletteFileOpen}
+        quickOpenOpen={quickOpenOpen}
+        quickOpenWorkspaceFiles={quickOpenWorkspaceFiles}
+        quickOpenFilesTruncated={quickOpenFilesTruncated}
+        onQuickOpenFileOpen={handleQuickOpenFileOpen}
         onClosePalette={closePalette}
+        onCloseQuickOpen={closeQuickOpen}
       />    </div>
   )
 }

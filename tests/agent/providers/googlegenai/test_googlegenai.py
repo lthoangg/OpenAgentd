@@ -1091,6 +1091,64 @@ def test_convert_messages_consecutive_tool_messages_merged(google_provider):
     assert contents[2].parts[1].function_response.name == "tool2"
 
 
+def test_convert_messages_tool_and_human_messages_not_merged(google_provider):
+    """ToolMessage followed by HumanMessage must NOT be merged into a hybrid user Content block."""
+    messages = [
+        HumanMessage(content="first question"),
+        AssistantMessage(
+            content="running tool",
+            tool_calls=[
+                ToolCall(
+                    id="call_1",
+                    function=ChatFunctionCall(name="shell", arguments="{}"),
+                )
+            ],
+        ),
+        ToolMessage(content='{"status":"ok"}', name="shell", tool_call_id="call_1"),
+        HumanMessage(content="scheduled follow-up"),
+    ]
+    contents, _ = google_provider._convert_messages_to_gemini(messages)
+    # Expected: 4 distinct content turns (user -> model -> user[fn_response] -> user[text])
+    assert len(contents) == 4
+    assert contents[0].role == "user"
+    assert contents[0].parts[0].text == "first question"
+    assert contents[1].role == "model"
+    # Accompanying text with tool_calls is emitted as thought to preserve turn ordering
+    assert contents[1].parts[0].thought is True
+    assert contents[1].parts[1].function_call.name == "shell"
+    assert contents[2].role == "user"
+    assert contents[2].parts[0].function_response.name == "shell"
+    assert contents[3].role == "user"
+    assert contents[3].parts[0].text == "scheduled follow-up"
+
+
+def test_convert_messages_assistant_reasoning_signature_fallback_to_tool_call(
+    google_provider,
+):
+    """Assistant reasoning_signature falls back to tool call thought_signature."""
+    messages = [
+        AssistantMessage(
+            reasoning_signature="msg-sig-456",
+            tool_calls=[
+                ToolCall(
+                    id="call_1",
+                    function=ChatFunctionCall(
+                        name="read",
+                        arguments="{}",
+                        thought_signature=None,
+                    ),
+                )
+            ],
+        )
+    ]
+    contents, _ = google_provider._convert_messages_to_gemini(messages)
+    assert len(contents) == 1
+    assert contents[0].role == "model"
+    fc_part = contents[0].parts[0]
+    assert fc_part.function_call.name == "read"
+    assert fc_part.thought_signature == "msg-sig-456"
+
+
 @pytest.mark.asyncio
 @respx.mock
 async def test_stream_captures_thought_signature(google_provider):

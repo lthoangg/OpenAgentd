@@ -29,6 +29,11 @@ beforeEach(() => {
   openMock.mockClear()
   window.open = openMock
   server.listen()
+  server.use(
+    http.get('http://localhost/api/settings/providers/:id/usage', ({ params }) =>
+      HttpResponse.json({ provider: params.id, limits: [] }),
+    ),
+  )
   originalFetch = globalThis.fetch
   globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
     if (typeof input === 'string' && input.startsWith('/')) {
@@ -567,5 +572,60 @@ describe('ProvidersSettingsPage', () => {
     expect(screen.getByText('Model A')).toBeTruthy()
     expect(screen.getByText('42% used')).toBeTruthy()
     expect(screen.getByText('Live')).toBeTruthy()
+  })
+
+  it('shows active usage and credits for a configured API key provider', async () => {
+    server.use(
+      http.get('http://localhost/api/settings/providers', () => HttpResponse.json({
+        has_any_configured: true,
+        providers: [
+          {
+            id: 'openrouter',
+            label: 'OpenRouter',
+            description: 'OpenRouter provider',
+            kind: 'api_key',
+            credentials: [{ name: 'OPENROUTER_API_KEY', label: 'API Key', secret: true }],
+            saved_credentials: { OPENROUTER_API_KEY: 'sk-or-***' },
+            env_var: 'OPENROUTER_API_KEY',
+            env_vars: [],
+            oauth_command: '',
+            docs_url: '',
+            is_configured: true,
+            is_saved: true,
+            is_reachable: true,
+            cached_models: [],
+            visible_models: [],
+          },
+        ],
+      })),
+      http.post('http://localhost/api/settings/providers/openrouter/models', () => HttpResponse.json({
+        provider: 'openrouter',
+        models: ['openai/gpt-5'],
+        source: 'provider',
+      })),
+      http.get('http://localhost/api/settings/providers/openrouter/usage', () => HttpResponse.json({
+        provider: 'openrouter',
+        limits: [
+          {
+            limit_id: 'openrouter',
+            limit_name: 'OpenRouter Credits',
+            plan_type: 'Pay-as-you-go',
+            credits: {
+              has_credits: true,
+              unlimited: false,
+              balance: '$42.50',
+            },
+          },
+        ],
+      })),
+    )
+
+    renderPage()
+
+    expect(await screen.findByText('OpenRouter')).toBeTruthy()
+    await waitFor(() => expect(screen.getByText('OpenRouter Credits')).toBeTruthy())
+    expect(screen.getByText('Credits available')).toBeTruthy()
+    expect(screen.getByText('$42.50')).toBeTruthy()
+    expect(screen.getByText('Pay-as-you-go')).toBeTruthy()
   })
 })

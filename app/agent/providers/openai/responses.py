@@ -270,7 +270,9 @@ class ResponsesHandler:
         Mutates ``body`` in place.
         """
         thinking_level = merged.get("thinking_level")
-        if thinking_level and thinking_level not in ("none", "off"):
+        if thinking_level in ("none", "off"):
+            body["reasoning"] = {"effort": "none"}
+        elif thinking_level:
             body["reasoning"] = {"effort": thinking_level, "summary": "auto"}
 
     def _extract_call_id_and_name(self, event: dict[str, Any]) -> tuple[str, str]:

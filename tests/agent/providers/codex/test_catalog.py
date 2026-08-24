@@ -5,7 +5,11 @@ import json
 import pytest
 
 from app.agent.providers.codex import catalog
-from app.agent.providers.codex.catalog import model_ids, model_registry_overlay
+from app.agent.providers.codex.catalog import (
+    model_ids,
+    model_registry_overlay,
+    supports_reasoning_summary,
+)
 
 
 def test_model_registry_overlay_uses_default_effective_window_and_ignores_bad_limits() -> (
@@ -49,6 +53,19 @@ def test_model_ids_returns_only_valid_slugs() -> None:
     ) == ["gpt-5.6-sol", "gpt-5.6-terra"]
 
 
+def test_supports_reasoning_summary_uses_live_model_capability() -> None:
+    data = {
+        "models": [
+            {"slug": "gpt-supported", "supports_reasoning_summary_parameter": True},
+            {"slug": "gpt-unsupported", "supports_reasoning_summary_parameter": False},
+        ]
+    }
+
+    assert supports_reasoning_summary(data, "gpt-supported") is True
+    assert supports_reasoning_summary(data, "gpt-unsupported") is False
+    assert supports_reasoning_summary(data, "gpt-unknown") is None
+
+
 def test_load_catalog_reuses_fresh_cache_without_fetch(
     tmp_path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -81,6 +98,7 @@ def test_load_catalog_caches_only_operational_model_metadata(
                     "max_context_window": 272_000,
                     "effective_context_window_percent": 95,
                     "auto_compact_token_limit": 244_800,
+                    "supports_reasoning_summary_parameter": False,
                     "base_instructions": "large provider prompt that is not needed",
                 }
             ],
@@ -99,6 +117,7 @@ def test_load_catalog_caches_only_operational_model_metadata(
                 "max_context_window": 272_000,
                 "effective_context_window_percent": 95,
                 "auto_compact_token_limit": 244_800,
+                "supports_reasoning_summary_parameter": False,
             }
         ]
     }

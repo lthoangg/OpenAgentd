@@ -522,10 +522,13 @@ async def get_providers_usage_summary(
 
 
 @router.get("/providers/{provider_id}/usage")
-async def get_provider_usage(provider_id: str) -> ProviderUsageResponse:
+async def get_provider_usage(
+    provider_id: str,
+    api_key: str | None = None,
+) -> ProviderUsageResponse:
     """Return live provider usage details when the provider exposes them."""
     try:
-        return await load_provider_usage(provider_id)
+        return await load_provider_usage(provider_id, api_key=api_key)
     except ProviderUsageUnsupportedError as exc:
         raise HTTPException(
             status_code=404, detail=f"Usage monitoring unsupported for '{provider_id}'."

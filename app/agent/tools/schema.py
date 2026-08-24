@@ -81,6 +81,52 @@ def resolve_top_level_combinators(schema: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
+def _simplify_nullable(node: Any) -> Any:
+    """Simplify anyOf/allOf with null or single-type wrappers recursively.
+
+    E.g. {"anyOf": [{"type": "string", ...}, {"type": "null"}], "description": "..."}
+    becomes {"type": "string", ..., "description": "..."}.
+    """
+    if isinstance(node, dict):
+        cleaned = {k: _simplify_nullable(v) for k, v in node.items()}
+        any_of = cleaned.get("anyOf")
+        if isinstance(any_of, list) and any_of:
+            non_null_branches = [
+                b
+                for b in any_of
+                if not (
+                    b == {"type": "null"}
+                    or (isinstance(b, dict) and b.get("type") == "null")
+                )
+            ]
+            if len(non_null_branches) == 1 and isinstance(non_null_branches[0], dict):
+                non_null = dict(non_null_branches[0])
+                for k, v in cleaned.items():
+                    if k != "anyOf" and k not in non_null:
+                        non_null[k] = v
+                return non_null
+            elif 0 < len(non_null_branches) < len(any_of):
+                cleaned["anyOf"] = non_null_branches
+                return cleaned
+
+        all_of = cleaned.get("allOf")
+        if (
+            isinstance(all_of, list)
+            and len(all_of) == 1
+            and isinstance(all_of[0], dict)
+        ):
+            single = dict(all_of[0])
+            for k, v in cleaned.items():
+                if k != "allOf" and k not in single:
+                    single[k] = v
+            return single
+
+        return cleaned
+    if isinstance(node, list):
+        return [_simplify_nullable(item) for item in node]
+    return node
+
+
 def sanitize_tool_schema(schema: dict[str, Any] | None) -> dict[str, Any]:
     """Coerce a tool parameter schema into a provider-compatible JSON Schema.
 
@@ -99,4 +145,4 @@ def sanitize_tool_schema(schema: dict[str, Any] | None) -> dict[str, Any]:
     result.pop("$schema", None)
     result.pop("$id", None)
 
-    return _strip_titles(resolve_top_level_combinators(result))
+    return _simplify_nullable(_strip_titles(resolve_top_level_combinators(result)))

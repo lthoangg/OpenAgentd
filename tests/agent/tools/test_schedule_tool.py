@@ -1221,3 +1221,20 @@ def test_max_runs_param_description_explains_bounded_loop():
     params = schedule_task.definition["function"]["parameters"]["properties"]
     mr_desc = params["max_runs"]["description"]
     assert "loop" in mr_desc.lower() or "poll" in mr_desc.lower()
+
+
+@pytest.mark.asyncio
+async def test_schedule_task_accepts_task_slug_alias():
+    with patch("app.scheduler.scheduler.task_scheduler") as mock_sched:
+        mock_task = MagicMock()
+        mock_task.mode = "normal"
+        mock_task.name = "My Task"
+        mock_sched.get_task = AsyncMock(return_value=mock_task)
+        mock_sched.remove = AsyncMock(return_value=True)
+        res = await schedule_task.arun(
+            _injected={"_state": None},
+            action="delete",
+            task_slug="my-slug",
+        )
+        assert "Task 'My Task' deleted." in res
+        mock_sched.remove.assert_awaited_once_with("my-slug")

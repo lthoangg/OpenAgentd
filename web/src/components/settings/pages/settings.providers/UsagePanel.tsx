@@ -243,6 +243,12 @@ function LimitSections({ limit }: { limit: ProviderUsageLimit }) {
   const secondaryDuration = formatWindowDuration(limit.secondary?.window_minutes)
   const spend = limit.spend
   const hasSpendFigures = typeof spend?.limit === 'number' || typeof spend?.used === 'number'
+  const hasBalance = Boolean(limit.credits?.balance)
+  const shouldRenderCredits = Boolean(
+    limit.credits &&
+      (!hasSpendFigures || hasBalance) &&
+      ((!limit.primary && !limit.secondary) || hasBalance),
+  )
   return (
     <>
       {limit.primary && (
@@ -252,7 +258,7 @@ function LimitSections({ limit }: { limit: ProviderUsageLimit }) {
         <UsageRow label={secondaryDuration ? `${base} \u00B7 ${secondaryDuration}` : base} window={limit.secondary} />
       )}
       {spend && hasSpendFigures && <SpendRow label={`${base} \u00B7 Spend cap`} spend={spend} />}
-      {limit.credits && !hasSpendFigures && !limit.primary && !limit.secondary && (
+      {shouldRenderCredits && limit.credits && (
         <CreditsRow label={base} credits={limit.credits} spend={spend} />
       )}
       {!limit.primary && !limit.secondary && !limit.credits && !hasSpendFigures &&

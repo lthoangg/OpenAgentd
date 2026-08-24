@@ -14,7 +14,7 @@
   *   • View mode toggle (Agent / Split)
   *   • Scheduler shortcut button
   *   • ThemeToggle (collapsed 3-way cycler)
-  *   • Help button (Command Palette ⌘P)
+  *   • Help button (Command Palette ⌘⇧P)
  *   • Settings button (Settings modal ⌘,)
  */
 import { memo } from 'react'
@@ -218,7 +218,7 @@ export const AppFooter = memo(function AppFooter({
                 </button>
               }
             />
-            <TooltipContent>{`Help and shortcuts (${formatShortcut('P', os)})`}</TooltipContent>
+            <TooltipContent>{`Help and shortcuts (${formatShortcut('P', os, { shift: true })})`}</TooltipContent>
           </Tooltip>
         )}
 

@@ -862,6 +862,10 @@ class TestRosterManageTool:
             # Coerce JSON-stringified list: '["explorer"]'
             result3 = await tool.arun(action="spawn", members='["explorer"]')
             assert "explorer#2" in result3
+
+            # Coerce singular member param: member="executor"
+            result4 = await tool.arun(action="spawn", member="executor")
+            assert "executor#3" in result4
         finally:
             await team.stop()
 

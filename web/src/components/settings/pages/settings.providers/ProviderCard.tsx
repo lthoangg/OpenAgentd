@@ -72,7 +72,7 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
   })
   const usageQ = useProviderUsageQuery(
     provider.id,
-    provider.kind === 'oauth' && provider.is_configured,
+    provider.is_configured,
   )
 
   const models = useMemo<string[]>(() => {
@@ -112,6 +112,9 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
         setVerifiedKey(trimmedKey)
         if (provider.kind === 'cloud_creds') setVerifiedCloudSignature(cloudSignature)
         setModelsExpanded(true)
+        if (provider.is_configured) {
+          void queryClient.invalidateQueries({ queryKey: queryKeys.settings.providerUsage(provider.id) })
+        }
         push({
           tone: 'success',
           title: 'Connection verified',
@@ -397,21 +400,27 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
         </div>
       )}
 
-      {provider.kind === 'oauth' && provider.is_configured && (
+      {provider.is_configured && (
         <div className="space-y-2 pt-1">
           {usageQ.isLoading ? (
             <p className="inline-flex items-center gap-1 text-[11px] text-(--color-text-subtle) font-mono">
               <Loader2 className="h-3 w-3 animate-spin mr-1" aria-hidden="true" />
               Loading active usage…
             </p>
-          ) : usageQ.data ? (
+          ) : usageQ.data && usageQ.data.limits.length > 0 ? (
             <UsagePanel limits={usageQ.data.limits} updatedAt={usageQ.dataUpdatedAt} />
           ) : usageQ.isError ? (
-            <p className="text-[11px] text-(--color-text-subtle) font-mono">
-              {usageQ.error instanceof ApiValidationError && usageQ.error.status === 404
-                ? 'Usage monitoring is not supported for this OAuth provider yet.'
-                : 'Usage monitor unavailable right now.'}
-            </p>
+            provider.kind === 'oauth' ? (
+              <p className="text-[11px] text-(--color-text-subtle) font-mono">
+                {usageQ.error instanceof ApiValidationError && usageQ.error.status === 404
+                  ? 'Usage monitoring is not supported for this OAuth provider yet.'
+                  : 'Usage monitor unavailable right now.'}
+              </p>
+            ) : usageQ.error instanceof ApiValidationError && usageQ.error.status !== 404 ? (
+              <p className="text-[11px] text-(--color-text-subtle) font-mono">
+                Usage monitor unavailable right now.
+              </p>
+            ) : null
           ) : null}
         </div>
       )}

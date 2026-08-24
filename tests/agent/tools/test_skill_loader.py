@@ -1109,3 +1109,22 @@ class TestSkillDirResolution:
             assert f"Run {expected_abs_path}/scripts/test.sh." in body
         finally:
             _sandbox_ctx.reset(token)
+
+
+@pytest.mark.asyncio
+async def test_load_skill_accepts_aliases(tmp_path, monkeypatch):
+    skills_dir = tmp_path / "skills"
+    skills_dir.mkdir()
+    skill_dir = skills_dir / "my-skill"
+    skill_dir.mkdir()
+    (skill_dir / "SKILL.md").write_text(
+        "---\nname: my-skill\ndescription: desc\n---\nBody here."
+    )
+    monkeypatch.setattr(
+        "app.agent.tools.builtin.skill._iter_skill_roots",
+        lambda: [skills_dir],
+    )
+    res1 = await load_skill.arun(name="my-skill")
+    assert "Body here." in res1
+    res2 = await load_skill.arun(skill="my-skill")
+    assert "Body here." in res2

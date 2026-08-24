@@ -22,7 +22,7 @@ from datetime import datetime
 from typing import Annotated, Any, Literal
 
 from loguru import logger
-from pydantic import BaseModel, Field, model_validator
+from pydantic import AliasChoices, BaseModel, Field, model_validator
 
 from app.agent.tools.registry import InjectedArg, Tool
 
@@ -99,6 +99,7 @@ class ScheduleArgs(BaseModel):
     # ── pause / resume / delete / trigger fields ────────────────────────
     slug: str | None = Field(
         default=None,
+        validation_alias=AliasChoices("slug", "task_slug"),
         description="Task slug for pause, resume, delete, or trigger.",
     )
 

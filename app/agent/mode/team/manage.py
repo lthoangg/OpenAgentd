@@ -41,6 +41,14 @@ class TeamManageArgs(BaseModel):
         ),
     )
 
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_singular_member(cls, values: Any) -> Any:
+        if isinstance(values, dict) and "members" not in values and "member" in values:
+            member = values.pop("member")
+            values["members"] = [member] if member is not None else []
+        return values
+
     @field_validator("members", mode="before")
     @classmethod
     def coerce_members(cls, v: Any) -> Any:

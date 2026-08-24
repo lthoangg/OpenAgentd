@@ -16,6 +16,7 @@ import { useQuery } from '@tanstack/react-query'
 import {
   WORKSPACE_FILES_STALE_MS,
   codingWorkspaceFilesQueryOptions,
+  workspaceFilesQueryOptions,
 } from '@/queries/workspace-files'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { getPlatform } from '@/hooks/use-platform'
@@ -28,7 +29,7 @@ import { VIEW_MODES, type ViewMode } from './types'
 export interface UseCommandPaletteArgs {
   mode: 'normal' | 'coding'
   workspace: string | null
-  paletteOpen: boolean
+  quickOpenOpen: boolean
   sessionIdState: string | null
   viewMode: ViewMode
   setViewMode: Dispatch<SetStateAction<ViewMode>>
@@ -40,6 +41,7 @@ export interface UseCommandPaletteArgs {
   handleToggleAgentCapabilities: () => void
   handleSetShowTodos: Dispatch<SetStateAction<boolean>>
   handleTogglePalette: () => void
+  handleToggleQuickOpen: () => void
   handleToggleScheduler: () => void
   handleOpenTerminal: () => void
 
@@ -47,21 +49,23 @@ export interface UseCommandPaletteArgs {
   setCodingFileViewerDetached: Dispatch<SetStateAction<boolean>>
   setCodingFileOpenKey: Dispatch<SetStateAction<number>>
   setCodingPanel: Dispatch<SetStateAction<null | 'changed' | 'files'>>
+  setShowFilesPanel: Dispatch<SetStateAction<boolean>>
+  setWorkspaceFileViewer: Dispatch<SetStateAction<WorkspaceFileInfo | null>>
 }
 
 export interface UseCommandPaletteResult {
   cycleViewMode: () => void
   paletteCommands: Command[]
-  paletteWorkspaceFiles: WorkspaceFileInfo[]
-  /** The backend listing hit its file cap — surfaced in the palette footer. */
-  paletteFilesTruncated: boolean
-  handlePaletteFileOpen: (file: WorkspaceFileInfo) => void
+  quickOpenWorkspaceFiles: WorkspaceFileInfo[]
+  /** The backend listing hit its file cap — surfaced in the Quick Open footer. */
+  quickOpenFilesTruncated: boolean
+  handleQuickOpenFileOpen: (file: WorkspaceFileInfo) => void
 }
 
 export function useCommandPalette({
   mode,
   workspace,
-  paletteOpen,
+  quickOpenOpen,
   sessionIdState,
   viewMode,
   setViewMode,
@@ -72,12 +76,15 @@ export function useCommandPalette({
   handleToggleAgentCapabilities,
   handleSetShowTodos,
   handleTogglePalette,
+  handleToggleQuickOpen,
   handleToggleScheduler,
   handleOpenTerminal,
   setCodingFileViewer,
   setCodingFileViewerDetached,
   setCodingFileOpenKey,
   setCodingPanel,
+  setShowFilesPanel,
+  setWorkspaceFileViewer,
 }: UseCommandPaletteArgs): UseCommandPaletteResult {
   const isMobile = useIsMobile()
 
@@ -100,29 +107,42 @@ export function useCommandPalette({
     navigate,
   })
 
-  // ── Coding-mode file search in the palette ─────────────────────────────────
+  // ── Quick Open workspace file search ───────────────────────────────────────
   //
-  // Fetch the workspace file listing when the palette is open (coding mode
-  // only). We reuse the same query key as the @-mention picker so the two
+  // Fetch the active workspace file listing when Quick Open is open. We reuse
+  // the same query key as the @-mention picker so the two
   // share a cache entry — no extra network request when both are warm.
-  const isCodingPaletteOpen = mode === 'coding' && Boolean(workspace) && paletteOpen
-  const { data: paletteFilesData } = useQuery({
+  const hasQuickOpenWorkspace = mode === 'coding' ? Boolean(workspace) : Boolean(sessionIdState)
+  const quickOpenQueryOptions = mode === 'coding'
+    ? codingWorkspaceFilesQueryOptions(workspace ?? '')
+    : workspaceFilesQueryOptions(sessionIdState ?? '')
+  const { data: paletteFilesData } = useQuery<
+    { files: WorkspaceFileInfo[]; truncated?: boolean },
+    Error,
+    { files: WorkspaceFileInfo[]; truncated?: boolean },
+    readonly unknown[]
+  >({
     // Must cache the *full* response, not a narrowed { files } object — the
     // coding file tree reads the same entry. See ``workspace-files.ts``.
-    ...codingWorkspaceFilesQueryOptions(workspace ?? ''),
-    enabled: isCodingPaletteOpen,
+    ...quickOpenQueryOptions,
+    enabled: quickOpenOpen && hasQuickOpenWorkspace,
     staleTime: WORKSPACE_FILES_STALE_MS,
   })
 
-  const paletteWorkspaceFiles = isCodingPaletteOpen ? (paletteFilesData?.files ?? []) : []
-  const paletteFilesTruncated = isCodingPaletteOpen && Boolean(paletteFilesData?.truncated)
+  const quickOpenWorkspaceFiles = quickOpenOpen ? (paletteFilesData?.files ?? []) : []
+  const quickOpenFilesTruncated = quickOpenOpen && Boolean(paletteFilesData?.truncated)
 
-  const handlePaletteFileOpen = useCallback((file: WorkspaceFileInfo) => {
+  const handleQuickOpenFileOpen = useCallback((file: WorkspaceFileInfo) => {
+    if (mode !== 'coding') {
+      setWorkspaceFileViewer(file)
+      setShowFilesPanel(true)
+      return
+    }
     setCodingFileViewer(file)
     setCodingFileViewerDetached(false)
     setCodingFileOpenKey((k) => k + 1)
     setCodingPanel((prev) => prev ?? 'files')
-  }, [setCodingFileViewer, setCodingFileViewerDetached, setCodingFileOpenKey, setCodingPanel])
+  }, [mode, setCodingFileViewer, setCodingFileViewerDetached, setCodingFileOpenKey, setCodingPanel, setShowFilesPanel, setWorkspaceFileViewer])
 
   const { os } = getPlatform()
   useHotkeys(
@@ -131,7 +151,8 @@ export function useCommandPalette({
       { hotkey: 'Mod+Shift+A', callback: handleToggleAgentCapabilities, options: { meta: { name: 'Agent capabilities' } } },
       { hotkey: 'Mod+F', callback: handleWorkspaceFiles, options: { meta: { name: 'Workspace files' } } },
       { hotkey: 'Mod+T', callback: () => handleSetShowTodos((v) => !v), options: { enabled: Boolean(sessionIdState), meta: { name: 'Todos' } } },
-      { hotkey: 'Mod+P', callback: handleTogglePalette, options: { enabled: !isMobile, meta: { name: 'Command palette' } } },
+      { hotkey: 'Mod+P', callback: handleToggleQuickOpen, options: { enabled: !isMobile && hasQuickOpenWorkspace, meta: { name: 'Quick Open' } } },
+      { hotkey: 'Mod+Shift+P', callback: handleTogglePalette, options: { enabled: !isMobile, meta: { name: 'Command palette' } } },
       // Normal-mode Mod+B belongs to Sidebar. Only the coding sidebar owns this
       // registration when coding mode is active, preventing duplicate handlers.
       { hotkey: 'Mod+B', callback: handleCodingSidebarToggle, options: { enabled: mode === 'coding', meta: { name: 'Coding sidebar' } } },
@@ -163,8 +184,8 @@ export function useCommandPalette({
   return {
     cycleViewMode,
     paletteCommands,
-    paletteWorkspaceFiles,
-    paletteFilesTruncated,
-    handlePaletteFileOpen,
+    quickOpenWorkspaceFiles,
+    quickOpenFilesTruncated,
+    handleQuickOpenFileOpen,
   }
 }

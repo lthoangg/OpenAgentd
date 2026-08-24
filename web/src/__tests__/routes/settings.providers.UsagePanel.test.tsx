@@ -112,6 +112,37 @@ describe('UsagePanel', () => {
     expect(screen.getByText('$12.50')).toBeTruthy()
   })
 
+  it('renders credit balance alongside spend figures when balance is present', () => {
+    render(
+      <UsagePanel
+        limits={[
+          makeLimit({
+            limit_id: 'openrouter',
+            limit_name: 'OpenRouter (Production)',
+            primary: null,
+            secondary: null,
+            credits: { has_credits: true, unlimited: false, balance: '$84.50' },
+            spend: {
+              reached: false,
+              source: null,
+              limit: 50,
+              used: 15.5,
+              remaining: 34.5,
+              used_percent: 31,
+              resets_at: null,
+            },
+          }),
+        ]}
+      />,
+    )
+    expect(screen.getByText('OpenRouter (Production) \u00B7 Spend cap')).toBeTruthy()
+    expect(screen.getByText('31% used')).toBeTruthy()
+    expect(screen.getByText('15.5 of 50 used \u00B7 34.5 left')).toBeTruthy()
+    expect(screen.getByText('OpenRouter (Production)')).toBeTruthy()
+    expect(screen.getByText('Credits available')).toBeTruthy()
+    expect(screen.getByText('$84.50')).toBeTruthy()
+  })
+
   it('renders unlimited and depleted credits copy', () => {
     const { rerender } = render(
       <UsagePanel limits={[makeLimit({ primary: null, secondary: null, credits: { has_credits: true, unlimited: true, balance: null } })]} />,

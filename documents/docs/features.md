@@ -2,7 +2,7 @@
 title: Features
 description: Canonical, version-cited catalogue of shipped user-visible OpenAgentd features.
 status: stable
-updated: 2026-08-21
+updated: 2026-08-24
 ---
 
 # Features
@@ -14,7 +14,7 @@ release that introduced it (where known). When you ship something new, **add it 
 > double-clickable app that runs a team of AI agents on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 16 providers. Your keys.
 
-**Latest release:** v2.2.1 · August 21, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v2.2.1)
+**Latest release:** v2.3.0 · August 24, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v2.3.0)
 
 ---
 
@@ -80,7 +80,7 @@ run from the terminal.
   a recovery screen with Reload and copyable error details instead of leaving a
   dead webview that must be force-quit.
 - **In-app auto-updater** `[v1.22.0, v1.99.8, v1.115.1]` — bottom-right update card + Settings → About
-  → Updates, cached downloads, install-and-restart, signed minisign payloads,
+  → Updates, cached downloads, install-and-restart, signed minisign payloads, draggable and minimizable floating update card `[v2.3.0]`,
   GitHub release notes rendered inline. Desktop checks at startup and every 6
   hours, including on a foreground return once that interval is due; choosing
   Later suppresses the automatic reminder for the full 6-hour interval in the
@@ -96,11 +96,10 @@ run from the terminal.
   or send a test. Notification sounds are handled by the operating system;
   OpenAgentd does not play an extra in-app sound. Background-process completion
   alerts are deprecated and no longer emitted by app clients.
-- **Command palette** `[since v1.0, v1.61.0]` — `⌘P`/`Ctrl+P`. Search
-  sessions, agents, files, slash commands, settings. Cleaner, faster with a
-  tighter animation and a curated command set that drops low-value entries.
-  Command and file search overlays use the compact warm-paper surface treatment
-  across desktop and mobile `[v1.74.0]`, with expanded desktop width and list height `[v2.0.0]`.
+- **Quick Open and Command Palette** `[v2.3.0]` — `⌘P`/`Ctrl+P` searches and
+  opens files in the active workspace; `⌘⇧P`/`Ctrl+Shift+P` searches app actions.
+  Both use the compact warm-paper search surface, keyboard navigation, and a
+  visible warning when a capped workspace listing omits files.
 - **Fullscreen view mode and traffic-light space reclamation** `[v2.0.0]` — automatically
   detects macOS fullscreen mode and reclaims the window traffic-light header padding to
   maximise message and diff reading area.
@@ -707,6 +706,7 @@ agnostic by design.
   on disk. Connected OAuth providers also offer **Disconnect** in the card body (`DELETE /api/auth/{provider}`) to delete saved OAuth account tokens from disk and log out.
 - **Copilot usage monitor** `[v1.33.0]` — Settings → Providers shows live Copilot
   premium request quota from the saved OAuth token.
+- **API key provider usage and credit monitor** `[v2.3.0]` — Settings → Providers shows live credit balances, key spend caps, and quota limits for configured API key providers (such as OpenRouter and DeepSeek) alongside OAuth providers.
 - **Provider plugin usage hooks** `[v1.33.0]` — OAuth provider plugins can
   surface live usage in the same Settings → Providers panel as built-ins.
 - **Provider-scoped visible models** `[v1.57.0, v1.63.0]` — Settings → Providers lets

@@ -120,7 +120,12 @@ class GeminiProviderBase(LLMProviderBase):
                 parts = []
 
                 if msg.content:
-                    parts.append(Part(text=msg.content))
+                    if msg.tool_calls:
+                        # When tool calls are present, accompanying text represents reasoning/pre-call notes.
+                        # In Gemini API, non-thought text preceding function calls violates turn order.
+                        parts.append(Part(text=msg.content, thought=True))
+                    else:
+                        parts.append(Part(text=msg.content))
 
                 if msg.tool_calls:
                     for tc in msg.tool_calls:
@@ -138,6 +143,11 @@ class GeminiProviderBase(LLMProviderBase):
                                 Part(text=str(tc.function.thought), thought=True)
                             )
 
+                        thought_sig = (
+                            tc.function.thought_signature
+                            or msg.reasoning_signature
+                            or None
+                        )
                         parts.append(
                             Part(
                                 function_call=FunctionCall(
@@ -145,7 +155,7 @@ class GeminiProviderBase(LLMProviderBase):
                                     args=args,
                                     id=tc.id if not tc.id.startswith("call_") else None,
                                 ),
-                                thought_signature=tc.function.thought_signature,
+                                thought_signature=thought_sig,
                             )
                         )
                 elif msg.reasoning_content:
@@ -219,19 +229,33 @@ class GeminiProviderBase(LLMProviderBase):
 
                 contents.append(Content(role="user", parts=tool_parts))
 
-        # Merge consecutive messages with the same role
+        # Merge consecutive messages with the same role ONLY if they are compatible turn types.
+        # Specifically, Gemini API strictly differentiates between:
+        # 1. User prompt turns (text/multimodal parts)
+        # 2. Function response turns (FunctionResponse parts)
+        # Mixing FunctionResponse and Text in the same role="user" Content block creates an invalid
+        # hybrid turn that causes HTTP 400 ("function call turn comes immediately after a user turn or after a function response turn").
         merged_contents: list[Content] = []
         for content in contents:
             if not merged_contents:
                 merged_contents.append(content)
                 continue
-            if content.role == merged_contents[-1].role:
-                merged_contents[-1] = Content(
-                    role=content.role,
-                    parts=list(merged_contents[-1].parts) + list(content.parts),
+            prev = merged_contents[-1]
+            if prev.role == content.role:
+                prev_has_fn = any(p.function_response is not None for p in prev.parts)
+                curr_has_fn = any(
+                    p.function_response is not None for p in content.parts
                 )
+                if prev_has_fn == curr_has_fn:
+                    merged_contents[-1] = Content(
+                        role=content.role,
+                        parts=list(prev.parts) + list(content.parts),
+                    )
+                    continue
             else:
                 merged_contents.append(content)
+                continue
+            merged_contents.append(content)
 
         return merged_contents, system_instruction
 

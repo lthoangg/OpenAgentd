@@ -55,7 +55,7 @@ from pathlib import Path
 from typing import Annotated, Any, BinaryIO
 
 from loguru import logger
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, Field
 
 from app.agent.artifacts import shell_output_dir
 from app.agent.denied_paths import get_denied_paths
@@ -85,13 +85,17 @@ _SHELL_DESCRIPTION = (
 class ShellArgs(BaseModel):
     """Arguments for the shell tool."""
 
-    command: str = Field(description=f"{_SHELL_KIND.capitalize()} command to run.")
+    command: str = Field(
+        validation_alias=AliasChoices("command", "cmd"),
+        description=f"{_SHELL_KIND.capitalize()} command to run.",
+    )
     description: str = Field(
         default="",
         description=("Purpose shown in logs and the activity UI."),
     )
     workdir: str | None = Field(
         default=None,
+        validation_alias=AliasChoices("workdir", "cwd", "dir"),
         description=(
             "Working directory; relative paths resolve inside the workspace, while "
             "absolute paths may run outside it. Prefer this over cd."

@@ -1,7 +1,7 @@
 import { describe, it, expect, afterEach } from "bun:test"
 import { render, screen, cleanup } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import { CommandPalette } from "@/components/CommandPalette"
+import { CommandPalette, QuickOpen } from "@/components/CommandPalette"
 import type { Command } from "@/components/CommandPalette"
 import type { WorkspaceFileInfo } from "@/api/types"
 
@@ -262,22 +262,41 @@ describe("CommandPalette", () => {
     }))
   }
 
-  it("uses unified placeholder when workspaceFiles are provided", () => {
+  it("renders Quick Open as a file-only search", () => {
     render(
-      <CommandPalette
-        commands={makeCommands()}
+      <QuickOpen
         workspaceFiles={makeFiles(['App.tsx'])}
         onFileOpen={() => {}}
         onClose={() => {}}
       />,
     )
-    expect(screen.getByPlaceholderText("Search files and commands…")).toBeTruthy()
+
+    expect(screen.getByPlaceholderText("Search files…")).toBeTruthy()
+    expect(screen.getByText("App.tsx")).toBeTruthy()
+    expect(screen.queryByText("New Chat")).toBeNull()
+  })
+
+  it("keeps the Quick Open file-search affordance when the workspace is empty", () => {
+    render(<QuickOpen workspaceFiles={[]} onFileOpen={() => {}} onClose={() => {}} />)
+
+    expect(screen.getByPlaceholderText("Search files…")).toBeTruthy()
+    expect(screen.getByText(/No files match/)).toBeTruthy()
+  })
+
+  it("uses the Quick Open placeholder", () => {
+    render(
+      <QuickOpen
+        workspaceFiles={makeFiles(['App.tsx'])}
+        onFileOpen={() => {}}
+        onClose={() => {}}
+      />,
+    )
+    expect(screen.getByPlaceholderText("Search files…")).toBeTruthy()
   })
 
   it("renders workspace files under a Files group header", () => {
     render(
-      <CommandPalette
-        commands={[]}
+      <QuickOpen
         workspaceFiles={makeFiles(['App.tsx', 'main.tsx'])}
         onFileOpen={() => {}}
         onClose={() => {}}
@@ -288,24 +307,10 @@ describe("CommandPalette", () => {
     expect(screen.getByText("main.tsx")).toBeTruthy()
   })
 
-  it("regular commands appear before file rows", () => {
-    const { container } = render(
-      <CommandPalette
-        commands={makeCommands()}
-        workspaceFiles={makeFiles(['index.ts'])}
-        onFileOpen={() => {}}
-        onClose={() => {}}
-      />,
-    )
-    const buttons = container.querySelectorAll("button[data-idx]")
-    expect((buttons[0] as HTMLElement).textContent).toContain("New Chat")
-    expect((buttons[buttons.length - 1] as HTMLElement).textContent).toContain("index.ts")
-  })
-
   it("caps file rows at 30 when no query", () => {
     const files = makeFiles(Array.from({ length: 50 }, (_, i) => `file${i}.ts`))
     const { container } = render(
-      <CommandPalette commands={[]} workspaceFiles={files} onFileOpen={() => {}} onClose={() => {}} />,
+      <QuickOpen workspaceFiles={files} onFileOpen={() => {}} onClose={() => {}} />,
     )
     const buttons = container.querySelectorAll("button[data-idx]")
     expect(buttons.length).toBe(30)
@@ -315,7 +320,7 @@ describe("CommandPalette", () => {
     const user = userEvent.setup()
     const files = makeFiles(Array.from({ length: 50 }, (_, i) => `component${i}.tsx`))
     const { container } = render(
-      <CommandPalette commands={[]} workspaceFiles={files} onFileOpen={() => {}} onClose={() => {}} />,
+      <QuickOpen workspaceFiles={files} onFileOpen={() => {}} onClose={() => {}} />,
     )
     // all 50 match "component" but cap applies
     const buttons = container.querySelectorAll("button[data-idx]")
@@ -326,14 +331,13 @@ describe("CommandPalette", () => {
   it("filters files by filename", async () => {
     const user = userEvent.setup()
     render(
-      <CommandPalette
-        commands={[]}
+      <QuickOpen
         workspaceFiles={makeFiles(['App.tsx', 'config.ts'])}
         onFileOpen={() => {}}
         onClose={() => {}}
       />,
     )
-    await user.type(screen.getByPlaceholderText("Search files and commands…"), "App")
+    await user.type(screen.getByPlaceholderText("Search files…"), "App")
     expect(screen.getByText("App.tsx")).toBeTruthy()
     expect(screen.queryByText("config.ts")).toBeNull()
   })
@@ -347,7 +351,7 @@ describe("CommandPalette", () => {
     render(
       <CommandPalette commands={[]} workspaceFiles={files} onFileOpen={() => {}} onClose={() => {}} />,
     )
-    await user.type(screen.getByPlaceholderText("Search files and commands…"), "lib")
+    await user.type(screen.getByPlaceholderText("Search files…"), "lib")
     expect(screen.getByText("utils.ts")).toBeTruthy()
     expect(screen.queryByText("App.tsx")).toBeNull()
   })
@@ -365,7 +369,7 @@ describe("CommandPalette", () => {
       <CommandPalette commands={[]} workspaceFiles={files} onFileOpen={() => {}} onClose={() => {}} />,
     )
     // "dockcom" is not a substring of the path, only an ordered subsequence.
-    await user.type(screen.getByPlaceholderText("Search files and commands…"), "dockcom")
+    await user.type(screen.getByPlaceholderText("Search files…"), "dockcom")
     expect(screen.getByText("docker-compose.yml")).toBeTruthy()
     expect(screen.queryByText("README.md")).toBeNull()
   })
@@ -379,7 +383,7 @@ describe("CommandPalette", () => {
     render(
       <CommandPalette commands={[]} workspaceFiles={files} onFileOpen={() => {}} onClose={() => {}} />,
     )
-    await user.type(screen.getByPlaceholderText("Search files and commands…"), "index.ts")
+    await user.type(screen.getByPlaceholderText("Search files…"), "index.ts")
     // Both contain the subsequence; the exact match must rank first.
     const rows = screen.getAllByRole('button').filter((b) => b.textContent?.includes('.ts'))
     expect(rows[0].textContent).toContain('index.ts')
@@ -413,8 +417,8 @@ describe("CommandPalette", () => {
         onClose={() => {}}
       />,
     )
-    await user.type(screen.getByPlaceholderText("Search files and commands…"), "xyznotfound")
-    expect(screen.getByText(/No files or commands match/)).toBeTruthy()
+    await user.type(screen.getByPlaceholderText("Search files…"), "xyznotfound")
+    expect(screen.getByText(/No files match/)).toBeTruthy()
   })
 
   // ── truncated listing ───────────────────────────────────────────────────────

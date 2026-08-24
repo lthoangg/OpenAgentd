@@ -770,6 +770,14 @@ class TestCodexResponsesHandlerBuildRequest:
 
         assert body["reasoning"] == {"effort": "none"}
 
+    def test_build_request_sends_none_as_explicit_reasoning_effort_for_off(self):
+        handler = _CodexResponsesHandler("gpt-5.4", "https://api.example.com", {})
+        messages = [HumanMessage(content="Hello")]
+
+        body = handler.build_request(messages, None, False, {"thinking_level": "off"})
+
+        assert body["reasoning"] == {"effort": "none"}
+
     def test_build_request_requests_reasoning_summary_for_supported_model(self):
         handler = _CodexResponsesHandler("gpt-5.6-terra", "https://api.example.com", {})
         messages = [HumanMessage(content="Hello")]
@@ -1005,12 +1013,13 @@ class TestCodexProviderInit:
             assert provider.model == "gpt-5.4"
 
     def test_init_includes_default_headers(self):
-        """__init__() includes default headers (Content-Type, User-Agent, originator)."""
+        """__init__() includes default HTTP and SSE headers."""
         with patch("app.agent.providers.codex.codex._load_token") as mock_load:
             mock_load.return_value = ("access_token_123", "account_789")
             provider = CodexProvider(model="gpt-5.4")
 
             assert provider._responses.headers["Content-Type"] == "application/json"
+            assert provider._responses.headers["Accept"] == "text/event-stream"
             assert provider._responses.headers["User-Agent"] == "openagentd/1.0.0"
             assert provider._responses.headers["originator"] == CODEX_ORIGINATOR
 
@@ -1044,6 +1053,9 @@ class TestCodexProviderInit:
 
         assert response.content == "Hi"
         assert route.called
+        request_headers = route.calls[0].request.headers
+        assert request_headers["Accept"] == "text/event-stream"
+        assert request_headers["x-codex-routing-hint"] == "model=gpt-5.4"
         assert provider._responses.client is provider.http_client
         client = provider.http_client
         await provider.aclose()
@@ -1452,7 +1464,43 @@ class TestCodexTurnStateStickyRouting:
         headers = handler._prepare_request_headers({})
 
         assert "x-codex-turn-state" not in headers
+        assert headers["x-codex-routing-hint"] == "model=gpt-5.4"
         assert headers["Authorization"] == "Bearer t"
+
+    def test_routing_hint_includes_the_resolved_service_tier(self):
+        handler = _CodexResponsesHandler(
+            "gpt-5.4", "https://api.example.com", {"Authorization": "Bearer t"}
+        )
+        body = handler.build_request(
+            [HumanMessage(content="Hi")], None, True, {"service_tier": "fast"}
+        )
+
+        assert body["service_tier"] == "priority"
+        assert handler._prepare_request_headers(body)["x-codex-routing-hint"] == (
+            "model=gpt-5.4;tier=priority"
+        )
+
+    def test_reasoning_summary_uses_cached_model_capability(self):
+        with patch(
+            "app.agent.providers.codex.codex.cached_codex_catalog",
+            return_value={
+                "models": [
+                    {
+                        "slug": "gpt-no-summary",
+                        "supports_reasoning_summary_parameter": False,
+                    }
+                ]
+            },
+        ):
+            handler = _CodexResponsesHandler(
+                "gpt-no-summary", "https://api.example.com", {}
+            )
+
+        body = handler.build_request(
+            [HumanMessage(content="Hi")], None, True, {"thinking_level": "high"}
+        )
+
+        assert body["reasoning"] == {"effort": "high"}
 
     def test_turn_state_replays_on_continuation_requests_of_the_same_turn(self):
         handler = _CodexResponsesHandler(

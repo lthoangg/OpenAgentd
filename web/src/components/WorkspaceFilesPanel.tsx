@@ -678,6 +678,7 @@ function PreviewArea({
 interface WorkspaceFilesPanelProps {
   open: boolean
   sessionId: string | null
+  selectedFile?: WorkspaceFileInfo | null
   onClose: () => void
 }
 
@@ -685,7 +686,7 @@ const DEFAULT_WIDTH = 420
 const MIN_WIDTH = 300
 const MAX_WIDTH = 900
 
-export function WorkspaceFilesPanel({ open, sessionId, onClose }: WorkspaceFilesPanelProps) {
+export function WorkspaceFilesPanel({ open, sessionId, selectedFile, onClose }: WorkspaceFilesPanelProps) {
   const isMobile = useIsMobile()
   const prefersReducedMotion = useReducedMotion()
   const { data, isLoading, isError, refetch, isFetching } = useWorkspaceFilesQuery(sessionId)
@@ -693,6 +694,12 @@ export function WorkspaceFilesPanel({ open, sessionId, onClose }: WorkspaceFiles
   const [selectedPath, setSelectedPath] = useState<string | null>(null)
   // Mobile: which pane is active — 'tree' (file list) or 'preview'
   const [mobilePane, setMobilePane] = useState<'tree' | 'preview'>('tree')
+
+  useEffect(() => {
+    if (!selectedFile) return
+    setSelectedPath(selectedFile.path)
+    if (isMobile) setMobilePane('preview')
+  }, [isMobile, selectedFile])
 
   const handleClose = useCallback(() => {
     // On mobile, back-navigate from preview before closing

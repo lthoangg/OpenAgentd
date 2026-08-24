@@ -233,3 +233,16 @@ class TestTeamMessageTool:
         await tool.arun(to='["bob"]', content="Hello again")
         msg4 = await mb.receive("bob")
         assert msg4.content == "[alice]: Hello again"
+
+    async def test_team_message_accepts_aliases(self):
+        """Verify recipient and message/text/body aliases work."""
+        mb = _make_mailbox("alice", "bob")
+        tool = make_team_message_tool(mb, agent_name="alice")
+
+        await tool.arun(recipient="bob", message="Hello via alias")
+        msg = await mb.receive("bob")
+        assert msg.content == "[alice]: Hello via alias"
+
+        await tool.arun(recipients="bob", body="Body alias")
+        msg2 = await mb.receive("bob")
+        assert msg2.content == "[alice]: Body alias"

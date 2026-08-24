@@ -126,6 +126,25 @@ class Question(BaseModel):
         return self
 
 
+def _coerce_questions(value: Any) -> Any:
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return value
+        try:
+            import json
+
+            value = json.loads(text)
+        except (json.JSONDecodeError, ValueError):
+            return value
+    if isinstance(value, dict):
+        if "question" in value:
+            return [value]
+        if "questions" in value:
+            return _coerce_questions(value["questions"])
+    return value
+
+
 class AskUserArgs(BaseModel):
     """Arguments for ``ask_user``."""
 
@@ -134,6 +153,22 @@ class AskUserArgs(BaseModel):
     questions: list[Question] = Field(
         min_length=1, max_length=4, description="Questions to ask, 1-4."
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_args(cls, values: Any) -> Any:
+        if (
+            isinstance(values, dict)
+            and "questions" not in values
+            and "question" in values
+        ):
+            return {"questions": [values]}
+        return values
+
+    @field_validator("questions", mode="before")
+    @classmethod
+    def _coerce(cls, value: Any) -> Any:
+        return _coerce_questions(value)
 
 
 async def _announce(

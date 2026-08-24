@@ -27,6 +27,7 @@ pub const MENU_NEW_WINDOW: &str = "new_window";
 pub const MENU_HOME: &str = "home";
 pub const MENU_CHAT: &str = "chat";
 pub const MENU_CODING: &str = "coding";
+pub const MENU_QUICK_OPEN: &str = "quick_open";
 pub const MENU_COMMAND_PALETTE: &str = "command_palette";
 pub const MENU_SCHEDULER: &str = "scheduler";
 pub const MENU_AGENT_CAPABILITIES: &str = "agent_capabilities";
@@ -149,12 +150,19 @@ pub fn install_desktop_menus(app: &tauri::App) -> Result<()> {
         MenuItem::with_id(app, MENU_CODING, "Coding", true, Some("CmdOrCtrl+Shift+K"))?;
     let file_quit =
         MenuItem::with_id(app, MENU_QUIT, "Quit OpenAgentd", true, Some("CmdOrCtrl+Q"))?;
+    let view_quick_open = MenuItem::with_id(
+        app,
+        MENU_QUICK_OPEN,
+        "Quick Open…",
+        true,
+        Some("CmdOrCtrl+P"),
+    )?;
     let view_command_palette = MenuItem::with_id(
         app,
         MENU_COMMAND_PALETTE,
         "Command Palette…",
         true,
-        Some("CmdOrCtrl+P"),
+        Some("CmdOrCtrl+Shift+P"),
     )?;
     let view_scheduler = MenuItem::with_id(
         app,
@@ -245,6 +253,7 @@ pub fn install_desktop_menus(app: &tauri::App) -> Result<()> {
         .item(&view_zoom_out)
         .item(&view_zoom_reset)
         .separator()
+        .item(&view_quick_open)
         .item(&view_command_palette)
         .item(&view_scheduler)
         .item(&view_agent_capabilities)
@@ -449,6 +458,7 @@ pub fn handle_desktop_menu(app: &AppHandle, id: &str) {
         MENU_HOME => navigate_main_window(app, "/"),
         MENU_CHAT => navigate_main_window(app, "/cockpit"),
         MENU_CODING => navigate_main_window(app, "/coding"),
+        MENU_QUICK_OPEN => emit_frontend_command(app, "quick_open"),
         MENU_COMMAND_PALETTE => emit_frontend_command(app, "command_palette"),
         MENU_SCHEDULER => emit_frontend_command(app, "scheduler"),
         MENU_AGENT_CAPABILITIES => emit_frontend_command(app, "agent_capabilities"),

@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { motion, useDragControls, type PanInfo } from 'framer-motion'
+import { AlertCircle, Download, GripVertical, Loader2, Maximize2, Minus } from 'lucide-react'
 import { checkForUpdates as invokeCheckForUpdates, downloadUpdate as invokeDownloadUpdate, fetchReleaseNotes, installUpdate as invokeInstallUpdate, type ReleaseNotes, type UpdateStatus } from '@/lib/updater'
 import { openExternalUrl } from '@/lib/open-external'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { LazyMarkdownBlock } from '@/utils/LazyMarkdownBlock'
 import { getPlatform } from '@/hooks/use-platform'
+import { cn } from '@/lib/utils'
 
 const CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000
 
@@ -28,6 +31,9 @@ async function listenUpdaterEvents(callbacks: {
 export function UpdateCard() {
   const [status, setStatus] = useState<UpdateStatus>({ status: 'idle' })
   const [tauriReady, setTauriReady] = useState(false)
+  const [minimized, setMinimized] = useState(false)
+  const [offset, setOffset] = useState({ x: 0, y: 0 })
+  const dragControls = useDragControls()
   const [initialAutomaticCheckAt] = useState(() => Date.now())
   const dismissedUntilNextCheckRef = useRef(false)
   const nextAutomaticCheckAtRef = useRef(initialAutomaticCheckAt)
@@ -97,6 +103,24 @@ export function UpdateCard() {
       if (restartTimeoutRef.current) clearTimeout(restartTimeoutRef.current)
       restartTimeoutRef.current = undefined
     }
+  }, [])
+
+  const handleLater = useCallback(() => {
+    const dismissedUntil = Date.now() + CHECK_INTERVAL_MS
+    dismissedUntilNextCheckRef.current = true
+    scheduleNextAutomaticCheck(dismissedUntil)
+    setStatus({ status: 'idle' })
+  }, [scheduleNextAutomaticCheck])
+
+  const handleDragEnd = useCallback((_: unknown, info: PanInfo) => {
+    setOffset((prev) => ({
+      x: prev.x + info.offset.x,
+      y: prev.y + info.offset.y,
+    }))
+  }, [])
+
+  const resetPosition = useCallback(() => {
+    setOffset({ x: 0, y: 0 })
   }, [])
 
   useEffect(() => {
@@ -172,50 +196,168 @@ export function UpdateCard() {
   if (status.status === 'up_to_date' && !status.message) return null
 
   return (
-    <aside className="mobile-safe-floating fixed z-50 w-auto max-w-sm rounded-sm border border-(--color-border) bg-(--bg-card) p-4 text-sm text-(--color-text) shadow-md sm:left-auto sm:w-full" aria-live="polite">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <div className="font-medium">{titleForStatus(status)}</div>
-          <div className="mt-1 text-xs text-(--color-text-muted)">{descriptionForStatus(status)}</div>
-        </div>
-        <Button
-          type="button"
-          variant="ghost"
-          size="xs"
-          onClick={() => {
-            const dismissedUntil = Date.now() + CHECK_INTERVAL_MS
-            dismissedUntilNextCheckRef.current = true
-            scheduleNextAutomaticCheck(dismissedUntil)
-            setStatus({ status: 'idle' })
-          }}
-        >
-          Later
-        </Button>
-      </div>
+    <aside
+      className="mobile-safe-floating fixed z-50 pointer-events-none flex justify-end"
+      aria-live="polite"
+    >
+      <motion.div
+        drag
+        dragListener={false}
+        dragControls={dragControls}
+        dragMomentum={false}
+        dragElastic={0}
+        onDragEnd={handleDragEnd}
+        animate={{ x: offset.x, y: offset.y }}
+        transition={{ type: 'spring', stiffness: 380, damping: 32 }}
+        style={{ touchAction: 'none' }}
+        className={cn(
+          'pointer-events-auto border border-(--color-border) bg-(--bg-card) text-sm text-(--color-text) shadow-lg backdrop-blur-xs transition-[width,padding,border-radius] duration-200',
+          minimized
+            ? 'w-auto rounded-full px-3 py-1.5'
+            : 'w-auto max-w-sm rounded-md p-4 sm:w-full sm:max-w-sm'
+        )}
+      >
+        {minimized ? (
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              aria-label="Drag update notification (double-click to reset position)"
+              title="Drag to move · Double-click to reset"
+              onPointerDown={(e) => dragControls.start(e)}
+              onDoubleClick={resetPosition}
+              className="cursor-grab active:cursor-grabbing p-0.5 rounded-xs text-(--color-text-muted) hover:text-(--color-text) hover:bg-(--bg-key)/60 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-(--focus-ring)"
+            >
+              <GripVertical className="size-3.5" />
+            </button>
 
-        {status.version && (status.status === 'available' || status.status === 'downloaded') ? <ReleaseNotesButton fallbackNotes={status.notes} version={status.version} /> : null}
+            <button
+              type="button"
+              className="flex items-center gap-1.5 text-xs text-(--color-text) hover:text-(--color-text-2) transition-colors cursor-pointer select-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-(--focus-ring) rounded-xs px-1"
+              onClick={() => setMinimized(false)}
+              title="Click to expand update details"
+            >
+              {statusIcon(status)}
+              <span className="font-medium">{minimizedLabel(status)}</span>
+            </button>
 
+            {status.status === 'available' && (
+              <Button type="button" variant="primary" size="xs" onClick={() => void downloadUpdate()}>
+                Download
+              </Button>
+            )}
+            {status.status === 'downloaded' && (
+              <Button type="button" variant="primary" size="xs" onClick={() => void installUpdate()}>
+                Install
+              </Button>
+            )}
+            {status.status === 'error' && (
+              <Button type="button" variant="default" size="xs" onClick={() => void checkForUpdates(false)}>
+                Retry
+              </Button>
+            )}
 
-      {status.status === 'downloading' ? (
-        <div className="mt-3">
-          <div className="h-2 overflow-hidden rounded-full bg-(--bg-page)">
-            <div className="h-full rounded-full bg-(--color-accent) transition-all" style={{ width: `${progress ?? 10}%` }} />
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              onClick={() => setMinimized(false)}
+              title="Expand"
+              aria-label="Expand"
+            >
+              <Maximize2 className="size-3.5" />
+            </Button>
+
+            <Button
+              type="button"
+              variant="ghost"
+              size="xs"
+              onClick={handleLater}
+              title="Remind me later"
+            >
+              Later
+            </Button>
           </div>
-          <div className="mt-1 text-xs text-(--color-text-muted)">{formatBytes(status.downloaded_bytes)}{status.total_bytes ? ` / ${formatBytes(status.total_bytes)}` : ''}</div>
-        </div>
-      ) : null}
+        ) : (
+          <div>
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-start gap-2">
+                <button
+                  type="button"
+                  aria-label="Drag update notification (double-click to reset position)"
+                  title="Drag to move · Double-click to reset"
+                  onPointerDown={(e) => dragControls.start(e)}
+                  onDoubleClick={resetPosition}
+                  className="cursor-grab active:cursor-grabbing p-0.5 rounded-xs text-(--color-text-muted) hover:text-(--color-text) hover:bg-(--bg-key)/60 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-(--focus-ring) mt-0.5"
+                >
+                  <GripVertical className="size-3.5" />
+                </button>
+                <div>
+                  <div className="font-medium">{titleForStatus(status)}</div>
+                  <div className="mt-1 text-xs text-(--color-text-muted)">{descriptionForStatus(status)}</div>
+                </div>
+              </div>
 
-      <div className="mt-4 flex justify-end gap-2">
-        {status.status === 'error' ? (
-          <Button type="button" variant="default" size="sm" onClick={() => void checkForUpdates(false)}>Try again</Button>
-        ) : null}
-        {status.status === 'available' ? (
-          <Button type="button" variant="primary" size="sm" onClick={() => void downloadUpdate()}>Download</Button>
-        ) : null}
-        {status.status === 'downloaded' ? (
-          <Button type="button" variant="primary" size="sm" onClick={() => void installUpdate()}>Install and restart</Button>
-        ) : null}
-      </div>
+              <div className="flex items-center gap-1 shrink-0">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-xs"
+                  onClick={() => setMinimized(true)}
+                  title="Minimize"
+                  aria-label="Minimize"
+                >
+                  <Minus className="size-3.5" />
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="xs"
+                  onClick={handleLater}
+                  title="Remind me later"
+                >
+                  Later
+                </Button>
+              </div>
+            </div>
+
+            {status.version && (status.status === 'available' || status.status === 'downloaded') ? (
+              <div className="pl-6">
+                <ReleaseNotesButton fallbackNotes={status.notes} version={status.version} />
+              </div>
+            ) : null}
+
+            {status.status === 'downloading' ? (
+              <div className="mt-3 pl-6">
+                <div className="h-2 overflow-hidden rounded-full bg-(--bg-page)">
+                  <div className="h-full rounded-full bg-(--color-accent) transition-all" style={{ width: `${progress ?? 10}%` }} />
+                </div>
+                <div className="mt-1 text-xs text-(--color-text-muted)">
+                  {formatBytes(status.downloaded_bytes)}
+                  {status.total_bytes ? ` / ${formatBytes(status.total_bytes)}` : ''}
+                </div>
+              </div>
+            ) : null}
+
+            <div className="mt-4 flex justify-end gap-2">
+              {status.status === 'error' ? (
+                <Button type="button" variant="default" size="sm" onClick={() => void checkForUpdates(false)}>
+                  Try again
+                </Button>
+              ) : null}
+              {status.status === 'available' ? (
+                <Button type="button" variant="primary" size="sm" onClick={() => void downloadUpdate()}>
+                  Download
+                </Button>
+              ) : null}
+              {status.status === 'downloaded' ? (
+                <Button type="button" variant="primary" size="sm" onClick={() => void installUpdate()}>
+                  Install and restart
+                </Button>
+              ) : null}
+            </div>
+          </div>
+        )}
+      </motion.div>
     </aside>
   )
 }
@@ -238,7 +380,8 @@ function ReleaseNotesButton({ fallbackNotes, version }: { fallbackNotes?: string
   return (
     <>
       <button
-        className="mt-3 text-xs font-medium text-(--color-accent) underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)"
+        type="button"
+        className="mt-2 text-xs font-medium text-(--color-accent) underline-offset-4 hover:underline hover:text-(--color-accent)/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) transition-colors cursor-pointer"
         onClick={() => void openNotes()}
       >
         See release notes
@@ -280,6 +423,27 @@ function ReleaseNotesButton({ fallbackNotes, version }: { fallbackNotes?: string
       </Dialog>
     </>
   )
+}
+
+function statusIcon(status: UpdateStatus) {
+  if (status.status === 'downloading' || status.status === 'installing' || status.status === 'checking') {
+    return <Loader2 className="size-3.5 animate-spin text-(--color-text-muted)" />
+  }
+  if (status.status === 'error') {
+    return <AlertCircle className="size-3.5 text-(--color-error)" />
+  }
+  return <Download className="size-3.5 text-(--color-accent)" />
+}
+
+function minimizedLabel(status: UpdateStatus): string {
+  if (status.status === 'checking') return 'Checking updates…'
+  if (status.status === 'available') return `Update ${status.version ?? ''}`
+  if (status.status === 'downloading') return 'Downloading update…'
+  if (status.status === 'downloaded') return `Ready to install (${status.version ?? ''})`
+  if (status.status === 'installing') return 'Installing…'
+  if (status.status === 'up_to_date') return 'Up to date'
+  if (status.status === 'error') return 'Update failed'
+  return 'Update'
 }
 
 function titleForStatus(status: UpdateStatus): string {

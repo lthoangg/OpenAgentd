@@ -789,8 +789,11 @@ class LspManager:
         # Read file content once and share it across all servers.
         try:
             uri, content = await asyncio.to_thread(_read_diagnostics_file, file_path)
+        except FileNotFoundError:
+            logger.debug("LSP diagnostics skipped, file not found: {}", file_path)
+            return []
         except Exception as e:
-            logger.error("Failed to read file for LSP diagnostics: {}", e)
+            logger.warning("Failed to read file for LSP diagnostics: {}", e)
             return []
 
         # Query every server for this language concurrently (Python: ty + ruff)

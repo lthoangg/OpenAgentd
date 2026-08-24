@@ -7,6 +7,7 @@ function resetUIStore(): void {
     schedulerOpen: false,
     agentCapabilitiesOpen: false,
     paletteOpen: false,
+    quickOpenOpen: false,
   })
 }
 
@@ -40,13 +41,25 @@ describe('useUIStore utility modals', () => {
     expect(useUIStore.getState().agentCapabilitiesOpen).toBe(false)
   })
 
-  it('closeAll resets all three panels', () => {
-    useUIStore.setState({ schedulerOpen: true, agentCapabilitiesOpen: true, paletteOpen: true })
+  it('keeps Quick Open and the Command Palette mutually exclusive', () => {
+    useUIStore.getState().toggleQuickOpen()
+    expect(useUIStore.getState().quickOpenOpen).toBe(true)
+
+    useUIStore.getState().togglePalette()
+    expect(useUIStore.getState()).toMatchObject({
+      quickOpenOpen: false,
+      paletteOpen: true,
+    })
+  })
+
+  it('closeAll resets all utility panels', () => {
+    useUIStore.setState({ schedulerOpen: true, agentCapabilitiesOpen: true, paletteOpen: true, quickOpenOpen: true })
     useUIStore.getState().closeAll()
     expect(useUIStore.getState()).toMatchObject({
       schedulerOpen: false,
       agentCapabilitiesOpen: false,
       paletteOpen: false,
+      quickOpenOpen: false,
     })
   })
 })

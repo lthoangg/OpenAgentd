@@ -1,10 +1,8 @@
 /**
- * CommandPalette — ⌘P / Ctrl+P unified search overlay.
+ * CommandPalette — ⌘⇧P / Ctrl+Shift+P action search overlay.
  *
- * Shows a searchable list of commands and (in coding mode) workspace files.
- * Each command has a label, description, keyboard shortcut hint, and an action
- * callback. File items are injected as a "Files" group that appears first.
- * Activated/dismissed from the parent via the `onClose` prop.
+ * QuickOpen, exported below, owns the file-only ⌘P / Ctrl+P workflow. Both
+ * surfaces reuse the same searchable overlay and keyboard navigation.
  */
 
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
@@ -32,6 +30,17 @@ const MAX_FILE_ROWS = 30
 interface CommandPaletteProps {
   commands: Command[]
   onClose: () => void
+  /** @deprecated Use QuickOpen for file search. */
+  workspaceFiles?: WorkspaceFileInfo[]
+  /** @deprecated Use QuickOpen for file search. */
+  filesTruncated?: boolean
+  /** @deprecated Use QuickOpen for file search. */
+  onFileOpen?: (file: WorkspaceFileInfo) => void
+}
+
+interface PaletteOverlayProps {
+  commands: Command[]
+  onClose: () => void
   /** Raw workspace files (coding mode only). Filtered + capped inside. */
   workspaceFiles?: WorkspaceFileInfo[]
   /**
@@ -44,7 +53,30 @@ interface CommandPaletteProps {
   onFileOpen?: (file: WorkspaceFileInfo) => void
 }
 
-export function CommandPalette({ commands, onClose, workspaceFiles = [], filesTruncated = false, onFileOpen }: CommandPaletteProps) {
+interface QuickOpenProps {
+  workspaceFiles: WorkspaceFileInfo[]
+  filesTruncated?: boolean
+  onFileOpen: (file: WorkspaceFileInfo) => void
+  onClose: () => void
+}
+
+export function QuickOpen({ workspaceFiles, filesTruncated = false, onFileOpen, onClose }: QuickOpenProps) {
+  return (
+    <PaletteOverlay
+      commands={[]}
+      workspaceFiles={workspaceFiles}
+      filesTruncated={filesTruncated}
+      onFileOpen={onFileOpen}
+      onClose={onClose}
+    />
+  )
+}
+
+export function CommandPalette({ commands, onClose, workspaceFiles, filesTruncated, onFileOpen }: CommandPaletteProps) {
+  return <PaletteOverlay commands={commands} workspaceFiles={workspaceFiles} filesTruncated={filesTruncated} onFileOpen={onFileOpen} onClose={onClose} />
+}
+
+function PaletteOverlay({ commands, onClose, workspaceFiles = [], filesTruncated = false, onFileOpen }: PaletteOverlayProps) {
   const [query, setQuery] = useState('')
   const [debouncedQuery, setDebouncedQuery] = useState('')
   const updateDebouncedQuery = useDebouncedCallback(
@@ -77,7 +109,9 @@ export function CommandPalette({ commands, onClose, workspaceFiles = [], filesTr
   // substring match deliberately — command labels are a small, curated set the
   // user is scanning visually, and fuzzy matching a 20-item list mostly just
   // surfaces surprising rows.
-  const hasFiles = workspaceFiles.length > 0 && Boolean(onFileOpen)
+  // Quick Open remains a file-search surface even before an empty workspace
+  // returns its first file; presence of the file callback identifies it.
+  const hasFiles = Boolean(onFileOpen)
 
   type FileRow = { type: 'file'; file: WorkspaceFileInfo; idx: number }
   type CmdRow  = { type: 'header'; label: string } | { type: 'cmd'; cmd: Command; idx: number }
@@ -189,7 +223,7 @@ export function CommandPalette({ commands, onClose, workspaceFiles = [], filesTr
     <AppOverlay
       open={true}
       onClose={onClose}
-      label="Command palette"
+      label={hasFiles ? 'Quick Open' : 'Command palette'}
       variant="palette"
     >
       <div onKeyDown={handleKeyDown}>
@@ -200,9 +234,9 @@ export function CommandPalette({ commands, onClose, workspaceFiles = [], filesTr
               ref={inputRef}
               value={query}
               onChange={(e) => handleQueryChange(e.target.value)}
-              placeholder={hasFiles ? 'Search files and commands…' : 'Search commands…'}
+              placeholder={hasFiles ? 'Search files…' : 'Search commands…'}
               className="min-w-0 flex-1 bg-transparent text-xs text-(--color-text) placeholder-(--color-text-muted)/60 outline-none md:text-sm"
-              aria-label="Search commands"
+              aria-label={hasFiles ? 'Search files' : 'Search commands'}
             />
             {query && (
               <button
@@ -219,7 +253,7 @@ export function CommandPalette({ commands, onClose, workspaceFiles = [], filesTr
             {totalCount === 0 ? (
               <div className="flex flex-col items-center justify-center gap-1 px-4 py-8 text-center" role="status">
                 <p className="text-xs text-(--color-text-muted)">
-                  No {hasFiles ? 'files or commands' : 'commands'} match "{query}"
+                  No {hasFiles ? 'files' : 'commands'} match "{query}"
                 </p>
                 <p className="text-[11px] text-(--color-text-subtle)">Try searching for another keyword or path</p>
               </div>

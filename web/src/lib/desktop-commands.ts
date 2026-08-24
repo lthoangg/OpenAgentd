@@ -19,8 +19,11 @@ interface NotificationClickPayload {
 
 function runDesktopCommand(command: unknown): void {
   switch (command) {
-    case 'command_palette':
+    case 'quick_open':
       dispatchShortcutKey('p', getPlatform().os)
+      break
+    case 'command_palette':
+      dispatchShortcutKey('p', getPlatform().os, { shift: true })
       break
     case 'scheduler':
       useUIStore.getState().toggleScheduler()

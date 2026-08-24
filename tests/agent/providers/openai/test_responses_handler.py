@@ -519,21 +519,25 @@ class TestResponsesHandler:
         )
         assert body["reasoning"]["effort"] == "high"
 
-    def test_build_request_thinking_level_none_omits_reasoning(self, handler):
-        """thinking_level: 'none' → no reasoning."""
+    def test_build_request_thinking_level_none_maps_to_reasoning_effort_none(
+        self, handler
+    ):
+        """thinking_level: 'none' → reasoning: {effort: 'none'} without summary."""
         messages = [HumanMessage(content="Hello")]
         body = handler.build_request(
             messages, tools=None, stream=False, merged={"thinking_level": "none"}
         )
-        assert "reasoning" not in body
+        assert body["reasoning"] == {"effort": "none"}
 
-    def test_build_request_thinking_level_off_omits_reasoning(self, handler):
-        """thinking_level: 'off' → no reasoning."""
+    def test_build_request_thinking_level_off_maps_to_reasoning_effort_none(
+        self, handler
+    ):
+        """thinking_level: 'off' → reasoning: {effort: 'none'} without summary."""
         messages = [HumanMessage(content="Hello")]
         body = handler.build_request(
             messages, tools=None, stream=False, merged={"thinking_level": "off"}
         )
-        assert "reasoning" not in body
+        assert body["reasoning"] == {"effort": "none"}
 
     def test_build_request_no_thinking_level_omits_reasoning(self, handler):
         """No thinking_level → no reasoning."""

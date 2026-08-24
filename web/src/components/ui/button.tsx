@@ -13,8 +13,8 @@ import { cn } from '@/lib/utils'
 
 const BASE = [
   'inline-flex shrink-0 items-center justify-center gap-1.5',
-  'border font-medium whitespace-nowrap select-none',
-  'transition-colors focus-visible:outline-none',
+  'border font-medium whitespace-nowrap select-none cursor-pointer',
+  'transition-all duration-150 ease-out focus-visible:outline-none',
   'focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40',
   'disabled:cursor-not-allowed disabled:opacity-50',
   '[&_svg]:pointer-events-none [&_svg]:shrink-0',
@@ -25,43 +25,43 @@ const VARIANT: Record<string, string> = {
   default: [
     'border-(--color-border) bg-(--bg-card)',
     'text-(--color-text)',
-    'hover:bg-(--bg-key)/25',
+    'hover:bg-(--bg-key)/60 hover:border-(--color-border-strong) hover:shadow-xs',
     'active:bg-(--bg-key)/50',
   ].join(' '),
   subtle: [
     'border-(--color-border) bg-(--bg-card)',
     'text-(--color-text-muted)',
-    'hover:text-(--color-text-2) hover:bg-(--bg-key)/20',
+    'hover:text-(--color-text-2) hover:bg-(--bg-key)/40 hover:border-(--color-border-strong)',
     'active:bg-(--bg-key)/40',
   ].join(' '),
   primary: [
     'border-(--color-border-strong) bg-(--bg-key)',
     'text-(--color-text)',
-    'hover:bg-(--color-surface-2) hover:border-(--color-border-strong)',
+    'hover:bg-(--color-surface-2) hover:border-(--color-border-strong) hover:shadow-xs',
     'active:bg-(--color-surface-2)/80',
   ].join(' '),
   ghost: [
     'border-transparent bg-transparent',
     'text-(--color-text-muted)',
-    'hover:bg-(--bg-key)/40 hover:text-(--color-text)',
+    'hover:bg-(--bg-key)/50 hover:text-(--color-text)',
     'active:bg-(--bg-key)/70',
   ].join(' '),
   danger: [
     'border-(--color-error)/20 bg-(--color-error-subtle)',
     'text-(--color-error)',
-    'hover:bg-(--color-error)/15 hover:border-(--color-error)/35',
+    'hover:bg-(--color-error)/20 hover:border-(--color-error)/40',
     'active:bg-(--color-error)/20',
   ].join(' '),
   'danger-subtle': [
     'border-(--color-border) bg-(--bg-card)',
     'text-(--color-error)',
-    'hover:bg-(--color-error)/10 hover:border-(--color-error)/25',
+    'hover:bg-(--color-error)/10 hover:border-(--color-error)/25 hover:shadow-xs',
     'active:bg-(--color-error)/15',
   ].join(' '),
   link: [
     'border-transparent bg-transparent',
     'text-(--accent-blue-text) underline-offset-4',
-    'hover:underline',
+    'hover:underline hover:text-(--accent-blue-text)/80',
   ].join(' '),
 }
 

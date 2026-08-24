@@ -770,6 +770,14 @@ class TestCodexResponsesHandlerBuildRequest:
 
         assert body["reasoning"] == {"effort": "none"}
 
+    def test_build_request_sends_none_as_explicit_reasoning_effort_for_off(self):
+        handler = _CodexResponsesHandler("gpt-5.4", "https://api.example.com", {})
+        messages = [HumanMessage(content="Hello")]
+
+        body = handler.build_request(messages, None, False, {"thinking_level": "off"})
+
+        assert body["reasoning"] == {"effort": "none"}
+
     def test_build_request_requests_reasoning_summary_for_supported_model(self):
         handler = _CodexResponsesHandler("gpt-5.6-terra", "https://api.example.com", {})
         messages = [HumanMessage(content="Hello")]

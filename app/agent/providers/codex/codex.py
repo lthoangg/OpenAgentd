@@ -87,12 +87,13 @@ class _CodexResponsesHandler(ResponsesHandler):
     def customize_thinking(self, merged: dict[str, Any], body: dict[str, Any]) -> None:
         """Send effort and request readable summaries on supported Codex models."""
         thinking_level = merged.get("thinking_level")
-        if thinking_level == "off":
+        if thinking_level in ("none", "off"):
+            body["reasoning"] = {"effort": "none"}
             return
         if not thinking_level:
             thinking_level = "medium"
         reasoning: dict[str, Any] = {"effort": thinking_level}
-        if thinking_level != "none" and self.model not in _NO_REASONING_SUMMARY_MODELS:
+        if self.model not in _NO_REASONING_SUMMARY_MODELS:
             reasoning["summary"] = "auto"
         body["reasoning"] = reasoning
 

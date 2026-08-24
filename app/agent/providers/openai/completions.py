@@ -267,7 +267,9 @@ class CompletionsHandler:
         Mutates ``body`` in place.
         """
         thinking_level = merged.get("thinking_level")
-        if thinking_level and thinking_level not in ("none", "off"):
+        if thinking_level in ("none", "off"):
+            body["reasoning_effort"] = "none"
+        elif thinking_level:
             body["reasoning_effort"] = thinking_level
 
     # ------------------------------------------------------------------

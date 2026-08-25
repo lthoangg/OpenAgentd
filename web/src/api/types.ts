@@ -240,6 +240,7 @@ export interface TeamHistoryResponse {
     name: string
     session_id: string
     messages: MessageResponse[]
+    running?: boolean
   }>
   has_more: boolean
   next_cursor: string | null

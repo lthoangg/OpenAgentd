@@ -24,12 +24,12 @@ import { queryKeys } from './keys'
 
 export const TEAM_AGENTS_STALE_MS = 30_000
 
-export function teamAgentsQueryOptions(workspace?: string | null) {
+export function teamAgentsQueryOptions(workspace?: string | null, sessionId?: string | null) {
   return {
-    queryKey: queryKeys.teamAgents(workspace),
+    queryKey: [...queryKeys.teamAgents(workspace), sessionId ?? ''],
     queryFn: (): Promise<TeamAgentsResponse> => {
       if (!workspace) throw new Error('Coding workspace is required')
-      return listTeamAgents(workspace)
+      return listTeamAgents(workspace, sessionId)
     },
     // Baseline freshness policy lives here so every consumer of this shared
     // entry inherits it. `staleTime` is per-observer in TanStack Query, so a

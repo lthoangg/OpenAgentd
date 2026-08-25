@@ -3191,4 +3191,79 @@ describe("ghost message regression: done event after /undo", () => {
     expect(currentBlocks).toHaveLength(1)
     expect(currentBlocks[0].id).toBe("msg-server-1")
   })
+
+  it("restores running state for members on loadSession and keeps isTeamWorking=true", async () => {
+    mockTeamHistory.mockResolvedValueOnce({
+      lead: {
+        id: "sess-running",
+        title: "Test",
+        agent_name: "lead",
+        running: false,
+        messages: [],
+      },
+      members: [
+        {
+          name: "worker",
+          session_id: "worker-sess",
+          messages: [],
+          running: true,
+        },
+      ],
+      has_more: false,
+      next_cursor: null,
+    })
+
+    await useTeamStore.getState().loadSession("sess-running")
+
+    const state = useTeamStore.getState()
+    expect(state.isTeamWorking).toBe(true)
+    expect(state.agentStreams.worker?.status).toBe("working")
+  })
+
+  it("deduplicates inbox SSE events against existing blocks and currentBlocks", () => {
+    useTeamStore.setState({
+      sessionId: "session-a",
+      leadName: "lead",
+      isTeamWorking: true,
+      agentStreams: {
+        worker: makeStream({
+          status: "working" as const,
+          blocks: [
+            { id: "inbox-1", type: "user", content: "task from lead", extra: { from_agent: "lead" }, timestamp: new Date() },
+          ],
+          currentBlocks: [],
+        }),
+      },
+    })
+
+    // Same message arrives via inbox SSE
+    useTeamStore.getState()._handleSSEEvent("inbox", {
+      agent: "worker",
+      id: "inbox-1",
+      content: "task from lead",
+      from_agent: "lead",
+    })
+
+    // Must not duplicate in currentBlocks
+    expect(useTeamStore.getState().agentStreams.worker.currentBlocks).toHaveLength(0)
+
+    // New message arrives
+    useTeamStore.getState()._handleSSEEvent("inbox", {
+      agent: "worker",
+      id: "inbox-2",
+      content: "new task",
+      from_agent: "lead",
+    })
+    expect(useTeamStore.getState().agentStreams.worker.currentBlocks).toHaveLength(1)
+    expect(useTeamStore.getState().agentStreams.worker.currentBlocks[0].id).toBe("inbox-2")
+
+    // Duplicate SSE event for the new message
+    useTeamStore.getState()._handleSSEEvent("inbox", {
+      agent: "worker",
+      id: "inbox-2",
+      content: "new task",
+      from_agent: "lead",
+    })
+    expect(useTeamStore.getState().agentStreams.worker.currentBlocks).toHaveLength(1)
+  })
 })

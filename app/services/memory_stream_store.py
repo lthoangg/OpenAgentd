@@ -15,7 +15,7 @@ subscribers must share this process-local store.
 from __future__ import annotations
 
 import asyncio
-from typing import Any, AsyncGenerator
+from typing import Any, AsyncGenerator, Literal, cast
 
 from loguru import logger
 
@@ -486,6 +486,14 @@ def running_session_ids() -> set[str]:
     return {session_id for session_id, state in _turns.items() if state.is_streaming}
 
 
+def get_agent_statuses(session_id: str) -> dict[str, str]:
+    """Return latest known lifecycle status per agent for an in-flight turn."""
+    state = _turns.get(session_id)
+    if state is None or not state.is_streaming:
+        return {}
+    return dict(state.agent_statuses)
+
+
 async def attach(session_id: str) -> AsyncGenerator[dict[str, str], None]:
     """Yield events in SSE wire shape for the current in-flight turn.
 
@@ -528,7 +536,12 @@ async def attach(session_id: str) -> AsyncGenerator[dict[str, str], None]:
                 yield StreamEnvelope.from_event(
                     AgentStatusEvent(
                         agent=agent,
-                        status=status,
+                        status=cast(
+                            Literal[
+                                "idle", "working", "waiting_input", "offline", "error"
+                            ],
+                            status,
+                        ),
                         metadata=state.agent_errors.get(agent, {}),
                     )
                 ).to_wire()

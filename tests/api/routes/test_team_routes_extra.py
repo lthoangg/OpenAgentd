@@ -1006,6 +1006,64 @@ class TestTeamHistoryRouteExtra:
         assert resp.status_code == 404
         assert captured["before_id"] is None
 
+    @pytest.mark.asyncio
+    async def test_team_history_marks_running_member(self, app_with_team, monkeypatch):
+        from app.services import memory_stream_store
+        from app.services.stream_envelope import StreamEnvelope
+        from app.agent.schemas.events import AgentStatusEvent
+
+        lead_id = uuid.uuid7()
+        member_id = uuid.uuid7()
+        lead_session = ChatSession(
+            id=lead_id,
+            title="Task",
+            agent_name="lead",
+        )
+        member_session = ChatSession(
+            id=member_id,
+            parent_session_id=lead_id,
+            agent_name="worker#1",
+        )
+
+        async def fake_get_team_history(
+            db, requested_id, *, before_seq=None, before_id=None
+        ):
+            assert requested_id == lead_id
+            return SimpleNamespace(
+                lead_session=lead_session,
+                lead_messages=[],
+                members=[
+                    SimpleNamespace(session=member_session, messages=[]),
+                ],
+                has_more=False,
+                next_cursor=None,
+                next_cursor_id=None,
+            )
+
+        monkeypatch.setattr(
+            "app.api.routes.team.chat.get_team_history", fake_get_team_history
+        )
+
+        await memory_stream_store.init_turn(str(lead_id))
+        await memory_stream_store.push_event(
+            str(lead_id),
+            StreamEnvelope.from_event(
+                AgentStatusEvent(agent="worker#1", status="working")
+            ),
+        )
+
+        try:
+            client = TestClient(app_with_team)
+            resp = client.get(f"/api/team/{lead_id}/history")
+        finally:
+            await memory_stream_store.clear(str(lead_id))
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data["members"]) == 1
+        assert data["members"][0]["name"] == "worker#1"
+        assert data["members"][0]["running"] is True
+
     def test_history_before_cursor_rejects_malformed_id(self, app_with_team):
         client = TestClient(app_with_team)
         resp = client.get(

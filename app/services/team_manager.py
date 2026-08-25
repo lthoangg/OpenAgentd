@@ -469,6 +469,26 @@ def find_live_team_serving_session(session_id: str) -> "AgentTeam | None":
     return None
 
 
+def find_live_coding_team(
+    workspace: str, session_id: str | None = None
+) -> "AgentTeam | None":
+    """Return an active running coding team for *workspace*, matching *session_id* if provided."""
+    try:
+        resolved_workspace = validate_workspace(workspace)
+    except Exception:
+        return None
+
+    if session_id:
+        team = _coding_teams.get((resolved_workspace, session_id))
+        if team is not None:
+            return team
+
+    for (ws, owner_session), team in _coding_teams.items():
+        if ws == resolved_workspace and owner_session != "__agents__":
+            return team
+    return _coding_teams.get((resolved_workspace, "__agents__"))
+
+
 async def get_or_start_coding_team(workspace: str, session_id: str) -> "AgentTeam":
     resolved_workspace = validate_workspace(workspace)
     key = (resolved_workspace, session_id)

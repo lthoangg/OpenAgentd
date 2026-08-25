@@ -69,6 +69,8 @@ class TeamInboxHook(BaseAgentHook):
                     agent=member.name,
                     event="inbox",
                     extra={
+                        "id": str(msg_obj.db_id) if msg_obj.db_id else None,
+                        "message_id": str(msg_obj.db_id) if msg_obj.db_id else None,
                         "content": msg_obj.content,
                         "from_agent": raw_msg.from_agent,
                     },

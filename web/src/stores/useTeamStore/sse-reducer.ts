@@ -446,13 +446,45 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
 
       case 'inbox': {
         const agent = d.agent as string
+        const messageId = (d.id as string) || (d.message_id as string) || undefined
+        const content = (d.content as string) || ''
+        const fromAgent = (d.from_agent as string) || undefined
         set((draft) => {
           ensureAgent(draft, agent)
-          draft.agentStreams[agent].currentBlocks.push({
-            id: generateBlockId(),
+          const stream = draft.agentStreams[agent]
+          const existsInBlocks = stream.blocks.some(
+            (b) =>
+              (messageId && b.id === messageId) ||
+              (b.type === 'user' && b.content === content && (b.extra?.from_agent ?? '') === (fromAgent ?? '')),
+          )
+          if (existsInBlocks) return
+
+          let matchIdx = -1
+          if (messageId) {
+            matchIdx = stream.currentBlocks.findIndex((b) => b.id === messageId)
+          }
+          if (matchIdx === -1) {
+            matchIdx = stream.currentBlocks.findIndex(
+              (b) => b.type === 'user' && b.content === content && (b.extra?.from_agent ?? '') === (fromAgent ?? ''),
+            )
+          }
+
+          if (matchIdx !== -1) {
+            const existing = stream.currentBlocks[matchIdx]
+            if (messageId && existing.id !== messageId) {
+              stream.currentBlocks[matchIdx] = {
+                ...existing,
+                id: messageId,
+              }
+            }
+            return
+          }
+
+          stream.currentBlocks.push({
+            id: messageId ?? generateBlockId(),
             type: 'user',
-            content: d.content as string,
-            extra: { from_agent: d.from_agent as string },
+            content,
+            extra: fromAgent ? { from_agent: fromAgent } : undefined,
             timestamp: new Date(),
           })
         })

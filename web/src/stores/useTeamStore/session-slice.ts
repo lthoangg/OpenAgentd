@@ -138,6 +138,7 @@ function dropSnapshotCoveredBlocks(stream: AgentStream, countAtFetchStart: numbe
 /** Same block from two sources: the live SSE copy and the server's parse. */
 function isSameBlock(live: ContentBlock, persisted: ContentBlock): boolean {
   if (live.type !== persisted.type) return false
+  if (live.id && persisted.id && live.id === persisted.id) return true
 
   // If both blocks have timestamps, prevent matching live blocks against
   // persisted blocks from an older turn (older than 5s clock skew window).
@@ -150,6 +151,9 @@ function isSameBlock(live: ContentBlock, persisted: ContentBlock): boolean {
   // Tool calls carry a server-issued id, so match on it and ignore content
   // (live output is streamed incrementally and may lag the persisted result).
   if (live.toolCallId || persisted.toolCallId) return live.toolCallId === persisted.toolCallId
+  if (live.extra?.from_agent || persisted.extra?.from_agent) {
+    return live.content === persisted.content && (live.extra?.from_agent ?? '') === (persisted.extra?.from_agent ?? '')
+  }
   return live.content === persisted.content
 }
 
@@ -255,9 +259,7 @@ function dropSnapshotAlignedPrefix(stream: AgentStream, limit: number) {
 }
 
 function removePersistedOptimisticUserBlocks(stream: AgentStream) {
-  const persistedUsers = stream.blocks.filter(
-    (block) => block.type === 'user' && !block.extra?.from_agent,
-  )
+  const persistedUsers = stream.blocks.filter((block) => block.type === 'user')
   if (persistedUsers.length === 0) return
 
   // Fast path: sendMessage adopts the server's message_id for the optimistic
@@ -269,13 +271,14 @@ function removePersistedOptimisticUserBlocks(stream: AgentStream) {
   const persistedIds = new Set(persistedUsers.map((b) => b.id))
 
   stream.currentBlocks = stream.currentBlocks.filter((block) => {
-    if (block.type !== 'user' || block.extra?.from_agent) return true
+    if (block.type !== 'user') return true
     if (persistedIds.has(block.id)) return false
     const optimisticTime = block.timestamp?.getTime()
-    if (optimisticTime === undefined) return true
 
     return !persistedUsers.some((persisted) => {
       if (persisted.content !== block.content) return false
+      if ((block.extra?.from_agent ?? '') !== (persisted.extra?.from_agent ?? '')) return false
+      if (optimisticTime === undefined) return true
       const persistedTime = persisted.timestamp?.getTime() ?? 0
       // Server row cannot predate optimistic bubble by more than 5s clock skew
       if (persistedTime < optimisticTime - 5_000) return false
@@ -466,7 +469,7 @@ async function loadSessionImpl(
       draft.leadName = leadName
       if (liveNames !== null) draft.liveAgentNames = liveNames
 
-      const allNames = leadName ? [leadName, ...memberNames] : memberNames
+      const allNames = Array.from(new Set([leadName, ...(liveNames ?? []), ...memberNames]))
       draft.agentNames = allNames
       const leadRevertTime = revertBoundaryTime(history.lead)
       const boundaryId = history.lead.revert?.message_id
@@ -506,7 +509,10 @@ async function loadSessionImpl(
         // After a daemon restart the stream store has forgotten the turn, so
         // ``running`` is false while the question row says otherwise. The row is
         // the durable half, so it wins.
-        draft.isTeamWorking = history.lead.running === true || awaitingAnswer
+        draft.isTeamWorking =
+          history.lead.running === true ||
+          history.members.some((m) => m.running === true) ||
+          awaitingAnswer
       }
 
       if (leadName) {
@@ -612,6 +618,7 @@ async function loadSessionImpl(
         })
         if (memberHadNewerActivity && turnStillRunning) {
           dropSnapshotAlignedPrefix(memberStream, liveCountsAtFetch.get(member.name) ?? 0)
+          removePersistedOptimisticUserBlocks(memberStream)
         }
         if (!memberHadNewerActivity) {
           memberStream.currentBlocks = []
@@ -620,8 +627,10 @@ async function loadSessionImpl(
           memberStream.status =
             !isLiveMember
               ? 'offline'
-              : existingStatus === 'offline' || existingStatus === 'error' ? existingStatus : 'idle'
-          memberStream._turnStartedAt = null
+              : member.running === true
+                ? 'working'
+                : existingStatus === 'offline' || existingStatus === 'error' ? existingStatus : 'idle'
+          memberStream._turnStartedAt = member.running === true ? Date.now() : null
         }
         const memberVisibleMsgs = messagesBeforeTime(member.messages, leadRevertTime)
         const memberUsage = sumUsageFromMessages(memberVisibleMsgs)
@@ -783,7 +792,8 @@ export const createSessionSlice: StateCreator<
 
   loadTeamStatus: async (workspace?: string | null, expectedGeneration?: number) => {
     try {
-      const status = await teamStatus(workspace)
+      const currentSessionId = get().sessionId
+      const status = await teamStatus(workspace, currentSessionId)
       if (expectedGeneration !== undefined && get()._sessionGeneration !== expectedGeneration) return
       if (status) {
         const allAgents = [status.lead, ...status.members]
@@ -805,7 +815,7 @@ export const createSessionSlice: StateCreator<
           })
           historicalNames.forEach((name) => {
             const stream = draft.agentStreams[name]
-            if (stream && name !== status.lead.name && stream.status !== 'error') {
+            if (stream && name !== status.lead.name && stream.status !== 'error' && stream.status !== 'working') {
               stream.status = 'offline'
             }
           })

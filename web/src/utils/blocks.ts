@@ -43,7 +43,19 @@ export function liveBlockTail(
 ): ContentBlock[] {
   if (currentBlocks.length === 0 || blocks.length === 0) return currentBlocks
   const confirmedIds = confirmedIdSet(blocks)
-  return currentBlocks.filter((b) => !confirmedIds.has(b.id))
+  return currentBlocks.filter((b) => {
+    if (confirmedIds.has(b.id)) return false
+    if (b.type === 'user') {
+      const existsInConfirmed = blocks.some(
+        (confirmed) =>
+          confirmed.type === 'user' &&
+          confirmed.content === b.content &&
+          (confirmed.extra?.from_agent ?? '') === (b.extra?.from_agent ?? ''),
+      )
+      if (existsInConfirmed) return false
+    }
+    return true
+  })
 }
 
 export function mergeBlocks(

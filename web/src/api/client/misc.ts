@@ -39,10 +39,10 @@ export function shapeTeamStatus(data: TeamAgentsResponse): TeamStatusResponse | 
   }
 }
 
-export async function teamStatus(workspace?: string | null): Promise<TeamStatusResponse | null> {
+export async function teamStatus(workspace?: string | null, sessionId?: string | null): Promise<TeamStatusResponse | null> {
   if (!workspace) return null
   try {
-    return shapeTeamStatus(await listTeamAgents(workspace))
+    return shapeTeamStatus(await listTeamAgents(workspace, sessionId))
   } catch {
     // Soft failure: callers treat null as "team mode unavailable".
     return null

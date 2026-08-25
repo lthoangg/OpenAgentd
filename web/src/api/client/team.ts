@@ -125,8 +125,9 @@ export function teamStream(sessionId: string, callbacks: SSECallbacks, signal?: 
     .catch((err) => { if (err.name !== 'AbortError') callbacks.onError?.(err) })
 }
 
-async function fetchTeamAgents(workspace: string): Promise<TeamAgentsResponse> {
+async function fetchTeamAgents(workspace: string, sessionId?: string | null): Promise<TeamAgentsResponse> {
   const params = new URLSearchParams({ workspace })
+  if (sessionId) params.set('session_id', sessionId)
   const res = await fetch(`${apiBaseUrl()}/team/agents?${params}`)
   if (!res.ok) await parseDetailOrThrow(res, 'listTeamAgents')
   return res.json()
@@ -147,12 +148,12 @@ async function fetchTeamAgents(workspace: string): Promise<TeamAgentsResponse> {
  */
 const inFlightTeamAgents = new Map<string, Promise<TeamAgentsResponse>>()
 
-export function listTeamAgents(workspace: string): Promise<TeamAgentsResponse> {
-  const key = workspace
+export function listTeamAgents(workspace: string, sessionId?: string | null): Promise<TeamAgentsResponse> {
+  const key = `${workspace}\u0000${sessionId ?? ''}`
   const existing = inFlightTeamAgents.get(key)
   if (existing) return existing
 
-  const request = fetchTeamAgents(workspace).finally(() => {
+  const request = fetchTeamAgents(workspace, sessionId).finally(() => {
     inFlightTeamAgents.delete(key)
   })
   inFlightTeamAgents.set(key, request)

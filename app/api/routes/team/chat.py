@@ -569,6 +569,7 @@ async def team_stream(session_id: str, db: DbSession):
 async def list_team_agents(
     team: TeamDep,
     workspace: str | None = Query(None, description="Coding workspace directory."),
+    session_id: str | None = Query(None, description="Coding session ID."),
 ) -> TeamAgentsResponse:
     """Return info on the lead, all live member instances, and spawnable blueprints.
 
@@ -596,9 +597,11 @@ async def list_team_agents(
     """
     if workspace:
         try:
-            team_obj = await team_manager.get_or_start_coding_team(
-                workspace, "__agents__"
-            )
+            team_obj = team_manager.find_live_coding_team(workspace, session_id)
+            if team_obj is None:
+                team_obj = await team_manager.get_or_start_coding_team(
+                    workspace, session_id or "__agents__"
+                )
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
     else:
@@ -1043,11 +1046,16 @@ async def team_history(
         messages=[_message_response(m) for m in history.lead_messages],
     )
 
+    active_statuses = stream_store.get_agent_statuses(str(history.lead_session.id))
     member_histories = [
         TeamHistoryMember(
             name=member.session.agent_name or str(member.session.id),
             session_id=str(member.session.id),
             messages=[_message_response(m) for m in member.messages],
+            running=active_statuses.get(
+                member.session.agent_name or str(member.session.id)
+            )
+            == "working",
         )
         for member in history.members
     ]
@@ -1111,6 +1119,7 @@ async def _team_history_delta(
             "running": str(delta.lead_session.id) in stream_store.running_session_ids()
         }
     )
+    active_statuses = stream_store.get_agent_statuses(str(delta.lead_session.id))
     return TeamHistoryResponse(
         lead=SessionDetailResponse(
             **lead_resp.model_dump(),
@@ -1121,6 +1130,10 @@ async def _team_history_delta(
                 name=member.session.agent_name or str(member.session.id),
                 session_id=str(member.session.id),
                 messages=[_message_response(m) for m in member.messages],
+                running=active_statuses.get(
+                    member.session.agent_name or str(member.session.id)
+                )
+                == "working",
             )
             for member in delta.members
         ],

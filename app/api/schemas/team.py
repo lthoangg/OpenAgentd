@@ -22,6 +22,7 @@ class TeamHistoryMember(BaseModel):
     name: str
     session_id: str
     messages: list[MessageResponse]
+    running: bool = False
 
 
 class TeamHistoryResponse(BaseModel):

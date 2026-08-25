@@ -479,10 +479,16 @@ def find_live_coding_team(
         return None
 
     if session_id:
-        team = _coding_teams.get((resolved_workspace, session_id))
-        if team is not None:
-            return team
+        # An explicit session must resolve to the team that owns it. Never
+        # fall back to another session's team for the same workspace: a
+        # brand-new session (e.g. one just created by "/new") has no team yet,
+        # and serving it a different session's team leaks that session's
+        # transient member instances into the new roster until a reload.
+        return _coding_teams.get((resolved_workspace, session_id))
 
+    # No session requested — a workspace-level lookup. Prefer an active
+    # session team over the "__agents__" fallback so reloads can restore a
+    # live team's running members.
     for (ws, owner_session), team in _coding_teams.items():
         if ws == resolved_workspace and owner_session != "__agents__":
             return team

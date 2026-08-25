@@ -422,6 +422,37 @@ async def test_get_or_start_coding_team_isolated_by_session(tmp_path, monkeypatc
     )
 
 
+# ── find_live_coding_team() ──────────────────────────────────────────────────
+#
+# `GET /team/agents?session_id=...` resolves the live team for a session. A
+# brand-new session (e.g. one created by "/new") has no team yet and must NOT
+# be served another session's team — otherwise its transient members leak into
+# the new session's roster until a reload. The exact-match path (reloading a
+# session that already owns a team) must still resolve that team so running
+# members survive a refresh.
+
+
+def test_find_live_coding_team_does_not_leak_other_session_members(tmp_path):
+    workspace = tmp_path / "project"
+    workspace.mkdir()
+    team_a = _make_team("lead-a")
+    team_a.members = {"coder#1": MagicMock(), "explorer#1": MagicMock()}
+    team_manager._coding_teams[(str(workspace.resolve()), "session-a")] = team_a
+
+    # A brand-new session has never started a team; it must not inherit
+    # session-a's transient member instances.
+    assert team_manager.find_live_coding_team(str(workspace), "session-b") is None
+
+
+def test_find_live_coding_team_exact_match_still_resolves_owner(tmp_path):
+    workspace = tmp_path / "project"
+    workspace.mkdir()
+    team_a = _make_team("lead-a")
+    team_manager._coding_teams[(str(workspace.resolve()), "session-a")] = team_a
+
+    assert team_manager.find_live_coding_team(str(workspace), "session-a") is team_a
+
+
 # ── refresh_blueprints() ──────────────────────────────────────────────────────
 #
 # Without this rediscovery step, a member ``.md`` file created via Settings →

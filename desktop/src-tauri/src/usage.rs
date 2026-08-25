@@ -289,8 +289,11 @@ fn render_bar(percent: f64) -> String {
 /// The measurable tail of a limit row: ``42% \u{2588}\u{2588}\u{2588}\u{2591}\u{2591}\u{2591}\u{2591}\u{2591}\u{2591}\u{2591} · resets in 2h 14m · LIMIT
 /// REACHED: …``. Shared by the single-row and grouped renderings.
 /// ``None`` when the limit has no percent window at all (credits-only).
-fn format_limit_suffix(limit: &UsageLimit, now_unix: i64) -> Option<(&'static str, String)> {
-    let window = limit.primary.as_ref().or(limit.secondary.as_ref())?;
+fn format_window_suffix(
+    window: &UsageWindow,
+    rate_limit_reached_type: Option<&str>,
+    now_unix: i64,
+) -> (&'static str, String) {
     let percent = window.used_percent.round() as i64;
     let glyph = status_glyph(window.used_percent);
     let bar = render_bar(window.used_percent);
@@ -300,13 +303,22 @@ fn format_limit_suffix(limit: &UsageLimit, now_unix: i64) -> Option<(&'static st
         .unwrap_or_default();
     // Compact: the fact that the limit is reached is the signal; the
     // provider-specific reason string is Settings → Providers material.
-    let reached_suffix = limit
-        .rate_limit_reached_type
-        .as_deref()
+    let reached_suffix = rate_limit_reached_type
         .filter(|t| !t.is_empty())
         .map(|_| " \u{00B7} LIMIT REACHED")
         .unwrap_or_default();
-    Some((glyph, format!("{percent}% {bar}{reset_suffix}{reached_suffix}")))
+    (glyph, format!("{percent}% {bar}{reset_suffix}{reached_suffix}"))
+}
+
+fn format_window_name(window: &UsageWindow, position: usize) -> String {
+    match window.window_minutes {
+        Some(minutes) if minutes > 0 && minutes % (24 * 60) == 0 => {
+            format!("{}d", minutes / (24 * 60))
+        }
+        Some(minutes) if minutes > 0 && minutes % 60 == 0 => format!("{}h", minutes / 60),
+        Some(minutes) if minutes > 0 => format!("{minutes}m"),
+        _ => format!("Window {}", position + 1),
+    }
 }
 
 /// Row name given to a spend cap, appended to the limit's own name when
@@ -411,18 +423,32 @@ struct LimitEntry {
 
 fn limit_entries(limit: &UsageLimit, now_unix: i64) -> Vec<LimitEntry> {
     let mut entries = Vec::new();
-    if let Some((glyph, suffix)) = format_limit_suffix(limit, now_unix) {
-        let percent = limit
-            .primary
-            .as_ref()
-            .or(limit.secondary.as_ref())
-            .map(|window| window.used_percent)
-            .unwrap_or_default();
+    let multiple_windows = limit.primary.is_some() && limit.secondary.is_some();
+    for (position, window) in [limit.primary.as_ref(), limit.secondary.as_ref()]
+        .into_iter()
+        .flatten()
+        .enumerate()
+    {
+        let (glyph, suffix) =
+            format_window_suffix(window, limit.rate_limit_reached_type.as_deref(), now_unix);
+        let name = if multiple_windows {
+            let window_name = format_window_name(window, position);
+            Some(
+                limit
+                    .limit_name
+                    .as_deref()
+                    .filter(|name| !name.is_empty())
+                    .map(|name| format!("{name} \u{00B7} {window_name}"))
+                    .unwrap_or(window_name),
+            )
+        } else {
+            limit.limit_name.clone()
+        };
         entries.push(LimitEntry {
             glyph,
-            name: limit.limit_name.clone(),
+            name,
             suffix,
-            percent,
+            percent: window.used_percent,
         });
     }
     if let Some(spend) = spend_figures(limit) {
@@ -819,7 +845,7 @@ mod tests {
     }
 
     #[test]
-    fn format_limit_suffix_includes_the_bar_between_percent_and_reset() {
+    fn format_window_suffix_includes_the_bar_between_percent_and_reset() {
         let limit = UsageLimit {
             limit_id: Some("codex".to_string()),
             limit_name: None,
@@ -836,7 +862,11 @@ mod tests {
             period_start_at: None,
             period_end_at: None,
         };
-        let (_, suffix) = format_limit_suffix(&limit, 1_000).expect("measurable limit");
+        let (_, suffix) = format_window_suffix(
+            limit.primary.as_ref().expect("measurable limit"),
+            None,
+            1_000,
+        );
         assert_eq!(suffix, format!("50% {} \u{00B7} resets 16m", render_bar(50.0)));
     }
 
@@ -1216,6 +1246,27 @@ mod tests {
         let item = item_ok("codex", "OpenAI Codex", 50.0, None);
         let rows = format_item_rows(&item, 1_000, 3);
         assert!(rows[0].text.contains("OpenAI Codex \u{00B7} 50%"));
+    }
+
+    #[test]
+    fn codex_primary_and_secondary_windows_render_as_five_hour_and_seven_day_rows() {
+        let mut item = item_ok("codex", "OpenAI Codex", 42.0, Some(2_000));
+        item.usage.as_mut().unwrap().limits[0]
+            .primary
+            .as_mut()
+            .unwrap()
+            .window_minutes = Some(5 * 60);
+        item.usage.as_mut().unwrap().limits[0].secondary = Some(UsageWindow {
+            used_percent: 8.0,
+            window_minutes: Some(7 * 24 * 60),
+            resets_at: Some(1_000 + 6 * 86_400),
+        });
+
+        let rows = format_item_rows(&item, 1_000, 3);
+
+        assert_eq!(rows.len(), 3, "provider header plus both quota windows");
+        assert!(rows[1].text.contains("5h \u{00B7} 42%"), "{}", rows[1].text);
+        assert!(rows[2].text.contains("7d \u{00B7} 8%"), "{}", rows[2].text);
     }
 
     #[test]

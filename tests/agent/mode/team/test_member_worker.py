@@ -412,6 +412,68 @@ class TestOnDemandActivation:
         }
         session_provider.aclose.assert_awaited_once()
 
+    async def test_member_codex_model_gets_stable_session_prompt_cache_key(
+        self, monkeypatch
+    ):
+        """Team members on Codex/Grok also need the session-scoped
+        ``prompt_cache_key`` — the backend routes requests sharing the key to
+        the same server, which is what lets the per-server prefix KV cache
+        hit across a member's turns.  Without it every request can land on a
+        different server and the member's prompt cache never warms (the lead
+        already gets the key; members were skipped because the runtime
+        provider block was gated on ``_role_label == "lead"``).
+        """
+        session_uuid = uuid7()
+        session_id = str(session_uuid)
+        session_row = ChatSession(id=session_uuid, title="s")
+        db_factory = _make_mock_db_factory_with_session(session_row)
+        default_provider = MockTeamProvider("default")
+        session_provider = MockTeamProvider("session")
+        session_provider.aclose = AsyncMock()
+        captured: dict[str, object] = {}
+
+        async def fake_run(*_args, **kwargs):
+            captured["llm_provider"] = kwargs.get("llm_provider")
+            captured["model_id"] = kwargs.get("model_id")
+            return []
+
+        def provider_factory(model: str, model_kwargs=None):
+            captured["factory_model"] = model
+            captured["model_kwargs"] = model_kwargs
+            return session_provider
+
+        lead = TeamLead(
+            Agent(name="lead", llm_provider=MockTeamProvider("lead response")),
+            db_factory=db_factory,
+        )
+        worker = TeamMember(
+            Agent(
+                name="worker",
+                model_id="codex:gpt-5.4",
+                llm_provider=default_provider,
+            ),
+            db_factory=db_factory,
+        )
+        worker.session_id = session_id
+        team = AgentTeam(
+            lead=lead,
+            members={"worker": worker},
+            provider_factory=provider_factory,
+            db_factory=db_factory,
+        )
+        worker.register(team)
+        monkeypatch.setattr(worker.agent, "run", fake_run)
+
+        await worker._handle_messages()
+
+        assert captured == {
+            "factory_model": "codex:gpt-5.4",
+            "model_kwargs": {"prompt_cache_key": f"openagentd:{session_id}"},
+            "llm_provider": session_provider,
+            "model_id": "codex:gpt-5.4",
+        }
+        session_provider.aclose.assert_awaited_once()
+
     async def test_lead_thinking_override_uses_stable_session_prompt_cache_key(
         self, monkeypatch
     ):

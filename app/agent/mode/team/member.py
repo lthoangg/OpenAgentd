@@ -933,9 +933,9 @@ class TeamMemberBase(abc.ABC):
             else None
         )
         if (
-            self._role_label == "lead"
-            and effective_model
+            effective_model
             and self._team._provider_factory is not None
+            and (self._role_label == "lead" or provider_wants_cache_key)
         ):
             model_kwargs: dict[str, object] = {}
             effective_thinking_level = session_thinking_level

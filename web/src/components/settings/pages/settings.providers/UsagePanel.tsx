@@ -273,6 +273,7 @@ export function UsagePanel({ limits, updatedAt }: { limits: ProviderUsageLimit[]
   if (limits.length === 0) return null
   const primary = limits[0]
   const updated = formatUpdatedAgo(updatedAt)
+  const resetCredits = primary?.reset_credits_available
 
   return (
     <div className="overflow-hidden rounded-md border border-(--color-border) bg-(--bg-card)">
@@ -287,9 +288,16 @@ export function UsagePanel({ limits, updatedAt }: { limits: ProviderUsageLimit[]
             </>
           )}
         </div>
-        {primary?.plan_type && (
-          <span className="shrink-0 text-[11px] font-medium text-(--color-text-muted)">{primary.plan_type}</span>
-        )}
+        <div className="flex items-center gap-2 shrink-0">
+          {typeof resetCredits === 'number' && resetCredits > 0 && (
+            <span className="text-[11px] font-medium text-(--accent-green)">
+              {resetCredits} {resetCredits === 1 ? 'reset' : 'resets'} available
+            </span>
+          )}
+          {primary?.plan_type && (
+            <span className="text-[11px] font-medium text-(--color-text-muted)">{primary.plan_type}</span>
+          )}
+        </div>
       </div>
 
       {/* Usage rows */}
@@ -301,10 +309,15 @@ export function UsagePanel({ limits, updatedAt }: { limits: ProviderUsageLimit[]
 
       {/* Rate-limit warning */}
       {primary?.rate_limit_reached_type && (
-        <div className="border-t border-(--color-error)/20 bg-(--color-error-subtle) px-3 py-1.5">
+        <div className="flex items-center justify-between gap-2 border-t border-(--color-error)/20 bg-(--color-error-subtle) px-3 py-1.5">
           <p className="text-[11px] font-medium text-(--color-error)">
             Limit reached · {primary.rate_limit_reached_type.replaceAll('_', ' ')}
           </p>
+          {typeof resetCredits === 'number' && resetCredits > 0 && (
+            <span className="shrink-0 text-[11px] font-semibold text-(--color-error)">
+              {resetCredits} {resetCredits === 1 ? 'reset' : 'resets'} available
+            </span>
+          )}
         </div>
       )}
     </div>

@@ -1246,6 +1246,7 @@ def test_get_codex_provider_usage_returns_unlimited_credits(
                 "spend": None,
                 "plan_type": "business",
                 "rate_limit_reached_type": None,
+                "reset_credits_available": None,
                 "period_start_at": None,
                 "period_end_at": None,
             }
@@ -1333,6 +1334,7 @@ def test_get_copilot_provider_usage_returns_premium_quota_snapshot(
         "spend": None,
         "plan_type": "individual",
         "rate_limit_reached_type": None,
+        "reset_credits_available": None,
         "period_start_at": None,
         "period_end_at": None,
     }

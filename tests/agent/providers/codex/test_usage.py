@@ -266,3 +266,29 @@ async def test_get_usage_attaches_spend_control_only_to_the_primary_limit(
     assert [limit.limit_id for limit in result.limits] == ["codex", "codex-spark"]
     assert result.limits[0].spend is not None
     assert result.limits[1].spend is None
+
+
+@pytest.mark.usefixtures("_codex_oauth")
+async def test_get_usage_parses_reset_credits_available(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    payload = {
+        "plan_type": "plus",
+        "rate_limit": {
+            "primary_window": {
+                "used_percent": 97,
+                "limit_window_seconds": 604800,
+                "reset_at": 1788150972,
+            }
+        },
+        "rate_limit_reset_credits": {
+            "available_count": 1,
+            "applicable_available_count": 0,
+        },
+    }
+    monkeypatch.setattr(usage.httpx2, "AsyncClient", _fake_client_for(payload))
+
+    result = await usage.get_usage()
+
+    assert len(result.limits) == 1
+    assert result.limits[0].reset_credits_available == 1

@@ -286,4 +286,31 @@ describe('UsagePanel', () => {
     render(<UsagePanel limits={[makeLimit()]} />)
     expect(screen.queryByText(/Updated/)).toBeNull()
   })
+
+  it('shows available reset credits in the header strip', () => {
+    const { rerender } = render(<UsagePanel limits={[makeLimit({ reset_credits_available: 1, plan_type: 'Plus' })]} />)
+    expect(screen.getByText('1 reset available')).toBeTruthy()
+    expect(screen.getByText('Plus')).toBeTruthy()
+
+    rerender(<UsagePanel limits={[makeLimit({ reset_credits_available: 2, plan_type: 'Plus' })]} />)
+    expect(screen.getByText('2 resets available')).toBeTruthy()
+
+    rerender(<UsagePanel limits={[makeLimit({ reset_credits_available: 0, plan_type: 'Plus' })]} />)
+    expect(screen.queryByText(/reset/)).toBeNull()
+  })
+
+  it('shows available reset credits in the rate-limit warning banner when limit reached', () => {
+    render(
+      <UsagePanel
+        limits={[
+          makeLimit({
+            rate_limit_reached_type: 'usage_limit_reached',
+            reset_credits_available: 1,
+          }),
+        ]}
+      />,
+    )
+    expect(screen.getByText('Limit reached \u00B7 usage limit reached')).toBeTruthy()
+    expect(screen.getAllByText('1 reset available')).toHaveLength(2)
+  })
 })

@@ -202,6 +202,7 @@ export type ProviderUsageLimit = {
   } | null
   plan_type?: string | null
   rate_limit_reached_type?: string | null
+  reset_credits_available?: number | null
   period_start_at?: number | null
   period_end_at?: number | null
 }

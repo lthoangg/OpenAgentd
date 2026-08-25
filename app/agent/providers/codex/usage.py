@@ -105,6 +105,7 @@ def _usage_limit(
     plan_type: str | None = None,
     rate_limit_reached_type: str | None = None,
     spend: ProviderUsageSpend | None = None,
+    reset_credits_available: int | None = None,
 ) -> ProviderUsageLimit | None:
     if not isinstance(data, dict):
         return None
@@ -118,7 +119,13 @@ def _usage_limit(
     primary = _usage_window(rate_limit_values.get("primary_window"))
     secondary = _usage_window(rate_limit_values.get("secondary_window"))
     credits = _usage_credits(values.get("credits"))
-    if primary is None and secondary is None and credits is None and spend is None:
+    if (
+        primary is None
+        and secondary is None
+        and credits is None
+        and spend is None
+        and reset_credits_available is None
+    ):
         return None
     return ProviderUsageLimit(
         limit_id=limit_id,
@@ -129,6 +136,7 @@ def _usage_limit(
         spend=spend,
         plan_type=plan_type,
         rate_limit_reached_type=rate_limit_reached_type,
+        reset_credits_available=reset_credits_available,
     )
 
 
@@ -180,15 +188,23 @@ async def get_usage() -> ProviderUsageResponse:
     elif isinstance(reached, str):
         reached_type = reached
 
+    raw_reset_credits = values.get("rate_limit_reset_credits")
+    reset_credits_available = None
+    if isinstance(raw_reset_credits, dict):
+        count = cast("dict[str, object]", raw_reset_credits).get("available_count")
+        if isinstance(count, int) and not isinstance(count, bool):
+            reset_credits_available = count
+
     common_plan = plan_type if isinstance(plan_type, str) else None
     limits: list[ProviderUsageLimit] = []
-    # Spend control is account-wide, not per-metered-feature.
+    # Spend control and reset credits are account-wide, not per-metered-feature.
     primary = _usage_limit(
         values,
         limit_id="codex",
         plan_type=common_plan,
         rate_limit_reached_type=reached_type,
         spend=_usage_spend(values.get("spend_control")),
+        reset_credits_available=reset_credits_available,
     )
     if primary is not None:
         limits.append(primary)

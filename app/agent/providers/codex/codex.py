@@ -37,7 +37,7 @@ from app.agent.schemas.chat import (
     ToolCall,
     ToolMessage,
 )
-from app.agent.usage import Usage, usage_to_dict
+from app.agent.usage import Usage, provider_cost_model_id, usage_to_dict
 
 CODEX_API_BASE = "https://chatgpt.com/backend-api/codex"
 CODEX_STREAM_IDLE_TIMEOUT_SECONDS = 300.0
@@ -246,7 +246,7 @@ class _CodexResponsesHandler(ResponsesHandler):
                     call.function.arguments += tc.function.arguments
         extra: dict[str, Any] = {}
         if usage is not None:
-            extra["usage"] = usage_to_dict(usage, self.model)
+            extra["usage"] = usage_to_dict(usage, provider_cost_model_id(self))
         if reasoning_encrypted_content:
             extra["reasoning_item_id"] = reasoning_item_id
             extra["reasoning_encrypted_content"] = reasoning_encrypted_content

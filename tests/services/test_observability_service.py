@@ -243,6 +243,53 @@ def test_summarize_aggregates_turns_llm_tools(
     assert tools["web_fetch"]["errors"] == 1
 
 
+def test_summarize_aggregates_cache_write_tokens(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """Anthropic reports cache *creation* separately from cache reads; the
+    telemetry aggregates must carry those tokens so cache-write spend is
+    visible (the estimated cost already includes the write bucket)."""
+    spans_dir = _point_openagentd_at(tmp_path, monkeypatch)
+    now = datetime.now(timezone.utc)
+    key = now.strftime("%Y-%m-%d-%H")
+    ts_ns = int(now.timestamp() * 1e9)
+
+    spans = [
+        _span(name="agent_run lead", end_time_ns=ts_ns, duration_ms=1200.0),
+        _span(
+            name="chat claude-sonnet-4-5",
+            end_time_ns=ts_ns,
+            duration_ms=500.0,
+            attributes={
+                "gen_ai.provider.name": "anthropic",
+                "gen_ai.request.model": "claude-sonnet-4-5",
+                "gen_ai.usage.input_tokens": 10_000,
+                "gen_ai.usage.output_tokens": 200,
+                "gen_ai.usage.cache_read.input_tokens": 8_000,
+                "gen_ai.usage.cache_creation.input_tokens": 1_500,
+                "gen_ai.usage.estimated_cost_usd": 0.011025,
+            },
+        ),
+    ]
+    _write_spans(spans_dir / f"{key}.jsonl", spans)
+
+    result = summarize(days=7)
+
+    assert result.total_cache_write_tokens == 1500
+    assert result.total_cached_tokens == 8000
+    model = result.by_model[0]
+    assert model["model"] == "claude-sonnet-4-5"
+    assert model["cache_write_tokens"] == 1500
+    assert model["cached_tokens"] == 8000
+    step = result.cache_by_step[0]
+    assert step["step"] == "chat"
+    assert step["cache_write_tokens"] == 1500
+    assert step["cached_tokens"] == 8000
+    # Cost was already read from the span attribute (which includes the write
+    # bucket at the cache_write rate) — unchanged by the token aggregation.
+    assert result.total_estimated_cost_usd == 0.011025
+
+
 def test_summarize_clamps_days(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     _point_openagentd_at(tmp_path, monkeypatch)
     # Should not raise even with out-of-range input.
@@ -286,6 +333,7 @@ def test_to_dict_round_trips(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         "input_tokens",
         "output_tokens",
         "cached_tokens",
+        "cache_write_tokens",
         "cache_percent",
         "estimated_cost_usd",
         "errors",

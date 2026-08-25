@@ -20,7 +20,7 @@ from typing import TYPE_CHECKING, Any, AsyncIterator
 import httpx
 from loguru import logger
 
-from app.agent.usage import usage_to_dict
+from app.agent.usage import provider_cost_model_id, usage_to_dict
 from app.agent.schemas.chat import (
     AssistantMessage,
     ChatCompletionChunk,
@@ -366,7 +366,7 @@ class ResponsesHandler:
             cached_tokens=input_details.get("cached_tokens") or None,
             thoughts_tokens=output_details.get("reasoning_tokens") or None,
         )
-        return usage_to_dict(usage, self.model)
+        return usage_to_dict(usage, provider_cost_model_id(self))
 
     # ------------------------------------------------------------------
     # Public API

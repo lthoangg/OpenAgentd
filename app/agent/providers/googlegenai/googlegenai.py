@@ -5,7 +5,7 @@ from typing import Any
 from loguru import logger
 from pydantic.types import SecretStr
 
-from app.agent.usage import usage_to_dict
+from app.agent.usage import provider_cost_model_id, usage_to_dict
 from app.agent.providers.base import LLMProviderBase
 from app.agent.schemas.chat import (
     AssistantMessage,
@@ -413,7 +413,9 @@ class GeminiProviderBase(LLMProviderBase):
             )
 
         extra: dict | None = (
-            {"usage": usage_to_dict(usage, self.model)} if usage else None
+            {"usage": usage_to_dict(usage, provider_cost_model_id(self))}
+            if usage
+            else None
         )
         if reasoning_signature:
             extra = extra or {}

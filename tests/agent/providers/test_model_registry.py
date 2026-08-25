@@ -7,6 +7,7 @@ import pytest
 from app.agent.providers import model_registry
 from app.agent.providers.capabilities import get_capabilities
 from app.agent.providers.model_metadata import (
+    get_cost_at,
     get_model_cost,
     get_model_limits,
     get_model_metadata,
@@ -805,3 +806,124 @@ def test_get_model_metadata_falls_back_to_bare_model_suffix(
     assert get_model_cost("openai:gpt-bare-test").input == 2.5
     assert get_model_cost("gpt-bare-test").input == 2.5
     assert get_model_cost("gpt-bare-test").output == 10.0
+
+
+def test_bare_model_fallback_prefers_the_official_priced_provider(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A bare id shared by many providers must resolve to the official
+    vendor's priced entry, not the first reseller stub (which may omit prices
+    entirely and silently drop the estimated cost — Anthropic's cache_write
+    bucket included)."""
+    monkeypatch.setattr(
+        model_registry.settings, "OPENAGENTD_CACHE_DIR", str(tmp_path / "cache")
+    )
+    monkeypatch.setattr(
+        model_registry.settings, "OPENAGENTD_CONFIG_DIR", str(tmp_path / "config")
+    )
+    monkeypatch.setattr(
+        model_registry.settings, "OPENAGENTD_MODEL_REGISTRY_REFRESH", True
+    )
+    monkeypatch.setattr(
+        model_registry,
+        "_fetch_models_dev",
+        lambda: {
+            "snowflake-cortex": {
+                "models": {
+                    "claude-sonnet-4-5": {"id": "claude-sonnet-4-5"},
+                }
+            },
+            "anthropic": {
+                "models": {
+                    "claude-sonnet-4-5": {
+                        "id": "claude-sonnet-4-5",
+                        "cost": {
+                            "input": 3.0,
+                            "output": 15.0,
+                            "cache_read": 0.3,
+                            "cache_write": 3.75,
+                        },
+                    }
+                }
+            },
+            "deepseek": {
+                "models": {
+                    "deepseek-v4-flash": {
+                        "id": "deepseek-v4-flash",
+                        "cost": {"input": 0.14, "output": 0.28},
+                    }
+                }
+            },
+            "neuralwatt": {
+                "models": {
+                    "deepseek-v4-flash": {
+                        "id": "deepseek-v4-flash",
+                        "cost": {"input": 0.104, "output": 0.207},
+                    }
+                }
+            },
+        },
+    )
+
+    # First registry entry is the price-less reseller stub — the old fallback
+    # returned it and dropped all cost.
+    claude = get_model_cost("claude-sonnet-4-5")
+    assert claude.input == 3.0
+    assert claude.cache_write == 3.75
+    # The reseller proxy must not win over the official vendor's price.
+    deepseek = get_model_cost("deepseek-v4-flash")
+    assert deepseek.input == 0.14
+    assert deepseek.output == 0.28
+
+
+def test_get_cost_at_applies_deepseek_off_peak_discount(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from datetime import datetime, timezone
+
+    monkeypatch.setattr(
+        model_registry.settings, "OPENAGENTD_CACHE_DIR", str(tmp_path / "cache")
+    )
+    monkeypatch.setattr(
+        model_registry.settings, "OPENAGENTD_CONFIG_DIR", str(tmp_path / "config")
+    )
+    monkeypatch.setattr(
+        model_registry.settings, "OPENAGENTD_MODEL_REGISTRY_REFRESH", True
+    )
+    monkeypatch.setattr(
+        model_registry,
+        "_fetch_models_dev",
+        lambda: {
+            "deepseek": {
+                "models": {
+                    "deepseek-v4-flash": {
+                        "id": "deepseek-v4-flash",
+                        "cost": {"input": 0.14, "output": 0.28, "cache_read": 0.0028},
+                    }
+                }
+            },
+            "anthropic": {
+                "models": {
+                    "claude-sonnet-4-5": {
+                        "id": "claude-sonnet-4-5",
+                        "cost": {"input": 3.0, "output": 15.0},
+                    }
+                }
+            },
+        },
+    )
+
+    # Monday 02:00 UTC is a peak window → full price.
+    peak = datetime(2026, 8, 24, 2, 0, tzinfo=timezone.utc)
+    assert get_cost_at("deepseek:deepseek-v4-flash", peak).input == 0.14
+    # Monday 12:00 UTC and any weekend hour are off-peak → half price.
+    off_peak = datetime(2026, 8, 24, 12, 0, tzinfo=timezone.utc)
+    weekend = datetime(2026, 8, 22, 8, 0, tzinfo=timezone.utc)
+    assert get_cost_at("deepseek:deepseek-v4-flash", off_peak).input == 0.07
+    assert get_cost_at("deepseek:deepseek-v4-flash", off_peak).output == 0.14
+    assert get_cost_at("deepseek:deepseek-v4-flash", off_peak).cache_read == 0.0014
+    assert get_cost_at("deepseek:deepseek-v4-flash", weekend).input == 0.07
+    # Providers without an off-peak rule are unaffected.
+    assert get_cost_at("anthropic:claude-sonnet-4-5", off_peak).input == 3.0
+    # A bare id (no provider prefix) never triggers the rule.
+    assert get_cost_at("deepseek-v4-flash", off_peak).input == 0.14

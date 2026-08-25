@@ -7,14 +7,15 @@ from app.agent.providers.model_metadata import ModelCost
 from app.agent.schemas.chat import Usage
 
 
+def _patch_cost(monkeypatch: pytest.MonkeyPatch, cost: ModelCost) -> None:
+    """Pin the time-aware cost lookup to a fixed price for the test."""
+    monkeypatch.setattr(usage_module, "get_cost_at", lambda model_id, at: cost)
+
+
 def test_usage_to_dict_estimates_input_output_and_cache_read_cost(
     monkeypatch,
 ) -> None:
-    monkeypatch.setattr(
-        usage_module,
-        "get_model_cost",
-        lambda model_id: ModelCost(input=2.0, output=10.0, cache_read=0.5),
-    )
+    _patch_cost(monkeypatch, ModelCost(input=2.0, output=10.0, cache_read=0.5))
 
     result = usage_module.usage_to_dict(
         Usage(
@@ -47,12 +48,9 @@ def test_usage_to_dict_prices_cache_writes_at_the_cache_write_rate(
     tokens into plain input silently under-reports the cost of every turn that
     warms or extends the cache.
     """
-    monkeypatch.setattr(
-        usage_module,
-        "get_model_cost",
-        lambda model_id: ModelCost(
-            input=3.0, output=15.0, cache_read=0.3, cache_write=3.75
-        ),
+    _patch_cost(
+        monkeypatch,
+        ModelCost(input=3.0, output=15.0, cache_read=0.3, cache_write=3.75),
     )
 
     result = usage_module.usage_to_dict(
@@ -88,11 +86,7 @@ def test_usage_to_dict_charges_cache_writes_as_input_when_no_write_price(
 ) -> None:
     """Without a cache_write price the tokens stay billable input — the old
     behaviour, kept so models lacking the field are never under-charged."""
-    monkeypatch.setattr(
-        usage_module,
-        "get_model_cost",
-        lambda model_id: ModelCost(input=2.0, output=None, cache_read=0.5),
-    )
+    _patch_cost(monkeypatch, ModelCost(input=2.0, output=None, cache_read=0.5))
 
     result = usage_module.usage_to_dict(
         Usage(
@@ -114,11 +108,7 @@ def test_usage_to_dict_charges_cache_writes_as_input_when_no_write_price(
 
 
 def test_usage_to_dict_charges_all_input_when_cache_price_unknown(monkeypatch) -> None:
-    monkeypatch.setattr(
-        usage_module,
-        "get_model_cost",
-        lambda model_id: ModelCost(input=2.0, output=None, cache_read=None),
-    )
+    _patch_cost(monkeypatch, ModelCost(input=2.0, output=None, cache_read=None))
 
     result = usage_module.usage_to_dict(
         Usage(
@@ -137,11 +127,7 @@ def test_usage_to_dict_charges_all_input_when_cache_price_unknown(monkeypatch) -
 
 
 def test_usage_to_dict_omits_cost_when_registry_has_no_prices(monkeypatch) -> None:
-    monkeypatch.setattr(
-        usage_module,
-        "get_model_cost",
-        lambda model_id: ModelCost(),
-    )
+    _patch_cost(monkeypatch, ModelCost())
 
     result = usage_module.usage_to_dict(
         Usage(prompt_tokens=1_000, completion_tokens=200, total_tokens=1_200),
@@ -149,3 +135,27 @@ def test_usage_to_dict_omits_cost_when_registry_has_no_prices(monkeypatch) -> No
     )
 
     assert result == {"input": 1_000, "output": 200}
+
+
+def test_provider_cost_model_id_qualifies_the_bare_model() -> None:
+    """Providers carry a bare ``.model`` (it builds the request URL); cost
+    lookups need the ``provider:model`` form or the registry's suffix fallback
+    may resolve to another provider's entry (or a price-less reseller stub).
+    """
+
+    class _Provider:
+        provider_name = "anthropic"
+        model = "claude-sonnet-4-5"
+
+    assert (
+        usage_module.provider_cost_model_id(_Provider())
+        == "anthropic:claude-sonnet-4-5"
+    )
+
+    # Direct construction (unit tests) has no provider_name — fall back to the
+    # bare id rather than crashing.
+    class _BareProvider:
+        model = "gpt-test"
+
+    assert usage_module.provider_cost_model_id(_BareProvider()) == "gpt-test"
+    assert usage_module.provider_cost_model_id(None) is None

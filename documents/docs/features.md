@@ -1012,7 +1012,13 @@ Everything stays local. No third-party telemetry SaaS.
   agent runs, model calls, tool calls. Optional OTLP exporter.
 - **Estimated model-call cost telemetry** `[v1.34.0]` — chat, title-generation,
   and summarization spans include estimated USD cost when model-registry pricing
-  and provider usage tokens are available.
+  and provider usage tokens are available. Cost lookups now always use the
+  fully-qualified `provider:model` id, so Anthropic's cache-write bucket is
+  priced at the cache-write rate instead of being silently dropped by a bare-id
+  registry miss, and the estimate applies DeepSeek's published off-peak rates
+  (50% of peak outside Mon–Fri 01:00–04:00 and 06:00–10:00 UTC) `[v2.4.2]`.
+  The telemetry dashboard also reports cache-write tokens separately from cache
+  reads in the totals, provider:model, and cache-by-step views `[v2.4.2]`.
 - **Prompt budget report** `[v1.102.0]` — `make prompt-budget` reports exact
   `o200k_base` counts for the assembled static system prompt, compact tool-schema
   JSON, every first-party base prompt, each tool, and bundled skill bodies;

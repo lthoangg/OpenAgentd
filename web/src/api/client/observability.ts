@@ -15,6 +15,7 @@ export interface ObservabilitySummary {
     input_tokens: number
     output_tokens: number
     cached_tokens: number
+    cache_write_tokens: number
     cache_percent: number
     estimated_cost_usd: number
     errors: number
@@ -34,6 +35,7 @@ export interface ObservabilitySummary {
     input_tokens: number
     output_tokens: number
     cached_tokens: number
+    cache_write_tokens: number
     cache_percent: number
     estimated_cost_usd: number
     p95_ms: number
@@ -46,6 +48,7 @@ export interface ObservabilitySummary {
     calls: number
     input_tokens: number
     cached_tokens: number
+    cache_write_tokens: number
     miss_tokens: number
     cache_percent: number
     estimated_cost_usd: number

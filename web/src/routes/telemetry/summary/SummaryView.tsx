@@ -39,7 +39,8 @@ export function SummaryView({ data }: { data: ObservabilitySummary }) {
         <div className="grid grid-cols-1 gap-3 p-3 min-[380px]:grid-cols-2 lg:grid-cols-5">
           <Stat label="Input" value={formatCompact(totals.input_tokens)} />
           <Stat label="Output" value={formatCompact(totals.output_tokens)} />
-          <Stat label="Cache hit" value={formatPercent(totals.cache_percent)} />
+          <Stat label="Cache read" value={formatCompact(totals.cached_tokens)} />
+          <Stat label="Cache write" value={formatCompact(totals.cache_write_tokens)} />
           <Stat label="Est. cost" value={formatUsd(totals.estimated_cost_usd)} />
           <Stat
             label="Errors"
@@ -55,16 +56,17 @@ export function SummaryView({ data }: { data: ObservabilitySummary }) {
           <EmptyTable label="No LLM calls recorded in this window." />
         ) : (
           <Table
-            headers={['Provider:model', 'Calls', 'Input', 'Output', 'Cache hit', 'Cost']}
+            headers={['Provider:model', 'Calls', 'Input', 'Output', 'Cache read', 'Cache write', 'Cost']}
             rows={data.by_model.map((m) => [
               m.provider_model,
               formatInt(m.calls),
               formatCompact(m.input_tokens),
               formatCompact(m.output_tokens),
-              formatPercent(m.cache_percent),
+              formatCompact(m.cached_tokens),
+              formatCompact(m.cache_write_tokens),
               formatUsd(m.estimated_cost_usd),
             ])}
-            align={['left', 'right', 'right', 'right', 'right', 'right']}
+            align={['left', 'right', 'right', 'right', 'right', 'right', 'right']}
           />
         )}
       </SectionCard>
@@ -73,9 +75,9 @@ export function SummaryView({ data }: { data: ObservabilitySummary }) {
         <SectionCardHeader>Cache hit/miss</SectionCardHeader>
         <div className="p-3">
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-            <Stat label="Hit tokens" value={formatCompact(totals.cached_tokens)} />
+            <Stat label="Read tokens" value={formatCompact(totals.cached_tokens)} />
+            <Stat label="Write tokens" value={formatCompact(totals.cache_write_tokens)} />
             <Stat label="Miss tokens" value={formatCompact(cacheMissTokens)} />
-            <Stat label="Hit rate" value={formatPercent(totals.cache_percent)} />
           </div>
         </div>
         <div className="border-t border-(--color-border)/60">
@@ -83,19 +85,20 @@ export function SummaryView({ data }: { data: ObservabilitySummary }) {
             <EmptyTable label="No cache usage recorded in this window." />
           ) : (
             <Table
-              headers={['Step', 'Provider:model', 'Calls', 'Hit', 'Miss', 'Hit rate', 'Cost']}
+              headers={['Step', 'Provider:model', 'Calls', 'Read', 'Write', 'Miss', 'Read rate', 'Cost']}
               rows={data.cache_by_step.map((step) => {
                 return [
                   step.step,
                   step.provider_model,
                   formatInt(step.calls),
                   formatCompact(step.cached_tokens),
+                  formatCompact(step.cache_write_tokens),
                   formatCompact(step.miss_tokens),
                   formatPercent(step.cache_percent),
                   formatUsd(step.estimated_cost_usd),
                 ]
               })}
-              align={['left', 'left', 'right', 'right', 'right', 'right', 'right']}
+              align={['left', 'left', 'right', 'right', 'right', 'right', 'right', 'right']}
             />
           )}
         </div>

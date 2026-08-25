@@ -12,6 +12,7 @@ class ObservabilitySummaryTotals(BaseModel):
     input_tokens: int
     output_tokens: int
     cached_tokens: int
+    cache_write_tokens: int
     cache_percent: float
     estimated_cost_usd: float
     errors: int

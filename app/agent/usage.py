@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from datetime import datetime, timezone
 from typing import Any
 
-from app.agent.providers.model_metadata import get_model_cost
+from app.agent.providers.model_metadata import get_cost_at
 from app.agent.schemas.chat import Usage
 
 
@@ -57,7 +58,10 @@ def set_usage_span_attributes(span: Any, usage: Mapping[str, Any]) -> None:
 
 
 def _estimate_cost(usage: Usage, model_id: str | None) -> dict[str, float] | None:
-    prices = get_model_cost(model_id)
+    # Time-aware: providers with off-peak billing (DeepSeek) bill less
+    # outside peak hours, so the estimate uses the rate in effect when the
+    # call was made rather than the flat registry price.
+    prices = get_cost_at(model_id, datetime.now(timezone.utc))
     components: dict[str, float] = {}
     cached_tokens = usage.cached_tokens or 0
     cache_write_tokens = usage.cache_write_tokens or 0
@@ -88,3 +92,21 @@ def _estimate_cost(usage: Usage, model_id: str | None) -> dict[str, float] | Non
     if not components:
         return None
     return {"estimated_usd": sum(components.values()), **components}
+
+
+def provider_cost_model_id(provider: Any) -> str | None:
+    """Return the fully-qualified ``provider:model`` id for cost lookups.
+
+    Providers are built with a bare model id (``self.model``) plus their
+    registry provider name on ``provider_name`` (set by the factory). Cost
+    lookups need the qualified form: a bare id hits the registry's suffix
+    fallback, which can resolve to another provider's entry — or a price-less
+    reseller stub — and silently drop or skew the estimated cost (including
+    Anthropic's cache_write bucket). Falls back to the bare id when the
+    provider name is unavailable (direct construction in tests).
+    """
+    name = getattr(provider, "provider_name", None)
+    model = getattr(provider, "model", None)
+    if isinstance(name, str) and name and isinstance(model, str) and model:
+        return f"{name}:{model}"
+    return model

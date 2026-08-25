@@ -20,6 +20,7 @@ const summary: ObservabilitySummary = {
     input_tokens: 1500,
     output_tokens: 300,
     cached_tokens: 375,
+    cache_write_tokens: 0,
     cache_percent: 25,
     estimated_cost_usd: 0.0045,
     errors: 0,
@@ -40,6 +41,7 @@ const summary: ObservabilitySummary = {
       input_tokens: 1500,
       output_tokens: 300,
       cached_tokens: 375,
+      cache_write_tokens: 0,
       cache_percent: 25,
       estimated_cost_usd: 0.0045,
       p95_ms: 90,
@@ -54,6 +56,7 @@ const summary: ObservabilitySummary = {
       calls: 3,
       input_tokens: 1200,
       cached_tokens: 275,
+      cache_write_tokens: 0,
       miss_tokens: 925,
       cache_percent: 22.9,
       estimated_cost_usd: 0.004,
@@ -66,6 +69,7 @@ const summary: ObservabilitySummary = {
       calls: 1,
       input_tokens: 300,
       cached_tokens: 100,
+      cache_write_tokens: 0,
       miss_tokens: 200,
       cache_percent: 33.3,
       estimated_cost_usd: 0.0005,
@@ -82,13 +86,14 @@ describe('SummaryView', () => {
     expect(screen.getAllByText('Provider:model').length).toBeGreaterThan(0)
     expect(screen.getAllByText('Input').length).toBeGreaterThan(0)
     expect(screen.getAllByText('Output').length).toBeGreaterThan(0)
-    expect(screen.getAllByText('Cache hit').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Cache read').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Cache write').length).toBeGreaterThan(0)
     expect(screen.getByText('Cache hit/miss')).toBeTruthy()
-    expect(screen.getByText('Hit tokens')).toBeTruthy()
+    expect(screen.getByText('Read tokens')).toBeTruthy()
+    expect(screen.getByText('Write tokens')).toBeTruthy()
     expect(screen.getByText('Miss tokens')).toBeTruthy()
-    expect(screen.getAllByText('Hit rate').length).toBeGreaterThan(0)
-    expect(screen.getAllByText('25%').length).toBeGreaterThan(0)
-    expect(screen.getByText('375')).toBeTruthy()
+    expect(screen.getAllByText('Read rate').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('375').length).toBeGreaterThan(0)
     expect(screen.getByText('1.1K')).toBeTruthy()
     expect(screen.getAllByText('$0.0045').length).toBeGreaterThan(0)
     expect(screen.getAllByText('openai:gpt-test').length).toBeGreaterThan(0)

@@ -82,7 +82,7 @@ async def test_after_model_emits_usage_event():
     with (
         capture,
         patch(
-            "app.agent.usage.get_model_cost",
+            "app.agent.usage.get_cost_at",
             return_value=ModelCost(input=2.0, output=5.0),
         ),
     ):
@@ -111,7 +111,7 @@ async def test_published_usage_is_the_message_snapshot_telemetry_records():
     with (
         capture,
         patch(
-            "app.agent.usage.get_model_cost",
+            "app.agent.usage.get_cost_at",
             return_value=ModelCost(input=3.0, output=6.0, cache_read=0.5),
         ),
     ):
@@ -237,7 +237,7 @@ async def test_published_cost_sums_to_the_turn_cost():
     with (
         capture,
         patch(
-            "app.agent.usage.get_model_cost",
+            "app.agent.usage.get_cost_at",
             return_value=ModelCost(input=2.0, output=5.0),
         ),
     ):

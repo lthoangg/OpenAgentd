@@ -132,8 +132,10 @@ async def _run_compaction(hook, ctx, state) -> list:
             side_effect=lambda sid, env: pushed.append(env),
         ),
         patch(
-            "app.agent.usage.get_model_cost",
-            side_effect=lambda model_id: COST if model_id == MODEL_ID else ModelCost(),
+            "app.agent.usage.get_cost_at",
+            side_effect=lambda model_id, at: (
+                COST if model_id == MODEL_ID else ModelCost()
+            ),
         ),
     ):
         await hook.before_model(ctx, state)
@@ -297,8 +299,10 @@ async def test_running_sum_across_turns_with_compaction_between():
             side_effect=lambda sid, env: pushed.append(env),
         ),
         patch(
-            "app.agent.usage.get_model_cost",
-            side_effect=lambda model_id: COST if model_id == MODEL_ID else ModelCost(),
+            "app.agent.usage.get_cost_at",
+            side_effect=lambda model_id, at: (
+                COST if model_id == MODEL_ID else ModelCost()
+            ),
         ),
     ):
         # Turn 1: one model call, cost A.
@@ -353,8 +357,8 @@ async def test_summary_usage_is_persisted_to_db():
     state = _make_state()
     # Turn 1's assistant reply carries cost A in its usage extra.
     with patch(
-        "app.agent.usage.get_model_cost",
-        side_effect=lambda model_id: COST if model_id == MODEL_ID else ModelCost(),
+        "app.agent.usage.get_cost_at",
+        side_effect=lambda model_id, at: COST if model_id == MODEL_ID else ModelCost(),
     ):
         state.messages[1].extra = {
             "usage": usage_to_dict(

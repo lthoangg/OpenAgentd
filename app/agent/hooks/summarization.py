@@ -60,7 +60,11 @@ from typing import TYPE_CHECKING, Awaitable, Callable
 from loguru import logger
 from opentelemetry.trace import SpanKind, StatusCode
 
-from app.agent.usage import set_usage_span_attributes, usage_to_dict
+from app.agent.usage import (
+    provider_cost_model_id,
+    set_usage_span_attributes,
+    usage_to_dict,
+)
 from app.agent.hooks.base import BaseAgentHook
 from app.agent.providers.base import LLMProviderBase
 from app.agent.providers.model_metadata import get_model_limits
@@ -943,7 +947,7 @@ class SummarizationHook(BaseAgentHook):
         cost = usage.get("cost")
         estimated_cost = cost.get("estimated_usd") if isinstance(cost, dict) else None
         metadata: dict = {"agent": agent, "summarization": True}
-        model_id = self._model_id or getattr(self._llm_provider, "model", None)
+        model_id = self._model_id or provider_cost_model_id(self._llm_provider)
         if isinstance(model_id, str) and model_id:
             metadata["model"] = model_id
         prompt_tokens = int(usage.get("input") or 0)
@@ -1030,7 +1034,7 @@ class SummarizationHook(BaseAgentHook):
             # so `usage_to_dict` silently omits cost and the span records
             # tokens with no dollars. Fall back to `.model` only when no
             # model_id was configured.
-            model_id = self._model_id or getattr(self._llm_provider, "model", None)
+            model_id = self._model_id or provider_cost_model_id(self._llm_provider)
             provider_name = getattr(self._llm_provider, "provider_name", None)
             span.set_attribute("gen_ai.operation.name", "summarization")
             if provider_name:

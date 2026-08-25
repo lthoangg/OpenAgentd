@@ -49,6 +49,7 @@ const summaryFixture: ObservabilitySummary = {
     input_tokens: 1500,
     output_tokens: 300,
     cached_tokens: 375,
+    cache_write_tokens: 0,
     cache_percent: 25,
     estimated_cost_usd: 0.0045,
     errors: 0,

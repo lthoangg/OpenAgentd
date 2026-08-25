@@ -144,6 +144,7 @@ class ObservabilitySummary:
     total_input_tokens: int
     total_output_tokens: int
     total_cached_tokens: int
+    total_cache_write_tokens: int
     total_estimated_cost_usd: float
     total_errors: int
 
@@ -169,6 +170,7 @@ class ObservabilitySummary:
                 "input_tokens": self.total_input_tokens,
                 "output_tokens": self.total_output_tokens,
                 "cached_tokens": self.total_cached_tokens,
+                "cache_write_tokens": self.total_cache_write_tokens,
                 "cache_percent": _percent(
                     self.total_cached_tokens, self.total_input_tokens
                 ),
@@ -219,6 +221,7 @@ def _empty_summary(
         total_input_tokens=0,
         total_output_tokens=0,
         total_cached_tokens=0,
+        total_cache_write_tokens=0,
         total_estimated_cost_usd=0.0,
         total_errors=0,
         turn_p50_ms=0.0,
@@ -379,6 +382,7 @@ def _run_queries(
     in_tokens = 0
     out_tokens = 0
     cached_tokens = 0
+    cache_write_tokens = 0
     estimated_cost_usd = 0.0
 
     turn_durations: list[float] = []
@@ -424,11 +428,13 @@ def _run_queries(
             it = _safe_int(attrs.get("gen_ai.usage.input_tokens"))
             ot = _safe_int(attrs.get("gen_ai.usage.output_tokens"))
             ct = _safe_int(attrs.get("gen_ai.usage.cache_read.input_tokens"))
+            cw = _safe_int(attrs.get("gen_ai.usage.cache_creation.input_tokens"))
             cost = _safe_float(attrs.get("gen_ai.usage.estimated_cost_usd"))
 
             in_tokens += it
             out_tokens += ot
             cached_tokens += ct
+            cache_write_tokens += cw
             estimated_cost_usd += cost
 
             has_tokens = ("gen_ai.usage.input_tokens" in attrs) or (
@@ -444,6 +450,7 @@ def _run_queries(
                         "in_tok": 0,
                         "out_tok": 0,
                         "cached_tok": 0,
+                        "cache_write_tok": 0,
                         "cost": 0.0,
                         "durations": [],
                     },
@@ -452,6 +459,7 @@ def _run_queries(
                 m_entry["in_tok"] += it
                 m_entry["out_tok"] += ot
                 m_entry["cached_tok"] += ct
+                m_entry["cache_write_tok"] += cw
                 m_entry["cost"] += cost
                 m_entry["durations"].append(dur)
 
@@ -474,11 +482,18 @@ def _run_queries(
                 model = str(attrs.get("gen_ai.request.model") or "unknown")
                 s_entry = step_map.setdefault(
                     (step, provider, model),
-                    {"calls": 0, "in_tok": 0, "cached_tok": 0, "cost": 0.0},
+                    {
+                        "calls": 0,
+                        "in_tok": 0,
+                        "cached_tok": 0,
+                        "cache_write_tok": 0,
+                        "cost": 0.0,
+                    },
                 )
                 s_entry["calls"] += 1
                 s_entry["in_tok"] += it
                 s_entry["cached_tok"] += ct
+                s_entry["cache_write_tok"] += cw
                 s_entry["cost"] += cost
 
         if is_tool:
@@ -505,6 +520,7 @@ def _run_queries(
             "input_tokens": data["in_tok"],
             "output_tokens": data["out_tok"],
             "cached_tokens": data["cached_tok"],
+            "cache_write_tokens": data["cache_write_tok"],
             "cache_percent": _percent(data["cached_tok"], data["in_tok"]),
             "estimated_cost_usd": round(data["cost"], 8),
             "p95_ms": round(_quantile(data["durations"], 0.95), 1),
@@ -525,6 +541,7 @@ def _run_queries(
             "calls": data["calls"],
             "input_tokens": data["in_tok"],
             "cached_tokens": data["cached_tok"],
+            "cache_write_tokens": data["cache_write_tok"],
             "miss_tokens": max(data["in_tok"] - data["cached_tok"], 0),
             "cache_percent": _percent(data["cached_tok"], data["in_tok"]),
             "estimated_cost_usd": round(data["cost"], 8),
@@ -558,6 +575,7 @@ def _run_queries(
         total_input_tokens=in_tokens,
         total_output_tokens=out_tokens,
         total_cached_tokens=cached_tokens,
+        total_cache_write_tokens=cache_write_tokens,
         total_estimated_cost_usd=round(estimated_cost_usd, 8),
         total_errors=errors,
         turn_p50_ms=round(_quantile(turn_durations, 0.5), 1),

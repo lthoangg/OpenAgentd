@@ -92,7 +92,7 @@ from app.agent.schemas.chat import (
     ToolMessage,
     Usage,
 )
-from app.agent.usage import usage_to_dict
+from app.agent.usage import provider_cost_model_id, usage_to_dict
 
 ANTHROPIC_API_BASE = "https://api.anthropic.com"
 ANTHROPIC_API_VERSION = "2023-06-01"
@@ -888,7 +888,10 @@ class AnthropicProvider(LLMProviderBase):
                 cached_tokens=cached_tokens,
                 cache_write_tokens=cache_write_tokens,
             )
-            msg.extra = {**(msg.extra or {}), "usage": usage_to_dict(usage, self.model)}
+            msg.extra = {
+                **(msg.extra or {}),
+                "usage": usage_to_dict(usage, provider_cost_model_id(self)),
+            }
         return msg
 
     async def stream(

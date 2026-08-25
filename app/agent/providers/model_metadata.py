@@ -9,6 +9,7 @@ but its source data now lives beside modality gates in the model registry.
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from dataclasses import dataclass
 from functools import lru_cache
 from typing import Any
@@ -66,6 +67,43 @@ class ModelCost:
             "cache_read": self.cache_read,
             "cache_write": self.cache_write,
         }
+
+
+@dataclass(frozen=True)
+class OffPeakPricing:
+    """Time-of-day rate adjustment for providers with off-peak billing.
+
+    ``multiplier`` scales every rate (input/output/cache_read/cache_write)
+    when ``at`` falls OUTSIDE every ``peak_windows`` entry. Each window is
+    ``(weekday, start_hour, end_hour)`` in UTC, end exclusive — e.g. DeepSeek
+    bills half price off-peak, with peak hours Monday–Friday 01:00–04:00 and
+    06:00–10:00 UTC (``weekday`` 0 = Monday).
+    """
+
+    multiplier: float
+    peak_windows: tuple[tuple[int, int, int], ...]
+
+    def is_off_peak(self, at: datetime) -> bool:
+        if at.tzinfo is None:
+            at = at.replace(tzinfo=timezone.utc)
+        at = at.astimezone(timezone.utc)
+        for weekday, start_hour, end_hour in self.peak_windows:
+            if at.weekday() == weekday and start_hour <= at.hour < end_hour:
+                return False
+        return True
+
+    def apply(self, cost: ModelCost) -> ModelCost:
+        scale = self.multiplier
+        return ModelCost(
+            input=cost.input * scale if cost.input is not None else None,
+            output=cost.output * scale if cost.output is not None else None,
+            cache_read=(
+                cost.cache_read * scale if cost.cache_read is not None else None
+            ),
+            cache_write=(
+                cost.cache_write * scale if cost.cache_write is not None else None
+            ),
+        )
 
 
 @dataclass(frozen=True)
@@ -274,6 +312,76 @@ def _registry() -> dict[str, ModelMetadata]:
     return _load_registry()
 
 
+#: Provider-level time-of-day pricing rules, keyed by registry provider id
+#: (the ``provider:`` prefix of a fully-qualified model id). Only providers
+#: whose API publishes an off-peak billing schedule need an entry.
+#:
+#: DeepSeek: off-peak rates are half of the peak rates; peak hours are
+#: 01:00–04:00 and 06:00–10:00 UTC, Monday through Friday (weekday 0 = Mon).
+_OFF_PEAK_RULES: dict[str, OffPeakPricing] = {
+    "deepseek": OffPeakPricing(
+        multiplier=0.5,
+        peak_windows=(
+            (0, 1, 4),
+            (0, 6, 10),
+            (1, 1, 4),
+            (1, 6, 10),
+            (2, 1, 4),
+            (2, 6, 10),
+            (3, 1, 4),
+            (3, 6, 10),
+            (4, 1, 4),
+            (4, 6, 10),
+        ),
+    ),
+}
+
+#: Preferred provider order for resolving a bare model id (no ``provider:``
+#: prefix) against the registry. The official vendor for a model family
+#: should win over reseller proxies, which mark prices up or omit them.
+_BARE_ID_PROVIDER_PREFERENCE = (
+    "openai",
+    "anthropic",
+    "google",
+    "googlegenai",
+    "deepseek",
+    "xai",
+    "zai",
+    "codex",
+    "meta",
+    "mistral",
+    "groq",
+)
+
+
+def _resolve_bare_model_metadata(
+    lowered: str, reg: dict[str, ModelMetadata]
+) -> ModelMetadata | None:
+    """Resolve a bare model id to the most useful registry entry.
+
+    The old first-match scan returned whichever reseller proxy happened to
+    sort first — for ``claude-sonnet-4-5`` that was a price-less stub, so the
+    whole estimated cost (including Anthropic's cache_write bucket) silently
+    vanished. Prefer the official vendor's priced entry, then any priced
+    entry, then the first match.
+    """
+    for provider in _BARE_ID_PROVIDER_PREFERENCE:
+        meta = reg.get(f"{provider}:{lowered}")
+        if meta is not None and (
+            meta.cost.input is not None or meta.cost.output is not None
+        ):
+            return meta
+    for key, meta in reg.items():
+        if key.endswith(f":{lowered}") and (
+            meta.cost.input is not None or meta.cost.output is not None
+        ):
+            return meta
+    for key, meta in reg.items():
+        if key.endswith(f":{lowered}"):
+            return meta
+    return None
+
+
 def get_model_metadata(model_id: str | None) -> ModelMetadata:
     """Return metadata for a fully-qualified ``provider:model`` string."""
     if not model_id:
@@ -283,10 +391,9 @@ def get_model_metadata(model_id: str | None) -> ModelMetadata:
     if lowered in reg:
         return reg[lowered]
     if ":" not in lowered:
-        suffix = f":{lowered}"
-        for key, meta in reg.items():
-            if key.endswith(suffix):
-                return meta
+        resolved = _resolve_bare_model_metadata(lowered, reg)
+        if resolved is not None:
+            return resolved
     return _DEFAULT
 
 
@@ -298,6 +405,23 @@ def get_model_limits(model_id: str | None) -> ModelLimits:
 def get_model_cost(model_id: str | None) -> ModelCost:
     """Return pricing metadata for a fully-qualified ``provider:model`` string."""
     return get_model_metadata(model_id).cost
+
+
+def get_cost_at(model_id: str | None, at: datetime) -> ModelCost:
+    """Return the model's cost at time ``at``, applying off-peak adjustments.
+
+    Only the estimate path consults this — metadata lookups stay
+    time-independent via :func:`get_model_cost`. The adjustment is keyed on
+    the ``provider:`` prefix, so a bare model id (which resolves via the
+    suffix fallback) is never mis-attributed to a provider rule.
+    """
+    cost = get_model_cost(model_id)
+    if not model_id or ":" not in model_id:
+        return cost
+    rule = _OFF_PEAK_RULES.get(model_id.split(":", 1)[0].lower())
+    if rule is None or not rule.is_off_peak(at):
+        return cost
+    return rule.apply(cost)
 
 
 def get_model_thinking_levels(model_id: str | None) -> tuple[str, ...]:

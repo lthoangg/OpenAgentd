@@ -139,8 +139,8 @@ async def test_summarization_span_records_cost_when_provider_model_is_unqualifie
     """
     monkeypatch.setattr(
         usage_module,
-        "get_model_cost",
-        lambda model_id: (
+        "get_cost_at",
+        lambda model_id, at: (
             ModelCost(input=5.0, output=30.0, cache_read=0.5)
             if model_id == "codex:gpt-5.6-sol"
             else ModelCost()

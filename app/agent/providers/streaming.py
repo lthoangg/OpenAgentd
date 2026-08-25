@@ -18,6 +18,7 @@ Usage::
 from __future__ import annotations
 
 import orjson
+import httpx
 from collections.abc import AsyncIterator
 from typing import Any
 
@@ -28,6 +29,7 @@ async def iter_sse_data(
     response,
     *,
     sentinel: str | None = "[DONE]",
+    require_sentinel: bool = False,
 ) -> AsyncIterator[dict[str, Any]]:
     """Yield parsed JSON objects from an SSE stream.
 
@@ -37,12 +39,16 @@ async def iter_sse_data(
         sentinel: The ``data:`` value that signals end-of-stream.
             Pass ``None`` to disable sentinel detection (e.g. Google's
             SSE stream which ends when the connection closes).
+        require_sentinel: Raise when the connection closes before ``sentinel``.
+            Use only for providers whose streaming contract requires an
+            explicit terminal frame.
 
     Yields:
         Parsed ``dict`` for each ``data:`` line that is valid JSON.
         Empty lines, ``event:`` lines, and ``id:`` lines are skipped.
         Lines that fail JSON parsing are skipped with a warning.
     """
+    received_sentinel = False
     async for line in response.aiter_lines():
         line = line.strip()
         if not line or not line.startswith("data: "):
@@ -51,6 +57,7 @@ async def iter_sse_data(
         data_str = line[len("data: ") :]
 
         if sentinel is not None and data_str == sentinel:
+            received_sentinel = True
             break
 
         try:
@@ -58,3 +65,8 @@ async def iter_sse_data(
         except Exception:
             logger.debug("sse_invalid_json data={}", data_str[:200])
             continue
+
+    if require_sentinel and not received_sentinel:
+        raise httpx.RemoteProtocolError(
+            f"SSE stream ended before terminal {sentinel!r} frame"
+        )

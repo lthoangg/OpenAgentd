@@ -771,6 +771,79 @@ class TestCompletionsHandlerHTTP:
         assert chunks[3].usage is not None
         assert chunks[3].usage.prompt_tokens == 10
 
+    async def test_stream_rejects_truncated_response_when_completion_required(
+        self, handler
+    ):
+        """A provider-specific strict stream must not accept partial output as done."""
+        import httpx
+        from contextlib import asynccontextmanager
+        from unittest.mock import AsyncMock, patch
+
+        handler.require_sse_sentinel = True
+        messages = [HumanMessage(content="Hello")]
+
+        async def mock_aiter_lines():
+            yield (
+                "data: "
+                + '{"id":"chatcmpl-123","created":1234567890,"model":"gpt-4o","choices":[{"index":0,"delta":{"content":"partial"},"finish_reason":null}]}'
+            )
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.aiter_lines = mock_aiter_lines
+
+        @asynccontextmanager
+        async def mock_stream(*args, **kwargs):
+            yield mock_response
+
+        mock_client = AsyncMock()
+        mock_client.stream = mock_stream
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+
+        with patch("httpx.AsyncClient", return_value=mock_client):
+            with pytest.raises(httpx.RemoteProtocolError, match=r"\[DONE\]"):
+                async for _ in handler.stream(messages, tools=None, merged={}):
+                    pass
+
+    async def test_stream_retries_configured_terminal_error_reason(self, handler):
+        """A gateway error finish reason must not be presented as a completion."""
+        import httpx
+        from contextlib import asynccontextmanager
+        from unittest.mock import AsyncMock, patch
+
+        handler.retryable_finish_reasons = frozenset({"network_error"})
+        messages = [HumanMessage(content="Hello")]
+
+        async def mock_aiter_lines():
+            yield (
+                "data: "
+                + '{"id":"chatcmpl-123","created":1234567890,"model":"gpt-4o","choices":[{"index":0,"delta":{"content":"partial"},"finish_reason":null}]}'
+            )
+            yield (
+                "data: "
+                + '{"id":"chatcmpl-123","created":1234567890,"model":"gpt-4o","choices":[{"index":0,"delta":{},"finish_reason":"network_error"}]}'
+            )
+            yield "data: [DONE]"
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.aiter_lines = mock_aiter_lines
+
+        @asynccontextmanager
+        async def mock_stream(*args, **kwargs):
+            yield mock_response
+
+        mock_client = AsyncMock()
+        mock_client.stream = mock_stream
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+
+        with patch("httpx.AsyncClient", return_value=mock_client):
+            with pytest.raises(httpx.RemoteProtocolError, match="network_error"):
+                async for _ in handler.stream(messages, tools=None, merged={}):
+                    pass
+
     async def test_stream_with_tool_calls(self, handler):
         """Test stream() with tool call chunks."""
         from unittest.mock import AsyncMock, patch

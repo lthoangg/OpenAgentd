@@ -29,6 +29,7 @@ from .constants import (
     GO_PROVIDER_ID,
     PUBLIC_API_KEY,
     ZEN_API_KEY_ENV,
+    ZEN_PROVIDER_ID,
 )
 
 
@@ -82,6 +83,14 @@ class OpenCodeProvider(LLMProviderBase):
         self.model = model
         self.provider_id = provider_id
         self.base_url = base_url.rstrip("/")
+        self._requires_terminal_sse_frame = (
+            provider_id == ZEN_PROVIDER_ID
+            and model_is_accessible(
+                provider_id,
+                model,
+                has_credentials=False,
+            )
+        )
         if hmac.compare_digest(resolved_key, PUBLIC_API_KEY):
             if provider_id == GO_PROVIDER_ID:
                 raise ValueError(
@@ -142,13 +151,26 @@ class OpenCodeProvider(LLMProviderBase):
             if self.model.startswith("deepseek-")
             else ChatCompletionsOnlyProvider
         )
-        return provider_type(
+        delegate = provider_type(
             api_key=self.api_key,
             model=self.model,
             base_url=self.base_url,
             max_tokens=self.max_tokens,
             model_kwargs=self.model_kwargs,
         )
+        if self._requires_terminal_sse_frame:
+            # Zen's free-model gateway has been observed closing streams after
+            # partial output. Unlike generic OpenAI-compatible endpoints, Zen
+            # must send its documented ``[DONE]`` frame; treating EOF as
+            # success leaves an agent visibly stopped mid-turn. The retry
+            # wrapper converts this protocol error into a fresh attempt. Scope
+            # strictness to free Zen models so all other providers and models
+            # retain their current EOF compatibility.
+            delegate._completions.require_sse_sentinel = True
+            delegate._completions.retryable_finish_reasons = frozenset(
+                {"network_error"}
+            )
+        return delegate
 
     async def chat(
         self,

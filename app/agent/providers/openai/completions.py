@@ -49,6 +49,15 @@ if TYPE_CHECKING:
 class CompletionsHandler:
     """Handles all interaction with /v1/chat/completions."""
 
+    # Most OpenAI-compatible endpoints legitimately close an SSE response
+    # without a ``[DONE]`` frame. Specific gateways can opt into strict
+    # terminal-frame validation when an EOF otherwise represents a truncated
+    # completion.
+    require_sse_sentinel: bool = False
+    # Gateway-specific terminal reasons that mean the request failed after an
+    # HTTP 200 response and should enter the normal stream retry path.
+    retryable_finish_reasons: frozenset[str] = frozenset()
+
     # OpenAI's reasoning-capable models (o-series, gpt-5*, gpt-5.4*) reject
     # the legacy ``max_tokens`` field — they require ``max_completion_tokens``.
     # The Chat Completions API accepts ``max_completion_tokens`` on every
@@ -360,8 +369,21 @@ class CompletionsHandler:
                     )
                     response.raise_for_status()
 
-                async for data in iter_sse_data(response, sentinel="[DONE]"):
+                async for data in iter_sse_data(
+                    response,
+                    sentinel="[DONE]",
+                    require_sentinel=self.require_sse_sentinel,
+                ):
                     chunk = OpenAIStreamChunk.model_validate(data)
+
+                    if any(
+                        choice.finish_reason in self.retryable_finish_reasons
+                        for choice in chunk.choices
+                    ):
+                        raise httpx.RemoteProtocolError(
+                            "SSE stream ended with retryable finish reason "
+                            f"{chunk.choices[0].finish_reason!r}"
+                        )
 
                     if not chunk.choices:
                         if chunk.usage:

@@ -267,6 +267,50 @@ def test_opencode_provider_defaults_unknown_transport_to_chat_completions() -> N
     assert delegate._use_responses is False
 
 
+def test_opencode_chat_completions_require_a_terminal_sse_frame() -> None:
+    """Only free Zen chat-completions streams reject a truncated EOF."""
+    provider = OpenCodeProvider(
+        api_key="opencode-key",
+        model="hy3-free",
+        provider_id="opencode",
+        base_url="https://opencode.ai/zen/v1",
+    )
+
+    with patch(
+        "app.agent.providers.opencode.opencode.get_model_transport",
+        return_value=ModelTransport(
+            endpoint_variant="default", api_family="chat_completions"
+        ),
+    ):
+        delegate = provider._delegate()
+
+    assert delegate._completions.require_sse_sentinel is True
+    assert delegate._completions.retryable_finish_reasons == frozenset(
+        {"network_error"}
+    )
+
+
+def test_opencode_paid_chat_completions_keep_the_default_eof_compatibility() -> None:
+    """The free-model safeguard must not alter paid or other providers."""
+    provider = OpenCodeProvider(
+        api_key="opencode-key",
+        model="deepseek-v4-flash",
+        provider_id="opencode",
+        base_url="https://opencode.ai/zen/v1",
+    )
+
+    with patch(
+        "app.agent.providers.opencode.opencode.get_model_transport",
+        return_value=ModelTransport(
+            endpoint_variant="default", api_family="chat_completions"
+        ),
+    ):
+        delegate = provider._delegate()
+
+    assert delegate._completions.require_sse_sentinel is False
+    assert delegate._completions.retryable_finish_reasons == frozenset()
+
+
 @respx.mock
 @pytest.mark.parametrize(
     ("provider_id", "models_url"),

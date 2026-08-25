@@ -214,4 +214,15 @@ describe("useTeamCommands — navigation", () => {
     byId(result.current, "go-settings").action()
     expect(openSettings).toHaveBeenCalledWith("agents")
   })
+
+  it("go-telemetry navigates to '/telemetry'", () => {
+    const navigate = mock(() => Promise.resolve())
+    const { result } = renderHook(() =>
+      useTeamCommands(
+        makeArgs({ navigate: navigate as unknown as Parameters<typeof useTeamCommands>[0]["navigate"] }),
+      ),
+    )
+    byId(result.current, "go-telemetry").action()
+    expect(navigate).toHaveBeenCalledWith({ to: "/telemetry" })
+  })
 })

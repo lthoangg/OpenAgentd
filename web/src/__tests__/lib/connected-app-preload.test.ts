@@ -2,6 +2,7 @@ import { describe, expect, it, mock } from 'bun:test'
 import type { QueryClient } from '@tanstack/react-query'
 import { preloadConnectedApp } from '@/lib/connected-app-preload'
 import { queryKeys } from '@/queries/keys'
+import { teamAgentsQueryOptions } from '@/queries/team-agents'
 
 function createClient() {
   const prefetchQuery = mock(() => Promise.resolve())
@@ -23,7 +24,7 @@ describe('preloadConnectedApp', () => {
     expect(prefetchQuery.mock.calls.map(([options]) => (options as { queryKey: readonly unknown[] }).queryKey)).toEqual([
       // Shared /team/agents entry — same key the home-page probe and chat
       // header read, so the preload warms both.
-      queryKeys.teamAgents(),
+      teamAgentsQueryOptions().queryKey,
       queryKeys.settings.providers(),
       queryKeys.coding.tree(),
     ])

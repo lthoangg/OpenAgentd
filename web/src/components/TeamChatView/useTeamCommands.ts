@@ -67,5 +67,6 @@ export function useTeamCommands({
     { id: 'open-terminal', group: 'View' as const, label: 'Open Terminal', description: 'Interactive shell in the workspace (runs on the connected server)', shortcut: formatShortcut('`', os, { shift: true }), action: handleOpenTerminal },
     { id: 'go-home',     group: 'Navigation', label: 'Go to Home',     description: '', action: () => navigate({ to: '/' }) },
     { id: 'go-settings', group: 'Navigation', label: 'Open Settings',  description: 'Manage agents, skills, providers & more', shortcut: formatShortcut(',', os), action: () => openSettings('agents') },
+    { id: 'go-telemetry', group: 'Navigation', label: 'Open Telemetry', description: 'View spans, latency, and model metrics', action: () => navigate({ to: '/telemetry' }) },
   ], [os, viewMode, toggleAgentCapabilities, setShowTodos, handleWorkspaceFiles, handleCodingSidebarToggle, handleNewSession, handleOpenTerminal, navigate, openSettings])
 }

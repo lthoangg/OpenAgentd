@@ -1,6 +1,5 @@
 import { memo, type Dispatch, type HTMLAttributes, type SetStateAction } from 'react'
-import { Home, ListTodo, PanelLeft, PanelRight, SlidersHorizontal } from 'lucide-react'
-import type { NavigateFn } from '@tanstack/react-router'
+import { ListTodo, PanelLeft, PanelRight, SlidersHorizontal } from 'lucide-react'
 
 import { AgentTopbar, type AgentTopbarTokens } from '@/components/AgentTopbar'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
@@ -22,7 +21,6 @@ interface TeamChatHeaderProps {
   activeAgent: string | null
   effectiveViewMode: ViewMode
   splitAgentCount: number
-  navigate: NavigateFn
   onCodingSidebarToggle: () => void
   headerTokens?: AgentTopbarTokens
   sessionId: string | null
@@ -54,7 +52,6 @@ export const TeamChatHeader = memo(function TeamChatHeader({
   activeAgent,
   effectiveViewMode,
   splitAgentCount,
-  navigate,
   onCodingSidebarToggle,
   headerTokens,
   sessionId,
@@ -85,24 +82,7 @@ export const TeamChatHeader = memo(function TeamChatHeader({
         isMacOverlay ? 'select-none pl-[70px]' : ''
       }`}
     >
-        {/* Desktop keeps a Home affordance in the menubar, right next to
-            the hamburger (same tight gap-1 rhythm as AppHeader). Mobile
-            uses one global nav entry and places Home inside the drawer. */}
         <div className={`mr-1 flex h-full min-w-0 shrink items-center gap-1 pl-2 md:mr-2 ${isMacOverlay ? '' : 'md:pl-3'}`}>
-          {!isMobile && (
-            <a
-              href="/"
-              aria-label="Home"
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-7 md:w-7"
-              onClick={(event) => {
-                event.preventDefault()
-                navigate({ to: '/' })
-              }}
-            >
-              <Home size={14} strokeWidth={1.8} aria-hidden="true" />
-            </a>
-          )}
-
           {/* Hamburger target depends on mode: coding sidebar toggle,
               mobile drawer, or a synthetic ⌘B/Ctrl+B for the general sidebar
               (whose collapse state is owned by Sidebar). */}

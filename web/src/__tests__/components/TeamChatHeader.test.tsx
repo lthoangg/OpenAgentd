@@ -1,11 +1,7 @@
-import type { ComponentProps, ReactNode } from 'react'
-import { describe, expect, it, mock } from 'bun:test'
+import type { ComponentProps } from 'react'
+import { describe, expect, it } from 'bun:test'
 import { render, screen } from '@testing-library/react'
 import '@testing-library/jest-dom'
-
-mock.module('@tanstack/react-router', () => ({
-  Link: ({ children }: { children: ReactNode }) => children,
-}))
 
 import { TeamChatHeader } from '@/components/TeamChatView/TeamChatHeader'
 import type { ViewMode } from '@/components/TeamChatView/types'
@@ -20,7 +16,6 @@ function renderHeader(overrides: Partial<ComponentProps<typeof TeamChatHeader>> 
     activeAgent: null,
     effectiveViewMode: 'agent' as ViewMode,
     splitAgentCount: 1,
-    navigate: (async () => undefined) as ComponentProps<typeof TeamChatHeader>['navigate'],
     onCodingSidebarToggle: () => undefined,
     headerTokens: undefined,
     sessionId: 'session-1',

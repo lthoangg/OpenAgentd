@@ -389,7 +389,6 @@ export function TeamChatView({ sessionId, workspace = null, codingSessionLoading
           activeAgent={activeAgent}
           effectiveViewMode={effectiveViewMode}
           splitAgentCount={splitAgentNames.length}
-          navigate={navigate}
           onCodingSidebarToggle={handleCodingSidebarToggle}
           headerTokens={headerTokens}
           sessionId={sessionIdState}

@@ -40,6 +40,7 @@ import { useSettingsStore } from '@/stores/useSettingsStore'
 import { queryKeys } from '@/queries/keys'
 import { getCodingWorkspaceStatus } from '@/api/client'
 import { cn } from '@/lib/utils'
+import { router } from '@/router'
 
 export interface AppFooterProps {
   workspace?: string | null
@@ -211,6 +212,10 @@ export const AppFooter = memo(function AppFooter({
                 href="/telemetry"
                 className="flex h-5 w-5 items-center justify-center rounded-sm text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
                 aria-label="Telemetry"
+                onClick={(e) => {
+                  e.preventDefault()
+                  void router.navigate({ to: '/telemetry' })
+                }}
               >
                 <Activity size={12} aria-hidden="true" />
               </a>

@@ -1064,6 +1064,58 @@ class TestTeamHistoryRouteExtra:
         assert data["members"][0]["name"] == "worker#1"
         assert data["members"][0]["running"] is True
 
+    @pytest.mark.asyncio
+    async def test_team_history_carries_authoritative_session_usage_totals(
+        self, app_with_team, monkeypatch
+    ):
+        """History must expose the full-session cost/output tokens computed by
+        the server (not the truncated page), for the lead and every member."""
+        from unittest.mock import AsyncMock
+
+        lead_id = uuid.uuid7()
+        member_id = uuid.uuid7()
+        lead_session = ChatSession(
+            id=lead_id,
+            title="Task",
+            agent_name="lead",
+        )
+        member_session = ChatSession(
+            id=member_id,
+            parent_session_id=lead_id,
+            agent_name="worker#1",
+        )
+
+        async def fake_get_team_history(
+            db, requested_id, *, before_seq=None, before_id=None
+        ):
+            assert requested_id == lead_id
+            return SimpleNamespace(
+                lead_session=lead_session,
+                lead_messages=[],
+                members=[
+                    SimpleNamespace(session=member_session, messages=[]),
+                ],
+                has_more=False,
+                next_cursor=None,
+                next_cursor_id=None,
+            )
+
+        monkeypatch.setattr(
+            "app.api.routes.team.chat.get_team_history", fake_get_team_history
+        )
+        totals = AsyncMock(side_effect=[(19.6675, 139633), (2.5, 2500)])
+        monkeypatch.setattr("app.api.routes.team.chat.session_usage_totals", totals)
+
+        client = TestClient(app_with_team)
+        resp = client.get(f"/api/team/{lead_id}/history")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["lead"]["estimated_cost_usd"] == 19.6675
+        assert data["lead"]["completion_tokens"] == 139633
+        assert data["members"][0]["estimated_cost_usd"] == 2.5
+        assert data["members"][0]["completion_tokens"] == 2500
+
     def test_history_before_cursor_rejects_malformed_id(self, app_with_team):
         client = TestClient(app_with_team)
         resp = client.get(

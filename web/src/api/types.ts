@@ -196,6 +196,15 @@ export interface SessionResponse {
   thinking_level?: string | null
   running?: boolean
   /**
+   * Full-session usage totals — every user-visible message, compaction
+   * summaries included (the summariser is a billed model call). Populated on
+   * history responses so the client can show the authoritative session
+   * cost/output without re-summing the truncated history page. Absent/null on
+   * list and status payloads that never compute them.
+   */
+  estimated_cost_usd?: number | null
+  completion_tokens?: number | null
+  /**
    * The lead of this session is suspended on `ask_user`.
    *
    * Implies `running` — the turn never closed — so a session list must check
@@ -241,6 +250,8 @@ export interface TeamHistoryResponse {
     session_id: string
     messages: MessageResponse[]
     running?: boolean
+    estimated_cost_usd?: number | null
+    completion_tokens?: number | null
   }>
   has_more: boolean
   next_cursor: string | null

@@ -2510,6 +2510,96 @@ describe("loadSession", () => {
     expect(usage.completionTokens).toBe(80)
   })
 
+  // ── Regression: history page truncation undercounts session cost ──────────
+  // `teamHistory` pages the newest 100 rows; a client-side sum over the page
+  // misses everything older. The server now returns the authoritative
+  // full-session total (`estimated_cost_usd` / `completion_tokens`) and
+  // loadSession must prefer it over the page-derived sum.
+
+  it("restores the authoritative full-session cost from the server, not the truncated page", async () => {
+    mockTeamHistory.mockImplementation(() =>
+      Promise.resolve({
+        lead: {
+          id: "lead-sess",
+          agent_name: "lead",
+          title: null,
+          created_at: null,
+          updated_at: null,
+          sub_sessions: [],
+          // Only the newest page of a long session — its visible usage is a
+          // small slice of the true total.
+          estimated_cost_usd: 19.6675,
+          completion_tokens: 139633,
+          messages: [
+            {
+              id: "m-newest",
+              role: "assistant",
+              content: "hi",
+              extra: { usage: { input: 100, output: 20, cost: { estimated_usd: 0.001 } } },
+            },
+          ],
+        },
+        members: [],
+        has_more: true,
+        next_cursor: 1,
+      })
+    )
+    useTeamStore.setState({
+      sessionId: "sess-1",
+      isTeamWorking: false,
+      agentStreams: {},
+    })
+
+    await useTeamStore.getState().loadSession("sess-1")
+
+    const usage = useTeamStore.getState().agentStreams.lead.usage
+    expect(usage.estimatedCostUsd).toBe(19.6675)
+    expect(usage.completionTokens).toBe(139633)
+    // promptTokens stays page-derived: it describes the latest call.
+    expect(usage.promptTokens).toBe(100)
+    expect(usage.totalTokens).toBe(100 + 139633)
+  })
+
+  it("member streams adopt the authoritative full-session cost on load", async () => {
+    mockTeamHistory.mockImplementation(() =>
+      Promise.resolve({
+        lead: {
+          id: "lead-sess",
+          agent_name: "lead",
+          title: null,
+          created_at: null,
+          updated_at: null,
+          sub_sessions: [],
+          estimated_cost_usd: 1.0,
+          completion_tokens: 1000,
+          messages: [],
+        },
+        members: [
+          {
+            name: "worker",
+            session_id: "w-sess",
+            messages: [],
+            estimated_cost_usd: 2.5,
+            completion_tokens: 2500,
+          },
+        ],
+        has_more: false,
+        next_cursor: null,
+      })
+    )
+    useTeamStore.setState({
+      sessionId: "sess-1",
+      isTeamWorking: false,
+      agentStreams: {},
+    })
+
+    await useTeamStore.getState().loadSession("sess-1")
+
+    expect(useTeamStore.getState().agentStreams.lead.usage.estimatedCostUsd).toBe(1.0)
+    expect(useTeamStore.getState().agentStreams.worker.usage.estimatedCostUsd).toBe(2.5)
+    expect(useTeamStore.getState().agentStreams.worker.usage.completionTokens).toBe(2500)
+  })
+
   it("resets lead agent status to idle when switching away from streaming session", async () => {
     useTeamStore.setState({
       isTeamWorking: true,
@@ -2975,6 +3065,58 @@ describe("loadOlderMessages", () => {
     expect(tool?.toolDone).toBe(true)
     expect(tool?.toolResult).toBe("split result")
     expect(tool?.serverDurationMs).toBe(42)
+  })
+
+  // The server total is authoritative for the whole session, so older pages
+  // must not add their usage on top of it — that would double-count.
+  it("does not re-add older-page usage after the server restored the full-session total", async () => {
+    useTeamStore.setState({
+      sessionId: "sess-1",
+      hasMore: true,
+      nextCursor: "2024-02-01T00:00:00Z",
+      leadName: "lead",
+      agentStreams: {
+        lead: makeStream({
+          usage: {
+            promptTokens: 100,
+            completionTokens: 139633,
+            totalTokens: 139733,
+            cachedTokens: 0,
+            estimatedCostUsd: 19.6675,
+          },
+        }),
+      },
+    })
+    mockTeamHistory.mockImplementation(() =>
+      Promise.resolve({
+        lead: {
+          id: "lead-sess",
+          agent_name: "lead",
+          title: null,
+          created_at: null,
+          updated_at: null,
+          sub_sessions: [],
+          messages: [
+            {
+              id: "m-old",
+              role: "assistant",
+              content: "old",
+              extra: { usage: { input: 1000, output: 500, cost: { estimated_usd: 0.05 } } },
+            },
+          ],
+        },
+        members: [],
+        has_more: false,
+        next_cursor: null,
+      })
+    )
+
+    await useTeamStore.getState().loadOlderMessages()
+
+    const usage = useTeamStore.getState().agentStreams.lead.usage
+    expect(usage.estimatedCostUsd).toBe(19.6675)
+    expect(usage.completionTokens).toBe(139633)
+    expect(usage.totalTokens).toBe(139733)
   })
 })
 

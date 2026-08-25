@@ -23,6 +23,11 @@ class TeamHistoryMember(BaseModel):
     session_id: str
     messages: list[MessageResponse]
     running: bool = False
+    #: Full-session usage totals for this member session (see
+    #: ``SessionResponse.estimated_cost_usd``). Populated on history
+    #: responses; ``None`` when the member has no usage.
+    estimated_cost_usd: float | None = None
+    completion_tokens: int | None = None
 
 
 class TeamHistoryResponse(BaseModel):

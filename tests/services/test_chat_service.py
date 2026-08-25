@@ -2284,6 +2284,65 @@ async def test_get_team_history_filters_hidden_lead_rows_in_sql(session):
 
 
 @pytest.mark.asyncio
+async def test_session_usage_totals_sums_visible_messages_including_summaries(session):
+    """The authoritative session total must cover assistant rows and compaction
+    summaries (real billed calls) while excluding hidden note rows."""
+    from app.services.chat_service import session_usage_totals
+
+    lead = await create_chat_session(session, title="lead")
+    await save_message(
+        session,
+        lead.id,
+        AssistantMessage(content="a"),
+        extra={
+            "usage": {
+                "input": 100,
+                "output": 20,
+                "cost": {"estimated_usd": 0.001},
+            },
+        },
+    )
+    # Compaction summary row: the summariser is a billed model call.
+    await save_message(
+        session,
+        lead.id,
+        HumanMessage(content="summary", is_summary=True),
+        is_summary=True,
+        extra={
+            "usage": {
+                "input": 5000,
+                "output": 30,
+                "cost": {"estimated_usd": 0.002},
+            },
+        },
+    )
+    # Hidden note rows must not count toward the visible transcript total.
+    await save_message(
+        session,
+        lead.id,
+        HumanMessage(content="note"),
+        extra={"hidden_from_user": True},
+    )
+    await session.commit()
+
+    cost, completion = await session_usage_totals(session, lead.id)
+
+    assert cost == pytest.approx(0.003)
+    assert completion == 50
+
+
+@pytest.mark.asyncio
+async def test_session_usage_totals_empty_without_usage(session):
+    from app.services.chat_service import session_usage_totals
+
+    lead = await create_chat_session(session, title="lead")
+    await save_message(session, lead.id, HumanMessage(content="plain"))
+    await session.commit()
+
+    assert await session_usage_totals(session, lead.id) == (0.0, 0)
+
+
+@pytest.mark.asyncio
 async def test_get_team_history_member_fetch_is_bounded(session):
     """_fetch_member_pages must not materialize every member row.
 

@@ -65,6 +65,13 @@ class SessionResponse(_ExcludeNoneModel):
     thinking_level: str | None = None
     revert: dict | None = None
     running: bool = False
+    #: Full-session usage totals (every user-visible message, compaction
+    #: summaries included). Populated on history responses so the client can
+    #: show the authoritative session cost/tokens without re-summing the
+    #: truncated history page. ``None`` on list/status payloads that never
+    #: compute them.
+    estimated_cost_usd: float | None = None
+    completion_tokens: int | None = None
     # True when the lead suspended its turn on an ask_user and is
     # still waiting — drives the "needs input" badge in session lists.
     needs_input: bool = False

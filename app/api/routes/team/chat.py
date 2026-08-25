@@ -89,6 +89,7 @@ from app.services.chat_service import (
     resolve_legacy_history_cursor,
     save_message,
     save_queued_user_message,
+    session_usage_totals,
     update_session_title,
 )
 
@@ -1041,24 +1042,33 @@ async def team_history(
             in stream_store.running_session_ids()
         }
     )
+    lead_cost, lead_completion = await session_usage_totals(db, history.lead_session.id)
     lead_detail = SessionDetailResponse(
         **lead_resp.model_dump(),
         messages=[_message_response(m) for m in history.lead_messages],
+        estimated_cost_usd=lead_cost,
+        completion_tokens=lead_completion,
     )
 
     active_statuses = stream_store.get_agent_statuses(str(history.lead_session.id))
-    member_histories = [
-        TeamHistoryMember(
-            name=member.session.agent_name or str(member.session.id),
-            session_id=str(member.session.id),
-            messages=[_message_response(m) for m in member.messages],
-            running=active_statuses.get(
-                member.session.agent_name or str(member.session.id)
-            )
-            == "working",
+    member_histories = []
+    for member in history.members:
+        member_cost, member_completion = await session_usage_totals(
+            db, member.session.id
         )
-        for member in history.members
-    ]
+        member_histories.append(
+            TeamHistoryMember(
+                name=member.session.agent_name or str(member.session.id),
+                session_id=str(member.session.id),
+                messages=[_message_response(m) for m in member.messages],
+                running=active_statuses.get(
+                    member.session.agent_name or str(member.session.id)
+                )
+                == "working",
+                estimated_cost_usd=member_cost,
+                completion_tokens=member_completion,
+            )
+        )
 
     next_cursor = (
         f"{history.next_cursor}|{history.next_cursor_id}"
@@ -1119,13 +1129,14 @@ async def _team_history_delta(
             "running": str(delta.lead_session.id) in stream_store.running_session_ids()
         }
     )
+    lead_cost, lead_completion = await session_usage_totals(db, delta.lead_session.id)
     active_statuses = stream_store.get_agent_statuses(str(delta.lead_session.id))
-    return TeamHistoryResponse(
-        lead=SessionDetailResponse(
-            **lead_resp.model_dump(),
-            messages=[_message_response(m) for m in delta.lead_messages],
-        ),
-        members=[
+    member_histories = []
+    for member in delta.members:
+        member_cost, member_completion = await session_usage_totals(
+            db, member.session.id
+        )
+        member_histories.append(
             TeamHistoryMember(
                 name=member.session.agent_name or str(member.session.id),
                 session_id=str(member.session.id),
@@ -1134,9 +1145,18 @@ async def _team_history_delta(
                     member.session.agent_name or str(member.session.id)
                 )
                 == "working",
+                estimated_cost_usd=member_cost,
+                completion_tokens=member_completion,
             )
-            for member in delta.members
-        ],
+        )
+    return TeamHistoryResponse(
+        lead=SessionDetailResponse(
+            **lead_resp.model_dump(),
+            messages=[_message_response(m) for m in delta.lead_messages],
+            estimated_cost_usd=lead_cost,
+            completion_tokens=lead_completion,
+        ),
+        members=member_histories,
         # A delta carries no information about older history.
         has_more=False,
         next_cursor=None,

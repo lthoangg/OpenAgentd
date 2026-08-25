@@ -339,7 +339,13 @@ run from the terminal.
   The meter remains displayed even without any messages or usage in the session `[v2.0.0]`. The summarizer's own LLM call now counts too: its usage (with cost) is
   persisted on the compaction summary row and published as a live usage frame,
   so the running session cost stays `previous cost + current turn cost` across
-  compactions, on the live meter and after reload alike `[v2.0.0]`.
+  compactions, on the live meter and after reload alike `[v2.0.0]`. The server
+  now returns the authoritative full-session cost and output-token totals on
+  history responses (summed across every message, compaction summaries
+  included), so reloading a session longer than one history page no longer
+  undercounts the meter — the client adopts the server total instead of
+  re-summing the truncated page, and older-page loads no longer re-add usage
+  `[v2.4.2]`.
 - **Todos panel** `[since v1.0]` — task board with a topbar progress badge
   `<finished>/<total>` `[v1.17.0]`. Live invalidation.
 - **Mobile / phone-first layout** `[since v1.0]` — breakpoints, safe areas, drawer

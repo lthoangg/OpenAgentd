@@ -571,14 +571,28 @@ async function loadSessionImpl(
         const leadUsage = sumUsageFromMessages(leadVisibleMsgs)
         const prevEstimatedCost = leadStream.usage?.estimatedCostUsd ?? 0
         const prevCompletionTokens = leadStream.usage?.completionTokens ?? 0
+        // The server sums the WHOLE session (every page, compaction summaries
+        // included), while the visible page only carries the newest
+        // `_HISTORY_PAGE_SIZE` rows — a client-side sum over it undercounts
+        // longer sessions. Prefer the authoritative total, but never regress
+        // below the live SSE value (an in-flight turn may hold events the
+        // server has not persisted yet). promptTokens/cachedTokens stay
+        // page-derived: they describe the *latest* call, which is always in
+        // the newest page.
+        const leadCostUsd = typeof history.lead.estimated_cost_usd === 'number'
+          ? history.lead.estimated_cost_usd
+          : (leadUsage.estimatedCostUsd ?? 0)
+        const leadCompletionTotal = typeof history.lead.completion_tokens === 'number'
+          ? history.lead.completion_tokens
+          : leadUsage.completionTokens
         if (!leadHadNewerActivity) {
           leadStream.usage = leadUsage
-          leadStream.usage.completionTokens = Math.max(prevCompletionTokens, leadUsage.completionTokens)
-          leadStream.usage.estimatedCostUsd = Math.round(Math.max(prevEstimatedCost, leadUsage.estimatedCostUsd ?? 0) * 1e8) / 1e8
+          leadStream.usage.completionTokens = Math.max(prevCompletionTokens, leadCompletionTotal)
+          leadStream.usage.estimatedCostUsd = Math.round(Math.max(prevEstimatedCost, leadCostUsd) * 1e8) / 1e8
           leadStream.usage.totalTokens = leadStream.usage.promptTokens + leadStream.usage.completionTokens
         } else {
-          leadStream.usage.completionTokens = Math.max(prevCompletionTokens, leadUsage.completionTokens)
-          leadStream.usage.estimatedCostUsd = Math.round(Math.max(prevEstimatedCost, leadUsage.estimatedCostUsd ?? 0) * 1e8) / 1e8
+          leadStream.usage.completionTokens = Math.max(prevCompletionTokens, leadCompletionTotal)
+          leadStream.usage.estimatedCostUsd = Math.round(Math.max(prevEstimatedCost, leadCostUsd) * 1e8) / 1e8
           leadStream.usage.promptTokens = leadStream.usage.promptTokens || leadUsage.promptTokens
           leadStream.usage.totalTokens = leadStream.usage.promptTokens + leadStream.usage.completionTokens
         }
@@ -636,14 +650,20 @@ async function loadSessionImpl(
         const memberUsage = sumUsageFromMessages(memberVisibleMsgs)
         const prevMemberEstimatedCost = memberStream.usage?.estimatedCostUsd ?? 0
         const prevMemberCompletionTokens = memberStream.usage?.completionTokens ?? 0
+        const memberCostUsd = typeof member.estimated_cost_usd === 'number'
+          ? member.estimated_cost_usd
+          : (memberUsage.estimatedCostUsd ?? 0)
+        const memberCompletionTotal = typeof member.completion_tokens === 'number'
+          ? member.completion_tokens
+          : memberUsage.completionTokens
         if (!memberHadNewerActivity) {
           memberStream.usage = memberUsage
-          memberStream.usage.completionTokens = Math.max(prevMemberCompletionTokens, memberUsage.completionTokens)
-          memberStream.usage.estimatedCostUsd = Math.round(Math.max(prevMemberEstimatedCost, memberUsage.estimatedCostUsd ?? 0) * 1e8) / 1e8
+          memberStream.usage.completionTokens = Math.max(prevMemberCompletionTokens, memberCompletionTotal)
+          memberStream.usage.estimatedCostUsd = Math.round(Math.max(prevMemberEstimatedCost, memberCostUsd) * 1e8) / 1e8
           memberStream.usage.totalTokens = memberStream.usage.promptTokens + memberStream.usage.completionTokens
         } else {
-          memberStream.usage.completionTokens = Math.max(prevMemberCompletionTokens, memberUsage.completionTokens)
-          memberStream.usage.estimatedCostUsd = Math.round(Math.max(prevMemberEstimatedCost, memberUsage.estimatedCostUsd ?? 0) * 1e8) / 1e8
+          memberStream.usage.completionTokens = Math.max(prevMemberCompletionTokens, memberCompletionTotal)
+          memberStream.usage.estimatedCostUsd = Math.round(Math.max(prevMemberEstimatedCost, memberCostUsd) * 1e8) / 1e8
           memberStream.usage.promptTokens = memberStream.usage.promptTokens || memberUsage.promptTokens
           memberStream.usage.totalTokens = memberStream.usage.promptTokens + memberStream.usage.completionTokens
         }
@@ -950,14 +970,50 @@ export const createSessionSlice: StateCreator<
           draft.agentStreams[leadName] = createDefaultAgentStream()
         }
         swapTail(leadName, delta.lead.messages)
+        // The delta carries the authoritative full-session total; adopt it
+        // (never regressing below the live SSE value) so a client that dropped
+        // usage events re-converges after every completed turn.
+        const leadStream = draft.agentStreams[leadName]
+        if (typeof delta.lead.estimated_cost_usd === 'number') {
+          leadStream.usage.estimatedCostUsd = Math.round(Math.max(
+            leadStream.usage.estimatedCostUsd ?? 0,
+            delta.lead.estimated_cost_usd,
+          ) * 1e8) / 1e8
+        }
+        if (typeof delta.lead.completion_tokens === 'number') {
+          leadStream.usage.completionTokens = Math.max(
+            leadStream.usage.completionTokens,
+            delta.lead.completion_tokens,
+          )
+          leadStream.usage.totalTokens = leadStream.usage.promptTokens + leadStream.usage.completionTokens
+        }
       }
 
-      delta.members.forEach((member: { name: string; messages: MessageResponse[] }) => {
+      delta.members.forEach((member: {
+        name: string
+        messages: MessageResponse[]
+        estimated_cost_usd?: number | null
+        completion_tokens?: number | null
+      }) => {
         if (!draft.agentStreams[member.name]) {
           draft.agentStreams[member.name] = createDefaultAgentStream()
           if (!draft.agentNames.includes(member.name)) draft.agentNames.push(member.name)
         }
         swapTail(member.name, member.messages)
+        const memberStream = draft.agentStreams[member.name]
+        if (typeof member.estimated_cost_usd === 'number') {
+          memberStream.usage.estimatedCostUsd = Math.round(Math.max(
+            memberStream.usage.estimatedCostUsd ?? 0,
+            member.estimated_cost_usd,
+          ) * 1e8) / 1e8
+        }
+        if (typeof member.completion_tokens === 'number') {
+          memberStream.usage.completionTokens = Math.max(
+            memberStream.usage.completionTokens,
+            member.completion_tokens,
+          )
+          memberStream.usage.totalTokens = memberStream.usage.promptTokens + memberStream.usage.completionTokens
+        }
       })
 
       // Adopt any queued rows the delta revealed, matching loadSession.
@@ -1001,10 +1057,10 @@ export const createSessionSlice: StateCreator<
           const older = applyOrphanToolResults(parseTeamBlocks(filtered, orphans), orphans)
           leadStream.blocks = [...older, ...leadStream.blocks]
           leadStream._orphanToolResults = orphans
-          const olderUsage = sumUsageFromMessages(filtered)
-          draft.agentStreams[leadName].usage.completionTokens += olderUsage.completionTokens
-          draft.agentStreams[leadName].usage.estimatedCostUsd = Math.round(((draft.agentStreams[leadName].usage.estimatedCostUsd ?? 0) + (olderUsage.estimatedCostUsd ?? 0)) * 1e8) / 1e8
-          draft.agentStreams[leadName].usage.totalTokens = draft.agentStreams[leadName].usage.promptTokens + draft.agentStreams[leadName].usage.completionTokens
+          // Usage is NOT accumulated here: `loadSession` restores the
+          // authoritative full-session total from the server, so older pages
+          // carry nothing new to add. Accumulating the page's messages would
+          // double-count the cost/tokens the server total already includes.
         }
         history.members.forEach((member) => {
           if (draft.agentStreams[member.name]) {
@@ -1014,10 +1070,6 @@ export const createSessionSlice: StateCreator<
             const older = applyOrphanToolResults(parseTeamBlocks(filtered, orphans), orphans)
             memberStream.blocks = [...older, ...memberStream.blocks]
             memberStream._orphanToolResults = orphans
-            const olderUsage = sumUsageFromMessages(filtered)
-            draft.agentStreams[member.name].usage.completionTokens += olderUsage.completionTokens
-            draft.agentStreams[member.name].usage.estimatedCostUsd = Math.round(((draft.agentStreams[member.name].usage.estimatedCostUsd ?? 0) + (olderUsage.estimatedCostUsd ?? 0)) * 1e8) / 1e8
-            draft.agentStreams[member.name].usage.totalTokens = draft.agentStreams[member.name].usage.promptTokens + draft.agentStreams[member.name].usage.completionTokens
           }
         })
       })

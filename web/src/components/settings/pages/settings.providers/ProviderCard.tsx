@@ -408,7 +408,7 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
               Loading active usage…
             </p>
           ) : usageQ.data && usageQ.data.limits.length > 0 ? (
-            <UsagePanel limits={usageQ.data.limits} updatedAt={usageQ.dataUpdatedAt} />
+            <UsagePanel providerId={provider.id} limits={usageQ.data.limits} updatedAt={usageQ.dataUpdatedAt} />
           ) : usageQ.isError ? (
             provider.kind === 'oauth' ? (
               <p className="text-[11px] text-(--color-text-subtle) font-mono">

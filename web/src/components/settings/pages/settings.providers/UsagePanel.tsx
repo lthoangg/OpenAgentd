@@ -1,5 +1,17 @@
+import { useState } from 'react'
 import type { ProviderUsageLimit } from '@/api/client'
+import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
+import { useResetProviderUsageMutation } from '@/queries/useProvidersQuery'
+import { useToastStore } from '@/stores/useToastStore'
 
 /**
  * CodexBar-style usage panel — bold section labels, a thin flat progress
@@ -269,11 +281,69 @@ function LimitSections({ limit }: { limit: ProviderUsageLimit }) {
   )
 }
 
-export function UsagePanel({ limits, updatedAt }: { limits: ProviderUsageLimit[]; updatedAt?: number }) {
+export function UsagePanel({
+  providerId,
+  limits,
+  updatedAt,
+}: {
+  providerId?: string
+  limits: ProviderUsageLimit[]
+  updatedAt?: number
+}) {
+  const [confirmOpen, setConfirmOpen] = useState(false)
+  const [alertOpen, setAlertOpen] = useState(false)
+  const resetMutation = useResetProviderUsageMutation()
+
   if (limits.length === 0) return null
   const primary = limits[0]
   const updated = formatUpdatedAgo(updatedAt)
   const resetCredits = primary?.reset_credits_available
+  const targetProviderId = providerId || primary?.limit_id || 'codex'
+
+  const primaryUsed = primary?.primary?.used_percent ?? 0
+  const secondaryUsed = primary?.secondary?.used_percent ?? 0
+  const spendUsed =
+    typeof primary?.spend?.used_percent === 'number'
+      ? primary.spend.used_percent
+      : typeof primary?.spend?.used === 'number' && typeof primary?.spend?.limit === 'number' && primary.spend.limit > 0
+        ? (primary.spend.used / primary.spend.limit) * 100
+        : 0
+  const maxUsedPercent = Math.max(primaryUsed, secondaryUsed, spendUsed)
+  const isEligibleToReset =
+    maxUsedPercent >= 99 ||
+    Boolean(primary?.rate_limit_reached_type) ||
+    Boolean(primary?.spend?.reached)
+
+  const handleResetClick = () => {
+    if (!isEligibleToReset) {
+      setAlertOpen(true)
+    } else {
+      setConfirmOpen(true)
+    }
+  }
+
+  const handleConfirmReset = () => {
+    resetMutation.mutate(
+      { providerId: targetProviderId },
+      {
+        onSuccess: () => {
+          setConfirmOpen(false)
+          useToastStore.getState().push({
+            tone: 'success',
+            title: 'Rate limit reset redeemed',
+            description: 'Your rate limit has been successfully reset.',
+          })
+        },
+        onError: (err) => {
+          useToastStore.getState().push({
+            tone: 'error',
+            title: 'Reset failed',
+            description: err instanceof Error ? err.message : 'Failed to redeem rate limit reset.',
+          })
+        },
+      },
+    )
+  }
 
   return (
     <div className="overflow-hidden rounded-md border border-(--color-border) bg-(--bg-card)">
@@ -290,9 +360,18 @@ export function UsagePanel({ limits, updatedAt }: { limits: ProviderUsageLimit[]
         </div>
         <div className="flex items-center gap-2 shrink-0">
           {typeof resetCredits === 'number' && resetCredits > 0 && (
-            <span className="text-[11px] font-medium text-(--accent-green)">
-              {resetCredits} {resetCredits === 1 ? 'reset' : 'resets'} available
-            </span>
+            <div className="flex items-center gap-1.5">
+              <span className="text-[11px] font-medium text-(--accent-green)">
+                {resetCredits} {resetCredits === 1 ? 'reset' : 'resets'} available
+              </span>
+              <Button
+                variant="default"
+                size="xs"
+                onClick={handleResetClick}
+              >
+                Redeem reset
+              </Button>
+            </div>
           )}
           {primary?.plan_type && (
             <span className="text-[11px] font-medium text-(--color-text-muted)">{primary.plan_type}</span>
@@ -314,12 +393,53 @@ export function UsagePanel({ limits, updatedAt }: { limits: ProviderUsageLimit[]
             Limit reached · {primary.rate_limit_reached_type.replaceAll('_', ' ')}
           </p>
           {typeof resetCredits === 'number' && resetCredits > 0 && (
-            <span className="shrink-0 text-[11px] font-semibold text-(--color-error)">
-              {resetCredits} {resetCredits === 1 ? 'reset' : 'resets'} available
-            </span>
+            <Button
+              variant="danger"
+              size="xs"
+              onClick={handleResetClick}
+            >
+              Redeem reset ({resetCredits})
+            </Button>
           )}
         </div>
       )}
+
+      {/* Alert Dialog when usage is below 99% */}
+      <Dialog open={alertOpen} onOpenChange={setAlertOpen}>
+        <DialogContent className="max-w-sm gap-3 p-4">
+          <DialogHeader className="gap-1.5">
+            <DialogTitle className="text-sm font-semibold">Cannot Redeem Reset Yet</DialogTitle>
+            <DialogDescription className="text-xs text-(--color-text-muted)">
+              Your current usage is {Math.round(maxUsedPercent)}%. Reset credits can only be redeemed when usage reaches 99%–100% (or when the rate limit is reached) to avoid wasting valuable reset credits.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="justify-end pt-2">
+            <Button variant="primary" size="sm" onClick={() => setAlertOpen(false)}>
+              Got it
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Confirmation Dialog when usage is 99-100% */}
+      <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <DialogContent className="max-w-sm gap-3 p-4">
+          <DialogHeader className="gap-1.5">
+            <DialogTitle className="text-sm font-semibold">Redeem Rate Limit Reset?</DialogTitle>
+            <DialogDescription className="text-xs text-(--color-text-muted)">
+              This will consume 1 of your {resetCredits} available reset credit{resetCredits === 1 ? '' : 's'} to reset your rate limit window immediately. This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="flex-row justify-end gap-2 pt-2">
+            <Button variant="default" size="sm" onClick={() => setConfirmOpen(false)} disabled={resetMutation.isPending}>
+              Cancel
+            </Button>
+            <Button variant="primary" size="sm" onClick={handleConfirmReset} disabled={resetMutation.isPending}>
+              {resetMutation.isPending ? 'Redeeming…' : 'Confirm reset'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

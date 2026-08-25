@@ -9,6 +9,7 @@ import {
   saveProvider,
   saveProviderVisibleModels,
   testProvider,
+  resetProviderUsage,
   type ProviderModelsResponse,
   type ProviderSaveRequest,
   type ProviderTestResponse,
@@ -79,6 +80,18 @@ export function useProviderUsageQuery(providerId: string, enabled: boolean, apiK
     enabled,
     refetchInterval: enabled ? 60_000 : false,
     staleTime: 30_000,
+  })
+}
+
+export function useResetProviderUsageMutation() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: ({ providerId }: { providerId: string }) => resetProviderUsage(providerId),
+    onSuccess: (data, { providerId }) => {
+      client.setQueryData(queryKeys.settings.providerUsage(providerId), data)
+      void client.invalidateQueries({ queryKey: queryKeys.settings.providerUsage(providerId) })
+      void client.invalidateQueries({ queryKey: queryKeys.settings.providers() })
+    },
   })
 }
 

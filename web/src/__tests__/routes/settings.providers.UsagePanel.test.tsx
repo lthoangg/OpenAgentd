@@ -1,10 +1,22 @@
-import { afterEach, describe, expect, it } from 'bun:test'
-import { cleanup, render, screen } from '@testing-library/react'
+import { afterEach, describe, expect, it, spyOn } from 'bun:test'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import type { ReactElement } from 'react'
 
 import type { ProviderUsageLimit } from '@/api/client'
 import { UsagePanel } from '@/components/settings/pages/settings.providers/UsagePanel'
 
 afterEach(cleanup)
+
+function renderWithQuery(ui: ReactElement) {
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false },
+      mutations: { retry: false },
+    },
+  })
+  return render(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>)
+}
 
 function makeLimit(overrides: Partial<ProviderUsageLimit> = {}): ProviderUsageLimit {
   return {
@@ -22,18 +34,41 @@ function makeLimit(overrides: Partial<ProviderUsageLimit> = {}): ProviderUsageLi
 
 describe('UsagePanel', () => {
   it('renders nothing when there are no limits', () => {
-    const { container } = render(<UsagePanel limits={[]} />)
+    const { container } = renderWithQuery(<UsagePanel limits={[]} />)
     expect(container.firstChild).toBeNull()
   })
 
+  it('can transition from no limits to populated usage without changing hook order', () => {
+    const consoleError = spyOn(console, 'error').mockImplementation(() => {})
+    const queryClient = new QueryClient()
+    try {
+      const { rerender } = render(
+        <QueryClientProvider client={queryClient}>
+          <UsagePanel limits={[]} />
+        </QueryClientProvider>,
+      )
+
+      rerender(
+        <QueryClientProvider client={queryClient}>
+          <UsagePanel limits={[makeLimit()]} />
+        </QueryClientProvider>,
+      )
+
+      expect(screen.getByText('42% used')).toBeTruthy()
+      expect(consoleError).not.toHaveBeenCalled()
+    } finally {
+      consoleError.mockRestore()
+    }
+  })
+
   it('renders a labeled row per limit window with rounded percent', () => {
-    render(<UsagePanel limits={[makeLimit({ limit_name: 'Session', primary: { used_percent: 41.6, window_minutes: 300, resets_at: null } })]} />)
+    renderWithQuery(<UsagePanel limits={[makeLimit({ limit_name: 'Session', primary: { used_percent: 41.6, window_minutes: 300, resets_at: null } })]} />)
     expect(screen.getByText('Session \u00B7 5h')).toBeTruthy()
     expect(screen.getByText('42% used')).toBeTruthy()
   })
 
   it('renders both primary and secondary windows for the same limit', () => {
-    render(
+    renderWithQuery(
       <UsagePanel
         limits={[
           makeLimit({
@@ -51,20 +86,20 @@ describe('UsagePanel', () => {
   })
 
   it('falls back to "Codex" / limit_id / "Usage" when limit_name is absent', () => {
-    const { rerender } = render(<UsagePanel limits={[makeLimit({ limit_id: 'codex', limit_name: null, primary: { used_percent: 1, window_minutes: null, resets_at: null } })]} />)
+    const { rerender } = renderWithQuery(<UsagePanel limits={[makeLimit({ limit_id: 'codex', limit_name: null, primary: { used_percent: 1, window_minutes: null, resets_at: null } })]} />)
     expect(screen.getByText('Codex')).toBeTruthy()
 
-    rerender(<UsagePanel limits={[makeLimit({ limit_id: 'custom-limit', limit_name: null, primary: { used_percent: 1, window_minutes: null, resets_at: null } })]} />)
+    rerender(<QueryClientProvider client={new QueryClient()}><UsagePanel limits={[makeLimit({ limit_id: 'custom-limit', limit_name: null, primary: { used_percent: 1, window_minutes: null, resets_at: null } })]} /></QueryClientProvider>)
     expect(screen.getByText('custom-limit')).toBeTruthy()
 
     // "Usage" also appears as the static panel header, so the fallback
     // label row renders it a second time.
-    rerender(<UsagePanel limits={[makeLimit({ limit_id: null, limit_name: null, primary: { used_percent: 1, window_minutes: null, resets_at: null } })]} />)
+    rerender(<QueryClientProvider client={new QueryClient()}><UsagePanel limits={[makeLimit({ limit_id: null, limit_name: null, primary: { used_percent: 1, window_minutes: null, resets_at: null } })]} /></QueryClientProvider>)
     expect(screen.getAllByText('Usage')).toHaveLength(2)
   })
 
   it('clamps out-of-range percentages into the progressbar aria attributes', () => {
-    render(<UsagePanel limits={[makeLimit({ primary: { used_percent: 150, window_minutes: 60, resets_at: null } })]} />)
+    renderWithQuery(<UsagePanel limits={[makeLimit({ primary: { used_percent: 150, window_minutes: 60, resets_at: null } })]} />)
     const bar = screen.getByRole('progressbar')
     expect(bar.getAttribute('aria-valuenow')).toBe('100')
     expect(screen.getByText('100% used')).toBeTruthy()
@@ -72,30 +107,30 @@ describe('UsagePanel', () => {
 
   it('shows "Resetting now" once the reset timestamp has passed', () => {
     const past = Math.floor(Date.now() / 1000) - 60
-    render(<UsagePanel limits={[makeLimit({ primary: { used_percent: 10, window_minutes: 60, resets_at: past } })]} />)
+    renderWithQuery(<UsagePanel limits={[makeLimit({ primary: { used_percent: 10, window_minutes: 60, resets_at: past } })]} />)
     expect(screen.getByText('Resetting now')).toBeTruthy()
   })
 
   it('formats future resets in minutes, hours, and days', () => {
     const nowS = Math.floor(Date.now() / 1000)
-    const { rerender } = render(<UsagePanel limits={[makeLimit({ primary: { used_percent: 10, window_minutes: 60, resets_at: nowS + 5 * 60 } })]} />)
+    const { rerender } = renderWithQuery(<UsagePanel limits={[makeLimit({ primary: { used_percent: 10, window_minutes: 60, resets_at: nowS + 5 * 60 } })]} />)
     expect(screen.getByText('Resets in 5m')).toBeTruthy()
 
-    rerender(<UsagePanel limits={[makeLimit({ primary: { used_percent: 10, window_minutes: 60, resets_at: nowS + 2 * 3600 + 10 * 60 } })]} />)
+    rerender(<QueryClientProvider client={new QueryClient()}><UsagePanel limits={[makeLimit({ primary: { used_percent: 10, window_minutes: 60, resets_at: nowS + 2 * 3600 + 10 * 60 } })]} /></QueryClientProvider>)
     expect(screen.getByText('Resets in 2h 10m')).toBeTruthy()
 
-    rerender(<UsagePanel limits={[makeLimit({ primary: { used_percent: 10, window_minutes: 60, resets_at: nowS + 3 * 86400 } })]} />)
+    rerender(<QueryClientProvider client={new QueryClient()}><UsagePanel limits={[makeLimit({ primary: { used_percent: 10, window_minutes: 60, resets_at: nowS + 3 * 86400 } })]} /></QueryClientProvider>)
     expect(screen.getByText('Resets in 3d')).toBeTruthy()
   })
 
   it('omits the reset column when resets_at is absent', () => {
-    render(<UsagePanel limits={[makeLimit({ primary: { used_percent: 10, window_minutes: 60, resets_at: null } })]} />)
+    renderWithQuery(<UsagePanel limits={[makeLimit({ primary: { used_percent: 10, window_minutes: 60, resets_at: null } })]} />)
     expect(screen.queryByText(/Resets in/)).toBeNull()
     expect(screen.queryByText(/Resetting/)).toBeNull()
   })
 
   it('renders a credits-only row when a limit has no primary/secondary window', () => {
-    render(
+    renderWithQuery(
       <UsagePanel
         limits={[
           makeLimit({
@@ -113,7 +148,7 @@ describe('UsagePanel', () => {
   })
 
   it('renders credit balance alongside spend figures when balance is present', () => {
-    render(
+    renderWithQuery(
       <UsagePanel
         limits={[
           makeLimit({
@@ -144,20 +179,20 @@ describe('UsagePanel', () => {
   })
 
   it('renders unlimited and depleted credits copy', () => {
-    const { rerender } = render(
+    const { rerender } = renderWithQuery(
       <UsagePanel limits={[makeLimit({ primary: null, secondary: null, credits: { has_credits: true, unlimited: true, balance: null } })]} />,
     )
     expect(screen.getByText('Unlimited usage')).toBeTruthy()
 
     rerender(
-      <UsagePanel limits={[makeLimit({ primary: null, secondary: null, credits: { has_credits: false, unlimited: false, balance: null } })]} />,
+      <QueryClientProvider client={new QueryClient()}><UsagePanel limits={[makeLimit({ primary: null, secondary: null, credits: { has_credits: false, unlimited: false, balance: null } })]} /></QueryClientProvider>,
     )
     expect(screen.getByText('No usage credits left')).toBeTruthy()
   })
 
   it('renders a period-only limit as neutral availability rather than unlimited usage', () => {
     const nowS = Math.floor(Date.now() / 1000)
-    render(
+    renderWithQuery(
       <UsagePanel
         limits={[
           makeLimit({
@@ -178,7 +213,7 @@ describe('UsagePanel', () => {
   })
 
   it('renders spend cap figures for a limit with no rate-limit windows', () => {
-    render(
+    renderWithQuery(
       <UsagePanel
         limits={[
           makeLimit({
@@ -208,7 +243,7 @@ describe('UsagePanel', () => {
   })
 
   it('clamps the spend bar at 100 while still reporting the real percent', () => {
-    render(
+    renderWithQuery(
       <UsagePanel
         limits={[
           makeLimit({
@@ -224,7 +259,7 @@ describe('UsagePanel', () => {
   })
 
   it('renders an unbreached spend cap with its remaining amount', () => {
-    render(
+    renderWithQuery(
       <UsagePanel
         limits={[
           makeLimit({
@@ -240,7 +275,7 @@ describe('UsagePanel', () => {
   })
 
   it('does not claim credits are available when the spend cap is reached', () => {
-    render(
+    renderWithQuery(
       <UsagePanel
         limits={[
           makeLimit({
@@ -257,60 +292,105 @@ describe('UsagePanel', () => {
   })
 
   it('shows the plan type badge from the first limit', () => {
-    render(<UsagePanel limits={[makeLimit({ plan_type: 'Max' })]} />)
+    renderWithQuery(<UsagePanel limits={[makeLimit({ plan_type: 'Max' })]} />)
     expect(screen.getByText('Max')).toBeTruthy()
   })
 
   it('renders the rate-limit-reached banner using the first limit', () => {
-    render(<UsagePanel limits={[makeLimit({ rate_limit_reached_type: 'workspace_member_usage_limit_reached' })]} />)
+    renderWithQuery(<UsagePanel limits={[makeLimit({ rate_limit_reached_type: 'workspace_member_usage_limit_reached' })]} />)
     expect(screen.getByText('Limit reached \u00B7 workspace member usage limit reached')).toBeTruthy()
   })
 
   it('does not render the rate-limit banner when unset', () => {
-    render(<UsagePanel limits={[makeLimit()]} />)
+    renderWithQuery(<UsagePanel limits={[makeLimit()]} />)
     expect(screen.queryByText(/Limit reached/)).toBeNull()
   })
 
   it('shows a relative "Updated" timestamp based on updatedAt', () => {
-    const { rerender } = render(<UsagePanel limits={[makeLimit()]} updatedAt={Date.now()} />)
+    const { rerender } = renderWithQuery(<UsagePanel limits={[makeLimit()]} updatedAt={Date.now()} />)
     expect(screen.getByText('Updated just now')).toBeTruthy()
 
-    rerender(<UsagePanel limits={[makeLimit()]} updatedAt={Date.now() - 5 * 60_000} />)
+    rerender(<QueryClientProvider client={new QueryClient()}><UsagePanel limits={[makeLimit()]} updatedAt={Date.now() - 5 * 60_000} /></QueryClientProvider>)
     expect(screen.getByText('Updated 5m ago')).toBeTruthy()
 
-    rerender(<UsagePanel limits={[makeLimit()]} updatedAt={Date.now() - 3 * 3_600_000} />)
+    rerender(<QueryClientProvider client={new QueryClient()}><UsagePanel limits={[makeLimit()]} updatedAt={Date.now() - 3 * 3_600_000} /></QueryClientProvider>)
     expect(screen.getByText('Updated 3h ago')).toBeTruthy()
   })
 
   it('omits the "Updated" line when updatedAt is not provided', () => {
-    render(<UsagePanel limits={[makeLimit()]} />)
+    renderWithQuery(<UsagePanel limits={[makeLimit()]} />)
     expect(screen.queryByText(/Updated/)).toBeNull()
   })
 
   it('shows available reset credits in the header strip', () => {
-    const { rerender } = render(<UsagePanel limits={[makeLimit({ reset_credits_available: 1, plan_type: 'Plus' })]} />)
+    const { rerender } = renderWithQuery(<UsagePanel limits={[makeLimit({ reset_credits_available: 1, plan_type: 'Plus' })]} />)
     expect(screen.getByText('1 reset available')).toBeTruthy()
     expect(screen.getByText('Plus')).toBeTruthy()
+    expect(screen.getByText('Redeem reset')).toBeTruthy()
 
-    rerender(<UsagePanel limits={[makeLimit({ reset_credits_available: 2, plan_type: 'Plus' })]} />)
+    rerender(<QueryClientProvider client={new QueryClient()}><UsagePanel limits={[makeLimit({ reset_credits_available: 2, plan_type: 'Plus' })]} /></QueryClientProvider>)
     expect(screen.getByText('2 resets available')).toBeTruthy()
 
-    rerender(<UsagePanel limits={[makeLimit({ reset_credits_available: 0, plan_type: 'Plus' })]} />)
-    expect(screen.queryByText(/reset/)).toBeNull()
+    rerender(<QueryClientProvider client={new QueryClient()}><UsagePanel limits={[makeLimit({ reset_credits_available: 0, plan_type: 'Plus' })]} /></QueryClientProvider>)
+    expect(screen.queryByText(/available/)).toBeNull()
   })
 
-  it('shows available reset credits in the rate-limit warning banner when limit reached', () => {
-    render(
+  it('shows alert dialog when reset button clicked on usage below 99%', () => {
+    renderWithQuery(
       <UsagePanel
         limits={[
           makeLimit({
-            rate_limit_reached_type: 'usage_limit_reached',
+            primary: { used_percent: 50, window_minutes: 60, resets_at: null },
             reset_credits_available: 1,
           }),
         ]}
       />,
     )
-    expect(screen.getByText('Limit reached \u00B7 usage limit reached')).toBeTruthy()
-    expect(screen.getAllByText('1 reset available')).toHaveLength(2)
+
+    const resetBtn = screen.getByText('Redeem reset')
+    fireEvent.click(resetBtn)
+
+    expect(screen.getByText('Cannot Redeem Reset Yet')).toBeTruthy()
+    expect(screen.getByText(/Your current usage is 50%/)).toBeTruthy()
+    expect(screen.getByText('Got it')).toBeTruthy()
+  })
+
+  it('shows confirm dialog when reset button clicked on usage >= 99%', () => {
+    renderWithQuery(
+      <UsagePanel
+        limits={[
+          makeLimit({
+            primary: { used_percent: 99, window_minutes: 60, resets_at: null },
+            reset_credits_available: 1,
+          }),
+        ]}
+      />,
+    )
+
+    const resetBtn = screen.getByText('Redeem reset')
+    fireEvent.click(resetBtn)
+
+    expect(screen.getByText('Redeem Rate Limit Reset?')).toBeTruthy()
+    expect(screen.getByText('Cancel')).toBeTruthy()
+    expect(screen.getByText('Confirm reset')).toBeTruthy()
+  })
+
+  it('shows confirm dialog when rate limit is reached even if usage percent < 99', () => {
+    renderWithQuery(
+      <UsagePanel
+        limits={[
+          makeLimit({
+            rate_limit_reached_type: 'usage_limit_reached',
+            primary: { used_percent: 80, window_minutes: 60, resets_at: null },
+            reset_credits_available: 1,
+          }),
+        ]}
+      />,
+    )
+
+    const bannerResetBtn = screen.getByText('Redeem reset (1)')
+    fireEvent.click(bannerResetBtn)
+
+    expect(screen.getByText('Redeem Rate Limit Reset?')).toBeTruthy()
   })
 })

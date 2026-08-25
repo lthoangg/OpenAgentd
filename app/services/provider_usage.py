@@ -109,6 +109,31 @@ async def get_grok_usage() -> ProviderUsageResponse:
     return await get_usage()
 
 
+async def consume_provider_reset(provider_id: str) -> ProviderUsageResponse:
+    global _summary_cache
+
+    if provider_id == "codex":
+        from app.agent.providers.codex.usage import (
+            CodexUsageCredentialsError,
+            CodexUsageUnavailableError,
+            consume_reset,
+        )
+
+        try:
+            result = await consume_reset()
+            _summary_cache = None
+            _last_good_items.pop(provider_id, None)
+            return result
+        except CodexUsageCredentialsError as exc:
+            raise ProviderUsageCredentialsError(str(exc)) from exc
+        except CodexUsageUnavailableError as exc:
+            raise ProviderUsageUnavailableError(str(exc)) from exc
+
+    raise ProviderUsageUnsupportedError(
+        f"Rate limit reset unsupported for '{provider_id}'."
+    )
+
+
 async def get_openrouter_usage(
     api_key: str | None = None,
 ) -> ProviderUsageResponse:

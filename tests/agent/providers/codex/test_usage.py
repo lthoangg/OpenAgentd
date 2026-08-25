@@ -292,3 +292,93 @@ async def test_get_usage_parses_reset_credits_available(
 
     assert len(result.limits) == 1
     assert result.limits[0].reset_credits_available == 1
+
+
+@pytest.mark.usefixtures("_codex_oauth")
+async def test_consume_reset_redeems_credit_and_returns_fresh_usage(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    posted_data: list[dict[str, object]] = []
+
+    credits_payload = {
+        "credits": [
+            {
+                "id": "RateLimitResetCredit_123",
+                "status": "available",
+                "title": "Full reset",
+            }
+        ],
+        "available_count": 1,
+    }
+    consume_payload = {"code": "reset", "windows_reset": 1}
+    fresh_usage_payload = {
+        "plan_type": "plus",
+        "rate_limit": {
+            "primary_window": {
+                "used_percent": 0,
+                "limit_window_seconds": 604800,
+                "reset_at": 1788150972,
+            }
+        },
+        "rate_limit_reset_credits": {
+            "available_count": 0,
+        },
+    }
+
+    class _MultiClient:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def get(self, url, *, headers):  # type: ignore[no-untyped-def]
+            if "rate-limit-reset-credits" in url:
+                return _FakeResponse(credits_payload)
+            return _FakeResponse(fresh_usage_payload)
+
+        async def post(self, url, *, headers, json):  # type: ignore[no-untyped-def]
+            posted_data.append({"url": url, "json": json})
+            return _FakeResponse(consume_payload)
+
+    monkeypatch.setattr(usage.httpx2, "AsyncClient", _MultiClient)
+
+    result = await usage.consume_reset()
+
+    assert len(posted_data) == 1
+    assert posted_data[0]["json"]["credit_id"] == "RateLimitResetCredit_123"
+    assert len(result.limits) == 1
+    assert result.limits[0].primary.used_percent == 0
+
+
+@pytest.mark.usefixtures("_codex_oauth")
+async def test_consume_reset_raises_when_no_credits_available(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    credits_payload = {
+        "credits": [],
+        "available_count": 0,
+    }
+
+    class _NoCreditsClient:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def get(self, _url, *, headers):  # type: ignore[no-untyped-def]
+            return _FakeResponse(credits_payload)
+
+    monkeypatch.setattr(usage.httpx2, "AsyncClient", _NoCreditsClient)
+
+    with pytest.raises(
+        usage.CodexUsageUnavailableError, match="No available rate limit reset credits"
+    ):
+        await usage.consume_reset()

@@ -74,6 +74,7 @@ from app.services.provider_usage import (
     ProviderUsageCredentialsError,
     ProviderUsageUnavailableError,
     ProviderUsageUnsupportedError,
+    consume_provider_reset,
     get_connected_provider_usage_summary as load_provider_usage_summary,
     get_provider_usage as load_provider_usage,
 )
@@ -539,6 +540,23 @@ async def get_provider_usage(
         raise HTTPException(
             status_code=502, detail="Provider usage unavailable."
         ) from exc
+
+
+@router.post("/providers/{provider_id}/reset")
+async def reset_provider_usage(
+    provider_id: str,
+) -> ProviderUsageResponse:
+    """Consume an available rate limit reset credit for the provider."""
+    try:
+        return await consume_provider_reset(provider_id)
+    except ProviderUsageUnsupportedError as exc:
+        raise HTTPException(
+            status_code=404, detail=f"Rate limit reset unsupported for '{provider_id}'."
+        ) from exc
+    except ProviderUsageCredentialsError as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
+    except ProviderUsageUnavailableError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
 @router.put("/providers/{provider_id}/visible-models")

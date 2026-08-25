@@ -73,3 +73,47 @@ def test_get_provider_usage_unsupported_returns_404(
     response = client.get("/api/settings/providers/unsupported-provider/usage")
     assert response.status_code == 404
     assert "unsupported" in response.json()["detail"].lower()
+
+
+def test_reset_provider_usage_returns_200(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = TestClient(_make_app())
+
+    async def _fake_consume_provider_reset(provider_id: str) -> ProviderUsageResponse:
+        assert provider_id == "codex"
+        return ProviderUsageResponse(
+            provider="codex",
+            limits=[
+                ProviderUsageLimit(
+                    limit_id="codex",
+                    reset_credits_available=0,
+                )
+            ],
+        )
+
+    monkeypatch.setattr(
+        "app.api.routes.settings.consume_provider_reset",
+        _fake_consume_provider_reset,
+    )
+
+    response = client.post("/api/settings/providers/codex/reset")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["provider"] == "codex"
+    assert data["limits"][0]["reset_credits_available"] == 0
+
+
+def test_reset_provider_usage_unsupported_returns_404(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = TestClient(_make_app())
+
+    async def _fake_raise(*_args, **_kwargs):
+        raise provider_usage.ProviderUsageUnsupportedError("unsupported")
+
+    monkeypatch.setattr("app.api.routes.settings.consume_provider_reset", _fake_raise)
+
+    response = client.post("/api/settings/providers/unsupported/reset")
+    assert response.status_code == 404
+    assert "unsupported" in response.json()["detail"].lower()

@@ -312,6 +312,15 @@ export type ProviderDisconnectResponse = {
   is_disconnected: boolean
 }
 
+export async function resetProviderUsage(providerId: string): Promise<ProviderUsageResponse> {
+  const res = await fetch(`${apiBaseUrl()}/settings/providers/${encodeURIComponent(providerId)}/reset`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+  })
+  if (!res.ok) await parseDetailOrThrow(res, `POST /settings/providers/${providerId}/reset`)
+  return res.json()
+}
+
 export async function disconnectProvider(
   providerId: string,
   disconnected: boolean,

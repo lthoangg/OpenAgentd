@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import uuid
 from typing import cast
 
 import httpx2
@@ -225,3 +226,61 @@ async def get_usage() -> ProviderUsageResponse:
             if limit is not None:
                 limits.append(limit)
     return ProviderUsageResponse(provider="codex", limits=limits)
+
+
+async def consume_reset(*, credit_id: str | None = None) -> ProviderUsageResponse:
+    """Redeem one available rate limit reset credit and return fresh usage."""
+    try:
+        headers = _usage_headers()
+        async with httpx2.AsyncClient(timeout=10.0) as client:
+            list_response = await client.get(
+                "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits",
+                headers=headers,
+            )
+            list_response.raise_for_status()
+            list_data = list_response.json()
+            if not isinstance(list_data, dict):
+                raise CodexUsageUnavailableError("Invalid reset credits response.")
+            credits = list_data.get("credits")
+            if not isinstance(credits, list):
+                raise CodexUsageUnavailableError("No rate limit reset credits found.")
+            available = [
+                c
+                for c in credits
+                if isinstance(c, dict) and c.get("status") == "available"
+            ]
+            if not available:
+                raise CodexUsageUnavailableError(
+                    "No available rate limit reset credits to redeem."
+                )
+
+            target = None
+            if credit_id:
+                target = next((c for c in available if c.get("id") == credit_id), None)
+                if target is None:
+                    raise CodexUsageUnavailableError(
+                        f"Credit ID '{credit_id}' not found among available credits."
+                    )
+            else:
+                target = available[0]
+
+            target_id = target.get("id")
+            if not isinstance(target_id, str):
+                raise CodexUsageUnavailableError("Invalid credit ID format.")
+
+            consume_response = await client.post(
+                "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits/consume",
+                headers=headers,
+                json={
+                    "credit_id": target_id,
+                    "redeem_request_id": str(uuid.uuid4()),
+                },
+            )
+            consume_response.raise_for_status()
+    except (CodexUsageCredentialsError, CodexUsageUnavailableError):
+        raise
+    except Exception as exc:
+        logger.info("codex_reset_consume_failed error={}", exc)
+        raise CodexUsageUnavailableError(f"Failed to redeem reset: {exc}") from exc
+
+    return await get_usage()

@@ -13,6 +13,23 @@ from app.services import team_manager
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
+# Snapshot the real team_manager callables at import time. Other modules in the
+# suite mock these (via monkeypatch), and under pytest-randomly's random order
+# a leaked mock here surfaces as order-dependent failures in this module — e.g.
+# ``get_or_start_coding_team`` returning a real AgentTeam instead of the fake
+# this file's tests install. Restoring them up-front makes each test hermetic.
+_REAL_TEAM_MANAGER_MEMBERS: dict[str, object] = {
+    name: getattr(team_manager, name)
+    for name in (
+        "get_or_start_team",
+        "get_or_start_coding_team",
+        "find_live_coding_team",
+        "find_live_team_serving_session",
+        "load_team_from_dir",
+        "validate_workspace",
+    )
+}
+
 
 def _make_team(name: str = "lead") -> MagicMock:
     team = MagicMock()
@@ -45,6 +62,11 @@ async def reset_team_manager():
     workers, so a cached result must never leak between them.
     """
     await team_manager.stop()
+    # Undo any callable a prior test (in another module) left mocked on the
+    # team_manager module. This must happen before the body so the fake teams
+    # these tests install via their own monkeypatch are what actually run.
+    for name, real in _REAL_TEAM_MANAGER_MEMBERS.items():
+        setattr(team_manager, name, real)
     team_manager.reset_agents_dir_validation_cache()
     yield
     team_manager.reset_agents_dir_validation_cache()

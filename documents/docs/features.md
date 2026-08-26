@@ -14,7 +14,7 @@ release that introduced it (where known). When you ship something new, **add it 
 > double-clickable app that runs a team of AI agents on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 16 providers. Your keys.
 
-**Latest release:** v2.4.1 · August 25, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v2.4.1)
+**Latest release:** v2.5.0 · August 26, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v2.5.0)
 
 ---
 

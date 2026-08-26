@@ -21,6 +21,10 @@
   --error: #a71c24;
   --error-subtle: rgba(185, 28, 28, 0.08);
   --focus: #5aa8e2;
+  /* "Now" tick on the usage meter — tracks wall-clock position within the
+   * quota window, distinct from the fill (usage consumed). */
+  --meter-now: #1a1714;
+  --meter-now-halo: rgba(255, 251, 241, 0.9);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -43,6 +47,8 @@
     --error: #f87171;
     --error-subtle: rgba(239, 68, 68, 0.12);
     --focus: #7cc2f0;
+    --meter-now: #f5ebd8;
+    --meter-now-halo: rgba(21, 17, 13, 0.85);
   }
 }
 
@@ -316,6 +322,25 @@ body {
 
 .meter-dot[data-tone="crit"] {
   background: var(--error);
+}
+
+/* Vertical "now" marker: where the wall clock sits between the quota
+ * window's start and its reset. Distinct from the fill/dot (which track
+ * usage consumed), this is the time axis — e.g. 1h into a 5h window puts
+ * the line at 20%. It stands clearly above/below the 4px track and uses a
+ * high-contrast colour with a soft halo so it reads as an intuitive tick
+ * over both the empty track and the coloured fill. */
+.meter-now {
+  position: absolute;
+  top: -4px;
+  bottom: -4px;
+  width: 2px;
+  border-radius: 2px;
+  background: var(--meter-now);
+  box-shadow: 0 0 0 1px var(--meter-now-halo);
+  transform: translateX(-50%);
+  pointer-events: none;
+  z-index: 1;
 }
 
 .meter-detail {

@@ -6,6 +6,7 @@ import {
   type MeterTone,
   type TrayUsageItem,
   type TrayUsageLimit,
+  type TrayUsageWindow,
   type TrayUsageSummary,
   clampPercent,
   formatAmount,
@@ -28,6 +29,7 @@ type Row =
       percent: number
       tone: MeterTone
       reset: string | null
+      nowLine: number | null
       detail?: string
     }
   | { key: string; kind: 'value'; label: string; value: string; tone: MeterTone }
@@ -58,6 +60,42 @@ function hasSpendFigures(limit: TrayUsageLimit): boolean {
 }
 
 /**
+ * Position (0–100) of a small "now" marker along a usage meter, showing
+ * how far through the current quota window the wall clock sits. This is
+ * the time axis, distinct from `percent` (usage consumed). For a 5h window
+ * that started 1h ago and resets in 4h, the marker lands at 20%.
+ *
+ * Uses `resets_at` plus `window_minutes` when the quota is a rolling
+ * window; falls back to an explicit period range (used by period-aligned
+ * spend caps). Returns null when neither can pin a window start.
+ */
+function nowLinePosition(
+  window?: TrayUsageWindow | null,
+  periodStart?: number | null,
+  periodEnd?: number | null,
+  now: number = Date.now() / 1000,
+): number | null {
+  if (
+    window &&
+    typeof window.resets_at === 'number' &&
+    typeof window.window_minutes === 'number' &&
+    window.window_minutes > 0
+  ) {
+    const total = window.window_minutes * 60
+    const start = window.resets_at - total
+    return clampPercent(((now - start) / total) * 100)
+  }
+  if (
+    typeof periodStart === 'number' &&
+    typeof periodEnd === 'number' &&
+    periodEnd > periodStart
+  ) {
+    return clampPercent(((now - periodStart) / (periodEnd - periodStart)) * 100)
+  }
+  return null
+}
+
+/**
  * Row label that always keeps the provider identifiable without duplicating
  * it: if the limit name already names the provider (e.g. "DeepSeek Balance",
  * "OpenRouter Credits") use it; if it is a generic capability name (Grok's
@@ -77,7 +115,7 @@ function rowLabel(item: TrayUsageItem, limit: TrayUsageLimit, suffix?: string): 
 }
 
 /** Convert one provider's summary item into renderable rows. Pure + tested. */
-export function itemRows(item: TrayUsageItem): Row[] {
+export function itemRows(item: TrayUsageItem, now: number = Date.now() / 1000): Row[] {
   if (item.status === 'credentials_missing') {
     return [{ key: `${item.provider}-missing`, kind: 'status', label: item.label, text: 'Reconnect', critical: false }]
   }
@@ -94,25 +132,29 @@ export function itemRows(item: TrayUsageItem): Row[] {
     const bothWindows = Boolean(limit.primary && limit.secondary)
 
     if (limit.primary) {
-      const percent = limit.primary.used_percent
+      const window = limit.primary
+      const percent = window.used_percent
       rows.push({
         key: `${item.provider}-p`,
         kind: 'meter',
-        label: rowLabel(item, limit, bothWindows ? windowDuration(limit.primary.window_minutes) : undefined),
+        label: rowLabel(item, limit, bothWindows ? windowDuration(window.window_minutes) : undefined),
         percent,
         tone: meterTone(percent),
-        reset: formatResetIn(limit.primary.resets_at),
+        reset: formatResetIn(window.resets_at),
+        nowLine: nowLinePosition(window, limit.period_start_at, limit.period_end_at, now),
       })
     }
     if (limit.secondary) {
-      const percent = limit.secondary.used_percent
+      const window = limit.secondary
+      const percent = window.used_percent
       rows.push({
         key: `${item.provider}-s`,
         kind: 'meter',
-        label: rowLabel(item, limit, windowDuration(limit.secondary.window_minutes)),
+        label: rowLabel(item, limit, windowDuration(window.window_minutes)),
         percent,
         tone: meterTone(percent),
-        reset: formatResetIn(limit.secondary.resets_at),
+        reset: formatResetIn(window.resets_at),
+        nowLine: nowLinePosition(window, limit.period_start_at, limit.period_end_at, now),
       })
     }
     if (hasSpendFigures(limit)) {
@@ -134,6 +176,7 @@ export function itemRows(item: TrayUsageItem): Row[] {
         tone: spend.reached ? 'crit' : meterTone(percent),
         reset: formatResetIn(spend.resets_at),
         detail,
+        nowLine: nowLinePosition(null, limit.period_start_at, limit.period_end_at, now),
       })
     }
     // Credits are the signal when there are no measurable quota windows, so
@@ -332,6 +375,12 @@ function ProviderBlock({ item, stale }: { item: TrayUsageItem; stale: boolean })
                   data-tone={row.tone}
                   style={{ left: `${clampPercent(row.percent)}%` }}
                 />
+                {row.nowLine !== null && (
+                  <div
+                    className="meter-now"
+                    style={{ left: `${row.nowLine}%` }}
+                  />
+                )}
               </div>
               {row.detail && <p className="meter-detail">{row.detail}</p>}
             </div>

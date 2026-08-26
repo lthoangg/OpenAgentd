@@ -139,6 +139,85 @@ describe('itemRows', () => {
     if (rows[1].kind === 'meter') expect(rows[1].label).toBe('OpenAI Codex · 7d')
   })
 
+  it('places the now-line at the time-axis position within a rolling window', () => {
+    // 5h window, started 1h ago, resets in 4h -> now sits at 20%.
+    const now = 1_000
+    const rows = itemRows(
+      itemWith(
+        {},
+        [
+          {
+            limit_name: 'Codex',
+            primary: { used_percent: 42, window_minutes: 5 * 60, resets_at: now + 4 * 3600 },
+            secondary: null,
+            credits: null,
+            spend: null,
+          },
+        ],
+      ),
+      now,
+    )
+    if (rows[0].kind === 'meter') {
+      expect(rows[0].nowLine).toBeCloseTo(20, 5)
+    } else {
+      throw new Error('expected a meter row')
+    }
+  })
+
+  it('omits the now-line when there is no window or period to anchor it', () => {
+    const rows = itemRows(
+      itemWith(
+        {},
+        [
+          {
+            limit_name: null,
+            primary: null,
+            secondary: null,
+            credits: { has_credits: true, unlimited: false, balance: '12,000' },
+            spend: null,
+          },
+        ],
+      ),
+    )
+    // Credits-only rows carry no meter, only value rows.
+    expect(rows.every((r) => r.kind !== 'meter' || r.nowLine === null)).toBe(true)
+  })
+
+  it('anchors the now-line to an explicit period range when present', () => {
+    // Period spans 7 days (604800s); now is 1 day (86400s) into it -> ~14.29%.
+    const now = 1_000_000
+    const rows = itemRows(
+      itemWith(
+        {},
+        [
+          {
+            limit_name: 'Spend cap',
+            primary: null,
+            secondary: null,
+            credits: null,
+            spend: {
+              reached: false,
+              used: 90,
+              limit: 100,
+              remaining: 10,
+              used_percent: 90,
+              resets_at: null,
+            },
+            period_start_at: now - 86400,
+            period_end_at: now + 6 * 86400,
+          },
+        ],
+      ),
+      now,
+    )
+    const meter = rows.find((r) => r.kind === 'meter')
+    if (meter && meter.kind === 'meter') {
+      expect(meter.nowLine).toBeCloseTo((1 / 7) * 100, 5)
+    } else {
+      throw new Error('expected a meter row')
+    }
+  })
+
   it('renders a spend cap with the raw (unclamped) percent and amount detail', () => {
     const rows = itemRows(
       itemWith(

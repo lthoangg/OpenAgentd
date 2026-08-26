@@ -186,8 +186,11 @@ run from the terminal.
     meters (thin flat bar, leading dot, `42% · Resets in 2h 14m`, spend-cap
     amount detail, and live credit balances for DeepSeek/OpenRouter-style
     providers) in the app's Paper design, with Open App / Settings / Quit
-    actions. It reads the same polled usage cache and keeps
-    the critical-badge and notification logic; Windows/Linux keep the native
+    actions. Each meter also draws a thin vertical "now" tick at the
+    wall-clock position within the quota window — distinct from the bar,
+    which tracks usage consumed — so e.g. 1h into a 5h window places the
+    tick at 20%. It reads the same polled usage cache and keeps the
+    critical-badge and notification logic; Windows/Linux keep the native
     tray menu.
   - **Settings → Providers usage panel redesign** `[v1.94.0]` — the
     per-provider "Usage" card in Settings → Providers (`UsagePanel.tsx`)

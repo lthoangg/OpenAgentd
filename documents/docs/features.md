@@ -2,7 +2,7 @@
 title: Features
 description: Canonical, version-cited catalogue of shipped user-visible OpenAgentd features.
 status: stable
-updated: 2026-08-25
+updated: 2026-08-26
 ---
 
 # Features
@@ -180,6 +180,15 @@ run from the terminal.
     advertising credits, and it counts toward the critical badge and
     notification even when the provider stops returning quota windows
     `[v1.131.1]`.
+  - **macOS tray popup** `[v2.4.1]` — on macOS the tray icon opens a custom
+    borderless, always-on-top webview popup anchored under the icon instead
+    of the native menu, so the usage limit renders as styled CodexBar-style
+    meters (thin flat bar, leading dot, `42% · Resets in 2h 14m`, spend-cap
+    amount detail, and live credit balances for DeepSeek/OpenRouter-style
+    providers) in the app's Paper design, with Open App / Settings / Quit
+    actions. It reads the same polled usage cache and keeps
+    the critical-badge and notification logic; Windows/Linux keep the native
+    tray menu.
   - **Settings → Providers usage panel redesign** `[v1.94.0]` — the
     per-provider "Usage" card in Settings → Providers (`UsagePanel.tsx`)
     was restyled after CodexBar's menu-bar popover: a bold label per limit

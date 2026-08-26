@@ -19,6 +19,8 @@ fn main() {
                 "app_new_window",
                 "app_stop_bundled_backend",
                 "set_tray_session",
+                "get_tray_usage_summary",
+                "tray_action",
                 "updater_check",
                 "updater_download",
                 "updater_install",

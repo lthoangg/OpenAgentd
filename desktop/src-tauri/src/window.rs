@@ -74,7 +74,13 @@ pub fn target_webview_window(app: &AppHandle) -> Option<tauri::WebviewWindow> {
     // points at another window, which can make reload-driven queries briefly
     // retarget the wrong backend.
     if let Some(window) = focused_webview_window(app) {
-        return Some(window);
+        // The tray popup is a menu surface, never a navigation/command
+        // target: when it is focused (you just clicked one of its buttons),
+        // actions must fall through to the real app window instead of
+        // navigating/commanding the popup itself.
+        if window.label() != crate::tray_popup::TRAY_POPUP_WINDOW {
+            return Some(window);
+        }
     }
     let state: tauri::State<'_, AppState> = app.state();
     let label = state.active_window_label.lock().unwrap().clone();

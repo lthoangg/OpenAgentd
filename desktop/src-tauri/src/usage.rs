@@ -12,12 +12,12 @@
 //! testing) can run without a live app handle — see the `tests` module.
 
 use anyhow::{Context, Result};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::sync::OnceLock;
 use std::time::Duration;
 
-#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 pub struct UsageWindow {
     pub used_percent: f64,
     #[serde(default)]
@@ -26,7 +26,7 @@ pub struct UsageWindow {
     pub resets_at: Option<i64>,
 }
 
-#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 pub struct UsageCredits {
     pub has_credits: bool,
     pub unlimited: bool,
@@ -37,7 +37,7 @@ pub struct UsageCredits {
 /// A spend cap, independent of any rate-limit window. ``reached`` is the
 /// authoritative "am I blocked" signal — a provider can keep reporting
 /// available credits while the cap is already exhausted.
-#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 pub struct UsageSpend {
     pub reached: bool,
     /// Mirrors the backend schema; the tray has no room for it.
@@ -57,7 +57,7 @@ pub struct UsageSpend {
     pub resets_at: Option<i64>,
 }
 
-#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 pub struct UsageLimit {
     #[serde(default)]
     pub limit_id: Option<String>,
@@ -81,7 +81,7 @@ pub struct UsageLimit {
     pub period_end_at: Option<i64>,
 }
 
-#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 pub struct UsageResponse {
     #[allow(dead_code)]
     pub provider: String,
@@ -89,7 +89,7 @@ pub struct UsageResponse {
     pub limits: Vec<UsageLimit>,
 }
 
-#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 pub struct UsageSummaryItem {
     pub provider: String,
     pub label: String,
@@ -104,7 +104,7 @@ pub struct UsageSummaryItem {
     pub stale: bool,
 }
 
-#[derive(Debug, Clone, Deserialize, PartialEq, Default)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Default)]
 pub struct UsageSummaryBody {
     #[serde(default)]
     pub items: Vec<UsageSummaryItem>,

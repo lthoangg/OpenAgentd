@@ -8,6 +8,7 @@ mod menu;
 mod commands;
 mod sidecar;
 mod usage;
+mod tray_popup;
 
 use anyhow::{Context, Result};
 use serde::Serialize;
@@ -589,6 +590,7 @@ fn main() {
             show_main_window(app);
         }))
         .plugin(log_plugin)
+        .plugin(tauri_plugin_positioner::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
@@ -618,6 +620,8 @@ fn main() {
             commands::app_stop_bundled_backend,
             commands::app_new_window,
             menu::set_tray_session,
+            tray_popup::get_tray_usage_summary,
+            tray_popup::tray_action,
             updater::updater_check,
             updater::updater_download,
             updater::updater_install,
@@ -625,6 +629,8 @@ fn main() {
         ])
         .setup(|app| {
             install_desktop_menus(app)?;
+            #[cfg(target_os = "macos")]
+            tray_popup::create_tray_popup(app)?;
             match desktop_log_path(app.handle()) {
                 Ok(path) => log::info!("desktop log path={}", path.display()),
                 Err(e) => log::warn!("desktop log path unavailable: {e:#}"),

@@ -4,9 +4,10 @@ use std::sync::atomic::Ordering;
 use std::time::Duration;
 use tauri::{
     menu::{AboutMetadataBuilder, Menu, MenuItem, PredefinedMenuItem, SubmenuBuilder},
-    tray::TrayIconBuilder,
     AppHandle, Manager,
 };
+#[cfg(not(target_os = "macos"))]
+use tauri::tray::TrayIconBuilder;
 use tauri_plugin_opener::OpenerExt;
 
 use crate::usage::{
@@ -30,7 +31,9 @@ pub const MENU_COMMAND_PALETTE: &str = "command_palette";
 pub const MENU_SCHEDULER: &str = "scheduler";
 pub const MENU_AGENT_CAPABILITIES: &str = "agent_capabilities";
 pub const MENU_SETTINGS: &str = "settings";
+#[cfg(not(target_os = "macos"))]
 pub const MENU_STATUS: &str = "status";
+#[cfg(not(target_os = "macos"))]
 pub const MENU_SESSION: &str = "session";
 pub const MENU_RELOAD: &str = "reload";
 pub const MENU_FORCE_RELOAD: &str = "force_reload";
@@ -58,6 +61,7 @@ const USAGE_POLL_INTERVAL: Duration = Duration::from_secs(10 * 60);
 /// Minimum spacing between tray-open-triggered refreshes. Opening the
 /// menu repeatedly within this window reuses whatever is rendered
 /// (which the backend's stale-while-revalidate keeps warm anyway).
+#[cfg(not(target_os = "macos"))]
 const USAGE_TRAY_OPEN_MIN_GAP: Duration = Duration::from_secs(30);
 /// Startup probe cadence: instead of a fixed grace period, the poll loop
 /// probes for a resolvable backend endpoint every this-often and fires
@@ -260,6 +264,57 @@ pub fn install_desktop_menus(app: &tauri::App) -> Result<()> {
     )?;
     app.set_menu(menu)?;
 
+    #[cfg(target_os = "macos")]
+    {
+        install_macos_tray(app)?;
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        install_native_tray(app)?;
+    }
+    Ok(())
+}
+
+/// macOS: the tray icon is a status surface, not a menu. Left-click toggles
+/// a custom borderless webview popup (see ``tray_popup``); there is no native
+/// tray menu, so the status/session/usage native items are never created.
+/// The usage poll loop still updates the critical badge, notifications, and
+/// the cached summary the popup reads.
+#[cfg(target_os = "macos")]
+fn install_macos_tray(app: &tauri::App) -> Result<()> {
+    use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+
+    let tray = TrayIconBuilder::new()
+        .icon(macos_tray_icon()?)
+        .icon_as_template(true)
+        .tooltip("OpenAgentd")
+        .show_menu_on_left_click(false)
+        .on_tray_icon_event(|tray, event| {
+            // The positioner plugin needs every tray event to remember the
+            // icon's current bounds for ``TrayBottomCenter`` anchoring.
+            tauri_plugin_positioner::on_tray_event(tray.app_handle(), &event);
+            if let TrayIconEvent::Click {
+                button: MouseButton::Left,
+                button_state: MouseButtonState::Up,
+                ..
+            } = event
+            {
+                crate::tray_popup::toggle_tray_popup(tray.app_handle());
+            }
+        })
+        .build(app)?;
+
+    let state: tauri::State<'_, AppState> = app.state();
+    tauri::async_runtime::block_on(async {
+        state.tray_icon.lock().await.replace(tray);
+    });
+    Ok(())
+}
+
+/// Windows/Linux: keep the native tray menu (Tauri ``Menu``/``MenuItem`` maps
+/// to native OS menus, the only supported surface on these platforms).
+#[cfg(not(target_os = "macos"))]
+fn install_native_tray(app: &tauri::App) -> Result<()> {
     let status = MenuItem::with_id(app, MENU_STATUS, "Status: Starting", false, None::<&str>)?;
     // Informational only; updated from ``set_tray_session``.
     let session = MenuItem::with_id(app, MENU_SESSION, TRAY_SESSION_IDLE, false, None::<&str>)?;
@@ -363,11 +418,6 @@ pub fn install_desktop_menus(app: &tauri::App) -> Result<()> {
             }
         })
         .tooltip("OpenAgentd");
-    #[cfg(target_os = "macos")]
-    {
-        tray = tray.icon(macos_tray_icon()?).icon_as_template(true);
-    }
-    #[cfg(not(target_os = "macos"))]
     if let Some(icon) = app.default_window_icon() {
         tray = tray.icon(icon.clone());
     }
@@ -625,9 +675,6 @@ async fn notify_critical_crossings(
 
 async fn update_tray_usage(app: &AppHandle, result: Result<UsageSummaryBody, String>) {
     let state: tauri::State<'_, AppState> = app.state();
-    let Some(submenu) = state.usage_submenu.lock().await.clone() else {
-        return;
-    };
 
     let now = now_unix();
     let (rows, footer_text, critical) = match result {
@@ -656,6 +703,13 @@ async fn update_tray_usage(app: &AppHandle, result: Result<UsageSummaryBody, Str
         }
     };
     update_tray_critical_badge(&state, critical).await;
+
+    // The rest only drives the native tray submenu (Windows/Linux). On macOS
+    // there is no native submenu — the popup reads the cached summary — so
+    // the cache/badge/notify work above still ran and we bail here.
+    let Some(submenu) = state.usage_submenu.lock().await.clone() else {
+        return;
+    };
 
     let entries: Vec<UsageRow> = if rows.is_empty() {
         vec![UsageRow {
@@ -755,6 +809,7 @@ pub async fn refresh_usage_now(app: &AppHandle, force_refresh: bool) -> bool {
 
 /// Unix-seconds timestamp of the last tray-open-triggered refresh.
 /// Module-local because it only rate-limits this one trigger source.
+#[cfg(not(target_os = "macos"))]
 static LAST_TRAY_OPEN_REFRESH: std::sync::atomic::AtomicI64 =
     std::sync::atomic::AtomicI64::new(0);
 
@@ -762,6 +817,7 @@ static LAST_TRAY_OPEN_REFRESH: std::sync::atomic::AtomicI64 =
 /// the data is actually looked at. Non-forced (happy to hit the backend's
 /// warm cache) and rate-limited by ``USAGE_TRAY_OPEN_MIN_GAP`` so click
 /// spam doesn't queue refreshes.
+#[cfg(not(target_os = "macos"))]
 pub fn refresh_usage_on_tray_open(app: &AppHandle) {
     let now = now_unix();
     let last = LAST_TRAY_OPEN_REFRESH.load(Ordering::SeqCst);

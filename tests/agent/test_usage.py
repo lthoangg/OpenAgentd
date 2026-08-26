@@ -8,8 +8,8 @@ from app.agent.schemas.chat import Usage
 
 
 def _patch_cost(monkeypatch: pytest.MonkeyPatch, cost: ModelCost) -> None:
-    """Pin the time-aware cost lookup to a fixed price for the test."""
-    monkeypatch.setattr(usage_module, "get_cost_at", lambda model_id, at: cost)
+    """Pin the model cost lookup to a fixed price for the test."""
+    monkeypatch.setattr(usage_module, "get_model_cost", lambda model_id: cost)
 
 
 def test_usage_to_dict_estimates_input_output_and_cache_read_cost(

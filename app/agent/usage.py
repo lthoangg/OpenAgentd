@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from datetime import datetime, timezone
 from typing import Any
 
-from app.agent.providers.model_metadata import get_cost_at
+from app.agent.providers.model_metadata import get_model_cost
 from app.agent.schemas.chat import Usage
 
 
@@ -58,10 +57,11 @@ def set_usage_span_attributes(span: Any, usage: Mapping[str, Any]) -> None:
 
 
 def _estimate_cost(usage: Usage, model_id: str | None) -> dict[str, float] | None:
-    # Time-aware: providers with off-peak billing (DeepSeek) bill less
-    # outside peak hours, so the estimate uses the rate in effect when the
-    # call was made rather than the flat registry price.
-    prices = get_cost_at(model_id, datetime.now(timezone.utc))
+    # Usage records do not retain the request start time. Applying the current
+    # clock here can therefore halve a historical call made during peak hours
+    # (and makes the same usage estimate change over time). Use the published
+    # peak rates; callers with a known request timestamp can use get_cost_at.
+    prices = get_model_cost(model_id)
     components: dict[str, float] = {}
     cached_tokens = usage.cached_tokens or 0
     cache_write_tokens = usage.cache_write_tokens or 0

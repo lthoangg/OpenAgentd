@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 from app.agent.providers.model_metadata import (
+    ModelCost,
+    get_cost_at,
     get_model_cost,
     get_model_limits,
     get_model_metadata,
     get_model_thinking_levels,
 )
+from datetime import datetime, timezone
 
 
 def test_get_model_limits_returns_known_limits() -> None:
@@ -40,6 +43,20 @@ def test_get_model_cost_unknown_model_returns_none_cost() -> None:
 
     assert cost.input is None
     assert cost.output is None
+
+
+def test_deepseek_v4_uses_official_peak_and_off_peak_prices() -> None:
+    peak = get_cost_at(
+        "deepseek:deepseek-v4-flash",
+        datetime(2026, 8, 24, 2, tzinfo=timezone.utc),
+    )
+    off_peak = get_cost_at(
+        "deepseek:deepseek-v4-flash",
+        datetime(2026, 8, 24, 12, tzinfo=timezone.utc),
+    )
+
+    assert peak == ModelCost(input=0.44, output=1.32, cache_read=0.014)
+    assert off_peak == ModelCost(input=0.22, output=0.66, cache_read=0.007)
 
 
 def test_get_model_thinking_levels_returns_known_levels() -> None:

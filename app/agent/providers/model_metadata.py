@@ -336,6 +336,17 @@ _OFF_PEAK_RULES: dict[str, OffPeakPricing] = {
     ),
 }
 
+# DeepSeek's published prices are not always updated in models.dev promptly.
+# Keep the official V4 price table here so estimates use the vendor's rates
+# (values are USD per 1M tokens; the off-peak rule above halves them).
+_DEEPSEEK_COSTS: dict[str, ModelCost] = {
+    "deepseek-v4-flash": ModelCost(input=0.44, output=1.32, cache_read=0.014),
+    "deepseek-v4-pro": ModelCost(input=1.32, output=3.96, cache_read=0.044),
+    "deepseek-v4-flash-vision-exp": ModelCost(
+        input=0.44, output=1.32, cache_read=0.014
+    ),
+}
+
 #: Preferred provider order for resolving a bare model id (no ``provider:``
 #: prefix) against the registry. The official vendor for a model family
 #: should win over reseller proxies, which mark prices up or omit them.
@@ -404,6 +415,12 @@ def get_model_limits(model_id: str | None) -> ModelLimits:
 
 def get_model_cost(model_id: str | None) -> ModelCost:
     """Return pricing metadata for a fully-qualified ``provider:model`` string."""
+    if model_id and ":" in model_id:
+        provider, model = model_id.split(":", 1)
+        if provider.lower() == "deepseek":
+            official = _DEEPSEEK_COSTS.get(model.lower())
+            if official is not None:
+                return official
     return get_model_metadata(model_id).cost
 
 

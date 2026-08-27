@@ -17,8 +17,8 @@ make build                       # generic Tauri bundle
 ```
 
 `make ios-init` and physical-device targets require local Apple tooling and
-signing. Put the Apple team ID only in ignored `mobile/ios-team.txt`; never add
-signing credentials to tracked files. Use `make ios-install-device-fast
+signing. The public Apple development team is set in `src-tauri/tauri.conf.json`;
+override it there only if needed. Use `make ios-install-device-fast
 <name>` for a debug archive or `make ios-install-device <name>` for a
 production archive/install.
 
@@ -32,9 +32,9 @@ validation.
   sidecar flow.
 - Treat remote-origin validation, access-key storage, Tauri capabilities/CSP,
   deep links, and iOS plist/privacy changes as security-sensitive.
-- `src-tauri/gen/`, `src-tauri/target/`, generated icon variants, and
-  `ios-team.txt` are local/generated state. Regenerate them with
-  Make targets instead of editing or committing them.
+- `src-tauri/gen/`, `src-tauri/target/`, and generated icon variants are
+  local/generated state. Regenerate them with Make targets instead of editing
+  or committing them.
 - `src-tauri/icons/icon.png` is the source icon; use `make ios-icons` or
   `make ios-icons-force` for generated variants.
 

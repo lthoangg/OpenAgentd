@@ -51,3 +51,6 @@ custom-protocol = ["tauri/custom-protocol"]
 lto = "thin"
 codegen-units = 16
 strip = true
+
+[patch.crates-io]
+tao = { git = "https://github.com/tauri-apps/tao", rev = "c84a010d546c7fdf716bb6be97cc2038bdc62070" }

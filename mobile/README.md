@@ -31,11 +31,12 @@ make ios-icons
 
 ## iOS
 
-Initialize iOS project files once. For local signing, put your Apple team ID in ignored `ios-team.txt` first.
+Initialize iOS project files once. The public Apple development team
+(`com.openagentd.mobile`) is configured in `src-tauri/tauri.conf.json`, so no
+local team file is needed:
 
 ```bash
 cd mobile
-printf 'TEAMID' > ios-team.txt
 make ios-init
 ```
 
@@ -88,8 +89,6 @@ If the generated Xcode project gets stale after changing signing or identifiers,
 make ios-clean
 make ios-init
 ```
-
-The local team file is ignored and should not be committed.
 
 Build:
 

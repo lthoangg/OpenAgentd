@@ -251,7 +251,6 @@ mobile/src-tauri/icons/StoreLogo.png
 mobile/src-tauri/icons/icon.icns
 mobile/src-tauri/icons/icon.ico
 mobile/src-tauri/icons/android/
-mobile/ios-team.txt
 # Updater signing keys — see scripts/generate_updater_keys.sh.
 .tauri-keys/
 desktop/openagentd.key

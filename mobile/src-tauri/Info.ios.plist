@@ -6,14 +6,21 @@
   <dict>
     <key>CFBundlePrimaryIcon</key>
     <dict>
-      <key>CFBundleIconFiles</key>
-      <array>
-        <string>AppIcon60x60</string>
-      </array>
       <key>CFBundleIconName</key>
       <string>AppIcon</string>
     </dict>
   </dict>
+  <key>CFBundleURLTypes</key>
+  <array>
+    <dict>
+      <key>CFBundleURLName</key>
+      <string>com.openagentd.mobile</string>
+      <key>CFBundleURLSchemes</key>
+      <array>
+        <string>openagentd</string>
+      </array>
+    </dict>
+  </array>
   <key>NSAppTransportSecurity</key>
   <dict>
     <key>NSAllowsLocalNetworking</key>
@@ -33,5 +40,22 @@
   <array>
     <string>UIInterfaceOrientationPortrait</string>
   </array>
+  <key>UIApplicationSceneManifest</key>
+  <dict>
+    <key>UIApplicationSupportsMultipleScenes</key>
+    <true/>
+    <key>UISceneConfigurations</key>
+    <dict>
+      <key>UIWindowSceneSessionRoleApplication</key>
+      <array>
+        <dict>
+          <key>UISceneConfigurationName</key>
+          <string>Default Configuration</string>
+          <key>UISceneDelegateClassName</key>
+          <string>TaoSceneDelegate</string>
+        </dict>
+      </array>
+    </dict>
+  </dict>
 </dict>
 </plist>

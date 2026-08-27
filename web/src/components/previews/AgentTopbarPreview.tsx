@@ -67,7 +67,7 @@ export function AgentTopbarPreview() {
   return (
     <section className="grid gap-5 rounded-sm border border-(--color-border) bg-(--bg-card) p-5 text-(--color-text)">
       <div>
-        <h2 className="font-hand text-3xl font-bold">AgentTopbar</h2>
+        <h2 className="font-heading text-3xl font-bold">AgentTopbar</h2>
         <p className="text-sm text-(--color-text-2)">
           Composite topbar right-cluster used across single-agent and team chats.
         </p>

@@ -3,11 +3,6 @@
 @import "katex/dist/katex.min.css";
 @import "@fontsource-variable/inter";
 @import "@fontsource-variable/jetbrains-mono";
-/* Handwritten font is used only for English UI headings. Importing the
- * all-subset entrypoints emitted 16 Cyrillic/extended/Latin font files into
- * every Tauri bundle; the Latin subsets cover all actual hand-font copy. */
-@import "@fontsource/caveat/latin-400.css";
-@import "@fontsource/caveat/latin-700.css";
 /* Bundled Nerd Font icons fallback — mobile fix (see nerd-font-icons.css). */
 @import "./assets/fonts/nerd-font-icons.css";
 
@@ -48,7 +43,6 @@
     --font-heading: var(--font-sans);
     --font-sans: 'Inter Variable', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     --font-mono: 'JetBrains Mono Variable', ui-monospace, 'SF Mono', 'Courier New', monospace;
-    --font-hand: 'Caveat', 'Bradley Hand', cursive;
 
 
     --radius-xs: 4px;
@@ -798,7 +792,7 @@ html[data-mobile-shell][data-vp-anim] .settings-modal-shell {
 
 /* ─────────────────────────────────────────────────────────────
  * Font-weight transition — signature interaction.
- * Apply to buttons, nav items, tabs, menu items. Not prose. Not Caveat.
+ * Apply to buttons, nav items, tabs, menu items. Not prose.
  * ───────────────────────────────────────────────────────────── */
 .interactive-weight {
   font-weight: 400;

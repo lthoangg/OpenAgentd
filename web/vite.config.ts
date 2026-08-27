@@ -111,10 +111,10 @@ export default defineConfig({
             // entry, which crashes production WebViews during module init.
             // Icons (lucide ships many SVGs).
             { name: "icons", test: /node_modules[\\/]lucide-react[\\/]/, priority: 70 },
-            // State + utilities (zustand, immer, zod, nuqs).
+            // State + utilities (zustand, immer, zod).
             {
               name: "state-utils",
-              test: /node_modules[\\/](zustand|immer|zod|clsx|class-variance-authority|tailwind-merge|nuqs)[\\/]/,
+              test: /node_modules[\\/](zustand|immer|zod|clsx|class-variance-authority|tailwind-merge)[\\/]/,
               priority: 70,
             },
             // Tauri APIs — keep in one chunk so the static import from

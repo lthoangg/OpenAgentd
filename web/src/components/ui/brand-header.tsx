@@ -1,19 +1,16 @@
 /**
- * BrandHeader — sidebar brand row with mascot, Caveat title, and dock toggle.
+ * BrandHeader — sidebar brand row with mascot, title, and dock toggle.
  *
  * Pencil component `dtEOn` (BrandHeader):
  *   [mascot 44]  OpenAgentd                 [⫶]
  *                on-machine ai
  *
  * - Mascot 44×44 (image fill from /brand-assets/openagentd-app-icon.png)
- * - Title: font-hand (Caveat), 28px, weight 700, --color-text
+ * - Title: font-heading, 28px, weight 700, --color-text
  * - Subtitle: font-mono, 11px, --color-text-muted
  * - Dock toggle: 32×32 outlined button on the right
  * - Container: 64h, gap 12, padding 8×4
  *
- * Caveat is decorative chrome; the brand name is also conveyed by the
- * adjacent app icon and any document/page title, so screen readers will
- * still encounter "OpenAgentd" elsewhere.
  */
 
 import { PanelLeftClose, PanelLeftOpen } from 'lucide-react'
@@ -51,7 +48,7 @@ export function BrandHeader({
         draggable={false}
       />
       <div className="flex min-w-0 flex-1 flex-col">
-        <span className="font-hand text-[28px] font-bold leading-none text-(--color-text)">
+        <span className="font-heading text-[28px] font-bold leading-none text-(--color-text)">
           OpenAgentd
         </span>
         <span className="font-mono text-[11px] text-(--color-text-muted)">

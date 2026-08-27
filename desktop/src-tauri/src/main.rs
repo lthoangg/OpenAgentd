@@ -595,11 +595,8 @@ fn main() {
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
         // Updater config (endpoint, pubkey, install mode) lives in
-        // ``tauri.conf.json``'s ``plugins.updater`` block. ``process`` is
-        // required for ``app.restart()`` after the new bundle
-        // is staged.
+        // ``tauri.conf.json``'s ``plugins.updater`` block.
         .plugin(tauri_plugin_updater::Builder::new().build())
-        .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_deep_link::init())
         .manage(state)
         .on_menu_event(|app, event| handle_desktop_menu(app, event.id().as_ref()))

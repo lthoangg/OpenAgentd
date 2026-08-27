@@ -317,7 +317,7 @@ export function AgentView({ blocks, currentBlocks, isWorking, isTurnOpen = isWor
                  alt=""
                  aria-hidden="true"
                />
-               <h2 className="font-hand text-4xl font-bold text-(--color-text)">
+               <h2 className="font-heading text-4xl font-bold text-(--color-text)">
                  what&rsquo;s on your mind?
                </h2>
              </div>

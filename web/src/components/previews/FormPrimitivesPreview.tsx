@@ -41,7 +41,7 @@ export function LowLevelComponentsPreview() {
   return (
     <section className="grid gap-5 rounded-sm border border-(--color-border) bg-(--bg-card) p-5 text-(--color-text)">
       <div>
-        <h2 className="font-hand text-3xl font-bold">Low-Level UI Components</h2>
+        <h2 className="font-heading text-3xl font-bold">Low-Level UI Components</h2>
         <p className="text-sm text-(--color-text-2)">Tokenized primitive controls from the OpenAgentd color panel.</p>
       </div>
 
@@ -134,7 +134,7 @@ export function CreateTaskFormPreview() {
   return (
     <section className="max-w-lg rounded-sm border border-(--color-border) bg-(--bg-card) p-6 text-(--color-text) shadow-[0_8px_32px_rgba(26,23,20,0.12)]">
       <div className="mb-5">
-        <h2 className="font-hand text-3xl font-bold">Create scheduled task</h2>
+        <h2 className="font-heading text-3xl font-bold">Create scheduled task</h2>
         <p className="text-sm text-(--color-text-2)">Composite preview assembled from the low-level primitives.</p>
       </div>
 

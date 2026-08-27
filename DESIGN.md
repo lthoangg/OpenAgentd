@@ -89,18 +89,18 @@ colors:
   overlay: "rgba(26, 23, 20, 0.40)"
 
 typography:
-  display-hand:
-    fontFamily: Caveat
+  display:
+    fontFamily: Inter Variable
     fontSize: 48px
     fontWeight: 700
     lineHeight: 1
-  title-hand:
-    fontFamily: Caveat
+  title:
+    fontFamily: Inter Variable
     fontSize: 28px
     fontWeight: 700
     lineHeight: 1
-  heading-hand:
-    fontFamily: Caveat
+  heading:
+    fontFamily: Inter Variable
     fontSize: 30px
     fontWeight: 700
     lineHeight: 1.1
@@ -355,10 +355,8 @@ Three deliberate tensions define the personality:
   horizontal padding.
 - **Flat, not sterile.** Hierarchy comes from tonal steps and hairline borders,
   never from drop shadows. Only true overlays cast a shadow.
-- **Technical, with a human hand.** Every functional surface is Inter or
-  JetBrains Mono. A single handwritten face (Caveat) appears *only* on brand and
-  empty-state headings — the signature in the margin of an otherwise precise
-  document.
+- **Technical, not sterile.** Inter handles interface text and headings, while
+  JetBrains Mono distinguishes code and terminal-adjacent content.
 
 Light mode is canonical. Dark mode is a tonal inversion of the same paper, not a
 separate identity.
@@ -438,16 +436,13 @@ Agent and syntax hues brighten and desaturate in dark mode (e.g. `accent-blue`
 
 ## Typography
 
-Three faces, each with a non-overlapping job:
+Two faces, each with a non-overlapping job:
 
 - **Inter Variable** — all interface text and prose. Chosen for legibility at
   11–14px, where most of this UI lives.
 - **JetBrains Mono Variable** — code, diffs, terminal output, file paths, token
   counts, IDs. Anything a user might copy, compare character-by-character, or
   scan as a column.
-- **Caveat** — brand wordmark, hero headings, and empty states. Nothing else.
-  Only the Latin subsets are bundled; the all-subset entrypoint shipped 16 extra
-  font files per build for copy that is English-only.
 
 ### The scale
 
@@ -682,7 +677,6 @@ inset would only waste a strip of space.
   IDs, token counts, diffs.
 - Don't render UI text below 11px; the floor is enforced in CSS, so specifying
   9–10px only creates a mismatch between the class name and the result.
-- Don't use Caveat outside brand headings and empty states.
 - Don't stack more than two font weights in one view.
 
 **Layout & depth**

@@ -40,7 +40,7 @@ export function ToolCallPreview() {
   return (
     <section className="grid gap-5 rounded-sm border border-(--color-border) bg-(--bg-card) p-5 text-(--color-text)">
       <div>
-        <h2 className="font-hand text-3xl font-bold">ToolCall lifecycle</h2>
+        <h2 className="font-heading text-3xl font-bold">ToolCall lifecycle</h2>
         <p className="text-sm text-(--color-text-2)">
           Four canonical states a tool invocation passes through.
         </p>

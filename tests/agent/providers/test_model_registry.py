@@ -915,14 +915,15 @@ def test_get_cost_at_applies_deepseek_off_peak_discount(
 
     # Monday 02:00 UTC is a peak window → full price.
     peak = datetime(2026, 8, 24, 2, 0, tzinfo=timezone.utc)
-    assert get_cost_at("deepseek:deepseek-v4-flash", peak).input == 0.14
+    # DeepSeek peak prices are the official override (models.dev is stale).
+    assert get_cost_at("deepseek:deepseek-v4-flash", peak).input == 0.44
     # Monday 12:00 UTC and any weekend hour are off-peak → half price.
     off_peak = datetime(2026, 8, 24, 12, 0, tzinfo=timezone.utc)
     weekend = datetime(2026, 8, 22, 8, 0, tzinfo=timezone.utc)
-    assert get_cost_at("deepseek:deepseek-v4-flash", off_peak).input == 0.07
-    assert get_cost_at("deepseek:deepseek-v4-flash", off_peak).output == 0.14
-    assert get_cost_at("deepseek:deepseek-v4-flash", off_peak).cache_read == 0.0014
-    assert get_cost_at("deepseek:deepseek-v4-flash", weekend).input == 0.07
+    assert get_cost_at("deepseek:deepseek-v4-flash", off_peak).input == 0.22
+    assert get_cost_at("deepseek:deepseek-v4-flash", off_peak).output == 0.66
+    assert get_cost_at("deepseek:deepseek-v4-flash", off_peak).cache_read == 0.007
+    assert get_cost_at("deepseek:deepseek-v4-flash", weekend).input == 0.22
     # Providers without an off-peak rule are unaffected.
     assert get_cost_at("anthropic:claude-sonnet-4-5", off_peak).input == 3.0
     # A bare id (no provider prefix) never triggers the rule.

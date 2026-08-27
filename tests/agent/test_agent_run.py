@@ -823,8 +823,8 @@ async def test_agent_run_usage_tracked():
 async def test_agent_run_persists_estimated_usage_cost(monkeypatch):
     monkeypatch.setattr(
         usage_module,
-        "get_cost_at",
-        lambda model_id, at: ModelCost(input=1.0, output=5.0, cache_read=0.25),
+        "get_model_cost",
+        lambda model_id: ModelCost(input=1.0, output=5.0, cache_read=0.25),
     )
     usage = Usage(
         prompt_tokens=1000,

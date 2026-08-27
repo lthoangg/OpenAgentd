@@ -1031,3 +1031,10 @@ html[data-app-hidden="true"] *::after {
 .tool-desc .oa-prose strong               { color: var(--color-text-muted); }
 .tool-desc .oa-prose em                   { color: var(--color-text-muted); }
 .tool-desc .oa-prose code                 { font-size: 0.85em; color: var(--color-text-muted); background: var(--bg-key); }
+
+/* Tooltips disabled on mobile / touch devices */
+@media (max-width: 767px), (pointer: coarse) {
+  [data-slot="tooltip-content"] {
+    display: none !important;
+  }
+}

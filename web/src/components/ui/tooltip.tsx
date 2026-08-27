@@ -39,6 +39,7 @@ import {
 import { createPortal } from 'react-dom'
 import { cn } from '@/lib/utils'
 import { useDeferredUnmount } from '@/components/ui/_use-deferred-unmount'
+import { useIsMobile } from '@/hooks/use-mobile'
 
 // ─── Context ────────────────────────────────────────────────────────────────
 
@@ -47,6 +48,7 @@ interface TooltipCtx {
   open: boolean
   setOpen: (v: boolean) => void
   anchorRef: RefObject<HTMLSpanElement | null>
+  isMobile: boolean
 }
 const TooltipContext = createContext<TooltipCtx | null>(null)
 
@@ -66,10 +68,11 @@ function TooltipProvider({ children }: { children: ReactNode; delay?: number }) 
 
 function Tooltip({ children, className }: { children: ReactNode; className?: string }) {
   const id = useId()
+  const isMobile = useIsMobile()
   const [open, setOpen] = useState(false)
   const anchorRef = useRef<HTMLSpanElement>(null)
   return (
-    <TooltipContext.Provider value={{ id, open, setOpen, anchorRef }}>
+    <TooltipContext.Provider value={{ id, open, setOpen, anchorRef, isMobile }}>
       {/* `min-w-0` is a no-op unless this span is itself a flex/grid item —
        * when it is (e.g. a truncated session title inside a flex row), it lets
        * the wrapper shrink instead of forcing the row wider than its parent.
@@ -90,14 +93,16 @@ interface TooltipTriggerProps extends ComponentPropsWithRef<'span'> {
 }
 
 function TooltipTrigger({ render: renderProp, children, className, ...props }: TooltipTriggerProps) {
-  const { id, setOpen } = useTooltip()
-  const handlers = {
-    onMouseEnter: () => setOpen(true),
-    onMouseLeave: () => setOpen(false),
-    onFocus: () => setOpen(true),
-    onBlur: () => setOpen(false),
-    'aria-describedby': id,
-  }
+  const { id, setOpen, isMobile } = useTooltip()
+  const handlers = isMobile
+    ? { 'aria-describedby': id }
+    : {
+        onMouseEnter: () => setOpen(true),
+        onMouseLeave: () => setOpen(false),
+        onFocus: () => setOpen(true),
+        onBlur: () => setOpen(false),
+        'aria-describedby': id,
+      }
 
   if (renderProp && isValidElement(renderProp)) {
     // Wrap in a span so hover events work even when the rendered element is
@@ -135,7 +140,7 @@ interface TooltipContentProps extends ComponentPropsWithRef<'div'> {
 const VIEWPORT_MARGIN = 8
 
 function TooltipContent({ className, side = 'top', sideOffset = 8, children, ...props }: TooltipContentProps) {
-  const { id, open, anchorRef } = useTooltip()
+  const { id, open, anchorRef, isMobile } = useTooltip()
   // Deferred unmount so the close animation plays before removal
   const { mounted, closing } = useDeferredUnmount(open, 150)
   const contentRef = useRef<HTMLDivElement>(null)
@@ -208,7 +213,7 @@ function TooltipContent({ className, side = 'top', sideOffset = 8, children, ...
     }
   }, [mounted, side, sideOffset, anchorRef])
 
-  if (!mounted) return null
+  if (!mounted || isMobile) return null
 
   // Animation classes per side (post-flip)
   const slideIn = {

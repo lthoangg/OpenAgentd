@@ -54,7 +54,7 @@ export function ThemeToggle({
                 'interactive-weight flex text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40',
                 compact
                   ? 'h-5 w-5 items-center justify-center rounded-sm'
-                  : 'h-11 w-11 items-center justify-center rounded-md md:h-8 md:w-8',
+                  : 'h-8 w-8 items-center justify-center rounded-md md:h-8 md:w-8',
                 className,
               )}
             >

@@ -2,7 +2,7 @@
 title: Features
 description: Canonical, version-cited catalogue of shipped user-visible OpenAgentd features.
 status: stable
-updated: 2026-08-26
+updated: 2026-08-27
 ---
 
 # Features
@@ -599,6 +599,9 @@ team against it.
   hunk line marked `-` or `+`, so every line reads as unchanged context — is
   rejected with guidance instead of reporting success without writing,
   which previously sent the agent into a silent retry loop `[v2.0.0]`.
+  A hunk can narrow its search after a unique literal line with
+  `@@ in: <anchor>`; ambiguous or missing anchors, and ambiguous targets
+  within that scope, are rejected rather than selecting a match `[v2.5.0]`.
   The activity header lists the comma-separated,
   deduplicated basenames of every touched file instead of collapsing
   multi-file patches into a bare count `[v1.120.0]`, with operation-aware header labels (`Create`, `Update`, `Move`, `Delete`), color-coded action badges, per-file line delta counters, and multi-file expand/collapse controls `[v2.0.0]`.

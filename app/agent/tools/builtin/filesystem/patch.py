@@ -42,6 +42,11 @@ Update hunks start with @@ and use +/- prefixes (space = context):
   +new line
    context line
 
+To scope a hunk after a unique literal line, use '@@ in: <anchor>':
+  @@ in: def target_function():
+  -old line
+  +new line
+
 Context and removed lines must match the file exactly, whole lines only —
 copy them from a read rather than retyping. A hunk that matches nothing, or
 matches in more than one place, fails the whole envelope; add surrounding
@@ -88,6 +93,7 @@ class Chunk:
     new: list[str] = field(default_factory=list)
     raw_old: list[str] = field(default_factory=list)
     raw_new: list[str] = field(default_factory=list)
+    scope_anchor: str | None = None
 
 
 @dataclass
@@ -170,6 +176,13 @@ def _parse_patch(patch_text: str) -> list[FilePatch]:
             if current.kind != "update":
                 raise ValueError("Move is only valid inside an update operation.")
             current.move_to = line.removeprefix("*** Move to: ").strip()
+            continue
+        if line.startswith("@@ in:"):
+            finish_chunk()
+            scope_anchor = line.removeprefix("@@ in:").strip()
+            if not scope_anchor:
+                raise ValueError("A scoped hunk must include an anchor after '@@ in:'.")
+            chunk = Chunk(scope_anchor=scope_anchor)
             continue
         if line.startswith("@@"):
             finish_chunk()
@@ -349,6 +362,28 @@ def _adjust_new_lines_indentation(
     return new_lines
 
 
+def _find_scope_anchor(content_lines: list[str], anchor: str, path: str) -> int:
+    """Find one literal scope anchor, tolerating trailing whitespace only."""
+    starts = _find_line_matches(content_lines, [anchor], trimmed=False)
+    if not starts:
+        starts = _find_line_matches(content_lines, [anchor], trimmed=True)
+    if not starts:
+        raise ValueError(
+            f"Could not find scope anchor in {path}: {anchor!r}. "
+            "Check that it matches a unique line in the current file."
+        )
+    if len(starts) > 1:
+        lines_str = ", ".join(f"line {idx + 1}" for idx in starts[:5])
+        if len(starts) > 5:
+            lines_str += f" (and {len(starts) - 5} more)"
+        raise ValueError(
+            f"Scope anchor is ambiguous in {path}. "
+            f"Found {len(starts)} matching locations at {lines_str}. "
+            "Use a unique literal anchor after '@@ in:'."
+        )
+    return starts[0]
+
+
 def _format_context_miss_error(
     path: str, content_lines: list[str], old_lines: list[str]
 ) -> str:
@@ -417,18 +452,30 @@ def _apply_chunks_with_meta(
             continue
 
         old_lines, new_lines = chunk.old, chunk.new
+        scope_start = 0
+        if chunk.scope_anchor is not None:
+            scope_start = (
+                _find_scope_anchor(content_lines, chunk.scope_anchor, path) + 1
+            )
+
+        def in_scope(matches: list[int]) -> list[int]:
+            return [start for start in matches if start >= scope_start]
 
         # 1. Exact match
-        starts = _find_line_matches(content_lines, old_lines, trimmed=False)
+        starts = in_scope(_find_line_matches(content_lines, old_lines, trimmed=False))
         # 2. Trailing whitespace tolerant match
         if not starts:
-            starts = _find_line_matches(content_lines, old_lines, trimmed=True)
+            starts = in_scope(
+                _find_line_matches(content_lines, old_lines, trimmed=True)
+            )
 
         # 3. Fallback: unstripped context lines (lines copied verbatim from source)
         if not starts and chunk.raw_old != chunk.old:
-            starts = _find_line_matches(
-                content_lines, chunk.raw_old, trimmed=False
-            ) or _find_line_matches(content_lines, chunk.raw_old, trimmed=True)
+            starts = in_scope(
+                _find_line_matches(content_lines, chunk.raw_old, trimmed=False)
+            ) or in_scope(
+                _find_line_matches(content_lines, chunk.raw_old, trimmed=True)
+            )
             if starts:
                 old_lines = chunk.raw_old
                 new_lines = chunk.raw_new
@@ -437,9 +484,9 @@ def _apply_chunks_with_meta(
         if not starts:
             bare_old = _strip_line_number_prefixes(old_lines)
             if bare_old is not None:
-                bare_starts = _find_line_matches(
-                    content_lines, bare_old, trimmed=False
-                ) or _find_line_matches(content_lines, bare_old, trimmed=True)
+                bare_starts = in_scope(
+                    _find_line_matches(content_lines, bare_old, trimmed=False)
+                ) or in_scope(_find_line_matches(content_lines, bare_old, trimmed=True))
                 if bare_starts:
                     starts = bare_starts
                     old_lines = bare_old
@@ -447,7 +494,9 @@ def _apply_chunks_with_meta(
 
         # 5. Fallback: uniform indentation shift
         if not starts:
-            indent_starts = _find_indentation_tolerant_matches(content_lines, old_lines)
+            indent_starts = in_scope(
+                _find_indentation_tolerant_matches(content_lines, old_lines)
+            )
             if len(indent_starts) == 1:
                 starts = indent_starts
                 window = content_lines[starts[0] : starts[0] + len(old_lines)]

@@ -671,6 +671,76 @@ async def test_patch_keeps_the_bare_hunk_locator_idiom(sandbox_workspace):
 
 
 @pytest.mark.asyncio
+async def test_patch_scopes_a_hunk_after_a_unique_in_anchor(sandbox_workspace):
+    target = sandbox_workspace / "handlers.py"
+    target.write_text(
+        "def first_handler():\n"
+        '    return "old"\n\n'
+        "def second_handler():\n"
+        '    return "old"\n',
+        encoding="utf-8",
+    )
+
+    await patch_file.arun(
+        patch_text="""*** Begin Patch
+*** Update File: handlers.py
+@@ in: def second_handler():
+-    return \"old\"
++    return \"new\"
+*** End Patch"""
+    )
+
+    assert target.read_text(encoding="utf-8") == (
+        "def first_handler():\n"
+        '    return "old"\n\n'
+        "def second_handler():\n"
+        '    return "new"\n'
+    )
+
+
+@pytest.mark.asyncio
+async def test_patch_rejects_an_ambiguous_in_anchor(sandbox_workspace):
+    target = sandbox_workspace / "handlers.py"
+    original = (
+        'def handler():\n    return "old"\n\ndef handler():\n    return "other"\n'
+    )
+    target.write_text(original, encoding="utf-8")
+
+    with pytest.raises(ToolExecutionError, match="Scope anchor is ambiguous"):
+        await patch_file.arun(
+            patch_text="""*** Begin Patch
+*** Update File: handlers.py
+@@ in: def handler():
+-    return \"other\"
++    return \"new\"
+*** End Patch"""
+        )
+
+    assert target.read_text(encoding="utf-8") == original
+
+
+@pytest.mark.asyncio
+async def test_patch_rejects_an_ambiguous_target_within_an_in_anchor(
+    sandbox_workspace,
+):
+    target = sandbox_workspace / "handlers.py"
+    original = 'def handler():\n    return "old"\n    return "old"\n'
+    target.write_text(original, encoding="utf-8")
+
+    with pytest.raises(ToolExecutionError, match="Patch context is ambiguous"):
+        await patch_file.arun(
+            patch_text="""*** Begin Patch
+*** Update File: handlers.py
+@@ in: def handler():
+-    return \"old\"
++    return \"new\"
+*** End Patch"""
+        )
+
+    assert target.read_text(encoding="utf-8") == original
+
+
+@pytest.mark.asyncio
 async def test_patch_allows_rename_without_any_hunk(sandbox_workspace):
     """A pure rename legitimately changes no content — it must still apply."""
     source = sandbox_workspace / "old.txt"

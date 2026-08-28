@@ -147,7 +147,7 @@ async def _copilot_models() -> list[str]:
         model_plan_type,
     )
 
-    catalog = copilot_model_catalog()
+    catalog = await asyncio.to_thread(copilot_model_catalog)
     # Sync httpx call under the hood (up to 5s) — keep it off the event loop.
     plan_type = await asyncio.to_thread(model_plan_type)
     return sorted(

@@ -110,6 +110,7 @@ async def test_get_usage_missing_premium_snapshot_returns_empty_limits(
 async def test_get_usage_requires_saved_oauth_credentials(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.delenv("COPILOT_GITHUB_TOKEN", raising=False)
     monkeypatch.setattr(
         "app.agent.providers.copilot.oauth.CopilotOAuth.load",
         lambda: None,
@@ -117,6 +118,26 @@ async def test_get_usage_requires_saved_oauth_credentials(
 
     with pytest.raises(usage.CopilotUsageCredentialsError):
         await usage.get_usage()
+
+
+@pytest.mark.asyncio
+async def test_get_usage_uses_env_token_when_oauth_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("COPILOT_GITHUB_TOKEN", "github-token")
+    monkeypatch.setattr(
+        "app.agent.providers.copilot.oauth.CopilotOAuth.load",
+        lambda: None,
+    )
+    _FakeClient.payload = {
+        "copilot_plan": "individual",
+        "quota_snapshots": {},
+    }
+    monkeypatch.setattr(usage.httpx2, "Client", _FakeClient)
+
+    result = await usage.get_usage()
+    assert result.provider == "copilot"
+    assert result.limits == []
 
 
 @pytest.mark.asyncio

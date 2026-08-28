@@ -36,7 +36,7 @@ from app.agent.providers.copilot.oauth import CopilotOAuth, copilot_api_base
 from app.agent.providers.openai.completions import CompletionsHandler
 from app.agent.providers.openai.openai import OpenAIProvider
 from app.agent.providers.openai.responses import ResponsesHandler
-from app.agent.schemas.chat import ChatMessage, Usage
+from app.agent.schemas.chat import Usage
 from app.core.version import VERSION
 
 # This internal gateway is undocumented; public auth reference:
@@ -186,24 +186,28 @@ def _resolve_github_token(
         or os.getenv("GITHUB_COPILOT_TOKEN")
     )
     if token:
-        return token, {}
+        enterprise_url = (
+            os.getenv("COPILOT_ENTERPRISE_URL")
+            or os.getenv("GH_ENTERPRISE_URL")
+            or os.getenv("GITHUB_ENTERPRISE_URL")
+        )
+        metadata = {}
+        if enterprise_url:
+            metadata["enterprise_url"] = enterprise_url
+            metadata["api_base"] = copilot_api_base(enterprise_url)
+        return token, metadata
     return _oauth_context()
 
 
 class _CopilotCompletionsHandler(CompletionsHandler):
-    def build_request(
-        self,
-        messages: list[ChatMessage],
-        tools: list[dict[str, Any]] | None,
-        stream: bool,
-        merged: dict[str, Any],
-    ) -> dict[str, Any]:
-        body = super().build_request(messages, tools, stream, merged)
-        converted = body.get("messages", [])
-        is_agent, is_vision = _is_agent_initiated(converted, responses_api=False)
-        body["x-openagentd-copilot-initiator"] = "agent" if is_agent else "user"
-        body["x-openagentd-copilot-vision"] = bool(is_vision)
-        return body
+    def _prepare_request_headers(self, body: dict[str, Any]) -> dict[str, str]:
+        messages = body.get("messages") or []
+        is_agent, is_vision = _is_agent_initiated(messages, responses_api=False)
+        headers = dict(self.headers)
+        headers["x-initiator"] = "agent" if is_agent else "user"
+        if is_vision:
+            headers["Copilot-Vision-Request"] = "true"
+        return headers
 
     def customize_thinking(self, merged: dict[str, Any], body: dict[str, Any]) -> None:
         thinking_level = merged.get("thinking_level")
@@ -231,19 +235,14 @@ class _CopilotCompletionsHandler(CompletionsHandler):
 
 
 class _CopilotResponsesHandler(ResponsesHandler):
-    def build_request(
-        self,
-        messages: list[ChatMessage],
-        tools: list[dict[str, Any]] | None,
-        stream: bool,
-        merged: dict[str, Any],
-    ) -> dict[str, Any]:
-        body = super().build_request(messages, tools, stream, merged)
-        converted = body.get("input", [])
-        is_agent, is_vision = _is_agent_initiated(converted, responses_api=True)
-        body["x-openagentd-copilot-initiator"] = "agent" if is_agent else "user"
-        body["x-openagentd-copilot-vision"] = bool(is_vision)
-        return body
+    def _prepare_request_headers(self, body: dict[str, Any]) -> dict[str, str]:
+        items = body.get("input") or []
+        is_agent, is_vision = _is_agent_initiated(items, responses_api=True)
+        headers = dict(self.headers)
+        headers["x-initiator"] = "agent" if is_agent else "user"
+        if is_vision:
+            headers["Copilot-Vision-Request"] = "true"
+        return headers
 
     def _extract_call_id_and_name(self, event: dict[str, Any]) -> tuple[str, str]:
         call_id = event.get("item_id") or event.get("call_id", "")
@@ -297,11 +296,14 @@ class CopilotProvider(OpenAIProvider):
         return {**_DEFAULT_HEADERS, "Authorization": f"Bearer {self.api_key}"}
 
     def _prepare_request_headers(self, body: dict[str, Any]) -> dict[str, str]:
+        if "input" in body:
+            items = body.get("input") or []
+            is_agent, is_vision = _is_agent_initiated(items, responses_api=True)
+        else:
+            messages = body.get("messages") or []
+            is_agent, is_vision = _is_agent_initiated(messages, responses_api=False)
         headers = dict(self._build_headers())
-        initiator = body.pop("x-openagentd-copilot-initiator", None)
-        is_vision = bool(body.pop("x-openagentd-copilot-vision", False))
-        if initiator in {"agent", "user"}:
-            headers["x-initiator"] = initiator
+        headers["x-initiator"] = "agent" if is_agent else "user"
         if is_vision:
             headers["Copilot-Vision-Request"] = "true"
         return headers
@@ -331,7 +333,7 @@ def copilot_model_catalog() -> dict[str, dict[str, Any]]:
     Source to compare when updating:
     /tmp/opencode-src/packages/opencode/src/plugin/github-copilot/models.ts
     """
-    token, metadata = _oauth_context()
+    token, metadata = _resolve_github_token(None)
     if not token:
         return {}
     api_base = str(metadata.get("api_base") or COPILOT_API_BASE)

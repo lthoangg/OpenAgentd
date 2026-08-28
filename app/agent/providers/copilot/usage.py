@@ -53,11 +53,23 @@ def _parse_timestamp(value: object) -> int | None:
 def _usage_headers() -> dict[str, str]:
     from app.agent.providers.copilot.oauth import CopilotOAuth
 
+    token: str | None = None
     oauth = CopilotOAuth.load()
-    if oauth is None:
+    if oauth is not None:
+        token = oauth.github_token.get_secret_value()
+    else:
+        import os
+
+        token = (
+            os.getenv("COPILOT_GITHUB_TOKEN")
+            or os.getenv("GH_TOKEN")
+            or os.getenv("GITHUB_TOKEN")
+            or os.getenv("GITHUB_COPILOT_TOKEN")
+        )
+    if not token:
         raise CopilotUsageCredentialsError("Copilot OAuth credentials not found.")
     return {
-        "Authorization": f"token {oauth.github_token.get_secret_value()}",
+        "Authorization": f"token {token}",
         "Accept": "application/json",
         # Keep this aligned with the runtime Copilot provider headers.
         # Compare against opencode's GitHub Copilot plugin when updating.

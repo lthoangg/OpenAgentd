@@ -188,6 +188,25 @@ class TestCopilotModelCatalog:
         ):
             assert copilot_model_catalog() == {}
 
+    def test_catalog_uses_env_var_token(self):
+        with (
+            patch(
+                "app.agent.providers.copilot.copilot.CopilotOAuth.load",
+                return_value=None,
+            ),
+            patch.dict(os.environ, {"COPILOT_GITHUB_TOKEN": "gho_env_test"}),
+            respx.mock,
+        ):
+            respx.get(f"{COPILOT_API_BASE}/models").mock(
+                return_value=httpx.Response(
+                    200,
+                    json={"data": [{"id": "gpt-5-mini", "name": "GPT 5 Mini"}]},
+                )
+            )
+            catalog = copilot_model_catalog()
+            assert "gpt-5-mini" in catalog
+            assert catalog["gpt-5-mini"]["name"] == "GPT 5 Mini"
+
     def test_supports_reasoning_effort_uses_catalog(self):
         with patch(
             "app.agent.providers.copilot.copilot.copilot_model_catalog",
@@ -612,6 +631,27 @@ class TestParseCompletionsResponse:
         msg = p._completions.parse_response(data)
         assert msg.reasoning_content == "Thinking..."
 
+    def test_reasoning_text_copilot(self):
+        p = _make_provider()
+        data = {
+            "id": "x",
+            "created": 1,
+            "model": "gpt-5-mini",
+            "choices": [
+                {
+                    "index": 0,
+                    "message": {
+                        "role": "assistant",
+                        "content": "Answer",
+                        "reasoning_text": "Copilot thinking...",
+                    },
+                    "finish_reason": "stop",
+                }
+            ],
+        }
+        msg = p._completions.parse_response(data)
+        assert msg.reasoning_content == "Copilot thinking..."
+
 
 # ---------------------------------------------------------------------------
 # _parse_responses_response
@@ -1035,6 +1075,31 @@ class TestBuildResponsesRequestExtra:
         assert headers["x-initiator"] == "agent"
         assert "Copilot-Vision-Request" not in headers
 
+    def test_handler_prepare_headers_inspects_body_and_sets_headers(self):
+        p = _make_provider(model="gpt-5-mini")
+        body = p._completions.build_request(
+            [AssistantMessage(content="thinking")],
+            None,
+            stream=False,
+            merged=p._merged_kwargs(),
+        )
+        headers = p._completions._prepare_request_headers(body)
+        assert headers["x-initiator"] == "agent"
+
+        resp_p = _make_provider(model="gpt-5.4")
+        resp_body = resp_p._responses.build_request(
+            [
+                HumanMessage(
+                    content="", parts=[ImageUrlBlock(url="https://example.com/x.png")]
+                )
+            ],
+            None,
+            stream=False,
+            merged=resp_p._merged_kwargs(),
+        )
+        resp_headers = resp_p._responses._prepare_request_headers(resp_body)
+        assert resp_headers["Copilot-Vision-Request"] == "true"
+
     def test_prepare_headers_sets_vision_request(self):
         p = _make_provider(model="gpt-5.4")
         body = p._responses.build_request(
@@ -1293,6 +1358,71 @@ class TestCopilotResponsesAPIMultimodal:
         user_items = [i for i in result["input"] if i.get("role") == "user"]
         part = user_items[0]["content"][0]
         assert part["detail"] == "auto"
+
+
+@respx.mock
+async def test_chat_completions_sends_clean_body_and_prepared_headers():
+    p = _make_provider(model="gpt-5-mini")
+    route = respx.post(_COMPLETIONS_URL).mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "id": "x",
+                "created": 1,
+                "model": "gpt-5-mini",
+                "choices": [
+                    {
+                        "index": 0,
+                        "message": {"role": "assistant", "content": "Clean!"},
+                        "finish_reason": "stop",
+                    }
+                ],
+            },
+        )
+    )
+    msg = await p.chat(
+        [
+            HumanMessage(
+                content="", parts=[ImageUrlBlock(url="https://example.com/test.png")]
+            ),
+            AssistantMessage(content="agent turn"),
+        ]
+    )
+    assert msg.content == "Clean!"
+    sent_request = route.calls.last.request
+    assert sent_request.headers["x-initiator"] == "agent"
+    assert sent_request.headers["Copilot-Vision-Request"] == "true"
+
+
+@respx.mock
+async def test_chat_responses_sends_clean_body_and_prepared_headers():
+    p = _make_provider(model="gpt-5.4")
+    route = respx.post(_RESPONSES_URL).mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "output": [
+                    {
+                        "type": "message",
+                        "content": [
+                            {"type": "output_text", "text": "Responses clean!"}
+                        ],
+                    }
+                ]
+            },
+        )
+    )
+    msg = await p.chat(
+        [
+            HumanMessage(
+                content="", parts=[ImageUrlBlock(url="https://example.com/test.png")]
+            ),
+        ]
+    )
+    assert msg.content == "Responses clean!"
+    sent_request = route.calls.last.request
+    assert sent_request.headers["x-initiator"] == "user"
+    assert sent_request.headers["Copilot-Vision-Request"] == "true"
 
     def test_image_data_block_responses_api(self, prov):
         msg = HumanMessage(

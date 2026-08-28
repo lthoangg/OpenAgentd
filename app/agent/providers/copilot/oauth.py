@@ -243,6 +243,7 @@ def _verify_copilot_access(token: str, enterprise_url: str | None = None) -> boo
                 "Authorization": f"Bearer {token}",
                 "User-Agent": _HEADERS["User-Agent"],
                 "Accept": "application/json",
+                "X-GitHub-Api-Version": COPILOT_API_VERSION,
             },
             timeout=10.0,
         )

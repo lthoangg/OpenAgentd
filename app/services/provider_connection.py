@@ -40,6 +40,14 @@ def provider_is_configured(entry: "ProviderEntry") -> bool:
     if kind == "local":
         return True
     if kind == "oauth":
+        if entry["id"] == "copilot":
+            if (
+                os.environ.get("COPILOT_GITHUB_TOKEN")
+                or os.environ.get("GH_TOKEN")
+                or os.environ.get("GITHUB_TOKEN")
+                or os.environ.get("GITHUB_COPILOT_TOKEN")
+            ):
+                return True
         cache_dir = Path(settings.OPENAGENTD_CACHE_DIR or "")
         token_files = {
             "codex": cache_dir / "codex_oauth.json",

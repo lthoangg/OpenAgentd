@@ -310,7 +310,7 @@ class CompletionsHandler:
             )
         return AssistantMessage(
             content=msg.content or None,
-            reasoning_content=msg.reasoning_content or None,
+            reasoning_content=msg.reasoning_content or msg.reasoning_text or None,
             tool_calls=tool_calls if tool_calls else None,
             extra={"usage": usage_dict} if usage_dict is not None else None,
         )
@@ -421,7 +421,8 @@ class CompletionsHandler:
                                 index=choice.index,
                                 delta=ChatCompletionDelta(
                                     content=delta.content,
-                                    reasoning_content=delta.reasoning_content,
+                                    reasoning_content=delta.reasoning_content
+                                    or delta.reasoning_text,
                                     tool_calls=delta_tool_calls or None,
                                 ),
                                 finish_reason=choice.finish_reason,

@@ -229,35 +229,90 @@ class GeminiProviderBase(LLMProviderBase):
 
                 contents.append(Content(role="user", parts=tool_parts))
 
-        # Merge consecutive messages with the same role ONLY if they are compatible turn types.
-        # Specifically, Gemini API strictly differentiates between:
-        # 1. User prompt turns (text/multimodal parts)
-        # 2. Function response turns (FunctionResponse parts)
-        # Mixing FunctionResponse and Text in the same role="user" Content block creates an invalid
-        # hybrid turn that causes HTTP 400 ("function call turn comes immediately after a user turn or after a function response turn").
-        merged_contents: list[Content] = []
+        return self._normalize_gemini_turns(contents), system_instruction
+
+    @classmethod
+    def _normalize_gemini_turns(cls, contents: list[Content]) -> list[Content]:
+        """Normalize Gemini turns to strictly satisfy Gemini API turn invariants.
+
+        Invariants enforced:
+        1. Empty content turns or turns with no parts are dropped.
+        2. Consecutive turns of the same role and compatible type are collapsed.
+        3. History must start with a 'user' turn (prepends synthetic '[Session context]'
+           when history begins with a model turn, e.g. retained skills after compaction).
+        4. Roles must strictly alternate:
+           - A 'user' turn with FunctionResponse followed by a 'user' turn with text is
+             bridged with a synthetic model turn ('Understood.').
+           - A 'user' turn with text followed by a 'user' turn with FunctionResponse is
+             bridged with a synthetic model turn ('Acknowledged.').
+           - Consecutive model turns or consecutive text user turns are merged.
+        """
+        if not contents:
+            return []
+
+        # Pass 1: Drop empty turns and collapse adjacent compatible same-role turns
+        collapsed: list[Content] = []
         for content in contents:
-            if not merged_contents:
-                merged_contents.append(content)
+            if not content.parts:
                 continue
-            prev = merged_contents[-1]
+            if not collapsed:
+                collapsed.append(content)
+                continue
+            prev = collapsed[-1]
             if prev.role == content.role:
                 prev_has_fn = any(p.function_response is not None for p in prev.parts)
                 curr_has_fn = any(
                     p.function_response is not None for p in content.parts
                 )
                 if prev_has_fn == curr_has_fn:
-                    merged_contents[-1] = Content(
+                    collapsed[-1] = Content(
                         role=content.role,
                         parts=list(prev.parts) + list(content.parts),
                     )
                     continue
-            else:
-                merged_contents.append(content)
-                continue
-            merged_contents.append(content)
+            collapsed.append(content)
 
-        return merged_contents, system_instruction
+        if not collapsed:
+            return []
+
+        # Pass 2: Ensure transcript starts with a 'user' turn
+        normalized: list[Content] = []
+        if collapsed[0].role != "user":
+            normalized.append(
+                Content(role="user", parts=[Part(text="[Session context]")])
+            )
+
+        # Pass 3: Enforce strictly alternating user <-> model turns
+        for content in collapsed:
+            if not normalized:
+                normalized.append(content)
+                continue
+            prev = normalized[-1]
+            if prev.role == content.role:
+                prev_has_fn = any(p.function_response is not None for p in prev.parts)
+                curr_has_fn = any(
+                    p.function_response is not None for p in content.parts
+                )
+                if prev_has_fn and not curr_has_fn:
+                    # Tool response followed by user prompt/summary -> bridge with model turn
+                    normalized.append(
+                        Content(role="model", parts=[Part(text="Understood.")])
+                    )
+                elif not prev_has_fn and curr_has_fn:
+                    # User prompt followed by Tool response -> bridge with model turn
+                    normalized.append(
+                        Content(role="model", parts=[Part(text="Acknowledged.")])
+                    )
+                else:
+                    # Same type consecutive turns -> merge parts
+                    normalized[-1] = Content(
+                        role=content.role,
+                        parts=list(prev.parts) + list(content.parts),
+                    )
+                    continue
+            normalized.append(content)
+
+        return normalized
 
     # Me fields that Gemini's function declaration schema does not support.
     # Passing them causes a 400 INVALID_ARGUMENT from the API.

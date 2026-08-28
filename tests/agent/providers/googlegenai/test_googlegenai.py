@@ -115,9 +115,11 @@ def test_convert_assistant_message_with_tools(google_provider):
         )
     ]
     merged_contents, _ = google_provider._convert_messages_to_gemini(messages)
-    assert merged_contents[0].role == "model"
-    assert merged_contents[0].parts[0].function_call.name == "get_weather"
-    assert merged_contents[0].parts[0].function_call.args == {"location": "London"}
+    assert len(merged_contents) == 2
+    assert merged_contents[0].role == "user"
+    assert merged_contents[1].role == "model"
+    assert merged_contents[1].parts[0].function_call.name == "get_weather"
+    assert merged_contents[1].parts[0].function_call.args == {"location": "London"}
 
 
 def test_convert_tools_to_gemini(google_provider):
@@ -332,8 +334,8 @@ def test_convert_assistant_tool_call_invalid_args_json(google_provider):
         )
     ]
     contents, _ = google_provider._convert_messages_to_gemini(messages)
-    # Should not crash; args falls back to {}
-    assert contents[0].parts[0].function_call.args == {}
+    # Should not crash; args falls back to {} on the model turn
+    assert contents[-1].parts[0].function_call.args == {}
 
 
 def test_convert_assistant_tool_call_non_dict_non_str_args(google_provider):
@@ -347,7 +349,7 @@ def test_convert_assistant_tool_call_non_dict_non_str_args(google_provider):
         )
     ]
     contents, _ = google_provider._convert_messages_to_gemini(messages)
-    assert contents[0].parts[0].function_call.args == {}
+    assert contents[-1].parts[0].function_call.args == {}
 
 
 def test_convert_assistant_tool_call_with_dict_args(google_provider):
@@ -367,7 +369,7 @@ def test_convert_assistant_tool_call_with_dict_args(google_provider):
         )
     ]
     contents, _ = google_provider._convert_messages_to_gemini(messages)
-    assert contents[0].parts[0].function_call.args == {"key": "val"}
+    assert contents[-1].parts[0].function_call.args == {"key": "val"}
 
 
 def test_convert_assistant_with_thought_signature(google_provider):
@@ -389,7 +391,7 @@ def test_convert_assistant_with_thought_signature(google_provider):
         )
     ]
     contents, _ = google_provider._convert_messages_to_gemini(messages)
-    parts = contents[0].parts
+    parts = contents[-1].parts
     # Should have a thought part and a function_call part with thought_signature
     assert any(p.thought for p in parts)
     assert any(p.thought_signature == "sig123" for p in parts)
@@ -441,8 +443,9 @@ def test_convert_assistant_reasoning_only(google_provider):
     """AssistantMessage with reasoning_content is serialized as a thought=True part."""
     messages = [AssistantMessage(content=None, reasoning_content="I'm thinking...")]
     contents, _ = google_provider._convert_messages_to_gemini(messages)
-    assert contents[0].role == "model"
-    part = contents[0].parts[0]
+    assert contents[0].role == "user"
+    assert contents[-1].role == "model"
+    part = contents[-1].parts[0]
     assert part.text == "I'm thinking..."
     assert part.thought is True
 
@@ -1064,7 +1067,7 @@ def test_convert_messages_emits_thought_signature_on_thought_part(google_provide
     ]
     contents, _ = google_provider._convert_messages_to_gemini(messages)
 
-    model_turn = contents[0]
+    model_turn = contents[-1]
     thought_parts = [p for p in model_turn.parts if p.thought]
     assert len(thought_parts) == 1
     assert thought_parts[0].text == "I'm reasoning here."
@@ -1108,8 +1111,8 @@ def test_convert_messages_tool_and_human_messages_not_merged(google_provider):
         HumanMessage(content="scheduled follow-up"),
     ]
     contents, _ = google_provider._convert_messages_to_gemini(messages)
-    # Expected: 4 distinct content turns (user -> model -> user[fn_response] -> user[text])
-    assert len(contents) == 4
+    # Expected: 5 distinct alternating turns (user -> model -> user[fn_response] -> model[Understood.] -> user[text])
+    assert len(contents) == 5
     assert contents[0].role == "user"
     assert contents[0].parts[0].text == "first question"
     assert contents[1].role == "model"
@@ -1118,8 +1121,10 @@ def test_convert_messages_tool_and_human_messages_not_merged(google_provider):
     assert contents[1].parts[1].function_call.name == "shell"
     assert contents[2].role == "user"
     assert contents[2].parts[0].function_response.name == "shell"
-    assert contents[3].role == "user"
-    assert contents[3].parts[0].text == "scheduled follow-up"
+    assert contents[3].role == "model"
+    assert contents[3].parts[0].text == "Understood."
+    assert contents[4].role == "user"
+    assert contents[4].parts[0].text == "scheduled follow-up"
 
 
 def test_convert_messages_assistant_reasoning_signature_fallback_to_tool_call(
@@ -1142,9 +1147,10 @@ def test_convert_messages_assistant_reasoning_signature_fallback_to_tool_call(
         )
     ]
     contents, _ = google_provider._convert_messages_to_gemini(messages)
-    assert len(contents) == 1
-    assert contents[0].role == "model"
-    fc_part = contents[0].parts[0]
+    assert len(contents) == 2
+    assert contents[0].role == "user"
+    assert contents[1].role == "model"
+    fc_part = contents[1].parts[0]
     assert fc_part.function_call.name == "read"
     assert fc_part.thought_signature == "msg-sig-456"
 
@@ -1196,3 +1202,101 @@ async def test_googlegenai_service_tier_mapping(google_provider):
     request = respx.calls.last.request
     body = json.loads(request.read())
     assert body["serviceTier"] == "priority"
+
+
+def test_convert_messages_compacted_history_with_retained_skill(google_provider):
+    """Compacted history with a retained skill must start with a user turn and strictly alternate."""
+    messages = [
+        AssistantMessage(
+            tool_calls=[
+                ToolCall(
+                    id="call_skill_1",
+                    function=ChatFunctionCall(
+                        name="skill",
+                        arguments='{"skill_name": "oad/plan"}',
+                    ),
+                )
+            ],
+        ),
+        ToolMessage(
+            content="# oad/plan instructions\nPlan first.",
+            name="skill",
+            tool_call_id="call_skill_1",
+        ),
+        HumanMessage(
+            content="Summary of earlier session turns.",
+            is_summary=True,
+        ),
+    ]
+
+    contents, _ = google_provider._convert_messages_to_gemini(messages)
+
+    # Expected sequence:
+    # 0: user ([Session context])
+    # 1: model (function_call: skill)
+    # 2: user (function_response: skill)
+    # 3: model (Understood.)
+    # 4: user (Summary...)
+    assert len(contents) == 5
+    assert contents[0].role == "user"
+    assert contents[0].parts[0].text == "[Session context]"
+    assert contents[1].role == "model"
+    assert contents[1].parts[0].function_call.name == "skill"
+    assert contents[2].role == "user"
+    assert contents[2].parts[0].function_response.name == "skill"
+    assert contents[3].role == "model"
+    assert contents[3].parts[0].text == "Understood."
+    assert contents[4].role == "user"
+    assert contents[4].parts[0].text == "Summary of earlier session turns."
+
+    # Verify strict turn alternation
+    for i in range(len(contents) - 1):
+        assert contents[i].role != contents[i + 1].role
+
+
+def test_convert_messages_compacted_history_with_multiple_skills_and_prompt(
+    google_provider,
+):
+    """Compacted history with multiple retained skills and subsequent user prompt."""
+    messages = [
+        AssistantMessage(
+            tool_calls=[
+                ToolCall(
+                    id="call_skill_1",
+                    function=ChatFunctionCall(
+                        name="skill", arguments='{"skill_name": "s1"}'
+                    ),
+                )
+            ],
+        ),
+        ToolMessage(content="s1 content", name="skill", tool_call_id="call_skill_1"),
+        AssistantMessage(
+            tool_calls=[
+                ToolCall(
+                    id="call_skill_2",
+                    function=ChatFunctionCall(
+                        name="skill", arguments='{"skill_name": "s2"}'
+                    ),
+                )
+            ],
+        ),
+        ToolMessage(content="s2 content", name="skill", tool_call_id="call_skill_2"),
+        HumanMessage(content="Summary of turns.", is_summary=True),
+        HumanMessage(content="User follow-up prompt."),
+    ]
+
+    contents, _ = google_provider._convert_messages_to_gemini(messages)
+
+    # Expected sequence:
+    # 0: user ([Session context])
+    # 1: model (s1)
+    # 2: user (s1 resp)
+    # 3: model (s2)
+    # 4: user (s2 resp)
+    # 5: model (Understood.)
+    # 6: user (merged summary + prompt text)
+    assert len(contents) == 7
+    for i in range(len(contents) - 1):
+        assert contents[i].role != contents[i + 1].role
+    assert contents[0].role == "user"
+    assert contents[-1].role == "user"

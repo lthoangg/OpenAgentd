@@ -438,7 +438,8 @@ export function TeamChatView({ sessionId, workspace = null, codingSessionLoading
             workspace={workspace}
             onCollapse={() => setCodingSidebarCollapsed(true)}
             openWorkspaceDialogKey={openWorkspaceDialogKey}
-            onCommandPalette={handleToggleQuickOpen}
+            onQuickOpen={handleToggleQuickOpen}
+            onCommandPalette={handleTogglePalette}
             desktopCollapsed={codingSidebarCollapsed}
             mobileOpen={mobileSidebarOpen}
             mobileDragOffset={sidebarDragOffset}

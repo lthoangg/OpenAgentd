@@ -618,18 +618,6 @@ describe('CodingSidebar helpers', () => {
 })
 
 describe('CodingSidebar workspace trust flow', () => {
-  it('exposes Telemetry in mobile primary navigation and closes the drawer', async () => {
-    isMobile = true
-    const onMobileClose = mock(() => {})
-
-    await renderCodingSidebarWithProps({ mobileOpen: true, onMobileClose })
-
-    const telemetry = screen.getAllByRole('button', { name: 'Telemetry' })[0]
-    fireEvent.click(telemetry)
-    expect(navigate).toHaveBeenCalledWith({ to: '/telemetry' })
-    expect(onMobileClose).toHaveBeenCalledTimes(1)
-  })
-
   beforeEach(() => {
     localStorage.clear()
     sessionsData = []
@@ -738,6 +726,42 @@ describe('CodingSidebar workspace trust flow', () => {
     })
     return view!
   }
+
+  it('renders Telemetry in mobile sidebar footer, but no search bar or top nav item', async () => {
+    isMobile = true
+    const onMobileClose = mock(() => {})
+    const onQuickOpen = mock(() => {})
+    const onCommandPalette = mock(() => {})
+
+    await renderCodingSidebarWithProps({ mobileOpen: true, onMobileClose, onQuickOpen, onCommandPalette })
+
+    expect(screen.getAllByRole('button', { name: 'Telemetry' })).toHaveLength(1)
+    expect(screen.queryByRole('button', { name: 'Open Quick Open' })).toBeNull()
+  })
+
+  it('opens command palette and closes mobile drawer from the (?) help button', async () => {
+    isMobile = true
+    const onMobileClose = mock(() => {})
+    const onCommandPalette = mock(() => {})
+
+    await renderCodingSidebarWithProps({ mobileOpen: true, onMobileClose, onCommandPalette })
+
+    const helpBtn = screen.getByRole('button', { name: 'Help and shortcuts' })
+    fireEvent.click(helpBtn)
+    expect(onCommandPalette).toHaveBeenCalledTimes(1)
+    expect(onMobileClose).toHaveBeenCalledTimes(1)
+  })
+
+  it('renders search bar on desktop when onQuickOpen is provided', async () => {
+    isMobile = false
+    const onQuickOpen = mock(() => {})
+
+    await renderCodingSidebarWithProps({ onQuickOpen })
+
+    const searchBtn = screen.getByRole('button', { name: 'Open Quick Open' })
+    fireEvent.click(searchBtn)
+    expect(onQuickOpen).toHaveBeenCalledTimes(1)
+  })
 
   it('does not navigate or save the last workspace until the user trusts the validated directory', async () => {
     const user = userEvent.setup()

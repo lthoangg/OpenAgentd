@@ -9,7 +9,7 @@
  *     rather than file-tree indentation.
  *   • ``+ Open folder…`` row at the bottom of the workspace list
  *     surfaces the trusted-workspace dialog.
- *   • Footer trio: ⚙ Settings · ❔ Help (palette) · 🌙 ThemeToggle.
+ *   • Footer trio: ⚙ Settings · ❔ Help (command palette) · 🌙 ThemeToggle.
  *
  * The 64 px icon rail from the previous design is gone — workspace
  * navigation now lives inline so the sidebar matches the coding workspace's
@@ -116,7 +116,9 @@ interface CodingSidebarProps {
   /** Bump this counter to programmatically open the workspace dialog
    *  (e.g. from a "no workspace attached" CTA). */
   openWorkspaceDialogKey?: number
-  /** Open the command palette (search input + footer help). */
+  /** Open Quick Open file search (desktop search input). */
+  onQuickOpen?: () => void
+  /** Open the command palette (footer help (?) button). */
   onCommandPalette?: () => void
   /** Desktop only: when true, the inline panel collapses to width=0. */
   desktopCollapsed?: boolean
@@ -143,6 +145,7 @@ export function CodingSidebar({
   workspace,
   onCollapse,
   openWorkspaceDialogKey = 0,
+  onQuickOpen,
   onCommandPalette,
   desktopCollapsed = false,
   mobileOpen = false,
@@ -666,29 +669,16 @@ export function CodingSidebar({
         />
       )}
 
-      {isMobile && (
-        <nav aria-label="Primary" className="px-2 pt-3">
-          <button
-            type="button"
-            onClick={() => { navigate({ to: '/telemetry' }); onMobileClose?.() }}
-            className="flex h-9 w-full items-center gap-2 rounded-md px-2.5 text-left text-sm text-(--color-text-2) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
-          >
-            <Activity size={15} aria-hidden="true" />
-            <span>Telemetry</span>
-          </button>
-        </nav>
-      )}
-
-      {/* Search trigger — opens Quick Open (⌘P / Ctrl+P). */}
-      {onCommandPalette && (
-        <div className={isMobile ? 'px-3 pt-3' : 'px-3 py-3'}>
+      {/* Search trigger — opens Quick Open (⌘P / Ctrl+P) on desktop. */}
+      {!isMobile && onQuickOpen && (
+        <div className="px-3 py-3">
           <Tooltip className="w-full">
             <TooltipTrigger
               className="w-full"
               render={
                 <button
                   type="button"
-                  onClick={onCommandPalette}
+                  onClick={onQuickOpen}
                   className="flex h-8 w-full items-center gap-2 rounded-md border border-(--color-border) bg-(--bg-page) px-2.5 text-left text-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)"
                   aria-label="Open Quick Open"
                 >
@@ -981,7 +971,10 @@ export function CodingSidebar({
                 render={
                   <button
                     type="button"
-                    onClick={onCommandPalette}
+                    onClick={() => {
+                      onCommandPalette()
+                      onMobileClose?.()
+                    }}
                     className="flex h-11 w-11 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
                     aria-label="Help and shortcuts"
                   >
@@ -989,7 +982,7 @@ export function CodingSidebar({
                   </button>
                 }
               />
-              <TooltipContent>{`Help and shortcuts (${formatShortcut('P', os)})`}</TooltipContent>
+              <TooltipContent>{`Help and shortcuts (${formatShortcut('P', os, { shift: true })})`}</TooltipContent>
             </Tooltip>
           )}
         </div>

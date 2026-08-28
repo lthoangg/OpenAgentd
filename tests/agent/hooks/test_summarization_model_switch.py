@@ -22,7 +22,7 @@ from app.agent.hooks.summarization import (
 
 
 def test_model_a_threshold():
-    """codex:gpt-5.5 threshold is 80% of its lower prompt-capacity limit."""
+    """codex:gpt-5.5 threshold is 90% of its lower prompt-capacity limit."""
     from app.agent.providers.model_metadata import get_model_limits
 
     limits = get_model_limits("codex:gpt-5.5")
@@ -38,7 +38,7 @@ def test_model_a_threshold():
 
 
 def test_model_b_threshold():
-    """openai:gpt-realtime-2 has 32K context → threshold = 80% of that."""
+    """openai:gpt-realtime-2 has 32K context → threshold = 90% of that."""
     from app.agent.providers.model_metadata import get_model_limits
 
     context = get_model_limits("openai:gpt-realtime-2").context_length
@@ -57,8 +57,8 @@ def test_threshold_changes_when_session_switches_model():
     The threshold returned by resolve_prompt_token_threshold must reflect
     the *currently active* model at each turn, not the original agent config model.
     """
-    model_a = "codex:gpt-5.5"  # 922k prompt cap → ~737.6k threshold
-    model_b = "openai:gpt-realtime-2"  # 32K context → ~25.6k threshold
+    model_a = "codex:gpt-5.5"  # 922k prompt cap → ~829.8k threshold
+    model_b = "openai:gpt-realtime-2"  # 32K context → ~28.8k threshold
 
     threshold_a = prompt_token_threshold_for_model(model_a)
     threshold_b = prompt_token_threshold_for_model(model_b)

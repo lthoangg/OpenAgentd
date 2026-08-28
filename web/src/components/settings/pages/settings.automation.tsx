@@ -292,13 +292,13 @@ export function AutomationSettingsPage() {
         <SettingsField
           label="Token threshold"
           error={thresholdError}
-          hint="Leave empty to compact at 80% of the model's context window. A lower number summarizes earlier. Values at or above the auto threshold are treated as auto."
+          hint="Leave empty to compact at 90% of the model's context window. A lower number summarizes earlier. Values at or above the auto threshold are treated as auto."
         >
           <Input
             type="number"
             min={1}
             step={1000}
-            placeholder="Auto (80% of model context)"
+            placeholder="Auto (90% of model context)"
             aria-label="Token threshold"
             value={threshold === null ? '' : String(threshold)}
             onChange={(e) => {

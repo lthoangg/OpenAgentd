@@ -71,7 +71,7 @@ def test_mode_none_picks_chat_prompt_and_default_keep(mock_provider):
 
 
 def test_prompt_token_threshold_for_model_large_context_no_cap():
-    # gpt-4.1 has 1,047,576 context; 80% = 838,060 — no artificial cap applied.
+    # gpt-4.1 has 1,047,576 context; 90% = 942,818 — no artificial cap applied.
     from app.agent.providers.model_metadata import get_model_limits
 
     context = get_model_limits("openai:gpt-4.1").context_length
@@ -80,7 +80,7 @@ def test_prompt_token_threshold_for_model_large_context_no_cap():
     assert prompt_token_threshold_for_model("openai:gpt-4.1") == expected
 
 
-def test_prompt_token_threshold_for_model_uses_80_percent_context():
+def test_prompt_token_threshold_for_model_uses_90_percent_context():
     assert prompt_token_threshold_for_model("openai:gpt-realtime-2") == int(
         32000 * PROMPT_TOKEN_THRESHOLD_CONTEXT_RATIO
     )
@@ -98,7 +98,7 @@ def test_builds_hook_with_model_threshold(mock_provider):
 
     assert result is not None
     assert result._model_id == "openai:gpt-realtime-2"
-    # gpt-realtime-2 has 32k context; 80% = 25600
+    # gpt-realtime-2 has 32k context; 90% = 28800
     assert result._prompt_token_threshold == int(
         32000 * PROMPT_TOKEN_THRESHOLD_CONTEXT_RATIO
     )
@@ -123,7 +123,7 @@ def test_build_logs_resolved_model_limits_and_threshold(mock_provider, monkeypat
         "openai:gpt-realtime-2",
         32_000,
         None,
-        25_600,
+        28_800,
         20_000,
         20_000,
     )

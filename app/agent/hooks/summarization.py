@@ -102,7 +102,7 @@ if TYPE_CHECKING:
 #   benefit from a single authoritative "state of the world" record over
 #   partially-summarised history.
 DEFAULT_PROMPT_TOKEN_THRESHOLD = 250000
-PROMPT_TOKEN_THRESHOLD_CONTEXT_RATIO = 0.8
+PROMPT_TOKEN_THRESHOLD_CONTEXT_RATIO = 0.9
 DEFAULT_KEEP_LAST_ASSISTANTS = 3
 CODING_KEEP_LAST_ASSISTANTS = 0
 DEFAULT_MAX_TOKEN_LENGTH = 30000
@@ -336,7 +336,7 @@ def prompt_token_threshold_for_model(model_id: str | None) -> int:
     ``prompt_capacity`` is the lower of the model's total context and explicit
     input limit when both are known. Falls back to
     :data:`DEFAULT_PROMPT_TOKEN_THRESHOLD` for unknown models. There is no
-    artificial upper cap — a 10M prompt capacity correctly gets an 8M
+    artificial upper cap — a 10M prompt capacity correctly gets a 9M
     threshold. This value is the **ceiling** used by
     :func:`resolve_prompt_token_threshold`.
     """

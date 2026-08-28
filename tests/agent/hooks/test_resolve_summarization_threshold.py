@@ -96,23 +96,23 @@ def test_prompt_threshold_uses_input_limit_when_lower_than_context(monkeypatch):
 
 
 def test_resolve_large_context_model_no_cap(monkeypatch):
-    """Large-context models get the full 80% — there is no artificial upper cap."""
+    """Large-context models get the full 90% — there is no artificial upper cap."""
     import app.agent.hooks.summarization as summ_mod
     from app.agent.providers.model_metadata import ModelLimits
 
-    # 10M-context model: 80% = 8M, nothing should clamp this.
+    # 10M-context model: 90% = 9M, nothing should clamp this.
     monkeypatch.setattr(
         summ_mod,
         "get_model_limits",
         lambda mid: ModelLimits(context_length=10_000_000),
     )
     auto = prompt_token_threshold_for_model("any:model")
-    assert auto == int(10_000_000 * PROMPT_TOKEN_THRESHOLD_CONTEXT_RATIO)  # 8_000_000
+    assert auto == int(10_000_000 * PROMPT_TOKEN_THRESHOLD_CONTEXT_RATIO)  # 9_000_000
 
-    # Custom below the 8M auto value is honoured.
+    # Custom below the 9M auto value is honoured.
     assert resolve_prompt_token_threshold("any:model", 5_000_000) == 5_000_000
-    # Custom above the 8M auto value is ignored.
-    assert resolve_prompt_token_threshold("any:model", 9_000_000) == auto
+    # Custom above the 9M auto value is ignored.
+    assert resolve_prompt_token_threshold("any:model", 10_000_000) == auto
 
 
 # ── build_summarization_hook reads setting ────────────────────────────────────

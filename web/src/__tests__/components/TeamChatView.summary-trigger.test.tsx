@@ -92,8 +92,8 @@ mock.module('@/components/FloatingInputComposer', () => ({
 
 const MODEL_A_ID = 'provider:model-a-1m'
 const MODEL_B_ID = 'provider:model-b-400k'
-const MODEL_A_TRIGGER = 800_000   // 80% of 1M
-const MODEL_B_TRIGGER = 320_000   // 80% of 400K
+const MODEL_A_TRIGGER = 900_000   // 90% of 1M
+const MODEL_B_TRIGGER = 360_000   // 90% of 400K
 
 const mockRegistry = {
   models: [

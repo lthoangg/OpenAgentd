@@ -2,7 +2,7 @@
 title: Features
 description: Canonical, version-cited catalogue of shipped user-visible OpenAgentd features.
 status: stable
-updated: 2026-08-27
+updated: 2026-08-28
 ---
 
 # Features
@@ -14,7 +14,7 @@ release that introduced it (where known). When you ship something new, **add it 
 > double-clickable app that runs a team of AI agents on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 16 providers. Your keys.
 
-**Latest release:** v2.6.0 · August 27, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v2.6.0)
+**Latest release:** v2.7.0 · August 28, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v2.7.0)
 
 ---
 
@@ -630,9 +630,10 @@ team against it.
 
 OpenAgentd carries context across sessions via rolling-window summarization.
 
-- **`/compact` rolling-window summarization** `[v1.5.0]` — compresses old turns
+- **`/compact` rolling-window summarization** `[v1.5.0, v2.7.0]` — compresses old turns
   into a single summary message kept in context; UI shows the unabridged
   conversation. Preserves reasoning and loaded skill/tool context; skill
+  Auto-compaction default threshold is raised to 90% of model context `[v2.7.0]`.
   instruction tool-call pairs remain active after repeated compaction while the
   summarizer keeps the same cacheable prompt prefix as normal chat turns.
 - **`AGENTS.md` at repo root and subfolders** `[v1.9.0]` — written by `/init`;

@@ -106,14 +106,6 @@ pub fn show_target_window(app: &AppHandle) {
     }
 }
 
-pub fn navigate_main_window(app: &AppHandle, path: &str) {
-    show_target_window(app);
-    if let Some(window) = target_webview_window(app) {
-        let path_json = serde_json::to_string(path).unwrap_or_else(|_| "\"/\"".into());
-        let _ = window.eval(format!("window.location.assign({path_json});"));
-    }
-}
-
 pub fn emit_frontend_command(app: &AppHandle, command: &str) {
     show_target_window(app);
     let command = command.to_string();

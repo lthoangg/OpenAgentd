@@ -19,6 +19,9 @@ interface NotificationClickPayload {
 
 function runDesktopCommand(command: unknown): void {
   switch (command) {
+    case 'coding':
+      void router.navigate({ to: '/coding' })
+      break
     case 'quick_open':
       dispatchShortcutKey('p', getPlatform().os)
       break

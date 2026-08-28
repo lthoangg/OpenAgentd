@@ -16,8 +16,8 @@ use crate::usage::{
     notification_transitions, UsageRow, UsageSummaryBody,
 };
 use crate::window::{
-    adjust_zoom, create_app_window, emit_frontend_command, navigate_main_window,
-    set_zoom, show_main_window, ZOOM_DEFAULT, ZOOM_STEP,
+    adjust_zoom, create_app_window, emit_frontend_command, set_zoom,
+    show_main_window, ZOOM_DEFAULT, ZOOM_STEP,
 };
 use crate::reload_main_window;
 use crate::updater::request_update_check;
@@ -497,7 +497,7 @@ pub fn handle_desktop_menu(app: &AppHandle, id: &str) {
                 }
             });
         }
-        MENU_CODING => navigate_main_window(app, "/coding"),
+        MENU_CODING => emit_frontend_command(app, "coding"),
         MENU_QUICK_OPEN => emit_frontend_command(app, "quick_open"),
         MENU_COMMAND_PALETTE => emit_frontend_command(app, "command_palette"),
         MENU_SCHEDULER => emit_frontend_command(app, "scheduler"),

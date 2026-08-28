@@ -11,12 +11,12 @@ from uuid import UUID
 
 from fastapi import APIRouter, File, HTTPException, Query, Request, UploadFile
 from loguru import logger
+from sqlmodel import col, select
 from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
 from app.agent.agent_loop import Agent
-from app.agent.mode.team.member import TeamMemberBase
-from app.agent.mode.team.team import ContinuePreconditionError
+from app.agent.mode.team.runtime import ContinuePreconditionError
 from app.agent.tools.registry import Tool
 from app.api.deps import ChatFormDep, DbSession, TeamDep
 from app.api.routes.team._helpers import (
@@ -46,16 +46,15 @@ from app.api.schemas.sessions import (
 )
 from app.api.schemas.team import (
     AgentInfoResponse,
-    BlueprintInfoResponse,
     ChangedPathsPayload,
     CodingWorkspaceBrowseResponse,
     CodingWorkspaceFolder,
     CodingWorkspaceValidateResponse,
     PendingQuestionResponse,
+    SpawnedAgentSummary,
     TeamAgentsResponse,
     TeamChatResponse,
     TeamCommandResponse,
-    TeamHistoryMember,
     TeamHistoryResponse,
 )
 from app.api.routes.team.worktrees import (
@@ -63,7 +62,7 @@ from app.api.routes.team.worktrees import (
     create_coding_workspace_worktree,
     find_managed_worktree_source,
 )
-from app.models.chat import ChatSession
+from app.models.chat import ChatSession, CodingWorkspace
 from app.services import (
     agent_service,
     memory_stream_store as stream_store,
@@ -71,6 +70,7 @@ from app.services import (
     team_manager,
 )
 from app.services.agent_service import AttachmentError, RawAttachment
+from app.services.worktree_service import current_managed_worktree_branch
 from app.services.coding_workspace_service import (
     hide_coding_workspace,
     list_visible_coding_workspaces,
@@ -124,19 +124,18 @@ def _custom_prompt_token_threshold() -> int | None:
 def _serialize_agent(
     agent: Agent,
     *,
-    is_lead: bool = False,
     workspace: str | None = None,
     custom_threshold: int | None | _Unset = _UNSET,
     injected_tools: list[Tool] | None = None,
 ) -> dict:
-    """Serialize an Agent into the /team/agents response shape.
+    """Serialize an Agent into the /session/agents response shape.
 
     ``custom_threshold`` is the summarization override from ``settings.yaml``.
     Pass it explicitly when serializing several agents in one request; omitting
     it falls back to loading settings here, which costs a file read plus a YAML
     parse *per agent*.
 
-    ``injected_tools`` are the run-time tools ``AgentTeam.get_injected_tools``
+    ``injected_tools`` are the run-time tools ``SessionRuntime.get_injected_tools``
     would supply for this agent. They are never registered on the agent, so
     without them the listing silently omits every team tool. They are applied
     *last* and overwrite same-named entries, mirroring ``Agent._setup_run``
@@ -199,46 +198,8 @@ def _serialize_agent(
         # exist in config but aren't ready (zero tools), so the UI can show
         # them as "not ready" instead of silently hiding the section.
         "mcp_servers": list(agent.mcp_servers),
-        "is_lead": is_lead,
         "capabilities": agent.capabilities.to_dict(),
     }
-
-
-def _serialize_blueprint(
-    team_obj, bp, *, custom_threshold: int | None | _Unset = _UNSET
-) -> dict:
-    from app.agent.loader import rebuild_agent_from_disk
-
-    try:
-        stat = bp.source_path.stat()
-    except OSError:
-        agent = rebuild_agent_from_disk(
-            bp.source_path,
-            provider_factory=team_obj._provider_factory,
-            extra_tools=team_obj._extra_tools,
-            mode="coding",
-        )
-    else:
-        fingerprint = (str(bp.source_path), stat.st_mtime_ns, stat.st_size)
-        if (
-            bp._serialized_agent is not None
-            and bp._serialized_agent_fingerprint == fingerprint
-        ):
-            agent = bp._serialized_agent
-        else:
-            agent = rebuild_agent_from_disk(
-                bp.source_path,
-                provider_factory=team_obj._provider_factory,
-                extra_tools=team_obj._extra_tools,
-                mode="coding",
-            )
-            bp._serialized_agent = agent
-            bp._serialized_agent_fingerprint = fingerprint
-    payload = _serialize_agent(
-        agent, workspace=team_obj.workspace, custom_threshold=custom_threshold
-    )
-    payload["live_instances"] = team_obj.live_instances_for_blueprint(bp.name)
-    return payload
 
 
 def _changed_paths_payload(shift: BoundaryShift) -> dict:
@@ -276,7 +237,7 @@ async def team_chat(
     - **Interrupt + follow-up** (``interrupt=true``, ``message`` provided):
       Cancel working members, then deliver new message to the team lead.
 
-    Returns the session_id. Subscribe to GET /team/stream/{session_id} to
+    Returns the session_id. Subscribe to GET /session/stream/{session_id} to
     receive the SSE event stream (supports reconnect + replay).
     """
     message = body.message
@@ -317,7 +278,7 @@ async def team_chat(
             attachments.append(raw)
     mention_context_blocks = await build_mention_context_blocks(
         message=message,
-        team=team_obj,
+        runtime=team_obj,
         session_id=session_id,
         workspace=workspace,
         existing_total_bytes=sum(len(a.data) for a in attachments),
@@ -341,7 +302,7 @@ async def team_chat(
         ):
             queued_result = await persist_queued_user_message(
                 db,
-                team=team_obj,
+                runtime=team_obj,
                 session_id=session_id,
                 session_uuid=session_uuid,
                 workspace=workspace,
@@ -357,7 +318,7 @@ async def team_chat(
                 save_queued_user_message=save_queued_user_message,
                 save_message=save_message,
             )
-            if not team_obj.has_active_lead_turn():
+            if not team_obj.has_active_agent_turn():
                 await team_obj._activate_queued_user_messages(session_id)
             return TeamChatResponse(
                 status="queued",
@@ -406,7 +367,7 @@ async def cancel_queued_message(
 
 
 class CommandRequest(BaseModel):
-    """Request body for ``POST /team/commands``."""
+    """Request body for ``POST /session/commands``."""
 
     command: Literal["compact", "undo", "redo", "redo-all", "redo_all"]
     session_id: str
@@ -427,7 +388,7 @@ async def team_command(
       forward without adding a user message.
 
     Returns 202 with the session_id.  Subscribe to
-    ``GET /team/stream/{session_id}`` for the SSE feed.
+    ``GET /session/stream/{session_id}`` for the SSE feed.
 
     Returns 409 with a human-readable ``detail`` when the command cannot
     be executed (lead is already working, invalid session state, etc.).
@@ -572,7 +533,7 @@ async def list_team_agents(
     workspace: str | None = Query(None, description="Coding workspace directory."),
     session_id: str | None = Query(None, description="Coding session ID."),
 ) -> TeamAgentsResponse:
-    """Return info on the lead, all live member instances, and spawnable blueprints.
+    """Return info on the session's agent and spawned worktree children.
 
     Refreshes drifted-but-idle agents from disk before serializing so the
     capabilities panel reflects what the *next* turn will use, not the
@@ -585,16 +546,6 @@ async def list_team_agents(
     swapping ``self.agent`` mid-execution.  Those will pick up their edits
     via the regular start-of-turn path.
 
-    Response shape::
-
-        {
-          "agents": [<lead>, <live members>...],
-          "blueprints": [
-            {"name": "executor", "description": "...",
-             "live_instances": ["executor#1", "executor#2"]},
-            ...
-          ]
-        }
     """
     if workspace:
         try:
@@ -603,50 +554,62 @@ async def list_team_agents(
                 team_obj = await team_manager.get_or_start_coding_team(
                     workspace, session_id or "__agents__"
                 )
+                if session_id:
+                    await team_obj.attach_to_session(session_id)
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
     else:
         team_obj = _require_team(team)
-    # Rediscover blueprint files from disk before serializing so newly
-    # created members (Settings → Agents) appear without a server restart.
-    team_manager.refresh_blueprints(team_obj)
     team_manager.refresh_idle_agents(team_obj)
-    all_members: list[TeamMemberBase] = [team_obj.lead, *team_obj.members.values()]
-    # Read settings.yaml once for the whole response — it used to be re-read and
-    # re-parsed inside _serialize_agent for every blueprint *and* every member.
     custom_threshold = _custom_prompt_token_threshold()
-    blueprints = [
-        _serialize_blueprint(team_obj, bp, custom_threshold=custom_threshold)
-        for bp in team_obj.blueprints.values()
-    ]
-    # The injected set is role-dependent (only a lead on a
-    # human-owned session gets ``ask_user``), but within one role every agent
-    # gets the same tool *names and descriptions* — only the closure binding
-    # differs, and this listing reads nothing else. Building them per member cost
-    # up to a millisecond each; build one set per role instead.
-    # ``test_injected_tool_listing_does_not_vary_by_member`` pins that invariant.
-    injected_by_role: dict[str, list[Tool]] = {}
+    children_summaries: list[SpawnedAgentSummary] = []
+    if session_id:
+        try:
+            from app.core.db import async_session_factory
 
-    def _injected_for(member: TeamMemberBase) -> list[Tool]:
-        role = "lead" if member is team_obj.lead else "member"
-        if role not in injected_by_role:
-            injected_by_role[role] = team_obj.get_injected_tools(member.name)
-        return injected_by_role[role]
-
+            session_uuid = UUID(session_id)
+            async with async_session_factory() as db:
+                rows = await db.exec(
+                    select(ChatSession)
+                    .join(
+                        CodingWorkspace,
+                        col(ChatSession.workspace) == col(CodingWorkspace.path),
+                    )
+                    .where(col(ChatSession.parent_session_id) == session_uuid)
+                    .where(col(CodingWorkspace.kind) == "worktree")
+                )
+                child_rows = rows.all()
+            for crow in child_rows:
+                cid_str = str(crow.id)
+                live_t = team_manager.find_live_team_serving_session(cid_str)
+                state = getattr(live_t, "state", "idle") if live_t else "offline"
+                running = state in ("working", "busy")
+                children_summaries.append(
+                    SpawnedAgentSummary(
+                        session_id=cid_str,
+                        name=crow.title or f"Agent: {cid_str[:8]}",
+                        state=state,
+                        worktree=crow.workspace or "",
+                        branch=await current_managed_worktree_branch(
+                            crow.workspace or ""
+                        ),
+                        running=running,
+                    )
+                )
+        except Exception as exc:
+            logger.warning("list_team_agents_children_failed error={}", exc)
     return TeamAgentsResponse(
         agents=[
             AgentInfoResponse(
                 **_serialize_agent(
-                    m.agent,
-                    is_lead=(m is team_obj.lead),
+                    team_obj.agent,
                     workspace=team_obj.workspace,
                     custom_threshold=custom_threshold,
-                    injected_tools=_injected_for(m),
+                    injected_tools=team_obj.get_injected_tools(),
                 )
             )
-            for m in all_members
         ],
-        blueprints=[BlueprintInfoResponse(**bp) for bp in blueprints],
+        children=children_summaries,
         mode="coding",
         workspace=team_obj.workspace,
     )
@@ -711,7 +674,7 @@ async def list_team_sessions(
     limit: int = Query(20, ge=1, le=100),
     workspace: str | None = Query(None),
 ) -> SessionPageResponse:
-    """List team lead sessions newest-first with an opaque cursor.
+    """List discoverable sessions newest-first with an opaque cursor.
 
     Pass ``before=<next_cursor>`` from the previous
     page) to retrieve the next batch.  Omit to start from the newest.
@@ -1050,26 +1013,6 @@ async def team_history(
         completion_tokens=lead_completion,
     )
 
-    active_statuses = stream_store.get_agent_statuses(str(history.lead_session.id))
-    member_histories = []
-    for member in history.members:
-        member_cost, member_completion = await session_usage_totals(
-            db, member.session.id
-        )
-        member_histories.append(
-            TeamHistoryMember(
-                name=member.session.agent_name or str(member.session.id),
-                session_id=str(member.session.id),
-                messages=[_message_response(m) for m in member.messages],
-                running=active_statuses.get(
-                    member.session.agent_name or str(member.session.id)
-                )
-                == "working",
-                estimated_cost_usd=member_cost,
-                completion_tokens=member_completion,
-            )
-        )
-
     next_cursor = (
         f"{history.next_cursor}|{history.next_cursor_id}"
         if history.next_cursor is not None and history.next_cursor_id
@@ -1084,8 +1027,7 @@ async def team_history(
     )
 
     return TeamHistoryResponse(
-        lead=lead_detail,
-        members=member_histories,
+        session=lead_detail,
         has_more=history.has_more,
         next_cursor=next_cursor,
         pending_question=(
@@ -1130,33 +1072,13 @@ async def _team_history_delta(
         }
     )
     lead_cost, lead_completion = await session_usage_totals(db, delta.lead_session.id)
-    active_statuses = stream_store.get_agent_statuses(str(delta.lead_session.id))
-    member_histories = []
-    for member in delta.members:
-        member_cost, member_completion = await session_usage_totals(
-            db, member.session.id
-        )
-        member_histories.append(
-            TeamHistoryMember(
-                name=member.session.agent_name or str(member.session.id),
-                session_id=str(member.session.id),
-                messages=[_message_response(m) for m in member.messages],
-                running=active_statuses.get(
-                    member.session.agent_name or str(member.session.id)
-                )
-                == "working",
-                estimated_cost_usd=member_cost,
-                completion_tokens=member_completion,
-            )
-        )
     return TeamHistoryResponse(
-        lead=SessionDetailResponse(
+        session=SessionDetailResponse(
             **lead_resp.model_dump(),
             messages=[_message_response(m) for m in delta.lead_messages],
             estimated_cost_usd=lead_cost,
             completion_tokens=lead_completion,
         ),
-        members=member_histories,
         # A delta carries no information about older history.
         has_more=False,
         next_cursor=None,

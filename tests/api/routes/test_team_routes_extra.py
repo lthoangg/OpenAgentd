@@ -12,8 +12,7 @@ from fastapi.testclient import TestClient
 
 from app.agent.agent_loop import Agent
 from app.agent.providers.base import LLMProviderBase
-from app.agent.mode.team.member import TeamLead, TeamMember
-from app.agent.mode.team.team import AgentTeam, MemberBlueprint
+from app.agent.mode.team.runtime import SessionRuntime
 from app.models.chat import ChatSession
 
 
@@ -59,13 +58,9 @@ class MockProvider(LLMProviderBase):
 
 @pytest.fixture
 def test_team():
-    lead = TeamLead(
+    return SessionRuntime(
         Agent(name="lead", llm_provider=MockProvider(), system_prompt="Lead")
     )
-    worker = TeamMember(
-        Agent(name="worker", llm_provider=MockProvider(), system_prompt="Worker")
-    )
-    return AgentTeam(lead=lead, members={"worker": worker})
 
 
 @pytest.fixture
@@ -116,155 +111,31 @@ def app_without_team():
 class TestTeamAgentsRouteExtra:
     def test_agents_no_team_returns_404(self, app_without_team):
         client = TestClient(app_without_team)
-        assert client.get("/api/team/agents").status_code == 404
+        assert client.get("/api/session/agents").status_code == 404
 
     def test_agents_returns_lead_and_members(self, app_with_team):
         client = TestClient(app_with_team)
-        resp = client.get("/api/team/agents")
+        resp = client.get("/api/session/agents")
         assert resp.status_code == 200
         data = resp.json()
         assert "agents" in data
         names = [a["name"] for a in data["agents"]]
-        assert "lead" in names
-        assert "worker" in names
+        assert names == ["lead"]
 
-    def test_agents_lead_has_is_lead_true(self, app_with_team):
+    def test_agents_have_no_roster_role_flag(self, app_with_team):
         client = TestClient(app_with_team)
-        data = client.get("/api/team/agents").json()
+        data = client.get("/api/session/agents").json()
         lead_entry = next(a for a in data["agents"] if a["name"] == "lead")
-        assert lead_entry["is_lead"] is True
-
-    def test_agents_worker_has_is_lead_false(self, app_with_team):
-        client = TestClient(app_with_team)
-        data = client.get("/api/team/agents").json()
-        worker_entry = next(a for a in data["agents"] if a["name"] == "worker")
-        assert worker_entry["is_lead"] is False
+        assert "is_lead" not in lead_entry
+        assert "blueprints" not in data
 
     def test_agents_response_has_tools_and_mcp_servers_keys(self, app_with_team):
         client = TestClient(app_with_team)
-        data = client.get("/api/team/agents").json()
+        data = client.get("/api/session/agents").json()
         for agent in data["agents"]:
             assert "tools" in agent
             assert "mcp_servers" in agent
             assert "model" in agent
-
-    def test_agents_blueprints_include_agent_details_and_live_instances(
-        self, app_with_team, test_team, tmp_path
-    ):
-        test_team.blueprints["executor"] = MemberBlueprint(
-            name="executor",
-            description="writes code",
-            source_path=tmp_path / "executor.md",
-        )
-        test_team.members["executor#1"] = TeamMember(
-            Agent(
-                name="executor#1", llm_provider=MockProvider(), system_prompt="Worker"
-            )
-        )
-        blueprint_agent = Agent(
-            name="executor", llm_provider=MockProvider(), system_prompt="Blueprint"
-        )
-        blueprint_agent.description = "writes code"
-
-        with patch(
-            "app.agent.loader.rebuild_agent_from_disk", return_value=blueprint_agent
-        ):
-            data = TestClient(app_with_team).get("/api/team/agents").json()
-
-        blueprint = next(bp for bp in data["blueprints"] if bp["name"] == "executor")
-        assert blueprint["description"] == "writes code"
-        assert blueprint["live_instances"] == ["executor#1"]
-        assert "tools" in blueprint
-        assert "mcp_servers" in blueprint
-        assert "model" in blueprint
-        assert "capabilities" in blueprint
-
-    def test_agents_caches_unchanged_blueprint_rebuilds_and_invalidates_on_edit(
-        self, app_with_team, test_team, tmp_path, monkeypatch
-    ):
-        from app.core.config import settings
-
-        source_path = tmp_path / "executor.md"
-        source_path.write_text(
-            "---\nname: executor\nrole: member\nmodel: mock:model\n---\nfirst\n",
-            encoding="utf-8",
-        )
-        monkeypatch.setattr(settings, "AGENTS_DIR", str(tmp_path))
-        test_team.blueprints["executor"] = MemberBlueprint(
-            name="executor", description="writes code", source_path=source_path
-        )
-        blueprint_agent = Agent(
-            name="executor", llm_provider=MockProvider(), system_prompt="Blueprint"
-        )
-
-        with patch(
-            "app.agent.loader.rebuild_agent_from_disk", return_value=blueprint_agent
-        ) as rebuild:
-            client = TestClient(app_with_team)
-            assert client.get("/api/team/agents").status_code == 200
-            assert client.get("/api/team/agents").status_code == 200
-            assert rebuild.call_count == 1
-
-            source_path.write_text(
-                "---\nname: executor\nrole: member\nmodel: mock:model\n---\nedited\n",
-                encoding="utf-8",
-            )
-            assert client.get("/api/team/agents").status_code == 200
-
-        assert rebuild.call_count == 2
-
-    def test_agents_reads_settings_once_regardless_of_agent_count(
-        self, app_with_team, test_team, tmp_path, monkeypatch
-    ):
-        """settings.yaml is read once per request, not once per serialized agent.
-
-        ``_serialize_agent`` used to call ``load_runtime_settings()`` itself, so
-        a request paid a file read plus a YAML parse for every member *and*
-        every blueprint. The route now hoists it and threads the value down.
-        """
-        from app.core.config import settings
-
-        source_path = tmp_path / "executor.md"
-        source_path.write_text(
-            "---\nname: executor\nrole: member\nmodel: mock:model\n---\nBlueprint\n",
-            encoding="utf-8",
-        )
-        # Pin the agents dir to this test's tmp dir, as the sibling blueprint
-        # tests do. Without it the route also discovers the ambient
-        # ``.tests/config/agents/executor.md``, which is a *different* path
-        # under the same name, so the assertion below saw two ``executor``
-        # blueprints. That directory is empty under ``pytest -n`` (each xdist
-        # worker gets its own), so the test only failed on a plain run.
-        monkeypatch.setattr(settings, "AGENTS_DIR", str(tmp_path))
-        test_team.blueprints["executor"] = MemberBlueprint(
-            name="executor", description="writes code", source_path=source_path
-        )
-        blueprint_agent = Agent(
-            name="executor", llm_provider=MockProvider(), system_prompt="Blueprint"
-        )
-
-        from app.core.runtime_settings import RuntimeSettings
-
-        with (
-            patch(
-                "app.agent.loader.rebuild_agent_from_disk",
-                return_value=blueprint_agent,
-            ),
-            patch(
-                "app.core.runtime_settings.load_runtime_settings",
-                return_value=RuntimeSettings(),
-            ) as load_settings,
-        ):
-            client = TestClient(app_with_team)
-            resp = client.get("/api/team/agents")
-
-        assert resp.status_code == 200
-        # lead + worker + 1 blueprint would previously have been 3 reads.
-        assert len(resp.json()["agents"]) >= 2
-        assert len(resp.json()["blueprints"]) == 1
-        assert load_settings.call_count == 1
-
-    def test_agents_still_applies_custom_summary_threshold(self, app_with_team):
         """Hoisting the settings read must not drop the user's override."""
         from app.core.runtime_settings import RuntimeSettings
 
@@ -274,7 +145,7 @@ class TestTeamAgentsRouteExtra:
         with patch(
             "app.core.runtime_settings.load_runtime_settings", return_value=settings
         ):
-            data = TestClient(app_with_team).get("/api/team/agents").json()
+            data = TestClient(app_with_team).get("/api/session/agents").json()
 
         assert data["agents"], "expected at least one serialized agent"
         for agent in data["agents"]:
@@ -294,7 +165,7 @@ class TestTeamAgentsRouteExtra:
 
         client = TestClient(app_without_team)
         data = client.get(
-            "/api/team/agents", params={"workspace": "/tmp/project"}
+            "/api/session/agents", params={"workspace": "/tmp/project"}
         ).json()
 
         assert data["workspace"] == "/tmp/project"
@@ -311,55 +182,9 @@ class TestTeamAgentsRouteExtra:
         )
 
         client = TestClient(app_without_team)
-        resp = client.get("/api/team/agents", params={"workspace": "/nope"})
+        resp = client.get("/api/session/agents", params={"workspace": "/nope"})
 
         assert resp.status_code == 422
-
-    def test_agents_picks_up_new_blueprint_file_without_restart(
-        self, app_with_team, test_team, tmp_path, monkeypatch
-    ):
-        """End-to-end guard for the hot-reload fix: a member ``.md`` file
-        created on disk after the team is built must appear in
-        ``GET /api/team/agents`` on the next request, with no server
-        restart or team reload."""
-        from app.core.config import settings
-
-        monkeypatch.setattr(settings, "AGENTS_DIR", str(tmp_path))
-
-        async def use_test_team(_workspace: str, _session_id: str):
-            return test_team
-
-        monkeypatch.setattr(
-            "app.services.team_manager.get_or_start_coding_team", use_test_team
-        )
-        (tmp_path / "newcomer.md").write_text(
-            "---\nname: newcomer\nrole: coder\nmodel: mock:model\n"
-            "description: just arrived\n---\nbody\n",
-            encoding="utf-8",
-        )
-        test_team.blueprints["newcomer"] = MemberBlueprint(
-            name="newcomer",
-            description="just arrived",
-            source_path=tmp_path / "newcomer.md",
-        )
-
-        # ``_serialize_blueprint`` calls ``rebuild_agent_from_disk`` for
-        # each blueprint; stub it so we don't need a working provider.
-        blueprint_agent = Agent(
-            name="newcomer", llm_provider=MockProvider(), system_prompt="Newcomer"
-        )
-        blueprint_agent.description = "just arrived"
-        with patch(
-            "app.agent.loader.rebuild_agent_from_disk", return_value=blueprint_agent
-        ):
-            data = (
-                TestClient(app_with_team)
-                .get("/api/team/agents", params={"workspace": str(tmp_path)})
-                .json()
-            )
-
-        names = [bp["name"] for bp in data["blueprints"]]
-        assert "newcomer" in names
 
     def test_coding_chat_rejects_session_workspace_mismatch(
         self, app_without_team, tmp_path
@@ -383,7 +208,7 @@ class TestTeamAgentsRouteExtra:
 
         client = TestClient(app_without_team)
         resp = client.post(
-            "/api/team/chat",
+            "/api/session/chat",
             data={
                 "message": "continue",
                 "mode": "coding",
@@ -428,7 +253,7 @@ class TestTeamAgentsRouteExtra:
 
         client = TestClient(app_without_team)
         resp = client.post(
-            "/api/team/chat",
+            "/api/session/chat",
             data={
                 "message": "continue",
                 "session_id": str(session_id),
@@ -447,7 +272,7 @@ class TestTeamAgentsRouteExtra:
         client = TestClient(app_without_team)
 
         resp = client.get(
-            "/api/team/workspace/validate", params={"workspace": str(workspace)}
+            "/api/session/workspace/validate", params={"workspace": str(workspace)}
         )
 
         assert resp.status_code == 200
@@ -459,7 +284,8 @@ class TestTeamAgentsRouteExtra:
         client = TestClient(app_without_team)
 
         resp = client.get(
-            "/api/team/workspace/validate", params={"workspace": str(tmp_path / "nope")}
+            "/api/session/workspace/validate",
+            params={"workspace": str(tmp_path / "nope")},
         )
 
         assert resp.status_code == 422
@@ -469,7 +295,9 @@ class TestTeamAgentsRouteExtra:
         (tmp_path / "notes.txt").write_text("skip", encoding="utf-8")
         client = TestClient(app_without_team)
 
-        resp = client.get("/api/team/workspace/browse", params={"path": str(tmp_path)})
+        resp = client.get(
+            "/api/session/workspace/browse", params={"path": str(tmp_path)}
+        )
 
         assert resp.status_code == 200
         data = resp.json()
@@ -503,7 +331,7 @@ class TestTeamAgentsRouteExtra:
         client = TestClient(app_without_team)
 
         resp = client.get(
-            "/api/team/workspace/files/list", params={"workspace": str(tmp_path)}
+            "/api/session/workspace/files/list", params={"workspace": str(tmp_path)}
         )
 
         assert resp.status_code == 200
@@ -515,7 +343,7 @@ class TestTeamAgentsRouteExtra:
         client = TestClient(app_without_team)
 
         resp = client.get(
-            "/api/team/workspace/git-diff/view", params={"workspace": str(tmp_path)}
+            "/api/session/workspace/git-diff/view", params={"workspace": str(tmp_path)}
         )
 
         assert resp.status_code == 200
@@ -540,7 +368,7 @@ class TestTeamAgentsRouteExtra:
         client = TestClient(app_without_team)
 
         resp = client.get(
-            "/api/team/workspace/git-diff/view", params={"workspace": str(tmp_path)}
+            "/api/session/workspace/git-diff/view", params={"workspace": str(tmp_path)}
         )
 
         assert resp.status_code == 200
@@ -563,7 +391,7 @@ class TestTeamAgentsRouteExtra:
         client = TestClient(app_without_team)
 
         resp = client.get(
-            "/api/team/workspace/git-diff/view", params={"workspace": str(tmp_path)}
+            "/api/session/workspace/git-diff/view", params={"workspace": str(tmp_path)}
         )
 
         assert resp.status_code == 200
@@ -613,7 +441,7 @@ class TestTeamAgentsRouteExtra:
 
         client = TestClient(app_without_team)
         resp = client.get(
-            "/api/team/workspace/git-diff/view", params={"workspace": str(tmp_path)}
+            "/api/session/workspace/git-diff/view", params={"workspace": str(tmp_path)}
         )
 
         assert resp.status_code == 200
@@ -654,7 +482,7 @@ class TestTeamAgentsRouteExtra:
         client = TestClient(app_without_team)
 
         resp = client.get(
-            "/api/team/workspace/git-diff/view",
+            "/api/session/workspace/git-diff/view",
             params={"workspace": str(tmp_path), "paths": ["wanted.py"]},
         )
 
@@ -681,7 +509,7 @@ class TestTeamAgentsRouteExtra:
         client = TestClient(app_without_team)
 
         resp = client.get(
-            "/api/team/workspace/git-diff/view",
+            "/api/session/workspace/git-diff/view",
             params={"workspace": str(tmp_path), "paths": ["../etc/passwd"]},
         )
 
@@ -692,7 +520,7 @@ class TestTeamAgentsRouteExtra:
         client = TestClient(app_without_team)
 
         resp = client.get(
-            "/api/team/workspace/status", params={"workspace": str(tmp_path)}
+            "/api/session/workspace/status", params={"workspace": str(tmp_path)}
         )
 
         assert resp.status_code == 200
@@ -725,7 +553,7 @@ class TestTeamAgentsRouteExtra:
 
         client = TestClient(app_without_team)
         resp = client.get(
-            "/api/team/workspace/status", params={"workspace": str(tmp_path)}
+            "/api/session/workspace/status", params={"workspace": str(tmp_path)}
         )
 
         assert resp.status_code == 200
@@ -783,7 +611,7 @@ class TestTeamAgentsRouteExtra:
 
         client = TestClient(app_without_team)
         resp = client.get(
-            "/api/team/workspace/status", params={"workspace": str(tmp_path)}
+            "/api/session/workspace/status", params={"workspace": str(tmp_path)}
         )
 
         assert resp.status_code == 200
@@ -803,7 +631,7 @@ class TestTeamAgentsRouteExtra:
 class TestListTeamSessions:
     def test_list_sessions_returns_200(self, app_with_team):
         client = TestClient(app_with_team)
-        resp = client.get("/api/team/sessions")
+        resp = client.get("/api/session/sessions")
         assert resp.status_code == 200
         data = resp.json()
         assert "data" in data
@@ -815,12 +643,12 @@ class TestListTeamSessions:
 
     def test_list_sessions_limit_param(self, app_with_team):
         client = TestClient(app_with_team)
-        resp = client.get("/api/team/sessions?limit=5")
+        resp = client.get("/api/session/sessions?limit=5")
         assert resp.status_code == 200
 
     def test_list_sessions_invalid_limit_returns_422(self, app_with_team):
         client = TestClient(app_with_team)
-        resp = client.get("/api/team/sessions?limit=0")
+        resp = client.get("/api/session/sessions?limit=0")
         assert resp.status_code == 422
 
 
@@ -857,7 +685,7 @@ class TestGetTeamSessionDetail:
         )
 
         client = TestClient(app_without_team)
-        resp = client.get(f"/api/team/sessions/{session_id}")
+        resp = client.get(f"/api/session/sessions/{session_id}")
 
         assert resp.status_code == 200
         data = resp.json()
@@ -892,7 +720,7 @@ class TestGetTeamSessionDetail:
         await memory_stream_store.init_turn(str(session_id))
         try:
             client = TestClient(app_without_team)
-            resp = client.get(f"/api/team/sessions/{session_id}")
+            resp = client.get(f"/api/session/sessions/{session_id}")
         finally:
             await memory_stream_store.clear(str(session_id))
 
@@ -911,7 +739,7 @@ class TestGetTeamSessionDetail:
         )
 
         client = TestClient(app_without_team)
-        resp = client.get(f"/api/team/sessions/{uuid.uuid7()}")
+        resp = client.get(f"/api/session/sessions/{uuid.uuid7()}")
 
         assert resp.status_code == 404
 
@@ -924,12 +752,12 @@ class TestGetTeamSessionDetail:
 class TestDeleteTeamSession:
     def test_delete_session_not_found_returns_404(self, app_with_team):
         client = TestClient(app_with_team)
-        resp = client.delete(f"/api/team/sessions/{uuid.uuid7()}")
+        resp = client.delete(f"/api/session/sessions/{uuid.uuid7()}")
         assert resp.status_code == 404
 
     def test_delete_session_invalid_uuid_returns_422(self, app_with_team):
         client = TestClient(app_with_team)
-        resp = client.delete("/api/team/sessions/bad-uuid")
+        resp = client.delete("/api/session/sessions/bad-uuid")
         assert resp.status_code == 422
 
 
@@ -941,17 +769,17 @@ class TestDeleteTeamSession:
 class TestTeamHistoryRouteExtra:
     def test_history_no_team_returns_404(self, app_without_team):
         client = TestClient(app_without_team)
-        resp = client.get(f"/api/team/{uuid.uuid7()}/history")
+        resp = client.get(f"/api/session/{uuid.uuid7()}/history")
         assert resp.status_code == 404
 
     def test_history_session_not_found_returns_404(self, app_with_team):
         client = TestClient(app_with_team)
-        resp = client.get(f"/api/team/{uuid.uuid7()}/history")
+        resp = client.get(f"/api/session/{uuid.uuid7()}/history")
         assert resp.status_code == 404
 
     def test_history_valid_unknown_uuid_returns_404(self, app_with_team):
         client = TestClient(app_with_team)
-        resp = client.get(f"/api/team/{uuid.uuid7()}/history")
+        resp = client.get(f"/api/session/{uuid.uuid7()}/history")
         assert resp.status_code == 404
 
     def test_history_before_cursor_accepts_compound_and_legacy_forms(
@@ -983,7 +811,7 @@ class TestTeamHistoryRouteExtra:
         msg_id = uuid.uuid7()
 
         resp = client.get(
-            f"/api/team/{sid}/history",
+            f"/api/session/{sid}/history",
             params={"before": f"4096|{msg_id}"},
         )
         assert resp.status_code == 404
@@ -991,7 +819,7 @@ class TestTeamHistoryRouteExtra:
         assert captured["before_id"] == msg_id
 
         resp = client.get(
-            f"/api/team/{sid}/history",
+            f"/api/session/{sid}/history",
             params={"before": f"2025-01-01T00:00:00+00:00|{msg_id}"},
         )
         assert resp.status_code == 404
@@ -1001,13 +829,16 @@ class TestTeamHistoryRouteExtra:
         assert captured["legacy"][0].year == 2025
 
         resp = client.get(
-            f"/api/team/{sid}/history", params={"before": "2025-01-01T00:00:00+00:00"}
+            f"/api/session/{sid}/history",
+            params={"before": "2025-01-01T00:00:00+00:00"},
         )
         assert resp.status_code == 404
         assert captured["before_id"] is None
 
     @pytest.mark.asyncio
-    async def test_team_history_marks_running_member(self, app_with_team, monkeypatch):
+    async def test_team_history_ignores_member_statuses(
+        self, app_with_team, monkeypatch
+    ):
         from app.services import memory_stream_store
         from app.services.stream_envelope import StreamEnvelope
         from app.agent.schemas.events import AgentStatusEvent
@@ -1054,15 +885,13 @@ class TestTeamHistoryRouteExtra:
 
         try:
             client = TestClient(app_with_team)
-            resp = client.get(f"/api/team/{lead_id}/history")
+            resp = client.get(f"/api/session/{lead_id}/history")
         finally:
             await memory_stream_store.clear(str(lead_id))
 
         assert resp.status_code == 200
         data = resp.json()
-        assert len(data["members"]) == 1
-        assert data["members"][0]["name"] == "worker#1"
-        assert data["members"][0]["running"] is True
+        assert "members" not in data
 
     @pytest.mark.asyncio
     async def test_team_history_carries_authoritative_session_usage_totals(
@@ -1103,23 +932,22 @@ class TestTeamHistoryRouteExtra:
         monkeypatch.setattr(
             "app.api.routes.team.chat.get_team_history", fake_get_team_history
         )
-        totals = AsyncMock(side_effect=[(19.6675, 139633), (2.5, 2500)])
+        totals = AsyncMock(return_value=(19.6675, 139633))
         monkeypatch.setattr("app.api.routes.team.chat.session_usage_totals", totals)
 
         client = TestClient(app_with_team)
-        resp = client.get(f"/api/team/{lead_id}/history")
+        resp = client.get(f"/api/session/{lead_id}/history")
 
         assert resp.status_code == 200
         data = resp.json()
-        assert data["lead"]["estimated_cost_usd"] == 19.6675
-        assert data["lead"]["completion_tokens"] == 139633
-        assert data["members"][0]["estimated_cost_usd"] == 2.5
-        assert data["members"][0]["completion_tokens"] == 2500
+        assert data["session"]["estimated_cost_usd"] == 19.6675
+        assert data["session"]["completion_tokens"] == 139633
+        assert totals.await_count == 1
 
     def test_history_before_cursor_rejects_malformed_id(self, app_with_team):
         client = TestClient(app_with_team)
         resp = client.get(
-            f"/api/team/{uuid.uuid7()}/history",
+            f"/api/session/{uuid.uuid7()}/history",
             params={"before": "2025-01-01T00:00:00+00:00|not-a-uuid"},
         )
         assert resp.status_code == 422
@@ -1163,9 +991,9 @@ class TestSerializeAgent:
         agent = Agent(
             llm_provider=provider, name="bot", model_id="openrouter:qwen/qwen3"
         )
-        result = _serialize_agent(agent, is_lead=True)
+        result = _serialize_agent(agent)
         assert result["model"] == "openrouter:qwen/qwen3"
-        assert result["is_lead"] is True
+        assert "is_lead" not in result
         assert result["name"] == "bot"
 
     def test_serialize_none_model_id(self):
@@ -1174,7 +1002,7 @@ class TestSerializeAgent:
 
         provider = MagicMock()
         agent = Agent(llm_provider=provider, name="bot")
-        result = _serialize_agent(agent, is_lead=False)
+        result = _serialize_agent(agent)
         assert result["model"] is None
 
     def test_serialize_mcp_servers_present_in_response(self):

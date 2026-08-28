@@ -28,14 +28,14 @@ from app.agent.hooks.base import BaseAgentHook
 
 if TYPE_CHECKING:
     from app.agent.state import AgentState, ModelRequest, RunContext
-    from app.agent.mode.team.member import TeamMemberBase
+    from app.agent.mode.team.runtime import SessionRuntime
 
 
 class TeamInboxHook(BaseAgentHook):
-    """Drain the mailbox before each LLM call, injecting new messages into state."""
+    """Drain the session inbox before each LLM call, injecting new messages."""
 
-    def __init__(self, member: "TeamMemberBase") -> None:
-        self._member = member
+    def __init__(self, runtime: "SessionRuntime") -> None:
+        self._runtime = runtime
 
     async def before_model(
         self,
@@ -46,27 +46,25 @@ class TeamInboxHook(BaseAgentHook):
         """Drain inbox and append any new messages to state before the LLM call."""
         from app.agent.mode.team.mailbox import Message
 
-        member = self._member
-        assert member._mailbox is not None
+        runtime = self._runtime
 
         pending: list[Message] = []
-        while not member._mailbox.inbox_empty(member.name):
+        while not runtime.inbox_empty():
             try:
-                msg = member._mailbox.receive_nowait(member.name)
-                pending.append(msg)
+                pending.append(runtime._inbox.get_nowait())
             except asyncio.QueueEmpty:
                 break
 
         if not pending:
             return None
 
-        inbox_msgs = await member._persist_inbox(pending)
+        inbox_msgs = await runtime._persist_inbox(pending)
 
         for msg_obj, raw_msg in zip(inbox_msgs, pending):
-            if member._should_emit_inbox_sse([raw_msg.from_agent]):
-                assert member._team is not None
-                await member._team._emit(
-                    agent=member.name,
+            # A user message is already rendered from the request that sent it;
+            # only agent-authored inbox rows need an SSE.
+            if raw_msg.from_agent != "user":
+                await runtime._emit(
                     event="inbox",
                     extra={
                         "id": str(msg_obj.db_id) if msg_obj.db_id else None,
@@ -78,7 +76,7 @@ class TeamInboxHook(BaseAgentHook):
             state.messages.append(msg_obj)
             logger.info(
                 "team_inbox_injected agent={} from={} content_len={}",
-                member.name,
+                runtime.name,
                 raw_msg.from_agent,
                 len(msg_obj.content or ""),
             )

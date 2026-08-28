@@ -1,14 +1,9 @@
-"""app.agent.mode.team — Agent team coordination."""
+"""app.agent.mode.team — the per-session agent runtime."""
 
-from app.agent.mode.team.mailbox import Message, TeamMailbox
-from app.agent.mode.team.member import TeamLead, TeamMember, TeamMemberBase
-from app.agent.mode.team.team import AgentTeam
+from app.agent.mode.team.mailbox import Message
+from app.agent.mode.team.runtime import SessionRuntime
 
 __all__ = [
-    "AgentTeam",
-    "TeamLead",
-    "TeamMember",
-    "TeamMemberBase",
-    "TeamMailbox",
+    "SessionRuntime",
     "Message",
 ]

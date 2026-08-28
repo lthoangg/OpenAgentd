@@ -43,7 +43,7 @@ async def build(root: Path, message: str, mentions: list[str]) -> list[str]:
     try:
         return await _h.build_mention_context_blocks(
             message=message,
-            team=MagicMock(),
+            runtime=MagicMock(),
             session_id="test-session",
             workspace=None,
             existing_total_bytes=0,

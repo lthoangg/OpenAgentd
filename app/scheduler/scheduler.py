@@ -78,7 +78,7 @@ async def _validate_session_compat(
 
     Raises :exc:`InvalidTaskTargetError` when an existing session row
     disagrees with the requested target.  Mirrors the workspace-mismatch
-    check in ``POST /team/chat`` (``app/api/routes/team/chat.py:135-148``).
+    check in ``POST /session/chat`` (``app/api/routes/team/chat.py:135-148``).
     """
     if not session_id or session_id == "auto":
         return
@@ -634,7 +634,7 @@ class TaskScheduler:
     async def _fire_task_locked(self, task: ScheduledTask, fire_version: int) -> None:
         """Execute the dispatch and bookkeeping for one firing."""
         from app.services import team_manager
-        from app.agent.mode.team.team import QuestionPendingError
+        from app.agent.mode.team.runtime import QuestionPendingError
         from app.services.agent_service import NoTeamConfigured, dispatch_user_message
 
         now = datetime.now(_utc)

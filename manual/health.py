@@ -25,17 +25,16 @@ def main():
     print(f"health: {r.json()}")
 
     # Team agents
-    r = httpx.get(f"{base}/team/agents")
+    r = httpx.get(f"{base}/session/agents")
     r.raise_for_status()
     data = r.json()
     print("\nteam agents:")
     for a in data["agents"]:
-        lead = " [lead]" if a.get("is_lead") else ""
         caps = a.get("capabilities", {})
         vision = caps.get("input", {}).get("vision", False)
         tools = [t["name"] for t in a.get("tools", [])]
         skills = [s["name"] for s in a.get("skills", [])]
-        print(f"  {a['name']:15s} {a['model']}{lead}")
+        print(f"  {a['name']:15s} {a['model']}")
         if tools:
             print(f"    tools:  {', '.join(tools)}")
         if skills:

@@ -22,7 +22,7 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException
 from loguru import logger
 
-from app.agent.mode.team.member import is_busy
+from app.agent.mode.team.runtime import is_busy
 from app.agent.schemas.events import QuestionAnsweredEvent, QuestionDismissedEvent
 from app.models.chat import PendingQuestion
 from app.api.schemas.team import (
@@ -82,11 +82,11 @@ async def _resolve_or_conflict(
 
 
 async def get_team_for_session(session_id: str):
-    """Return the live team serving *session_id*, or ``None``.
+    """Return the live runtime serving *session_id*, or ``None``.
 
     Its lead may be bound to another session — see
     :func:`find_live_team_serving_session`. Indirection kept module-level so
-    tests can substitute a lead without booting a real team.
+    tests can substitute a lead without booting a real runtime.
     """
     return find_live_team_serving_session(session_id)
 
@@ -229,12 +229,14 @@ async def dismiss_question(
         create_if_missing=True,
     )
 
-    team = await get_team_for_session(sid)
-    # The team may be a registry-key match whose lead is bound elsewhere, so it
+    runtime = await get_team_for_session(sid)
+    # The runtime may be a registry-key match whose lead is bound elsewhere, so it
     # decides whether it can close this turn; ``False`` means nothing live owns
     # the session (restarted daemon, or evicted and rebuilt) and the client is
     # still showing an open turn, so close it on the stream directly.
-    handled = team is not None and await team.end_turn_after_question_dismissed(sid)
+    handled = runtime is not None and await runtime.end_turn_after_question_dismissed(
+        sid
+    )
     if not handled:
         await _end_turn(sid)
 
@@ -247,7 +249,7 @@ async def dismiss_question(
 
 
 async def _end_turn(session_id: str) -> None:
-    """Close a suspended turn that has no live team left to close it.
+    """Close a suspended turn that has no live runtime left to close it.
 
     Mirrors the tail of ``interrupt_team``: the turn is over as far as every
     client and the session list are concerned, and nothing is running to say
@@ -274,11 +276,11 @@ async def _end_turn(session_id: str) -> None:
 
 
 async def _start_team_for_session(session_id: str, db: DbSession):
-    """Boot the coding team that owns *session_id*, or ``None``.
+    """Boot the coding runtime that owns *session_id*, or ``None``.
 
     The suspension is durable, so answering has to work after a daemon restart
-    — and the resumed turn reads its history from the database, so a cold team
-    can run it. ``ask_user`` is lead-only, so this dispatches the coding team
+    — and the resumed turn reads its history from the database, so a cold runtime
+    can run it. ``ask_user`` is lead-only, so this dispatches the coding runtime
     for the session's persisted workspace.
     """
     from app.models.chat import ChatSession
@@ -318,34 +320,34 @@ async def _resume_lead(session_id: str, db: DbSession) -> bool:
     The answer is already committed at this point, so a failure here must not
     look like a failed answer — the client surfaces a manual resume instead.
     """
-    team = await get_team_for_session(session_id)
-    if team is None:
+    runtime = await get_team_for_session(session_id)
+    if runtime is None:
         # Nothing live owns this session (restarted daemon, or evicted after
         # the idle window). Start it: the turn resumes from DB history.
-        team = await _start_team_for_session(session_id, db)
-        if team is None:
+        runtime = await _start_team_for_session(session_id, db)
+        if runtime is None:
             logger.warning("question_resume_no_live_team session_id={}", session_id)
             return False
 
-    if team.lead.session_id != session_id:
+    if runtime.session_id != session_id:
         # Matched on the coding registry key, not the lead binding: a rebuilt
-        # team's lead starts on a freshly minted session.
+        # runtime's lead starts on a freshly minted session.
         # ``activate_for_question_answer`` runs on ``lead.session_id``, so it
         # has to be bound here or the turn replays into another conversation.
-        if is_busy(team.lead.state):
+        if is_busy(runtime.state):
             logger.warning(
                 "question_resume_lead_busy_elsewhere session_id={} lead_session_id={}",
                 session_id,
-                team.lead.session_id,
+                runtime.session_id,
             )
             return False
-        await team.attach_lead_to_session(session_id)
+        await runtime.attach_to_session(session_id)
 
     try:
-        team.lead.activate_for_question_answer()
+        runtime.activate_for_question_answer()
     except Exception as exc:
         logger.warning("question_resume_failed session_id={} error={}", session_id, exc)
         # Never leave the lead parked with no question to wake it.
-        team.lead.clear_question_suspension()
+        runtime.clear_question_suspension()
         return False
     return True

@@ -13,7 +13,7 @@ import { syncDesktopWindowTitle } from '@/lib/window-title'
 /**
  * Coding workspace layout for /coding and its session routes.
  * Stays mounted across URL changes — handles navigation when a new
- * team session_id arrives from POST /team/chat.
+ * team session_id arrives from POST /session/chat.
  */
 function TeamLayoutBase() {
   const params = useParams({ strict: false }) as Record<string, string>

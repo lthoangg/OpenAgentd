@@ -37,12 +37,11 @@ const mockTeamStatus = mock(() =>
   Promise.resolve({
     team: "team",
     lead: { name: "lead", model: "gpt-4", state: "idle" },
-    members: [{ name: "worker", model: "claude-3", state: "idle" }],
   })
 ) as any
 const mockTeamHistory = mock(() =>
   Promise.resolve({
-    lead: {
+    session: {
       id: "lead-sess",
       agent_name: "lead",
       title: null,
@@ -51,7 +50,6 @@ const mockTeamHistory = mock(() =>
       sub_sessions: [],
       messages: [],
     },
-    members: [],
     has_more: false,
     next_cursor: null,
   })
@@ -179,12 +177,11 @@ beforeEach(() => {
     Promise.resolve({
       team: "team",
       lead: { name: "lead", model: "gpt-4", state: "idle" },
-      members: [{ name: "worker", model: "claude-3", state: "idle" }],
     })
   )
   mockTeamHistory.mockImplementation(() =>
     Promise.resolve({
-      lead: {
+      session: {
         id: "lead-sess",
         agent_name: "lead",
         title: null,
@@ -193,7 +190,6 @@ beforeEach(() => {
         sub_sessions: [],
         messages: [],
       },
-      members: [],
       has_more: false,
       next_cursor: null,
     })
@@ -1203,7 +1199,7 @@ describe("stopTeam", () => {
     })
 
     mockTeamHistory.mockImplementation(() => Promise.resolve({
-      lead: {
+      session: {
         id: "lead-sess",
         agent_name: "lead",
         title: null,
@@ -1215,7 +1211,6 @@ describe("stopTeam", () => {
           makeMessageResponse({ id: "m2", role: "assistant", content: "final answer", created_at: "2024-01-01T00:00:03Z" }),
         ],
       },
-      members: [],
       has_more: false,
       next_cursor: null,
     }))
@@ -1268,14 +1263,14 @@ describe("stopTeam", () => {
       })
       useTeamStore.getState()._handleSSEEvent("message", { agent: "lead", text: "answer B" })
       return {
-        lead: {
+        session: {
           id: "lead-sess", agent_name: "lead", title: null, created_at: null,
           updated_at: null, sub_sessions: [],
           messages: [
             makeMessageResponse({ id: "m2", role: "assistant", content: "final answer", created_at: "2024-01-01T00:00:03Z" }),
           ],
         },
-        members: [], has_more: false, next_cursor: null,
+        has_more: false, next_cursor: null,
       }
     })
 
@@ -1762,21 +1757,21 @@ describe("loadTeamStatus", () => {
     expect(useTeamStore.getState().leadName).toBe("lead")
   })
 
-  it("sets agentNames including lead and members before a session is active", async () => {
+  it("sets agentNames to the session agent before a session is active", async () => {
     await useTeamStore.getState().loadTeamStatus()
-    expect(useTeamStore.getState().agentNames).toEqual(["lead", "worker"])
+    expect(useTeamStore.getState().agentNames).toEqual(["lead"])
   })
 
-  it("sets agentNames including lead and members when a session is active", async () => {
+  it("sets agentNames to the session agent when a session is active", async () => {
     useTeamStore.setState({ sessionId: "team-sid" })
     await useTeamStore.getState().loadTeamStatus()
-    expect(useTeamStore.getState().agentNames).toEqual(["lead", "worker"])
+    expect(useTeamStore.getState().agentNames).toEqual(["lead"])
   })
 
   it("tracks live agents from the status response", async () => {
     useTeamStore.setState({ sessionId: "team-sid" })
     await useTeamStore.getState().loadTeamStatus()
-    expect(useTeamStore.getState().liveAgentNames).toEqual(["lead", "worker"])
+    expect(useTeamStore.getState().liveAgentNames).toEqual(["lead"])
   })
 
   it("marks historical members offline when they are absent from the live roster", async () => {
@@ -1791,7 +1786,6 @@ describe("loadTeamStatus", () => {
       Promise.resolve({
         team: "team",
         lead: { name: "lead", model: "gpt-4", state: "idle" },
-        members: [],
       })
     )
 
@@ -1801,32 +1795,26 @@ describe("loadTeamStatus", () => {
     expect(useTeamStore.getState().agentStreams.worker.status).toBe("offline")
   })
 
-  it("creates agent streams for all agents before a session is active", async () => {
+  it("creates the session agent stream before a session is active", async () => {
     await useTeamStore.getState().loadTeamStatus()
-    const streams = useTeamStore.getState().agentStreams
-    expect(streams["lead"]).toBeDefined()
-    expect(streams["worker"]).toBeDefined()
+    expect(useTeamStore.getState().agentStreams["lead"]).toBeDefined()
   })
 
-  it("creates agent streams for all agents when a session is active", async () => {
+  it("creates the session agent stream when a session is active", async () => {
     useTeamStore.setState({ sessionId: "team-sid" })
     await useTeamStore.getState().loadTeamStatus()
-    const streams = useTeamStore.getState().agentStreams
-    expect(streams["lead"]).toBeDefined()
-    expect(streams["worker"]).toBeDefined()
+    expect(useTeamStore.getState().agentStreams["lead"]).toBeDefined()
   })
 
-  it("sets model on each agent stream before a session is active", async () => {
+  it("sets the model on the session agent stream before a session is active", async () => {
     await useTeamStore.getState().loadTeamStatus()
     expect(useTeamStore.getState().agentStreams["lead"].model).toBe("gpt-4")
-    expect(useTeamStore.getState().agentStreams["worker"].model).toBe("claude-3")
   })
 
-  it("sets model on each agent stream when a session is active", async () => {
+  it("sets the model on the session agent stream when a session is active", async () => {
     useTeamStore.setState({ sessionId: "team-sid" })
     await useTeamStore.getState().loadTeamStatus()
     expect(useTeamStore.getState().agentStreams["lead"].model).toBe("gpt-4")
-    expect(useTeamStore.getState().agentStreams["worker"].model).toBe("claude-3")
   })
 
   it("sets activeAgent to first agent when none is set", async () => {
@@ -1851,63 +1839,6 @@ describe("loadTeamStatus", () => {
     await useTeamStore.getState().loadTeamStatus()
     // Existing blocks preserved — only model is updated
     expect(useTeamStore.getState().agentStreams["lead"].blocks).toHaveLength(1)
-  })
-
-  it("does not revive an offline historical member when session history reloads", async () => {
-    useTeamStore.setState({
-      agentStreams: {
-        worker: makeStream({ status: "offline" }),
-      },
-    })
-    mockTeamHistory.mockImplementation(() =>
-      Promise.resolve({
-        lead: {
-          id: "lead-sess",
-          agent_name: "lead",
-          title: null,
-          created_at: null,
-          updated_at: null,
-          sub_sessions: [],
-          messages: [],
-        },
-        members: [{ name: "worker", session_id: "w-sess", messages: [] }],
-        has_more: false,
-        next_cursor: null,
-      })
-    )
-
-    await useTeamStore.getState().loadSession("sess-1")
-
-    expect(useTeamStore.getState().agentStreams.worker.status).toBe("offline")
-  })
-
-  it("keeps historical members absent from the live roster offline when history reloads", async () => {
-    useTeamStore.setState({
-      liveAgentNames: ["lead"],
-      agentStreams: {
-        worker: makeStream({ status: "idle" }),
-      },
-    })
-    mockTeamHistory.mockImplementation(() =>
-      Promise.resolve({
-        lead: {
-          id: "lead-sess",
-          agent_name: "lead",
-          title: null,
-          created_at: null,
-          updated_at: null,
-          sub_sessions: [],
-          messages: [],
-        },
-        members: [{ name: "worker", session_id: "w-sess", messages: [] }],
-        has_more: false,
-        next_cursor: null,
-      })
-    )
-
-    await useTeamStore.getState().loadSession("sess-1")
-
-    expect(useTeamStore.getState().agentStreams.worker.status).toBe("offline")
   })
 
   it("sets error when teamStatus throws", async () => {
@@ -1941,7 +1872,7 @@ describe("loadSession", () => {
     mockTeamStatus.mockImplementation(() => new Promise((resolve) => { resolveStatus = resolve }))
     mockTeamHistory.mockImplementation(() =>
       Promise.resolve({
-        lead: {
+        session: {
           id: "lead-sess",
           agent_name: "lead",
           title: null,
@@ -1950,7 +1881,6 @@ describe("loadSession", () => {
           sub_sessions: [],
           messages: [makeMessageResponse({ id: "m1", content: "loaded history" })],
         },
-        members: [],
         has_more: false,
         next_cursor: null,
       })
@@ -1984,7 +1914,7 @@ describe("loadSession", () => {
     useTeamStore.getState().setSessionModelSettings("anthropic:claude-sonnet", "high")
 
     resolveHistory({
-      lead: {
+      session: {
         id: "lead-sess",
         agent_name: "lead",
         title: null,
@@ -1995,7 +1925,6 @@ describe("loadSession", () => {
         sub_sessions: [],
         messages: [],
       },
-      members: [],
       has_more: false,
       next_cursor: null,
     })
@@ -2031,7 +1960,7 @@ describe("loadSession", () => {
     const second = useTeamStore.getState().loadSession("race-sess")
 
     resolveHistory({
-      lead: {
+      session: {
         id: "lead-sess",
         agent_name: "lead",
         title: null,
@@ -2040,7 +1969,6 @@ describe("loadSession", () => {
         sub_sessions: [],
         messages: [makeMessageResponse({ id: "m1", content: "loaded once" })],
       },
-      members: [],
       has_more: false,
       next_cursor: null,
     })
@@ -2058,7 +1986,7 @@ describe("loadSession", () => {
   it("restores Codex fast mode from the latest user message", async () => {
     mockTeamHistory.mockImplementation(() =>
       Promise.resolve({
-        lead: {
+        session: {
           id: "lead-sess",
           agent_name: "lead",
           title: null,
@@ -2070,7 +1998,6 @@ describe("loadSession", () => {
             { id: "u1", session_id: "lead-sess", role: "user", content: "hi", reasoning_content: null, tool_calls: null, tool_call_id: null, name: null, is_summary: false, is_hidden: false, extra: { service_tier: "fast" }, created_at: null, attachments: null },
           ],
         },
-        members: [],
         has_more: false,
         next_cursor: null,
       })
@@ -2084,7 +2011,7 @@ describe("loadSession", () => {
   it("falls back to live lead when history has no agent_name", async () => {
     mockTeamHistory.mockImplementation(() =>
       Promise.resolve({
-        lead: {
+        session: {
           id: "lead-sess",
           agent_name: null,
           title: null,
@@ -2093,7 +2020,6 @@ describe("loadSession", () => {
           sub_sessions: [],
           messages: [],
         },
-        members: [],
         has_more: false,
         next_cursor: null,
       })
@@ -2108,55 +2034,10 @@ describe("loadSession", () => {
     expect(useTeamStore.getState().agentStreams.lead).toBeDefined()
   })
 
-  it("populates agentNames with lead and members", async () => {
-    mockTeamHistory.mockImplementation(() =>
-      Promise.resolve({
-        lead: {
-          id: "lead-sess",
-          agent_name: "lead",
-          title: null,
-          created_at: null,
-          updated_at: null,
-          sub_sessions: [],
-          messages: [],
-        },
-        members: [
-          { name: "worker", session_id: "w-sess", messages: [] },
-        ],
-        has_more: false,
-        next_cursor: null,
-      })
-    )
-    await useTeamStore.getState().loadSession("sess-1")
-    expect(useTeamStore.getState().agentNames).toEqual(["lead", "worker"])
-  })
-
-  it("creates agent streams for lead and members", async () => {
-    mockTeamHistory.mockImplementation(() =>
-      Promise.resolve({
-        lead: {
-          id: "lead-sess",
-          agent_name: "lead",
-          title: null,
-          created_at: null,
-          updated_at: null,
-          sub_sessions: [],
-          messages: [],
-        },
-        members: [{ name: "worker", session_id: "w-sess", messages: [] }],
-        has_more: false,
-        next_cursor: null,
-      })
-    )
-    await useTeamStore.getState().loadSession("sess-1")
-    expect(useTeamStore.getState().agentStreams["lead"]).toBeDefined()
-    expect(useTeamStore.getState().agentStreams["worker"]).toBeDefined()
-  })
-
   it("populates lead blocks from history messages", async () => {
     mockTeamHistory.mockImplementation(() =>
       Promise.resolve({
-        lead: {
+        session: {
           id: "lead-sess",
           agent_name: "lead",
           title: null,
@@ -2167,7 +2048,6 @@ describe("loadSession", () => {
             makeMessageResponse({ id: "m1", role: "user", content: "user msg" }),
           ],
         },
-        members: [],
         has_more: false,
         next_cursor: null,
       })
@@ -2182,7 +2062,7 @@ describe("loadSession", () => {
   it("loads queued history messages into the pending queue without rendering them as history blocks", async () => {
     mockTeamHistory.mockImplementationOnce(() =>
       Promise.resolve({
-        lead: {
+        session: {
           id: "lead-sess",
           agent_name: "lead",
           title: null,
@@ -2194,7 +2074,6 @@ describe("loadSession", () => {
             makeMessageResponse({ id: "a1", role: "assistant", content: "response" }),
           ],
         },
-        members: [],
         has_more: false,
         next_cursor: null,
       })
@@ -2210,11 +2089,11 @@ describe("loadSession", () => {
 
   it("keeps attachments on queued history messages loaded into the pending queue", async () => {
     const attachments = [
-      { original_name: "doc.txt", media_type: "text/plain", category: "text" as const, url: "/api/team/sess-1/uploads/doc.txt" },
+      { original_name: "doc.txt", media_type: "text/plain", category: "text" as const, url: "/api/session/sess-1/uploads/doc.txt" },
     ]
     mockTeamHistory.mockImplementationOnce(() =>
       Promise.resolve({
-        lead: {
+        session: {
           id: "lead-sess",
           agent_name: "lead",
           title: null,
@@ -2225,7 +2104,6 @@ describe("loadSession", () => {
             makeMessageResponse({ id: "q1", role: "user", content: "queued with file", extra: { queue_status: "queued" }, attachments }),
           ],
         },
-        members: [],
         has_more: false,
         next_cursor: null,
       })
@@ -2251,7 +2129,7 @@ describe("loadSession", () => {
   it("marks the lead working when loaded session detail is still running", async () => {
     mockTeamHistory.mockImplementation(() =>
       Promise.resolve({
-        lead: {
+        session: {
           id: "lead-sess",
           agent_name: "lead",
           title: null,
@@ -2263,7 +2141,6 @@ describe("loadSession", () => {
             makeMessageResponse({ id: "m1", role: "user", content: "resume task" }),
           ],
         },
-        members: [],
         has_more: false,
         next_cursor: null,
       })
@@ -2326,7 +2203,7 @@ describe("loadSession", () => {
 
     // Resolve the stale history
     resolveHistory({
-      lead: {
+      session: {
         id: "lead-sess",
         agent_name: "stale-lead",
         title: null,
@@ -2335,7 +2212,6 @@ describe("loadSession", () => {
         sub_sessions: [],
         messages: [],
       },
-      members: [],
       has_more: false,
       next_cursor: null,
     })
@@ -2381,7 +2257,7 @@ describe("loadSession", () => {
     const loadPromise = useTeamStore.getState().loadSession("sess-1")
 
     resolveHistory({
-      lead: {
+      session: {
         id: "lead-sess",
         agent_name: "lead",
         title: null,
@@ -2390,7 +2266,6 @@ describe("loadSession", () => {
         sub_sessions: [],
         messages: [],
       },
-      members: [],
       has_more: false,
       next_cursor: null,
     })
@@ -2466,7 +2341,7 @@ describe("loadSession", () => {
   it("never reduces estimatedCostUsd or completionTokens on loadSession for the same session", async () => {
     mockTeamHistory.mockImplementation(() =>
       Promise.resolve({
-        lead: {
+        session: {
           id: "lead-sess",
           agent_name: "lead",
           title: null,
@@ -2482,7 +2357,6 @@ describe("loadSession", () => {
             },
           ],
         },
-        members: [],
         has_more: true,
         next_cursor: 1,
       })
@@ -2519,7 +2393,7 @@ describe("loadSession", () => {
   it("restores the authoritative full-session cost from the server, not the truncated page", async () => {
     mockTeamHistory.mockImplementation(() =>
       Promise.resolve({
-        lead: {
+        session: {
           id: "lead-sess",
           agent_name: "lead",
           title: null,
@@ -2539,7 +2413,6 @@ describe("loadSession", () => {
             },
           ],
         },
-        members: [],
         has_more: true,
         next_cursor: 1,
       })
@@ -2560,46 +2433,6 @@ describe("loadSession", () => {
     expect(usage.totalTokens).toBe(100 + 139633)
   })
 
-  it("member streams adopt the authoritative full-session cost on load", async () => {
-    mockTeamHistory.mockImplementation(() =>
-      Promise.resolve({
-        lead: {
-          id: "lead-sess",
-          agent_name: "lead",
-          title: null,
-          created_at: null,
-          updated_at: null,
-          sub_sessions: [],
-          estimated_cost_usd: 1.0,
-          completion_tokens: 1000,
-          messages: [],
-        },
-        members: [
-          {
-            name: "worker",
-            session_id: "w-sess",
-            messages: [],
-            estimated_cost_usd: 2.5,
-            completion_tokens: 2500,
-          },
-        ],
-        has_more: false,
-        next_cursor: null,
-      })
-    )
-    useTeamStore.setState({
-      sessionId: "sess-1",
-      isTeamWorking: false,
-      agentStreams: {},
-    })
-
-    await useTeamStore.getState().loadSession("sess-1")
-
-    expect(useTeamStore.getState().agentStreams.lead.usage.estimatedCostUsd).toBe(1.0)
-    expect(useTeamStore.getState().agentStreams.worker.usage.estimatedCostUsd).toBe(2.5)
-    expect(useTeamStore.getState().agentStreams.worker.usage.completionTokens).toBe(2500)
-  })
-
   it("resets lead agent status to idle when switching away from streaming session", async () => {
     useTeamStore.setState({
       isTeamWorking: true,
@@ -2611,36 +2444,6 @@ describe("loadSession", () => {
     await useTeamStore.getState().loadSession("session-b")
 
     expect(useTeamStore.getState().agentStreams["lead"].status).toBe("idle")
-  })
-
-  it("resets member agent status to idle when switching away from streaming session", async () => {
-    mockTeamHistory.mockImplementation(() =>
-      Promise.resolve({
-        lead: {
-          id: "lead-sess",
-          agent_name: "lead",
-          title: null,
-          created_at: null,
-          updated_at: null,
-          sub_sessions: [],
-          messages: [],
-        },
-        members: [{ name: "worker", session_id: "w-sess", messages: [] }],
-        has_more: false,
-        next_cursor: null,
-      })
-    )
-    useTeamStore.setState({
-      isTeamWorking: true,
-      agentStreams: {
-        lead: makeStream({ status: "working" as const }),
-        worker: makeStream({ status: "working" as const }),
-      },
-    })
-
-    await useTeamStore.getState().loadSession("session-b")
-
-    expect(useTeamStore.getState().agentStreams["worker"].status).toBe("idle")
   })
 
   it("clears currentText scratch buffer when switching sessions mid-stream", async () => {
@@ -2691,7 +2494,7 @@ describe("loadSession", () => {
     expect(useTeamStore.getState().isTeamWorking).toBe(false)
 
     resolveHistory({
-      lead: {
+      session: {
         id: "lead-sess",
         agent_name: "stale-lead",
         title: null,
@@ -2700,7 +2503,6 @@ describe("loadSession", () => {
         sub_sessions: [],
         messages: [],
       },
-      members: [],
       has_more: false,
       next_cursor: null,
     })
@@ -2745,7 +2547,7 @@ describe("loadSession", () => {
 
     // The stale fetch resolves with a snapshot that predates "second message".
     resolveHistory({
-      lead: {
+      session: {
         id: "lead-sess",
         agent_name: "lead",
         title: null,
@@ -2754,7 +2556,6 @@ describe("loadSession", () => {
         sub_sessions: [],
         messages: [makeMessageResponse({ id: "m-1", role: "user", content: "first message" })],
       },
-      members: [],
       has_more: false,
       next_cursor: null,
     })
@@ -2789,7 +2590,7 @@ describe("loadSession", () => {
 
     mockTeamHistory.mockImplementation(() =>
       Promise.resolve({
-        lead: {
+        session: {
           id: "lead-sess",
           agent_name: "lead",
           title: null,
@@ -2805,7 +2606,6 @@ describe("loadSession", () => {
             }),
           ],
         },
-        members: [],
         has_more: false,
         next_cursor: null,
       }),
@@ -2853,7 +2653,7 @@ describe("loadSession", () => {
 
     mockTeamHistory.mockImplementation(() =>
       Promise.resolve({
-        lead: {
+        session: {
           id: "lead-sess",
           agent_name: "lead",
           title: null,
@@ -2865,7 +2665,6 @@ describe("loadSession", () => {
             makeMessageResponse({ id: "m-1", role: "user", content: "run tests" }),
           ],
         },
-        members: [],
         has_more: false,
         next_cursor: null,
       }),
@@ -2905,7 +2704,7 @@ describe("loadOlderMessages", () => {
     useTeamStore.setState({ sessionId: "sess-1", hasMore: true, nextCursor: "2024-01-01T00:00:00Z", leadName: "lead" })
     mockTeamHistory.mockImplementation(() =>
       Promise.resolve({
-        lead: {
+        session: {
           id: "lead-sess",
           agent_name: "lead",
           title: null,
@@ -2914,7 +2713,6 @@ describe("loadOlderMessages", () => {
           sub_sessions: [],
           messages: [],
         },
-        members: [],
         has_more: false,
         next_cursor: null,
       })
@@ -2927,7 +2725,7 @@ describe("loadOlderMessages", () => {
     useTeamStore.setState({ sessionId: "sess-1", hasMore: true, nextCursor: "2024-02-01T00:00:00Z", leadName: "lead" })
     mockTeamHistory.mockImplementation(() =>
       Promise.resolve({
-        lead: {
+        session: {
           id: "lead-sess",
           agent_name: "lead",
           title: null,
@@ -2936,7 +2734,6 @@ describe("loadOlderMessages", () => {
           sub_sessions: [],
           messages: [],
         },
-        members: [],
         has_more: true,
         next_cursor: "2024-01-01T00:00:00Z",
       })
@@ -2960,7 +2757,7 @@ describe("loadOlderMessages", () => {
     })
     mockTeamHistory.mockImplementation(() =>
       Promise.resolve({
-        lead: {
+        session: {
           id: "lead-sess",
           agent_name: "lead",
           title: null,
@@ -2969,7 +2766,6 @@ describe("loadOlderMessages", () => {
           sub_sessions: [],
           messages: [makeMessageResponse({ id: "m-old", role: "user", content: "older" })],
         },
-        members: [],
         has_more: false,
         next_cursor: null,
       })
@@ -2993,7 +2789,7 @@ describe("loadOlderMessages", () => {
       if (!cursor) {
         // Newest page: starts mid-turn with the orphaned tool result.
         return Promise.resolve({
-          lead: {
+          session: {
             id: "lead-sess",
             agent_name: "lead",
             title: null,
@@ -3018,14 +2814,13 @@ describe("loadOlderMessages", () => {
               }),
             ],
           },
-          members: [],
           has_more: true,
           next_cursor: "2024-03-01T00:00:02Z",
         })
       }
       // Older page: the assistant row that issued the tool call.
       return Promise.resolve({
-        lead: {
+        session: {
           id: "lead-sess",
           agent_name: "lead",
           title: null,
@@ -3050,7 +2845,6 @@ describe("loadOlderMessages", () => {
             }),
           ],
         },
-        members: [],
         has_more: false,
         next_cursor: null,
       })
@@ -3089,7 +2883,7 @@ describe("loadOlderMessages", () => {
     })
     mockTeamHistory.mockImplementation(() =>
       Promise.resolve({
-        lead: {
+        session: {
           id: "lead-sess",
           agent_name: "lead",
           title: null,
@@ -3105,7 +2899,6 @@ describe("loadOlderMessages", () => {
             },
           ],
         },
-        members: [],
         has_more: false,
         next_cursor: null,
       })
@@ -3332,34 +3125,6 @@ describe("ghost message regression: done event after /undo", () => {
     const currentBlocks = useTeamStore.getState().agentStreams.lead.currentBlocks
     expect(currentBlocks).toHaveLength(1)
     expect(currentBlocks[0].id).toBe("msg-server-1")
-  })
-
-  it("restores running state for members on loadSession and keeps isTeamWorking=true", async () => {
-    mockTeamHistory.mockResolvedValueOnce({
-      lead: {
-        id: "sess-running",
-        title: "Test",
-        agent_name: "lead",
-        running: false,
-        messages: [],
-      },
-      members: [
-        {
-          name: "worker",
-          session_id: "worker-sess",
-          messages: [],
-          running: true,
-        },
-      ],
-      has_more: false,
-      next_cursor: null,
-    })
-
-    await useTeamStore.getState().loadSession("sess-running")
-
-    const state = useTeamStore.getState()
-    expect(state.isTeamWorking).toBe(true)
-    expect(state.agentStreams.worker?.status).toBe("working")
   })
 
   it("deduplicates inbox SSE events against existing blocks and currentBlocks", () => {

@@ -45,7 +45,7 @@ def _post_turn(base: str, message: str, session_id: str | None) -> str:
     payload: dict[str, str] = {"message": message}
     if session_id:
         payload["session_id"] = session_id
-    response = httpx.post(f"{base}/team/chat", data=payload, timeout=30)
+    response = httpx.post(f"{base}/session/chat", data=payload, timeout=30)
     response.raise_for_status()
     return str(response.json()["session_id"])
 
@@ -57,7 +57,7 @@ def _stream_events(base: str, session_id: str, wait: int) -> list[dict]:
     current_event = "message"
     data_buf: list[str] = []
     with httpx.stream(
-        "GET", f"{base}/team/{session_id}/stream", timeout=wait + 5
+        "GET", f"{base}/session/{session_id}/stream", timeout=wait + 5
     ) as response:
         response.raise_for_status()
         for line in response.iter_lines():
@@ -88,12 +88,12 @@ def _tool_ends(events: list[dict], name: str) -> list[dict]:
 
 
 def _agent_name(base: str) -> str:
-    """Return the lead agent's name (first entry of ``GET /team/agents``)."""
-    response = httpx.get(f"{base}/team/agents", timeout=10)
+    """Return the lead agent's name (first entry of ``GET /session/agents``)."""
+    response = httpx.get(f"{base}/session/agents", timeout=10)
     response.raise_for_status()
     agents = response.json().get("agents") or []
     if not agents:
-        raise RuntimeError("GET /team/agents returned no agents")
+        raise RuntimeError("GET /session/agents returned no agents")
     return str(agents[0]["name"])
 
 

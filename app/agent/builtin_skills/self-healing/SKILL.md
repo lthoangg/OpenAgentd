@@ -11,7 +11,7 @@ description: >-
 
 Modifies on-disk agent configuration in response to user requests. All changes are surgical edits under `{OPENAGENTD_CONFIG_DIR}/`. No code changes, no restarts.
 
-## Modes — pick the right team first
+## Modes — pick the current session mode
 
 | Mode | When active | Agent files |
 |------|-------------|-------------|
@@ -59,7 +59,7 @@ Process restart required only for: adding/removing agent files, `.env` changes, 
 | Field | Values |
 |-------|--------|
 | `model` | `provider:model` — e.g. `openai:gpt-4o`, `anthropic:claude-...`, `googlegenai:gemini-...` |
-| `tools` | Extra tools on top of built-in profile: `web_search`, `web_fetch`, `read`, `patch`, `grep`, `glob`, `shell`, `generate_image`, `generate_video`, plus `<server>_<tool>` for MCP. Never add `skill` or `team_message` — injected automatically. |
+| `tools` | Extra tools on top of built-in profile: `web_search`, `web_fetch`, `read`, `patch`, `grep`, `glob`, `shell`, `generate_image`, `generate_video`, plus `<server>_<tool>` for MCP. Never add `skill` or session tools (`agent_spawn`, `agent_send`, `agent_list`, `agent_stop`, `agent_merge`) — injected automatically. |
 
 **Invariants:** exactly one `role: lead` per agents dir; `model` must contain `:`.
 

@@ -14,7 +14,7 @@ from app.core.config import Settings, settings
 from app.core.db import async_session_factory, get_session
 
 if TYPE_CHECKING:
-    from app.agent.mode.team.team import AgentTeam
+    from app.agent.mode.team.runtime import SessionRuntime
 
 
 # ── Settings ─────────────────────────────────────────────────────────────────
@@ -50,13 +50,13 @@ DbSessionFactory = Annotated[
 # when the agents directory is empty/missing).
 
 
-async def get_team() -> "AgentTeam | None":
+async def get_team() -> "SessionRuntime | None":
     from app.services import team_manager
 
     return await team_manager.get_or_start_team()
 
 
-TeamDep = Annotated["AgentTeam | None", Depends(get_team)]
+TeamDep = Annotated["SessionRuntime | None", Depends(get_team)]
 
 
 # ── Form body dependency ──────────────────────────────────────────────────────

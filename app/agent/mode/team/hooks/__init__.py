@@ -1,9 +1,9 @@
 from .queued_injection import QueuedMessageInjectionHook
 from .team_inbox import TeamInboxHook
-from .team_prompt import AgentTeamProtocolHook
+from .team_prompt import SessionRuntimeProtocolHook
 
 __all__ = [
-    "AgentTeamProtocolHook",
+    "SessionRuntimeProtocolHook",
     "QueuedMessageInjectionHook",
     "TeamInboxHook",
 ]

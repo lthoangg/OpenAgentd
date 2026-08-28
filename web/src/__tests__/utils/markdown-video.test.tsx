@@ -66,8 +66,8 @@ describe("isVideoSrc", () => {
   });
 
   it("handles full API URLs", () => {
-    expect(isVideoSrc("/api/team/abc/media/clip.mp4")).toBe(true);
-    expect(isVideoSrc("/api/team/abc/media/output/video.webm")).toBe(true);
+    expect(isVideoSrc("/api/session/abc/media/clip.mp4")).toBe(true);
+    expect(isVideoSrc("/api/session/abc/media/output/video.webm")).toBe(true);
   });
 
   it("handles full URLs with protocol", () => {
@@ -161,7 +161,7 @@ describe("MarkdownBlock video rendering", () => {
       />,
     );
     const video = document.querySelector("video");
-    expect(video).toHaveAttribute("src", `/api/team/${sid}/media/clip.mp4`);
+    expect(video).toHaveAttribute("src", `/api/session/${sid}/media/clip.mp4`);
   });
 
   it("rewrites nested video subpath", () => {
@@ -174,7 +174,7 @@ describe("MarkdownBlock video rendering", () => {
     const video = document.querySelector("video");
     expect(video).toHaveAttribute(
       "src",
-      `/api/team/${sid}/media/output/video.webm`,
+      `/api/session/${sid}/media/output/video.webm`,
     );
   });
 
@@ -190,7 +190,7 @@ describe("MarkdownBlock video rendering", () => {
   });
 
   it("passes existing /api/ video URLs through unchanged", () => {
-    const apiUrl = `/api/team/${sid}/media/clip.mp4`;
+    const apiUrl = `/api/session/${sid}/media/clip.mp4`;
     render(
       <MarkdownBlock
         content={`![demo](${apiUrl})`}
@@ -444,8 +444,8 @@ describe("MarkdownBlock multiple videos", () => {
     );
     const videos = document.querySelectorAll("video");
     expect(videos).toHaveLength(2);
-    expect(videos[0]).toHaveAttribute("src", `/api/team/${sid}/media/video1.mp4`);
-    expect(videos[1]).toHaveAttribute("src", `/api/team/${sid}/media/video2.webm`);
+    expect(videos[0]).toHaveAttribute("src", `/api/session/${sid}/media/video1.mp4`);
+    expect(videos[1]).toHaveAttribute("src", `/api/session/${sid}/media/video2.webm`);
   });
 
   it("each video has independent onError handlers", () => {

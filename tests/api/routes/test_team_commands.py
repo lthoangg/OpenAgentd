@@ -18,42 +18,28 @@ from sqlmodel import col, select
 
 import app.core.db as _db
 from app.agent.agent_loop import Agent
-from app.agent.mode.team.member import TeamLead
-from app.agent.mode.team.team import AgentTeam
+from app.agent.mode.team.runtime import SessionRuntime
 from app.models.chat import ChatSession, MessageKind, SessionMessage
 from app.services.chat_service import get_messages_for_llm
 from tests.api.routes.test_team_db import MockProvider
 
 
-@pytest.fixture(autouse=True)
-def _coding_team_constructor_compat(monkeypatch):
-    original_init = AgentTeam.__init__
-
-    def init(self, *args, **kwargs):
-        kwargs.pop("mode", None)
-        return original_init(self, *args, **kwargs)
-
-    monkeypatch.setattr(AgentTeam, "__init__", init)
-
-
 @pytest_asyncio.fixture
-async def app_with_lead_only_team():
-    """App + a started team with one lead, no members.
+async def app_with_session_runtime():
+    """App + a started session runtime.
 
-    ``team.start()`` is awaited so the lead has a registered mailbox by the
-    time ``handle_continue`` calls ``activate_for_continuation`` on the
-    happy path — otherwise the spawned task hits
-    ``assert self._mailbox is not None`` and the test leaks an orphan
-    ``AssertionError``.
+    ``start()`` is awaited so the runtime is in its post-start ``idle`` state by
+    the time ``handle_continue`` activates a turn on the happy path.
     """
     from app.api.app import create_app
     from app.services.team_manager import set_team
 
-    lead = TeamLead(
-        Agent(name="lead", llm_provider=MockProvider(), system_prompt="Lead"),
+    team = SessionRuntime(
+        Agent(
+            name="openagentd", llm_provider=MockProvider(), system_prompt="OpenAgentd"
+        ),
         db_factory=_db.async_session_factory,
     )
-    team = AgentTeam(lead=lead, members={})
     await team.start()
     app = create_app()
     app.state.test_team = team
@@ -80,7 +66,9 @@ async def _seed_session_and_messages(
 
     async with _db.async_session_factory() as db:
         async with db.begin():
-            db.add(ChatSession(id=session_id, agent_name="lead", workspace="/tmp"))
+            db.add(
+                ChatSession(id=session_id, agent_name="openagentd", workspace="/tmp")
+            )
             for role, content, tool_calls in msgs:
                 db.add(
                     SessionMessage(
@@ -95,20 +83,20 @@ async def _seed_session_and_messages(
 class TestPostTeamCommands:
     @pytest.mark.asyncio
     async def test_compact_returns_202_on_happy_path(
-        self, app_with_lead_only_team, monkeypatch
+        self, app_with_session_runtime, monkeypatch
     ):
         sid = uuid.uuid7()
         await _seed_session_and_messages(sid, [("user", "hello", None)])
-        team = app_with_lead_only_team.state.test_team
+        team = app_with_session_runtime.state.test_team
 
         async def fake_compact(session_id: str) -> str:
             return session_id
 
         monkeypatch.setattr(team, "handle_compact", fake_compact)
 
-        client = TestClient(app_with_lead_only_team)
+        client = TestClient(app_with_session_runtime)
         resp = client.post(
-            "/api/team/commands",
+            "/api/session/commands",
             json={"command": "compact", "session_id": str(sid)},
         )
 
@@ -120,7 +108,7 @@ class TestPostTeamCommands:
 
     @pytest.mark.asyncio
     async def test_compact_uses_coding_team_for_coding_session(
-        self, app_with_lead_only_team, monkeypatch, tmp_path
+        self, app_with_session_runtime, monkeypatch, tmp_path
     ):
         sid = uuid.uuid7()
         workspace = str(tmp_path)
@@ -129,20 +117,20 @@ class TestPostTeamCommands:
                 db.add(
                     ChatSession(
                         id=sid,
-                        agent_name="lead",
+                        agent_name="openagentd",
                         workspace=workspace,
                     )
                 )
                 db.add(SessionMessage(session_id=sid, role="user", content="hello"))
 
-        default_team = app_with_lead_only_team.state.test_team
-        coding_team = AgentTeam(
-            lead=TeamLead(
-                Agent(name="lead", llm_provider=MockProvider(), system_prompt="Lead"),
-                db_factory=_db.async_session_factory,
+        default_team = app_with_session_runtime.state.test_team
+        coding_team = SessionRuntime(
+            Agent(
+                name="openagentd",
+                llm_provider=MockProvider(),
+                system_prompt="OpenAgentd",
             ),
-            members={},
-            mode="coding",
+            db_factory=_db.async_session_factory,
             workspace=workspace,
         )
         await coding_team.start()
@@ -168,9 +156,9 @@ class TestPostTeamCommands:
         )
 
         try:
-            client = TestClient(app_with_lead_only_team)
+            client = TestClient(app_with_session_runtime)
             resp = client.post(
-                "/api/team/commands",
+                "/api/session/commands",
                 json={"command": "compact", "session_id": str(sid)},
             )
         finally:
@@ -184,7 +172,7 @@ class TestPostTeamCommands:
         }
 
     @pytest.mark.asyncio
-    async def test_undo_hides_latest_user_turn(self, app_with_lead_only_team):
+    async def test_undo_hides_latest_user_turn(self, app_with_session_runtime):
         sid = uuid.uuid7()
         await _seed_session_and_messages(
             sid,
@@ -196,9 +184,9 @@ class TestPostTeamCommands:
             ],
         )
 
-        client = TestClient(app_with_lead_only_team)
+        client = TestClient(app_with_session_runtime)
         resp = client.post(
-            "/api/team/commands",
+            "/api/session/commands",
             json={"command": "undo", "session_id": str(sid)},
         )
 
@@ -227,11 +215,11 @@ class TestPostTeamCommands:
         assert [row.content for row in rows if row.kind == MessageKind.REVERTED] == []
         assert [msg.content for msg in llm_messages] == ["first", "first answer"]
 
-        history = client.get(f"/api/team/{sid}/history")
+        history = client.get(f"/api/session/{sid}/history")
         assert history.status_code == 200
         history_body = history.json()
-        assert history_body["lead"]["revert"]["message_id"] == body["message"]["id"]
-        assert [msg["content"] for msg in history_body["lead"]["messages"]] == [
+        assert history_body["session"]["revert"]["message_id"] == body["message"]["id"]
+        assert [msg["content"] for msg in history_body["session"]["messages"]] == [
             "first",
             "first answer",
             "second",
@@ -241,7 +229,7 @@ class TestPostTeamCommands:
     @pytest.mark.asyncio
     @pytest.mark.parametrize("command", ["undo", "redo", "redo-all"])
     async def test_command_uses_coding_team_for_coding_session(
-        self, app_with_lead_only_team, monkeypatch, tmp_path, command
+        self, app_with_session_runtime, monkeypatch, tmp_path, command
     ):
         """Regression test: undo/redo must not run against the default team
         for a coding session. Previously only ``compact`` re-resolved to the
@@ -266,14 +254,14 @@ class TestPostTeamCommands:
                 session = await db.get(ChatSession, sid)
                 session.workspace = workspace
 
-        default_team = app_with_lead_only_team.state.test_team
-        coding_team = AgentTeam(
-            lead=TeamLead(
-                Agent(name="lead", llm_provider=MockProvider(), system_prompt="Lead"),
-                db_factory=_db.async_session_factory,
+        default_team = app_with_session_runtime.state.test_team
+        coding_team = SessionRuntime(
+            Agent(
+                name="openagentd",
+                llm_provider=MockProvider(),
+                system_prompt="OpenAgentd",
             ),
-            members={},
-            mode="coding",
+            db_factory=_db.async_session_factory,
             workspace=workspace,
         )
         await coding_team.start()
@@ -296,19 +284,19 @@ class TestPostTeamCommands:
         )
 
         try:
-            client = TestClient(app_with_lead_only_team)
+            client = TestClient(app_with_session_runtime)
             if command in ("redo", "redo-all"):
                 # Need a real undone turn to redo — drive it through the
                 # (unmocked) coding team directly.
                 for _ in range(2 if command == "redo-all" else 1):
                     prep = client.post(
-                        "/api/team/commands",
+                        "/api/session/commands",
                         json={"command": "undo", "session_id": str(sid)},
                     )
                     assert prep.status_code == 202
                 called.clear()
             resp = client.post(
-                "/api/team/commands",
+                "/api/session/commands",
                 json={"command": command, "session_id": str(sid)},
             )
         finally:
@@ -319,7 +307,7 @@ class TestPostTeamCommands:
         assert called["session_id"] == str(sid)
 
     @pytest.mark.asyncio
-    async def test_redo_restores_next_undone_turn(self, app_with_lead_only_team):
+    async def test_redo_restores_next_undone_turn(self, app_with_session_runtime):
         sid = uuid.uuid7()
         await _seed_session_and_messages(
             sid,
@@ -331,17 +319,17 @@ class TestPostTeamCommands:
             ],
         )
 
-        client = TestClient(app_with_lead_only_team)
+        client = TestClient(app_with_session_runtime)
         first = client.post(
-            "/api/team/commands",
+            "/api/session/commands",
             json={"command": "undo", "session_id": str(sid)},
         )
         second = client.post(
-            "/api/team/commands",
+            "/api/session/commands",
             json={"command": "undo", "session_id": str(sid)},
         )
         redo = client.post(
-            "/api/team/commands",
+            "/api/session/commands",
             json={"command": "redo", "session_id": str(sid)},
         )
 
@@ -360,7 +348,7 @@ class TestPostTeamCommands:
         }
 
         cleared = client.post(
-            "/api/team/commands",
+            "/api/session/commands",
             json={"command": "redo", "session_id": str(sid)},
         )
         assert cleared.status_code == 202
@@ -389,7 +377,7 @@ class TestPostTeamCommands:
         ]
 
     @pytest.mark.asyncio
-    async def test_redo_all_restores_all_undone_turns(self, app_with_lead_only_team):
+    async def test_redo_all_restores_all_undone_turns(self, app_with_session_runtime):
         sid = uuid.uuid7()
         await _seed_session_and_messages(
             sid,
@@ -403,20 +391,20 @@ class TestPostTeamCommands:
             ],
         )
 
-        client = TestClient(app_with_lead_only_team)
+        client = TestClient(app_with_session_runtime)
         # Undo two turns
         client.post(
-            "/api/team/commands",
+            "/api/session/commands",
             json={"command": "undo", "session_id": str(sid)},
         )
         client.post(
-            "/api/team/commands",
+            "/api/session/commands",
             json={"command": "undo", "session_id": str(sid)},
         )
 
         # Redo-all restores directly to the live tip in one step
         redo_all = client.post(
-            "/api/team/commands",
+            "/api/session/commands",
             json={"command": "redo-all", "session_id": str(sid)},
         )
         assert redo_all.status_code == 202
@@ -439,7 +427,7 @@ class TestPostTeamCommands:
         ]
 
     @pytest.mark.asyncio
-    async def test_undo_rejected_when_lead_is_working(self, app_with_lead_only_team):
+    async def test_undo_rejected_when_lead_is_working(self, app_with_session_runtime):
         """Pre-existing precondition: lead's own turn is in flight.
 
         Regression guard for the original ``_has_active_turn`` check —
@@ -450,12 +438,12 @@ class TestPostTeamCommands:
             sid,
             [("user", "first", None), ("assistant", "first answer", None)],
         )
-        team = app_with_lead_only_team.state.test_team
+        team = app_with_session_runtime.state.test_team
         team._has_active_turn = True
         try:
-            client = TestClient(app_with_lead_only_team)
+            client = TestClient(app_with_session_runtime)
             resp = client.post(
-                "/api/team/commands",
+                "/api/session/commands",
                 json={"command": "undo", "session_id": str(sid)},
             )
         finally:
@@ -473,40 +461,34 @@ class TestPostTeamCommands:
         assert session.revert is None
 
     @pytest.mark.asyncio
-    async def test_undo_rejected_when_member_is_working(self, app_with_lead_only_team):
-        """New behaviour: a member streaming while the lead is idle still
-        blocks /undo. Without this guard the in-flight assistant tokens
-        on the client get orphaned (the bug this fix addresses).
-        """
-        import types
+    async def test_undo_rejected_while_the_agent_is_working(
+        self, app_with_session_runtime
+    ):
+        """A streaming agent blocks /undo.
 
+        Without this guard the in-flight assistant tokens on the client get
+        orphaned.
+        """
         sid = uuid.uuid7()
         await _seed_session_and_messages(
             sid,
             [("user", "first", None), ("assistant", "first answer", None)],
         )
-        team = app_with_lead_only_team.state.test_team
-        assert team.lead.state != "working"
+        team = app_with_session_runtime.state.test_team
+        assert team.state != "working"
 
-        # Stub a busy member — only ``.state`` and ``.name`` are read by
-        # the guard, so a SimpleNamespace is sufficient and avoids
-        # spinning up a real Agent + mailbox.
-        team.members["worker"] = types.SimpleNamespace(name="worker", state="working")
+        team.state = "working"
         try:
-            client = TestClient(app_with_lead_only_team)
+            client = TestClient(app_with_session_runtime)
             resp = client.post(
-                "/api/team/commands",
+                "/api/session/commands",
                 json={"command": "undo", "session_id": str(sid)},
             )
         finally:
-            team.members.pop("worker", None)
+            team.state = "idle"
 
         assert resp.status_code == 409
-        detail = resp.json()["detail"].lower()
-        # Error must identify *which* agent is busy so the UI can
-        # surface a useful message.
-        assert "worker" in detail
-        assert "working" in detail
+        assert "already working" in resp.json()["detail"].lower()
 
         # The /undo must short-circuit before touching the DB — no
         # boundary, no commit.
@@ -516,16 +498,14 @@ class TestPostTeamCommands:
         assert session.revert is None
 
     @pytest.mark.asyncio
-    async def test_undo_member_in_error_state_does_not_block(
-        self, app_with_lead_only_team
+    async def test_undo_with_the_agent_in_error_state_does_not_block(
+        self, app_with_session_runtime
     ):
         """Negative case: only ``state == 'working'`` blocks /undo.
 
-        A member that crashed (state='error') or went offline must not
+        An agent that crashed (state='error') or went offline must not
         permanently lock the user out of /undo.
         """
-        import types
-
         sid = uuid.uuid7()
         await _seed_session_and_messages(
             sid,
@@ -536,35 +516,35 @@ class TestPostTeamCommands:
                 ("assistant", "second answer", None),
             ],
         )
-        team = app_with_lead_only_team.state.test_team
-        team.members["dead"] = types.SimpleNamespace(name="dead", state="error")
-        team.members["gone"] = types.SimpleNamespace(name="gone", state="offline")
+        team = app_with_session_runtime.state.test_team
+        team.state = "error"
         try:
-            client = TestClient(app_with_lead_only_team)
+            client = TestClient(app_with_session_runtime)
             resp = client.post(
-                "/api/team/commands",
+                "/api/session/commands",
                 json={"command": "undo", "session_id": str(sid)},
             )
         finally:
-            team.members.pop("dead", None)
-            team.members.pop("gone", None)
+            team.state = "idle"
 
         assert resp.status_code == 202, resp.text
         assert resp.json()["message"]["content"] == "second"
 
     @pytest.mark.asyncio
-    async def test_unknown_command_rejected_by_validator(self, app_with_lead_only_team):
+    async def test_unknown_command_rejected_by_validator(
+        self, app_with_session_runtime
+    ):
         """Pydantic Literal rejects unknown command strings as 422."""
-        client = TestClient(app_with_lead_only_team)
+        client = TestClient(app_with_session_runtime)
         resp = client.post(
-            "/api/team/commands",
+            "/api/session/commands",
             json={"command": "blow_up_session", "session_id": str(uuid.uuid7())},
         )
         assert resp.status_code == 422
 
     @pytest.mark.asyncio
     async def test_concurrent_redos_each_advance_boundary_one_step(
-        self, app_with_lead_only_team
+        self, app_with_session_runtime
     ):
         """Two parallel /redo calls must NOT both land on the same target."""
         import asyncio
@@ -584,23 +564,23 @@ class TestPostTeamCommands:
             ],
         )
 
-        client = TestClient(app_with_lead_only_team)
+        client = TestClient(app_with_session_runtime)
         for _ in range(3):
             r = client.post(
-                "/api/team/commands",
+                "/api/session/commands",
                 json={"command": "undo", "session_id": str(sid)},
             )
             assert r.status_code == 202
 
-        transport = ASGITransport(app=app_with_lead_only_team)
+        transport = ASGITransport(app=app_with_session_runtime)
         async with AsyncClient(transport=transport, base_url="http://test") as ac:
             r1, r2 = await asyncio.gather(
                 ac.post(
-                    "/api/team/commands",
+                    "/api/session/commands",
                     json={"command": "redo", "session_id": str(sid)},
                 ),
                 ac.post(
-                    "/api/team/commands",
+                    "/api/session/commands",
                     json={"command": "redo", "session_id": str(sid)},
                 ),
             )

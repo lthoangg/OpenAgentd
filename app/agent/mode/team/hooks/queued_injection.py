@@ -1,9 +1,9 @@
 """QueuedMessageInjectionHook — splices user-queued messages into a running turn.
 
-When the lead is ``working``, additional messages posted via ``POST /team/chat``
+When the agent is ``working``, additional messages posted via ``POST /session/chat``
 are saved as queued ``SessionMessage`` rows (``queue_status="queued"``,
 ``exclude_from_context=True``).  Historically those rows only activated *after*
-the current turn finished — :meth:`AgentTeam._activate_queued_user_messages`
+the current turn finished — :meth:`SessionRuntime._activate_queued_user_messages`
 would pop them and start a new turn.
 
 This hook runs ``before_model`` and pops any pending queued rows on every

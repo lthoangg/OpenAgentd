@@ -1,18 +1,18 @@
-"""AgentTeamProtocolHook — injects team operating protocol into system prompts.
+"""SessionRuntimeProtocolHook — injects the operating protocol into system prompts.
 
 Fires via ``wrap_model_call`` before each LLM call. Delegates protocol
-assembly to the role class (TeamLead / TeamMember) via ``build_protocol()``.
+assembly to :class:`SessionRuntime` via ``build_protocol()``.
 
-The yaml ``system_prompt`` only needs the agent's **role-specific** instructions
-(what to research, how to write, etc.).  Everything about *how teams work* is
-injected by each role's ``build_protocol()`` method.
+The yaml ``system_prompt`` only needs the agent's own instructions (what to
+research, how to write, etc.). Everything about *how delegation works* is
+injected by ``build_protocol()``.
 
 Usage::
 
-    hook = AgentTeamProtocolHook(team=team, agent_name="researcher")
+    hook = SessionRuntimeProtocolHook(runtime=runtime)
     agent.run(messages, hooks=[hook, ...])
 
-Created per-member in ``TeamMemberBase._handle_messages()``.
+Created per turn in ``SessionRuntime._handle_messages()``.
 """
 
 from __future__ import annotations
@@ -24,30 +24,14 @@ from app.agent.hooks.base import BaseAgentHook
 if TYPE_CHECKING:
     from app.agent.schemas.chat import AssistantMessage
     from app.agent.state import AgentState, ModelCallHandler, ModelRequest, RunContext
-    from app.agent.mode.team.team import AgentTeam
+    from app.agent.mode.team.runtime import SessionRuntime
 
 
-class AgentTeamProtocolHook(BaseAgentHook):
-    """Inject team operating protocol into the system prompt before each model call.
+class SessionRuntimeProtocolHook(BaseAgentHook):
+    """Inject the operating protocol into the system prompt before each model call."""
 
-    Delegates to the role's ``build_protocol()`` method — no role branching here.
-    """
-
-    def __init__(self, team: "AgentTeam", agent_name: str) -> None:
-        self._team = team
-        self._agent_name = agent_name
-
-    def _get_member(self):
-        """Resolve the TeamMemberBase instance for this agent."""
-        if self._agent_name == self._team.lead.name:
-            return self._team.lead
-        member = self._team.members.get(self._agent_name)
-        if member is not None:
-            return member
-        member = self._team._members_by_name.get(self._agent_name)
-        if member is not None:
-            return member
-        raise KeyError(self._agent_name)
+    def __init__(self, runtime: "SessionRuntime") -> None:
+        self._runtime = runtime
 
     async def wrap_model_call(
         self,
@@ -56,14 +40,10 @@ class AgentTeamProtocolHook(BaseAgentHook):
         request: "ModelRequest",
         handler: "ModelCallHandler",
     ) -> "AssistantMessage":
-        """Inject team protocol into the system prompt on every model call.
+        """Inject the protocol into the system prompt on every model call.
 
-        The injected protocol is static per session, so the system prompt
-        stays byte-stable across turns (prompt-cache friendly). Dynamic roster
-        changes are surfaced to the LLM as append-only ``[system]`` messages
-        (see :meth:`AgentTeam._persist_roster_change`) and via ``team_message``
-        / ``team_manage`` tool results — never by mutating this prompt.
+        The injected protocol is static per session, so the system prompt stays
+        byte-stable across turns (prompt-cache friendly).
         """
-        member = self._get_member()
-        new_prompt = member.build_protocol(request.system_prompt, self._team)
+        new_prompt = self._runtime.build_protocol(request.system_prompt)
         return await handler(request.override(system_prompt=new_prompt))

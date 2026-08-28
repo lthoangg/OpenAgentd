@@ -1,5 +1,5 @@
 /**
- * `GET /team/agents` request coalescing.
+ * `GET /session/agents` request coalescing.
  *
  * The endpoint re-globs and re-parses every agent `.md` server-side per request,
  * and it has two independent callers that fire in the same window when a session
@@ -26,8 +26,7 @@ function deferredFetch() {
     calls.push(String(url))
     await gate
     return new Response(JSON.stringify({
-      agents: [{ name: 'lead', is_lead: true, model: 'm' }],
-      blueprints: [],
+      agents: [{ name: 'lead', model: 'm' }],
     }))
   })
   globalThis.fetch = fetchMock as unknown as typeof fetch

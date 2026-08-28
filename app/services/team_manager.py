@@ -14,7 +14,7 @@ Lazy lifecycle
 The default team (and per-workspace coding teams) are not built on
 server startup.  ``get_or_start_team()`` and ``get_or_start_coding_team()``
 build them on the first incoming request (chat, scheduler fire,
-``/team/agents``, etc.) and cache them in module state.
+``/session/agents``, etc.) and cache them in module state.
 
 After an idle window with no working members, teams are evicted on the
 next ``get_or_start_*`` call:
@@ -33,7 +33,7 @@ Live-config refresh — no team reload
 Agents now refresh themselves at the start of their next turn when
 their tracked config files (their own ``.md``, ``mcp.json``, referenced
 ``SKILL.md``) change on disk.  See ``app.agent.loader.stamp_agent_files``
-and ``TeamMemberBase._detect_config_drift``.  Production code paths
+and ``SessionRuntime._detect_config_drift``.  Production code paths
 (``/api/mcp``, ``/api/skills``, ``/api/agents``) therefore do **not**
 call :func:`reload`.
 
@@ -48,7 +48,6 @@ from __future__ import annotations
 
 import asyncio
 import time
-from collections import OrderedDict
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -56,12 +55,12 @@ from typing import TYPE_CHECKING
 from loguru import logger
 
 from app.agent.loader import load_team_from_dir
-from app.agent.mode.team.member import is_busy
+from app.agent.mode.team.runtime import is_busy
 from app.core.config import settings
+import app.core.db as db_module
 
 if TYPE_CHECKING:
-    from app.agent.loader import AgentConfig
-    from app.agent.mode.team.team import AgentTeam
+    from app.agent.mode.team.runtime import SessionRuntime
 
 
 # ── Diff dataclass ───────────────────────────────────────────────────────────
@@ -75,7 +74,6 @@ class TeamDiff:
     removed: list[str]  # agent names removed
     changed: list[str]  # agent names where model / tools / skills changed
     lead: str  # name of the new lead
-    members: list[str]  # names of all members (excluding lead)
 
     def to_dict(self) -> dict:
         return {
@@ -83,24 +81,19 @@ class TeamDiff:
             "removed": self.removed,
             "changed": self.changed,
             "lead": self.lead,
-            "members": self.members,
         }
 
 
 # ── Module-level state ───────────────────────────────────────────────────────
 
-_team: "AgentTeam | None" = None
+_team: "SessionRuntime | None" = None
 _team_last_used: float = 0.0
-_coding_teams: dict[tuple[str, str], "AgentTeam"] = {}
+_coding_teams: dict[tuple[str, str], "SessionRuntime"] = {}
 _coding_team_last_used: dict[tuple[str, str], float] = {}
 _coding_start_locks: dict[tuple[str, str], asyncio.Lock] = {}
 _DEFAULT_TEAM_IDLE_SECONDS = 60 * 60
 _CODING_TEAM_IDLE_SECONDS = 30 * 60
 _lock = asyncio.Lock()
-_BLUEPRINT_CONFIG_CACHE_LIMIT = 256
-_blueprint_config_cache: OrderedDict[
-    Path, tuple[tuple[int, int, int, int], AgentConfig]
-] = OrderedDict()
 
 # ``validate_agents_dir`` result cache, keyed by resolved agents dir.  Stores
 # ``(signature, result)`` where *signature* is a cheap stat fingerprint of the
@@ -219,8 +212,8 @@ def validate_workspace(workspace: str, *, require_exists: bool = True) -> str:
     return str(resolved)
 
 
-def _team_is_idle(team: "AgentTeam") -> bool:
-    return all(not is_busy(member.state) for member in team.all_members)
+def _team_is_idle(runtime: "SessionRuntime") -> bool:
+    return not is_busy(runtime.state)
 
 
 # Back-compat alias — older call sites (tests) may import the coding-specific name.
@@ -229,7 +222,7 @@ _coding_team_is_idle = _team_is_idle
 
 def _maybe_pop_idle_default_team_locked(
     now: float,
-) -> "AgentTeam | None":
+) -> "SessionRuntime | None":
     """Return the default team for eviction, or ``None`` if it should stay.
 
     Caller must release the lock before stopping the returned team to avoid
@@ -250,7 +243,7 @@ def _maybe_pop_idle_default_team_locked(
 
 def _pop_idle_coding_teams_locked(
     now: float,
-) -> list[tuple[tuple[str, str], "AgentTeam"]]:
+) -> list[tuple[tuple[str, str], "SessionRuntime"]]:
     expired = [
         key
         for key, last_used in _coding_team_last_used.items()
@@ -258,7 +251,7 @@ def _pop_idle_coding_teams_locked(
         and (team := _coding_teams.get(key)) is not None
         and _coding_team_is_idle(team)
     ]
-    popped: list[tuple[tuple[str, str], "AgentTeam"]] = []
+    popped: list[tuple[tuple[str, str], "SessionRuntime"]] = []
     for key in expired:
         team = _coding_teams.pop(key, None)
         _coding_team_last_used.pop(key, None)
@@ -269,7 +262,7 @@ def _pop_idle_coding_teams_locked(
 
 
 async def _stop_coding_teams(
-    teams: list[tuple[tuple[str, str], "AgentTeam"]],
+    teams: list[tuple[tuple[str, str], "SessionRuntime"]],
 ) -> None:
     for (workspace, session_id), team in teams:
         try:
@@ -305,14 +298,14 @@ async def evict_session_teams(session_ids: set[str]) -> None:
     await _stop_coding_teams(coding)
 
 
-def current_team() -> "AgentTeam | None":
+def current_team() -> "SessionRuntime | None":
     return _team
 
 
-def set_team(team: "AgentTeam | None") -> None:
+def set_team(team: "SessionRuntime | None") -> None:
     """Replace the current team reference without running the lifecycle.
 
-    Intended for tests that need to inject a pre-built ``AgentTeam`` into
+    Intended for tests that need to inject a pre-built ``SessionRuntime`` into
     the FastAPI dependency without starting the real team.  Production
     code should use :func:`get_or_start_team` / :func:`reload` / :func:`stop`.
     """
@@ -329,7 +322,7 @@ def validate_agents_dir() -> bool:
 
     Called from the FastAPI lifespan at startup so a malformed config
     surfaces immediately (server fails to boot) instead of on the first
-    chat request.  Does **not** build or cache an ``AgentTeam`` — that
+    chat request.  Does **not** build or cache an ``SessionRuntime`` — that
     happens lazily on the first call to :func:`get_or_start_team`.
 
     Returns ``True`` when the directory contains a valid lead, ``False``
@@ -354,13 +347,13 @@ def validate_agents_dir() -> bool:
         return cached[1]
 
     try:
-        team = load_team_from_dir(agents_dir)
+        runtime = load_team_from_dir(agents_dir)
     except ValueError:
         # Never cache a failure: the operator needs it to keep surfacing until
         # the config is actually fixed.
         _agents_dir_validation.pop(agents_dir, None)
         raise
-    if team is None:
+    if runtime is None:
         if signature is not None:
             _agents_dir_validation[agents_dir] = (signature[0], False)
         logger.warning("team_manager_agents_dir_empty path={}", agents_dir)
@@ -368,15 +361,13 @@ def validate_agents_dir() -> bool:
     # Success on a readiness probe is not newsworthy — the failure paths
     # (``_agents_dir_empty`` above, and the ``ValueError`` the caller logs)
     # are what an operator needs to see.
-    logger.debug(
-        "team_manager_agents_dir_validated path={} lead={}", agents_dir, team.lead.name
-    )
+    logger.debug("agents_dir_validated path={} agent={}", agents_dir, runtime.name)
     if signature is not None:
         _agents_dir_validation[agents_dir] = (signature[0], True)
     return True
 
 
-async def get_or_start_team() -> "AgentTeam | None":
+async def get_or_start_team() -> "SessionRuntime | None":
     """Return the cached default team, building it on first use.
 
     Evicts the cached team if it has been idle for longer than
@@ -393,7 +384,7 @@ async def get_or_start_team() -> "AgentTeam | None":
 
         if _team is not None:
             _team_last_used = now
-            result: "AgentTeam | None" = _team
+            result: "SessionRuntime | None" = _team
         else:
             agents_dir = _resolve_agents_dir()
             candidate = load_team_from_dir(agents_dir)
@@ -404,7 +395,7 @@ async def get_or_start_team() -> "AgentTeam | None":
                 await candidate.start()
                 _team = candidate
                 _team_last_used = now
-                logger.info("team_manager_started lead={}", candidate.lead.name)
+                logger.info("team_manager_started agent={}", candidate.name)
                 result = candidate
 
     if expired is not None:
@@ -443,7 +434,7 @@ async def stop() -> None:
         _coding_start_locks.clear()
 
 
-def find_live_team_serving_session(session_id: str) -> "AgentTeam | None":
+def find_live_team_serving_session(session_id: str) -> "SessionRuntime | None":
     """Return an already-running team associated with *session_id*.
 
     Never starts one.  Used by endpoints that act on an in-flight turn (e.g.
@@ -455,23 +446,23 @@ def find_live_team_serving_session(session_id: str) -> "AgentTeam | None":
     evicted after the idle window is rebuilt with a freshly minted lead session,
     so a match on that key can carry a lead that is mid-turn on a *different*
     conversation. Anything that then drives the lead — emitting ``done``,
-    resuming a turn — must either check ``team.lead.session_id`` first or
-    re-bind with ``attach_lead_to_session``, or it will act on the wrong stream.
+    resuming a turn — must either check ``runtime.session_id`` first or
+    re-bind with ``attach_to_session``, or it will act on the wrong stream.
     Hence the deliberately vague "serving": this is the team that *could* serve
     the session, not one that currently owns it.
 
     Both registries hold a handful of live teams, and the session-keyed one is
     a direct hit, so the coding scan is a short fallback rather than the norm.
     """
-    for (_workspace, owner_session), team in _coding_teams.items():
-        if owner_session == session_id or team.lead.session_id == session_id:
-            return team
+    for (_workspace, owner_session), runtime in _coding_teams.items():
+        if owner_session == session_id or runtime.session_id == session_id:
+            return runtime
     return None
 
 
 def find_live_coding_team(
     workspace: str, session_id: str | None = None
-) -> "AgentTeam | None":
+) -> "SessionRuntime | None":
     """Return an active running coding team for *workspace*, matching *session_id* if provided."""
     try:
         resolved_workspace = validate_workspace(workspace)
@@ -495,7 +486,7 @@ def find_live_coding_team(
     return _coding_teams.get((resolved_workspace, "__agents__"))
 
 
-async def get_or_start_coding_team(workspace: str, session_id: str) -> "AgentTeam":
+async def get_or_start_coding_team(workspace: str, session_id: str) -> "SessionRuntime":
     resolved_workspace = validate_workspace(workspace)
     key = (resolved_workspace, session_id)
     start_lock = _coding_start_locks.setdefault(key, asyncio.Lock())
@@ -524,36 +515,131 @@ async def get_or_start_coding_team(workspace: str, session_id: str) -> "AgentTea
                 _coding_teams[key] = team
                 _coding_team_last_used[key] = now
             logger.info(
-                "coding_team_started workspace={} session_id={} lead={}",
+                "coding_team_started workspace={} session_id={} agent={}",
                 resolved_workspace,
                 session_id,
-                team.lead.name,
+                team.name,
             )
 
     await _stop_coding_teams(expired)
     return team
 
 
+async def deliver_agent_report(
+    *,
+    parent_session_id: str,
+    child_session_id: str,
+    child_name: str,
+    content: str,
+    db_factory: db_module.DbFactory | None = None,
+) -> None:
+    """Deliver a child's report or cross-agent message to the parent session.
+
+    Delivery algorithm:
+    1. If parent runtime is live, bound to parent_session_id, and not blocked by
+       an open question:
+       - Persist HumanMessage with extra={"from_agent": child_name}.
+       - If parent is idle, init stream turn and send to mailbox (waking lead).
+       - If parent is working, send to mailbox (queued for TeamInboxHook mid-turn).
+    2. If parent runtime is busy with another session or has an open question:
+       - Persist to queued messages path with extra={"from_agent": child_name}.
+    3. If no runtime is live:
+       - Persist to queued messages path, boot parent team, and trigger queue drain.
+    """
+    from uuid import UUID
+    from app.agent.schemas.chat import HumanMessage
+    from app.agent.mode.team.mailbox import Message
+    from app.services import memory_stream_store as stream_store
+    from app.models.chat import ChatSession
+    from app.services.chat_service import save_message, save_queued_user_message
+
+    db_maker = db_factory or db_module.async_session_factory
+    parent_uuid = UUID(parent_session_id)
+
+    live_runtime = find_live_team_serving_session(parent_session_id)
+    can_deliver_live = False
+
+    if live_runtime is not None:
+        if live_runtime.session_id == parent_session_id:
+            can_deliver_live = True
+        elif getattr(live_runtime, "state", "idle") == "idle":
+            await live_runtime.attach_to_session(parent_session_id)
+            can_deliver_live = True
+
+    if can_deliver_live and live_runtime is not None:
+        has_question = await live_runtime._has_open_question()
+
+        if not has_question:
+            # Step 1: Live delivery
+            async with db_maker() as db:
+                async with db.begin():
+                    saved_message = await save_message(
+                        db,
+                        parent_uuid,
+                        HumanMessage(content=content),
+                        extra={"from_agent": child_name},
+                    )
+
+            is_idle = getattr(live_runtime, "state", "idle") == "idle"
+            if is_idle:
+                await stream_store.init_turn(parent_session_id)
+
+            await live_runtime.deliver(
+                Message(
+                    from_agent=child_name,
+                    to_agent=live_runtime.name,
+                    content=content,
+                    persisted_message_id=str(saved_message.id),
+                )
+            )
+            return
+
+    # Step 2 & 3: Persisted queue fallback
+    async with db_maker() as db:
+        async with db.begin():
+            parent_row = await db.get(ChatSession, parent_uuid)
+            await save_queued_user_message(
+                db,
+                parent_uuid,
+                content,
+                extra={"from_agent": child_name},
+            )
+            workspace = parent_row.workspace if parent_row else None
+
+    # If no runtime is live and we have a workspace, start it and drain queue
+    if live_runtime is None and workspace:
+        try:
+            started = await get_or_start_coding_team(workspace, parent_session_id)
+            await started.attach_to_session(parent_session_id)
+            await started._activate_queued_user_messages(parent_session_id)
+        except Exception as exc:
+            logger.warning(
+                "failed_to_wake_offline_parent session_id={} error={}",
+                parent_session_id,
+                exc,
+            )
+
+
 # ── Hot reload ───────────────────────────────────────────────────────────────
 
 
-def _team_snapshot(team: "AgentTeam") -> dict[str, dict]:
-    """Capture per-agent fingerprint used to compute the diff."""
-    snapshot: dict[str, dict] = {}
-    members = [team.lead, *team.members.values()]
-    for m in members:
-        agent = m.agent
-        snapshot[agent.name] = {
+def _team_snapshot(runtime: "SessionRuntime") -> dict[str, dict]:
+    """Capture the agent fingerprint used to compute the diff."""
+    agent = runtime.agent
+    return {
+        agent.name: {
             "description": agent.description or "",
             "model": agent.model_id,
             "tools": sorted(t.name for t in agent._tools.values()),
             "system_prompt": agent.system_prompt,
         }
-    return snapshot
+    }
 
 
-def _compute_diff(before: dict[str, dict] | None, team: "AgentTeam") -> TeamDiff:
-    after = _team_snapshot(team)
+def _compute_diff(
+    before: dict[str, dict] | None, runtime: "SessionRuntime"
+) -> TeamDiff:
+    after = _team_snapshot(runtime)
     before = before or {}
 
     before_names = set(before.keys())
@@ -565,13 +651,11 @@ def _compute_diff(before: dict[str, dict] | None, team: "AgentTeam") -> TeamDiff
         name for name in before_names & after_names if before[name] != after[name]
     )
 
-    members = sorted(team.members.keys())
     return TeamDiff(
         added=added,
         removed=removed,
         changed=changed,
-        lead=team.lead.name,
-        members=members,
+        lead=runtime.name,
     )
 
 
@@ -630,138 +714,27 @@ async def reload() -> TeamDiff:
 # ── Live-config refresh ──────────────────────────────────────────────────────
 
 
-def refresh_idle_agents(team: "AgentTeam") -> None:
-    """Detect and apply config drift for all idle (non-working) agents.
+def refresh_idle_agents(runtime: "SessionRuntime") -> None:
+    """Detect and apply config drift when the agent is idle.
 
-    This is the same mechanism agents use at start-of-turn, hoisted into
-    a service function so the ``GET /team/agents`` route can serve fresh
-    frontmatter without knowing about ``TeamMemberBase`` internals.
+    This is the same mechanism the agent uses at start-of-turn, hoisted into
+    a service function so the agents listing route can serve fresh frontmatter
+    without reaching into runtime internals.
 
-    Working agents are skipped — refreshing them would race ``agent.run()``
+    A working agent is skipped — refreshing it would race ``agent.run()``
     swapping ``self.agent`` mid-execution.
 
-    Errors are swallowed and logged so a single bad agent config never
-    breaks the listing endpoint.
+    Errors are swallowed and logged so a bad agent config never breaks the
+    listing endpoint.
     """
-    for member in [team.lead, *team.members.values()]:
-        if is_busy(member.state):
-            continue
-        try:
-            member.refresh_if_dirty()
-        except Exception as exc:
-            logger.warning(
-                "team_agents_refresh_failed name={} error={}", member.name, exc
-            )
-
-
-def refresh_blueprints(team: "AgentTeam") -> None:
-    """Rediscover member ``.md`` files for *team* and update its blueprint
-    registry in place.
-
-    The source directory is the coding profile directory, so callers
-    (currently just ``GET /team/agents``) don't need to know its location.
-    Without this, a user who creates a
-    new member through the Settings → Agents page wouldn't see it appear
-    in the spawnable roster until the team object is evicted and rebuilt
-    — typically a server restart.
-
-    Behaviour:
-
-    * **New file** → register a fresh :class:`MemberBlueprint`. The lead
-      will see it on its next ``team_manage`` listing.
-    * **Removed file** → drop the blueprint *only if* no live instances
-      reference it; otherwise leave it alone so an in-flight conversation
-      can still address the agent by handle.
-    * **Edited file** → no-op here. The blueprint's ``source_path`` is
-      unchanged and existing instances pick up the edit via the regular
-      drift mechanism on their next turn.
-    * **Lead changed** → no-op. Lead lifecycle is owned by :func:`reload`,
-      not by this hot-path service.
-    * **Parse error in a new file** → logged and skipped; the rest of the
-      directory is still processed.
-    """
-    from app.agent.loader import member_model_is_configured, parse_agent_md
-    from app.agent.mode.team.team import MemberBlueprint
-
-    agents_dir = _resolve_coding_agents_dir()
-    if not agents_dir.exists():
+    if is_busy(runtime.state):
         return
-
-    md_files = sorted(agents_dir.glob("*.md"))
-    resolved_agents_dir = agents_dir.absolute()
-    active_paths = {path.absolute() for path in md_files}
-    for cached_path in tuple(_blueprint_config_cache):
-        if (
-            cached_path.parent == resolved_agents_dir
-            and cached_path not in active_paths
-        ):
-            del _blueprint_config_cache[cached_path]
-
-    seen: set[str] = set()
-    for md_path in md_files:
-        resolved_path = md_path.absolute()
-        try:
-            stat = md_path.stat()
-        except Exception as exc:
-            logger.warning(
-                "blueprint_refresh_parse_failed path={} error={}", md_path.name, exc
-            )
-            continue
-        signature = (stat.st_ino, stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns)
-        cached = _blueprint_config_cache.get(resolved_path)
-        if cached is not None and cached[0] == signature:
-            result = cached[1]
-            _blueprint_config_cache.move_to_end(resolved_path)
-        else:
-            try:
-                result = parse_agent_md(md_path)
-            except Exception as exc:
-                logger.warning(
-                    "blueprint_refresh_parse_failed path={} error={}",
-                    md_path.name,
-                    exc,
-                )
-                continue
-            _blueprint_config_cache[resolved_path] = (signature, result)
-            _blueprint_config_cache.move_to_end(resolved_path)
-            while len(_blueprint_config_cache) > _BLUEPRINT_CONFIG_CACHE_LIMIT:
-                _blueprint_config_cache.popitem(last=False)
-        cfg = result
-        # Skip the lead — its file lives in the same directory but is owned
-        # by :func:`reload`, not by this hot-path discovery.
-        if cfg.role != "member" or not member_model_is_configured(cfg.model):
-            continue
-        if "#" in cfg.name or cfg.name == team.lead.name:
-            # Same invariants ``load_team_from_dir`` enforces; silently
-            # drop the bad file rather than 500 the listing endpoint.
-            continue
-        seen.add(cfg.name)
-        existing = team.blueprints.get(cfg.name)
-        if existing is None:
-            team.blueprints[cfg.name] = MemberBlueprint(
-                name=cfg.name,
-                description=cfg.description or cfg.name,
-                source_path=md_path,
-            )
-            logger.info("blueprint_added name={} path={}", cfg.name, md_path.name)
-        elif existing.source_path != md_path:
-            # File renamed but ``name:`` kept — repoint so the next spawn
-            # reads from the new location.
-            existing.source_path = md_path
-
-    for name in list(team.blueprints.keys()):
-        if name in seen:
-            continue
-        # Don't pull the rug out from under a live conversation: if any
-        # instance of this blueprint is still in the roster, leave the
-        # blueprint in place so its handle still resolves.
-        if team.live_instances_for_blueprint(name):
-            continue
-        team.blueprints.pop(name, None)
-        logger.info("blueprint_removed name={}", name)
-
-
-# ── Skill cache invalidation ─────────────────────────────────────────────────
+    try:
+        runtime.refresh_if_dirty()
+    except Exception as exc:
+        logger.warning(
+            "session_agents_refresh_failed name={} error={}", runtime.name, exc
+        )
 
 
 def invalidate_skill_cache() -> None:

@@ -8,6 +8,9 @@ HTTP, WebSocket, and SSE routes.
 - `app.py` owns middleware, lifecycle, and router registration; `deps.py` owns
   shared dependencies; `routes/` groups transport handlers; `schemas/` holds
   reusable wire models.
+- `routes/team/` is mounted at `/api/session` — the directory name is
+  historical, the URL is authoritative. Do not add a `/api/team` alias; see
+  `documents/adrs/0002-single-session-runtime.md`.
 - Keep handlers focused on transport validation/status/response shaping.
   Delegate durable behavior to `app/services/` or the owning `app/agent/`
   subsystem.

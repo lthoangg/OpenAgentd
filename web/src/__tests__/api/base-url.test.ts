@@ -47,7 +47,7 @@ describe('apiBaseUrl', () => {
     const { apiBaseUrl, apiUrl } = await import('@/api/base-url')
 
     expect(apiBaseUrl()).toBe('http://127.0.0.1:4082/api')
-    expect(apiUrl('team/status')).toBe('http://127.0.0.1:4082/api/team/status')
+    expect(apiUrl('session/status')).toBe('http://127.0.0.1:4082/api/session/status')
   })
 
   it('does not double-append /api when the injected URL already includes it', async () => {

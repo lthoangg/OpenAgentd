@@ -1,6 +1,6 @@
 /**
  * WorkspaceFilesPanel — right-side drawer listing every file the agent has
- * written into the session workspace (``.openagentd/team/{sid}``).
+ * written into the session workspace (``.openagentd/session/{sid}``).
  *
  * Layout: drawer from the right (mirrors ``AgentCapabilities``).  Inside, a
  * two-pane split — tree grouped by directory on the left, preview on the
@@ -9,9 +9,9 @@
  * Everything else shows a "Download" fallback.
  *
  * Data flow:
- *   - GET /api/team/{sid}/files      → listing (polled on open, invalidated
+ *   - GET /api/session/{sid}/files      → listing (polled on open, invalidated
  *                                       by team store after write/edit/rm)
- *   - GET /api/team/{sid}/media/{p}  → file bytes (fetched by preview only
+ *   - GET /api/session/{sid}/media/{p}  → file bytes (fetched by preview only
  *                                       when the user selects a text file;
  *                                       images use the URL directly as src)
  */

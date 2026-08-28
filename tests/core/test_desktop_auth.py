@@ -28,7 +28,7 @@ def _make_app(token: str | None) -> FastAPI:
     def live() -> dict:
         return {"status": "ok"}
 
-    @app.get("/api/team/status")
+    @app.get("/api/session/status")
     def status() -> dict:
         return {"team": "ok"}
 
@@ -74,20 +74,20 @@ class TestMiddlewareDisabled:
     def test_protected_api_accessible_without_token(self):
         app = _make_app(token=None)
         client = TestClient(app)
-        assert client.get("/api/team/status").status_code == 200
+        assert client.get("/api/session/status").status_code == 200
 
     def test_empty_token_disables_middleware(self):
         app = _make_app(token="")
         client = TestClient(app)
-        assert client.get("/api/team/status").status_code == 200
+        assert client.get("/api/session/status").status_code == 200
 
     def test_access_key_env_enables_middleware(self, monkeypatch):
         monkeypatch.setenv("OPENAGENTD_ACCESS_KEY", "lan-secret")
         app = _make_app(token=None)
         client = TestClient(app)
-        assert client.get("/api/team/status").status_code == 401
+        assert client.get("/api/session/status").status_code == 401
         r = client.get(
-            "/api/team/status", headers={"Authorization": "Bearer lan-secret"}
+            "/api/session/status", headers={"Authorization": "Bearer lan-secret"}
         )
         assert r.status_code == 200
 
@@ -100,9 +100,9 @@ class TestMiddlewareDisabled:
         monkeypatch.setattr(settings, "OPENAGENTD_CONFIG_DIR", str(tmp_path))
         app = _make_app(token=None)
         client = TestClient(app)
-        assert client.get("/api/team/status").status_code == 401
+        assert client.get("/api/session/status").status_code == 401
         r = client.get(
-            "/api/team/status", headers={"Authorization": "Bearer lan-secret"}
+            "/api/session/status", headers={"Authorization": "Bearer lan-secret"}
         )
         assert r.status_code == 200
 
@@ -113,20 +113,22 @@ class TestMiddlewareEnabled:
     def test_api_without_token_rejected(self):
         app = _make_app(token="secret")
         client = TestClient(app)
-        r = client.get("/api/team/status")
+        r = client.get("/api/session/status")
         assert r.status_code == 401
         assert "access key" in r.json()["detail"].lower()
 
     def test_api_with_wrong_token_rejected(self):
         app = _make_app(token="secret")
         client = TestClient(app)
-        r = client.get("/api/team/status", headers={"Authorization": "Bearer wrong"})
+        r = client.get("/api/session/status", headers={"Authorization": "Bearer wrong"})
         assert r.status_code == 401
 
     def test_api_with_correct_bearer_accepted(self):
         app = _make_app(token="secret")
         client = TestClient(app)
-        r = client.get("/api/team/status", headers={"Authorization": "Bearer secret"})
+        r = client.get(
+            "/api/session/status", headers={"Authorization": "Bearer secret"}
+        )
         assert r.status_code == 200
 
     def test_auth_check_requires_token(self):
@@ -140,14 +142,14 @@ class TestMiddlewareEnabled:
     def test_api_with_query_param_token_accepted(self):
         app = _make_app(token="secret")
         client = TestClient(app)
-        r = client.get("/api/team/status?_token=secret")
+        r = client.get("/api/session/status?_token=secret")
         assert r.status_code == 200
 
     def test_query_param_takes_precedence_path_filter(self):
         """Query param works even when Authorization header is missing."""
         app = _make_app(token="secret")
         client = TestClient(app)
-        r = client.get("/api/team/status?_token=wrong")
+        r = client.get("/api/session/status?_token=wrong")
         assert r.status_code == 401
 
     def test_health_live_does_not_require_token(self):
@@ -178,7 +180,7 @@ class TestMiddlewareEnabled:
         client = TestClient(app)
         for bad in ("", "s", "secret_extra", "SECRET"):
             r = client.get(
-                "/api/team/status", headers={"Authorization": f"Bearer {bad}"}
+                "/api/session/status", headers={"Authorization": f"Bearer {bad}"}
             )
             assert r.status_code == 401, f"expected 401 for {bad!r}"
 

@@ -65,12 +65,19 @@ async def client(app: FastAPI):
         yield c
 
 
-class _FakeLead:
-    def __init__(self) -> None:
+class _FakeRuntime:
+    """Stands in for ``SessionRuntime`` across the answer/resume route."""
+
+    def __init__(self, session_id: str) -> None:
         self.name = "openagentd"
+        self.session_id = session_id
         self.state = "waiting_input"
         self._question_suspended = {"question_id": "x"}
         self.resumed = 0
+        self.mode = "coding"
+        self.turns_ended = 0
+        self.attached: list[str] = []
+        self.started_with = None
 
     def activate_for_question_answer(self) -> None:
         self.resumed += 1
@@ -81,30 +88,20 @@ class _FakeLead:
             self.state = "idle"
         self._question_suspended = None
 
-
-class _FakeTeam:
-    def __init__(self, session_id: str) -> None:
-        self.lead = _FakeLead()
-        self.lead.session_id = session_id  # type: ignore[attr-defined]
-        self.mode = "coding"
-        self.turns_ended = 0
-        self.attached: list[str] = []
-        self.started_with = None
-
     async def end_turn_after_question_dismissed(self, session_id: str) -> bool:
-        """Mirrors ``AgentTeam``: refuse a session the lead is not bound to."""
-        if self.lead.session_id != session_id:
+        """Mirrors ``SessionRuntime``: refuse a session it is not bound to."""
+        if self.session_id != session_id:
             return False
-        self.lead.clear_question_suspension()
+        self.clear_question_suspension()
         await self._try_emit_done()
         return True
 
     async def _try_emit_done(self) -> None:
         self.turns_ended += 1
 
-    async def attach_lead_to_session(self, session_id: str, *, title=None) -> None:
+    async def attach_to_session(self, session_id: str, *, title=None) -> None:
         self.attached.append(session_id)
-        self.lead.session_id = session_id
+        self.session_id = session_id
 
 
 async def _seed(
@@ -168,7 +165,7 @@ def team(monkeypatch):
 async def test_get_returns_the_open_question(client, team):
     session_id = uuid.uuid4()
     question_id = await _seed(session_id)
-    team["team"] = _FakeTeam(str(session_id))
+    team["team"] = _FakeRuntime(str(session_id))
 
     resp = await client.get(f"/{session_id}/question")
 
@@ -186,7 +183,7 @@ def _history_app(session_id: uuid.UUID) -> FastAPI:
 
     application = FastAPI()
     application.include_router(chat_routes.router)
-    application.dependency_overrides[get_team] = lambda: _FakeTeam(str(session_id))
+    application.dependency_overrides[get_team] = lambda: _FakeRuntime(str(session_id))
     return application
 
 
@@ -237,7 +234,7 @@ async def test_get_returns_null_when_nothing_is_pending(client, team):
     async with core_db.async_session_factory() as db:
         db.add(ChatSession(id=session_id, agent_name="openagentd", mode="coding"))
         await db.commit()
-    team["team"] = _FakeTeam(str(session_id))
+    team["team"] = _FakeRuntime(str(session_id))
 
     resp = await client.get(f"/{session_id}/question")
 
@@ -253,8 +250,8 @@ async def test_get_returns_null_when_nothing_is_pending(client, team):
 async def test_answer_resolves_and_resumes_the_turn(client, team):
     session_id = uuid.uuid4()
     question_id = await _seed(session_id)
-    fake_team = _FakeTeam(str(session_id))
-    team["team"] = fake_team
+    fake_runtime = _FakeRuntime(str(session_id))
+    team["team"] = fake_runtime
 
     resp = await client.post(
         f"/{session_id}/question/{question_id}/answer",
@@ -263,7 +260,7 @@ async def test_answer_resolves_and_resumes_the_turn(client, team):
 
     assert resp.status_code == 200
     assert resp.json() == {"status": "ok", "resumed": True}
-    assert fake_team.lead.resumed == 1
+    assert fake_runtime.resumed == 1
 
     from app.core import db as core_db
 
@@ -274,7 +271,7 @@ async def test_answer_resolves_and_resumes_the_turn(client, team):
 async def test_answer_accepts_free_text_when_custom_is_allowed(client, team):
     session_id = uuid.uuid4()
     question_id = await _seed(session_id)
-    team["team"] = _FakeTeam(str(session_id))
+    team["team"] = _FakeRuntime(str(session_id))
 
     resp = await client.post(
         f"/{session_id}/question/{question_id}/answer",
@@ -288,7 +285,7 @@ async def test_answer_rejects_free_text_when_custom_is_disallowed(client, team):
     """Question 2 has custom=false — only its own labels are acceptable."""
     session_id = uuid.uuid4()
     question_id = await _seed(session_id)
-    team["team"] = _FakeTeam(str(session_id))
+    team["team"] = _FakeRuntime(str(session_id))
 
     resp = await client.post(
         f"/{session_id}/question/{question_id}/answer",
@@ -303,7 +300,7 @@ async def test_answer_rejects_multiple_selections_on_a_single_select_question(
 ):
     session_id = uuid.uuid4()
     question_id = await _seed(session_id)
-    team["team"] = _FakeTeam(str(session_id))
+    team["team"] = _FakeRuntime(str(session_id))
 
     resp = await client.post(
         f"/{session_id}/question/{question_id}/answer",
@@ -316,7 +313,7 @@ async def test_answer_rejects_multiple_selections_on_a_single_select_question(
 async def test_answer_rejects_too_many_answer_groups(client, team):
     session_id = uuid.uuid4()
     question_id = await _seed(session_id)
-    team["team"] = _FakeTeam(str(session_id))
+    team["team"] = _FakeRuntime(str(session_id))
 
     resp = await client.post(
         f"/{session_id}/question/{question_id}/answer",
@@ -329,7 +326,7 @@ async def test_answer_rejects_too_many_answer_groups(client, team):
 async def test_answer_rejects_oversized_free_text(client, team):
     session_id = uuid.uuid4()
     question_id = await _seed(session_id)
-    team["team"] = _FakeTeam(str(session_id))
+    team["team"] = _FakeRuntime(str(session_id))
 
     resp = await client.post(
         f"/{session_id}/question/{question_id}/answer",
@@ -365,7 +362,7 @@ async def test_answer_rejects_more_selections_than_were_offered(client, team):
     """
     session_id = uuid.uuid4()
     question_id = await _seed(session_id, questions=MULTI_CUSTOM)
-    team["team"] = _FakeTeam(str(session_id))
+    team["team"] = _FakeRuntime(str(session_id))
 
     resp = await client.post(
         f"/{session_id}/question/{question_id}/answer",
@@ -379,7 +376,7 @@ async def test_answer_allows_every_option_plus_one_custom_answer(client, team):
     """The cap must not reject a legitimate maximal reply."""
     session_id = uuid.uuid4()
     question_id = await _seed(session_id, questions=MULTI_CUSTOM)
-    team["team"] = _FakeTeam(str(session_id))
+    team["team"] = _FakeRuntime(str(session_id))
 
     resp = await client.post(
         f"/{session_id}/question/{question_id}/answer",
@@ -393,7 +390,7 @@ async def test_partial_answers_are_allowed(client, team):
     """Skipping a question is a legitimate reply, reported as Unanswered."""
     session_id = uuid.uuid4()
     question_id = await _seed(session_id)
-    team["team"] = _FakeTeam(str(session_id))
+    team["team"] = _FakeRuntime(str(session_id))
 
     resp = await client.post(
         f"/{session_id}/question/{question_id}/answer",
@@ -407,8 +404,8 @@ async def test_second_answer_loses_the_race(client, team):
     """Two devices answering: the loser gets 409, not a second resume."""
     session_id = uuid.uuid4()
     question_id = await _seed(session_id)
-    fake_team = _FakeTeam(str(session_id))
-    team["team"] = fake_team
+    fake_runtime = _FakeRuntime(str(session_id))
+    team["team"] = fake_runtime
 
     first = await client.post(
         f"/{session_id}/question/{question_id}/answer",
@@ -421,22 +418,22 @@ async def test_second_answer_loses_the_race(client, team):
 
     assert first.status_code == 200
     assert second.status_code == 409
-    assert fake_team.lead.resumed == 1
+    assert fake_runtime.resumed == 1
 
 
 async def test_answer_reports_when_the_resume_could_not_start(client, team):
     """The answer is saved either way — the UI offers a manual resume."""
-    from app.agent.mode.team.member import AlreadyWorkingError
+    from app.agent.mode.team.runtime import AlreadyWorkingError
 
     session_id = uuid.uuid4()
     question_id = await _seed(session_id)
-    fake_team = _FakeTeam(str(session_id))
+    fake_runtime = _FakeRuntime(str(session_id))
 
     def boom() -> None:
         raise AlreadyWorkingError("openagentd")
 
-    fake_team.lead.activate_for_question_answer = boom  # type: ignore[method-assign]
-    team["team"] = fake_team
+    fake_runtime.activate_for_question_answer = boom  # type: ignore[method-assign]
+    team["team"] = fake_runtime
 
     resp = await client.post(
         f"/{session_id}/question/{question_id}/answer",
@@ -455,7 +452,7 @@ async def test_answer_reports_when_the_resume_could_not_start(client, team):
 async def test_answer_for_an_unknown_question_is_404(client, team):
     session_id = uuid.uuid4()
     await _seed(session_id)
-    team["team"] = _FakeTeam(str(session_id))
+    team["team"] = _FakeRuntime(str(session_id))
 
     resp = await client.post(
         f"/{session_id}/question/{uuid.uuid4()}/answer",
@@ -473,14 +470,14 @@ async def test_answer_for_an_unknown_question_is_404(client, team):
 async def test_dismiss_resolves_without_resuming(client, team):
     session_id = uuid.uuid4()
     question_id = await _seed(session_id)
-    fake_team = _FakeTeam(str(session_id))
-    team["team"] = fake_team
+    fake_runtime = _FakeRuntime(str(session_id))
+    team["team"] = fake_runtime
 
     resp = await client.post(f"/{session_id}/question/{question_id}/dismiss")
 
     assert resp.status_code == 200
-    assert fake_team.lead.resumed == 0
-    assert fake_team.lead.state == "idle"
+    assert fake_runtime.resumed == 0
+    assert fake_runtime.state == "idle"
 
     from app.core import db as core_db
 
@@ -499,13 +496,13 @@ async def test_dismiss_ends_the_turn(client, team):
     """
     session_id = uuid.uuid4()
     question_id = await _seed(session_id)
-    fake_team = _FakeTeam(str(session_id))
-    team["team"] = fake_team
+    fake_runtime = _FakeRuntime(str(session_id))
+    team["team"] = fake_runtime
 
     resp = await client.post(f"/{session_id}/question/{question_id}/dismiss")
 
     assert resp.status_code == 200
-    assert fake_team.turns_ended == 1
+    assert fake_runtime.turns_ended == 1
 
 
 async def test_dismiss_ends_the_turn_on_the_named_session(client, team, monkeypatch):
@@ -515,13 +512,13 @@ async def test_dismiss_ends_the_turn_on_the_named_session(client, team, monkeypa
     well as the lead binding, so it can hand back a team whose lead points
     somewhere else — a team evicted after the idle window and rebuilt gets a
     freshly minted lead session id. ``_try_emit_done`` closes
-    ``self.lead.session_id``, which would end a turn on the wrong stream and
+    ``self.session_id``, which would end a turn on the wrong stream and
     leave this one live forever.
     """
     session_id = uuid.uuid4()
     question_id = await _seed(session_id)
-    fake_team = _FakeTeam("019fd000-0000-7000-8000-00000000dead")
-    team["team"] = fake_team
+    fake_runtime = _FakeRuntime("019fd000-0000-7000-8000-00000000dead")
+    team["team"] = fake_runtime
 
     pushed: list = []
 
@@ -539,7 +536,7 @@ async def test_dismiss_ends_the_turn_on_the_named_session(client, team, monkeypa
 
     assert resp.status_code == 200
     # Not through the stale team: that would have closed the wrong session.
-    assert fake_team.turns_ended == 0
+    assert fake_runtime.turns_ended == 0
     assert (str(session_id), "done") in pushed
 
 
@@ -572,7 +569,7 @@ async def test_dismiss_ends_the_turn_with_no_live_team(client, team, monkeypatch
     assert (str(session_id), "done") in pushed
 
 
-async def test_answer_binds_a_stale_lead_before_resuming(client, team):
+async def test_answer_binds_a_stale_runtime_before_resuming(client, team):
     """A rebuilt team's lead points at a freshly minted session.
 
     ``activate_for_question_answer`` runs on ``lead.session_id``, so resuming
@@ -582,10 +579,10 @@ async def test_answer_binds_a_stale_lead_before_resuming(client, team):
     """
     session_id = uuid.uuid4()
     question_id = await _seed(session_id)
-    fake_team = _FakeTeam("019fd000-0000-7000-8000-00000000dead")
+    fake_runtime = _FakeRuntime("019fd000-0000-7000-8000-00000000dead")
     # A rebuilt team has never run a turn, so its lead is idle.
-    fake_team.lead.state = "idle"
-    team["team"] = fake_team
+    fake_runtime.state = "idle"
+    team["team"] = fake_runtime
 
     resp = await client.post(
         f"/{session_id}/question/{question_id}/answer",
@@ -593,18 +590,18 @@ async def test_answer_binds_a_stale_lead_before_resuming(client, team):
     )
 
     assert resp.json()["resumed"] is True
-    assert fake_team.attached == [str(session_id)]
-    assert fake_team.lead.session_id == str(session_id)
-    assert fake_team.lead.resumed == 1
+    assert fake_runtime.attached == [str(session_id)]
+    assert fake_runtime.session_id == str(session_id)
+    assert fake_runtime.resumed == 1
 
 
-async def test_answer_does_not_steal_a_lead_working_another_session(client, team):
+async def test_answer_does_not_steal_a_runtime_working_another_session(client, team):
     """Rebinding mid-turn would move a running activation to this session."""
     session_id = uuid.uuid4()
     question_id = await _seed(session_id)
-    fake_team = _FakeTeam("019fd000-0000-7000-8000-00000000dead")
-    fake_team.lead.state = "working"
-    team["team"] = fake_team
+    fake_runtime = _FakeRuntime("019fd000-0000-7000-8000-00000000dead")
+    fake_runtime.state = "working"
+    team["team"] = fake_runtime
 
     resp = await client.post(
         f"/{session_id}/question/{question_id}/answer",
@@ -612,11 +609,13 @@ async def test_answer_does_not_steal_a_lead_working_another_session(client, team
     )
 
     assert resp.json()["resumed"] is False
-    assert fake_team.attached == []
-    assert fake_team.lead.resumed == 0
+    assert fake_runtime.attached == []
+    assert fake_runtime.resumed == 0
 
 
-async def test_answer_does_not_steal_a_lead_suspended_on_another_session(client, team):
+async def test_answer_does_not_steal_a_runtime_suspended_on_another_session(
+    client, team
+):
     """Another session's unanswered question outranks this resume.
 
     ``waiting_input`` counts as busy for exactly this reason: rebinding would
@@ -624,9 +623,9 @@ async def test_answer_does_not_steal_a_lead_suspended_on_another_session(client,
     """
     session_id = uuid.uuid4()
     question_id = await _seed(session_id)
-    fake_team = _FakeTeam("019fd000-0000-7000-8000-00000000dead")
-    fake_team.lead.state = "waiting_input"
-    team["team"] = fake_team
+    fake_runtime = _FakeRuntime("019fd000-0000-7000-8000-00000000dead")
+    fake_runtime.state = "waiting_input"
+    team["team"] = fake_runtime
 
     resp = await client.post(
         f"/{session_id}/question/{question_id}/answer",
@@ -634,7 +633,7 @@ async def test_answer_does_not_steal_a_lead_suspended_on_another_session(client,
     )
 
     assert resp.json()["resumed"] is False
-    assert fake_team.attached == []
+    assert fake_runtime.attached == []
 
 
 async def test_answer_starts_a_team_when_none_is_live(client, team, monkeypatch):
@@ -656,8 +655,8 @@ async def test_answer_starts_a_team_when_none_is_live(client, team, monkeypatch)
         await db.commit()
 
     team["team"] = None
-    started = _FakeTeam(str(session_id))
-    started.lead.state = "waiting_input"
+    started = _FakeRuntime(str(session_id))
+    started.state = "waiting_input"
 
     async def fake_start(workspace: str, sid: str):
         started.started_with = (workspace, sid)
@@ -674,7 +673,7 @@ async def test_answer_starts_a_team_when_none_is_live(client, team, monkeypatch)
 
     assert resp.json()["resumed"] is True
     assert started.started_with == ("/tmp/ws", str(session_id))
-    assert started.lead.resumed == 1
+    assert started.resumed == 1
 
 
 async def test_answer_starts_a_workspace_team_when_none_is_live(
@@ -693,8 +692,8 @@ async def test_answer_starts_a_workspace_team_when_none_is_live(
         await db.commit()
 
     team["team"] = None
-    started = _FakeTeam(str(session_id))
-    started.lead.state = "waiting_input"
+    started = _FakeRuntime(str(session_id))
+    started.state = "waiting_input"
 
     async def fake_start(_workspace: str, sid: str):
         started.started_with = sid
@@ -711,10 +710,10 @@ async def test_answer_starts_a_workspace_team_when_none_is_live(
 
     assert resp.json()["resumed"] is True
     assert started.started_with == str(session_id)
-    assert started.lead.resumed == 1
+    assert started.resumed == 1
 
 
-async def test_a_failed_resume_frees_the_lead(client, team):
+async def test_a_failed_resume_frees_the_runtime(client, team):
     """A lead left parked with no question wedges the session.
 
     ``waiting_input`` counts as busy, so ``_maybe_activate`` refuses to start a
@@ -723,13 +722,13 @@ async def test_a_failed_resume_frees_the_lead(client, team):
     """
     session_id = uuid.uuid4()
     question_id = await _seed(session_id)
-    fake_team = _FakeTeam(str(session_id))
+    fake_runtime = _FakeRuntime(str(session_id))
 
     def boom() -> None:
         raise RuntimeError("event loop is closed")
 
-    fake_team.lead.activate_for_question_answer = boom  # type: ignore[method-assign]
-    team["team"] = fake_team
+    fake_runtime.activate_for_question_answer = boom  # type: ignore[method-assign]
+    team["team"] = fake_runtime
 
     resp = await client.post(
         f"/{session_id}/question/{question_id}/answer",
@@ -738,7 +737,7 @@ async def test_a_failed_resume_frees_the_lead(client, team):
 
     assert resp.status_code == 200
     assert resp.json()["resumed"] is False
-    assert fake_team.lead.state != "waiting_input"
+    assert fake_runtime.state != "waiting_input"
 
 
 async def test_a_failed_resume_closes_the_turn(client, team, monkeypatch):
@@ -750,13 +749,13 @@ async def test_a_failed_resume_closes_the_turn(client, team, monkeypatch):
     """
     session_id = uuid.uuid4()
     question_id = await _seed(session_id)
-    fake_team = _FakeTeam(str(session_id))
+    fake_runtime = _FakeRuntime(str(session_id))
 
     def boom() -> None:
         raise RuntimeError("no loop")
 
-    fake_team.lead.activate_for_question_answer = boom  # type: ignore[method-assign]
-    team["team"] = fake_team
+    fake_runtime.activate_for_question_answer = boom  # type: ignore[method-assign]
+    team["team"] = fake_runtime
 
     pushed: list = []
 
@@ -783,8 +782,8 @@ async def test_a_successful_resume_leaves_the_turn_open(client, team, monkeypatc
     """The resumed activation owns the turn — closing it would cut it short."""
     session_id = uuid.uuid4()
     question_id = await _seed(session_id)
-    fake_team = _FakeTeam(str(session_id))
-    team["team"] = fake_team
+    fake_runtime = _FakeRuntime(str(session_id))
+    team["team"] = fake_runtime
 
     pushed: list = []
 
@@ -836,7 +835,7 @@ async def test_answer_restores_the_stream_when_the_turn_state_is_gone(
     """
     session_id = uuid.uuid4()
     question_id = await _seed(session_id)
-    team["team"] = _FakeTeam(str(session_id))
+    team["team"] = _FakeRuntime(str(session_id))
     assert str(session_id) not in turn_state
 
     resp = await client.post(
@@ -863,7 +862,7 @@ async def test_answer_keeps_the_replay_state_of_a_live_suspension(
 
     session_id = uuid.uuid4()
     question_id = await _seed(session_id)
-    team["team"] = _FakeTeam(str(session_id))
+    team["team"] = _FakeRuntime(str(session_id))
     await stream_store.init_turn(str(session_id))
     turn_state[str(session_id)].content = {"openagentd": ["before the question"]}
     original = turn_state[str(session_id)]

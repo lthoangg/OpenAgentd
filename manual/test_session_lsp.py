@@ -13,14 +13,14 @@ PROMPT = (
 
 def post_message(base: str, message: str, session_id: str) -> dict:
     data = {"message": message, "session_id": session_id}
-    response = httpx.post(f"{base}/team/chat", data=data, timeout=30)
+    response = httpx.post(f"{base}/session/chat", data=data, timeout=30)
     response.raise_for_status()
     return response.json()
 
 async def stream_until_done(base: str, session_id: str):
     print(f"Streaming session {session_id} until done...")
     async with httpx.AsyncClient() as client:
-        async with client.stream("GET", f"{base}/team/{session_id}/stream", timeout=180) as response:
+        async with client.stream("GET", f"{base}/session/{session_id}/stream", timeout=180) as response:
             async for line in response.aiter_lines():
                 if line.startswith("data:"):
                     raw = line[5:].strip()

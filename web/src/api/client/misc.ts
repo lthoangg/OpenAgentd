@@ -16,26 +16,23 @@ export async function health(): Promise<{ status: string; version: string }> {
   return res.json()
 }
 
-// ── Compat: team status derived from /team/agents ────────────────────────────
+// ── Compat: team status derived from /session/agents ────────────────────────────
 //
 // There is no separate status endpoint: this is a projection of
-// `GET /team/agents`. It goes through `listTeamAgents` rather than fetching
+// `GET /session/agents`. It goes through `listTeamAgents` rather than fetching
 // directly so the team store's call shares one round trip with the header's
 // TanStack query (see the coalescing note in `client/team.ts`).
 //
-// `/team/agents` carries no per-agent run state, so `state` is always 'idle'
+// `/session/agents` carries no per-agent run state, so `state` is always 'idle'
 // here; live working/idle transitions come from the SSE `agent_status` events.
 
 export function shapeTeamStatus(data: TeamAgentsResponse): TeamStatusResponse | null {
   const agents = data.agents ?? []
-  const lead = agents.find((a) => a.is_lead) ?? agents[0]
+  const lead = agents[0]
   if (!lead) return null
   return {
     team: 'team',
     lead: { name: lead.name, model: lead.model ?? '', state: 'idle' },
-    members: agents
-      .filter((a) => !a.is_lead)
-      .map((a) => ({ name: a.name, model: a.model ?? '', state: 'idle' })),
   }
 }
 

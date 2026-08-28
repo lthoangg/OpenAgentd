@@ -367,7 +367,7 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
           const sid = get().sessionId
           if (sid) events.push({ kind: 'todos', sessionId: sid })
         }
-        if (toolName === 'team_manage') {
+        if (toolName === 'agent_spawn' || toolName === 'agent_stop' || toolName === 'agent_merge') {
           events.push({ kind: 'team_agents' })
         }
         if (events.length > 0) {

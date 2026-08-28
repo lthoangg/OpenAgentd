@@ -21,7 +21,7 @@ def post_message(base: str, message: str, session_id: str | None) -> str:
     payload: dict = {"message": message}
     if session_id:
         payload["session_id"] = session_id
-    r = httpx.post(f"{base}/team/chat", data=payload)
+    r = httpx.post(f"{base}/session/chat", data=payload)
     r.raise_for_status()
     data = r.json()
     sid = data["session_id"]
@@ -35,7 +35,7 @@ def wait_for_done(base: str, sid: str, timeout: int) -> bool:
     start = time.monotonic()
     try:
         with httpx.stream(
-            "GET", f"{base}/team/{sid}/stream", timeout=timeout + 5
+            "GET", f"{base}/session/{sid}/stream", timeout=timeout + 5
         ) as resp:
             for line in resp.iter_lines():
                 if time.monotonic() - start > timeout:
@@ -54,33 +54,23 @@ def wait_for_done(base: str, sid: str, timeout: int) -> bool:
 
 
 def print_history(base: str, sid: str):
-    r = httpx.get(f"{base}/team/{sid}/history", params={"limit": 1000})
+    r = httpx.get(f"{base}/session/{sid}/history", params={"limit": 1000})
     r.raise_for_status()
     data = r.json()
 
-    lead = data["lead"]
-    lead_name = lead.get("agent_name") or lead.get("name") or "lead"
-    _print_agent(lead_name, lead["messages"], is_lead=True)
+    session = data["session"]
+    name = session.get("agent_name") or session.get("name") or "session"
+    messages = session["messages"]
+    _print_agent(name, messages)
 
-    for mb in data.get("members", []):
-        _print_agent(mb["name"], mb["messages"])
-
-    total = len(lead["messages"]) + sum(
-        len(mb["messages"]) for mb in data.get("members", [])
-    )
-    done_ct = sum(
-        1
-        for mb in data.get("members", [])
-        for m in mb["messages"]
-        if m.get("content") == "[DONE]"
-    )
+    total = len(messages)
+    done_ct = sum(1 for message in messages if message.get("content") == "[DONE]")
     print(f"\ntotal: {total} msgs | [DONE]: {done_ct}")
 
 
-def _print_agent(name: str, messages: list, *, is_lead: bool = False):
-    label = f"{name} [lead]" if is_lead else name
+def _print_agent(name: str, messages: list):
     print(f"\n{'=' * 60}")
-    print(f"  {label}: {len(messages)} msgs")
+    print(f"  {name}: {len(messages)} msgs")
     print("=" * 60)
     for m in messages:
         role = m["role"]

@@ -14,7 +14,7 @@ mock.module('@tanstack/react-query', () => ({ useQueryClient: () => ({}) }))
 mock.module('@/queries/useTodosQuery', () => ({ useTodosQuery: () => ({ data: { todos: [] } }) }))
 mock.module('@/queries', () => ({ useProvidersQuery: () => ({ data: { providers: [] } }) }))
 mock.module('@/queries/useAgentsQuery', () => ({
-  useTeamAgentsQuery: () => ({ data: { agents: [{ is_lead: true }] }, isLoading: false }),
+  useTeamAgentsQuery: () => ({ data: { agents: [{}] }, isLoading: false }),
 }))
 mock.module('@/queries/useAgentFilesQuery', () => ({ useRegistryQuery: () => ({ data: { models: [] } }) }))
 mock.module('@/queries/useFileRefsQuery', () => ({ useFileRefsQuery: () => ({ refs: [] }) }))
@@ -43,13 +43,7 @@ mock.module('@/components/CodingFileViewerPanel', () => ({ CodingFileViewerPanel
 mock.module('@/components/WorkspaceFilesPanel', () => ({ WorkspaceFilesPanel: () => null }))
 mock.module('@/components/Sidebar', () => ({ Sidebar: () => null }))
 mock.module('@/components/AppFooter', () => ({ AppFooter: () => null }))
-mock.module('@/components/TeamChatView/SplitGrid', () => ({ SplitGrid: () => null }))
 mock.module('@/components/TeamChatView/TeamChatPanels', () => ({ TeamChatPanels: () => null }))
-mock.module('@/components/TeamChatView/AgentTabs', () => ({
-  AgentTabs: ({ agents }: { agents: string[] }) => {
-    return <div data-testid="agent-tabs">{agents.join(',')}</div>
-  },
-}))
 mock.module('@/components/TeamChatView/TeamChatHeader', () => ({
   TeamChatHeader: ({
     agentNames,
@@ -144,16 +138,12 @@ mock.module('@/components/TeamChatView/useDragDrop', () => ({
 }))
 mock.module('@/utils/workspace', () => ({ workspaceLabel: (workspace: string) => workspace }))
 
-const initialState = typeof useTeamStore.getInitialState === 'function'
-  ? useTeamStore.getInitialState()
-  : useTeamStore.getState()
-
 function userBlock(content: string): ContentBlock {
   return { id: `user:${content}`, type: 'user', content, timestamp: new Date() }
 }
 
 beforeEach(() => {
-  useTeamStore.setState(initialState, true)
+  useTeamStore.getState().newSession()
   useTeamStore.setState((state) => {
     state.leadName = 'lead'
     state.activeAgent = 'lead'
@@ -195,22 +185,6 @@ describe('TeamChatView reactive derived state', () => {
     })
 
     expect(screen.getByTestId('history-prompts').textContent).toBe('loaded prompt')
-  })
-
-  it('removes an offline member from desktop tabs and mobile action inputs', () => {
-    render(<TeamChatView sessionId="session-1" workspace="/repo/project" />)
-    expect(screen.getByTestId('agent-tabs').textContent).toBe('lead,worker#1')
-    expect(screen.getByTestId('header-agents').textContent).toBe('lead,worker#1')
-
-    act(() => {
-      useTeamStore.setState((state) => {
-        state.agentStreams['worker#1'].status = 'offline'
-        state.liveAgentNames = ['lead']
-      })
-    })
-
-    expect(screen.queryByTestId('agent-tabs')).toBeNull()
-    expect(screen.getByTestId('header-agents').textContent).toBe('lead')
   })
 
   it('sums current session costs exactly and excludes stale agent streams', () => {

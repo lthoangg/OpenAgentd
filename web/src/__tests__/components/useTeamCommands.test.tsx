@@ -27,7 +27,6 @@ import { renderHook, cleanup } from "@testing-library/react"
 import { useTeamCommands } from "@/components/TeamChatView/useTeamCommands"
 import { useSettingsStore } from "@/stores/useSettingsStore"
 import type { Command } from "@/components/CommandPalette"
-import type { ViewMode } from "@/components/TeamChatView/types"
 
 afterEach(cleanup)
 
@@ -35,7 +34,6 @@ afterEach(cleanup)
 function makeArgs(overrides: Partial<Parameters<typeof useTeamCommands>[0]> = {}) {
   const noop = () => {}
   return {
-    viewMode: "agent" as ViewMode,
     toggleAgentCapabilities: noop,
     setShowTodos: noop,
     handleWorkspaceFiles: noop,
@@ -72,11 +70,6 @@ describe("useTeamCommands — shortcut labels", () => {
     expect(byId(result.current, "collapse-sidebar").shortcut).toBe("Ctrl+B")
     expect(byId(result.current, "go-settings").shortcut).toBe("Ctrl+,")
   })
-
-  it("toggle-view carries the Cmd+Shift+V / Ctrl+Shift+V shortcut label", () => {
-    const { result } = renderHook(() => useTeamCommands(makeArgs()))
-    expect(byId(result.current, "toggle-view").shortcut).toBe("Ctrl+Shift+V")
-  })
 })
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -94,23 +87,6 @@ describe("useTeamCommands — dispatchShortcutKey synthetic events", () => {
       window.removeEventListener("keydown", listener)
     }
     expect(captured).toHaveLength(0)
-  })
-
-  it("toggle-view dispatches a primary-modifier Shift+'v' keydown", () => {
-    const { result } = renderHook(() => useTeamCommands(makeArgs()))
-    const captured: KeyboardEvent[] = []
-    const listener = (e: Event) => captured.push(e as KeyboardEvent)
-    window.addEventListener("keydown", listener)
-    try {
-      byId(result.current, "toggle-view").action()
-    } finally {
-      window.removeEventListener("keydown", listener)
-    }
-    expect(captured.length).toBe(1)
-    expect(captured[0].key).toBe("v")
-    expect(captured[0].ctrlKey).toBe(true)
-    expect(captured[0].metaKey).toBe(false)
-    expect(captured[0].shiftKey).toBe(true)
   })
 
   it("scheduled-tasks dispatches a primary-modifier 's' keydown", () => {
@@ -164,16 +140,6 @@ describe("useTeamCommands — dispatchShortcutKey synthetic events", () => {
 // ════════════════════════════════════════════════════════════════════════════
 //  viewMode-conditional commands
 // ════════════════════════════════════════════════════════════════════════════
-describe("useTeamCommands — viewMode-gated commands", () => {
-  it("toggle-view label reflects current mode (cycle: agent → split)", () => {
-    const agent = renderHook(() => useTeamCommands(makeArgs({ viewMode: "agent" })))
-    expect(byId(agent.result.current, "toggle-view").label).toBe("Switch to Split View")
-
-    const split = renderHook(() => useTeamCommands(makeArgs({ viewMode: "split" })))
-    expect(byId(split.result.current, "toggle-view").label).toBe("Switch to Agent View")
-  })
-})
-
 // ════════════════════════════════════════════════════════════════════════════
 //  Open Terminal command
 // ════════════════════════════════════════════════════════════════════════════

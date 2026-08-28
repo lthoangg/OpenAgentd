@@ -2097,7 +2097,7 @@ async def test_undo_and_redo_use_workspace_snapshots(session, tmp_path, monkeypa
     # ── /redo #1: boundary moves forward to U2, workspace = snap_u2 ───
     shift = await redo_session_messages(session, chat_session.id)
     assert shift.applied is True
-    # The next-user pointer is plumbed back so /api/team/commands can
+    # The next-user pointer is plumbed back so /api/session/commands can
     # echo it to the client for local boundary application.
     assert shift.target is not None
     assert shift.target.id == u2.id
@@ -2342,67 +2342,6 @@ async def test_session_usage_totals_empty_without_usage(session):
     assert await session_usage_totals(session, lead.id) == (0.0, 0)
 
 
-@pytest.mark.asyncio
-async def test_get_team_history_member_fetch_is_bounded(session):
-    """_fetch_member_pages must not materialize every member row.
-
-    Regression: the batched member-history query had no per-session LIMIT —
-    a member with a very long history pulled *all* its rows into memory and
-    trimmed in Python. The fetch must stay bounded per sub-session.
-    """
-    from app.services.chat_service import _HISTORY_PAGE_SIZE, get_team_history
-    from app.agent.schemas.chat import HumanMessage
-
-    lead = await create_chat_session(session, title="lead")
-    member = await create_chat_session(session, title="member")
-    member.parent_session_id = lead.id
-    session.add(member)
-    await session.commit()
-
-    total = _HISTORY_PAGE_SIZE * 3
-    for i in range(total):
-        await save_message(session, member.id, HumanMessage(content=f"m{i}"))
-
-    fetched_message_rows = 0
-    original_exec = session.exec
-
-    async def counting_exec(stmt, *args, **kwargs):
-        nonlocal fetched_message_rows
-        result = await original_exec(stmt, *args, **kwargs)
-        rows = result.all()
-        fetched_message_rows += sum(1 for r in rows if isinstance(r, SessionMessage))
-
-        class _Result:
-            def all(self):
-                return rows
-
-            def first(self):
-                return rows[0] if rows else None
-
-        return _Result()
-
-    session.exec = counting_exec
-    try:
-        data = await get_team_history(session, lead.id)
-    finally:
-        session.exec = original_exec
-
-    assert data is not None
-    assert len(data.members) == 1
-    member_msgs = data.members[0].messages
-    assert len(member_msgs) == _HISTORY_PAGE_SIZE
-    # Newest page, chronological order.
-    assert member_msgs[-1].content == f"m{total - 1}"
-    assert member_msgs[0].content == f"m{total - _HISTORY_PAGE_SIZE}"
-
-    # The lead page (empty) + member page must stay bounded — allow page+1
-    # sentinel per session, not the full 3x-page history.
-    assert fetched_message_rows <= (_HISTORY_PAGE_SIZE + 1) * 2, (
-        f"fetched {fetched_message_rows} message rows; member history fetch "
-        "is unbounded"
-    )
-
-
 # ---------------------------------------------------------------------------
 # get_team_history_since — delta reconciliation for turn completion
 # ---------------------------------------------------------------------------
@@ -2487,24 +2426,6 @@ async def test_get_team_history_since_hides_hidden_rows(session):
 
 
 @pytest.mark.asyncio
-async def test_get_team_history_since_includes_member_sessions(session):
-    from app.services.chat_service import get_team_history_since
-
-    lead = await create_chat_session(session, title="lead")
-    member = await create_chat_session(
-        session, title="member", parent_session_id=lead.id, agent_name="explorer#1"
-    )
-    anchor = await save_message(session, lead.id, HumanMessage(content="anchor"))
-    await save_message(session, member.id, HumanMessage(content="member-new"))
-
-    delta = await get_team_history_since(session, lead.id, since_id=anchor.id)
-
-    assert len(delta.members) == 1
-    assert delta.members[0].session.agent_name == "explorer#1"
-    assert [m.content for m in delta.members[0].messages] == ["member-new"]
-
-
-@pytest.mark.asyncio
 async def test_get_team_history_since_flags_oversized_delta(session):
     """A delta larger than the cap tells the caller to do a full reload."""
     from app.services.chat_service import get_team_history_since
@@ -2526,48 +2447,6 @@ async def test_get_team_history_since_missing_session_returns_none(session):
     from app.services.chat_service import get_team_history_since
 
     assert await get_team_history_since(session, uuid4(), since_id=uuid4()) is None
-
-
-@pytest.mark.asyncio
-async def test_get_team_history_member_page_skips_hidden_rows_in_sql(session):
-    """Hidden member rows must not consume the member page window.
-
-    Regression: the lead query filtered ``hidden_from_user`` in SQL, but
-    ``_fetch_member_pages`` applied only the Python filter under a
-    ``ROW_NUMBER() <= PAGE_SIZE + 1`` cap.  A member whose newest page-worth of
-    rows were all hidden returned an empty page, and because member histories
-    carry no cursor of their own the older visible rows were unreachable.
-    """
-    from app.services.chat_service import _HISTORY_PAGE_SIZE, get_team_history
-
-    lead = await create_chat_session(session, title="lead")
-    member = await create_chat_session(session, title="member")
-    member.parent_session_id = lead.id
-    session.add(member)
-    await session.commit()
-
-    await save_message(session, lead.id, HumanMessage(content="lead-hello"))
-    for i in range(3):
-        await save_message(
-            session, member.id, HumanMessage(content=f"member-visible-{i}")
-        )
-    for i in range(_HISTORY_PAGE_SIZE + 1):
-        await save_message(
-            session,
-            member.id,
-            HumanMessage(content=f"member-hidden-{i}"),
-            extra={"hidden_from_user": True},
-        )
-    await session.commit()
-
-    history = await get_team_history(session, lead.id)
-    assert history is not None
-    assert len(history.members) == 1
-    assert [m.content for m in history.members[0].messages] == [
-        "member-visible-0",
-        "member-visible-1",
-        "member-visible-2",
-    ]
 
 
 @pytest.mark.asyncio

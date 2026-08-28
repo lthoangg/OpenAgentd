@@ -86,7 +86,7 @@ openagentd run --model openai:gpt-5.5 --thinking high --prompt "Summarize this p
 ```
 
 The command validates the current directory as a coding workspace, persists a
-new session for the turn, and streams the lead agent's response text to standard
+new session for the turn, and streams that session agent's response text to standard
 output. Tool-permission events follow the runtime's existing auto-allow policy;
 interactive agent questions stop the non-interactive command. It does not
 support workspace selection or session resume.

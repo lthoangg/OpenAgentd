@@ -26,7 +26,7 @@ def test_cors_exposes_range_headers_for_cross_origin_requests(tmp_path):
     (workspace / "doc.pdf").write_bytes(b"%PDF-1.4 " + b"x" * 2000)
 
     resp = _client().get(
-        "/api/team/workspace/files/read",
+        "/api/session/workspace/files/read",
         params={"workspace": str(workspace), "path": "doc.pdf"},
         headers={"Origin": "http://192.168.1.50:3000", "Range": "bytes=0-99"},
     )
@@ -49,7 +49,7 @@ def test_cors_reflects_arbitrary_origin_with_credentials(tmp_path):
     (workspace / "doc.pdf").write_bytes(b"%PDF-1.4 " + b"x" * 10)
 
     resp = _client().get(
-        "/api/team/workspace/files/read",
+        "/api/session/workspace/files/read",
         params={"workspace": str(workspace), "path": "doc.pdf"},
         headers={"Origin": "http://10.0.0.42:5173"},
     )

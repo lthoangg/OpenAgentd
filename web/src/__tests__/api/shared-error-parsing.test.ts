@@ -5,7 +5,7 @@ function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), { status })
 }
 
-async function captureError(res: Response, label = "POST /team/chat"): Promise<ApiValidationError> {
+async function captureError(res: Response, label = "POST /session/chat"): Promise<ApiValidationError> {
   try {
     await parseDetailOrThrow(res, label)
   } catch (err) {
@@ -37,12 +37,12 @@ describe("parseDetailOrThrow", () => {
 
   it("falls back to the label for an empty detail array", async () => {
     const err = await captureError(jsonResponse(422, { detail: [] }))
-    expect(err.message).toBe("POST /team/chat failed: 422")
+    expect(err.message).toBe("POST /session/chat failed: 422")
   })
 
   it("falls back to the label when detail entries have no msg", async () => {
     const err = await captureError(jsonResponse(422, { detail: [{ loc: ["a"] }, { loc: ["b"] }] }))
-    expect(err.message).toBe("POST /team/chat failed: 422")
+    expect(err.message).toBe("POST /session/chat failed: 422")
   })
 
   it("skips falsey msg entries rather than emitting empty separators", async () => {
@@ -54,7 +54,7 @@ describe("parseDetailOrThrow", () => {
 
   it("falls back to the label for an empty detail string", async () => {
     const err = await captureError(jsonResponse(500, { detail: "" }))
-    expect(err.message).toBe("POST /team/chat failed: 500")
+    expect(err.message).toBe("POST /session/chat failed: 500")
   })
 
   it("falls back to the label for an object detail", async () => {

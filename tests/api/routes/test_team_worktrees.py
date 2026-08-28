@@ -53,7 +53,7 @@ def test_create_worktree_returns_directory_and_branch(
     client = TestClient(app_without_team)
 
     resp = client.post(
-        "/api/team/workspace/worktrees",
+        "/api/session/workspace/worktrees",
         json={"source_workspace": str(repo), "name": "Feature Login"},
     )
 
@@ -80,7 +80,7 @@ async def test_find_managed_worktree_source_detects_openagentd_worktree(
     )
     client = TestClient(app_without_team)
     created = client.post(
-        "/api/team/workspace/worktrees",
+        "/api/session/workspace/worktrees",
         json={"source_workspace": str(repo), "name": "Task"},
     ).json()
 
@@ -98,12 +98,12 @@ def test_list_worktrees_excludes_primary(app_without_team, tmp_path, monkeypatch
     )
     client = TestClient(app_without_team)
     created = client.post(
-        "/api/team/workspace/worktrees",
+        "/api/session/workspace/worktrees",
         json={"source_workspace": str(repo), "name": "Task"},
     ).json()
 
     resp = client.get(
-        "/api/team/workspace/worktrees",
+        "/api/session/workspace/worktrees",
         params={"source_workspace": str(repo)},
     )
 
@@ -127,18 +127,18 @@ def test_rename_worktree_updates_sidebar_title(app_without_team, tmp_path, monke
     )
     client = TestClient(app_without_team)
     created = client.post(
-        "/api/team/workspace/worktrees",
+        "/api/session/workspace/worktrees",
         json={"source_workspace": str(repo), "name": "Task"},
     ).json()
 
     resp = client.patch(
-        "/api/team/workspace/worktrees",
+        "/api/session/workspace/worktrees",
         json={"directory": created["directory"], "name": "Review UI"},
     )
 
     assert resp.status_code == 200
     assert resp.json()["name"] == "Review UI"
-    tree = client.get("/api/team/workspace/tree")
+    tree = client.get("/api/session/workspace/tree")
     assert tree.status_code == 200
     assert tree.json()["repositories"][0]["worktrees"][0]["name"] == "Review UI"
 
@@ -147,7 +147,7 @@ def test_create_worktree_rejects_non_git_workspace(app_without_team, tmp_path):
     client = TestClient(app_without_team)
 
     resp = client.post(
-        "/api/team/workspace/worktrees",
+        "/api/session/workspace/worktrees",
         json={"source_workspace": str(tmp_path), "name": "task"},
     )
 
@@ -160,7 +160,7 @@ def test_create_worktree_rejects_invalid_branch(app_without_team, tmp_path):
     client = TestClient(app_without_team)
 
     resp = client.post(
-        "/api/team/workspace/worktrees",
+        "/api/session/workspace/worktrees",
         json={
             "source_workspace": str(repo),
             "name": "task",
@@ -181,13 +181,13 @@ def test_remove_managed_worktree(app_without_team, tmp_path, monkeypatch):
     )
     client = TestClient(app_without_team)
     created = client.post(
-        "/api/team/workspace/worktrees",
+        "/api/session/workspace/worktrees",
         json={"source_workspace": str(repo), "name": "remove-me"},
     ).json()
 
     resp = client.request(
         "DELETE",
-        "/api/team/workspace/worktrees",
+        "/api/session/workspace/worktrees",
         json={"source_workspace": str(repo), "directory": created["directory"]},
     )
 
@@ -207,7 +207,7 @@ def test_remove_managed_worktree_keeps_user_branch(
     )
     client = TestClient(app_without_team)
     created = client.post(
-        "/api/team/workspace/worktrees",
+        "/api/session/workspace/worktrees",
         json={
             "source_workspace": str(repo),
             "name": "remove-user-branch",
@@ -217,7 +217,7 @@ def test_remove_managed_worktree_keeps_user_branch(
 
     resp = client.request(
         "DELETE",
-        "/api/team/workspace/worktrees",
+        "/api/session/workspace/worktrees",
         json={"source_workspace": str(repo), "directory": created["directory"]},
     )
 
@@ -247,13 +247,13 @@ def test_remove_managed_worktree_deletes_openagentd_branch(
     )
     client = TestClient(app_without_team)
     created = client.post(
-        "/api/team/workspace/worktrees",
+        "/api/session/workspace/worktrees",
         json={"source_workspace": str(repo), "name": "remove-branch"},
     ).json()
 
     resp = client.request(
         "DELETE",
-        "/api/team/workspace/worktrees",
+        "/api/session/workspace/worktrees",
         json={"source_workspace": str(repo), "directory": created["directory"]},
     )
 
@@ -287,7 +287,7 @@ def test_remove_managed_worktree_deletes_registry_entry(
     )
     client = TestClient(app_without_team)
     created = client.post(
-        "/api/team/workspace/worktrees",
+        "/api/session/workspace/worktrees",
         json={"source_workspace": str(repo), "name": "remove-session"},
     ).json()
 
@@ -302,12 +302,12 @@ def test_remove_managed_worktree_deletes_registry_entry(
 
     resp = client.request(
         "DELETE",
-        "/api/team/workspace/worktrees",
+        "/api/session/workspace/worktrees",
         json={"source_workspace": str(repo), "directory": created["directory"]},
     )
 
     assert resp.status_code == 200
-    tree = client.get("/api/team/workspace/tree")
+    tree = client.get("/api/session/workspace/tree")
     assert tree.status_code == 200
     repositories = tree.json()["repositories"]
     assert all(
@@ -362,13 +362,13 @@ def test_remove_missing_managed_worktree_cleans_registry(
     client = TestClient(app_without_team)
     resp = client.request(
         "DELETE",
-        "/api/team/workspace/worktrees",
+        "/api/session/workspace/worktrees",
         json={"source_workspace": str(repo), "directory": str(directory)},
     )
 
     assert resp.status_code == 200
     assert resp.json() == {"removed": True}
-    tree = client.get("/api/team/workspace/tree")
+    tree = client.get("/api/session/workspace/tree")
     assert tree.status_code == 200
     assert tree.json()["repositories"] == [
         {"path": str(repo.resolve()), "name": "repo", "worktrees": []}
@@ -419,7 +419,7 @@ def test_remove_rejects_unmanaged_worktree(app_without_team, tmp_path):
 
     resp = client.request(
         "DELETE",
-        "/api/team/workspace/worktrees",
+        "/api/session/workspace/worktrees",
         json={"source_workspace": str(repo), "directory": str(unmanaged)},
     )
 
@@ -442,7 +442,7 @@ def test_resolve_validates_model_before_creating_worktree(
         AsyncMock(return_value=False),
     ):
         resp = client.post(
-            "/api/team/sessions/resolve",
+            "/api/session/sessions/resolve",
             json={
                 "mode": "coding",
                 "worktree_from": str(repo),
@@ -468,6 +468,7 @@ async def test_worktree_git_calls_do_not_block_the_event_loop(tmp_path, monkeypa
     import time
 
     from app.api.routes.team import worktrees as wt
+    from app.services import worktree_service
 
     repo = _repo(tmp_path)
     monkeypatch.setattr(
@@ -480,7 +481,7 @@ async def test_worktree_git_calls_do_not_block_the_event_loop(tmp_path, monkeypa
         time.sleep(0.3)  # models a slow git operation on a big repo
         return real_run(*args, **kwargs)
 
-    monkeypatch.setattr(wt.subprocess, "run", _slow_git)
+    monkeypatch.setattr(worktree_service.subprocess, "run", _slow_git)
 
     ticks = 0
 

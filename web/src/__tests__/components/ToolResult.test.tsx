@@ -312,31 +312,41 @@ describe("ToolResult — GenericResult fallback", () => {
 })
 
 // ---------------------------------------------------------------------------
-// team_message renderer
+// agent_send / agent_spawn renderer
 // ---------------------------------------------------------------------------
 
-describe("ToolResult — team_message", () => {
+describe("ToolResult — agent_send", () => {
   it("renders success result text content", () => {
-    render(<ToolResult toolName="team_message" result="Message sent to researcher" />)
-    expect(screen.getByText("Message sent to researcher")).toBeTruthy()
+    render(<ToolResult toolName="agent_send" result="Message delivered to agent session 123" />)
+    expect(screen.getByText("Message delivered to agent session 123")).toBeTruthy()
   })
 
-  it("renders error result starting with 'Agent(s) not found'", () => {
-    render(<ToolResult toolName="team_message" result="Agent(s) not found: researcher. Available: writer, analyst" />)
-    expect(screen.getByText(/Agent\(s\) not found/)).toBeTruthy()
+  it("renders error result starting with 'Failed'", () => {
+    render(<ToolResult toolName="agent_send" result="Failed to deliver message: session not found" />)
+    expect(screen.getByText(/Failed to deliver message/)).toBeTruthy()
   })
 
-  it("renders error result starting with 'No valid recipients'", () => {
-    render(<ToolResult toolName="team_message" result="No valid recipients provided" />)
-    expect(screen.getByText(/No valid recipients/)).toBeTruthy()
+  it("renders error result starting with 'Invalid'", () => {
+    render(<ToolResult toolName="agent_send" result="Invalid target: cannot message unrelated session" />)
+    expect(screen.getByText(/Invalid target/)).toBeTruthy()
   })
 
   it("renders result as a span element", () => {
-    render(<ToolResult toolName="team_message" result="Message sent" />)
+    render(<ToolResult toolName="agent_send" result="Message sent" />)
     const span = screen.getByText("Message sent")
     expect(span.tagName.toLowerCase()).toBe("span")
   })
+})
 
+describe("ToolResult — agent_spawn", () => {
+  it("renders JSON result as key-value pairs", () => {
+    const payload = JSON.stringify({ status: "spawned", session_id: "s-456", branch: "agent/auth" })
+    render(<ToolResult toolName="agent_spawn" result={payload} />)
+    expect(screen.getByText("status")).toBeTruthy()
+    expect(screen.getByText("spawned")).toBeTruthy()
+    expect(screen.getByText("session_id")).toBeTruthy()
+    expect(screen.getByText("s-456")).toBeTruthy()
+  })
 })
 
 // ---------------------------------------------------------------------------

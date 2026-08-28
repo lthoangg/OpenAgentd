@@ -156,11 +156,11 @@ def list_agents() -> list[str]:
     root = agents_dir()
     if not root.exists():
         return []
-    from app.agent.loader import ensure_builtin_agent_blueprints
+    from app.agent.loader import ensure_builtin_openagentd_lead
 
     coding_root = root / "coding"
     if any(coding_root.glob("*.md")):
-        ensure_builtin_agent_blueprints(coding_root, mode="coding")
+        ensure_builtin_openagentd_lead(coding_root, mode="coding")
     return sorted(
         name
         for p in root.rglob("*.md")

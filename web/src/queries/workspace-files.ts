@@ -37,7 +37,7 @@ export const WORKSPACE_FILES_STALE_MS = 30_000
 /** Default staleness for always-visible file trees. */
 export const WORKSPACE_TREE_STALE_MS = 5_000
 
-/** `GET /team/{session_id}/files` — session workspace files. */
+/** `GET /session/{session_id}/files` — session workspace files. */
 export function workspaceFilesQueryOptions(sessionId: string) {
   return {
     queryKey: queryKeys.team.files(sessionId),
@@ -45,7 +45,7 @@ export function workspaceFilesQueryOptions(sessionId: string) {
   }
 }
 
-/** `GET /team/workspace/files/list` — coding-mode workspace. */
+/** `GET /session/workspace/files/list` — coding-mode workspace. */
 export function codingWorkspaceFilesQueryOptions(workspace: string) {
   return {
     queryKey: queryKeys.coding.files(workspace),

@@ -11,7 +11,7 @@ export function preloadConnectedApp(client: QueryClient): void {
   // Warm heavy rendering chunks (markdown, mermaid, pdfjs) during idle time.
   preloadHeavyRenderers()
 
-  // Warms the single /team/agents entry read by both the home-page team probe
+  // Warms the single /session/agents entry read by both the home-page team probe
   // and the chat header. See ``queries/team-agents.ts``.
   void client.prefetchQuery({
     ...teamAgentsQueryOptions(),

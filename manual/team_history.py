@@ -17,7 +17,7 @@ def print_history(base: str, sid: str):
     before: str | None = None
     while True:
         params = {"before": before} if before else {}
-        r = httpx.get(f"{base}/team/{sid}/history", params=params)
+        r = httpx.get(f"{base}/session/{sid}/history", params=params)
         r.raise_for_status()
         data = r.json()
         pages.append(data)
@@ -29,52 +29,31 @@ def print_history(base: str, sid: str):
     # reverse to get chronological order before merging.
     pages.reverse()
 
-    # Merge messages across pages per agent.
-    lead_messages: list = []
-    members_messages: dict[str, list] = {}
-    lead_name: str = ""
+    # Merge messages across pages for the requested session.
+    messages: list = []
+    session_name: str = ""
     for page in pages:
-        lead = page["lead"]
-        lead_name = lead.get("agent_name") or lead.get("name") or "lead"
-        lead_messages.extend(lead["messages"])
-        for mb in page.get("members", []):
-            members_messages.setdefault(mb["name"], []).extend(mb["messages"])
+        session = page["session"]
+        session_name = session.get("agent_name") or session.get("name") or "session"
+        messages.extend(session["messages"])
 
-    _print_agent(lead_name, lead_messages, is_lead=True)
-    for name, msgs in members_messages.items():
-        _print_agent(name, msgs)
+    _print_agent(session_name, messages)
 
-    all_member_msgs = list(members_messages.values())
-    total = len(lead_messages) + sum(len(msgs) for msgs in all_member_msgs)
-    done_ct = sum(
-        1 for msgs in all_member_msgs for m in msgs if m.get("content") == "[DONE]"
-    )
+    total = len(messages)
+    done_ct = sum(1 for message in messages if message.get("content") == "[DONE]")
     social_ct = 0
-    for msgs in all_member_msgs:
-        for m in msgs:
-            for t in m.get("tool_calls") or []:
-                if t["function"]["name"] == "send_message":
-                    a = t["function"]["arguments"].lower()
-                    if any(
-                        w in a
-                        for w in ["hello", "ready", "hi ", "ok", "chào", "sẵn sàng"]
-                    ):
-                        social_ct += 1
 
-    # Me count unique IDs
-    all_ids = [m["id"] for m in lead_messages]
-    for msgs in all_member_msgs:
-        all_ids += [m["id"] for m in msgs]
+    # Count unique IDs.
+    all_ids = [message["id"] for message in messages]
     dupes = len(all_ids) - len(set(all_ids))
 
     print("\n--- summary ---")
     print(f"total: {total} | [DONE]: {done_ct} | dupes: {dupes} | social: {social_ct}")
 
 
-def _print_agent(name: str, messages: list, *, is_lead: bool = False):
-    label = f"{name} [lead]" if is_lead else name
+def _print_agent(name: str, messages: list):
     print(f"\n{'=' * 60}")
-    print(f"  {label}: {len(messages)} msgs")
+    print(f"  {name}: {len(messages)} msgs")
     print("=" * 60)
     for i, m in enumerate(messages, 1):
         role = m["role"]

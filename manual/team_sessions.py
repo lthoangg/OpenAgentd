@@ -1,6 +1,6 @@
 """Inspect team sessions: list and full history.
 
-Tests: GET /team/sessions, GET /team/{id}/history.
+Tests: GET /session/sessions, GET /session/{id}/history.
 
 Usage:
   uv run python -m manual.team_sessions              # list first page (default 10)
@@ -20,7 +20,7 @@ def list_team_sessions(base: str, limit: int, before: str | None = None) -> dict
     params: dict = {"limit": limit}
     if before:
         params["before"] = before
-    r = httpx.get(f"{base}/team/sessions", params=params)
+    r = httpx.get(f"{base}/session/sessions", params=params)
     r.raise_for_status()
     return r.json()
 
@@ -57,24 +57,19 @@ def list_all(base: str, limit: int):
 
 
 def print_history(base: str, session_id: str):
-    r = httpx.get(f"{base}/team/{session_id}/history", params={"limit": 1000})
+    r = httpx.get(f"{base}/session/{session_id}/history", params={"limit": 1000})
     if r.status_code == 404:
         print(f"404: history for {session_id} not found")
         return
     r.raise_for_status()
     data = r.json()
 
-    lead = data["lead"]
-    lead_name = lead.get("agent_name") or lead.get("name") or "lead"
-    _print_agent_msgs(lead_name, lead["messages"], is_lead=True)
+    session = data["session"]
+    session_name = session.get("agent_name") or session.get("name") or "session"
+    all_msgs = list(session["messages"])
+    _print_agent_msgs(session_name, all_msgs)
 
-    for mb in data.get("members", []):
-        _print_agent_msgs(mb["name"], mb["messages"])
-
-    # Me compute summary stats
-    all_msgs = list(lead["messages"])
-    for mb in data.get("members", []):
-        all_msgs += mb["messages"]
+    # Compute summary stats for the requested session.
 
     all_ids = [m["id"] for m in all_msgs]
     dupes = len(all_ids) - len(set(all_ids))
@@ -96,10 +91,9 @@ def print_history(base: str, session_id: str):
     )
 
 
-def _print_agent_msgs(name: str, messages: list, *, is_lead: bool = False):
-    label = f"{name} [lead]" if is_lead else name
+def _print_agent_msgs(name: str, messages: list):
     print(f"\n{'=' * 60}")
-    print(f"  {label}: {len(messages)} msgs")
+    print(f"  {name}: {len(messages)} msgs")
     print("=" * 60)
     for i, m in enumerate(messages, 1):
         role = m["role"]

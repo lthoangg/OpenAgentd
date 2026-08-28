@@ -1,9 +1,9 @@
-"""Observe team LLM message windows across turns and verify cache idempotency.
+"""Observe child-session LLM message windows across turns and verify cache idempotency.
 
-Drives a real multi-agent, multi-turn team run (the default scenario forces the
-lead to spawn a member and exchange messages with it), then after **every turn**
+Drives a real multi-agent, multi-turn session run (the default scenario asks the
+lead to spawn a child session and exchange messages with it), then after **every turn**
 snapshots the exact window the agent loop feeds the provider —
-``get_messages_for_llm(db, session_id)`` — for the lead and every member session.
+``get_messages_for_llm(db, session_id)`` — for the parent and every child session.
 
 It then checks the prompt-cache invariant that motivated this work:
 
@@ -19,17 +19,13 @@ Legitimate exceptions are detected and reported as EXPECTED, not failures:
   * summarization — a summary row replaces the hidden tail (prefix is rewritten
     once); detected via the DB ``is_summary`` flag.
 
-We also surface roster-change rows (``extra.roster_change``) to confirm roster
-updates are delivered as APPENDED ``[system]`` history messages rather than by
-mutating the (static) system prompt.
-
 Prereqs: server running (``make run``). Uses the same DB as the server.
 
 Usage:
-  uv run python -m manual.team_message_idempotency
-  uv run python -m manual.team_message_idempotency --session <LEAD_ID>
-  uv run python -m manual.team_message_idempotency --messages "do X" "now do Y"
-  uv run python -m manual.team_message_idempotency --wait 300
+  uv run python -m manual.agent_session_idempotency --workspace /path/to/clean/git/repository
+  uv run python -m manual.agent_session_idempotency --session <LEAD_ID> --workspace /path/to/repository
+  uv run python -m manual.agent_session_idempotency --workspace /path/to/repository --messages "do X" "now do Y"
+  uv run python -m manual.agent_session_idempotency --workspace /path/to/repository --wait 300
 """
 
 from __future__ import annotations
@@ -58,10 +54,12 @@ from manual._common import DEFAULT_BASE
 BASE = DEFAULT_BASE
 
 DEFAULT_MESSAGES = [
-    "Spawn one explorer member and ask it to reply with exactly the word ALPHA. "
-    "Report the explorer's exact reply back to me.",
-    "Ask the same explorer to reply with exactly the word BETA, and report it.",
-    "In one sentence, summarise what the explorer has told you so far.",
+    "Use agent_spawn to start one explorer child session. Ask it to inspect the "
+    "workspace without modifying files, then report exactly the word ALPHA. "
+    "Use agent_send if it needs a follow-up, and report its exact reply to me.",
+    "Use agent_list to find the same explorer child, then use agent_send to ask "
+    "it to reply with exactly the word BETA. Report the reply.",
+    "In one sentence, summarise what the explorer child session reported so far.",
 ]
 
 
@@ -120,20 +118,20 @@ def preview(msg: ChatMessage, width: int = 72) -> str:
 # ── DB helpers ────────────────────────────────────────────────────────────────
 
 
-async def member_sessions(lead_sid: UUID) -> dict[str, str]:
-    """Return {session_id: agent_label} for the lead + all its member sessions."""
+async def child_sessions(parent_sid: UUID) -> dict[str, str]:
+    """Return {session_id: label} for a parent and its direct child sessions."""
     async with async_session_factory() as s:
         rows = (
             await s.exec(
                 select(ChatSession).where(
-                    (ChatSession.id == lead_sid)
-                    | (ChatSession.parent_session_id == lead_sid)
+                    (ChatSession.id == parent_sid)
+                    | (ChatSession.parent_session_id == parent_sid)
                 )
             )
         ).all()
     out: dict[str, str] = {}
     for row in rows:
-        tag = "lead" if str(row.id) == str(lead_sid) else (row.agent_name or "member")
+        tag = "parent" if str(row.id) == str(parent_sid) else (row.agent_name or "child")
         out[str(row.id)] = tag
     return out
 
@@ -151,11 +149,11 @@ async def summary_row_count(session_id: str) -> int:
 
 
 async def snapshot(lead_sid: UUID) -> dict[str, tuple[str, list[ChatMessage]]]:
-    """Capture the exact LLM window for every agent session in this team.
+    """Capture the exact LLM window for a parent and its child sessions.
 
     Returns ``{label: (full_session_id, messages)}``.
     """
-    labels = await member_sessions(lead_sid)
+    labels = await child_sessions(lead_sid)
     windows: dict[str, tuple[str, list[ChatMessage]]] = {}
     async with async_session_factory() as s:
         for session_id, tag in labels.items():
@@ -169,7 +167,7 @@ async def snapshot(lead_sid: UUID) -> dict[str, tuple[str, list[ChatMessage]]]:
 
 def wait_done(base: str, sid: str, timeout: int) -> None:
     start = time.monotonic()
-    with httpx.stream("GET", f"{base}/team/{sid}/stream", timeout=timeout + 5) as resp:
+    with httpx.stream("GET", f"{base}/session/{sid}/stream", timeout=timeout + 5) as resp:
         resp.raise_for_status()
         for line in resp.iter_lines():
             if time.monotonic() - start > timeout:
@@ -178,11 +176,15 @@ def wait_done(base: str, sid: str, timeout: int) -> None:
                 return
 
 
-def send(base: str, message: str, sid: str | None, timeout: int) -> str:
+def send(
+    base: str, message: str, sid: str | None, workspace: str, timeout: int
+) -> str:
     payload = {"message": message}
     if sid:
         payload["session_id"] = sid
-    resp = httpx.post(f"{base}/team/chat", data=payload, timeout=30)
+    else:
+        payload["workspace"] = workspace
+    resp = httpx.post(f"{base}/session/chat", data=payload, timeout=30)
     resp.raise_for_status()
     sid = resp.json()["session_id"]
     wait_done(base, sid, timeout)
@@ -208,7 +210,9 @@ def print_window(label: str, msgs: list[ChatMessage]) -> None:
         print(f"      [{i:>2}] {fp.short():<46} | {preview(m)}")
 
 
-async def run(base: str, messages: list[str], session: str | None, wait: int) -> int:
+async def run(
+    base: str, messages: list[str], session: str | None, workspace: str, wait: int
+) -> int:
     sid = session
     # per-session-label → previous-turn window fingerprints
     prev_fps: dict[str, list[Fp]] = {}
@@ -217,7 +221,7 @@ async def run(base: str, messages: list[str], session: str | None, wait: int) ->
     for turn, message in enumerate(messages, start=1):
         print(f"\n{'=' * 78}\nTURN {turn}: {message}\n{'=' * 78}")
         t0 = time.monotonic()
-        sid = send(base, message, sid, wait)
+        sid = send(base, message, sid, workspace, wait)
         dt = time.monotonic() - t0
         print(f"  session={sid}  done in {dt:.1f}s")
 
@@ -265,22 +269,6 @@ async def run(base: str, messages: list[str], session: str | None, wait: int) ->
 
             prev_fps[label] = cur
 
-        # Roster-change rows: confirm roster is delivered as appended history,
-        # never by mutating the system prompt.
-        async with async_session_factory() as s:
-            roster_rows = (
-                await s.exec(
-                    select(SessionMessage)
-                    .where(SessionMessage.session_id == UUID(sid))
-                    .order_by(SessionMessage.created_at)
-                )
-            ).all()
-        roster = [r for r in roster_rows if (r.extra or {}).get("roster_change")]
-        if roster:
-            print(f"  roster-change markers in lead history: {len(roster)}")
-            for r in roster:
-                print(f"    [system msg] {(r.content or '')[:90]}")
-
     print(f"\n{'=' * 78}")
     if violations:
         print(f"RESULT: ✗ {violations} cache-idempotency violation(s) detected")
@@ -295,6 +283,11 @@ def main() -> None:
     p.add_argument("--base", default=BASE)
     p.add_argument("--session", help="Existing lead session id to continue")
     p.add_argument(
+        "--workspace",
+        required=True,
+        help="Clean git repository used for the parent and child worktrees",
+    )
+    p.add_argument(
         "--messages",
         nargs="+",
         default=DEFAULT_MESSAGES,
@@ -303,7 +296,7 @@ def main() -> None:
     p.add_argument("--wait", type=int, default=300, help="Per-turn done timeout (s)")
     args = p.parse_args()
     code = asyncio.run(
-        run(args.base.rstrip("/"), args.messages, args.session, args.wait)
+        run(args.base.rstrip("/"), args.messages, args.session, args.workspace, args.wait)
     )
     sys.exit(code)
 

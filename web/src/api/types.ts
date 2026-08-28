@@ -34,17 +34,20 @@ export interface AgentInfo {
   capabilities?: AgentCapabilities
 }
 
-export interface TeamAgentInfo extends AgentInfo {
-  is_lead: boolean
-}
+export type TeamAgentInfo = AgentInfo
 
-export interface TeamBlueprintInfo extends AgentInfo {
-  live_instances: string[]
+export interface SpawnedAgentSummary {
+  session_id: string
+  name: string
+  state: string
+  worktree: string
+  branch?: string | null
+  running: boolean
 }
 
 export interface TeamAgentsResponse {
   agents: TeamAgentInfo[]
-  blueprints: TeamBlueprintInfo[]
+  children?: SpawnedAgentSummary[]
   mode?: string
   workspace?: string | null
 }
@@ -240,19 +243,10 @@ export interface TeamStatusAgent {
 export interface TeamStatusResponse {
   team: string
   lead: TeamStatusAgent
-  members: TeamStatusAgent[]
 }
 
 export interface TeamHistoryResponse {
-  lead: SessionDetailResponse
-  members: Array<{
-    name: string
-    session_id: string
-    messages: MessageResponse[]
-    running?: boolean
-    estimated_cost_usd?: number | null
-    completion_tokens?: number | null
-  }>
+  session: SessionDetailResponse
   has_more: boolean
   next_cursor: string | null
   /**
@@ -509,8 +503,8 @@ export interface RegistryResponse {
 
 // ── Workspace files (artifacts panel) ────────────────────────────────────────
 //
-// Flat recursive listing of a session's agent workspace (``.openagentd/team/{sid}``).
-// File bytes are fetched through ``/api/team/{sid}/media/{path}`` — the same
+// Flat recursive listing of a session's agent workspace (``.openagentd/session/{sid}``).
+// File bytes are fetched through ``/api/session/{sid}/media/{path}`` — the same
 // proxy that renders inline markdown images.
 
 export interface WorkspaceFileInfo {

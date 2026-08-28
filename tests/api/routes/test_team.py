@@ -14,10 +14,9 @@ from fastapi.testclient import TestClient
 from app.agent.agent_loop import Agent
 from app.agent.providers.base import LLMProviderBase
 from app.agent.tools.builtin.filesystem.read import read_file
-from app.agent.mode.team.member import TeamLead, TeamMember
-from app.agent.mode.team.team import AgentTeam
+from app.agent.mode.team.runtime import SessionRuntime
 from app.api.routes.team._helpers import _message_response
-from app.models.chat import SessionMessage
+from app.models.chat import ChatSession, CodingWorkspace, SessionMessage
 
 
 @pytest.fixture(autouse=True)
@@ -26,7 +25,7 @@ def _coding_workspace_for_chat_forms(monkeypatch):
     original_post = TestClient.post
 
     def post(self, url, *args, **kwargs):
-        if url == "/api/team/chat":
+        if url == "/api/session/chat":
             data = kwargs.get("data")
             if isinstance(data, dict) and "workspace" not in data:
                 kwargs["data"] = {**data, "workspace": "/tmp"}
@@ -46,7 +45,7 @@ def test_message_response_strips_internal_attachment_paths():
                     "filename": "abc.png",
                     "original_name": "photo.png",
                     "category": "image",
-                    "url": "/api/team/sid/uploads/abc.png",
+                    "url": "/api/session/sid/uploads/abc.png",
                     "path": "/tmp/openagentd/sid/uploads/abc.png",
                     "workspace_path": "/tmp/openagentd/sid/uploads/abc.png",
                     "converted_text": "internal",
@@ -62,7 +61,7 @@ def test_message_response_strips_internal_attachment_paths():
             "filename": "abc.png",
             "original_name": "photo.png",
             "category": "image",
-            "url": "/api/team/sid/uploads/abc.png",
+            "url": "/api/session/sid/uploads/abc.png",
         }
     ]
     assert resp.attachments == expected
@@ -176,22 +175,15 @@ class MockTestProvider(LLMProviderBase):
 
 @pytest.fixture
 def test_team():
-    """Create a test team (not started)."""
-    agent_lead = Agent(
-        name="lead",
-        llm_provider=MockTestProvider(),
-        system_prompt="Lead",
-        mcp_servers=["filesystem"],
+    """Create a test session runtime (not started)."""
+    return SessionRuntime(
+        Agent(
+            name="openagentd",
+            llm_provider=MockTestProvider(),
+            system_prompt="OpenAgentd",
+            mcp_servers=["filesystem"],
+        )
     )
-    agent_worker = Agent(
-        name="worker", llm_provider=MockTestProvider(), system_prompt="Worker"
-    )
-
-    lead = TeamLead(agent_lead)
-    worker = TeamMember(agent_worker)
-
-    team = AgentTeam(lead=lead, members={"worker": worker})
-    return team
 
 
 @pytest.fixture
@@ -260,14 +252,14 @@ class TestTeamChatRoute:
             return_value=(str(uuid.uuid7()), str(uuid.uuid7()))
         )
         client = TestClient(app_with_team)
-        response = client.post("/api/team/chat", data={"message": "Hello team"})
+        response = client.post("/api/session/chat", data={"message": "Hello team"})
         assert response.status_code == 202
 
     def test_team_chat_returns_session_id(self, app_with_team, test_team):
         sid = str(uuid.uuid7())
         test_team.handle_user_message = AsyncMock(return_value=(sid, str(uuid.uuid7())))
         client = TestClient(app_with_team)
-        response = client.post("/api/team/chat", data={"message": "Hello"})
+        response = client.post("/api/session/chat", data={"message": "Hello"})
         data = response.json()
         assert "session_id" in data
         assert data["status"] == "accepted"
@@ -279,7 +271,7 @@ class TestTeamChatRoute:
         )
         client = TestClient(app_with_team)
         response = client.post(
-            "/api/team/chat", data={"message": "Hello", "session_id": session_id}
+            "/api/session/chat", data={"message": "Hello", "session_id": session_id}
         )
         data = response.json()
         assert data["session_id"] == session_id
@@ -287,7 +279,7 @@ class TestTeamChatRoute:
     def test_team_chat_invalid_session_id_returns_422(self, app_with_team):
         client = TestClient(app_with_team)
         response = client.post(
-            "/api/team/chat", data={"message": "Hello", "session_id": "not-a-uuid"}
+            "/api/session/chat", data={"message": "Hello", "session_id": "not-a-uuid"}
         )
         assert response.status_code == 422
         assert response.json()["detail"] == "Invalid session id."
@@ -299,7 +291,7 @@ class TestTeamChatRoute:
             return_value=(str(uuid.uuid7()), str(uuid.uuid7()))
         )
         client = TestClient(app_with_team)
-        response = client.post("/api/team/chat", data={"message": "Hello"})
+        response = client.post("/api/session/chat", data={"message": "Hello"})
         uuid.UUID(response.json()["session_id"])  # Should not raise
 
     def test_team_chat_interrupt_flag(self, app_with_team, test_team):
@@ -307,7 +299,7 @@ class TestTeamChatRoute:
         client = TestClient(app_with_team)
         sid = str(uuid.uuid7())
         response = client.post(
-            "/api/team/chat", data={"interrupt": "true", "session_id": sid}
+            "/api/session/chat", data={"interrupt": "true", "session_id": sid}
         )
         assert response.status_code == 202
         data = response.json()
@@ -318,7 +310,7 @@ class TestTeamChatRoute:
         """Interrupt + message is mutually exclusive — 422."""
         client = TestClient(app_with_team)
         response = client.post(
-            "/api/team/chat",
+            "/api/session/chat",
             data={
                 "message": "Redirect",
                 "interrupt": "true",
@@ -332,7 +324,7 @@ class TestTeamChatRoute:
             return_value=(str(uuid.uuid7()), str(uuid.uuid7()))
         )
         client = TestClient(app_with_team)
-        response = client.post("/api/team/chat", data={"message": "Hello team"})
+        response = client.post("/api/session/chat", data={"message": "Hello team"})
         assert response.status_code == 202
         test_team.handle_user_message.assert_awaited_once()
         assert test_team.handle_user_message.call_args.kwargs["content"] == "Hello team"
@@ -347,7 +339,7 @@ class TestTeamChatRoute:
             AsyncMock(return_value=True),
         ):
             response = client.post(
-                "/api/team/chat",
+                "/api/session/chat",
                 data={
                     "message": "Hello team",
                     "model": "openai:gpt-5.5",
@@ -373,7 +365,7 @@ class TestTeamChatRoute:
             AsyncMock(return_value=True),
         ):
             response = client.post(
-                "/api/team/chat",
+                "/api/session/chat",
                 data={
                     "message": "Hello team",
                     "model": "codex:gpt-5.4",
@@ -396,7 +388,7 @@ class TestTeamChatRoute:
             AsyncMock(return_value=True),
         ):
             response = client.post(
-                "/api/team/chat",
+                "/api/session/chat",
                 data={
                     "message": "Hello team",
                     "model": "openai:gpt-5.5",
@@ -413,7 +405,7 @@ class TestTeamChatRoute:
         )
         client = TestClient(app_with_team)
         response = client.post(
-            "/api/team/chat",
+            "/api/session/chat",
             data={"message": "Hello team", "model": "", "thinking_level": ""},
         )
         assert response.status_code == 202
@@ -430,7 +422,7 @@ class TestTeamChatRoute:
             AsyncMock(return_value=False),
         ):
             response = client.post(
-                "/api/team/chat",
+                "/api/session/chat",
                 data={"message": "Hello team", "model": "bad:model"},
             )
         assert response.status_code == 422
@@ -439,12 +431,12 @@ class TestTeamChatRoute:
         self, app_with_team, test_team
     ):
         session_id = str(uuid.uuid7())
-        test_team.lead.state = "working"
+        test_team.state = "working"
         test_team._activate_queued_user_messages = AsyncMock(return_value=True)
 
         async def save_queue(_db, _session_id, _message, *, extra=None):
             assert extra is not None
-            test_team.lead.state = "idle"
+            test_team.state = "idle"
             queued = AsyncMock()
             queued.id = uuid.uuid7()
             return queued
@@ -452,7 +444,7 @@ class TestTeamChatRoute:
         client = TestClient(app_with_team)
         with patch("app.api.routes.team.chat.save_queued_user_message", save_queue):
             response = client.post(
-                "/api/team/chat",
+                "/api/session/chat",
                 data={"message": "queued", "session_id": session_id},
             )
 
@@ -465,7 +457,7 @@ class TestTeamChatRoute:
     ):
         """Keep durable ordering, but wake an idle lead without waiting for members."""
         session_id = str(uuid.uuid7())
-        test_team.lead.state = "idle"
+        test_team.state = "idle"
         test_team._has_active_turn = True  # members from the prior lead turn still run
         test_team._activate_queued_user_messages = AsyncMock(return_value=True)
         test_team.handle_user_message = AsyncMock(
@@ -481,7 +473,7 @@ class TestTeamChatRoute:
         try:
             with patch("app.api.routes.team.chat.save_queued_user_message", save_queue):
                 response = client.post(
-                    "/api/team/chat",
+                    "/api/session/chat",
                     data={"message": "queued", "session_id": session_id},
                 )
         finally:
@@ -503,7 +495,7 @@ class TestTeamChatRoute:
         text the user typed disappears with no turn to carry it.
         """
         session_id = str(uuid.uuid7())
-        test_team.lead.state = "waiting_input"
+        test_team.state = "waiting_input"
         test_team._has_active_turn = True  # a member kept working past the ask
         test_team._activate_queued_user_messages = AsyncMock(return_value=True)
         test_team.handle_user_message = AsyncMock(
@@ -513,7 +505,7 @@ class TestTeamChatRoute:
         client = TestClient(app_with_team)
         try:
             response = client.post(
-                "/api/team/chat",
+                "/api/session/chat",
                 data={
                     "message": "actually, do it differently",
                     "session_id": session_id,
@@ -521,7 +513,7 @@ class TestTeamChatRoute:
             )
         finally:
             test_team._has_active_turn = False
-            test_team.lead.state = "idle"
+            test_team.state = "idle"
 
         assert response.status_code == 202
         assert response.json()["status"] == "accepted"
@@ -539,7 +531,7 @@ class TestTeamChatRoute:
         """
 
         session_id = str(uuid.uuid7())
-        test_team.lead.state = "working"
+        test_team.state = "working"
         test_team._activate_queued_user_messages = AsyncMock(return_value=False)
 
         captured: dict = {}
@@ -572,7 +564,7 @@ class TestTeamChatRoute:
             patch("app.api.routes.team.chat.save_message", AsyncMock()),
         ):
             response = client.post(
-                "/api/team/chat",
+                "/api/session/chat",
                 data={"message": "check this", "session_id": session_id},
                 files={"files": ("report.txt", b"hello", "text/plain")},
             )
@@ -587,7 +579,7 @@ class TestTeamChatRoute:
         self, app_with_team, test_team
     ):
         session_id = str(uuid.uuid7())
-        test_team.lead.state = "working"
+        test_team.state = "working"
         test_team._activate_queued_user_messages = AsyncMock(return_value=False)
 
         captured: dict = {}
@@ -608,7 +600,7 @@ class TestTeamChatRoute:
             patch("app.api.routes.team.chat.save_message", AsyncMock()),
         ):
             response = client.post(
-                "/api/team/chat",
+                "/api/session/chat",
                 data={"message": "look at @note.txt", "session_id": session_id},
             )
 
@@ -623,11 +615,11 @@ class TestTeamChatRoute:
 
         from app.services.chat_service import get_messages_for_llm, save_message
 
-        await test_team.lead._ensure_db_session(title="x")
-        lead_uuid = UUID(test_team.lead.session_id)
+        await test_team._ensure_db_session(title="x")
+        lead_uuid = UUID(test_team.session_id)
         from app.core.db import resolve_db_factory
 
-        async with resolve_db_factory(test_team.lead.db_factory)() as db:
+        async with resolve_db_factory(test_team.db_factory)() as db:
             assert isinstance(db, AsyncSession)
             from app.agent.schemas.chat import HumanMessage
 
@@ -654,12 +646,14 @@ class TestTeamChatRoute:
 
     def test_team_chat_message_validation_empty_raises(self, app_with_team):
         client = TestClient(app_with_team)
-        response = client.post("/api/team/chat", data={"message": ""})
+        response = client.post("/api/session/chat", data={"message": ""})
         assert response.status_code == 422
 
     def test_team_chat_message_validation_missing_raises(self, app_with_team):
         client = TestClient(app_with_team)
-        response = client.post("/api/team/chat", data={"session_id": str(uuid.uuid7())})
+        response = client.post(
+            "/api/session/chat", data={"session_id": str(uuid.uuid7())}
+        )
         assert response.status_code == 422
 
 
@@ -685,7 +679,7 @@ class TestTeamStreamRoute:
         ):
             transport = ASGITransport(app=app_with_team)
             async with AsyncClient(transport=transport, base_url="http://test") as ac:
-                response = await ac.get(f"/api/team/{session_id}/stream")
+                response = await ac.get(f"/api/session/{session_id}/stream")
                 assert response.status_code == 200
                 assert "text/event-stream" in response.headers.get("content-type", "")
 
@@ -763,29 +757,79 @@ class TestTeamAgentsRoute:
 
     def test_team_agents_no_team_returns_404(self, app_without_team):
         client = TestClient(app_without_team)
-        response = client.get("/api/team/agents")
+        response = client.get("/api/session/agents")
         assert response.status_code == 404
 
     def test_team_agents_returns_200(self, app_with_team):
         client = TestClient(app_with_team)
-        response = client.get("/api/team/agents")
+        response = client.get("/api/session/agents")
         assert response.status_code == 200
+
+    @pytest.mark.asyncio
+    async def test_team_agents_lists_only_worktree_session_children(
+        self, app_with_team, monkeypatch
+    ):
+        import app.core.db as _db
+
+        parent_id = uuid.uuid7()
+        legacy_member_id = uuid.uuid7()
+        spawned_id = uuid.uuid7()
+        worktree = "/repo/.openagentd/worktrees/spawned-agent"
+        async with _db.async_session_factory() as db:
+            async with db.begin():
+                db.add(ChatSession(id=parent_id, workspace="/repo"))
+                db.add(
+                    ChatSession(
+                        id=legacy_member_id,
+                        parent_session_id=parent_id,
+                        workspace="/repo",
+                    )
+                )
+                db.add(
+                    ChatSession(
+                        id=spawned_id,
+                        parent_session_id=parent_id,
+                        workspace=worktree,
+                    )
+                )
+                db.add(
+                    CodingWorkspace(
+                        path=worktree,
+                        kind="worktree",
+                        source_path="/repo",
+                        managed=True,
+                    )
+                )
+
+        async def current_branch(workspace: str) -> str | None:
+            return "agent/spawned" if workspace == worktree else None
+
+        monkeypatch.setattr(
+            "app.api.routes.team.chat.current_managed_worktree_branch", current_branch
+        )
+        response = TestClient(app_with_team).get(
+            "/api/session/agents", params={"session_id": str(parent_id)}
+        )
+
+        assert response.status_code == 200
+        assert [child["session_id"] for child in response.json()["children"]] == [
+            str(spawned_id)
+        ]
+        assert response.json()["children"][0]["branch"] == "agent/spawned"
 
     def test_team_agents_returns_agents_list(self, app_with_team):
         client = TestClient(app_with_team)
-        data = client.get("/api/team/agents").json()
+        data = client.get("/api/session/agents").json()
         assert "agents" in data
         names = {a["name"] for a in data["agents"]}
-        assert "lead" in names
-        assert "worker" in names
+        assert names == {"openagentd"}
 
-    def test_team_agents_includes_is_lead(self, app_with_team):
+    def test_team_agents_has_no_roster_role_flag(self, app_with_team):
         client = TestClient(app_with_team)
-        data = client.get("/api/team/agents").json()
-        lead_entry = next(a for a in data["agents"] if a["name"] == "lead")
-        assert lead_entry["is_lead"] is True
-        worker_entry = next(a for a in data["agents"] if a["name"] == "worker")
-        assert worker_entry["is_lead"] is False
+        data = client.get("/api/session/agents").json()
+        agent_entry = next(a for a in data["agents"] if a["name"] == "openagentd")
+        assert "is_lead" not in agent_entry
+        assert "blueprints" not in data
 
     def test_team_agents_refreshes_mcp_tools_without_agent_reload(
         self, app_with_team, monkeypatch
@@ -807,9 +851,9 @@ class TestTeamAgentsRoute:
         monkeypatch.setattr(mcp_manager, "_runners", {"filesystem": runner})
 
         client = TestClient(app_with_team)
-        data = client.get("/api/team/agents").json()
-        lead_entry = next(a for a in data["agents"] if a["name"] == "lead")
-        tool_names = {tool["name"] for tool in lead_entry["tools"]}
+        data = client.get("/api/session/agents").json()
+        agent_entry = next(a for a in data["agents"] if a["name"] == "openagentd")
+        tool_names = {tool["name"] for tool in agent_entry["tools"]}
         assert read_file.name in tool_names
 
     def test_team_agents_lists_the_tools_injected_at_run_time(
@@ -817,51 +861,34 @@ class TestTeamAgentsRoute:
     ):
         """Session Settings claims to show "what this session can actually do".
 
-        ``team_message``, ``team_manage`` and ``ask_user`` are built
-        per-run by ``get_injected_tools`` and never registered on the agent, so
-        the listing omitted three working tools. (``todo_manage`` was already
-        there — it is also a static builtin.)
+        The delegation tools and ``ask_user`` are built per-run by
+        ``get_injected_tools`` and never registered on the agent, so the listing
+        omitted working tools. (``todo_manage`` was already there — it is also a
+        static builtin.)
         """
         test_team.mode = "coding"
 
         client = TestClient(app_with_team)
-        data = client.get("/api/team/agents").json()
+        data = client.get("/api/session/agents").json()
 
-        lead_tools = {
+        agent_tools = {
             t["name"]
-            for t in next(a for a in data["agents"] if a["name"] == "lead")["tools"]
+            for t in next(a for a in data["agents"] if a["name"] == "openagentd")[
+                "tools"
+            ]
         }
-        assert {"team_message", "team_manage", "ask_user"} <= lead_tools
-
-    def test_injected_tool_listing_does_not_vary_by_member(self, test_team):
-        """Pins the assumption the /team/agents route caches on.
-
-        The route builds one injected set per *role* rather than per member,
-        because building them cost up to a millisecond each. That is only sound
-        while every agent of a role gets the same tool names and descriptions —
-        the listing reads nothing else off them. If an injected tool ever bakes
-        the agent name into its description, this fails and the cache in
-        ``list_team_agents`` has to become per-agent again.
-        """
-
-        def described(name: str) -> set[tuple[str, str]]:
-            return {
-                (t.name, t.description or "")
-                for t in test_team.get_injected_tools(name)
-            }
-
-        assert described("alice") == described("bob")
+        assert {"agent_spawn", "agent_send", "ask_user"} <= agent_tools
 
     def test_team_agents_shows_the_injected_todo_manage_not_the_static_one(
         self, app_with_team, test_team
     ):
         """``todo_manage`` exists twice, and the listing must show the winner.
 
-        It is a static builtin *and* a team-bound tool that ``get_injected_tools``
-        supplies per run. ``_setup_run`` does ``run_tools[t.name] = t``, so the
-        injected, board-aware, role-specific version is what the model actually
-        gets — listing the static one's description would document a tool that
-        never runs.
+        It is a static builtin *and* a runtime-bound tool that
+        ``get_injected_tools`` supplies per run. ``_setup_run`` does
+        ``run_tools[t.name] = t``, so the injected, board-aware version is what
+        the model actually gets — listing the static one's description would
+        document a tool that never runs.
 
         The two share a description and differ only in args schema, which this
         payload does not carry — so precedence is asserted with a stand-in whose
@@ -875,32 +902,61 @@ class TestTeamAgentsRoute:
             return ""
 
         test_team.mode = "coding"
-        test_team.lead.agent._tools["todo_manage"] = todo_manage
-        test_team.get_injected_tools = lambda _name: [_injected_todo]
+        test_team.agent._tools["todo_manage"] = todo_manage
+        test_team.get_injected_tools = lambda: [_injected_todo]
 
         client = TestClient(app_with_team)
-        data = client.get("/api/team/agents").json()
+        data = client.get("/api/session/agents").json()
 
-        lead_entry = next(a for a in data["agents"] if a["name"] == "lead")
-        listed = next(t for t in lead_entry["tools"] if t["name"] == "todo_manage")
+        agent_entry = next(a for a in data["agents"] if a["name"] == "openagentd")
+        listed = next(t for t in agent_entry["tools"] if t["name"] == "todo_manage")
         assert listed["description"] == "INJECTED board-aware variant"
         # Exactly one entry — the merge replaces, it does not append a duplicate.
-        assert sum(t["name"] == "todo_manage" for t in lead_entry["tools"]) == 1
+        assert sum(t["name"] == "todo_manage" for t in agent_entry["tools"]) == 1
 
-    def test_team_agents_omits_ask_user_for_members(self, app_with_team, test_team):
-        """The listing must mirror injection, not advertise what a member cannot call."""
+    def test_team_agents_omits_ask_user_for_child_session(
+        self, app_with_team, test_team
+    ):
         test_team.mode = "coding"
-
+        test_team.is_child_session = True
         client = TestClient(app_with_team)
-        data = client.get("/api/team/agents").json()
+        data = client.get("/api/session/agents").json()
+        agent_tools = {t["name"] for t in data["agents"][0]["tools"]}
+        assert "ask_user" not in agent_tools
 
-        worker_tools = {
-            t["name"]
-            for t in next(a for a in data["agents"] if a["name"] == "worker")["tools"]
-        }
-        assert "team_message" in worker_tools
-        assert "ask_user" not in worker_tools
-        assert "team_manage" not in worker_tools
+    @pytest.mark.asyncio
+    async def test_team_agents_cold_loads_child_runtime_context(
+        self, app_with_team, test_team
+    ):
+        """A persisted child must not regain lead-only tools after a cold load."""
+        import app.core.db as _db
+
+        parent_id = uuid.uuid7()
+        child_id = uuid.uuid7()
+        async with _db.async_session_factory() as db:
+            async with db.begin():
+                db.add(ChatSession(id=parent_id, workspace="/tmp"))
+                db.add(
+                    ChatSession(
+                        id=child_id,
+                        parent_session_id=parent_id,
+                        workspace="/tmp",
+                    )
+                )
+
+        data = (
+            TestClient(app_with_team)
+            .get(
+                "/api/session/agents",
+                params={"workspace": "/tmp", "session_id": str(child_id)},
+            )
+            .json()
+        )
+
+        agent_tools = {tool["name"] for tool in data["agents"][0]["tools"]}
+        assert "ask_user" not in agent_tools
+        assert test_team.parent_session_id == str(parent_id)
+        assert test_team.spawn_depth == 1
 
     def test_team_agents_includes_ask_user_in_coding_mode(
         self, app_with_team, test_team
@@ -908,14 +964,16 @@ class TestTeamAgentsRoute:
         test_team.mode = "coding"
 
         client = TestClient(app_with_team)
-        data = client.get("/api/team/agents").json()
+        data = client.get("/api/session/agents").json()
 
-        lead_tools = {
+        agent_tools = {
             t["name"]
-            for t in next(a for a in data["agents"] if a["name"] == "lead")["tools"]
+            for t in next(a for a in data["agents"] if a["name"] == "openagentd")[
+                "tools"
+            ]
         }
-        assert "team_message" in lead_tools
-        assert "ask_user" in lead_tools
+        assert "agent_spawn" in agent_tools
+        assert "ask_user" in agent_tools
 
     def test_team_agents_tool_descriptions_are_not_empty_for_injected_tools(
         self, app_with_team, test_team
@@ -924,10 +982,10 @@ class TestTeamAgentsRoute:
         test_team.mode = "coding"
 
         client = TestClient(app_with_team)
-        data = client.get("/api/team/agents").json()
+        data = client.get("/api/session/agents").json()
 
-        lead_entry = next(a for a in data["agents"] if a["name"] == "lead")
-        ask = next(t for t in lead_entry["tools"] if t["name"] == "ask_user")
+        agent_entry = next(a for a in data["agents"] if a["name"] == "openagentd")
+        ask = next(t for t in agent_entry["tools"] if t["name"] == "ask_user")
         assert ask["description"].strip()
 
 
@@ -936,18 +994,18 @@ class TestTeamHistoryRoute:
 
     def test_team_history_no_team_returns_404(self, app_without_team):
         client = TestClient(app_without_team)
-        response = client.get(f"/api/team/{uuid.uuid7()}/history")
+        response = client.get(f"/api/session/{uuid.uuid7()}/history")
         assert response.status_code == 404
 
     def test_team_history_requires_session_id(self, app_with_team):
         client = TestClient(app_with_team)
         # Without session_id path param the route doesn't match.
-        response = client.get("/api/team/history")
+        response = client.get("/api/session/history")
         assert response.status_code == 404
 
     def test_team_history_session_not_found_returns_404(self, app_with_team):
         client = TestClient(app_with_team)
-        response = client.get(f"/api/team/{uuid.uuid7()}/history")
+        response = client.get(f"/api/session/{uuid.uuid7()}/history")
         assert response.status_code == 404
 
 
@@ -956,12 +1014,12 @@ class TestTeamChatFormValidation:
 
     def test_empty_message_returns_422(self, app_with_team):
         client = TestClient(app_with_team)
-        response = client.post("/api/team/chat", data={"message": ""})
+        response = client.post("/api/session/chat", data={"message": ""})
         assert response.status_code == 422
 
     def test_missing_message_returns_422(self, app_with_team):
         client = TestClient(app_with_team)
-        response = client.post("/api/team/chat", data={})
+        response = client.post("/api/session/chat", data={})
         assert response.status_code == 422
 
     def test_thinking_level_accepts_any_string(self):

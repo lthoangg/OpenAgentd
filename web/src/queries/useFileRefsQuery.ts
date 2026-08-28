@@ -2,7 +2,7 @@
  * Workspace file/folder list for the InputComposer's @-mention picker.
  *
  * Hits the coding workspace endpoint:
- *   GET /api/team/workspace/files/list?workspace=...
+ *   GET /api/session/workspace/files/list?workspace=...
  *
  * Both return a flat list of files (max 5,000, gitignore-aware). Folder entries
  * are derived client-side from the path prefixes so the user can also reference

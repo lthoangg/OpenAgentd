@@ -1,4 +1,4 @@
-"""End-to-end drift tests: detection + in-place agent rebuild."""
+"""Live-config drift detection and in-place agent rebuild on ``SessionRuntime``."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ import yaml
 
 from app.agent.agent_loop import Agent
 from app.agent.loader import _build_agent, parse_agent_md
-from app.agent.mode.team.member import TeamMember
+from app.agent.mode.team.runtime import SessionRuntime
 
 
 def _write_agent(path: Path, fm: dict, body: str = "You are X.") -> None:
@@ -46,13 +46,15 @@ def _settings_dirs(tmp_path: Path, monkeypatch):
     return tmp_path
 
 
-def _build_member(tmp_path: Path, fm: dict, body: str = "You are X.") -> TeamMember:
+def _build_runtime(
+    tmp_path: Path, fm: dict, body: str = "You are X."
+) -> SessionRuntime:
     md = tmp_path / "agents" / f"{fm['name']}.md"
     md.parent.mkdir(exist_ok=True)
     _write_agent(md, fm, body)
     cfg = parse_agent_md(md)
     agent = _build_agent(cfg, {}, _provider_factory(), source_path=md)
-    return TeamMember(agent)
+    return SessionRuntime(agent)
 
 
 # ── Refresh (start-of-turn rebuild) ──────────────────────────────────────────
@@ -69,11 +71,11 @@ def test_refresh_replaces_agent_in_place(
         _provider_factory(),
     )
 
-    member = _build_member(
+    runtime = _build_runtime(
         _settings_dirs, {"name": "worker", "model": "openai:v1", "tools": []}
     )
-    original = member.agent
-    original_session = member.session_id
+    original = runtime.agent
+    original_session = runtime.session_id
 
     md = _settings_dirs / "agents" / "worker.md"
     _write_agent(
@@ -82,16 +84,16 @@ def test_refresh_replaces_agent_in_place(
         body="Updated prompt.",
     )
     _bump_mtime(md)
-    member._config_dirty = True
+    runtime._config_dirty = True
 
-    member._refresh_agent_from_disk()
+    runtime._refresh_agent_from_disk()
 
-    assert member.agent is not original
-    assert member.agent.model_id == "openai:v2"
-    assert "grep" in member.agent._tools
-    assert "Updated prompt." in member.agent.system_prompt
-    assert member._config_dirty is False
-    assert member.session_id == original_session
+    assert runtime.agent is not original
+    assert runtime.agent.model_id == "openai:v2"
+    assert "grep" in runtime.agent._tools
+    assert "Updated prompt." in runtime.agent.system_prompt
+    assert runtime._config_dirty is False
+    assert runtime.session_id == original_session
 
 
 @pytest.mark.asyncio
@@ -101,18 +103,18 @@ async def test_refresh_closes_replaced_provider(
     import app.agent.loader as _loader
 
     monkeypatch.setattr(_loader, "build_provider", _provider_factory())
-    member = _build_member(
+    runtime = _build_runtime(
         _settings_dirs, {"name": "worker", "model": "openai:v1", "tools": []}
     )
-    old_provider = member.agent.llm_provider
+    old_provider = runtime.agent.llm_provider
     old_provider.aclose = AsyncMock()
 
     md = _settings_dirs / "agents" / "worker.md"
     _write_agent(md, {"name": "worker", "model": "openai:v2", "tools": []})
     _bump_mtime(md)
-    member._config_dirty = True
+    runtime._config_dirty = True
 
-    member._refresh_agent_from_disk()
+    runtime._refresh_agent_from_disk()
     await asyncio.sleep(0)
 
     old_provider.aclose.assert_awaited_once()
@@ -129,44 +131,48 @@ def test_refresh_preserves_spawned_instance_handle(
         _provider_factory(),
     )
 
-    member = _build_member(
+    runtime = _build_runtime(
         _settings_dirs, {"name": "executor", "model": "openai:v1", "tools": []}
     )
-    member.name = "executor#2"
+    runtime.name = "executor#2"
 
     md = _settings_dirs / "agents" / "executor.md"
     _write_agent(md, {"name": "executor", "model": "openai:v2"}, body="Updated.")
     _bump_mtime(md)
-    member._config_dirty = True
+    runtime._config_dirty = True
 
-    member._refresh_agent_from_disk()
+    runtime._refresh_agent_from_disk()
 
-    assert member.agent.name == "executor#2"
-    assert member.name == "executor#2"
-    assert "Updated." in member.agent.system_prompt
+    assert runtime.agent.name == "executor#2"
+    assert runtime.name == "executor#2"
+    assert "Updated." in runtime.agent.system_prompt
 
 
 def test_refresh_keeps_agent_on_parse_failure(_settings_dirs: Path) -> None:
-    member = _build_member(
+    runtime = _build_runtime(
         _settings_dirs, {"name": "worker", "model": "openai:v1", "tools": []}
     )
-    original = member.agent
+    original = runtime.agent
 
     md = _settings_dirs / "agents" / "worker.md"
     md.write_text("not valid frontmatter")
     _bump_mtime(md)
-    member._config_dirty = True
+    runtime._config_dirty = True
 
-    member._refresh_agent_from_disk()
+    runtime._refresh_agent_from_disk()
 
-    assert member.agent is original
-    assert member._config_dirty is False  # cleared to avoid loop
+    assert runtime.agent is original
+    assert runtime._config_dirty is False  # cleared to avoid loop
 
 
 def test_refresh_does_not_inject_teammates_section(
     _settings_dirs: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Dynamic teammate roster is runtime context, not refreshed system prompt."""
+    """Guard against the retired teammate roster reappearing in the prompt.
+
+    ``_refresh_agent_from_disk`` rebuilds the system prompt from the ``.md``
+    file, so a regression that re-added roster context would surface here.
+    """
     import app.agent.loader as _loader
 
     monkeypatch.setattr(
@@ -175,14 +181,8 @@ def test_refresh_does_not_inject_teammates_section(
         _provider_factory(),
     )
 
-    worker = _build_member(_settings_dirs, {"name": "worker", "model": "openai:v1"})
-    peer = _build_member(_settings_dirs, {"name": "peer", "model": "openai:v1"})
-
-    # Stub the team — only the bits _refresh_agent_from_disk reads.
-    fake_team = MagicMock()
-    fake_team.lead = worker
-    fake_team.all_members = [worker, peer]
-    worker._team = fake_team
+    worker = _build_runtime(_settings_dirs, {"name": "worker", "model": "openai:v1"})
+    _build_runtime(_settings_dirs, {"name": "peer", "model": "openai:v1"})
 
     md = _settings_dirs / "agents" / "worker.md"
     _write_agent(md, {"name": "worker", "model": "openai:v2"}, body="New body.")
@@ -199,31 +199,31 @@ def test_refresh_does_not_inject_teammates_section(
 
 
 def test_detect_drift_flips_dirty_on_md_change(_settings_dirs: Path) -> None:
-    member = _build_member(_settings_dirs, {"name": "worker", "model": "openai:v1"})
+    runtime = _build_runtime(_settings_dirs, {"name": "worker", "model": "openai:v1"})
     md = _settings_dirs / "agents" / "worker.md"
 
     md.write_text(md.read_text() + "\nappended\n")
     _bump_mtime(md)
 
-    member._detect_config_drift()
-    assert member._config_dirty is True
+    runtime._detect_config_drift()
+    assert runtime._config_dirty is True
 
 
 def test_detect_drift_flips_dirty_on_mcp_json_change(_settings_dirs: Path) -> None:
-    member = _build_member(_settings_dirs, {"name": "worker", "model": "openai:v1"})
+    runtime = _build_runtime(_settings_dirs, {"name": "worker", "model": "openai:v1"})
     mcp = _settings_dirs / "mcp.json"
 
     mcp.write_text("{}")  # appearance counts as drift
 
-    member._detect_config_drift()
-    assert member._config_dirty is True
+    runtime._detect_config_drift()
+    assert runtime._config_dirty is True
 
 
 def test_detect_drift_noop_for_in_memory_agent() -> None:
     """Agent built without source_path has no stamp; drift check is a no-op."""
     agent = Agent(name="x", llm_provider=MagicMock())
-    member = TeamMember(agent)
+    runtime = SessionRuntime(agent)
 
-    member._detect_config_drift()
+    runtime._detect_config_drift()
 
-    assert member._config_dirty is False
+    assert runtime._config_dirty is False

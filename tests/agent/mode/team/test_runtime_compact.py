@@ -1,4 +1,4 @@
-"""Regression coverage for ``AgentTeam.handle_compact``."""
+"""Regression coverage for ``SessionRuntime.handle_compact``."""
 
 from __future__ import annotations
 
@@ -8,8 +8,7 @@ from sqlmodel import col, select
 
 import app.core.db as _db
 from app.agent.agent_loop import Agent
-from app.agent.mode.team.member import TeamLead
-from app.agent.mode.team.team import AgentTeam
+from app.agent.mode.team.runtime import SessionRuntime
 from app.agent.schemas.chat import AssistantMessage, HumanMessage
 from app.models.chat import ChatSession, SessionMessage
 from app.services.chat_service import (
@@ -25,18 +24,13 @@ from tests.agent.mode.team.conftest import MockTeamProvider
 
 async def test_compact_after_undo_commits_reverted_branch(monkeypatch):
     session_id = uuid.uuid7()
-    lead = TeamLead(
-        Agent(name="lead", llm_provider=MockTeamProvider("ok")),
-        db_factory=_db.async_session_factory,
-    )
-    team = AgentTeam(
-        lead=lead,
-        members={},
+    runtime = SessionRuntime(
+        Agent(name="openagentd", llm_provider=MockTeamProvider("ok")),
         db_factory=_db.async_session_factory,
     )
 
     async with _db.async_session_factory() as db:
-        db.add(ChatSession(id=session_id, agent_name="lead"))
+        db.add(ChatSession(id=session_id, agent_name="openagentd"))
         await db.flush()
         await save_message(db, session_id, HumanMessage(content="first"))
         await save_message(db, session_id, AssistantMessage(content="first answer"))
@@ -49,9 +43,9 @@ async def test_compact_after_undo_commits_reverted_branch(monkeypatch):
         await db.commit()
     assert shift.target is not None and shift.target.id == second.id
 
-    monkeypatch.setattr(team.lead, "activate_for_compaction", lambda: None)
+    monkeypatch.setattr(runtime, "activate_for_compaction", lambda: None)
 
-    returned = await team.handle_compact(str(session_id))
+    returned = await runtime.handle_compact(str(session_id))
 
     assert returned == str(session_id)
     async with _db.async_session_factory() as db:
@@ -105,23 +99,18 @@ async def test_handle_compact_uses_session_model_override_end_to_end():
         assert model == "googlegenai:gemini-3.1-flash-lite"
         return override_provider
 
-    lead = TeamLead(
-        Agent(name="lead", llm_provider=default_provider),
-        db_factory=_db.async_session_factory,
-    )
-    team = AgentTeam(
-        lead=lead,
-        members={},
+    runtime = SessionRuntime(
+        Agent(name="openagentd", llm_provider=default_provider),
         db_factory=_db.async_session_factory,
         provider_factory=provider_factory,
     )
-    await team.start()
+    await runtime.start()
 
     async with _db.async_session_factory() as db:
         db.add(
             ChatSession(
                 id=session_id,
-                agent_name="lead",
+                agent_name="openagentd",
                 model="googlegenai:gemini-3.1-flash-lite",
             )
         )
@@ -130,9 +119,9 @@ async def test_handle_compact_uses_session_model_override_end_to_end():
         await save_message(db, session_id, AssistantMessage(content="first answer"))
         await db.commit()
 
-    await team.handle_compact(str(session_id))
-    assert lead._active_task is not None
-    await lead._active_task
+    await runtime.handle_compact(str(session_id))
+    assert runtime._active_task is not None
+    await runtime._active_task
 
     assert override_provider.call_count > 0, "override provider was never called"
     assert default_provider.call_count == 0, "default provider was called instead"

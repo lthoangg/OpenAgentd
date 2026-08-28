@@ -1,6 +1,6 @@
 """Smoke-test team session resolve-or-create flows.
 
-Tests: POST /team/sessions/resolve, GET /team/sessions/{id}.
+Tests: POST /session/sessions/resolve, GET /session/sessions/{id}.
 
 Usage:
   uv run python -m manual.session_resolve
@@ -22,13 +22,13 @@ BASE = DEFAULT_BASE
 
 
 def resolve_session(base: str, payload: dict) -> dict:
-    r = httpx.post(f"{base}/team/sessions/resolve", json=payload, timeout=30)
+    r = httpx.post(f"{base}/session/sessions/resolve", json=payload, timeout=30)
     r.raise_for_status()
     return r.json()
 
 
 def get_session(base: str, session_id: str) -> dict:
-    r = httpx.get(f"{base}/team/sessions/{session_id}", timeout=30)
+    r = httpx.get(f"{base}/session/sessions/{session_id}", timeout=30)
     r.raise_for_status()
     return r.json()
 

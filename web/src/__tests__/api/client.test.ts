@@ -10,24 +10,24 @@ afterEach(() => {
 
 describe('workspaceMediaUrl', () => {
   it('returns a media proxy URL without token in browser mode', () => {
-    expect(workspaceMediaUrl('sid', 'output/chart.png')).toBe('/api/team/sid/media/output/chart.png')
+    expect(workspaceMediaUrl('sid', 'output/chart.png')).toBe('/api/session/sid/media/output/chart.png')
   })
 
   it('adds the desktop token query param in desktop mode', () => {
     window.__OAD_TOKEN__ = 'secret'
-    expect(workspaceMediaUrl('sid', 'output/chart.png')).toBe('/api/team/sid/media/output/chart.png?_token=secret')
+    expect(workspaceMediaUrl('sid', 'output/chart.png')).toBe('/api/session/sid/media/output/chart.png?_token=secret')
   })
 
   it('adds download before the desktop token for forced downloads', () => {
     window.__OAD_TOKEN__ = 'secret'
-    expect(workspaceMediaUrl('sid', 'output/chart.png', { download: true })).toBe('/api/team/sid/media/output/chart.png?download=1&_token=secret')
+    expect(workspaceMediaUrl('sid', 'output/chart.png', { download: true })).toBe('/api/session/sid/media/output/chart.png?download=1&_token=secret')
   })
 })
 
 describe('resolveApiUrl', () => {
   it('adds the desktop token query param to relative API URLs', () => {
     window.__OAD_TOKEN__ = 'secret'
-    expect(resolveApiUrl('/api/team/sid/uploads/image.png')).toBe('/api/team/sid/uploads/image.png?_token=secret')
+    expect(resolveApiUrl('/api/session/sid/uploads/image.png')).toBe('/api/session/sid/uploads/image.png?_token=secret')
   })
 
   it('does not add the token to blob or external URLs', () => {
@@ -145,7 +145,7 @@ describe('postTeamChat', () => {
 
     await cancelQueuedTeamMessage('sid', 'mid')
 
-    expect(String(url)).toBe('/api/team/sessions/sid/queued-messages/mid')
+    expect(String(url)).toBe('/api/session/sessions/sid/queued-messages/mid')
     expect(method).toBe('DELETE')
   })
 
@@ -177,7 +177,7 @@ describe('createWorktree', () => {
       branch: 'openagentd/feature-login',
     })
 
-    expect(url).toBe('/api/team/workspace/worktrees')
+    expect(url).toBe('/api/session/workspace/worktrees')
     expect(init?.method).toBe('POST')
     expect(init?.headers).toEqual({ 'Content-Type': 'application/json' })
     expect(JSON.parse(init?.body as string)).toEqual({
@@ -219,7 +219,7 @@ describe('resolveTeamSession', () => {
       worktreeBranch: 'openagentd/task-a',
     })
 
-    expect(url).toBe('/api/team/sessions/resolve')
+    expect(url).toBe('/api/session/sessions/resolve')
     expect(init?.method).toBe('POST')
     expect(init?.headers).toEqual({ 'Content-Type': 'application/json' })
     expect(JSON.parse(init?.body as string)).toEqual({
@@ -257,7 +257,7 @@ describe('setCodingWorkspaceVisibility', () => {
 
     const result = await setCodingWorkspaceVisibility('/repo/app', true)
 
-    expect(url).toBe('/api/team/workspace/visibility')
+    expect(url).toBe('/api/session/workspace/visibility')
     expect(init?.method).toBe('PATCH')
     expect(init?.headers).toEqual({ 'Content-Type': 'application/json' })
     expect(JSON.parse(init?.body as string)).toEqual({ workspace: '/repo/app', hidden: true })
@@ -284,7 +284,7 @@ describe('updateTeamSessionTitle', () => {
 
     const result = await updateTeamSessionTitle('sid', 'Renamed session')
 
-    expect(url).toBe('/api/team/sessions/sid')
+    expect(url).toBe('/api/session/sessions/sid')
     expect(init?.method).toBe('PATCH')
     expect(init?.headers).toEqual({ 'Content-Type': 'application/json' })
     expect(JSON.parse(init?.body as string)).toEqual({ title: 'Renamed session' })

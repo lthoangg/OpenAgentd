@@ -1,7 +1,7 @@
-"""Tests for GET /api/team/sessions/{session_id}/todos endpoint.
+"""Tests for GET /api/session/sessions/{session_id}/todos endpoint.
 
 Covers:
-  GET /api/team/sessions/{session_id}/todos → retrieve todo list for session
+  GET /api/session/sessions/{session_id}/todos → retrieve todo list for session
 
 Requirements validated:
   - session_id validated as UUID (400 on malformed)
@@ -83,23 +83,23 @@ def todos_path(root, session_id: str):
 
 
 class TestGetTodos:
-    """Test suite for GET /api/team/sessions/{session_id}/todos."""
+    """Test suite for GET /api/session/sessions/{session_id}/todos."""
 
     def test_invalid_session_id_returns_400(self, client):
         """Malformed session_id (not a UUID) returns 400."""
-        resp = client.get("/api/team/sessions/not-a-uuid/todos")
+        resp = client.get("/api/session/sessions/not-a-uuid/todos")
         assert resp.status_code == 400
         assert "Invalid session id" in resp.json()["detail"]
 
     def test_invalid_session_id_special_chars_returns_400(self, client):
         """Session_id with special characters returns 400."""
-        resp = client.get("/api/team/sessions/not-uuid-format/todos")
+        resp = client.get("/api/session/sessions/not-uuid-format/todos")
         assert resp.status_code == 400
         assert "Invalid session id" in resp.json()["detail"]
 
     def test_invalid_session_id_malformed_uuid_returns_400(self, client):
         """Malformed UUID (wrong format) returns 400."""
-        resp = client.get("/api/team/sessions/12345-67890/todos")
+        resp = client.get("/api/session/sessions/12345-67890/todos")
         assert resp.status_code == 400
         assert "Invalid session id" in resp.json()["detail"]
 
@@ -110,7 +110,7 @@ class TestGetTodos:
         fake_root = tmp_path / "ws"
         fake_root.mkdir(parents=True)
 
-        resp = client.get(f"/api/team/sessions/{session_id}/todos")
+        resp = client.get(f"/api/session/sessions/{session_id}/todos")
         assert resp.status_code == 200
         body = resp.json()
         assert body == {"todos": []}
@@ -119,7 +119,7 @@ class TestGetTodos:
         self, client, session_id, tmp_path, monkeypatch
     ):
         """Missing session artifact dir → returns empty list."""
-        resp = client.get(f"/api/team/sessions/{session_id}/todos")
+        resp = client.get(f"/api/session/sessions/{session_id}/todos")
         assert resp.status_code == 200
         body = resp.json()
         assert body == {"todos": []}
@@ -132,7 +132,7 @@ class TestGetTodos:
         fake_root.mkdir(parents=True)
         todos_path(fake_root, session_id).write_text("{ invalid json }")
 
-        resp = client.get(f"/api/team/sessions/{session_id}/todos")
+        resp = client.get(f"/api/session/sessions/{session_id}/todos")
         assert resp.status_code == 200
         body = resp.json()
         assert body == {"todos": []}
@@ -157,7 +157,7 @@ class TestGetTodos:
             )
         )
 
-        resp = client.get(f"/api/team/sessions/{session_id}/todos")
+        resp = client.get(f"/api/session/sessions/{session_id}/todos")
         assert resp.status_code == 200
         body = resp.json()
         assert body == {"todos": []}
@@ -181,7 +181,7 @@ class TestGetTodos:
         }
         todos_path(fake_root, session_id).write_text(json.dumps(todos_data))
 
-        resp = client.get(f"/api/team/sessions/{session_id}/todos")
+        resp = client.get(f"/api/session/sessions/{session_id}/todos")
         assert resp.status_code == 200
         body = resp.json()
         assert len(body["todos"]) == 1
@@ -221,7 +221,7 @@ class TestGetTodos:
         }
         todos_path(fake_root, session_id).write_text(json.dumps(todos_data))
 
-        resp = client.get(f"/api/team/sessions/{session_id}/todos")
+        resp = client.get(f"/api/session/sessions/{session_id}/todos")
         assert resp.status_code == 200
         body = resp.json()
         assert len(body["todos"]) == 3
@@ -254,7 +254,7 @@ class TestGetTodos:
         }
         todos_path(fake_root, session_id).write_text(json.dumps(todos_data))
 
-        resp = client.get(f"/api/team/sessions/{session_id}/todos")
+        resp = client.get(f"/api/session/sessions/{session_id}/todos")
         assert resp.status_code == 200
         body = resp.json()
         # When any item is invalid, the entire list is discarded
@@ -285,7 +285,7 @@ class TestGetTodos:
         }
         todos_path(fake_root, session_id).write_text(json.dumps(todos_data))
 
-        resp = client.get(f"/api/team/sessions/{session_id}/todos")
+        resp = client.get(f"/api/session/sessions/{session_id}/todos")
         assert resp.status_code == 200
         body = resp.json()
         # When any item is invalid, the entire list is discarded
@@ -316,7 +316,7 @@ class TestGetTodos:
         }
         todos_path(fake_root, session_id).write_text(json.dumps(todos_data))
 
-        resp = client.get(f"/api/team/sessions/{session_id}/todos")
+        resp = client.get(f"/api/session/sessions/{session_id}/todos")
         assert resp.status_code == 200
         body = resp.json()
         # When any item is invalid, the entire list is discarded
@@ -347,7 +347,7 @@ class TestGetTodos:
         }
         todos_path(fake_root, session_id).write_text(json.dumps(todos_data))
 
-        resp = client.get(f"/api/team/sessions/{session_id}/todos")
+        resp = client.get(f"/api/session/sessions/{session_id}/todos")
         assert resp.status_code == 200
         body = resp.json()
         # When any item is invalid, the entire list is discarded
@@ -374,7 +374,7 @@ class TestGetTodos:
         }
         todos_path(fake_root, session_id).write_text(json.dumps(todos_data))
 
-        resp = client.get(f"/api/team/sessions/{session_id}/todos")
+        resp = client.get(f"/api/session/sessions/{session_id}/todos")
         assert resp.status_code == 200
         body = resp.json()
         assert len(body["todos"]) == 1
@@ -389,7 +389,7 @@ class TestGetTodos:
         todos_data = {"counter": 0, "items": []}
         todos_path(fake_root, session_id).write_text(json.dumps(todos_data))
 
-        resp = client.get(f"/api/team/sessions/{session_id}/todos")
+        resp = client.get(f"/api/session/sessions/{session_id}/todos")
         assert resp.status_code == 200
         body = resp.json()
         assert body == {"todos": []}
@@ -403,7 +403,7 @@ class TestGetTodos:
         todos_data = {"counter": 0}  # Missing 'items' key
         todos_path(fake_root, session_id).write_text(json.dumps(todos_data))
 
-        resp = client.get(f"/api/team/sessions/{session_id}/todos")
+        resp = client.get(f"/api/session/sessions/{session_id}/todos")
         assert resp.status_code == 200
         body = resp.json()
         assert body == {"todos": []}
@@ -427,7 +427,7 @@ class TestGetTodos:
         }
         todos_path(fake_root, session_id).write_text(json.dumps(todos_data))
 
-        resp = client.get(f"/api/team/sessions/{session_id}/todos")
+        resp = client.get(f"/api/session/sessions/{session_id}/todos")
         assert resp.status_code == 200
         body = resp.json()
         item = body["todos"][0]
@@ -478,7 +478,7 @@ class TestGetTodos:
         }
         todos_path(fake_root, session_id).write_text(json.dumps(todos_data))
 
-        resp = client.get(f"/api/team/sessions/{session_id}/todos")
+        resp = client.get(f"/api/session/sessions/{session_id}/todos")
         assert resp.status_code == 200
         body = resp.json()
         item = body["todos"][0]
@@ -535,7 +535,7 @@ class TestGetTodos:
         todos_path(fake_root_2, session_id_2).write_text(json.dumps(todos_data_2))
 
         # Test session 1
-        resp1 = client.get(f"/api/team/sessions/{session_id_1}/todos")
+        resp1 = client.get(f"/api/session/sessions/{session_id_1}/todos")
         assert resp1.status_code == 200
         body1 = resp1.json()
         assert len(body1["todos"]) == 1
@@ -543,7 +543,7 @@ class TestGetTodos:
         assert body1["todos"][0]["content"] == "Session 1 task"
 
         # Test session 2
-        resp2 = client.get(f"/api/team/sessions/{session_id_2}/todos")
+        resp2 = client.get(f"/api/session/sessions/{session_id_2}/todos")
         assert resp2.status_code == 200
         body2 = resp2.json()
         assert len(body2["todos"]) == 1
@@ -574,8 +574,8 @@ class TestGetTodos:
             )
         )
 
-        resp1 = client.get(f"/api/team/sessions/{session_id_1}/todos")
-        resp2 = client.get(f"/api/team/sessions/{session_id_2}/todos")
+        resp1 = client.get(f"/api/session/sessions/{session_id_1}/todos")
+        resp2 = client.get(f"/api/session/sessions/{session_id_2}/todos")
 
         assert resp1.status_code == 200
         assert resp1.json()["todos"][0]["content"] == "Only session 1"

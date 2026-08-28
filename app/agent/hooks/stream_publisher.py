@@ -2,7 +2,7 @@
 
 Reuses the same stream_store.push_event() / mark_done() infrastructure as the
 single-agent chat route, so the team SSE stream is identical in shape to the
-single-agent stream.  The frontend can subscribe to GET /team/stream/{session_id}
+single-agent stream.  The frontend can subscribe to GET /session/stream/{session_id}
 and receive exactly the same event types it already handles.
 
 All events carry an ``agent`` field so the frontend can distinguish who is
@@ -45,7 +45,7 @@ class StreamPublisherHook(BaseAgentHook):
     and the frontend receives a unified event feed tagged by agent name.
 
     ``mark_done`` is intentionally NOT called here — the team coordinator
-    (AgentTeam) calls it once after all members are idle, not per-member.
+    (SessionRuntime) calls it once after all members are idle, not per-member.
 
     Args:
         session_id: The stream key suffix (team lead's session_id).

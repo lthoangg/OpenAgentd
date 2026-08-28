@@ -1,11 +1,11 @@
 /**
  * reconcileTurnTail — cheap post-turn reconciliation.
  *
- * A full history page carries up to 100 lead messages plus 100 per member with
- * complete tool output (measured over 1.7 MB on real sessions), nearly all of
- * which the client just received over SSE. This path adopts canonical rows for
- * only the tail the live stream produced, and must fall back to a full load
- * whenever a delta cannot be spliced safely.
+ * A full history page carries up to 100 messages with complete tool output
+ * (measured over 1.7 MB on real sessions), nearly all of which the client just
+ * received over SSE. This path adopts canonical rows for only the tail the live
+ * stream produced, and must fall back to a full load whenever a delta cannot be
+ * spliced safely.
  *
  * IMPORTANT: mock.module() MUST appear before the store import (see the note in
  * useTeamStore.async.test.ts) and this file relies on `bun test --parallel` for
@@ -33,13 +33,12 @@ function leadSession(overrides: object = {}) {
 
 function fullHistory(overrides: object = {}) {
   return {
-    lead: leadSession({
+    session: leadSession({
       messages: [
         { id: 'm1', role: 'user', content: 'hello', created_at: '2026-07-01T00:00:00Z' },
         { id: 'm2', role: 'assistant', content: 'hi', created_at: '2026-07-01T00:00:01Z' },
       ],
     }),
-    members: [],
     has_more: true,
     next_cursor: 'older-cursor',
     ...overrides,
@@ -48,12 +47,11 @@ function fullHistory(overrides: object = {}) {
 
 function deltaHistory(overrides: object = {}) {
   return {
-    lead: leadSession({
+    session: leadSession({
       messages: [
         { id: 'm3', role: 'assistant', content: 'canonical', created_at: '2026-07-01T00:00:05Z' },
       ],
     }),
-    members: [],
     has_more: false,
     next_cursor: null,
     truncated: false,
@@ -142,7 +140,7 @@ describe('reconcileTurnTail', () => {
     mockTeamHistorySince.mockImplementation(() =>
       Promise.resolve(
         deltaHistory({
-          lead: leadSession({
+          session: leadSession({
             messages: [
               {
                 id: 'tr-9',
@@ -302,30 +300,6 @@ describe('reconcileTurnTail', () => {
     expect(useTeamStore.getState().sessionId).toBeNull()
   })
 
-  it('adopts member sessions that first appear in the delta', async () => {
-    await seedLoadedSession()
-    mockTeamHistorySince.mockImplementation(() =>
-      Promise.resolve(deltaHistory({
-        members: [{
-          name: 'explorer#1',
-          session_id: 'member-sess',
-          messages: [{
-            id: 'mm1',
-            role: 'assistant',
-            content: 'member says',
-            created_at: '2026-07-01T00:00:06Z',
-          }],
-        }],
-      })),
-    )
-
-    await useTeamStore.getState().reconcileTurnTail('lead-sess')
-
-    const state = useTeamStore.getState()
-    expect(state.agentNames).toContain('explorer#1')
-    expect(state.agentStreams['explorer#1'].blocks.map((b) => b.content)).toEqual(['member says'])
-  })
-
   it('does not duplicate pre-compaction content when a turn spans a summarization boundary', async () => {
     // Reproduces: auto-compaction can fire mid-turn ("between model
     // iterations"), sealing whatever text/tools had already streamed into
@@ -358,7 +332,7 @@ describe('reconcileTurnTail', () => {
     // The server persisted the whole turn — pre-compaction reply, the
     // is_summary row, and the post-compaction reply — as canonical rows.
     mockTeamHistory.mockImplementation(() => Promise.resolve(fullHistory({
-      lead: leadSession({
+      session: leadSession({
         messages: [
           { id: 'm1', role: 'user', content: 'hello', created_at: '2026-07-01T00:00:00Z' },
           { id: 'm2', role: 'assistant', content: 'hi', created_at: '2026-07-01T00:00:01Z' },
@@ -422,7 +396,7 @@ describe('reconcileTurnTail', () => {
 
     // Canonical page: the summary sorts back at the boundary it marks.
     mockTeamHistory.mockImplementation(() => Promise.resolve(fullHistory({
-      lead: leadSession({
+      session: leadSession({
         messages: [
           { id: 'm1', role: 'user', content: 'hello', created_at: '2026-07-01T00:00:00Z' },
           { id: 's1', role: 'user', content: 'summary text', is_summary: true, created_at: '2026-07-01T00:00:00.999Z' },
@@ -433,7 +407,7 @@ describe('reconcileTurnTail', () => {
     })))
     // The delta sees the new anchored summary, but cannot place it before m2.
     mockTeamHistorySince.mockImplementation(() => Promise.resolve(deltaHistory({
-      lead: leadSession({
+      session: leadSession({
         messages: [
           { id: 's1', role: 'user', content: 'summary text', is_summary: true, created_at: '2026-07-01T00:00:00.999Z' },
           { id: 'a2', role: 'assistant', content: 'post-compaction reply', created_at: '2026-07-01T00:00:04Z' },
@@ -462,7 +436,7 @@ describe('reconcileTurnTail', () => {
     addUnsyncedBlock('client-block-1')
 
     const canonicalPage = fullHistory({
-      lead: leadSession({
+      session: leadSession({
         messages: [
           { id: 'm1', role: 'user', content: 'hello', created_at: '2026-07-01T00:00:00Z' },
           { id: 'm2', role: 'assistant', content: 'hi', created_at: '2026-07-01T00:00:01Z' },
@@ -475,7 +449,7 @@ describe('reconcileTurnTail', () => {
       // The post-Stop reload lands first and installs the canonical page.
       await useTeamStore.getState().loadSession('lead-sess')
       return deltaHistory({
-        lead: leadSession({
+        session: leadSession({
           messages: [
             { id: 'm3', role: 'user', content: 'stop me', created_at: '2026-07-01T00:00:05Z' },
           ],
@@ -528,9 +502,9 @@ describe('reconcileTurnTail', () => {
 })
 
 describe('mid-turn loadSession reconciliation', () => {
-  /** What the chat area actually renders for an agent: confirmed rows + live tail. */
-  const rendered = (agent = 'lead') => {
-    const stream = useTeamStore.getState().agentStreams[agent]
+  /** What the chat area actually renders: confirmed rows + live tail. */
+  const rendered = () => {
+    const stream = useTeamStore.getState().agentStreams.lead
     return [...stream.blocks, ...stream.currentBlocks].map((b) => b.content)
   }
 
@@ -562,7 +536,7 @@ describe('mid-turn loadSession reconciliation', () => {
     })
 
     mockTeamHistory.mockImplementation(() => Promise.resolve(fullHistory({
-      lead: leadSession({
+      session: leadSession({
         running: true,
         messages: [
           { id: 'ua', role: 'user', content: 'message A', created_at: '2026-07-01T00:00:10.000Z' },
@@ -599,7 +573,7 @@ describe('mid-turn loadSession reconciliation', () => {
     })
 
     mockTeamHistory.mockImplementation(() => Promise.resolve(fullHistory({
-      lead: leadSession({
+      session: leadSession({
         running: true,
         messages: [
           { id: 'ua', role: 'user', content: 'message A', created_at: '2026-07-01T00:00:10.000Z' },
@@ -634,7 +608,7 @@ describe('mid-turn loadSession reconciliation', () => {
     useTeamStore.getState()._handleSSEEvent('message', { agent: 'lead', text: 'step one reply' })
 
     mockTeamHistory.mockImplementation(() => Promise.resolve(fullHistory({
-      lead: leadSession({
+      session: leadSession({
         running: true,
         messages: [
           { id: 'ua', role: 'user', content: 'message A', created_at: '2026-07-01T00:00:10.000Z' },
@@ -668,7 +642,7 @@ describe('mid-turn loadSession reconciliation', () => {
 
     // Server has committed the user row and step one; step two is still live.
     mockTeamHistory.mockImplementation(() => Promise.resolve(fullHistory({
-      lead: leadSession({
+      session: leadSession({
         running: true,
         messages: [
           { id: 'ua', role: 'user', content: 'message A', created_at: '2026-07-01T00:00:10.000Z' },
@@ -703,7 +677,7 @@ describe('mid-turn loadSession reconciliation', () => {
 
     // Persisted rows carry no reasoning_content — only user + reply.
     mockTeamHistory.mockImplementation(() => Promise.resolve(fullHistory({
-      lead: leadSession({
+      session: leadSession({
         running: true,
         messages: [
           { id: 'ua', role: 'user', content: 'message A', created_at: '2026-07-01T00:00:10.000Z' },
@@ -735,7 +709,7 @@ describe('mid-turn loadSession reconciliation', () => {
     })
 
     mockTeamHistory.mockImplementation(() => Promise.resolve(fullHistory({
-      lead: leadSession({
+      session: leadSession({
         running: true,
         messages: [
           { id: 'ua', role: 'user', content: 'message A', created_at: '2026-07-01T00:00:10.000Z' },
@@ -748,43 +722,6 @@ describe('mid-turn loadSession reconciliation', () => {
 
     expect(rendered().filter((c) => c === 'now for step two')).toHaveLength(1)
     expect(rendered().filter((c) => c === 'step one reply')).toHaveLength(1)
-  })
-
-  it('deduplicates a member stream against a running snapshot', async () => {
-    // Member turns are anchored by agent-routed (`from_agent`) user rows —
-    // members never receive a plain user message, so the lead-only anchor
-    // would skip them entirely and leave their tabs duplicated mid-turn.
-    await seedLoadedSession()
-
-    useTeamStore.setState((state) => {
-      state.isTeamWorking = true
-      state.agentStreams.worker = {
-        ...state.agentStreams.lead,
-        blocks: [],
-        status: 'working',
-        currentBlocks: [
-          { id: 'inbox-1', type: 'user', content: 'do the thing', extra: { from_agent: 'lead' }, timestamp: new Date('2026-07-01T00:00:10.000Z') },
-          { id: 'live-1', type: 'text', content: 'working on it', timestamp: new Date('2026-07-01T00:00:11.000Z') },
-        ],
-      }
-      return state
-    })
-
-    mockTeamHistory.mockImplementation(() => Promise.resolve(fullHistory({
-      lead: leadSession({ running: true }),
-      members: [{
-        name: 'worker',
-        messages: [
-          { id: 'wu', role: 'user', content: 'do the thing', extra: { from_agent: 'lead' }, created_at: '2026-07-01T00:00:10.000Z' },
-          { id: 'wa', role: 'assistant', content: 'working on it', created_at: '2026-07-01T00:00:11.000Z' },
-        ],
-      }],
-    })))
-
-    await useTeamStore.getState().loadSession('lead-sess')
-
-    expect(rendered('worker').filter((c) => c === 'do the thing')).toHaveLength(1)
-    expect(rendered('worker').filter((c) => c === 'working on it')).toHaveLength(1)
   })
 
   it('does not swallow a re-sent identical message', async () => {
@@ -806,7 +743,7 @@ describe('mid-turn loadSession reconciliation', () => {
     // History still ends with the *first* "yes" turn; the re-send is not
     // persisted yet.
     mockTeamHistory.mockImplementation(() => Promise.resolve(fullHistory({
-      lead: leadSession({
+      session: leadSession({
         running: true,
         messages: [
           { id: 'u1', role: 'user', content: 'yes', created_at: '2026-07-01T00:00:10.000Z' },

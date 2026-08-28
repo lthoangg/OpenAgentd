@@ -1,4 +1,4 @@
-"""Form bodies for POST /api/chat and POST /api/team/chat."""
+"""Form bodies for POST /api/chat and POST /api/session/chat."""
 
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ from app.api.schemas.base import _validation_detail
 
 
 class ChatForm(BaseModel):
-    """Validated form body for POST /api/chat and POST /api/team/chat.
+    """Validated form body for POST /api/chat and POST /api/session/chat.
 
     Modes (mutually exclusive):
     - **Normal send** (interrupt=false, message required)

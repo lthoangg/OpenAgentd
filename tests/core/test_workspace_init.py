@@ -43,11 +43,6 @@ def test_ensure_workspace_initialized_creates_roots_and_builtin_defaults(
     assert (config / "plugins").is_dir()
     assert (tmp_path / "cache").is_dir()
     assert (config / "agents" / "openagentd.md").is_file()
-    assert (config / "agents" / "coder.md").is_file()
-    assert (config / "agents" / "explorer.md").is_file()
-    assert (config / "agents" / "coding" / "openagentd.md").is_file()
-    assert (config / "agents" / "coding" / "coder.md").is_file()
-    assert (config / "agents" / "coding" / "explorer.md").is_file()
     assert (config / "settings.yaml").is_file()
     assert (config / "multimodal.yaml").is_file()
 
@@ -75,8 +70,6 @@ def test_ensure_workspace_initialized_preserves_existing_agents(
     ensure_workspace_initialized()
 
     assert "model: openai:gpt-5" in existing.read_text(encoding="utf-8")
-    assert (agents / "coder.md").is_file()
-    assert (agents / "explorer.md").is_file()
 
 
 def test_ensure_workspace_initialized_restores_missing_default_lead(

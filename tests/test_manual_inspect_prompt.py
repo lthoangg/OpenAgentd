@@ -46,16 +46,15 @@ def test_serialize_tools_uses_compact_provider_style_json():
 
 
 def test_team_protocol_is_part_of_inspected_system_prompt():
-    lead = SimpleNamespace(role="lead", name="openagentd")
-    member = SimpleNamespace(role="member", name="explorer")
+    parent_prompt = _inject_team_protocol("BASE")
+    child_prompt = _inject_team_protocol("BASE", child_session=True)
 
-    lead_prompt = _inject_team_protocol("BASE", lead)
-    member_prompt = _inject_team_protocol("BASE", member)
-
-    assert lead_prompt.startswith("BASE\n\n---\n\n")
-    assert "## Lead workflow" in lead_prompt
-    assert "You are `explorer#1`" in member_prompt
-    assert "## Member workflow" in member_prompt
+    assert parent_prompt.startswith("BASE\n\n---\n\n")
+    assert "Multi-Agent Delegation Protocol" in parent_prompt
+    assert "agent_spawn" in parent_prompt
+    assert "team_message" not in parent_prompt
+    assert "Child Agent Operating Protocol" in child_prompt
+    assert "agent_merge" in child_prompt
 
 
 def test_coding_prompt_inspection_does_not_include_lsp_runtime_tool():
@@ -87,8 +86,6 @@ def test_builtin_prompt_budgets_include_every_first_party_profile():
 
     assert {item["name"] for item in prompts} == {
         "coding/openagentd",
-        "coding/coder",
-        "coding/explorer",
     }
     assert all(item["tokens"] > 0 for item in prompts)
 

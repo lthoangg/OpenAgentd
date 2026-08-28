@@ -42,21 +42,21 @@ def post_message(base: str, message: str, session_id: str | None = None) -> str:
     data: dict[str, str] = {"message": message}
     if session_id:
         data["session_id"] = session_id
-    r = httpx.post(f"{base}/team/chat", data=data, timeout=20)
+    r = httpx.post(f"{base}/session/chat", data=data, timeout=20)
     r.raise_for_status()
     return r.json()["session_id"]
 
 
 def post_interrupt(base: str, sid: str) -> None:
     r = httpx.post(
-        f"{base}/team/chat", data={"session_id": sid, "interrupt": "true"}, timeout=20
+        f"{base}/session/chat", data={"session_id": sid, "interrupt": "true"}, timeout=20
     )
     r.raise_for_status()
 
 
 def wait_for_done(base: str, sid: str, timeout: int) -> str:
     deadline = time.monotonic() + timeout
-    with httpx.stream("GET", f"{base}/team/{sid}/stream", timeout=timeout + 5) as r:
+    with httpx.stream("GET", f"{base}/session/{sid}/stream", timeout=timeout + 5) as r:
         current = ""
         for line in r.iter_lines():
             if time.monotonic() > deadline:
@@ -69,9 +69,9 @@ def wait_for_done(base: str, sid: str, timeout: int) -> str:
 
 
 def get_history(base: str, sid: str) -> list[dict]:
-    r = httpx.get(f"{base}/team/{sid}/history", params={"limit": 1000}, timeout=20)
+    r = httpx.get(f"{base}/session/{sid}/history", params={"limit": 1000}, timeout=20)
     r.raise_for_status()
-    return r.json()["lead"]["messages"]
+    return r.json()["session"]["messages"]
 
 
 def main() -> int:

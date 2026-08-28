@@ -52,15 +52,10 @@ function queuedMessagesFromHistory(sessionId: string, messages: MessageResponse[
 }
 
 /**
- * Newest ``created_at`` across the lead and every member session.
- *
- * Valid "we hold everything before this" watermark because a full page returns
- * the *newest* rows of each session: if a member had a message after this
- * instant, that message would itself be the maximum.
+ * Newest message id in a history response.
  */
 function newestMessageAt(history: {
-  lead: { messages: MessageResponse[] }
-  members: Array<{ messages: MessageResponse[] }>
+  session: { messages: MessageResponse[] }
 }): string | null {
   let newest: string | null = null
   const consider = (msgs: MessageResponse[]) => {
@@ -71,8 +66,7 @@ function newestMessageAt(history: {
       if (newest === null || msg.id > newest) newest = msg.id
     }
   }
-  consider(history.lead.messages)
-  for (const member of history.members) consider(member.messages)
+  consider(history.session.messages)
   return newest
 }
 
@@ -453,28 +447,27 @@ async function loadSessionImpl(
 
     set((draft) => {
       draft.sessionId = sessionId
-      draft.sessionTitle = history.lead.title ?? null
+      draft.sessionTitle = history.session.title ?? null
       if (!draft._sessionSettingsDirty && draft._sessionSettingsVersion === settingsVersion) {
-        draft.sessionModel = history.lead.model ?? null
-        draft.sessionThinkingLevel = history.lead.thinking_level ?? null
+        draft.sessionModel = history.session.model ?? null
+        draft.sessionThinkingLevel = history.session.thinking_level ?? null
       }
-      draft.sessionFastMode = fastModeFromMessages(history.lead.messages)
+      draft.sessionFastMode = fastModeFromMessages(history.session.messages)
       draft.error = null
       Object.values(draft.agentStreams).forEach((stream) => {
         stream.revertedCount = 0
         stream.revertedMessages = []
       })
 
-      const memberNames = history.members.map((m) => m.name)
-      const leadName = history.lead.agent_name ?? liveNames?.[0] ?? draft.leadName ?? 'lead'
+      const leadName = history.session.agent_name ?? liveNames?.[0] ?? draft.leadName ?? 'lead'
       draft.leadName = leadName
       if (liveNames !== null) draft.liveAgentNames = liveNames
 
-      const allNames = Array.from(new Set([leadName, ...(liveNames ?? []), ...memberNames]))
+      const allNames = Array.from(new Set([leadName, ...(liveNames ?? [])]))
       draft.agentNames = allNames
-      const leadRevertTime = revertBoundaryTime(history.lead)
-      const boundaryId = history.lead.revert?.message_id
-      const boundaryMsg = boundaryId ? history.lead.messages.find((msg) => msg.id === boundaryId) : undefined
+      const leadRevertTime = revertBoundaryTime(history.session)
+      const boundaryId = history.session.revert?.message_id
+      const boundaryMsg = boundaryId ? history.session.messages.find((msg) => msg.id === boundaryId) : undefined
 
       // The client's `isTeamWorking` lags the server: after a /stop the
       // backend keeps unwinding for seconds before its trailing `done` clears
@@ -485,7 +478,7 @@ async function loadSessionImpl(
       // preserving them is what let the belated `done` append the turn twice.
       // Drop them up front; everything downstream then sees only genuinely
       // newer content and needs no special casing.
-      const turnStillRunning = history.lead.running === true
+      const turnStillRunning = history.session.running === true
       if (!turnStillRunning) {
         Object.entries(draft.agentStreams).forEach(([name, stream]) => {
           dropSnapshotCoveredBlocks(stream, liveCountsAtFetch.get(name) ?? 0)
@@ -511,8 +504,7 @@ async function loadSessionImpl(
         // ``running`` is false while the question row says otherwise. The row is
         // the durable half, so it wins.
         draft.isTeamWorking =
-          history.lead.running === true ||
-          history.members.some((m) => m.running === true) ||
+          history.session.running === true ||
           awaitingAnswer
       }
 
@@ -526,7 +518,7 @@ async function loadSessionImpl(
         )
         if (!leadHadNewerActivity) revokeBlobUrlsFromBlocks(leadStream.currentBlocks)
         const leadOrphans: Record<string, OrphanToolResult> = {}
-        leadStream.blocks = parseTeamBlocks(history.lead.messages, leadOrphans)
+        leadStream.blocks = parseTeamBlocks(history.session.messages, leadOrphans)
         // Results whose calls sit in older, not-yet-loaded pages — parked for
         // loadOlderMessages to attach when the owning card scrolls in.
         leadStream._orphanToolResults = leadOrphans
@@ -558,9 +550,9 @@ async function loadSessionImpl(
           // what distinguishes the two here, not the ``running`` flag.
           leadStream.status = awaitingAnswer
             ? 'waiting_input'
-            : history.lead.running === true ? 'working' : 'idle'
+            : history.session.running === true ? 'working' : 'idle'
           leadStream._turnStartedAt =
-            history.lead.running === true && !awaitingAnswer ? Date.now() : null
+            history.session.running === true && !awaitingAnswer ? Date.now() : null
         }
         // No restart bookkeeping needed here: the status assigned above is the
         // snapshot's verdict, and `isAwaitingRestartOutput` only reports a
@@ -568,7 +560,7 @@ async function loadSessionImpl(
         // ended (`idle`) or parked on another question (`waiting_input`) stops
         // matching on its own — which is what keeps the dots from stranding
         // when a reconnecting client missed the whole resumed turn.
-        const leadVisibleMsgs = messagesBeforeRevert(history.lead)
+        const leadVisibleMsgs = messagesBeforeRevert(history.session)
         const leadUsage = sumUsageFromMessages(leadVisibleMsgs)
         const prevEstimatedCost = leadStream.usage?.estimatedCostUsd ?? 0
         const prevCompletionTokens = leadStream.usage?.completionTokens ?? 0
@@ -580,11 +572,11 @@ async function loadSessionImpl(
         // server has not persisted yet). promptTokens/cachedTokens stay
         // page-derived: they describe the *latest* call, which is always in
         // the newest page.
-        const leadCostUsd = typeof history.lead.estimated_cost_usd === 'number'
-          ? history.lead.estimated_cost_usd
+        const leadCostUsd = typeof history.session.estimated_cost_usd === 'number'
+          ? history.session.estimated_cost_usd
           : (leadUsage.estimatedCostUsd ?? 0)
-        const leadCompletionTotal = typeof history.lead.completion_tokens === 'number'
-          ? history.lead.completion_tokens
+        const leadCompletionTotal = typeof history.session.completion_tokens === 'number'
+          ? history.session.completion_tokens
           : leadUsage.completionTokens
         if (!leadHadNewerActivity) {
           leadStream.usage = leadUsage
@@ -599,76 +591,12 @@ async function loadSessionImpl(
         }
       }
 
-      const queued = queuedMessagesFromHistory(sessionId, history.lead.messages)
+      const queued = queuedMessagesFromHistory(sessionId, history.session.messages)
       const queuedIds = new Set(queued.map((msg) => msg.id))
       draft._pendingMessages = [
         ...draft._pendingMessages.filter((msg) => msg.sessionId !== sessionId || queuedIds.has(msg.id)),
         ...queued.filter((msg) => !draft._pendingMessages.some((existing) => existing.id === msg.id)),
       ]
-
-      history.members.forEach((member) => {
-        const existingStatus = draft.agentStreams[member.name]?.status
-        const isLiveMember = liveNames === null || liveNames.includes(member.name)
-        if (!draft.agentStreams[member.name]) {
-          draft.agentStreams[member.name] = createDefaultAgentStream()
-        }
-        const memberStream = draft.agentStreams[member.name]
-        const memberHadNewerActivity = hasLiveContent(memberStream, draft.isTeamWorking, fetchStartedAt)
-        const memberLocalErrors = [...memberStream.blocks, ...memberStream.currentBlocks].filter(
-          (b) => b.type === 'provider_status' && (b.extra?.status === 'error' || b.extra?.status === 'exhausted' || b.extra?.category === 'provider'),
-        )
-        if (!memberHadNewerActivity) revokeBlobUrlsFromBlocks(memberStream.currentBlocks)
-        const memberOrphans: Record<string, OrphanToolResult> = {}
-        memberStream.blocks = parseTeamBlocks(member.messages, memberOrphans)
-        memberStream._orphanToolResults = memberOrphans
-        if (memberLocalErrors.length > 0) {
-          const existingIds = new Set(memberStream.blocks.map((b) => b.id))
-          const toKeep = memberLocalErrors.filter((b) => !existingIds.has(b.id))
-          memberStream.blocks = [...memberStream.blocks, ...toKeep]
-        }
-        memberStream._revertedSuffix = []
-        applyRevertBoundary(memberStream, leadRevertTime, {
-          boundaryId,
-          boundaryContent: boundaryMsg?.content,
-        })
-        if (memberHadNewerActivity && turnStillRunning) {
-          dropSnapshotAlignedPrefix(memberStream, liveCountsAtFetch.get(member.name) ?? 0)
-          removePersistedOptimisticUserBlocks(memberStream)
-        }
-        if (!memberHadNewerActivity) {
-          memberStream.currentBlocks = []
-          memberStream.currentText = ''
-          memberStream.currentThinking = ''
-          memberStream.status =
-            !isLiveMember
-              ? 'offline'
-              : member.running === true
-                ? 'working'
-                : existingStatus === 'offline' || existingStatus === 'error' ? existingStatus : 'idle'
-          memberStream._turnStartedAt = member.running === true ? Date.now() : null
-        }
-        const memberVisibleMsgs = messagesBeforeTime(member.messages, leadRevertTime)
-        const memberUsage = sumUsageFromMessages(memberVisibleMsgs)
-        const prevMemberEstimatedCost = memberStream.usage?.estimatedCostUsd ?? 0
-        const prevMemberCompletionTokens = memberStream.usage?.completionTokens ?? 0
-        const memberCostUsd = typeof member.estimated_cost_usd === 'number'
-          ? member.estimated_cost_usd
-          : (memberUsage.estimatedCostUsd ?? 0)
-        const memberCompletionTotal = typeof member.completion_tokens === 'number'
-          ? member.completion_tokens
-          : memberUsage.completionTokens
-        if (!memberHadNewerActivity) {
-          memberStream.usage = memberUsage
-          memberStream.usage.completionTokens = Math.max(prevMemberCompletionTokens, memberCompletionTotal)
-          memberStream.usage.estimatedCostUsd = Math.round(Math.max(prevMemberEstimatedCost, memberCostUsd) * 1e8) / 1e8
-          memberStream.usage.totalTokens = memberStream.usage.promptTokens + memberStream.usage.completionTokens
-        } else {
-          memberStream.usage.completionTokens = Math.max(prevMemberCompletionTokens, memberCompletionTotal)
-          memberStream.usage.estimatedCostUsd = Math.round(Math.max(prevMemberEstimatedCost, memberCostUsd) * 1e8) / 1e8
-          memberStream.usage.promptTokens = memberStream.usage.promptTokens || memberUsage.promptTokens
-          memberStream.usage.totalTokens = memberStream.usage.promptTokens + memberStream.usage.completionTokens
-        }
-      })
 
       if (!draft.activeAgent || !allNames.includes(draft.activeAgent)) {
         draft.activeAgent = leadName ?? allNames[0] ?? null
@@ -676,7 +604,7 @@ async function loadSessionImpl(
 
       draft.hasMore = history.has_more
       draft.nextCursor = history.next_cursor
-      draft._leadRevertTime = revertBoundaryTime(history.lead)
+      draft._leadRevertTime = revertBoundaryTime(history.session)
       // Everything in this response is server-confirmed, so nothing is
       // pending reconciliation and the watermark advances to its newest row.
       draft._syncedThrough = newestMessageAt(history)
@@ -817,7 +745,7 @@ export const createSessionSlice: StateCreator<
       const status = await teamStatus(workspace, currentSessionId)
       if (expectedGeneration !== undefined && get()._sessionGeneration !== expectedGeneration) return
       if (status) {
-        const allAgents = [status.lead, ...status.members]
+        const allAgents = [status.lead]
         const liveNames = allAgents.map((a) => a.name)
         set((draft) => {
           draft.leadName = status.lead.name
@@ -828,7 +756,7 @@ export const createSessionSlice: StateCreator<
             if (!draft.agentStreams[agent.name]) {
               draft.agentStreams[agent.name] = createDefaultAgentStream()
             }
-            // No run state is set from here: /team/agents (which this is a
+            // No run state is set from here: /session/agents (which this is a
             // projection of) carries no per-agent state, so every agent arrives
             // as 'idle'. Live working/idle transitions come from the SSE
             // ``agent_status`` events, which are the authoritative source.
@@ -930,12 +858,12 @@ export const createSessionSlice: StateCreator<
 
     set((draft) => {
       // Metadata the delta carries authoritatively.
-      draft.sessionTitle = delta.lead.title ?? draft.sessionTitle
+      draft.sessionTitle = delta.session.title ?? draft.sessionTitle
       if (!draft._sessionSettingsDirty && draft._sessionSettingsVersion === settingsVersion) {
-        draft.sessionModel = delta.lead.model ?? draft.sessionModel
-        draft.sessionThinkingLevel = delta.lead.thinking_level ?? draft.sessionThinkingLevel
+        draft.sessionModel = delta.session.model ?? draft.sessionModel
+        draft.sessionThinkingLevel = delta.session.thinking_level ?? draft.sessionThinkingLevel
       }
-      draft.isTeamWorking = delta.lead.running === true
+      draft.isTeamWorking = delta.session.running === true
       draft.error = null
 
       const revertTime = draft._leadRevertTime
@@ -965,60 +893,33 @@ export const createSessionSlice: StateCreator<
         stream._unsyncedBlockIds = []
       }
 
-      const leadName = delta.lead.agent_name ?? draft.leadName
+      const leadName = delta.session.agent_name ?? draft.leadName
       if (leadName) {
         if (!draft.agentStreams[leadName]) {
           draft.agentStreams[leadName] = createDefaultAgentStream()
         }
-        swapTail(leadName, delta.lead.messages)
+        swapTail(leadName, delta.session.messages)
         // The delta carries the authoritative full-session total; adopt it
         // (never regressing below the live SSE value) so a client that dropped
         // usage events re-converges after every completed turn.
         const leadStream = draft.agentStreams[leadName]
-        if (typeof delta.lead.estimated_cost_usd === 'number') {
+        if (typeof delta.session.estimated_cost_usd === 'number') {
           leadStream.usage.estimatedCostUsd = Math.round(Math.max(
             leadStream.usage.estimatedCostUsd ?? 0,
-            delta.lead.estimated_cost_usd,
+            delta.session.estimated_cost_usd,
           ) * 1e8) / 1e8
         }
-        if (typeof delta.lead.completion_tokens === 'number') {
+        if (typeof delta.session.completion_tokens === 'number') {
           leadStream.usage.completionTokens = Math.max(
             leadStream.usage.completionTokens,
-            delta.lead.completion_tokens,
+            delta.session.completion_tokens,
           )
           leadStream.usage.totalTokens = leadStream.usage.promptTokens + leadStream.usage.completionTokens
         }
       }
 
-      delta.members.forEach((member: {
-        name: string
-        messages: MessageResponse[]
-        estimated_cost_usd?: number | null
-        completion_tokens?: number | null
-      }) => {
-        if (!draft.agentStreams[member.name]) {
-          draft.agentStreams[member.name] = createDefaultAgentStream()
-          if (!draft.agentNames.includes(member.name)) draft.agentNames.push(member.name)
-        }
-        swapTail(member.name, member.messages)
-        const memberStream = draft.agentStreams[member.name]
-        if (typeof member.estimated_cost_usd === 'number') {
-          memberStream.usage.estimatedCostUsd = Math.round(Math.max(
-            memberStream.usage.estimatedCostUsd ?? 0,
-            member.estimated_cost_usd,
-          ) * 1e8) / 1e8
-        }
-        if (typeof member.completion_tokens === 'number') {
-          memberStream.usage.completionTokens = Math.max(
-            memberStream.usage.completionTokens,
-            member.completion_tokens,
-          )
-          memberStream.usage.totalTokens = memberStream.usage.promptTokens + memberStream.usage.completionTokens
-        }
-      })
-
       // Adopt any queued rows the delta revealed, matching loadSession.
-      const queued = queuedMessagesFromHistory(sessionId, delta.lead.messages)
+      const queued = queuedMessagesFromHistory(sessionId, delta.session.messages)
       if (queued.length > 0) {
         draft._pendingMessages = [
           ...draft._pendingMessages,
@@ -1050,7 +951,7 @@ export const createSessionSlice: StateCreator<
         draft.hasMore = history.has_more
         draft.nextCursor = history.next_cursor
         if (leadName && draft.agentStreams[leadName]) {
-          const filtered = messagesBeforeTime(history.lead.messages, _leadRevertTime)
+          const filtered = messagesBeforeTime(history.session.messages, _leadRevertTime)
           const leadStream = draft.agentStreams[leadName]
           // Claim results orphaned by the page boundary: the newer page may
           // hold a tool result whose call row is in this older page.
@@ -1063,16 +964,6 @@ export const createSessionSlice: StateCreator<
           // carry nothing new to add. Accumulating the page's messages would
           // double-count the cost/tokens the server total already includes.
         }
-        history.members.forEach((member) => {
-          if (draft.agentStreams[member.name]) {
-            const filtered = messagesBeforeTime(member.messages, _leadRevertTime)
-            const memberStream = draft.agentStreams[member.name]
-            const orphans = { ...(memberStream._orphanToolResults ?? {}) }
-            const older = applyOrphanToolResults(parseTeamBlocks(filtered, orphans), orphans)
-            memberStream.blocks = [...older, ...memberStream.blocks]
-            memberStream._orphanToolResults = orphans
-          }
-        })
       })
     } catch (err) {
       set((draft) => { draft._loadingOlder = false })

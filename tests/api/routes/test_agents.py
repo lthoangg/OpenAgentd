@@ -3,7 +3,7 @@
 Mutations validate the new on-disk state but do NOT rebuild the running
 team — agents pick up file changes at the start of their next turn via
 the config-stamp drift check (see ``app.agent.loader.detect_drift``
-and ``TeamMemberBase._refresh_agent_from_disk``).  These tests assert
+and ``SessionRuntime._refresh_agent_from_disk``).  These tests assert
 that contract: validation + rollback semantics, but no live team swap.
 """
 
@@ -19,6 +19,7 @@ from httpx import ASGITransport, AsyncClient
 
 from app.api.routes.agents import _mode_for_agent_path, router as agents_router
 from app.api.routes.skills import router as skills_router
+from app.services import agent_fs
 from app.services import team_manager
 
 
@@ -141,13 +142,11 @@ async def test_list_includes_coding_agents(fs_dirs, client: AsyncClient):
 
     assert res.status_code == 200
     names = [row["name"] for row in res.json()["agents"]]
-    assert names == ["coding/coder", "coding/explorer", "coding/openagentd", "lead"]
+    assert names == ["coding/openagentd", "lead"]
 
 
 @pytest.mark.asyncio
-async def test_list_materialized_coding_explorer_uses_builtin_tools(
-    fs_dirs, client: AsyncClient
-):
+async def test_list_coding_openagentd_uses_builtin_tools(fs_dirs, client: AsyncClient):
     agents_dir, _ = fs_dirs
     coding_dir = agents_dir / "coding"
     coding_dir.mkdir()
@@ -156,13 +155,12 @@ async def test_list_materialized_coding_explorer_uses_builtin_tools(
     )
 
     res = await client.get("/api/agents")
-
     assert res.status_code == 200
     rows = {row["name"]: row for row in res.json()["agents"]}
-    explorer = rows["coding/explorer"]
-    assert explorer["description"].startswith("Checks the current codebase")
-    assert set(["glob", "grep", "read", "shell", "skill"]).issubset(explorer["tools"])
-    assert "patch" not in explorer["tools"]
+    lead = rows["coding/openagentd"]
+    assert set(["glob", "grep", "read", "shell", "skill", "patch"]).issubset(
+        lead["tools"]
+    )
 
 
 @pytest.mark.asyncio
@@ -779,14 +777,18 @@ async def test_delete_agent_removes_file(fs_dirs, client: AsyncClient):
     The deleted agent stays running until the next server start.
     """
     agents_dir, _ = fs_dirs
-    # Create lead + member so deleting the member leaves a valid team.
+    # Create lead + legacy member file on disk; deleting the legacy file leaves a valid team.
     await client.post("/api/agents", json={"name": "lead", "content": LEAD_MD})
-    await client.post("/api/agents", json={"name": "worker", "content": MEMBER_MD})
+    agent_fs.write_agent(
+        "legacy_file",
+        "---\nname: legacy_file\nrole: member\nmodel: zai:glm\n---\n",
+        create=True,
+    )
 
-    res = await client.delete("/api/agents/worker")
+    res = await client.delete("/api/agents/legacy_file")
     assert res.status_code == 200
-    assert res.json() == {"name": "worker"}
-    assert not (agents_dir / "worker.md").exists()
+    assert res.json() == {"name": "legacy_file"}
+    assert not (agents_dir / "legacy_file.md").exists()
 
 
 @pytest.mark.asyncio
@@ -795,7 +797,6 @@ async def test_delete_last_lead_rollback(fs_dirs, client: AsyncClient):
     await client.post("/api/agents", json={"name": "lead", "content": LEAD_MD})
     res = await client.delete("/api/agents/lead")
     assert res.status_code == 422
-    # File was restored.
     assert (agents_dir / "lead.md").is_file()
 
 

@@ -31,7 +31,7 @@ const WIRE_QUESTIONS = [
 
 function historyWithQuestion(overrides: object = {}) {
   return {
-    lead: {
+    session: {
       id: 'lead-sess',
       agent_name: 'lead',
       title: null,
@@ -44,7 +44,6 @@ function historyWithQuestion(overrides: object = {}) {
         { id: 'm1', role: 'user', content: 'set it up', created_at: '2026-07-01T00:00:00Z' },
       ],
     },
-    members: [],
     has_more: false,
     next_cursor: null,
     pending_question: {
@@ -60,7 +59,7 @@ function historyWithQuestion(overrides: object = {}) {
 
 ;(mock as any).module('@/api/client', () => ({
   teamHistory: mockTeamHistory,
-  teamHistorySince: mock(() => Promise.resolve({ lead: {}, members: [] })) as any,
+  teamHistorySince: mock(() => Promise.resolve({ session: {} })) as any,
   teamStatus: mock(() => Promise.resolve(null)) as any,
   teamStream: mock(() => {}) as any,
   postTeamChat: mock(() => Promise.resolve({ session_id: 'lead-sess' })) as any,
@@ -136,7 +135,7 @@ describe('loadSession — pending question hydration', () => {
     it('stops awaiting the restart when the fetch says the turn ended', async () => {
       suspendAndResume()
       mockTeamHistory.mockImplementation(() =>
-        Promise.resolve(historyWithQuestion({ pending_question: null, lead: { ...historyWithQuestion().lead, running: false } })),
+        Promise.resolve(historyWithQuestion({ pending_question: null, session: { ...historyWithQuestion().session, running: false } })),
       )
 
       await useTeamStore.getState().loadSession('lead-sess')
@@ -149,7 +148,7 @@ describe('loadSession — pending question hydration', () => {
       // genuinely still working, it just has not produced anything yet.
       suspendAndResume()
       mockTeamHistory.mockImplementation(() =>
-        Promise.resolve(historyWithQuestion({ pending_question: null, lead: { ...historyWithQuestion().lead, running: true } })),
+        Promise.resolve(historyWithQuestion({ pending_question: null, session: { ...historyWithQuestion().session, running: true } })),
       )
 
       await useTeamStore.getState().loadSession('lead-sess')

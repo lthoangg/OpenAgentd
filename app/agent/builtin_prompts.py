@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import re
-from typing import TypedDict
 
 DEFAULT_EMPTY_PROMPT = "You are a helpful assistant."
 _EXTRA_PROMPT_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
@@ -19,92 +18,6 @@ CODING_OPENAGENTD_TOOLS = [
     "web_fetch",
     "web_search",
 ]
-
-
-class BuiltinMemberProfile(TypedDict):
-    description: str
-    tools: list[str]
-    mcp: list[str]
-    prompt: str
-
-
-class BuiltinAgentBlueprint(TypedDict):
-    name: str
-    role: str
-    mode: str
-    description: str
-
-
-BUILTIN_MEMBER_PROFILES: dict[str, dict[str, BuiltinMemberProfile]] = {
-    "coding": {
-        "coder": {
-            "description": "Implements focused code changes with the smallest correct diff and runs the relevant verification commands.",
-            "tools": [
-                "glob",
-                "grep",
-                "patch",
-                "read",
-                "shell",
-            ],
-            "mcp": [],
-            "prompt": """You are **coder**.
-
-Implement the assigned change with the smallest correct diff.
-
-## Workflow
-
-- Read the relevant code and tests before editing; follow existing patterns.
-- Change only what the assignment requires. Do not revert unrelated work.
-- Run the narrowest relevant checks, then broader checks when practical.
-- Inspect tool results and verify changed state before claiming success.
-
-## Reporting back
-
-Report changed files, checks and results, plus any remaining risk or unverified behavior.""",
-        },
-        "explorer": {
-            "description": "Checks the current codebase. Maps existing implementation, patterns, and risks so coding work starts from facts.",
-            "tools": [
-                "glob",
-                "grep",
-                "read",
-                "shell",
-            ],
-            "mcp": [],
-            "prompt": """You are **explorer**.
-
-Your job is to inspect the current codebase and report focused findings that help the lead or coder make the right change.
-
-## How to operate
-
-- Read before concluding. Search for existing patterns, related tests, and nearby docs.
-- Prefer repository-local evidence over guesses.
-- Cite file paths and line numbers when relevant.
-- Do not edit files. Do not implement. Your output informs the coding work.
-
-## Reporting back
-
-Summarize what exists, where it lives, what patterns to follow, and any risks or unknowns.""",
-        },
-    },
-}
-
-BUILTIN_AGENT_BLUEPRINTS: dict[str, dict[str, BuiltinAgentBlueprint]] = {
-    "coding": {
-        "coder": {
-            "name": "coder",
-            "role": "member",
-            "mode": "coding",
-            "description": BUILTIN_MEMBER_PROFILES["coding"]["coder"]["description"],
-        },
-        "explorer": {
-            "name": "explorer",
-            "role": "member",
-            "mode": "coding",
-            "description": BUILTIN_MEMBER_PROFILES["coding"]["explorer"]["description"],
-        },
-    },
-}
 
 CODING_OPENAGENTD_PROMPT = """You are **OpenAgentd**.
 
@@ -122,6 +35,27 @@ You own one project workspace. Inspect it before planning, make surgical changes
 ## Reporting back
 
 State what changed, which checks ran with which result, and what remains risky or unverified. Skip the narration."""
+
+CODING_CHILD_AGENT_PROTOCOL = """## Child Agent Operating Protocol
+
+You are running autonomously inside an isolated git worktree for your assigned task.
+
+- Work only inside your worktree directory.
+- Commit your changes with clear, descriptive commit messages.
+- When your task is complete and produced code changes, call `agent_merge` to merge your branch back into the parent repository.
+- If `agent_merge` fails due to conflicts or dirty state, do not force — report the exact conflict details in your final summary.
+- Always provide a concise, structured final response. Your final assistant message is delivered verbatim to your parent session.
+- Do not ask user questions. If blocked, communicate with your parent session using `agent_send`.
+"""
+
+CODING_PARENT_DELEGATION_PROTOCOL = """## Multi-Agent Delegation Protocol
+
+- When a task benefits from parallel exploration or isolated changes, delegate using `agent_spawn`.
+- Spawned agents run in an isolated git worktree on their own branch.
+- You can continue working on other tasks in parallel while child agents run.
+- When child agents complete, their final report is delivered to your session asynchronously.
+- Use `agent_list` to inspect active child sessions, `agent_send` to send follow-up instructions, or `agent_stop` to cancel a child.
+"""
 
 
 def openagentd_description_for_mode(mode: str) -> str:
@@ -142,13 +76,6 @@ def openagentd_prompt_for_mode(mode: str) -> str:
 def _normalise_extra_prompt(extra_prompt: str) -> str:
     """Remove seed-only comments before treating file body as user prompt."""
     return _EXTRA_PROMPT_COMMENT_RE.sub("", extra_prompt).strip()
-
-
-def builtin_member_profile(mode: str, name: str) -> BuiltinMemberProfile | None:
-    """Return a built-in first-party member profile, if one exists."""
-    if mode != "coding":
-        return None
-    return BUILTIN_MEMBER_PROFILES.get("coding", {}).get(name)
 
 
 def apply_builtin_extra_prompt(base_prompt: str, extra_prompt: str) -> str:
@@ -193,10 +120,3 @@ def apply_openagentd_extra_prompt(mode: str, extra_prompt: str) -> str:
     if _looks_like_legacy_first_party_prompt(extra_prompt, name="openagentd"):
         return base
     return apply_builtin_extra_prompt(base, extra_prompt)
-
-
-def apply_member_extra_prompt(name: str, base_prompt: str, extra_prompt: str) -> str:
-    """Return built-in member prompt plus user-authored extra text."""
-    if _looks_like_legacy_first_party_prompt(extra_prompt, name=name):
-        return base_prompt
-    return apply_builtin_extra_prompt(base_prompt, extra_prompt)

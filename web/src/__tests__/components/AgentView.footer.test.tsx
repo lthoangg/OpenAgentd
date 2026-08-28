@@ -58,7 +58,7 @@ describe("AgentView — mentioned files", () => {
           original_name: "Makefile#L4-L6",
           category: "text",
           media_type: "text/plain",
-          url: "/api/team/session/uploads/generated.txt",
+          url: "/api/session/session/uploads/generated.txt",
           source: "mention",
         }],
       }],
@@ -77,7 +77,7 @@ describe("AgentView — mentioned files", () => {
           original_name: "notes.txt",
           category: "text",
           media_type: "text/plain",
-          url: "/api/team/session/uploads/generated.txt",
+          url: "/api/session/session/uploads/generated.txt",
         }],
       }],
     })

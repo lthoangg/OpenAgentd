@@ -31,7 +31,7 @@ describe('teamStream', () => {
     await Promise.resolve()
 
     expect(fetchSpy).toHaveBeenCalledWith(
-      'http://127.0.0.1:4082/api/team/session-1/stream?_token=secondary-window-token',
+      'http://127.0.0.1:4082/api/session/session-1/stream?_token=secondary-window-token',
       expect.any(Object),
     )
   })

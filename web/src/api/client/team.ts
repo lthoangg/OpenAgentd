@@ -1,5 +1,5 @@
 /**
- * OpenAgentd API client — team group: /team chat, sessions, workspace, files.
+ * OpenAgentd API client — session group: /session chat, sessions, workspace, files.
  */
 
 import { apiBaseUrl, apiUrl } from '../base-url'
@@ -77,12 +77,12 @@ export async function postTeamChat(
     }
   }
 
-  const res = await fetch(`${apiBaseUrl()}/team/chat`, {
+  const res = await fetch(`${apiBaseUrl()}/session/chat`, {
     method: 'POST',
     headers: { Accept: 'application/json' },
     body: formData,
   })
-  if (!res.ok) await parseDetailOrThrow(res, 'POST /team/chat')
+  if (!res.ok) await parseDetailOrThrow(res, 'POST /session/chat')
   return res.json()
 }
 
@@ -90,12 +90,12 @@ export async function postTeamCommand(
   command: 'continue' | 'compact' | 'undo' | 'redo' | 'redo-all' | 'redo_all',
   sessionId: string,
 ): Promise<TeamCommandResponse> {
-  const res = await fetch(`${apiBaseUrl()}/team/commands`, {
+  const res = await fetch(`${apiBaseUrl()}/session/commands`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ command, session_id: sessionId }),
   })
-  if (!res.ok) await parseDetailOrThrow(res, 'POST /team/commands')
+  if (!res.ok) await parseDetailOrThrow(res, 'POST /session/commands')
   return res.json()
 }
 
@@ -109,7 +109,7 @@ export function resolveApiUrl(url: string | undefined): string | undefined {
 
 export async function cancelQueuedTeamMessage(sessionId: string, messageId: string): Promise<void> {
   const res = await fetch(
-    `${apiBaseUrl()}/team/sessions/${encodeURIComponent(sessionId)}/queued-messages/${encodeURIComponent(messageId)}`,
+    `${apiBaseUrl()}/session/sessions/${encodeURIComponent(sessionId)}/queued-messages/${encodeURIComponent(messageId)}`,
     { method: 'DELETE' },
   )
   if (res.status === 404) return
@@ -117,9 +117,9 @@ export async function cancelQueuedTeamMessage(sessionId: string, messageId: stri
 }
 
 export function teamStream(sessionId: string, callbacks: SSECallbacks, signal?: AbortSignal): void {
-  fetch(withTokenParam(`${apiBaseUrl()}/team/${encodeURIComponent(sessionId)}/stream`), { signal })
+  fetch(withTokenParam(`${apiBaseUrl()}/session/${encodeURIComponent(sessionId)}/stream`), { signal })
     .then((res) => {
-      if (!res.ok) throw new Error(`GET /team/${sessionId}/stream failed: ${res.status}`)
+      if (!res.ok) throw new Error(`GET /session/${sessionId}/stream failed: ${res.status}`)
       readSSE(res, callbacks)
     })
     .catch((err) => { if (err.name !== 'AbortError') callbacks.onError?.(err) })
@@ -128,7 +128,7 @@ export function teamStream(sessionId: string, callbacks: SSECallbacks, signal?: 
 async function fetchTeamAgents(workspace: string, sessionId?: string | null): Promise<TeamAgentsResponse> {
   const params = new URLSearchParams({ workspace })
   if (sessionId) params.set('session_id', sessionId)
-  const res = await fetch(`${apiBaseUrl()}/team/agents?${params}`)
+  const res = await fetch(`${apiBaseUrl()}/session/agents?${params}`)
   if (!res.ok) await parseDetailOrThrow(res, 'listTeamAgents')
   return res.json()
 }
@@ -136,7 +136,7 @@ async function fetchTeamAgents(workspace: string, sessionId?: string | null): Pr
 /**
  * In-flight requests per workspace, so concurrent callers share one round trip.
  *
- * `GET /team/agents` re-globs and re-parses every agent `.md` on the server for
+ * `GET /session/agents` re-globs and re-parses every agent `.md` on the server for
  * each request, and it has two independent callers that fire in the same window
  * when a session opens: the team store's `loadTeamStatus()` (which cannot use
  * TanStack — the store holds no TanStack imports) and the header's
@@ -162,7 +162,7 @@ export function listTeamAgents(workspace: string, sessionId?: string | null): Pr
 
 export async function validateWorkspace(workspace: string): Promise<WorkspaceValidationResponse> {
   const params = new URLSearchParams({ workspace })
-  const res = await fetch(`${apiBaseUrl()}/team/workspace/validate?${params}`)
+  const res = await fetch(`${apiBaseUrl()}/session/workspace/validate?${params}`)
   if (!res.ok) await parseDetailOrThrow(res, 'validateWorkspace')
   return res.json()
 }
@@ -171,26 +171,26 @@ export async function browseWorkspaces(path?: string | null): Promise<WorkspaceB
   const params = new URLSearchParams()
   if (path) params.set('path', path)
   const query = params.toString()
-  const res = await fetch(`${apiBaseUrl()}/team/workspace/browse${query ? `?${query}` : ''}`)
+  const res = await fetch(`${apiBaseUrl()}/session/workspace/browse${query ? `?${query}` : ''}`)
   if (!res.ok) await parseDetailOrThrow(res, 'browseWorkspaces')
   return res.json()
 }
 
 export async function getCodingWorkspaceTree(): Promise<CodingWorkspaceTreeResponse> {
-  const res = await fetch(`${apiBaseUrl()}/team/workspace/tree`)
+  const res = await fetch(`${apiBaseUrl()}/session/workspace/tree`)
   if (!res.ok) await parseDetailOrThrow(res, 'getCodingWorkspaceTree')
   return res.json()
 }
 
 export async function listWorktrees(sourceWorkspace: string): Promise<WorktreeInfo[]> {
   const params = new URLSearchParams({ source_workspace: sourceWorkspace })
-  const res = await fetch(`${apiBaseUrl()}/team/workspace/worktrees?${params}`)
+  const res = await fetch(`${apiBaseUrl()}/session/workspace/worktrees?${params}`)
   if (!res.ok) await parseDetailOrThrow(res, 'listWorktrees')
   return res.json()
 }
 
 export async function removeWorktree(sourceWorkspace: string, directory: string): Promise<WorktreeRemoveResponse> {
-  const res = await fetch(`${apiBaseUrl()}/team/workspace/worktrees`, {
+  const res = await fetch(`${apiBaseUrl()}/session/workspace/worktrees`, {
     method: 'DELETE',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ source_workspace: sourceWorkspace, directory }),
@@ -200,7 +200,7 @@ export async function removeWorktree(sourceWorkspace: string, directory: string)
 }
 
 export async function renameWorktree(directory: string, name: string): Promise<WorktreeInfo> {
-  const res = await fetch(`${apiBaseUrl()}/team/workspace/worktrees`, {
+  const res = await fetch(`${apiBaseUrl()}/session/workspace/worktrees`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ directory, name }),
@@ -221,7 +221,7 @@ export async function createWorktree(options: {
   if (options.name !== undefined) body.name = options.name
   if (options.branch !== undefined) body.branch = options.branch
   if (options.detached !== undefined) body.detached = options.detached
-  const res = await fetch(`${apiBaseUrl()}/team/workspace/worktrees`, {
+  const res = await fetch(`${apiBaseUrl()}/session/workspace/worktrees`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -232,7 +232,7 @@ export async function createWorktree(options: {
 
 export async function listCodingWorkspaceFiles(workspace: string): Promise<CodingWorkspaceFilesResponse> {
   const params = new URLSearchParams({ workspace })
-  const res = await fetch(`${apiBaseUrl()}/team/workspace/files/list?${params}`)
+  const res = await fetch(`${apiBaseUrl()}/session/workspace/files/list?${params}`)
   if (!res.ok) await parseDetailOrThrow(res, 'listCodingWorkspaceFiles')
   return res.json()
 }
@@ -249,14 +249,14 @@ export async function getCodingWorkspaceGitDiff(
   if (paths && paths.length > 0) {
     for (const p of paths) params.append('paths', p)
   }
-  const res = await fetch(`${apiBaseUrl()}/team/workspace/git-diff/view?${params}`)
+  const res = await fetch(`${apiBaseUrl()}/session/workspace/git-diff/view?${params}`)
   if (!res.ok) await parseDetailOrThrow(res, 'getCodingWorkspaceGitDiff')
   return res.json()
 }
 
 export async function getCodingWorkspaceStatus(workspace: string): Promise<WorkspaceStatusResponse> {
   const params = new URLSearchParams({ workspace })
-  const res = await fetch(`${apiBaseUrl()}/team/workspace/status?${params}`)
+  const res = await fetch(`${apiBaseUrl()}/session/workspace/status?${params}`)
   if (!res.ok) await parseDetailOrThrow(res, 'getCodingWorkspaceStatus')
   return res.json()
 }
@@ -271,7 +271,7 @@ export async function getCodingWorkspaceGitHistory(
   if (cursor) {
     params.set('cursor', cursor)
   }
-  const res = await fetch(`${apiBaseUrl()}/team/workspace/git/history?${params}`)
+  const res = await fetch(`${apiBaseUrl()}/session/workspace/git/history?${params}`)
   if (!res.ok) await parseDetailOrThrow(res, 'getCodingWorkspaceGitHistory')
   return res.json()
 }
@@ -281,7 +281,7 @@ export async function getCodingWorkspaceCommitDiff(
   sha: string,
 ): Promise<WorkspaceCommitDiffResponse> {
   const params = new URLSearchParams({ workspace, sha })
-  const res = await fetch(`${apiBaseUrl()}/team/workspace/git/commit-diff?${params}`)
+  const res = await fetch(`${apiBaseUrl()}/session/workspace/git/commit-diff?${params}`)
   if (!res.ok) await parseDetailOrThrow(res, 'getCodingWorkspaceCommitDiff')
   return res.json()
 }
@@ -291,7 +291,7 @@ export async function discardCodingWorkspaceFile(
   path: string,
   status: 'M' | 'D' | 'A',
 ): Promise<DiscardWorkspaceFileResponse> {
-  const res = await fetch(`${apiBaseUrl()}/team/workspace/git/discard`, {
+  const res = await fetch(`${apiBaseUrl()}/session/workspace/git/discard`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ workspace, path, status }),
@@ -303,7 +303,7 @@ export async function discardCodingWorkspaceFile(
 export async function undoCodingWorkspaceLastCommit(
   workspace: string,
 ): Promise<GitUndoResponse> {
-  const res = await fetch(`${apiBaseUrl()}/team/workspace/git/undo`, {
+  const res = await fetch(`${apiBaseUrl()}/session/workspace/git/undo`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ workspace }),
@@ -316,7 +316,7 @@ export async function revertCodingWorkspaceCommit(
   workspace: string,
   sha: string,
 ): Promise<GitRevertResponse> {
-  const res = await fetch(`${apiBaseUrl()}/team/workspace/git/revert`, {
+  const res = await fetch(`${apiBaseUrl()}/session/workspace/git/revert`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ workspace, sha }),
@@ -334,13 +334,13 @@ export async function listTeamSessions(
   if (before) params.set('before', before)
   params.set('limit', String(limit))
   if (filters?.workspace) params.set('workspace', filters.workspace)
-  const res = await fetch(`${apiBaseUrl()}/team/sessions?${params}`)
+  const res = await fetch(`${apiBaseUrl()}/session/sessions?${params}`)
   if (!res.ok) await parseDetailOrThrow(res, 'listTeamSessions')
   return res.json()
 }
 
 export async function setCodingWorkspaceVisibility(workspace: string, hidden: boolean): Promise<CodingWorkspaceVisibilityResponse> {
-  const res = await fetch(`${apiBaseUrl()}/team/workspace/visibility`, {
+  const res = await fetch(`${apiBaseUrl()}/session/workspace/visibility`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ workspace, hidden }),
@@ -350,7 +350,7 @@ export async function setCodingWorkspaceVisibility(workspace: string, hidden: bo
 }
 
 export async function getTeamSession(id: string): Promise<SessionDetailResponse> {
-  const res = await fetch(`${apiBaseUrl()}/team/sessions/${id}`)
+  const res = await fetch(`${apiBaseUrl()}/session/sessions/${id}`)
   if (!res.ok) await parseDetailOrThrow(res, 'getTeamSession')
   return res.json()
 }
@@ -371,7 +371,7 @@ export async function resolveTeamSession(options: {
   if (options.worktreeFrom !== undefined) body.worktree_from = options.worktreeFrom
   if (options.worktreeName !== undefined) body.worktree_name = options.worktreeName
   if (options.worktreeBranch !== undefined) body.worktree_branch = options.worktreeBranch
-  const res = await fetch(`${apiBaseUrl()}/team/sessions/resolve`, {
+  const res = await fetch(`${apiBaseUrl()}/session/sessions/resolve`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -381,7 +381,7 @@ export async function resolveTeamSession(options: {
 }
 
 export async function updateTeamSessionTitle(id: string, title: string): Promise<SessionResponse> {
-  const res = await fetch(`${apiBaseUrl()}/team/sessions/${id}`, {
+  const res = await fetch(`${apiBaseUrl()}/session/sessions/${id}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ title }),
@@ -391,14 +391,14 @@ export async function updateTeamSessionTitle(id: string, title: string): Promise
 }
 
 export async function deleteTeamSession(id: string): Promise<void> {
-  const res = await fetch(`${apiBaseUrl()}/team/sessions/${id}`, { method: 'DELETE' })
+  const res = await fetch(`${apiBaseUrl()}/session/sessions/${id}`, { method: 'DELETE' })
   if (!res.ok) await parseDetailOrThrow(res, 'deleteTeamSession')
 }
 
 export async function teamHistory(sessionId: string, before?: string): Promise<TeamHistoryResponse> {
   const url = before
-    ? `${apiBaseUrl()}/team/${encodeURIComponent(sessionId)}/history?before=${encodeURIComponent(before)}`
-    : `${apiBaseUrl()}/team/${encodeURIComponent(sessionId)}/history`
+    ? `${apiBaseUrl()}/session/${encodeURIComponent(sessionId)}/history?before=${encodeURIComponent(before)}`
+    : `${apiBaseUrl()}/session/${encodeURIComponent(sessionId)}/history`
   const res = await fetch(url)
   if (!res.ok) await parseDetailOrThrow(res, 'teamHistory')
   return res.json()
@@ -408,9 +408,8 @@ export async function teamHistory(sessionId: string, before?: string): Promise<T
  * Rows created after the opaque uuid7 ``since`` cursor — the post-turn
  * reconciliation path.
  *
- * A full page carries up to 100 lead messages plus 100 per member with complete
- * tool output (over a megabyte on an active session), nearly all of which the
- * client just received over SSE. ``truncated`` on the response means the caller
+ * A full page carries up to 100 messages with complete tool output, nearly all
+ * of which the client just received over SSE. ``truncated`` on the response means the caller
  * has fallen too far behind and must do a full ``teamHistory`` instead.
  */
 export async function teamHistorySince(
@@ -419,7 +418,7 @@ export async function teamHistorySince(
 ): Promise<TeamHistoryResponse> {
   const params = new URLSearchParams({ since })
   const res = await fetch(
-    `${apiBaseUrl()}/team/${encodeURIComponent(sessionId)}/history?${params}`,
+    `${apiBaseUrl()}/session/${encodeURIComponent(sessionId)}/history?${params}`,
   )
   if (!res.ok) await parseDetailOrThrow(res, 'teamHistorySince')
   return res.json()
@@ -438,7 +437,7 @@ export async function getPendingQuestion(
   sessionId: string,
 ): Promise<PendingQuestionEnvelope> {
   const res = await fetch(
-    `${apiBaseUrl()}/team/${encodeURIComponent(sessionId)}/question`,
+    `${apiBaseUrl()}/session/${encodeURIComponent(sessionId)}/question`,
   )
   if (!res.ok) await parseDetailOrThrow(res, 'getPendingQuestion')
   return res.json()
@@ -458,7 +457,7 @@ export async function answerQuestion(
   answers: string[][],
 ): Promise<QuestionResolveResult> {
   const res = await fetch(
-    `${apiBaseUrl()}/team/${encodeURIComponent(sessionId)}/question/${encodeURIComponent(questionId)}/answer`,
+    `${apiBaseUrl()}/session/${encodeURIComponent(sessionId)}/question/${encodeURIComponent(questionId)}/answer`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -475,7 +474,7 @@ export async function dismissQuestion(
   questionId: string,
 ): Promise<QuestionResolveResult> {
   const res = await fetch(
-    `${apiBaseUrl()}/team/${encodeURIComponent(sessionId)}/question/${encodeURIComponent(questionId)}/dismiss`,
+    `${apiBaseUrl()}/session/${encodeURIComponent(sessionId)}/question/${encodeURIComponent(questionId)}/dismiss`,
     { method: 'POST' },
   )
   if (!res.ok) await parseDetailOrThrow(res, 'dismissQuestion')
@@ -483,14 +482,14 @@ export async function dismissQuestion(
 }
 
 /**
- * List every file under the session's agent workspace (``.openagentd/team/{sid}``).
+ * List every file under the session's agent workspace (``.openagentd/session/{sid}``).
  *
  * Returns an empty list for fresh sessions where the workspace hasn't been
  * created yet (the agent hasn't written anything).  File bytes are fetched
  * via the ``/media/{path}`` proxy, not this endpoint — keep payloads small.
  */
 export async function listWorkspaceFiles(sessionId: string): Promise<WorkspaceFilesResponse> {
-  const res = await fetch(`${apiBaseUrl()}/team/${encodeURIComponent(sessionId)}/files`)
+  const res = await fetch(`${apiBaseUrl()}/session/${encodeURIComponent(sessionId)}/files`)
   if (!res.ok) await parseDetailOrThrow(res, 'listWorkspaceFiles')
   return res.json()
 }
@@ -503,14 +502,14 @@ export async function listWorkspaceFiles(sessionId: string): Promise<WorkspaceFi
  */
 export function workspaceMediaUrl(sessionId: string, path: string, options?: { download?: boolean }): string {
   const encoded = path.split('/').map(encodeURIComponent).join('/')
-  const url = apiUrl(`/team/${encodeURIComponent(sessionId)}/media/${encoded}`)
+  const url = apiUrl(`/session/${encodeURIComponent(sessionId)}/media/${encoded}`)
   if (!options?.download) return withTokenParam(url)
   const separator = url.includes('?') ? '&' : '?'
   return withTokenParam(`${url}${separator}download=1`)
 }
 
 /** Build the URL for serving a raw file from a *coding* workspace (not a
- *  session workspace).  Hits ``GET /api/team/workspace/files/read``.
+ *  session workspace).  Hits ``GET /api/session/workspace/files/read``.
  *
  *  Each segment is encoded individually so ``/`` separators survive and
  *  path-traversal sequences (``../``) are rejected by the server.
@@ -518,11 +517,11 @@ export function workspaceMediaUrl(sessionId: string, path: string, options?: { d
 export function codingWorkspaceFileUrl(workspace: string, path: string, options?: { download?: boolean }): string {
   const params = new URLSearchParams({ workspace, path })
   if (options?.download) params.set('download', '1')
-  return withTokenParam(apiUrl(`/team/workspace/files/read?${params}`))
+  return withTokenParam(apiUrl(`/session/workspace/files/read?${params}`))
 }
 
 export async function getTodos(sessionId: string): Promise<TodosResponse> {
-  const res = await fetch(`${apiBaseUrl()}/team/sessions/${encodeURIComponent(sessionId)}/todos`)
+  const res = await fetch(`${apiBaseUrl()}/session/sessions/${encodeURIComponent(sessionId)}/todos`)
   if (!res.ok) await parseDetailOrThrow(res, 'getTodos')
   return res.json()
 }

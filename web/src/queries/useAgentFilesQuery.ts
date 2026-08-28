@@ -2,7 +2,7 @@
  * TanStack Query hooks for the agent file CRUD API.
  *
  * On mutation success, invalidates both the agent file cache (settings UI)
- * and the live /team/agents cache so the team chat header refreshes its
+ * and the live /session/agents cache so the team chat header refreshes its
  * badges after a reload.
  */
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -90,7 +90,7 @@ function invalidateTeam(client: ReturnType<typeof useQueryClient>) {
   client.invalidateQueries({ queryKey: queryKeys.agentFiles.all() })
   client.invalidateQueries({ queryKey: queryKeys.agentFiles.registry() })
   // ``agents()`` is a prefix of ``teamAgents(workspace)``, which is the single
-  // shared /team/agents entry (home-page probe + chat header) — no separate
+  // shared /session/agents entry (home-page probe + chat header) — no separate
   // status key to invalidate.
   client.invalidateQueries({ queryKey: queryKeys.agents() })
 }

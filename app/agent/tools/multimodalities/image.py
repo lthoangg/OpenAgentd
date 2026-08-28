@@ -402,7 +402,7 @@ async def _generate_image(
             },
         )
 
-        # Me bare relative markdown — frontend rewrites to /api/team/{sid}/media/{rel}.
+        # Me bare relative markdown — frontend rewrites to /api/session/{sid}/media/{rel}.
         return f"![{prompt}]({rel})"
 
 

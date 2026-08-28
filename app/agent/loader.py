@@ -60,7 +60,7 @@ import yaml
 from app.agent.schemas.agent import AgentContext
 
 if TYPE_CHECKING:
-    from app.agent.mode.team.team import AgentTeam
+    from app.agent.mode.team.runtime import SessionRuntime
 
 from loguru import logger
 from pydantic import BaseModel, model_validator
@@ -86,13 +86,6 @@ __all__ = [
 # ---------------------------------------------------------------------------
 
 _FRONTMATTER_RE = re.compile(r"^\s*---\r?\n(.*?)\r?\n---\r?\n?(.*)", re.DOTALL)
-
-
-def member_model_is_configured(model: str | None) -> bool:
-    """Return whether a member model is configured enough to join a team."""
-    from app.core.config import PROVIDER_MODEL_TOKEN
-
-    return bool(model and model.strip() and model.strip() != PROVIDER_MODEL_TOKEN)
 
 
 class AgentConfig(BaseModel):
@@ -187,42 +180,6 @@ def _atomic_write_text(path: Path, content: str) -> None:
     tmp_path.replace(path)
 
 
-def ensure_builtin_agent_blueprints(agents_dir: Path, *, mode: str) -> list[str]:
-    """Materialise missing first-party member ``.md`` files for *mode*.
-
-    Built-in prompt/tool definitions live in code. User-owned files win:
-    existing ``.md`` files are never overwritten.
-    """
-    from app.agent.builtin_prompts import BUILTIN_AGENT_BLUEPRINTS
-    from app.core.config import PROVIDER_MODEL_TOKEN
-
-    agents_dir.mkdir(parents=True, exist_ok=True)
-    model = _lead_model_for_dir(agents_dir) or PROVIDER_MODEL_TOKEN
-    written: list[str] = []
-    for name, blueprint in BUILTIN_AGENT_BLUEPRINTS.get(mode, {}).items():
-        target = agents_dir / f"{name}.md"
-        if target.exists():
-            continue
-        _atomic_write_text(
-            target,
-            _builtin_agent_md(
-                name=blueprint["name"],
-                role=blueprint["role"],
-                description=blueprint["description"],
-                model=model,
-            ),
-        )
-        written.append(target.name)
-    if written:
-        logger.info(
-            "builtin_agent_blueprints_materialized mode={} dir={} files={}",
-            mode,
-            agents_dir,
-            written,
-        )
-    return written
-
-
 def ensure_builtin_openagentd_lead(agents_dir: Path, *, mode: str) -> bool:
     """Restore the default lead only when an agent directory has none.
 
@@ -282,31 +239,6 @@ def configure_unconfigured_agent_models(
     return updated
 
 
-def _lead_model_for_dir(agents_dir: Path) -> str | None:
-    if not agents_dir.exists():
-        return None
-    for path in sorted(agents_dir.glob("*.md")):
-        try:
-            cfg = parse_agent_md(path)
-        except Exception:
-            continue
-        if cfg.role == "lead" and member_model_is_configured(cfg.model):
-            return cfg.model
-    return None
-
-
-def _is_retired_builtin_member(mode: str, name: str) -> bool:
-    """Return whether a first-party member should be hidden for *mode*.
-
-    This lets newer curated builtin sets stop exposing old generated/shipped
-    files without deleting user config. A custom file with the same name still
-    stays on disk; it is just not a spawnable first-party blueprint in that mode.
-    """
-    if mode != "coding":
-        return False
-    return name == "executor"
-
-
 # ---------------------------------------------------------------------------
 # Built-in tool registry
 # ---------------------------------------------------------------------------
@@ -315,7 +247,7 @@ def _is_retired_builtin_member(mode: str, name: str) -> bool:
 # in ``_default_tool_registry()``, because they are attached later from runtime
 # context: ``skill``/``todo_manage``/``schedule_task`` are bound per agent in
 # ``_build_agent``, while ``lsp`` and the team tools come from
-# ``AgentTeam._builtin_team_tools`` based on mode and role. They must be
+# ``SessionRuntime._builtin_team_tools`` based on mode and role. They must be
 # exempt from unknown-tool pruning or a valid name would be deleted from the
 # user's file whenever the agent is loaded outside that context.
 _CONTEXT_INJECTED_TOOLS = frozenset(
@@ -324,8 +256,11 @@ _CONTEXT_INJECTED_TOOLS = frozenset(
         "todo_manage",
         "schedule_task",
         "lsp",
-        "team_message",
-        "team_manage",
+        "agent_spawn",
+        "agent_send",
+        "agent_list",
+        "agent_stop",
+        "agent_merge",
         "ask_user",
     }
 )
@@ -440,21 +375,6 @@ def _build_agent(
         cfg.description = cfg.description or openagentd_description_for_mode(mode)
         cfg.tools = [*openagentd_tools_for_mode(mode), *cfg.tools]
         system_prompt = apply_openagentd_extra_prompt(mode, cfg.system_prompt)
-    elif cfg.role == "member":
-        from app.agent.builtin_prompts import (
-            apply_member_extra_prompt,
-            builtin_member_profile,
-        )
-
-        profile = builtin_member_profile(mode, cfg.name)
-        if profile is not None:
-            built_in_prompt = profile["prompt"]
-            cfg.description = cfg.description or profile["description"]
-            cfg.tools = [*profile["tools"], *cfg.tools]
-            cfg.mcp = [*profile["mcp"], *cfg.mcp]
-            system_prompt = apply_member_extra_prompt(
-                cfg.name, built_in_prompt, cfg.system_prompt
-            )
 
     from app.agent.tools.builtin.schedule import schedule_task as _schedule_task_tool
     from app.agent.tools.builtin.skill import load_skill as _load_skill_tool
@@ -587,19 +507,15 @@ def load_team_from_dir(
     db_factory: DbFactory | None = None,
     mode: str = "coding",
     workspace: str | None = None,
-) -> "AgentTeam | None":
-    """Load an AgentTeam from a directory of per-agent ``.md`` files.
+) -> "SessionRuntime | None":
+    """Load the single lead SessionRuntime from a directory of ``.md`` files.
 
-    The lead is built eagerly; member ``.md`` files are kept as **blueprints**
-    on the team and only constructed when the lead calls ``team_manage``.
-    This
-    means a fresh server start touches only the lead's tool/MCP/skill
-    resolution — members impose zero startup cost until first use.
+    Member files from legacy configurations are ignored. A fresh server start
+    therefore resolves only the lead's tool, MCP, and skill configuration.
 
     Returns ``None`` if the directory does not exist or contains no ``.md`` files.
     """
-    from app.agent.mode.team.member import TeamLead
-    from app.agent.mode.team.team import AgentTeam, MemberBlueprint
+    from app.agent.mode.team.runtime import SessionRuntime
 
     agents_dir = Path(agents_dir).resolve()
     if not agents_dir.exists():
@@ -608,9 +524,6 @@ def load_team_from_dir(
     md_files = sorted(agents_dir.glob("*.md"))
     if not md_files:
         return None
-
-    ensure_builtin_agent_blueprints(agents_dir, mode="coding")
-    md_files = sorted(agents_dir.glob("*.md"))
 
     # Carry source path so _build_agent can stamp config dependencies.
     agent_configs: list[tuple[AgentConfig, Path]] = []
@@ -654,41 +567,15 @@ def load_team_from_dir(
         )
 
     lead_cfg, lead_path = leads[0]
-    member_entries = [
-        (c, p)
-        for (c, p) in agent_configs
-        if c.role == "member"
-        and member_model_is_configured(c.model)
-        and not _is_retired_builtin_member(mode, c.name)
-    ]
 
-    # Validate: blueprint names must be unique and must not collide with the
-    # lead.  Also reject ``#`` in blueprint names since we use ``blueprint#N``
-    # as the runtime instance handle (see AgentTeam.spawn).
-    blueprints: dict[str, MemberBlueprint] = {}
-    for cfg, path in member_entries:
-        if "#" in cfg.name:
-            raise ValueError(
-                f"Member blueprint '{cfg.name}' in '{path.name}' contains '#'. "
-                "Reserved character — instances are named 'blueprint#N'."
+    # Warn for any retired member files
+    for cfg, path in agent_configs:
+        if cfg.role == "member":
+            logger.warning(
+                "member_agent_ignored file={} name={} (multi-agent roster retired in favor of session-per-agent worktrees)",
+                path.name,
+                cfg.name,
             )
-        if cfg.name == lead_cfg.name:
-            raise ValueError(
-                f"Member '{cfg.name}' in '{path.name}' shares the lead's name."
-            )
-        if cfg.name in blueprints:
-            raise ValueError(f"Duplicate member name '{cfg.name}' in '{path.name}'.")
-        description = cfg.description
-        if description is None:
-            from app.agent.builtin_prompts import builtin_member_profile
-
-            profile = builtin_member_profile(mode, cfg.name)
-            description = profile["description"] if profile is not None else cfg.name
-        blueprints[cfg.name] = MemberBlueprint(
-            name=cfg.name,
-            description=description,
-            source_path=path,
-        )
 
     tool_registry = _default_tool_registry()
     if extra_tools:
@@ -702,32 +589,22 @@ def load_team_from_dir(
     # Unknown tools / MCP servers in frontmatter are warn-and-skipped by
     # ``_build_agent`` so stale config entries or mcp.json edits never break
     # agent load.
-
-    # Build the lead.  Members are NOT built — they are described by their
-    # blueprints on the team and built on demand by ``AgentTeam.spawn``.
     lead_agent = _build_agent(
         lead_cfg, tool_registry, provider_factory, source_path=lead_path, mode=mode
     )
-    lead_member = TeamLead(lead_agent, db_factory=db_factory)
-
-    team = AgentTeam(
-        lead=lead_member,
-        blueprints=blueprints,
+    runtime = SessionRuntime(
+        lead_agent,
+        db_factory=db_factory,
         provider_factory=provider_factory,
         extra_tools=extra_tools,
-        db_factory=db_factory,
         workspace=workspace,
     )
-    logger.info(
-        "team_loaded lead={} blueprints={}",
-        lead_cfg.name,
-        sorted(blueprints.keys()),
-    )
-    return team
+    logger.info("session_runtime_loaded agent={}", lead_cfg.name)
+    return runtime
 
 
 # ---------------------------------------------------------------------------
-# Single-agent rebuild — used by ``TeamMemberBase`` for in-place refresh
+# Single-agent rebuild — used by ``SessionRuntime`` for in-place refresh
 # ---------------------------------------------------------------------------
 
 
@@ -740,7 +617,7 @@ def rebuild_agent_from_disk(
 ) -> Agent:
     """Re-parse one agent ``.md`` and return a fresh :class:`Agent`.
 
-    Called by :class:`TeamMemberBase` when drift is detected.  Caller
+    Called by :class:`SessionRuntime` when drift is detected.  Caller
     swaps the new agent in place; ``ValueError`` on parse/registry failure.
     """
     cfg = parse_agent_md(source_path)

@@ -26,7 +26,7 @@ mock.module('@/queries', () => ({ useProvidersQuery: () => ({ data: { providers:
 mock.module('@/queries/useCommandsQuery', () => ({ useCommandsQuery: () => ({ data: { commands: [] } }) }))
 mock.module('@/queries/useSnippetsQuery', () => ({ useSnippetsQuery: () => ({ data: { snippets: [] } }) }))
 mock.module('@/queries/useAgentsQuery', () => ({
-  useTeamAgentsQuery: () => ({ data: { agents: [{ is_lead: true, capabilities: undefined }] }, isLoading: false }),
+  useTeamAgentsQuery: () => ({ data: { agents: [{ capabilities: undefined }] }, isLoading: false }),
 }))
 mock.module('@/queries/useFileRefsQuery', () => ({ useFileRefsQuery: () => ({ refs: [] }) }))
 mock.module('@/hooks/use-mobile', () => ({ useIsMobile: () => false }))
@@ -68,10 +68,8 @@ mock.module('framer-motion', () => ({
 }))
 mock.module('@/components/CodingFileViewerPanel', () => ({ CodingFileViewerPanel: () => null }))
 mock.module('@/components/Sidebar', () => ({ Sidebar: () => null }))
-mock.module('@/components/TeamChatView/SplitGrid', () => ({ SplitGrid: () => null }))
 mock.module('@/components/TeamChatView/TeamChatHeader', () => ({ TeamChatHeader: () => null }))
 mock.module('@/components/TeamChatView/TeamChatPanels', () => ({ TeamChatPanels: () => null }))
-mock.module('@/components/TeamChatView/AgentTabs', () => ({ AgentTabs: () => null }))
 mock.module('@/components/TeamChatView/useTeamCommands', () => ({ useTeamCommands: () => [] }))
 
 // Stands in for the composer: a submit button that fires ``onSubmit`` exactly

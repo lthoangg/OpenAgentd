@@ -1,22 +1,20 @@
-"""Drive a team turn that exercises team_manage spawn/dismiss and stream
-per-agent content live.
+"""Drive a coding session that exercises agent_spawn, agent_send, and
+agent_merge while streaming parent and child session content live.
 
 Flow:
-  1. Snapshot ``GET /team/agents`` — list lead + blueprints + live instances.
-  2. POST a message that nudges the lead to spawn several members and ask
-     each to produce streamed content.
-  3. Subscribe to ``GET /team/{sid}/stream`` — print events bucketed per
+  1. POST a message that nudges the parent to spawn a child in an isolated
+     worktree, send it a follow-up, and merge its committed result.
+  3. Subscribe to ``GET /session/{sid}/stream`` — print events bucketed per
      agent, with rolling content per ``message`` event.
-  4. Re-snapshot ``/team/agents`` to show the resulting live-instance set.
-  5. Print a per-agent summary: spawn / dismiss timeline + lifecycle status
-     transitions + streamed character counts + token usage.
+  4. Print a per-session summary: spawn/send/merge tool timeline, lifecycle
+     status transitions, streamed character counts, and token usage.
 
 Usage:
-  uv run python -m manual.team_spawn
-  uv run python -m manual.team_spawn --session ID
-  uv run python -m manual.team_spawn --message "your prompt"
-  uv run python -m manual.team_spawn --wait 240 --out .openagentd/spawn.jsonl
-  uv run python -m manual.team_spawn --no-color
+  uv run python -m manual.agent_spawn --workspace /path/to/disposable/git/repository
+  uv run python -m manual.agent_spawn --session ID --workspace /path/to/repository
+  uv run python -m manual.agent_spawn --message "your prompt" --workspace /path/to/repository
+  uv run python -m manual.agent_spawn --workspace /path/to/repository --wait 240 --out .openagentd/spawn.jsonl
+  uv run python -m manual.agent_spawn --no-color --workspace /path/to/repository
 """
 
 from __future__ import annotations
@@ -68,24 +66,18 @@ def _truncate(s: str, n: int = 90) -> str:
     return s if len(s) <= n else s[: n - 1] + "…"
 
 
-# ── Default prompt — designed to force multiple spawns ──────────────────────
+# ── Default prompt — exercises the isolated-worktree lifecycle ──────────────
 
 DEFAULT_PROMPT = (
-    "You are coordinating a smoke test of team_manage roster operations. "
+    "You are coordinating a smoke test of isolated child-agent sessions. "
     "Do all of the following, in order, in a single turn:\n"
-    "1. Call team_manage(action='spawn', members=[...]) once with each "
-    "available blueprint exactly once.\n"
-    "2. If 'executor' is a blueprint, include 'executor' a second time in "
-    "that same members list so two executor instances run in parallel.\n"
-    "3. Send each spawned instance a short, distinct task via team_message "
-    "(e.g. count to three, list three colors, name three cities). Make sure "
-    "each member must reply with at least one full sentence so we get "
-    "streamed content from every agent.\n"
-    "4. Wait for everyone to reply.\n"
-    "5. Call team_manage(action='dismiss', members=[...]) once with every "
-    "explicit handle you spawned.\n"
-    "6. Reply to the user with a one-line summary of who you spawned and "
-    "what they reported.\n"
+    "1. Call agent_spawn once to create a child session named manual-smoke. "
+    "Its task is to create MANUAL_AGENT_SPAWN_SMOKE.md containing one sentence, "
+    "commit that file, call agent_merge, and report the merge result.\n"
+    "2. Use the returned child session_id with agent_send to tell the child to "
+    "include the marker AGENT_SEND_SMOKE in its report.\n"
+    "3. Wait for the child's asynchronous report, then call agent_list.\n"
+    "4. Reply with a one-line summary of the child session and merge result.\n"
     "Do not skip any step."
 )
 
@@ -93,55 +85,24 @@ DEFAULT_PROMPT = (
 # ── HTTP helpers ────────────────────────────────────────────────────────────
 
 
-def fetch_agents(base: str) -> dict:
-    r = httpx.get(f"{base}/team/agents", timeout=10)
-    r.raise_for_status()
-    return r.json()
-
-
-def post_message(base: str, message: str, session_id: str | None) -> str:
+def post_message(base: str, message: str, session_id: str | None, workspace: str) -> str:
     payload: dict = {"message": message}
     if session_id:
         payload["session_id"] = session_id
-    r = httpx.post(f"{base}/team/chat", data=payload, timeout=10)
+    else:
+        payload["workspace"] = workspace
+    r = httpx.post(f"{base}/session/chat", data=payload, timeout=10)
     r.raise_for_status()
     return r.json()["session_id"]
 
 
 def fetch_history(base: str, sid: str) -> dict:
-    r = httpx.get(f"{base}/team/{sid}/history", params={"limit": 1000}, timeout=20)
+    r = httpx.get(f"{base}/session/{sid}/history", params={"limit": 1000}, timeout=20)
     r.raise_for_status()
     return r.json()
 
 
 # ── Display ─────────────────────────────────────────────────────────────────
-
-
-def print_agents_snapshot(snapshot: dict, *, label: str) -> None:
-    print(f"\n{_c(BOLD)}── /team/agents — {label} ──{_c(RESET)}")
-    for a in snapshot.get("agents", []):
-        role = "lead" if a.get("is_lead") else "member"
-        print(
-            f"  {_c(_agent_color(a['name']))}{a['name']:24s}{_c(RESET)} "
-            f"{_c(DIM)}[{role}] model={a.get('model') or a.get('model_id') or '?'}{_c(RESET)}"
-        )
-    bps = snapshot.get("blueprints") or []
-    if bps:
-        print(f"  {_c(DIM)}blueprints:{_c(RESET)}")
-        for bp in bps:
-            live = bp.get("live_instances") or []
-            live_str = (
-                f"{_c(GREEN)}live={live}{_c(RESET)}"
-                if live
-                else f"{_c(DIM)}live=[]{_c(RESET)}"
-            )
-            print(
-                f"    - {_c(BOLD)}{bp['name']:14s}{_c(RESET)} "
-                f"{_c(DIM)}{_truncate(bp.get('description') or '', 60)}{_c(RESET)} "
-                f"{live_str}"
-            )
-    else:
-        print(f"  {_c(DIM)}(no blueprints registered){_c(RESET)}")
 
 
 def _fmt_event_line(t: float, evt: str, data: dict) -> str:
@@ -196,8 +157,7 @@ def stream_and_track(
             "events": Counter,
             "per_agent_events": dict[str, Counter],
             "agent_text": dict[str, str],
-            "spawned": list[(t, handle)],
-            "dismissed": list[(t, handle)],
+            "operations": list[(t, name, arguments)],
             "statuses": list[(t, agent, status)],
             "usage": dict[str, dict],  # agent → {prompt, completion, total}
             "errors": list[str],
@@ -206,8 +166,7 @@ def stream_and_track(
     events: Counter = Counter()
     per_agent_events: dict[str, Counter] = defaultdict(Counter)
     agent_text: dict[str, list[str]] = defaultdict(list)
-    spawned: list[tuple[float, str]] = []
-    dismissed: list[tuple[float, str]] = []
+    operations: list[tuple[float, str, str]] = []
     statuses: list[tuple[float, str, str]] = []
     usage: dict[str, dict] = {}
     errors: list[str] = []
@@ -220,7 +179,7 @@ def stream_and_track(
 
     try:
         with httpx.stream(
-            "GET", f"{base}/team/{sid}/stream", timeout=timeout + 5
+            "GET", f"{base}/session/{sid}/stream", timeout=timeout + 5
         ) as resp:
             resp.raise_for_status()
             current_event = "message"
@@ -269,15 +228,12 @@ def stream_and_track(
                 if current_event == "agent_status":
                     statuses.append((elapsed, agent, data.get("status", "?")))
 
-                # Track spawn / dismiss roster operations.
+                # Track isolated child-session operations.
                 if current_event == "tool_start":
                     name = data.get("name", "")
                     args = data.get("arguments") or ""
-                    if name == "team_manage":
-                        if '"action":"spawn"' in args or '"action": "spawn"' in args:
-                            spawned.append((elapsed, args))
-                        elif '"action":"dismiss"' in args or '"action": "dismiss"' in args:
-                            dismissed.append((elapsed, args))
+                    if name in {"agent_spawn", "agent_send", "agent_merge", "agent_list"}:
+                        operations.append((elapsed, name, args))
 
                 # Track usage per agent (turn_total only).
                 if current_event == "usage":
@@ -319,8 +275,7 @@ def stream_and_track(
         "events": events,
         "per_agent_events": dict(per_agent_events),
         "agent_text": {k: "".join(v) for k, v in agent_text.items()},
-        "spawned": spawned,
-        "dismissed": dismissed,
+        "operations": operations,
         "statuses": statuses,
         "usage": usage,
         "errors": errors,
@@ -328,7 +283,7 @@ def stream_and_track(
 
 
 def print_streamed_content(agent_text: dict[str, str]) -> None:
-    print(f"\n{_c(BOLD)}── streamed content per agent ──{_c(RESET)}")
+    print(f"\n{_c(BOLD)}── streamed content per session ──{_c(RESET)}")
     if not agent_text:
         print(f"  {_c(DIM)}(no message events captured){_c(RESET)}")
         return
@@ -343,16 +298,14 @@ def print_streamed_content(agent_text: dict[str, str]) -> None:
             print(f"    {_c(color)}│{_c(RESET)} {ln}")
 
 
-def print_spawn_timeline(trace: dict) -> None:
-    print(f"\n{_c(BOLD)}── spawn / dismiss timeline ──{_c(RESET)}")
-    timeline = [("spawn", t, args) for t, args in trace["spawned"]]
-    timeline += [("dismiss", t, args) for t, args in trace["dismissed"]]
-    timeline.sort(key=lambda x: x[1])
+def print_operation_timeline(trace: dict) -> None:
+    print(f"\n{_c(BOLD)}── child-session operation timeline ──{_c(RESET)}")
+    timeline = trace["operations"]
     if not timeline:
-        print(f"  {_c(DIM)}(no team_manage spawn/dismiss tool calls){_c(RESET)}")
+        print(f"  {_c(DIM)}(no agent_spawn/agent_send/agent_merge tool calls){_c(RESET)}")
         return
-    for kind, t, args in timeline:
-        color = _c(GREEN) if kind == "spawn" else _c(YELLOW)
+    for t, kind, args in timeline:
+        color = _c(GREEN) if kind == "agent_spawn" else _c(YELLOW)
         print(f"  {t:>6.2f}s  {color}{kind:8s}{_c(RESET)} {_truncate(args, 100)}")
 
 
@@ -377,15 +330,12 @@ def print_status_timeline(trace: dict) -> None:
 
 
 def print_summary(trace: dict, history: dict | None) -> None:
-    print(f"\n{_c(BOLD)}── per-agent summary ──{_c(RESET)}")
+    print(f"\n{_c(BOLD)}── per-session summary ──{_c(RESET)}")
     all_agents = set(trace["per_agent_events"]) | set(trace["agent_text"])
 
-    # Augment with history rows so dismissed agents (no longer in live roster
-    # but still in DB history) still show up.
+    # The session history endpoint returns one flat ``session`` payload.
     if history:
-        all_agents.add(history.get("lead", {}).get("agent_name", "-"))
-        for mb in history.get("members", []):
-            all_agents.add(mb.get("name"))
+        all_agents.add(history.get("session", {}).get("agent_name", "-"))
     all_agents.discard(None)
     all_agents.discard("-")
 
@@ -395,13 +345,9 @@ def print_summary(trace: dict, history: dict | None) -> None:
         u = trace["usage"].get(name, {})
         hist_count = ""
         if history:
-            if history.get("lead", {}).get("agent_name") == name:
-                hist_count = f"hist={len(history['lead']['messages'])}"
-            else:
-                for mb in history.get("members", []):
-                    if mb.get("name") == name:
-                        hist_count = f"hist={len(mb['messages'])}"
-                        break
+            session = history.get("session", {})
+            if session.get("agent_name") == name:
+                hist_count = f"hist={len(session.get('messages', []))}"
         events_str = " ".join(
             f"{k}={v}" for k, v in sorted(ev_counts.items()) if v
         )
@@ -431,10 +377,15 @@ def main() -> None:
     global _USE_COLOR
 
     p = argparse.ArgumentParser(
-        description="Smoke-test team_manage spawn/dismiss and stream content"
+        description="Smoke-test agent_spawn/agent_send/agent_merge and stream content"
     )
     p.add_argument("--message", default=DEFAULT_PROMPT, help="Prompt to send")
     p.add_argument("--session", default=None, help="Resume existing session id")
+    p.add_argument(
+        "--workspace",
+        required=True,
+        help="Disposable clean git repository used for the parent and child worktrees",
+    )
     p.add_argument("--wait", type=int, default=DEFAULT_WAIT, help="Max stream wait (s)")
     p.add_argument("--base", default=BASE)
     p.add_argument("--out", type=Path, help="Append raw events as JSONL to this file")
@@ -442,7 +393,7 @@ def main() -> None:
     p.add_argument(
         "--no-history",
         action="store_true",
-        help="Skip the final GET /team/{sid}/history call",
+        help="Skip the final GET /session/{sid}/history call",
     )
     args = p.parse_args()
 
@@ -451,26 +402,13 @@ def main() -> None:
 
     base = args.base.rstrip("/")
 
-    try:
-        before = fetch_agents(base)
-    except httpx.HTTPError as exc:
-        print(f"{_c(RED)}cannot reach {base}/team/agents: {exc}{_c(RESET)}")
-        return
-    print_agents_snapshot(before, label="before")
-
-    sid = post_message(base, args.message, args.session)
+    sid = post_message(base, args.message, args.session, args.workspace)
     print(f"\n{_c(BOLD)}session{_c(RESET)}: {sid}")
     print(f"{_c(DIM)}prompt:{_c(RESET)} {_truncate(args.message, 200)}")
 
     trace = stream_and_track(base, sid, args.wait, args.out)
 
-    try:
-        after = fetch_agents(base)
-        print_agents_snapshot(after, label="after")
-    except httpx.HTTPError as exc:
-        print(f"{_c(RED)}post-run /team/agents failed: {exc}{_c(RESET)}")
-
-    print_spawn_timeline(trace)
+    print_operation_timeline(trace)
     print_status_timeline(trace)
     print_streamed_content(trace["agent_text"])
 
@@ -483,7 +421,6 @@ def main() -> None:
 
     print_summary(trace, history)
     print(f"\n{_c(DIM)}session: {sid}{_c(RESET)}")
-
 
 if __name__ == "__main__":
     main()

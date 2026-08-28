@@ -25,7 +25,7 @@ mock.module('@/queries', () => ({
 mock.module('@/queries/useCommandsQuery', () => ({ useCommandsQuery: () => ({ data: { commands: [] } }) }))
 mock.module('@/queries/useSnippetsQuery', () => ({ useSnippetsQuery: () => ({ data: { snippets: [] } }) }))
 mock.module('@/queries/useAgentsQuery', () => ({
-  useTeamAgentsQuery: () => ({ data: { agents: [{ is_lead: true, capabilities: undefined }] }, isLoading: false }),
+  useTeamAgentsQuery: () => ({ data: { agents: [{ capabilities: undefined }] }, isLoading: false }),
 }))
 mock.module('@/queries/useFileRefsQuery', () => ({ useFileRefsQuery: () => ({ refs: [] }) }))
 mock.module('@/hooks/use-mobile', () => ({ useIsMobile: () => false }))
@@ -70,14 +70,12 @@ mock.module('framer-motion', () => ({
 }))
 mock.module('@/components/CodingFileViewerPanel', () => ({ CodingFileViewerPanel: () => null }))
 mock.module('@/components/Sidebar', () => ({ Sidebar: () => null }))
-mock.module('@/components/TeamChatView/SplitGrid', () => ({ SplitGrid: () => null }))
 mock.module('@/components/TeamChatView/TeamChatHeader', () => ({
   TeamChatHeader: ({ onWorkspaceFiles }: { onWorkspaceFiles: () => void }) => (
     <button type="button" onClick={onWorkspaceFiles}>Toggle workspace panel</button>
   ),
 }))
 mock.module('@/components/TeamChatView/TeamChatPanels', () => ({ TeamChatPanels: () => null }))
-mock.module('@/components/TeamChatView/AgentTabs', () => ({ AgentTabs: () => null }))
 mock.module('@/components/TeamChatView/useTeamCommands', () => ({ useTeamCommands: () => [] }))
 mock.module('@/components/FloatingInputComposer', () => ({
   FloatingInputComposer: forwardRef<

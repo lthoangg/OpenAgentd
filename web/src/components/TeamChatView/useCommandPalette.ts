@@ -23,14 +23,11 @@ import { isPrimaryShortcut } from '@/lib/keyboard-shortcut'
 import type { WorkspaceFileInfo } from '@/api/types'
 import type { Command } from '../CommandPalette'
 import { useTeamCommands } from './useTeamCommands'
-import { VIEW_MODES, type ViewMode } from './types'
 
 export interface UseCommandPaletteArgs {
   workspace: string | null
   quickOpenOpen: boolean
   sessionIdState: string | null
-  viewMode: ViewMode
-  setViewMode: Dispatch<SetStateAction<ViewMode>>
   navigate: ReturnType<typeof useNavigate>
 
   handleNewSession: () => void
@@ -50,7 +47,6 @@ export interface UseCommandPaletteArgs {
 }
 
 export interface UseCommandPaletteResult {
-  cycleViewMode: () => void
   paletteCommands: Command[]
   quickOpenWorkspaceFiles: WorkspaceFileInfo[]
   /** The backend listing hit its file cap — surfaced in the Quick Open footer. */
@@ -62,8 +58,6 @@ export function useCommandPalette({
   workspace,
   quickOpenOpen,
   sessionIdState,
-  viewMode,
-  setViewMode,
   navigate,
   handleNewSession,
   handleWorkspaceFiles,
@@ -81,15 +75,7 @@ export function useCommandPalette({
 }: UseCommandPaletteArgs): UseCommandPaletteResult {
   const isMobile = useIsMobile()
 
-  const cycleViewMode = useCallback(() => {
-    setViewMode((v) => {
-      const idx = VIEW_MODES.indexOf(v)
-      return VIEW_MODES[(idx + 1) % VIEW_MODES.length]
-    })
-  }, [setViewMode])
-
   const paletteCommands = useTeamCommands({
-    viewMode,
     toggleAgentCapabilities: handleToggleAgentCapabilities,
     setShowTodos: handleSetShowTodos,
     handleWorkspaceFiles,
@@ -141,7 +127,6 @@ export function useCommandPalette({
       // Mod+B belongs to the general sidebar. Only the coding sidebar owns this
       // registration when coding mode is active, preventing duplicate handlers.
       { hotkey: 'Mod+B', callback: handleCodingSidebarToggle, options: { meta: { name: 'Coding sidebar' } } },
-      { hotkey: 'Mod+Shift+V', callback: cycleViewMode, options: { meta: { name: 'View mode' } } },
       { hotkey: 'Mod+S', callback: handleToggleScheduler, options: { meta: { name: 'Scheduler' } } },
       { hotkey: 'Mod+I', callback: () => window.dispatchEvent(new CustomEvent('focus-chat-input')), options: { meta: { name: 'Focus chat input' } } },
     ],
@@ -167,7 +152,6 @@ export function useCommandPalette({
   }, [handleOpenTerminal, os])
 
   return {
-    cycleViewMode,
     paletteCommands,
     quickOpenWorkspaceFiles,
     quickOpenFilesTruncated,

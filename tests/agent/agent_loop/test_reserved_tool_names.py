@@ -1,6 +1,6 @@
 """Reserved tool names cannot be supplied as ordinary constructor tools.
 
-``ask_user`` is injected per-run by ``AgentTeam.get_injected_tools``,
+``ask_user`` is injected per-run by ``SessionRuntime.get_injected_tools``,
 and that injection is the *only* thing enforcing "coding-mode lead only". A
 plugin or MCP server registering a tool under the same name would hand every
 member — and every non-coding session — a look-alike, so the constructor

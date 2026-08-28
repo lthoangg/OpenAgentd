@@ -30,7 +30,7 @@ follow-up SSE stream, then evaluates phase-agnostic invariants:
      in context for the next turn.
 
 Note: ``/undo`` correctness is *not* asserted here. ``/undo`` moves a soft
-"boundary" in the chat session that the ``/team/{sid}/history`` endpoint
+"boundary" in the chat session that the ``/session/{sid}/history`` endpoint
 doesn't surface, so this script can't tell from the response whether the
 boundary moved. We verify ``/undo`` returned 202 (i.e. wasn't rejected
 with 409 because the lead was still working); the actual revert semantics
@@ -86,14 +86,14 @@ def post_message(base: str, message: str, session_id: str | None = None) -> str:
     data: dict[str, str] = {"message": message}
     if session_id:
         data["session_id"] = session_id
-    r = httpx.post(f"{base}/team/chat", data=data, timeout=20)
+    r = httpx.post(f"{base}/session/chat", data=data, timeout=20)
     r.raise_for_status()
     return r.json()["session_id"]
 
 
 def post_interrupt(base: str, session_id: str) -> None:
     r = httpx.post(
-        f"{base}/team/chat",
+        f"{base}/session/chat",
         data={"session_id": session_id, "interrupt": "true"},
         timeout=20,
     )
@@ -102,7 +102,7 @@ def post_interrupt(base: str, session_id: str) -> None:
 
 def post_undo(base: str, session_id: str) -> dict | None:
     r = httpx.post(
-        f"{base}/team/commands",
+        f"{base}/session/commands",
         json={"command": "undo", "session_id": session_id},
         timeout=20,
     )
@@ -113,10 +113,10 @@ def post_undo(base: str, session_id: str) -> dict | None:
 
 def get_history(base: str, session_id: str) -> list[dict]:
     r = httpx.get(
-        f"{base}/team/{session_id}/history", params={"limit": 1000}, timeout=20
+        f"{base}/session/{session_id}/history", params={"limit": 1000}, timeout=20
     )
     r.raise_for_status()
-    return r.json()["lead"]["messages"]
+    return r.json()["session"]["messages"]
 
 
 def stream_until_done(
@@ -124,14 +124,14 @@ def stream_until_done(
 ) -> tuple[bool, bool, str]:
     """Return ``(done, saw_error, last_event)``.
 
-    Reads SSE on ``/team/{sid}/stream`` until a ``done`` event arrives, an
+    Reads SSE on ``/session/{sid}/stream`` until a ``done`` event arrives, an
     ``error`` event arrives, or ``timeout`` elapses.
     """
     deadline = time.monotonic() + timeout
     last_event = ""
     saw_error = False
     try:
-        with httpx.stream("GET", f"{base}/team/{sid}/stream", timeout=timeout + 5) as r:
+        with httpx.stream("GET", f"{base}/session/{sid}/stream", timeout=timeout + 5) as r:
             current_event = ""
             for line in r.iter_lines():
                 if time.monotonic() > deadline:

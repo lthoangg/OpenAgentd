@@ -38,28 +38,28 @@ def post_chat(base: str, message: str, sid: str | None = None) -> str:
     data: dict[str, str] = {"message": message}
     if sid:
         data["session_id"] = sid
-    r = httpx.post(f"{base}/team/chat", data=data, timeout=20)
+    r = httpx.post(f"{base}/session/chat", data=data, timeout=20)
     r.raise_for_status()
     return r.json()["session_id"]
 
 
 def interrupt(base: str, sid: str) -> None:
-    r = httpx.post(f"{base}/team/chat",
+    r = httpx.post(f"{base}/session/chat",
                    data={"session_id": sid, "interrupt": "true"}, timeout=20)
     r.raise_for_status()
 
 
 def undo(base: str, sid: str) -> tuple[int, str]:
-    r = httpx.post(f"{base}/team/commands",
+    r = httpx.post(f"{base}/session/commands",
                    json={"command": "undo", "session_id": sid}, timeout=20)
     return r.status_code, r.text
 
 
 def history(base: str, sid: str) -> list[dict]:
-    r = httpx.get(f"{base}/team/{sid}/history",
+    r = httpx.get(f"{base}/session/{sid}/history",
                   params={"limit": 1000}, timeout=20)
     r.raise_for_status()
-    return r.json()["lead"]["messages"]
+    return r.json()["session"]["messages"]
 
 
 def stream_until_done(base: str, sid: str, *, timeout: int) -> tuple[bool, bool, str]:
@@ -67,7 +67,7 @@ def stream_until_done(base: str, sid: str, *, timeout: int) -> tuple[bool, bool,
     last = ""
     err = False
     try:
-        with httpx.stream("GET", f"{base}/team/{sid}/stream",
+        with httpx.stream("GET", f"{base}/session/{sid}/stream",
                           timeout=timeout + 5) as r:
             for line in r.iter_lines():
                 if time.monotonic() > deadline:

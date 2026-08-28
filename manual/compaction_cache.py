@@ -47,7 +47,7 @@ DEFAULT_MIN_CACHE_RATIO = 0.10
 
 def wait_done(base: str, sid: str, timeout: int) -> None:
     start = time.monotonic()
-    with httpx.stream("GET", f"{base}/team/{sid}/stream", timeout=timeout + 5) as resp:
+    with httpx.stream("GET", f"{base}/session/{sid}/stream", timeout=timeout + 5) as resp:
         resp.raise_for_status()
         for line in resp.iter_lines():
             if time.monotonic() - start > timeout:
@@ -64,7 +64,7 @@ def send(
         payload["session_id"] = sid
     if model:
         payload["model"] = model
-    resp = httpx.post(f"{base}/team/chat", data=payload, timeout=30)
+    resp = httpx.post(f"{base}/session/chat", data=payload, timeout=30)
     resp.raise_for_status()
     sid = resp.json()["session_id"]
     wait_done(base, sid, timeout)
@@ -73,7 +73,7 @@ def send(
 
 def compact(base: str, sid: str, timeout: int) -> None:
     resp = httpx.post(
-        f"{base}/team/commands",
+        f"{base}/session/commands",
         json={"command": "compact", "session_id": sid},
         timeout=30,
     )

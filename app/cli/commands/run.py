@@ -55,10 +55,10 @@ async def _run(args: argparse.Namespace) -> None:
 
     session_id = str(uuid7())
     workspace = team_manager.validate_workspace(str(Path.cwd()))
-    team = await team_manager.get_or_start_coding_team(workspace, session_id)
+    runtime = await team_manager.get_or_start_coding_team(workspace, session_id)
 
     session_id, _, _ = await agent_service.dispatch_user_message(
-        team,
+        runtime,
         content=prompt,
         session_id=session_id,
         workspace=workspace,
@@ -72,7 +72,7 @@ async def _run(args: argparse.Namespace) -> None:
         event_type = event.get("event")
         data = _event_data(event)
 
-        if event_type == "message" and data.get("agent") == team.lead.name:
+        if event_type == "message" and data.get("agent") == runtime.name:
             text = data.get("text")
             if isinstance(text, str) and text:
                 print(text, end="", flush=True)
@@ -88,7 +88,7 @@ async def _run(args: argparse.Namespace) -> None:
             continue
 
         if event_type == "question_asked":
-            await agent_service.interrupt_team(team, session_id)
+            await agent_service.interrupt_team(runtime, session_id)
             terminal_error = "Non-interactive run cannot answer agent questions."
             break
 

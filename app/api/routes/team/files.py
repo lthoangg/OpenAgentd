@@ -2,16 +2,16 @@
 
 Two endpoints, one root (see :mod:`app.core.paths`):
 
-- ``GET /api/team/{sid}/uploads/{filename}`` →
+- ``GET /api/session/{sid}/uploads/{filename}`` →
   ``{OPENAGENTD_WORKSPACE_DIR}/{sid}/uploads/{filename}``
   User-uploaded attachments. Flat namespace (UUID-named by the uploader).
 
-- ``GET /api/team/{sid}/media/{path}`` → ``{OPENAGENTD_WORKSPACE_DIR}/{sid}/{path}``
+- ``GET /api/session/{sid}/media/{path}`` → ``{OPENAGENTD_WORKSPACE_DIR}/{sid}/{path}``
   Agent workspace output (files written by the write/shell tools). Nested
   paths allowed. Target of bare markdown image refs rendered by the
-  assistant: ``![alt](chart.png)`` → ``/api/team/{sid}/media/chart.png``.
+  assistant: ``![alt](chart.png)`` → ``/api/session/{sid}/media/chart.png``.
 
-``GET /api/team/{sid}/files`` provides a flat recursive listing of the
+``GET /api/session/{sid}/files`` provides a flat recursive listing of the
 agent workspace — powers the "Artifacts" panel in the web UI.
 """
 

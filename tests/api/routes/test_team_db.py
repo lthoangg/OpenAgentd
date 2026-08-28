@@ -14,8 +14,7 @@ from fastapi.testclient import TestClient
 
 from app.agent.agent_loop import Agent
 from app.agent.providers.base import LLMProviderBase
-from app.agent.mode.team.member import TeamLead, TeamMember
-from app.agent.mode.team.team import AgentTeam
+from app.agent.mode.team.runtime import SessionRuntime
 from app.models.chat import ChatSession, CodingWorkspace, SessionMessage
 
 
@@ -53,13 +52,9 @@ class MockProvider(LLMProviderBase):
 
 @pytest.fixture
 def test_team():
-    lead = TeamLead(
+    return SessionRuntime(
         Agent(name="lead", llm_provider=MockProvider(), system_prompt="Lead")
     )
-    worker = TeamMember(
-        Agent(name="worker", llm_provider=MockProvider(), system_prompt="Worker")
-    )
-    return AgentTeam(lead=lead, members={"worker": worker})
 
 
 @pytest.fixture
@@ -136,7 +131,7 @@ class TestListTeamSessionsWithData:
                 await _create_member_session(db, child_id, lead_id)
 
         client = TestClient(app_with_team)
-        resp = client.get("/api/team/sessions")
+        resp = client.get("/api/session/sessions")
         assert resp.status_code == 200
         data = resp.json()
 
@@ -146,6 +141,48 @@ class TestListTeamSessionsWithData:
         # Me lead session is in the list; member session is not
         found = [s for s in data["data"] if s["id"] == str(lead_id)]
         assert len(found) == 1
+
+    @pytest.mark.asyncio
+    async def test_list_sessions_includes_spawned_worktree_child_not_legacy_member(
+        self, app_with_team
+    ):
+        import app.core.db as _db
+
+        lead_id = uuid.uuid7()
+        spawned_id = uuid.uuid7()
+        member_id = uuid.uuid7()
+        worktree = "/repo/.openagentd/worktrees/spawned-agent"
+        async with _db.async_session_factory() as db:
+            async with db.begin():
+                await _create_team_session(db, lead_id, workspace="/repo")
+                spawned = await _create_member_session(db, spawned_id, lead_id)
+                spawned.workspace = worktree
+                spawned.title = "Agent: spawned-agent"
+                await _create_member_session(db, member_id, lead_id)
+                db.add(
+                    CodingWorkspace(
+                        path=worktree,
+                        kind="worktree",
+                        source_path="/repo",
+                        managed=True,
+                    )
+                )
+
+        client = TestClient(app_with_team)
+        resp = client.get("/api/session/sessions")
+
+        assert resp.status_code == 200
+        ids = [session["id"] for session in resp.json()["data"]]
+        assert str(lead_id) in ids
+        assert str(spawned_id) in ids
+        assert str(member_id) not in ids
+
+        worktree_resp = client.get(
+            "/api/session/sessions", params={"workspace": worktree}
+        )
+        assert [session["id"] for session in worktree_resp.json()["data"]] == [
+            str(spawned_id)
+        ]
 
     @pytest.mark.asyncio
     async def test_list_sessions_marks_running_sessions(self, app_with_team):
@@ -162,7 +199,7 @@ class TestListTeamSessionsWithData:
         await memory_stream_store.init_turn(str(running_id))
         try:
             client = TestClient(app_with_team)
-            resp = client.get("/api/team/sessions")
+            resp = client.get("/api/session/sessions")
             assert resp.status_code == 200
             by_id = {s["id"]: s for s in resp.json()["data"]}
 
@@ -201,7 +238,7 @@ class TestListTeamSessionsWithData:
             await db.commit()
 
         client = TestClient(app_with_team)
-        resp = client.get("/api/team/sessions")
+        resp = client.get("/api/session/sessions")
         assert resp.status_code == 200
         by_id = {s["id"]: s for s in resp.json()["data"]}
 
@@ -229,7 +266,7 @@ class TestListTeamSessionsWithData:
 
         client = TestClient(app_with_team)
         resp = client.get(
-            "/api/team/sessions",
+            "/api/session/sessions",
             params={"mode": "coding", "workspace": "/repo/project"},
         )
         assert resp.status_code == 200
@@ -241,7 +278,7 @@ class TestListTeamSessionsWithData:
         """No team_lead sessions → empty data list, has_more=False."""
         client = TestClient(app_with_team)
         # Me use a before= cursor that predates any real data
-        resp = client.get("/api/team/sessions?before=2000-01-01T00:00:00Z")
+        resp = client.get("/api/session/sessions?before=2000-01-01T00:00:00Z")
         assert resp.status_code == 200
         data = resp.json()
         assert data["data"] == []
@@ -260,7 +297,7 @@ class TestListTeamSessionsWithData:
                     await _create_team_session(db, sid)
 
         client = TestClient(app_with_team)
-        resp = client.get("/api/team/sessions?limit=2")
+        resp = client.get("/api/session/sessions?limit=2")
         assert resp.status_code == 200
         data = resp.json()
         assert len(data["data"]) <= 2
@@ -270,7 +307,7 @@ class TestResolveTeamSession:
     def test_resolve_rejects_missing_workspace(self, app_with_team):
         client = TestClient(app_with_team)
 
-        resp = client.post("/api/team/sessions/resolve", json={})
+        resp = client.post("/api/session/sessions/resolve", json={})
 
         assert resp.status_code == 422
 
@@ -287,7 +324,7 @@ class TestResolveTeamSession:
 
         client = TestClient(app_with_team)
         resp = client.post(
-            "/api/team/sessions/resolve", json={"workspace": str(tmp_path)}
+            "/api/session/sessions/resolve", json={"workspace": str(tmp_path)}
         )
 
         assert resp.status_code == 200
@@ -308,7 +345,7 @@ class TestResolveTeamSession:
 
         client = TestClient(app_with_team)
         resp = client.post(
-            "/api/team/sessions/resolve",
+            "/api/session/sessions/resolve",
             json={"workspace": str(tmp_path), "create": True},
         )
 
@@ -321,7 +358,7 @@ class TestResolveTeamSession:
         client = TestClient(app_with_team)
 
         resp = client.post(
-            "/api/team/sessions/resolve",
+            "/api/session/sessions/resolve",
             json={"workspace": str(tmp_path)},
         )
 
@@ -333,7 +370,7 @@ class TestResolveTeamSession:
     def test_resolve_rejects_legacy_mode_without_workspace(self, app_with_team):
         client = TestClient(app_with_team)
 
-        resp = client.post("/api/team/sessions/resolve", json={"mode": "coding"})
+        resp = client.post("/api/session/sessions/resolve", json={"mode": "coding"})
 
         assert resp.status_code == 422
 
@@ -362,12 +399,12 @@ class TestResolveTeamSession:
 
         client = TestClient(app_with_team)
         resp = client.post(
-            "/api/team/sessions/resolve",
+            "/api/session/sessions/resolve",
             json={"mode": "coding", "workspace": str(worktree)},
         )
         assert resp.status_code == 200
 
-        tree = client.get("/api/team/workspace/tree")
+        tree = client.get("/api/session/workspace/tree")
         assert tree.status_code == 200
         assert tree.json()["repositories"] == [
             {
@@ -416,7 +453,7 @@ class TestResolveTeamSession:
                 )
 
         client = TestClient(app_with_team)
-        tree = client.get("/api/team/workspace/tree")
+        tree = client.get("/api/session/workspace/tree")
         assert tree.status_code == 200
         assert tree.json()["repositories"] == [
             {"path": str(repo), "name": "repo", "worktrees": []}
@@ -450,7 +487,7 @@ class TestResolveTeamSession:
                 )
 
         client = TestClient(app_with_team)
-        tree = client.get("/api/team/workspace/tree")
+        tree = client.get("/api/session/workspace/tree")
         assert tree.status_code == 200
         assert tree.json()["repositories"] == [
             {
@@ -482,13 +519,13 @@ class TestResolveTeamSession:
 
         client = TestClient(app_with_team)
         resp = client.patch(
-            "/api/team/workspace/visibility",
+            "/api/session/workspace/visibility",
             json={"workspace": workspace, "hidden": True},
         )
         assert resp.status_code == 200
         assert resp.json() == {"workspace": workspace, "hidden": True}
 
-        tree = client.get("/api/team/workspace/tree")
+        tree = client.get("/api/session/workspace/tree")
         assert tree.status_code == 200
         assert tree.json()["repositories"] == []
 
@@ -508,13 +545,13 @@ class TestResolveTeamSession:
 
         client = TestClient(app_with_team)
         resp = client.patch(
-            "/api/team/workspace/visibility",
+            "/api/session/workspace/visibility",
             json={"workspace": workspace, "hidden": True},
         )
         assert resp.status_code == 200
         assert resp.json() == {"workspace": workspace, "hidden": True}
 
-        tree = client.get("/api/team/workspace/tree")
+        tree = client.get("/api/session/workspace/tree")
         assert tree.status_code == 200
         assert tree.json()["repositories"] == []
 
@@ -537,7 +574,7 @@ class TestResolveTeamSession:
 
         client = TestClient(app_with_team)
         resp = client.patch(
-            "/api/team/workspace/visibility",
+            "/api/session/workspace/visibility",
             json={"workspace": "/etc", "hidden": True},
         )
         assert resp.status_code == 422
@@ -564,7 +601,7 @@ class TestUpdateTeamSession:
 
         client = TestClient(app_with_team)
         resp = client.patch(
-            f"/api/team/sessions/{lead_id}", json={"title": "New title"}
+            f"/api/session/sessions/{lead_id}", json={"title": "New title"}
         )
 
         assert resp.status_code == 200
@@ -586,7 +623,7 @@ class TestUpdateTeamSession:
 
         client = TestClient(app_with_team)
         resp = client.patch(
-            f"/api/team/sessions/{lead_id}", json={"title": "  New title  "}
+            f"/api/session/sessions/{lead_id}", json={"title": "  New title  "}
         )
 
         assert resp.status_code == 200
@@ -607,7 +644,7 @@ class TestUpdateTeamSession:
                 await _create_team_session(db, lead_id, title="Keep me")
 
         client = TestClient(app_with_team)
-        resp = client.patch(f"/api/team/sessions/{lead_id}", json={"title": "   "})
+        resp = client.patch(f"/api/session/sessions/{lead_id}", json={"title": "   "})
 
         assert resp.status_code == 422
         assert resp.json()["detail"] == "Title cannot be empty."
@@ -632,7 +669,9 @@ class TestUpdateTeamSession:
                 member.title = "Member"
 
         client = TestClient(app_with_team)
-        resp = client.patch(f"/api/team/sessions/{member_id}", json={"title": "Nope"})
+        resp = client.patch(
+            f"/api/session/sessions/{member_id}", json={"title": "Nope"}
+        )
 
         assert resp.status_code == 404
 
@@ -641,10 +680,43 @@ class TestUpdateTeamSession:
             assert member is not None
             assert member.title == "Member"
 
+    @pytest.mark.asyncio
+    async def test_update_session_title_updates_spawned_worktree_child(
+        self, app_with_team
+    ):
+        import app.core.db as _db
+
+        lead_id = uuid.uuid7()
+        spawned_id = uuid.uuid7()
+        worktree = "/repo/.openagentd/worktrees/spawned-agent"
+        async with _db.async_session_factory() as db:
+            async with db.begin():
+                await _create_team_session(db, lead_id, workspace="/repo")
+                spawned = await _create_member_session(db, spawned_id, lead_id)
+                spawned.workspace = worktree
+                db.add(
+                    CodingWorkspace(
+                        path=worktree,
+                        kind="worktree",
+                        source_path="/repo",
+                        managed=True,
+                    )
+                )
+
+        client = TestClient(app_with_team)
+        resp = client.patch(
+            f"/api/session/sessions/{spawned_id}", json={"title": "Renamed agent"}
+        )
+
+        assert resp.status_code == 200
+        assert resp.json()["title"] == "Renamed agent"
+
     def test_update_session_title_returns_404_for_missing_session(self, app_with_team):
         client = TestClient(app_with_team)
 
-        resp = client.patch(f"/api/team/sessions/{uuid.uuid7()}", json={"title": "New"})
+        resp = client.patch(
+            f"/api/session/sessions/{uuid.uuid7()}", json={"title": "New"}
+        )
 
         assert resp.status_code == 404
 
@@ -661,11 +733,11 @@ class TestDeleteTeamSessionWithData:
                 await _add_message(db, lead_id, role="user", content="delete me")
 
         client = TestClient(app_with_team)
-        resp = client.delete(f"/api/team/sessions/{lead_id}")
+        resp = client.delete(f"/api/session/sessions/{lead_id}")
         assert resp.status_code == 204
 
         # Me verify session is gone via history endpoint
-        resp = client.get(f"/api/team/{lead_id}/history")
+        resp = client.get(f"/api/session/{lead_id}/history")
         assert resp.status_code == 404
 
     @pytest.mark.asyncio
@@ -697,7 +769,7 @@ class TestDeleteTeamSessionWithData:
                 )
 
         client = TestClient(app_with_team)
-        resp = client.delete(f"/api/team/sessions/{lead_id}")
+        resp = client.delete(f"/api/session/sessions/{lead_id}")
 
         assert resp.status_code == 204
         assert app_workspace.exists()
@@ -712,7 +784,7 @@ class TestDeleteTeamSessionWithData:
 
 class TestTeamHistoryWithData:
     @pytest.mark.asyncio
-    async def test_history_returns_lead_and_members(self, app_with_team):
+    async def test_history_returns_one_session_payload(self, app_with_team):
         import app.core.db as _db
 
         lead_id = uuid.uuid7()
@@ -732,20 +804,14 @@ class TestTeamHistoryWithData:
                 )
 
         client = TestClient(app_with_team)
-        resp = client.get(f"/api/team/{lead_id}/history")
+        resp = client.get(f"/api/session/{lead_id}/history")
         assert resp.status_code == 200
         data = resp.json()
 
-        # Me check lead messages
-        assert "lead" in data
-        assert len(data["lead"]["messages"]) >= 2
-
-        # Me check members
-        assert "members" in data
-        assert len(data["members"]) >= 1
-        member = data["members"][0]
-        assert len(member["messages"]) >= 2
-        assert member["name"] == "worker"
+        assert "session" in data
+        assert len(data["session"]["messages"]) >= 2
+        assert "lead" not in data
+        assert "members" not in data
 
     @pytest.mark.asyncio
     async def test_history_groups_multiple_members_correctly(self, app_with_team):
@@ -780,20 +846,11 @@ class TestTeamHistoryWithData:
                 )
 
         client = TestClient(app_with_team)
-        resp = client.get(f"/api/team/{lead_id}/history")
+        resp = client.get(f"/api/session/{lead_id}/history")
         assert resp.status_code == 200
         data = resp.json()
-
-        members = {m["name"]: m for m in data["members"]}
-        assert set(members) == {"alpha", "beta"}
-
-        alpha_contents = [m["content"] for m in members["alpha"]["messages"]]
-        beta_contents = [m["content"] for m in members["beta"]["messages"]]
-
-        # No cross-session leakage.
-        assert alpha_contents == ["a-one", "a-two"]
-        # Hidden row filtered; only the visible one remains.
-        assert beta_contents == ["b-one"]
+        assert "session" in data
+        assert "members" not in data
 
     @pytest.mark.asyncio
     async def test_history_includes_summary_messages(self, app_with_team):
@@ -817,10 +874,10 @@ class TestTeamHistoryWithData:
                 )
 
         client = TestClient(app_with_team)
-        resp = client.get(f"/api/team/{lead_id}/history")
+        resp = client.get(f"/api/session/{lead_id}/history")
         data = resp.json()
 
-        msgs = data["lead"]["messages"]
+        msgs = data["session"]["messages"]
         contents = [m["content"] for m in msgs]
         assert "visible" in contents
         assert "compacted summary body" in contents
@@ -845,14 +902,14 @@ class TestTeamHistoryWithData:
                 )
 
         client = TestClient(app_with_team)
-        resp = client.get(f"/api/team/{lead_id}/history")
+        resp = client.get(f"/api/session/{lead_id}/history")
         data = resp.json()
 
-        contents = [m["content"] for m in data["lead"]["messages"]]
+        contents = [m["content"] for m in data["session"]["messages"]]
         assert contents == ["visible"]
 
     @pytest.mark.asyncio
-    async def test_history_no_sub_sessions_returns_empty_members(self, app_with_team):
+    async def test_history_has_no_member_payload(self, app_with_team):
         import app.core.db as _db
 
         lead_id = uuid.uuid7()
@@ -862,10 +919,10 @@ class TestTeamHistoryWithData:
                 await _add_message(db, lead_id, role="user", content="solo")
 
         client = TestClient(app_with_team)
-        resp = client.get(f"/api/team/{lead_id}/history")
+        resp = client.get(f"/api/session/{lead_id}/history")
         data = resp.json()
 
-        assert data["members"] == []
+        assert "members" not in data
 
 
 # ---------------------------------------------------------------------------
@@ -880,7 +937,7 @@ class TestListTeamSessionsCursorPagination:
     async def test_response_shape(self, app_with_team):
         """Response always contains data, has_more, next_cursor."""
         client = TestClient(app_with_team)
-        resp = client.get("/api/team/sessions")
+        resp = client.get("/api/session/sessions")
         assert resp.status_code == 200
         data = resp.json()
         assert "data" in data
@@ -902,7 +959,7 @@ class TestListTeamSessionsCursorPagination:
                     await _create_team_session(db, sid)
 
         client = TestClient(app_with_team)
-        resp = client.get("/api/team/sessions?limit=3")
+        resp = client.get("/api/session/sessions?limit=3")
         assert resp.status_code == 200
         data = resp.json()
         assert len(data["data"]) >= 1
@@ -922,7 +979,7 @@ class TestListTeamSessionsCursorPagination:
 
         client = TestClient(app_with_team)
         # Me limit=100 — far more than 1 session
-        resp = client.get("/api/team/sessions?limit=100")
+        resp = client.get("/api/session/sessions?limit=100")
         data = resp.json()
         # has_more must be False when fewer rows than limit were returned
         assert len(data["data"]) < 100
@@ -941,7 +998,7 @@ class TestListTeamSessionsCursorPagination:
                     await _create_team_session(db, sid)
 
         client = TestClient(app_with_team)
-        resp = client.get("/api/team/sessions?limit=2")
+        resp = client.get("/api/session/sessions?limit=2")
         data = resp.json()
         # Me only valid when there are at least 3 sessions total
         if len(data["data"]) == 2 and data["has_more"]:
@@ -962,7 +1019,7 @@ class TestListTeamSessionsCursorPagination:
         client = TestClient(app_with_team)
 
         # Page 1 — limit=2
-        resp1 = client.get("/api/team/sessions?limit=2")
+        resp1 = client.get("/api/session/sessions?limit=2")
         assert resp1.status_code == 200
         page1 = resp1.json()
         ids_page1 = {s["id"] for s in page1["data"]}
@@ -974,7 +1031,7 @@ class TestListTeamSessionsCursorPagination:
         assert cursor is not None
 
         # Page 2 — use cursor
-        resp2 = client.get(f"/api/team/sessions?limit=2&before={cursor}")
+        resp2 = client.get(f"/api/session/sessions?limit=2&before={cursor}")
         assert resp2.status_code == 200
         page2 = resp2.json()
         ids_page2 = {s["id"] for s in page2["data"]}
@@ -1001,7 +1058,7 @@ class TestListTeamSessionsCursorPagination:
         before: str | None = None
         while True:
             suffix = f"&before={before}" if before else ""
-            response = client.get(f"/api/team/sessions?limit=2{suffix}")
+            response = client.get(f"/api/session/sessions?limit=2{suffix}")
             assert response.status_code == 200
             page = response.json()
             seen.extend(row["id"] for row in page["data"])
@@ -1016,7 +1073,7 @@ class TestListTeamSessionsCursorPagination:
     async def test_invalid_before_returns_422(self, app_with_team):
         """Malformed before= cursor returns 422."""
         client = TestClient(app_with_team)
-        resp = client.get("/api/team/sessions?before=not-a-date")
+        resp = client.get("/api/session/sessions?before=not-a-date")
         assert resp.status_code == 422
 
     @pytest.mark.asyncio
@@ -1030,7 +1087,7 @@ class TestListTeamSessionsCursorPagination:
                 await _create_team_session(db, lead_id)
 
         client = TestClient(app_with_team)
-        resp = client.get("/api/team/sessions?before=2000-01-01T00:00:00Z")
+        resp = client.get("/api/session/sessions?before=2000-01-01T00:00:00Z")
         assert resp.status_code == 200
         data = resp.json()
         assert data["data"] == []
@@ -1049,7 +1106,7 @@ class TestListTeamSessionsCursorPagination:
                     await _create_team_session(db, sid)
 
         client = TestClient(app_with_team)
-        resp = client.get("/api/team/sessions")
+        resp = client.get("/api/session/sessions")
         assert resp.status_code == 200
         data = resp.json()
         # Default page size is 20 — must not return more than 20
@@ -1059,7 +1116,7 @@ class TestListTeamSessionsCursorPagination:
     async def test_limit_exceeding_max_rejected(self, app_with_team):
         """limit > 100 is rejected (422)."""
         client = TestClient(app_with_team)
-        resp = client.get("/api/team/sessions?limit=101")
+        resp = client.get("/api/session/sessions?limit=101")
         assert resp.status_code == 422
 
     @pytest.mark.asyncio
@@ -1075,7 +1132,7 @@ class TestListTeamSessionsCursorPagination:
                 await _create_member_session(db, member_id, lead_id)
 
         client = TestClient(app_with_team)
-        resp = client.get("/api/team/sessions")
+        resp = client.get("/api/session/sessions")
         data = resp.json()
 
         top_level_ids = {s["id"] for s in data["data"]}
@@ -1107,19 +1164,19 @@ class TestTeamHistorySinceCursor:
                 await _add_message(db, lead_id, content="old")
 
         client = TestClient(app_with_team)
-        full = client.get(f"/api/team/{lead_id}/history")
+        full = client.get(f"/api/session/{lead_id}/history")
         assert full.status_code == 200
-        cursor = full.json()["lead"]["messages"][-1]["created_at"]
+        cursor = full.json()["session"]["messages"][-1]["created_at"]
 
         async with _db.async_session_factory() as db:
             async with db.begin():
                 await _add_message(db, lead_id, content="brand new")
 
-        resp = client.get(f"/api/team/{lead_id}/history", params={"since": cursor})
+        resp = client.get(f"/api/session/{lead_id}/history", params={"since": cursor})
 
         assert resp.status_code == 200
         body = resp.json()
-        assert [m["content"] for m in body["lead"]["messages"]] == ["brand new"]
+        assert [m["content"] for m in body["session"]["messages"]] == ["brand new"]
         assert body["truncated"] is False
         # A delta has no older page to walk — the client must keep the
         # pagination cursor it already holds.
@@ -1137,7 +1194,7 @@ class TestTeamHistorySinceCursor:
 
         client = TestClient(app_with_team)
         resp = client.get(
-            f"/api/team/{lead_id}/history",
+            f"/api/session/{lead_id}/history",
             params={"since": "2026-01-01T00:00:00", "before": "2026-01-02T00:00:00"},
         )
 
@@ -1154,7 +1211,7 @@ class TestTeamHistorySinceCursor:
 
         client = TestClient(app_with_team)
         resp = client.get(
-            f"/api/team/{lead_id}/history", params={"since": "not-a-date"}
+            f"/api/session/{lead_id}/history", params={"since": "not-a-date"}
         )
 
         assert resp.status_code == 422
@@ -1164,7 +1221,7 @@ class TestTeamHistorySinceCursor:
         client = TestClient(app_with_team)
 
         resp = client.get(
-            f"/api/team/{uuid.uuid7()}/history",
+            f"/api/session/{uuid.uuid7()}/history",
             params={"since": "2026-01-01T00:00:00"},
         )
 
@@ -1182,12 +1239,12 @@ class TestTeamHistorySinceCursor:
 
         client = TestClient(app_with_team)
         resp = client.get(
-            f"/api/team/{lead_id}/history",
+            f"/api/session/{lead_id}/history",
             params={"since": "2020-01-01T00:00:00"},
         )
 
         assert resp.status_code == 200
-        assert resp.json()["lead"]["title"] == "Kept Title"
+        assert resp.json()["session"]["title"] == "Kept Title"
 
     @pytest.mark.asyncio
     async def test_naive_before_cursor_does_not_500(self, app_with_team):
@@ -1206,7 +1263,7 @@ class TestTeamHistorySinceCursor:
 
         client = TestClient(app_with_team)
         resp = client.get(
-            f"/api/team/{lead_id}/history", params={"before": "2030-01-01T00:00:00"}
+            f"/api/session/{lead_id}/history", params={"before": "2030-01-01T00:00:00"}
         )
 
         assert resp.status_code == 200

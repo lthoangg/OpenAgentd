@@ -443,7 +443,7 @@ def test_load_team_from_dir_no_lead_raises(tmp_path):
     d = _make_agents_dir(
         tmp_path,
         [
-            {"name": "worker", "role": "member", "model": "zai:glm-5-turbo"},
+            {"name": "openagentd", "role": "member", "model": "zai:glm-5-turbo"},
         ],
     )
     factory, _ = _make_provider_factory()
@@ -476,75 +476,9 @@ def test_load_team_from_dir_valid_minimal(tmp_path):
         ],
     )
     factory, _ = _make_provider_factory()
-    team = load_team_from_dir(d, provider_factory=factory)
-    assert team is not None
-    assert team.lead.name == "lead"
-    assert set(team.blueprints) == {"coder", "explorer"}
-    assert team.members == {}
-
-
-def test_load_team_from_dir_materializes_coding_builtin_members(tmp_path):
-    from app.agent.builtin_prompts import BUILTIN_MEMBER_PROFILES
-    from app.agent.loader import load_team_from_dir
-
-    d = _make_agents_dir(
-        tmp_path,
-        [
-            {"name": "openagentd", "role": "lead", "model": "zai:glm-5-turbo"},
-        ],
-    )
-    factory, _ = _make_provider_factory()
-    team = load_team_from_dir(d, provider_factory=factory, mode="coding")
-    assert team is not None
-    assert set(team.blueprints) == {"coder", "explorer"}
-    assert (d / "coder.md").is_file()
-    assert (d / "explorer.md").is_file()
-    assert "model: zai:glm-5-turbo" in (d / "explorer.md").read_text(encoding="utf-8")
-    assert (
-        team.blueprints["explorer"].description
-        == BUILTIN_MEMBER_PROFILES["coding"]["explorer"]["description"]
-    )
-
-
-def test_load_team_from_dir_does_not_overwrite_existing_builtin_member(tmp_path):
-    from app.agent.loader import load_team_from_dir
-
-    d = _make_agents_dir(
-        tmp_path,
-        [
-            {"name": "openagentd", "role": "lead", "model": "zai:glm-5-turbo"},
-            {
-                "name": "explorer",
-                "role": "member",
-                "description": "Custom explorer.",
-                "model": "zai:glm-5-turbo",
-                "_body": "Keep this prompt.",
-            },
-        ],
-    )
-    before = (d / "explorer.md").read_text(encoding="utf-8")
-    factory, _ = _make_provider_factory()
-    team = load_team_from_dir(d, provider_factory=factory, mode="coding")
-    assert team is not None
-    assert set(team.blueprints) == {"coder", "explorer"}
-    assert (d / "explorer.md").read_text(encoding="utf-8") == before
-    assert team.blueprints["explorer"].description == "Custom explorer."
-
-
-def test_coding_mode_hides_retired_executor_member(tmp_path):
-    from app.agent.loader import load_team_from_dir
-
-    d = _make_agents_dir(
-        tmp_path,
-        [
-            {"name": "openagentd", "role": "lead", "model": "zai:glm-5-turbo"},
-            {"name": "executor", "role": "member", "model": "zai:glm-5-turbo"},
-        ],
-    )
-    factory, _ = _make_provider_factory()
-    team = load_team_from_dir(d, provider_factory=factory, mode="coding")
-    assert team is not None
-    assert set(team.blueprints) == {"coder", "explorer"}
+    runtime = load_team_from_dir(d, provider_factory=factory)
+    assert runtime is not None
+    assert runtime.name == "lead"
 
 
 def test_openagentd_lead_uses_builtin_prompt_with_extra(tmp_path):
@@ -563,15 +497,15 @@ def test_openagentd_lead_uses_builtin_prompt_with_extra(tmp_path):
         ],
     )
     factory, _ = _make_provider_factory()
-    team = load_team_from_dir(d, provider_factory=factory)
-    assert team is not None
-    assert team.lead.agent.system_prompt.startswith(CODING_OPENAGENTD_PROMPT)
-    assert "## User extra prompt" in team.lead.agent.system_prompt
-    assert "Prefer concise answers." in team.lead.agent.system_prompt
-    assert team.lead.agent.description is not None
-    assert "Lead coding agent" in team.lead.agent.description
-    assert "shell" in team.lead.agent._tools
-    assert team.lead.agent.mcp_servers == []
+    runtime = load_team_from_dir(d, provider_factory=factory)
+    assert runtime is not None
+    assert runtime.agent.system_prompt.startswith(CODING_OPENAGENTD_PROMPT)
+    assert "## User extra prompt" in runtime.agent.system_prompt
+    assert "Prefer concise answers." in runtime.agent.system_prompt
+    assert runtime.agent.description is not None
+    assert "Lead coding agent" in runtime.agent.description
+    assert "shell" in runtime.agent._tools
+    assert runtime.agent.mcp_servers == []
 
 
 def test_openagentd_seed_comment_is_not_injected_as_extra_prompt(tmp_path):
@@ -590,11 +524,11 @@ def test_openagentd_seed_comment_is_not_injected_as_extra_prompt(tmp_path):
         ],
     )
     factory, _ = _make_provider_factory()
-    team = load_team_from_dir(d, provider_factory=factory)
-    assert team is not None
-    assert team.lead.agent.system_prompt.startswith(CODING_OPENAGENTD_PROMPT)
-    assert "## User extra prompt" not in team.lead.agent.system_prompt
-    assert "Add extra prompt text below" not in team.lead.agent.system_prompt
+    runtime = load_team_from_dir(d, provider_factory=factory)
+    assert runtime is not None
+    assert runtime.agent.system_prompt.startswith(CODING_OPENAGENTD_PROMPT)
+    assert "## User extra prompt" not in runtime.agent.system_prompt
+    assert "Add extra prompt text below" not in runtime.agent.system_prompt
 
 
 def test_openagentd_file_can_add_tools_and_skills(tmp_path):
@@ -613,11 +547,11 @@ def test_openagentd_file_can_add_tools_and_skills(tmp_path):
         ],
     )
     factory, _ = _make_provider_factory()
-    team = load_team_from_dir(d, provider_factory=factory)
-    assert team is not None
-    assert "generate_image" in team.lead.agent._tools
-    assert "shell" in team.lead.agent._tools
-    assert team.lead.agent.mcp_servers == ["custom-skill"]
+    runtime = load_team_from_dir(d, provider_factory=factory)
+    assert runtime is not None
+    assert "generate_image" in runtime.agent._tools
+    assert "shell" in runtime.agent._tools
+    assert runtime.agent.mcp_servers == ["custom-skill"]
 
 
 def test_openagentd_builtin_and_user_capabilities_are_deduped(tmp_path):
@@ -637,12 +571,12 @@ def test_openagentd_builtin_and_user_capabilities_are_deduped(tmp_path):
         ],
     )
     factory, _ = _make_provider_factory()
-    team = load_team_from_dir(d, provider_factory=factory)
-    assert team is not None
-    assert list(team.lead.agent._tools).count("shell") == 1
-    assert list(team.lead.agent._tools).count("generate_image") == 1
-    assert team.lead.agent.mcp_servers.count("self-healing") == 1
-    assert team.lead.agent.mcp_servers.count("custom-skill") == 1
+    runtime = load_team_from_dir(d, provider_factory=factory)
+    assert runtime is not None
+    assert list(runtime.agent._tools).count("shell") == 1
+    assert list(runtime.agent._tools).count("generate_image") == 1
+    assert runtime.agent.mcp_servers.count("self-healing") == 1
+    assert runtime.agent.mcp_servers.count("custom-skill") == 1
 
 
 def test_openagentd_user_description_overrides_builtin_description(tmp_path):
@@ -661,34 +595,9 @@ def test_openagentd_user_description_overrides_builtin_description(tmp_path):
         ],
     )
     factory, _ = _make_provider_factory()
-    team = load_team_from_dir(d, provider_factory=factory)
-    assert team is not None
-    assert team.lead.agent.description == "My local lead."
-
-
-def test_builtin_member_profiles_are_curated_to_default_agents():
-    from app.agent.builtin_prompts import BUILTIN_MEMBER_PROFILES
-
-    assert set(BUILTIN_MEMBER_PROFILES["coding"]) == {"coder", "explorer"}
-    assert set(BUILTIN_MEMBER_PROFILES["coding"]) == {"coder", "explorer"}
-
-
-def test_builtin_agent_blueprints_use_default_thinking(tmp_path):
-    """Materialized default members omit thinking_level → model default applies.
-
-    Forcing an explicit level (e.g. "low") injects reasoning_effort into
-    Chat Completions requests, which some models reject alongside function
-    tools (HTTP 400 on /v1/chat/completions).
-    """
-    from app.agent.loader import ensure_builtin_agent_blueprints
-
-    agents_dir = tmp_path / "agents"
-    written = ensure_builtin_agent_blueprints(agents_dir, mode="coding")
-    assert written  # sanity: files were materialized
-
-    for name in written:
-        cfg = parse_agent_md(agents_dir / name)
-        assert cfg.thinking_level is None, name
+    runtime = load_team_from_dir(d, provider_factory=factory)
+    assert runtime is not None
+    assert runtime.agent.description == "My local lead."
 
 
 def test_builtin_openagentd_lead_uses_default_thinking(tmp_path):
@@ -721,42 +630,6 @@ def test_builtin_member_user_description_overrides_code_default(tmp_path):
     assert "Extra execution rule." in agent.system_prompt
 
 
-def test_coding_builtin_member_profile_is_mode_scoped(tmp_path):
-    from app.agent.builtin_prompts import BUILTIN_MEMBER_PROFILES
-    from app.agent.loader import rebuild_agent_from_disk
-
-    f = _write_agent_md(
-        tmp_path / "coder.md",
-        {"name": "coder", "role": "member", "model": "zai:glm-5-turbo"},
-        "<!-- Add extra prompt text below. -->",
-    )
-    factory, _ = _make_provider_factory()
-    coding_agent = rebuild_agent_from_disk(f, provider_factory=factory, mode="coding")
-    profile = BUILTIN_MEMBER_PROFILES["coding"]["coder"]
-    assert coding_agent.description == profile["description"]
-    assert coding_agent.system_prompt == profile["prompt"]
-    assert "shell" in coding_agent._tools
-
-
-def test_coding_explorer_builtin_member_profile_checks_codebase(tmp_path):
-    from app.agent.builtin_prompts import BUILTIN_MEMBER_PROFILES
-    from app.agent.loader import rebuild_agent_from_disk
-
-    f = _write_agent_md(
-        tmp_path / "explorer.md",
-        {"name": "explorer", "role": "member", "model": "zai:glm-5-turbo"},
-        "<!-- Add extra prompt text below. -->",
-    )
-    factory, _ = _make_provider_factory()
-    coding_agent = rebuild_agent_from_disk(f, provider_factory=factory, mode="coding")
-    profile = BUILTIN_MEMBER_PROFILES["coding"]["explorer"]
-    assert coding_agent.description == profile["description"]
-    assert coding_agent.system_prompt == profile["prompt"]
-    assert "current codebase" in coding_agent.system_prompt
-    assert "grep" in coding_agent._tools
-    assert "patch" not in coding_agent._tools
-
-
 def test_openagentd_coding_lead_uses_coding_builtin_prompt(tmp_path):
     from app.agent.builtin_prompts import CODING_OPENAGENTD_PROMPT
     from app.agent.loader import load_team_from_dir
@@ -773,14 +646,14 @@ def test_openagentd_coding_lead_uses_coding_builtin_prompt(tmp_path):
         ],
     )
     factory, _ = _make_provider_factory()
-    team = load_team_from_dir(d, provider_factory=factory, mode="coding")
-    assert team is not None
-    assert team.lead.agent.system_prompt.startswith(CODING_OPENAGENTD_PROMPT)
-    assert "Prefer patch files." in team.lead.agent.system_prompt
-    assert team.lead.agent.description is not None
-    assert "Lead coding agent" in team.lead.agent.description
-    assert "shell" in team.lead.agent._tools
-    assert "generate_image" not in team.lead.agent._tools
+    runtime = load_team_from_dir(d, provider_factory=factory, mode="coding")
+    assert runtime is not None
+    assert runtime.agent.system_prompt.startswith(CODING_OPENAGENTD_PROMPT)
+    assert "Prefer patch files." in runtime.agent.system_prompt
+    assert runtime.agent.description is not None
+    assert "Lead coding agent" in runtime.agent.description
+    assert "shell" in runtime.agent._tools
+    assert "generate_image" not in runtime.agent._tools
 
 
 def test_load_team_from_dir_degrades_when_lead_provider_missing_key(tmp_path):
@@ -797,13 +670,13 @@ def test_load_team_from_dir_degrades_when_lead_provider_missing_key(tmp_path):
     def factory(model_str: str | None, model_kwargs: dict | None = None):
         raise ValueError("Anthropic API key is required. Set ANTHROPIC_API_KEY.")
 
-    team = load_team_from_dir(d, provider_factory=factory)
-    assert team is not None
-    assert team.lead.name == "lead"
-    assert isinstance(team.lead.agent.llm_provider, UnconfiguredProvider)
+    runtime = load_team_from_dir(d, provider_factory=factory)
+    assert runtime is not None
+    assert runtime.name == "lead"
+    assert isinstance(runtime.agent.llm_provider, UnconfiguredProvider)
 
 
-def test_load_team_from_dir_with_members(tmp_path):
+def test_load_team_from_dir_with_member_files_ignores_them(tmp_path):
     from app.agent.loader import load_team_from_dir
 
     d = _make_agents_dir(
@@ -814,85 +687,9 @@ def test_load_team_from_dir_with_members(tmp_path):
         ],
     )
     factory, _ = _make_provider_factory()
-    team = load_team_from_dir(d, provider_factory=factory)
-    assert team is not None
-    # Members are now lazy: they exist as blueprints on the team and are
-    # only materialised in ``team.members`` after ``team.spawn(...)``.
-    assert "worker" in team.blueprints
-    assert team.members == {}
-
-
-def test_todo_tools_injected_into_lead_only(tmp_path):
-    """todo_manage is always present on the lead, never on members."""
-    from app.agent.loader import load_team_from_dir, rebuild_agent_from_disk
-
-    d = _make_agents_dir(
-        tmp_path,
-        [
-            {"name": "lead", "role": "lead", "model": "zai:glm-5-turbo"},
-            {"name": "worker", "role": "member", "model": "zai:glm-5-turbo"},
-        ],
-    )
-    factory, _ = _make_provider_factory()
-    team = load_team_from_dir(d, provider_factory=factory)
-    assert team is not None
-
-    lead_tool_names = {t.name for t in team.lead.agent._tools.values()}
-    # Members are lazy — build the worker agent from its blueprint to
-    # verify what tools it would have when spawned.
-    worker_agent = rebuild_agent_from_disk(
-        team.blueprints["worker"].source_path, provider_factory=factory
-    )
-    worker_tool_names = {t.name for t in worker_agent._tools.values()}
-
-    assert "todo_manage" in lead_tool_names
-    assert "todo_manage" not in worker_tool_names
-
-
-def test_load_team_injects_teammates(tmp_path):
-    from app.agent.loader import load_team_from_dir
-
-    d = _make_agents_dir(
-        tmp_path,
-        [
-            {
-                "name": "lead",
-                "role": "lead",
-                "model": "zai:glm-5-turbo",
-                "description": "The lead",
-                "_body": "Base lead",
-            },
-            {
-                "name": "a",
-                "role": "member",
-                "model": "zai:glm-5-turbo",
-                "description": "Worker A",
-                "_body": "Base a",
-            },
-            {
-                "name": "b",
-                "role": "member",
-                "model": "zai:glm-5-turbo",
-                "description": "Worker B",
-                "_body": "Base b",
-            },
-        ],
-    )
-    factory, _ = _make_provider_factory()
-    team = load_team_from_dir(d, provider_factory=factory)
-    assert team is not None
-
-    # The lead system prompt stays static for prompt caching: the dynamic
-    # blueprint/member roster is never injected into it.
-    lead_prompt = team.lead.build_protocol(team.lead.agent.system_prompt, team)
-    assert "\n## Spawnable blueprints" not in lead_prompt
-    assert "Worker A" not in lead_prompt
-    assert "Worker B" not in lead_prompt
-    # Member protocols are only relevant for live instances; spawning
-    # touches the DB, so only verify that the blueprints are registered
-    # with the expected descriptions.
-    assert team.blueprints["a"].description == "Worker A"
-    assert team.blueprints["b"].description == "Worker B"
+    runtime = load_team_from_dir(d, provider_factory=factory)
+    assert runtime is not None
+    assert runtime.name == "orchestrator"
 
 
 def test_load_team_skips_unknown_tool(tmp_path):
@@ -911,9 +708,9 @@ def test_load_team_skips_unknown_tool(tmp_path):
         ],
     )
     factory, _ = _make_provider_factory()
-    team = load_team_from_dir(d, provider_factory=factory)
-    assert team is not None
-    assert "nonexistent_tool" not in team.lead.agent._tools
+    runtime = load_team_from_dir(d, provider_factory=factory)
+    assert runtime is not None
+    assert "nonexistent_tool" not in runtime.agent._tools
 
 
 def test_load_team_with_extra_tools(tmp_path):
@@ -937,53 +734,11 @@ def test_load_team_with_extra_tools(tmp_path):
         ],
     )
     factory, _ = _make_provider_factory()
-    team = load_team_from_dir(
+    runtime = load_team_from_dir(
         d, provider_factory=factory, extra_tools={"custom_tool": custom_tool}
     )
-    assert team is not None
-    assert "custom_tool" in team.lead.agent._tools
-
-
-def test_load_team_discovers_all_agents(tmp_path):
-    """All .md files in the directory are parsed and loaded into the team."""
-    from app.agent.loader import load_team_from_dir
-
-    d = _make_agents_dir(
-        tmp_path,
-        [
-            {"name": "lead", "role": "lead", "model": "zai:glm-5-turbo"},
-            {"name": "worker", "role": "member", "model": "zai:glm-5-turbo"},
-            {"name": "helper", "role": "member", "model": "zai:glm-5-turbo"},
-        ],
-    )
-    factory, _ = _make_provider_factory()
-    team = load_team_from_dir(d, provider_factory=factory)
-    assert team is not None
-    assert team.lead.name == "lead"
-    # Members are lazy blueprints; nothing is live until spawned.
-    assert set(team.blueprints.keys()) == {"coder", "explorer", "worker", "helper"}
-    assert team.members == {}
-
-
-def test_load_team_skips_unconfigured_members(tmp_path):
-    """Seed placeholders and blank models should not become spawnable members."""
-    from app.agent.loader import load_team_from_dir
-    from app.core.config import PROVIDER_MODEL_TOKEN
-
-    d = _make_agents_dir(
-        tmp_path,
-        [
-            {"name": "lead", "role": "lead", "model": "zai:glm-5-turbo"},
-            {"name": "placeholder", "role": "member", "model": PROVIDER_MODEL_TOKEN},
-            {"name": "blank", "role": "member", "model": ""},
-            {"name": "missing", "role": "member"},
-            {"name": "worker", "role": "member", "model": "zai:glm-5-turbo"},
-        ],
-    )
-    factory, _ = _make_provider_factory()
-    team = load_team_from_dir(d, provider_factory=factory)
-    assert team is not None
-    assert set(team.blueprints.keys()) == {"coder", "explorer", "worker"}
+    assert runtime is not None
+    assert "custom_tool" in runtime.agent._tools
 
 
 def test_load_team_parse_error_raises(tmp_path):
@@ -1270,12 +1025,23 @@ def test_unknown_tools_are_pruned_from_agent_file(tmp_path):
     assert "Do the work." in f.read_text()
 
 
-@pytest.mark.parametrize("injected", ["lsp", "team_message", "team_manage", "ask_user"])
+@pytest.mark.parametrize(
+    "injected",
+    [
+        "lsp",
+        "agent_spawn",
+        "agent_send",
+        "agent_list",
+        "agent_stop",
+        "agent_merge",
+        "ask_user",
+    ],
+)
 def test_context_injected_tools_are_not_pruned(tmp_path, injected):
     """Tools supplied by team/mode context survive pruning.
 
     ``lsp`` (coding-mode teams) and the team tools are attached in
-    ``AgentTeam._builtin_team_tools``, never via ``_default_tool_registry``.
+    ``SessionRuntime._builtin_team_tools``, never via ``_default_tool_registry``.
     Treating them as unknown would delete valid names from a user's file.
     """
     f = _write_agent_md(
@@ -1294,7 +1060,7 @@ def test_context_injected_tools_are_not_pruned(tmp_path, injected):
 
     assert f.read_text() == before
     # Exemption means "skip", never "grant": these tools stay gated by team
-    # mode and role in AgentTeam.get_injected_tools. Listing `lsp` in a
+    # mode and role in SessionRuntime.get_injected_tools. Listing `lsp` in a
     # non-coding agent must not hand it the tool.
     assert injected not in agent._tools
     assert "read" in agent._tools

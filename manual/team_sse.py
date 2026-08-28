@@ -1,6 +1,6 @@
 """Capture and pretty-print every SSE event from a team turn.
 
-Subscribes to /api/team/{session_id}/stream, parses each event, and prints a
+Subscribes to /api/session/{session_id}/stream, parses each event, and prints a
 structured trace with timing, per-agent attribution, and truncated payloads.
 
 Useful for:
@@ -127,7 +127,7 @@ def post_message(base: str, message: str, session_id: str | None) -> str:
     payload: dict = {"message": message}
     if session_id:
         payload["session_id"] = session_id
-    r = httpx.post(f"{base}/team/chat", data=payload)
+    r = httpx.post(f"{base}/session/chat", data=payload)
     r.raise_for_status()
     sid = r.json()["session_id"]
     print(f"{BOLD}session{RESET}: {sid}")
@@ -154,7 +154,7 @@ def stream_events(
 
     try:
         with httpx.stream(
-            "GET", f"{base}/team/{sid}/stream", timeout=timeout + 5
+            "GET", f"{base}/session/{sid}/stream", timeout=timeout + 5
         ) as resp:
             resp.raise_for_status()
             current_event = "message"

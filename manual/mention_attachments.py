@@ -77,7 +77,7 @@ def make_fixtures(root: Path) -> None:
 
 def post_chat(base: str, workspace: str, message: str) -> str:
     r = httpx.post(
-        f"{base}/team/chat",
+        f"{base}/session/chat",
         data={"message": message, "mode": "coding", "workspace": workspace},
         timeout=30,
     )
@@ -91,9 +91,9 @@ def fetch_user_attachments(base: str, sid: str) -> tuple[list[dict], list[dict]]
     Returns ``(user_messages, all_messages)`` — hidden synthetic rows are
     stripped by the API, so user_messages contains only the real user turn.
     """
-    r = httpx.get(f"{base}/team/{sid}/history", timeout=30)
+    r = httpx.get(f"{base}/session/{sid}/history", timeout=30)
     r.raise_for_status()
-    messages = r.json()["lead"]["messages"]
+    messages = r.json()["session"]["messages"]
     users = [m for m in messages if m.get("role") == "user"]
     atts: list[dict] = []
     if users:

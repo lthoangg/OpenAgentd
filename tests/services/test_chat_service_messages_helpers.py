@@ -163,7 +163,7 @@ def test_apply_llm_content_overrides_builds_path_hint_for_text_attachment():
                     "filename": "notes.txt",
                     "original_name": "notes.txt",
                     "category": "text",
-                    "url": "/api/team/sid/uploads/notes.txt",
+                    "url": "/api/session/sid/uploads/notes.txt",
                 }
             ]
         },
@@ -192,7 +192,7 @@ def test_apply_llm_content_overrides_builds_path_hint_for_image_attachment():
                     "filename": "photo.png",
                     "original_name": "photo.png",
                     "category": "image",
-                    "url": "/api/team/sid/uploads/photo.png",
+                    "url": "/api/session/sid/uploads/photo.png",
                 }
             ]
         },
@@ -218,7 +218,7 @@ def test_apply_llm_content_overrides_path_hint_covers_unknown_category():
                     "filename": "data.zip",
                     "original_name": "data.zip",
                     "category": "file",
-                    "url": "/api/team/sid/uploads/data.zip",
+                    "url": "/api/session/sid/uploads/data.zip",
                 }
             ]
         },

@@ -44,7 +44,7 @@ def _check(label: str, ok: bool, detail: str = "") -> bool:
 
 def _post_upload(base: str) -> str:
     r = httpx.post(
-        f"{base}/team/chat",
+        f"{base}/session/chat",
         data={"message": MESSAGE},
         files={"files": (FILENAME, PAYLOAD.encode(), "text/plain")},
         timeout=30,
@@ -54,9 +54,9 @@ def _post_upload(base: str) -> str:
 
 
 def _history_messages(base: str, sid: str) -> list[dict]:
-    r = httpx.get(f"{base}/team/{sid}/history", params={"limit": 1000}, timeout=20)
+    r = httpx.get(f"{base}/session/{sid}/history", params={"limit": 1000}, timeout=20)
     r.raise_for_status()
-    return list(r.json()["lead"]["messages"])
+    return list(r.json()["session"]["messages"])
 
 
 async def _db_rows(

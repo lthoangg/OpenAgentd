@@ -680,7 +680,7 @@ def test_summary_cache_invalidates_when_span_files_change(
         summarize(days=7)
         span_file.write_text("{}\n{}\n", encoding="utf-8")
         summarize(days=7)
-        span_file.write_text("{}\n", encoding="utf-8")
+        span_file.write_text('{"truncated": true}\n', encoding="utf-8")
         summarize(days=7)
         os.replace(span_file, spans_dir / f"{key}.old")
         span_file.write_text("{}\n", encoding="utf-8")

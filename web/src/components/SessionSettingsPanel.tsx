@@ -55,9 +55,7 @@ export function SessionSettingsPanel({
   }, [open, refetch])
 
   const allAgents: TeamAgentInfo[] = data?.agents ?? []
-  // Lead comes from the API `is_lead` flag if present, else first in list. Only
-  // the lead is shown: its config governs the session's default behaviour.
-  const leadAgent = allAgents.find((a) => a.is_lead) ?? allAgents[0]
+  const leadAgent = allAgents[0]
 
   // `initialFocus` on the overlay covers the warm-cache path, but on a cold
   // cache the body is still a skeleton when the trap fires and there is no

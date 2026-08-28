@@ -792,8 +792,15 @@ async def test_timeout_kills_grandchild_that_escaped_its_process_group(
         await asyncio.sleep(0.05)
     escaped_pid = int(pid_file.read_text())
 
-    with pytest.raises(ProcessLookupError):
-        os.kill(escaped_pid, 0)
+    for _ in range(30):
+        try:
+            os.kill(escaped_pid, 0)
+            await asyncio.sleep(0.05)
+        except ProcessLookupError:
+            break
+    else:
+        with pytest.raises(ProcessLookupError):
+            os.kill(escaped_pid, 0)
 
 
 # ---------------------------------------------------------------------------

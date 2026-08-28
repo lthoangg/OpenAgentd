@@ -15,16 +15,22 @@ permissions, prompts, and runtime wire schemas.
 - `tools/` owns the registry and built-ins; preserve permission, sandbox,
   cancellation, output, and UI-result contracts when adding a tool.
 - `mcp/` owns external MCP configuration and process/client lifecycle.
-- `mode/team/` owns roster instances, mailbox wakeups, board todos, questions,
-  and multi-agent orchestration. Cross-surface team changes also involve
+- `mode/team/` owns the session runtime, delegation tools (`agent_spawn`, `agent_send`,
+  `agent_list`, `agent_stop`, `agent_merge`), async report delivery, and questions.
+  Cross-surface team changes also involve
   `app/services/team_manager.py`, API routes, and frontend SSE stores.
+  One `SessionRuntime` (`mode/team/runtime.py`) owns a session's agent, inbox,
+  turn execution, commands, and stream lifecycle — there is no separate team or
+  lead object, and `mailbox.py` holds only the `Message` payload. The `team`
+  path segment is historical; see
+  `documents/adrs/0002-single-session-runtime.md` for the boundaries this
+  collapse relies on and the renames deliberately left undone.
 - `plugins/` loads user plugin context; keep failures isolated from the core
   runtime.
 
 First-party profile frontmatter is additive over code-owned defaults. Keep
 prompt text capability-neutral because injected tools differ by runtime mode.
-The team-aware `todo_manage` in `mode/team/board.py` performs mailbox wakeups;
-the plain builtin in `tools/builtin/todo.py` is intentionally passive.
+The plain builtin in `tools/builtin/todo.py` owns task tracking.
 
 ## Security and compatibility
 

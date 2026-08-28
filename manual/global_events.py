@@ -74,7 +74,7 @@ def _perform_actions(
         print(f"triggered scheduled task: {trigger_task}")
     if message:
         response = httpx.post(
-            f"{base}/team/chat",
+            f"{base}/session/chat",
             data={"message": message},
             headers=headers,
             timeout=30,

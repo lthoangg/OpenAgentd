@@ -19,7 +19,7 @@ def load_history(base: str, sid: str) -> tuple[dict, list[dict]]:
     before: str | None = None
     while True:
         params = {"before": before} if before else {}
-        r = httpx.get(f"{base}/team/{sid}/history", params=params)
+        r = httpx.get(f"{base}/session/{sid}/history", params=params)
         r.raise_for_status()
         data = r.json()
         pages.append(data)
@@ -28,16 +28,12 @@ def load_history(base: str, sid: str) -> tuple[dict, list[dict]]:
         before = data["next_cursor"]
     pages.reverse()
 
-    lead = {"name": "lead", "messages": []}
-    members: dict[str, dict] = {}
+    session = {"name": "session", "messages": []}
     for page in pages:
-        page_lead = page["lead"]
-        lead["name"] = page_lead.get("agent_name") or page_lead.get("name") or "lead"
-        lead["messages"].extend(page_lead["messages"])
-        for mb in page.get("members", []):
-            row = members.setdefault(mb["name"], {"name": mb["name"], "messages": []})
-            row["messages"].extend(mb["messages"])
-    return lead, list(members.values())
+        page_session = page["session"]
+        session["name"] = page_session.get("agent_name") or page_session.get("name") or "session"
+        session["messages"].extend(page_session["messages"])
+    return session, []
 
 
 def print_usage(agent_name: str, messages: list[dict]) -> None:

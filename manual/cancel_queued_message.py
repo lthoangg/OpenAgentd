@@ -1,4 +1,4 @@
-"""Smoke-test DELETE /team/sessions/{session_id}/queued-messages/{message_id}.
+"""Smoke-test DELETE /session/sessions/{session_id}/queued-messages/{message_id}.
 
 Flow:
   1. Send a slow initial prompt so the lead stays busy long enough to queue.
@@ -41,14 +41,14 @@ def post_message(base: str, message: str, session_id: str | None = None) -> dict
     data: dict[str, str] = {"message": message}
     if session_id:
         data["session_id"] = session_id
-    r = httpx.post(f"{base}/team/chat", data=data, timeout=20)
+    r = httpx.post(f"{base}/session/chat", data=data, timeout=20)
     r.raise_for_status()
     return r.json()
 
 
 def delete_queued(base: str, session_id: str, message_id: str) -> int:
     r = httpx.delete(
-        f"{base}/team/sessions/{session_id}/queued-messages/{message_id}",
+        f"{base}/session/sessions/{session_id}/queued-messages/{message_id}",
         timeout=10,
     )
     return r.status_code
@@ -59,7 +59,7 @@ def stream_until_done(base: str, session_id: str, wait: int) -> list[dict]:
     deadline = time.monotonic() + wait
     current_event = "message"
     data_buf: list[str] = []
-    with httpx.stream("GET", f"{base}/team/{session_id}/stream", timeout=wait + 5) as r:
+    with httpx.stream("GET", f"{base}/session/{session_id}/stream", timeout=wait + 5) as r:
         r.raise_for_status()
         for line in r.iter_lines():
             if time.monotonic() > deadline:
@@ -85,9 +85,9 @@ def stream_until_done(base: str, session_id: str, wait: int) -> list[dict]:
 
 
 def get_history(base: str, session_id: str) -> list[dict]:
-    r = httpx.get(f"{base}/team/{session_id}/history", params={"limit": 1000}, timeout=20)
+    r = httpx.get(f"{base}/session/{session_id}/history", params={"limit": 1000}, timeout=20)
     r.raise_for_status()
-    return list(r.json()["lead"]["messages"])
+    return list(r.json()["session"]["messages"])
 
 
 def main() -> int:

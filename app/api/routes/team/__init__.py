@@ -13,7 +13,7 @@ resource):
 - :mod:`app.api.routes.team.questions` — GET /{sid}/question,
   POST /{sid}/question/{qid}/answer, POST /{sid}/question/{qid}/dismiss
 
-The combined :data:`router` is mounted under ``/api/team`` by
+The combined :data:`router` is mounted under ``/api/session`` by
 :func:`app.api.app.create_app`.
 """
 

@@ -562,8 +562,8 @@ class Agent(Generic[TContext]):
             # Me sync after tool execution — captures tool results
             await self._sync(checkpointer, ctx, state)
 
-            # Structured end-turn: a tool in this batch (e.g. team_message
-            # with end_turn=true) asked to finish the turn — tools executed,
+            # Structured end-turn: a tool in this batch asked to finish the
+            # turn — tools executed,
             # now exit without another LLM call.  ``pop`` makes it one-shot.
             # The legacy ``<sleep>`` text sentinel is kept for back-compat.
             end_turn = bool(state.metadata.pop("end_turn", False))
@@ -1126,7 +1126,7 @@ class Agent(Generic[TContext]):
                 "tool_call_id": primary.id,
             }
             state.metadata["question_suspended"] = suspended
-            # Hand the suspension back to the caller (``TeamMemberBase``) so it
+            # Hand the suspension back to the caller (``SessionRuntime``) so it
             # can park the agent in ``waiting_input``; ``state`` is run-local.
             if config is not None:
                 config.metadata["question_suspended"] = suspended

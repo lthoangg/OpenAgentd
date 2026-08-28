@@ -19,7 +19,7 @@ DEFAULT_WAIT = 180
 
 
 def _post_turn(base: str, message: str) -> str:
-    response = httpx.post(f"{base}/team/chat", data={"message": message}, timeout=30)
+    response = httpx.post(f"{base}/session/chat", data={"message": message}, timeout=30)
     response.raise_for_status()
     return str(response.json()["session_id"])
 
@@ -27,7 +27,7 @@ def _post_turn(base: str, message: str) -> str:
 def _wait_for_done(base: str, session_id: str, wait: int) -> None:
     deadline = time.monotonic() + wait
     with httpx.stream(
-        "GET", f"{base}/team/{session_id}/stream", timeout=wait + 5
+        "GET", f"{base}/session/{session_id}/stream", timeout=wait + 5
     ) as response:
         response.raise_for_status()
         for line in response.iter_lines():
@@ -38,18 +38,16 @@ def _wait_for_done(base: str, session_id: str, wait: int) -> None:
 
 
 def _history(base: str, session_id: str) -> dict:
-    response = httpx.get(f"{base}/team/{session_id}/history", params={"limit": 1000})
+    response = httpx.get(f"{base}/session/{session_id}/history", params={"limit": 1000})
     response.raise_for_status()
     return response.json()
 
 
 def _saw_patch_call(history: dict) -> bool:
-    agents = [history["lead"], *history.get("members", [])]
-    for agent in agents:
-        for message in agent.get("messages", []):
-            for tool_call in message.get("tool_calls") or []:
-                if tool_call.get("function", {}).get("name") == "patch":
-                    return True
+    for message in history["session"].get("messages", []):
+        for tool_call in message.get("tool_calls") or []:
+            if tool_call.get("function", {}).get("name") == "patch":
+                return True
     return False
 
 

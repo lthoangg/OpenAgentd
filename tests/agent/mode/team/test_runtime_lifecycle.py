@@ -1,4 +1,9 @@
-"""Extra tests for app/agent/mode/team/member.py — covers uncovered lines."""
+"""Lifecycle and inbox-persistence tests for ``SessionRuntime``.
+
+Covers ``_mark_last_assistant_interrupted``, ``stop``, ``_ensure_db_session``,
+and ``_persist_inbox`` — the paths the coordination tests in ``test_runtime.py``
+do not reach.
+"""
 
 from __future__ import annotations
 
@@ -10,11 +15,10 @@ from unittest.mock import AsyncMock, MagicMock
 import inspect
 import pytest
 
-from app.agent.mode.team.mailbox import Message, TeamMailbox
-from app.agent.mode.team.member import (
+from app.agent.mode.team.mailbox import Message
+from app.agent.mode.team.runtime import (
     _mark_last_assistant_interrupted,
-    TeamLead,
-    TeamMember,
+    SessionRuntime,
 )
 from tests.agent.mode.team.conftest import MockTeamProvider
 
@@ -87,39 +91,38 @@ class TestMarkLastAssistantInterrupted:
 
 
 # ---------------------------------------------------------------------------
-# TeamMember.stop — timeout path (lines 168-169)
+# SessionRuntime.stop — timeout path (lines 168-169)
 # ---------------------------------------------------------------------------
 
 
-class TestTeamMemberStop:
+class TestSessionRuntimeStop:
     @pytest.mark.asyncio
     async def test_stop_cancels_active_task_on_timeout(self):
         from unittest.mock import patch
 
         from app.agent.agent_loop import Agent
-        from app.agent.mode.team.mailbox import TeamMailbox
 
         agent = Agent(name="w", llm_provider=MockTeamProvider(), system_prompt="")
         factory, _ = _make_db_factory()
-        member = TeamMember(agent, session_id=str(uuid.uuid7()), db_factory=factory)
+        runtime = SessionRuntime(
+            agent, session_id=str(uuid.uuid7()), db_factory=factory
+        )
 
         async def never_ends():
             await asyncio.sleep(999)
 
-        member._mailbox = TeamMailbox()
-        member._mailbox.register("w")
-        member._active_task = asyncio.create_task(never_ends())
+        runtime._active_task = asyncio.create_task(never_ends())
 
         # Patch wait_for to raise TimeoutError immediately instead of waiting 5s
         with patch(
-            "app.agent.mode.team.member.asyncio.wait_for",
+            "app.agent.mode.team.runtime.asyncio.wait_for",
             side_effect=asyncio.TimeoutError,
         ):
-            await member.stop()
+            await runtime.stop()
 
         # Yield to let the cancellation propagate
         await asyncio.sleep(0)
-        assert member._active_task is None or member._active_task.done()
+        assert runtime._active_task is None or runtime._active_task.done()
 
     @pytest.mark.asyncio
     async def test_stop_closes_configured_provider_after_cancelling_turn(self):
@@ -127,44 +130,18 @@ class TestTeamMemberStop:
 
         provider = MockTeamProvider()
         provider.aclose = AsyncMock()
-        member = TeamMember(Agent(name="w", llm_provider=provider, system_prompt=""))
+        runtime = SessionRuntime(
+            Agent(name="w", llm_provider=provider, system_prompt="")
+        )
 
         async def never_ends():
             await asyncio.sleep(999)
 
-        member._active_task = asyncio.create_task(never_ends())
+        runtime._active_task = asyncio.create_task(never_ends())
 
-        await member.stop()
+        await runtime.stop()
 
         provider.aclose.assert_awaited_once()
-
-    @pytest.mark.asyncio
-    async def test_stop_without_mailbox_is_safe(self):
-        from app.agent.agent_loop import Agent
-
-        agent = Agent(name="w", llm_provider=MockTeamProvider(), system_prompt="")
-        factory, _ = _make_db_factory()
-        member = TeamMember(agent, session_id=str(uuid.uuid7()), db_factory=factory)
-        # No mailbox or active task set
-        await member.stop()  # Must not raise
-
-    @pytest.mark.asyncio
-    async def test_stop_deregisters_from_mailbox(self):
-        """After stop(), agent no longer in registered_agents."""
-        from app.agent.agent_loop import Agent
-
-        agent = Agent(name="w", llm_provider=MockTeamProvider(), system_prompt="")
-        factory, _ = _make_db_factory()
-        member = TeamMember(agent, session_id=str(uuid.uuid7()), db_factory=factory)
-
-        member._mailbox = TeamMailbox()
-        member._mailbox.register("w")
-
-        assert "w" in member._mailbox.registered_agents
-
-        await member.stop()
-
-        assert "w" not in member._mailbox.registered_agents
 
     @pytest.mark.asyncio
     async def test_double_stop_is_safe(self):
@@ -173,16 +150,15 @@ class TestTeamMemberStop:
 
         agent = Agent(name="w", llm_provider=MockTeamProvider(), system_prompt="")
         factory, _ = _make_db_factory()
-        member = TeamMember(agent, session_id=str(uuid.uuid7()), db_factory=factory)
+        runtime = SessionRuntime(
+            agent, session_id=str(uuid.uuid7()), db_factory=factory
+        )
 
-        member._mailbox = TeamMailbox()
-        member._mailbox.register("w")
-
-        await member.stop()
+        await runtime.stop()
         # Second stop should be safe
-        await member.stop()
+        await runtime.stop()
 
-        assert "w" not in member._mailbox.registered_agents
+        assert runtime.state == "idle"
 
     @pytest.mark.asyncio
     async def test_stop_without_active_task(self):
@@ -191,31 +167,29 @@ class TestTeamMemberStop:
 
         agent = Agent(name="w", llm_provider=MockTeamProvider(), system_prompt="")
         factory, _ = _make_db_factory()
-        member = TeamMember(agent, session_id=str(uuid.uuid7()), db_factory=factory)
+        runtime = SessionRuntime(
+            agent, session_id=str(uuid.uuid7()), db_factory=factory
+        )
 
-        member._mailbox = TeamMailbox()
-        member._mailbox.register("w")
+        assert runtime._active_task is None
 
-        assert member._active_task is None
+        await runtime.stop()
 
-        await member.stop()
-
-        assert member.state == "idle"
-        assert "w" not in member._mailbox.registered_agents
+        assert runtime.state == "idle"
 
 
 # ---------------------------------------------------------------------------
-# TeamMember._ensure_db_session (lines 195-198)
+# SessionRuntime._ensure_db_session (lines 195-198)
 # ---------------------------------------------------------------------------
 
 
 class TestEnsureDbSession:
     def test_session_persistence_is_coding_workspace_only(self):
-        from app.agent.mode.team.member import TeamMemberBase
+        from app.agent.mode.team.runtime import SessionRuntime
 
         assert (
             "mode"
-            not in inspect.signature(TeamMemberBase._ensure_db_session).parameters
+            not in inspect.signature(SessionRuntime._ensure_db_session).parameters
         )
 
     @pytest.mark.asyncio
@@ -225,12 +199,32 @@ class TestEnsureDbSession:
         sid = str(uuid.uuid7())
         agent = Agent(name="m", llm_provider=MockTeamProvider(), system_prompt="")
         factory, mock_db = _make_db_factory(msg=None)
-        member = TeamMember(agent, session_id=sid, db_factory=factory)
+        runtime = SessionRuntime(agent, session_id=sid, db_factory=factory)
 
-        await member._ensure_db_session()
+        await runtime._ensure_db_session()
 
         mock_db.add.assert_called_once()
         mock_db.commit.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_default_title_names_the_agent_not_a_team_lead(self):
+        """The fallback title is user-visible in the session list.
+
+        There is one agent per session now, so "Team lead: m" describes a
+        roster that no longer exists.
+        """
+        from app.agent.agent_loop import Agent
+
+        agent = Agent(name="m", llm_provider=MockTeamProvider(), system_prompt="")
+        factory, mock_db = _make_db_factory(msg=None)
+        runtime = SessionRuntime(
+            agent, session_id=str(uuid.uuid7()), db_factory=factory
+        )
+
+        await runtime._ensure_db_session()
+
+        (created,), _ = mock_db.add.call_args
+        assert created.title == "Agent: m"
 
     @pytest.mark.asyncio
     async def test_skips_create_when_session_exists(self):
@@ -243,9 +237,9 @@ class TestEnsureDbSession:
 
         factory, mock_db = _make_db_factory()
         mock_db.get = AsyncMock(return_value=existing)
-        member = TeamMember(agent, session_id=sid, db_factory=factory)
+        runtime = SessionRuntime(agent, session_id=sid, db_factory=factory)
 
-        await member._ensure_db_session()
+        await runtime._ensure_db_session()
 
         mock_db.add.assert_not_called()
 
@@ -261,13 +255,13 @@ class TestEnsureDbSession:
             raise RuntimeError("DB gone")
             yield  # noqa: RET504
 
-        member = TeamMember(agent, session_id=sid, db_factory=bad_factory)
-        await member._ensure_db_session()  # Must not raise
+        runtime = SessionRuntime(agent, session_id=sid, db_factory=bad_factory)
+        await runtime._ensure_db_session()  # Must not raise
 
 
 class TestInboxPersistence:
     @pytest.mark.asyncio
-    async def test_lead_inbox_skips_user_rows_but_persists_peer_rows_in_order(
+    async def test_inbox_skips_user_rows_but_persists_agent_rows_in_order(
         self, monkeypatch: pytest.MonkeyPatch
     ):
         from app.agent.agent_loop import Agent
@@ -288,22 +282,22 @@ class TestInboxPersistence:
         async def fake_save(_db, _session_id, _message, **_kwargs):
             return type("Row", (), {"id": uuid.uuid7()})()
 
-        monkeypatch.setattr("app.agent.mode.team.member.save_message", fake_save)
-        lead = TeamLead(
-            Agent(name="lead", llm_provider=MockTeamProvider()),
+        monkeypatch.setattr("app.agent.mode.team.runtime.save_message", fake_save)
+        runtime = SessionRuntime(
+            Agent(name="openagentd", llm_provider=MockTeamProvider()),
             session_id=str(uuid.uuid7()),
             db_factory=factory,
         )
 
-        persisted = await lead._persist_inbox(
+        persisted = await runtime._persist_inbox(
             [
-                Message(from_agent="user", to_agent="lead", content="user"),
-                Message(from_agent="worker", to_agent="lead", content="peer"),
+                Message(from_agent="user", to_agent="openagentd", content="user"),
+                Message(from_agent="child", to_agent="openagentd", content="child"),
             ]
         )
 
         assert factory_calls == 1
-        assert [message.content for message in persisted] == ["user", "peer"]
+        assert [message.content for message in persisted] == ["user", "child"]
         assert persisted[0].db_id is None
         assert persisted[1].db_id is not None
 
@@ -333,19 +327,19 @@ class TestInboxPersistence:
             return row
 
         monkeypatch.setattr(
-            "app.agent.mode.team.member.save_message", failing_second_save
+            "app.agent.mode.team.runtime.save_message", failing_second_save
         )
-        member = TeamMember(
-            Agent(name="worker", llm_provider=MockTeamProvider()),
+        runtime = SessionRuntime(
+            Agent(name="child", llm_provider=MockTeamProvider()),
             session_id=str(session_id),
             db_factory=app_db.async_session_factory,
         )
 
         with pytest.raises(RuntimeError, match="second insert failed"):
-            await member._persist_inbox(
+            await runtime._persist_inbox(
                 [
-                    Message(from_agent="lead", to_agent="worker", content="first"),
-                    Message(from_agent="lead", to_agent="worker", content="second"),
+                    Message(from_agent="parent", to_agent="child", content="first"),
+                    Message(from_agent="parent", to_agent="child", content="second"),
                 ]
             )
 
@@ -387,29 +381,29 @@ class TestInboxPersistence:
             saved.append((message.content or "", extra or {}))
             return type("Row", (), {"id": uuid.uuid7()})()
 
-        monkeypatch.setattr("app.agent.mode.team.member.save_message", fake_save)
-        member = TeamMember(
-            Agent(name="worker", llm_provider=MockTeamProvider()),
+        monkeypatch.setattr("app.agent.mode.team.runtime.save_message", fake_save)
+        runtime = SessionRuntime(
+            Agent(name="child", llm_provider=MockTeamProvider()),
             session_id=str(uuid.uuid7()),
             db_factory=factory,
         )
         inbox = [
-            Message(from_agent="lead", to_agent="worker", content="first"),
+            Message(from_agent="parent", to_agent="child", content="first"),
             Message(
                 from_agent="peer",
-                to_agent="worker",
+                to_agent="child",
                 content="second",
                 is_broadcast=True,
             ),
         ]
 
-        persisted = await member._persist_inbox(inbox)
+        persisted = await runtime._persist_inbox(inbox)
 
         assert factory_calls == 1
         assert transactions == 1
         assert [message.content for message in persisted] == ["first", "second"]
         assert all(message.db_id is not None for message in persisted)
         assert saved == [
-            ("first", {"from_agent": "lead", "is_broadcast": False}),
+            ("first", {"from_agent": "parent", "is_broadcast": False}),
             ("second", {"from_agent": "peer", "is_broadcast": True}),
         ]

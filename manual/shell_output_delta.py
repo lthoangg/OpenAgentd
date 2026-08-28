@@ -25,7 +25,7 @@ DEFAULT_MESSAGE = (
 
 
 def _post_turn(base: str, message: str) -> str:
-    response = httpx.post(f"{base}/team/chat", data={"message": message}, timeout=30)
+    response = httpx.post(f"{base}/session/chat", data={"message": message}, timeout=30)
     response.raise_for_status()
     return str(response.json()["session_id"])
 
@@ -37,7 +37,7 @@ def _stream(base: str, session_id: str, wait: int) -> bool:
     data_buf: list[str] = []
 
     with httpx.stream(
-        "GET", f"{base}/team/{session_id}/stream", timeout=wait + 5
+        "GET", f"{base}/session/{session_id}/stream", timeout=wait + 5
     ) as response:
         response.raise_for_status()
         for line in response.iter_lines():

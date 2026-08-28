@@ -3,7 +3,7 @@
  * session switches from one model to another.
  *
  * The logic under test (in TeamChatView/index.tsx):
- *   - No session model override → use leadAgent.summary_trigger_tokens (from /team/agents)
+ *   - No session model override → use leadAgent.summary_trigger_tokens (from /session/agents)
  *   - Session model set → look up that model in the registry and use its
  *     summary_trigger_tokens so the meter reflects the active model, not the
  *     agent config model.
@@ -41,9 +41,7 @@ mock.module('@/components/CodingSidebar', () => ({ CodingSidebar: () => null }))
 mock.module('@/components/CodingWorkspacePanel', () => ({ CodingWorkspacePanel: () => null }))
 mock.module('@/components/CodingFileViewerPanel', () => ({ CodingFileViewerPanel: () => null }))
 mock.module('@/components/Sidebar', () => ({ Sidebar: () => null }))
-mock.module('@/components/TeamChatView/SplitGrid', () => ({ SplitGrid: () => null }))
 mock.module('@/components/TeamChatView/TeamChatPanels', () => ({ TeamChatPanels: () => null }))
-mock.module('@/components/TeamChatView/AgentTabs', () => ({ AgentTabs: () => null }))
 mock.module('@/components/TeamChatView/useTeamCommands', () => ({ useTeamCommands: () => [] }))
 mock.module('@/api/client', () => ({
   listCodingWorkspaceFiles: async () => [],
@@ -107,7 +105,6 @@ mock.module('@/queries/useAgentFilesQuery', () => ({
   useTeamAgentsQuery: () => ({
     data: {
       agents: [{
-        is_lead: true,
         model: MODEL_A_ID,
         summary_trigger_tokens: MODEL_A_TRIGGER,  // agent config model = A
         capabilities: undefined,
@@ -120,7 +117,6 @@ mock.module('@/queries/useAgentsQuery', () => ({
   useTeamAgentsQuery: () => ({
     data: {
       agents: [{
-        is_lead: true,
         model: MODEL_A_ID,
         summary_trigger_tokens: MODEL_A_TRIGGER,
         capabilities: undefined,

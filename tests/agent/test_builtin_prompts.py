@@ -1,14 +1,9 @@
 """Behavioral contracts for first-party agent prompts."""
 
-from app.agent.builtin_prompts import BUILTIN_MEMBER_PROFILES
-
-
-def test_coder_prompt_defines_a_complete_implementation_handoff():
-    prompt = BUILTIN_MEMBER_PROFILES["coding"]["coder"]["prompt"]
-
-    assert "Read the relevant code and tests before editing" in prompt
-    assert "Do not revert unrelated work" in prompt
-    assert "Report changed files, checks and results" in prompt
+from app.agent.builtin_prompts import (
+    CODING_CHILD_AGENT_PROTOCOL,
+    CODING_PARENT_DELEGATION_PROTOCOL,
+)
 
 
 def test_coding_lead_prompt_constrains_when_to_interrupt_the_user():
@@ -37,3 +32,20 @@ def test_question_tool_is_not_a_constructor_tool_for_the_coding_lead():
     from app.agent.builtin_prompts import CODING_OPENAGENTD_TOOLS
 
     assert "ask_user" not in CODING_OPENAGENTD_TOOLS
+
+
+def test_child_protocol_defines_worktree_merge_and_summary_contract():
+    assert "isolated git worktree" in CODING_CHILD_AGENT_PROTOCOL
+    assert "agent_merge" in CODING_CHILD_AGENT_PROTOCOL
+    assert "agent_send" in CODING_CHILD_AGENT_PROTOCOL
+    assert "Do not ask user questions" in CODING_CHILD_AGENT_PROTOCOL
+    assert "delivered verbatim to your parent" in CODING_CHILD_AGENT_PROTOCOL
+
+
+def test_parent_delegation_protocol_defines_spawning_and_async_delivery():
+    assert "agent_spawn" in CODING_PARENT_DELEGATION_PROTOCOL
+    assert "agent_list" in CODING_PARENT_DELEGATION_PROTOCOL
+    assert "agent_send" in CODING_PARENT_DELEGATION_PROTOCOL
+    assert (
+        "delivered to your session asynchronously" in CODING_PARENT_DELEGATION_PROTOCOL
+    )

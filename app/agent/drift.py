@@ -1,7 +1,7 @@
 """Per-agent config-file mtime stamping and drift detection.
 
 Lives in its own leaf module so that both ``app.agent.loader`` (which builds
-agents and stamps their files) and ``app.agent.mode.team.member`` (which
+agents and stamps their files) and ``app.agent.mode.team.runtime`` (which
 checks for drift each turn) can import it directly without a cycle.
 
 A ``ConfigStamp`` is a dict of ``{absolute_path: mtime_ns | None}``.

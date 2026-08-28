@@ -5,11 +5,11 @@ persists the question plus a placeholder tool result (see
 :mod:`app.services.question_service`) and raises
 :class:`~app.agent.errors.QuestionSuspended`, which unwinds the agent loop so
 the activation can exit cleanly. The turn resumes from the same point once the
-user answers — see ``TeamMemberBase.activate_for_question_answer``.
+user answers — see ``SessionRuntime.activate_for_question_answer``.
 
-Built per-agent by ``AgentTeam.get_injected_tools``, which is also where the
-coding-mode lead gate lives: members never receive this tool and escalate
-through ``team_message`` instead.
+Built per-agent by ``SessionRuntime.get_injected_tools``, which grants it only to
+top-level coding sessions; child sessions report back to their parent
+instead.
 """
 
 from __future__ import annotations
@@ -27,7 +27,7 @@ from app.core.db import resolve_db_factory
 from app.models.chat import ChatSession
 
 if TYPE_CHECKING:
-    from app.agent.mode.team.team import AgentTeam
+    from app.agent.mode.team.runtime import SessionRuntime
 
 
 TOOL_NAME = "ask_user"
@@ -239,8 +239,8 @@ async def _announce(
         logger.warning("question_notify_failed session_id={} error={}", sid, exc)
 
 
-def make_ask_user_tool(team: "AgentTeam") -> Tool:
-    """Return the ``ask_user`` tool bound to *team*'s lead session.
+def make_ask_user_tool(runtime: "SessionRuntime") -> Tool:
+    """Return the ``ask_user`` tool bound to *runtime*'s session.
 
     The session is bound at construction rather than taken from the model, so
     a question can only ever suspend the turn it was asked in.
@@ -257,18 +257,16 @@ def make_ask_user_tool(team: "AgentTeam") -> Tool:
         if not _tool_call_id:
             # Without a call id there is nothing to resume: refuse rather than
             # strand the turn in a suspension nobody can resolve.
-            logger.warning(
-                "question_tool_missing_tool_call_id agent={}", team.lead.name
-            )
+            logger.warning("question_tool_missing_tool_call_id agent={}", runtime.name)
             return (
                 "Your question could not be delivered (no tool call id). "
                 "Continue with your best judgment."
             )
 
-        session_id = uuid.UUID(team.lead.session_id)
+        session_id = uuid.UUID(runtime.session_id)
         payload = [question.model_dump() for question in questions]
 
-        db_factory = resolve_db_factory(team.lead.db_factory)
+        db_factory = resolve_db_factory(runtime.db_factory)
         async with db_factory() as db:
             row = await question_service.create_pending_question(
                 db,

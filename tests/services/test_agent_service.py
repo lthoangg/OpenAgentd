@@ -29,8 +29,8 @@ from app.services.agent_service import (
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 
-def _make_team(*, vision: bool = True, document_text: bool = True) -> MagicMock:
-    """Build a minimal AgentTeam stub."""
+def _make_runtime(*, vision: bool = True, document_text: bool = True) -> MagicMock:
+    """Build a minimal SessionRuntime stub."""
     caps = MagicMock()
     caps.input.vision = vision
     caps.input.document_text = document_text
@@ -38,15 +38,12 @@ def _make_team(*, vision: bool = True, document_text: bool = True) -> MagicMock:
     agent = MagicMock()
     agent.capabilities = caps
 
-    lead = MagicMock()
-    lead.agent = agent
-
-    team = MagicMock()
-    team.lead = lead
-    team.handle_user_message = AsyncMock(
+    runtime = MagicMock()
+    runtime.agent = agent
+    runtime.handle_user_message = AsyncMock(
         return_value=("stub-session-id", "stub-message-id")
     )
-    return team
+    return runtime
 
 
 # ── AttachmentError ───────────────────────────────────────────────────────────
@@ -68,8 +65,8 @@ def test_attachment_error_default_is_not_overridden():
 
 
 def test_require_team_returns_team():
-    team = _make_team()
-    assert require_team(team) is team
+    runtime = _make_runtime()
+    assert require_team(runtime) is runtime
 
 
 def test_require_team_raises_when_none():
@@ -212,12 +209,12 @@ def test_default_ext_unknown_category_returns_bin():
 @pytest.mark.asyncio
 async def test_unknown_extension_accepted_as_file_category(tmp_path):
     """Files with no recognised extension are saved as 'file' — not rejected."""
-    team = _make_team()
+    runtime = _make_runtime()
     att = RawAttachment(
         filename="archive.zip", content_type=None, data=b"PK" + b"\x00" * 20
     )
     with patch("app.services.agent_service._uploads_dir", return_value=tmp_path):
-        sid, metas = await validate_and_persist_attachments(team, [att])
+        sid, metas = await validate_and_persist_attachments(runtime, [att])
     assert len(metas) == 1
     assert metas[0]["category"] == "file"
     assert (tmp_path / metas[0]["filename"]).is_file()
@@ -225,10 +222,10 @@ async def test_unknown_extension_accepted_as_file_category(tmp_path):
 
 @pytest.mark.asyncio
 async def test_exe_accepted_as_file_category(tmp_path):
-    team = _make_team()
+    runtime = _make_runtime()
     att = RawAttachment(filename="app.exe", content_type=None, data=b"\x4d\x5a" * 10)
     with patch("app.services.agent_service._uploads_dir", return_value=tmp_path):
-        sid, metas = await validate_and_persist_attachments(team, [att])
+        sid, metas = await validate_and_persist_attachments(runtime, [att])
     assert metas[0]["category"] == "file"
 
 
@@ -255,10 +252,10 @@ async def test_validate_code_and_config_files_accepted(
     tmp_path, filename, content_type, body
 ):
     """Code and config file types are accepted and categorised as text."""
-    team = _make_team()
+    runtime = _make_runtime()
     att = RawAttachment(filename=filename, content_type=content_type, data=body)
     with patch("app.services.agent_service._uploads_dir", return_value=tmp_path):
-        sid, metas = await validate_and_persist_attachments(team, [att])
+        sid, metas = await validate_and_persist_attachments(runtime, [att])
     assert len(metas) == 1
     assert metas[0]["category"] == "text", (
         f"{filename} should be 'text', got {metas[0]['category']!r}"
@@ -267,33 +264,33 @@ async def test_validate_code_and_config_files_accepted(
 
 @pytest.mark.asyncio
 async def test_validate_image_not_rejected_when_no_vision(tmp_path):
-    team = _make_team(vision=False)
+    runtime = _make_runtime(vision=False)
     data = b"\x89PNG\r\n\x1a\n" + b"\x00" * 50
     att = RawAttachment(filename="img.png", content_type="image/png", data=data)
-    sid, metas = await validate_and_persist_attachments(team, [att])
+    sid, metas = await validate_and_persist_attachments(runtime, [att])
     assert len(metas) == 1
     assert metas[0]["category"] == "image"
 
 
 @pytest.mark.asyncio
 async def test_validate_document_not_rejected_when_no_document_text(tmp_path):
-    team = _make_team(document_text=False)
+    runtime = _make_runtime(document_text=False)
     data = b"%PDF-1.4" + b"\x00" * 50
     att = RawAttachment(filename="doc.pdf", content_type="application/pdf", data=data)
-    sid, metas = await validate_and_persist_attachments(team, [att])
+    sid, metas = await validate_and_persist_attachments(runtime, [att])
     assert len(metas) == 1
     assert metas[0]["category"] == "document"
 
 
 @pytest.mark.asyncio
 async def test_validate_global_size_limit_exceeded():
-    team = _make_team()
+    runtime = _make_runtime()
     # Two text files, each just over half the global limit
     chunk = b"a" * (GLOBAL_SIZE_LIMIT // 2 + 1)
     att1 = RawAttachment(filename="big1.txt", content_type="text/plain", data=chunk)
     att2 = RawAttachment(filename="big2.txt", content_type="text/plain", data=chunk)
     with pytest.raises(AttachmentError) as exc_info:
-        await validate_and_persist_attachments(team, [att1, att2])
+        await validate_and_persist_attachments(runtime, [att1, att2])
     assert exc_info.value.status == 413
     assert "global" in str(exc_info.value).lower()
 
@@ -301,10 +298,10 @@ async def test_validate_global_size_limit_exceeded():
 @pytest.mark.asyncio
 async def test_validate_empty_filename_skipped(tmp_path):
     """Attachments with empty filenames are silently skipped."""
-    team = _make_team()
+    runtime = _make_runtime()
     with patch("app.services.agent_service._uploads_dir", return_value=tmp_path):
         sid, metas = await validate_and_persist_attachments(
-            team,
+            runtime,
             [RawAttachment(filename="", content_type="text/plain", data=b"hello")],
         )
     assert metas == []
@@ -312,11 +309,11 @@ async def test_validate_empty_filename_skipped(tmp_path):
 
 @pytest.mark.asyncio
 async def test_validate_and_persist_text_file(tmp_path):
-    team = _make_team()
+    runtime = _make_runtime()
     content = b"hello world"
     att = RawAttachment(filename="notes.txt", content_type="text/plain", data=content)
     with patch("app.services.agent_service._uploads_dir", return_value=tmp_path):
-        sid, metas = await validate_and_persist_attachments(team, [att])
+        sid, metas = await validate_and_persist_attachments(runtime, [att])
     assert len(metas) == 1
     meta = metas[0]
     assert meta["category"] == "text"
@@ -330,10 +327,10 @@ async def test_validate_and_persist_text_file(tmp_path):
 
 @pytest.mark.asyncio
 async def test_validate_and_persist_mints_sid_when_session_id_none(tmp_path):
-    team = _make_team()
+    runtime = _make_runtime()
     att = RawAttachment(filename="a.txt", content_type="text/plain", data=b"hi")
     with patch("app.services.agent_service._uploads_dir", return_value=tmp_path):
-        sid, metas = await validate_and_persist_attachments(team, [att])
+        sid, metas = await validate_and_persist_attachments(runtime, [att])
     assert sid and len(sid) > 10
     assert len(metas) == 1
     assert Path(metas[0]["path"]).is_file()
@@ -341,11 +338,11 @@ async def test_validate_and_persist_mints_sid_when_session_id_none(tmp_path):
 
 @pytest.mark.asyncio
 async def test_validate_and_persist_uses_provided_session_id(tmp_path):
-    team = _make_team()
+    runtime = _make_runtime()
     att = RawAttachment(filename="a.txt", content_type="text/plain", data=b"hi")
     with patch("app.services.agent_service._uploads_dir", return_value=tmp_path):
         sid, metas = await validate_and_persist_attachments(
-            team, [att], session_id="existing-sid-xyz"
+            runtime, [att], session_id="existing-sid-xyz"
         )
     assert sid == "existing-sid-xyz"
     assert len(metas) == 1
@@ -353,14 +350,14 @@ async def test_validate_and_persist_uses_provided_session_id(tmp_path):
 
 @pytest.mark.asyncio
 async def test_validate_and_persist_uses_coding_workspace_uploads_dir(tmp_path):
-    team = _make_team()
+    runtime = _make_runtime()
     workspace = tmp_path / "repo"
     att = RawAttachment(
         filename="image.png", content_type="image/png", data=b"\x89PNG\r\n\x1a\n"
     )
 
     sid, metas = await validate_and_persist_attachments(
-        team,
+        runtime,
         [att],
         session_id="existing-sid-xyz",
         workspace=str(workspace),
@@ -372,7 +369,7 @@ async def test_validate_and_persist_uses_coding_workspace_uploads_dir(tmp_path):
     assert saved.is_file()
     assert metas[0]["path"] == str(saved)
     assert metas[0]["workspace_path"] == str(saved)
-    assert metas[0]["url"] == "/api/team/existing-sid-xyz/uploads/image.png"
+    assert metas[0]["url"] == "/api/session/existing-sid-xyz/uploads/image.png"
 
 
 @pytest.mark.asyncio
@@ -527,7 +524,7 @@ async def test_persist_attachment_strips_path_components(tmp_path):
 
 @pytest.mark.asyncio
 async def test_validate_and_persist_multiple_files(tmp_path):
-    team = _make_team()
+    runtime = _make_runtime()
     atts = [
         RawAttachment(filename="a.txt", content_type="text/plain", data=b"alpha"),
         RawAttachment(filename="b.md", content_type="text/markdown", data=b"# beta"),
@@ -535,7 +532,7 @@ async def test_validate_and_persist_multiple_files(tmp_path):
 
     with patch("app.services.agent_service._uploads_dir", return_value=tmp_path):
         sid, metas = await validate_and_persist_attachments(
-            team, atts, session_id="sid"
+            runtime, atts, session_id="sid"
         )
 
     assert sid == "sid"
@@ -545,24 +542,28 @@ async def test_validate_and_persist_multiple_files(tmp_path):
 
 @pytest.mark.asyncio
 async def test_validate_and_persist_escapes_html_in_original_name(tmp_path):
-    team = _make_team()
+    runtime = _make_runtime()
     att = RawAttachment(
         filename="<script>.txt", content_type="text/plain", data=b"safe"
     )
 
     with patch("app.services.agent_service._uploads_dir", return_value=tmp_path):
-        _, metas = await validate_and_persist_attachments(team, [att], session_id="sid")
+        _, metas = await validate_and_persist_attachments(
+            runtime, [att], session_id="sid"
+        )
 
     assert metas[0]["original_name"] == "&lt;script&gt;.txt"
 
 
 @pytest.mark.asyncio
 async def test_validate_and_persist_no_content_type_falls_back_to_extension(tmp_path):
-    team = _make_team()
+    runtime = _make_runtime()
     att = RawAttachment(filename="notes.txt", content_type=None, data=b"hello")
 
     with patch("app.services.agent_service._uploads_dir", return_value=tmp_path):
-        _, metas = await validate_and_persist_attachments(team, [att], session_id="sid")
+        _, metas = await validate_and_persist_attachments(
+            runtime, [att], session_id="sid"
+        )
 
     assert metas[0]["media_type"] == "application/octet-stream"
     assert metas[0]["category"] == "text"
@@ -573,21 +574,21 @@ async def test_validate_and_persist_no_content_type_falls_back_to_extension(tmp_
 
 @pytest.mark.asyncio
 async def test_dispatch_generates_sid_when_none():
-    team = _make_team()
+    runtime = _make_runtime()
     sid, n, message_id = await dispatch_user_message(
-        team, content="hello", session_id=None
+        runtime, content="hello", session_id=None
     )
     assert sid and len(sid) > 8
     assert n == 0
     assert message_id == "stub-message-id"
-    team.handle_user_message.assert_awaited_once()
+    runtime.handle_user_message.assert_awaited_once()
 
 
 @pytest.mark.asyncio
 async def test_dispatch_reuses_provided_sid():
-    team = _make_team()
+    runtime = _make_runtime()
     sid, n, message_id = await dispatch_user_message(
-        team, content="hi", session_id="my-sid-123"
+        runtime, content="hi", session_id="my-sid-123"
     )
     assert sid == "my-sid-123"
     assert n == 0
@@ -596,15 +597,15 @@ async def test_dispatch_reuses_provided_sid():
 
 @pytest.mark.asyncio
 async def test_dispatch_passes_session_model_settings():
-    team = _make_team()
+    runtime = _make_runtime()
     await dispatch_user_message(
-        team,
+        runtime,
         content="hi",
         session_id="my-sid-123",
         model="openai:gpt-5.5",
         thinking_level="high",
     )
-    team.handle_user_message.assert_awaited_once_with(
+    runtime.handle_user_message.assert_awaited_once_with(
         content="hi",
         session_id="my-sid-123",
         interrupt=False,
@@ -623,11 +624,11 @@ async def test_dispatch_passes_session_model_settings():
 
 @pytest.mark.asyncio
 async def test_dispatch_with_attachments_uses_fresh_sid_when_session_id_none(tmp_path):
-    team = _make_team()
+    runtime = _make_runtime()
     att = RawAttachment(filename="f.txt", content_type="text/plain", data=b"content")
     with patch("app.services.agent_service._uploads_dir", return_value=tmp_path):
         sid, n, message_id = await dispatch_user_message(
-            team, content="hi", session_id=None, attachments=[att]
+            runtime, content="hi", session_id=None, attachments=[att]
         )
     assert n == 1
     assert sid and len(sid) > 8
@@ -636,11 +637,11 @@ async def test_dispatch_with_attachments_uses_fresh_sid_when_session_id_none(tmp
 
 @pytest.mark.asyncio
 async def test_dispatch_with_attachments_prefers_provided_session_id(tmp_path):
-    team = _make_team()
+    runtime = _make_runtime()
     att = RawAttachment(filename="f.txt", content_type="text/plain", data=b"x")
     with patch("app.services.agent_service._uploads_dir", return_value=tmp_path):
         sid, n, message_id = await dispatch_user_message(
-            team, content="hi", session_id="existing-123", attachments=[att]
+            runtime, content="hi", session_id="existing-123", attachments=[att]
         )
     assert sid == "existing-123"
     assert n == 1
@@ -668,12 +669,10 @@ async def test_interrupt_team_waits_for_cancelled_activation_cleanup():
     working._active_task = active_task
     working.interrupt.side_effect = active_task.cancel
 
-    team = MagicMock()
-    team.members = {}
-    team.all_members = [working]
-    team.lead.session_id = None
+    runtime = working
+    runtime.session_id = None
 
-    await interrupt_team(team, session_id=None)
+    await interrupt_team(runtime, session_id=None)
 
     assert cleaned_up.is_set()
     assert active_task.done()
@@ -687,21 +686,20 @@ async def test_interrupt_team_dismisses_an_open_question():
     the session "needs input" forever with no turn left to resume it, and the
     lead would stay ``waiting_input`` — busy to every caller that asks.
     """
-    team = MagicMock()
-    team.members = {}
-    team.all_members = []
+    runtime = MagicMock()
+    runtime.state = "idle"
     # The lead is bound to a *different* session than the one being stopped.
     # A coding team is cached per (workspace, session) and rebuilt after the
     # idle window with a freshly minted lead session id; only
     # ``handle_user_message`` rebinds it, and an interrupt-only request returns
     # before that runs. Dismissing "the lead's" question would search a session
     # that has no questions and silently close nothing.
-    team.lead.session_id = "019fd000-0000-7000-8000-00000000dead"
-    team.dismiss_pending_question = AsyncMock(return_value=True)
+    runtime.session_id = "019fd000-0000-7000-8000-00000000dead"
+    runtime.dismiss_pending_question = AsyncMock(return_value=True)
 
-    await interrupt_team(team, session_id="019fd791-93ed-753d-8615-799b456708b7")
+    await interrupt_team(runtime, session_id="019fd791-93ed-753d-8615-799b456708b7")
 
-    team.dismiss_pending_question.assert_awaited_once_with(
+    runtime.dismiss_pending_question.assert_awaited_once_with(
         reason="dismissed", session_id="019fd791-93ed-753d-8615-799b456708b7"
     )
 
@@ -719,14 +717,13 @@ async def test_interrupt_team_delivers_done_when_the_turn_state_expired():
 
     session_id = "019fd791-93ed-753d-8615-799b456708b7"
     _turns.clear()
-    team = MagicMock()
-    team.members = {}
-    team.all_members = []
-    team.lead.session_id = session_id
-    team.dismiss_pending_question = AsyncMock(return_value=True)
+    runtime = MagicMock()
+    runtime.state = "idle"
+    runtime.session_id = session_id
+    runtime.dismiss_pending_question = AsyncMock(return_value=True)
 
     try:
-        await interrupt_team(team, session_id=session_id)
+        await interrupt_team(runtime, session_id=session_id)
 
         assert session_id in _turns
         assert _turns[session_id].is_streaming is False
@@ -738,34 +735,27 @@ async def test_interrupt_team_survives_a_failed_question_dismissal():
     """Cancelling the run matters more than closing the card."""
     working = MagicMock()
     working.state = "working"
-    working.name = "worker-a"
+    working.name = "openagentd"
     working._active_task = None
 
-    team = MagicMock()
-    team.members = {}
-    team.all_members = [working]
-    team.lead.session_id = None
-    team.dismiss_pending_question = AsyncMock(side_effect=RuntimeError("db gone"))
+    runtime = working
+    runtime.session_id = None
+    runtime.dismiss_pending_question = AsyncMock(side_effect=RuntimeError("db gone"))
 
-    names = await interrupt_team(team, session_id=None)
+    names = await interrupt_team(runtime, session_id=None)
 
-    assert names == ["worker-a"]
+    assert names == ["openagentd"]
     working.interrupt.assert_called_once()
 
 
 @pytest.mark.asyncio
-async def test_interrupt_team_cancels_working_members():
+async def test_interrupt_team_cancels_the_working_agent():
     working = MagicMock()
     working.state = "working"
-    working.name = "worker-a"
+    working.name = "openagentd"
+    working._active_task = None
 
-    idle = MagicMock()
-    idle.state = "idle"
-    idle.name = "idler"
-
-    team = MagicMock()
-    team.members = {}
-    team.all_members = [working, idle]
+    runtime = working
 
     with (
         patch(
@@ -775,9 +765,9 @@ async def test_interrupt_team_cancels_working_members():
             "app.services.agent_service.stream_store.mark_done", new=AsyncMock()
         ) as mark_done,
     ):
-        names = await interrupt_team(team, session_id="sess-1")
+        names = await interrupt_team(runtime, session_id="sess-1")
 
-    assert names == ["worker-a"]
+    assert names == ["openagentd"]
     working.interrupt.assert_called_once()
     push.assert_awaited_once()
     mark_done.assert_awaited_once_with("sess-1")
@@ -785,14 +775,10 @@ async def test_interrupt_team_cancels_working_members():
 
 @pytest.mark.asyncio
 async def test_interrupt_team_releases_queued_messages_before_stopping_stream():
-    idle = MagicMock()
-    idle.state = "idle"
-    idle.name = "idler"
-
-    team = MagicMock()
-    team.members = {}
-    team.all_members = [idle]
-    team.lead.session_id = None
+    runtime = MagicMock()
+    runtime.state = "idle"
+    runtime.name = "openagentd"
+    runtime.session_id = None
 
     with (
         patch(
@@ -807,7 +793,7 @@ async def test_interrupt_team_releases_queued_messages_before_stopping_stream():
         ) as mark_done,
     ):
         names = await interrupt_team(
-            team, session_id="018f0000-0000-7000-8000-000000000001"
+            runtime, session_id="018f0000-0000-7000-8000-000000000001"
         )
 
     assert names == []
@@ -816,15 +802,11 @@ async def test_interrupt_team_releases_queued_messages_before_stopping_stream():
     mark_done.assert_awaited_once_with("018f0000-0000-7000-8000-000000000001")
 
 
-async def test_interrupt_team_marks_stream_done_even_when_no_members_working():
-    idle = MagicMock()
-    idle.state = "idle"
-    idle.name = "idler"
-
-    team = MagicMock()
-    team.members = {}
-    team.all_members = [idle]
-    team.lead.session_id = None
+async def test_interrupt_team_marks_stream_done_even_when_nothing_is_working():
+    runtime = MagicMock()
+    runtime.state = "idle"
+    runtime.name = "openagentd"
+    runtime.session_id = None
 
     with (
         patch(
@@ -834,7 +816,7 @@ async def test_interrupt_team_marks_stream_done_even_when_no_members_working():
             "app.services.agent_service.stream_store.mark_done", new=AsyncMock()
         ) as mark_done,
     ):
-        names = await interrupt_team(team, session_id="sess-1")
+        names = await interrupt_team(runtime, session_id="sess-1")
 
     assert names == []
     push.assert_awaited_once()
@@ -842,51 +824,39 @@ async def test_interrupt_team_marks_stream_done_even_when_no_members_working():
 
 
 @pytest.mark.asyncio
-async def test_interrupt_team_cancels_working_live_members_without_dismissing():
+async def test_interrupt_team_writes_no_stop_notice_into_the_transcript():
+    """The interrupted turn is flagged on its own assistant row.
+
+    A synthetic "stopped" inbox message belonged to the retired member roster;
+    injecting one into the agent's own session would replay to the model as a
+    user turn on the next run.
+    """
     working = MagicMock()
     working.state = "working"
-    working.name = "executor#1"
+    working.name = "openagentd"
+    working._active_task = None
 
-    idle = MagicMock()
-    idle.state = "idle"
-    idle.name = "executor#2"
-
-    team = MagicMock()
-    team.members = {"executor#1": working, "executor#2": idle}
-    team.all_members = [working, idle]
-    team.dismiss = AsyncMock()
-    team._emit = AsyncMock()
-    team.lead.name = "lead"
-    team.lead.session_id = None
+    runtime = working
+    runtime.session_id = None
+    runtime._emit = AsyncMock()
 
     with (
         patch("app.services.agent_service.stream_store.push_event", new=AsyncMock()),
         patch("app.services.agent_service.stream_store.mark_done", new=AsyncMock()),
     ):
-        names = await interrupt_team(team, session_id=None)
-    assert names == ["executor#1"]
-    team._emit.assert_awaited_once_with(
-        agent="lead",
-        event="inbox",
-        extra={
-            "content": "[executor#1]: Stopped before completing assigned work.",
-            "from_agent": "executor#1",
-        },
-    )
+        names = await interrupt_team(runtime, session_id=None)
+
+    assert names == ["openagentd"]
     working.interrupt.assert_called_once()
-    team.dismiss.assert_not_awaited()
+    runtime._emit.assert_not_awaited()
 
 
 @pytest.mark.asyncio
 async def test_interrupt_team_no_working_members():
-    idle = MagicMock()
-    idle.state = "idle"
-    idle.name = "idler"
-
-    team = MagicMock()
-    team.members = {}
-    team.all_members = [idle]
-    team.lead.session_id = None
+    runtime = MagicMock()
+    runtime.state = "idle"
+    runtime.name = "openagentd"
+    runtime.session_id = None
 
     with (
         patch(
@@ -896,7 +866,7 @@ async def test_interrupt_team_no_working_members():
             "app.services.agent_service.stream_store.mark_done", new=AsyncMock()
         ) as mark_done,
     ):
-        names = await interrupt_team(team, session_id=None)
+        names = await interrupt_team(runtime, session_id=None)
 
     assert names == []
     push.assert_not_awaited()
@@ -905,21 +875,17 @@ async def test_interrupt_team_no_working_members():
 
 @pytest.mark.asyncio
 async def test_interrupt_team_publishes_stopped_event():
-    idle = MagicMock()
-    idle.state = "idle"
-    idle.name = "idler"
-
-    team = MagicMock()
-    team.members = {}
-    team.all_members = [idle]
-    team.lead.session_id = None
+    runtime = MagicMock()
+    runtime.state = "idle"
+    runtime.name = "openagentd"
+    runtime.session_id = None
 
     with (
         patch("app.services.agent_service.stream_store.push_event", new=AsyncMock()),
         patch("app.services.agent_service.stream_store.mark_done", new=AsyncMock()),
         patch("app.services.event_broadcaster.publish", new=AsyncMock()) as publish,
     ):
-        await interrupt_team(team, session_id="sess-1")
+        await interrupt_team(runtime, session_id="sess-1")
 
     publish.assert_awaited_once_with(
         "session_turn_completed",

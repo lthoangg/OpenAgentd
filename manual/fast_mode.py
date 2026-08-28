@@ -1,4 +1,4 @@
-"""Smoke-test provider-neutral fast_mode handling on /team/chat.
+"""Smoke-test provider-neutral fast_mode handling on /session/chat.
 
 Asks the agent to run a trivial shell command (a real, deterministic tool
 call — there is no server-side "direct shell dispatch" bypass) and checks
@@ -37,13 +37,12 @@ DEFAULT_EXPECT = "openagentd-fast-mode-smoke-ok"
 DEFAULT_CODEX_MODEL = "codex:gpt-5.4"
 
 
-def _lead_model(base: str) -> str | None:
-    response = httpx.get(f"{base}/team/agents", timeout=30)
+def _session_model(base: str) -> str | None:
+    response = httpx.get(f"{base}/session/agents", timeout=30)
     response.raise_for_status()
     for agent in response.json().get("agents", []):
-        if agent.get("is_lead"):
-            model = agent.get("model")
-            return str(model) if model else None
+        model = agent.get("model")
+        return str(model) if model else None
     return None
 
 
@@ -75,7 +74,7 @@ def _post_shell_turn(
     if fast_mode:
         payload["fast_mode"] = "true"
 
-    response = httpx.post(f"{base}/team/chat", data=payload, timeout=30)
+    response = httpx.post(f"{base}/session/chat", data=payload, timeout=30)
     if response.status_code == 422 and model is not None:
         detail = response.json().get("detail")
         raise AssertionError(
@@ -95,7 +94,7 @@ def _stream_until_done(base: str, session_id: str, wait: int) -> str:
     start = time.monotonic()
 
     with httpx.stream(
-        "GET", f"{base}/team/{session_id}/stream", timeout=wait + 5
+        "GET", f"{base}/session/{session_id}/stream", timeout=wait + 5
     ) as response:
         response.raise_for_status()
         for line in response.iter_lines():
@@ -124,10 +123,10 @@ def _stream_until_done(base: str, session_id: str, wait: int) -> str:
 
 def _lead_history(base: str, session_id: str) -> list[dict]:
     response = httpx.get(
-        f"{base}/team/{session_id}/history", params={"limit": 1000}, timeout=30
+        f"{base}/session/{session_id}/history", params={"limit": 1000}, timeout=30
     )
     response.raise_for_status()
-    return list(response.json()["lead"]["messages"])
+    return list(response.json()["session"]["messages"])
 
 
 def _user_message_extra(history: Iterable[dict], expected_content: str) -> dict:
@@ -182,7 +181,7 @@ def main() -> None:
         default=None,
         help=(
             "Registered non-Codex model for the unsupported-provider ignore check. "
-            "Defaults to the current session/team model."
+            "Defaults to the current session model."
         ),
     )
     parser.add_argument(
@@ -203,12 +202,12 @@ def main() -> None:
     if not command:
         raise SystemExit("--command must not be blank")
 
-    lead_model = _lead_model(base)
+    session_model = _session_model(base)
     non_codex_model = args.non_codex_model
-    if non_codex_model is None and (lead_model or "").startswith("codex:"):
+    if non_codex_model is None and (session_model or "").startswith("codex:"):
         non_codex_model = _first_registered_model(base, codex=False)
 
-    if non_codex_model is not None or not (lead_model or "").startswith("codex:"):
+    if non_codex_model is not None or not (session_model or "").startswith("codex:"):
         _run_case(
             base,
             label="non-Codex fast_mode persists service_tier=fast",
@@ -227,12 +226,12 @@ def main() -> None:
         )
 
     codex_model = args.codex_model
-    if codex_model is None and (lead_model or "").startswith("codex:"):
+    if codex_model is None and (session_model or "").startswith("codex:"):
         codex_model = None
     elif codex_model is None:
         codex_model = _first_registered_model(base, codex=True)
 
-    if codex_model is not None or (lead_model or "").startswith("codex:"):
+    if codex_model is not None or (session_model or "").startswith("codex:"):
         _run_case(
             base,
             label="Codex fast_mode persists service_tier=fast",

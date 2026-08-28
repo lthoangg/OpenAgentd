@@ -18,21 +18,8 @@ if TYPE_CHECKING:
 # ── History ──────────────────────────────────────────────────────────────────
 
 
-class TeamHistoryMember(BaseModel):
-    name: str
-    session_id: str
-    messages: list[MessageResponse]
-    running: bool = False
-    #: Full-session usage totals for this member session (see
-    #: ``SessionResponse.estimated_cost_usd``). Populated on history
-    #: responses; ``None`` when the member has no usage.
-    estimated_cost_usd: float | None = None
-    completion_tokens: int | None = None
-
-
 class TeamHistoryResponse(BaseModel):
-    lead: SessionDetailResponse
-    members: list[TeamHistoryMember]
+    session: SessionDetailResponse
     has_more: bool = False
     #: Opaque pagination cursor — echo it back as ``?before=`` verbatim. Encodes
     #: ``"<seq>|<message-id>"``; do not parse or reconstruct it.
@@ -315,25 +302,21 @@ class AgentInfoResponse(BaseModel):
     summary_trigger_tokens: int
     tools: list[AgentToolInfo]
     mcp_servers: list[str]
-    is_lead: bool
     capabilities: dict
 
 
-class BlueprintInfoResponse(BaseModel):
+class SpawnedAgentSummary(BaseModel):
+    session_id: str
     name: str
-    description: str
-    model: str | None = None
-    summary_trigger_tokens: int
-    tools: list[AgentToolInfo]
-    mcp_servers: list[str]
-    is_lead: bool
-    capabilities: dict
-    live_instances: list[str]
+    state: str
+    worktree: str
+    branch: str | None = None
+    running: bool = False
 
 
 class TeamAgentsResponse(BaseModel):
     agents: list[AgentInfoResponse]
-    blueprints: list[BlueprintInfoResponse]
+    children: list[SpawnedAgentSummary] = Field(default_factory=list)
     mode: str
     workspace: str | None = None
 

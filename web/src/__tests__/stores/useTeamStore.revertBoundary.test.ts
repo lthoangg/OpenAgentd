@@ -12,12 +12,11 @@ const mockTeamStatus = mock(() =>
   Promise.resolve({
     team: "team",
     lead: { name: "lead", model: "gpt-4", state: "idle" },
-    members: [],
   })
 ) as any
 const mockTeamHistory = mock(() =>
   Promise.resolve({
-    lead: {
+    session: {
       id: "lead-sess",
       agent_name: "lead",
       title: null,
@@ -26,7 +25,6 @@ const mockTeamHistory = mock(() =>
       sub_sessions: [],
       messages: [],
     },
-    members: [],
     has_more: false,
     next_cursor: null,
   })
@@ -135,12 +133,11 @@ beforeEach(() => {
     Promise.resolve({
       team: "team",
       lead: { name: "lead", model: "gpt-4", state: "idle" },
-      members: [],
     }),
   )
   mockTeamHistory.mockImplementation(() =>
     Promise.resolve({
-      lead: {
+      session: {
         id: "lead-sess",
         agent_name: "lead",
         title: null,
@@ -149,7 +146,6 @@ beforeEach(() => {
         sub_sessions: [],
         messages: [],
       },
-      members: [],
       has_more: false,
       next_cursor: null,
     }),
@@ -1087,7 +1083,7 @@ describe("redoTeam — restores ONE undone message step", () => {
 })
 
 describe("redoAllTeam — restores ALL undone messages back to live tip", () => {
-  it("calls /team/commands with redo-all and clears boundary to tip in one step", async () => {
+  it("calls /session/commands with redo-all and clears boundary to tip in one step", async () => {
     useTeamStore.setState({
       sessionId: "sess-1",
       leadName: "lead",
@@ -1273,7 +1269,7 @@ describe("loadSession — parses all messages and populates _revertedSuffix", ()
   it("splits visible vs reverted on initial load of an already-reverted session", async () => {
     mockTeamHistory.mockImplementation(() =>
       Promise.resolve({
-        lead: {
+        session: {
           id: "lead-sess",
           agent_name: "lead",
           title: null,
@@ -1308,7 +1304,6 @@ describe("loadSession — parses all messages and populates _revertedSuffix", ()
             }),
           ],
         },
-        members: [],
         has_more: false,
         next_cursor: null,
       }),
@@ -1331,7 +1326,7 @@ describe("loadSession — parses all messages and populates _revertedSuffix", ()
     const collisionTime = "2024-01-01T00:00:02.000Z"
     mockTeamHistory.mockImplementation(() =>
       Promise.resolve({
-        lead: {
+        session: {
           id: "lead-sess",
           agent_name: "lead",
           title: null,
@@ -1366,7 +1361,6 @@ describe("loadSession — parses all messages and populates _revertedSuffix", ()
             }),
           ],
         },
-        members: [],
         has_more: false,
         next_cursor: null,
       }),
@@ -1395,7 +1389,7 @@ describe("loadSession — parses all messages and populates _revertedSuffix", ()
     })
     mockTeamHistory.mockImplementation(() =>
       Promise.resolve({
-        lead: {
+        session: {
           id: "lead-sess",
           agent_name: "lead",
           title: null,
@@ -1411,7 +1405,6 @@ describe("loadSession — parses all messages and populates _revertedSuffix", ()
             }),
           ],
         },
-        members: [],
         has_more: false,
         next_cursor: null,
       }),

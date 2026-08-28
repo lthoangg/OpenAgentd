@@ -6,7 +6,7 @@ import type { TeamStatusResponse } from '@/api/types'
 /**
  * "Is team mode available?" probe for the home page.
  *
- * Shares the `GET /team/agents` cache entry with `useTeamAgentsQuery` and
+ * Shares the `GET /session/agents` cache entry with `useTeamAgentsQuery` and
  * projects it with `select` — it used to hold its own key, which meant the home
  * page and the chat header each paid for a separate (agent-glob + frontmatter
  * re-parse) request for identical data.

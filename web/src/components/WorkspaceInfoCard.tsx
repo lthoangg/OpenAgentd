@@ -6,7 +6,7 @@
  * "what's on your mind?" mascot with concrete context about the workspace
  * the agent is bound to: name, path, git branch, dirty counts, last commit.
  *
- * Backed by ``GET /api/team/workspace/status``. Fetched once on mount;
+ * Backed by ``GET /api/session/workspace/status``. Fetched once on mount;
  * manual refresh via the button — no polling.
  */
 

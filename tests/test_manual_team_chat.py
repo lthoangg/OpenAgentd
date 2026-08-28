@@ -7,16 +7,15 @@ class _Response:
 
     def json(self) -> dict:
         return {
-            "lead": {"messages": [{"role": "assistant", "content": "done"}]},
-            "members": [],
+            "session": {"messages": [{"role": "assistant", "content": "done"}]},
         }
 
 
-def test_print_history_accepts_lead_without_agent_name(monkeypatch, capsys):
+def test_print_history_accepts_session_without_agent_name(monkeypatch, capsys):
     monkeypatch.setattr(team_chat.httpx, "get", lambda *args, **kwargs: _Response())
 
     team_chat.print_history("http://example.test/api", "session-1")
 
     output = capsys.readouterr().out
-    assert "lead [lead]" in output
+    assert "session: 1 msgs" in output
     assert "total: 1 msgs" in output

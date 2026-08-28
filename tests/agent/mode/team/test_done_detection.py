@@ -1,9 +1,9 @@
-"""Tests for _try_emit_done with mixed agent states.
+"""Tests for ``SessionRuntime._try_emit_done``.
 
 Covers:
-- Done emission when lead + all members are idle or error
-- No done emission when any agent is working
-- Done flag reset after emission
+- Done emission once the session's agent is idle or in error
+- No done emission while the agent is working or no turn is active
+- Done flag reset and completion notifications after emission
 """
 
 from __future__ import annotations
@@ -15,8 +15,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.agent.agent_loop import Agent
-from app.agent.mode.team.member import TeamLead, TeamMember
-from app.agent.mode.team.team import AgentTeam
+from app.agent.mode.team.runtime import SessionRuntime
 from tests.agent.mode.team.conftest import MockTeamProvider
 
 
@@ -41,32 +40,37 @@ def _make_db_factory(session=None):
     return factory
 
 
-def _make_agent(name):
-    """Create a mock agent."""
-    return Agent(name=name, llm_provider=MockTeamProvider(), system_prompt=name)
-
-
-def _make_team(session=None, workspace=None):
-    """Create a test team."""
-    lead_agent = _make_agent("lead")
-    member_agent = _make_agent("worker")
-    db_factory = _make_db_factory(session)
-    lead = TeamLead(
-        lead_agent,
+def _make_runtime(session=None, workspace=None):
+    """Create a test session runtime."""
+    return SessionRuntime(
+        Agent(
+            name="openagentd",
+            llm_provider=MockTeamProvider(),
+            system_prompt="openagentd",
+        ),
         session_id="018f0000-0000-7000-8000-000000000001",
-        db_factory=db_factory,
+        db_factory=_make_db_factory(session),
+        workspace=workspace or tempfile.mkdtemp(prefix="openagentd-session-"),
     )
-    member = TeamMember(member_agent, session_id="worker-sid", db_factory=db_factory)
-    team = AgentTeam(
-        lead=lead,
-        members={"worker": member},
-        workspace=workspace or tempfile.mkdtemp(prefix="openagentd-team-"),
-    )
-    return team
 
 
-class TestDoneDetectionMixedStates:
-    """Test _try_emit_done with various state combinations."""
+async def _collect_done_events(runtime) -> list:
+    """Run ``_try_emit_done`` and return the events pushed to the stream."""
+    pushed = []
+
+    async def fake_push(sid, event):
+        pushed.append(event)
+
+    with patch("app.services.memory_stream_store.push_event", new=fake_push):
+        with patch(
+            "app.services.memory_stream_store.mark_done", new_callable=AsyncMock
+        ):
+            await runtime._try_emit_done()
+    return pushed
+
+
+class TestDoneDetection:
+    """Test _try_emit_done across the agent's terminal and busy states."""
 
     @pytest.mark.asyncio
     async def test_completion_notification_uses_coding_workspace_and_title(
@@ -78,10 +82,9 @@ class TestDoneDetectionMixedStates:
             mode="coding",
             workspace=str(tmp_path),
         )
-        team = _make_team(session=session, workspace=str(tmp_path))
-        team._has_active_turn = True
-        team.lead.state = "idle"
-        team.members["worker"].state = "idle"
+        runtime = _make_runtime(session=session, workspace=str(tmp_path))
+        runtime._has_active_turn = True
+        runtime.state = "idle"
 
         pushed = []
         notifications = []
@@ -97,7 +100,7 @@ class TestDoneDetectionMixedStates:
                 with patch(
                     "app.services.memory_stream_store.mark_done", new_callable=AsyncMock
                 ):
-                    await team._try_emit_done()
+                    await runtime._try_emit_done()
 
         assert len(notifications) == 2
         event, notification = notifications[0]
@@ -126,10 +129,9 @@ class TestDoneDetectionMixedStates:
     ):
         """Untitled sessions still emit useful completion text."""
         session = MagicMock(title="   ", mode="coding", workspace=str(tmp_path))
-        team = _make_team(session=session, workspace=str(tmp_path))
-        team._has_active_turn = True
-        team.lead.state = "idle"
-        team.members["worker"].state = "idle"
+        runtime = _make_runtime(session=session, workspace=str(tmp_path))
+        runtime._has_active_turn = True
+        runtime.state = "idle"
 
         pushed = []
         notifications = []
@@ -145,7 +147,7 @@ class TestDoneDetectionMixedStates:
                 with patch(
                     "app.services.memory_stream_store.mark_done", new_callable=AsyncMock
                 ):
-                    await team._try_emit_done()
+                    await runtime._try_emit_done()
 
         assert len(notifications) == 2
         event, notification = notifications[0]
@@ -161,200 +163,62 @@ class TestDoneDetectionMixedStates:
         assert [event.event for event in pushed] == ["done"]
 
     @pytest.mark.asyncio
-    async def test_done_emits_when_lead_idle_member_error(self):
-        """Lead idle + member error → done fires."""
-        team = _make_team()
-        team._has_active_turn = True
-        team.lead.state = "idle"
-        team.members["worker"].state = "error"
+    async def test_done_emits_when_agent_is_idle(self):
+        runtime = _make_runtime()
+        runtime._has_active_turn = True
+        runtime.state = "idle"
 
-        pushed = []
-
-        async def fake_push(sid, event):
-            pushed.append(event)
-
-        with patch("app.services.memory_stream_store.push_event", new=fake_push):
-            with patch(
-                "app.services.memory_stream_store.mark_done", new_callable=AsyncMock
-            ):
-                await team._try_emit_done()
-
-        # Should have emitted done
-        assert [event.event for event in pushed] == ["done"]
+        assert [event.event for event in await _collect_done_events(runtime)] == [
+            "done"
+        ]
 
     @pytest.mark.asyncio
-    async def test_done_emits_when_lead_error_member_idle(self):
-        """Lead error + member idle → done fires."""
-        team = _make_team()
-        team._has_active_turn = True
-        team.lead.state = "error"
-        team.members["worker"].state = "idle"
+    async def test_done_emits_when_agent_errored(self):
+        """A failed turn is still a finished turn — the stream must be closed."""
+        runtime = _make_runtime()
+        runtime._has_active_turn = True
+        runtime.state = "error"
 
-        pushed = []
-
-        async def fake_push(sid, event):
-            pushed.append(event)
-
-        with patch("app.services.memory_stream_store.push_event", new=fake_push):
-            with patch(
-                "app.services.memory_stream_store.mark_done", new_callable=AsyncMock
-            ):
-                await team._try_emit_done()
-
-        # Should have emitted done
-        assert [event.event for event in pushed] == ["done"]
+        assert [event.event for event in await _collect_done_events(runtime)] == [
+            "done"
+        ]
 
     @pytest.mark.asyncio
-    async def test_done_not_emits_when_lead_working_member_error(self):
-        """Lead working + member error → no done."""
-        team = _make_team()
-        team._has_active_turn = True
-        team.lead.state = "working"
-        team.members["worker"].state = "error"
+    async def test_done_does_not_emit_while_the_agent_is_working(self):
+        runtime = _make_runtime()
+        runtime._has_active_turn = True
+        runtime.state = "working"
 
-        pushed = []
-
-        async def fake_push(sid, event):
-            pushed.append(event)
-
-        with patch("app.services.memory_stream_store.push_event", new=fake_push):
-            with patch(
-                "app.services.memory_stream_store.mark_done", new_callable=AsyncMock
-            ):
-                await team._try_emit_done()
-
-        # Should NOT have emitted done
-        assert len(pushed) == 0
+        assert await _collect_done_events(runtime) == []
 
     @pytest.mark.asyncio
-    async def test_done_not_emits_when_any_working(self):
-        """Any agent working → no done."""
-        team = _make_team()
-        team._has_active_turn = True
-        team.lead.state = "idle"
-        team.members["worker"].state = "working"
+    async def test_done_does_not_emit_without_an_active_turn(self):
+        runtime = _make_runtime()
+        runtime._has_active_turn = False
+        runtime.state = "idle"
 
-        pushed = []
-
-        async def fake_push(sid, event):
-            pushed.append(event)
-
-        with patch("app.services.memory_stream_store.push_event", new=fake_push):
-            with patch(
-                "app.services.memory_stream_store.mark_done", new_callable=AsyncMock
-            ):
-                await team._try_emit_done()
-
-        # Should NOT have emitted done
-        assert len(pushed) == 0
+        assert await _collect_done_events(runtime) == []
 
     @pytest.mark.asyncio
     async def test_done_flag_not_double_reset(self):
-        """After done fires, second call is no-op (flag already false)."""
-        team = _make_team()
-        team._has_active_turn = True
-        team.lead.state = "idle"
-        team.members["worker"].state = "idle"
+        """After done fires, a second call is a no-op (flag already false)."""
+        runtime = _make_runtime()
+        runtime._has_active_turn = True
+        runtime.state = "idle"
 
-        pushed = []
+        assert [event.event for event in await _collect_done_events(runtime)] == [
+            "done"
+        ]
+        assert runtime._has_active_turn is False
 
-        async def fake_push(sid, event):
-            pushed.append(event)
-
-        with patch("app.services.memory_stream_store.push_event", new=fake_push):
-            with patch(
-                "app.services.memory_stream_store.mark_done", new_callable=AsyncMock
-            ):
-                await team._try_emit_done()
-
-        # First call should emit done plus the desktop completion notification
-        assert [event.event for event in pushed] == ["done"]
-        assert team._has_active_turn is False
-
-        # Second call should be no-op
-        pushed.clear()
-        with patch("app.services.memory_stream_store.push_event", new=fake_push):
-            with patch(
-                "app.services.memory_stream_store.mark_done", new_callable=AsyncMock
-            ):
-                await team._try_emit_done()
-
-        # Should not have emitted again
-        assert len(pushed) == 0
-
-    @pytest.mark.asyncio
-    async def test_done_not_emits_when_no_active_turn(self):
-        """When _has_active_turn is False, done is not emitted."""
-        team = _make_team()
-        team._has_active_turn = False
-        team.lead.state = "idle"
-        team.members["worker"].state = "idle"
-
-        pushed = []
-
-        async def fake_push(sid, event):
-            pushed.append(event)
-
-        with patch("app.services.memory_stream_store.push_event", new=fake_push):
-            with patch(
-                "app.services.memory_stream_store.mark_done", new_callable=AsyncMock
-            ):
-                await team._try_emit_done()
-
-        # Should not emit when no active turn
-        assert len(pushed) == 0
-
-    @pytest.mark.asyncio
-    async def test_done_emits_when_both_error(self):
-        """Lead error + member error → done fires."""
-        team = _make_team()
-        team._has_active_turn = True
-        team.lead.state = "error"
-        team.members["worker"].state = "error"
-
-        pushed = []
-
-        async def fake_push(sid, event):
-            pushed.append(event)
-
-        with patch("app.services.memory_stream_store.push_event", new=fake_push):
-            with patch(
-                "app.services.memory_stream_store.mark_done", new_callable=AsyncMock
-            ):
-                await team._try_emit_done()
-
-        # Should have emitted done (both are done, even if error)
-        assert [event.event for event in pushed] == ["done"]
-
-    @pytest.mark.asyncio
-    async def test_done_emits_when_both_idle(self):
-        """Lead idle + member idle → done fires."""
-        team = _make_team()
-        team._has_active_turn = True
-        team.lead.state = "idle"
-        team.members["worker"].state = "idle"
-
-        pushed = []
-
-        async def fake_push(sid, event):
-            pushed.append(event)
-
-        with patch("app.services.memory_stream_store.push_event", new=fake_push):
-            with patch(
-                "app.services.memory_stream_store.mark_done", new_callable=AsyncMock
-            ):
-                await team._try_emit_done()
-
-        # Should have emitted done
-        assert [event.event for event in pushed] == ["done"]
+        assert await _collect_done_events(runtime) == []
 
     @pytest.mark.asyncio
     async def test_done_swallows_error(self):
         """Stream store error during done emission is swallowed."""
-        team = _make_team()
-        team._has_active_turn = True
-        team.lead.state = "idle"
-        team.members["worker"].state = "idle"
+        runtime = _make_runtime()
+        runtime._has_active_turn = True
+        runtime.state = "idle"
 
         async def fake_push(sid, event):
             raise ConnectionError("stream down")
@@ -364,7 +228,6 @@ class TestDoneDetectionMixedStates:
                 "app.services.memory_stream_store.mark_done", new_callable=AsyncMock
             ):
                 # Must not raise
-                await team._try_emit_done()
+                await runtime._try_emit_done()
 
-        # Flag should still be reset
-        assert team._has_active_turn is False
+        assert runtime._has_active_turn is False

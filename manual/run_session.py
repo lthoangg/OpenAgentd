@@ -18,7 +18,7 @@ async def stream_session(session_id: str):
     async with httpx.AsyncClient() as client:
         # First post the message
         print("Posting message...")
-        r = await client.post(f"{BASE}/team/chat", data={
+        r = await client.post(f"{BASE}/session/chat", data={
             "message": PROMPT,
             "session_id": session_id
         }, timeout=30)
@@ -27,7 +27,7 @@ async def stream_session(session_id: str):
 
         # Stream the SSE events
         print("Streaming events...")
-        async with client.stream("GET", f"{BASE}/team/{session_id}/stream", timeout=120) as response:
+        async with client.stream("GET", f"{BASE}/session/{session_id}/stream", timeout=120) as response:
             async for line in response.aiter_lines():
                 if line.startswith("data:"):
                     raw = line[5:].strip()

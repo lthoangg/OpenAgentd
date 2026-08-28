@@ -16,7 +16,7 @@ BASE = DEFAULT_BASE
 
 
 def fetch_todos(base: str, session_id: str) -> list[dict[str, Any]]:
-    r = httpx.get(f"{base}/team/sessions/{session_id}/todos")
+    r = httpx.get(f"{base}/session/sessions/{session_id}/todos")
     r.raise_for_status()
     data = r.json()
     todos = data.get("todos", [])

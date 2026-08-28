@@ -64,11 +64,11 @@ WARMUP_PROMPTS = [
 # ── HTTP helpers ────────────────────────────────────────────────────────────
 
 
-def post_team_message(base: str, message: str, session_id: str | None) -> str:
+def post_chat_message(base: str, message: str, session_id: str | None) -> str:
     payload: dict = {"message": message}
     if session_id:
         payload["session_id"] = session_id
-    r = httpx.post(f"{base}/team/chat", data=payload)
+    r = httpx.post(f"{base}/session/chat", data=payload)
     r.raise_for_status()
     return r.json()["session_id"]
 
@@ -77,7 +77,7 @@ def wait_for_done(base: str, sid: str, timeout: int) -> bool:
     """Drain the SSE stream until ``done`` arrives. Returns True on clean exit."""
     start = time.monotonic()
     try:
-        with httpx.stream("GET", f"{base}/team/{sid}/stream", timeout=timeout + 5) as resp:
+        with httpx.stream("GET", f"{base}/session/{sid}/stream", timeout=timeout + 5) as resp:
             resp.raise_for_status()
             for line in resp.iter_lines():
                 if time.monotonic() - start > timeout:
@@ -115,7 +115,7 @@ def capture_summarisation(
     print(f"{DIM}{'-' * 7}  {'-' * 22} {'-' * 60}{RESET}")
 
     try:
-        with httpx.stream("GET", f"{base}/team/{sid}/stream", timeout=timeout + 5) as resp:
+        with httpx.stream("GET", f"{base}/session/{sid}/stream", timeout=timeout + 5) as resp:
             resp.raise_for_status()
             current_event = "message"
             data_buf: list[str] = []
@@ -339,7 +339,7 @@ def main() -> int:
         print(f"{BOLD}sending {args.warmup} warm-up turn(s) to grow context{RESET}")
         for i, msg in enumerate(WARMUP_PROMPTS[: args.warmup], 1):
             print(f"  [{i}/{args.warmup}] {msg[:60]}…", end="", flush=True)
-            sid = post_team_message(base, msg, sid)
+            sid = post_chat_message(base, msg, sid)
             ok = wait_for_done(base, sid, args.wait)
             print(f" {'ok' if ok else 'TIMEOUT'}")
         print(f"\n{BOLD}session{RESET}: {sid}")
@@ -349,7 +349,7 @@ def main() -> int:
         "Now write 250 words about the future of artificial general intelligence."
     )
     print(f"\n{BOLD}trigger turn{RESET}: {trigger}")
-    sid = post_team_message(base, trigger, sid)
+    sid = post_chat_message(base, trigger, sid)
     print(f"{DIM}session: {sid}{RESET}\n")
 
     captured = capture_summarisation(base, sid, args.wait, args.out)

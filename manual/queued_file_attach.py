@@ -14,7 +14,7 @@ Scenario B — cancel queued message deletes its attachment file
   1. Send another slow initial prompt.
   2. Queue a follow-up with an explicit text file upload.
   3. Note the persisted file path from the queue response row.
-  4. Cancel via DELETE /team/sessions/{sid}/queued-messages/{mid}.
+  4. Cancel via DELETE /session/sessions/{sid}/queued-messages/{mid}.
   5. Assert 204 then 404 on second attempt.
   6. Assert the attachment file no longer exists on disk.
 
@@ -62,14 +62,14 @@ def _post_message(
     files = None
     if file_bytes is not None:
         files = {"files": (filename or "upload.txt", file_bytes, "text/plain")}
-    r = httpx.post(f"{base}/team/chat", data=data, files=files, timeout=30)
+    r = httpx.post(f"{base}/session/chat", data=data, files=files, timeout=30)
     r.raise_for_status()
     return r.json()
 
 
 def _delete_queued(base: str, session_id: str, message_id: str) -> int:
     r = httpx.delete(
-        f"{base}/team/sessions/{session_id}/queued-messages/{message_id}",
+        f"{base}/session/sessions/{session_id}/queued-messages/{message_id}",
         timeout=10,
     )
     return r.status_code
@@ -80,7 +80,7 @@ def _stream_until_done(base: str, session_id: str, wait: int) -> list[dict]:
     deadline = time.monotonic() + wait
     current_event = "message"
     data_buf: list[str] = []
-    with httpx.stream("GET", f"{base}/team/{session_id}/stream", timeout=wait + 5) as r:
+    with httpx.stream("GET", f"{base}/session/{session_id}/stream", timeout=wait + 5) as r:
         r.raise_for_status()
         for line in r.iter_lines():
             if time.monotonic() > deadline:
@@ -106,9 +106,9 @@ def _stream_until_done(base: str, session_id: str, wait: int) -> list[dict]:
 
 
 def _get_history_messages(base: str, session_id: str) -> list[dict]:
-    r = httpx.get(f"{base}/team/{session_id}/history", params={"limit": 1000}, timeout=20)
+    r = httpx.get(f"{base}/session/{session_id}/history", params={"limit": 1000}, timeout=20)
     r.raise_for_status()
-    return list(r.json()["lead"]["messages"])
+    return list(r.json()["session"]["messages"])
 
 
 def _check(label: str, ok: bool, detail: str = "") -> bool:
@@ -187,7 +187,7 @@ def scenario_a(base: str) -> bool:
     url = att.get("url") or ""
     results.append(_check("attachment has url in history response", bool(url), f"url={url!r}"))
     if url:
-        # url is an absolute path like /api/team/{sid}/uploads/{file}.
+        # url is an absolute path like /api/session/{sid}/uploads/{file}.
         # base is http://host/api — strip to origin so we don't double the /api prefix.
         from urllib.parse import urlparse
         parsed = urlparse(base)
@@ -246,7 +246,7 @@ def scenario_b(base: str) -> bool:
     # before we cancel.  We do this by reading the raw history row through the
     # internal DB — but since manual scripts talk to the API, we use the
     # uploads serve endpoint and derive the likely path from the session id.
-    # The simplest cross-platform probe: fetch /team/{sid}/uploads/ listing
+    # The simplest cross-platform probe: fetch /session/{sid}/uploads/ listing
     # isn't available, so we just trust the queue POST succeeded and move on.
 
     print(f"  cancelling via DELETE...")

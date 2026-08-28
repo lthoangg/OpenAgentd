@@ -619,97 +619,70 @@ describe("ToolCall — args formatting", () => {
 // team_message display (header + body-only args)
 // ---------------------------------------------------------------------------
 
-describe("ToolCall — team_message display", () => {
+describe("ToolCall — agent_send display", () => {
   it("shows message body in args section, not raw JSON", async () => {
     const user = userEvent.setup()
-    const args = JSON.stringify({ content: "hello world", to: ["worker_agent"] })
-    render(<ToolCall name="team_message" args={args} done={false} />)
+    const args = JSON.stringify({ content: "hello world", session_id: "child-session-1" })
+    render(<ToolCall name="agent_send" args={args} done={false} />)
     await user.click(screen.getByRole("button"))
     expect(screen.getByText("hello world")).toBeTruthy()
     expect(screen.queryByText(/"content"/)).toBeNull()
-    expect(screen.queryByText(/"to"/)).toBeNull()
+    expect(screen.queryByText(/"session_id"/)).toBeNull()
   })
 
-  it("shows Messaging header with recipient name", () => {
-    const args = JSON.stringify({ content: "task details", to: ["researcher"] })
-    render(<ToolCall name="team_message" args={args} done={false} />)
-    expectPlainArg(getHeader("Messaging researcher"), "researcher")
-  })
-
-  it("shows Messaging team when to is empty", () => {
-    const args = JSON.stringify({ content: "broadcast", to: [] })
-    render(<ToolCall name="team_message" args={args} done={false} />)
-    expectPlainArg(getHeader("Messaging team"), "team")
+  it("shows Messaging agent header with session id", () => {
+    const args = JSON.stringify({ content: "task details", session_id: "agent-123" })
+    render(<ToolCall name="agent_send" args={args} done={false} />)
+    expectPlainArg(getHeader("Messaging agent agent-123"), "agent-123")
   })
 })
 
 // ---------------------------------------------------------------------------
-// team_manage display
+// agent_spawn display
 // ---------------------------------------------------------------------------
 
-describe("ToolCall — team_manage display", () => {
-  it("shows roster action in the header and members as args", async () => {
+describe("ToolCall — agent_spawn display", () => {
+  it("shows spawn action in header and task as args", async () => {
     const user = userEvent.setup()
-    const args = JSON.stringify({ action: "spawn", members: ["executor", "explorer"] })
-    render(<ToolCall name="team_manage" args={args} done={false} />)
+    const args = JSON.stringify({ task: "explore auth", name: "explorer" })
+    render(<ToolCall name="agent_spawn" args={args} done={false} />)
 
-    expectPlainArg(getHeader("Spawning executor, explorer"), "executor, explorer")
+    expectPlainArg(getHeader("Spawning agent explorer: explore auth"), "explorer: explore auth")
     await user.click(screen.getByRole("button"))
-    expect(screen.getAllByText(/executor/).length).toBeGreaterThan(0)
-    expect(screen.getAllByText(/explorer/).length).toBeGreaterThan(0)
-    expect(screen.queryByText(/"members"/)).toBeNull()
+    expect(screen.getByText("explore auth")).toBeTruthy()
+    expect(screen.queryByText(/"task"/)).toBeNull()
   })
 
-  it("renders grouped roster results", async () => {
+  it("renders structured JSON result for spawned agent", async () => {
     const user = userEvent.setup()
-    const args = JSON.stringify({ action: "dismiss", members: ["executor#1"] })
+    const args = JSON.stringify({ task: "explore auth" })
     render(
       <ToolCall
-        name="team_manage"
+        name="agent_spawn"
         args={args}
         done={true}
-        result="Dismissed: executor#1. Errors: explorer#2: not live."
+        result={JSON.stringify({ status: "spawned", session_id: "s-123", branch: "agent/auth" })}
       />,
     )
 
     await user.click(screen.getByRole("button"))
-    expect(screen.getByText("Dismissed")).toBeTruthy()
-    expect(screen.getAllByText("executor#1").length).toBeGreaterThan(0)
-    expect(screen.getByText("Errors")).toBeTruthy()
+    expect(screen.getByText("status")).toBeTruthy()
+    expect(screen.getByText("spawned")).toBeTruthy()
+    expect(screen.getByText("branch")).toBeTruthy()
   })
 
-  it("renders list layout for Spawnable blueprints and cleans up Available lists", async () => {
-    const user = userEvent.setup()
-    const args = JSON.stringify({ action: "list" })
-    render(
-      <ToolCall
-        name="team_manage"
-        args={args}
-        done={true}
-        result="Live: lead, coder#1. Spawnable blueprints: coder — Code specialist, writer. Available: ['coder', 'writer']."
-      />,
-    )
+  it("renders agent_merge and agent_list correctly", () => {
+    render(<ToolCall name="agent_merge" done={false} />)
+    expect(getHeader("Merging agent worktree…")).toBeTruthy()
 
-    await user.click(screen.getByRole("button"))
-    expect(screen.getByText("Live")).toBeTruthy()
-    expect(screen.getByText("lead, coder#1")).toBeTruthy()
-
-    expect(screen.getByText("Spawnable blueprints")).toBeTruthy()
-    expect(screen.getByText("coder — Code specialist")).toBeTruthy()
-    expect(screen.getByText("writer")).toBeTruthy()
-
-    expect(screen.getByText("Available")).toBeTruthy()
-    expect(screen.getByText("coder, writer")).toBeTruthy()
+    render(<ToolCall name="agent_list" done={false} />)
+    expect(getHeader("Listing child agents…")).toBeTruthy()
   })
 
-  it("hides dismiss arguments when there is no result", async () => {
-    const user = userEvent.setup()
-    const args = JSON.stringify({ action: "dismiss", members: ["executor#1"] })
-    render(<ToolCall name="team_manage" args={args} done={false} />)
-
-    expectPlainArg(getHeader("Dismissing executor#1"), "executor#1")
-    await user.click(screen.getByRole("button"))
-    expect(screen.queryByText("arguments")).toBeNull()
+  it("renders agent_stop header with target session", () => {
+    const args = JSON.stringify({ session_id: "s-child-1" })
+    render(<ToolCall name="agent_stop" args={args} done={false} />)
+    expectPlainArg(getHeader("Stopping agent s-child-1"), "s-child-1")
   })
 })
 
@@ -921,11 +894,9 @@ describe("ToolCall — concise tool labels", () => {
     expect(title!.length).toBeLessThan(80)
   })
 
-  it("describes a team roster list without implying a mutation", () => {
-    render(<ToolCall name="team_manage" args={JSON.stringify({ action: "list", members: [] })} done={false} />)
-
-    expect(getHeader("Listing team roster…")).toBeTruthy()
-    expect(screen.queryByText("Managing team roster…")).toBeNull()
+  it("describes an agent_list without args", () => {
+    render(<ToolCall name="agent_list" args={JSON.stringify({})} done={false} />)
+    expect(getHeader("Listing child agents…")).toBeTruthy()
   })
 })
 

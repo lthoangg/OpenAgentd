@@ -2,17 +2,15 @@
  * TeamChatView — top-level layout for the team chat route.
  *
  * Owns:
- *   - View-mode state (``agent`` / ``split``).
  *   - Side panels (``Sidebar``, ``WorkspaceFilesPanel``, ``SessionSettingsPanel``,
  *     todos popover, command palette).
- *   - The header (token totals, view toggle, panel toggles, agent tabs).
+ *   - The header (token totals, panel toggles, spawned-agent chips).
  *   - Mount-time SSE connect + session restore (carefully sequenced so
  *     ``loadSession`` runs *before* ``connectStream`` to avoid wiping
  *     replayed mid-turn state — see comment inside the init effect).
  *   - Keyboard shortcuts and the Command Palette assembly.
  *
  * Delegates:
- *   - ``SplitGrid``       — fixed n-pane grid layout (split mode).
  *   - ``useTeamCommands`` — Command Palette command list.
  *
  * Stream subscriptions are split into the smallest selectors that work
@@ -65,6 +63,8 @@ const ActiveAgentView = memo(function ActiveAgentView({
       blocks={activeBlocks}
       currentBlocks={activeCurrentBlocks}
       isWorking={activeStatus === 'working'}
+      // An agent suspended on `ask_user` is not streaming, but its turn is
+      // still open — no duration, no pending dots.
       isTurnOpen={activeStatus === 'working' || activeStatus === 'waiting_input'}
       isAwaitingRestart={activeAwaitingRestart}
       isError={activeStatus === 'error'}
@@ -84,12 +84,9 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { type InputComposerHandle } from '../InputComposer'
 import { FloatingInputComposer } from '../FloatingInputComposer'
 import type { AgentCapabilities as AgentCapabilitiesType } from '@/api/types'
-import { SplitGrid } from './SplitGrid'
 import { TeamChatHeader } from './TeamChatHeader'
 import { TeamChatPanels } from './TeamChatPanels'
 import { AppFooter } from '../AppFooter'
-import { AgentTabs } from './AgentTabs'
-import { type ViewMode } from './types'
 import { workspaceLabel } from '@/utils/workspace'
 import { useDragDrop } from './useDragDrop'
 import { useOverlayState } from './useOverlayState'
@@ -119,12 +116,8 @@ export function TeamChatView({ sessionId, workspace = null, codingSessionLoading
   const mainColumnRef = useRef<HTMLDivElement>(null)
 
   const [fileRefsEnabled, setFileRefsEnabled] = useState(false)
-  const [viewMode, setViewMode] = useState<ViewMode>('agent')
 
   const { isDraggingFile, handleDragEnter, handleDragLeave, handleDragOver, handleDrop } = useDragDrop(inputRef)
-
-  // On mobile, always force agent view — split/unified require a wide screen.
-  const effectiveViewMode: ViewMode = isMobile ? 'agent' : viewMode
 
   const storeState = useTeamStore(
     useShallow((s) => {
@@ -184,7 +177,6 @@ export function TeamChatView({ sessionId, workspace = null, codingSessionLoading
     sessionTitle,
     sessionModel,
     sessionThinkingLevel,
-    leadName,
 
     leadRevertedCount,
     leadRevertedMessages,
@@ -256,12 +248,6 @@ export function TeamChatView({ sessionId, workspace = null, codingSessionLoading
   })
 
   // Agents whose stream isn't `offline` (i.e. not dismissed from the live
-  // team). Used everywhere agents are listed for switching — split grid,
-  // the agent tabs bar, and the mobile agent switcher — so dismissed
-  // members disappear from pickers instead of lingering as dead tabs.
-  const splitAgentNames = useTeamStore(
-    useShallow((s) => s.agentNames.filter((name) => s.agentStreams[name]?.status !== 'offline')),
-  )
   const leadBlocks = useTeamStore((s) => (
     s.leadName ? s.agentStreams[s.leadName]?.blocks ?? EMPTY_BLOCKS : EMPTY_BLOCKS
   ))
@@ -283,8 +269,10 @@ export function TeamChatView({ sessionId, workspace = null, codingSessionLoading
   const agentWorkspace = workspace
   const hasCodingWorkspace = Boolean(workspace)
   const isCodingSessionLoading = codingSessionLoading
-  const { data: teamAgentsData, isLoading: teamAgentsLoading } = useTeamAgentsQuery(agentWorkspace, hasCodingWorkspace)
-  const leadAgent = teamAgentsData?.agents?.find((a) => a.is_lead)
+  // Session-scoped so this shares one cache entry (and one request) with the
+  // header's spawned-agent chips, which need the session's `children`.
+  const { data: teamAgentsData, isLoading: teamAgentsLoading } = useTeamAgentsQuery(agentWorkspace, hasCodingWorkspace, sessionIdState)
+  const leadAgent = teamAgentsData?.agents?.[0]
   const leadCapabilities: AgentCapabilitiesType | undefined = leadAgent?.capabilities
 
   // When the session overrides the agent's model (e.g. user switches from
@@ -369,8 +357,6 @@ export function TeamChatView({ sessionId, workspace = null, codingSessionLoading
     workspace,
     quickOpenOpen,
     sessionIdState,
-    viewMode,
-    setViewMode,
     navigate,
     handleNewSession,
     handleWorkspaceFiles,
@@ -405,8 +391,6 @@ export function TeamChatView({ sessionId, workspace = null, codingSessionLoading
           workspace={workspace}
           sessionTitle={sessionTitle}
           activeAgent={activeAgent}
-          effectiveViewMode={effectiveViewMode}
-          splitAgentCount={splitAgentNames.length}
           onCodingSidebarToggle={handleCodingSidebarToggle}
           headerTokens={headerTokens}
           sessionId={sessionIdState}
@@ -421,12 +405,10 @@ export function TeamChatView({ sessionId, workspace = null, codingSessionLoading
         showMobileActions={showMobileActions}
         setShowMobileActions={handleSetShowMobileActions}
         mobileActionsDragOffset={actionsDragOffset}
-        agentNames={splitAgentNames}
+        agentNames={activeAgent ? [activeAgent] : []}
         onSelectAgent={setActiveAgent}
         onToggleScheduler={handleToggleScheduler}
         onCloseMobileActionsMenu={closeMobileActionsMenu}
-        viewMode={viewMode}
-        onViewModeChange={setViewMode}
       />
 
       {/* Body row — sidebar (or coding rail) + main content column. On
@@ -510,14 +492,7 @@ export function TeamChatView({ sessionId, workspace = null, codingSessionLoading
           </div>
         )}
         {/* Content area */}
-        {effectiveViewMode === 'split' && splitAgentNames.length > 0 ? (
-          <div className="min-h-0 flex-1 p-2 sm:p-3">
-            <SplitGrid
-              agentNames={splitAgentNames}
-              leadName={leadName}
-            />
-          </div>
-        ) : isCodingSessionLoading ? (
+        {isCodingSessionLoading ? (
           <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
             <div className="h-8 w-8 animate-spin rounded-full border-2 border-(--color-border) border-t-(--color-accent)" />
             <div>
@@ -546,13 +521,6 @@ export function TeamChatView({ sessionId, workspace = null, codingSessionLoading
           />
         ) : activeAgent ? (
           <div className="flex flex-1 flex-col min-h-0">
-            {effectiveViewMode === 'agent' && splitAgentNames.length > 1 && (
-              <AgentTabs
-                activeAgent={activeAgent}
-                agents={splitAgentNames}
-                onSelect={setActiveAgent}
-              />
-            )}
             <ActiveAgentView
               onMentionFileOpen={handleMentionFileOpen}
               emptyState={
@@ -667,8 +635,6 @@ export function TeamChatView({ sessionId, workspace = null, codingSessionLoading
         sessionModel={sessionModel}
         sessionThinkingLevel={sessionThinkingLevel}
         sessionFastMode={storeState.sessionFastMode}
-        viewMode={viewMode}
-        onViewModeChange={setViewMode}
         onToggleScheduler={handleToggleScheduler}
         onToggleSessionSettings={handleToggleAgentCapabilities}
         onTogglePalette={handleTogglePalette}

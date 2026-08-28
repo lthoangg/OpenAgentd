@@ -17,7 +17,7 @@ const mockGetDiff = mock(() =>
   teamStream: mock(() => {}) as any,
   teamStatus: mock(() => Promise.resolve(null)) as any,
   teamHistory: mock(() =>
-    Promise.resolve({ lead: { messages: [] }, members: [], has_more: false, next_cursor: null }),
+    Promise.resolve({ session: { messages: [] }, has_more: false, next_cursor: null }),
   ) as any,
   listCodingWorkspaceFiles: mock(() => Promise.resolve({ files: [], truncated: false })) as any,
   getCodingWorkspaceStatus: mock(() => Promise.resolve(null)) as any,

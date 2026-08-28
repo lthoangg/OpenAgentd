@@ -22,7 +22,7 @@ describe('preloadConnectedApp', () => {
 
     expect(prefetchQuery).toHaveBeenCalledTimes(3)
     expect(prefetchQuery.mock.calls.map(([options]) => (options as { queryKey: readonly unknown[] }).queryKey)).toEqual([
-      // Shared /team/agents entry — same key the home-page probe and chat
+      // Shared /session/agents entry — same key the home-page probe and chat
       // header read, so the preload warms both.
       teamAgentsQueryOptions().queryKey,
       queryKeys.settings.providers(),

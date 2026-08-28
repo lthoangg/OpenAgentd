@@ -10,6 +10,9 @@ the service explicitly implements an API transport boundary.
   revert/undo behavior and persisted stream history.
 - `team_manager.py`: team lifecycle, routing, and the authoritative
   `validate_workspace()` check.
+- `worktree_service.py`: managed git worktree creation, removal, and merge-back.
+- `agent_spawn_service.py`: session-per-agent spawning, recursion/concurrency caps,
+  and parent-child messaging.
 - `stream_envelope.py`, `memory_stream_store.py`, and
   `event_broadcaster.py`: per-session and app-global live event behavior.
 - `agent_fs.py`, `snapshot_service.py`, and coding-workspace services:

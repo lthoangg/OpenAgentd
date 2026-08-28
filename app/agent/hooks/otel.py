@@ -45,11 +45,11 @@ Usage::
     from app.agent.hooks.otel import OpenTelemetryHook
     hook = OpenTelemetryHook(agent_name="OpenAgentd", model_id="openai:gpt-4o")
 
-    # Team member
+    # Bound to a session runtime (see SessionRuntime._handle_messages)
     hook = OpenTelemetryHook(
-        agent_name="researcher",
+        agent_name="openagentd",
         model_id="openai:gpt-4o",
-        lead_session_id=team.lead.session_id,
+        lead_session_id=runtime.session_id,
     )
 """
 

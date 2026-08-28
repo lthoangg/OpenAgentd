@@ -118,14 +118,6 @@ def _effective_config(cfg: AgentConfig, *, mode: str) -> AgentConfig:
             dict.fromkeys([*openagentd_tools_for_mode(mode), *data.tools])
         )
         data.mcp = list(dict.fromkeys(data.mcp))
-    elif data.role == "member":
-        from app.agent.builtin_prompts import builtin_member_profile
-
-        profile = builtin_member_profile(mode, data.name)
-        if profile is not None:
-            data.description = data.description or profile["description"]
-            data.tools = list(dict.fromkeys([*profile["tools"], *data.tools]))
-            data.mcp = list(dict.fromkeys([*profile["mcp"], *data.mcp]))
     data.tools = list(dict.fromkeys(data.tools))
     return data
 
@@ -502,6 +494,11 @@ async def get_agent(name: str) -> AgentDetail:
 async def create_agent(body: AgentWriteRequest) -> AgentDetail:
     try:
         cfg = _parse_content(body.name, body.content)
+        if cfg.role == "member":
+            raise HTTPException(
+                status_code=422,
+                detail="Member agents are no longer supported. OpenAgentd uses session-per-agent worktrees for delegation.",
+            )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     expected_name = _frontmatter_name_for_path(body.name)
@@ -549,6 +546,11 @@ async def update_agent(name: str, body: AgentWriteRequest) -> AgentDetail:
 
     try:
         cfg = _parse_content(name, body.content)
+        if cfg.role == "member":
+            raise HTTPException(
+                status_code=422,
+                detail="Member agents are no longer supported. OpenAgentd uses session-per-agent worktrees for delegation.",
+            )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     _require_frontmatter_name(name, body.content)

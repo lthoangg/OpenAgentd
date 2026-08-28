@@ -1,7 +1,7 @@
 """Tests for the team workspace-files listing endpoint.
 
 Covers:
-  GET /api/team/{session_id}/files    → recursive listing of agent workspace
+  GET /api/session/{session_id}/files    → recursive listing of agent workspace
 
 Requirements validated:
   - session_id validated as UUID (400 on malformed)
@@ -58,7 +58,7 @@ class TestWorkspaceMedia:
     def test_workspace_media_requires_persisted_session_workspace(
         self, client, session_id
     ):
-        resp = client.get(f"/api/team/{session_id}/media/secret.txt")
+        resp = client.get(f"/api/session/{session_id}/media/secret.txt")
 
         assert resp.status_code == 404
 
@@ -73,7 +73,7 @@ class TestWorkspaceMedia:
 
         _use_coding_workspace(monkeypatch, team_routes, fake_root)
 
-        resp = client.get(f"/api/team/{session_id}/media/chart.png")
+        resp = client.get(f"/api/session/{session_id}/media/chart.png")
         assert resp.status_code == 200
         assert resp.headers["content-disposition"].startswith("inline;")
 
@@ -88,13 +88,13 @@ class TestWorkspaceMedia:
 
         _use_coding_workspace(monkeypatch, team_routes, fake_root)
 
-        resp = client.get(f"/api/team/{session_id}/media/chart.png?download=1")
+        resp = client.get(f"/api/session/{session_id}/media/chart.png?download=1")
         assert resp.status_code == 200
         assert resp.headers["content-disposition"].startswith("attachment;")
 
 
 class TestCodingWorkspaceFileRead:
-    """GET /api/team/workspace/files/read serves live, frequently-edited
+    """GET /api/session/workspace/files/read serves live, frequently-edited
     workspace source files. Without an explicit no-store directive, browsers
     apply heuristic caching (or 304 via a stat-based ETag) and can keep
     serving a version of the file that predates an agent edit — the file
@@ -112,7 +112,7 @@ class TestCodingWorkspaceFileRead:
         (tmp_path / "app.py").write_text("print('v1')", encoding="utf-8")
 
         resp = client.get(
-            "/api/team/workspace/files/read",
+            "/api/session/workspace/files/read",
             params={"workspace": str(tmp_path), "path": "app.py"},
         )
 
@@ -123,7 +123,7 @@ class TestCodingWorkspaceFileRead:
 
 class TestWorkspaceFilesListing:
     def test_invalid_session_id_returns_400(self, client):
-        resp = client.get("/api/team/not-a-uuid/files")
+        resp = client.get("/api/session/not-a-uuid/files")
         assert resp.status_code == 400
 
     def test_missing_workspace_returns_empty_list(
@@ -138,7 +138,7 @@ class TestWorkspaceFilesListing:
 
         _use_coding_workspace(monkeypatch, team_routes, fake_root)
 
-        resp = client.get(f"/api/team/{session_id}/files")
+        resp = client.get(f"/api/session/{session_id}/files")
         assert resp.status_code == 200
         body = resp.json()
         assert body["session_id"] == session_id
@@ -155,7 +155,7 @@ class TestWorkspaceFilesListing:
 
         _use_coding_workspace(monkeypatch, team_routes, fake_root)
 
-        resp = client.get(f"/api/team/{session_id}/files")
+        resp = client.get(f"/api/session/{session_id}/files")
         assert resp.status_code == 200
         body = resp.json()
         paths = sorted(f["path"] for f in body["files"])
@@ -180,7 +180,7 @@ class TestWorkspaceFilesListing:
 
         _use_coding_workspace(monkeypatch, team_routes, fake_root)
 
-        resp = client.get(f"/api/team/{session_id}/files")
+        resp = client.get(f"/api/session/{session_id}/files")
         assert resp.status_code == 200
         paths = sorted(f["path"] for f in resp.json()["files"])
         # POSIX separators — safe to concat into ``/media/{path}``.
@@ -199,7 +199,7 @@ class TestWorkspaceFilesListing:
 
         _use_coding_workspace(monkeypatch, team_routes, fake_root)
 
-        resp = client.get(f"/api/team/{session_id}/files")
+        resp = client.get(f"/api/session/{session_id}/files")
         by_name = {f["name"]: f for f in resp.json()["files"]}
         assert by_name["chart.png"]["mime"].startswith("image/")
         assert by_name["notes.txt"]["mime"].startswith("text/")
@@ -221,7 +221,7 @@ class TestWorkspaceFilesListing:
 
         _use_coding_workspace(monkeypatch, team_routes, fake_root)
 
-        resp = client.get(f"/api/team/{session_id}/files")
+        resp = client.get(f"/api/session/{session_id}/files")
         by_name = {f["name"]: f for f in resp.json()["files"]}
         assert by_name["main.ts"]["mime"] == "text/typescript"
         assert by_name["mod.mts"]["mime"] == "text/typescript"
@@ -237,7 +237,7 @@ class TestWorkspaceFilesListing:
 
         _use_coding_workspace(monkeypatch, team_routes, fake_root)
 
-        resp = client.get(f"/api/team/{session_id}/media/main.ts")
+        resp = client.get(f"/api/session/{session_id}/media/main.ts")
         assert resp.status_code == 200
         assert resp.headers["content-type"].startswith("text/typescript")
 
@@ -268,7 +268,7 @@ class TestWorkspaceFilesListing:
 
         _use_coding_workspace(monkeypatch, team_routes, fake_root)
 
-        resp = client.get(f"/api/team/{session_id}/files")
+        resp = client.get(f"/api/session/{session_id}/files")
         paths = sorted(f["path"] for f in resp.json()["files"])
         assert paths == [
             ".env.example",
@@ -303,7 +303,7 @@ class TestWorkspaceFilesListing:
 
         _use_coding_workspace(monkeypatch, team_routes, fake_root)
 
-        resp = client.get(f"/api/team/{session_id}/files")
+        resp = client.get(f"/api/session/{session_id}/files")
         paths = sorted(f["path"] for f in resp.json()["files"])
         assert ".openagentd/skills/SKILL.md" in paths
         assert ".openagentd/data/runtime.db" not in paths
@@ -369,7 +369,7 @@ class TestWorkspaceFilesListing:
 
         _use_coding_workspace(monkeypatch, team_routes, fake_root)
 
-        resp = client.get(f"/api/team/{session_id}/files")
+        resp = client.get(f"/api/session/{session_id}/files")
         paths = [f["path"] for f in resp.json()["files"]]
         assert "escape.txt" not in paths
         assert "inside-link.txt" in paths
@@ -390,7 +390,7 @@ class TestWorkspaceFilesListing:
 
         _use_coding_workspace(monkeypatch, team_routes, fake_root)
 
-        resp = client.get(f"/api/team/{session_id}/files")
+        resp = client.get(f"/api/session/{session_id}/files")
         body = resp.json()
         assert body["truncated"] is True
         assert len(body["files"]) == cap
@@ -460,7 +460,7 @@ class TestGitBackedListing:
 
         paths = sorted(
             f["path"]
-            for f in client.get(f"/api/team/{session_id}/files").json()["files"]
+            for f in client.get(f"/api/session/{session_id}/files").json()["files"]
         )
         assert "docs/guide/deep/notes.tmp" in paths
         assert "docs/scratch.tmp" not in paths
@@ -489,7 +489,7 @@ class TestGitBackedListing:
 
         paths = sorted(
             f["path"]
-            for f in client.get(f"/api/team/{session_id}/files").json()["files"]
+            for f in client.get(f"/api/session/{session_id}/files").json()["files"]
         )
         assert paths == ["build/Dockerfile", "dist/assets/logo.svg", "main.py"]
 
@@ -511,7 +511,7 @@ class TestGitBackedListing:
 
         paths = sorted(
             f["path"]
-            for f in client.get(f"/api/team/{session_id}/files").json()["files"]
+            for f in client.get(f"/api/session/{session_id}/files").json()["files"]
         )
         assert "pkg/app.py" in paths
         assert "pkg/secret.txt" not in paths
@@ -533,7 +533,7 @@ class TestGitBackedListing:
 
         paths = sorted(
             f["path"]
-            for f in client.get(f"/api/team/{session_id}/files").json()["files"]
+            for f in client.get(f"/api/session/{session_id}/files").json()["files"]
         )
         assert paths == ["app.js"]
 
@@ -557,7 +557,7 @@ class TestGitBackedListing:
 
         paths = sorted(
             f["path"]
-            for f in client.get(f"/api/team/{session_id}/files").json()["files"]
+            for f in client.get(f"/api/session/{session_id}/files").json()["files"]
         )
         assert paths == ["report.md"]
 
@@ -604,7 +604,7 @@ class TestGitBackedListing:
 
         paths = sorted(
             f["path"]
-            for f in client.get(f"/api/team/{session_id}/files").json()["files"]
+            for f in client.get(f"/api/session/{session_id}/files").json()["files"]
         )
         assert "vendor/dep/lib.py" in paths
         assert "main.py" in paths
@@ -622,12 +622,12 @@ class TestGitBackedListing:
         _use_coding_workspace(monkeypatch, team_routes, fake_root)
 
         monkeypatch.setattr(team_routes, "_MAX_FILES_LISTED", 4)
-        body = client.get(f"/api/team/{session_id}/files").json()
+        body = client.get(f"/api/session/{session_id}/files").json()
         assert body["truncated"] is True
         assert len(body["files"]) == 4
 
         monkeypatch.setattr(team_routes, "_MAX_FILES_LISTED", 6)
-        body = client.get(f"/api/team/{session_id}/files").json()
+        body = client.get(f"/api/session/{session_id}/files").json()
         assert body["truncated"] is False
         assert len(body["files"]) == 6
 
@@ -655,7 +655,7 @@ class TestGitBackedListing:
 
         paths = sorted(
             f["path"]
-            for f in client.get(f"/api/team/{session_id}/files").json()["files"]
+            for f in client.get(f"/api/session/{session_id}/files").json()["files"]
         )
         assert paths == ["app.py", "build/bundle.js", "dist/index.html"]
 
@@ -679,7 +679,7 @@ class TestCodingWorkspaceGit:
             team_manager, "validate_workspace", lambda w: str(fake_root)
         )
 
-        resp = client.get(f"/api/team/workspace/git/history?workspace={fake_root}")
+        resp = client.get(f"/api/session/workspace/git/history?workspace={fake_root}")
         assert resp.status_code == 200
         body = resp.json()
         assert body["is_git_repo"] is False
@@ -718,7 +718,7 @@ class TestCodingWorkspaceGit:
             team_manager, "validate_workspace", lambda w: str(fake_root)
         )
 
-        resp = client.get(f"/api/team/workspace/git/history?workspace={fake_root}")
+        resp = client.get(f"/api/session/workspace/git/history?workspace={fake_root}")
         assert resp.status_code == 200
         body = resp.json()
         assert body["is_git_repo"] is True
@@ -764,7 +764,7 @@ class TestCodingWorkspaceGit:
         )
 
         resp = client.get(
-            f"/api/team/workspace/git/history?workspace={fake_root}&all=true"
+            f"/api/session/workspace/git/history?workspace={fake_root}&all=true"
         )
         assert resp.status_code == 200
         body = resp.json()
@@ -784,7 +784,7 @@ class TestCodingWorkspaceGit:
         )
 
         resp = client.get(
-            f"/api/team/workspace/git/commit-diff?workspace={fake_root}&sha=invalid_sha_123"
+            f"/api/session/workspace/git/commit-diff?workspace={fake_root}&sha=invalid_sha_123"
         )
         assert resp.status_code == 422
 
@@ -828,7 +828,7 @@ class TestCodingWorkspaceGit:
         )
 
         resp = client.get(
-            f"/api/team/workspace/git/commit-diff?workspace={fake_root}&sha={sha}"
+            f"/api/session/workspace/git/commit-diff?workspace={fake_root}&sha={sha}"
         )
         assert resp.status_code == 200
         body = resp.json()
@@ -875,7 +875,7 @@ class TestCodingWorkspaceGit:
         )
 
         resp = client.post(
-            "/api/team/workspace/git/undo",
+            "/api/session/workspace/git/undo",
             json={"workspace": str(fake_root)},
         )
         assert resp.status_code == 200
@@ -927,7 +927,7 @@ class TestCodingWorkspaceGit:
         )
 
         resp = client.post(
-            "/api/team/workspace/git/undo",
+            "/api/session/workspace/git/undo",
             json={"workspace": str(fake_root)},
         )
         assert resp.status_code == 200
@@ -960,7 +960,7 @@ class TestCodingWorkspaceGit:
         )
 
         resp = client.post(
-            "/api/team/workspace/git/undo",
+            "/api/session/workspace/git/undo",
             json={"workspace": str(fake_root)},
         )
         assert resp.status_code == 400
@@ -1014,7 +1014,7 @@ class TestCodingWorkspaceGit:
         )
 
         resp = client.post(
-            "/api/team/workspace/git/revert",
+            "/api/session/workspace/git/revert",
             json={"workspace": str(fake_root), "sha": sha},
         )
         assert resp.status_code == 200
@@ -1088,7 +1088,7 @@ class TestCodingWorkspaceGit:
         )
 
         resp = client.post(
-            "/api/team/workspace/git/revert",
+            "/api/session/workspace/git/revert",
             json={"workspace": str(fake_root), "sha": sha},
         )
         assert resp.status_code == 400

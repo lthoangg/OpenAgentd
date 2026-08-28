@@ -3,13 +3,13 @@ import { ListTodo, PanelLeft, PanelRight, SlidersHorizontal } from 'lucide-react
 
 import { AgentTopbar, type AgentTopbarTokens } from '@/components/AgentTopbar'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { SpawnedAgents } from '@/components/SpawnedAgents'
 import { MobileHeaderAction } from './MobileHeaderAction'
 import { MobileChatActions } from './MobileChatActions'
 import { TodosPopover } from '@/components/TodosPopover'
 import { TokenMeter } from '@/components/ui/token-meter'
 import type { AgentStream } from '@/stores/useTeamStore'
 import type { TodoItem } from '@/api/types'
-import type { ViewMode } from './types'
 import { workspaceLabel } from '@/utils/workspace'
 
 interface TeamChatHeaderProps {
@@ -19,8 +19,6 @@ interface TeamChatHeaderProps {
   workspace: string | null
   sessionTitle: string | null
   activeAgent: string | null
-  effectiveViewMode: ViewMode
-  splitAgentCount: number
   onCodingSidebarToggle: () => void
   headerTokens?: AgentTopbarTokens
   sessionId: string | null
@@ -39,8 +37,6 @@ interface TeamChatHeaderProps {
   onSelectAgent: (agent: string) => void
   onToggleScheduler: () => void
   onCloseMobileActionsMenu: () => void
-  viewMode: ViewMode
-  onViewModeChange: (mode: ViewMode) => void
 }
 
 export const TeamChatHeader = memo(function TeamChatHeader({
@@ -50,8 +46,6 @@ export const TeamChatHeader = memo(function TeamChatHeader({
   workspace,
   sessionTitle,
   activeAgent,
-  effectiveViewMode,
-  splitAgentCount,
   onCodingSidebarToggle,
   headerTokens,
   sessionId,
@@ -70,8 +64,6 @@ export const TeamChatHeader = memo(function TeamChatHeader({
   onSelectAgent,
   onToggleScheduler,
   onCloseMobileActionsMenu,
-  viewMode: _viewMode,
-  onViewModeChange: _onViewModeChange,
 }: TeamChatHeaderProps) {
   const activeTodoCount = todos.filter((todo) => todo.status === 'pending' || todo.status === 'in_progress').length
 
@@ -117,11 +109,9 @@ export const TeamChatHeader = memo(function TeamChatHeader({
           ) : null}
         </div>
 
-        {/* Agent switching lives in the chat area's member line. Split view
-            collapses to a count pill — each pane already shows its
-            own agent. */}
-        <div className="flex min-w-0 flex-1 justify-start overflow-hidden px-1">
-          {isMobile && (
+        {/* Center area: workspace label on mobile, spawned agent chips on desktop */}
+        <div className="flex min-w-0 flex-1 items-center justify-start overflow-hidden px-1">
+          {isMobile ? (
             <div className="min-w-0 flex items-baseline gap-1 text-sm">
               {workspace ? (
                 <span className="truncate font-semibold text-(--color-text)">{workspaceLabel(workspace)}</span>
@@ -129,12 +119,8 @@ export const TeamChatHeader = memo(function TeamChatHeader({
                 <span className="truncate font-semibold text-(--color-text)">Choose a workspace</span>
               )}
             </div>
-          )}
-
-          {effectiveViewMode === 'split' && (
-            <span className="text-xs text-(--color-text-muted)">
-              Split · {splitAgentCount} agents
-            </span>
+          ) : (
+            <SpawnedAgents workspace={workspace} sessionId={sessionId} />
           )}
         </div>
 

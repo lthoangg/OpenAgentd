@@ -17,8 +17,7 @@ from app.agent.schemas.chat import (
     ChatCompletionDelta,
     ChatMessage,
 )
-from app.agent.mode.team.member import TeamLead, TeamMember
-from app.agent.mode.team.team import AgentTeam
+from app.agent.mode.team.runtime import SessionRuntime
 
 
 def make_text_chunk(text: str) -> ChatCompletionChunk:
@@ -88,38 +87,9 @@ def mock_stream_store():
 
 
 @pytest_asyncio.fixture
-async def lead_member() -> TeamLead:
-    """Create a lead team member."""
-    provider = MockTeamProvider("OK lead")
-    agent = Agent(name="lead", llm_provider=provider)
-    member = TeamLead(agent)
-    return member
-
-
-@pytest_asyncio.fixture
-async def member_a() -> TeamMember:
-    """Create a regular team member A."""
-    provider = MockTeamProvider("OK member_a")
-    agent = Agent(name="member_a", llm_provider=provider)
-    member = TeamMember(agent)
-    return member
-
-
-@pytest_asyncio.fixture
-async def member_b() -> TeamMember:
-    """Create a regular team member B."""
-    provider = MockTeamProvider("OK member_b")
-    agent = Agent(name="member_b", llm_provider=provider)
-    member = TeamMember(agent)
-    return member
-
-
-@pytest_asyncio.fixture
-async def basic_team(lead_member, member_a, member_b, tmp_path) -> AgentTeam:
-    """Create a basic team with lead and 2 members."""
-    team = AgentTeam(
-        lead=lead_member,
-        members={"member_a": member_a, "member_b": member_b},
+async def runtime(tmp_path) -> SessionRuntime:
+    """Create a session runtime bound to a temporary workspace."""
+    return SessionRuntime(
+        Agent(name="openagentd", llm_provider=MockTeamProvider("OK")),
         workspace=str(tmp_path),
     )
-    return team

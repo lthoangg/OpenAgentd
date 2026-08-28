@@ -21,26 +21,24 @@ from app.api.routes.team._helpers import (
 from app.services.agent_service import RawAttachment
 
 
-def _make_team(*, vision: bool = True, document_text: bool = True) -> MagicMock:
+def _make_runtime(*, vision: bool = True, document_text: bool = True) -> MagicMock:
     caps = MagicMock()
     caps.input.vision = vision
     caps.input.document_text = document_text
     agent = MagicMock()
     agent.capabilities = caps
-    lead = MagicMock()
-    lead.agent = agent
-    team = MagicMock()
-    team.lead = lead
-    return team
+    runtime = MagicMock()
+    runtime.agent = agent
+    return runtime
 
 
 @pytest.mark.asyncio
 async def test_build_mention_context_blocks_inlines_file_content(tmp_path):
     (tmp_path / "README.md").write_text("# project", encoding="utf-8")
-    team = _make_team()
+    runtime = _make_runtime()
     out = await build_mention_context_blocks(
         message="read @README.md",
-        team=team,
+        runtime=runtime,
         session_id="sid",
         workspace=str(tmp_path),
         existing_total_bytes=0,
@@ -56,10 +54,10 @@ async def test_build_mention_context_blocks_lists_directory(tmp_path):
     (tmp_path / "manual").mkdir()
     (tmp_path / "manual" / "a.txt").write_text("a", encoding="utf-8")
     (tmp_path / "manual" / "sub").mkdir()
-    team = _make_team()
+    runtime = _make_runtime()
     out = await build_mention_context_blocks(
         message="inspect @manual/",
-        team=team,
+        runtime=runtime,
         session_id="sid",
         workspace=str(tmp_path),
         existing_total_bytes=0,

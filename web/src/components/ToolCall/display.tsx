@@ -139,7 +139,9 @@ const HIDE_ARGS_TOOLS = new Set([
   'web_fetch',
   'glob',
   'grep',
-  'team_manage',
+  'agent_list',
+  'agent_stop',
+  'agent_merge',
   'bg',
   'skill',
 ])
@@ -150,11 +152,20 @@ export function getToolDisplay(name: string, args: string | undefined): ToolDisp
     if (name === 'recall') {
       return { header: 'Checking memory…', headerTitle: 'Checking memory…', formattedArgs: null }
     }
-    // team_message with no args — pending header so the start phase is
-    // visible (otherwise tool_call → tool_start arrives so fast the
-    // pending card flashes for <50ms and looks like only 2 phases run).
-    if (name === 'team_message') {
+    if (name === 'agent_spawn') {
+      return { header: 'Spawning agent…', headerTitle: 'Spawning agent…', formattedArgs: null }
+    }
+    if (name === 'agent_send') {
       return { header: 'Preparing message…', headerTitle: 'Preparing message…', formattedArgs: null }
+    }
+    if (name === 'agent_list') {
+      return { header: 'Listing child agents…', headerTitle: 'Listing child agents…', formattedArgs: null }
+    }
+    if (name === 'agent_stop') {
+      return { header: 'Stopping agent…', headerTitle: 'Stopping agent…', formattedArgs: null }
+    }
+    if (name === 'agent_merge') {
+      return { header: 'Merging agent worktree…', headerTitle: 'Merging agent worktree…', formattedArgs: null }
     }
     return { header: null, headerTitle: null, formattedArgs: null }
   }
@@ -618,51 +629,56 @@ function getToolDisplayInternal(name: string, parsed: Record<string, unknown>): 
     }
   }
 
-  // ── team_message: recipients as header, message body as args ─────────
-  if (name === 'team_message') {
-    const to = Array.isArray(parsed.to) ? (parsed.to as unknown[]).map(String) : []
-    const content = str(parsed, 'content')
-    const recipientLabel = to.length > 0 ? to.join(', ') : 'team'
-    const truncated = trunc(recipientLabel)
+  // ── agent_spawn: task/name as header, task as args ───────────────────
+  if (name === 'agent_spawn') {
+    const task = str(parsed, 'task')
+    const agentName = str(parsed, 'name')
+    const label = agentName ? `${agentName}: ${task}` : task
+    const truncated = label ? trunc(label) : 'agent'
     return {
-      header: <>Messaging <Arg>{truncated}</Arg></>,
-      headerTitle: `Messaging ${truncated}`,
+      header: <>Spawning agent <Arg>{truncated}</Arg></>,
+      headerTitle: `Spawning agent ${truncated}`,
+      formattedArgs: task,
+    }
+  }
+
+  // ── agent_send: target session as header, message content as args ────
+  if (name === 'agent_send') {
+    const sessionId = str(parsed, 'session_id')
+    const content = str(parsed, 'content') || str(parsed, 'message')
+    const truncated = sessionId ? trunc(sessionId) : 'agent'
+    return {
+      header: <>Messaging agent <Arg>{truncated}</Arg></>,
+      headerTitle: `Messaging agent ${truncated}`,
       formattedArgs: content,
     }
   }
 
-  // ── team_manage: roster action in header, hide redundant args ───────
-  if (name === 'team_manage') {
-    const action = str(parsed, 'action')
-    const members = Array.isArray(parsed.members)
-      ? (parsed.members as unknown[]).map(String).filter(Boolean)
-      : []
-    const memberLabel = members.length > 0 ? members.join(', ') : 'team'
-    const truncated = trunc(memberLabel)
-    if (action === 'spawn') {
-      return {
-        header: <>Spawning <Arg>{truncated}</Arg></>,
-        headerTitle: `Spawning ${truncated}`,
-        formattedArgs: null,
-      }
-    }
-    if (action === 'dismiss') {
-      return {
-        header: <>Dismissing <Arg>{truncated}</Arg></>,
-        headerTitle: `Dismissing ${truncated}`,
-        formattedArgs: null,
-      }
-    }
-    if (action === 'list') {
-      return {
-        header: 'Listing team roster…',
-        headerTitle: 'Listing team roster…',
-        formattedArgs: null,
-      }
-    }
+  // ── agent_list: list child agents ───────────────────────────────────
+  if (name === 'agent_list') {
     return {
-      header: 'Managing team roster…',
-      headerTitle: 'Managing team roster…',
+      header: 'Listing child agents…',
+      headerTitle: 'Listing child agents…',
+      formattedArgs: null,
+    }
+  }
+
+  // ── agent_stop: target session as header ─────────────────────────────
+  if (name === 'agent_stop') {
+    const sessionId = str(parsed, 'session_id')
+    const truncated = sessionId ? trunc(sessionId) : 'agent'
+    return {
+      header: <>Stopping agent <Arg>{truncated}</Arg></>,
+      headerTitle: `Stopping agent ${truncated}`,
+      formattedArgs: null,
+    }
+  }
+
+  // ── agent_merge: merge branch into parent workspace ─────────────────
+  if (name === 'agent_merge') {
+    return {
+      header: 'Merging branch into workspace…',
+      headerTitle: 'Merging branch into workspace…',
       formattedArgs: null,
     }
   }

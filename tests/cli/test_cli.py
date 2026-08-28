@@ -544,7 +544,7 @@ class TestCmdRun:
         monkeypatch.setattr(run_mod, "run_migrations", lambda **_: None)
 
     @pytest.mark.asyncio
-    async def test_run_dispatches_overrides_and_prints_only_lead_text(
+    async def test_run_dispatches_overrides_and_prints_only_the_session_agent_text(
         self, monkeypatch, capsys
     ):
         from app.cli.commands import run as run_mod
@@ -554,14 +554,14 @@ class TestCmdRun:
             model="openai:gpt-5.5",
             thinking="high",
         )
-        team = Mock()
-        team.lead.name = "lead"
+        runtime = Mock()
+        runtime.name = "openagentd"
         dispatch = AsyncMock(return_value=("session-id", 0, "message-id"))
 
         async def events(_session_id):
             yield {
                 "event": "thinking",
-                "data": '{"agent":"lead","text":"private"}',
+                "data": '{"agent":"openagentd","text":"private"}',
             }
             yield {
                 "event": "message",
@@ -569,18 +569,18 @@ class TestCmdRun:
             }
             yield {
                 "event": "message",
-                "data": '{"agent":"lead","text":"Hello"}',
+                "data": '{"agent":"openagentd","text":"Hello"}',
             }
             yield {
                 "event": "message",
-                "data": '{"agent":"lead","text":" world"}',
+                "data": '{"agent":"openagentd","text":" world"}',
             }
             yield {"event": "done", "data": '{"type":"done"}'}
 
         monkeypatch.setattr(
             run_mod.team_manager,
             "get_or_start_coding_team",
-            AsyncMock(return_value=team),
+            AsyncMock(return_value=runtime),
         )
         monkeypatch.setattr(
             run_mod.team_manager, "validate_workspace", lambda _: "/repo"
@@ -595,7 +595,7 @@ class TestCmdRun:
 
         assert capsys.readouterr().out == "Hello world\n"
         dispatch.assert_awaited_once_with(
-            team,
+            runtime,
             content="Summarize the repository.",
             session_id=ANY,
             workspace="/repo",
@@ -610,9 +610,9 @@ class TestCmdRun:
         from app.cli.commands import run as run_mod
 
         args = SimpleNamespace(prompt="Hello", model=None, thinking=None)
-        team = Mock()
-        team.lead.name = "lead"
-        get_coding_team = AsyncMock(return_value=team)
+        runtime = Mock()
+        runtime.name = "openagentd"
+        get_coding_team = AsyncMock(return_value=runtime)
         dispatch = AsyncMock(return_value=("session-id", 0, "message-id"))
 
         async def events(_session_id):
@@ -631,7 +631,7 @@ class TestCmdRun:
 
         get_coding_team.assert_awaited_once_with("/repo", ANY)
         dispatch.assert_awaited_once_with(
-            team,
+            runtime,
             content="Hello",
             session_id=ANY,
             workspace="/repo",
@@ -666,8 +666,8 @@ class TestCmdRun:
         from app.cli.commands import run as run_mod
 
         args = SimpleNamespace(prompt="Hello", model=None, thinking=None)
-        team = Mock()
-        team.lead.name = "lead"
+        runtime = Mock()
+        runtime.name = "openagentd"
 
         async def events(_session_id):
             yield {
@@ -682,7 +682,7 @@ class TestCmdRun:
         monkeypatch.setattr(
             run_mod.team_manager,
             "get_or_start_coding_team",
-            AsyncMock(return_value=team),
+            AsyncMock(return_value=runtime),
         )
         monkeypatch.setattr(
             run_mod.team_manager, "validate_workspace", lambda _: "/repo"
@@ -708,8 +708,8 @@ class TestCmdRun:
         from app.cli.commands import run as run_mod
 
         args = SimpleNamespace(prompt="Hello", model=None, thinking=None)
-        team = Mock()
-        team.lead.name = "lead"
+        runtime = Mock()
+        runtime.name = "openagentd"
         interrupt = AsyncMock()
 
         async def events(_session_id):
@@ -721,7 +721,7 @@ class TestCmdRun:
         monkeypatch.setattr(
             run_mod.team_manager,
             "get_or_start_coding_team",
-            AsyncMock(return_value=team),
+            AsyncMock(return_value=runtime),
         )
         monkeypatch.setattr(
             run_mod.team_manager, "validate_workspace", lambda _: "/repo"
@@ -737,7 +737,7 @@ class TestCmdRun:
         with pytest.raises(SystemExit, match="cannot answer agent questions"):
             await run_mod._run(args)
 
-        interrupt.assert_awaited_once_with(team, "session-id")
+        interrupt.assert_awaited_once_with(runtime, "session-id")
         assert "cannot answer agent questions" in capsys.readouterr().err
 
     @pytest.mark.asyncio
@@ -747,8 +747,8 @@ class TestCmdRun:
         from app.cli.commands import run as run_mod
 
         args = SimpleNamespace(prompt="Hello", model=None, thinking=None)
-        team = Mock()
-        team.lead.name = "lead"
+        runtime = Mock()
+        runtime.name = "openagentd"
         interrupt = AsyncMock()
 
         async def events(_session_id):
@@ -758,7 +758,7 @@ class TestCmdRun:
             }
             yield {
                 "event": "message",
-                "data": '{"agent":"lead","text":"Complete"}',
+                "data": '{"agent":"openagentd","text":"Complete"}',
             }
             yield {"event": "done", "data": '{"type":"done"}'}
 
@@ -768,7 +768,7 @@ class TestCmdRun:
         monkeypatch.setattr(
             run_mod.team_manager,
             "get_or_start_coding_team",
-            AsyncMock(return_value=team),
+            AsyncMock(return_value=runtime),
         )
         monkeypatch.setattr(
             run_mod.agent_service,

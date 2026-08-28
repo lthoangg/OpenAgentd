@@ -1,16 +1,17 @@
 /**
- * Shared query options for `GET /team/agents`.
+ * Shared query options for `GET /session/agents`.
  *
- * That endpoint is not cheap: on every request the backend runs
- * `refresh_blueprints()` (glob every agent `*.md` and re-parse its frontmatter)
- * and `refresh_idle_agents()` (per-agent config-drift check), so its cost scales
- * with the number of configured agents. It therefore needs exactly one cache
- * entry per workspace, shared by every consumer.
+ * That endpoint is not free: on every request the backend runs
+ * `refresh_idle_agents()` (config-drift check) and, when a session ID is
+ * given, queries that session's spawned worktree children. It therefore needs
+ * exactly one cache entry per workspace/session pair, shared by every
+ * consumer.
  *
- * Consumers: the chat header capabilities panel (`useTeamAgentsQuery`), the home
- * page's "is team mode available" probe (`useTeamStatusQuery`, which derives its
- * own shape via `select` off this same entry), and the team store's
- * `loadTeamStatus()`.
+ * Consumers: the chat view and its header capabilities panel
+ * (`useTeamAgentsQuery`), the spawned-agent chips (same hook, same session ID,
+ * so they share the entry), the home page's "is team mode available" probe
+ * (`useTeamStatusQuery`, which derives its own shape via `select` off this
+ * same entry), and the team store's `loadTeamStatus()`.
  *
  * The store deliberately holds no TanStack imports, so it calls the plain
  * `listTeamAgents()` client function instead of reading this cache. Those two

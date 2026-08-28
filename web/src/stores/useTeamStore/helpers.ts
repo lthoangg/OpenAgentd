@@ -37,7 +37,7 @@ export function applyQuestionResolution(
 /**
  * Statuses that mean "this agent's turn has not ended yet".
  *
- * Mirrors ``BUSY_STATES`` in ``app/agent/mode/team/member.py``: a lead suspended
+ * Mirrors ``BUSY_STATES`` in ``app/agent/mode/session/member.py``: a lead suspended
  * on ``ask_user`` emits no tokens but must still read as live, or the
  * UI would look finished with a question card still on screen.
  */

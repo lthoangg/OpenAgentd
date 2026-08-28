@@ -18,7 +18,7 @@ from fastapi import HTTPException, UploadFile
 from loguru import logger
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from app.agent.mode.team.team import AgentTeam
+from app.agent.mode.team.runtime import SessionRuntime
 from app.agent.schemas.chat import HumanMessage
 from app.api.schemas.sessions import MessageResponse
 from app.core.paths import session_workspace_dir
@@ -35,7 +35,7 @@ from app.services.agent_service import (
 
 # Server-internal attachment fields that must never leak to clients:
 # - ``path`` / ``workspace_path``: absolute on-disk paths; clients fetch
-#   bytes via ``GET /api/team/{sid}/uploads/{filename}`` instead.
+#   bytes via ``GET /api/session/{sid}/uploads/{filename}`` instead.
 _INTERNAL_ATTACHMENT_FIELDS = frozenset({"converted_text", "path", "workspace_path"})
 
 # Top-level ``extra`` keys stripped from display responses.
@@ -78,7 +78,7 @@ def _message_response(m) -> MessageResponse:
     return resp
 
 
-def _require_team(team: AgentTeam | None) -> AgentTeam:
+def _require_team(team: SessionRuntime | None) -> SessionRuntime:
     try:
         return agent_service.require_team(team)
     except NoTeamConfigured as exc:
@@ -130,7 +130,7 @@ class ResolvedChatTeam:
     ``resolve_chat_team``).
     """
 
-    team: AgentTeam
+    team: SessionRuntime
     session_id: str
     session_uuid: UUID | None
     workspace: str | None
@@ -138,7 +138,7 @@ class ResolvedChatTeam:
 
 async def resolve_team_for_existing_session(
     db: AsyncSession, session_id: str
-) -> AgentTeam:
+) -> SessionRuntime:
     """Return the team that owns an *already-persisted* session.
 
     A coding session's persisted workspace is always authoritative — every
@@ -243,7 +243,7 @@ async def resolve_chat_team(
 class QueuedMessageResult:
     """Result of persisting a user message onto the queue.
 
-    Returned by :func:`persist_queued_user_message` when the team lead has
+    Returned by :func:`persist_queued_user_message` when the session agent has
     an active turn — the caller (route) turns this straight into the
     ``status="queued"`` response.
     """
@@ -255,7 +255,7 @@ class QueuedMessageResult:
 async def persist_queued_user_message(
     db: AsyncSession,
     *,
-    team: AgentTeam,
+    runtime: SessionRuntime,
     session_id: str,
     session_uuid: UUID,
     workspace: str | None,
@@ -273,9 +273,9 @@ async def persist_queued_user_message(
 ) -> QueuedMessageResult:
     """Persist a user message + its attachments/mentions onto the queue.
 
-    Used by ``POST /team/chat`` when the team lead already has an active
+    Used by ``POST /session/chat`` when the session agent already has an active
     turn — the message is written as a hidden ``queue_status=queued`` row
-    instead of being dispatched immediately, and released once the lead
+    instead of being dispatched immediately, and released once the agent
     goes idle. Byte-for-byte move of the former inline ``team_chat`` queue
     branch — no behavior change.
 
@@ -299,14 +299,14 @@ async def persist_queued_user_message(
                 _,
                 queued_attachment_metas,
             ) = await agent_service.validate_and_persist_attachments(
-                team, attachments, session_id, workspace
+                runtime, attachments, session_id, workspace
             )
         except agent_service.AttachmentError as exc:
             raise HTTPException(status_code=exc.status, detail=str(exc)) from exc
 
     async with db.begin():
         queued_extra: dict[str, object] = {}
-        effective_model = model or team.lead.agent.model_id
+        effective_model = model or runtime.agent.model_id
         if effective_model:
             queued_extra["model"] = effective_model
         if thinking_level:
@@ -323,7 +323,7 @@ async def persist_queued_user_message(
                 existing_row.model = model
             if thinking_level_provided:
                 existing_row.thinking_level = thinking_level
-            effective_model = existing_row.model or team.lead.agent.model_id
+            effective_model = existing_row.model or runtime.agent.model_id
             if effective_model:
                 queued_extra["model"] = effective_model
             if existing_row.thinking_level:
@@ -587,7 +587,7 @@ def _build_mention_text_block(att: RawAttachment, label: str) -> str:
 async def build_mention_context_blocks(
     *,
     message: str,
-    team: AgentTeam,
+    runtime: SessionRuntime,
     session_id: str,
     workspace: str | None,
     existing_total_bytes: int,

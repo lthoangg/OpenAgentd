@@ -19,8 +19,7 @@ import pytest
 from fastapi import HTTPException
 
 from app.agent.agent_loop import Agent
-from app.agent.mode.team.member import TeamLead, TeamMember
-from app.agent.mode.team.team import AgentTeam
+from app.agent.mode.team.runtime import SessionRuntime
 from app.agent.providers.base import LLMProviderBase
 from app.api.routes.team._helpers import (
     QueuedMessageResult,
@@ -49,14 +48,14 @@ class MockProvider(LLMProviderBase):
         return AssistantMessage(content="OK")
 
 
-def _make_team() -> AgentTeam:
-    lead = TeamLead(
-        Agent(name="lead", llm_provider=MockProvider(), system_prompt="Lead")
+def _make_runtime() -> SessionRuntime:
+    return SessionRuntime(
+        Agent(
+            name="openagentd",
+            llm_provider=MockProvider(),
+            system_prompt="OpenAgentd",
+        )
     )
-    worker = TeamMember(
-        Agent(name="worker", llm_provider=MockProvider(), system_prompt="Worker")
-    )
-    return AgentTeam(lead=lead, members={"worker": worker})
 
 
 # ── _validate_workspace_or_422 ────────────────────────────────────────────────
@@ -154,13 +153,13 @@ async def test_resolve_chat_team_starts_coding_team_for_new_session(
 ):
     import app.core.db as _db
 
-    team = _make_team()
+    runtime = _make_runtime()
     captured = {}
 
     async def fake_get_or_start_coding_team(workspace: str, session_id: str):
         captured["workspace"] = workspace
         captured["session_id"] = session_id
-        return team
+        return runtime
 
     monkeypatch.setattr(
         "app.api.routes.team._helpers.team_manager.get_or_start_coding_team",
@@ -170,7 +169,7 @@ async def test_resolve_chat_team_starts_coding_team_for_new_session(
     async with _db.async_session_factory() as db:
         result = await resolve_chat_team(db, session_id=None, workspace=str(tmp_path))
 
-    assert result.team is team
+    assert result.team is runtime
     assert result.workspace == str(tmp_path.resolve())
     assert captured["workspace"] == str(tmp_path.resolve())
     assert captured["session_id"] == result.session_id
@@ -211,7 +210,7 @@ async def test_resolve_chat_team_persisted_workspace_wins_over_matching_request(
     request repeats the same (already-matching) workspace."""
     import app.core.db as _db
 
-    team = _make_team()
+    runtime = _make_runtime()
     session_id = uuid.uuid7()
     workspace = tmp_path / "project"
     workspace.mkdir()
@@ -227,7 +226,7 @@ async def test_resolve_chat_team_persisted_workspace_wins_over_matching_request(
             )
 
     async def fake_get_or_start_coding_team(_workspace: str, _session_id: str):
-        return team
+        return runtime
 
     monkeypatch.setattr(
         "app.api.routes.team._helpers.team_manager.get_or_start_coding_team",
@@ -285,7 +284,7 @@ async def test_resolve_chat_team_raises_409_for_workspace_mismatch(tmp_path):
 async def test_persist_queued_user_message_persists_row_and_returns_result():
     import app.core.db as _db
 
-    team = _make_team()
+    runtime = _make_runtime()
     session_id = uuid.uuid7()
 
     async with _db.async_session_factory() as db:
@@ -301,7 +300,7 @@ async def test_persist_queued_user_message_persists_row_and_returns_result():
     async with _db.async_session_factory() as db:
         result = await persist_queued_user_message(
             db,
-            team=team,
+            runtime=runtime,
             session_id=str(session_id),
             session_uuid=session_id,
             workspace=None,
@@ -329,7 +328,7 @@ async def test_persist_queued_user_message_persists_row_and_returns_result():
 async def test_persist_queued_user_message_writes_mention_context_rows():
     import app.core.db as _db
 
-    team = _make_team()
+    runtime = _make_runtime()
     session_id = uuid.uuid7()
 
     async with _db.async_session_factory() as db:
@@ -344,7 +343,7 @@ async def test_persist_queued_user_message_writes_mention_context_rows():
     async with _db.async_session_factory() as db:
         await persist_queued_user_message(
             db,
-            team=team,
+            runtime=runtime,
             session_id=str(session_id),
             session_uuid=session_id,
             workspace=None,
@@ -375,7 +374,7 @@ async def test_persist_queued_user_message_writes_mention_context_rows():
 async def test_persist_queued_user_message_prefers_request_model_over_existing_row():
     import app.core.db as _db
 
-    team = _make_team()
+    runtime = _make_runtime()
     session_id = uuid.uuid7()
 
     async with _db.async_session_factory() as db:
@@ -397,7 +396,7 @@ async def test_persist_queued_user_message_prefers_request_model_over_existing_r
     async with _db.async_session_factory() as db:
         await persist_queued_user_message(
             db,
-            team=team,
+            runtime=runtime,
             session_id=str(session_id),
             session_uuid=session_id,
             workspace=None,

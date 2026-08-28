@@ -397,12 +397,12 @@ describe("_handleSSEEvent: tool lifecycle", () => {
     });
   });
 
-  it("team_manage tool_end invalidates the team agents cache", () => {
+  it("agent_spawn tool_end invalidates the team agents cache", () => {
     useTeamStore.getState()._handleSSEEvent("tool_end", {
       agent: "lead",
-      name: "team_manage",
+      name: "agent_spawn",
       tool_call_id: "tc1",
-      result: "Spawned: executor#1.",
+      result: JSON.stringify({ status: "spawned", session_id: "s1" }),
     });
     expect(useTeamStore.getState().cacheInvalidations).toEqual([
       { kind: "team_agents" },

@@ -34,7 +34,6 @@ from __future__ import annotations
 import argparse
 import copy
 import json
-import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -103,42 +102,25 @@ def _serialize_tools(
     return serialized, _budget_entry(serialized, encoding), items
 
 
-def _inject_team_protocol(
-    prompt: str, agent_cfg, *, lead_name: str = "openagentd"
-) -> str:
-    """Append the static team protocol used by the selected role."""
-    from app.agent.mode.team.member import (
-        LEAD_COMMUNICATION_RULES,
-        LEAD_MESSAGE_FORMAT,
-        LEAD_PROTOCOL,
-        MEMBER_COMMUNICATION_RULES,
-        MEMBER_MESSAGE_FORMAT,
-        MEMBER_PROTOCOL,
-    )
+def _inject_team_protocol(prompt: str, *, child_session: bool = False) -> str:
+    """Append the static protocol a runtime session would inject.
 
-    if agent_cfg.role == "lead":
-        protocol = "\n\n".join(
-            [LEAD_COMMUNICATION_RULES, LEAD_MESSAGE_FORMAT, LEAD_PROTOCOL]
-        )
-    else:
-        runtime_name = (
-            agent_cfg.name
-            if re.fullmatch(r"[^#,/\s]+#\d+", agent_cfg.name)
-            else f"{agent_cfg.name}#1"
-        )
-        identity = (
-            "## Runtime identity\n"
-            f"You are `{runtime_name}`. Use this exact handle in reports; "
-            "do not use the blueprint name."
-        )
-        protocol = "\n\n".join(
-            [
-                identity,
-                MEMBER_COMMUNICATION_RULES,
-                MEMBER_MESSAGE_FORMAT.format(lead_name=lead_name),
-                MEMBER_PROTOCOL.format(lead_name=lead_name),
-            ]
-        )
+    Mirrors ``SessionRuntime.build_protocol``: a child worktree session gets the
+    child protocol, and every other session gets the parent delegation
+    protocol.
+    """
+    from app.agent.builtin_prompts import (
+        CODING_CHILD_AGENT_PROTOCOL,
+        CODING_PARENT_DELEGATION_PROTOCOL,
+    )
+    from app.agent.mode.team.runtime import AGENT_COMMUNICATION_RULES
+
+    if child_session:
+        return f"{prompt}\n\n---\n\n{CODING_CHILD_AGENT_PROTOCOL}"
+
+    protocol = "\n\n".join(
+        [AGENT_COMMUNICATION_RULES, CODING_PARENT_DELEGATION_PROTOCOL]
+    )
     return f"{prompt}\n\n---\n\n{protocol}"
 
 
@@ -146,23 +128,24 @@ def _inject_team_tools(
     tool_defs: list[dict], agent_cfg, *, mode: str = "normal"
 ) -> list[dict]:
     """Apply the same name-based runtime tool overrides as a team run."""
-    from app.agent.mode.team.mailbox import TeamMailbox
-    from app.agent.mode.team.manage import make_team_manage_tool
-    from app.agent.mode.team.tools import make_team_message_tool
-    from app.agent.tools.builtin.todo import make_todo_manage_tool
+    from unittest.mock import MagicMock
+    from app.agent.mode.team.agent_tools import (
+        make_agent_spawn_tool,
+        make_agent_send_tool,
+        make_agent_list_tool,
+        make_agent_stop_tool,
+        make_agent_merge_tool,
+    )
 
-    role = "lead" if agent_cfg.role == "lead" else "member"
     tools = {definition["function"]["name"]: definition for definition in tool_defs}
-    mailbox = TeamMailbox()
-    mailbox.register(agent_cfg.name)
+    fake_team = MagicMock()
     injected = [
-        make_team_message_tool(mailbox, agent_name=agent_cfg.name, role=role),
-        make_todo_manage_tool(role),
+        make_agent_spawn_tool(fake_team),
+        make_agent_send_tool(fake_team),
+        make_agent_list_tool(fake_team),
+        make_agent_stop_tool(fake_team),
+        make_agent_merge_tool(fake_team),
     ]
-    # lsp navigation is currently detached from AgentTeam.get_injected_tools
-    # (app/agent/mode/team/team.py) — mirrored here to match runtime.
-    if role == "lead":
-        injected.append(make_team_manage_tool(object()))  # schema does not read team
     for tool in injected:
         tools[tool.name] = tool.definition
     return list(tools.values())
@@ -195,16 +178,12 @@ def _builtin_skill_budgets(encoding) -> list[dict[str, int | str]]:
 def _builtin_prompt_budgets(encoding) -> list[dict[str, int | str]]:
     """Count every code-owned first-party base prompt independently."""
     from app.agent.builtin_prompts import (
-        BUILTIN_MEMBER_PROFILES,
         CODING_OPENAGENTD_PROMPT,
     )
 
     prompts = {
         "coding/openagentd": CODING_OPENAGENTD_PROMPT,
     }
-    for mode, profiles in BUILTIN_MEMBER_PROFILES.items():
-        for name, profile in profiles.items():
-            prompts[f"{mode}/{name}"] = profile["prompt"]
     return [
         {"name": name, **_budget_entry(prompt, encoding)}
         for name, prompt in sorted(prompts.items())
@@ -431,10 +410,7 @@ def main() -> None:
     # 3. Team protocol and runtime tools. Team protocol follows date injection
     # in TeamMemberBase._handle_messages().
     if not args.no_team_protocol:
-        lead_cfg = next((cfg for cfg in configs if cfg.role == "lead"), agent_cfg)
-        system_prompt = _inject_team_protocol(
-            system_prompt, agent_cfg, lead_name=lead_cfg.name
-        )
+        system_prompt = _inject_team_protocol(system_prompt)
 
     # Early exit for focused inspection
     if args.prompt_only:

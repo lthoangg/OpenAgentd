@@ -114,21 +114,18 @@ def test_allows_a_free_text_only_question():
 # ---------------------------------------------------------------------------
 
 
-class _FakeLead:
+class _FakeRuntime:
+    """The slice of ``SessionRuntime`` that ``make_ask_user_tool`` reads."""
+
     def __init__(self, session_id: str) -> None:
         self.name = "openagentd"
         self.session_id = session_id
         self.db_factory = None
-
-
-class _FakeTeam:
-    def __init__(self, session_id: str) -> None:
-        self.lead = _FakeLead(session_id)
         self.mode = "coding"
 
 
 def test_tool_definition_hides_injected_arguments():
-    tool = make_ask_user_tool(_FakeTeam(str(uuid.uuid4())))  # type: ignore[arg-type]
+    tool = make_ask_user_tool(_FakeRuntime(str(uuid.uuid4())))  # type: ignore[arg-type]
     properties = tool.definition["function"]["parameters"]["properties"]
 
     assert tool.name == "ask_user"
@@ -143,7 +140,7 @@ async def test_calling_the_tool_persists_the_question_and_suspends(tmp_path):
         db.add(ChatSession(id=session_id, agent_name="openagentd", mode="coding"))
         await db.commit()
 
-    tool = make_ask_user_tool(_FakeTeam(str(session_id)))  # type: ignore[arg-type]
+    tool = make_ask_user_tool(_FakeRuntime(str(session_id)))  # type: ignore[arg-type]
 
     with pytest.raises(QuestionSuspended) as excinfo:
         await tool.arun(
@@ -172,7 +169,7 @@ async def test_tool_refuses_without_a_resolvable_tool_call_id(tmp_path):
         db.add(ChatSession(id=session_id, agent_name="openagentd", mode="coding"))
         await db.commit()
 
-    tool = make_ask_user_tool(_FakeTeam(str(session_id)))  # type: ignore[arg-type]
+    tool = make_ask_user_tool(_FakeRuntime(str(session_id)))  # type: ignore[arg-type]
 
     result = await tool.arun(_injected={"_tool_call_id": None}, questions=[_question()])
 
@@ -211,7 +208,7 @@ async def test_asking_emits_the_event_and_a_notification(
 
     monkeypatch.setattr("app.services.event_broadcaster.publish", fake_publish)
 
-    tool = make_ask_user_tool(_FakeTeam(str(session_id)))  # type: ignore[arg-type]
+    tool = make_ask_user_tool(_FakeRuntime(str(session_id)))  # type: ignore[arg-type]
     with pytest.raises(QuestionSuspended):
         await tool.arun(
             _injected={"_tool_call_id": "call_evt"}, questions=[_question()]
@@ -253,7 +250,7 @@ async def test_a_failed_event_fanout_does_not_break_the_suspension(
     mock_stream_store.side_effect = boom
     monkeypatch.setattr("app.services.event_broadcaster.publish", boom)
 
-    tool = make_ask_user_tool(_FakeTeam(str(session_id)))  # type: ignore[arg-type]
+    tool = make_ask_user_tool(_FakeRuntime(str(session_id)))  # type: ignore[arg-type]
 
     with pytest.raises(QuestionSuspended):
         await tool.arun(

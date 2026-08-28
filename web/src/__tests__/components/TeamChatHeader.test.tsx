@@ -1,10 +1,14 @@
 import type { ComponentProps } from 'react'
 import { describe, expect, it } from 'bun:test'
 import { render, screen } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import '@testing-library/jest-dom'
 
 import { TeamChatHeader } from '@/components/TeamChatView/TeamChatHeader'
-import type { ViewMode } from '@/components/TeamChatView/types'
+
+const queryClient = new QueryClient({
+  defaultOptions: { queries: { retry: false } },
+})
 
 function renderHeader(overrides: Partial<ComponentProps<typeof TeamChatHeader>> = {}) {
   const props: ComponentProps<typeof TeamChatHeader> = {
@@ -14,8 +18,6 @@ function renderHeader(overrides: Partial<ComponentProps<typeof TeamChatHeader>> 
     workspace: '/Users/name/Workspace A',
     sessionTitle: 'Fix updater restart',
     activeAgent: null,
-    effectiveViewMode: 'agent' as ViewMode,
-    splitAgentCount: 1,
     onCodingSidebarToggle: () => undefined,
     headerTokens: undefined,
     sessionId: 'session-1',
@@ -34,11 +36,13 @@ function renderHeader(overrides: Partial<ComponentProps<typeof TeamChatHeader>> 
     onSelectAgent: () => undefined,
     onToggleScheduler: () => undefined,
     onCloseMobileActionsMenu: () => undefined,
-    viewMode: 'agent' as ViewMode,
-    onViewModeChange: () => undefined,
     ...overrides,
   }
-  return render(<TeamChatHeader {...props} />)
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <TeamChatHeader {...props} />
+    </QueryClientProvider>
+  )
 }
 
 describe('TeamChatHeader', () => {

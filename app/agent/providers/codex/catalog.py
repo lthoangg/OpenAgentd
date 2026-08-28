@@ -147,9 +147,9 @@ def model_registry_overlay(data: Any) -> dict[str, dict[str, Any]]:
         if not isinstance(model, dict):
             continue
         slug = model.get("slug")
-        context = model.get("context_window")
+        context = model.get("max_context_window")
         if context is None:
-            context = model.get("max_context_window")
+            context = model.get("context_window")
         percent = model.get("effective_context_window_percent")
         if percent is None:
             percent = CODEX_EFFECTIVE_CONTEXT_WINDOW_PERCENT

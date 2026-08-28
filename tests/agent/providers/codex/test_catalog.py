@@ -19,6 +19,11 @@ def test_model_registry_overlay_uses_default_effective_window_and_ignores_bad_li
         {
             "models": [
                 {"slug": "gpt-default", "context_window": 272_000},
+                {
+                    "slug": "gpt-prefers-max",
+                    "context_window": 272_000,
+                    "max_context_window": 872_000,
+                },
                 {"slug": "gpt-bad-bool", "context_window": True},
                 {
                     "slug": "gpt-bad-percent",
@@ -36,7 +41,13 @@ def test_model_registry_overlay_uses_default_effective_window_and_ignores_bad_li
                 "context_length": 272_000,
                 "max_input_tokens": 258_400,
             }
-        }
+        },
+        "codex:gpt-prefers-max": {
+            "limits": {
+                "context_length": 872_000,
+                "max_input_tokens": 828_400,
+            }
+        },
     }
 
 

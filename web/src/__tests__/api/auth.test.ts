@@ -211,6 +211,24 @@ describe("access key storage", () => {
     expect(headers.get("Authorization")).toBe("Bearer external-secret-key")
     delete window.__OAD_API_BASE_URL__
   })
+
+  it("resolves external access key for relative /api paths and withTokenParam", async () => {
+    window.__OAD_API_BASE_URL__ = "http://192.168.1.50:4082"
+    const { calls } = spyFetch()
+    const auth = await freshAuth()
+    auth.setAccessKey("external-secret-key", "http://192.168.1.50:4082")
+    auth.installDesktopAuth()
+
+    expect(auth.getToken("/api/team/status")).toBe("external-secret-key")
+    expect(auth.withTokenParam("/api/team/workspace/files/read?path=note.txt")).toBe(
+      "/api/team/workspace/files/read?path=note.txt&_token=external-secret-key",
+    )
+
+    await window.fetch("/api/team/status")
+    const headers = new Headers(calls[0].init?.headers)
+    expect(headers.get("Authorization")).toBe("Bearer external-secret-key")
+    delete window.__OAD_API_BASE_URL__
+  })
 })
 
 describe("installDesktopAuth — no token", () => {

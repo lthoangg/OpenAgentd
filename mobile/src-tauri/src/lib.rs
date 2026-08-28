@@ -29,12 +29,11 @@ fn shared_client() -> &'static reqwest::Client {
 
 fn access_key_entry(origin: &str) -> Result<keyring::Entry, String> {
     let parsed = url::Url::parse(origin).map_err(|_| "invalid backend origin".to_string())?;
-    if !matches!(parsed.scheme(), "http" | "https")
-        || parsed.origin().ascii_serialization() != origin
-    {
+    if !matches!(parsed.scheme(), "http" | "https") {
         return Err("invalid backend origin".to_string());
     }
-    keyring::Entry::new(ACCESS_KEY_SERVICE, origin)
+    let canonical = parsed.origin().ascii_serialization();
+    keyring::Entry::new(ACCESS_KEY_SERVICE, &canonical)
         .map_err(|_| "credential store unavailable".to_string())
 }
 
@@ -400,9 +399,19 @@ async fn save_workspace_file(
             bytes
         }
         (None, Some(url)) => {
-            let mut response = shared_client()
+            let mut request_builder = shared_client()
                 .get(&url)
-                .timeout(Duration::from_secs(60))
+                .timeout(Duration::from_secs(60));
+            if let Ok(parsed) = url::Url::parse(&url) {
+                let has_token_qs = parsed.query_pairs().any(|(k, _)| k == "_token");
+                if !has_token_qs {
+                    let origin = parsed.origin().ascii_serialization();
+                    if let Ok(Some(key)) = secure_get_access_key(origin) {
+                        request_builder = request_builder.bearer_auth(key);
+                    }
+                }
+            }
+            let mut response = request_builder
                 .send()
                 .await
                 .map_err(|e| format!("Fetch file: {e}"))?
@@ -797,9 +806,9 @@ mod tests {
     #[test]
     fn access_key_origin_must_be_a_canonical_http_origin() {
         assert!(super::access_key_entry("https://example.com").is_ok());
-        assert!(super::access_key_entry("https://example.com/api").is_err());
+        assert!(super::access_key_entry("https://example.com/api").is_ok());
         assert!(super::access_key_entry("ftp://example.com").is_err());
-        assert!(super::access_key_entry("https://example.com/").is_err());
+        assert!(super::access_key_entry("https://example.com/").is_ok());
     }
 
     #[test]

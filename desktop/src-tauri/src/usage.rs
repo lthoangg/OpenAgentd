@@ -185,7 +185,7 @@ pub fn shared_client() -> &'static reqwest::Client {
 pub async fn is_server_available(base_url: &str) -> bool {
     let client = shared_client();
     let url = format!("{}/api/health/live", base_url.trim_end_matches('/'));
-    match client.get(&url).timeout(Duration::from_millis(600)).send().await {
+    match client.get(&url).timeout(Duration::from_secs(2)).send().await {
         Ok(res) => res.status().is_success(),
         Err(_) => false,
     }

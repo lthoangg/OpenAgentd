@@ -73,6 +73,9 @@ export type StreamSlice = Pick<
   | 'undoTeam'
   | 'redoTeam'
   | 'redoAllTeam'
+  | 'pendingDraft'
+  | 'consumePendingDraft'
+  | 'setPendingDraft'
   | 'stopTeam'
   | 'connectStream'
   | 'resolveQuestion'
@@ -95,6 +98,7 @@ export const createStreamSlice: StateCreator<
   isConnected: false,
   error: null,
   setupRequired: null,
+  pendingDraft: null,
   _abortController: null,
   _reconnectTimer: null,
   _reconnectAttempts: 0,
@@ -167,6 +171,12 @@ export const createStreamSlice: StateCreator<
             boundaryContent: response.message?.content ?? null,
           })
         })
+        if (response.message?.role === 'user' && !response.message.is_summary) {
+          draft.pendingDraft = {
+            content: response.message.content ?? '',
+            attachments: response.message.attachments ?? [],
+          }
+        }
       })
       enqueueWorkspaceInvalidation(
         set,
@@ -181,6 +191,17 @@ export const createStreamSlice: StateCreator<
       })
       return undefined
     }
+  },
+
+  consumePendingDraft: () => {
+    const current = get().pendingDraft
+    if (current) {
+      set((draft) => { draft.pendingDraft = null })
+    }
+    return current
+  },
+  setPendingDraft: (draftValue) => {
+    set((draft) => { draft.pendingDraft = draftValue })
   },
 
   redoTeam: async () => {

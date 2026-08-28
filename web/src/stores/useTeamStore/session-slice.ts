@@ -346,6 +346,7 @@ export function resetSessionState(
   state.isConnected = false
   state.error = null
   state.setupRequired = null
+  state.pendingDraft = null
   state._abortController = null
   state._pendingMessages = []
   clearReconnectTimer(state)

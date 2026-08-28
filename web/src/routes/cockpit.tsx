@@ -5,6 +5,7 @@ import { TeamChatView } from '@/components/TeamChatView'
 import { getTeamSession, resolveTeamSession } from '@/api/client'
 import { useTeamStore } from '@/stores/useTeamStore'
 import { applyCacheInvalidations, patchSessionTitle } from '@/stores/cache-invalidation-bridge'
+import { initBroadcastSync, broadcastMessage } from '@/lib/broadcast-sync'
 import { queryKeys } from '@/queries'
 import { loadLastCodingWorkspace, removeCodingWorkspace, saveLastCodingWorkspace, shouldRestoreLastCodingWorkspace, workspaceFromSession } from '@/utils/workspace'
 import { syncDesktopWindowTitle } from '@/lib/window-title'
@@ -167,6 +168,7 @@ function TeamLayoutBase() {
   }, [mode, navigate, queryClient, sessionId, workspace])
 
   // When team store gets a new sessionId, navigate to the matching session route.
+  useEffect(() => initBroadcastSync(queryClient), [queryClient])
   useEffect(() => {
     return useTeamStore.subscribe((state, prev) => {
       if (state.sessionId && state.sessionId !== prev.sessionId && !sessionIdRef.current) {
@@ -204,7 +206,11 @@ function TeamLayoutBase() {
       // stays free of TanStack imports.  Drain the queue and hand
       // the events to the bridge helper, which owns the mapping.
       if (state.cacheInvalidations !== prev.cacheInvalidations && state.cacheInvalidations.length > 0) {
-        applyCacheInvalidations(queryClient, useTeamStore.getState()._drainCacheInvalidations())
+        const events = useTeamStore.getState()._drainCacheInvalidations()
+        if (events.length > 0) {
+          applyCacheInvalidations(queryClient, events)
+          broadcastMessage({ type: 'cache_invalidated', events })
+        }
       }
     })
   }, [queryClient])

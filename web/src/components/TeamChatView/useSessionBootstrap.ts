@@ -354,6 +354,21 @@ export function useSessionBootstrap({
 
   // Restore an undone message into the composer (fired by the undo button on
   // UserBubble in AgentView/AgentPane, which cannot access inputRef directly).
+  const pendingDraft = useTeamStore((s) => s.pendingDraft)
+  const consumePendingDraft = useTeamStore((s) => s.consumePendingDraft)
+  useEffect(() => {
+    if (!pendingDraft) return
+    const draft = consumePendingDraft()
+    if (!draft) return
+    inputRef.current?.setValue(draft.content)
+    void Promise.all((draft.attachments || []).map((att) => attachmentToFile(att)))
+      .then((files) => {
+        inputRef.current?.setFiles(files.filter((f): f is File => f !== null))
+        inputRef.current?.focus()
+      })
+  }, [pendingDraft, consumePendingDraft, inputRef])
+
+  // Fallback for custom events (backwards compatibility / external dispatch)
   useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent<{ content?: string; attachments?: MessageAttachment[] }>).detail

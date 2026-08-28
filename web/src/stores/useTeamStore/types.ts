@@ -169,6 +169,7 @@ export interface TeamStoreState {
   isConnected: boolean
   error: TeamError | string | null
   setupRequired: SetupRequiredNotice | null
+  pendingDraft: { content: string; attachments?: MessageAttachment[] } | null
   _pendingMessages: PendingMessage[]
   _sessionGeneration: number
   hasMore: boolean
@@ -197,6 +198,8 @@ export interface TeamStoreActions {
   undoTeam: () => Promise<TeamCommandResponse | undefined>
   redoTeam: () => Promise<TeamCommandResponse | undefined>
   redoAllTeam: () => Promise<TeamCommandResponse | undefined>
+  consumePendingDraft: () => { content: string; attachments?: MessageAttachment[] } | null
+  setPendingDraft: (draft: { content: string; attachments?: MessageAttachment[] } | null) => void
   stopTeam: () => Promise<void>
   connectStream: () => AbortController
   /**

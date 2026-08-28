@@ -10,6 +10,7 @@
  * Keep the storage key and logic here in sync with that script.
  */
 
+import { broadcastMessage } from './broadcast-sync'
 export type ThemePreference = 'light' | 'dark' | 'system'
 export type ResolvedTheme = 'light' | 'dark'
 
@@ -85,6 +86,7 @@ export function setThemePreference(preference: ThemePreference): void {
     // best-effort — still apply class below
   }
   applyTheme(resolveTheme(preference))
+  broadcastMessage({ type: 'theme_changed', preference })
 }
 
 /**

@@ -9,10 +9,15 @@ import urllib.request
 from dataclasses import dataclass
 from typing import Any
 
-from app.cli.commands.start import _resolve_host, _resolve_port
-from app.cli.net import is_port_reachable, server_addresses
+from app.cli.net import (
+    display_host,
+    is_port_reachable,
+    resolve_host,
+    resolve_port,
+    server_addresses,
+)
 from app.cli.paths import _server_log
-from app.cli.pids import _find_pids, _pid_alive
+from app.cli.pids import _find_pids
 from app.cli.ui import _bold, _cyan, _dim, _green, _red, _yellow
 
 
@@ -50,12 +55,11 @@ def _check_line(check: Check) -> str:
 
 def cmd_health(args: argparse.Namespace) -> None:
     """Run server diagnostics for desktop/mobile clients."""
-    port = _resolve_port(args.port)
-    bind_host = _resolve_host(args)
-    host = "127.0.0.1" if bind_host in {"0.0.0.0", "::"} else bind_host
+    port = resolve_port(getattr(args, "port", None))
+    bind_host = resolve_host(args)
+    host = display_host(bind_host)
     addresses = server_addresses(host=bind_host, port=port)
-    pids = _find_pids()
-    alive = [pid for pid in pids if _pid_alive(pid)]
+    alive = _find_pids()
     base_url = f"http://{host}:{port}"
 
     checks: list[Check] = []
@@ -106,7 +110,7 @@ def cmd_health(args: argparse.Namespace) -> None:
             Check(
                 "LAN binding",
                 "warn",
-                "local-only; use openagentd server start --lan for mobile",
+                "local-only; use openagentd server start --host 0.0.0.0 for mobile",
             )
         )
 

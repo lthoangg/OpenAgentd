@@ -66,8 +66,9 @@ export function getAccessKey(baseUrl?: string): string | undefined {
  * existing localStorage behavior. A legacy value is removed only after the
  * shell confirms its secure write. */
 export async function getStoredAccessKey(baseUrl?: string): Promise<string | undefined> {
-  const origin = normalizeAccessKeyScope(baseUrl)
-  if (!origin || typeof window === 'undefined') return getAccessKey(baseUrl)
+  const target = baseUrl ?? apiBaseUrl()
+  const origin = normalizeAccessKeyScope(target)
+  if (!origin || typeof window === 'undefined') return getAccessKey(target)
   if (!getPlatform().isTauri) return getAccessKey(baseUrl)
   const cached = nativeAccessKeys.get(origin)
   if (cached) return cached
@@ -114,9 +115,10 @@ export async function primeStoredAccessKey(baseUrl: string = apiBaseUrl()): Prom
 }
 
 export async function setStoredAccessKey(key: string, baseUrl?: string): Promise<void> {
-  const origin = normalizeAccessKeyScope(baseUrl)
+  const target = baseUrl ?? apiBaseUrl()
+  const origin = normalizeAccessKeyScope(target)
   if (!origin || typeof window === 'undefined' || !getPlatform().isTauri) {
-    setAccessKey(key, baseUrl)
+    setAccessKey(key, target)
     return
   }
   const { invoke } = await import('@tauri-apps/api/core')
@@ -133,10 +135,20 @@ export async function setStoredAccessKey(key: string, baseUrl?: string): Promise
   window.localStorage.removeItem(`${ACCESS_KEY_STORAGE_PREFIX}${origin}`)
 }
 
-function getToken(): string | undefined {
+export function getToken(url?: string): string | undefined {
   if (typeof window === 'undefined') return undefined
-  const origin = normalizeAccessKeyScope(apiBaseUrl())
-  return window[TOKEN_KEY] || (origin ? nativeAccessKeys.get(origin) : undefined) || getAccessKey(apiBaseUrl()) || undefined
+  const target = url || apiBaseUrl()
+  const origin = normalizeAccessKeyScope(target)
+  if (origin) {
+    const nativeKey = nativeAccessKeys.get(origin)
+    if (nativeKey) return nativeKey
+    const scopedKey = window.localStorage?.getItem(`${ACCESS_KEY_STORAGE_PREFIX}${origin}`)
+    if (scopedKey) return scopedKey
+  }
+  if (window[TOKEN_KEY]) {
+    return window[TOKEN_KEY]
+  }
+  return getAccessKey(target) || undefined
 }
 
 export function setAccessKey(key: string, baseUrl?: string): void {
@@ -166,8 +178,9 @@ export function setAccessKey(key: string, baseUrl?: string): void {
 function isLocalApiRequest(url: string): boolean {
   if (typeof window === 'undefined') return false
   try {
-    const requestUrl = new URL(url, window.location.origin)
-    const apiUrl = new URL(apiBaseUrl(), window.location.origin)
+    const base = apiBaseUrl()
+    const requestUrl = new URL(url, base.startsWith('http') ? base : window.location.origin)
+    const apiUrl = new URL(base, window.location.origin)
     return (
       requestUrl.origin === apiUrl.origin &&
       (requestUrl.pathname === apiUrl.pathname ||
@@ -202,7 +215,7 @@ export function installDesktopAuth(): void {
     if (!isLocalApiRequest(url)) {
       return originalFetch(input, init)
     }
-    const token = getToken()
+    const token = getToken(url)
     if (!token) return originalFetch(input, init)
 
     // ── Case 1: input is a Request object ────────────────────────────────
@@ -293,7 +306,7 @@ function installXhrInterceptor(): void {
     body?: Document | XMLHttpRequestBodyInit | null,
   ): void {
     const url = this[URL_PROP]
-    const token = getToken()
+    const token = url ? getToken(url) : getToken()
     if (token && url && isLocalApiRequest(url) && !this[AUTH_SET]) {
       try {
         origSetHeader.call(this, 'Authorization', `Bearer ${token}`)
@@ -310,7 +323,7 @@ function installXhrInterceptor(): void {
  * `<a download href="/api/...">` links the browser can't add headers to).
  */
 export function withTokenParam(url: string): string {
-  const token = getToken()
+  const token = getToken(url)
   if (!token) return url
   const sep = url.includes('?') ? '&' : '?'
   return `${url}${sep}_token=${encodeURIComponent(token)}`

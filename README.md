@@ -71,8 +71,8 @@ printed local address and add a provider in Settings. For a phone or another
 computer on your network:
 
 ```bash
-openagentd server start --lan --key
-openagentd server address
+openagentd server start --host 0.0.0.0 --key
+openagentd server status
 openagentd server health
 ```
 

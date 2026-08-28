@@ -61,6 +61,17 @@ import sys
 import threading
 from typing import Any
 
+from app.cli import pids as pids_module
+from app.cli.pids import _windows_pid_alive
+
+__all__ = ["_pid_alive", "_windows_pid_alive", "_add_serve_subparser", "cmd_serve"]
+
+
+def _pid_alive(pid: int) -> bool:
+    if os.name == "nt":
+        return _windows_pid_alive(pid)
+    return pids_module._pid_alive(pid)
+
 
 def _add_serve_subparser(sub: argparse._SubParsersAction) -> None:
     """Register the ``serve`` subcommand on the given subparsers action."""
@@ -107,63 +118,6 @@ def _add_serve_subparser(sub: argparse._SubParsersAction) -> None:
         ),
     )
     p.set_defaults(func=cmd_serve)
-
-
-def _windows_pid_alive(pid: int) -> bool:
-    """Return whether a Windows process still runs without signalling it.
-
-    ``os.kill(pid, 0)`` is not a portable existence probe on Windows: it
-    opens the target with terminate access and can report a live parent as
-    missing. Querying the process exit code only needs limited information
-    access, which avoids killing a freshly spawned desktop sidecar.
-    """
-    import ctypes
-    from ctypes import wintypes
-
-    if pid <= 0:
-        return False
-
-    process_query_limited_information = 0x1000
-    still_active = 259
-    error_access_denied = 5
-    kernel32 = getattr(ctypes, "WinDLL")("kernel32", use_last_error=True)
-    kernel32.OpenProcess.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
-    kernel32.OpenProcess.restype = wintypes.HANDLE
-    kernel32.GetExitCodeProcess.argtypes = (
-        wintypes.HANDLE,
-        ctypes.POINTER(wintypes.DWORD),
-    )
-    kernel32.GetExitCodeProcess.restype = wintypes.BOOL
-    kernel32.CloseHandle.argtypes = (wintypes.HANDLE,)
-    kernel32.CloseHandle.restype = wintypes.BOOL
-
-    handle = kernel32.OpenProcess(process_query_limited_information, False, pid)
-    if not handle:
-        # Access denied means the PID exists but belongs to a process we cannot
-        # inspect, which is still alive for the parent-watch purpose.
-        return getattr(ctypes, "get_last_error")() == error_access_denied
-    try:
-        exit_code = wintypes.DWORD()
-        return bool(kernel32.GetExitCodeProcess(handle, ctypes.byref(exit_code))) and (
-            exit_code.value == still_active
-        )
-    finally:
-        kernel32.CloseHandle(handle)
-
-
-def _pid_alive(pid: int) -> bool:
-    if os.name == "nt":
-        return _windows_pid_alive(pid)
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        # PID exists but we can't signal it — still alive enough for our purposes.
-        return True
-    except OSError:
-        return False
-    return True
 
 
 def _start_parent_watch(

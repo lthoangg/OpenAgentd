@@ -187,6 +187,30 @@ describe("access key storage", () => {
     expect(auth.getAccessKey('http://127.0.0.1:4082')).toBeUndefined()
     expect(auth.getAccessKey('http://192.168.1.20:4082')).toBe('beta')
   })
+
+  it("prefers origin-scoped access key over bundled sidecar token", async () => {
+    window.__OAD_TOKEN__ = "sidecar-token"
+    const auth = await freshAuth()
+    auth.setAccessKey("external-secret-key", "http://192.168.1.50:4082")
+
+    expect(auth.getToken("http://192.168.1.50:4082/api/team/status")).toBe("external-secret-key")
+    expect(auth.getToken("http://127.0.0.1:4082/api/team/status")).toBe("sidecar-token")
+  })
+
+  it("injects external access key on requests when connected to external backend", async () => {
+    window.__OAD_TOKEN__ = "sidecar-token"
+    window.__OAD_API_BASE_URL__ = "http://192.168.1.50:4082"
+    const { calls } = spyFetch()
+    const auth = await freshAuth()
+    auth.setAccessKey("external-secret-key", "http://192.168.1.50:4082")
+    auth.installDesktopAuth()
+
+    await window.fetch("http://192.168.1.50:4082/api/health/ready")
+
+    const headers = new Headers(calls[0].init?.headers)
+    expect(headers.get("Authorization")).toBe("Bearer external-secret-key")
+    delete window.__OAD_API_BASE_URL__
+  })
 })
 
 describe("installDesktopAuth — no token", () => {

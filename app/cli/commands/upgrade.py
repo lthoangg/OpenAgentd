@@ -101,9 +101,7 @@ def _restart_command(args: argparse.Namespace) -> list[str]:
     if executable is None:
         executable = "openagentd"
     command = [executable, "server", "start"]
-    if getattr(args, "lan", False):
-        command.append("--lan")
-    elif getattr(args, "host", None):
+    if getattr(args, "host", None):
         command.extend(["--host", args.host])
     if getattr(args, "port", None) is not None:
         command.extend(["--port", str(args.port)])

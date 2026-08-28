@@ -38,7 +38,6 @@ _LAZY_EXPORTS: dict[str, str] = {
     # commands — resolved to the lazy dispatchers in app.cli.main so that
     # ``app.cli.cmd_x is parser_args.func`` identity holds. The dispatchers
     # import the real command module only when invoked.
-    "cmd_address": "app.cli.main",
     "cmd_auth": "app.cli.main",
     "cmd_cleanup": "app.cli.main",
     "cmd_doctor": "app.cli.main",

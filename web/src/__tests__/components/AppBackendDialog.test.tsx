@@ -4,9 +4,12 @@ import userEvent from '@testing-library/user-event'
 import { AppBackendDialog } from '@/components/AppBackendDialog'
 
 const originalFetch = globalThis.fetch
+const originalWindowFetch = window.fetch
 const originalReload = window.location.reload
 const invokeCalls: Array<{ command: string; args: unknown }> = []
 const reloadMock = mock(() => {})
+let failExternalSwitch = false
+let fetchCalls: Array<{ url: string; init?: RequestInit }> = []
 let statusPayload = {
   base_url: 'http://127.0.0.1:5999',
   mode: 'external',
@@ -27,6 +30,7 @@ const invokeMock = mock(async (...args: unknown[]) => {
   if (command === 'app_save_backend_server') return statusPayload
   if (command === 'app_remove_backend_server') return statusPayload
   if (command === 'app_use_external_backend') {
+    if (failExternalSwitch) throw new Error('switch failed')
     const args = commandArgs as { baseUrl?: string }
     return { ...statusPayload, base_url: args.baseUrl ?? statusPayload.base_url, mode: 'external', external: true, sidecar_running: false }
   }
@@ -56,6 +60,8 @@ mock.module('@tauri-apps/api/core', () => ({
 
 beforeEach(() => {
   invokeCalls.length = 0
+  fetchCalls = []
+  failExternalSwitch = false
   reloadMock.mockClear()
   window.location.reload = reloadMock as typeof window.location.reload
   statusPayload = {
@@ -72,22 +78,64 @@ beforeEach(() => {
   window.__OAD_API_BASE_URL__ = 'http://127.0.0.1:5999'
   const fetchMock = mock((...args: unknown[]) => {
     const url = String(args[0])
+    fetchCalls.push({ url, init: args[1] as RequestInit | undefined })
     const ok = url.startsWith('http://127.0.0.1:4082/')
     const authorized = !url.endsWith('/api/auth/check') || ok
     return Promise.resolve(new Response(null, { status: ok && authorized ? 204 : 503 }))
   })
   globalThis.fetch = fetchMock as typeof fetch
+  window.fetch = fetchMock as typeof window.fetch
 })
 
 afterEach(() => {
   cleanup()
   window.localStorage.clear()
+  delete window.__OAD_TOKEN__
   globalThis.fetch = originalFetch
+  window.fetch = originalWindowFetch
   window.location.reload = originalReload
   delete window.__OAD_API_BASE_URL__
 })
 
 describe('AppBackendDialog', () => {
+  it('installs browser auth for a keyed backend after switching to it', async () => {
+    const user = userEvent.setup()
+    render(<AppBackendDialog open onOpenChange={() => {}} />)
+
+    await user.type(screen.getByLabelText(/access key/i), 'secret')
+    await user.type(screen.getByLabelText(/server url/i), 'http://127.0.0.1:4082')
+    await user.click(screen.getByRole('button', { name: 'Test connection' }))
+    await waitFor(() => expect(screen.getByText('Connection successful.')).toBeTruthy())
+
+    await user.click(screen.getByRole('button', { name: 'Save & Connect' }))
+    await waitFor(() => expect(window.__OAD_API_BASE_URL__).toBe('http://127.0.0.1:4082'))
+
+    await fetch('http://127.0.0.1:4082/api/health/live')
+    const request = fetchCalls.at(-1)
+    expect(new Headers(request?.init?.headers).get('Authorization')).toBe('Bearer secret')
+  })
+
+  it('keeps the bundled auth token when switching to an external backend fails', async () => {
+    const user = userEvent.setup()
+    window.__OAD_TOKEN__ = 'bundled-token'
+    failExternalSwitch = true
+    statusPayload = {
+      ...statusPayload,
+      base_url: 'http://127.0.0.1:49545',
+      mode: 'bundled',
+      sidecar_running: true,
+      external: false,
+    }
+    render(<AppBackendDialog open onOpenChange={() => {}} />)
+
+    await screen.findByText('Builtin sidecar')
+    const connectButtons = await screen.findAllByRole('button', { name: 'connect' })
+    await user.click(connectButtons[0])
+
+    await screen.findByText('switch failed')
+    expect(window.__OAD_TOKEN__).toBe('bundled-token')
+  })
+
   it('loads saved servers and shows live online/offline indicators', async () => {
     render(<AppBackendDialog open onOpenChange={() => {}} />)
 

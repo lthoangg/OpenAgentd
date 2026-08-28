@@ -40,7 +40,6 @@ from app.cli import (
     _state_dir,
     _write_pids,
     build_parser,
-    cmd_address,
     cmd_health,
     cmd_logs,
     cmd_cleanup,
@@ -441,16 +440,9 @@ class TestBuildParser:
         assert args.host == "0.0.0.0"
         assert args.port == 9000
 
-    def test_lan_flag(self):
-        args = build_parser().parse_args(["server", "start", "--lan"])
-        assert args.lan is True
-
-    def test_wait_and_watch_flags(self):
+    def test_wait_flag(self):
         args = build_parser().parse_args(["server", "start", "--wait"])
         assert args.wait is True
-
-        args = build_parser().parse_args(["server", "start", "--watch"])
-        assert args.watch is True
 
         args = build_parser().parse_args(["server", "restart", "--wait"])
         assert args.wait is True
@@ -466,10 +458,6 @@ class TestBuildParser:
     def test_status_subcommand(self):
         args = build_parser().parse_args(["server", "status"])
         assert args.func is cli.cmd_status
-
-    def test_address_subcommand(self):
-        args = build_parser().parse_args(["server", "address"])
-        assert args.func is cli.cmd_address
 
     def test_health_subcommand(self):
         args = build_parser().parse_args(["server", "health"])
@@ -850,7 +838,7 @@ class TestCmdStatus:
         cmd_status(args)
         out = capsys.readouterr().out
         assert "stopped" in out
-        assert "openagentd server start --lan" in out
+        assert "openagentd server start --host 0.0.0.0" in out
 
 
 # ---------------------------------------------------------------------------
@@ -1181,10 +1169,10 @@ class TestCmdUpgrade:
             ],
         ]
 
-    def test_upgrade_restart_preserves_lan_flag(self, monkeypatch):
+    def test_upgrade_restart_preserves_host_flag(self, monkeypatch):
         from app.cli.commands import upgrade as upgrade_mod
 
-        args = SimpleNamespace(host=None, port=None, lan=True)
+        args = SimpleNamespace(host="0.0.0.0", port=None)
         run_calls: list[list[str]] = []
 
         monkeypatch.setattr(upgrade_mod, "_find_pids", lambda: [1234])
@@ -1201,7 +1189,7 @@ class TestCmdUpgrade:
 
         upgrade_mod.cmd_upgrade(args)
 
-        assert run_calls[-1] == ["openagentd", "server", "start", "--lan"]
+        assert run_calls[-1] == ["openagentd", "server", "start", "--host", "0.0.0.0"]
 
     def test_upgrade_restart_falls_back_to_original_script_path(self, monkeypatch):
         from app.cli.commands import upgrade as upgrade_mod
@@ -1255,31 +1243,6 @@ class TestCmdUpgrade:
 
 
 # ---------------------------------------------------------------------------
-# cmd_address
-# ---------------------------------------------------------------------------
-
-
-class TestCmdAddress:
-    def test_address_prints_local_and_lan_urls(self, monkeypatch, capsys):
-        monkeypatch.setattr("app.cli.commands.address._find_pids", lambda: [1234])
-        monkeypatch.setattr(
-            "app.cli.commands.address.server_addresses",
-            lambda **_kwargs: ServerAddresses(
-                local="http://127.0.0.1:4082", lan=["http://192.168.1.2:4082"]
-            ),
-        )
-
-        args = build_parser().parse_args(["server", "address"])
-        cmd_address(args)
-
-        out = capsys.readouterr().out
-        assert "OpenAgentd addresses" in out
-        assert "running" in out
-        assert "http://127.0.0.1:4082" in out
-        assert "http://192.168.1.2:4082" in out
-
-
-# ---------------------------------------------------------------------------
 # cmd_health
 # ---------------------------------------------------------------------------
 
@@ -1287,7 +1250,6 @@ class TestCmdAddress:
 class TestCmdHealth:
     def test_health_passes_for_reachable_ready_server(self, monkeypatch, capsys):
         monkeypatch.setattr("app.cli.commands.health._find_pids", lambda: [1234])
-        monkeypatch.setattr("app.cli.commands.health._pid_alive", lambda _pid: True)
         monkeypatch.setattr(
             "app.cli.commands.health.is_port_reachable", lambda **_kwargs: True
         )
@@ -1306,7 +1268,7 @@ class TestCmdHealth:
 
         monkeypatch.setattr("app.cli.commands.health._fetch_json", fake_fetch)
 
-        args = build_parser().parse_args(["server", "health", "--lan"])
+        args = build_parser().parse_args(["server", "health", "--host", "0.0.0.0"])
         cmd_health(args)
 
         out = capsys.readouterr().out
@@ -1487,7 +1449,7 @@ class TestCmdDoctor:
 
 
 # ---------------------------------------------------------------------------
-# _resolve_port — picks the API port default per mode
+# resolve_port — picks the API port default per mode
 # ---------------------------------------------------------------------------
 
 
@@ -1497,14 +1459,14 @@ class TestResolvePort:
     """
 
     def test_default_is_4082(self):
-        from app.cli.commands.start import _resolve_port
+        from app.cli.net import resolve_port
 
-        assert _resolve_port(None) == 4082
+        assert resolve_port(None) == 4082
 
     def test_explicit_port_wins(self):
-        from app.cli.commands.start import _resolve_port
+        from app.cli.net import resolve_port
 
-        assert _resolve_port(9000) == 9000
+        assert resolve_port(9000) == 9000
 
 
 # ---------------------------------------------------------------------------

@@ -7,31 +7,19 @@ import getpass
 import os
 import subprocess
 
-from app.cli.net import require_loopback_or_auth, server_addresses
+from app.cli.net import (
+    display_host,
+    require_loopback_or_auth,
+    resolve_host,
+    resolve_port,
+    server_addresses,
+)
 from app.cli.paths import _ROOT, _server_log
 from app.cli.pids import _find_pids, _write_pids
 from app.cli.server import _server_cmd
 from app.cli.ui import _bold, _dim, _print_banner, _yellow
 from app.core.runtime_settings import ServerSettings
 from app.core.server_settings import load_server_settings, save_server_settings
-
-
-_API_PORT = 4082
-
-
-def _resolve_port(port: int | None) -> int:
-    """Pick the API port when the user didn't pass ``--port`` explicitly."""
-    if port is not None:
-        return port
-    return load_server_settings().port or _API_PORT
-
-
-def _resolve_host(args: argparse.Namespace) -> str:
-    if getattr(args, "lan", False):
-        return "0.0.0.0"
-    if getattr(args, "host", None):
-        return args.host
-    return load_server_settings().host
 
 
 def _prompt_access_key() -> str:
@@ -43,9 +31,7 @@ def _prompt_access_key() -> str:
 
 def _apply_server_overrides(args: argparse.Namespace, cfg: ServerSettings) -> None:
     """Apply explicit CLI overrides in memory so they can be validated first."""
-    if getattr(args, "lan", False):
-        cfg.host = "0.0.0.0"
-    elif args.host:
+    if getattr(args, "host", None):
         cfg.host = args.host
     if args.port:
         cfg.port = args.port
@@ -54,12 +40,7 @@ def _apply_server_overrides(args: argparse.Namespace, cfg: ServerSettings) -> No
 
 
 def _save_server_overrides(args: argparse.Namespace, cfg: ServerSettings) -> None:
-    if not (
-        getattr(args, "lan", False)
-        or args.host
-        or args.port
-        or getattr(args, "key", False)
-    ):
+    if not (getattr(args, "host", None) or args.port or getattr(args, "key", False)):
         return
     save_server_settings(cfg)
 
@@ -77,8 +58,8 @@ def cmd_start(args: argparse.Namespace) -> None:
 
     server_settings = load_server_settings()
     _apply_server_overrides(args, server_settings)
-    port = _resolve_port(args.port)
-    host = _resolve_host(args)
+    port = resolve_port(args.port, server_settings.port)
+    host = resolve_host(args, server_settings.host)
     require_loopback_or_auth(
         host=host,
         has_auth=bool(
@@ -120,13 +101,13 @@ def cmd_start(args: argparse.Namespace) -> None:
     print(f"  {_dim('Stop:')}  {_bold('openagentd server stop')}")
     print()
 
-    if getattr(args, "wait", False) or getattr(args, "watch", False):
+    if getattr(args, "wait", False):
         import urllib.request
         import urllib.error
         import time
         from app.cli.ui import _green, _red
 
-        poll_host = "127.0.0.1" if args.host in {"0.0.0.0", "::"} else args.host
+        poll_host = display_host(args.host)
         ready_url = f"http://{poll_host}:{args.port}/api/health/ready"
 
         print(f"  {_dim('Status:')} waiting for server to become ready...")

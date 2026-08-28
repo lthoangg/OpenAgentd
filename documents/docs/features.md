@@ -373,7 +373,7 @@ run from the terminal.
   the shared Web UI and connects to saved remote API servers. Foreground resume
   now reconciles missed history and replaces potentially frozen chat streams;
   remembered-server launches prefetch and reuse native credentials.
-- **LAN access key for external clients** `[v1.43.0, v1.103.0, v2.4.0]` — `openagentd server start --lan --key`
+- **LAN access key for external clients** `[v1.43.0, v1.103.0, v2.4.0]` — `openagentd server start --host 0.0.0.0 --key`
   stores the CLI server's bind address, port, and bearer key in `server.yaml`, separate from the desktop builtin sidecar's ephemeral token while agents, providers, sessions, and other settings remain shared. Restart and upgrade preserve that key without exposing it in process arguments. OpenAgentd-managed launchers refuse non-loopback binds without a configured key `[v1.101.0]`.
 - **Desktop server connection manager** `[v1.43.4, v1.99.8, v1.104.0]` — the desktop **Server connection** dialog switches the current window between the builtin sidecar and saved external servers, normalizes pasted `/api` URLs, and preserves other open windows' backend choices. Typed servers now require a successful health and access-key test before they can be named, saved, and connected. Saved LAN access keys are scoped per backend origin and stored in the native OS credential store on installed desktop/mobile shells; browser development keeps the per-origin localStorage fallback. Remembered external servers reconnect on app launch with sidecar fallback, while the desktop window opens immediately as backend startup continues asynchronously `[v1.57.1]`.
   - **Reload after switching backend servers** `[v1.98.1]` — after connecting a desktop window to a different saved or typed external server, the webview reloads so stale frontend state is discarded and the window comes back against the newly selected backend cleanly. Reconnecting to the already active backend does not reload.
@@ -1093,15 +1093,15 @@ Desktop is primary. CLI / server is the developer path.
 - **CLI install** `[since v1.0]` — `uv tool install openagentd`, `pipx`, `pip`,
   `brew install lthoangg/tap/openagentd`.
 - **CLI server control** `[v1.41.0, v2.4.0]` — `openagentd server restart`,
-  `openagentd server address`, `openagentd server health`, and `openagentd server
-  start --lan --key` make the CLI the control plane for desktop/mobile backends.
+  `openagentd server status`, `openagentd server health`, and `openagentd server
+  start --host 0.0.0.0 --key` make the CLI the control plane for desktop/mobile backends.
 - **Foreground CLI agent execution** `[v2.4.0]` — `openagentd run --prompt "..."`
   validates the current directory as a coding workspace, starts one persisted
   team session, and streams only the lead agent's response text to standard
   output. `--model provider:model` and `--thinking` apply per-turn overrides;
   auto-approved tool permissions continue normally, while interactive agent
   questions stop the non-interactive command instead of leaving a suspended run.
-- **CLI start --wait / --watch** `[v1.73.0, v2.4.0]` — `openagentd server start`
+- **CLI start --wait** `[v1.73.0, v2.4.0]` — `openagentd server start --wait`
   starts the background server and polls `/api/health/ready` until the database
   connection and the agent team are fully ready.
 - **CLI upgrade** `[v1.41.0]` — `openagentd upgrade` stops the background

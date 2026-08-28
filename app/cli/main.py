@@ -31,7 +31,6 @@ def _lazy_cmd(module: str, attr: str) -> Callable[[argparse.Namespace], object]:
     return _dispatch
 
 
-cmd_address = _lazy_cmd("app.cli.commands.address", "cmd_address")
 cmd_auth = _lazy_cmd("app.cli.commands.auth", "cmd_auth")
 cmd_cleanup = _lazy_cmd("app.cli.commands.cleanup", "cmd_cleanup")
 cmd_doctor = _lazy_cmd("app.cli.commands.doctor", "cmd_doctor")
@@ -63,7 +62,7 @@ def build_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "Examples:\n"
-            "  openagentd server start --lan --key  # start for mobile/LAN clients\n"
+            "  openagentd server start --host 0.0.0.0 --key  # start for mobile/LAN clients\n"
             "  openagentd server status             # check the background server\n"
             "  openagentd auth copilot              # authenticate with an OAuth provider\n"
             "  openagentd run --prompt 'Summarize this project'  # run an agent once\n"
@@ -79,10 +78,8 @@ def build_parser() -> argparse.ArgumentParser:
         func=cmd_start,
         host=None,
         port=None,
-        lan=False,
         key=False,
         wait=False,
-        watch=False,
     )
 
     sub = parser.add_subparsers(dest="command", metavar="command")
@@ -168,12 +165,6 @@ def build_parser() -> argparse.ArgumentParser:
             default=argparse.SUPPRESS,
             help="API port (default: server.yaml port)",
         )
-        p.add_argument(
-            "--lan",
-            action="store_true",
-            default=argparse.SUPPRESS,
-            help="Bind on all interfaces for mobile/LAN clients (sets --host 0.0.0.0)",
-        )
         if include_key:
             p.add_argument(
                 "--key",
@@ -187,12 +178,6 @@ def build_parser() -> argparse.ArgumentParser:
                 action="store_true",
                 default=argparse.SUPPRESS,
                 help="Wait/poll until the background server is fully started and ready.",
-            )
-            p.add_argument(
-                "--watch",
-                action="store_true",
-                default=argparse.SUPPRESS,
-                help="Alias for --wait.",
             )
 
     # ── server ──────────────────────────────────────────────────────────────
@@ -219,15 +204,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     # ── status ────────────────────────────────────────────────────────────────
     p_status = server_sub.add_parser(
-        "status", help="Show whether the server is running"
+        "status", help="Show whether the server is running and its network addresses"
     )
     add_start_flags(p_status, include_key=False, include_wait=False)
     p_status.set_defaults(func=cmd_status)
-
-    # ── address ───────────────────────────────────────────────────────────────
-    p_address = server_sub.add_parser("address", help="Show local and LAN server URLs")
-    add_start_flags(p_address, include_key=False, include_wait=False)
-    p_address.set_defaults(func=cmd_address)
 
     # ── health ────────────────────────────────────────────────────────────────
     p_health = server_sub.add_parser("health", help="Run server and mobile diagnostics")

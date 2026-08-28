@@ -20,10 +20,10 @@ files.
 
 ## From OpenClaw
 
-OpenAgentd has a built-in OpenClaw importer through `openagentd migrate`:
+OpenAgentd has a built-in OpenClaw importer through `openagentd transfer migrate`:
 
 ```bash
-openagentd migrate openclaw --from ~/.openclaw/workspace --model openai:gpt-5.5
+openagentd transfer migrate openclaw --from ~/.openclaw/workspace --model openai:gpt-5.5
 ```
 
 The importer reads these files when present: `AGENTS.md`, `SOUL.md`, `SOULS.md`, `TOOLS.md`.
@@ -33,15 +33,15 @@ It writes one lead agent to `~/.config/openagentd/agents/openclaw.md`. Existing 
 Use `--name` if you want a different agent filename:
 
 ```bash
-openagentd migrate openclaw --from ~/my-project --name project-agent --model openai:gpt-5.5
+openagentd transfer migrate openclaw --from ~/my-project --name project-agent --model openai:gpt-5.5
 ```
 
 ## From Hermes Agent
 
-OpenAgentd has a built-in Hermes importer through `openagentd migrate`:
+OpenAgentd has a built-in Hermes importer through `openagentd transfer migrate`:
 
 ```bash
-openagentd migrate hermes --from ~/.hermes --model openai:gpt-5.5
+openagentd transfer migrate hermes --from ~/.hermes --model openai:gpt-5.5
 ```
 
 The importer reads these files when present: `SOUL.md`, `.hermes.md`, `HERMES.md`, `AGENTS.md`, `CLAUDE.md`, `.cursorrules`.
@@ -50,7 +50,7 @@ It writes one lead agent to `~/.config/openagentd/agents/hermes.md`. Existing fi
 
 Use `--from` with a project directory if your Hermes context is project-local instead of under `~/.hermes`.
 
-See `openagentd migrate --help` for the full flag reference.
+See `openagentd transfer migrate --help` for the full flag reference.
 
 ## From Claude Code
 

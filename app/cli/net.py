@@ -1,10 +1,15 @@
-"""Network helpers for CLI server address display and probes."""
+"""Network helpers for CLI server address display, resolution, and probes."""
 
 from __future__ import annotations
 
 import socket
-from ipaddress import ip_address
 from dataclasses import dataclass
+from ipaddress import ip_address
+from typing import Any
+
+from app.core.server_settings import load_server_settings
+
+_DEFAULT_PORT = 4082
 
 
 @dataclass(frozen=True)
@@ -35,9 +40,31 @@ def require_loopback_or_auth(*, host: str, has_auth: bool) -> None:
         raise SystemExit(_NON_LOOPBACK_AUTH_ERROR)
 
 
+def display_host(host: str) -> str:
+    """Map wildcard bind addresses (0.0.0.0, ::) to loopback for client URLs."""
+    return "127.0.0.1" if host in {"0.0.0.0", "::"} else host
+
+
+def resolve_port(port: int | None = None, configured_port: int | None = None) -> int:
+    """Resolve the API port from explicit flag or persisted server settings."""
+    if port is not None:
+        return port
+    if configured_port:
+        return configured_port
+    return load_server_settings().port or _DEFAULT_PORT
+
+
+def resolve_host(args: Any, configured_host: str | None = None) -> str:
+    """Resolve the bind host from explicit flags or persisted server settings."""
+    if getattr(args, "host", None):
+        return str(args.host)
+    if configured_host is not None:
+        return configured_host
+    return load_server_settings().host
+
+
 def _format_url(host: str, port: int) -> str:
-    display_host = "127.0.0.1" if host in {"0.0.0.0", "::"} else host
-    return f"http://{display_host}:{port}"
+    return f"http://{display_host(host)}:{port}"
 
 
 def _lan_ips() -> list[str]:

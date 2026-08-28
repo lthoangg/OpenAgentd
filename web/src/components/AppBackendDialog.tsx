@@ -9,7 +9,7 @@ import { SectionCard, SectionCardHeader, SectionCardRows, SectionCardRow, Sectio
 import { apiBaseUrl, setApiBaseUrl } from '@/api/base-url'
 import { queryClient } from '@/lib/query-client'
 import { queryKeys } from '@/queries/keys'
-import { getStoredAccessKey, setStoredAccessKey } from '@/api/auth'
+import { getStoredAccessKey, installDesktopAuth, primeStoredAccessKey, setStoredAccessKey } from '@/api/auth'
 import {
   getAppBackendStatus,
   removeAppBackendServer,
@@ -91,7 +91,10 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
       }
       if (accessKey.trim()) await setStoredAccessKey(accessKey, target)
       const next = await switchToExternalAppBackend(target, nextName, persist)
+      await primeStoredAccessKey(next.base_url)
       setApiBaseUrl(next.base_url)
+      installDesktopAuth()
+      delete window.__OAD_TOKEN__
       const nextBaseUrl = normalizeServerBaseUrl(next.base_url)
       const shouldReload = nextBaseUrl !== currentBaseUrl
       await refreshBackendQueries()

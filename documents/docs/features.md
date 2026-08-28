@@ -191,7 +191,7 @@ run from the terminal.
     which tracks usage consumed — so e.g. 1h into a 5h window places the
     tick at 20%. It reads the same polled usage cache and keeps the
     critical-badge and notification logic; Windows/Linux keep the native
-    tray menu. The header features a server selector dropdown `[v2.7.0]` that
+    tray menu. The header features a server selector dropdown `[v2.8.0]` that
     allows inspecting usage across local and remote connected backends
     with live reachability filtering.
   - **Settings → Providers usage panel redesign** `[v1.94.0]` — the
@@ -222,7 +222,7 @@ run from the terminal.
   now targets its "backend ready" notification at the switching window only,
   and the frontend listens for it on a per-window channel instead of the
   app-wide broadcast channel it was previously (incorrectly) using `[v1.99.1]`.
-  Desktop windows now operate as symmetric peer windows `[v2.7.0]`: closing
+  Desktop windows now operate as symmetric peer windows `[v2.8.0]`: closing
   any window destroys its webview and frees memory immediately, while clicking
   the Dock icon or tray reopen action spawns a clean window when none are open.
   - **Hold Command + click session to open in new window** `[v1.62.1, v1.64.1]` — in the desktop app, holding `Cmd` (macOS) or `Ctrl/Cmd` (Linux) and clicking a session in either sidebar opens that session directly in a new independent desktop window; failures now surface an in-app error toast instead of silently doing nothing.
@@ -575,7 +575,8 @@ team against it.
   (created, modified, deleted) to the exact prior state from any prior turn in
   chat history. Different from editor undo: this is tied to chat turns.
   `/redo` restores one undone turn; `/redo-all` `[v2.0.0]` restores all undone turns back
-  to the live tip.
+  to the live tip. Undoing turns now declaratively preserves and restores input composer
+  draft text and synchronizes cache invalidation across open windows `[v2.8.0]`.
 - **`/init` AGENTS.md analysis & generation** `[v1.9.0, v2.0.0]` — analyzes codebase
   structure and generates standard `AGENTS.md` context files at repository root and
   subdirectories with a guided analysis protocol.
@@ -717,7 +718,9 @@ agnostic by design.
   budgets.
 - **`openagentd://` deep links and OAuth callback handoff** `[v1.116.0]` — system protocol registration for desktop and mobile apps, with cold- and warm-start routing. Navigation links (`openagentd://cockpit/...`, `openagentd://coding/...`) open the requested session. OAuth providers that implement a callback exchange can use `openagentd://auth/callback?provider=...&code=...`; OpenAgentd validates the link shape and forwards the opaque callback payload to the active backend, while the provider remains responsible for state and PKCE verification. Isolated desktop development bundles and physical-device iOS development builds use `openagentd-dev://` so they do not claim the production protocol.
 - **OAuth subscription support** `[v1.8.0]` — Copilot, Codex, others via the
-  built-in OAuth helper.
+  built-in OAuth helper. Codex models automatically prioritize extended context
+  window limits (up to 872k/1M tokens) where supported by the catalog
+  `[v2.8.0]`.
 - **Grok Build subscription provider** `[v1.112.0]` — `grok:` uses xAI's
   device OAuth flow and refreshable session credentials independently of the
   direct API-key-backed `xai:` provider, with live model discovery and the

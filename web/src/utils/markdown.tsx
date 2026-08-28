@@ -169,7 +169,13 @@ const HighlightedCode = memo(function HighlightedCode({
   language?: string
 }) {
   const content = useMemo((): React.ReactNode => {
+    if (!language || language === 'plaintext') {
+      return code
+    }
     const tokens = tokenizeCode(code, language)
+    if (tokens.length === 1 && !tokens[0].className) {
+      return tokens[0].value
+    }
     return tokens.map((token, index) =>
       token.className ? (
         <span key={index} className={`th-token th-${token.className}`}>

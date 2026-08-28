@@ -125,6 +125,7 @@ export function TerminalView({ sessionId }: TerminalViewProps) {
     } else {
       term.open(el)
     }
+    rt.handle.enableWebgl?.()
     useTerminalStore.getState().setAttached(sessionId, true)
 
     let resizeTimer: ReturnType<typeof setTimeout> | null = null
@@ -164,6 +165,7 @@ export function TerminalView({ sessionId }: TerminalViewProps) {
       visualViewport?.removeEventListener('resize', refit)
       resizeObserver.disconnect()
       useTerminalStore.getState().setAttached(sessionId, false)
+      rt.handle?.disableWebgl?.()
       // Detach the DOM so the next mount can re-parent it cleanly.
       if (term.element && term.element.parentElement === el) {
         el.removeChild(term.element)

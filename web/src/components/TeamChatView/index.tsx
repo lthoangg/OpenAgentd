@@ -19,7 +19,7 @@
  * (one primitive per ``useTeamStore`` call) to avoid the infinite loop
  * that returning a freshly-built object on every render would trigger.
  */
-import { useMemo, useRef, useState } from 'react'
+import { memo, useMemo, useRef, useState } from 'react'
 import { AnimatePresence } from 'framer-motion'
 import { useNavigate } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
@@ -41,6 +41,39 @@ import type { ContentBlock, MessageAttachment } from '@/api/types'
 type RevertedMessage = { role: string; content: string; attachments?: MessageAttachment[] }
 const EMPTY_BLOCKS: ContentBlock[] = []
 const EMPTY_REVERTED_MESSAGES: RevertedMessage[] = []
+
+interface ActiveAgentViewProps {
+  emptyState?: React.ReactNode
+  onMentionFileOpen?: (path: string) => void
+}
+
+const ActiveAgentView = memo(function ActiveAgentView({
+  emptyState,
+  onMentionFileOpen,
+}: ActiveAgentViewProps) {
+  const activeAgent = useTeamStore((s) => s.activeAgent)
+  const activeStream = useTeamStore((s) => (activeAgent ? s.agentStreams[activeAgent] : undefined))
+
+  const activeBlocks = activeStream?.blocks ?? EMPTY_BLOCKS
+  const activeCurrentBlocks = activeStream?.currentBlocks ?? EMPTY_BLOCKS
+  const activeStatus = activeStream?.status ?? 'idle'
+  const activeLastError = activeStream?.lastError ?? null
+  const activeAwaitingRestart = isAwaitingRestartOutput(activeStream)
+
+  return (
+    <AgentView
+      blocks={activeBlocks}
+      currentBlocks={activeCurrentBlocks}
+      isWorking={activeStatus === 'working'}
+      isTurnOpen={activeStatus === 'working' || activeStatus === 'waiting_input'}
+      isAwaitingRestart={activeAwaitingRestart}
+      isError={activeStatus === 'error'}
+      lastError={activeLastError}
+      onMentionFileOpen={onMentionFileOpen}
+      emptyState={emptyState}
+    />
+  )
+})
 import { useFileRefsQuery } from '@/queries/useFileRefsQuery'
 import { AlertCircle, FolderCode, X, FileUp } from 'lucide-react'
 import { useIsMobile } from '@/hooks/use-mobile'
@@ -95,7 +128,6 @@ export function TeamChatView({ sessionId, workspace = null, codingSessionLoading
 
   const storeState = useTeamStore(
     useShallow((s) => {
-      const activeStream = s.activeAgent ? s.agentStreams[s.activeAgent] : undefined
       const leadStream = s.leadName ? s.agentStreams[s.leadName] : undefined
       return {
         connectStream: s.connectStream,
@@ -117,12 +149,6 @@ export function TeamChatView({ sessionId, workspace = null, codingSessionLoading
         sessionThinkingLevel: s.sessionThinkingLevel,
         leadName: s.leadName,
         sessionFastMode: s.sessionFastMode,
-
-        activeBlocks: activeStream?.blocks ?? EMPTY_BLOCKS,
-        activeCurrentBlocks: activeStream?.currentBlocks ?? EMPTY_BLOCKS,
-        activeStatus: activeStream?.status ?? 'idle',
-        activeLastError: activeStream?.lastError ?? null,
-        activeAwaitingRestart: isAwaitingRestartOutput(activeStream),
 
         leadRevertedCount: leadStream?.revertedCount ?? 0,
         leadRevertedMessages: leadStream?.revertedMessages ?? EMPTY_REVERTED_MESSAGES,
@@ -159,12 +185,6 @@ export function TeamChatView({ sessionId, workspace = null, codingSessionLoading
     sessionModel,
     sessionThinkingLevel,
     leadName,
-
-    activeBlocks,
-    activeCurrentBlocks,
-    activeStatus,
-    activeLastError,
-    activeAwaitingRestart,
 
     leadRevertedCount,
     leadRevertedMessages,
@@ -534,16 +554,7 @@ export function TeamChatView({ sessionId, workspace = null, codingSessionLoading
                 onSelect={setActiveAgent}
               />
             )}
-            <AgentView
-              blocks={activeBlocks}
-              currentBlocks={activeCurrentBlocks}
-              isWorking={activeStatus === 'working'}
-              // A lead suspended on `ask_user` is not streaming, but its turn
-              // is still open — no duration, no pending dots.
-              isTurnOpen={activeStatus === 'working' || activeStatus === 'waiting_input'}
-              isAwaitingRestart={activeAwaitingRestart}
-              isError={activeStatus === 'error'}
-              lastError={activeLastError}
+            <ActiveAgentView
               onMentionFileOpen={handleMentionFileOpen}
               emptyState={
                 workspace ? (

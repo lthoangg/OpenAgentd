@@ -20,6 +20,8 @@ import { TERMINAL_THEMES, type TerminalResolvedTheme } from './terminal-themes'
 export interface XtermHandle {
   term: Terminal
   fit: FitAddon
+  enableWebgl?: () => void
+  disableWebgl?: () => void
 }
 
 export function createXterm(options: {
@@ -55,15 +57,31 @@ export function createXterm(options: {
   term.loadAddon(new Unicode11Addon())
   term.unicode.activeVersion = '11'
 
-  try {
-    const webgl = new WebglAddon()
-    webgl.onContextLoss(() => {
-      webgl.dispose()
-    })
-    term.loadAddon(webgl)
-  } catch {
-    // Falls back gracefully to standard DOM renderer if WebGL is unavailable
+  let webglAddon: WebglAddon | null = null
+
+  const enableWebgl = () => {
+    if (webglAddon) return
+    try {
+      webglAddon = new WebglAddon()
+      webglAddon.onContextLoss(() => {
+        webglAddon?.dispose()
+        webglAddon = null
+      })
+      term.loadAddon(webglAddon)
+    } catch {
+      webglAddon = null
+    }
   }
 
-  return { term, fit }
+  const disableWebgl = () => {
+    if (!webglAddon) return
+    try {
+      webglAddon.dispose()
+    } catch {
+      // ignore
+    }
+    webglAddon = null
+  }
+
+  return { term, fit, enableWebgl, disableWebgl }
 }

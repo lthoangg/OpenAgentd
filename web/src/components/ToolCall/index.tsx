@@ -119,6 +119,30 @@ function parseJsonStrings(val: unknown): unknown {
 
 const MAX_LIVE_LINES = 100
 
+let liveClockInterval: number | null = null
+const liveClockListeners = new Set<(now: number) => void>()
+
+function subscribeLiveClock(listener: (now: number) => void) {
+  liveClockListeners.add(listener)
+  if (liveClockInterval === null && typeof window !== 'undefined') {
+    const tick = () => {
+      if (typeof document === 'undefined' || !document.hidden) {
+        const timestamp = Date.now()
+        liveClockListeners.forEach((fn) => fn(timestamp))
+      }
+    }
+    liveClockInterval = window.setInterval(tick, 1000)
+    document.addEventListener('visibilitychange', tick)
+  }
+  return () => {
+    liveClockListeners.delete(listener)
+    if (liveClockListeners.size === 0 && liveClockInterval !== null) {
+      window.clearInterval(liveClockInterval)
+      liveClockInterval = null
+    }
+  }
+}
+
 function clampLiveOutput(output: string | undefined): string | undefined {
   if (!output) return undefined
   if (output.length < 50_000) return output
@@ -225,17 +249,9 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
 
   useEffect(() => {
     if (done || !startedAt) return
-    const tick = () => {
-      if (typeof document === 'undefined' || !document.hidden) {
-        setNow(Date.now())
-      }
-    }
-    const id = window.setInterval(tick, 1000)
-    const handleVisibility = () => {
-      if (typeof document === 'undefined' || !document.hidden) setNow(Date.now())
-    }
-    document.addEventListener('visibilitychange', handleVisibility)
-    return () => { window.clearInterval(id); document.removeEventListener('visibilitychange', handleVisibility) }
+    return subscribeLiveClock((currentTime) => {
+      setNow(currentTime)
+    })
   }, [done, startedAt])
 
   const handleScroll = useCallback((e: React.UIEvent<HTMLPreElement>) => {

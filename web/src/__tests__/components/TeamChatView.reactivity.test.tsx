@@ -144,7 +144,9 @@ mock.module('@/components/TeamChatView/useDragDrop', () => ({
 }))
 mock.module('@/utils/workspace', () => ({ workspaceLabel: (workspace: string) => workspace }))
 
-const initialState = useTeamStore.getInitialState()
+const initialState = typeof useTeamStore.getInitialState === 'function'
+  ? useTeamStore.getInitialState()
+  : useTeamStore.getState()
 
 function userBlock(content: string): ContentBlock {
   return { id: `user:${content}`, type: 'user', content, timestamp: new Date() }

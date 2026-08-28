@@ -80,13 +80,14 @@ export function applyTheme(resolved: ResolvedTheme): void {
 }
 
 export function setThemePreference(preference: ThemePreference): void {
+  const key = themeStorageKey()
   try {
-    localStorage.setItem(themeStorageKey(), preference)
+    localStorage.setItem(key, preference)
   } catch {
     // best-effort — still apply class below
   }
   applyTheme(resolveTheme(preference))
-  broadcastMessage({ type: 'theme_changed', preference })
+  broadcastMessage({ type: 'theme_changed', preference, storageKey: key })
 }
 
 /**

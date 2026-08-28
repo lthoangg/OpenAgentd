@@ -1,4 +1,6 @@
 import { afterEach, describe, expect, it } from 'bun:test'
+import { initBroadcastSync } from '@/lib/broadcast-sync'
+import { QueryClient } from '@tanstack/react-query'
 import {
   applyTheme,
   readStoredPreference,
@@ -52,5 +54,27 @@ describe('theme', () => {
     meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"][data-openagentd-theme]')
     expect(meta?.content).toBe('#FAFAFA')
     expect(document.documentElement.classList.contains('light')).toBe(true)
+  })
+
+  it('does not apply broadcast theme changes targeting another window', () => {
+    const queryClient = new QueryClient()
+    const cleanup = initBroadcastSync(queryClient)
+
+    history.replaceState(null, '', '/?oa-app-id=com.openagentd.desktop&oa-window-id=main-2')
+    document.documentElement.dataset.openagentdAppId = 'com.openagentd.desktop'
+    document.documentElement.dataset.openagentdWindowId = 'main-2'
+    applyTheme('dark')
+
+    // Simulate broadcast from window 1
+    const channel = new BroadcastChannel('openagentd-sync')
+    channel.postMessage({
+      type: 'theme_changed',
+      preference: 'light',
+      storageKey: 'oa-theme:com.openagentd.desktop:main',
+    })
+
+    expect(document.documentElement.classList.contains('dark')).toBe(true)
+    channel.close()
+    cleanup()
   })
 })

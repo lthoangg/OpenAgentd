@@ -11,6 +11,7 @@ import { MAX_TEXTAREA_HEIGHT, useTextareaAutosize } from './InputComposer.autosi
 import type { AgentCapabilities } from '@/api/types'
 import { buildAcceptString } from './InputComposer.files'
 import { useInputComposerAttachments } from './InputComposer.attachments'
+import { cn } from '@/lib/utils'
 import { buildHistoryEntries } from './InputComposer.menus'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
@@ -198,6 +199,7 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
   const [localHistory, setLocalHistory] = useState<string[]>([])
   const [historyIndex, setHistoryIndex] = useState(-1)
   const [mentions, setMentions] = useState<string[]>([])
+  const [isComposing, setIsComposing] = useState(false)
 
   /** Last submitted draft, held only until the send is confirmed or restored. */
   const lastSubmissionRef = useRef<{
@@ -719,6 +721,8 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
       <textarea
         ref={setTextareaRef}
         value={value}
+        onCompositionStart={() => setIsComposing(true)}
+        onCompositionEnd={() => setIsComposing(false)}
         onBeforeInput={handleBeforeInput}
         onChange={handleChange}
         onKeyDown={handleKeyDown}
@@ -771,7 +775,10 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
         // positions, so it ends up under the wrong overlay word and drifts
         // further with every scroll. The wrapper around the overlay handles
         // overflow via the overlay's ``overflow-hidden`` + scroll sync.
-        className="block w-full resize-none scrollbar-none overscroll-contain bg-transparent p-0 align-middle text-sm leading-relaxed break-words text-transparent caret-(--color-text) placeholder-(--color-text-subtle) selection:bg-(--color-accent)/30 selection:text-(--color-text) focus:outline-none disabled:opacity-50"
+        className={cn(
+          'block w-full resize-none scrollbar-none overscroll-contain bg-transparent p-0 align-middle text-sm leading-relaxed break-words caret-(--color-text) placeholder-(--color-text-subtle) selection:bg-(--color-accent)/30 selection:text-(--color-text) focus:outline-none disabled:opacity-50',
+          isComposing ? 'text-(--color-text)' : 'text-transparent',
+        )}
         // Cap matches the ``resize()`` ceiling in InputComposer.autosize.ts so the
         // JS-driven height and the CSS limit stay in lockstep.
         style={{ maxHeight: `${MAX_TEXTAREA_HEIGHT}px` }}

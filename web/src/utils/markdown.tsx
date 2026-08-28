@@ -164,12 +164,14 @@ function markClosedStreamingMermaidFences(content: string): string {
 const HighlightedCode = memo(function HighlightedCode({
   code,
   language,
+  isStreaming = false,
 }: {
   code: string
   language?: string
+  isStreaming?: boolean
 }) {
   const content = useMemo((): React.ReactNode => {
-    if (!language || language === 'plaintext') {
+    if (!language || language === 'plaintext' || isStreaming) {
       return code
     }
     const tokens = tokenizeCode(code, language)
@@ -185,7 +187,7 @@ const HighlightedCode = memo(function HighlightedCode({
         token.value
       ),
     )
-  }, [code, language])
+  }, [code, language, isStreaming])
 
   return (
     <CodeBlock language={language} rawText={code}>
@@ -521,7 +523,7 @@ export const MarkdownBlock = memo(function MarkdownBlock({
         if (normalizedLanguage === 'math' || normalizedLanguage === 'katex') {
           return <MathBlock math={codeText} />
         }
-        return <HighlightedCode code={codeText} language={language} />
+        return <HighlightedCode code={codeText} language={language} isStreaming={isStreaming} />
       },
       'math-block': (props: React.HTMLAttributes<HTMLElement> & { 'data-math'?: string }) => (
         <MathBlock math={props['data-math'] ?? ''} />

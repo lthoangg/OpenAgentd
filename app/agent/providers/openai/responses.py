@@ -278,16 +278,11 @@ class ResponsesHandler:
     def _extract_call_id_and_name(self, event: dict[str, Any]) -> tuple[str, str]:
         """Pull the tool-call ID and (optional) function name from a streaming event.
 
-        Default behaviour follows the canonical OpenAI Responses wire format:
-        ``item_id`` carries the stable tool-call ID (prefix ``fc_``) and the
-        function ``name`` is *only* delivered via ``response.output_item.added``
-        events — never inline on ``function_call_arguments.delta`` / ``done``.
-
-        Subclasses override this hook when their gateway diverges from the
-        canonical shape (e.g. GitHub Copilot uses ``call_id`` and embeds
-        ``name`` directly on argument-stream events).
+        Extracts ``call_id`` or ``item_id`` from the event, along with an
+        optional inline function ``name``.
         """
-        return event.get("item_id", ""), ""
+        call_id = event.get("call_id") or event.get("item_id", "")
+        return call_id, event.get("name", "")
 
     def on_response_headers(self, headers: Any) -> None:
         """Hook: read routing/state headers off a response. No-op by default.
@@ -440,9 +435,13 @@ class ResponsesHandler:
     async def _parse_stream(self, response: Any) -> AsyncIterator[ChatCompletionChunk]:
         """Parse SSE stream from /responses API into ChatCompletionChunk objects."""
         response_id = ""
+        # Maps raw ID / alias (e.g. item_id, call_id) to canonical call_id
+        id_to_canonical: dict[str, str] = {}
+        # Maps output_index to canonical call_id
+        index_to_canonical: dict[int, str] = {}
         current_tool_call_index = -1
-        tool_call_map: dict[str, int] = {}  # item_id -> index
-        tool_names: dict[str, str] = {}  # item_id -> function_name
+        tool_call_map: dict[str, int] = {}  # canonical call_id -> index
+        tool_names: dict[str, str] = {}  # item_id / call_id -> function_name
         # Me: OpenAI /responses streams both delta events (partial args) AND
         # a final .done event (complete args).  The assembler in streaming.py
         # appends every arguments fragment it receives, so emitting the full
@@ -459,6 +458,33 @@ class ResponsesHandler:
         # Track part boundaries via ``reasoning_summary_part.added`` and
         # inject a blank line before every part except the first.
         reasoning_parts_seen = 0
+
+        def _resolve_tool_id(ev: dict[str, Any]) -> tuple[str, str]:
+            raw_call = ev.get("call_id", "")
+            raw_item = ev.get("item_id", "")
+            out_idx = ev.get("output_index")
+            ext_id, inline_n = self._extract_call_id_and_name(ev)
+
+            canon_id = (
+                id_to_canonical.get(raw_call)
+                or id_to_canonical.get(raw_item)
+                or id_to_canonical.get(ext_id)
+                or (index_to_canonical.get(out_idx) if out_idx is not None else None)
+                or ext_id
+                or raw_call
+                or raw_item
+                or (f"call_{out_idx}" if out_idx is not None else "")
+            )
+            if canon_id:
+                if raw_call:
+                    id_to_canonical[raw_call] = canon_id
+                if raw_item:
+                    id_to_canonical[raw_item] = canon_id
+                if ext_id:
+                    id_to_canonical[ext_id] = canon_id
+                if out_idx is not None:
+                    index_to_canonical[out_idx] = canon_id
+            return canon_id, inline_n
 
         async for line in response.aiter_lines():
             line = line.strip()
@@ -484,11 +510,28 @@ class ResponsesHandler:
             elif etype == "response.output_item.added":
                 # Capture function name from the item header event
                 item = event.get("item", {})
-                item_id = item.get("id", "")
-                if item.get("type") == "function_call" and item_id:
+                if item.get("type") == "function_call":
+                    out_idx = event.get("output_index")
+                    item_id = item.get("id", "")
+                    item_call_id = item.get("call_id", "")
                     fn_name = item.get("name", "")
+                    canon_id = (
+                        item_call_id
+                        or item_id
+                        or (f"call_{out_idx}" if out_idx is not None else "")
+                    )
+                    if item_id:
+                        id_to_canonical[item_id] = canon_id
+                    if item_call_id:
+                        id_to_canonical[item_call_id] = canon_id
+                    if out_idx is not None:
+                        index_to_canonical[out_idx] = canon_id
                     if fn_name:
-                        tool_names[item_id] = fn_name
+                        tool_names[canon_id] = fn_name
+                        if item_id:
+                            tool_names[item_id] = fn_name
+                        if item_call_id:
+                            tool_names[item_call_id] = fn_name
 
             elif etype == "response.output_item.done":
                 # Me: the completed reasoning item carries `encrypted_content`
@@ -574,20 +617,20 @@ class ResponsesHandler:
                 self._raise_response_failed(event, response)
 
             elif etype == "response.function_call_arguments.delta":
-                # item_id is the stable tool call ID (prefix: fc_)
-                call_id, inline_name = self._extract_call_id_and_name(event)
+                call_id, inline_name = _resolve_tool_id(event)
                 args_delta = event.get("delta", "")
 
                 first_delta = call_id not in tool_call_map
                 if first_delta:
                     current_tool_call_index += 1
                     tool_call_map[call_id] = current_tool_call_index
-                if inline_name and call_id and call_id not in tool_names:
-                    tool_names[call_id] = inline_name
+                fn_name = inline_name or tool_names.get(call_id, "")
+                if fn_name and call_id and call_id not in tool_names:
+                    tool_names[call_id] = fn_name
                 tool_had_deltas.add(call_id)
 
                 idx = tool_call_map[call_id]
-                emit_name = inline_name if first_delta and inline_name else None
+                emit_name = fn_name if (first_delta and fn_name) else None
 
                 yield ChatCompletionChunk(
                     id=response_id,
@@ -614,7 +657,7 @@ class ResponsesHandler:
                 )
 
             elif etype == "response.function_call_arguments.done":
-                call_id, inline_name = self._extract_call_id_and_name(event)
+                call_id, inline_name = _resolve_tool_id(event)
                 fn_name = inline_name or tool_names.get(call_id, "")
                 fn_args = event.get("arguments", "{}")
 

@@ -488,6 +488,72 @@ class TestResponsesStreaming:
         assert chunks[1].choices[0].delta.tool_calls[0].index == 1
         assert chunks[1].choices[0].delta.tool_calls[0].id == "fc_2"
 
+    async def test_parse_stream_parallel_tool_calls_with_mismatched_item_and_call_ids(
+        self, handler
+    ):
+        """When output_item.added binds item_id to call_id, deltas using item_id
+        and done events using call_id must map to the same tool-call slot."""
+        lines = [
+            "event: response.created",
+            'data: {"type": "response.created", "response": {"id": "resp_123"}}',
+            "event: response.output_item.added",
+            'data: {"type": "response.output_item.added", "output_index": 0, "item": {"id": "item_0", "call_id": "call_0", "type": "function_call", "name": "read"}}',
+            "event: response.output_item.added",
+            'data: {"type": "response.output_item.added", "output_index": 1, "item": {"id": "item_1", "call_id": "call_1", "type": "function_call", "name": "glob"}}',
+            "event: response.output_item.added",
+            'data: {"type": "response.output_item.added", "output_index": 2, "item": {"id": "item_2", "call_id": "call_2", "type": "function_call", "name": "grep"}}',
+            "event: response.function_call_arguments.delta",
+            'data: {"type": "response.function_call_arguments.delta", "item_id": "item_0", "delta": "{\\"path\\": \\"README.md\\"}"}',
+            "event: response.function_call_arguments.delta",
+            'data: {"type": "response.function_call_arguments.delta", "item_id": "item_1", "delta": "{\\"pattern\\": \\"*.md\\"}"}',
+            "event: response.function_call_arguments.delta",
+            'data: {"type": "response.function_call_arguments.delta", "item_id": "item_2", "delta": "{\\"pattern\\": \\"make test\\"}"}',
+            "event: response.function_call_arguments.done",
+            'data: {"type": "response.function_call_arguments.done", "call_id": "call_0", "arguments": "{\\"path\\": \\"README.md\\"}"}',
+            "event: response.function_call_arguments.done",
+            'data: {"type": "response.function_call_arguments.done", "call_id": "call_1", "arguments": "{\\"pattern\\": \\"*.md\\"}"}',
+            "event: response.function_call_arguments.done",
+            'data: {"type": "response.function_call_arguments.done", "call_id": "call_2", "arguments": "{\\"pattern\\": \\"make test\\"}"}',
+            "event: response.completed",
+            'data: {"type": "response.completed", "response": {"id": "resp_123", "usage": {"input_tokens": 10, "output_tokens": 5, "total_tokens": 15}}}',
+        ]
+
+        async def async_iter_lines():
+            for line in lines:
+                yield line
+
+        response = MagicMock()
+        response.aiter_lines = lambda: async_iter_lines()
+
+        chunks = []
+        async for chunk in handler._parse_stream(response):
+            chunks.append(chunk)
+
+        # 3 delta chunks + 3 done chunks + 1 usage chunk
+        assert len(chunks) == 7
+        # Deltas have indices 0, 1, 2 and carry the function name
+        assert chunks[0].choices[0].delta.tool_calls[0].index == 0
+        assert chunks[0].choices[0].delta.tool_calls[0].id == "call_0"
+        assert chunks[0].choices[0].delta.tool_calls[0].function.name == "read"
+        assert chunks[1].choices[0].delta.tool_calls[0].index == 1
+        assert chunks[1].choices[0].delta.tool_calls[0].id == "call_1"
+        assert chunks[1].choices[0].delta.tool_calls[0].function.name == "glob"
+        assert chunks[2].choices[0].delta.tool_calls[0].index == 2
+        assert chunks[2].choices[0].delta.tool_calls[0].id == "call_2"
+        assert chunks[2].choices[0].delta.tool_calls[0].function.name == "grep"
+
+        # Done events must reuse indices 0, 1, 2, not allocate 3, 4, 5
+        assert chunks[3].choices[0].delta.tool_calls[0].index == 0
+        assert chunks[3].choices[0].delta.tool_calls[0].id == "call_0"
+        assert chunks[3].choices[0].delta.tool_calls[0].function.name == "read"
+        assert (
+            chunks[3].choices[0].delta.tool_calls[0].function.arguments is None
+        )  # suppressed
+        assert chunks[4].choices[0].delta.tool_calls[0].index == 1
+        assert chunks[4].choices[0].delta.tool_calls[0].id == "call_1"
+        assert chunks[5].choices[0].delta.tool_calls[0].index == 2
+        assert chunks[5].choices[0].delta.tool_calls[0].id == "call_2"
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Test OpenAIProvider routing

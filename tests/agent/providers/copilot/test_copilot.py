@@ -1013,6 +1013,106 @@ async def test_stream_responses_completed_usage():
 
 
 @respx.mock
+async def test_stream_responses_parallel_tool_calls():
+    """Verify parallel tool calls via Copilot's /responses endpoint resolve
+    without duplicating buffer slots or dropping function names."""
+    p = _make_provider(model="gpt-5.3-codex")
+    body = _responses_sse(
+        {"type": "response.created", "response": {"id": "resp_1"}},
+        {
+            "type": "response.output_item.added",
+            "output_index": 0,
+            "item": {
+                "id": "item_0",
+                "call_id": "call_0",
+                "type": "function_call",
+                "name": "read",
+            },
+        },
+        {
+            "type": "response.output_item.added",
+            "output_index": 1,
+            "item": {
+                "id": "item_1",
+                "call_id": "call_1",
+                "type": "function_call",
+                "name": "glob",
+            },
+        },
+        {
+            "type": "response.output_item.added",
+            "output_index": 2,
+            "item": {
+                "id": "item_2",
+                "call_id": "call_2",
+                "type": "function_call",
+                "name": "grep",
+            },
+        },
+        {
+            "type": "response.function_call_arguments.delta",
+            "item_id": "item_0",
+            "delta": '{"path": "README.md"}',
+        },
+        {
+            "type": "response.function_call_arguments.delta",
+            "item_id": "item_1",
+            "delta": '{"pattern": "*.md"}',
+        },
+        {
+            "type": "response.function_call_arguments.delta",
+            "item_id": "item_2",
+            "delta": '{"pattern": "make test"}',
+        },
+        {
+            "type": "response.function_call_arguments.done",
+            "call_id": "call_0",
+            "arguments": '{"path": "README.md"}',
+        },
+        {
+            "type": "response.function_call_arguments.done",
+            "call_id": "call_1",
+            "arguments": '{"pattern": "*.md"}',
+        },
+        {
+            "type": "response.function_call_arguments.done",
+            "call_id": "call_2",
+            "arguments": '{"pattern": "make test"}',
+        },
+        {"type": "response.completed", "response": {"id": "resp_1"}},
+    )
+    respx.post(_RESPONSES_URL).mock(return_value=httpx.Response(200, content=body))
+
+    from app.agent.agent_loop.streaming import stream_and_assemble
+    from app.agent.state import AgentState, ModelRequest, RunContext
+
+    message, _ = await stream_and_assemble(
+        req=ModelRequest(messages=(), system_prompt=""),
+        ctx=RunContext(session_id="s1", run_id="r1", agent_name="agent"),
+        state=AgentState(messages=[]),
+        hooks=[],
+        interrupt_event=None,
+        tool_defs=[],
+        primary_provider=p,
+        primary_label="copilot:gpt-5.3-codex",
+        agent_name="agent",
+        agent_id="agent",
+    )
+
+    assert message.tool_calls is not None
+    assert len(message.tool_calls) == 3
+    assert message.tool_calls[0].id == "call_0"
+    assert message.tool_calls[0].function.name == "read"
+    assert message.tool_calls[0].function.arguments == '{"path": "README.md"}'
+    assert message.tool_calls[1].id == "call_1"
+    assert message.tool_calls[1].function.name == "glob"
+    assert message.tool_calls[1].function.arguments == '{"pattern": "*.md"}'
+    assert message.tool_calls[2].id == "call_2"
+    assert message.tool_calls[2].function.name == "grep"
+    assert message.tool_calls[2].function.arguments == '{"pattern": "make test"}'
+
+
+@respx.mock
 async def test_stream_responses_http_error():
     p = _make_provider(model="gpt-5.4")
     respx.post(_RESPONSES_URL).mock(

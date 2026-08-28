@@ -244,10 +244,6 @@ class _CopilotResponsesHandler(ResponsesHandler):
             headers["Copilot-Vision-Request"] = "true"
         return headers
 
-    def _extract_call_id_and_name(self, event: dict[str, Any]) -> tuple[str, str]:
-        call_id = event.get("item_id") or event.get("call_id", "")
-        return call_id, event.get("name", "")
-
 
 class CopilotProvider(OpenAIProvider):
     """GitHub Copilot provider (OpenAI-compatible)."""

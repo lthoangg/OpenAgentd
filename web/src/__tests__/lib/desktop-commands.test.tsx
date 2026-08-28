@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, mock } from 'bun:test'
 import { render, waitFor } from '@testing-library/react'
 
+import { router } from '@/router'
 import { useDesktopCommands } from '@/lib/desktop-commands'
 import { useUIStore } from '@/stores/useUIStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
@@ -152,6 +153,21 @@ describe('useDesktopCommands', () => {
       expect(openSettings).toHaveBeenCalledWith('providers')
     } finally {
       useSettingsStore.setState({ openSettings: originalOpenSettings })
+    }
+  })
+
+  it('navigates to /coding when the coding command is emitted', async () => {
+    const originalNavigate = router.navigate
+    const navigate = mock(async () => {})
+    router.navigate = navigate as typeof router.navigate
+    try {
+      await renderBridge()
+
+      listener?.({ payload: 'coding' })
+
+      expect(navigate).toHaveBeenCalledWith({ to: '/coding' })
+    } finally {
+      router.navigate = originalNavigate
     }
   })
 

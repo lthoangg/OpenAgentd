@@ -103,6 +103,9 @@ pub async fn get_tray_usage_summary(
     let mut available_urls = std::collections::HashSet::new();
     while let Some(res) = join_set.join_next().await {
         if let Ok((url, true)) = res {
+            if let Ok(norm) = crate::config::normalize_external_base_url(&url) {
+                available_urls.insert(norm);
+            }
             available_urls.insert(url);
         }
     }
@@ -112,22 +115,26 @@ pub async fn get_tray_usage_summary(
         let target_label = state.active_window_label.lock().unwrap().clone();
         let external_map = state.window_backend_base_urls.lock().unwrap().clone();
         if let Some(base) = external_map.get(&target_label).or_else(|| external_map.get(crate::window::MAIN_WINDOW)) {
-            if available_urls.contains(base) {
+            let norm_base = crate::config::normalize_external_base_url(base).unwrap_or_else(|_| base.clone());
+            if available_urls.contains(base) || available_urls.contains(&norm_base) {
                 let name = crate::usage::resolve_server_display_name(base, &saved_config.servers);
                 (name, base.clone())
             } else if sidecar_alive {
                 ("Local Bundled".to_string(), "bundled".to_string())
             } else {
-                ("No Server Connected".to_string(), "auto".to_string())
+                let name = crate::usage::resolve_server_display_name(base, &saved_config.servers);
+                (name, base.clone())
             }
         } else if let Some(ref base) = saved_config.active_base_url {
-            if available_urls.contains(base) {
+            let norm_base = crate::config::normalize_external_base_url(base).unwrap_or_else(|_| base.clone());
+            if available_urls.contains(base) || available_urls.contains(&norm_base) {
                 let name = crate::usage::resolve_server_display_name(base, &saved_config.servers);
                 (name, base.clone())
             } else if sidecar_alive {
                 ("Local Bundled".to_string(), "bundled".to_string())
             } else {
-                ("No Server Connected".to_string(), "auto".to_string())
+                let name = crate::usage::resolve_server_display_name(base, &saved_config.servers);
+                (name, base.clone())
             }
         } else if sidecar_alive {
             ("Local Bundled".to_string(), "bundled".to_string())

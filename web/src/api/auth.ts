@@ -40,7 +40,14 @@ function normalizeAccessKeyScope(baseUrl: string | undefined): string | null {
   const trimmed = baseUrl?.trim()
   if (!trimmed) return null
   try {
-    const parsed = new URL(trimmed, window.location.origin)
+    const base = typeof window !== 'undefined' ? apiBaseUrl() : undefined
+    const fallbackOrigin =
+      base && base.startsWith('http')
+        ? base
+        : typeof window !== 'undefined'
+          ? window.location.origin
+          : 'http://127.0.0.1'
+    const parsed = new URL(trimmed, fallbackOrigin)
     return parsed.origin
   } catch {
     return null
@@ -331,5 +338,9 @@ export function withTokenParam(url: string): string {
 
 export function isDesktopMode(): boolean {
   if (typeof window === 'undefined') return false
-  return window[TOKEN_KEY] !== undefined || Boolean(window.localStorage.getItem(ACCESS_KEY_STORAGE))
+  return (
+    window[TOKEN_KEY] !== undefined ||
+    nativeAccessKeys.size > 0 ||
+    Boolean(window.localStorage.getItem(ACCESS_KEY_STORAGE))
+  )
 }

@@ -189,7 +189,6 @@ export function TeamChatView({ sessionId, workspace = null, codingSessionLoading
     leadRevertedCount,
     leadRevertedMessages,
     leadHasVisibleBlocks,
-
     leadPromptTokens,
     leadCompletionTokens,
     leadCachedTokens,
@@ -306,7 +305,6 @@ export function TeamChatView({ sessionId, workspace = null, codingSessionLoading
     workspace,
     enabled: fileRefsEnabled && Boolean(workspace),
   })
-
 
   const headerTokens = {
     input: leadPromptTokens,

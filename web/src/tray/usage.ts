@@ -56,6 +56,21 @@ export interface TrayUsageSummary {
   cached: boolean
 }
 
+export interface TrayServerOption {
+  id: string
+  name: string
+  detail?: string | null
+}
+
+export interface TrayUsageResult {
+  summary?: TrayUsageSummary | null
+  server_name: string
+  server_id: string
+  servers: TrayServerOption[]
+  selected_server_id: string
+  error?: string | null
+}
+
 export type MeterTone = 'ok' | 'warn' | 'crit'
 
 /** Same thresholds as the native badge: <70 ok, 70-89 warn, >=90 critical. */

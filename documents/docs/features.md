@@ -191,7 +191,9 @@ run from the terminal.
     which tracks usage consumed — so e.g. 1h into a 5h window places the
     tick at 20%. It reads the same polled usage cache and keeps the
     critical-badge and notification logic; Windows/Linux keep the native
-    tray menu.
+    tray menu. The header features a server selector dropdown `[v2.7.0]` that
+    allows inspecting usage across local and remote connected backends
+    with live reachability filtering.
   - **Settings → Providers usage panel redesign** `[v1.94.0]` — the
     per-provider "Usage" card in Settings → Providers (`UsagePanel.tsx`)
     was restyled after CodexBar's menu-bar popover: a bold label per limit
@@ -220,6 +222,9 @@ run from the terminal.
   now targets its "backend ready" notification at the switching window only,
   and the frontend listens for it on a per-window channel instead of the
   app-wide broadcast channel it was previously (incorrectly) using `[v1.99.1]`.
+  Desktop windows now operate as symmetric peer windows `[v2.7.0]`: closing
+  any window destroys its webview and frees memory immediately, while clicking
+  the Dock icon or tray reopen action spawns a clean window when none are open.
   - **Hold Command + click session to open in new window** `[v1.62.1, v1.64.1]` — in the desktop app, holding `Cmd` (macOS) or `Ctrl/Cmd` (Linux) and clicking a session in either sidebar opens that session directly in a new independent desktop window; failures now surface an in-app error toast instead of silently doing nothing.
 - **Editable session titles** `[v1.27.0]` — double-click a session card or use its
   edit affordance in the sidebar to rename saved sessions.

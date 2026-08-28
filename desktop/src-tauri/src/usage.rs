@@ -114,6 +114,52 @@ pub struct UsageSummaryBody {
     pub cached: bool,
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+pub struct TrayServerOption {
+    pub id: String,
+    pub name: String,
+    #[serde(default)]
+    pub detail: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+pub struct TrayUsageResult {
+    pub summary: Option<UsageSummaryBody>,
+    pub server_name: String,
+    pub server_id: String,
+    pub servers: Vec<TrayServerOption>,
+    pub selected_server_id: String,
+    #[serde(default)]
+    pub error: Option<String>,
+}
+
+pub fn extract_host_port(base_url: &str) -> String {
+    let trimmed = base_url.trim();
+    let without_scheme = if let Some(stripped) = trimmed.strip_prefix("https://") {
+        stripped
+    } else if let Some(stripped) = trimmed.strip_prefix("http://") {
+        stripped
+    } else {
+        trimmed
+    };
+    without_scheme.trim_end_matches('/').to_string()
+}
+
+pub fn resolve_server_display_name(base_url: &str, servers: &[crate::config::SavedAppServer]) -> String {
+    let trimmed = base_url.trim().trim_end_matches('/');
+    for server in servers {
+        if server.base_url.trim().trim_end_matches('/') == trimmed {
+            if let Some(ref name) = server.name {
+                let name_trimmed = name.trim();
+                if !name_trimmed.is_empty() {
+                    return name_trimmed.to_string();
+                }
+            }
+        }
+    }
+    extract_host_port(base_url)
+}
+
 const FETCH_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Process-wide HTTP client shared by every usage poll. Building a
@@ -134,6 +180,15 @@ pub fn shared_client() -> &'static reqwest::Client {
             .build()
             .unwrap_or_default()
     })
+}
+
+pub async fn is_server_available(base_url: &str) -> bool {
+    let client = shared_client();
+    let url = format!("{}/api/health/live", base_url.trim_end_matches('/'));
+    match client.get(&url).timeout(Duration::from_millis(600)).send().await {
+        Ok(res) => res.status().is_success(),
+        Err(_) => false,
+    }
 }
 
 /// Fetch the aggregate usage summary from the local (or configured
@@ -1486,5 +1541,35 @@ mod tests {
         let rows = format_item_rows(&item_ok("codex", "OpenAI Codex", 42.0, Some(2_000)), 1_000, 3);
         assert_eq!(rows.len(), 1);
         assert!(!rows[0].text.contains(SPEND_LABEL), "{}", rows[0].text);
+    }
+
+    #[test]
+    fn extract_host_port_handles_http_and_https_and_slashes() {
+        assert_eq!(extract_host_port("http://192.168.1.10:4082/"), "192.168.1.10:4082");
+        assert_eq!(extract_host_port("https://api.example.com"), "api.example.com");
+        assert_eq!(extract_host_port("localhost:8000"), "localhost:8000");
+    }
+
+    #[test]
+    fn resolve_server_display_name_prefers_friendly_name_then_host_port() {
+        let servers = vec![
+            crate::config::SavedAppServer {
+                base_url: "http://192.168.1.10:4082".to_string(),
+                name: Some("Mac Studio".to_string()),
+            },
+            crate::config::SavedAppServer {
+                base_url: "http://10.0.0.5:8000".to_string(),
+                name: None,
+            },
+        ];
+        assert_eq!(resolve_server_display_name("http://192.168.1.10:4082", &servers), "Mac Studio");
+        assert_eq!(resolve_server_display_name("http://192.168.1.10:4082/", &servers), "Mac Studio");
+        assert_eq!(resolve_server_display_name("http://10.0.0.5:8000", &servers), "10.0.0.5:8000");
+        assert_eq!(resolve_server_display_name("http://192.168.1.99:5000", &servers), "192.168.1.99:5000");
+    }
+
+    #[tokio::test]
+    async fn is_server_available_returns_false_for_unreachable_endpoint() {
+        assert!(!is_server_available("http://127.0.0.1:59999").await);
     }
 }

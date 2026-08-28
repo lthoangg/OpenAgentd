@@ -111,8 +111,10 @@ pub fn show_desktop_notification(
                 }
                 show_main_window(&app);
                 if payload.session_id.is_some() {
-                    if let Err(error) = app.emit_to(MAIN_WINDOW, "desktop-notification-clicked", payload) {
-                        log::warn!("desktop_notification_click_emit_failed error={error:#}");
+                    if let Some(target) = crate::window::target_webview_window(&app) {
+                        if let Err(error) = app.emit_to(target.label(), "desktop-notification-clicked", payload) {
+                            log::warn!("desktop_notification_click_emit_failed error={error:#}");
+                        }
                     }
                 }
             }),

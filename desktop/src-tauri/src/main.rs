@@ -29,7 +29,7 @@ use tokio::sync::Mutex;
 use crate::sidecar::Sidecar;
 use crate::config::{load_app_backend_config, save_window_state};
 use crate::window::{
-    build_app_window, backend_unavailable_init_script, MAIN_WINDOW, SECONDARY_WINDOW_PREFIX, THROTTLE_PAUSE_SCRIPT,
+    build_app_window, backend_unavailable_init_script, MAIN_WINDOW, SECONDARY_WINDOW_PREFIX,
     ZOOM_DEFAULT, show_main_window, target_webview_window, frontend_init_script,
     show_target_window,
 };
@@ -686,12 +686,8 @@ fn main() {
                 let state: tauri::State<'_, AppState> = app.state();
                 if !state.quitting.load(Ordering::SeqCst) {
                     api.prevent_close();
-                    if label == MAIN_WINDOW {
-                        if let Some(window) = app.get_webview_window(MAIN_WINDOW) {
-                            let _ = window.eval(THROTTLE_PAUSE_SCRIPT);
-                            let _ = window.hide();
-                        }
-                    } else if let Some(window) = app.get_webview_window(label.as_str()) {
+                    if let Some(window) = app.get_webview_window(label.as_str()) {
+                        let _ = save_window_state(app, &window);
                         let _ = window.destroy();
                         state
                             .window_backend_base_urls
@@ -703,7 +699,13 @@ fn main() {
                             .lock()
                             .unwrap()
                             .remove(label.as_str());
-                        *state.active_window_label.lock().unwrap() = MAIN_WINDOW.to_string();
+                        let remaining = app
+                            .webview_windows()
+                            .into_iter()
+                            .find(|(k, _)| k != label.as_str() && k != crate::tray_popup::TRAY_POPUP_WINDOW)
+                            .map(|(k, _)| k)
+                            .unwrap_or_else(|| MAIN_WINDOW.to_string());
+                        *state.active_window_label.lock().unwrap() = remaining;
                     }
                 }
             }
@@ -712,7 +714,7 @@ fn main() {
                 has_visible_windows: _,
                 ..
             } => {
-                show_main_window(app);
+                show_target_window(app);
             }
             RunEvent::ExitRequested { .. } => {
                 let state: tauri::State<'_, AppState> = app.state();

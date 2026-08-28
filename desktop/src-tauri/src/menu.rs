@@ -571,7 +571,7 @@ pub fn reveal_backend_log(app: &AppHandle) {
 /// Load the saved access key for an external backend without exposing it in
 /// the tray's state or logs. A credential-store failure leaves the request
 /// unauthenticated; the backend response remains the source of truth.
-fn external_usage_access_key(
+pub(crate) fn external_usage_access_key(
     base_url: &str,
     load: impl FnOnce(String) -> std::result::Result<Option<String>, String>,
 ) -> Option<String> {
@@ -589,17 +589,24 @@ fn external_usage_access_key(
 /// server if one is configured, otherwise the bundled sidecar (with its
 /// desktop session token). Returns ``None`` while the backend hasn't
 /// finished starting yet.
-async fn resolve_backend_endpoint(app: &AppHandle) -> Option<(String, Option<String>)> {
+pub(crate) async fn resolve_backend_endpoint(app: &AppHandle) -> Option<(String, Option<String>)> {
     let state: tauri::State<'_, AppState> = app.state();
-    if let Some(base) = state
-        .window_backend_base_urls
-        .lock()
-        .unwrap()
-        .get(crate::window::MAIN_WINDOW)
+    let target_label = state.active_window_label.lock().unwrap().clone();
+    let external_map = state.window_backend_base_urls.lock().unwrap().clone();
+    if let Some(base) = external_map
+        .get(&target_label)
+        .or_else(|| external_map.get(crate::window::MAIN_WINDOW))
         .cloned()
     {
         let access_key = external_usage_access_key(&base, crate::commands::secure_get_access_key);
         return Some((base, access_key));
+    }
+    if let Some(active_base) = crate::config::load_app_backend_config(app)
+        .ok()
+        .and_then(|c| c.active_base_url)
+    {
+        let access_key = external_usage_access_key(&active_base, crate::commands::secure_get_access_key);
+        return Some((active_base, access_key));
     }
     let base = state.backend_base_url.lock().await.clone()?;
     let token = state.desktop_token.lock().await.clone();

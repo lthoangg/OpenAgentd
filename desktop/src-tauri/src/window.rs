@@ -25,14 +25,6 @@ try {
     document.dispatchEvent(new Event('visibilitychange'));
 } catch (_) {}
 "#;
-
-pub const THROTTLE_PAUSE_SCRIPT: &str = r#"
-try {
-    document.documentElement.setAttribute('data-app-hidden', 'true');
-    document.dispatchEvent(new Event('visibilitychange'));
-} catch (_) {}
-"#;
-
 /// Apply platform-specific window chrome.
 ///
 /// macOS uses an overlay title-bar; the React app reserves a 70 pt left
@@ -59,12 +51,7 @@ pub fn configure_window_chrome(
 }
 
 pub fn show_main_window(app: &AppHandle) {
-    if let Some(window) = app.get_webview_window(MAIN_WINDOW) {
-        let _ = window.unminimize();
-        let _ = window.show();
-        let _ = window.set_focus();
-        let _ = window.eval(THROTTLE_RESUME_SCRIPT);
-    }
+    show_target_window(app);
 }
 
 pub fn target_webview_window(app: &AppHandle) -> Option<tauri::WebviewWindow> {
@@ -84,8 +71,17 @@ pub fn target_webview_window(app: &AppHandle) -> Option<tauri::WebviewWindow> {
     }
     let state: tauri::State<'_, AppState> = app.state();
     let label = state.active_window_label.lock().unwrap().clone();
-    app.get_webview_window(&label)
-        .or_else(|| app.get_webview_window(MAIN_WINDOW))
+    if let Some(window) = app.get_webview_window(&label) {
+        if window.label() != crate::tray_popup::TRAY_POPUP_WINDOW {
+            return Some(window);
+        }
+    }
+    if let Some(window) = app.get_webview_window(MAIN_WINDOW) {
+        return Some(window);
+    }
+    app.webview_windows().into_values().find(|window| {
+        window.label() != crate::tray_popup::TRAY_POPUP_WINDOW
+    })
 }
 
 pub fn focused_webview_window(app: &AppHandle) -> Option<tauri::WebviewWindow> {
@@ -101,7 +97,12 @@ pub fn show_target_window(app: &AppHandle) {
         let _ = window.set_focus();
         let _ = window.eval(THROTTLE_RESUME_SCRIPT);
     } else {
-        show_main_window(app);
+        let handle = app.clone();
+        tauri::async_runtime::spawn(async move {
+            if let Err(e) = create_app_window(&handle, None, None).await {
+                log::error!("failed to create app window: {e:#}");
+            }
+        });
     }
 }
 
@@ -208,6 +209,9 @@ pub fn new_window_init_script(
 }
 
 pub fn next_window_label(app: &AppHandle) -> String {
+    if app.get_webview_window(MAIN_WINDOW).is_none() {
+        return MAIN_WINDOW.to_string();
+    }
     for i in 2.. {
         let label = format!("{SECONDARY_WINDOW_PREFIX}{i}");
         if app.get_webview_window(&label).is_none() {

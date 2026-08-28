@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useState } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
-import { RefreshCw } from 'lucide-react'
+import { Check, ChevronDown, RefreshCw, Server } from 'lucide-react'
 import {
   type MeterTone,
   type TrayUsageItem,
   type TrayUsageLimit,
   type TrayUsageWindow,
   type TrayUsageSummary,
+  type TrayUsageResult,
   clampPercent,
   formatAmount,
   formatCheckedAt,
@@ -247,22 +248,29 @@ const STATUS_LABEL: Record<StatusTone, string> = {
 }
 
 export function TrayPopup() {
-  const [summary, setSummary] = useState<TrayUsageSummary | null>(null)
+  const [usageResult, setUsageResult] = useState<TrayUsageResult | null>(null)
+  const [selectedServer, setSelectedServer] = useState<string>('auto')
+  const [menuOpen, setMenuOpen] = useState(false)
   const [status, setStatus] = useState<StatusTone>('loading')
   const [error, setError] = useState<string | null>(null)
   const [refreshing, setRefreshing] = useState(false)
 
-  const load = useCallback(async (force = false) => {
+  const load = useCallback(async (force = false, targetServer?: string) => {
     try {
-      const data = await invoke<TrayUsageSummary | null>(USAGE_COMMAND, { force })
-      setSummary(data)
-      setError(null)
-      setStatus(deriveStatus(data))
+      const serverToQuery = targetServer ?? selectedServer
+      const data = await invoke<TrayUsageResult>(USAGE_COMMAND, { force, targetServer: serverToQuery })
+      setUsageResult(data)
+      if (data.error) {
+        setError(data.error)
+      } else {
+        setError(null)
+      }
+      setStatus(deriveStatus(data.summary ?? null))
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
       setStatus((prev) => (prev === 'loading' ? 'ok' : prev))
     }
-  }, [])
+  }, [selectedServer])
 
   useEffect(() => {
     void load()
@@ -272,6 +280,17 @@ export function TrayPopup() {
     })()
     return () => unlisten?.()
   }, [load])
+
+  useEffect(() => {
+    if (!menuOpen) return
+    const handleClickOutside = (e: MouseEvent) => {
+      if (!(e.target as HTMLElement).closest('.server-selector-container')) {
+        setMenuOpen(false)
+      }
+    }
+    document.addEventListener('pointerdown', handleClickOutside)
+    return () => document.removeEventListener('pointerdown', handleClickOutside)
+  }, [menuOpen])
 
   const runAction = (action: string) => {
     void invoke(ACTION_COMMAND, { action })
@@ -283,9 +302,12 @@ export function TrayPopup() {
     void load(true).finally(() => setRefreshing(false))
   }
 
+  const summary = usageResult?.summary
   const footer = error
     ? `Refresh failed: ${error}`
     : formatCheckedAt(summary?.checked_at ?? 0) ?? 'Not checked yet'
+
+  const hasMultipleServers = Boolean(usageResult?.servers && usageResult.servers.length > 1)
 
   return (
     <div className="tray">
@@ -299,16 +321,62 @@ export function TrayPopup() {
       <div className="usage">
         <div className="usage-head">
           <p className="section-label">Usage Limits</p>
-          <button
-            type="button"
-            className="refresh"
-            onClick={handleRefresh}
-            disabled={refreshing}
-            aria-label="Refresh usage"
-            title="Refresh usage"
-          >
-            <RefreshCw size={13} strokeWidth={2} className={refreshing ? 'spin' : undefined} />
-          </button>
+          <div className="usage-controls">
+            <div className="server-selector-container">
+              <button
+                type="button"
+                className="server-selector-trigger"
+                data-open={menuOpen}
+                data-interactive={hasMultipleServers}
+                onClick={() => hasMultipleServers && setMenuOpen((open) => !open)}
+                aria-expanded={menuOpen}
+                title={usageResult?.server_name || 'Select server'}
+              >
+                <Server size={11} className="server-icon" />
+                <span className="server-name">{usageResult?.server_name || 'Local'}</span>
+                {hasMultipleServers && (
+                  <ChevronDown size={10} className={`server-chevron ${menuOpen ? 'open' : ''}`} />
+                )}
+              </button>
+
+              {menuOpen && hasMultipleServers && (
+                <div className="server-dropdown-menu">
+                  {usageResult?.servers.map((server) => (
+                    <button
+                      key={server.id}
+                      type="button"
+                      className="server-dropdown-item"
+                      data-selected={selectedServer === server.id}
+                      onClick={() => {
+                        setSelectedServer(server.id)
+                        setMenuOpen(false)
+                        void load(false, server.id)
+                      }}
+                    >
+                      <div className="server-item-content">
+                        <span className="server-item-name">{server.name}</span>
+                        {server.detail && <span className="server-item-detail">{server.detail}</span>}
+                      </div>
+                      {selectedServer === server.id && (
+                        <Check size={12} strokeWidth={2.5} className="server-item-check" />
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <button
+              type="button"
+              className="refresh"
+              onClick={handleRefresh}
+              disabled={refreshing}
+              aria-label="Refresh usage"
+              title="Refresh usage"
+            >
+              <RefreshCw size={12} strokeWidth={2} className={refreshing ? 'spin' : undefined} />
+            </button>
+          </div>
         </div>
         {summary && summary.items.length > 0 ? (
           summary.items.map((item) => (

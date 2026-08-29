@@ -11,7 +11,6 @@ import { SettingsField } from '../SettingsField'
 import { type AgentFrontmatter } from '../frontmatter'
 import { validateDescription, validateModel } from '../schema'
 import { ModelCombobox, type ModelOption } from './ModelCombobox'
-import { isBuiltInProfile } from './utils'
 
 const FALLBACK_THINKING_LEVELS = ['none']
 
@@ -56,11 +55,9 @@ export function FormFields({
   fm: AgentFrontmatter
   body: string
   disabled?: boolean
-  isNew?: boolean
   toolOptions: MultiSelectOption[]
   mcpOptions: MultiSelectOption[]
   modelOptions: (ModelOption & { thinking_levels?: string[] })[]
-  agentPath?: string
   effectiveTools?: string[]
   updateFromForm: (next: AgentFrontmatter, nextBody: string) => void
 }) {
@@ -96,7 +93,7 @@ export function FormFields({
     return levels && levels.length > 0 ? levels : FALLBACK_THINKING_LEVELS
   }, [currentModelOptions, fm.model])
 
-  const hasBuiltInProfile = isBuiltInProfile('code', 'lead', 'code')
+  const hasBuiltInProfile = true
   const implicitToolNames = new Set(['skill', 'todo_manage', 'schedule_task', 'note'])
   const builtInTools = (effectiveTools ?? []).filter(
     (tool) => implicitToolNames.has(tool) || hasBuiltInProfile,

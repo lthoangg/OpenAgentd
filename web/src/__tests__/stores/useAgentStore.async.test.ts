@@ -26,7 +26,7 @@ import { mock, describe, it, expect, beforeEach, afterEach, spyOn } from "bun:te
 const mockPostAgentChat = mock(() =>
   Promise.resolve({ status: "ok", session_id: "team-sid" })
 ) as any
-const mockCancelQueuedTeamMessage = mock(() => Promise.resolve()) as any
+const mockCancelQueuedAgentMessage = mock(() => Promise.resolve()) as any
 const mockPostAgentCommand = mock(() =>
   Promise.resolve({ status: "accepted", session_id: "team-sid", command: "continue" })
 ) as any
@@ -61,21 +61,11 @@ const mockSendDesktopNotification = mock(() => Promise.resolve()) as any
 /* eslint-disable @typescript-eslint/no-explicit-any */
 (mock as any).module("@/api/client", () => ({
   postAgentChat: mockPostAgentChat,
-  cancelQueuedMessage: mockCancelQueuedTeamMessage,
+  cancelQueuedMessage: mockCancelQueuedAgentMessage,
   postAgentCommand: mockPostAgentCommand,
   agentStream: mockTeamStream,
   agentStatus: mockAgentStatus,
   sessionHistory: mockSessionHistory,
-  // Stubs for other exports
-  postChat: mock(() => Promise.resolve({ session_id: "chat-sid" })) as any,
-  streamChat: mock(() => {}) as any,
-  getChatAgent: mock(() => Promise.resolve({})) as any,
-  getAgent: mock(() => Promise.resolve({})) as any,
-  getSession: mock(() => Promise.resolve({ id: "s", messages: [] })) as any,
-  listSessions: mock(() => Promise.resolve([])) as any,
-  deleteSession: mock(() => Promise.resolve()) as any,
-  listAgents: mock(() => Promise.resolve({ agents: [] })) as any,
-  health: mock(() => Promise.resolve({ status: "ok" })) as any,
 }));
 (mock as any).module("@/lib/desktop-notifications", () => ({
   sendDesktopNotification: mockSendDesktopNotification,
@@ -155,7 +145,7 @@ function makeMessageResponse(overrides: object = {}) {
 beforeEach(() => {
   useAgentStore.setState(INITIAL_STATE)
   mockPostAgentChat.mockReset()
-  mockCancelQueuedTeamMessage.mockReset()
+  mockCancelQueuedAgentMessage.mockReset()
   mockPostAgentCommand.mockReset()
   mockTeamStream.mockReset()
   mockAgentStatus.mockReset()
@@ -166,7 +156,7 @@ beforeEach(() => {
   mockPostAgentChat.mockImplementation(() =>
     Promise.resolve({ status: "ok", session_id: "team-sid" })
   )
-  mockCancelQueuedTeamMessage.mockImplementation(() => Promise.resolve())
+  mockCancelQueuedAgentMessage.mockImplementation(() => Promise.resolve())
   mockPostAgentCommand.mockImplementation(() =>
     Promise.resolve({ status: "accepted", session_id: "team-sid", command: "continue" })
   )

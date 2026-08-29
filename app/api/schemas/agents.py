@@ -2,18 +2,9 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
-
-
-class AgentSummary(BaseModel):
-    name: str
-    role: str
-    description: str | None = None
-    model: str | None = None
-    tools: list[str] = []
-    mcp: list[str] = []
-    valid: bool
-    error: str | None = None
 
 
 class AgentDetail(BaseModel):
@@ -25,16 +16,8 @@ class AgentDetail(BaseModel):
 
 
 class AgentWriteRequest(BaseModel):
-    name: str = Field(description="Agent name (filename stem).")
+    name: Literal["code"] = Field(description="Canonical coding-agent name.")
     content: str = Field(description="Full .md file contents.")
-
-
-class AgentDeleteResponse(BaseModel):
-    name: str
-
-
-class AgentListResponse(BaseModel):
-    agents: list[AgentSummary]
 
 
 # ── Registry ────────────────────────────────────────────────────────────────

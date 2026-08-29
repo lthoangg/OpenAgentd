@@ -1,4 +1,4 @@
-"""Agent CRUD: writes ``.md`` files under ``AGENTS_DIR``.
+"""Canonical coding-agent configuration API.
 
 Validates each write against ``AgentConfig`` and agent invariants
 (known tools and valid models).  Failed validation rolls the
@@ -39,10 +39,7 @@ from app.api.routes.settings import (
 )
 from app.api.schemas.base import _validation_detail
 from app.api.schemas.agents import (
-    AgentDeleteResponse,
     AgentDetail,
-    AgentListResponse,
-    AgentSummary,
     AgentWriteRequest,
     ModelCatalogEntry,
     RegistryResponse,
@@ -51,7 +48,6 @@ from app.api.schemas.agents import (
 )
 from app.services import agent_fs
 from app.services.agent_fs import (
-    AgentFsConflictError,
     AgentFsNotFoundError,
     AgentFsPathError,
 )
@@ -59,41 +55,6 @@ from app.services.agent_fs import (
 router = APIRouter()
 
 # ── Helpers ─────────────────────────────────────────────────────────────────
-
-
-def _parse_summary(name: str, content: str) -> AgentSummary:
-    """Never raises; invalid agents are flagged via ``valid=False``."""
-    try:
-        cfg = _parse_content(name, content)
-    except ValueError as exc:
-        return AgentSummary(
-            name=name,
-            role="member",
-            description=None,
-            model=None,
-            tools=[],
-            mcp=[],
-            valid=False,
-            error=str(exc),
-        )
-    mode = _mode_for_agent_path(name)
-    effective = _effective_config(cfg, mode=mode)
-    return AgentSummary(
-        name=name,
-        role=effective.role,
-        description=effective.description,
-        model=effective.model,
-        tools=effective.tools,
-        mcp=effective.mcp,
-        valid=True,
-        error=None,
-    )
-
-
-def _mode_for_agent_path(name: str) -> str:
-    # Agent profiles are rooted directly under AGENTS_DIR; coding is the
-    # sole runtime mode.  Keep this helper for the API summary contract.
-    return "coding"
 
 
 def _effective_config(cfg: AgentConfig, *, mode: str) -> AgentConfig:
@@ -123,8 +84,8 @@ def _effective_config(cfg: AgentConfig, *, mode: str) -> AgentConfig:
     return data
 
 
-def _parse_content(name: str, content: str) -> AgentConfig:
-    """Parse raw .md text into an ``AgentConfig`` (no disk I/O)."""
+def _parse_content(content: str) -> AgentConfig:
+    """Parse the canonical coding-agent Markdown (no disk I/O)."""
     from app.agent.loader import _FRONTMATTER_RE
 
     m = _FRONTMATTER_RE.match(content)
@@ -140,27 +101,14 @@ def _parse_content(name: str, content: str) -> AgentConfig:
         raise ValueError(f"Invalid YAML frontmatter: {exc}") from exc
     if not isinstance(raw_meta, dict):
         raise ValueError("Frontmatter must be a YAML mapping.")
+    if raw_meta.get("name") != "code":
+        raise ValueError("Canonical agent profile 'code.md' must declare name 'code'")
     body = m.group(2).strip()
-    raw_meta.setdefault("name", _frontmatter_name_for_path(name))
     raw_meta["system_prompt"] = body or "You are a helpful assistant."
     try:
         return AgentConfig.model_validate(raw_meta)
     except ValidationError as exc:
         raise ValueError(_validation_detail(exc)) from exc
-
-
-def _require_frontmatter_name(name: str, content: str) -> None:
-    cfg = _parse_content(name, content)
-    expected_name = _frontmatter_name_for_path(name)
-    if cfg.name != expected_name:
-        raise HTTPException(
-            status_code=422,
-            detail=(f"Frontmatter name '{cfg.name}' does not match URL name '{name}'."),
-        )
-
-
-def _frontmatter_name_for_path(name: str) -> str:
-    return Path(name).name
 
 
 def _validation_dir_for_name(name: str) -> Path:
@@ -272,26 +220,6 @@ async def _warm_provider_model_cache() -> None:
         cleaned = filter_agent_model_ids(models)
         if cleaned:
             set_provider_cached_models(entry["id"], cleaned)
-
-
-@router.get("")
-async def list_agents() -> AgentListResponse:
-    rows: list[AgentSummary] = []
-    for name in agent_fs.list_agents():
-        try:
-            record = agent_fs.read_agent(name)
-        except Exception as exc:
-            rows.append(
-                AgentSummary(
-                    name=name,
-                    role="member",
-                    valid=False,
-                    error=str(exc),
-                )
-            )
-            continue
-        rows.append(_parse_summary(name, record.content))
-    return AgentListResponse(agents=rows)
 
 
 @router.get("/registry")
@@ -462,9 +390,9 @@ async def is_registered_model_id(model_id: str) -> bool:
     return is_agent_model_id(model) and model in provider_ui.cached_models
 
 
-@router.get("/{name}")
-@router.get("/{name:path}")
-async def get_agent(name: str) -> AgentDetail:
+@router.get("/code")
+async def get_agent() -> AgentDetail:
+    name = "code"
     try:
         record = agent_fs.read_agent(name)
     except AgentFsPathError as exc:
@@ -475,10 +403,8 @@ async def get_agent(name: str) -> AgentDetail:
     config: dict[str, Any] | None = None
     error: str | None = None
     try:
-        cfg = _parse_content(name, record.content)
-        config = _effective_config(cfg, mode=_mode_for_agent_path(name)).model_dump(
-            exclude_none=True
-        )
+        cfg = _parse_content(record.content)
+        config = _effective_config(cfg, mode="coding").model_dump(exclude_none=True)
     except ValueError as exc:
         error = str(exc)
 
@@ -491,42 +417,9 @@ async def get_agent(name: str) -> AgentDetail:
     )
 
 
-@router.post("", status_code=201)
-async def create_agent(body: AgentWriteRequest) -> AgentDetail:
-    try:
-        cfg = _parse_content(body.name, body.content)
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    expected_name = _frontmatter_name_for_path(body.name)
-    if cfg.name != expected_name:
-        raise HTTPException(
-            status_code=422,
-            detail=(
-                f"Frontmatter name '{cfg.name}' must match the request name "
-                f"'{expected_name}'."
-            ),
-        )
-
-    try:
-        record = agent_fs.write_agent(body.name, body.content, create=True)
-    except AgentFsConflictError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-    except AgentFsPathError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    await _validate_or_restore(rollback_name=body.name, rollback_content=None)
-
-    return AgentDetail(
-        name=record.name,
-        path=record.path,
-        content=record.content,
-        config=cfg.model_dump(exclude_none=True),
-    )
-
-
-@router.put("/{name}")
-@router.put("/{name:path}")
-async def update_agent(name: str, body: AgentWriteRequest) -> AgentDetail:
+@router.put("/code")
+async def update_agent(body: AgentWriteRequest) -> AgentDetail:
+    name = "code"
     if body.name != name:
         raise HTTPException(
             status_code=422,
@@ -541,11 +434,9 @@ async def update_agent(name: str, body: AgentWriteRequest) -> AgentDetail:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     try:
-        cfg = _parse_content(name, body.content)
+        cfg = _parse_content(body.content)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    _require_frontmatter_name(name, body.content)
-
     try:
         record = agent_fs.write_agent(name, body.content, create=False)
     except AgentFsPathError as exc:
@@ -559,23 +450,3 @@ async def update_agent(name: str, body: AgentWriteRequest) -> AgentDetail:
         content=record.content,
         config=cfg.model_dump(exclude_none=True),
     )
-
-
-@router.delete("/{name}")
-@router.delete("/{name:path}")
-async def delete_agent(name: str) -> AgentDeleteResponse:
-    """422 if removal would leave no configured agent."""
-    try:
-        previous = agent_fs.read_agent(name)
-    except AgentFsNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    except AgentFsPathError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    try:
-        agent_fs.delete_agent(name)
-    except AgentFsPathError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    await _validate_or_restore(rollback_name=name, rollback_content=previous.content)
-    return AgentDeleteResponse(name=name)

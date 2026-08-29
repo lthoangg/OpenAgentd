@@ -47,7 +47,7 @@ export function AgentEditorPage({ onBack }: AgentEditorPageProps) {
       return
     }
     try {
-      const res = await updateMut.mutateAsync({ name, content: draft })
+      const res = await updateMut.mutateAsync({ content: draft })
       push({ tone: 'success', title: `Saved "${name}"`, description: 'Active on next turn.' })
       setDraft(res.content)
       refetch()
@@ -84,7 +84,6 @@ export function AgentEditorPage({ onBack }: AgentEditorPageProps) {
               initial={data.content}
               onChange={setDraft}
               disabled={updateMut.isPending}
-              isNew={false}
               mode={mode}
               onModeChange={setMode}
             />

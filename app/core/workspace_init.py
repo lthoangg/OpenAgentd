@@ -44,12 +44,12 @@ def ensure_workspace_initialized() -> None:
     ensure_default_config()
 
     from app.agent.loader import (
-        ensure_builtin_code_lead,
+        ensure_builtin_code_agent,
         configure_unconfigured_agent_models,
     )
 
     default_written: list[str] = []
-    if ensure_builtin_code_lead(agents_dir, mode="coding"):
+    if ensure_builtin_code_agent(agents_dir, mode="coding"):
         default_written.append("code.md")
     if is_new_user:
         configure_unconfigured_agent_models(agents_dir, DEFAULT_NEW_USER_MODEL)

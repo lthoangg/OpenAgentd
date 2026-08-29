@@ -16,19 +16,19 @@ import type {
   SnippetRenderResponse,
 } from '../types'
 
-export async function getAgent(name: string): Promise<AgentDetail> {
-  const res = await fetch(`${apiBaseUrl()}/agents/${encodeURIComponent(name)}`)
-  if (!res.ok) await parseDetailOrThrow(res, `GET /agents/${name}`)
+export async function getCodeAgent(): Promise<AgentDetail> {
+  const res = await fetch(`${apiBaseUrl()}/agents/code`)
+  if (!res.ok) await parseDetailOrThrow(res, 'GET /agents/code')
   return res.json()
 }
 
-export async function updateAgent(name: string, content: string): Promise<AgentDetail> {
-  const res = await fetch(`${apiBaseUrl()}/agents/${encodeURIComponent(name)}`, {
+export async function updateCodeAgent(content: string): Promise<AgentDetail> {
+  const res = await fetch(`${apiBaseUrl()}/agents/code`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name, content }),
+    body: JSON.stringify({ name: 'code', content }),
   })
-  if (!res.ok) await parseDetailOrThrow(res, `PUT /agents/${name}`)
+  if (!res.ok) await parseDetailOrThrow(res, 'PUT /agents/code')
   return res.json()
 }
 

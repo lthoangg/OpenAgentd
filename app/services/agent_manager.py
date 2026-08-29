@@ -12,7 +12,10 @@ from typing import TYPE_CHECKING
 
 from loguru import logger
 
-from app.agent.loader import load_agent_from_dir
+from app.agent.loader import (
+    load_agent_from_dir,
+    validate_canonical_code_profile,
+)
 from app.core.config import settings
 
 if TYPE_CHECKING:
@@ -65,6 +68,11 @@ def _resolve_workspace(workspace: str) -> Path:
     return Path(workspace).expanduser().resolve()
 
 
+def _session_is_evictable(session: AgentSession) -> bool:
+    """Return whether a session can be stopped without interrupting a turn."""
+    return session.state not in {"working", "waiting_input"} and not session.is_busy()
+
+
 _BLOCKED_WORKSPACE_ROOTS: tuple[Path, ...] = (
     Path("/etc"),
     Path("/proc"),
@@ -98,7 +106,7 @@ def validate_workspace(workspace: str, *, require_exists: bool = True) -> str:
 
 
 def validate_agents_dir(agents_dir: str | Path | None = None) -> bool:
-    """Check that agents directory exists and contains valid .md files."""
+    """Check that agents directory contains a valid canonical code profile."""
     resolved = Path(agents_dir).resolve() if agents_dir else _resolve_agents_dir()
     sig = _agents_dir_signature(resolved)
     if sig is not _UNSTABLE and sig in _agents_dir_validation.get(resolved, ()):
@@ -109,11 +117,41 @@ def validate_agents_dir(agents_dir: str | Path | None = None) -> bool:
             _agents_dir_validation[resolved] = (sig, False)
         return False
 
-    md_files = list(resolved.glob("*.md"))
-    result = len(md_files) > 0
+    canonical = resolved / "code.md"
+    if not canonical.is_file():
+        result = False
+    else:
+        # Keep malformed canonical profiles visible to startup/health callers.
+        validate_canonical_code_profile(canonical)
+        result = True
     if sig is not _UNSTABLE:
         _agents_dir_validation[resolved] = (sig, result)
     return result
+
+
+async def evict_idle_sessions(*, now: float | None = None) -> None:
+    """Evict sessions idle past the timeout, without interrupting active turns."""
+    cutoff = (time.monotonic() if now is None else now) - _SESSION_IDLE_SECONDS
+    async with _lock:
+        to_evict = sorted(
+            (
+                (key, session)
+                for key, session in _sessions.items()
+                if (last_used := _session_last_used.get(key)) is not None
+                and last_used <= cutoff
+                and _session_is_evictable(session)
+            ),
+            key=lambda item: item[0],
+        )
+        for key, _ in to_evict:
+            _sessions.pop(key, None)
+            _session_last_used.pop(key, None)
+            _session_start_locks.pop(key, None)
+    for _, session in to_evict:
+        try:
+            await session.stop()
+        except Exception as exc:
+            logger.warning("evict_idle_session_stop_failed error={}", exc)
 
 
 def find_live_session(
@@ -163,6 +201,7 @@ async def get_or_start_agent_session(
 
     async with start_lock:
         now = time.monotonic()
+        await evict_idle_sessions(now=now)
         if key in _sessions:
             _session_last_used[key] = now
             return _sessions[key]
@@ -206,7 +245,8 @@ async def evict_sessions(session_ids: set[str]) -> None:
         to_evict = [
             (k, sess)
             for k, sess in _sessions.items()
-            if k[1] in session_ids or sess.session_id in session_ids
+            if (k[1] in session_ids or sess.session_id in session_ids)
+            and _session_is_evictable(sess)
         ]
         for k, _ in to_evict:
             _sessions.pop(k, None)

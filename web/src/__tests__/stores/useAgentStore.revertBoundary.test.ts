@@ -39,11 +39,6 @@ const mockSessionHistory = mock(() =>
   agentStream: mockTeamStream,
   agentStatus: mockAgentStatus,
   sessionHistory: mockSessionHistory,
-  postChat: mock(() => Promise.resolve({ session_id: "chat-sid" })) as any,
-  streamChat: mock(() => {}) as any,
-  listAgents: mock(() => Promise.resolve({ agents: [] })) as any,
-  listSessions: mock(() => Promise.resolve([])) as any,
-  deleteSession: mock(() => Promise.resolve()) as any,
 }))
 /* eslint-enable @typescript-eslint/no-explicit-any */
 

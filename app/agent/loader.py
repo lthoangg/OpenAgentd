@@ -95,6 +95,21 @@ def parse_agent_md(path: Path) -> AgentConfig:
     return cfg
 
 
+def validate_canonical_code_profile(path: Path) -> AgentConfig:
+    """Parse the canonical profile and require an explicit ``name: code``."""
+    cfg = parse_agent_md(path)
+    text = path.read_text(encoding="utf-8")
+    match = _FRONTMATTER_RE.match(text)
+    raw_meta = yaml.safe_load(match.group(1)) if match else None
+    if (
+        not isinstance(raw_meta, dict)
+        or raw_meta.get("name") != "code"
+        or cfg.name != "code"
+    ):
+        raise ValueError("Canonical agent profile 'code.md' must declare name 'code'")
+    return cfg
+
+
 def _atomic_write_text(path: Path, content: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile(
@@ -124,7 +139,7 @@ model: {model}
 """
 
 
-def ensure_builtin_code_lead(agents_dir: Path, *, mode: str = "coding") -> bool:
+def ensure_builtin_code_agent(agents_dir: Path, *, mode: str = "coding") -> bool:
     """Restore the default agent config only when missing."""
     target = agents_dir / "code.md"
     if target.exists():
@@ -141,7 +156,7 @@ def ensure_builtin_code_lead(agents_dir: Path, *, mode: str = "coding") -> bool:
             model=DEFAULT_NEW_USER_MODEL,
         ),
     )
-    logger.info("builtin_code_lead_materialized mode={} path={}", mode, target)
+    logger.info("builtin_code_agent_materialized mode={} path={}", mode, target)
     return True
 
 
@@ -340,16 +355,11 @@ def load_agent_from_dir(
     if not agents_dir.exists():
         return None
 
-    md_files = sorted(agents_dir.glob("*.md"))
-    if not md_files:
+    target_path = agents_dir / "code.md"
+    if not target_path.is_file():
         return None
 
-    # Prefer code.md or first .md
-    target_path = agents_dir / "code.md"
-    if not target_path.exists():
-        target_path = md_files[0]
-
-    cfg = parse_agent_md(target_path)
+    cfg = validate_canonical_code_profile(target_path)
 
     tool_registry = _default_tool_registry()
     if extra_tools:

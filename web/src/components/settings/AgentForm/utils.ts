@@ -1,15 +1,5 @@
 import { splitFrontmatter, type AgentFrontmatter } from '../frontmatter'
 
-export function isBuiltInProfile(
-  name?: string,
-  role?: string | null,
-  agentPath?: string,
-): boolean {
-  if (!name || !role) return false
-  // There is one first-party profile. Its file name and role are fixed.
-  return name === 'code' && role === 'lead' && (!agentPath || agentPath === 'code')
-}
-
 // ── Model combobox ──────────────────────────────────────────────────────────
 
 export function parseFormState(raw: string): {

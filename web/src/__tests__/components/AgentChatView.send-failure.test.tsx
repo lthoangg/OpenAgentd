@@ -111,7 +111,7 @@ mock.module('@/stores/useAgentStore', () => {
     setSessionModelSettings: () => {},
     setupRequired: null,
     dismissSetupRequired: () => {},
-    activeAgent: 'lead',
+    activeAgent: 'code',
     agentStreams: { lead: { blocks: [], currentBlocks: [], status: 'idle', lastError: null, revertedCount: 0, revertedMessages: [], usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0, cachedTokens: 0 } } },
     agentNames: ['lead'],
     isAgentWorking: false,

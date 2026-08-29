@@ -111,10 +111,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="OpenAgentd model id, e.g. openai:gpt-5.5",
     )
     p_migrate.add_argument(
-        "--name",
-        help="Name for the imported agent (default: source name)",
-    )
-    p_migrate.add_argument(
         "--config-dir",
         help="OpenAgentd config directory (default: XDG config)",
     )

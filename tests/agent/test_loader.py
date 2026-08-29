@@ -103,7 +103,7 @@ def test_load_agent_from_dir(tmp_path):
         tmp_path,
         [
             {
-                "name": "openagentd",
+                "name": "code",
                 "model": "zai:glm-5-turbo",
                 "tools": ["read"],
             }
@@ -112,8 +112,34 @@ def test_load_agent_from_dir(tmp_path):
     factory, _ = _make_provider_factory()
     session = load_agent_from_dir(d, provider_factory=factory)
     assert session is not None
-    assert session.name == "openagentd"
+    assert session.name == "code"
     assert "read" in session.agent._tools
+
+
+def test_load_agent_from_dir_requires_canonical_code_profile(tmp_path):
+    d = tmp_path / "agents"
+    d.mkdir()
+    _write_agent_md(d / "other.md", {"name": "other", "model": "zai:glm-5-turbo"})
+    factory, _ = _make_provider_factory()
+    assert load_agent_from_dir(d, provider_factory=factory) is None
+
+
+def test_load_agent_from_dir_rejects_mismatched_code_profile_name(tmp_path):
+    d = tmp_path / "agents"
+    d.mkdir()
+    _write_agent_md(d / "code.md", {"name": "other", "model": "zai:glm-5-turbo"})
+    factory, _ = _make_provider_factory()
+    with pytest.raises(ValueError, match="must declare name 'code'"):
+        load_agent_from_dir(d, provider_factory=factory)
+
+
+def test_load_agent_from_dir_requires_explicit_canonical_profile_name(tmp_path):
+    d = tmp_path / "agents"
+    d.mkdir()
+    _write_agent_md(d / "code.md", {"model": "zai:glm-5-turbo"})
+    factory, _ = _make_provider_factory()
+    with pytest.raises(ValueError, match="must declare name 'code'"):
+        load_agent_from_dir(d, provider_factory=factory)
 
 
 def test_rebuild_agent_from_disk(tmp_path):

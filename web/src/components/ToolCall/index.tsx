@@ -231,8 +231,7 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
     [usesDiffView, name, args, result],
   )
   // Pending-state header comes from getToolDisplay's no-args branch
-  // (e.g. ``recall`` → "Checking memory…", ``team_message`` →
-  // "Preparing message…"). Tools without a custom pending header return
+  // (e.g. ``recall`` → "Checking memory…"). Tools without a custom pending header return
   // ``header: null`` from that branch and fall back to the raw tool name
   // below, preserving the previous behaviour for every other tool.
   const visibleHeader = header

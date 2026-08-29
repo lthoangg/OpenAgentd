@@ -139,7 +139,6 @@ const HIDE_ARGS_TOOLS = new Set([
   'web_fetch',
   'glob',
   'grep',
-  'team_manage',
   'bg',
   'skill',
 ])
@@ -149,12 +148,6 @@ export function getToolDisplay(name: string, args: string | undefined): ToolDisp
     // recall with no args — conversational header, no args section
     if (name === 'recall') {
       return { header: 'Checking memory…', headerTitle: 'Checking memory…', formattedArgs: null }
-    }
-    // team_message with no args — pending header so the start phase is
-    // visible (otherwise tool_call → tool_start arrives so fast the
-    // pending card flashes for <50ms and looks like only 2 phases run).
-    if (name === 'team_message') {
-      return { header: 'Preparing message…', headerTitle: 'Preparing message…', formattedArgs: null }
     }
     return { header: null, headerTitle: null, formattedArgs: null }
   }
@@ -615,55 +608,6 @@ function getToolDisplayInternal(name: string, parsed: Record<string, unknown>): 
         : (filename ? `Filming ${filename}` : 'Filming a video…'),
       formattedArgs: argsBody,
       suppressResult: true,
-    }
-  }
-
-  // ── team_message: recipients as header, message body as args ─────────
-  if (name === 'team_message') {
-    const to = Array.isArray(parsed.to) ? (parsed.to as unknown[]).map(String) : []
-    const content = str(parsed, 'content')
-    const recipientLabel = to.length > 0 ? to.join(', ') : 'team'
-    const truncated = trunc(recipientLabel)
-    return {
-      header: <>Messaging <Arg>{truncated}</Arg></>,
-      headerTitle: `Messaging ${truncated}`,
-      formattedArgs: content,
-    }
-  }
-
-  // ── team_manage: roster action in header, hide redundant args ───────
-  if (name === 'team_manage') {
-    const action = str(parsed, 'action')
-    const members = Array.isArray(parsed.members)
-      ? (parsed.members as unknown[]).map(String).filter(Boolean)
-      : []
-    const memberLabel = members.length > 0 ? members.join(', ') : 'team'
-    const truncated = trunc(memberLabel)
-    if (action === 'spawn') {
-      return {
-        header: <>Spawning <Arg>{truncated}</Arg></>,
-        headerTitle: `Spawning ${truncated}`,
-        formattedArgs: null,
-      }
-    }
-    if (action === 'dismiss') {
-      return {
-        header: <>Dismissing <Arg>{truncated}</Arg></>,
-        headerTitle: `Dismissing ${truncated}`,
-        formattedArgs: null,
-      }
-    }
-    if (action === 'list') {
-      return {
-        header: 'Listing agent roster…',
-        headerTitle: 'Listing agent roster…',
-        formattedArgs: null,
-      }
-    }
-    return {
-      header: 'Managing agent roster…',
-      headerTitle: 'Managing agent roster…',
-      formattedArgs: null,
     }
   }
 

@@ -7,8 +7,8 @@
  */
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
-  getAgent,
-  updateAgent,
+  getCodeAgent,
+  updateCodeAgent,
   getRegistry,
   type ProvidersListBody,
 } from '@/api/client'
@@ -55,7 +55,7 @@ function placeholderRegistryFromProviders(data: ProvidersListBody | undefined): 
 export function useCodeAgentQuery() {
   return useQuery({
     queryKey: queryKeys.agentFiles.detail('code'),
-    queryFn: () => getAgent('code'),
+    queryFn: getCodeAgent,
     staleTime: 10_000,
   })
 }
@@ -88,11 +88,10 @@ function invalidateAgentFiles(client: ReturnType<typeof useQueryClient>) {
 export function useUpdateAgentMutation() {
   const client = useQueryClient()
   return useMutation({
-    mutationFn: ({ name, content }: { name: string; content: string }) =>
-      updateAgent(name, content),
-    onSuccess: (_data, { name }) => {
+    mutationFn: ({ content }: { content: string }) => updateCodeAgent(content),
+    onSuccess: () => {
       invalidateAgentFiles(client)
-      client.invalidateQueries({ queryKey: queryKeys.agentFiles.detail(name) })
+      client.invalidateQueries({ queryKey: queryKeys.agentFiles.detail('code') })
     },
   })
 }

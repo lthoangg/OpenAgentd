@@ -71,10 +71,57 @@ def test_validate_agents_dir_returns_false_for_empty_dir(tmp_path):
 def test_validate_agents_dir_returns_true_when_md_present(tmp_path):
     agents = tmp_path / "agents"
     agents.mkdir()
-    (agents / "openagentd.md").write_text(
-        "---\nname: openagentd\n---\nPrompt", encoding="utf-8"
-    )
+    (agents / "code.md").write_text("---\nname: code\n---\nPrompt", encoding="utf-8")
     assert agent_manager.validate_agents_dir(agents) is True
+
+
+def test_validate_agents_dir_requires_valid_canonical_code_profile(tmp_path):
+    agents = tmp_path / "agents"
+    agents.mkdir()
+    (agents / "other.md").write_text("---\nname: other\n---\nPrompt", encoding="utf-8")
+    assert agent_manager.validate_agents_dir(agents) is False
+
+    (agents / "code.md").write_text("not frontmatter", encoding="utf-8")
+    with pytest.raises(ValueError, match="missing frontmatter"):
+        agent_manager.validate_agents_dir(agents)
+
+    (agents / "code.md").write_text(
+        "---\nmodel: zai:glm-5-turbo\n---\nPrompt", encoding="utf-8"
+    )
+    with pytest.raises(ValueError, match="must declare name 'code'"):
+        agent_manager.validate_agents_dir(agents)
+
+
+@pytest.mark.asyncio
+async def test_evict_idle_sessions_skips_busy_and_waiting(tmp_path, monkeypatch):
+    idle = _make_session()
+    idle.session_id = "idle"
+    idle.workspace = str(tmp_path.resolve())
+    busy = _make_session()
+    busy.session_id = "busy"
+    busy.workspace = str(tmp_path.resolve())
+    busy.is_busy.return_value = True
+    waiting = _make_session()
+    waiting.session_id = "waiting"
+    waiting.state = "waiting_input"
+    waiting.workspace = str(tmp_path.resolve())
+    agent_manager.set_agent_session(None)
+    agent_manager._sessions[("/idle", "idle")] = idle
+    agent_manager._sessions[("/busy", "busy")] = busy
+    agent_manager._sessions[("/waiting", "waiting")] = waiting
+    agent_manager._session_last_used[("/idle", "idle")] = 1
+    agent_manager._session_last_used[("/busy", "busy")] = 1
+    agent_manager._session_last_used[("/waiting", "waiting")] = 1
+    monkeypatch.setattr(agent_manager, "_SESSION_IDLE_SECONDS", 10)
+
+    await agent_manager.evict_idle_sessions(now=20)
+
+    assert ("/idle", "idle") not in agent_manager._sessions
+    assert ("/busy", "busy") in agent_manager._sessions
+    assert ("/waiting", "waiting") in agent_manager._sessions
+    idle.stop.assert_awaited_once()
+    busy.stop.assert_not_awaited()
+    waiting.stop.assert_not_awaited()
 
 
 # ── get_or_start_agent_session() ──────────────────────────────────────────────

@@ -73,7 +73,7 @@ def test_ensure_workspace_initialized_preserves_existing_agents(
     assert "model: openai:gpt-5" in existing.read_text(encoding="utf-8")
 
 
-def test_ensure_workspace_initialized_restores_missing_default_lead(
+def test_ensure_workspace_initialized_restores_missing_default_agent(
     monkeypatch,
     tmp_path: Path,
 ) -> None:

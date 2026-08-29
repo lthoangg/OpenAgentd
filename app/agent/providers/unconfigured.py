@@ -1,9 +1,11 @@
 """Placeholder provider used when an agent has no real model configured.
 
-Generated agents carry the literal token ``__PROVIDER_MODEL__`` in their
-``model:`` frontmatter until the user picks a provider and model in the UI.
-Before that selection, ``build_provider`` cannot resolve the token to a real
-backend — historically this raised ``ValueError`` at load time and
+Legacy/generated agents and custom templates may carry the literal token
+``__PROVIDER_MODEL__`` in their ``model:`` frontmatter until the user picks a
+provider and model in the UI. New installations use a concrete default model;
+the token is retained only for backwards compatibility and custom agent
+templates. Before that selection, ``build_provider`` cannot resolve the token
+to a real backend — historically this raised ``ValueError`` at load time and
 crashed the whole agent manager.
 
 With this stub the loader still constructs an :class:`Agent` instance,

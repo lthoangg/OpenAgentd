@@ -160,7 +160,7 @@ mcp:
 You are code.
 `
 
-function renderForm(initial = SAMPLE_RAW, agentPath?: string) {
+function renderForm(initial = SAMPLE_RAW) {
   // Mocks are typed loosely; the real callbacks are typed via the AgentForm
   // prop signature so this is purely a spy.
   const onChange = mock(() => {})
@@ -168,7 +168,6 @@ function renderForm(initial = SAMPLE_RAW, agentPath?: string) {
   render(
     <AgentForm
       initial={initial}
-      agentPath={agentPath}
       onChange={onChange}
       mode="form"
       onModeChange={onModeChange}
@@ -227,7 +226,7 @@ describe('AgentForm — Capabilities card', () => {
   })
 
   it('shows built-in tools separately from extra tool overrides', () => {
-    renderForm(SAMPLE_RAW, 'code')
+    renderForm(SAMPLE_RAW)
 
     const toolsField = fieldFor('Tools')
     const builtInBox = within(toolsField).getByText('Built-in tools').parentElement
@@ -240,31 +239,9 @@ describe('AgentForm — Capabilities card', () => {
     expect(screen.getByText(/2 extra selected/i)).toBeTruthy()
   })
 
-  it('shows skill as a built-in tool for custom agents too', async () => {
-    const user = userEvent.setup()
-    renderForm(`---
-name: helper
-role: member
-model: openai:gpt-5.4
-tools:
-  - read
----
-Custom helper.
-`, 'helper')
-
-    const toolsField = fieldFor('Tools')
-    const builtInBox = within(toolsField).getByText('Built-in tools').parentElement
-    if (!builtInBox) throw new Error('missing built-in tools box')
-    expect(within(builtInBox).getByText('skill')).toBeTruthy()
-
-    await user.click(comboboxIn('Tools'))
-    const listbox = screen.getByRole('listbox')
-    expect(within(listbox).queryByText('skill')).toBeNull()
-  })
-
   it('does not offer implicit lead-only or skill tools in the extra picker', async () => {
     const user = userEvent.setup()
-    renderForm(SAMPLE_RAW, 'code')
+    renderForm(SAMPLE_RAW)
 
     await user.click(comboboxIn('Tools'))
     const listbox = screen.getByRole('listbox')
@@ -287,7 +264,7 @@ role: lead
 model: openai:gpt-5.4
 ---
 <!-- Add extra prompt text below. -->
-`, 'code')
+`)
 
     expect(screen.getByText('Built-in OpenAgentd profile')).toBeTruthy()
     expect(screen.getByText(/Extra prompt/)).toBeTruthy()

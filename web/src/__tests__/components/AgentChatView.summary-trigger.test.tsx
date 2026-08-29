@@ -142,7 +142,7 @@ function makeStore(sessionModel: string | null) {
     setSessionModelSettings: () => {},
     setupRequired: null,
     dismissSetupRequired: () => {},
-    activeAgent: 'lead',
+    activeAgent: 'code',
     agentStreams: {
       lead: {
         blocks: [{ type: 'user', content: 'hi', extra: {}, attachments: [] }],

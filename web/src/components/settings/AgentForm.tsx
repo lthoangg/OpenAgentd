@@ -35,16 +35,10 @@ export interface AgentFormValue {
 
 interface Props {
   initial: string
-  /** Canonical agent file path (always ``code``). */
   /** Fires on every keystroke with the up-to-date raw content. */
   onChange: (raw: string) => void
-  /** @deprecated retained for callers outside the settings editor. */
-  agentPath?: string
-  /** @deprecated agent creation is no longer exposed in settings. */
-  isNew?: boolean
   /** Disabled when the caller is mid-save / validation. */
   disabled?: boolean
-  /** When creating a new agent the name is still editable. */
   /** Controlled Form/Raw mode — owned by the parent so the sub-header
    *  toggle stays in sync with the form body. */
   mode: 'form' | 'raw'

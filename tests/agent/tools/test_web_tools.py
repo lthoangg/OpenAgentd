@@ -4,7 +4,16 @@ import httpx
 import pytest
 import respx
 
+import app.agent.tools.builtin.web as web_module
 from app.agent.tools.builtin.web import web_fetch, web_search
+
+
+@pytest.fixture(autouse=True)
+def _public_dns_for_web_tests(monkeypatch):
+    async def resolve(host, port):
+        return ["93.184.216.34"]
+
+    monkeypatch.setattr(web_module, "_resolve_host", resolve, raising=False)
 
 
 @pytest.mark.asyncio
@@ -131,8 +140,8 @@ async def test_web_fetch_no_scheme_prefixed():
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_web_fetch_format_html_still_converts():
-    """`format` only selects the Accept header; the body is still converted."""
+async def test_web_fetch_format_html_returns_source():
+    """The legacy html format returns source HTML rather than Markdown."""
     url = "https://example.com"
     respx.get(url).mock(
         return_value=httpx.Response(
@@ -142,18 +151,20 @@ async def test_web_fetch_format_html_still_converts():
         )
     )
 
-    assert await web_fetch(url, format="html") == "Raw"
+    assert await web_fetch(url, format="html") == "<html><body>Raw</body></html>"
 
 
 @pytest.mark.asyncio
 @respx.mock
 async def test_web_fetch_http_error_returns_error_string():
-    """Non-2xx response returns an error string."""
+    """HTTP errors are concise and actionable rather than HTTPX boilerplate."""
     url = "https://nonexistent-url.com"
     respx.get(url).mock(return_value=httpx.Response(404))
 
     result = await web_fetch(url)
-    assert "Error fetching or converting" in result
+    assert "Fetch failed: 404 Not Found." in result
+    assert "developer.mozilla.org" not in result
+    assert "web_search" in result
 
 
 @pytest.mark.asyncio
@@ -202,27 +213,16 @@ async def test_web_fetch_allows_11_mb_content_length():
 @pytest.mark.asyncio
 @respx.mock
 async def test_web_fetch_cloudflare_retry():
-    """403 with cf-mitigated=challenge retries with 'opencode' User-Agent."""
+    """Cloudflare challenges are reported without a disguised retry."""
     url = "https://example.com"
-    call_count = 0
-
-    def side_effect(request: httpx.Request) -> httpx.Response:
-        nonlocal call_count
-        call_count += 1
-        if call_count == 1:
-            return httpx.Response(403, headers={"cf-mitigated": "challenge"})
-        return httpx.Response(
-            200,
-            text="<p>OK</p>",
-            headers={"content-type": "text/html"},
-        )
-
-    respx.get(url).mock(side_effect=side_effect)
+    route = respx.get(url).mock(
+        return_value=httpx.Response(403, headers={"cf-mitigated": "challenge"})
+    )
 
     result = await web_fetch(url)
 
-    assert result == "OK"
-    assert call_count == 2
+    assert "browser verification" in result.lower()
+    assert route.call_count == 1
 
 
 @pytest.mark.asyncio
@@ -268,7 +268,7 @@ async def test_web_fetch_late_multibyte_plain_text_without_charset():
     result = await web_fetch(url)
 
     assert "ascii" not in result
-    assert "Error fetching or converting" not in result
+    assert "Fetch failed" not in result
     assert "em dash \u2014 tail" in result
 
 
@@ -290,7 +290,7 @@ async def test_web_fetch_late_multibyte_html_without_charset():
 
     result = await web_fetch(url)
 
-    assert "Error fetching or converting" not in result
+    assert "Fetch failed" not in result
     assert "caf\u00e9 \u2014 done" in result
 
 
@@ -333,7 +333,7 @@ async def test_web_fetch_native_markdown_late_multibyte():
 @pytest.mark.asyncio
 @respx.mock
 async def test_web_fetch_binary_conversion_failure_still_reports_error():
-    """Non-text conversion failures keep returning the error string."""
+    """Non-text conversion failures remain actionable error strings."""
     url = "https://example.com/broken.pdf"
     respx.get(url).mock(
         return_value=httpx.Response(
@@ -345,7 +345,7 @@ async def test_web_fetch_binary_conversion_failure_still_reports_error():
 
     result = await web_fetch(url)
 
-    assert "Error fetching or converting" in result
+    assert "Fetch failed: Content conversion failed." in result
     # anydoc names the reason rather than failing anonymously.
     assert "PDF" in result
 
@@ -365,7 +365,7 @@ async def test_web_fetch_text_falls_back_when_conversion_raises_decode_error():
 
     result = await web_fetch(url)
 
-    assert "Error fetching or converting" not in result
+    assert "Fetch failed" not in result
     assert "caf\u00e9 \u2014 ok" in result
 
 
@@ -405,3 +405,201 @@ async def test_web_fetch_accepts_aliases():
     )
     assert await web_fetch.arun(uri="https://example.com/alias") == "alias text"
     assert await web_fetch.arun(link="https://example.com/alias") == "alias text"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("status", "expected", "hint"),
+    [
+        (401, "401 Unauthorized", "authentication"),
+        (403, "403 Forbidden", "denied"),
+        (410, "410 Gone", "web_search"),
+        (429, "429 Too Many Requests", "rate limiting"),
+        (500, "500 Internal Server Error", "retry"),
+        (502, "502 Bad Gateway", "retry"),
+        (503, "503 Service Unavailable", "retry"),
+        (504, "504 Gateway Timeout", "retry"),
+    ],
+)
+@respx.mock
+async def test_web_fetch_classifies_http_errors(status, expected, hint):
+    url = f"https://example.com/status/{status}"
+    respx.get(url).mock(return_value=httpx.Response(status))
+
+    result = await web_fetch(url)
+
+    assert f"Fetch failed: {expected}." in result
+    assert hint.lower() in result.lower()
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_web_fetch_classifies_network_errors():
+    url = "https://example.com/network"
+    respx.get(url).mock(side_effect=httpx.ConnectError("dns failed"))
+
+    result = await web_fetch(url)
+
+    assert "Fetch failed: Network error." in result
+    assert "retry" in result.lower()
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_web_fetch_classifies_timeouts():
+    url = "https://example.com/timeout"
+    respx.get(url).mock(side_effect=httpx.ReadTimeout("timed out"))
+
+    result = await web_fetch(url)
+
+    assert "Fetch failed: Request timed out." in result
+    assert "retry" in result.lower()
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_web_fetch_redirect_loop_is_classified():
+    url = "https://example.com/loop"
+    respx.get(url).mock(return_value=httpx.Response(302, headers={"location": url}))
+
+    result = await web_fetch(url)
+
+    assert "Fetch failed: Too many redirects." in result
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_web_fetch_stream_limit_rejects_body_without_content_length(monkeypatch):
+    monkeypatch.setattr(web_module, "_MAX_RESPONSE_BYTES", 10)
+    url = "https://example.com/chunked"
+    response = httpx.Response(
+        200, content=b"abcdefghijk", headers={"content-type": "text/plain"}
+    )
+    response.headers.pop("content-length", None)
+    respx.get(url).mock(return_value=response)
+
+    result = await web_fetch(url)
+
+    assert "Fetch failed: Response too large." in result
+    assert "11 bytes" in result
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_web_fetch_invalid_content_length_is_ignored(monkeypatch):
+    monkeypatch.setattr(web_module, "_MAX_RESPONSE_BYTES", 10)
+    url = "https://example.com/invalid-length"
+    respx.get(url).mock(
+        return_value=httpx.Response(
+            200,
+            content=b"small",
+            headers={"content-type": "text/plain", "content-length": "unknown"},
+        )
+    )
+
+    assert await web_fetch(url) == "small"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_web_fetch_raw_and_text_formats_have_distinct_semantics():
+    url = "https://example.com/raw"
+    html = "<html><body><h1>Title</h1><p>Body</p></body></html>"
+    respx.get(url).mock(
+        return_value=httpx.Response(
+            200, text=html, headers={"content-type": "text/html"}
+        )
+    )
+
+    assert await web_fetch(url, format="raw") == html
+    text_result = await web_fetch(url, format="text")
+    assert "Title" in text_result
+    assert "Body" in text_result
+    assert "<h1>" not in text_result
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_web_fetch_sniffs_html_without_specific_content_type():
+    url = "https://example.com/sniff.html"
+    respx.get(url).mock(
+        return_value=httpx.Response(
+            200,
+            content=b"<html><body><h1>Sniffed</h1></body></html>",
+            headers={"content-type": "application/octet-stream"},
+        )
+    )
+
+    assert await web_fetch(url) == "Sniffed"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_web_fetch_empty_results_are_actionable():
+    empty = "https://example.com/empty"
+    respx.get(empty).mock(return_value=httpx.Response(204))
+    result = await web_fetch(empty)
+    assert "Fetch succeeded but the server returned no content." in result
+
+    body = "https://example.com/empty-body"
+    respx.get(body).mock(return_value=httpx.Response(200, content=b""))
+    result = await web_fetch(body)
+    assert "Fetch succeeded but the response body was empty." in result
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_web_fetch_metadata_tracks_redirect_and_content_type():
+    first = "https://example.com/start"
+    final = "https://example.com/final"
+    respx.get(first).mock(return_value=httpx.Response(302, headers={"location": final}))
+    respx.get(final).mock(
+        return_value=httpx.Response(
+            200, text="done", headers={"content-type": "text/plain; charset=utf-8"}
+        )
+    )
+
+    result = await web_module._fetch_url(
+        httpx.URL(first), timeout=30.0, headers={"Accept": "text/plain"}
+    )
+
+    assert result.requested_url == first
+    assert result.final_url == final
+    assert result.status_code == 200
+    assert result.content_type == "text/plain; charset=utf-8"
+    assert result.redirect_count == 1
+
+
+@pytest.mark.asyncio
+async def test_web_fetch_rejects_private_destination(monkeypatch):
+    async def resolve(host, port):
+        return ["127.0.0.1"]
+
+    monkeypatch.setattr(web_module, "_resolve_host", resolve)
+
+    with pytest.raises(web_module.UnsafeURL):
+        await web_module._validate_fetch_destination(httpx.URL("http://example.test"))
+
+
+def test_web_fetch_args_rejects_unsupported_scheme():
+    with pytest.raises(ValueError, match=r"http\(s\)"):
+        web_module.WebFetchArgs.model_validate({"url": "ftp://example.com"})
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_web_fetch_rejects_redirect_to_private_destination(monkeypatch):
+    async def resolve(host, port):
+        return ["127.0.0.1"] if host == "private.test" else ["93.184.216.34"]
+
+    monkeypatch.setattr(web_module, "_resolve_host", resolve)
+    public = "https://public.test/start"
+    respx.get(public).mock(
+        return_value=httpx.Response(
+            302, headers={"location": "http://private.test/secret"}
+        )
+    )
+
+    result = await web_fetch(public)
+
+    assert "unsafe url" in result.lower()

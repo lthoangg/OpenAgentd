@@ -779,6 +779,11 @@ MCP.
 - **Fast HTML & document extraction** `[v2.0.0]` — `web_fetch` uses `trafilatura` for
   clean HTML-to-markdown extraction, and `read` uses `anydoc` for robust document
   conversion, dropping `markitdown`.
+- **Safe, bounded web fetching** `[v2.8.1]` — `web_fetch` streams responses under
+  a 50 MB limit, validates every redirect against public-network policy, reports
+  concise typed HTTP/network/conversion failures, and supports distinct Markdown,
+  text, HTML-source, and raw-text output modes. Private-network access is not
+  permitted.
 - **50k character read limit** `[v2.0.0]` — expanded `read` tool context limit to
   50,000 characters for reviewing larger source files in a single pass.
 - **Symbol outline mode for `read` tool** `[v2.4.0]` — `read` supports `outline=True`

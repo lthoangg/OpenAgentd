@@ -8,7 +8,7 @@ import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import React from 'react'
 import { SchedulerPanel } from '@/components/SchedulerPanel'
-import { useTeamStore } from '@/stores/useTeamStore'
+import { useAgentStore } from '@/stores/useAgentStore'
 import '@testing-library/jest-dom'
 
 let originalFetch: typeof fetch | undefined
@@ -33,7 +33,7 @@ afterEach(() => {
     globalThis.fetch = originalFetch
   }
   // Reset store
-  useTeamStore.setState({
+  useAgentStore.setState({
     sessionId: null,
     sessionTitle: null,
     _workspace: null,
@@ -115,7 +115,7 @@ describe('SchedulerPanel — Title Slugification and Session Target Selector', (
     const titleInput = screen.getByLabelText('Task Title')
     await user.type(titleInput, 'Test Task')
 
-    const promptInput = screen.getByPlaceholderText('Message to deliver to the team lead when the task fires.')
+    const promptInput = screen.getByPlaceholderText('Message to deliver to the agent when the task fires.')
     await user.type(promptInput, 'Hello future self')
 
     // Type invalid UUID

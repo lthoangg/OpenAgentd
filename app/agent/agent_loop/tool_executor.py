@@ -108,10 +108,10 @@ def make_tool_executor(
                         f"{', '.join(sorted(required))}). Retry with a smaller payload."
                     )
 
-            team_workspace_raw = s.metadata.get("team_workspace")
+            workspace_raw = s.metadata.get("workspace")
             injected_workspace = (
-                str(team_workspace_raw)
-                if isinstance(team_workspace_raw, str) and team_workspace_raw
+                str(workspace_raw)
+                if isinstance(workspace_raw, str) and workspace_raw
                 else None
             )
 

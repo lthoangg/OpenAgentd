@@ -38,10 +38,10 @@ PROMPT = (
 
 
 def post_message(base: str, message: str, session_id: str | None = None) -> dict:
-    data: dict[str, str] = {"message": message}
+    data: dict[str, str] = {"message": message, "workspace": "."}
     if session_id:
         data["session_id"] = session_id
-    response = httpx.post(f"{base}/team/chat", data=data, timeout=30)
+    response = httpx.post(f"{base}/agent/chat", data=data, timeout=30)
     response.raise_for_status()
     return response.json()
 
@@ -53,7 +53,7 @@ def stream_until_done(base: str, session_id: str, wait: int) -> list[dict]:
     data_buf: list[str] = []
 
     with httpx.stream(
-        "GET", f"{base}/team/{session_id}/stream", timeout=wait + 5
+        "GET", f"{base}/agent/{session_id}/stream", timeout=wait + 5
     ) as response:
         response.raise_for_status()
         for line in response.iter_lines():
@@ -81,7 +81,7 @@ def stream_until_done(base: str, session_id: str, wait: int) -> list[dict]:
 
 def get_history(base: str, session_id: str) -> list[dict]:
     response = httpx.get(
-        f"{base}/team/{session_id}/history", params={"limit": 1000}, timeout=30
+        f"{base}/agent/{session_id}/history", params={"limit": 1000}, timeout=30
     )
     response.raise_for_status()
     return list(response.json()["lead"]["messages"])

@@ -36,25 +36,13 @@ describe('thinkingLevelSchema', () => {
 // ── agentNameSchema ─────────────────────────────────────────────────────────
 
 describe('agentNameSchema', () => {
-  it.each(['orchestrator', 'member_1', 'a.b-c', 'X123', '9alpha'])(
-    'accepts %p',
-    (name) => {
-      expect(agentNameSchema.safeParse(name).success).toBe(true)
-    }
-  )
+  it('accepts the canonical code agent name', () => {
+    expect(agentNameSchema.safeParse('code').success).toBe(true)
+  })
 
-  it.each([
-    ['', 'Required'],
-    ['.hidden', 'letters, digits'],
-    [' spaced', 'letters, digits'],
-    ['bad/slash', 'letters, digits'],
-    ['a'.repeat(65), 'Max 64'],
-  ])('rejects %p with %p message', (name, fragment) => {
+  it.each(['', 'alpha', '.hidden', ' spaced', 'bad/slash', 'a'.repeat(65)])('rejects %p', (name) => {
     const res = agentNameSchema.safeParse(name)
     expect(res.success).toBe(false)
-    if (!res.success) {
-      expect(res.error.issues[0]?.message).toContain(fragment)
-    }
   })
 })
 
@@ -81,9 +69,8 @@ describe('modelSchema', () => {
 // ── roleSchema ──────────────────────────────────────────────────────────────
 
 describe('roleSchema', () => {
-  it('accepts lead and member', () => {
+  it('accepts the canonical lead role', () => {
     expect(roleSchema.safeParse('lead').success).toBe(true)
-    expect(roleSchema.safeParse('member').success).toBe(true)
   })
   it('rejects anything else', () => {
     expect(roleSchema.safeParse('admin').success).toBe(false)
@@ -95,7 +82,7 @@ describe('roleSchema', () => {
 
 describe('validateAgentName', () => {
   it('returns null for valid', () => {
-    expect(validateAgentName('alpha')).toBeNull()
+    expect(validateAgentName('code')).toBeNull()
   })
   it('returns string message for invalid', () => {
     expect(validateAgentName('.bad')).toBeTruthy()
@@ -134,7 +121,7 @@ describe('validateDescription', () => {
 describe('validateAgentForm', () => {
   it('accepts a minimal valid form', () => {
     const res = validateAgentForm({
-      name: 'alpha',
+      name: 'code',
       role: 'lead',
       model: 'openai:gpt-5.4',
     })
@@ -142,7 +129,7 @@ describe('validateAgentForm', () => {
   })
 
   it('flags missing model', () => {
-    const res = validateAgentForm({ name: 'alpha', role: 'lead' })
+    const res = validateAgentForm({ name: 'code', role: 'lead' })
     expect(res).not.toBeNull()
     expect(res?.model).toBeDefined()
   })
@@ -160,7 +147,7 @@ describe('validateAgentForm', () => {
     // temperature was retired as a config field; old drafts that still
     // carry it must not fail to validate.
     const res = validateAgentForm({
-      name: 'alpha',
+      name: 'code',
       role: 'lead',
       model: 'openai:gpt-5.4',
       temperature: 99,
@@ -186,14 +173,14 @@ describe('validateSkillForm', () => {
 describe('validateAgentDraft', () => {
   it('null on valid draft', () => {
     const raw = `---
-name: orchestrator
+name: code
 role: lead
 model: openai:gpt-5.4
 tools:
   - date
 ---
 
-You are orchestrator.
+You are code.
 `
     expect(validateAgentDraft(raw)).toBeNull()
   })
@@ -204,7 +191,7 @@ You are orchestrator.
 
   it('flags bad model even when rest is valid', () => {
     const raw = `---
-name: alpha
+name: code
 role: lead
 model: not-a-model
 ---
@@ -219,7 +206,7 @@ body
     // temperature was retired as a config field; old on-disk agent files
     // that still carry it must still validate cleanly.
     const raw = `---
-name: alpha
+name: code
 role: lead
 model: openai:gpt-5.4
 temperature: 0.2

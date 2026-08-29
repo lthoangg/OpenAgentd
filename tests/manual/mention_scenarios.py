@@ -11,9 +11,7 @@ import asyncio
 import sys
 import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock
-
-import app.api.routes.team._helpers as _h
+import app.api.routes.agent._helpers as _h
 
 PASS = "✅ PASS"
 FAIL = "❌ FAIL"
@@ -43,7 +41,6 @@ async def build(root: Path, message: str, mentions: list[str]) -> list[str]:
     try:
         return await _h.build_mention_context_blocks(
             message=message,
-            team=MagicMock(),
             session_id="test-session",
             workspace=None,
             existing_total_bytes=0,

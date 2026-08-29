@@ -17,15 +17,18 @@ import httpx
 
 
 from manual._common import DEFAULT_BASE
+
 BASE = DEFAULT_BASE
 DEFAULT_MESSAGE = (
-    "Use the shell tool to run exactly: "
-    "for i in 1 2 3; do echo delta-$i; sleep 1; done"
+    "Use the shell tool to run exactly: for i in 1 2 3; do echo delta-$i; sleep 1; done"
 )
 
 
-def _post_turn(base: str, message: str) -> str:
-    response = httpx.post(f"{base}/team/chat", data={"message": message}, timeout=30)
+def _post_turn(base: str, message: str, model: str | None = None) -> str:
+    payload = {"message": message, "workspace": "."}
+    if model:
+        payload["model"] = model
+    response = httpx.post(f"{base}/agent/chat", data=payload, timeout=30)
     response.raise_for_status()
     return str(response.json()["session_id"])
 
@@ -37,7 +40,7 @@ def _stream(base: str, session_id: str, wait: int) -> bool:
     data_buf: list[str] = []
 
     with httpx.stream(
-        "GET", f"{base}/team/{session_id}/stream", timeout=wait + 5
+        "GET", f"{base}/agent/{session_id}/stream", timeout=wait + 5
     ) as response:
         response.raise_for_status()
         for line in response.iter_lines():
@@ -64,11 +67,12 @@ def _stream(base: str, session_id: str, wait: int) -> bool:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--base", default=DEFAULT_BASE)
+    parser.add_argument("--model", default=None, help="Model override")
     parser.add_argument("--message", default=DEFAULT_MESSAGE)
     parser.add_argument("--wait", type=int, default=90)
     args = parser.parse_args()
 
-    session_id = _post_turn(args.base, args.message)
+    session_id = _post_turn(args.base, args.message, model=args.model)
     print(f"session: {session_id}")
     saw_delta = _stream(args.base, session_id, args.wait)
     print(f"\ntool_output_delta: {'seen' if saw_delta else 'missing'}")

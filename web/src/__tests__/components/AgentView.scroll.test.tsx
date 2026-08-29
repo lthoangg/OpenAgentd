@@ -2,14 +2,14 @@ import { describe, it, expect, afterEach, beforeEach, mock } from "bun:test"
 import { act, render, cleanup } from "@testing-library/react"
 import { AgentPane } from "@/components/AgentPane"
 import { AgentView } from "@/components/AgentView"
-import { useTeamStore } from "@/stores/useTeamStore"
+import { useAgentStore } from "@/stores/useAgentStore"
 import type { ContentBlock } from "@/api/types"
-import type { AgentStream } from "@/stores/useTeamStore"
+import type { AgentStream } from "@/stores/useAgentStore"
 
 afterEach(() => {
   cleanup()
   act(() => {
-    useTeamStore.setState({ sessionId: null })
+    useAgentStore.setState({ sessionId: null })
   })
 })
 
@@ -293,7 +293,7 @@ describe("AgentView — scroll-to-bottom button", () => {
 describe("attach-to-stream — session switch", () => {
   it("AgentView re-attaches and scrolls to the bottom when the session changes", async () => {
     act(() => {
-      useTeamStore.setState({ sessionId: "session-a" })
+      useAgentStore.setState({ sessionId: "session-a" })
     })
     const { container } = renderStream({ blocks: [makeTextBlock("b1", "Hello")] })
     const el = container.querySelector(".overflow-y-auto") as HTMLDivElement
@@ -304,7 +304,7 @@ describe("attach-to-stream — session switch", () => {
 
     // Switch to session B — the stale detach must not leak across sessions.
     await act(async () => {
-      useTeamStore.setState({ sessionId: "session-b" })
+      useAgentStore.setState({ sessionId: "session-b" })
     })
     await waitFrame()
 
@@ -314,7 +314,7 @@ describe("attach-to-stream — session switch", () => {
 
   it("AgentPane re-attaches and scrolls to the bottom when the session changes", async () => {
     act(() => {
-      useTeamStore.setState({ sessionId: "session-a" })
+      useAgentStore.setState({ sessionId: "session-a" })
     })
     const { container } = render(
       <AgentPane name="researcher" stream={makeAgentStream([makeTextBlock("b1", "Hello")])} isLead={false} />,
@@ -325,7 +325,7 @@ describe("attach-to-stream — session switch", () => {
     expect(container.querySelector('button[aria-label="Scroll to bottom"]')).toBeTruthy()
 
     await act(async () => {
-      useTeamStore.setState({ sessionId: "session-b" })
+      useAgentStore.setState({ sessionId: "session-b" })
     })
     await waitFrame()
 

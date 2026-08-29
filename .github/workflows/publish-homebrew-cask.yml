@@ -136,7 +136,7 @@ jobs:
 
             url "${DOWNLOAD_URL}"
             name "OpenAgentd"
-            desc "On-machine multi-agent AI assistant with a web cockpit"
+            desc "On-machine AI assistant with a web cockpit"
             homepage "https://github.com/lthoangg/openagentd"
 
             # Apple Silicon only. ``release-desktop.yml`` does not build an

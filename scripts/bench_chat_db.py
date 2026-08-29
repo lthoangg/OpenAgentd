@@ -1,6 +1,6 @@
 """Benchmark chat persistence hot paths against a (copy of a) production DB.
 
-Times the read paths (LLM window, team history pages/deltas, session list)
+Times the read paths (LLM window, agent history pages/deltas, session list)
 and the write paths (checkpointer sync, single message save) using the real
 service-layer functions, so before/after numbers reflect what the app pays.
 
@@ -101,7 +101,7 @@ async def _pick_targets() -> dict:
         ).all()
         top_sessions = [(r[0], int(r[1])) for r in rows]
 
-        # Lead with the most child rows (team history benches).
+        # Start with the most child rows (session history benches).
         lead_row = (
             await db.exec(
                 sa.text(
@@ -230,35 +230,35 @@ async def main() -> None:
 
     record(f"heal_orphaned[{big_count}]", await _timed(heal, repeat))
 
-    # ── Read: team history page 1 / page 2 / delta ────────────────────────
+    # ── Read: agent history page 1 / page 2 / delta ───────────────────────
     lead_id = targets["lead_id"]
 
     async def page1():
         async with async_session_factory() as db:
-            return await chat_service.get_team_history(db, lead_id)
+            return await chat_service.get_agent_history(db, lead_id)
 
-    record(f"team_history_p1[{targets['lead_rows']}]", await _timed(page1, repeat))
+    record(f"agent_history_p1[{targets['lead_rows']}]", await _timed(page1, repeat))
 
     async with async_session_factory() as db:
-        h = await chat_service.get_team_history(db, lead_id)
+        h = await chat_service.get_agent_history(db, lead_id)
     assert h is not None
 
     async def page2():
         async with async_session_factory() as db:
-            await chat_service.get_team_history(
+            await chat_service.get_agent_history(
                 db, lead_id, before_seq=h.next_cursor, before_id=h.next_cursor_id
             )
 
     if h.next_cursor is not None:
-        record(f"team_history_p2[{targets['lead_rows']}]", await _timed(page2, repeat))
+        record(f"agent_history_p2[{targets['lead_rows']}]", await _timed(page2, repeat))
 
     tail_id = UUID(hex=targets["tail_id"])
 
     async def delta():
         async with async_session_factory() as db:
-            await chat_service.get_team_history_since(db, lead_id, since_id=tail_id)
+            await chat_service.get_agent_history_since(db, lead_id, since_id=tail_id)
 
-    record(f"team_history_since[{targets['lead_rows']}]", await _timed(delta, repeat))
+    record(f"agent_history_since[{targets['lead_rows']}]", await _timed(delta, repeat))
 
     # ── Read: session list scan (all pages) ───────────────────────────────
     async def list_all():

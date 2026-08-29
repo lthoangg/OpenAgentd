@@ -1,5 +1,5 @@
 /**
- * TodosPopover — task-list popover surfaced from the team-chat topbar.
+ * TodosPopover — task-list popover surfaced from the agent-chat topbar.
  *
  * Renders the agent's task list as a flat, scrollable checklist (no
  * kanban columns, no priority badges). Each row is a status-aware
@@ -49,10 +49,6 @@ const STATUS_ORDER: Record<TodoItem['status'], number> = {
   pending: 1,
   completed: 2,
   cancelled: 3,
-}
-
-function getAgentLabel(todo: TodoItem): string | null {
-  return todo.claimed_by ?? todo.assigned_to ?? null
 }
 
 interface DesktopPopoverPosition {
@@ -217,13 +213,11 @@ export function TodosPopover({
             const isStruck =
               todo.status === 'completed' || todo.status === 'cancelled'
             const isInProgress = todo.status === 'in_progress'
-            const agent = getAgentLabel(todo)
             return (
               <li
                 key={todo.task_id}
                 className={cn(
-                  'group flex gap-2 rounded-sm px-2 py-1.5 transition-colors',
-                  agent ? 'items-start' : 'items-center',
+                  'group flex items-center gap-2 rounded-sm px-2 py-1.5 transition-colors',
                   isInProgress
                     ? 'bg-(--color-info-subtle) text-(--color-text)'
                     : 'hover:bg-(--bg-key)/50'
@@ -234,7 +228,6 @@ export function TodosPopover({
                   aria-hidden="true"
                   className={cn(
                     'shrink-0',
-                    agent && 'mt-0.5',
                     STATUS_ICON_COLOR[todo.status],
                     isInProgress && 'animate-spin'
                   )}
@@ -259,11 +252,6 @@ export function TodosPopover({
                     />
                     <TooltipContent>{todo.content}</TooltipContent>
                   </Tooltip>
-                  {agent && (
-                    <div className="mt-0.5 text-[10px] text-(--color-text-subtle)">
-                      {agent}
-                    </div>
-                  )}
                 </div>
               </li>
             )

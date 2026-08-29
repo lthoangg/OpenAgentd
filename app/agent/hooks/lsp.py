@@ -36,7 +36,7 @@ class LspHook(BaseAgentHook):
     """
 
     def __init__(self, *, enabled: bool = True) -> None:
-        # ``enabled`` is set by the team builder based on the team mode
+        # ``enabled`` is set by the session runtime for coding workspaces
         # ("coding"). When False the hook is a transparent pass-through.
         self._enabled = enabled
 

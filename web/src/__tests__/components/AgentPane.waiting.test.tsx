@@ -12,7 +12,7 @@ import { render, screen, cleanup } from '@testing-library/react'
 mock.module('lucide-react', () => new Proxy({}, { get: () => () => null }))
 
 import { AgentPane } from '@/components/AgentPane'
-import type { AgentStream } from '@/stores/useTeamStore'
+import type { AgentStream } from '@/stores/useAgentStore'
 
 afterEach(cleanup)
 

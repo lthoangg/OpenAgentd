@@ -1,7 +1,7 @@
 import { memo, useMemo, useState } from 'react'
 import { ChevronDown, ChevronUp, Paperclip, X } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { useTeamStore } from '@/stores/useTeamStore'
+import { useAgentStore } from '@/stores/useAgentStore'
 import type { MessageAttachment } from '@/api/types'
 import { cn } from '@/lib/utils'
 
@@ -75,13 +75,31 @@ function QueuedMessageContent({ content, attachments }: { content: string; attac
 }
 
 export const PendingMessageQueue = memo(function PendingMessageQueue() {
-  const allMessages = useTeamStore((s) => s._pendingMessages)
-  const sessionId = useTeamStore((s) => s.sessionId)
-  const messages = useMemo(
-    () => allMessages.filter((msg) => (msg.sessionId ?? null) === sessionId),
-    [allMessages, sessionId],
-  )
-  const removePendingMessage = useTeamStore((s) => s.removePendingMessage)
+  const allMessages = useAgentStore((s) => s._pendingMessages)
+  const sessionId = useAgentStore((s) => s.sessionId)
+  const leadName = useAgentStore((s) => s.leadName)
+  const agentStreams = useAgentStore((s) => s.agentStreams)
+
+  const activeStream = useMemo(() => {
+    if (!agentStreams) return undefined
+    if (leadName && agentStreams[leadName]) return agentStreams[leadName]
+    return Object.values(agentStreams)[0]
+  }, [leadName, agentStreams])
+
+  const messages = useMemo(() => {
+    const activeBlocks = activeStream ? [...activeStream.blocks, ...activeStream.currentBlocks] : []
+    const activeIds = new Set(activeBlocks.map((b) => b.id))
+    const activeUserContents = new Set(
+      activeBlocks.filter((b) => b.type === 'user').map((b) => b.content.trim()),
+    )
+    return allMessages.filter((msg) => {
+      if (msg.sessionId && sessionId && msg.sessionId !== sessionId) return false
+      if (activeIds.has(msg.id)) return false
+      if (activeUserContents.has((msg.content || '').trim())) return false
+      return true
+    })
+  }, [allMessages, sessionId, activeStream])
+  const removePendingMessage = useAgentStore((s) => s.removePendingMessage)
 
   if (messages.length === 0) return null
 
@@ -89,7 +107,7 @@ export const PendingMessageQueue = memo(function PendingMessageQueue() {
     // Move the queued text (and any queued files) back into the composer so
     // the user can edit or resend instead of losing what they typed. Files
     // must ride along because cancelling deletes the persisted uploads
-    // server-side. Mirrors the restore-on-/undo flow in TeamChatView. The
+    // server-side. Mirrors the restore-on-/undo flow in AgentChatView. The
     // CustomEvent matches the existing `focus-chat-input` pattern and
     // decouples this component from the chat view's inputRef.
     window.dispatchEvent(

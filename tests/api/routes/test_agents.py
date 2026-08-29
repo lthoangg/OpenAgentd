@@ -1,10 +1,10 @@
 """Tests for /api/agents HTTP routes.
 
 Mutations validate the new on-disk state but do NOT rebuild the running
-team — agents pick up file changes at the start of their next turn via
+session — agents pick up file changes at the start of their next turn via
 the config-stamp drift check (see ``app.agent.loader.detect_drift``
-and ``TeamMemberBase._refresh_agent_from_disk``).  These tests assert
-that contract: validation + rollback semantics, but no live team swap.
+and ``AgentSession._refresh_agent_from_disk``).  These tests assert
+that contract: validation + rollback semantics, but no live session swap.
 """
 
 from __future__ import annotations
@@ -19,7 +19,7 @@ from httpx import ASGITransport, AsyncClient
 
 from app.api.routes.agents import _mode_for_agent_path, router as agents_router
 from app.api.routes.skills import router as skills_router
-from app.services import team_manager
+from app.services import agent_manager
 
 
 def test_mode_for_agent_path_accepts_windows_separators():
@@ -66,12 +66,12 @@ async def client(fs_dirs, stub_provider):
     app = FastAPI()
     app.include_router(agents_router, prefix="/api/agents")
     app.include_router(skills_router, prefix="/api/skills")
-    # Make sure no team is left over from a previous test.
-    await team_manager.stop()
+    # Make sure no agent session is left over from a previous test.
+    await agent_manager.stop()
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://t") as c:
         yield c
-    await team_manager.stop()
+    await agent_manager.stop()
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -128,50 +128,25 @@ async def test_list_existing(fs_dirs, client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_list_includes_coding_agents(fs_dirs, client: AsyncClient):
+async def test_list_includes_code_agent(fs_dirs, client: AsyncClient):
     agents_dir, _ = fs_dirs
     _seed_files(agents_dir)
-    coding_dir = agents_dir / "coding"
-    coding_dir.mkdir()
-    (coding_dir / "openagentd.md").write_text(
-        LEAD_MD.replace("name: lead", "name: openagentd")
-    )
+    (agents_dir / "code.md").write_text(LEAD_MD.replace("name: lead", "name: code"))
 
     res = await client.get("/api/agents")
 
     assert res.status_code == 200
     names = [row["name"] for row in res.json()["agents"]]
-    assert names == ["coding/coder", "coding/explorer", "coding/openagentd", "lead"]
-
-
-@pytest.mark.asyncio
-async def test_list_materialized_coding_explorer_uses_builtin_tools(
-    fs_dirs, client: AsyncClient
-):
-    agents_dir, _ = fs_dirs
-    coding_dir = agents_dir / "coding"
-    coding_dir.mkdir()
-    (coding_dir / "openagentd.md").write_text(
-        "---\nname: openagentd\nrole: lead\nmodel: codex:gpt-5.4\n---\n"
-    )
-
-    res = await client.get("/api/agents")
-
-    assert res.status_code == 200
-    rows = {row["name"]: row for row in res.json()["agents"]}
-    explorer = rows["coding/explorer"]
-    assert explorer["description"].startswith("Checks the current codebase")
-    assert set(["glob", "grep", "read", "shell", "skill"]).issubset(explorer["tools"])
-    assert "patch" not in explorer["tools"]
+    assert names == ["code", "lead"]
 
 
 @pytest.mark.asyncio
 async def test_list_uses_effective_builtin_summary(fs_dirs, client: AsyncClient):
     agents_dir, _ = fs_dirs
-    (agents_dir / "openagentd.md").write_text(
+    (agents_dir / "code.md").write_text(
         """\
 ---
-name: openagentd
+name: code
 role: lead
 model: zai:glm-5-turbo
 ---
@@ -195,10 +170,10 @@ async def test_list_effective_builtin_summary_dedupes_user_extras(
     fs_dirs, client: AsyncClient
 ):
     agents_dir, _ = fs_dirs
-    (agents_dir / "openagentd.md").write_text(
+    (agents_dir / "code.md").write_text(
         """\
 ---
-name: openagentd
+name: code
 role: lead
 model: zai:glm-5-turbo
 tools:
@@ -598,20 +573,16 @@ async def test_get_single_agent(fs_dirs, client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_get_coding_agent(fs_dirs, client: AsyncClient):
+async def test_get_code_agent(fs_dirs, client: AsyncClient):
     agents_dir, _ = fs_dirs
-    coding_dir = agents_dir / "coding"
-    coding_dir.mkdir()
-    (coding_dir / "openagentd.md").write_text(
-        LEAD_MD.replace("name: lead", "name: openagentd")
-    )
+    (agents_dir / "code.md").write_text(LEAD_MD.replace("name: lead", "name: code"))
 
-    res = await client.get("/api/agents/coding%2Fopenagentd")
+    res = await client.get("/api/agents/code")
 
     assert res.status_code == 200
     body = res.json()
-    assert body["name"] == "coding/openagentd"
-    assert body["config"]["name"] == "openagentd"
+    assert body["name"] == "code"
+    assert body["config"]["name"] == "code"
     assert "shell" in body["config"]["tools"]
     assert "generate_image" not in body["config"]["tools"]
 
@@ -653,7 +624,7 @@ async def test_create_agent_validates_and_persists(fs_dirs, client: AsyncClient)
     assert (agents_dir / "lead.md").is_file()
     # Critically: the running team was NOT started.  Live mutations
     # don't rebuild — agents refresh themselves on next activation.
-    assert team_manager.current_team() is None
+    assert agent_manager.current_agent_session() is None
 
 
 @pytest.mark.asyncio
@@ -684,19 +655,6 @@ async def test_create_agent_mismatched_name_422(client: AsyncClient):
     assert res.status_code == 422
 
 
-@pytest.mark.asyncio
-async def test_create_without_lead_rolls_back(fs_dirs, client: AsyncClient):
-    """A member-only team fails the 'exactly one lead' check. The failed
-    reload must delete the just-written file so disk state stays consistent."""
-    agents_dir, _ = fs_dirs
-    res = await client.post(
-        "/api/agents",
-        json={"name": "worker", "content": MEMBER_MD},
-    )
-    assert res.status_code == 422
-    assert not (agents_dir / "worker.md").exists()
-
-
 # ── PUT /agents/{name} ───────────────────────────────────────────────────────
 
 
@@ -723,22 +681,20 @@ async def test_update_agent_validates_and_persists(fs_dirs, client: AsyncClient)
 
 
 @pytest.mark.asyncio
-async def test_update_coding_agent_validates_coding_team(fs_dirs, client: AsyncClient):
+async def test_update_code_agent_validates_coding_agent(fs_dirs, client: AsyncClient):
     agents_dir, _ = fs_dirs
     _seed_files(agents_dir)
-    coding_dir = agents_dir / "coding"
-    coding_dir.mkdir()
-    content = LEAD_MD.replace("name: lead", "name: openagentd")
-    (coding_dir / "openagentd.md").write_text(content)
+    content = LEAD_MD.replace("name: lead", "name: code")
+    (agents_dir / "code.md").write_text(content)
 
     new_content = content.replace("The lead.", "The coding lead.")
     res = await client.put(
-        "/api/agents/coding%2Fopenagentd",
-        json={"name": "coding/openagentd", "content": new_content},
+        "/api/agents/code",
+        json={"name": "code", "content": new_content},
     )
 
     assert res.status_code == 200, res.text
-    assert "The coding lead." in (coding_dir / "openagentd.md").read_text()
+    assert "The coding lead." in (agents_dir / "code.md").read_text()
 
 
 @pytest.mark.asyncio

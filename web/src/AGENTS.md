@@ -7,7 +7,7 @@ This file adds source-level guidance to `web/AGENTS.md`.
 - Backend wire change: update `api/`, the owning `queries/` hook or `stores/`
   reducer, and focused tests.
 - SSE change: inspect `api/sse*`, `utils/blocks.ts`, and
-  `stores/useTeamStore/`; keep session content on per-session streams and
+  `stores/useAgentStore/`; keep session content on per-session streams and
   lifecycle/metadata invalidation on the app-global stream.
 - New page: add it under `routes/`, register it in `router.ts`, validate search
   state with the existing schemas, and add a route/component test.

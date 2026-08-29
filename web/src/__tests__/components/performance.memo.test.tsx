@@ -100,7 +100,7 @@ describe("TodosPopover — memoized sort order", () => {
     task_id: string,
     content: string,
     status: TodoItem["status"],
-  ): TodoItem => ({ task_id, content, status, priority: "medium" })
+  ): TodoItem => ({ task_id, content, status })
 
   it("always renders in_progress before pending regardless of input order", () => {
     const todos: TodoItem[] = [

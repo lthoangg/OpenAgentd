@@ -2,7 +2,7 @@
  * SessionMcpServers — the MCP section of the session settings panel.
  *
  * These tests drive the section that replaced the old tool-browser: one row
- * per MCP server the lead agent declares, with status, enable/disable, and
+ * per MCP server the current agent declares, with status, enable/disable, and
  * OAuth connect. They assert on rendered outcome and on the requests the
  * component actually issues, never on mutation internals.
  */
@@ -289,7 +289,7 @@ describe('SessionMcpServers', () => {
     expect(within(ghost).getByText(/not configured/i)).toBeTruthy()
   })
 
-  it('ignores servers that are not declared by the lead agent', async () => {
+  it('ignores servers that are not declared by the current agent', async () => {
     mockServerList([
       makeServer({ name: 'github' }),
       makeServer({ name: 'figma' }),

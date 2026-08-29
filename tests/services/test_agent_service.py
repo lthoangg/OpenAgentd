@@ -12,7 +12,7 @@ from app.services.agent_service import (
     GLOBAL_SIZE_LIMIT,
     SIZE_LIMITS,
     AttachmentError,
-    NoTeamConfigured,
+    NoAgentConfigured,
     RawAttachment,
     _default_ext,
     _persist_attachment,
@@ -20,8 +20,8 @@ from app.services.agent_service import (
     _validate_magic_bytes,
     categorize,
     dispatch_user_message,
-    interrupt_team,
-    require_team,
+    interrupt_agent,
+    require_agent_session,
     validate_and_persist_attachments,
 )
 
@@ -30,7 +30,7 @@ from app.services.agent_service import (
 
 
 def _make_team(*, vision: bool = True, document_text: bool = True) -> MagicMock:
-    """Build a minimal AgentTeam stub."""
+    """Build a minimal AgentSession stub."""
     caps = MagicMock()
     caps.input.vision = vision
     caps.input.document_text = document_text
@@ -38,11 +38,13 @@ def _make_team(*, vision: bool = True, document_text: bool = True) -> MagicMock:
     agent = MagicMock()
     agent.capabilities = caps
 
-    lead = MagicMock()
-    lead.agent = agent
-
     team = MagicMock()
-    team.lead = lead
+    team.db_factory = None
+    team.agent = agent
+    team.name = "openagentd"
+    team.is_busy = MagicMock(return_value=False)
+    team.handle_stop = AsyncMock(return_value=True)
+    team.dismiss_pending_question = AsyncMock()
     team.handle_user_message = AsyncMock(
         return_value=("stub-session-id", "stub-message-id")
     )
@@ -64,17 +66,17 @@ def test_attachment_error_default_is_not_overridden():
         assert AttachmentError("x", status=code).status == code
 
 
-# ── require_team ──────────────────────────────────────────────────────────────
+# ── require_agent_session ────────────────────────────────────────────────────
 
 
-def test_require_team_returns_team():
+def test_require_agent_session_returns_session():
     team = _make_team()
-    assert require_team(team) is team
+    assert require_agent_session(team) is team
 
 
-def test_require_team_raises_when_none():
-    with pytest.raises(NoTeamConfigured):
-        require_team(None)
+def test_require_agent_session_raises_when_none():
+    with pytest.raises(NoAgentConfigured):
+        require_agent_session(None)
 
 
 # ── categorize ────────────────────────────────────────────────────────────────
@@ -372,7 +374,7 @@ async def test_validate_and_persist_uses_coding_workspace_uploads_dir(tmp_path):
     assert saved.is_file()
     assert metas[0]["path"] == str(saved)
     assert metas[0]["workspace_path"] == str(saved)
-    assert metas[0]["url"] == "/api/team/existing-sid-xyz/uploads/image.png"
+    assert metas[0]["url"] == "/api/agent/existing-sid-xyz/uploads/image.png"
 
 
 @pytest.mark.asyncio
@@ -647,10 +649,10 @@ async def test_dispatch_with_attachments_prefers_provided_session_id(tmp_path):
     assert message_id == "stub-message-id"
 
 
-# ── interrupt_team ────────────────────────────────────────────────────────────
+# ── interrupt_agent ──────────────────────────────────────────────────────────
 
 
-async def test_interrupt_team_waits_for_cancelled_activation_cleanup():
+async def test_interrupt_agent_waits_for_cancelled_activation_cleanup():
     cleaned_up = asyncio.Event()
 
     async def active_turn():
@@ -662,51 +664,50 @@ async def test_interrupt_team_waits_for_cancelled_activation_cleanup():
     active_task = asyncio.create_task(active_turn())
     await asyncio.sleep(0)
 
-    working = MagicMock()
-    working.state = "working"
-    working.name = "worker-a"
-    working._active_task = active_task
-    working.interrupt.side_effect = active_task.cancel
+    async def _stop():
+        active_task.cancel()
+        try:
+            await active_task
+        except asyncio.CancelledError:
+            pass
 
     team = MagicMock()
-    team.members = {}
-    team.all_members = [working]
-    team.lead.session_id = None
+    team.db_factory = None
+    team.name = "openagentd"
+    team.is_busy = MagicMock(return_value=True)
+    team.handle_stop = AsyncMock(side_effect=_stop)
+    team.session_id = None
+    team.dismiss_pending_question = AsyncMock()
 
-    await interrupt_team(team, session_id=None)
+    await interrupt_agent(team, session_id=None)
 
     assert cleaned_up.is_set()
     assert active_task.done()
 
 
-async def test_interrupt_team_dismisses_an_open_question():
-    """Stop outranks a question the lead is parked on.
-
-    Interrupt-only requests never reach ``handle_user_message``, so this is the
-    only place a Stop can close the question. Leaving the row open would badge
-    the session "needs input" forever with no turn left to resume it, and the
-    lead would stay ``waiting_input`` — busy to every caller that asks.
-    """
+async def test_interrupt_agent_dismisses_an_open_question():
+    """Stop outranks an open question on the agent."""
     team = MagicMock()
-    team.members = {}
-    team.all_members = []
-    # The lead is bound to a *different* session than the one being stopped.
+    team.db_factory = None
+    team.name = "openagentd"
+    # The agent may be bound to a *different* session than the one being stopped.
     # A coding team is cached per (workspace, session) and rebuilt after the
     # idle window with a freshly minted lead session id; only
     # ``handle_user_message`` rebinds it, and an interrupt-only request returns
     # before that runs. Dismissing "the lead's" question would search a session
     # that has no questions and silently close nothing.
-    team.lead.session_id = "019fd000-0000-7000-8000-00000000dead"
+    team.session_id = "019fd000-0000-7000-8000-00000000dead"
+    team.is_busy = MagicMock(return_value=False)
     team.dismiss_pending_question = AsyncMock(return_value=True)
 
-    await interrupt_team(team, session_id="019fd791-93ed-753d-8615-799b456708b7")
+    await interrupt_agent(team, session_id="019fd791-93ed-753d-8615-799b456708b7")
 
     team.dismiss_pending_question.assert_awaited_once_with(
         reason="dismissed", session_id="019fd791-93ed-753d-8615-799b456708b7"
     )
 
 
-async def test_interrupt_team_delivers_done_when_the_turn_state_expired():
+async def test_interrupt_agent_delivers_done_when_the_turn_state_expired():
     """Stopping a long-suspended question still has to close the turn.
 
     ``ask_user`` made this reachable: the stream store's TTL slides on every
@@ -720,13 +721,13 @@ async def test_interrupt_team_delivers_done_when_the_turn_state_expired():
     session_id = "019fd791-93ed-753d-8615-799b456708b7"
     _turns.clear()
     team = MagicMock()
-    team.members = {}
-    team.all_members = []
-    team.lead.session_id = session_id
+    team.db_factory = None
+    team.session_id = session_id
+    team.is_busy = MagicMock(return_value=False)
     team.dismiss_pending_question = AsyncMock(return_value=True)
 
     try:
-        await interrupt_team(team, session_id=session_id)
+        await interrupt_agent(team, session_id=session_id)
 
         assert session_id in _turns
         assert _turns[session_id].is_streaming is False
@@ -734,38 +735,30 @@ async def test_interrupt_team_delivers_done_when_the_turn_state_expired():
         _turns.clear()
 
 
-async def test_interrupt_team_survives_a_failed_question_dismissal():
+async def test_interrupt_agent_survives_a_failed_question_dismissal():
     """Cancelling the run matters more than closing the card."""
-    working = MagicMock()
-    working.state = "working"
-    working.name = "worker-a"
-    working._active_task = None
-
     team = MagicMock()
-    team.members = {}
-    team.all_members = [working]
-    team.lead.session_id = None
+    team.db_factory = None
+    team.name = "openagentd"
+    team.is_busy = MagicMock(return_value=True)
+    team.handle_stop = AsyncMock()
+    team.session_id = None
     team.dismiss_pending_question = AsyncMock(side_effect=RuntimeError("db gone"))
 
-    names = await interrupt_team(team, session_id=None)
+    names = await interrupt_agent(team, session_id=None)
 
-    assert names == ["worker-a"]
-    working.interrupt.assert_called_once()
+    assert names == ["openagentd"]
+    team.handle_stop.assert_awaited_once()
 
 
 @pytest.mark.asyncio
-async def test_interrupt_team_cancels_working_members():
-    working = MagicMock()
-    working.state = "working"
-    working.name = "worker-a"
-
-    idle = MagicMock()
-    idle.state = "idle"
-    idle.name = "idler"
-
+async def test_interrupt_agent_cancels_working_agent():
     team = MagicMock()
-    team.members = {}
-    team.all_members = [working, idle]
+    team.db_factory = None
+    team.name = "openagentd"
+    team.is_busy = MagicMock(return_value=True)
+    team.handle_stop = AsyncMock()
+    team.dismiss_pending_question = AsyncMock()
 
     with (
         patch(
@@ -775,24 +768,22 @@ async def test_interrupt_team_cancels_working_members():
             "app.services.agent_service.stream_store.mark_done", new=AsyncMock()
         ) as mark_done,
     ):
-        names = await interrupt_team(team, session_id="sess-1")
+        names = await interrupt_agent(team, session_id="sess-1")
 
-    assert names == ["worker-a"]
-    working.interrupt.assert_called_once()
+    assert names == ["openagentd"]
+    team.handle_stop.assert_awaited_once()
     push.assert_awaited_once()
     mark_done.assert_awaited_once_with("sess-1")
 
 
 @pytest.mark.asyncio
-async def test_interrupt_team_releases_queued_messages_before_stopping_stream():
-    idle = MagicMock()
-    idle.state = "idle"
-    idle.name = "idler"
-
+async def test_interrupt_agent_releases_queued_messages_before_stopping_stream():
     team = MagicMock()
-    team.members = {}
-    team.all_members = [idle]
-    team.lead.session_id = None
+    team.db_factory = None
+    team.name = "openagentd"
+    team.is_busy = MagicMock(return_value=False)
+    team.session_id = None
+    team.dismiss_pending_question = AsyncMock()
 
     with (
         patch(
@@ -806,7 +797,7 @@ async def test_interrupt_team_releases_queued_messages_before_stopping_stream():
             "app.services.agent_service.stream_store.mark_done", new=AsyncMock()
         ) as mark_done,
     ):
-        names = await interrupt_team(
+        names = await interrupt_agent(
             team, session_id="018f0000-0000-7000-8000-000000000001"
         )
 
@@ -816,15 +807,14 @@ async def test_interrupt_team_releases_queued_messages_before_stopping_stream():
     mark_done.assert_awaited_once_with("018f0000-0000-7000-8000-000000000001")
 
 
-async def test_interrupt_team_marks_stream_done_even_when_no_members_working():
-    idle = MagicMock()
-    idle.state = "idle"
-    idle.name = "idler"
-
+async def test_interrupt_agent_marks_stream_done_even_when_idle():
     team = MagicMock()
-    team.members = {}
-    team.all_members = [idle]
-    team.lead.session_id = None
+    team.db_factory = None
+    team.name = "openagentd"
+    team.is_busy = MagicMock(return_value=False)
+    team.handle_stop = AsyncMock()
+    team.dismiss_pending_question = AsyncMock()
+    team.session_id = None
 
     with (
         patch(
@@ -834,7 +824,7 @@ async def test_interrupt_team_marks_stream_done_even_when_no_members_working():
             "app.services.agent_service.stream_store.mark_done", new=AsyncMock()
         ) as mark_done,
     ):
-        names = await interrupt_team(team, session_id="sess-1")
+        names = await interrupt_agent(team, session_id="sess-1")
 
     assert names == []
     push.assert_awaited_once()
@@ -842,51 +832,33 @@ async def test_interrupt_team_marks_stream_done_even_when_no_members_working():
 
 
 @pytest.mark.asyncio
-async def test_interrupt_team_cancels_working_live_members_without_dismissing():
-    working = MagicMock()
-    working.state = "working"
-    working.name = "executor#1"
-
-    idle = MagicMock()
-    idle.state = "idle"
-    idle.name = "executor#2"
-
+async def test_interrupt_agent_cancels_working_turn_without_dismissing():
     team = MagicMock()
-    team.members = {"executor#1": working, "executor#2": idle}
-    team.all_members = [working, idle]
-    team.dismiss = AsyncMock()
-    team._emit = AsyncMock()
-    team.lead.name = "lead"
-    team.lead.session_id = None
+    team.db_factory = None
+    team.name = "openagentd"
+    team.is_busy = MagicMock(return_value=True)
+    team.handle_stop = AsyncMock(return_value=True)
+    team.dismiss_pending_question = AsyncMock()
+    team.session_id = None
 
     with (
         patch("app.services.agent_service.stream_store.push_event", new=AsyncMock()),
         patch("app.services.agent_service.stream_store.mark_done", new=AsyncMock()),
     ):
-        names = await interrupt_team(team, session_id=None)
-    assert names == ["executor#1"]
-    team._emit.assert_awaited_once_with(
-        agent="lead",
-        event="inbox",
-        extra={
-            "content": "[executor#1]: Stopped before completing assigned work.",
-            "from_agent": "executor#1",
-        },
-    )
-    working.interrupt.assert_called_once()
-    team.dismiss.assert_not_awaited()
+        names = await interrupt_agent(team, session_id=None)
+    assert names == ["openagentd"]
+    team.handle_stop.assert_awaited_once()
 
 
 @pytest.mark.asyncio
-async def test_interrupt_team_no_working_members():
-    idle = MagicMock()
-    idle.state = "idle"
-    idle.name = "idler"
-
+async def test_interrupt_agent_when_idle():
     team = MagicMock()
-    team.members = {}
-    team.all_members = [idle]
-    team.lead.session_id = None
+    team.db_factory = None
+    team.name = "openagentd"
+    team.is_busy = MagicMock(return_value=False)
+    team.handle_stop = AsyncMock()
+    team.dismiss_pending_question = AsyncMock()
+    team.session_id = None
 
     with (
         patch(
@@ -896,7 +868,7 @@ async def test_interrupt_team_no_working_members():
             "app.services.agent_service.stream_store.mark_done", new=AsyncMock()
         ) as mark_done,
     ):
-        names = await interrupt_team(team, session_id=None)
+        names = await interrupt_agent(team, session_id=None)
 
     assert names == []
     push.assert_not_awaited()
@@ -904,22 +876,20 @@ async def test_interrupt_team_no_working_members():
 
 
 @pytest.mark.asyncio
-async def test_interrupt_team_publishes_stopped_event():
-    idle = MagicMock()
-    idle.state = "idle"
-    idle.name = "idler"
-
+async def test_interrupt_agent_publishes_stopped_event():
     team = MagicMock()
-    team.members = {}
-    team.all_members = [idle]
-    team.lead.session_id = None
+    team.db_factory = None
+    team.name = "openagentd"
+    team.is_busy = MagicMock(return_value=False)
+    team.session_id = None
+    team.dismiss_pending_question = AsyncMock()
 
     with (
         patch("app.services.agent_service.stream_store.push_event", new=AsyncMock()),
         patch("app.services.agent_service.stream_store.mark_done", new=AsyncMock()),
         patch("app.services.event_broadcaster.publish", new=AsyncMock()) as publish,
     ):
-        await interrupt_team(team, session_id="sess-1")
+        await interrupt_agent(team, session_id="sess-1")
 
     publish.assert_awaited_once_with(
         "session_turn_completed",

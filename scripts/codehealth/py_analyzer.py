@@ -127,7 +127,7 @@ def analyze_python_file(
         # Still record LOC; skip structural metrics on parse failure.
         return report
 
-    # Package path of the current module, e.g. app.agent.mode.team
+    # Package path of the current module, e.g. app.agent.
     current_pkg = path.relative_to(repo_root).with_suffix("").parts
     current_pkg = (
         list(current_pkg[:-1]) if current_pkg[-1] == "__init__" else list(current_pkg)

@@ -921,11 +921,11 @@ describe("ToolCall — concise tool labels", () => {
     expect(title!.length).toBeLessThan(80)
   })
 
-  it("describes a team roster list without implying a mutation", () => {
+  it("describes a agent roster list without implying a mutation", () => {
     render(<ToolCall name="team_manage" args={JSON.stringify({ action: "list", members: [] })} done={false} />)
 
-    expect(getHeader("Listing team roster…")).toBeTruthy()
-    expect(screen.queryByText("Managing team roster…")).toBeNull()
+    expect(getHeader("Listing agent roster…")).toBeTruthy()
+    expect(screen.queryByText("Managing agent roster…")).toBeNull()
   })
 })
 

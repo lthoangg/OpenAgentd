@@ -1,5 +1,5 @@
 import { describe, it, expect } from "bun:test";
-import { sumUsageFromMessages, parseTeamBlocks, applyOrphanToolResults } from "@/utils/messages";
+import { sumUsageFromMessages, parseAgentBlocks, applyOrphanToolResults } from "@/utils/messages";
 import type { OrphanToolResult } from "@/utils/messages";
 import type { MessageResponse } from "@/api/types";
 
@@ -118,7 +118,7 @@ describe("sumUsageFromMessages", () => {
 
   it("skips hidden messages (not filtered here — caller responsibility)", () => {
     // sumUsageFromMessages does NOT filter is_hidden — it trusts the caller
-    // parseTeamBlocks filters is_hidden; sumUsageFromMessages sums all assistant msgs
+    // parseAgentBlocks filters is_hidden; sumUsageFromMessages sums all assistant msgs
     const msgs = [makeMsg({ is_hidden: true, extra: { usage: { input: 10, output: 5, cache: 0 } } })];
     const result = sumUsageFromMessages(msgs);
     // Me still counts hidden messages — this matches DatabaseHook behaviour (all turns are stored)
@@ -184,17 +184,17 @@ describe("sumUsageFromMessages", () => {
 });
 
 // ---------------------------------------------------------------------------
-// parseTeamBlocks — basic coverage
+// parseAgentBlocks — basic coverage
 // ---------------------------------------------------------------------------
 
-describe("parseTeamBlocks", () => {
+describe("parseAgentBlocks", () => {
   it("returns empty array for empty input", () => {
-    expect(parseTeamBlocks([])).toEqual([]);
+    expect(parseAgentBlocks([])).toEqual([]);
   });
 
   it("converts user message to type:user block", () => {
     const msgs = [makeMsg({ role: "user", content: "hello team" })];
-    const blocks = parseTeamBlocks(msgs);
+    const blocks = parseAgentBlocks(msgs);
     expect(blocks).toHaveLength(1);
     expect(blocks[0].type).toBe("user");
     expect(blocks[0].content).toBe("hello team");
@@ -210,7 +210,7 @@ describe("parseTeamBlocks", () => {
         thinking_level: "medium",
       },
     })];
-    const blocks = parseTeamBlocks(msgs);
+    const blocks = parseAgentBlocks(msgs);
     expect(blocks).toHaveLength(1);
     expect(blocks[0].extra?.from_agent).toBe("planner#1");
     expect(blocks[0].extra?.model).toBe("openrouter:anthropic/claude-sonnet-4.5");
@@ -219,13 +219,13 @@ describe("parseTeamBlocks", () => {
 
   it("does not invent model metadata for legacy user messages", () => {
     const msgs = [makeMsg({ role: "user", content: "legacy", extra: null })];
-    const blocks = parseTeamBlocks(msgs);
+    const blocks = parseAgentBlocks(msgs);
     expect(blocks[0].extra).toBeUndefined();
   });
 
   it("converts assistant message to text block", () => {
     const msgs = [makeMsg({ role: "assistant", content: "here is my answer" })];
-    const blocks = parseTeamBlocks(msgs);
+    const blocks = parseAgentBlocks(msgs);
     const textBlock = blocks.find((b) => b.type === "text");
     expect(textBlock).toBeDefined();
     expect(textBlock?.content).toBe("here is my answer");
@@ -245,8 +245,8 @@ describe("parseTeamBlocks", () => {
       tool_calls: [{ id: "tc-1", type: "function", function: { name: "web_search", arguments: "{}" } }],
     });
 
-    const first = parseTeamBlocks([msg]);
-    const second = parseTeamBlocks([msg]);
+    const first = parseAgentBlocks([msg]);
+    const second = parseAgentBlocks([msg]);
 
     expect(first.map((b) => b.id)).toEqual(second.map((b) => b.id));
     // text/thinking ids trace back to the message; the tool id reuses the
@@ -265,14 +265,14 @@ describe("parseTeamBlocks", () => {
       content: null,
       tool_calls: [{ id: "tc-abc", type: "function", function: { name: "web_search", arguments: "{}" } }],
     });
-    const blocks = parseTeamBlocks([msg]);
+    const blocks = parseAgentBlocks([msg]);
     const toolBlock = blocks.find((b) => b.type === "tool");
     expect(toolBlock?.id).toBe("tc-abc");
   });
 
   it("converts reasoning_content to thinking block", () => {
     const msgs = [makeMsg({ role: "assistant", reasoning_content: "let me think", content: null })];
-    const blocks = parseTeamBlocks(msgs);
+    const blocks = parseAgentBlocks(msgs);
     expect(blocks[0].type).toBe("thinking");
     expect(blocks[0].content).toBe("let me think");
   });
@@ -283,7 +283,7 @@ describe("parseTeamBlocks", () => {
       role: "assistant",
       content: "[Summary of earlier conversation]\nthe gist",
     })];
-    const blocks = parseTeamBlocks(msgs);
+    const blocks = parseAgentBlocks(msgs);
     expect(blocks).toHaveLength(1);
     expect(blocks[0].type).toBe("compaction");
     expect(blocks[0].extra?.state).toBe("compacted");
@@ -297,7 +297,7 @@ describe("parseTeamBlocks", () => {
       role: "user",
       content: "## Goal\nDo the thing.\n\n## Progress\nDone.",
     })];
-    const blocks = parseTeamBlocks(msgs);
+    const blocks = parseAgentBlocks(msgs);
     expect(blocks).toHaveLength(1);
     expect(blocks[0].type).toBe("compaction");
     expect(blocks[0].extra?.state).toBe("compacted");
@@ -306,7 +306,7 @@ describe("parseTeamBlocks", () => {
 
   it("summary with null content produces empty compaction block", () => {
     const msgs = [makeMsg({ is_summary: true, role: "user", content: null as unknown as string })];
-    const blocks = parseTeamBlocks(msgs);
+    const blocks = parseAgentBlocks(msgs);
     expect(blocks).toHaveLength(1);
     expect(blocks[0].type).toBe("compaction");
     expect(blocks[0].content).toBe(""); // msg.content || '' → ""
@@ -319,7 +319,7 @@ describe("parseTeamBlocks", () => {
       makeMsg({ is_summary: true, role: "user", content: "first summary", created_at: t1 }),
       makeMsg({ is_summary: true, role: "user", content: "second summary", created_at: t2 }),
     ];
-    const blocks = parseTeamBlocks(msgs);
+    const blocks = parseAgentBlocks(msgs);
     expect(blocks).toHaveLength(2);
     expect(blocks[0].type).toBe("compaction");
     expect(blocks[0].content).toBe("first summary");
@@ -334,7 +334,7 @@ describe("parseTeamBlocks", () => {
       makeMsg({ is_summary: true, role: "user", content: "compacted here", created_at: new Date(base + 1).toISOString() }),
       makeMsg({ role: "assistant", content: "answer", created_at: new Date(base + 2).toISOString() }),
     ];
-    const blocks = parseTeamBlocks(msgs);
+    const blocks = parseAgentBlocks(msgs);
     expect(blocks).toHaveLength(3);
     expect(blocks[0].type).toBe("user");
     expect(blocks[1].type).toBe("compaction");
@@ -344,7 +344,7 @@ describe("parseTeamBlocks", () => {
 
   it("shows hidden messages (user sees full history)", () => {
     const msgs = [makeMsg({ is_hidden: true, role: "assistant", content: "old message" })];
-    expect(parseTeamBlocks(msgs)).toHaveLength(1);
+    expect(parseAgentBlocks(msgs)).toHaveLength(1);
   });
 
   it("links tool_call to tool result via tool_call_id and restores persisted duration", () => {
@@ -364,7 +364,7 @@ describe("parseTeamBlocks", () => {
         created_at: t,
       }),
     ];
-    const blocks = parseTeamBlocks(msgs);
+    const blocks = parseAgentBlocks(msgs);
     const toolBlock = blocks.find((b) => b.type === "tool");
     expect(toolBlock).toBeDefined();
     expect(toolBlock?.toolDone).toBe(true);
@@ -392,7 +392,7 @@ describe("parseTeamBlocks", () => {
       makeMsg({ role: "tool", content: "null", tool_call_id: "tc3", extra: null, created_at: t }),
     ];
 
-    const blocks = parseTeamBlocks(msgs).filter((b) => b.type === "tool");
+    const blocks = parseAgentBlocks(msgs).filter((b) => b.type === "tool");
 
     expect(blocks).toHaveLength(3);
     for (const block of blocks) {
@@ -408,17 +408,17 @@ describe("parseTeamBlocks", () => {
       makeMsg({ role: "user", content: "second", created_at: later }),
       makeMsg({ role: "user", content: "first", created_at: earlier }),
     ];
-    const blocks = parseTeamBlocks(msgs);
+    const blocks = parseAgentBlocks(msgs);
     expect(blocks[0].content).toBe("first");
     expect(blocks[1].content).toBe("second");
   });
 });
 
 // ---------------------------------------------------------------------------
-// parseTeamBlocks — todo_manage rendering
+// parseAgentBlocks — todo_manage rendering
 // ---------------------------------------------------------------------------
 
-describe("parseTeamBlocks — todo_manage rendering", () => {
+describe("parseAgentBlocks — todo_manage rendering", () => {
   it("includes todo_manage tool calls in blocks (board mutations are visible)", () => {
     const msgs = [makeMsg({
       role: "assistant",
@@ -427,7 +427,7 @@ describe("parseTeamBlocks — todo_manage rendering", () => {
         { id: "tc1", type: "function", function: { name: "todo_manage", arguments: '{"action":"create"}' } },
       ],
     })];
-    const blocks = parseTeamBlocks(msgs);
+    const blocks = parseAgentBlocks(msgs);
     expect(blocks).toHaveLength(1);
     expect(blocks[0].type).toBe("tool");
     expect(blocks[0].toolName).toBe("todo_manage");
@@ -442,7 +442,7 @@ describe("parseTeamBlocks — todo_manage rendering", () => {
         { id: "tc2", type: "function", function: { name: "web_search", arguments: '{"q":"test"}' } },
       ],
     })];
-    const blocks = parseTeamBlocks(msgs);
+    const blocks = parseAgentBlocks(msgs);
     expect(blocks).toHaveLength(2);
     expect(blocks.map((b) => b.toolName)).toEqual(["todo_manage", "web_search"]);
   });
@@ -465,7 +465,7 @@ describe("parseTeamBlocks — todo_manage rendering", () => {
         created_at: t,
       }),
     ];
-    const blocks = parseTeamBlocks(msgs);
+    const blocks = parseAgentBlocks(msgs);
     expect(blocks).toHaveLength(1);
     expect(blocks[0].toolDone).toBe(true);
     expect(blocks[0].toolResult).toBe("[task_1] [completed] (high) claimed=executor#1 Do the thing");
@@ -479,7 +479,7 @@ describe("parseTeamBlocks — todo_manage rendering", () => {
 describe("orphaned tool results", () => {
   it("collects a tool result whose assistant row is outside the batch", () => {
     const orphans: Record<string, OrphanToolResult> = {};
-    const blocks = parseTeamBlocks(
+    const blocks = parseAgentBlocks(
       [
         makeMsg({
           role: "tool",
@@ -497,7 +497,7 @@ describe("orphaned tool results", () => {
 
   it("does not collect results that matched a card in the same batch", () => {
     const orphans: Record<string, OrphanToolResult> = {};
-    const blocks = parseTeamBlocks(
+    const blocks = parseAgentBlocks(
       [
         makeMsg({
           role: "assistant",
@@ -523,7 +523,7 @@ describe("orphaned tool results", () => {
   });
 
   it("applyOrphanToolResults completes a matching incomplete card and consumes the orphan", () => {
-    const blocks = parseTeamBlocks([
+    const blocks = parseAgentBlocks([
       makeMsg({
         role: "assistant",
         content: "",
@@ -548,7 +548,7 @@ describe("orphaned tool results", () => {
   });
 
   it("applyOrphanToolResults leaves done cards and unrelated orphans alone", () => {
-    const blocks = parseTeamBlocks([
+    const blocks = parseAgentBlocks([
       makeMsg({
         role: "assistant",
         content: "",

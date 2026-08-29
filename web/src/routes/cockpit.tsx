@@ -1,9 +1,9 @@
 import { useRef, useEffect, useLayoutEffect } from 'react'
 import { Outlet, useParams, useNavigate } from '@tanstack/react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { TeamChatView } from '@/components/TeamChatView'
-import { getTeamSession, resolveTeamSession } from '@/api/client'
-import { useTeamStore } from '@/stores/useTeamStore'
+import { AgentChatView } from '@/components/AgentChatView'
+import { getSession, resolveSession } from '@/api/client'
+import { useAgentStore } from '@/stores/useAgentStore'
 import { applyCacheInvalidations, patchSessionTitle } from '@/stores/cache-invalidation-bridge'
 import { initBroadcastSync, broadcastMessage } from '@/lib/broadcast-sync'
 import { queryKeys } from '@/queries'
@@ -13,9 +13,9 @@ import { syncDesktopWindowTitle } from '@/lib/window-title'
 /**
  * Coding workspace layout for /coding and its session routes.
  * Stays mounted across URL changes — handles navigation when a new
- * team session_id arrives from POST /team/chat.
+ * agent session_id arrives from POST /agent/chat.
  */
-function TeamLayoutBase() {
+function AgentLayoutBase() {
   const params = useParams({ strict: false }) as Record<string, string>
   const sessionId = params.sessionId as string | undefined
   const mode = 'coding' as const
@@ -23,15 +23,15 @@ function TeamLayoutBase() {
   const queryClient = useQueryClient()
   const cachedSessionPages = queryClient.getQueryData<{
     pages: Array<{ data: Array<{ id: string; workspace?: string | null }> }>
-  }>(queryKeys.team.sessions.infinite())
+  }>(queryKeys.session.sessions.infinite())
   const cachedSession = sessionId
     ? cachedSessionPages?.pages
       .flatMap((page) => page.data)
       .find((session) => session.id === sessionId)
     : undefined
   const sessionQuery = useQuery({
-    queryKey: queryKeys.team.sessions.detail(sessionId ?? ''),
-    queryFn: () => getTeamSession(sessionId as string),
+    queryKey: queryKeys.session.sessions.detail(sessionId ?? ''),
+    queryFn: () => getSession(sessionId as string),
     enabled: Boolean(sessionId) && !cachedSession?.workspace,
     staleTime: 30_000,
   })
@@ -53,8 +53,8 @@ function TeamLayoutBase() {
   }, [mode, workspace])
 
   useEffect(() => {
-    syncDesktopWindowTitle({ workspace, sessionTitle: useTeamStore.getState().sessionTitle })
-    return useTeamStore.subscribe((state, prev) => {
+    syncDesktopWindowTitle({ workspace, sessionTitle: useAgentStore.getState().sessionTitle })
+    return useAgentStore.subscribe((state, prev) => {
       if (state.sessionTitle !== prev.sessionTitle) {
         syncDesktopWindowTitle({ workspace, sessionTitle: state.sessionTitle })
       }
@@ -69,9 +69,9 @@ function TeamLayoutBase() {
       const lastWorkspace = loadLastCodingWorkspace()
       if (!lastWorkspace) return
       ;(async () => {
-        const current = useTeamStore.getState()
+        const current = useAgentStore.getState()
         try {
-          const session = await resolveTeamSession({
+          const session = await resolveSession({
             workspace: lastWorkspace.path,
             model: current.sessionModel,
             thinkingLevel: current.sessionThinkingLevel,
@@ -81,13 +81,13 @@ function TeamLayoutBase() {
           // or thinking level (via Session Settings) while this request was
           // in flight. Falling back to the pre-request snapshot (`current`)
           // here would silently clobber that choice the moment it resolves.
-          const latest = useTeamStore.getState()
+          const latest = useAgentStore.getState()
           latest.beginResolvedSession(session.id, {
             workspace: session.workspace ?? lastWorkspace.path,
             model: session.model ?? latest.sessionModel,
             thinkingLevel: session.thinking_level ?? latest.sessionThinkingLevel,
           })
-          void queryClient.invalidateQueries({ queryKey: queryKeys.team.sessions.all() })
+          void queryClient.invalidateQueries({ queryKey: queryKeys.session.sessions.all() })
           navigate({
             to: '/coding/$sessionId',
             params: { sessionId: session.id },
@@ -96,7 +96,7 @@ function TeamLayoutBase() {
         } catch {
           if (cancelled) return
           removeCodingWorkspace(lastWorkspace.path)
-          useTeamStore.setState((state) => {
+          useAgentStore.setState((state) => {
             state.error = null
           })
         }
@@ -108,17 +108,17 @@ function TeamLayoutBase() {
     }
   }, [mode, navigate, queryClient, sessionId])
 
-  // Keep ``useTeamStore._workspace`` in sync with the URL-derived
+  // Keep ``useAgentStore._workspace`` in sync with the URL-derived
   // workspace path the moment we render the layout. The SSE reducer
   // reads this field to decide whether to fire ``coding_workspace`` or
   // ``workspace_files`` cache-invalidation events on ``tool_end``;
   // doing it here (instead of waiting for the async ``loadSession``
-  // round-trip in ``TeamChatView``) closes the race window where the
+  // round-trip in ``AgentChatView``) closes the race window where the
   // first turn's tool events would otherwise see ``_workspace = null``
   // and invalidate the wrong query key, leaving the Coding Workspace
   // sidebar Files / Diff panels stale until the next manual refresh.
   useLayoutEffect(() => {
-    useTeamStore.setState((state) => {
+    useAgentStore.setState((state) => {
       state._workspace = workspace ?? null
     })
   }, [mode, workspace])
@@ -128,11 +128,11 @@ function TeamLayoutBase() {
     if (!workspace) return
     let cancelled = false
     ;(async () => {
-      const current = useTeamStore.getState()
-      const model = current.sessionId ? current.sessionModel : null
-      const thinkingLevel = current.sessionId ? current.sessionThinkingLevel : null
+      const current = useAgentStore.getState()
+      const model = current.sessionModel
+      const thinkingLevel = current.sessionThinkingLevel
       try {
-        const session = await resolveTeamSession({
+        const session = await resolveSession({
           workspace,
           model,
           thinkingLevel,
@@ -142,13 +142,13 @@ function TeamLayoutBase() {
         // flight while the user changed the session model or thinking level
         // via Session Settings. Using the pre-request snapshot here would
         // overwrite that choice the instant the resolve completes.
-        const latest = useTeamStore.getState()
+        const latest = useAgentStore.getState()
         latest.beginResolvedSession(session.id, {
           workspace: session.workspace ?? workspace,
           model: session.model ?? latest.sessionModel,
           thinkingLevel: session.thinking_level ?? latest.sessionThinkingLevel,
         })
-        void queryClient.invalidateQueries({ queryKey: queryKeys.team.sessions.all() })
+        void queryClient.invalidateQueries({ queryKey: queryKeys.session.sessions.all() })
         if (workspace) saveLastCodingWorkspace(workspace)
         navigate({
           to: '/coding/$sessionId',
@@ -157,7 +157,7 @@ function TeamLayoutBase() {
         })
       } catch (err) {
         if (cancelled) return
-        useTeamStore.setState((state) => {
+        useAgentStore.setState((state) => {
           state.error = err instanceof Error ? err.message : 'Failed to resolve session'
         })
       }
@@ -167,13 +167,13 @@ function TeamLayoutBase() {
     }
   }, [mode, navigate, queryClient, sessionId, workspace])
 
-  // When team store gets a new sessionId, navigate to the matching session route.
+  // When agent store gets a new sessionId, navigate to the matching session route.
   useEffect(() => initBroadcastSync(queryClient), [queryClient])
   useEffect(() => {
-    return useTeamStore.subscribe((state, prev) => {
+    return useAgentStore.subscribe((state, prev) => {
       if (state.sessionId && state.sessionId !== prev.sessionId && !sessionIdRef.current) {
-        void queryClient.invalidateQueries({ queryKey: queryKeys.team.sessions.all() })
-        void queryClient.refetchQueries({ queryKey: queryKeys.team.sessions.infinite(), type: 'active' })
+        void queryClient.invalidateQueries({ queryKey: queryKeys.session.sessions.all() })
+        void queryClient.refetchQueries({ queryKey: queryKeys.session.sessions.infinite(), type: 'active' })
         const workspace = workspaceRef.current
         if (workspace) saveLastCodingWorkspace(workspace)
         navigateRef.current({
@@ -183,7 +183,7 @@ function TeamLayoutBase() {
         })
       }
 
-      // When title_update arrives, patch the cached team session list
+      // When title_update arrives, patch the cached session list
       // in-place — no re-fetch. See ``patchSessionTitle``.
       //
       // Do NOT add an invalidateQueries call here. ``patchSessionTitle``
@@ -206,7 +206,7 @@ function TeamLayoutBase() {
       // stays free of TanStack imports.  Drain the queue and hand
       // the events to the bridge helper, which owns the mapping.
       if (state.cacheInvalidations !== prev.cacheInvalidations && state.cacheInvalidations.length > 0) {
-        const events = useTeamStore.getState()._drainCacheInvalidations()
+        const events = useAgentStore.getState()._drainCacheInvalidations()
         if (events.length > 0) {
           applyCacheInvalidations(queryClient, events)
           broadcastMessage({ type: 'cache_invalidated', events })
@@ -217,7 +217,7 @@ function TeamLayoutBase() {
 
   return (
     <>
-      <TeamChatView
+      <AgentChatView
         sessionId={sessionId}
         workspace={workspace}
         codingSessionLoading={mode === 'coding' && Boolean(sessionId) && !workspace && sessionQuery.isLoading}
@@ -228,5 +228,5 @@ function TeamLayoutBase() {
 }
 
 export function CodingLayout() {
-  return <TeamLayoutBase />
+  return <AgentLayoutBase />
 }

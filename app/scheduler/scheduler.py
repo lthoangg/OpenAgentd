@@ -2,7 +2,7 @@
 
 Manages a set of :class:`~app.scheduler.models.ScheduledTask` rows, each
 backed by a long-running ``asyncio.Task`` that sleeps until ``next_fire_at``
-and then dispatches the configured prompt to the agent team.
+and then dispatches the configured prompt to the agent session.
 """
 
 from __future__ import annotations
@@ -45,16 +45,16 @@ class InvalidTaskTargetError(Exception):
 def _validate_target(workspace: str | None) -> None:
     """Raise :exc:`InvalidTaskTargetError` if (mode, workspace) cannot route.
 
-    Cheap on-disk check only — no team is loaded.  Pairs with the Pydantic
+    Cheap on-disk check only — no agent is loaded. Pairs with the Pydantic
     ``mode``/``workspace`` cross-field validator (which only checks
     presence) by adding the filesystem-existence check.
     """
-    from app.services import team_manager
+    from app.services import agent_manager
 
     if not workspace:
         raise InvalidTaskTargetError("workspace is required")
     try:
-        team_manager.validate_workspace(workspace)
+        agent_manager.validate_workspace(workspace)
     except ValueError as exc:
         raise InvalidTaskTargetError(str(exc)) from exc
 
@@ -78,7 +78,7 @@ async def _validate_session_compat(
 
     Raises :exc:`InvalidTaskTargetError` when an existing session row
     disagrees with the requested target.  Mirrors the workspace-mismatch
-    check in ``POST /team/chat`` (``app/api/routes/team/chat.py:135-148``).
+    check in ``POST /agent/chat`` (``app/api/routes/agent/chat.py:135-148``).
     """
     if not session_id or session_id == "auto":
         return
@@ -633,9 +633,9 @@ class TaskScheduler:
 
     async def _fire_task_locked(self, task: ScheduledTask, fire_version: int) -> None:
         """Execute the dispatch and bookkeeping for one firing."""
-        from app.services import team_manager
-        from app.agent.mode.team.team import QuestionPendingError
-        from app.services.agent_service import NoTeamConfigured, dispatch_user_message
+        from app.services import agent_manager
+        from app.agent.session import QuestionPendingError
+        from app.services.agent_service import NoAgentConfigured, dispatch_user_message
 
         now = datetime.now(_utc)
 
@@ -666,19 +666,21 @@ class TaskScheduler:
         else:
             resolved_sid = raw_sid
 
-        # 3. Dispatch — route to the lead of the matching team.
+        # 3. Dispatch — route to the matching agent session.
         error: str | None = None
         fired_sid: str | None = None
         dispatch_attempted = False
         try:
             if not task.workspace:
-                raise NoTeamConfigured("Task has no workspace configured.")
-            team = await team_manager.get_or_start_coding_team(
-                task.workspace, f"scheduler:{task.slug}"
+                raise NoAgentConfigured("Task has no workspace configured.")
+            agent = await agent_manager.get_or_start_agent_session(
+                task.workspace, resolved_sid
             )
+            if agent is None:
+                raise NoAgentConfigured("No agent configured.")
             if self._fire_versions.get(task.id, 0) != fire_version:
                 return
-            if resolved_sid is not None and team.has_active_user_turn() is True:
+            if resolved_sid is not None and agent.has_active_user_turn() is True:
                 await self._reschedule_without_firing(task, fire_version)
                 logger.info(
                     "scheduler_skip_active_session task_slug={} name={} session_id={}",
@@ -689,7 +691,7 @@ class TaskScheduler:
                 return
             dispatch_attempted = True
             fired_sid, _, _ = await dispatch_user_message(
-                team,
+                agent,
                 content=f"[Scheduled Task: {task.name}]\n{task.prompt}",
                 session_id=resolved_sid,
                 workspace=task.workspace,
@@ -719,10 +721,10 @@ class TaskScheduler:
                 resolved_sid,
             )
             return
-        except NoTeamConfigured as exc:
+        except NoAgentConfigured as exc:
             error = str(exc)
             logger.warning(
-                "scheduler_no_team task_slug={} name={} mode={} error={}",
+                "scheduler_no_agent task_slug={} name={} mode={} error={}",
                 task.slug,
                 task.name,
                 "coding",

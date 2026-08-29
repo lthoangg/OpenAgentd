@@ -25,7 +25,7 @@ const SID = '01900000-0000-7000-8000-000000000001'
 function stubFiles(files: WorkspaceFileInfo[]) {
   globalThis.fetch = mock(async (...args: unknown[]) => {
     const url = String(args[0])
-    if (url.includes('/api/team/') && url.includes('/files')) {
+    if (url.includes('/api/agent/') && url.includes('/files')) {
       return new Response(JSON.stringify({ files, truncated: false }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },

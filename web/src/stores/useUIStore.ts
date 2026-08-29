@@ -1,6 +1,6 @@
 /**
  * useUIStore — tiny client-state store for UI panels that live above the
- * TeamChatView and were previously owned by ``Sidebar``. Lifting state to a
+ * AgentChatView and were previously owned by ``Sidebar``. Lifting state to a
  * shared store lets shortcuts and command palette items coordinate modal
  * visibility from one path.
  *

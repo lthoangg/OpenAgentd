@@ -10,7 +10,7 @@ import { FIELD_CLASS, slugify } from './utils'
 import { createTaskDefaults, toCreatePayload, validateTaskValues, type TaskFormErrors } from './taskForm'
 import { ScheduleTypeSegmented } from './ScheduleTypeSegmented'
 import { ModeWorkspaceFields } from './ModeWorkspaceFields'
-import { useTeamStore } from '@/stores/useTeamStore'
+import { useAgentStore } from '@/stores/useAgentStore'
 import { Dropdown, DropdownItem } from '@/components/ui/dropdown'
 
 export function CreateTaskForm({
@@ -26,9 +26,9 @@ export function CreateTaskForm({
   const [fieldErrors, setFieldErrors] = useState<TaskFormErrors>({})
   const validationSummary = Object.values(fieldErrors)[0]
 
-  const currentSessionId = useTeamStore((state) => state.sessionId)
-  const currentSessionTitle = useTeamStore((state) => state.sessionTitle)
-  const activeSessionWorkspace = useTeamStore((state) => state._workspace)
+  const currentSessionId = useAgentStore((state) => state.sessionId)
+  const currentSessionTitle = useAgentStore((state) => state.sessionTitle)
+  const activeSessionWorkspace = useAgentStore((state) => state._workspace)
 
   const createMutation = useCreateScheduledTaskMutation()
   const form = useForm({
@@ -216,7 +216,7 @@ export function CreateTaskForm({
               className={`font-mono text-xs leading-relaxed ${FIELD_CLASS}`}
               value={values.prompt}
               onChange={(e) => form.setFieldValue('prompt', e.target.value)}
-              placeholder="Message to deliver to the team lead when the task fires."
+              placeholder="Message to deliver to the agent when the task fires."
               rows={3}
               aria-invalid={!!fieldErrors.prompt}
               aria-describedby={fieldErrors.prompt ? 'task-prompt-error' : undefined}

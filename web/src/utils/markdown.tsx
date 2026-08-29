@@ -240,7 +240,7 @@ export function extractFileName(rawSrc?: string, resolvedSrc?: string): string |
  * - Absolute URLs (http/https), data:, blob:, and protocol-relative (`//...`)
  *   pass through unchanged.
  * - Bare relative paths are resolved against the agent workspace via the
- *   backend media proxy: ``/api/team/{sessionId}/media/{src}``.
+ *   backend media proxy: ``/api/agent/{sessionId}/media/{src}``.
  * - When no ``sessionId`` is available (e.g. standalone previews), the raw
  *   src is returned — the browser will show a broken image, which is the
  *   correct signal that the renderer lacks a session context.
@@ -259,7 +259,7 @@ export function resolveImageSrc(src: string | undefined, sessionId?: string): st
   if (!sessionId) return src
   // Strip any leading ``./`` and any leading ``/`` to keep the proxy URL clean.
   const cleaned = src.replace(/^\.\//, '').replace(/^\/+/, '')
-  return withTokenParam(apiUrl(`/team/${encodeURIComponent(sessionId)}/media/${cleaned}`))
+  return withTokenParam(apiUrl(`/agent/${encodeURIComponent(sessionId)}/media/${cleaned}`))
 }
 
 // ── MarkdownVideo ─────────────────────────────────────────────────────────────

@@ -1,6 +1,6 @@
 /**
  * WorkspaceFilesPanel — right-side drawer listing every file the agent has
- * written into the session workspace (``.openagentd/team/{sid}``).
+ * written into the session workspace (``.openagentd/agent/{sid}``).
  *
  * Layout: drawer from the right (mirrors ``AgentCapabilities``).  Inside, a
  * two-pane split — tree grouped by directory on the left, preview on the
@@ -9,9 +9,9 @@
  * Everything else shows a "Download" fallback.
  *
  * Data flow:
- *   - GET /api/team/{sid}/files      → listing (polled on open, invalidated
- *                                       by team store after write/edit/rm)
- *   - GET /api/team/{sid}/media/{p}  → file bytes (fetched by preview only
+ *   - GET /api/agent/{sid}/files      → listing (polled on open, invalidated
+ *                                       by session store after write/edit/rm)
+ *   - GET /api/agent/{sid}/media/{p}  → file bytes (fetched by preview only
  *                                       when the user selects a text file;
  *                                       images use the URL directly as src)
  */
@@ -485,7 +485,7 @@ function TextPreview({ sessionId, file }: { sessionId: string; file: WorkspaceFi
       // the pane instead of leaking to the chat area behind it.
       // onKeyDown stops propagation for every key that scrolls a container
       // (arrows, Page/Home/End, Space) so the global "type to focus input"
-      // and "Tab cycles agents" handlers in TeamChatView don't fire.
+      // and "Tab cycles agents" handlers in AgentChatView don't fire.
       tabIndex={0}
       data-scroll-capture="true"
       data-select-container

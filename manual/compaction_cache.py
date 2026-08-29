@@ -40,6 +40,7 @@ from app.agent.state import (
 )
 
 from manual._common import DEFAULT_BASE
+
 BASE = DEFAULT_BASE
 SPANS = Path(".openagentd/dev/state/otel/spans")
 DEFAULT_MIN_CACHE_RATIO = 0.10
@@ -47,7 +48,7 @@ DEFAULT_MIN_CACHE_RATIO = 0.10
 
 def wait_done(base: str, sid: str, timeout: int) -> None:
     start = time.monotonic()
-    with httpx.stream("GET", f"{base}/team/{sid}/stream", timeout=timeout + 5) as resp:
+    with httpx.stream("GET", f"{base}/agent/{sid}/stream", timeout=timeout + 5) as resp:
         resp.raise_for_status()
         for line in resp.iter_lines():
             if time.monotonic() - start > timeout:
@@ -59,12 +60,12 @@ def wait_done(base: str, sid: str, timeout: int) -> None:
 def send(
     base: str, message: str, sid: str | None, timeout: int, model: str | None = None
 ) -> str:
-    payload = {"message": message}
+    payload = {"message": message, "workspace": "."}
     if sid:
         payload["session_id"] = sid
     if model:
         payload["model"] = model
-    resp = httpx.post(f"{base}/team/chat", data=payload, timeout=30)
+    resp = httpx.post(f"{base}/agent/chat", data=payload, timeout=30)
     resp.raise_for_status()
     sid = resp.json()["session_id"]
     wait_done(base, sid, timeout)
@@ -73,7 +74,7 @@ def send(
 
 def compact(base: str, sid: str, timeout: int) -> None:
     resp = httpx.post(
-        f"{base}/team/commands",
+        f"{base}/agent/commands",
         json={"command": "compact", "session_id": sid},
         timeout=30,
     )

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, mock } from 'bun:test'
-import { cancelQueuedTeamMessage, createWorktree, postTeamChat, resolveApiUrl, resolveTeamSession, setCodingWorkspaceVisibility, updateTeamSessionTitle, workspaceMediaUrl } from '@/api/client'
+import { cancelQueuedMessage, createWorktree, postAgentChat, resolveApiUrl, resolveSession, setCodingWorkspaceVisibility, updateSessionTitle, workspaceMediaUrl } from '@/api/client'
 
 const originalFetch = globalThis.fetch
 
@@ -10,24 +10,24 @@ afterEach(() => {
 
 describe('workspaceMediaUrl', () => {
   it('returns a media proxy URL without token in browser mode', () => {
-    expect(workspaceMediaUrl('sid', 'output/chart.png')).toBe('/api/team/sid/media/output/chart.png')
+    expect(workspaceMediaUrl('sid', 'output/chart.png')).toBe('/api/agent/sid/media/output/chart.png')
   })
 
   it('adds the desktop token query param in desktop mode', () => {
     window.__OAD_TOKEN__ = 'secret'
-    expect(workspaceMediaUrl('sid', 'output/chart.png')).toBe('/api/team/sid/media/output/chart.png?_token=secret')
+    expect(workspaceMediaUrl('sid', 'output/chart.png')).toBe('/api/agent/sid/media/output/chart.png?_token=secret')
   })
 
   it('adds download before the desktop token for forced downloads', () => {
     window.__OAD_TOKEN__ = 'secret'
-    expect(workspaceMediaUrl('sid', 'output/chart.png', { download: true })).toBe('/api/team/sid/media/output/chart.png?download=1&_token=secret')
+    expect(workspaceMediaUrl('sid', 'output/chart.png', { download: true })).toBe('/api/agent/sid/media/output/chart.png?download=1&_token=secret')
   })
 })
 
 describe('resolveApiUrl', () => {
   it('adds the desktop token query param to relative API URLs', () => {
     window.__OAD_TOKEN__ = 'secret'
-    expect(resolveApiUrl('/api/team/sid/uploads/image.png')).toBe('/api/team/sid/uploads/image.png?_token=secret')
+    expect(resolveApiUrl('/api/agent/sid/uploads/image.png')).toBe('/api/agent/sid/uploads/image.png?_token=secret')
   })
 
   it('does not add the token to blob or external URLs', () => {
@@ -37,17 +37,17 @@ describe('resolveApiUrl', () => {
   })
 })
 
-describe('postTeamChat', () => {
+describe('postAgentChat', () => {
   it('uses backend detail for invalid 409 errors', async () => {
     globalThis.fetch = mock(() => Promise.resolve(new Response(JSON.stringify({ detail: 'conflict' }), { status: 409 }))) as typeof fetch
 
-    await expect(postTeamChat('hello', null, false, '/repo/app')).rejects.toThrow('conflict')
+    await expect(postAgentChat('hello', null, false, '/repo/app')).rejects.toThrow('conflict')
   })
 
   it('uses backend detail for coding 409 errors', async () => {
     globalThis.fetch = mock(() => Promise.resolve(new Response(JSON.stringify({ detail: 'Session belongs to a different coding workspace' }), { status: 409 }))) as typeof fetch
 
-    await expect(postTeamChat('hello', null, false, '/repo/app')).rejects.toThrow(
+    await expect(postAgentChat('hello', null, false, '/repo/app')).rejects.toThrow(
       'Session belongs to a different coding workspace',
     )
   })
@@ -58,7 +58,7 @@ describe('postTeamChat', () => {
       { status: 422 },
     ))) as typeof fetch
 
-    await expect(postTeamChat('hello', null, false, '/repo/app')).rejects.toThrow('message is required when interrupt=false.')
+    await expect(postAgentChat('hello', null, false, '/repo/app')).rejects.toThrow('message is required when interrupt=false.')
   })
 
   it('sends workspace with the chat form', async () => {
@@ -68,7 +68,7 @@ describe('postTeamChat', () => {
       return Promise.resolve(new Response(JSON.stringify({ status: 'accepted', session_id: 'sid' })))
     }) as typeof fetch
 
-    await postTeamChat('hello', null, false, '/repo/app')
+    await postAgentChat('hello', null, false, '/repo/app')
 
     expect(body).toBeInstanceOf(FormData)
     const form = body as FormData
@@ -82,7 +82,7 @@ describe('postTeamChat', () => {
       return Promise.resolve(new Response(JSON.stringify({ status: 'accepted', session_id: 'sid' })))
     }) as typeof fetch
 
-    await postTeamChat('hello', null, false, '/repo/app')
+    await postAgentChat('hello', null, false, '/repo/app')
 
     const init = (globalThis.fetch as unknown as ReturnType<typeof mock>).mock.calls[0][1] as RequestInit | undefined
     expect(init?.headers).toEqual({ Accept: 'application/json' })
@@ -98,7 +98,7 @@ describe('postTeamChat', () => {
       return Promise.resolve(new Response(JSON.stringify({ status: 'accepted', session_id: 'sid' })))
     }) as typeof fetch
 
-    await postTeamChat('hello', 'sid', false, '/tmp', undefined, null, null, false)
+    await postAgentChat('hello', 'sid', false, '/tmp', undefined, null, null, false)
 
     const form = body as FormData
     expect(form.has('model')).toBe(true)
@@ -114,7 +114,7 @@ describe('postTeamChat', () => {
       return Promise.resolve(new Response(JSON.stringify({ status: 'accepted', session_id: 'sid' })))
     }) as typeof fetch
 
-    await postTeamChat('hello', 'sid', false, '/tmp', undefined, 'openai:gpt-5.5', 'high')
+    await postAgentChat('hello', 'sid', false, '/tmp', undefined, 'openai:gpt-5.5', 'high')
 
     const form = body as FormData
     expect(form.get('model')).toBe('openai:gpt-5.5')
@@ -128,7 +128,7 @@ describe('postTeamChat', () => {
       return Promise.resolve(new Response(JSON.stringify({ status: 'accepted', session_id: 'sid' })))
     }) as typeof fetch
 
-    await postTeamChat('hello', 'sid', false, '/tmp', undefined, 'codex:gpt-5.4', null, true)
+    await postAgentChat('hello', 'sid', false, '/tmp', undefined, 'codex:gpt-5.4', null, true)
 
     const form = body as FormData
     expect(form.get('fast_mode')).toBe('true')
@@ -143,16 +143,16 @@ describe('postTeamChat', () => {
       return Promise.resolve(new Response(null, { status: 204 }))
     }) as typeof fetch
 
-    await cancelQueuedTeamMessage('sid', 'mid')
+    await cancelQueuedMessage('sid', 'mid')
 
-    expect(String(url)).toBe('/api/team/sessions/sid/queued-messages/mid')
+    expect(String(url)).toBe('/api/agent/sessions/sid/queued-messages/mid')
     expect(method).toBe('DELETE')
   })
 
   it('treats missing queued messages as already cancelled', async () => {
     globalThis.fetch = mock(() => Promise.resolve(new Response(JSON.stringify({ detail: 'not found' }), { status: 404 }))) as typeof fetch
 
-    await expect(cancelQueuedTeamMessage('sid', 'mid')).resolves.toBeUndefined()
+    await expect(cancelQueuedMessage('sid', 'mid')).resolves.toBeUndefined()
   })
 })
 
@@ -177,7 +177,7 @@ describe('createWorktree', () => {
       branch: 'openagentd/feature-login',
     })
 
-    expect(url).toBe('/api/team/workspace/worktrees')
+    expect(url).toBe('/api/agent/workspace/worktrees')
     expect(init?.method).toBe('POST')
     expect(init?.headers).toEqual({ 'Content-Type': 'application/json' })
     expect(JSON.parse(init?.body as string)).toEqual({
@@ -189,7 +189,7 @@ describe('createWorktree', () => {
   })
 })
 
-describe('resolveTeamSession', () => {
+describe('resolveSession', () => {
   it('posts mode, workspace, and model settings as JSON', async () => {
     let url = ''
     let init: RequestInit | undefined
@@ -209,7 +209,7 @@ describe('resolveTeamSession', () => {
       })))
     }) as typeof fetch
 
-    const result = await resolveTeamSession({
+    const result = await resolveSession({
       workspace: '/repo/app',
       model: 'openai:gpt-5.5',
       thinkingLevel: 'high',
@@ -219,7 +219,7 @@ describe('resolveTeamSession', () => {
       worktreeBranch: 'openagentd/task-a',
     })
 
-    expect(url).toBe('/api/team/sessions/resolve')
+    expect(url).toBe('/api/agent/sessions/resolve')
     expect(init?.method).toBe('POST')
     expect(init?.headers).toEqual({ 'Content-Type': 'application/json' })
     expect(JSON.parse(init?.body as string)).toEqual({
@@ -241,7 +241,7 @@ describe('resolveTeamSession', () => {
       { status: 422 },
     ))) as typeof fetch
 
-    await expect(resolveTeamSession({ workspace: '/repo/app' })).rejects.toThrow('workspace is required.')
+    await expect(resolveSession({ workspace: '/repo/app' })).rejects.toThrow('workspace is required.')
   })
 })
 
@@ -257,7 +257,7 @@ describe('setCodingWorkspaceVisibility', () => {
 
     const result = await setCodingWorkspaceVisibility('/repo/app', true)
 
-    expect(url).toBe('/api/team/workspace/visibility')
+    expect(url).toBe('/api/agent/workspace/visibility')
     expect(init?.method).toBe('PATCH')
     expect(init?.headers).toEqual({ 'Content-Type': 'application/json' })
     expect(JSON.parse(init?.body as string)).toEqual({ workspace: '/repo/app', hidden: true })
@@ -266,7 +266,7 @@ describe('setCodingWorkspaceVisibility', () => {
   })
 })
 
-describe('updateTeamSessionTitle', () => {
+describe('updateSessionTitle', () => {
   it('patches only the title as JSON and returns the updated session', async () => {
     let url = ''
     let init: RequestInit | undefined
@@ -282,9 +282,9 @@ describe('updateTeamSessionTitle', () => {
       })))
     }) as typeof fetch
 
-    const result = await updateTeamSessionTitle('sid', 'Renamed session')
+    const result = await updateSessionTitle('sid', 'Renamed session')
 
-    expect(url).toBe('/api/team/sessions/sid')
+    expect(url).toBe('/api/agent/sessions/sid')
     expect(init?.method).toBe('PATCH')
     expect(init?.headers).toEqual({ 'Content-Type': 'application/json' })
     expect(JSON.parse(init?.body as string)).toEqual({ title: 'Renamed session' })
@@ -294,6 +294,6 @@ describe('updateTeamSessionTitle', () => {
   it('throws when the backend rejects the title update', async () => {
     globalThis.fetch = mock(() => Promise.resolve(new Response('bad', { status: 422 }))) as typeof fetch
 
-    await expect(updateTeamSessionTitle('sid', '')).rejects.toThrow('updateTeamSessionTitle failed: 422')
+    await expect(updateSessionTitle('sid', '')).rejects.toThrow('updateSessionTitle failed: 422')
   })
 })

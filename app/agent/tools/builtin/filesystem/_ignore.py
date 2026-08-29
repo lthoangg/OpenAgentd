@@ -17,7 +17,7 @@ only ``**`` spans directories.
 Known limitation: only the ``.gitignore`` at the search root is read — nested
 ``.gitignore`` files, ``.git/info/exclude`` and ``core.excludesFile`` are not.
 Callers that need exact fidelity should ask git itself; see
-``_git_listed_paths`` in ``app/api/routes/team/files.py``.
+``_git_listed_paths`` in ``app/api/routes/agent/files.py``.
 """
 
 from __future__ import annotations

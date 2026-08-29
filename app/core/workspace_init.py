@@ -44,23 +44,17 @@ def ensure_workspace_initialized() -> None:
     ensure_default_config()
 
     from app.agent.loader import (
-        ensure_builtin_agent_blueprints,
-        ensure_builtin_openagentd_lead,
+        ensure_builtin_code_lead,
         configure_unconfigured_agent_models,
     )
 
-    default_written = ensure_builtin_agent_blueprints(agents_dir, mode="coding")
-    if ensure_builtin_openagentd_lead(agents_dir, mode="coding"):
-        default_written.append("openagentd.md")
-    coding_agents_dir = agents_dir / "coding"
-    coding_written = ensure_builtin_agent_blueprints(coding_agents_dir, mode="coding")
-    if ensure_builtin_openagentd_lead(coding_agents_dir, mode="coding"):
-        coding_written.append("openagentd.md")
+    default_written: list[str] = []
+    if ensure_builtin_code_lead(agents_dir, mode="coding"):
+        default_written.append("code.md")
     if is_new_user:
         configure_unconfigured_agent_models(agents_dir, DEFAULT_NEW_USER_MODEL)
 
     logger.info(
-        "workspace_builtin_agents_installed agents={} coding_agents={}",
+        "workspace_builtin_agents_installed agents={}",
         len(default_written),
-        len(coding_written),
     )

@@ -193,8 +193,8 @@ describe("access key storage", () => {
     const auth = await freshAuth()
     auth.setAccessKey("external-secret-key", "http://192.168.1.50:4082")
 
-    expect(auth.getToken("http://192.168.1.50:4082/api/team/status")).toBe("external-secret-key")
-    expect(auth.getToken("http://127.0.0.1:4082/api/team/status")).toBe("sidecar-token")
+    expect(auth.getToken("http://192.168.1.50:4082/api/agent/status")).toBe("external-secret-key")
+    expect(auth.getToken("http://127.0.0.1:4082/api/agent/status")).toBe("sidecar-token")
   })
 
   it("injects external access key on requests when connected to external backend", async () => {
@@ -219,12 +219,12 @@ describe("access key storage", () => {
     auth.setAccessKey("external-secret-key", "http://192.168.1.50:4082")
     auth.installDesktopAuth()
 
-    expect(auth.getToken("/api/team/status")).toBe("external-secret-key")
-    expect(auth.withTokenParam("/api/team/workspace/files/read?path=note.txt")).toBe(
-      "/api/team/workspace/files/read?path=note.txt&_token=external-secret-key",
+    expect(auth.getToken("/api/agent/status")).toBe("external-secret-key")
+    expect(auth.withTokenParam("/api/agent/workspace/files/read?path=note.txt")).toBe(
+      "/api/agent/workspace/files/read?path=note.txt&_token=external-secret-key",
     )
 
-    await window.fetch("/api/team/status")
+    await window.fetch("/api/agent/status")
     const headers = new Headers(calls[0].init?.headers)
     expect(headers.get("Authorization")).toBe("Bearer external-secret-key")
     delete window.__OAD_API_BASE_URL__
@@ -238,7 +238,7 @@ describe("installDesktopAuth — no token", () => {
     auth.installDesktopAuth()
     // The exported fetch reference should be unchanged.
     expect(window.fetch).toBe(fn)
-    await window.fetch("/api/team/status")
+    await window.fetch("/api/agent/status")
     // Header must not have been injected.
     expect(calls[0]?.init?.headers).toBeUndefined()
   })
@@ -263,7 +263,7 @@ describe("installDesktopAuth — fetch with string URL", () => {
     const auth = await freshAuth()
     auth.installDesktopAuth()
 
-    await window.fetch("/api/team/status")
+    await window.fetch("/api/agent/status")
 
     const headers = new Headers(calls[0].init?.headers)
     expect(headers.get("Authorization")).toBe("Bearer tok-abc")
@@ -275,7 +275,7 @@ describe("installDesktopAuth — fetch with string URL", () => {
     const auth = await freshAuth()
     auth.installDesktopAuth()
 
-    await window.fetch(`${window.location.origin}/api/team/status`)
+    await window.fetch(`${window.location.origin}/api/agent/status`)
 
     const headers = new Headers(calls[0].init?.headers)
     expect(headers.get("Authorization")).toBe("Bearer tok-abc")
@@ -314,7 +314,7 @@ describe("installDesktopAuth — fetch with string URL", () => {
     const auth = await freshAuth()
     auth.installDesktopAuth()
 
-    await window.fetch("/api/team/status", {
+    await window.fetch("/api/agent/status", {
       headers: { Authorization: "Bearer custom" },
     })
 
@@ -328,7 +328,7 @@ describe("installDesktopAuth — fetch with string URL", () => {
     const auth = await freshAuth()
     auth.installDesktopAuth()
 
-    await window.fetch("/api/team/status", {
+    await window.fetch("/api/agent/status", {
       headers: { "X-Trace-Id": "abc123" },
     })
 
@@ -369,7 +369,7 @@ describe("installDesktopAuth — fetch with string URL", () => {
     const auth = await freshAuth()
     auth.installDesktopAuth()
 
-    const url = new URL("/api/team/status", window.location.origin)
+    const url = new URL("/api/agent/status", window.location.origin)
     await window.fetch(url)
 
     const headers = new Headers(calls[0].init?.headers)
@@ -526,7 +526,7 @@ describe("installDesktopAuth — XHR interceptor", () => {
     auth.installDesktopAuth()
 
     const xhr = new XMLHttpRequest()
-    xhr.open("GET", "/api/team/status")
+    xhr.open("GET", "/api/agent/status")
     xhr.send()
 
     const auths = headers.filter(([n]) => n.toLowerCase() === "authorization")
@@ -543,7 +543,7 @@ describe("installDesktopAuth — XHR interceptor", () => {
     auth.installDesktopAuth()
 
     const xhr = new XMLHttpRequest()
-    xhr.open("GET", "/api/team/status")
+    xhr.open("GET", "/api/agent/status")
     xhr.setRequestHeader("Authorization", "Bearer manual")
     xhr.send()
 

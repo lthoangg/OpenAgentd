@@ -82,43 +82,11 @@ mock.module('@/queries', () => ({
     isError: false,
     error: null,
   }),
-  useAgentFilesQuery: () => ({
+  useCodeAgentQuery: () => ({
     data: {
-      agents: [
-        {
-          name: 'openagentd',
-          role: 'lead',
-          description: 'Built-in lead',
-          model: 'openai:gpt-5.4',
-          tools: ['skill', 'todo_manage', 'schedule_task', 'note', 'shell', 'read', 'write'],
-          mcp: [],
-          skills: ['self-healing'],
-          valid: true,
-          error: null,
-        },
-        {
-          name: 'helper',
-          role: 'member',
-          description: 'Custom helper',
-          model: 'openai:gpt-5.4',
-          tools: ['skill', 'read'],
-          mcp: [],
-          skills: [],
-          valid: true,
-          error: null,
-        },
-        {
-          name: 'coding/coder',
-          role: 'member',
-          description: 'Built-in coder',
-          model: 'openai:gpt-5.4',
-          tools: ['skill', 'read', 'shell'],
-          mcp: [],
-          skills: [],
-          valid: true,
-          error: null,
-        },
-      ],
+      config: {
+        tools: ['skill', 'todo_manage', 'schedule_task', 'note', 'shell', 'read', 'write'],
+      },
     },
     isLoading: false,
     isError: false,
@@ -139,7 +107,7 @@ afterEach(cleanup)
 describe('frontmatter — mcp field', () => {
   it('emits sorted mcp list under its own key', () => {
     const fm: AgentFrontmatter = {
-      name: 'openagentd',
+      name: 'code',
       role: 'lead',
       model: 'openai:gpt-5.4',
       mcp: ['filesystem', 'context7'],
@@ -162,24 +130,24 @@ describe('frontmatter — mcp field', () => {
   it('survives a combine → split round-trip', () => {
     const raw = combine(
       {
-        name: 'openagentd',
+        name: 'code',
         role: 'lead',
         model: 'openai:gpt-5.4',
         mcp: ['context7'],
       },
-      'You are openagentd.',
+      'You are code.',
     )
     const { fm: fmText, body } = splitFrontmatter(raw)
     expect(fmText).toContain('mcp:')
     expect(fmText).toContain('- context7')
-    expect(body.trim()).toBe('You are openagentd.')
+    expect(body.trim()).toBe('You are code.')
   })
 })
 
 // ── AgentForm — picker rendering & tool filtering ───────────────────────────
 
 const SAMPLE_RAW = `---
-name: openagentd
+name: code
 role: lead
 model: openai:gpt-5.4
 tools:
@@ -189,7 +157,7 @@ mcp:
   - context7
 ---
 
-You are openagentd.
+You are code.
 `
 
 function renderForm(initial = SAMPLE_RAW, agentPath?: string) {
@@ -259,7 +227,7 @@ describe('AgentForm — Capabilities card', () => {
   })
 
   it('shows built-in tools separately from extra tool overrides', () => {
-    renderForm(SAMPLE_RAW, 'openagentd')
+    renderForm(SAMPLE_RAW, 'code')
 
     const toolsField = fieldFor('Tools')
     const builtInBox = within(toolsField).getByText('Built-in tools').parentElement
@@ -296,7 +264,7 @@ Custom helper.
 
   it('does not offer implicit lead-only or skill tools in the extra picker', async () => {
     const user = userEvent.setup()
-    renderForm(SAMPLE_RAW, 'openagentd')
+    renderForm(SAMPLE_RAW, 'code')
 
     await user.click(comboboxIn('Tools'))
     const listbox = screen.getByRole('listbox')
@@ -312,29 +280,18 @@ Custom helper.
     expect(screen.getByText(/1 selected of 2 available/i)).toBeTruthy()
   })
 
-  it('treats coding built-in members as additive profiles based on path', () => {
+  it('treats the code profile as additive over built-in defaults', () => {
     renderForm(`---
-name: coder
-role: member
+name: code
+role: lead
 model: openai:gpt-5.4
 ---
 <!-- Add extra prompt text below. -->
-`, 'coding/coder')
+`, 'code')
 
     expect(screen.getByText('Built-in OpenAgentd profile')).toBeTruthy()
     expect(screen.getByText(/Extra prompt/)).toBeTruthy()
     expect(screen.getByText(/Built-in tools are always included/i)).toBeTruthy()
-  })
-
-  it('recognizes coding built-in members with Windows path separators', () => {
-    renderForm(`---
-name: coder
-role: member
-model: openai:gpt-5.4
----
-`, String.raw`C:\Users\dev\.config\openagentd\agents\coding\coder.md`)
-
-    expect(screen.getByText('Built-in OpenAgentd profile')).toBeTruthy()
   })
 
   it('renders the existing mcp selection as a chip', () => {

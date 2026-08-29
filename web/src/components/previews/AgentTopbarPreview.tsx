@@ -9,11 +9,9 @@
  * the actions are no-ops.
  */
 
-import { useState } from 'react'
 import { ListChecks, PanelRight, Users } from 'lucide-react'
 
 import { AgentTopbar } from '@/components/AgentTopbar'
-import type { ViewMode } from '@/components/ui/view-toggle'
 
 function PreviewFrame({
   title,
@@ -45,8 +43,6 @@ function PreviewFrame({
 }
 
 export function AgentTopbarPreview() {
-  const [defaultMode, setDefaultMode] = useState<ViewMode>('agent')
-  const [workingMode, setWorkingMode] = useState<ViewMode>('agent')
 
   const todos = {
     Icon: ListChecks,
@@ -69,7 +65,7 @@ export function AgentTopbarPreview() {
       <div>
         <h2 className="font-heading text-3xl font-bold">AgentTopbar</h2>
         <p className="text-sm text-(--color-text-2)">
-          Composite topbar right-cluster used across single-agent and team chats.
+          Composite topbar right-cluster used across single-agent and agent chats.
         </p>
       </div>
 
@@ -79,8 +75,6 @@ export function AgentTopbarPreview() {
           description="Idle agent view — no token meter."
         >
           <AgentTopbar
-            viewMode={defaultMode}
-            onViewModeChange={setDefaultMode}
             todosAction={todos}
             filesAction={files}
             agentsAction={agents}
@@ -93,8 +87,6 @@ export function AgentTopbarPreview() {
         >
           <AgentTopbar
             tokens={{ input: 12_400, output: 3_200, cached: 8_100, pulsing: true }}
-            viewMode={workingMode}
-            onViewModeChange={setWorkingMode}
             todosAction={{ ...todos, indicator: true }}
             filesAction={files}
             agentsAction={agents}

@@ -51,7 +51,7 @@ describe("DownloadWorkspaceFileButton", () => {
       expect(anchor).not.toBeNull()
       const capturedAnchor = anchor as unknown as HTMLAnchorElement
       expect(capturedAnchor.getAttribute("href")).toBe(
-        `/api/team/${SID}/media/google_qr.png?download=1&_token=secret`,
+        `/api/agent/${SID}/media/google_qr.png?download=1&_token=secret`,
       )
       expect(capturedAnchor.download).toBe("google_qr.png")
       expect(remove).toHaveBeenCalledTimes(1)

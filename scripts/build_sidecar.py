@@ -727,9 +727,9 @@ def smoke_test(python_bin: Path, site_packages: Path) -> None:
                 f"smoke test: health/live unexpectedly returned {e.code}"
             ) from e
 
-        # ── /api/team/status without token → must 401 ──────────────────────
+        # ── /api/agent/agents without token → must 401 ─────────────────────
         try:
-            urllib.request.urlopen(f"{base}/api/team/status", timeout=5)
+            urllib.request.urlopen(f"{base}/api/agent/agents", timeout=5)
             raise SystemExit(
                 "smoke test: protected endpoint accepted request without token"
             )
@@ -740,9 +740,9 @@ def smoke_test(python_bin: Path, site_packages: Path) -> None:
                 ) from e
             print("smoke test: protected endpoint correctly rejects missing token")
 
-        # ── /api/team/status with token → must succeed (2xx or 503 OK) ─────
+        # ── /api/agent/agents with token → must succeed (2xx or 503 OK) ────
         req = urllib.request.Request(
-            f"{base}/api/team/status",
+            f"{base}/api/agent/agents",
             headers={"Authorization": f"Bearer {token}"},
         )
         try:

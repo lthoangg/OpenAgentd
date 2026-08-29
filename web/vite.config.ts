@@ -124,7 +124,7 @@ export default defineConfig({
         },
       },
     },
-    // index chunk contains the full app shell (TeamChatView, CodingSidebar,
+    // index chunk contains the full app shell (AgentChatView, CodingSidebar,
     // Sidebar, InputBar, stores) which must be eagerly available on first
     // paint. Markdown/Tauri/icons/motion are split into separate chunks.
     // Route-level lazy loading is intentionally avoided to prevent Suspense

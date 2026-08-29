@@ -1,6 +1,6 @@
 """Durable storage for ``ask_user`` suspensions.
 
-When the lead agent calls ``ask_user`` its turn is suspended rather
+When the agent calls ``ask_user`` its turn is suspended rather
 than blocked: the loop stops, the activation exits, and *the conversation is
 left in a resumable state on disk*.  Two rows make that work, written together
 in one transaction by :func:`create_pending_question`:

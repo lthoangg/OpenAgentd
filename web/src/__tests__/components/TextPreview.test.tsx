@@ -87,7 +87,7 @@ describe("TextPreview", () => {
     const content = "# Heading\n\nBody text"
 
     mockFetchResponse(
-      (url) => url.includes("/api/team/") && url.includes("/files"),
+      (url) => url.includes("/api/agent/") && url.includes("/files"),
       {
         ok: true,
         status: 200,
@@ -100,7 +100,7 @@ describe("TextPreview", () => {
     )
 
     mockFetchResponse(
-      (url) => url.includes("/api/team/") && url.includes("/media/"),
+      (url) => url.includes("/api/agent/") && url.includes("/media/"),
       {
         ok: true,
         status: 200,
@@ -132,7 +132,7 @@ describe("TextPreview", () => {
     const content = "def hello():\n    print('world')"
 
     mockFetchResponse(
-      (url) => url.includes("/api/team/") && url.includes("/files"),
+      (url) => url.includes("/api/agent/") && url.includes("/files"),
       {
         ok: true,
         status: 200,
@@ -145,7 +145,7 @@ describe("TextPreview", () => {
     )
 
     mockFetchResponse(
-      (url) => url.includes("/api/team/") && url.includes("/media/"),
+      (url) => url.includes("/api/agent/") && url.includes("/media/"),
       {
         ok: true,
         status: 200,
@@ -175,7 +175,7 @@ describe("TextPreview", () => {
     const content = 'const x = <div> & "quoted" & \'single\' & `backticks`'
 
     mockFetchResponse(
-      (url) => url.includes("/api/team/") && url.includes("/files"),
+      (url) => url.includes("/api/agent/") && url.includes("/files"),
       {
         ok: true,
         status: 200,
@@ -188,7 +188,7 @@ describe("TextPreview", () => {
     )
 
     mockFetchResponse(
-      (url) => url.includes("/api/team/") && url.includes("/media/"),
+      (url) => url.includes("/api/agent/") && url.includes("/media/"),
       {
         ok: true,
         status: 200,
@@ -219,7 +219,7 @@ describe("TextPreview", () => {
     const content = "  indented line\n    more indented\nno indent"
 
     mockFetchResponse(
-      (url) => url.includes("/api/team/") && url.includes("/files"),
+      (url) => url.includes("/api/agent/") && url.includes("/files"),
       {
         ok: true,
         status: 200,
@@ -232,7 +232,7 @@ describe("TextPreview", () => {
     )
 
     mockFetchResponse(
-      (url) => url.includes("/api/team/") && url.includes("/media/"),
+      (url) => url.includes("/api/agent/") && url.includes("/media/"),
       {
         ok: true,
         status: 200,
@@ -261,7 +261,7 @@ describe("TextPreview", () => {
     const content = "line1\n\t\ttabbed\n\n\nmultiple newlines"
 
     mockFetchResponse(
-      (url) => url.includes("/api/team/") && url.includes("/files"),
+      (url) => url.includes("/api/agent/") && url.includes("/files"),
       {
         ok: true,
         status: 200,
@@ -274,7 +274,7 @@ describe("TextPreview", () => {
     )
 
     mockFetchResponse(
-      (url) => url.includes("/api/team/") && url.includes("/media/"),
+      (url) => url.includes("/api/agent/") && url.includes("/media/"),
       {
         ok: true,
         status: 200,
@@ -306,7 +306,7 @@ describe("TextPreview", () => {
     const file = makeFile({ path: "missing.txt", name: "missing.txt", mime: "text/plain" })
 
     mockFetchResponse(
-      (url) => url.includes("/api/team/") && url.includes("/files"),
+      (url) => url.includes("/api/agent/") && url.includes("/files"),
       {
         ok: true,
         status: 200,
@@ -319,7 +319,7 @@ describe("TextPreview", () => {
     )
 
     mockFetchResponse(
-      (url) => url.includes("/api/team/") && url.includes("/media/"),
+      (url) => url.includes("/api/agent/") && url.includes("/media/"),
       {
         ok: false,
         status: 404,
@@ -342,7 +342,7 @@ describe("TextPreview", () => {
     const file = makeFile({ path: "error.txt", name: "error.txt", mime: "text/plain" })
 
     mockFetchResponse(
-      (url) => url.includes("/api/team/") && url.includes("/files"),
+      (url) => url.includes("/api/agent/") && url.includes("/files"),
       {
         ok: true,
         status: 200,
@@ -355,7 +355,7 @@ describe("TextPreview", () => {
     )
 
     mockFetchResponse(
-      (url) => url.includes("/api/team/") && url.includes("/media/"),
+      (url) => url.includes("/api/agent/") && url.includes("/media/"),
       {
         ok: false,
         status: 500,
@@ -387,7 +387,7 @@ describe("TextPreview", () => {
     })
 
     mockFetchResponse(
-      (url) => url.includes("/api/team/") && url.includes("/files"),
+      (url) => url.includes("/api/agent/") && url.includes("/files"),
       {
         ok: true,
         status: 200,
@@ -422,7 +422,7 @@ describe("TextPreview", () => {
     })
 
     mockFetchResponse(
-      (url) => url.includes("/api/team/") && url.includes("/files"),
+      (url) => url.includes("/api/agent/") && url.includes("/files"),
       {
         ok: true,
         status: 200,

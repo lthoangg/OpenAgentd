@@ -2,8 +2,8 @@ import { describe, it, expect, afterEach, beforeEach, mock } from "bun:test"
 import { useRef, useState } from "react"
 import { render, screen, cleanup, act } from "@testing-library/react"
 import { AgentPane } from "@/components/AgentPane"
-import { useTeamStore } from "@/stores/useTeamStore"
-import type { AgentStream } from "@/stores/useTeamStore"
+import { useAgentStore } from "@/stores/useAgentStore"
+import type { AgentStream } from "@/stores/useAgentStore"
 import type { ContentBlock } from "@/api/types"
 
 afterEach(cleanup)
@@ -39,7 +39,7 @@ function counted(stream: AgentStream, onRead: () => void): AgentStream {
 }
 
 /**
- * `SplitGrid` subscribes to the whole `agentStreams` map, whose identity changes
+ * Parent views subscribe to the whole `agentStreams` map, whose identity changes
  * on every ~16ms SSE delta batch (immer copy-on-write walks to the root). Before
  * `AgentPane` was memoised, one agent's streamed token re-rendered every pane in
  * the grid.
@@ -157,7 +157,7 @@ describe("AgentPane — memo boundary", () => {
 
 describe("agentStreams structural sharing (what makes the memo effective)", () => {
   beforeEach(() => {
-    useTeamStore.setState({
+    useAgentStore.setState({
       sessionId: "session-1",
       leadName: "alpha",
       agentNames: ["alpha", "beta"],
@@ -166,36 +166,36 @@ describe("agentStreams structural sharing (what makes the memo effective)", () =
   })
 
   it("leaves an untouched agent's stream at the same reference when another streams", () => {
-    const before = useTeamStore.getState().agentStreams
+    const before = useAgentStore.getState().agentStreams
     const betaBefore = before.beta
     const alphaBefore = before.alpha
 
     act(() => {
-      useTeamStore.getState()._handleSSEEvent("message", {
+      useAgentStore.getState()._handleSSEEvent("message", {
         agent: "alpha",
         text: "hello from alpha",
       })
     })
 
-    const after = useTeamStore.getState().agentStreams
+    const after = useAgentStore.getState().agentStreams
     expect(after.alpha).not.toBe(alphaBefore) // alpha advanced
     expect(after.beta).toBe(betaBefore) // beta must be untouched by reference
   })
 
   it("holds across many consecutive deltas to one agent", () => {
-    const betaBefore = useTeamStore.getState().agentStreams.beta
+    const betaBefore = useAgentStore.getState().agentStreams.beta
 
     act(() => {
       for (let i = 0; i < 25; i++) {
-        useTeamStore.getState()._handleSSEEvent("message", {
+        useAgentStore.getState()._handleSSEEvent("message", {
           agent: "alpha",
           text: `chunk ${i} `,
         })
       }
     })
 
-    expect(useTeamStore.getState().agentStreams.beta).toBe(betaBefore)
-    const alphaText = useTeamStore
+    expect(useAgentStore.getState().agentStreams.beta).toBe(betaBefore)
+    const alphaText = useAgentStore
       .getState()
       .agentStreams.alpha.currentBlocks.map((b) => b.content)
       .join("")
@@ -203,14 +203,14 @@ describe("agentStreams structural sharing (what makes the memo effective)", () =
   })
 
   it("advances both agents' references when both stream", () => {
-    const before = useTeamStore.getState().agentStreams
+    const before = useAgentStore.getState().agentStreams
 
     act(() => {
-      useTeamStore.getState()._handleSSEEvent("message", { agent: "alpha", text: "a" })
-      useTeamStore.getState()._handleSSEEvent("message", { agent: "beta", text: "b" })
+      useAgentStore.getState()._handleSSEEvent("message", { agent: "alpha", text: "a" })
+      useAgentStore.getState()._handleSSEEvent("message", { agent: "beta", text: "b" })
     })
 
-    const after = useTeamStore.getState().agentStreams
+    const after = useAgentStore.getState().agentStreams
     expect(after.alpha).not.toBe(before.alpha)
     expect(after.beta).not.toBe(before.beta)
   })

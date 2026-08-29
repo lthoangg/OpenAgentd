@@ -71,7 +71,7 @@ jobs:
 
           cat > homebrew-tap/Formula/openagentd.rb <<FORMULA
           class Openagentd < Formula
-            desc "On-machine multi-agent AI assistant with a web cockpit"
+            desc "On-machine AI assistant with a web cockpit"
             homepage "https://github.com/lthoangg/openagentd"
             url "${URL}"
             sha256 "${SHA256}"

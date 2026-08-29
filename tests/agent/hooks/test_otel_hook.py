@@ -49,12 +49,7 @@ def span_exporter(monkeypatch):
     tracer = provider.get_tracer("test")
     monkeypatch.setattr(otel_module, "get_tracer", lambda: tracer)
 
-    # Also reset the lead-context registry between tests
-    otel_module._lead_contexts.clear()
-
     yield exporter
-
-    otel_module._lead_contexts.clear()
 
 
 @pytest.fixture(autouse=True)
@@ -374,62 +369,6 @@ class TestOnRateLimit:
         state = make_state()
         # No before_agent call → _agent_span is None
         await hook.on_rate_limit(ctx, state, retry_after=1.0, attempt=1, max_attempts=3)
-
-
-# ---------------------------------------------------------------------------
-# Team mode — child spans share trace with lead
-# ---------------------------------------------------------------------------
-
-
-class TestTeamTracing:
-    async def test_member_span_parents_under_lead_trace(self, span_exporter):
-        # Lead establishes the trace
-        lead_hook = OpenTelemetryHook(agent_name="lead", model_id="openai:gpt-4o")
-        lead_ctx = make_ctx(session_id="team_session", run_id="lead_run")
-        lead_state = make_state()
-        await lead_hook.before_agent(lead_ctx, lead_state)
-
-        # Member uses lead_session_id to anchor under the same trace
-        member_hook = OpenTelemetryHook(
-            agent_name="researcher",
-            model_id="openai:gpt-4o",
-            lead_session_id="team_session",
-        )
-        member_ctx = make_ctx(session_id="member_session", run_id="m_run")
-        member_state = make_state()
-        await member_hook.before_agent(member_ctx, member_state)
-        await member_hook.after_agent(
-            member_ctx, member_state, AssistantMessage(content="ok")
-        )
-
-        await lead_hook.after_agent(
-            lead_ctx, lead_state, AssistantMessage(content="ok")
-        )
-
-        spans = span_exporter.get_finished_spans()
-        assert len(spans) == 2
-        lead_span = next(s for s in spans if s.name == "agent_run lead")
-        member_span = next(s for s in spans if s.name == "agent_run researcher")
-
-        # Same trace_id, member parented under lead
-        assert lead_span.context.trace_id == member_span.context.trace_id
-        assert member_span.parent is not None
-        assert member_span.parent.span_id == lead_span.context.span_id
-
-    async def test_member_without_registered_lead_starts_own_trace(self, span_exporter):
-        member_hook = OpenTelemetryHook(
-            agent_name="orphan",
-            model_id="openai:gpt-4o",
-            lead_session_id="nonexistent_session",
-        )
-        ctx = make_ctx()
-        state = make_state()
-        await member_hook.before_agent(ctx, state)
-        await member_hook.after_agent(ctx, state, AssistantMessage(content="ok"))
-
-        span = span_exporter.get_finished_spans()[0]
-        # No parent — root span of its own trace
-        assert span.parent is None
 
 
 # ---------------------------------------------------------------------------

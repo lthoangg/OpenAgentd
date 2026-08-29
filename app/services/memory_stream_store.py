@@ -63,6 +63,7 @@ class _TurnState:
         "usage",
         "error",
         "agent_not_configured",
+        "queued_turns",
         "subscribers",
         "_cleanup_handle",
         "_cleanup_deadline",
@@ -73,14 +74,14 @@ class _TurnState:
         self.is_streaming: bool = True
         # Me per-agent accumulators — keyed by agent name so reconnect replay
         # can re-emit with correct attribution. A single-blob was ambiguous in
-        # team turns where multiple agents stream text and the replayed event
+        # turns where agents stream text and the replayed event
         # went to agent="" (no UI panel renders that bucket).
         self.content: dict[str, list[str]] = {}
         self.thinking: dict[str, list[str]] = {}
         self.tool_calls: list[dict[str, Any]] = []
         # Me last-known lifecycle state per agent. Without this, a reconnect
         # mid-turn would never see `agent_status=working` and the composer's
-        # isTeamWorking flag would stay false even while tokens were still
+        # isAgentWorking flag would stay false even while tokens were still
         # streaming in. Overwritten per event so only the latest sticks.
         self.agent_statuses: dict[str, str] = {}
         self.agent_errors: dict[str, dict[str, Any]] = {}
@@ -94,6 +95,7 @@ class _TurnState:
         self.usage: dict | None = None
         self.error: str | None = None
         self.agent_not_configured: dict[str, Any] | None = None
+        self.queued_turns: list[dict[str, Any]] = []
         # Me keep list of queues — one per SSE client
         self.subscribers: list[asyncio.Queue] = []
         self._cleanup_handle: asyncio.TimerHandle | None = None
@@ -111,6 +113,7 @@ class _TurnState:
         self.usage = None
         self.error = None
         self.agent_not_configured = None
+        self.queued_turns = []
 
 
 # Me store all active turns here
@@ -304,6 +307,9 @@ async def push_event(
         elif event_type == "agent_not_configured":
             state.agent_not_configured = data
 
+        elif event_type == "queued_turn_start":
+            state.queued_turns.append(dict(data))
+
         # Me inbox events are DB-persisted by _persist_inbox BEFORE being
         # emitted here, so the DB is always authoritative.  No replay state
         # is kept — live subscribers still receive the event via the fan-out
@@ -425,7 +431,7 @@ async def commit_agent_content(session_id: str, agent: str) -> None:
     # Me drop tool_calls owned by this agent.  AssistantMessage rows embed
     # their tool_calls as part of the assistant payload, so once that row is
     # in the DB the corresponding replay entries must go too — otherwise
-    # parseTeamBlocks (DB → blocks) and the SSE replay (→ currentBlocks)
+    # parseAgentBlocks (DB → blocks) and the SSE replay (→ currentBlocks)
     # each produce a tool card and the frontend renders both.
     state.tool_calls = [tc for tc in state.tool_calls if tc.get("agent") != agent]
 
@@ -527,7 +533,7 @@ async def attach(session_id: str) -> AsyncGenerator[dict[str, str], None]:
         try:
             # Me replay lifecycle state FIRST so the frontend composer flips
             # to the working indicator before any content events arrive.
-            # Without this, a reconnect mid-turn would leave isTeamWorking
+            # Without this, a reconnect mid-turn would leave isAgentWorking
             # false (and the stop button hidden) until the next `done`
             # event — even as tokens continued streaming in.
             for agent, status in state.agent_statuses.items():
@@ -576,6 +582,11 @@ async def attach(session_id: str) -> AsyncGenerator[dict[str, str], None]:
                             metadata={"error": True} if entry.get("error") else {},
                         )
                     ).to_wire()
+
+            # Me replay queued turn activations so reconnecting clients
+            # reconcile spliced pending messages immediately.
+            for qt in state.queued_turns:
+                yield StreamEnvelope.from_parts("queued_turn_start", qt).to_wire()
 
             # Me replay accumulated thinking per-agent so the frontend can
             # route each chunk to the correct agent panel. A single empty-

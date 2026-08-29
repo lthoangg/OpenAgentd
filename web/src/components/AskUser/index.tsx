@@ -26,9 +26,9 @@ import { useState } from 'react'
 import { MessageCircleQuestion } from 'lucide-react'
 
 import { answerQuestion, dismissQuestion } from '@/api/client'
-import { useTeamStore } from '@/stores/useTeamStore'
+import { useAgentStore } from '@/stores/useAgentStore'
 import { useToastStore } from '@/stores/useToastStore'
-import type { ResolvedQuestion } from '@/stores/useTeamStore'
+import type { ResolvedQuestion } from '@/stores/useAgentStore'
 import type { QuestionItem } from '@/api/types'
 import { QuestionCard } from './QuestionCard'
 import { forgetQuestionDraft } from './draft-cache'
@@ -85,11 +85,11 @@ export function AskUser({
   args?: string
   result?: string
 }) {
-  const pendingQuestion = useTeamStore((state) => state.pendingQuestion)
-  const sessionId = useTeamStore((state) => state.sessionId)
-  const resolveQuestion = useTeamStore((state) => state.resolveQuestion)
-  const markTurnResuming = useTeamStore((state) => state.markTurnResuming)
-  const resolved = useTeamStore((state) =>
+  const pendingQuestion = useAgentStore((state) => state.pendingQuestion)
+  const sessionId = useAgentStore((state) => state.sessionId)
+  const resolveQuestion = useAgentStore((state) => state.resolveQuestion)
+  const markTurnResuming = useAgentStore((state) => state.markTurnResuming)
+  const resolved = useAgentStore((state) =>
     toolCallId ? state.resolvedQuestions[toolCallId] : undefined,
   )
   const [submitting, setSubmitting] = useState(false)

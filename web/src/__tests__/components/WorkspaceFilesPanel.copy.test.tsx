@@ -90,7 +90,7 @@ describe("CopyContentsButton", () => {
     // Verifies the URL hits the workspace media proxy for the right session/path.
     expect(fetchMock).toHaveBeenCalledOnce()
     const url = (fetchMock.mock.calls[0]?.[0] ?? "") as string
-    expect(url).toContain(`/api/team/${SID}/media/notes.md`)
+    expect(url).toContain(`/api/agent/${SID}/media/notes.md`)
   })
 
   it("URL-encodes nested file paths when fetching", async () => {
@@ -109,7 +109,7 @@ describe("CopyContentsButton", () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce())
     const url = (fetchMock.mock.calls[0]?.[0] ?? "") as string
     // Slashes must survive (path segments), not be encoded as %2F.
-    expect(url).toContain(`/api/team/${SID}/media/output/charts/q3.csv`)
+    expect(url).toContain(`/api/agent/${SID}/media/output/charts/q3.csv`)
   })
 
   it("flips to the success tooltip after a successful copy", async () => {

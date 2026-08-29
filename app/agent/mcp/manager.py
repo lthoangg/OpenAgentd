@@ -2,7 +2,7 @@
 
 Owns one :class:`mcp.ClientSession` per configured server. Sessions are spawned
 best-effort during application startup and kept alive for the server's lifetime,
-matching the lifecycle of ``team_manager`` and ``task_scheduler``.
+matching the lifecycle of ``agent_manager`` and ``task_scheduler``.
 
 A failed server does NOT block startup: the error is logged, status is set
 to ``error``, and the process continues. Healthy servers' tools are merged

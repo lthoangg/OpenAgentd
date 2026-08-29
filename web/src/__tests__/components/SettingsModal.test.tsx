@@ -51,7 +51,6 @@ mock.module('framer-motion', () => ({
 
 mock.module('@/components/settings/pages/settings.index', () => ({ SettingsHubPage: () => <div>hub</div> }))
 mock.module('@/components/settings/pages/settings.agents', () => ({ AgentsListPage: () => <div>agents</div> }))
-mock.module('@/components/settings/pages/settings.agents.new', () => ({ NewAgentPage: () => <div>new-agent</div> }))
 mock.module('@/components/settings/pages/settings.agents.$name', () => ({ AgentEditorPage: () => <div>agent-edit</div> }))
 mock.module('@/components/settings/pages/settings.skills', () => ({ SkillsListPage: () => <div>skills</div> }))
 mock.module('@/components/settings/pages/settings.skills.new', () => ({ NewSkillPage: () => <div>new-skill</div> }))

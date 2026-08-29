@@ -21,17 +21,17 @@ afterEach(() => {
   delete window.__OAD_TOKEN__
 })
 
-describe('teamStream', () => {
+describe('agentStream', () => {
   it('includes desktop authentication in its raw SSE URL', async () => {
     const fetchSpy = mock(() => Promise.resolve(new Response(null, { status: 200 })))
     globalThis.fetch = fetchSpy as typeof fetch
-    const { teamStream } = await import('@/api/client/team')
+    const { agentStream } = await import('@/api/client/agent')
 
-    teamStream('session-1', { onEvent: () => {} })
+    agentStream('session-1', { onEvent: () => {} })
     await Promise.resolve()
 
     expect(fetchSpy).toHaveBeenCalledWith(
-      'http://127.0.0.1:4082/api/team/session-1/stream?_token=secondary-window-token',
+      'http://127.0.0.1:4082/api/agent/session-1/stream?_token=secondary-window-token',
       expect.any(Object),
     )
   })

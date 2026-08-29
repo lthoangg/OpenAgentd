@@ -16,7 +16,7 @@ from sqlmodel import col, delete, func, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.agent.artifacts import SESSIONS_DIR
-from app.api.routes.team.worktrees import find_managed_worktree_source
+from app.api.routes.agent.worktrees import find_managed_worktree_source
 from app.core.config import settings
 from app.models.chat import ChatSession, SessionMessage
 from app.services import snapshot_service

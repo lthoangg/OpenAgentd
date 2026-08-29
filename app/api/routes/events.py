@@ -18,7 +18,7 @@ async def global_events_stream() -> EventSourceResponse:
 
     async def _gen() -> AsyncGenerator[dict[str, str], None]:
         # Client disconnects cancel this generator via sse-starlette's
-        # `_listen_for_disconnect` — see the note in `team_stream`.
+        # `_listen_for_disconnect` — see the note in the session stream.
         async for event in event_broadcaster.attach():
             yield event
 

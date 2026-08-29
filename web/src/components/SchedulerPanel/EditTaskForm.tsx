@@ -13,7 +13,7 @@ import { FIELD_CLASS } from './utils'
 import { editTaskDefaults, toUpdatePayload, validateTaskValues, type TaskFormErrors } from './taskForm'
 import { ScheduleTypeSegmented } from './ScheduleTypeSegmented'
 import { ModeWorkspaceFields } from './ModeWorkspaceFields'
-import { useTeamStore } from '@/stores/useTeamStore'
+import { useAgentStore } from '@/stores/useAgentStore'
 import { Dropdown, DropdownItem } from '@/components/ui/dropdown'
 
 export function EditTaskForm({
@@ -26,9 +26,9 @@ export function EditTaskForm({
   onCancel: () => void
 }) {
   const localTz = Intl.DateTimeFormat().resolvedOptions().timeZone
-  const currentSessionId = useTeamStore((state) => state.sessionId)
-  const currentSessionTitle = useTeamStore((state) => state.sessionTitle)
-  const activeSessionWorkspace = useTeamStore((state) => state._workspace)
+  const currentSessionId = useAgentStore((state) => state.sessionId)
+  const currentSessionTitle = useAgentStore((state) => state.sessionTitle)
+  const activeSessionWorkspace = useAgentStore((state) => state._workspace)
 
   const defaults = editTaskDefaults(task, currentSessionId)
   const [error, setError] = useState<string | null>(null)
@@ -205,7 +205,7 @@ export function EditTaskForm({
               className={`font-mono text-xs leading-relaxed ${FIELD_CLASS}`}
               value={values.prompt}
               onChange={(e) => form.setFieldValue('prompt', e.target.value)}
-              placeholder="Message to deliver to the team lead when the task fires."
+              placeholder="Message to deliver to the agent when the task fires."
               rows={3}
               aria-invalid={!!fieldErrors.prompt}
               aria-describedby={fieldErrors.prompt ? 'edit-task-prompt-error' : undefined}

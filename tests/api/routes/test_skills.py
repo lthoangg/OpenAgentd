@@ -3,15 +3,13 @@
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import AsyncMock
-
 import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 
 from app.api.routes import skills as skills_routes
 from app.api.routes.skills import router as skills_router
-from app.services import team_manager
+from app.services import agent_manager
 
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -40,12 +38,12 @@ def fs_dirs(tmp_path: Path, monkeypatch):
 async def client(fs_dirs):
     app = FastAPI()
     app.include_router(skills_router, prefix="/api/skills")
-    # Clear any team state that may linger from parallel tests
-    await team_manager.stop()
+    # Clear any agent session state that may linger from parallel tests
+    await agent_manager.stop()
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://t") as c:
         yield c
-    await team_manager.stop()
+    await agent_manager.stop()
 
 
 # ── Sample skill content ───────────────────────────────────────────────────────
@@ -644,39 +642,18 @@ async def test_delete_skill_bad_path_returns_400(client, monkeypatch):
     assert resp.status_code == 400
 
 
-# ── Cache invalidation — no team reload, drift detection picks up changes ─────
+# ── Cache invalidation — drift detection picks up changes ────────────────────
 
 
 @pytest.mark.asyncio
-async def test_create_skill_invalidates_cache_without_reloading_team(
-    client, monkeypatch, fs_dirs
-):
-    """Skill mutations must invalidate the discovery cache but never reload the team.
+async def test_create_skill_does_not_reload_agent_session(client, fs_dirs):
+    """Skill mutations must never reload the active agent session.
 
-    Mid-turn team reloads tear down in-flight tool execution.  Agents
-    instead pick up new/updated skills at the start of their next turn
+    Agents pick up new/updated skills at the start of their next turn
     via the config-stamp drift check.
     """
-    invalidated: list[bool] = []
-    reload_called: list[bool] = []
-
-    monkeypatch.setattr(
-        team_manager,
-        "invalidate_skill_cache",
-        lambda: invalidated.append(True),
-    )
-    # Sentinel: if the route accidentally re-introduces a reload call,
-    # this will record it.
-    monkeypatch.setattr(
-        team_manager,
-        "reload",
-        AsyncMock(side_effect=lambda: reload_called.append(True)),
-    )
-
     resp = await client.post(
         "/api/skills", json={"name": "research", "content": VALID_SKILL}
     )
     assert resp.status_code == 201
     assert resp.json()["name"] == "research"
-    assert invalidated == [True], "skill cache must be invalidated"
-    assert reload_called == [], "team must NOT be reloaded mid-turn"

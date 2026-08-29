@@ -103,7 +103,7 @@ def test_cli_import_and_parser_stay_light() -> None:
     import subprocess
 
     sentinels = (
-        "app.api.routes.team.chat",
+        "app.api.routes.agent.chat",
         "app.services.artifact_cleanup",
         "app.cli.commands.start",
         "app.core.db",
@@ -578,12 +578,12 @@ class TestCmdRun:
             yield {"event": "done", "data": '{"type":"done"}'}
 
         monkeypatch.setattr(
-            run_mod.team_manager,
-            "get_or_start_coding_team",
+            run_mod.agent_manager,
+            "get_or_start_agent_session",
             AsyncMock(return_value=team),
         )
         monkeypatch.setattr(
-            run_mod.team_manager, "validate_workspace", lambda _: "/repo"
+            run_mod.agent_manager, "validate_workspace", lambda _: "/repo"
         )
         monkeypatch.setattr(run_mod.agent_service, "dispatch_user_message", dispatch)
         monkeypatch.setattr(run_mod.stream_store, "attach", events)
@@ -619,10 +619,10 @@ class TestCmdRun:
             yield {"event": "done", "data": '{"type":"done"}'}
 
         monkeypatch.setattr(
-            run_mod.team_manager, "validate_workspace", lambda _: "/repo"
+            run_mod.agent_manager, "validate_workspace", lambda _: "/repo"
         )
         monkeypatch.setattr(
-            run_mod.team_manager, "get_or_start_coding_team", get_coding_team
+            run_mod.agent_manager, "get_or_start_agent_session", get_coding_team
         )
         monkeypatch.setattr(run_mod.agent_service, "dispatch_user_message", dispatch)
         monkeypatch.setattr(run_mod.stream_store, "attach", events)
@@ -651,8 +651,8 @@ class TestCmdRun:
             run_mod, "is_registered_model_id", AsyncMock(return_value=False)
         )
         monkeypatch.setattr(
-            run_mod.team_manager,
-            "get_or_start_coding_team",
+            run_mod.agent_manager,
+            "get_or_start_agent_session",
             resolve_team,
         )
 
@@ -680,12 +680,12 @@ class TestCmdRun:
             yield {"event": "done", "data": '{"type":"done"}'}
 
         monkeypatch.setattr(
-            run_mod.team_manager,
-            "get_or_start_coding_team",
+            run_mod.agent_manager,
+            "get_or_start_agent_session",
             AsyncMock(return_value=team),
         )
         monkeypatch.setattr(
-            run_mod.team_manager, "validate_workspace", lambda _: "/repo"
+            run_mod.agent_manager, "validate_workspace", lambda _: "/repo"
         )
         monkeypatch.setattr(
             run_mod.agent_service,
@@ -719,19 +719,19 @@ class TestCmdRun:
             }
 
         monkeypatch.setattr(
-            run_mod.team_manager,
-            "get_or_start_coding_team",
+            run_mod.agent_manager,
+            "get_or_start_agent_session",
             AsyncMock(return_value=team),
         )
         monkeypatch.setattr(
-            run_mod.team_manager, "validate_workspace", lambda _: "/repo"
+            run_mod.agent_manager, "validate_workspace", lambda _: "/repo"
         )
         monkeypatch.setattr(
             run_mod.agent_service,
             "dispatch_user_message",
             AsyncMock(return_value=("session-id", 0, "message-id")),
         )
-        monkeypatch.setattr(run_mod.agent_service, "interrupt_team", interrupt)
+        monkeypatch.setattr(run_mod.agent_service, "interrupt_agent", interrupt)
         monkeypatch.setattr(run_mod.stream_store, "attach", events)
 
         with pytest.raises(SystemExit, match="cannot answer agent questions"):
@@ -763,11 +763,11 @@ class TestCmdRun:
             yield {"event": "done", "data": '{"type":"done"}'}
 
         monkeypatch.setattr(
-            run_mod.team_manager, "validate_workspace", lambda _: "/repo"
+            run_mod.agent_manager, "validate_workspace", lambda _: "/repo"
         )
         monkeypatch.setattr(
-            run_mod.team_manager,
-            "get_or_start_coding_team",
+            run_mod.agent_manager,
+            "get_or_start_agent_session",
             AsyncMock(return_value=team),
         )
         monkeypatch.setattr(
@@ -775,7 +775,7 @@ class TestCmdRun:
             "dispatch_user_message",
             AsyncMock(return_value=("session-id", 0, "message-id")),
         )
-        monkeypatch.setattr(run_mod.agent_service, "interrupt_team", interrupt)
+        monkeypatch.setattr(run_mod.agent_service, "interrupt_agent", interrupt)
         monkeypatch.setattr(run_mod.stream_store, "attach", events)
 
         await run_mod._run(args)

@@ -19,7 +19,6 @@ import { cn } from '@/lib/utils'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { useSettingsStore, type SettingsSection } from '@/stores/useSettingsStore'
 import {
-  useAgentFilesQuery,
   useDeniedPathsSettingsQuery,
   useMcpServersQuery,
   useSkillFilesQuery,
@@ -37,8 +36,6 @@ import { ICON_SIZE_INLINE } from '@/components/settings/tokens'
 
 import { SettingsHubPage } from '@/components/settings/pages/settings.index'
 import { AgentsListPage } from '@/components/settings/pages/settings.agents'
-import { NewAgentPage } from '@/components/settings/pages/settings.agents.new'
-import { AgentEditorPage } from '@/components/settings/pages/settings.agents.$name'
 import { SkillsListPage } from '@/components/settings/pages/settings.skills'
 import { NewSkillPage } from '@/components/settings/pages/settings.skills.new'
 import { SkillEditorPage } from '@/components/settings/pages/settings.skills.$name'
@@ -122,14 +119,12 @@ function ModalSidebar({
   section: SettingsSection
   onSelect: (s: TopLevelSection) => void
 }) {
-  const agentsQ = useAgentFilesQuery()
   const skillsQ = useSkillFilesQuery()
   const mcpQ = useMcpServersQuery()
   const deniedPathsQ = useDeniedPathsSettingsQuery()
   const active = parentSection(section)
 
   const counts: Partial<Record<TopLevelSection, number | null>> = {
-    agents: agentsQ.data?.agents.length ?? null,
     skills: skillsQ.data?.skills.length ?? null,
     mcp: mcpQ.data?.servers.length ?? null,
     denied_paths: deniedPathsQ.data?.denied_patterns.length ?? null,
@@ -232,24 +227,7 @@ function SectionContent({
 }) {
   switch (section) {
     case 'agents':
-      return (
-        <AgentsListPage
-          selectedName={selectedName}
-          onSelect={(name) => setSection('agents-edit', name)}
-          onNew={() => setSection('agents-new')}
-        />
-      )
-    case 'agents-new':
-      return (
-        <NewAgentPage
-          onBack={() => setSection('agents')}
-          onCreated={(name) => setSection('agents-edit', name)}
-        />
-      )
-    case 'agents-edit':
-      return selectedName ? (
-        <AgentEditorPage name={selectedName} onBack={() => setSection('agents')} />
-      ) : null
+      return <AgentsListPage />
     case 'skills':
       return (
         <SkillsListPage

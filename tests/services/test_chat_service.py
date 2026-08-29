@@ -161,7 +161,7 @@ async def test_delete_session_removes_descendants_messages_and_runtime_state(
     evict = AsyncMock()
     clear = AsyncMock()
     snapshot = AsyncMock()
-    monkeypatch.setattr("app.services.team_manager.evict_session_teams", evict)
+    monkeypatch.setattr("app.services.agent_manager.evict_sessions", evict)
     monkeypatch.setattr("app.services.memory_stream_store.clear", clear)
     monkeypatch.setattr("app.services.snapshot_service.remove", snapshot)
 
@@ -201,7 +201,7 @@ async def test_delete_session_finds_all_descendants_with_one_recursive_query(
         return await original_exec(self, statement, *args, **kwargs)
 
     monkeypatch.setattr(core_db.AsyncSession, "exec", recording_exec)
-    monkeypatch.setattr("app.services.team_manager.evict_session_teams", AsyncMock())
+    monkeypatch.setattr("app.services.agent_manager.evict_sessions", AsyncMock())
     monkeypatch.setattr("app.services.memory_stream_store.clear", AsyncMock())
     monkeypatch.setattr("app.services.snapshot_service.remove", AsyncMock())
 
@@ -2097,7 +2097,7 @@ async def test_undo_and_redo_use_workspace_snapshots(session, tmp_path, monkeypa
     # ── /redo #1: boundary moves forward to U2, workspace = snap_u2 ───
     shift = await redo_session_messages(session, chat_session.id)
     assert shift.applied is True
-    # The next-user pointer is plumbed back so /api/team/commands can
+    # The next-user pointer is plumbed back so /api/agent/commands can
     # echo it to the client for local boundary application.
     assert shift.target is not None
     assert shift.target.id == u2.id
@@ -2199,15 +2199,15 @@ async def test_redo_all_restores_workspace_snapshot_in_one_step(
 
 
 # ---------------------------------------------------------------------------
-# get_team_history — bounded member-page fetches
+# get_agent_history — bounded member-page fetches
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_get_team_history_pages_past_hidden_messages(session):
+async def test_get_agent_history_pages_past_hidden_messages(session):
     """Hidden rows must not consume the sentinel used to detect older history."""
     from app.agent.schemas.chat import HumanMessage
-    from app.services.chat_service import _HISTORY_PAGE_SIZE, get_team_history
+    from app.services.chat_service import _HISTORY_PAGE_SIZE, get_agent_history
 
     lead = await create_chat_session(session, title="lead")
     for i in range(_HISTORY_PAGE_SIZE + 1):
@@ -2219,14 +2219,14 @@ async def test_get_team_history_pages_past_hidden_messages(session):
         extra={"hidden_from_user": True},
     )
 
-    data = await get_team_history(session, lead.id)
+    data = await get_agent_history(session, lead.id)
 
     assert data is not None
     assert len(data.lead_messages) == _HISTORY_PAGE_SIZE
     assert data.has_more is True
     assert data.next_cursor is not None
 
-    older = await get_team_history(
+    older = await get_agent_history(
         session, lead.id, before_seq=data.next_cursor, before_id=data.next_cursor_id
     )
     assert older is not None
@@ -2235,9 +2235,9 @@ async def test_get_team_history_pages_past_hidden_messages(session):
 
 
 @pytest.mark.asyncio
-async def test_get_team_history_filters_hidden_lead_rows_in_sql(session):
+async def test_get_agent_history_filters_hidden_lead_rows_in_sql(session):
     """Hidden lead rows must not force additional history-page scans."""
-    from app.services.chat_service import _HISTORY_PAGE_SIZE, get_team_history
+    from app.services.chat_service import _HISTORY_PAGE_SIZE, get_agent_history
 
     lead = await create_chat_session(session, title="lead")
     for i in range(_HISTORY_PAGE_SIZE + 1):
@@ -2273,7 +2273,7 @@ async def test_get_team_history_filters_hidden_lead_rows_in_sql(session):
 
     session.exec = counting_exec
     try:
-        data = await get_team_history(session, lead.id)
+        data = await get_agent_history(session, lead.id)
     finally:
         session.exec = original_exec
 
@@ -2343,14 +2343,14 @@ async def test_session_usage_totals_empty_without_usage(session):
 
 
 @pytest.mark.asyncio
-async def test_get_team_history_member_fetch_is_bounded(session):
+async def test_get_agent_history_member_fetch_is_bounded(session):
     """_fetch_member_pages must not materialize every member row.
 
     Regression: the batched member-history query had no per-session LIMIT —
     a member with a very long history pulled *all* its rows into memory and
     trimmed in Python. The fetch must stay bounded per sub-session.
     """
-    from app.services.chat_service import _HISTORY_PAGE_SIZE, get_team_history
+    from app.services.chat_service import _HISTORY_PAGE_SIZE, get_agent_history
     from app.agent.schemas.chat import HumanMessage
 
     lead = await create_chat_session(session, title="lead")
@@ -2383,7 +2383,7 @@ async def test_get_team_history_member_fetch_is_bounded(session):
 
     session.exec = counting_exec
     try:
-        data = await get_team_history(session, lead.id)
+        data = await get_agent_history(session, lead.id)
     finally:
         session.exec = original_exec
 
@@ -2404,27 +2404,27 @@ async def test_get_team_history_member_fetch_is_bounded(session):
 
 
 # ---------------------------------------------------------------------------
-# get_team_history_since — delta reconciliation for turn completion
+# get_agent_history_since — delta reconciliation for turn completion
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_get_team_history_since_returns_only_newer_messages(session):
+async def test_get_agent_history_since_returns_only_newer_messages(session):
     """The turn-completion reconcile must not re-download the whole page."""
-    from app.services.chat_service import get_team_history, get_team_history_since
+    from app.services.chat_service import get_agent_history, get_agent_history_since
 
     lead = await create_chat_session(session, title="lead")
     for i in range(5):
         await save_message(session, lead.id, HumanMessage(content=f"old-{i}"))
 
-    full = await get_team_history(session, lead.id)
+    full = await get_agent_history(session, lead.id)
     assert full is not None
     cursor = full.lead_messages[-1].id
 
     await save_message(session, lead.id, HumanMessage(content="new-1"))
     await save_message(session, lead.id, HumanMessage(content="new-2"))
 
-    delta = await get_team_history_since(session, lead.id, since_id=cursor)
+    delta = await get_agent_history_since(session, lead.id, since_id=cursor)
 
     assert delta is not None
     assert [m.content for m in delta.lead_messages] == ["new-1", "new-2"]
@@ -2432,23 +2432,23 @@ async def test_get_team_history_since_returns_only_newer_messages(session):
 
 
 @pytest.mark.asyncio
-async def test_get_team_history_since_is_chronological_and_excludes_cursor(session):
-    from app.services.chat_service import get_team_history_since
+async def test_get_agent_history_since_is_chronological_and_excludes_cursor(session):
+    from app.services.chat_service import get_agent_history_since
 
     lead = await create_chat_session(session, title="lead")
     first = await save_message(session, lead.id, HumanMessage(content="a"))
     await save_message(session, lead.id, HumanMessage(content="b"))
 
-    delta = await get_team_history_since(session, lead.id, since_id=first.id)
+    delta = await get_agent_history_since(session, lead.id, since_id=first.id)
 
     # The cursor row itself is already on the client — strictly newer only.
     assert [m.content for m in delta.lead_messages] == ["b"]
 
 
 @pytest.mark.asyncio
-async def test_get_team_history_since_finds_newly_anchored_summary(session):
+async def test_get_agent_history_since_finds_newly_anchored_summary(session):
     """Creation cursor must find a new row whose logical seq moved backward."""
-    from app.services.chat_service import get_team_history_since
+    from app.services.chat_service import get_agent_history_since
 
     lead = await create_chat_session(session, title="lead")
     first = await save_message(session, lead.id, HumanMessage(content="first"))
@@ -2461,15 +2461,15 @@ async def test_get_team_history_since_finds_newly_anchored_summary(session):
         seq=first.seq,
     )
 
-    delta = await get_team_history_since(session, lead.id, since_id=cursor.id)
+    delta = await get_agent_history_since(session, lead.id, since_id=cursor.id)
 
     assert [m.id for m in delta.lead_messages] == [summary.id]
 
 
 @pytest.mark.asyncio
-async def test_get_team_history_since_hides_hidden_rows(session):
+async def test_get_agent_history_since_hides_hidden_rows(session):
     """Undone rows stay hidden in a delta exactly as in a full page."""
-    from app.services.chat_service import get_team_history_since
+    from app.services.chat_service import get_agent_history_since
 
     lead = await create_chat_session(session, title="lead")
     anchor = await save_message(session, lead.id, HumanMessage(content="anchor"))
@@ -2481,14 +2481,14 @@ async def test_get_team_history_since_hides_hidden_rows(session):
         extra={"hidden_from_user": True},
     )
 
-    delta = await get_team_history_since(session, lead.id, since_id=anchor.id)
+    delta = await get_agent_history_since(session, lead.id, since_id=anchor.id)
 
     assert [m.content for m in delta.lead_messages] == ["visible"]
 
 
 @pytest.mark.asyncio
-async def test_get_team_history_since_includes_member_sessions(session):
-    from app.services.chat_service import get_team_history_since
+async def test_get_agent_history_since_includes_member_sessions(session):
+    from app.services.chat_service import get_agent_history_since
 
     lead = await create_chat_session(session, title="lead")
     member = await create_chat_session(
@@ -2497,7 +2497,7 @@ async def test_get_team_history_since_includes_member_sessions(session):
     anchor = await save_message(session, lead.id, HumanMessage(content="anchor"))
     await save_message(session, member.id, HumanMessage(content="member-new"))
 
-    delta = await get_team_history_since(session, lead.id, since_id=anchor.id)
+    delta = await get_agent_history_since(session, lead.id, since_id=anchor.id)
 
     assert len(delta.members) == 1
     assert delta.members[0].session.agent_name == "explorer#1"
@@ -2505,31 +2505,31 @@ async def test_get_team_history_since_includes_member_sessions(session):
 
 
 @pytest.mark.asyncio
-async def test_get_team_history_since_flags_oversized_delta(session):
+async def test_get_agent_history_since_flags_oversized_delta(session):
     """A delta larger than the cap tells the caller to do a full reload."""
-    from app.services.chat_service import get_team_history_since
+    from app.services.chat_service import get_agent_history_since
 
     lead = await create_chat_session(session, title="lead")
     anchor = await save_message(session, lead.id, HumanMessage(content="anchor"))
     for i in range(6):
         await save_message(session, lead.id, HumanMessage(content=f"m-{i}"))
 
-    delta = await get_team_history_since(session, lead.id, since_id=anchor.id, limit=3)
+    delta = await get_agent_history_since(session, lead.id, since_id=anchor.id, limit=3)
 
     assert delta.truncated is True
 
 
 @pytest.mark.asyncio
-async def test_get_team_history_since_missing_session_returns_none(session):
+async def test_get_agent_history_since_missing_session_returns_none(session):
     from uuid import uuid4
 
-    from app.services.chat_service import get_team_history_since
+    from app.services.chat_service import get_agent_history_since
 
-    assert await get_team_history_since(session, uuid4(), since_id=uuid4()) is None
+    assert await get_agent_history_since(session, uuid4(), since_id=uuid4()) is None
 
 
 @pytest.mark.asyncio
-async def test_get_team_history_member_page_skips_hidden_rows_in_sql(session):
+async def test_get_agent_history_member_page_skips_hidden_rows_in_sql(session):
     """Hidden member rows must not consume the member page window.
 
     Regression: the lead query filtered ``hidden_from_user`` in SQL, but
@@ -2538,7 +2538,7 @@ async def test_get_team_history_member_page_skips_hidden_rows_in_sql(session):
     rows were all hidden returned an empty page, and because member histories
     carry no cursor of their own the older visible rows were unreachable.
     """
-    from app.services.chat_service import _HISTORY_PAGE_SIZE, get_team_history
+    from app.services.chat_service import _HISTORY_PAGE_SIZE, get_agent_history
 
     lead = await create_chat_session(session, title="lead")
     member = await create_chat_session(session, title="member")
@@ -2560,7 +2560,7 @@ async def test_get_team_history_member_page_skips_hidden_rows_in_sql(session):
         )
     await session.commit()
 
-    history = await get_team_history(session, lead.id)
+    history = await get_agent_history(session, lead.id)
     assert history is not None
     assert len(history.members) == 1
     assert [m.content for m in history.members[0].messages] == [
@@ -2571,7 +2571,7 @@ async def test_get_team_history_member_page_skips_hidden_rows_in_sql(session):
 
 
 @pytest.mark.asyncio
-async def test_get_team_history_cursor_keeps_rows_tied_on_created_at(session):
+async def test_get_agent_history_cursor_keeps_rows_tied_on_created_at(session):
     """A row sharing the boundary ``seq`` must not vanish between pages.
 
     The cursor is the compound ``(seq, id)`` pair; a bare-seq cursor would
@@ -2579,7 +2579,7 @@ async def test_get_team_history_cursor_keeps_rows_tied_on_created_at(session):
     """
     from sqlalchemy import update
 
-    from app.services.chat_service import _HISTORY_PAGE_SIZE, get_team_history
+    from app.services.chat_service import _HISTORY_PAGE_SIZE, get_agent_history
 
     lead = await create_chat_session(session, title="lead")
     total = _HISTORY_PAGE_SIZE + 5
@@ -2589,7 +2589,7 @@ async def test_get_team_history_cursor_keeps_rows_tied_on_created_at(session):
     ]
     await session.commit()
 
-    page1 = await get_team_history(session, lead.id)
+    page1 = await get_agent_history(session, lead.id)
     assert page1 is not None
     boundary = page1.lead_messages[0]
 
@@ -2605,7 +2605,7 @@ async def test_get_team_history_cursor_keeps_rows_tied_on_created_at(session):
     )
     await session.commit()
 
-    page2 = await get_team_history(
+    page2 = await get_agent_history(
         session,
         lead.id,
         before_seq=page1.next_cursor,

@@ -2,7 +2,7 @@ import { describe, it, expect, afterEach, mock } from "bun:test"
 import { render, screen, cleanup } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { AgentPane } from "@/components/AgentPane"
-import type { AgentStream } from "@/stores/useTeamStore"
+import type { AgentStream } from "@/stores/useAgentStore"
 import type { ContentBlock } from "@/api/types"
 
 afterEach(cleanup)

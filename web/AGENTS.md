@@ -33,7 +33,7 @@ Makefile owns the pre-merge contract.
   SSE parsing.
 - `src/queries/` owns TanStack Query hooks/mutations and cache updates for
   server state.
-- `src/stores/` owns client state and streamed session/team state.
+- `src/stores/` owns client state and streamed session state.
 - `src/routes/` contains pages; register and validate route/search state in
   `src/router.ts`.
 - `src/components/` owns shared and feature UI; `src/hooks/` owns reusable

@@ -13,7 +13,7 @@ const DROP_ZONE_SELECTOR = '[data-file-drop-zone]'
  *
  * Swallow file drags globally, except inside elements that opted in with
  * ``data-file-drop-zone`` — those run their own handlers (see
- * ``TeamChatView/useDragDrop``). Non-file drags are left completely alone so
+ * ``AgentChatView/useDragDrop``). Non-file drags are left completely alone so
  * native text drag-and-drop keeps working.
  */
 export function usePreventStrayFileDrop(): void {

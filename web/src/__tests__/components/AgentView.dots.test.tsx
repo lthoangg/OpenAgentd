@@ -13,12 +13,12 @@ import { render, screen, cleanup } from '@testing-library/react'
 mock.module('lucide-react', () => new Proxy({}, { get: () => () => null }))
 
 import { AgentView } from '@/components/AgentView'
-import { useTeamStore } from '@/stores/useTeamStore'
+import { useAgentStore } from '@/stores/useAgentStore'
 import type { ContentBlock } from '@/api/types'
 
 afterEach(() => {
   cleanup()
-  useTeamStore.setState({ sessionId: null, _pendingMessages: [] })
+  useAgentStore.setState({ sessionId: null, _pendingMessages: [] })
 })
 
 const DOTS = /is preparing a response/i

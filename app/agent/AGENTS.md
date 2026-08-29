@@ -1,6 +1,6 @@
 # Agent Runtime Guide
 
-This subtree owns agent loading, turn execution, providers, tools, teams, MCP,
+This subtree owns agent loading, turn execution, providers, tools, session runtime, MCP,
 permissions, prompts, and runtime wire schemas.
 
 ## Map and boundaries
@@ -8,23 +8,19 @@ permissions, prompts, and runtime wire schemas.
 - `loader.py` validates agent Markdown/frontmatter and materializes built-ins;
   `drift.py` detects user config changes and `builtin_prompts.py` owns
   first-party defaults.
-- `agent_loop/` owns turns, streaming, retries, tool dispatch, and tool-result
-  handling.
+- `session.py` owns single-agent session runtime, turn execution, and question suspension.
+- `agent_loop/` owns turns, streaming, retries, tool dispatch, and tool-result handling.
 - `providers/` adapts provider-specific transports. Keep their payload quirks
   behind generic schemas in `schemas/`.
 - `tools/` owns the registry and built-ins; preserve permission, sandbox,
   cancellation, output, and UI-result contracts when adding a tool.
 - `mcp/` owns external MCP configuration and process/client lifecycle.
-- `mode/team/` owns roster instances, mailbox wakeups, board todos, questions,
-  and multi-agent orchestration. Cross-surface team changes also involve
-  `app/services/team_manager.py`, API routes, and frontend SSE stores.
 - `plugins/` loads user plugin context; keep failures isolated from the core
   runtime.
 
 First-party profile frontmatter is additive over code-owned defaults. Keep
 prompt text capability-neutral because injected tools differ by runtime mode.
-The team-aware `todo_manage` in `mode/team/board.py` performs mailbox wakeups;
-the plain builtin in `tools/builtin/todo.py` is intentionally passive.
+The builtin in `tools/builtin/todo.py` manages the single-agent task list.
 
 ## Security and compatibility
 

@@ -666,8 +666,8 @@ def test_configure_default_model_updates_unconfigured_agents(
     )
     agents = tmp_path / "agents"
     agents.mkdir()
-    (agents / "openagentd.md").write_text(
-        "---\nname: openagentd\nrole: lead\nmodel: __PROVIDER_MODEL__\n---\n",
+    (agents / "code.md").write_text(
+        "---\nname: code\nrole: lead\nmodel: __PROVIDER_MODEL__\n---\n",
         encoding="utf-8",
     )
 
@@ -679,9 +679,9 @@ def test_configure_default_model_updates_unconfigured_agents(
     )
 
     assert response.status_code == 200
-    assert response.json() == {"agents_updated": ["openagentd.md"]}
+    assert response.json() == {"agents_updated": ["code.md"]}
     assert "model: googlegenai:gemini-3-flash-preview" in (
-        agents / "openagentd.md"
+        agents / "code.md"
     ).read_text(encoding="utf-8")
 
 
@@ -693,9 +693,9 @@ def test_configure_default_model_preserves_configured_agents(
     )
     agents = tmp_path / "agents"
     agents.mkdir()
-    configured = agents / "openagentd.md"
+    configured = agents / "code.md"
     configured.write_text(
-        "---\nname: openagentd\nrole: lead\nmodel: openai:gpt-5\n---\n\n"
+        "---\nname: code\nrole: lead\nmodel: openai:gpt-5\n---\n\n"
         "Keep the literal __PROVIDER_MODEL__ in this custom prompt.\n",
         encoding="utf-8",
     )

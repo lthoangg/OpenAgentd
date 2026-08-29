@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { overlaysToClose, type MobileOverlay } from '@/components/TeamChatView/mobileOverlays'
+import { overlaysToClose, type MobileOverlay } from '@/components/AgentChatView/mobileOverlays'
 
 const ALL: MobileOverlay[] = [
   'sidebar', 'actions', 'coding-panel', 'todos', 'files', 'scheduler', 'capabilities', 'palette',

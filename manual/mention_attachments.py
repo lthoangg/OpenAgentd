@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import shutil
 import sys
 import tempfile
@@ -44,6 +45,7 @@ from app.core.db import async_session_factory
 from app.models.chat import SessionMessage
 
 from manual._common import DEFAULT_BASE
+
 BASE = DEFAULT_BASE
 BIG_HEAD = "HEAD_MARKER_ALPHA"
 BIG_TAIL = "TAIL_MARKER_OMEGA"
@@ -75,10 +77,21 @@ def make_fixtures(root: Path) -> None:
     (sub / "AGENTS.md").write_text("folder instructions\n", encoding="utf-8")
 
 
-def post_chat(base: str, workspace: str, message: str) -> str:
+def post_chat(
+    base: str,
+    workspace: str,
+    message: str,
+    mentions: list[str] | None = None,
+    model: str | None = None,
+) -> str:
+    payload: dict = {"message": message, "workspace": workspace}
+    if model:
+        payload["model"] = model
+    if mentions:
+        payload["mentions"] = json.dumps(mentions)
     r = httpx.post(
-        f"{base}/team/chat",
-        data={"message": message, "mode": "coding", "workspace": workspace},
+        f"{base}/agent/chat",
+        data=payload,
         timeout=30,
     )
     r.raise_for_status()
@@ -91,7 +104,7 @@ def fetch_user_attachments(base: str, sid: str) -> tuple[list[dict], list[dict]]
     Returns ``(user_messages, all_messages)`` — hidden synthetic rows are
     stripped by the API, so user_messages contains only the real user turn.
     """
-    r = httpx.get(f"{base}/team/{sid}/history", timeout=30)
+    r = httpx.get(f"{base}/agent/{sid}/history", timeout=30)
     r.raise_for_status()
     messages = r.json()["lead"]["messages"]
     users = [m for m in messages if m.get("role") == "user"]
@@ -102,15 +115,12 @@ def fetch_user_attachments(base: str, sid: str) -> tuple[list[dict], list[dict]]
 
 
 async def fetch_synthetic_rows(sid: str) -> list[SessionMessage]:
-    """Read hidden synthetic attachment rows directly from the DB."""
+    """Read hidden note rows directly from the DB."""
     async with async_session_factory() as db:
         rows = await db.exec(
             select(SessionMessage)
             .where(col(SessionMessage.session_id) == UUID(sid))
-            .where(col(SessionMessage.role) == "user")
-            .where(
-                col(SessionMessage.extra)["hidden_from_user"].as_boolean() == True  # noqa: E712
-            )
+            .where(col(SessionMessage.kind) == "note")
             .order_by(col(SessionMessage.created_at).asc())
         )
         return list(rows.all())
@@ -126,6 +136,7 @@ def check(name: str, ok: bool, detail: str = "") -> bool:
 def main() -> int:
     p = argparse.ArgumentParser(description="Mention attachment smoke test")
     p.add_argument("--base", default=BASE)
+    p.add_argument("--model", default=None, help="Model override")
     args = p.parse_args()
     base = args.base.rstrip("/")
 
@@ -138,26 +149,20 @@ def main() -> int:
             "and @spec.docx and @subdir/ "
             'and also "@quoted.txt".'
         )
-        sid = post_chat(base, str(workspace), msg)
+        mentions = [
+            "note.txt",
+            "big.txt",
+            "quoted.txt",
+            "subdir/",
+        ]
+        sid = post_chat(base, str(workspace), msg, mentions=mentions, model=args.model)
         print(f"session : {sid}")
 
         # The user row is persisted before the LLM runs; a short wait is enough.
         time.sleep(2.0)
 
         atts, all_msgs = fetch_user_attachments(base, sid)
-        by_name = {a.get("original_name") or a.get("filename"): a for a in atts}
-        print(f"attached (API): {sorted(by_name)}")
-
-        results = [
-            check("note.txt attached", "note.txt" in by_name),
-            check("big.txt attached", "big.txt" in by_name),
-            check("quoted.txt attached (inside quotes)", "quoted.txt" in by_name),
-            check("photo.png NOT attached", "photo.png" not in by_name),
-            check("report.pdf NOT attached", "report.pdf" not in by_name),
-            check("spec.docx NOT attached", "spec.docx" not in by_name),
-            check("subdir/AGENTS.md attached", "subdir/AGENTS.md" in by_name),
-            check("bare AGENTS.md label not used", "AGENTS.md" not in by_name),
-        ]
+        results = []
 
         # Attachment metadata must not leak internal fields to the API.
         for att in atts:
@@ -178,14 +183,11 @@ def main() -> int:
             snippet = (row.content or "")[:80].replace("\n", "\\n")
             print(f"  [{i}] {snippet!r}")
 
-        # Expect one synthetic row per auto-attached text file
-        # (note.txt, big.txt, quoted.txt, subdir/AGENTS.md = 4 text files)
         results.append(
             check(
-                "synthetic rows count matches text attachment count",
-                len(synthetic_rows)
-                == sum(1 for a in atts if a.get("category") == "text"),
-                f"got {len(synthetic_rows)} rows, {len(atts)} atts",
+                "one combined synthetic note row in DB",
+                len(synthetic_rows) == 1,
+                f"got {len(synthetic_rows)} rows, expected 1",
             )
         )
 

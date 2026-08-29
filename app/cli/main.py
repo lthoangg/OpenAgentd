@@ -18,7 +18,7 @@ def _lazy_cmd(module: str, attr: str) -> Callable[[argparse.Namespace], object]:
 
     Every CLI invocation builds the full parser, so eager ``cmd_*`` imports
     made ``openagentd --version`` pay for the whole server stack (~1.05s
-    measured, ~75% through the artifact_cleanup → api.routes.team chain).
+    measured, ~75% through the artifact_cleanup → api.routes.agent chain).
     Importing inside the dispatcher defers that cost to the one command
     that actually runs.
     """
@@ -58,7 +58,7 @@ def _add_serve_subparser(sub: argparse._SubParsersAction) -> None:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="openagentd",
-        description="OpenAgentd — on-machine AI agent platform",
+        description="OpenAgentd — on-machine coding agent",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "Examples:\n"
@@ -112,7 +112,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_migrate.add_argument(
         "--name",
-        help="Name for the imported lead agent (default: source name)",
+        help="Name for the imported agent (default: source name)",
     )
     p_migrate.add_argument(
         "--config-dir",
@@ -258,11 +258,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     # ── run ───────────────────────────────────────────────────────────────────
     p_run = sub.add_parser(
-        "run", help="Run an agent in the current directory and print the lead response"
+        "run", help="Run an agent in the current directory and print the response"
     )
-    p_run.add_argument(
-        "--prompt", required=True, help="Prompt to send to the agent team"
-    )
+    p_run.add_argument("--prompt", required=True, help="Prompt to send to the agent")
     p_run.add_argument("--model", help="Model override, e.g. openai:gpt-5.5")
     p_run.add_argument("--thinking", help="Provider-neutral thinking level override")
     p_run.set_defaults(func=cmd_run)

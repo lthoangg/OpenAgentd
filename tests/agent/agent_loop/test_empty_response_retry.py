@@ -109,7 +109,7 @@ async def test_persistently_aborted_stream_raises_a_visible_provider_error():
     """Exhausting the retry budget must surface an error, not end the turn
     "successfully" with nothing — a contentless assistant message is never
     persisted or rendered, so a silent break is the very failure being fixed.
-    Team members translate ProviderRequestError into a visible turn error."""
+    Agent sessions translate ProviderRequestError into a visible turn error."""
     provider = ScriptedProvider([[] for _ in range(50)])
     agent = Agent(name="bot", llm_provider=provider)
 

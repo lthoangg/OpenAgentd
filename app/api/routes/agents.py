@@ -1,7 +1,7 @@
 """Agent CRUD: writes ``.md`` files under ``AGENTS_DIR``.
 
-Validates each write against ``AgentConfig`` and team invariants
-(one lead, known tools, valid models).  Failed validation rolls the
+Validates each write against ``AgentConfig`` and agent invariants
+(known tools and valid models).  Failed validation rolls the
 file back.  Running agents pick up new config on their next turn.
 """
 
@@ -91,8 +91,9 @@ def _parse_summary(name: str, content: str) -> AgentSummary:
 
 
 def _mode_for_agent_path(name: str) -> str:
-    normalized = name.replace("\\", "/")
-    return "coding" if normalized.split("/", 1)[0] == "coding" else "normal"
+    # Agent profiles are rooted directly under AGENTS_DIR; coding is the
+    # sole runtime mode.  Keep this helper for the API summary contract.
+    return "coding"
 
 
 def _effective_config(cfg: AgentConfig, *, mode: str) -> AgentConfig:
@@ -107,7 +108,7 @@ def _effective_config(cfg: AgentConfig, *, mode: str) -> AgentConfig:
     if data.role == "lead":
         implicit_tools += ["todo_manage", "schedule_task", "note"]
     data.tools = [*implicit_tools, *data.tools]
-    if data.role == "lead" and data.name == "openagentd":
+    if data.role == "lead" and data.name == "code":
         from app.agent.builtin_prompts import (
             openagentd_description_for_mode,
             openagentd_tools_for_mode,
@@ -118,14 +119,6 @@ def _effective_config(cfg: AgentConfig, *, mode: str) -> AgentConfig:
             dict.fromkeys([*openagentd_tools_for_mode(mode), *data.tools])
         )
         data.mcp = list(dict.fromkeys(data.mcp))
-    elif data.role == "member":
-        from app.agent.builtin_prompts import builtin_member_profile
-
-        profile = builtin_member_profile(mode, data.name)
-        if profile is not None:
-            data.description = data.description or profile["description"]
-            data.tools = list(dict.fromkeys([*profile["tools"], *data.tools]))
-            data.mcp = list(dict.fromkeys([*profile["mcp"], *data.mcp]))
     data.tools = list(dict.fromkeys(data.tools))
     return data
 
@@ -185,7 +178,7 @@ async def _validate_or_restore(
     ``rollback_content=None`` → delete the just-created file; otherwise
     restore the previous text.
     """
-    from app.agent.loader import load_team_from_dir
+    from app.agent.loader import load_agent_from_dir
 
     try:
         validation_dir = (
@@ -193,11 +186,11 @@ async def _validate_or_restore(
             if rollback_name is None
             else _validation_dir_for_name(rollback_name)
         )
-        candidate = load_team_from_dir(validation_dir)
+        candidate = load_agent_from_dir(validation_dir)
         if candidate is None:
             raise ValueError(
                 f"No agents would remain in '{validation_dir}'. "
-                "At least one .md file with 'role: lead' is required."
+                "At least one .md file is required."
             )
     except ValueError as exc:
         if rollback_name is not None and rollback_content is not None:
@@ -571,7 +564,7 @@ async def update_agent(name: str, body: AgentWriteRequest) -> AgentDetail:
 @router.delete("/{name}")
 @router.delete("/{name:path}")
 async def delete_agent(name: str) -> AgentDeleteResponse:
-    """422 if removal would leave the team without a lead."""
+    """422 if removal would leave no configured agent."""
     try:
         previous = agent_fs.read_agent(name)
     except AgentFsNotFoundError as exc:

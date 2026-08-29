@@ -12,7 +12,7 @@ from app.api.schemas.commands import (
     CommandRenderResponse,
     CommandSummary,
 )
-from app.services import team_manager
+from app.services import agent_manager
 from app.services.commands import (
     discover_commands,
     get_builtin_command,
@@ -26,7 +26,7 @@ def _workspace_path(workspace: str | None) -> Path | None:
     if workspace is None:
         return None
     try:
-        resolved = team_manager.validate_workspace(workspace)
+        resolved = agent_manager.validate_workspace(workspace)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     return Path(resolved)

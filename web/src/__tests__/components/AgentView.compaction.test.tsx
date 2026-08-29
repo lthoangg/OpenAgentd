@@ -13,12 +13,12 @@
 import { describe, it, expect, afterEach, mock } from 'bun:test'
 import { render, screen, cleanup } from '@testing-library/react'
 import { AgentView } from '@/components/AgentView'
-import { useTeamStore } from '@/stores/useTeamStore'
+import { useAgentStore } from '@/stores/useAgentStore'
 import type { ContentBlock } from '@/api/types'
 
 afterEach(() => {
   cleanup()
-  useTeamStore.setState({ sessionId: null, _pendingMessages: [] })
+  useAgentStore.setState({ sessionId: null, _pendingMessages: [] })
 })
 
 // Suppress lucide SVG noise in Happy DOM
@@ -182,7 +182,7 @@ describe('AgentView — compaction block rendering', () => {
 // ---------------------------------------------------------------------------
 
 import { AgentPane } from '@/components/AgentPane'
-import type { AgentStream } from '@/stores/useTeamStore'
+import type { AgentStream } from '@/stores/useAgentStore'
 
 function makeStream(overrides: Partial<AgentStream> = {}): AgentStream {
   return {

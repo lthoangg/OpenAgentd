@@ -7,7 +7,7 @@ afterEach(cleanup)
 
 describe('TodosPopover — mobile edge-swipe exclusion', () => {
   it('marks the mobile overlay data-swipe-ignore so useEdgeSwipe never reads a touch on it', () => {
-    // Regression: with trigger={false} (how TeamChatHeader renders it on
+    // Regression: with trigger={false} (how AgentChatHeader renders it on
     // mobile) this is the full-screen overlay variant (backdrop + panel),
     // not tracked as a drawer by useEdgeSwipe. Without this attribute an
     // edge-zone touch on top of it is read as a fresh "open" gesture for
@@ -50,31 +50,21 @@ describe('TodosPopover', () => {
         task_id: 'task_done',
         content: 'Completed task',
         status: 'completed',
-        priority: 'low',
-        dependencies: [],
-        assigned_to: 'explorer#1',
-        claimed_by: 'explorer#1',
       },
       {
         task_id: 'task_cancel',
         content: 'Cancelled task',
         status: 'cancelled',
-        priority: 'low',
       },
       {
         task_id: 'task_pending',
         content: 'Pending task',
         status: 'pending',
-        priority: 'high',
-        dependencies: ['task_done'],
-        assigned_to: 'executor#1',
-        claimed_by: null,
       },
       {
         task_id: 'task_active',
         content: 'Active task',
         status: 'in_progress',
-        priority: 'medium',
       },
     ]
 
@@ -109,10 +99,10 @@ describe('TodosPopover', () => {
 
   it('strikes through completed and cancelled rows, not pending or in_progress', () => {
     const todos: TodoItem[] = [
-      { task_id: '1', content: 'Active', status: 'in_progress', priority: 'low' },
-      { task_id: '2', content: 'Pending', status: 'pending', priority: 'low' },
-      { task_id: '3', content: 'Done', status: 'completed', priority: 'low' },
-      { task_id: '4', content: 'Cancelled', status: 'cancelled', priority: 'low' },
+      { task_id: '1', content: 'Active', status: 'in_progress' },
+      { task_id: '2', content: 'Pending', status: 'pending' },
+      { task_id: '3', content: 'Done', status: 'completed' },
+      { task_id: '4', content: 'Cancelled', status: 'cancelled' },
     ]
 
     render(

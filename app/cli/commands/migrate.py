@@ -46,7 +46,7 @@ def _migrate_agent(
     model: str,
     force: bool = False,
 ) -> MigrationResult:
-    """Convert source directory prompt/context files into one lead agent."""
+    """Convert source directory prompt/context files into one agent."""
     if Path(name).name != name:
         raise ValueError("Agent name must be a filename, not a path")
 
@@ -101,7 +101,7 @@ def migrate_openclaw_agent(
     model: str,
     force: bool = False,
 ) -> MigrationResult:
-    """Convert OpenClaw workspace prompt files into one lead agent."""
+    """Convert OpenClaw workspace prompt files into one agent."""
     return _migrate_agent(
         source_dir,
         config_dir,
@@ -123,7 +123,7 @@ def migrate_hermes_agent(
     model: str,
     force: bool = False,
 ) -> MigrationResult:
-    """Convert Hermes identity/context files into one lead agent."""
+    """Convert Hermes identity/context files into one agent."""
     return _migrate_agent(
         source_dir,
         config_dir,

@@ -1,4 +1,4 @@
-"""Smoke-test DELETE /team/sessions/{session_id}/queued-messages/{message_id}.
+"""Smoke-test DELETE /agent/sessions/{session_id}/queued-messages/{message_id}.
 
 Flow:
   1. Send a slow initial prompt so the lead stays busy long enough to queue.
@@ -27,6 +27,7 @@ import time
 import httpx
 
 from manual._common import DEFAULT_BASE
+
 BASE = DEFAULT_BASE
 INITIAL_PROMPT = (
     "You must call the shell tool before answering. "
@@ -37,18 +38,25 @@ FOLLOWUP = "Additional instruction: include the token SHOULD_NOT_APPEAR in your 
 STREAM_WAIT = 60
 
 
-def post_message(base: str, message: str, session_id: str | None = None) -> dict:
-    data: dict[str, str] = {"message": message}
+def post_message(
+    base: str,
+    message: str,
+    session_id: str | None = None,
+    model: str | None = None,
+) -> dict:
+    data: dict[str, str] = {"message": message, "workspace": "."}
     if session_id:
         data["session_id"] = session_id
-    r = httpx.post(f"{base}/team/chat", data=data, timeout=20)
+    if model:
+        data["model"] = model
+    r = httpx.post(f"{base}/agent/chat", data=data, timeout=20)
     r.raise_for_status()
     return r.json()
 
 
 def delete_queued(base: str, session_id: str, message_id: str) -> int:
     r = httpx.delete(
-        f"{base}/team/sessions/{session_id}/queued-messages/{message_id}",
+        f"{base}/agent/sessions/{session_id}/queued-messages/{message_id}",
         timeout=10,
     )
     return r.status_code
@@ -59,7 +67,7 @@ def stream_until_done(base: str, session_id: str, wait: int) -> list[dict]:
     deadline = time.monotonic() + wait
     current_event = "message"
     data_buf: list[str] = []
-    with httpx.stream("GET", f"{base}/team/{session_id}/stream", timeout=wait + 5) as r:
+    with httpx.stream("GET", f"{base}/agent/{session_id}/stream", timeout=wait + 5) as r:
         r.raise_for_status()
         for line in r.iter_lines():
             if time.monotonic() > deadline:
@@ -85,7 +93,9 @@ def stream_until_done(base: str, session_id: str, wait: int) -> list[dict]:
 
 
 def get_history(base: str, session_id: str) -> list[dict]:
-    r = httpx.get(f"{base}/team/{session_id}/history", params={"limit": 1000}, timeout=20)
+    r = httpx.get(
+        f"{base}/agent/{session_id}/history", params={"limit": 1000}, timeout=20
+    )
     r.raise_for_status()
     return list(r.json()["lead"]["messages"])
 
@@ -93,20 +103,25 @@ def get_history(base: str, session_id: str) -> list[dict]:
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--base", default=BASE)
-    p.add_argument("--queue-delay", type=float, default=0.5,
-                   help="Seconds to wait before queuing the follow-up (default 0.5)")
+    p.add_argument("--model", default=None, help="Model override")
+    p.add_argument(
+        "--queue-delay",
+        type=float,
+        default=0.5,
+        help="Seconds to wait before queuing the follow-up (default 0.5)",
+    )
     args = p.parse_args()
     base = args.base.rstrip("/")
 
     print(f"sending initial prompt: {INITIAL_PROMPT!r}")
-    first = post_message(base, INITIAL_PROMPT)
+    first = post_message(base, INITIAL_PROMPT, model=args.model)
     session_id = str(first["session_id"])
     print(f"  session={session_id}")
 
     time.sleep(args.queue_delay)
 
     print(f"queuing follow-up after {args.queue_delay}s: {FOLLOWUP!r}")
-    queued = post_message(base, FOLLOWUP, session_id=session_id)
+    queued = post_message(base, FOLLOWUP, session_id=session_id, model=args.model)
     print(f"  response={queued}")
     if queued.get("status") != "queued":
         print("\n✗ follow-up was not queued — initial turn likely finished too quickly")
@@ -129,7 +144,9 @@ def main() -> int:
     status2 = delete_queued(base, session_id, message_id)
     print(f"  DELETE status={status2}")
     if status2 != 404:
-        print(f"\n✗ expected 404 on second delete, got {status2} — row was not hard-deleted")
+        print(
+            f"\n✗ expected 404 on second delete, got {status2} — row was not hard-deleted"
+        )
         return 1
     print("  ✓ 404 Not Found (row gone from DB)")
 
@@ -162,7 +179,9 @@ def main() -> int:
     history = get_history(base, session_id)
     ids_in_history = {str(m.get("id")) for m in history}
     if message_id in ids_in_history:
-        print(f"\n✗ cancelled message {message_id} still appears in history — not deleted from DB")
+        print(
+            f"\n✗ cancelled message {message_id} still appears in history — not deleted from DB"
+        )
         return 1
     print("  ✓ cancelled message absent from history (hard-deleted)")
 

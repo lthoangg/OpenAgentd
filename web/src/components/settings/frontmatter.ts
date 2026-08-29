@@ -9,7 +9,8 @@
  */
 
 export interface AgentFrontmatter {
-  name: string
+  /** The settings editor only edits the canonical code agent. */
+  name: 'code' | string
   role: 'lead' | 'member'
   description?: string | null
   model?: string | null
@@ -34,8 +35,8 @@ export function splitFrontmatter(raw: string): { fm: string; body: string } {
  */
 export function buildFrontmatter(fm: AgentFrontmatter): string {
   const lines: string[] = []
-  lines.push(`name: ${fm.name}`)
-  lines.push(`role: ${fm.role}`)
+  lines.push('name: code')
+  lines.push('role: lead')
   if (fm.description) lines.push(`description: ${escapeScalar(fm.description)}`)
   if (fm.model) lines.push(`model: ${fm.model}`)
   if (fm.thinking_level) lines.push(`thinking_level: ${fm.thinking_level}`)

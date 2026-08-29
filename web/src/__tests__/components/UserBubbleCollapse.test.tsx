@@ -4,13 +4,13 @@ import { render, screen, cleanup } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { AgentView } from "@/components/AgentView"
 import { AgentPane } from "@/components/AgentPane"
-import { useTeamStore } from "@/stores/useTeamStore"
+import { useAgentStore } from "@/stores/useAgentStore"
 import type { ContentBlock } from "@/api/types"
-import type { AgentStream } from "@/stores/useTeamStore/types"
+import type { AgentStream } from "@/stores/useAgentStore/types"
 
 // Seed sessionId so AgentView/AgentPane workspace links work
 beforeEach(() => {
-  useTeamStore.setState({ sessionId: "test-session-123" })
+  useAgentStore.setState({ sessionId: "test-session-123" })
 })
 
 afterEach(cleanup)

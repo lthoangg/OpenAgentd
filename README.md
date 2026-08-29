@@ -11,8 +11,8 @@
   <a href="https://discord.gg/cz6GQHQUMg"><img src="https://img.shields.io/badge/Discord-Join%20Chat-5865F2?logo=discord&logoColor=white" alt="Discord"></a>
 </p>
 
-<p align="center"><strong>A coding-first workspace for local AI agents.</strong><br>
-Run an agent team on your machine, see every tool call and diff, and keep your models, coding sessions, workspaces, and telemetry under your control.</p>
+<p align="center"><strong>A coding-first workspace for a local coding agent.</strong><br>
+Run an agent on your machine, see every tool call and diff, and keep your models, coding sessions, workspaces, and telemetry under your control.</p>
 
 <p align="center">
   <a href="#get-started">Get started</a> ·
@@ -23,14 +23,14 @@ Run an agent team on your machine, see every tool call and diff, and keep your m
   <a href="CONTRIBUTING.md">Contribute</a>
 </p>
 
-![OpenAgentd annotated multi-agent coding workspace](https://raw.githubusercontent.com/lthoangg/openagentd/main/documents/assets/brand/openagentd-hero-annotated.png)
+![OpenAgentd annotated coding workspace](https://raw.githubusercontent.com/lthoangg/openagentd/main/documents/assets/brand/openagentd-hero-annotated.png)
 
 ## Why OpenAgentd
 
-Most coding agents live in a terminal or an editor. OpenAgentd is a coding-first native desktop app and mobile companion where you can run a lead with specialists, follow work in real time, inspect what changed, and keep moving without losing context.
+Most coding agents live in a terminal or an editor. OpenAgentd is a coding-first native desktop app and mobile companion where you can run an agent, follow work in real time, inspect what changed, and keep moving without losing context.
 
 - **See the work.** Streamed replies, tool calls, arguments, results, timings, files, diffs, terminal output, and agent status are visible in one interface.
-- **Run a team.** A lead can delegate to specialists, coordinate them through an async mailbox, and let you watch individual or unified timelines.
+- **Track tasks.** A clean, user-readable taskboard checklist keeps current work and progress visible at a glance.
 - **Work in real repositories.** Coding sessions open local folders, support isolated git worktrees, show changes and history, and return language-server diagnostics after edits.
 - **Choose your models.** Use your own keys with major cloud and local providers, including Anthropic, OpenAI, Gemini, OpenRouter, Bedrock, Copilot, Codex, Ollama, and more.
 - **Stay local-first.** Sessions, telemetry, configuration, and the API server run on your machine. Connect a mobile client or another desktop securely when you need to.
@@ -86,7 +86,7 @@ openagentd run --model openai:gpt-5.5 --thinking high --prompt "Summarize this p
 ```
 
 The command validates the current directory as a coding workspace, persists a
-new session for the turn, and streams the lead agent's response text to standard
+new session for the turn, and streams the agent's response text to standard
 output. Tool-permission events follow the runtime's existing auto-allow policy;
 interactive agent questions stop the non-interactive command. It does not
 support workspace selection or session resume.
@@ -111,7 +111,7 @@ cd web && bun dev
 
 | A conversation that can act | A workspace that stays in view |
 | --- | --- |
-| ![Split view with lead and worker agents](documents/assets/readme/cockpit-split-view.png) | ![Coding workspace with files and diffs](documents/assets/readme/coding-workspace.png) |
+| ![Split view with agent activity](documents/assets/readme/cockpit-split-view.png) | ![Coding workspace with files and diffs](documents/assets/readme/coding-workspace.png) |
 
 | Inspect changes | Keep an eye on local usage |
 | --- | --- |

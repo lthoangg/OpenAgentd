@@ -6,7 +6,7 @@ inside the configured root directory — traversal attempts raise
 ``AgentFsPathError``.
 
 Used by ``app.api.routes.agents`` and ``app.api.routes.skills``.  Validation
-of YAML frontmatter happens in ``app.services.team_manager`` (agents) or
+of YAML frontmatter happens in the agent loader and
 by re-parsing after write (skills).
 """
 
@@ -156,15 +156,10 @@ def list_agents() -> list[str]:
     root = agents_dir()
     if not root.exists():
         return []
-    from app.agent.loader import ensure_builtin_agent_blueprints
-
-    coding_root = root / "coding"
-    if any(coding_root.glob("*.md")):
-        ensure_builtin_agent_blueprints(coding_root, mode="coding")
     return sorted(
         name
         for p in root.rglob("*.md")
-        if (name := p.relative_to(root).with_suffix("").as_posix()) != "coding/executor"
+        if (name := p.relative_to(root).with_suffix("").as_posix())
     )
 
 

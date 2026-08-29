@@ -18,10 +18,12 @@ from __future__ import annotations
 import argparse
 import time
 import uuid
+from pathlib import Path
 
 import httpx
 
 from manual._common import DEFAULT_BASE
+
 BASE = DEFAULT_BASE
 
 
@@ -54,7 +56,6 @@ def _print_task(task: dict, *, indent: str = "") -> None:
         runs += f"/{task['max_runs']}"
     print(
         f"{indent}[{task['status']:9}] {task['name']!r:30}"
-        f"  mode={task['mode']}"
         f"  type={task['schedule_type']}"
         f"  runs={runs}"
         f"  next={nf}"
@@ -93,13 +94,11 @@ def cmd_list(base: str) -> None:
 def cmd_create(base: str, args: argparse.Namespace) -> dict:
     body: dict = {
         "name": args.name,
-        "mode": args.mode,
         "schedule_type": args.type,
         "prompt": args.prompt,
         "timezone": args.timezone,
+        "workspace": args.workspace or str(Path.cwd()),
     }
-    if args.workspace:
-        body["workspace"] = args.workspace
     if args.type == "at":
         body["at_datetime"] = args.at
     elif args.type == "every":
@@ -147,11 +146,11 @@ def cmd_demo(base: str, args: argparse.Namespace) -> None:
     print(f"--- demo: creating task '{name}' ---")
     body = {
         "name": name,
-        "mode": args.mode,
         "schedule_type": "every",
         "every_seconds": 999,
         "prompt": "This is a scheduler demo. Reply with just: SCHEDULER_OK",
         "timezone": "UTC",
+        "workspace": args.workspace or str(Path.cwd()),
     }
     task = _post(base, "/scheduler/tasks", body)
     task_id = task["id"]
@@ -180,15 +179,13 @@ def cmd_finite_demo(base: str, args: argparse.Namespace) -> None:
     print(f"--- finite demo: creating task '{name}' with max_runs=1 ---")
     body = {
         "name": name,
-        "mode": args.mode,
         "schedule_type": "every",
         "every_seconds": 1,
         "prompt": "This is a finite scheduler demo. Reply with just: FINITE_SCHEDULER_OK",
         "timezone": "UTC",
         "max_runs": 1,
+        "workspace": args.workspace or str(Path.cwd()),
     }
-    if args.workspace:
-        body["workspace"] = args.workspace
     task = _post(base, "/scheduler/tasks", body)
     task_id = task["id"]
     _print_task(task, indent="  ")
@@ -232,8 +229,9 @@ def main() -> None:
     cr.add_argument(
         "--name", default=None, help="Task name (auto-generated if omitted)"
     )
-    cr.add_argument("--mode", choices=["normal", "coding"], default="normal")
-    cr.add_argument("--workspace", default=None, help="Required when --mode=coding")
+    cr.add_argument(
+        "--workspace", default=None, help="Workspace directory (defaults to cwd)"
+    )
     cr.add_argument(
         "--type", choices=["at", "every", "cron"], required=True, dest="type"
     )
@@ -264,14 +262,16 @@ def main() -> None:
     dm = sub.add_parser(
         "demo", help="End-to-end demo: create + trigger + list + delete"
     )
-    dm.add_argument("--mode", choices=["normal", "coding"], default="normal")
-    dm.add_argument("--workspace", default=None, help="Required when --mode=coding")
+    dm.add_argument(
+        "--workspace", default=None, help="Workspace directory (defaults to cwd)"
+    )
 
     fd = sub.add_parser(
         "finite-demo", help="End-to-end max_runs demo: create + wait + delete"
     )
-    fd.add_argument("--mode", choices=["normal", "coding"], default="normal")
-    fd.add_argument("--workspace", default=None, help="Required when --mode=coding")
+    fd.add_argument(
+        "--workspace", default=None, help="Workspace directory (defaults to cwd)"
+    )
     fd.add_argument("--timeout", type=float, default=30.0)
 
     args = p.parse_args()

@@ -2,12 +2,12 @@ import { describe, it, expect, afterEach, mock } from "bun:test"
 import { fireEvent, render, screen, cleanup } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { AgentView } from "@/components/AgentView"
-import { useTeamStore } from "@/stores/useTeamStore"
+import { useAgentStore } from "@/stores/useAgentStore"
 import type { ContentBlock } from "@/api/types"
 
 afterEach(() => {
   cleanup()
-  useTeamStore.setState({ sessionId: null, _pendingMessages: [] })
+  useAgentStore.setState({ sessionId: null, _pendingMessages: [] })
 })
 
 // Mock lucide-react icons to avoid SVG issues in Happy DOM
@@ -58,7 +58,7 @@ describe("AgentView — mentioned files", () => {
           original_name: "Makefile#L4-L6",
           category: "text",
           media_type: "text/plain",
-          url: "/api/team/session/uploads/generated.txt",
+          url: "/api/agent/session/uploads/generated.txt",
           source: "mention",
         }],
       }],
@@ -77,7 +77,7 @@ describe("AgentView — mentioned files", () => {
           original_name: "notes.txt",
           category: "text",
           media_type: "text/plain",
-          url: "/api/team/session/uploads/generated.txt",
+          url: "/api/agent/session/uploads/generated.txt",
         }],
       }],
     })
@@ -163,7 +163,7 @@ describe("AgentView — message windowing", () => {
 
 describe("AgentView — AssistantFooter", () => {
   it("renders queued messages below the streaming assistant turn", () => {
-    useTeamStore.setState({
+    useAgentStore.setState({
       sessionId: "session-a",
       _pendingMessages: [
         { id: "q1", sessionId: "session-a", content: "queued after response" },
@@ -185,7 +185,7 @@ describe("AgentView — AssistantFooter", () => {
   it("collapses long queued messages", async () => {
     const user = userEvent.setup()
     const longQueuedMessage = Array.from({ length: 11 }, (_, i) => `queued line ${i + 1}`).join("\n")
-    useTeamStore.setState({
+    useAgentStore.setState({
       sessionId: "session-a",
       _pendingMessages: [
         { id: "q1", sessionId: "session-a", content: longQueuedMessage },

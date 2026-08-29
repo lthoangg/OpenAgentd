@@ -6,7 +6,7 @@
  * markdown descriptions) that surfaced information nobody acted on while
  * burying the two controls people actually use.
  *
- * Rows come from the lead agent's declared `mcp_servers` (agent frontmatter),
+ * Rows come from the current agent's declared `mcp_servers` (agent frontmatter),
  * intersected with live status from `/mcp/servers`. Declaration is config, not
  * runtime state, so disabling a server keeps its row in place and you can
  * always switch it back on. Globally configured servers the agent doesn't
@@ -130,7 +130,7 @@ function ServerRow({
 }
 
 export interface SessionMcpServersProps {
-  /** MCP server names the lead agent declares. */
+  /** MCP server names the current agent declares. */
   agentServers: string[]
   /** Called after a server's tool set may have changed, so the caller can
    *  refresh the agent payload that the tool names are derived from. */

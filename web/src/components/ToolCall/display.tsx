@@ -438,7 +438,7 @@ function getToolDisplayInternal(name: string, parsed: Record<string, unknown>): 
     if (actions.length === 1 && firstAction === 'update') {
       const taskId = str(first, 'task_id')
       // Completion is the board's key transition (records the result and
-      // wakes the lead + unblocked teammates) — label it precisely.
+      // wakes the agent and unblocked tasks) — label it precisely.
       const isCompleting = str(first, 'status') === 'completed'
       const verb = isCompleting ? 'Completing' : 'Updating'
       return {
@@ -655,14 +655,14 @@ function getToolDisplayInternal(name: string, parsed: Record<string, unknown>): 
     }
     if (action === 'list') {
       return {
-        header: 'Listing team roster…',
-        headerTitle: 'Listing team roster…',
+        header: 'Listing agent roster…',
+        headerTitle: 'Listing agent roster…',
         formattedArgs: null,
       }
     }
     return {
-      header: 'Managing team roster…',
-      headerTitle: 'Managing team roster…',
+      header: 'Managing agent roster…',
+      headerTitle: 'Managing agent roster…',
       formattedArgs: null,
     }
   }

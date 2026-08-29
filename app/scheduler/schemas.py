@@ -30,7 +30,7 @@ class ScheduledTaskCreate(BaseModel):
     cron_expression: str | None = Field(default=None)
     timezone: str = Field(default="UTC")
 
-    prompt: str = Field(description="Message to send to the team lead.")
+    prompt: str = Field(description="Message to send to the agent.")
     session_id: str | None = Field(
         default=None,
         description='None=new each time, "auto"=persistent per task name, uuid=continue specific session.',

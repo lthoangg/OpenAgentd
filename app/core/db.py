@@ -51,7 +51,7 @@ def _set_sqlite_pragmas(dbapi_conn, connection_record):
     cursor.execute("PRAGMA synchronous=NORMAL")
     cursor.execute("PRAGMA foreign_keys=ON")
     # Explicit busy handler — do not rely on the sqlite3 driver's implicit
-    # ``timeout=5.0`` connect default. Under bursty team writes a writer
+    # ``timeout=5.0`` connect default. Under bursty session writes a writer
     # waits for the lock instead of failing fast with "database is locked".
     # Mirrors the test engine hook in tests/conftest.py.
     cursor.execute("PRAGMA busy_timeout=5000")
@@ -86,7 +86,7 @@ def resolve_db_factory(factory: DbFactory | None) -> DbFactory:
     """Return *factory* if not ``None``, else the module-level default.
 
     Centralises the ``factory or async_session_factory`` fallback that
-    was repeated across team-member, team, scheduler-tool, and loader
+    was repeated across session, scheduler-tool, and loader
     call sites.  Production code generally passes a factory explicitly;
     tests sometimes pass ``None`` and expect to get the real one.
     """

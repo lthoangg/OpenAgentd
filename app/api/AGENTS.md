@@ -19,7 +19,7 @@ HTTP, WebSocket, and SSE routes.
 ## Path and auth safety
 
 - Pass every externally supplied workspace root through
-  `team_manager.validate_workspace()` or the existing
+  `agent_manager.validate_workspace()` or the existing
   `_validate_workspace_or_422()` wrapper.
 - Resolve user/model-supplied paths inside that root with the established
   `_safe_resolve()` / `_safe_join*()` helpers; do not concatenate paths.

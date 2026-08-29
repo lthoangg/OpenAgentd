@@ -27,8 +27,8 @@ const storeState = {
   loadOlderMessages: mockLoadOlderMessages,
 }
 
-mock.module("@/stores/useTeamStore", () => ({
-  useTeamStore: Object.assign(
+mock.module("@/stores/useAgentStore", () => ({
+  useAgentStore: Object.assign(
     (selector: (s: typeof storeState) => unknown) => selector(storeState),
     { getState: () => storeState },
   ),

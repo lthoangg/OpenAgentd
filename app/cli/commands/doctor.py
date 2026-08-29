@@ -87,7 +87,7 @@ def cmd_doctor(_args: argparse.Namespace) -> None:
         print(f"     {_dim_hint}")
 
     # ── 3. Configured provider has matching key ─────────────────────────────
-    # Parse the lead agent's `model:` line; if it names a provider that
+    # Parse the configured agent's `model:` line; if it names a provider that
     # has no matching key, surface a warning so users catch the mismatch
     # before chat returns 500.
     if configured_provider is not None:
@@ -99,7 +99,7 @@ def cmd_doctor(_args: argparse.Namespace) -> None:
                 # Unknown provider — could be a custom integration; warn.
                 _warn(f"Lead agent uses unknown provider: {configured_provider}")
             elif expected_key in found_keys:
-                _ok(f"Provider key matches lead agent: {expected_key}")
+                _ok(f"Provider key matches agent: {expected_key}")
             else:
                 _fail(
                     f"Lead agent uses '{configured_provider}' but {expected_key} is not set"
@@ -174,9 +174,9 @@ def cmd_doctor(_args: argparse.Namespace) -> None:
 
 
 def _read_lead_provider(agents_dir: Path) -> str | None:
-    """Return the provider name from the lead agent's ``model:`` field.
+    """Return the provider name from the configured agent's ``model:`` field.
 
-    Looks for ``openagentd.md`` first (the seed lead) and falls back to the
+    Looks for ``code.md`` first (the seed lead) and falls back to the
     alphabetically-first ``.md`` so non-default deployments still get
     matched. Returns ``None`` if no agent file exists or the model
     line can't be parsed.
@@ -193,7 +193,7 @@ def _read_lead_provider(agents_dir: Path) -> str | None:
     if not candidates:
         return None
 
-    lead = agents_dir / "openagentd.md"
+    lead = agents_dir / "code.md"
     target = lead if lead.is_file() else candidates[0]
 
     try:

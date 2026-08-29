@@ -44,7 +44,7 @@ describe("mergeBlocks", () => {
   it("drops a live block whose id already exists in the confirmed set instead of rendering it twice", () => {
     // Defensive net at the one place that actually renders: block ids are
     // now stable identifiers (server message id for user blocks; message-
-    // or toolCall-derived for assistant sub-blocks — see parseTeamBlocks),
+    // or toolCall-derived for assistant sub-blocks — see parseAgentBlocks),
     // so an id collision here can only mean "same message, appears in both
     // arrays" — never a coincidence. Confirmed wins; the live duplicate is
     // dropped rather than trusting every upstream reconciliation path to
@@ -70,7 +70,7 @@ describe("mergeBlocks", () => {
 
   it("dedupes a tool card that is live-in-progress in currentBlocks and already reconciled into blocks", () => {
     // End-to-end of the initTool -> mergeBlocks loop: a live tool block's id
-    // is its toolCallId (initTool), and parseTeamBlocks gives the same
+    // is its toolCallId (initTool), and parseAgentBlocks gives the same
     // toolCallId to the persisted tool block once confirmed — so the same
     // in-flight tool card never renders twice across that transition.
     const live = initTool([], "web_search", "tc-42");
@@ -325,7 +325,7 @@ describe("initTool", () => {
     expect(result[0].toolArgs).toBeUndefined();
     expect(result[0].startedAt).toBeGreaterThanOrEqual(before);
     expect(result[0].startedAt).toBeLessThanOrEqual(after);
-    // Block id reuses the toolCallId directly — parseTeamBlocks gives the
+    // Block id reuses the toolCallId directly — parseAgentBlocks gives the
     // eventual persisted tool block the same id, so mergeBlocks' render-
     // boundary dedup can actually catch a live/confirmed duplicate for tools.
     expect(result[0].id).toBe("tc1");

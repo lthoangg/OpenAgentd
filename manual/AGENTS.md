@@ -23,7 +23,7 @@ local database/log tree, or external credentials.
 
 ## Navigation
 
-- Session/team lifecycle and SSE: `team_chat`, `team_sessions`, `team_history`,
+- Session lifecycle and SSE: `team_chat`, `team_sessions`, `team_history`,
   `team_timeline`, `team_sse`, `team_spawn`, `team_todos`, queued/stop/undo
   scripts, and durable-question diagnostics.
 - Runtime health and observability: `health`, `backend_log`, `otel_inspect`,

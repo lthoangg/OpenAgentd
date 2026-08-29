@@ -25,7 +25,7 @@ import {
 
 const CUSTOM_LABEL = 'Type your own answer'
 
-/** Cap matching ``MAX_ANSWER_CHARS`` in ``app/api/schemas/team.py``. */
+/** Cap matching ``MAX_ANSWER_CHARS`` in ``app/api/schemas/agent.py``. */
 const MAX_ANSWER_CHARS = 2000
 
 interface QuestionCardProps {

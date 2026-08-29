@@ -14,12 +14,16 @@ import uuid
 import httpx
 
 from manual._common import DEFAULT_BASE
+
 BASE = DEFAULT_BASE
 DEFAULT_WAIT = 180
 
 
-def _post_turn(base: str, message: str) -> str:
-    response = httpx.post(f"{base}/team/chat", data={"message": message}, timeout=30)
+def _post_turn(base: str, message: str, model: str | None = None) -> str:
+    payload = {"message": message, "workspace": "."}
+    if model:
+        payload["model"] = model
+    response = httpx.post(f"{base}/agent/chat", data=payload, timeout=30)
     response.raise_for_status()
     return str(response.json()["session_id"])
 
@@ -27,7 +31,7 @@ def _post_turn(base: str, message: str) -> str:
 def _wait_for_done(base: str, session_id: str, wait: int) -> None:
     deadline = time.monotonic() + wait
     with httpx.stream(
-        "GET", f"{base}/team/{session_id}/stream", timeout=wait + 5
+        "GET", f"{base}/agent/{session_id}/stream", timeout=wait + 5
     ) as response:
         response.raise_for_status()
         for line in response.iter_lines():
@@ -38,7 +42,7 @@ def _wait_for_done(base: str, session_id: str, wait: int) -> None:
 
 
 def _history(base: str, session_id: str) -> dict:
-    response = httpx.get(f"{base}/team/{session_id}/history", params={"limit": 1000})
+    response = httpx.get(f"{base}/agent/{session_id}/history", params={"limit": 1000})
     response.raise_for_status()
     return response.json()
 
@@ -56,6 +60,7 @@ def _saw_patch_call(history: dict) -> bool:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Agent-facing patch tool smoke test")
     parser.add_argument("--base", default=BASE)
+    parser.add_argument("--model", default=None, help="Model override")
     parser.add_argument("--wait", type=int, default=DEFAULT_WAIT)
     args = parser.parse_args()
     base = args.base.rstrip("/")
@@ -66,7 +71,7 @@ def main() -> None:
         f"{filename} with exactly this content: patch smoke ok. "
         "After the patch tool succeeds, reply with only: PATCH_SMOKE_DONE"
     )
-    session_id = _post_turn(base, message)
+    session_id = _post_turn(base, message, model=args.model)
     print(f"session: {session_id}")
     _wait_for_done(base, session_id, args.wait)
     history = _history(base, session_id)

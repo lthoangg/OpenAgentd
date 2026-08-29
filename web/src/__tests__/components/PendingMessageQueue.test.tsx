@@ -2,21 +2,23 @@ import { afterEach, describe, expect, it, mock } from 'bun:test'
 import { cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { PendingMessageQueue } from '@/components/PendingMessageQueue'
-import { useTeamStore } from '@/stores/useTeamStore'
+import { useAgentStore } from '@/stores/useAgentStore'
 
 const INITIAL_TEAM_STATE = {
   _pendingMessages: [],
   sessionId: 'session-1',
+  leadName: null,
+  agentStreams: {},
 }
 
 afterEach(() => {
   cleanup()
-  useTeamStore.setState(INITIAL_TEAM_STATE)
+  useAgentStore.setState(INITIAL_TEAM_STATE)
 })
 
 describe('PendingMessageQueue', () => {
   it('renders queued messages for the active session only', () => {
-    useTeamStore.setState({
+    useAgentStore.setState({
       sessionId: 'session-1',
       _pendingMessages: [
         { id: 'pending-1', sessionId: 'session-1', content: 'Queued for active session' },
@@ -30,8 +32,34 @@ describe('PendingMessageQueue', () => {
     expect(screen.queryByText('Other session')).toBeNull()
   })
 
+  it('does not render a queued message if it is already present in currentBlocks or blocks', () => {
+    useAgentStore.setState({
+      sessionId: 'session-1',
+      leadName: 'openagentd',
+      agentStreams: {
+        openagentd: {
+          blocks: [],
+          currentBlocks: [
+            { id: 'pending-1', type: 'user', content: 'Already injected message' },
+          ],
+          status: 'working',
+          usage: { promptTokens: 0, completionTokens: 0, cachedTokens: 0 },
+        } as never,
+      },
+      _pendingMessages: [
+        { id: 'pending-1', sessionId: 'session-1', content: 'Already injected message' },
+        { id: 'pending-2', sessionId: 'session-1', content: 'Still waiting message' },
+      ],
+    })
+
+    render(<PendingMessageQueue />)
+
+    expect(screen.queryByText('Already injected message')).toBeNull()
+    expect(screen.getByText('Still waiting message')).toBeTruthy()
+  })
+
   it('allows queued messages to span full width on mobile and caps width from md up', () => {
-    useTeamStore.setState({
+    useAgentStore.setState({
       sessionId: 'session-1',
       _pendingMessages: [
         { id: 'pending-1', sessionId: 'session-1', content: 'Queued message' },
@@ -48,7 +76,7 @@ describe('PendingMessageQueue', () => {
     const user = userEvent.setup()
     const restoreListener = mock(() => {})
     window.addEventListener('queue:restore-draft', restoreListener)
-    useTeamStore.setState({
+    useAgentStore.setState({
       sessionId: 'session-1',
       _pendingMessages: [
         { id: 'pending-1', sessionId: 'session-1', content: 'Please edit me' },
@@ -60,12 +88,12 @@ describe('PendingMessageQueue', () => {
     await user.click(screen.getByLabelText('Edit queued message'))
 
     expect(restoreListener).toHaveBeenCalledTimes(1)
-    expect(useTeamStore.getState()._pendingMessages).toEqual([])
+    expect(useAgentStore.getState()._pendingMessages).toEqual([])
     window.removeEventListener('queue:restore-draft', restoreListener)
   })
 
   it('shows attachment names on queued messages', () => {
-    useTeamStore.setState({
+    useAgentStore.setState({
       sessionId: 'session-1',
       _pendingMessages: [
         {
@@ -92,7 +120,7 @@ describe('PendingMessageQueue', () => {
       restoredFiles = (e as CustomEvent<{ files?: File[] }>).detail?.files
     })
     window.addEventListener('queue:restore-draft', restoreListener)
-    useTeamStore.setState({
+    useAgentStore.setState({
       sessionId: 'session-1',
       _pendingMessages: [
         {
@@ -119,7 +147,7 @@ describe('PendingMessageQueue', () => {
   it('collapses and expands long queued messages with top-right collapse toggle', async () => {
     const user = userEvent.setup()
     const elevenLines = Array.from({ length: 11 }, (_, i) => `queued-line-${i + 1}`).join('\n')
-    useTeamStore.setState({
+    useAgentStore.setState({
       sessionId: 'session-1',
       _pendingMessages: [
         {

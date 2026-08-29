@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from functools import lru_cache
+from pathlib import Path
 from typing import TYPE_CHECKING, Annotated
 
 from fastapi import Depends
@@ -14,7 +15,7 @@ from app.core.config import Settings, settings
 from app.core.db import async_session_factory, get_session
 
 if TYPE_CHECKING:
-    from app.agent.mode.team.team import AgentTeam
+    from app.agent.session import AgentSession
 
 
 # ── Settings ─────────────────────────────────────────────────────────────────
@@ -43,20 +44,19 @@ DbSessionFactory = Annotated[
 ]
 
 
-# ── Team (optional — None when no agents are configured) ─────────────────────
-# The team is built lazily on first use and evicted after an idle window;
-# see ``app.services.team_manager``.  Route handlers receive whatever the
-# manager hands back at request time (typically a live team, or ``None``
-# when the agents directory is empty/missing).
+# ── Agent session (optional — None when no agent is configured) ──────────────
+# The session is built lazily on first use and evicted after an idle window;
+# see ``app.services.agent_manager``. Route handlers receive whatever the
+# manager hands back at request time, or ``None`` when configuration is absent.
 
 
-async def get_team() -> "AgentTeam | None":
-    from app.services import team_manager
+async def get_agent_session() -> "AgentSession | None":
+    from app.services import agent_manager
 
-    return await team_manager.get_or_start_team()
+    return await agent_manager.get_or_start_agent_session(str(Path.cwd()), None)
 
 
-TeamDep = Annotated["AgentTeam | None", Depends(get_team)]
+AgentSessionDep = Annotated["AgentSession | None", Depends(get_agent_session)]
 
 
 # ── Form body dependency ──────────────────────────────────────────────────────

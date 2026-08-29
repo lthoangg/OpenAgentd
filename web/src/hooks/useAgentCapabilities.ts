@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { listTeamAgents } from '@/api/client'
+import { listSessionAgents } from '@/api/client'
 import type { AgentCapabilities } from '@/api/types'
 
 const DEFAULT_CAPABILITIES: AgentCapabilities = {
@@ -24,11 +24,11 @@ export function useAgentCapabilities(): AgentCapabilities {
 
     const fetchCapabilities = async () => {
       try {
-        const data = await listTeamAgents('')
-        // Use the lead agent's capabilities, or the first agent's
-        const lead = data.agents.find((a) => a.is_lead) ?? data.agents[0]
+        const data = await listSessionAgents('')
+        // The session uses the first (and currently only) configured agent.
+        const agent = data.agents[0]
         if (mounted) {
-          setCapabilities(lead?.capabilities ?? DEFAULT_CAPABILITIES)
+          setCapabilities(agent?.capabilities ?? DEFAULT_CAPABILITIES)
         }
       } catch (err) {
         console.warn('Failed to fetch agent capabilities:', err)

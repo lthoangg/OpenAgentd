@@ -4,7 +4,7 @@ Two separate endpoints so orchestrators can distinguish "is the process
 alive?" from "is it ready to serve traffic?":
 
 - ``GET /api/health/live``   → always 200 if the process is up.
-- ``GET /api/health/ready``  → 200 only when DB + team are ready; 503 otherwise.
+- ``GET /api/health/ready``  → 200 only when DB + agent are ready; 503 otherwise.
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.core.db import get_session
 from app.core.version import VERSION
-from app.services import team_manager
+from app.services import agent_manager
 
 router = APIRouter()
 
@@ -57,17 +57,16 @@ async def _check_ready(session: AsyncSession) -> HealthReadyResponse:
         logger.warning("health_ready_db_failed error={}", exc)
         checks["db"] = "fail"
 
-    # ── Team ──────────────────────────────────────────────────────────────
-    # Teams build lazily on first use, so an in-memory team is not a useful
-    # readiness signal.  Report on whether the agents directory is loadable
-    # (parses + has a lead) instead.
+    # ── Agent ─────────────────────────────────────────────────────────────
+    # The agent builds lazily on first use, so an in-memory agent is not a
+    # useful readiness signal. Report on whether its directory is loadable.
     try:
-        checks["team"] = "ok" if team_manager.validate_agents_dir() else "missing"
+        checks["agent"] = "ok" if agent_manager.validate_agents_dir() else "missing"
     except ValueError as exc:
-        logger.warning("health_ready_team_invalid error={}", exc)
-        checks["team"] = "invalid"
+        logger.warning("health_ready_agent_invalid error={}", exc)
+        checks["agent"] = "invalid"
 
-    ready = checks["db"] == "ok"  # team "missing" is tolerable (empty agents dir)
+    ready = checks["db"] == "ok"  # agent "missing" is tolerable (empty agents dir)
     return HealthReadyResponse(
         status="ok" if ready else "degraded",
         version=VERSION,

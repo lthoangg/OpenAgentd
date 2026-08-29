@@ -42,12 +42,8 @@ def test_ensure_workspace_initialized_creates_roots_and_builtin_defaults(
     assert (config / "skills").is_dir()
     assert (config / "plugins").is_dir()
     assert (tmp_path / "cache").is_dir()
-    assert (config / "agents" / "openagentd.md").is_file()
-    assert (config / "agents" / "coder.md").is_file()
-    assert (config / "agents" / "explorer.md").is_file()
-    assert (config / "agents" / "coding" / "openagentd.md").is_file()
-    assert (config / "agents" / "coding" / "coder.md").is_file()
-    assert (config / "agents" / "coding" / "explorer.md").is_file()
+    assert (config / "agents" / "code.md").is_file()
+    assert not (config / "agents" / "coding").exists()
     assert (config / "settings.yaml").is_file()
     assert (config / "multimodal.yaml").is_file()
 
@@ -66,17 +62,15 @@ def test_ensure_workspace_initialized_preserves_existing_agents(
     config = _patch_workspace_paths(monkeypatch, tmp_path)
     agents = config / "agents"
     agents.mkdir(parents=True)
-    existing = agents / "openagentd.md"
+    existing = agents / "code.md"
     existing.write_text(
-        "---\nname: openagentd\nrole: lead\nmodel: openai:gpt-5\n---\n",
+        "---\nname: code\nrole: lead\nmodel: openai:gpt-5\n---\n",
         encoding="utf-8",
     )
 
     ensure_workspace_initialized()
 
     assert "model: openai:gpt-5" in existing.read_text(encoding="utf-8")
-    assert (agents / "coder.md").is_file()
-    assert (agents / "explorer.md").is_file()
 
 
 def test_ensure_workspace_initialized_restores_missing_default_lead(
@@ -93,6 +87,8 @@ def test_ensure_workspace_initialized_restores_missing_default_lead(
 
     ensure_workspace_initialized()
 
-    lead = agents / "openagentd.md"
+    lead = agents / "code.md"
     assert lead.is_file()
-    assert "role: lead" in lead.read_text(encoding="utf-8")
+    text = lead.read_text(encoding="utf-8")
+    assert "role: lead" in text
+    assert "model: opencode:deepseek-v4-flash-free" in text

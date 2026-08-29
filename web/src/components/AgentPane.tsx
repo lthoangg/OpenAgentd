@@ -1,5 +1,5 @@
 /**
- * AgentPane — compact single-agent pane used by the split view.
+ * AgentPane — compact single-agent pane component.
  *
  * Renders the same ContentBlock[] stream as `AgentView` (see that file for
  * block types) but in a denser layout with a small header (status, lead
@@ -19,7 +19,6 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { Thinking } from './Thinking'
 import { ToolCall } from './ToolCall'
 import { MCPAppResult } from './MCPAppResult'
-import { InboxBubble } from './InboxBubble'
 import { CompactionDivider } from './CompactionDivider'
 import { ImageAttachment } from './ImageAttachment'
 import { FileCard } from './FileCard'
@@ -30,9 +29,9 @@ import { latestDirectUserBlockIdFromParts, liveBlockTail } from '@/utils/blocks'
 import { extractSleepPrefix, formatTime, formatFullDateTime } from '@/utils/format'
 import { latestMCPAppResourceBlockIdsFromParts, latestMCPAppResources, mcpAppResourceUri } from '@/utils/mcp-app-artifacts'
 import { useAutoFollowScroll } from '@/hooks/useAutoFollowScroll'
-import { useTeamStore, isAwaitingRestartOutput } from '@/stores/useTeamStore'
+import { useAgentStore, isAwaitingRestartOutput } from '@/stores/useAgentStore'
 import { findCommittedMentions } from './InputComposer.mentions'
-import type { AgentStream } from '@/stores/useTeamStore'
+import type { AgentStream } from '@/stores/useAgentStore'
 import { resolveApiUrl } from '@/api/client'
 import { openExternalUrl } from '@/lib/open-external'
 import type { ContentBlock, MessageAttachment } from '@/api/types'
@@ -293,10 +292,6 @@ const UserBubble = memo(function UserBubble({ content, timestamp, attachments, o
 const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionId, onRevert, latestMCPAppBlockIds }: { block: ContentBlock; isStreaming: boolean; sessionId?: string; onRevert?: () => void; latestMCPAppBlockIds?: Set<string> }) {
   switch (block.type) {
     case 'user': {
-      const fromAgent = block.extra?.from_agent as string | undefined
-      if (fromAgent && fromAgent !== 'user') {
-        return <InboxBubble content={block.content} fromAgent={fromAgent} compact />
-      }
       const blockModel = typeof block.extra?.model === 'string' ? block.extra.model : null
       return <UserBubble content={block.content} timestamp={block.timestamp} attachments={block.attachments} onRevert={onRevert} modelId={blockModel} mentions={block.extra?.mentions as string[] | undefined} />
     }
@@ -391,7 +386,7 @@ const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionI
 })
 
 /**
- * Memoised because `SplitGrid` subscribes to the whole `agentStreams` map, whose
+ * Memoised because parent views subscribe to the whole `agentStreams` map, whose
  * identity changes on every ~16ms SSE delta batch (immer copy-on-write walks up
  * to the root). Without this gate, a token streamed into one pane re-rendered
  * every other pane in the grid. Each agent's `stream` object only changes when
@@ -402,9 +397,9 @@ const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionI
   export const AgentPane = memo(function AgentPane({
   name, stream, isLead,
 }: AgentPaneProps) {
-  const sessionId = useTeamStore((s) => s.sessionId) ?? undefined
+  const sessionId = useAgentStore((s) => s.sessionId) ?? undefined
   const handleRevert = useCallback(() => {
-    void useTeamStore.getState().undoTeam().then(async (response) => {
+    void useAgentStore.getState().undoAgent().then(async (response) => {
       const message = response?.message
       if (!message || message.role !== 'user' || message.is_summary) return
       window.dispatchEvent(

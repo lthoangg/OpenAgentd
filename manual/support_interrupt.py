@@ -55,6 +55,7 @@ from app.agent.schemas.chat import (
 from app.agent.state import ModelRequest, RunContext
 
 from manual._common import DEFAULT_BASE
+
 BASE = DEFAULT_BASE
 
 # ── In-process provider helpers ─────────────────────────────────────────────
@@ -276,18 +277,18 @@ async def _run_contract_b_agent_loop() -> bool:
 
 
 def _post_message(base: str, message: str, session_id: str | None = None) -> str:
-    data: dict[str, str] = {"message": message}
+    data: dict[str, str] = {"message": message, "workspace": "."}
     if session_id:
         data["session_id"] = session_id
-    r = httpx.post(f"{base}/team/chat", data=data, timeout=20)
+    r = httpx.post(f"{base}/agent/chat", data=data, timeout=20)
     r.raise_for_status()
     return r.json()["session_id"]
 
 
 def _post_interrupt(base: str, session_id: str) -> None:
     r = httpx.post(
-        f"{base}/team/chat",
-        data={"session_id": session_id, "interrupt": "true"},
+        f"{base}/agent/chat",
+        data={"session_id": session_id, "interrupt": "true", "workspace": "."},
         timeout=10,
     )
     r.raise_for_status()
@@ -295,7 +296,7 @@ def _post_interrupt(base: str, session_id: str) -> None:
 
 def _get_history(base: str, session_id: str) -> list[dict]:
     r = httpx.get(
-        f"{base}/team/{session_id}/history", params={"limit": 1000}, timeout=10
+        f"{base}/agent/{session_id}/history", params={"limit": 1000}, timeout=10
     )
     r.raise_for_status()
     return r.json()["lead"]["messages"]
@@ -306,7 +307,7 @@ def _stream_until_done(base: str, sid: str, *, timeout: int) -> tuple[bool, bool
     deadline = time.monotonic() + timeout
     saw_error = False
     try:
-        with httpx.stream("GET", f"{base}/team/{sid}/stream", timeout=timeout + 5) as r:
+        with httpx.stream("GET", f"{base}/agent/{sid}/stream", timeout=timeout + 5) as r:
             current_event = ""
             for line in r.iter_lines():
                 if time.monotonic() > deadline:

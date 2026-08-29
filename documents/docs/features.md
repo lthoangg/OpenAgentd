@@ -10,8 +10,8 @@ updated: 2026-08-28
 The canonical source of truth for shipped user-visible capabilities. Every feature lists the
 release that introduced it (where known). When you ship something new, **add it here first** — README and external copy should cite this page.
 
-> **Headline.** OpenAgentd is a coding-first desktop workspace for local AI agents — a
-> double-clickable app that runs a team of AI agents on your machine, with a
+> **Headline.** OpenAgentd is a coding-first desktop workspace for a local coding agent — a
+> double-clickable app that runs an agent on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 16 providers. Your keys.
 
 **Latest release:** v2.8.1 · August 28, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v2.8.1)
@@ -24,7 +24,7 @@ Features are grouped by **pillar** — the same surfaces that drive the product
 narrative on slides and in the README:
 
 1. [The desktop coding workspace](#1-the-desktop-coding-workspace)
-2. [Agents and teams](#2-agents-and-teams)
+2. [Agents and tools](#2-agents-and-tools)
 3. [The coding workspace](#3-the-coding-workspace)
 4. [Memory and context](#4-memory-and-context)
 5. [Providers and models](#5-providers-and-models)
@@ -64,7 +64,7 @@ run from the terminal.
   backend without allowing duplicate sidecar processes `[v1.113.0]`.
 - **Coding-only architecture and root redirect** `[v2.4.0]` — OpenAgentd operates
   exclusively as a coding workspace. Root `/` and legacy Cockpit URLs redirect to `/coding`,
-  workspaces are required across chat, scheduler, terminals, and agent teams, and database
+  workspaces are required across chat, scheduler, and terminals, and database
   migration permanently removes legacy workspace-less records. Telemetry is accessible via the
   desktop status footer and mobile navigation.
 - **Connection-ready screen warmup** `[v1.113.3]` — after either the bundled
@@ -234,7 +234,7 @@ run from the terminal.
   when prior conversations exist.
 - **Slash commands** `[since v1.0]` — `/init`, `/compact`, `/undo`,
   `/redo`, `/redo-all`, plus user-defined commands. Commands are contextually
-  filtered by active session and team state `[v2.0.0]`.
+  filtered by active session state `[v2.0.0]`.
   - **`/redo` and `/redo-all` slash commands** `[v2.0.0]` — restore undone chat turns
     step-by-step or fast-forward completely back to the latest turn.
   - **`/init` AGENTS.md analysis & generation** `[v1.9.0, v2.0.0]` — analyzes codebase
@@ -385,48 +385,29 @@ run from the terminal.
 
 ---
 
-## 2. Agents and teams
+## 2. Agent runtime
 
-OpenAgentd is multi-agent by default. A lead agent drives the conversation and
-spawns specialist members on demand.
+OpenAgentd runs as a single-agent runtime cockpit. The agent drives the conversation,
+executes tools, manages its task list, and inspects workspace repositories.
 
-- **Lead agent + member blueprints** `[since v1.0]` — exactly one `role: lead`
-  agent; any number of `role: member` blueprints in `agents/`. Lead drives
-  every conversation.
-- **Live member spawning** `[since v1.0]` — `team_manage` spawns live instances
-  such as `executor#1`, `explorer#1`, or `coder#1` on demand. Dismissing only
-  removes the live instance; the blueprint stays. Re-spawning restores the same
-  instance's history within the current lead session.
-- **`team_message` peer messaging** `[since v1.0]` — async mailbox between
-  agents for conversation: questions, scope changes, partial handoffs. The
-  recipient's next turn drains its inbox. Members can end their turn
-  structurally with `end_turn=true` on their final `team_message` or
-  `todo_manage` call `[v1.127.0]` (replaces the legacy `<sleep>` text
-  sentinel, which is still accepted for old histories).
-- **Board-driven delegation** `[v1.127.0]` — the todo board is the team's
-  coordination backbone. Assigning an unblocked task (with its delegation
-  brief in `instructions`) automatically wakes the assignee; completing a
-  task records the deliverable in `result` and automatically notifies the
-  lead plus any assignees the completion unblocks (dependency results ride
-  along as the handoff). After a restart or session restore, members holding
-  open assigned or in-progress tasks are re-woken automatically.
+- **Single-agent cockpit** `[since v1.0, updated v2.1.0]` — exactly one primary agent
+  configuration (`agents/code.md`) drives every conversation.
+- **Clean taskboard checklist** `[v1.127.0, updated v2.1.0]` — the todo taskboard
+  serves as a flat, user-readable checklist of tasks and statuses (`pending`,
+  `in_progress`, `completed`, `cancelled`).
 - **High-throughput chat persistence engine** `[v2.0.0]` — remodeled `session_messages`
   onto derived state (`seq` + `kind` + `pinned`) with partial SQL indexing,
   single-allocation checkpointers, and SQL-level compaction keep-tail calculation.
 - **Incremental session history hydration** `[v2.0.0]` — hydrates session histories
   incrementally and materializes SQLite query-planner statistics (`ANALYZE`) after
   migrations for sub-millisecond query planning.
-- **Split-pane live view** `[since v1.0]` — each active agent gets its own pane,
-  streamed independently. See live whose turn is current, who's idle.
-- **Unified team view** `[since v1.0]` — single chronological transcript across
-  the whole team for reading or sharing.
 - **`/continue` resumes interrupted work** `[v1.5.0]` *(deprecated — removed)* — restores
-  the team's pending plan and resumes streaming from the last turn. Available in the
+  the agent's pending plan and resumes streaming from the last turn. Available in the
   command palette and assistant footer. Continuations use the session's model
   and reasoning settings.
 - **Automatic empty-after-tool recovery** `[v1.36.0]` — if a provider returns
   an empty assistant response immediately after a tool result, the lead keeps
-  the same turn moving instead of silently ending after the tool call.
+  the same session turn moving instead of silently ending after the tool call.
 - **Provider-timeout resume for long tasks** `[v1.37.0]` — when a slow or flaky
   model endpoint exhausts its retry budget mid-task (`ReadTimeout` /
   `ConnectError`), the loop resumes the same turn from where it left off
@@ -452,18 +433,18 @@ spawns specialist members on demand.
   the provider's own explanation instead of a bare status code. 401/403 render
   the "configure / reconnect provider" banner; 400-class errors surface the
   specific reason (bad model, unsupported parameter, context too long) in the
-  error event and lead notification. Exhausted connection/timeout failures
+  error event and agent notification. Exhausted connection/timeout failures
   likewise become a typed `ProviderConnectionError` naming the transport error
   and pointing at the provider's base URL.
 - **Stop cancels the whole active session run** `[v1.101.1]` — Stop directly
-  cancels the lead and working members, in-flight model/tool work, direct shell
+  cancels the agent, in-flight model/tool work, direct shell
   commands, and session-owned background shell processes before the request
   returns. Queued and late mailbox work cannot restart the stopped turn.
 - **Stop pauses queued follow-ups instead of dropping them** `[v1.17.0]` — Stop
   releases queued hidden user messages into visible history so you can
   `/undo`, edit, or append before resuming.
 - **Session-level model + thinking-level override** `[v1.16.0, v1.66.1, v1.79.0, v1.104.3, v1.125.0, v1.126.1]` — override the
-  lead agent's model and thinking level for the current chat. The thinking
+  agent's model and thinking level for the current chat. The thinking
   picker uses each model's advertised reasoning levels when registry metadata is
   available, and history keeps the model used for each user turn. Codex keeps
   the configured thinking level across provider reconstruction and streams
@@ -472,26 +453,23 @@ spawns specialist members on demand.
   field is never committed `[v1.125.0]`. To fall back to the agent's default,
   pick it from the model list like any other model — the dedicated
   `Use agent default` reset button was removed `[v1.126.1]`.
-- **Coding team variant** `[since v1.0]` — `agents/coding/` ships a separate
-  compact team (`coding/openagentd`, `coding/coder`, `coding/explorer`) tuned for
-  workspace-aware sessions; the coding explorer focuses on inspecting the current
-  codebase before implementation.
-- **Built-in first-party agent profiles** `[v1.23.0, v1.118.0]` — the default `openagentd`
-  lead and shipped member blueprints keep their core prompts, tools, and
-  descriptions versioned in code for normal and coding modes; generated/user
-  `.md` files remain lightweight extension points for model knobs, extra
-  capabilities, and extra prompt text.
+- **Coding agent profile** `[since v1.0, updated v2.1.0]` — `agents/code.md` is the
+ root profile tuned for workspace-aware coding sessions.
+- **Built-in first-party agent profile** `[v1.23.0, v1.118.0]` — the default `code`
+ agent keeps its core prompts, tools, and descriptions versioned in code; generated/user
+ `.md` files remain lightweight extension points for model knobs, extra
+ capabilities, and extra prompt text.
 - **Automatic first-run materialization** `[v1.37.0, v1.118.0]` — application
-  startup creates missing first-party agent profiles and editable runtime
-  configuration directly from code. No separate initialization command or
-  downloaded template bundle is required, and existing user files are preserved.
+ startup creates missing first-party agent profile and editable runtime
+ configuration directly from code. No separate initialization command or
+ downloaded template bundle is required, and existing user files are preserved.
 
 ---
 
 ## 3. The coding workspace
 
 Coding mode (`/coding`) opens a local project folder and runs a workspace-aware
-team against it.
+agent against it.
 
 - **Open any local project folder** `[since v1.0]` — server-local paths only.
   Coding mode shows file tree + live git diff (staged, unstaged, and untracked
@@ -646,7 +624,7 @@ OpenAgentd carries context across sessions via rolling-window summarization.
   standard repo- and folder-scoped agent context files. Coding workspaces fall
   back to root `CLAUDE.md` when root `AGENTS.md` is absent.
 - **Workspace root injected into coding-mode system prompt** `[v1.133.0]` —
-  coding-team agents (lead and members) are told their workspace's absolute
+  coding agents are told their workspace's absolute
   path unconditionally, not only when an `AGENTS.md`/`CLAUDE.md` happens to
   exist.
 - **Per-message provider metadata** `[v1.17.0]` — assistant messages persist
@@ -683,7 +661,7 @@ agnostic by design.
 | Ollama (local + cloud) | `ollama:llama3.2` · `ollama:kimi-k2.6-cloud` | none (cloud: `ollama signin`) |
 
 - **Keyless first-run model** `[v1.124.0]` — new installations start with
-  `opencode:deepseek-v4-flash-free` across the built-in agent team, while
+  `opencode:deepseek-v4-flash-free` across the built-in agent profile, while
   existing agent model choices remain unchanged.
 - **Drop-in provider plugins** `[v1.6.0]` — Python files in the configured
   plugins directory register new providers at startup.
@@ -775,12 +753,11 @@ MCP.
 | Generation | `generate_image`, `generate_video` |
 | Scheduling | `schedule_task` (reminders + self-scheduling agentic loops) `[v1.70.0]` |
 | Tasks | `todo_manage` |
-| Team coordination | `team_message`, `team_manage` |
-| Ask the user | `ask_user` (coding leads) `[v1.131.0, v2.1.0]` |
+| Ask the user | `ask_user` (coding agent) `[v1.131.0, v2.1.0]` |
 | Utility | `skill` |
 
 - **`ask_user` — durable suspend and resume** `[v1.131.0, v2.1.0]` — in
-  **coding mode** `[v2.1.0]`, the lead can stop mid-turn and ask you 1–4 questions rather
+  **coding mode** `[v2.1.0]`, the agent can stop mid-turn and ask you 1–4 questions rather
   than guessing on a decision that would cost real work to undo. Each question
   carries up to 5 options with optional descriptions, single- or multi-select,
   a "Recommended" badge on the agent's preferred choice, and an optional
@@ -835,7 +812,7 @@ MCP.
   npm packages, a cross-surface install prompt, and `openagentd lsp` status/install
   commands. Managed tools live under the regeneratable cache and do not modify
   the user's project.
-- **Semantic LSP navigation** `[v1.133.0]` — coding-team agents can find definitions,
+- **Semantic LSP navigation** `[v1.133.0]` — coding agents can find definitions,
   references, document symbols, and workspace symbols through the language server,
   using compact workspace-relative results instead of text search for code navigation.
   Results include a readable symbol kind (`Widget (class)`, `run (function)`) when the
@@ -1059,7 +1036,7 @@ Everything stays local. No third-party telemetry SaaS.
   full user-turn wall-clock duration; tool rows show individual execution time.
   Durations stay after a reload.
 - **Delta turn reconciliation** `[v1.120.4]` — a completed turn transfers only
-  the messages it produced (`GET /team/{id}/history?since=`) instead of
+  the messages it produced (`GET /agent/{id}/history?since=`) instead of
   re-downloading the whole visible page, which reaches ~1.7 MB on an active
   session and duplicates what the SSE stream just delivered. Falls back to a
   full page when the client has fallen too far behind. Session-list `running`
@@ -1106,13 +1083,13 @@ Desktop is primary. CLI / server is the developer path.
   start --host 0.0.0.0 --key` make the CLI the control plane for desktop/mobile backends.
 - **Foreground CLI agent execution** `[v2.4.0]` — `openagentd run --prompt "..."`
   validates the current directory as a coding workspace, starts one persisted
-  team session, and streams only the lead agent's response text to standard
+  agent session, and streams only the agent's response text to standard
   output. `--model provider:model` and `--thinking` apply per-turn overrides;
   auto-approved tool permissions continue normally, while interactive agent
   questions stop the non-interactive command instead of leaving a suspended run.
 - **CLI start --wait** `[v1.73.0, v2.4.0]` — `openagentd server start --wait`
   starts the background server and polls `/api/health/ready` until the database
-  connection and the agent team are fully ready.
+  connection and the agent session are fully ready.
 - **CLI upgrade** `[v1.41.0]` — `openagentd upgrade` stops the background
   server, delegates to the detected package manager, then restarts it when it
   was running.
@@ -1121,7 +1098,7 @@ Desktop is primary. CLI / server is the developer path.
   no longer maintained. Use the CLI install paths above; revisit if there
   is concrete self-hoster demand.
 - **Migration imports** `[since v1.0, v2.4.0]` — `openagentd transfer migrate openclaw`,
-  `openagentd transfer migrate hermes`. Imports identity + context Markdown into one lead agent.
+  `openagentd transfer migrate hermes`. Imports identity + context Markdown into one agent.
 - **Server migration export/import** `[v1.97.0, v2.4.0]` — `openagentd transfer export` packs
   agents, skills, commands, plugins, and config files into a timestamped
   `.tar.gz` archive. `openagentd transfer import <archive>` unpacks it on the target
@@ -1148,9 +1125,9 @@ Desktop is primary. CLI / server is the developer path.
 
 The same HTTP + SSE API drives the desktop, browser, and mobile clients. Embed it elsewhere with no extra work.
 
-- **REST + SSE chat API** `[since v1.0]` — `POST /api/team/chat` is
+- **REST + SSE chat API** `[since v1.0]` — `POST /api/agent/chat` is
   fire-and-forget (returns 202 in <50ms); the agent streams events on
-  `GET /api/team/{session_id}/stream`. Reconnect-safe replay.
+  `GET /api/agent/{session_id}/stream`. Reconnect-safe replay.
 - **Global app event stream** `[v1.103.0]` — first-party clients keep a
   lightweight `GET /api/events/stream` connection for cross-session
   lifecycle and metadata events. Scheduled turns wake the matching session

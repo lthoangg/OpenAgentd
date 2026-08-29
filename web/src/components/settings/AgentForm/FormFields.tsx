@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button'
 import { MultiSelect, type MultiSelectOption } from '../MultiSelect'
 import { SettingsField } from '../SettingsField'
 import { type AgentFrontmatter } from '../frontmatter'
-import { validateAgentName, validateDescription, validateModel } from '../schema'
+import { validateDescription, validateModel } from '../schema'
 import { ModelCombobox, type ModelOption } from './ModelCombobox'
 import { isBuiltInProfile } from './utils'
 
@@ -47,11 +47,9 @@ export function FormFields({
   fm,
   body,
   disabled,
-  isNew,
   toolOptions,
   mcpOptions,
   modelOptions,
-  agentPath,
   effectiveTools,
   updateFromForm,
 }: {
@@ -69,7 +67,6 @@ export function FormFields({
   // Per-field errors computed fresh from zod on render. For the scalar
   // string fields we validate whenever the value is non-empty; empty is
   // handled by the caller's full-form check before save.
-  const nameError = isNew ? validateAgentName(fm.name) : null
   const descriptionError = validateDescription(fm.description ?? '')
   const currentModelOptions = useMemo(() => {
     const filtered = modelOptions.filter((m) => !m.output_image && !m.output_video)
@@ -99,7 +96,7 @@ export function FormFields({
     return levels && levels.length > 0 ? levels : FALLBACK_THINKING_LEVELS
   }, [currentModelOptions, fm.model])
 
-  const hasBuiltInProfile = isBuiltInProfile(fm.name, fm.role, agentPath)
+  const hasBuiltInProfile = isBuiltInProfile('code', 'lead', 'code')
   const implicitToolNames = new Set(['skill', 'todo_manage', 'schedule_task', 'note'])
   const builtInTools = (effectiveTools ?? []).filter(
     (tool) => implicitToolNames.has(tool) || hasBuiltInProfile,
@@ -126,44 +123,10 @@ export function FormFields({
         <SectionCardRows>
         <div className="px-3 py-3 grid gap-3 md:grid-cols-2">
           <SettingsField
-            label="Name"
-            required
-            error={nameError}
-            hint={
-              !isNew
-                ? 'Filename stem; cannot be renamed after creation.'
-                : 'Letters, digits, ., _, - only.'
-            }
-          >
-            <Input
-              type="text"
-              value={fm.name}
-              onChange={(e) => updateFromForm({ ...fm, name: e.target.value }, body)}
-              disabled={disabled || !isNew}
-              placeholder="orchestrator"
-              aria-invalid={!!nameError || undefined}
-              className="min-h-11 font-mono md:min-h-9"
-            />
-          </SettingsField>
-
-          <SettingsField label="Role" required hint="Exactly one agent in the team must be lead.">
-            <Dropdown
-              value={fm.role}
-              onValueChange={(v) => v && updateFromForm({ ...fm, role: v as 'lead' | 'member' }, body)}
-              trigger="Role"
-              className="min-h-11 w-full md:min-h-9"
-              disabled={disabled}
-            >
-              <DropdownItem value="lead">Lead</DropdownItem>
-              <DropdownItem value="member">Member</DropdownItem>
-            </Dropdown>
-          </SettingsField>
-
-          <SettingsField
             label="Description"
             error={descriptionError}
             className="md:col-span-2"
-            hint="One-line summary shown when the lead browses the team."
+            hint="One-line summary shown in the agent registry."
           >
             <Input
               type="text"
@@ -173,7 +136,7 @@ export function FormFields({
                 updateFromForm({ ...fm, description: e.target.value || null }, body)
               }
               disabled={disabled}
-              placeholder="Coordinates the team. Breaks tasks, delegates to members."
+              placeholder="Coordinates work and breaks tasks into focused steps."
               aria-invalid={!!descriptionError || undefined}
             />
           </SettingsField>

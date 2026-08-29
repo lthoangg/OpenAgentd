@@ -94,7 +94,7 @@ export function useInputComposerAttachments({ capabilities }: UseInputComposerAt
   }, [capabilities])
 
   // The drag overlay is owned by the surrounding chat column
-  // (TeamChatView/useDragDrop), which needs these events to keep bubbling —
+  // (AgentChatView/useDragDrop), which needs these events to keep bubbling —
   // these handlers only mark the pill as a valid drop target.
   const handleDragEnter = useCallback((e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault()

@@ -14,9 +14,9 @@ from app.core.db import run_migrations
 from app.core.logging_config import setup_logging
 from app.core.workspace_init import ensure_workspace_initialized
 from app.services import (
+    agent_manager,
     agent_service,
     memory_stream_store as stream_store,
-    team_manager,
 )
 
 
@@ -54,11 +54,13 @@ async def _run(args: argparse.Namespace) -> None:
     _run_migrations_quietly()
 
     session_id = str(uuid7())
-    workspace = team_manager.validate_workspace(str(Path.cwd()))
-    team = await team_manager.get_or_start_coding_team(workspace, session_id)
+    workspace = agent_manager.validate_workspace(str(Path.cwd()))
+    session = await agent_manager.get_or_start_agent_session(workspace, session_id)
+    if session is None:
+        raise SystemExit("No agent configured.")
 
     session_id, _, _ = await agent_service.dispatch_user_message(
-        team,
+        session,
         content=prompt,
         session_id=session_id,
         workspace=workspace,
@@ -72,7 +74,16 @@ async def _run(args: argparse.Namespace) -> None:
         event_type = event.get("event")
         data = _event_data(event)
 
-        if event_type == "message" and data.get("agent") == team.lead.name:
+        lead_name = (
+            session.name
+            if isinstance(getattr(session, "name", None), str)
+            else "openagentd"
+        )
+        if event_type == "message" and data.get("agent") in (
+            lead_name,
+            "openagentd",
+            "lead",
+        ):
             text = data.get("text")
             if isinstance(text, str) and text:
                 print(text, end="", flush=True)
@@ -84,11 +95,11 @@ async def _run(args: argparse.Namespace) -> None:
             continue
 
         if event_type == "agent_not_configured":
-            terminal_error = data.get("message") or "The lead agent is not configured."
+            terminal_error = data.get("message") or "The agent is not configured."
             continue
 
         if event_type == "question_asked":
-            await agent_service.interrupt_team(team, session_id)
+            await agent_service.interrupt_agent(session, session_id)
             terminal_error = "Non-interactive run cannot answer agent questions."
             break
 

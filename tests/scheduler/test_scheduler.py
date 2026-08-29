@@ -18,10 +18,14 @@ import pytest
 from sqlmodel import select
 
 import app.core.db as _db_module
-import app.services.team_manager as _team_manager
+import app.services.agent_manager as _agent_manager
 from app.scheduler.models import ScheduledTask
 from app.scheduler.scheduler import TaskScheduler
 from app.scheduler.schemas import ScheduledTaskUpdate
+
+# The scheduler tests intentionally keep mock call sites compact while they
+# exercise many concurrent trigger variants.
+# fmt: off
 
 
 async def _db_task(db_factory, task_id):
@@ -57,17 +61,17 @@ def scheduler_team_compat(monkeypatch):
     """Route legacy test patches to the coding-team scheduler hook."""
 
     async def _coding_team(*args, **kwargs):
-        return await _team_manager.get_or_start_team()
+        return await _agent_manager.get_or_start_agent_session()
 
-    monkeypatch.setattr(_team_manager, "get_or_start_coding_team", _coding_team)
+    monkeypatch.setattr(_agent_manager, "get_or_start_agent_session", _coding_team)
 
 
 @pytest.fixture
 def mock_dispatch():
-    """Patch agent_service.dispatch_user_message + team_manager.get_or_start_team()."""
+    """Patch agent_service.dispatch_user_message + agent_manager.get_or_start_agent_session()."""
     sid = str(uuid4())
 
-    async def _get_team():
+    async def _get_team(*_args, **_kwargs):
         team = MagicMock()
         team.has_active_user_turn.return_value = False
         return team
@@ -77,7 +81,8 @@ def mock_dispatch():
 
     with (
         patch(
-            "app.services.team_manager.get_or_start_team", side_effect=_get_team
+            "app.services.agent_manager.get_or_start_agent_session",
+            side_effect=_get_team,
         ) as mock_team,
         patch(
             "app.services.agent_service.dispatch_user_message", side_effect=_disp
@@ -169,14 +174,15 @@ class TestRemove:
         dispatch_started = asyncio.Event()
         release_dispatch = asyncio.Event()
 
-        async def _get_team():
+        async def _get_team(*_args, **_kwargs):
             dispatch_started.set()
             await release_dispatch.wait()
             return MagicMock()
 
         with (
             patch(
-                "app.services.team_manager.get_or_start_team", side_effect=_get_team
+                "app.services.agent_manager.get_or_start_agent_session",
+                side_effect=_get_team,
             ) as get_team,
             patch(
                 "app.services.agent_service.dispatch_user_message",
@@ -227,14 +233,14 @@ class TestUpdate:
         team_started = asyncio.Event()
         release_team = asyncio.Event()
 
-        async def _block_team():
+        async def _block_team(*_args, **_kwargs):
             team_started.set()
             await release_team.wait()
             return MagicMock()
 
         with (
             patch(
-                "app.services.team_manager.get_or_start_team", side_effect=_block_team
+                "app.services.agent_manager.get_or_start_agent_session", side_effect=_block_team
             ),
             patch("app.services.agent_service.dispatch_user_message") as dispatch,
         ):
@@ -264,7 +270,7 @@ class TestUpdate:
         dispatch_started = asyncio.Event()
         release_dispatch = asyncio.Event()
 
-        async def _get_team():
+        async def _get_team(*_args, **_kwargs):
             return MagicMock()
 
         async def _block_dispatch(*_args, **_kwargs):
@@ -273,7 +279,7 @@ class TestUpdate:
             return (str(uuid4()), 0, str(uuid4()))
 
         with (
-            patch("app.services.team_manager.get_or_start_team", side_effect=_get_team),
+            patch("app.services.agent_manager.get_or_start_agent_session", side_effect=_get_team),
             patch(
                 "app.services.agent_service.dispatch_user_message",
                 side_effect=_block_dispatch,
@@ -304,7 +310,7 @@ class TestUpdate:
         dispatch_started = asyncio.Event()
         release_dispatch = asyncio.Event()
 
-        async def _get_team():
+        async def _get_team(*_args, **_kwargs):
             return MagicMock()
 
         async def _block_dispatch(*_args, **_kwargs):
@@ -313,7 +319,7 @@ class TestUpdate:
             return (str(uuid4()), 0, str(uuid4()))
 
         with (
-            patch("app.services.team_manager.get_or_start_team", side_effect=_get_team),
+            patch("app.services.agent_manager.get_or_start_agent_session", side_effect=_get_team),
             patch(
                 "app.services.agent_service.dispatch_user_message",
                 side_effect=_block_dispatch,
@@ -346,7 +352,7 @@ class TestUpdate:
         release_dispatch = asyncio.Event()
         dispatch_count = 0
 
-        async def _get_team():
+        async def _get_team(*_args, **_kwargs):
             return MagicMock()
 
         async def _block_dispatch(*_args, **_kwargs):
@@ -357,7 +363,7 @@ class TestUpdate:
             return (str(uuid4()), 0, str(uuid4()))
 
         with (
-            patch("app.services.team_manager.get_or_start_team", side_effect=_get_team),
+            patch("app.services.agent_manager.get_or_start_agent_session", side_effect=_get_team),
             patch(
                 "app.services.agent_service.dispatch_user_message",
                 side_effect=_block_dispatch,
@@ -387,20 +393,21 @@ class TestUpdate:
         team_started = asyncio.Event()
         release_team = asyncio.Event()
 
-        async def _block_team():
+        async def _block_team(*_args, **_kwargs):
             team_started.set()
             await release_team.wait()
             return MagicMock()
 
         with (
             patch(
-                "app.services.team_manager.get_or_start_team", side_effect=_block_team
+                "app.services.agent_manager.get_or_start_agent_session", side_effect=_block_team
             ),
             patch("app.services.agent_service.dispatch_user_message") as dispatch,
         ):
             firing = asyncio.create_task(scheduler._fire_task(task))
             await _wait_for_task_start(team_started)
             await scheduler.apply_update(task.slug, ScheduledTaskUpdate(slug="renamed"))
+            # Keep this mock compatible with the agent-session resolver.
             release_team.set()
             await firing
 
@@ -476,11 +483,11 @@ class TestPauseResume:
                 skip_checked.set()
                 return True
 
-        async def _get_team():
+        async def _get_team(*_args, **_kwargs):
             return _Team()
 
         with patch(
-            "app.services.team_manager.get_or_start_team", side_effect=_get_team
+            "app.services.agent_manager.get_or_start_agent_session", side_effect=_get_team
         ):
             firing = asyncio.create_task(scheduler._fire_task(task))
             await _wait_for_task_start(skip_checked)
@@ -500,7 +507,7 @@ class TestPauseResume:
         dispatch_started = asyncio.Event()
         release_dispatch = asyncio.Event()
 
-        async def _get_team():
+        async def _get_team(*_args, **_kwargs):
             return MagicMock()
 
         async def _block_dispatch(*_args, **_kwargs):
@@ -509,7 +516,7 @@ class TestPauseResume:
             return (str(uuid4()), 0, str(uuid4()))
 
         with (
-            patch("app.services.team_manager.get_or_start_team", side_effect=_get_team),
+            patch("app.services.agent_manager.get_or_start_agent_session", side_effect=_get_team),
             patch(
                 "app.services.agent_service.dispatch_user_message",
                 side_effect=_block_dispatch,
@@ -535,7 +542,7 @@ class TestPauseResume:
         dispatch_started = asyncio.Event()
         release_dispatch = asyncio.Event()
 
-        async def _get_team():
+        async def _get_team(*_args, **_kwargs):
             return MagicMock()
 
         async def _block_dispatch(*_args, **_kwargs):
@@ -544,7 +551,7 @@ class TestPauseResume:
             return (str(uuid4()), 0, str(uuid4()))
 
         with (
-            patch("app.services.team_manager.get_or_start_team", side_effect=_get_team),
+            patch("app.services.agent_manager.get_or_start_agent_session", side_effect=_get_team),
             patch(
                 "app.services.agent_service.dispatch_user_message",
                 side_effect=_block_dispatch,
@@ -817,7 +824,7 @@ class TestTrigger:
         )
 
         with (
-            patch("app.services.team_manager.get_or_start_team") as get_team,
+            patch("app.services.agent_manager.get_or_start_agent_session") as get_team,
             patch("app.services.agent_service.dispatch_user_message") as dispatch,
         ):
             await queued_fires.pop()
@@ -837,7 +844,7 @@ class TestTrigger:
         dispatch_started = asyncio.Event()
         release_dispatch = asyncio.Event()
 
-        async def _get_team():
+        async def _get_team(*_args, **_kwargs):
             return MagicMock()
 
         async def _block_dispatch(*_args, **_kwargs):
@@ -846,7 +853,7 @@ class TestTrigger:
             return (str(uuid4()), 0, str(uuid4()))
 
         with (
-            patch("app.services.team_manager.get_or_start_team", side_effect=_get_team),
+            patch("app.services.agent_manager.get_or_start_agent_session", side_effect=_get_team),
             patch(
                 "app.services.agent_service.dispatch_user_message",
                 side_effect=_block_dispatch,
@@ -937,7 +944,7 @@ class TestFireTaskErrors:
         release_dispatch = asyncio.Event()
         dispatch_count = 0
 
-        async def _get_team():
+        async def _get_team(*_args, **_kwargs):
             return MagicMock()
 
         async def _block_dispatch(*_args, **_kwargs):
@@ -948,7 +955,7 @@ class TestFireTaskErrors:
             return (str(uuid4()), 0, str(uuid4()))
 
         with (
-            patch("app.services.team_manager.get_or_start_team", side_effect=_get_team),
+            patch("app.services.agent_manager.get_or_start_agent_session", side_effect=_get_team),
             patch(
                 "app.services.agent_service.dispatch_user_message",
                 side_effect=_block_dispatch,
@@ -975,11 +982,14 @@ class TestFireTaskErrors:
         async def _explode(*_a, **_kw):
             raise RuntimeError("kaboom")
 
-        async def _get_team():
+        async def _get_team(*_args, **_kwargs):
             return MagicMock()
 
         with (
-            patch("app.services.team_manager.get_or_start_team", side_effect=_get_team),
+            patch(
+                "app.services.agent_manager.get_or_start_agent_session",
+                side_effect=_get_team,
+            ),
             patch(
                 "app.services.agent_service.dispatch_user_message",
                 side_effect=_explode,
@@ -1049,11 +1059,11 @@ class TestFireTaskErrors:
         team = MagicMock()
         team.has_active_user_turn.return_value = True
 
-        async def _get_team():
+        async def _get_team(*_args, **_kwargs):
             return team
 
         with (
-            patch("app.services.team_manager.get_or_start_team", side_effect=_get_team),
+            patch("app.services.agent_manager.get_or_start_agent_session", side_effect=_get_team),
             patch("app.services.agent_service.dispatch_user_message") as dispatch,
         ):
             await scheduler._fire_task(task)
@@ -1116,11 +1126,11 @@ class TestFireTaskErrors:
         async def _explode(*_a, **_kw):
             raise RuntimeError("boom")
 
-        async def _get_team():
+        async def _get_team(*_args, **_kwargs):
             return MagicMock()
 
         with (
-            patch("app.services.team_manager.get_or_start_team", side_effect=_get_team),
+            patch("app.services.agent_manager.get_or_start_agent_session", side_effect=_get_team),
             patch(
                 "app.services.agent_service.dispatch_user_message",
                 side_effect=_explode,
@@ -1158,11 +1168,11 @@ class TestSessionResolution:
             captured["session_id"] = session_id
             return (session_id, 0, str(uuid4()))
 
-        async def _get_team():
+        async def _get_team(*_args, **_kwargs):
             return MagicMock()
 
         with (
-            patch("app.services.team_manager.get_or_start_team", side_effect=_get_team),
+            patch("app.services.agent_manager.get_or_start_agent_session", side_effect=_get_team),
             patch(
                 "app.services.agent_service.dispatch_user_message",
                 side_effect=_capture,
@@ -1192,11 +1202,11 @@ class TestSessionResolution:
             captured["session_id"] = session_id
             return (session_id, 0, str(uuid4()))
 
-        async def _get_team():
+        async def _get_team(*_args, **_kwargs):
             return MagicMock()
 
         with (
-            patch("app.services.team_manager.get_or_start_team", side_effect=_get_team),
+            patch("app.services.agent_manager.get_or_start_agent_session", side_effect=_get_team),
             patch(
                 "app.services.agent_service.dispatch_user_message",
                 side_effect=_capture,
@@ -1218,11 +1228,11 @@ class TestSessionResolution:
             captured["session_id"] = session_id
             return (str(uuid4()), 0, str(uuid4()))
 
-        async def _get_team():
+        async def _get_team(*_args, **_kwargs):
             return MagicMock()
 
         with (
-            patch("app.services.team_manager.get_or_start_team", side_effect=_get_team),
+            patch("app.services.agent_manager.get_or_start_agent_session", side_effect=_get_team),
             patch(
                 "app.services.agent_service.dispatch_user_message",
                 side_effect=_capture,
@@ -1231,3 +1241,5 @@ class TestSessionResolution:
             await scheduler._fire_task(task)
 
         assert captured["session_id"] is None
+
+# fmt: on

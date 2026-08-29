@@ -2,7 +2,7 @@ import type { QueryClient } from '@tanstack/react-query'
 import type { ThemePreference } from './theme'
 import { applyTheme, resolveTheme, themeStorageKey } from './theme'
 import { applyCacheInvalidations } from '@/stores/cache-invalidation-bridge'
-import type { CacheInvalidation } from '@/stores/useTeamStore'
+import type { CacheInvalidation } from '@/stores/useAgentStore'
 
 export type BroadcastMessage =
   | { type: 'theme_changed'; preference: ThemePreference; storageKey?: string }

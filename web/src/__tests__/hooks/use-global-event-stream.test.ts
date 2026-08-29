@@ -17,7 +17,7 @@ mock.module('@/api/global-events', () => ({ globalEventStream }))
 
 import { GlobalEventStream, handleGlobalEvent, reconcileCurrentSession, resetGlobalNotificationDedupe } from '@/hooks/use-global-event-stream'
 import { queryKeys } from '@/queries'
-import { useTeamStore } from '@/stores/useTeamStore'
+import { useAgentStore } from '@/stores/useAgentStore'
 import { useLspInstallStore } from '@/stores/useLspInstallStore'
 
 const INITIAL = {
@@ -29,13 +29,13 @@ const INITIAL = {
   // Settled by default — most tests exercise the non-racing completion path
   // where the local stream's `done` has already landed before the global
   // `session_turn_completed` notification does.
-  isTeamWorking: false,
-  agentStreams: {} as import('@/stores/useTeamStore').TeamStore['agentStreams'],
+  isAgentWorking: false,
+  agentStreams: {} as import('@/stores/useAgentStore').AgentStore['agentStreams'],
 }
 
 beforeEach(() => {
   setApiBaseUrl('')
-  useTeamStore.setState(INITIAL)
+  useAgentStore.setState(INITIAL)
   sendDesktopNotification.mockClear()
   resetGlobalNotificationDedupe()
   globalEventStream.mockClear()
@@ -72,9 +72,9 @@ it('replaces the global stream on a backend switch and ignores old-backend LSP e
 
 it('reconciles the active session whenever the global connection opens', async () => {
   const client = new QueryClient()
-  const loadSession = mock(async () => { useTeamStore.setState({ isTeamWorking: true }) })
+  const loadSession = mock(async () => { useAgentStore.setState({ isAgentWorking: true }) })
   const connectStream = mock(() => new AbortController())
-  useTeamStore.setState({ sessionId: 'current', loadSession, connectStream })
+  useAgentStore.setState({ sessionId: 'current', loadSession, connectStream })
   render(createElement(QueryClientProvider, { client }, createElement(GlobalEventStream)))
 
   globalCallbacks?.onOpen?.()
@@ -86,11 +86,11 @@ it('reconciles the active session whenever the global connection opens', async (
 describe('handleGlobalEvent', () => {
   it('invalidates sessions and scheduler then restores and streams the current scheduled session', async () => {
     const client = new QueryClient()
-    client.setQueryData(queryKeys.team.sessions.infinite(), { pages: [], pageParams: [] })
+    client.setQueryData(queryKeys.session.sessions.infinite(), { pages: [], pageParams: [] })
     client.setQueryData(queryKeys.scheduler.list(), [])
     const loadSession = mock(async () => {})
     const connectStream = mock(() => new AbortController())
-    useTeamStore.setState({
+    useAgentStore.setState({
       sessionId: 'current',
       _workspace: '/workspace',
       _sessionGeneration: 4,
@@ -103,7 +103,7 @@ describe('handleGlobalEvent', () => {
       mode: 'coding', workspace: '/workspace', started_at: '2026-07-13T12:00:00Z',
     }, 1, () => 1)
 
-    expect(client.getQueryState(queryKeys.team.sessions.infinite())?.isInvalidated).toBe(true)
+    expect(client.getQueryState(queryKeys.session.sessions.infinite())?.isInvalidated).toBe(true)
     expect(client.getQueryState(queryKeys.scheduler.list())?.isInvalidated).toBe(true)
     expect(loadSession).toHaveBeenCalledWith('current', '/workspace')
     expect(connectStream).toHaveBeenCalledTimes(1)
@@ -111,9 +111,9 @@ describe('handleGlobalEvent', () => {
 
   it('does not restore or connect after a session-generation change', async () => {
     const client = new QueryClient()
-    const loadSession = mock(async () => { useTeamStore.setState({ _sessionGeneration: 2 }) })
+    const loadSession = mock(async () => { useAgentStore.setState({ _sessionGeneration: 2 }) })
     const connectStream = mock(() => new AbortController())
-    useTeamStore.setState({ sessionId: 'current', _sessionGeneration: 1, loadSession, connectStream })
+    useAgentStore.setState({ sessionId: 'current', _sessionGeneration: 1, loadSession, connectStream })
 
     await handleGlobalEvent(client, 'session_turn_started', { session_id: 'current' }, 1, () => 1)
 
@@ -126,8 +126,8 @@ describe('handleGlobalEvent', () => {
     const loadSession = mock(async () => {})
     // The shared harness beforeEach resets *state*, not actions — restore the
     // real action so the fallback-path tests below still exercise it.
-    const realReconcile = useTeamStore.getState().reconcileTurnTail
-    useTeamStore.setState({
+    const realReconcile = useAgentStore.getState().reconcileTurnTail
+    useAgentStore.setState({
       sessionId: 'current',
       _workspace: '/workspace',
       reconcileTurnTail,
@@ -144,26 +144,26 @@ describe('handleGlobalEvent', () => {
       expect(reconcileTurnTail).toHaveBeenCalledWith('current', '/workspace')
       expect(loadSession).not.toHaveBeenCalled()
     } finally {
-      useTeamStore.setState({ reconcileTurnTail: realReconcile })
+      useAgentStore.setState({ reconcileTurnTail: realReconcile })
     }
   })
 
   it('reconciles immediately when session_turn_completed races ahead of the local done event', async () => {
     // session_turn_completed travels over the separate global SSE connection
-    // and carries no ordering guarantee against the session's own team stream —
+    // and carries no ordering guarantee against the session's own agent stream —
     // it can be processed before that stream's trailing `done` flushes the live
     // blocks. That no longer needs to be waited out: the reconcile marks those
     // live blocks absorbed, so a later `done` drops them instead of duplicating
-    // the turn (proven in useTeamStore.reconcile.test.ts). Reconciling straight
+    // the turn (proven in useAgentStore.reconcile.test.ts). Reconciling straight
     // away keeps the transcript fresh without a timing window.
     const client = new QueryClient()
     const reconcileTurnTail = mock(async () => {})
     const loadSession = mock(async () => {})
-    const realReconcile = useTeamStore.getState().reconcileTurnTail
-    useTeamStore.setState({
+    const realReconcile = useAgentStore.getState().reconcileTurnTail
+    useAgentStore.setState({
       sessionId: 'current',
       _workspace: '/workspace',
-      isTeamWorking: true, // local `done` hasn't landed yet
+      isAgentWorking: true, // local `done` hasn't landed yet
       reconcileTurnTail,
       loadSession,
     })
@@ -175,7 +175,7 @@ describe('handleGlobalEvent', () => {
 
       expect(reconcileTurnTail).toHaveBeenCalledWith('current', '/workspace')
     } finally {
-      useTeamStore.setState({ reconcileTurnTail: realReconcile })
+      useAgentStore.setState({ reconcileTurnTail: realReconcile })
     }
   })
 
@@ -183,9 +183,9 @@ describe('handleGlobalEvent', () => {
   // synced baseline, which is the case in these two legacy tests.
   it('invalidates sessions and reloads the current session on session_turn_completed', async () => {
     const client = new QueryClient()
-    client.setQueryData(queryKeys.team.sessions.infinite(), { pages: [], pageParams: [] })
+    client.setQueryData(queryKeys.session.sessions.infinite(), { pages: [], pageParams: [] })
     const loadSession = mock(async () => {})
-    useTeamStore.setState({
+    useAgentStore.setState({
       sessionId: 'current',
       _workspace: '/workspace',
       loadSession,
@@ -196,15 +196,15 @@ describe('handleGlobalEvent', () => {
       status: 'completed',
     }, 1, () => 1)
 
-    expect(client.getQueryState(queryKeys.team.sessions.infinite())?.isInvalidated).toBe(true)
+    expect(client.getQueryState(queryKeys.session.sessions.infinite())?.isInvalidated).toBe(true)
     expect(loadSession).toHaveBeenCalledWith('current', '/workspace')
   })
 
   it('invalidates sessions and reloads the current session on session_turn_completed (stopped)', async () => {
     const client = new QueryClient()
-    client.setQueryData(queryKeys.team.sessions.infinite(), { pages: [], pageParams: [] })
+    client.setQueryData(queryKeys.session.sessions.infinite(), { pages: [], pageParams: [] })
     const loadSession = mock(async () => {})
-    useTeamStore.setState({
+    useAgentStore.setState({
       sessionId: 'current',
       _workspace: '/workspace',
       loadSession,
@@ -215,7 +215,7 @@ describe('handleGlobalEvent', () => {
       status: 'stopped',
     }, 1, () => 1)
 
-    expect(client.getQueryState(queryKeys.team.sessions.infinite())?.isInvalidated).toBe(true)
+    expect(client.getQueryState(queryKeys.session.sessions.infinite())?.isInvalidated).toBe(true)
     expect(loadSession).toHaveBeenCalledWith('current', '/workspace')
   })
 
@@ -224,7 +224,7 @@ describe('handleGlobalEvent', () => {
   // every single turn.
   it('patches running in place on session_turn_completed without refetching the list', async () => {
     const client = new QueryClient()
-    client.setQueryData(queryKeys.team.sessions.infinite(), {
+    client.setQueryData(queryKeys.session.sessions.infinite(), {
       pages: [{
         data: [{ id: 'current', title: 'T', agent_name: 'lead', created_at: null, updated_at: null, running: true }],
         next_cursor: null,
@@ -232,14 +232,14 @@ describe('handleGlobalEvent', () => {
       }],
       pageParams: [null],
     })
-    useTeamStore.setState({ sessionId: 'current', _workspace: null, loadSession: mock(async () => {}) })
+    useAgentStore.setState({ sessionId: 'current', _workspace: null, loadSession: mock(async () => {}) })
 
     await handleGlobalEvent(client, 'session_turn_completed', {
       session_id: 'current', status: 'completed',
     }, 1, () => 1)
 
-    expect(client.getQueryState(queryKeys.team.sessions.infinite())?.isInvalidated).toBe(false)
-    const data = client.getQueryData(queryKeys.team.sessions.infinite()) as {
+    expect(client.getQueryState(queryKeys.session.sessions.infinite())?.isInvalidated).toBe(false)
+    const data = client.getQueryData(queryKeys.session.sessions.infinite()) as {
       pages: { data: { running?: boolean }[] }[]
     }
     expect(data.pages[0].data[0].running).toBe(false)
@@ -251,7 +251,7 @@ describe('handleGlobalEvent', () => {
   it('does not invalidate the scheduler list on session_turn_completed', async () => {
     const client = new QueryClient()
     client.setQueryData(queryKeys.scheduler.list(), [])
-    useTeamStore.setState({ sessionId: 'other', loadSession: mock(async () => {}) })
+    useAgentStore.setState({ sessionId: 'other', loadSession: mock(async () => {}) })
 
     await handleGlobalEvent(client, 'session_turn_completed', {
       session_id: 'current', status: 'completed',
@@ -261,13 +261,13 @@ describe('handleGlobalEvent', () => {
   })
 
   it('reconciles the active session on resume and attaches its stream only when REST reports it working', async () => {
-    const loadSession = mock(async () => { useTeamStore.setState({ isTeamWorking: true }) })
+    const loadSession = mock(async () => { useAgentStore.setState({ isAgentWorking: true }) })
     const connectStream = mock(() => new AbortController())
-    useTeamStore.setState({
+    useAgentStore.setState({
       sessionId: 'current',
       _workspace: '/workspace',
       _sessionGeneration: 4,
-      isTeamWorking: false,
+      isAgentWorking: false,
       loadSession,
       connectStream,
     })
@@ -280,14 +280,14 @@ describe('handleGlobalEvent', () => {
 
   it('patches the active title and cached session detail without opening a stream', async () => {
     const client = new QueryClient()
-    client.setQueryData(queryKeys.team.sessions.detail('current'), { id: 'current', title: 'Old' })
+    client.setQueryData(queryKeys.session.sessions.detail('current'), { id: 'current', title: 'Old' })
     const connectStream = mock(() => new AbortController())
-    useTeamStore.setState({ sessionId: 'current', connectStream })
+    useAgentStore.setState({ sessionId: 'current', connectStream })
 
     await handleGlobalEvent(client, 'title_update', { session_id: 'current', title: 'New', updated_at: '2026-07-13T12:00:00Z' }, 1, () => 1)
 
-    expect(useTeamStore.getState().sessionTitle).toBe('New')
-    expect(client.getQueryData(queryKeys.team.sessions.detail('current'))).toEqual({ id: 'current', title: 'New' })
+    expect(useAgentStore.getState().sessionTitle).toBe('New')
+    expect(client.getQueryData(queryKeys.session.sessions.detail('current'))).toEqual({ id: 'current', title: 'New' })
     expect(connectStream).not.toHaveBeenCalled()
   })
 
@@ -330,7 +330,7 @@ describe('handleGlobalEvent', () => {
    */
   it('notifies for a question on a session the user is not viewing', async () => {
     const client = new QueryClient()
-    useTeamStore.setState({ sessionId: 'other-session' })
+    useAgentStore.setState({ sessionId: 'other-session' })
     const payload = {
       notification_id: 'notice-q1', session_id: 'asking-session', kind: 'input_needed',
       title: 'Input needed', body: 'Which package manager?',
@@ -345,7 +345,7 @@ describe('handleGlobalEvent', () => {
 
   it('leaves the focus check in charge when the asking session is open', async () => {
     const client = new QueryClient()
-    useTeamStore.setState({ sessionId: 'asking-session' })
+    useAgentStore.setState({ sessionId: 'asking-session' })
     const payload = {
       notification_id: 'notice-q2', session_id: 'asking-session', kind: 'input_needed',
       title: 'Input needed', body: 'Which package manager?',
@@ -360,7 +360,7 @@ describe('handleGlobalEvent', () => {
 
   it('badges the session row so another window sees the stopped session', async () => {
     const client = new QueryClient()
-    client.setQueryData(queryKeys.team.sessions.all(), {
+    client.setQueryData(queryKeys.session.sessions.all(), {
       pages: [{ data: [{ id: 'asking-session', running: true }], next_cursor: null }],
       pageParams: [undefined],
     })
@@ -371,7 +371,7 @@ describe('handleGlobalEvent', () => {
 
     await handleGlobalEvent(client, 'desktop_notification', payload, 1, () => 1)
 
-    const row = (client.getQueryData(queryKeys.team.sessions.all()) as {
+    const row = (client.getQueryData(queryKeys.session.sessions.all()) as {
       pages: { data: { needs_input?: boolean }[] }[]
     }).pages[0].data[0]
     expect(row.needs_input).toBe(true)

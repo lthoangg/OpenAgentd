@@ -1,8 +1,8 @@
 import type { QueryClient } from '@tanstack/react-query'
 import type { WorktreeInfo } from '@/api/types'
-import { removeWorktree, resolveTeamSession } from '@/api/client'
+import { removeWorktree, resolveSession } from '@/api/client'
 import { prependSession, prependWorkspaceSession } from '@/stores/cache-invalidation-bridge'
-import { useTeamStore } from '@/stores/useTeamStore'
+import { useAgentStore } from '@/stores/useAgentStore'
 import { saveLastCodingWorkspace } from '@/utils/workspace'
 import { isTransientNetworkError } from '@/utils/errors'
 import { worktreeNameSlug } from './CodingSidebar/utils'
@@ -64,8 +64,8 @@ export async function submitWorktreeSession(options: {
   onMobileClose?: () => void
   loadWorktreesForSource: (path: string) => Promise<WorktreeInfo[]>
 }): Promise<SubmitWorktreeResult> {
-  const state = useTeamStore.getState()
-  const session = await resolveTeamSession({
+  const state = useAgentStore.getState()
+  const session = await resolveSession({
     workspace: options.worktreeTarget,
     worktreeFrom: options.worktreeTarget,
     worktreeName: options.worktreeName || 'session',
@@ -76,7 +76,7 @@ export async function submitWorktreeSession(options: {
   const path = session.workspace
   if (!path) throw new Error('Worktree session did not return a workspace')
   saveLastCodingWorkspace(path)
-  const nextState = useTeamStore.getState()
+  const nextState = useAgentStore.getState()
   nextState.beginResolvedSession(session.id, {
     workspace: path,
     model: session.model ?? nextState.sessionModel,

@@ -46,7 +46,7 @@ export function ModeWorkspaceFields({
         <p id={workspaceErrorId} className="mt-1 text-xs text-(--color-error)">{workspaceError}</p>
       )}
       <p className="mt-1 text-xs text-(--color-text-muted)">
-        Delivers to the coding team for the selected workspace.{' '}
+        Delivers to the coding agent for the selected workspace.{' '}
         <span className="text-(--color-text-subtle)">Workspaces come from saved coding workspaces.</span>
       </p>
     </div>

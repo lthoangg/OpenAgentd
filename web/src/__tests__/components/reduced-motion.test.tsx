@@ -58,7 +58,7 @@ mock.module('@/hooks/useReducedMotion', () => ({ useReducedMotion: () => true })
 const { render, cleanup, screen } = await import('@testing-library/react')
 const userEvent = (await import('@testing-library/user-event')).default
 const { ToolCall } = await import('@/components/ToolCall')
-const { MobileChatActions } = await import('@/components/TeamChatView/MobileChatActions')
+const { MobileChatActions } = await import('@/components/AgentChatView/MobileChatActions')
 const { SettingsPage } = await import('@/components/settings/SettingsPage')
 
 afterEach(() => {

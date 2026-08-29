@@ -2,7 +2,7 @@
 
 The role string ("lead", "member", or "agent" as a fallback) is read by
 :func:`load_plugin_hooks` to evaluate each plugin's ``applies_to`` filter.
-Callers that drive ``Agent.run()`` (today: team lead/member) push their
+Callers that drive ``Agent.run()`` push their
 role onto a :class:`contextvars.ContextVar` so the agent loop picks it up
 without an extra parameter on every call site.
 

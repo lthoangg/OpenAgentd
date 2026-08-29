@@ -3,7 +3,7 @@ import { createRef, useRef } from 'react'
 import { render, screen, cleanup, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { FloatingInputComposer } from '@/components/FloatingInputComposer'
-import { useTeamStore } from '@/stores/useTeamStore'
+import { useAgentStore } from '@/stores/useAgentStore'
 import type { InputComposerHandle } from '@/components/InputComposer'
 
 let mockIsMobile = false
@@ -50,7 +50,7 @@ const STORAGE_KEY = 'oa-input-position'
 afterEach(cleanup)
 beforeEach(() => {
   localStorage.clear()
-  useTeamStore.setState({ _pendingMessages: [] })
+  useAgentStore.setState({ _pendingMessages: [] })
   mockIsMobile = false
 })
 
@@ -216,7 +216,7 @@ describe('FloatingInputComposer', () => {
   })
 
   it('does not render queued messages inside the floating composer', () => {
-    useTeamStore.setState({
+    useAgentStore.setState({
       sessionId: 'session-a',
       _pendingMessages: [
         { id: 'pm-1', sessionId: 'session-a', content: 'first queued message' },

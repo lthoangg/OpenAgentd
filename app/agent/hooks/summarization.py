@@ -531,7 +531,7 @@ class SummarizationHook(BaseAgentHook):
 
         * **Inbox message from another agent** — ``extra["from_agent"]`` is set
           to an agent name other than ``"user"``.  These are injected by
-          ``TeamInboxHook.before_model`` between LLM iterations and must not
+          an inbox hook between LLM iterations and must not
           be mistaken for a user-turn start.
         * **Summary message** — ``is_summary=True``.  Summaries are
           ``HumanMessage`` rows but they anchor past history, not new user input.
@@ -560,7 +560,7 @@ class SummarizationHook(BaseAgentHook):
         # Internal synthetics (/continue directive, mention context blocks).
         if extra.get("hidden_from_summary"):
             return False
-        # Inbox messages injected from other team members mid-loop.
+        # Queued messages injected while the turn is running.
         from_agent = extra.get("from_agent")
         if from_agent is not None and from_agent != "user":
             return False
@@ -625,7 +625,7 @@ class SummarizationHook(BaseAgentHook):
         self._pending_summary = (ctx, state)
 
         # The actual summariser LLM call runs from wrap_model_call(), after
-        # earlier prompt-building wrappers (date, memory, team protocol,
+        # earlier prompt-building wrappers (date, memory, agent protocol,
         # workspace instructions, etc.) have produced the same system prompt
         # the normal chat call would use. That keeps summarisation shaped like
         # a normal request with one extra final user instruction, preserving

@@ -23,7 +23,7 @@ from app.api.routes.scheduler import router as scheduler_router
 from app.api.routes.settings import router as settings_router
 from app.api.routes.skills import router as skills_router
 from app.api.routes.snippets import router as snippets_router
-from app.api.routes.team import router as team_router
+from app.api.routes.agent import router as agent_router
 from app.api.routes.terminal import router as terminal_router
 from app.core.config import settings
 from app.core.desktop_auth import DesktopTokenMiddleware
@@ -38,9 +38,9 @@ from app.core.otel_retention import start_otel_retention, stop_otel_retention
 from app.core.workspace_init import ensure_workspace_initialized
 from app.scheduler.scheduler import task_scheduler
 from app.services import (
+    agent_manager,
     event_broadcaster,
     memory_stream_store as stream_store,
-    team_manager,
 )
 
 from app.core.version import VERSION
@@ -93,10 +93,10 @@ async def lifespan(app: FastAPI):
 
     # Parse-only validation at boot: surfaces malformed agent ``.md`` files
     # immediately instead of waiting for the first request to fail.  The
-    # team itself is built lazily on the first chat / scheduler fire — see
-    # ``app.services.team_manager.get_or_start_team``.
+    # The agent session is built lazily on the first chat / scheduler fire —
+    # see ``app.services.agent_manager.get_or_start_agent_session``.
     try:
-        if not team_manager.validate_agents_dir():
+        if not agent_manager.validate_agents_dir():
             logger.warning("agents_dir_empty_or_missing path={}", settings.AGENTS_DIR)
     except ValueError as exc:
         logger.error("agents_dir_invalid path={} error={}", settings.AGENTS_DIR, exc)
@@ -115,7 +115,7 @@ async def lifespan(app: FastAPI):
 
     await terminal_service.close_all()
     await task_scheduler.stop()
-    await team_manager.stop()
+    await agent_manager.stop()
     await mcp_manager.stop()
     from app.services.lsp import lsp_manager
 
@@ -133,7 +133,7 @@ def create_app() -> FastAPI:
     """Construct and configure the FastAPI application."""
     app = FastAPI(
         title="OpenAgentd",
-        description="On-machine AI agents",
+        description="On-machine coding agent",
         version=VERSION,
         docs_url=None,
         redoc_url=None,
@@ -173,7 +173,7 @@ def create_app() -> FastAPI:
     # ── Routers (all under /api) ─────────────────────────────────────────────
     app.include_router(health_router, prefix="/api/health", tags=["health"])
     app.include_router(events_router, prefix="/api/events", tags=["events"])
-    app.include_router(team_router, prefix="/api/team", tags=["team"])
+    app.include_router(agent_router, prefix="/api/agent", tags=["agent"])
     app.include_router(agents_router, prefix="/api/agents", tags=["agents"])
     app.include_router(skills_router, prefix="/api/skills", tags=["skills"])
     app.include_router(commands_router, prefix="/api/commands", tags=["commands"])

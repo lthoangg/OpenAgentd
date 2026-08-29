@@ -6,7 +6,7 @@
  */
 
 export * from './_shared'
-export * from './team'
+export * from './agent'
 export * from './observability'
 export * from './misc'
 export * from './agents'

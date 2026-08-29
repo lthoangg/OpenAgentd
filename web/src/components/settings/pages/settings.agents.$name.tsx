@@ -1,10 +1,6 @@
 import { useState } from 'react'
-import { Trash2 } from 'lucide-react'
-
 import {
-  useAgentFileQuery,
-  useAgentFilesQuery,
-  useDeleteAgentMutation,
+  useCodeAgentQuery,
   useUpdateAgentMutation,
 } from '@/queries'
 import { useToastStore } from '@/stores/useToastStore'
@@ -14,31 +10,20 @@ import { EditorSubHeader } from '@/components/settings/EditorSubHeader'
 import { contentEquals } from '@/components/settings/frontmatter'
 import { validateAgentDraft } from '@/components/settings/schema'
 import { Button } from '@/components/ui/button'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
 
 interface AgentEditorPageProps {
-  name: string
   onBack: () => void
 }
 
-export function AgentEditorPage({ name, onBack }: AgentEditorPageProps) {
+export function AgentEditorPage({ onBack }: AgentEditorPageProps) {
+  const name = 'code'
   const push = useToastStore((s) => s.push)
-  const { data, isLoading, isError, error, refetch } = useAgentFileQuery(name)
-  const { data: agentsData } = useAgentFilesQuery()
+  const { data, isLoading, isError, error, refetch } = useCodeAgentQuery()
   const updateMut = useUpdateAgentMutation()
-  const deleteMut = useDeleteAgentMutation()
 
   const [draft, setDraft] = useState<string>(() => data?.content ?? '')
   const [saveError, setSaveError] = useState<string | null>(null)
   const [mode, setMode] = useState<'form' | 'raw'>('form')
-  const [deleteOpen, setDeleteOpen] = useState(false)
 
   // Re-seed draft when navigating to a different agent or when the query
   // first resolves. Using the agent name as the sentinel means switching
@@ -54,8 +39,6 @@ export function AgentEditorPage({ name, onBack }: AgentEditorPageProps) {
   const draftErrors = dirty ? validateAgentDraft(draft) : null
   const invalid = draftErrors !== null
   const firstDraftError = draftErrors ? Object.values(draftErrors)[0] : null
-  const currentSummary = agentsData?.agents.find((agent) => agent.name === name)
-  const isBuiltIn = currentSummary ? isBuiltInAgent(currentSummary.name, currentSummary.role) : false
 
   const handleSave = async () => {
     setSaveError(null)
@@ -75,22 +58,11 @@ export function AgentEditorPage({ name, onBack }: AgentEditorPageProps) {
     }
   }
 
-  const handleDelete = async () => {
-    try {
-      await deleteMut.mutateAsync(name)
-      push({ tone: 'success', title: `Deleted "${name}"` })
-      onBack()
-    } catch (err) {
-      const msg = err instanceof ApiValidationError ? err.message : String(err)
-      push({ tone: 'error', title: 'Delete failed', description: msg })
-    }
-  }
-
   return (
     <div className="flex h-full flex-col">
       <EditorSubHeader
         kind="agent"
-        name={name}
+        name="Coding agent"
         path={data?.path}
         dirty={dirty}
         invalid={invalid}
@@ -110,7 +82,6 @@ export function AgentEditorPage({ name, onBack }: AgentEditorPageProps) {
           {data && (
             <AgentForm
               initial={data.content}
-              agentPath={name}
               onChange={setDraft}
               disabled={updateMut.isPending}
               isNew={false}
@@ -133,41 +104,11 @@ export function AgentEditorPage({ name, onBack }: AgentEditorPageProps) {
                 </>
               )}
             </div>
-            {data && !isBuiltIn && (
-              <Button variant="danger" size="xs" className="min-h-11 md:min-h-0"
-                onClick={() => setDeleteOpen(true)} disabled={deleteMut.isPending}>
-                <Trash2 size={11} aria-hidden="true" />
-                Delete agent
-              </Button>
-            )}
+            <span />
           </div>
         </div>
       </div>
 
-      <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
-        <DialogContent showCloseButton={false}>
-          <DialogHeader>
-            <DialogTitle>Delete agent</DialogTitle>
-            <DialogDescription>
-              Delete `{name}.md` from the agents config directory. This cannot be undone.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter className="p-3">
-            <Button type="button" variant="default" onClick={() => setDeleteOpen(false)}>Cancel</Button>
-            <Button type="button" variant="danger" onClick={handleDelete} disabled={deleteMut.isPending}>Delete</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   )
-}
-
-const NORMAL_BUILT_INS = new Set(['openagentd', 'explorer', 'executor'])
-const CODING_BUILT_INS = new Set(['openagentd', 'coder', 'explorer'])
-
-function isBuiltInAgent(name: string, role: string): boolean {
-  const isCoding = name.startsWith('coding/')
-  const basename = name.split('/').pop() ?? name
-  if (role === 'lead') return basename === 'openagentd'
-  return isCoding ? CODING_BUILT_INS.has(basename) : NORMAL_BUILT_INS.has(basename)
 }

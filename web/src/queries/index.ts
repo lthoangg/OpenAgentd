@@ -1,20 +1,17 @@
 export { useHealthQuery } from './useHealthQuery'
-export { useTeamAgentsQuery } from './useAgentsQuery'
-export { useTeamStatusQuery } from './useTeamStatusQuery'
+export { useAgentsQuery } from './useAgentsQuery'
+export { useAgentStatusQuery } from './useAgentStatusQuery'
 export {
-  useTeamSessionsQuery,
-  useDeleteTeamSessionMutation,
-  useUpdateTeamSessionTitleMutation,
+  useSessionsQuery,
+  useDeleteSessionMutation,
+  useUpdateSessionTitleMutation,
 } from './useSessionsQuery'
 export { useWorkspaceFilesQuery } from './useWorkspaceFilesQuery'
 export {
-  useAgentFilesQuery,
-  useAgentFileQuery,
+  useCodeAgentQuery,
   useRegistryQuery,
-  useCreateAgentMutation,
   useUpdateAgentMutation,
-  useDeleteAgentMutation,
-} from './useAgentFilesQuery'
+} from './useAgentSettingsQueries'
 export {
   useSkillFilesQuery,
   useSkillFileQuery,

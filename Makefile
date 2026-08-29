@@ -103,10 +103,10 @@ health-json: ## Same as 'health' but emit JSON (for baselines / CI)
 	uv run python -m scripts.codehealth --json
 
 prompt-budget: ## Count system prompt, tool schema, and bundled skill tokens
-	@tmp=$$(mktemp -d); TMP_AGENTS=$$tmp uv run python -c 'import os; from pathlib import Path; from app.agent.loader import ensure_builtin_agent_blueprints, ensure_builtin_openagentd_lead; p=Path(os.environ["TMP_AGENTS"]); ensure_builtin_agent_blueprints(p, mode="normal"); ensure_builtin_openagentd_lead(p, mode="normal")'; uv run python -m manual.inspect_prompt --dir $$tmp --date 2026-01-01 --skills-scope builtin --stats-only; status=$$?; rm -rf $$tmp; exit $$status
+	@tmp=$$(mktemp -d); TMP_AGENTS=$$tmp uv run python -c 'import os; from pathlib import Path; from app.agent.loader import ensure_builtin_code_lead; p=Path(os.environ["TMP_AGENTS"]); ensure_builtin_code_lead(p)'; uv run python -m manual.inspect_prompt --dir $$tmp --date 2026-01-01 --skills-scope builtin --stats-only; status=$$?; rm -rf $$tmp; exit $$status
 
 prompt-budget-json: ## Same as prompt-budget but emit stable JSON for tracking/CI
-	@tmp=$$(mktemp -d); TMP_AGENTS=$$tmp uv run python -c 'import os; from pathlib import Path; from app.agent.loader import ensure_builtin_agent_blueprints, ensure_builtin_openagentd_lead; p=Path(os.environ["TMP_AGENTS"]); ensure_builtin_agent_blueprints(p, mode="normal"); ensure_builtin_openagentd_lead(p, mode="normal")'; uv run python -m manual.inspect_prompt --dir $$tmp --date 2026-01-01 --skills-scope builtin --stats-only --json; status=$$?; rm -rf $$tmp; exit $$status
+	@tmp=$$(mktemp -d); TMP_AGENTS=$$tmp uv run python -c 'import os; from pathlib import Path; from app.agent.loader import ensure_builtin_code_lead; p=Path(os.environ["TMP_AGENTS"]); ensure_builtin_code_lead(p)'; uv run python -m manual.inspect_prompt --dir $$tmp --date 2026-01-01 --skills-scope builtin --stats-only --json; status=$$?; rm -rf $$tmp; exit $$status
 
 migrate: ## Run Alembic migrations (dev only — production auto-migrates on startup)
 	uv run alembic -c app/alembic.ini upgrade head

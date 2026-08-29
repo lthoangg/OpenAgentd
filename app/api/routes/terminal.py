@@ -37,7 +37,7 @@ from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 from loguru import logger
 from pydantic import BaseModel, Field
 
-from app.services import team_manager, terminal_service
+from app.services import agent_manager, terminal_service
 
 router = APIRouter()
 
@@ -74,7 +74,7 @@ class TicketRequest(BaseModel):
     """Exactly one cwd source: a coding workspace path OR a chat session id.
 
     - ``workspace`` (coding mode): client-supplied absolute path, validated
-      through ``team_manager.validate_workspace`` (must exist, blocklisted
+      through ``agent_manager.validate_workspace`` (must exist, blocklisted
       system roots rejected).
     - ``session_id`` (coding workspace): UUID only — the server derives the
       path from ``OPENAGENTD_WORKSPACE_DIR``, so no client-controlled path
@@ -103,7 +103,7 @@ def _prune_expired_tickets() -> None:
 async def issue_ticket(body: TicketRequest) -> TicketResponse:
     """Resolve the cwd source and mint a single-use WS connect ticket."""
     try:
-        resolved = team_manager.validate_workspace(body.workspace)
+        resolved = agent_manager.validate_workspace(body.workspace)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 

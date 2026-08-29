@@ -63,6 +63,7 @@ def _perform_actions(
     headers: dict[str, str],
     trigger_task: str | None,
     message: str | None,
+    model: str | None = None,
 ) -> None:
     if trigger_task:
         response = httpx.post(
@@ -73,9 +74,12 @@ def _perform_actions(
         response.raise_for_status()
         print(f"triggered scheduled task: {trigger_task}")
     if message:
+        payload = {"message": message, "workspace": "."}
+        if model:
+            payload["model"] = model
         response = httpx.post(
-            f"{base}/team/chat",
-            data={"message": message},
+            f"{base}/agent/chat",
+            data=payload,
             headers=headers,
             timeout=30,
         )
@@ -90,6 +94,7 @@ def capture_events(
     expected: list[str],
     trigger_task: str | None,
     message: str | None,
+    model: str | None = None,
     out_path: Path | None,
     access_key: str | None,
 ) -> list[dict[str, Any]]:
@@ -113,7 +118,7 @@ def capture_events(
             response.raise_for_status()
             if trigger_task or message:
                 action_future = executor.submit(
-                    _perform_actions, base, headers, trigger_task, message
+                    _perform_actions, base, headers, trigger_task, message, model
                 )
 
             current_event = "message"
@@ -176,6 +181,7 @@ def main() -> None:
         "--message",
         help="Send a normal chat message after subscribing (can generate title/completion events)",
     )
+    parser.add_argument("--model", default=None, help="Model override")
     parser.add_argument("--out", type=Path, help="Write captured events as JSONL")
     parser.add_argument("--key", help="Optional backend access key")
     args = parser.parse_args()
@@ -189,6 +195,7 @@ def main() -> None:
         expected=expected,
         trigger_task=args.trigger_task,
         message=args.message,
+        model=args.model,
         out_path=args.out,
         access_key=args.key,
     )

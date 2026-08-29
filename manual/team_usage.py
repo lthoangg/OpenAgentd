@@ -1,4 +1,4 @@
-"""Print per-message usage metadata for a team session.
+"""Print per-message usage metadata for an agent session.
 
 Usage:
   uv run python -m manual.team_usage SESSION_ID
@@ -11,6 +11,7 @@ import argparse
 import httpx
 
 from manual._common import DEFAULT_BASE
+
 BASE = DEFAULT_BASE
 
 
@@ -19,7 +20,7 @@ def load_history(base: str, sid: str) -> tuple[dict, list[dict]]:
     before: str | None = None
     while True:
         params = {"before": before} if before else {}
-        r = httpx.get(f"{base}/team/{sid}/history", params=params)
+        r = httpx.get(f"{base}/agent/{sid}/history", params=params)
         r.raise_for_status()
         data = r.json()
         pages.append(data)
@@ -28,16 +29,14 @@ def load_history(base: str, sid: str) -> tuple[dict, list[dict]]:
         before = data["next_cursor"]
     pages.reverse()
 
-    lead = {"name": "lead", "messages": []}
-    members: dict[str, dict] = {}
+    lead = {"name": "openagentd", "messages": []}
     for page in pages:
         page_lead = page["lead"]
-        lead["name"] = page_lead.get("agent_name") or page_lead.get("name") or "lead"
+        lead["name"] = (
+            page_lead.get("agent_name") or page_lead.get("name") or "openagentd"
+        )
         lead["messages"].extend(page_lead["messages"])
-        for mb in page.get("members", []):
-            row = members.setdefault(mb["name"], {"name": mb["name"], "messages": []})
-            row["messages"].extend(mb["messages"])
-    return lead, list(members.values())
+    return lead, []
 
 
 def print_usage(agent_name: str, messages: list[dict]) -> None:
@@ -63,16 +62,14 @@ def print_usage(agent_name: str, messages: list[dict]) -> None:
 
 
 def main() -> None:
-    p = argparse.ArgumentParser(description="Print stored usage metadata for a team session")
-    p.add_argument("session_id", help="Team session ID")
+    p = argparse.ArgumentParser(description="Print stored usage metadata for a session")
+    p.add_argument("session_id", help="Session ID")
     p.add_argument("--base", default=BASE)
     args = p.parse_args()
     base = args.base.rstrip("/")
 
-    lead, members = load_history(base, args.session_id)
+    lead, _ = load_history(base, args.session_id)
     print_usage(lead["name"], lead["messages"])
-    for member in members:
-        print_usage(member["name"], member["messages"])
 
 
 if __name__ == "__main__":

@@ -28,7 +28,7 @@ openagentd transfer migrate openclaw --from ~/.openclaw/workspace --model openai
 
 The importer reads these files when present: `AGENTS.md`, `SOUL.md`, `SOULS.md`, `TOOLS.md`.
 
-It writes one lead agent to `~/.config/openagentd/agents/openclaw.md`. Existing files are not overwritten unless you pass `--force`. The command also supports `--config-dir` for importing into a non-default OpenAgentd config directory.
+It writes one agent to `~/.config/openagentd/agents/openclaw.md`. Existing files are not overwritten unless you pass `--force`. The command also supports `--config-dir` for importing into a non-default OpenAgentd config directory.
 
 Use `--name` if you want a different agent filename:
 
@@ -46,7 +46,7 @@ openagentd transfer migrate hermes --from ~/.hermes --model openai:gpt-5.5
 
 The importer reads these files when present: `SOUL.md`, `.hermes.md`, `HERMES.md`, `AGENTS.md`, `CLAUDE.md`, `.cursorrules`.
 
-It writes one lead agent to `~/.config/openagentd/agents/hermes.md`. Existing files are not overwritten unless you pass `--force`. The command also supports `--config-dir` for importing into a non-default OpenAgentd config directory.
+It writes one agent to `~/.config/openagentd/agents/hermes.md`. Existing files are not overwritten unless you pass `--force`. The command also supports `--config-dir` for importing into a non-default OpenAgentd config directory.
 
 Use `--from` with a project directory if your Hermes context is project-local instead of under `~/.hermes`.
 

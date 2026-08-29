@@ -36,6 +36,7 @@ from pathlib import Path
 import httpx
 
 from manual._common import DEFAULT_BASE
+
 BASE = DEFAULT_BASE
 DEFAULT_WAIT = 180
 
@@ -64,11 +65,15 @@ WARMUP_PROMPTS = [
 # ── HTTP helpers ────────────────────────────────────────────────────────────
 
 
-def post_team_message(base: str, message: str, session_id: str | None) -> str:
-    payload: dict = {"message": message}
+def post_agent_message(
+    base: str, message: str, session_id: str | None, model: str | None = None
+) -> str:
+    payload: dict = {"message": message, "workspace": "."}
     if session_id:
         payload["session_id"] = session_id
-    r = httpx.post(f"{base}/team/chat", data=payload)
+    if model:
+        payload["model"] = model
+    r = httpx.post(f"{base}/agent/chat", data=payload)
     r.raise_for_status()
     return r.json()["session_id"]
 
@@ -77,7 +82,9 @@ def wait_for_done(base: str, sid: str, timeout: int) -> bool:
     """Drain the SSE stream until ``done`` arrives. Returns True on clean exit."""
     start = time.monotonic()
     try:
-        with httpx.stream("GET", f"{base}/team/{sid}/stream", timeout=timeout + 5) as resp:
+        with httpx.stream(
+            "GET", f"{base}/agent/{sid}/stream", timeout=timeout + 5
+        ) as resp:
             resp.raise_for_status()
             for line in resp.iter_lines():
                 if time.monotonic() - start > timeout:
@@ -115,7 +122,9 @@ def capture_summarisation(
     print(f"{DIM}{'-' * 7}  {'-' * 22} {'-' * 60}{RESET}")
 
     try:
-        with httpx.stream("GET", f"{base}/team/{sid}/stream", timeout=timeout + 5) as resp:
+        with httpx.stream(
+            "GET", f"{base}/agent/{sid}/stream", timeout=timeout + 5
+        ) as resp:
             resp.raise_for_status()
             current_event = "message"
             data_buf: list[str] = []
@@ -176,11 +185,7 @@ def capture_summarisation(
                                 "t": elapsed,
                             }
                         )
-                        tag = (
-                            f"{RED}error{RESET}"
-                            if err
-                            else f"{GREEN}ok{RESET}"
-                        )
+                        tag = f"{RED}error{RESET}" if err else f"{GREEN}ok{RESET}"
                         print(
                             f"{elapsed:>6.2f}s  {GREEN}{current_event:22s}{RESET} "
                             f"agent={data.get('agent', '?')} {tag} "
@@ -241,9 +246,7 @@ def report(captured: dict) -> int:
     print(f"  end:     {len(ends)}")
     print(f"  done:    {captured['done']}")
     if captured["other"]:
-        other_str = ", ".join(
-            f"{k}={v}" for k, v in sorted(captured["other"].items())
-        )
+        other_str = ", ".join(f"{k}={v}" for k, v in sorted(captured["other"].items()))
         print(f"  {DIM}other:   {other_str}{RESET}")
 
     if not starts:
@@ -275,14 +278,20 @@ def report(captured: dict) -> int:
         joined = "".join(c["text"] for c in contents if c["agent"] == agent)
         summary = end["summary"]
         if end["error"]:
-            print(f"  {YELLOW}{agent}: end carries error=True, skipping delta check{RESET}")
+            print(
+                f"  {YELLOW}{agent}: end carries error=True, skipping delta check{RESET}"
+            )
             continue
         if not joined:
-            print(f"  {YELLOW}{agent}: no content deltas captured (provider may not stream){RESET}")
+            print(
+                f"  {YELLOW}{agent}: no content deltas captured (provider may not stream){RESET}"
+            )
             continue
         # The end summary is .strip()ed in the hook so allow trailing whitespace drift.
         if summary.strip() == joined.strip():
-            print(f"  {GREEN}{agent}: deltas reconstruct the final summary ({len(joined)} chars){RESET}")
+            print(
+                f"  {GREEN}{agent}: deltas reconstruct the final summary ({len(joined)} chars){RESET}"
+            )
         elif summary.strip().startswith(joined.strip()[: min(len(joined), 200)]):
             print(
                 f"  {YELLOW}{agent}: deltas are a prefix of the summary "
@@ -323,6 +332,7 @@ def main() -> int:
         help="Max seconds to wait for the streaming turn",
     )
     p.add_argument("--base", default=BASE, help="API base URL")
+    p.add_argument("--model", default=None, help="Model override")
     p.add_argument(
         "--out",
         type=Path,
@@ -339,17 +349,15 @@ def main() -> int:
         print(f"{BOLD}sending {args.warmup} warm-up turn(s) to grow context{RESET}")
         for i, msg in enumerate(WARMUP_PROMPTS[: args.warmup], 1):
             print(f"  [{i}/{args.warmup}] {msg[:60]}…", end="", flush=True)
-            sid = post_team_message(base, msg, sid)
+            sid = post_agent_message(base, msg, sid, model=args.model)
             ok = wait_for_done(base, sid, args.wait)
             print(f" {'ok' if ok else 'TIMEOUT'}")
         print(f"\n{BOLD}session{RESET}: {sid}")
 
     # Trigger fresh turn whose ``before_model`` will fire summarisation.
-    trigger = (
-        "Now write 250 words about the future of artificial general intelligence."
-    )
+    trigger = "Now write 250 words about the future of artificial general intelligence."
     print(f"\n{BOLD}trigger turn{RESET}: {trigger}")
-    sid = post_team_message(base, trigger, sid)
+    sid = post_agent_message(base, trigger, sid, model=args.model)
     print(f"{DIM}session: {sid}{RESET}\n")
 
     captured = capture_summarisation(base, sid, args.wait, args.out)

@@ -29,8 +29,6 @@ export type SettingsSection =
   // Replaced the former 'multimodal' | 'summarization' | 'title-generation'
   // sections, which are now collapsible groups on one Automation page.
   | 'automation'
-  | 'notifications'
-  | 'terminal'
 
 /**
  * Sections that are lists with `-new` / `-edit` drill-down views. Declared here
@@ -45,6 +43,12 @@ const DRILL_DOWN_FAMILIES = ['skills', 'mcp'] as const
  * empty pane) and for sidebar highlighting.
  */
 export function parentSection(section: SettingsSection): SettingsSection {
+  // Settings state is persisted without schema validation. Treat sections
+  // removed in older builds as About so an upgrade cannot reopen a dead page.
+  const persistedSection = section as string
+  if (persistedSection === 'notifications' || persistedSection === 'terminal') {
+    return 'about'
+  }
   return DRILL_DOWN_FAMILIES.find((f) => section.startsWith(f)) ?? section
 }
 

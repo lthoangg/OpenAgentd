@@ -45,8 +45,6 @@ import { McpServerDetailPage } from '@/components/settings/pages/settings.mcp.$n
 import { ProvidersSettingsPage } from '@/components/settings/pages/settings.providers'
 import { DeniedPathsSettingsPage } from '@/components/settings/pages/settings.denied_paths'
 import { AutomationSettingsPage } from '@/components/settings/pages/settings.automation'
-import { NotificationSettingsPage } from '@/components/settings/pages/settings.notifications'
-import { TerminalSettingsPage } from '@/components/settings/pages/settings.terminal'
 import { DURATIONS_S, EASINGS } from '@/lib/motion'
 
 // ── Sidebar ───────────────────────────────────────────────────────────────
@@ -270,8 +268,6 @@ function SectionContent({
     case 'denied_paths':
     case 'sandbox':      return <DeniedPathsSettingsPage />
     case 'automation':   return <AutomationSettingsPage />
-    case 'notifications': return <NotificationSettingsPage />
-    case 'terminal':     return <TerminalSettingsPage />
     case 'about':
     default:             return <SettingsHubPage />
   }

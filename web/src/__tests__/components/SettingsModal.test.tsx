@@ -63,8 +63,6 @@ mock.module('@/components/settings/pages/settings.denied_paths', () => ({ Denied
 mock.module('@/components/settings/pages/settings.multimodal', () => ({ MultimodalSettingsPage: () => <div>multimodal</div> }))
 mock.module('@/components/settings/pages/settings.summarization', () => ({ SummarizationSettingsPage: () => <div>summarization</div> }))
 mock.module('@/components/settings/pages/settings.title-generation', () => ({ TitleGenerationSettingsPage: () => <div>title-gen</div> }))
-mock.module('@/components/settings/pages/settings.notifications', () => ({ NotificationSettingsPage: () => <div>notifications</div> }))
-mock.module('@/components/settings/pages/settings.terminal', () => ({ TerminalSettingsPage: () => <div>terminal</div> }))
 
 import { SettingsModal } from '@/components/SettingsModal'
 import { useSettingsStore } from '@/stores/useSettingsStore'
@@ -104,6 +102,17 @@ describe('SettingsModal — mobile edge-swipe exclusion', () => {
     const backdrop = document.querySelector('[aria-hidden="true"]')
     expect(backdrop).not.toBeNull()
     expect(backdrop).toHaveAttribute('data-swipe-ignore')
+  })
+
+  it('falls back to About when an old removed section is restored from storage', () => {
+    useSettingsStore.setState({
+      open: true,
+      section: 'terminal' as never,
+      selectedName: null,
+    })
+    renderModal()
+
+    expect(screen.getByRole('button', { name: 'About openagentd' }).getAttribute('aria-current')).toBe('page')
   })
 })
 

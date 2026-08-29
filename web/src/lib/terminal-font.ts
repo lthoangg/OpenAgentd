@@ -9,11 +9,10 @@
  *   1. Ship a best-guess fallback stack of the most common Nerd Font names
  *      (MesloLGS NF — p10k's own recommendation — plus a few others) so
  *      many users get working glyphs with zero configuration.
- *   2. Let the user type the *exact* name of whatever they installed
- *      (Settings → Terminal), verify it actually resolves in this browser/
- *      webview via the Font Loading API (`document.fonts.check`), and put
- *      it first in the stack — covering every Nerd Font variant, not just
- *      the ones we guessed.
+ *   2. Respect an exact custom name when one is stored, verify it actually
+ *      resolves in this browser/webview via the Font Loading API
+ *      (`document.fonts.check`), and put it first in the stack — covering
+ *      every Nerd Font variant, not just the ones we guessed.
  *
  * The custom font (if set) is layered ON TOP of the guess stack, not a
  * replacement for it — an unresolved/typo'd custom name still degrades to
@@ -60,7 +59,7 @@ function quote(fontName: string): string {
  * Build the CSS `font-family` value xterm.js should use.
  *
  * Stack order (highest → lowest priority):
- *   1. User's custom font (if set in Settings → Terminal) — desktop precision path.
+ *   1. User's custom font, when set — desktop precision path.
  *   2. GUESS_STACK — common Nerd Font family names; resolves on desktop if installed.
  *   3. BUNDLED_ICONS_FAMILY — our bundled Symbols Nerd Font Mono (@font-face,
  *      unicode-range scoped to PUA icon blocks). Always resolves; guarantees

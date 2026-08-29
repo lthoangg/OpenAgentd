@@ -97,8 +97,8 @@ run from the terminal.
   notifications in the remote-backend mobile shell `[v1.34.0]`. Clicking a
   desktop completion or reminder notification restores OpenAgentd and opens
   its linked coding session `[v1.113.4]`. Per-session context
-  (coding workspace name when available). Settings → Notifications to toggle
-  or send a test. Notification sounds are handled by the operating system;
+  (coding workspace name when available). Notification sounds are handled by
+  the operating system;
   OpenAgentd does not play an extra in-app sound. Background-process completion
   alerts are deprecated and no longer emitted by app clients.
 - **Quick Open and Command Palette** `[v2.3.0]` — `⌘P`/`Ctrl+P` searches and
@@ -599,10 +599,7 @@ agent against it.
   debounced SIGWINCH resizing, and mobile key bar ergonomics (touch-and-hold arrow repeat,
   soft-keyboard focus preservation, quick symbol row).
   Terminal font defaults to a best-guess Nerd Font stack
-  (MesloLGS NF and similar) for correct Powerlevel10k/Starship glyph
-  rendering; Settings → Terminal lets you type the exact name and font size (9–24px) `[v1.118.0]`
-  of any font installed on your machine and verifies it resolves via the Font Loading API
-  before applying it live to every open terminal.
+  (MesloLGS NF and similar) for correct Powerlevel10k/Starship glyph rendering.
 - **Workspace status card** `[v1.18.0]` — empty coding sessions show the
   workspace path, branch, dirty state, last commit instead of the old
   agent-selection fallback.

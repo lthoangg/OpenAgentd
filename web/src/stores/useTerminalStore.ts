@@ -101,9 +101,9 @@ interface TerminalStore {
   rename: (id: string, title: string) => void
   /** Swap every live terminal's palette when the app theme resolves anew. */
   syncTheme: (theme: TerminalResolvedTheme) => void
-  /** Swap every live terminal's font stack (Settings → Terminal font change). */
+  /** Swap every live terminal's font stack when the stored preference changes. */
   syncFont: (customFont: string | null) => void
-  /** Swap every live terminal's font size (Settings → Terminal font size change). */
+  /** Swap every live terminal's font size when the stored preference changes. */
   syncFontSize: (fontSize: number) => void
   /** Close detached sessions idle past TERMINAL_IDLE_CLOSE_MS. */
   reapIdle: (now?: number) => void

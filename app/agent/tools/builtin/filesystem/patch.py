@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field
+import hashlib
 import json
 import os
 import re
+import stat
 import tempfile
 from pathlib import Path
 from typing import Literal
@@ -23,8 +25,11 @@ PatchKind = Literal["add", "update", "delete"]
 _DESCRIPTION = (
     "The only tool that creates, edits, deletes, or moves files. One envelope "
     "may change several files, and nothing is written unless every section "
-    "applies cleanly. To replace a file wholesale, delete and re-add it in the "
-    "same envelope. Directories cannot be deleted — use shell for that."
+    "applies cleanly. Changes are staged and rolled back on commit failure when "
+    "possible. Add and move destinations must not already exist unless they "
+    "were deleted earlier in the same envelope. To replace a file wholesale, "
+    "delete and re-add it in the same envelope. Directories cannot be deleted "
+    "— use shell for that."
 )
 
 _PATCH_TEXT_DESCRIPTION = """\
@@ -36,21 +41,26 @@ Each file section starts with one of:
       *** Move to: <path>   — rename/move the file after patching
   *** Delete File: <path>   — remove a file; no content follows
 
-Update hunks start with @@ and use +/- prefixes (space = context):
+Update hunks start with @@ (optionally followed by a class or function context
+header) and use +/- prefixes (space = context):
   @@
+  @@ def target_function():
   -old line
   +new line
    context line
 
-To scope a hunk after a unique literal line, use '@@ in: <anchor>':
+To scope a hunk after a unique literal line, '@@ in: <anchor>' is supported
+as a backwards-compatible alias:
   @@ in: def target_function():
   -old line
   +new line
 
-Context and removed lines must match the file exactly, whole lines only —
-copy them from a read rather than retyping. A hunk that matches nothing, or
-matches in more than one place, fails the whole envelope; add surrounding
-context lines to make it unique.
+Context and removed lines are matched as whole lines. Exact matches are tried
+first, followed by narrowly guarded trailing-whitespace, line-number, and
+uniform-indentation repairs; unchanged context bytes are preserved. A hunk
+that matches nothing, or matches in more than one place, fails the whole
+envelope; add surrounding context lines to make it unique. Context-only hunks
+act as sequential locators for the following hunk.
 Each update section needs at least one '-' or '+' line; a section of pure
 context changes nothing and is rejected rather than silently applied. To
 delete lines, prefix every line you want gone with '-' — pasting them bare
@@ -94,6 +104,8 @@ class Chunk:
     raw_old: list[str] = field(default_factory=list)
     raw_new: list[str] = field(default_factory=list)
     scope_anchor: str | None = None
+    scope_is_literal: bool = False
+    context_pairs: list[tuple[int, int]] = field(default_factory=list)
 
 
 @dataclass
@@ -103,6 +115,26 @@ class FilePatch:
     move_to: str | None = None
     contents: list[str] = field(default_factory=list)
     chunks: list[Chunk] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class FileSnapshot:
+    content: bytes
+    mode: int
+    digest: bytes
+
+
+@dataclass
+class VirtualFile:
+    content: bytes
+    mode: int
+
+
+DEFAULT_FILE_MODE = 0o644
+
+
+class PatchConflict(ValueError):
+    """Raised when a file changes between patch planning and commit."""
 
 
 def _clean_patch_text(patch_text: str) -> str:
@@ -182,11 +214,14 @@ def _parse_patch(patch_text: str) -> list[FilePatch]:
             scope_anchor = line.removeprefix("@@ in:").strip()
             if not scope_anchor:
                 raise ValueError("A scoped hunk must include an anchor after '@@ in:'.")
-            chunk = Chunk(scope_anchor=scope_anchor)
+            chunk = Chunk(scope_anchor=scope_anchor, scope_is_literal=True)
             continue
         if line.startswith("@@"):
             finish_chunk()
-            chunk = Chunk()
+            scope_anchor = line[2:]
+            if scope_anchor.startswith(" "):
+                scope_anchor = scope_anchor[1:]
+            chunk = Chunk(scope_anchor=scope_anchor.strip() or None)
             continue
         if current.kind == "add":
             if line.startswith("+"):
@@ -213,18 +248,27 @@ def _parse_patch(patch_text: str) -> list[FilePatch]:
             chunk.raw_old.append(line[1:])
         elif line.startswith(" "):
             text = line[1:]
+            old_index = len(chunk.old)
+            new_index = len(chunk.new)
             chunk.old.append(text)
             chunk.new.append(text)
+            chunk.context_pairs.append((old_index, new_index))
             chunk.raw_old.append(line)
             chunk.raw_new.append(line)
         elif line == "":
+            old_index = len(chunk.old)
+            new_index = len(chunk.new)
             chunk.old.append("")
             chunk.new.append("")
+            chunk.context_pairs.append((old_index, new_index))
             chunk.raw_old.append("")
             chunk.raw_new.append("")
         else:
+            old_index = len(chunk.old)
+            new_index = len(chunk.new)
             chunk.old.append(line)
             chunk.new.append(line)
+            chunk.context_pairs.append((old_index, new_index))
             chunk.raw_old.append(line)
             chunk.raw_new.append(line)
 
@@ -334,7 +378,15 @@ def _find_indentation_tolerant_matches(
     matches: list[int] = []
     for i in range(len(content_lines) - len(old_lines) + 1):
         window = content_lines[i : i + len(old_lines)]
-        if [line.strip() for line in window] == stripped_target:
+        if [line.strip() for line in window] != stripped_target:
+            continue
+        deltas = {
+            (len(candidate) - len(candidate.lstrip()))
+            - (len(expected) - len(expected.lstrip()))
+            for candidate, expected in zip(window, old_lines)
+            if candidate.strip() and expected.strip()
+        }
+        if len(deltas) == 1:
             matches.append(i)
     return matches
 
@@ -362,11 +414,66 @@ def _adjust_new_lines_indentation(
     return new_lines
 
 
-def _find_scope_anchor(content_lines: list[str], anchor: str, path: str) -> int:
-    """Find one literal scope anchor, tolerating trailing whitespace only."""
+def _find_header_anchor(
+    content_lines: list[str], anchor: str, path: str, scope_start: int
+) -> int:
+    """Find a contextual ``@@ header`` after the current search cursor."""
     starts = _find_line_matches(content_lines, [anchor], trimmed=False)
+    starts = [start for start in starts if start >= scope_start]
     if not starts:
-        starts = _find_line_matches(content_lines, [anchor], trimmed=True)
+        starts = [
+            idx
+            for idx, line in enumerate(content_lines)
+            if idx >= scope_start and line.rstrip() == anchor.rstrip()
+        ]
+    if not starts:
+        # Context headers commonly omit punctuation, e.g. ``@@ class Foo`` for
+        # a source line ``class Foo:``. Require a token boundary after
+        # stripping indentation so unrelated lines cannot become anchors.
+        needle = anchor.strip()
+        starts = [
+            idx
+            for idx, line in enumerate(content_lines)
+            if idx >= scope_start
+            and line.strip().startswith(needle)
+            and (
+                len(line.strip()) == len(needle)
+                or not line.strip()[len(needle)].isalnum()
+                and line.strip()[len(needle)] != "_"
+            )
+        ]
+    if not starts:
+        raise ValueError(
+            f"Could not find scope anchor in {path}: {anchor!r}. "
+            "Check that it matches a unique line in the current file."
+        )
+    if len(starts) > 1:
+        lines_str = ", ".join(f"line {idx + 1}" for idx in starts[:5])
+        if len(starts) > 5:
+            lines_str += f" (and {len(starts) - 5} more)"
+        raise ValueError(
+            f"Scope anchor is ambiguous in {path}. "
+            f"Found {len(starts)} matching locations at {lines_str}. "
+            "Use a unique literal anchor after '@@'."
+        )
+    return starts[0]
+
+
+def _find_scope_anchor(
+    content_lines: list[str], anchor: str, path: str, scope_start: int = 0
+) -> int:
+    """Find one literal scope anchor, tolerating trailing whitespace only."""
+    starts = [
+        start
+        for start in _find_line_matches(content_lines, [anchor], trimmed=False)
+        if start >= scope_start
+    ]
+    if not starts:
+        starts = [
+            start
+            for start in _find_line_matches(content_lines, [anchor], trimmed=True)
+            if start >= scope_start
+        ]
     if not starts:
         raise ValueError(
             f"Could not find scope anchor in {path}: {anchor!r}. "
@@ -445,75 +552,130 @@ def _apply_chunks_with_meta(
         content_lines.pop()
 
     line_delta = 0
+    cursor = 0
     hunks: list[dict[str, int]] = []
 
     for chunk in chunks:
-        if chunk.old == chunk.new:
-            continue
-
         old_lines, new_lines = chunk.old, chunk.new
-        scope_start = 0
+        scope_start = cursor
         if chunk.scope_anchor is not None:
-            scope_start = (
-                _find_scope_anchor(content_lines, chunk.scope_anchor, path) + 1
-            )
+            if chunk.scope_is_literal:
+                anchor_start = _find_scope_anchor(
+                    content_lines, chunk.scope_anchor, path, cursor
+                )
+            else:
+                anchor_start = _find_header_anchor(
+                    content_lines, chunk.scope_anchor, path, cursor
+                )
+            scope_start = anchor_start + 1
 
         def in_scope(matches: list[int]) -> list[int]:
             return [start for start in matches if start >= scope_start]
 
-        # 1. Exact match
-        starts = in_scope(_find_line_matches(content_lines, old_lines, trimmed=False))
-        # 2. Trailing whitespace tolerant match
-        if not starts:
+        # A context-only hunk is a real locator. It advances the cursor so a
+        # following hunk is matched after that block rather than globally.
+        if old_lines == new_lines:
+            if not old_lines:
+                cursor = scope_start
+                continue
             starts = in_scope(
-                _find_line_matches(content_lines, old_lines, trimmed=True)
-            )
+                _find_line_matches(content_lines, old_lines, trimmed=False)
+            ) or in_scope(_find_line_matches(content_lines, old_lines, trimmed=True))
+            if not starts and chunk.raw_old != chunk.old:
+                starts = in_scope(
+                    _find_line_matches(content_lines, chunk.raw_old, trimmed=False)
+                ) or in_scope(
+                    _find_line_matches(content_lines, chunk.raw_old, trimmed=True)
+                )
+            if not starts:
+                raise ValueError(
+                    _format_context_miss_error(path, content_lines, old_lines)
+                )
+            if len(starts) > 1:
+                raise ValueError(
+                    _format_ambiguous_context_error(path, starts, old_lines)
+                )
+            cursor = starts[0] + len(old_lines)
+            continue
 
-        # 3. Fallback: unstripped context lines (lines copied verbatim from source)
-        if not starts and chunk.raw_old != chunk.old:
+        if not old_lines:
+            start = scope_start
+            matched_window: list[str] = []
+            actual_new_lines = new_lines
+        else:
+            # 1. Exact match
             starts = in_scope(
-                _find_line_matches(content_lines, chunk.raw_old, trimmed=False)
-            ) or in_scope(
-                _find_line_matches(content_lines, chunk.raw_old, trimmed=True)
+                _find_line_matches(content_lines, old_lines, trimmed=False)
             )
-            if starts:
-                old_lines = chunk.raw_old
-                new_lines = chunk.raw_new
+            # 2. Trailing whitespace tolerant match
+            if not starts:
+                starts = in_scope(
+                    _find_line_matches(content_lines, old_lines, trimmed=True)
+                )
 
-        # 4. Fallback: line-number prefixes stripped (e.g. from read tool output "12:   foo")
-        if not starts:
-            bare_old = _strip_line_number_prefixes(old_lines)
-            if bare_old is not None:
-                bare_starts = in_scope(
-                    _find_line_matches(content_lines, bare_old, trimmed=False)
-                ) or in_scope(_find_line_matches(content_lines, bare_old, trimmed=True))
-                if bare_starts:
-                    starts = bare_starts
-                    old_lines = bare_old
-                    new_lines = _strip_line_number_prefixes(new_lines) or new_lines
+            # 3. Fallback: unstripped context lines (lines copied verbatim from source)
+            if not starts and chunk.raw_old != chunk.old:
+                starts = in_scope(
+                    _find_line_matches(content_lines, chunk.raw_old, trimmed=False)
+                ) or in_scope(
+                    _find_line_matches(content_lines, chunk.raw_old, trimmed=True)
+                )
+                if starts:
+                    old_lines = chunk.raw_old
+                    new_lines = chunk.raw_new
 
-        # 5. Fallback: uniform indentation shift
-        if not starts:
-            indent_starts = in_scope(
-                _find_indentation_tolerant_matches(content_lines, old_lines)
-            )
-            if len(indent_starts) == 1:
-                starts = indent_starts
-                window = content_lines[starts[0] : starts[0] + len(old_lines)]
-                new_lines = _adjust_new_lines_indentation(window, old_lines, new_lines)
-                old_lines = window
+            # 4. Fallback: line-number prefixes stripped (e.g. from read output)
+            if not starts:
+                bare_old = _strip_line_number_prefixes(old_lines)
+                if bare_old is not None:
+                    bare_starts = in_scope(
+                        _find_line_matches(content_lines, bare_old, trimmed=False)
+                    ) or in_scope(
+                        _find_line_matches(content_lines, bare_old, trimmed=True)
+                    )
+                    if bare_starts:
+                        starts = bare_starts
+                        old_lines = bare_old
+                        new_lines = _strip_line_number_prefixes(new_lines) or new_lines
 
-        if not starts:
-            raise ValueError(_format_context_miss_error(path, content_lines, chunk.old))
-        if len(starts) > 1:
-            raise ValueError(_format_ambiguous_context_error(path, starts, chunk.old))
+            # 5. Fallback: uniform indentation shift
+            if not starts:
+                indent_starts = in_scope(
+                    _find_indentation_tolerant_matches(content_lines, old_lines)
+                )
+                if len(indent_starts) == 1:
+                    starts = indent_starts
+                    old_lines = content_lines[starts[0] : starts[0] + len(old_lines)]
+                    new_lines = _adjust_new_lines_indentation(
+                        old_lines, chunk.old, new_lines
+                    )
 
-        start = starts[0]
+            if not starts:
+                raise ValueError(
+                    _format_context_miss_error(path, content_lines, chunk.old)
+                )
+            if len(starts) > 1:
+                raise ValueError(
+                    _format_ambiguous_context_error(path, starts, chunk.old)
+                )
+            start = starts[0]
+            matched_window = content_lines[start : start + len(old_lines)]
+
+            # Preserve actual source lines for context, even when matching
+            # succeeded only after trimming whitespace or repairing prefixes.
+            actual_new_lines = list(new_lines)
+            for old_index, new_index in chunk.context_pairs:
+                if old_index < len(matched_window) and new_index < len(
+                    actual_new_lines
+                ):
+                    actual_new_lines[new_index] = matched_window[old_index]
+
         new_start = start + 1
         old_start = new_start - line_delta
         hunks.append({"old_start": old_start, "new_start": new_start})
-        line_delta += len(new_lines) - len(old_lines)
-        content_lines[start : start + len(old_lines)] = new_lines
+        line_delta += len(actual_new_lines) - len(old_lines)
+        content_lines[start : start + len(old_lines)] = actual_new_lines
+        cursor = start + len(actual_new_lines)
 
     next_content = "\n".join(content_lines)
     if has_trailing_newline and content_lines:
@@ -523,14 +685,8 @@ def _apply_chunks_with_meta(
     return next_content, hunks
 
 
-def _atomic_write(path: Path, data: bytes) -> None:
-    """Write *data* to *path* via a same-directory temp file and ``os.replace``.
-
-    A direct ``write_bytes`` that fails partway leaves a truncated file, which
-    for the only file-mutation tool in the toolset means a half-patched source
-    file. ``os.replace`` is atomic on POSIX and Windows, so a reader either
-    sees the old content or the new content, never a partial write.
-    """
+def _stage_file(path: Path, data: bytes, mode: int) -> Path:
+    """Stage a fully flushed file beside its destination, preserving its mode."""
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp_name = tempfile.mkstemp(
         dir=path.parent, prefix=f".{path.name}.", suffix=".tmp"
@@ -538,13 +694,81 @@ def _atomic_write(path: Path, data: bytes) -> None:
     tmp_path = Path(tmp_name)
     try:
         with os.fdopen(fd, "wb") as handle:
+            os.fchmod(handle.fileno(), mode)
             handle.write(data)
             handle.flush()
             os.fsync(handle.fileno())
+        return tmp_path
+    except BaseException:
+        tmp_path.unlink(missing_ok=True)
+        raise
+
+
+def _atomic_write(path: Path, data: bytes, mode: int = DEFAULT_FILE_MODE) -> None:
+    """Write *data* atomically, using an explicit destination file mode."""
+    tmp_path = _stage_file(path, data, mode)
+    try:
         os.replace(tmp_path, path)
     except BaseException:
         tmp_path.unlink(missing_ok=True)
         raise
+
+
+def _digest(data: bytes) -> bytes:
+    return hashlib.blake2b(data, digest_size=32).digest()
+
+
+def _snapshot(path: Path) -> FileSnapshot | None:
+    if not path.exists():
+        return None
+    if not path.is_file():
+        raise IsADirectoryError(f"Path is a directory: {path}")
+    content = path.read_bytes()
+    return FileSnapshot(
+        content=content,
+        mode=stat.S_IMODE(path.stat().st_mode),
+        digest=_digest(content),
+    )
+
+
+def _assert_snapshot(path: Path, expected: FileSnapshot | None) -> None:
+    """Reject an external change made after preflight."""
+    if expected is None:
+        if path.exists():
+            raise PatchConflict(f"Path changed during patch: {path} was created")
+        return
+    if not path.exists() or not path.is_file():
+        raise PatchConflict(f"Path changed during patch: {path} was removed")
+    content = path.read_bytes()
+    mode = stat.S_IMODE(path.stat().st_mode)
+    if _digest(content) != expected.digest or mode != expected.mode:
+        raise PatchConflict(f"Path changed during patch: {path}")
+
+
+def _cleanup_paths(paths: list[Path]) -> None:
+    for path in paths:
+        try:
+            path.unlink(missing_ok=True)
+        except OSError:
+            logger.warning("patch_cleanup_failed path={}", path)
+
+
+def _cleanup_empty_dirs(paths: list[Path]) -> None:
+    for path in sorted(paths, key=lambda value: len(value.parts), reverse=True):
+        try:
+            path.rmdir()
+        except OSError:
+            pass
+
+
+def _ensure_parent(path: Path, created_dirs: list[Path]) -> None:
+    missing: list[Path] = []
+    parent = path.parent
+    while not parent.exists():
+        missing.append(parent)
+        parent = parent.parent
+    path.parent.mkdir(parents=True, exist_ok=True)
+    created_dirs.extend(missing)
 
 
 def _apply_patch(patch_text: str) -> str:
@@ -554,72 +778,128 @@ def _apply_patch(patch_text: str) -> str:
     """
     denied_paths = get_denied_paths()
     patches = _parse_patch(patch_text)
-    planned: list[
-        tuple[FilePatch, Path, Path | None, bytes | None, dict[str, object] | None]
-    ] = []
+    original: dict[Path, FileSnapshot | None] = {}
+    virtual: dict[Path, VirtualFile | None] = {}
+    touched: list[Path] = []
+    metadata: list[dict[str, object]] = []
+
+    def load(path: Path) -> VirtualFile | None:
+        if path not in virtual:
+            snapshot = _snapshot(path)
+            original[path] = snapshot
+            virtual[path] = (
+                VirtualFile(snapshot.content, snapshot.mode) if snapshot else None
+            )
+            touched.append(path)
+        return virtual[path]
 
     for patch in patches:
         resolved = denied_paths.validate_path(patch.path)
         target = denied_paths.validate_path(patch.move_to) if patch.move_to else None
+        current = load(resolved)
 
         if patch.kind == "add":
-            planned.append(
-                (
-                    patch,
-                    resolved,
-                    None,
-                    _lines_to_text(patch.contents).encode("utf-8"),
-                    {"path": patch.path, "hunks": [{"old_start": 1, "new_start": 1}]},
+            if current is not None:
+                raise FileExistsError(
+                    f"Path already exists: {denied_paths.display_path(resolved)}"
                 )
+            virtual[resolved] = VirtualFile(
+                _lines_to_text(patch.contents).encode("utf-8"), DEFAULT_FILE_MODE
+            )
+            metadata.append(
+                {"path": patch.path, "hunks": [{"old_start": 1, "new_start": 1}]}
             )
             continue
+
         if patch.kind == "delete":
-            if not resolved.exists():
+            if current is None:
                 raise FileNotFoundError(
                     f"File not found: {denied_paths.display_path(resolved)}"
                 )
-            if not resolved.is_file():
-                raise IsADirectoryError(
-                    f"Path is a directory: {denied_paths.display_path(resolved)}"
-                )
-            planned.append((patch, resolved, None, None, None))
+            virtual[resolved] = None
             continue
 
-        if not resolved.exists():
+        if current is None:
             raise FileNotFoundError(
                 f"File not found: {denied_paths.display_path(resolved)}"
             )
-        if not resolved.is_file():
-            raise IsADirectoryError(
-                f"Path is a directory: {denied_paths.display_path(resolved)}"
-            )
-        content = resolved.read_bytes().decode("utf-8")
+        content = current.content.decode("utf-8")
         new_content, hunks = _apply_chunks_with_meta(content, patch.chunks, patch.path)
-        planned.append(
-            (
-                patch,
-                resolved,
-                target,
-                new_content.encode("utf-8"),
-                {"path": patch.path, "hunks": hunks},
-            )
-        )
+        updated = VirtualFile(new_content.encode("utf-8"), current.mode)
 
-    changed: list[Path] = []
-    for patch, resolved, target, data, _meta in planned:
-        if patch.kind == "delete":
-            resolved.unlink()
-            changed.append(resolved)
-        elif patch.kind == "add":
-            _atomic_write(resolved, data if data is not None else b"")
-            changed.append(resolved)
+        if target is None:
+            virtual[resolved] = updated
+        elif target == resolved:
+            if updated.content == current.content:
+                raise ValueError(
+                    f"Move for {patch.path} has the same path and no content change"
+                )
+            virtual[resolved] = updated
         else:
-            write_path = target or resolved
-            _atomic_write(write_path, data if data is not None else b"")
-            changed.append(write_path)
-            if target is not None and resolved != write_path and resolved.exists():
-                resolved.unlink()
-                changed.append(resolved)
+            destination = load(target)
+            if destination is not None:
+                raise FileExistsError(
+                    f"Move destination already exists: "
+                    f"{denied_paths.display_path(target)}"
+                )
+            virtual[resolved] = None
+            virtual[target] = updated
+            if target not in touched:
+                touched.append(target)
+        metadata.append({"path": patch.path, "hunks": hunks})
+
+    final_paths = [path for path in touched if virtual[path] is not None]
+    deleted_paths = [path for path in touched if virtual[path] is None]
+
+    def is_changed(path: Path) -> bool:
+        before = original[path]
+        after = virtual[path]
+        if before is None or after is None:
+            return before is not after
+        return before.content != after.content or before.mode != after.mode
+
+    changed = [path for path in touched if is_changed(path)]
+
+    staged: dict[Path, Path] = {}
+    created_dirs: list[Path] = []
+    applied: list[Path] = []
+    try:
+        for path in final_paths:
+            if path not in changed:
+                continue
+            _ensure_parent(path, created_dirs)
+            final = virtual[path]
+            assert final is not None
+            staged[path] = _stage_file(path, final.content, final.mode)
+
+        # Recheck every path observed during planning, including paths that
+        # were later deleted or replaced by another operation in this envelope.
+        for path, snapshot in original.items():
+            _assert_snapshot(path, snapshot)
+
+        # Remove old names before installing new destinations. This supports
+        # delete-then-add and delete-destination-then-move without replacement
+        # ordering accidentally violating the virtual state.
+        for path in deleted_paths:
+            if path in changed and path.exists():
+                path.unlink()
+                applied.append(path)
+        for path, tmp_path in staged.items():
+            os.replace(tmp_path, path)
+            applied.append(path)
+    except BaseException:
+        _cleanup_paths(list(staged.values()))
+        for path in reversed(applied):
+            snapshot = original[path]
+            try:
+                if snapshot is None:
+                    path.unlink(missing_ok=True)
+                else:
+                    _atomic_write(path, snapshot.content, snapshot.mode)
+            except OSError:
+                logger.warning("patch_rollback_failed path={}", path)
+        _cleanup_empty_dirs(created_dirs)
+        raise
 
     for path in changed:
         notify_fs_change(path)
@@ -627,7 +907,7 @@ def _apply_patch(patch_text: str) -> str:
     summary = "\n".join(denied_paths.display_path(path) for path in changed)
     diff_meta = json.dumps(
         {
-            "files": [meta for *_rest, meta in planned if meta is not None],
+            "files": metadata,
         },
         separators=(",", ":"),
     )
@@ -637,12 +917,20 @@ def _apply_patch(patch_text: str) -> str:
     )
 
 
-# Applying a patch reads a file, matches context, and writes it back. That was
-# safe to run inline only because it contained no `await`: the event loop could
-# not interleave two of them. Running it in a worker thread removes that
-# accidental guarantee, so serialise explicitly. Patches are milliseconds long,
-# and this preserves exactly the ordering callers already relied on.
-_patch_lock = asyncio.Lock()
+# Locks are per canonical path so unrelated agents can patch concurrently.
+# Sources and move destinations are both locked, and acquisition is sorted to
+# avoid deadlocks when two envelopes touch overlapping sets of paths.
+_path_locks: dict[Path, asyncio.Lock] = {}
+
+
+def _patch_paths(patch_text: str) -> list[Path]:
+    denied_paths = get_denied_paths()
+    paths: list[Path] = []
+    for patch in _parse_patch(patch_text):
+        paths.append(denied_paths.validate_path(patch.path))
+        if patch.move_to is not None:
+            paths.append(denied_paths.validate_path(patch.move_to))
+    return sorted(set(paths))
 
 
 async def _patch_file(patch_text: str) -> str:
@@ -651,8 +939,17 @@ async def _patch_file(patch_text: str) -> str:
     One daemon serves every session, so the read/match/write — 28 ms on a
     2.3 MB file — must not run on the loop thread.
     """
-    async with _patch_lock:
+    locks = [
+        _path_locks.setdefault(path, asyncio.Lock())
+        for path in _patch_paths(patch_text)
+    ]
+    for lock in locks:
+        await lock.acquire()
+    try:
         return await asyncio.to_thread(_apply_patch, patch_text)
+    finally:
+        for lock in reversed(locks):
+            lock.release()
 
 
 patch_file = Tool(

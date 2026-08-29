@@ -517,8 +517,9 @@ agent against it.
   literal scanning and streams matches asynchronously off the main loop, and non-ignored
   paths are filtered using a compiled union regex.
 - **Non-blocking asynchronous file I/O & atomic patch operations** `[v2.0.0]` — file
-  reads, directory scans, and patch applications run off the asyncio event loop with async
-  lock protection, preventing UI latency during large multi-file operations.
+  reads, directory scans, and patch applications run off the asyncio event loop with
+  per-path lock protection, preventing UI latency during large multi-file operations;
+  multi-file envelopes stage their changes and guard against intervening edits.
 - **Changed-file highlights in the workspace tree** `[v1.30.0]` — modified and
   untracked files are marked directly in the Files tab, parent folders show a
   changed-state indicator, and the tab badge reports the changed-file count.
@@ -566,7 +567,9 @@ agent against it.
   overlapping schemas means fewer tokens per request and no ambiguity about
   which tool to reach for when changing a file. Two consequences worth
   knowing: recursive directory deletion is now a `shell` command, and patches
-  are matched strictly — context lines must be copied exactly from a `read`.
+  are matched conservatively — exact context is preferred, with narrow repairs
+  for trailing whitespace, copied line numbers, and uniform indentation; unchanged
+  context bytes are preserved.
   Agent `.md` files that still list a removed tool are cleaned up
   automatically the first time they load.
 - **Inline patch tool for multi-file edits** `[v1.5.0, v2.0.0]` — structured patches
@@ -586,6 +589,9 @@ agent against it.
   A hunk can narrow its search after a unique literal line with
   `@@ in: <anchor>`; ambiguous or missing anchors, and ambiguous targets
   within that scope, are rejected rather than selecting a match `[v2.5.0]`.
+  Contextual `@@ class ...` / `@@ def ...` headers and context-only sequential
+  locators are supported. Add and move collisions are rejected,
+  while delete-then-add replacement is supported within one envelope.
   The activity header lists the comma-separated,
   deduplicated basenames of every touched file instead of collapsing
   multi-file patches into a bare count `[v1.120.0]`, with operation-aware header labels (`Create`, `Update`, `Move`, `Delete`), color-coded action badges, per-file line delta counters, and multi-file expand/collapse controls `[v2.0.0]`.

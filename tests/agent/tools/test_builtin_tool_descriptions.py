@@ -52,8 +52,8 @@ def test_patch_text_description_keeps_grammar_and_replace_idiom():
     assert "*** Begin Patch" in patch_text
     assert "*** Add File:" in patch_text
     assert "*** Move to:" in patch_text
-    # Context matching is exact — the model must not expect fuzzy fallback.
-    assert "exactly" in patch_text
+    # Context matching prefers exact lines but documents its guarded repairs.
+    assert "unchanged context bytes are preserved" in patch_text
 
 
 def test_grep_description_has_no_dangling_tool_references():

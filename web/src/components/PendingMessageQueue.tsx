@@ -77,20 +77,15 @@ function QueuedMessageContent({ content, attachments }: { content: string; attac
 export const PendingMessageQueue = memo(function PendingMessageQueue() {
   const allMessages = useAgentStore((s) => s._pendingMessages)
   const sessionId = useAgentStore((s) => s.sessionId)
-  const leadName = useAgentStore((s) => s.leadName)
   const agentStreams = useAgentStore((s) => s.agentStreams)
 
-  const activeStream = useMemo(() => {
-    if (!agentStreams) return undefined
-    if (leadName && agentStreams[leadName]) return agentStreams[leadName]
-    return Object.values(agentStreams)[0]
-  }, [leadName, agentStreams])
-
   const messages = useMemo(() => {
-    const activeBlocks = activeStream ? [...activeStream.blocks, ...activeStream.currentBlocks] : []
-    const activeIds = new Set(activeBlocks.map((b) => b.id))
+    const allBlocks = agentStreams
+      ? Object.values(agentStreams).flatMap((s) => [...s.blocks, ...s.currentBlocks])
+      : []
+    const activeIds = new Set(allBlocks.map((b) => b.id))
     const activeUserContents = new Set(
-      activeBlocks.filter((b) => b.type === 'user').map((b) => b.content.trim()),
+      allBlocks.filter((b) => b.type === 'user').map((b) => b.content.trim()),
     )
     return allMessages.filter((msg) => {
       if (msg.sessionId && sessionId && msg.sessionId !== sessionId) return false
@@ -98,7 +93,7 @@ export const PendingMessageQueue = memo(function PendingMessageQueue() {
       if (activeUserContents.has((msg.content || '').trim())) return false
       return true
     })
-  }, [allMessages, sessionId, activeStream])
+  }, [allMessages, sessionId, agentStreams])
   const removePendingMessage = useAgentStore((s) => s.removePendingMessage)
 
   if (messages.length === 0) return null

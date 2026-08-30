@@ -821,3 +821,105 @@ describe('mid-turn loadSession reconciliation', () => {
     expect(rendered().filter((c) => c === 'yes')).toHaveLength(2)
   })
 })
+
+describe('queued messages mid-turn injection and reconciliation', () => {
+  it('preserves tool calls and user messages in correct order when a queued message is injected mid-turn', async () => {
+    // Reproduces the "tool calls disappear during streaming when queued messages are injected" issue.
+    // Prior turn had thinking, tool call, text. A queued turn start arrives, then history reconciles mid-turn.
+    // Tool calls must remain visible and not disappear.
+    await seedLoadedSession()
+
+    useAgentStore.setState((state) => {
+      state.isAgentWorking = true
+      state.leadName = 'lead'
+      state._pendingMessages = [
+        { id: 'queued-msg-1', sessionId: 'lead-sess', content: 'run follow-up' },
+      ]
+      state.agentStreams.lead = {
+        ...state.agentStreams.lead,
+        status: 'working',
+        blocks: [],
+        currentBlocks: [
+          { id: 'think-1', type: 'thinking', content: 'planning tools' },
+          { id: 'call-1', type: 'tool', content: '', toolName: 'patch', toolCallId: 'call-1', toolArgs: '{"path": "a.txt"}', toolDone: true, toolResult: 'ok' },
+          { id: 'text-1', type: 'text', content: 'done with tool' },
+        ],
+      }
+      return state
+    })
+
+    // Queued message is injected:
+    useAgentStore.getState()._handleSSEEvent('queued_turn_start', {
+      agent: 'lead',
+      message_ids: ['queued-msg-1'],
+      messages: [{ id: 'queued-msg-1', content: 'run follow-up' }],
+    })
+
+    // Prior blocks should be sealed into blocks, and currentBlocks has the injected user message
+    const streamAfterInjection = useAgentStore.getState().agentStreams.lead
+    expect(streamAfterInjection.blocks.map((b) => b.type)).toEqual(['thinking', 'tool', 'text'])
+    expect(streamAfterInjection.blocks.find((b) => b.id === 'call-1')).toBeDefined()
+    expect(streamAfterInjection.currentBlocks.map((b) => b.type)).toEqual(['user'])
+    expect(streamAfterInjection.currentBlocks[0].id).toBe('queued-msg-1')
+
+    // Now new turn streams more thinking and text
+    useAgentStore.getState()._handleSSEEvent('thinking', { agent: 'lead', text: 'second thinking' })
+    useAgentStore.getState()._handleSSEEvent('message', { agent: 'lead', text: 'second response' })
+
+    // Mid-turn reconcile runs:
+    mockSessionHistory.mockImplementation(() => Promise.resolve(fullHistory({
+      lead: leadSession({
+        running: true,
+        messages: [
+          { id: 'u1', role: 'user', content: 'initial prompt', created_at: '2026-07-01T00:00:01Z' },
+          { id: 'a1', role: 'assistant', reasoning_content: 'planning tools', content: 'done with tool', tool_calls: [{ id: 'call-1', function: { name: 'patch', arguments: '{"path": "a.txt"}' } }], created_at: '2026-07-01T00:00:02Z' },
+          { id: 't1', role: 'tool', tool_call_id: 'call-1', content: 'ok', created_at: '2026-07-01T00:00:03Z' },
+          { id: 'queued-msg-1', role: 'user', content: 'run follow-up', created_at: '2026-07-01T00:00:04Z' },
+        ],
+      }),
+    })))
+
+    await useAgentStore.getState().loadSession('lead-sess')
+
+    const finalStream = useAgentStore.getState().agentStreams.lead
+    // Tool call is preserved in confirmed blocks
+    const toolInBlocks = finalStream.blocks.find((b) => b.type === 'tool')
+    expect(toolInBlocks).toBeDefined()
+    expect(toolInBlocks?.toolCallId).toBe('call-1')
+
+    // The new turn's live streaming text remains in currentBlocks without duplication
+    expect(finalStream.currentBlocks.map((b) => b.type)).toEqual(['thinking', 'text'])
+  })
+
+  it('prunes confirmed user messages from _pendingMessages during reconcileTurnTail', async () => {
+    await seedLoadedSession()
+
+    useAgentStore.setState((state) => {
+      state._syncedThrough = 'msg-watermark-1'
+      state._pendingMessages = [
+        { id: 'pm-1', sessionId: 'lead-sess', content: 'already ran' },
+        { id: 'pm-2', sessionId: 'lead-sess', content: 'still queued' },
+      ]
+      return state
+    })
+
+    mockSessionHistorySince.mockImplementation(() => Promise.resolve({
+      truncated: false,
+      lead: {
+        agent_name: 'lead',
+        running: false,
+        messages: [
+          { id: 'pm-1', role: 'user', content: 'already ran' },
+          { id: 'pm-2', role: 'user', kind: 'queued', content: 'still queued', extra: { queue_status: 'queued' } },
+        ],
+      },
+      members: [],
+    }))
+
+    await useAgentStore.getState().reconcileTurnTail('lead-sess')
+
+    const pending = useAgentStore.getState()._pendingMessages
+    expect(pending.some((m) => m.id === 'pm-1')).toBe(false)
+    expect(pending.some((m) => m.id === 'pm-2')).toBe(true)
+  })
+})

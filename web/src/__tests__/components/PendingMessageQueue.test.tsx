@@ -58,6 +58,36 @@ describe('PendingMessageQueue', () => {
     expect(screen.getByText('Still waiting message')).toBeTruthy()
   })
 
+  it('does not render a queued message if it is present in a member agent stream', () => {
+    useAgentStore.setState({
+      sessionId: 'session-1',
+      leadName: 'lead',
+      agentStreams: {
+        lead: {
+          blocks: [],
+          currentBlocks: [],
+          status: 'working',
+          usage: { promptTokens: 0, completionTokens: 0, cachedTokens: 0 },
+        } as never,
+        worker: {
+          blocks: [
+            { id: 'pending-member', type: 'user', content: 'Injected on member stream' },
+          ],
+          currentBlocks: [],
+          status: 'working',
+          usage: { promptTokens: 0, completionTokens: 0, cachedTokens: 0 },
+        } as never,
+      },
+      _pendingMessages: [
+        { id: 'pending-member', sessionId: 'session-1', content: 'Injected on member stream' },
+      ],
+    })
+
+    render(<PendingMessageQueue />)
+
+    expect(screen.queryByText('Injected on member stream')).toBeNull()
+  })
+
   it('allows queued messages to span full width on mobile and caps width from md up', () => {
     useAgentStore.setState({
       sessionId: 'session-1',

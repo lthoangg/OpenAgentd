@@ -524,26 +524,53 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
             return t < revertTime
           })
 
+          const incomingIds = new Set(filteredMessages.map((m) => m.id))
+          const incomingContents = new Set(filteredMessages.map((m) => (m.content || '').trim()))
+          const isMatchingOptimisticBlock = (b: ContentBlock) =>
+            b.type === 'user' &&
+            !b.extra?.from_agent &&
+            (incomingIds.has(b.id) || (b.id.startsWith('user-') && incomingContents.has((b.content || '').trim())))
+
+          // Seal prior in-flight blocks into `stream.blocks` before starting the injected turn.
+          // If currentBlocks had blocks from the earlier turn (thinking, tools, text), committing
+          // them first prevents the user message from being appended *after* them in currentBlocks,
+          // which caused tool calls to disappear on mid-turn reconcile and user messages to appear
+          // at the bottom of the previous assistant output.
+          const priorBlocks = stream.currentBlocks.filter((b) => !isMatchingOptimisticBlock(b))
+          if (priorBlocks.length > 0) {
+            const stamped = priorBlocks.map((b) => ({
+              ...b,
+              timestamp: b.timestamp ?? new Date(now),
+            }))
+            const toCommit = revertTime === null
+              ? stamped
+              : stamped.filter((b) => (b.timestamp?.getTime() ?? 0) < revertTime)
+            if (toCommit.length > 0) {
+              appendLocalBlocks(stream, toCommit)
+            }
+          }
+
+          const existingOptimisticBlocks = stream.currentBlocks.filter(isMatchingOptimisticBlock)
           const newUserBlocks: ContentBlock[] = []
           for (const msg of filteredMessages) {
             const timestamp = new Date(msg.submittedAt ?? now)
             const attachments = msg.attachments && msg.attachments.length > 0 ? msg.attachments : undefined
 
-            let matchIdx = stream.currentBlocks.findIndex((b) => b.id === msg.id)
+            let matchIdx = existingOptimisticBlocks.findIndex((b) => b.id === msg.id)
             if (matchIdx === -1) {
-              matchIdx = stream.currentBlocks.findIndex(
+              matchIdx = existingOptimisticBlocks.findIndex(
                 (b) => b.type === 'user' && !b.extra?.from_agent && b.id.startsWith('user-') && b.content === msg.content,
               )
             }
 
             if (matchIdx !== -1) {
-              const existing = stream.currentBlocks[matchIdx]
-              stream.currentBlocks[matchIdx] = {
+              const existing = existingOptimisticBlocks[matchIdx]
+              newUserBlocks.push({
                 ...existing,
                 id: msg.id,
                 timestamp: existing.timestamp ?? timestamp,
                 attachments: attachments ?? existing.attachments,
-              }
+              })
               continue
             }
 
@@ -563,9 +590,7 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
             })
           }
 
-          if (newUserBlocks.length > 0) {
-            stream.currentBlocks.push(...newUserBlocks)
-          }
+          stream.currentBlocks = newUserBlocks
           stream._turnStartedAt = nextTurnStartedAt
           const removedIds = new Set<string>(queuedIds)
           if (messageIds !== null) {

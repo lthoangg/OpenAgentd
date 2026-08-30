@@ -485,7 +485,11 @@ async function loadSessionImpl(
       const turnStillRunning = history.lead.running === true
       if (!turnStillRunning) {
         Object.entries(draft.agentStreams).forEach(([name, stream]) => {
-          dropSnapshotCoveredBlocks(stream, liveCountsAtFetch.get(name) ?? 0)
+          const streamTurnStartedAt = stream._turnStartedAt
+          const count = streamTurnStartedAt != null && streamTurnStartedAt >= fetchStartedAt
+            ? 0
+            : (liveCountsAtFetch.get(name) ?? 0)
+          dropSnapshotCoveredBlocks(stream, count)
         })
       }
 
@@ -542,7 +546,11 @@ async function loadSessionImpl(
           // the snapshot yet), so strip whatever the snapshot already covers
           // instead of rendering both copies.
           if (turnStillRunning) {
-            dropSnapshotAlignedPrefix(leadStream, liveCountsAtFetch.get(leadName) ?? 0)
+            const streamTurnStartedAt = leadStream._turnStartedAt
+            const count = streamTurnStartedAt != null && streamTurnStartedAt >= fetchStartedAt
+              ? leadStream.currentBlocks.length
+              : (liveCountsAtFetch.get(leadName) ?? 0)
+            dropSnapshotAlignedPrefix(leadStream, count)
           }
           removePersistedOptimisticUserBlocks(leadStream)
         }
@@ -599,7 +607,11 @@ async function loadSessionImpl(
       const queued = queuedMessagesFromHistory(sessionId, history.lead.messages)
       const queuedIds = new Set(queued.map((msg) => msg.id))
       draft._pendingMessages = [
-        ...draft._pendingMessages.filter((msg) => msg.sessionId !== sessionId || queuedIds.has(msg.id)),
+        ...draft._pendingMessages.filter((msg) =>
+          msg.sessionId !== sessionId ||
+          queuedIds.has(msg.id) ||
+          (msg.submittedAt !== undefined && msg.submittedAt >= fetchStartedAt)
+        ),
         ...queued.filter((msg) => !draft._pendingMessages.some((existing) => existing.id === msg.id)),
       ]
 
@@ -629,7 +641,11 @@ async function loadSessionImpl(
           boundaryContent: boundaryMsg?.content,
         })
         if (memberHadNewerActivity && turnStillRunning) {
-          dropSnapshotAlignedPrefix(memberStream, liveCountsAtFetch.get(member.name) ?? 0)
+          const streamTurnStartedAt = memberStream._turnStartedAt
+          const count = streamTurnStartedAt != null && streamTurnStartedAt >= fetchStartedAt
+            ? memberStream.currentBlocks.length
+            : (liveCountsAtFetch.get(member.name) ?? 0)
+          dropSnapshotAlignedPrefix(memberStream, count)
           removePersistedOptimisticUserBlocks(memberStream)
         }
         if (!memberHadNewerActivity) {
@@ -1005,6 +1021,25 @@ export const createSessionSlice: StateCreator<
           memberStream.usage.totalTokens = memberStream.usage.promptTokens + memberStream.usage.completionTokens
         }
       })
+
+      const confirmedUserIds = new Set(
+        delta.lead.messages
+          .filter((m) => m.role === 'user' && m.kind !== 'queued' && m.extra?.queue_status !== 'queued')
+          .map((m) => m.id),
+      )
+      const confirmedUserContents = new Set(
+        delta.lead.messages
+          .filter((m) => m.role === 'user' && m.kind !== 'queued' && m.extra?.queue_status !== 'queued')
+          .map((m) => (m.content || '').trim()),
+      )
+      if (confirmedUserIds.size > 0 || confirmedUserContents.size > 0) {
+        draft._pendingMessages = draft._pendingMessages.filter((msg) => {
+          if (msg.sessionId && msg.sessionId !== sessionId) return true
+          if (confirmedUserIds.has(msg.id)) return false
+          if (confirmedUserContents.has((msg.content || '').trim())) return false
+          return true
+        })
+      }
 
       // Adopt any queued rows the delta revealed, matching loadSession.
       const queued = queuedMessagesFromHistory(sessionId, delta.lead.messages)

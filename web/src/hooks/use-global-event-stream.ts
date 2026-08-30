@@ -238,6 +238,7 @@ export function useGlobalEventStream(): void {
     const onVisibilityChange = () => {
       if (document.visibilityState === 'visible') resume()
     }
+    window.addEventListener('online', resume)
     window.addEventListener('pageshow', resume)
     document.addEventListener('visibilitychange', onVisibilityChange)
     return () => {
@@ -246,6 +247,7 @@ export function useGlobalEventStream(): void {
       controller?.abort()
       if (retryTimer) clearTimeout(retryTimer)
       unsubscribeApiBaseUrl()
+      window.removeEventListener('online', resume)
       window.removeEventListener('pageshow', resume)
       document.removeEventListener('visibilitychange', onVisibilityChange)
     }

@@ -412,6 +412,12 @@ executes tools, manages its task list, and inspects workspace repositories.
   model endpoint exhausts its retry budget mid-task (`ReadTimeout` /
   `ConnectError`), the loop resumes the same turn from where it left off
   instead of dropping the agent after a tool call. Bounded and interrupt-aware.
+- **Network blip and disconnection resilience** `[v2.8.1]` — transient network
+  drops, socket resets, TLS handshake interruptions, DNS resolution glitches,
+  connection/write timeouts, and gateway errors (408, 5xx) automatically retry
+  with exponential jittered backoff during LLM generation and summarization,
+  while client streams automatically resume and synchronize when network
+  connectivity returns.
 - **Automatic max-tokens truncation recovery** `[v1.87.0]` — when a provider
   hits the output token limit (`finish_reason="max_tokens"` or `"length"`), the
   loop automatically injects a recovery message (requesting a continuation for

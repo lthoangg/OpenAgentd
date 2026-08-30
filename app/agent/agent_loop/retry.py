@@ -12,9 +12,12 @@ for logging.
 from __future__ import annotations
 
 import asyncio
+import http.client
 import json
 import random
 import re
+import socket
+import ssl
 from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING
 
@@ -37,6 +40,19 @@ if TYPE_CHECKING:
 # ``stream_with_retry`` performed exactly ``MAX_RETRIES`` attempts before
 # raising.
 MAX_RETRIES = 5
+
+# Transient transport and socket errors indicating network blips, connection resets,
+# DNS failures, or timeouts that should be retried automatically.
+TRANSIENT_NETWORK_ERRORS = (
+    httpx.RequestError,
+    ConnectionError,
+    TimeoutError,
+    socket.gaierror,
+    socket.timeout,
+    socket.herror,
+    ssl.SSLError,
+    http.client.HTTPException,
+)
 
 
 class StreamRestart:
@@ -109,7 +125,7 @@ async def _notify_provider_exhausted(
 # 529 is Anthropic's "overloaded" status — transient and explicitly retryable.
 # It also arrives via SSE error frames mid-stream (see the anthropic provider's
 # _raise_stream_error_event), which is the common case in practice.
-_RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504, 529}
+_RETRYABLE_STATUS_CODES = {408, 429, 500, 502, 503, 504, 520, 521, 522, 523, 524, 529}
 _NON_RETRYABLE_429_MARKERS = (
     "usage_limit_reached",
     "usage_not_included",
@@ -159,7 +175,8 @@ def _backoff_delay(attempt: int, *, retry_after: int = 0) -> float:
 
 
 def _is_retryable_http_error(exc: httpx.HTTPStatusError) -> bool:
-    if exc.response.status_code in _RETRYABLE_STATUS_CODES:
+    status = exc.response.status_code
+    if status in _RETRYABLE_STATUS_CODES or (500 <= status < 600):
         return True
     try:
         payload = exc.response.json()
@@ -446,13 +463,7 @@ async def stream_with_retry(
             )
             if await _sleep_or_interrupted(delay, interrupt_event):
                 return
-        except (
-            httpx.ConnectError,
-            httpx.ReadError,
-            httpx.ReadTimeout,
-            httpx.RemoteProtocolError,
-            TimeoutError,
-        ) as exc:
+        except TRANSIENT_NETWORK_ERRORS as exc:
             last_exc = exc
             # Skip sleep on the last attempt.
             if attempt + 1 >= MAX_RETRIES:

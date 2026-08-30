@@ -224,9 +224,11 @@ export function useSessionBootstrap({
       if (document.visibilityState === 'visible') resumeStream()
     }
 
+    window.addEventListener('online', resumeStream)
     window.addEventListener('pageshow', resumeStream)
     document.addEventListener('visibilitychange', handleVisibilityChange)
     return () => {
+      window.removeEventListener('online', resumeStream)
       window.removeEventListener('pageshow', resumeStream)
       document.removeEventListener('visibilitychange', handleVisibilityChange)
     }

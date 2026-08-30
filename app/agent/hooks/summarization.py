@@ -60,6 +60,7 @@ from typing import TYPE_CHECKING, Awaitable, Callable
 from loguru import logger
 from opentelemetry.trace import SpanKind, StatusCode
 
+from app.agent.agent_loop.retry import StreamRestart, stream_with_retry
 from app.agent.usage import (
     provider_cost_model_id,
     set_usage_span_attributes,
@@ -1058,13 +1059,21 @@ class SummarizationHook(BaseAgentHook):
                 # conversation prefix — a net cache *miss* on OpenAI/codex.
                 # Letting it fall back to automatic prefix caching keeps it
                 # consistent with the normal turns.
-                stream = self._llm_provider.stream(
+                stream = stream_with_retry(
+                    primary_provider=self._llm_provider,
+                    primary_label=model_id or "summarizer",
+                    ctx=None,
+                    state=None,
+                    hooks=None,
                     messages=messages,
                     tools=tools,
                     **kwargs,
                 )
                 full_text = ""
                 async for chunk in stream:
+                    if isinstance(chunk, StreamRestart):
+                        full_text = ""
+                        continue
                     if chunk.usage is not None:
                         last_usage = chunk.usage
                     if not chunk.choices:

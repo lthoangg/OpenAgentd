@@ -1121,6 +1121,9 @@ Desktop is primary. CLI / server is the developer path.
   windows now do a frontend-only force reload without restarting the bundled
   sidecar, while bundled windows wait for backend readiness before the desktop
   UI finishes bootstrapping after reload.
+- **Reload preserves the current open page** `[v2.8.1]` — reloading in browser
+  or desktop shells (Cmd+R / Ctrl+R) restores the active session, scheduler, or
+  telemetry view instead of returning to the home workspace.
 - **Closest restorable route fallback after backend switches** `[v1.68.0]` —
   when reconnecting to a backend that does not have the previous
   coding session, desktop restore now lands on the nearest valid hub page

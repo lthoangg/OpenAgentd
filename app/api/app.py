@@ -131,6 +131,8 @@ async def lifespan(app: FastAPI):
     shutdown_otel()
 
     logger.info("server_shutdown")
+    # File sinks are ``enqueue=True``; flush the worker queue before exit.
+    await logger.complete()
 
 
 def create_app() -> FastAPI:

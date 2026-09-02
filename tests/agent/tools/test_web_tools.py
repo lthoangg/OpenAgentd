@@ -638,6 +638,143 @@ async def test_web_fetch_reuses_one_pooled_client():
     await web_module.close_http_client()
 
 
+class _StreamStub:
+    pass
+
+
+@pytest.mark.asyncio
+async def test_pinned_backend_connects_to_the_validated_address(monkeypatch):
+    """The socket must open to the address that passed validation.
+
+    Resolving in a pre-check and then letting httpcore resolve again leaves a
+    window where a rebinding DNS server answers public first, private second.
+    Pinning the connect to the validated literal closes it.
+    """
+    from httpcore._backends.anyio import AnyIOBackend
+
+    async def resolve(host, port):
+        return ["93.184.216.34", "93.184.216.35"]
+
+    calls: list[tuple[str, int]] = []
+
+    async def fake_connect(
+        self, host, port, timeout=None, local_address=None, socket_options=None
+    ):
+        calls.append((host, port))
+        return _StreamStub()
+
+    monkeypatch.setattr(web_module, "_resolve_host", resolve)
+    monkeypatch.setattr(AnyIOBackend, "connect_tcp", fake_connect)
+
+    stream = await web_module._PublicOnlyBackend().connect_tcp("example.com", 443)
+
+    assert isinstance(stream, _StreamStub)
+    assert calls == [("93.184.216.34", 443)]
+
+
+@pytest.mark.asyncio
+async def test_pinned_backend_falls_back_to_the_next_validated_address(monkeypatch):
+    import httpcore
+    from httpcore._backends.anyio import AnyIOBackend
+
+    async def resolve(host, port):
+        return ["93.184.216.34", "93.184.216.35"]
+
+    calls: list[str] = []
+
+    async def fake_connect(
+        self, host, port, timeout=None, local_address=None, socket_options=None
+    ):
+        calls.append(host)
+        if host == "93.184.216.34":
+            raise httpcore.ConnectError("refused")
+        return _StreamStub()
+
+    monkeypatch.setattr(web_module, "_resolve_host", resolve)
+    monkeypatch.setattr(AnyIOBackend, "connect_tcp", fake_connect)
+
+    await web_module._PublicOnlyBackend().connect_tcp("example.com", 443)
+
+    assert calls == ["93.184.216.34", "93.184.216.35"]
+
+
+@pytest.mark.asyncio
+async def test_pinned_backend_refuses_private_address_at_connect_time(monkeypatch):
+    from httpcore._backends.anyio import AnyIOBackend
+
+    async def resolve(host, port):
+        return ["93.184.216.34", "10.0.0.7"]
+
+    async def fake_connect(
+        self, host, port, timeout=None, local_address=None, socket_options=None
+    ):
+        raise AssertionError("must not connect when any address is private")
+
+    monkeypatch.setattr(web_module, "_resolve_host", resolve)
+    monkeypatch.setattr(AnyIOBackend, "connect_tcp", fake_connect)
+
+    with pytest.raises(web_module.PrivateDestinationError):
+        await web_module._PublicOnlyBackend().connect_tcp("rebind.test", 80)
+
+
+@pytest.mark.asyncio
+async def test_pinned_backend_honours_private_network_opt_in(monkeypatch):
+    from httpcore._backends.anyio import AnyIOBackend
+
+    calls: list[str] = []
+
+    async def fake_connect(
+        self, host, port, timeout=None, local_address=None, socket_options=None
+    ):
+        calls.append(host)
+        return _StreamStub()
+
+    async def resolve(host, port):
+        raise AssertionError("opt-in must skip the public-address gate")
+
+    monkeypatch.setattr(web_module, "_resolve_host", resolve)
+    monkeypatch.setattr(AnyIOBackend, "connect_tcp", fake_connect)
+    monkeypatch.setattr(web_module.settings, "WEB_FETCH_ALLOW_PRIVATE_NETWORK", True)
+
+    await web_module._PublicOnlyBackend().connect_tcp("localhost", 3000)
+
+    # Left to httpcore's normal resolution so IPv4/IPv6 fallback still applies.
+    assert calls == ["localhost"]
+
+
+@pytest.mark.asyncio
+async def test_shared_client_uses_the_pinned_backend():
+    await web_module.close_http_client()
+    client = web_module._get_http_client()
+    transport = client._transport
+    assert isinstance(transport._pool._network_backend, web_module._PublicOnlyBackend)  # type: ignore[attr-defined]
+    await web_module.close_http_client()
+
+
+@pytest.mark.asyncio
+async def test_web_fetch_reports_connect_time_private_block_as_unsafe_url(
+    monkeypatch,
+):
+    # httpx maps httpcore errors with ``raise mapped from exc``; replicate that
+    # chain from a MockTransport handler (respx rewrites __cause__).
+    exc = httpx.ConnectError("blocked")
+    exc.__cause__ = web_module.PrivateDestinationError(
+        "rebind.test resolved to a non-public address (10.0.0.7)"
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise exc
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    monkeypatch.setattr(web_module, "_get_http_client", lambda: client)
+
+    result = await web_fetch("https://rebind.test/")
+
+    assert "unsafe url" in result.lower()
+    assert "10.0.0.7" in result
+    await client.aclose()
+
+
 def test_web_fetch_args_rejects_unsupported_scheme():
     with pytest.raises(ValueError, match=r"http\(s\)"):
         web_module.WebFetchArgs.model_validate({"url": "ftp://example.com"})

@@ -6,8 +6,10 @@ import socket
 from typing import Any, Literal
 
 import anydoc
+import httpcore
 import httpx
 from ddgs import DDGS
+from httpcore._backends.anyio import AnyIOBackend
 from loguru import logger
 from pydantic import AliasChoices, BaseModel, Field, field_validator
 
@@ -106,6 +108,15 @@ class UnsafeURL(FetchFailure):
                 hint=message,
             )
         )
+
+
+class PrivateDestinationError(httpcore.ConnectError):
+    """Raised by the network backend when a connect target is non-public.
+
+    Subclassing ``httpcore.ConnectError`` lets httpx map it to
+    ``httpx.ConnectError`` (with this instance as ``__cause__``) so the fetch
+    loop can surface it as an unsafe-URL result rather than a network blip.
+    """
 
 
 @dataclass(slots=True)
@@ -313,12 +324,12 @@ async def _validate_fetch_destination(
 ) -> None:
     """Reject schemes, credentials, and (by default) non-public destinations.
 
-    The address check is a resolve-then-validate step; the connection itself
-    is opened by httpx with its own lookup. A DNS server that answers with a
-    public address here and a private one moments later (rebinding) can
-    therefore slip past. Closing that gap means pinning the connection to the
-    validated address with SNI/Host overrides — a deliberate follow-up, not
-    something this check claims to cover.
+    This is the early, friendly gate: it fails before any connection is
+    attempted and names the offending address. It is not the enforcement
+    point — a rebinding DNS server could answer public here and private a
+    moment later. ``_PublicOnlyBackend`` re-validates at connect time and
+    pins the socket to the address it validated, so the two lookups cannot
+    disagree about what gets connected to.
     """
     scheme = url.scheme.lower()
     if scheme not in {"http", "https"}:
@@ -423,6 +434,69 @@ async def _read_limited_response(response: httpx.Response, *, max_bytes: int) ->
     return b"".join(chunks)
 
 
+class _PublicOnlyBackend(AnyIOBackend):
+    """httpcore network backend that validates and pins the connect address.
+
+    httpcore hands us the URL host; we resolve it, refuse if any answer is
+    non-public, then connect to the validated literal so the kernel does not
+    resolve again. TLS is unaffected: httpcore wraps the returned stream with
+    ``server_hostname`` taken from the URL, so certificates are still checked
+    against the hostname, not the IP. Addresses are tried in order so an
+    unreachable first answer still falls back to the next.
+    """
+
+    async def connect_tcp(
+        self,
+        host: str,
+        port: int,
+        timeout: float | None = None,
+        local_address: str | None = None,
+        socket_options: Any = None,
+    ) -> httpcore.AsyncNetworkStream:
+        if settings.WEB_FETCH_ALLOW_PRIVATE_NETWORK:
+            return await super().connect_tcp(
+                host, port, timeout, local_address, socket_options
+            )
+        try:
+            addresses = await _resolve_host(host, port)
+        except OSError as exc:
+            raise httpcore.ConnectError(
+                f"DNS resolution failed for {host}: {exc}"
+            ) from exc
+        if not addresses:
+            raise httpcore.ConnectError(
+                f"DNS resolution returned no addresses for {host}"
+            )
+        for address in addresses:
+            if not ipaddress.ip_address(address).is_global:
+                raise PrivateDestinationError(
+                    f"{host} resolved to a non-public address ({address})."
+                )
+        last_error: Exception | None = None
+        for address in addresses:
+            try:
+                return await super().connect_tcp(
+                    address, port, timeout, local_address, socket_options
+                )
+            except (httpcore.ConnectError, httpcore.ConnectTimeout) as exc:
+                last_error = exc
+        assert last_error is not None
+        raise last_error
+
+
+class _PinnedTransport(httpx.AsyncHTTPTransport):
+    """``AsyncHTTPTransport`` whose connection pool opens sockets through
+    ``_PublicOnlyBackend``. httpx does not expose ``network_backend`` on the
+    transport, so the pool's backend is swapped before its first connection."""
+
+    def __init__(self, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        pool = self._pool
+        if not isinstance(pool, httpcore.AsyncConnectionPool):  # pragma: no cover
+            raise RuntimeError("web_fetch transport requires a direct connection pool")
+        pool._network_backend = _PublicOnlyBackend()
+
+
 _http_client: httpx.AsyncClient | None = None
 _http_client_loop: asyncio.AbstractEventLoop | None = None
 
@@ -441,9 +515,8 @@ def _get_http_client() -> httpx.AsyncClient:
     if _http_client is None or _http_client.is_closed or _http_client_loop is not loop:
         _http_client = httpx.AsyncClient(
             follow_redirects=False,
-            verify=True,
             timeout=_DEFAULT_TIMEOUT,
-            limits=_CLIENT_LIMITS,
+            transport=_PinnedTransport(verify=True, limits=_CLIENT_LIMITS),
         )
         _http_client_loop = loop
     return _http_client
@@ -538,6 +611,17 @@ async def _fetch_url(
             ) from exc
         except httpx.InvalidURL as exc:
             raise UnsafeURL(str(exc)) from exc
+        except httpx.ConnectError as exc:
+            if isinstance(exc.__cause__, PrivateDestinationError):
+                raise UnsafeURL(str(exc.__cause__)) from exc
+            raise FetchFailure(
+                FetchError(
+                    FetchErrorKind.NETWORK_ERROR,
+                    "Network error.",
+                    True,
+                    hint="The request could not reach the server. Retrying may succeed.",
+                )
+            ) from exc
         except httpx.RequestError as exc:
             raise FetchFailure(
                 FetchError(

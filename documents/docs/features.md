@@ -795,8 +795,10 @@ MCP.
   text, HTML-source, and raw-text output modes. Destinations that resolve to
   loopback, private, or link-local addresses are refused unless
   `WEB_FETCH_ALLOW_PRIVATE_NETWORK=true` is set, which lets the agent reach local
-  dev servers and trusted internal hosts. Repeated fetches reuse one pooled HTTP
-  client that is closed on server shutdown.
+  dev servers and trusted internal hosts. The check is enforced at connect time
+  and the socket is pinned to the validated address, so a DNS answer cannot
+  change between validation and connection. Repeated fetches reuse one pooled
+  HTTP client that is closed on server shutdown.
 - **50k character read limit** `[v2.0.0]` — expanded `read` tool context limit to
   50,000 characters for reviewing larger source files in a single pass.
 - **Symbol outline mode for `read` tool** `[v2.4.0]` — `read` supports `outline=True`

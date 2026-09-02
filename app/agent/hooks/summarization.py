@@ -60,7 +60,6 @@ from typing import TYPE_CHECKING, Awaitable, Callable
 from loguru import logger
 from opentelemetry.trace import SpanKind, StatusCode
 
-from app.agent.agent_loop.retry import StreamRestart, stream_with_retry
 from app.agent.usage import (
     provider_cost_model_id,
     set_usage_span_attributes,
@@ -1059,6 +1058,17 @@ class SummarizationHook(BaseAgentHook):
                 # conversation prefix — a net cache *miss* on OpenAI/codex.
                 # Letting it fall back to automatic prefix caching keeps it
                 # consistent with the normal turns.
+                #
+                # Imported here, not at module top: ``app.agent.agent_loop``
+                # imports ``app.agent.hooks`` (for ``BaseAgentHook``) and this
+                # module is re-exported from ``app.agent.hooks``. A top-level
+                # import closes that loop and only works while
+                # ``hooks/__init__`` happens to bind ``BaseAgentHook`` first.
+                from app.agent.agent_loop.retry import (
+                    StreamRestart,
+                    stream_with_retry,
+                )
+
                 stream = stream_with_retry(
                     primary_provider=self._llm_provider,
                     primary_label=model_id or "summarizer",

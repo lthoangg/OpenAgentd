@@ -24,6 +24,7 @@ from app.agent.agent_loop.retry import (
     MAX_RETRIES,
     TRANSIENT_NETWORK_ERRORS,
     _is_retryable_http_error,
+    is_transient_network_error,
     stream_with_retry,
 )
 from app.agent.hooks.summarization import CODING_SUMMARY_PROMPT, SummarizationHook
@@ -183,6 +184,60 @@ async def test_transient_network_errors_tuple_contains_all_expected_types():
         assert isinstance(exc, TRANSIENT_NETWORK_ERRORS), (
             f"{type(exc)} must be in TRANSIENT_NETWORK_ERRORS"
         )
+
+
+@pytest.mark.parametrize(
+    "exc",
+    [
+        ssl.SSLCertVerificationError("certificate verify failed"),
+        httpx.UnsupportedProtocol("Request URL is missing an 'http://' scheme"),
+        httpx.DecodingError("bad gzip"),
+    ],
+    ids=["cert-verify", "unsupported-protocol", "decoding"],
+)
+def test_configuration_errors_are_not_treated_as_transient(exc: Exception):
+    """Cert failures and malformed URLs are misconfiguration, not blips.
+
+    They are subclasses of the broad transient families (``ssl.SSLError``,
+    ``httpx.RequestError``) so a bare ``except`` would retry them for the full
+    backoff budget before surfacing a problem that will never fix itself.
+    """
+    assert isinstance(exc, TRANSIENT_NETWORK_ERRORS)
+    assert is_transient_network_error(exc) is False
+    assert is_transient_network_error(httpx.ConnectTimeout("blip")) is True
+
+
+async def test_stream_with_retry_fails_fast_on_cert_verification_error():
+    provider = ScriptedErrorProvider(
+        [ssl.SSLCertVerificationError("certificate verify failed")] * MAX_RETRIES
+    )
+
+    with patch(
+        "app.agent.agent_loop.retry.asyncio.sleep", new_callable=AsyncMock
+    ) as mock_sleep:
+        with pytest.raises(ssl.SSLCertVerificationError):
+            async for _ in stream_with_retry(
+                primary_provider=provider,
+                primary_label="mock-model",
+                ctx=None,
+                state=None,
+                hooks=None,
+                messages=[],
+                tools=None,
+            ):
+                pass
+
+    assert provider.call_count == 1
+    assert mock_sleep.await_count == 0
+
+
+@pytest.mark.parametrize("status_code", [501, 505])
+def test_is_retryable_http_error_excludes_permanent_5xx(status_code: int):
+    """501 Not Implemented / 505 HTTP Version Not Supported never recover on retry."""
+    req = httpx.Request("POST", "https://api.openai.com/v1/chat/completions")
+    resp = httpx.Response(status_code, request=req)
+    exc = httpx.HTTPStatusError(f"HTTP {status_code}", request=req, response=resp)
+    assert _is_retryable_http_error(exc) is False
 
 
 async def test_summarization_hook_recovers_from_network_blip():

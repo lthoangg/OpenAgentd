@@ -29,7 +29,10 @@ from uuid import uuid7 as _uuid7
 
 from loguru import logger
 
-from app.agent.agent_loop.retry import TRANSIENT_NETWORK_ERRORS
+from app.agent.agent_loop.retry import (
+    TRANSIENT_NETWORK_ERRORS,
+    is_transient_network_error,
+)
 from app.agent.agent_loop.streaming import stream_and_assemble
 from app.agent.agent_loop.tool_dispatch import gather_or_cancel
 from app.agent.agent_loop.tool_executor import make_tool_executor, sanitize_error
@@ -694,6 +697,8 @@ class Agent(Generic[TContext]):
         try:
             assistant_msg = await model_chain(model_request)
         except TRANSIENT_NETWORK_ERRORS as exc:
+            if not is_transient_network_error(exc):
+                raise
             # The provider (and any fallback) exhausted its retry budget on
             # a transient connectivity failure.  Rather than letting this
             # kill the whole turn mid-task — abandoning the tool work

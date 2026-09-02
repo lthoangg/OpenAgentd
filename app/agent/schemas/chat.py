@@ -108,6 +108,14 @@ class ToolCallDelta(BaseModel):
     function: FunctionCallDelta | None = None
 
 
+class EncryptedReasoningItem(BaseModel):
+    """One OpenAI Responses reasoning item retained for stateless replay."""
+
+    id: str | None = None
+    summary: list[dict[str, Any]] = Field(default_factory=list)
+    encrypted_content: str
+
+
 class BaseMessage(BaseModel):
     content: str | None = None
     # Me: internal flags — never sent to LLM provider
@@ -223,6 +231,11 @@ class AssistantMessage(BaseMessage):
     # continuity.
     reasoning_item_id: str | None = Field(default=None, exclude=True)
     reasoning_encrypted_content: str | None = Field(default=None, exclude=True)
+    # All encrypted Responses reasoning items in their original output order.
+    # The singular fields remain the last-item compatibility view for old data.
+    reasoning_items: list[EncryptedReasoningItem] | None = Field(
+        default=None, exclude=True
+    )
     tool_calls: list[ToolCall] | None = None
 
     # Me: agent tracking — internal only, never sent to provider
@@ -231,12 +244,38 @@ class AssistantMessage(BaseMessage):
 
     @model_validator(mode="after")
     def _sync_reasoning_extra(self) -> Self:
-        if self.reasoning_encrypted_content:
-            if self.extra is None:
-                self.extra = {}
-            self.extra["reasoning_encrypted_content"] = self.reasoning_encrypted_content
-            if self.reasoning_item_id:
-                self.extra["reasoning_item_id"] = self.reasoning_item_id
+        if self.reasoning_items:
+            last = self.reasoning_items[-1]
+            self.reasoning_item_id = last.id
+            self.reasoning_encrypted_content = last.encrypted_content
+        elif self.reasoning_encrypted_content:
+            self.reasoning_items = [
+                EncryptedReasoningItem(
+                    id=self.reasoning_item_id,
+                    summary=(
+                        [{"type": "summary_text", "text": self.reasoning_content}]
+                        if self.reasoning_content
+                        else []
+                    ),
+                    encrypted_content=self.reasoning_encrypted_content,
+                )
+            ]
+        elif (
+            self.extra
+            and "reasoning_items" in self.extra
+            and isinstance(self.extra["reasoning_items"], list)
+        ):
+            items: list[EncryptedReasoningItem] = []
+            for raw in self.extra["reasoning_items"]:
+                if isinstance(raw, EncryptedReasoningItem):
+                    items.append(raw)
+                elif isinstance(raw, dict) and "encrypted_content" in raw:
+                    items.append(EncryptedReasoningItem.model_validate(raw))
+            if items:
+                self.reasoning_items = items
+                last = items[-1]
+                self.reasoning_item_id = last.id
+                self.reasoning_encrypted_content = last.encrypted_content
         elif self.extra and "reasoning_encrypted_content" in self.extra:
             encrypted = self.extra["reasoning_encrypted_content"]
             if isinstance(encrypted, str) and encrypted:
@@ -244,6 +283,27 @@ class AssistantMessage(BaseMessage):
             item_id = self.extra.get("reasoning_item_id")
             if isinstance(item_id, str) and item_id:
                 self.reasoning_item_id = item_id
+            self.reasoning_items = [
+                EncryptedReasoningItem(
+                    id=self.reasoning_item_id,
+                    summary=(
+                        [{"type": "summary_text", "text": self.reasoning_content}]
+                        if self.reasoning_content
+                        else []
+                    ),
+                    encrypted_content=encrypted,
+                )
+            ]
+
+        if self.reasoning_items:
+            if self.extra is None:
+                self.extra = {}
+            self.extra["reasoning_items"] = [
+                item.model_dump(exclude_none=True) for item in self.reasoning_items
+            ]
+            self.extra["reasoning_encrypted_content"] = self.reasoning_encrypted_content
+            if self.reasoning_item_id:
+                self.extra["reasoning_item_id"] = self.reasoning_item_id
         return self
 
 
@@ -288,6 +348,7 @@ class ChatCompletionDelta(BaseModel):
     # once when the reasoning output item completes (not incremental text).
     reasoning_item_id: str | None = None
     reasoning_encrypted_content: str | None = None
+    reasoning_item_summary: list[dict[str, Any]] | None = None
 
     @field_validator("reasoning_content", mode="before")
     @classmethod

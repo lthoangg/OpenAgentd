@@ -399,3 +399,47 @@ def test_deserialize_messages_reasoning_encrypted_content_absent_when_extra_miss
     assert isinstance(msg, AssistantMessage)
     assert msg.reasoning_item_id is None
     assert msg.reasoning_encrypted_content is None
+
+
+def test_deserialize_messages_restores_multiple_reasoning_items_from_extra(
+    session_id,
+) -> None:
+    """Multiple reasoning items stored in extra must be deserialized in order."""
+    db_messages = [
+        SessionMessage(
+            id=uuid7(),
+            session_id=session_id,
+            role="assistant",
+            content="Calling a tool.",
+            extra={
+                "reasoning_item_id": "rs_2",
+                "reasoning_encrypted_content": "cipher-2",
+                "reasoning_items": [
+                    {
+                        "id": "rs_1",
+                        "summary": [{"type": "summary_text", "text": "Thought 1"}],
+                        "encrypted_content": "cipher-1",
+                    },
+                    {
+                        "id": "rs_2",
+                        "summary": [{"type": "summary_text", "text": "Thought 2"}],
+                        "encrypted_content": "cipher-2",
+                    },
+                ],
+            },
+        ),
+    ]
+
+    result = deserialize_messages(db_messages)
+
+    assert len(result) == 1
+    msg = result[0]
+    assert isinstance(msg, AssistantMessage)
+    assert msg.reasoning_items is not None
+    assert len(msg.reasoning_items) == 2
+    assert msg.reasoning_items[0].id == "rs_1"
+    assert msg.reasoning_items[0].encrypted_content == "cipher-1"
+    assert msg.reasoning_items[1].id == "rs_2"
+    assert msg.reasoning_items[1].encrypted_content == "cipher-2"
+    assert msg.reasoning_item_id == "rs_2"
+    assert msg.reasoning_encrypted_content == "cipher-2"

@@ -843,6 +843,20 @@ class TestCodexResponsesHandlerBuildRequest:
         )
         assert body["prompt_cache_key"] == "openagentd:session-123"
 
+    def test_build_request_uses_session_id_for_cache_routing_header(self):
+        """Normal Codex turns route a session to one cache partition."""
+        handler = _CodexResponsesHandler("gpt-5.6-luna", "https://api.example.com", {})
+
+        body = handler.build_request(
+            [HumanMessage(content="Hi")],
+            None,
+            True,
+            {"session_id": "session-123"},
+        )
+
+        assert body["prompt_cache_key"] == "session-123"
+        assert handler._prepare_request_headers(body)["session-id"] == "session-123"
+
     def test_build_request_omits_standard_service_tier(self):
         """Standard/default tiers should not add a private endpoint field."""
         handler = _CodexResponsesHandler("gpt-5.4", "https://api.example.com", {})
@@ -945,6 +959,73 @@ class TestCodexResponsesHandlerBuildRequest:
         assert result.content == "Done"
         assert result.reasoning_item_id == "rs_1"
         assert result.reasoning_encrypted_content == "cipher123"
+
+    @pytest.mark.asyncio
+    async def test_chat_carries_multiple_reasoning_items_through(self):
+        """chat() captures all mid-stream reasoning items in order."""
+        handler = _CodexResponsesHandler("gpt-5.4", "https://api.example.com", {})
+
+        async def fake_stream(messages, tools, merged):
+            yield ChatCompletionChunk(
+                id="resp_1",
+                created=1,
+                model="gpt-5.4",
+                choices=[
+                    ChatCompletionChunkChoice(
+                        index=0,
+                        delta=ChatCompletionDelta(
+                            reasoning_item_id="rs_1",
+                            reasoning_encrypted_content="cipher1",
+                            reasoning_item_summary=[
+                                {"type": "summary_text", "text": "Thought 1"}
+                            ],
+                        ),
+                    )
+                ],
+            )
+            yield ChatCompletionChunk(
+                id="resp_1",
+                created=1,
+                model="gpt-5.4",
+                choices=[
+                    ChatCompletionChunkChoice(
+                        index=0,
+                        delta=ChatCompletionDelta(
+                            reasoning_item_id="rs_2",
+                            reasoning_encrypted_content="cipher2",
+                            reasoning_item_summary=[
+                                {"type": "summary_text", "text": "Thought 2"}
+                            ],
+                        ),
+                    )
+                ],
+            )
+            yield ChatCompletionChunk(
+                id="resp_1",
+                created=1,
+                model="gpt-5.4",
+                choices=[
+                    ChatCompletionChunkChoice(
+                        index=0, delta=ChatCompletionDelta(content="Done")
+                    )
+                ],
+            )
+
+        handler.stream = fake_stream  # type: ignore[method-assign]
+
+        result = await handler.chat([HumanMessage(content="Hello")], None, {})
+
+        assert result.content == "Done"
+        assert result.reasoning_items is not None
+        assert len(result.reasoning_items) == 2
+        assert result.reasoning_items[0].id == "rs_1"
+        assert result.reasoning_items[0].encrypted_content == "cipher1"
+        assert result.reasoning_items[1].id == "rs_2"
+        assert result.reasoning_items[1].encrypted_content == "cipher2"
+        assert result.reasoning_item_id == "rs_2"
+        assert result.reasoning_encrypted_content == "cipher2"
+        assert result.extra is not None
+        assert len(result.extra["reasoning_items"]) == 2
 
     @pytest.mark.asyncio
     async def test_chat_leaves_reasoning_encrypted_content_none_when_absent(self):
@@ -1340,6 +1421,147 @@ class TestCodexPromptCachingAndReasoning:
             "type": "message",
             "role": "assistant",
             "content": [{"type": "output_text", "text": "Turn 1 response"}],
+        }
+
+    def test_multiturn_replays_all_encrypted_reasoning_items_in_order(self):
+        """Every completed Responses reasoning item must survive tool continuation."""
+        handler = _CodexResponsesHandler("gpt-5.4", "https://api.example.com", {})
+        assistant = AssistantMessage(
+            content="Calling a tool.",
+            reasoning_items=[
+                {
+                    "id": "rs_1",
+                    "summary": [{"type": "summary_text", "text": "First thought"}],
+                    "encrypted_content": "cipher-1",
+                },
+                {
+                    "id": "rs_2",
+                    "summary": [{"type": "summary_text", "text": "Second thought"}],
+                    "encrypted_content": "cipher-2",
+                },
+            ],
+            tool_calls=[
+                ToolCall(
+                    id="call_1",
+                    function=FunctionCall(name="read_file", arguments="{}"),
+                )
+            ],
+        )
+
+        body = handler.build_request(
+            [
+                HumanMessage(content="Read the file"),
+                assistant,
+                ToolMessage(content="file contents", tool_call_id="call_1"),
+            ],
+            None,
+            True,
+            {},
+        )
+
+        assert body["input"][1:3] == [
+            {
+                "type": "reasoning",
+                "id": "rs_1",
+                "summary": [{"type": "summary_text", "text": "First thought"}],
+                "encrypted_content": "cipher-1",
+            },
+            {
+                "type": "reasoning",
+                "id": "rs_2",
+                "summary": [{"type": "summary_text", "text": "Second thought"}],
+                "encrypted_content": "cipher-2",
+            },
+        ]
+
+    def test_consecutive_turns_cache_key_routing_header_and_shared_prefix(self):
+        """Consecutive turns keep stable cache key, session-id header, and prefix."""
+        handler = _CodexResponsesHandler("gpt-5.4", "https://api.example.com", {})
+        session_id = "session-test-456"
+
+        # Turn 1
+        t1_messages = [
+            SystemMessage(content="You are a coder."),
+            HumanMessage(content="Write a hello function"),
+        ]
+        body1 = handler.build_request(
+            t1_messages, None, True, {"session_id": session_id}
+        )
+        headers1 = handler._prepare_request_headers(body1)
+
+        assert body1["prompt_cache_key"] == session_id
+        assert headers1["session-id"] == session_id
+        assert body1["instructions"] == "You are a coder."
+        assert body1["input"] == [
+            {
+                "type": "message",
+                "role": "user",
+                "content": [{"type": "input_text", "text": "Write a hello function"}],
+            }
+        ]
+
+        # Model outputs response with multiple reasoning items
+        assistant_t1 = AssistantMessage(
+            content="def hello(): return 'hello'",
+            reasoning_items=[
+                {
+                    "id": "rs_1",
+                    "summary": [{"type": "summary_text", "text": "Planning hello"}],
+                    "encrypted_content": "enc_plan",
+                },
+                {
+                    "id": "rs_2",
+                    "summary": [{"type": "summary_text", "text": "Implementing hello"}],
+                    "encrypted_content": "enc_impl",
+                },
+            ],
+        )
+
+        # Turn 2
+        t2_messages = [
+            SystemMessage(content="You are a coder."),
+            HumanMessage(content="Write a hello function"),
+            assistant_t1,
+            HumanMessage(content="Add docstring"),
+        ]
+        body2 = handler.build_request(
+            t2_messages, None, True, {"session_id": session_id}
+        )
+        headers2 = handler._prepare_request_headers(body2)
+
+        assert body2["prompt_cache_key"] == session_id
+        assert headers2["session-id"] == session_id
+        assert body2["instructions"] == "You are a coder."
+
+        # Turn 1's input item 0 is byte/dict-identical in Turn 2
+        assert body2["input"][0] == body1["input"][0]
+
+        # Turn 2 input items 1 & 2 are the replayed reasoning items in order
+        assert body2["input"][1] == {
+            "type": "reasoning",
+            "id": "rs_1",
+            "summary": [{"type": "summary_text", "text": "Planning hello"}],
+            "encrypted_content": "enc_plan",
+        }
+        assert body2["input"][2] == {
+            "type": "reasoning",
+            "id": "rs_2",
+            "summary": [{"type": "summary_text", "text": "Implementing hello"}],
+            "encrypted_content": "enc_impl",
+        }
+
+        # Turn 2 input item 3 is the assistant message
+        assert body2["input"][3] == {
+            "type": "message",
+            "role": "assistant",
+            "content": [{"type": "output_text", "text": "def hello(): return 'hello'"}],
+        }
+
+        # Turn 2 input item 4 is the new user prompt
+        assert body2["input"][4] == {
+            "type": "message",
+            "role": "user",
+            "content": [{"type": "input_text", "text": "Add docstring"}],
         }
 
 

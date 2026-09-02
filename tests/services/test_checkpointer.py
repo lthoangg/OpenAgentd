@@ -541,6 +541,67 @@ class TestSQLiteCheckpointerSync:
         ]
 
     @pytest.mark.asyncio
+    async def test_sync_persists_multiple_reasoning_items_assistant_message(self):
+        """Multiple reasoning items persist to DB extra and reload in exact order."""
+        import app.core.db as _db
+        from app.agent.providers.openai.responses import ResponsesHandler
+        from app.agent.schemas.chat import EncryptedReasoningItem
+
+        sid = uuid.uuid7()
+        async with _db.async_session_factory() as db:
+            async with db.begin():
+                await _make_session(db, sid)
+
+        msg = AssistantMessage(
+            content="Answering.",
+            reasoning_items=[
+                EncryptedReasoningItem(
+                    id="rs_1",
+                    summary=[{"type": "summary_text", "text": "Part 1"}],
+                    encrypted_content="cipher-1",
+                ),
+                EncryptedReasoningItem(
+                    id="rs_2",
+                    summary=[{"type": "summary_text", "text": "Part 2"}],
+                    encrypted_content="cipher-2",
+                ),
+            ],
+        )
+        cp = SQLiteCheckpointer(_db.async_session_factory)
+        await cp.sync(_ctx(str(sid)), AgentState(messages=[msg]))
+
+        loaded = await cp.load(str(sid))
+
+        assert loaded is not None
+        assert len(loaded.messages) == 1
+        restored = loaded.messages[0]
+        assert isinstance(restored, AssistantMessage)
+        assert restored.reasoning_items is not None
+        assert len(restored.reasoning_items) == 2
+        assert restored.reasoning_items[0].id == "rs_1"
+        assert restored.reasoning_items[0].encrypted_content == "cipher-1"
+        assert restored.reasoning_items[1].id == "rs_2"
+        assert restored.reasoning_items[1].encrypted_content == "cipher-2"
+        assert restored.reasoning_item_id == "rs_2"
+        assert restored.reasoning_encrypted_content == "cipher-2"
+        assert ResponsesHandler(
+            "gpt-5.4", "https://api.example.com", {}
+        ).convert_messages([restored])[:2] == [
+            {
+                "type": "reasoning",
+                "id": "rs_1",
+                "summary": [{"type": "summary_text", "text": "Part 1"}],
+                "encrypted_content": "cipher-1",
+            },
+            {
+                "type": "reasoning",
+                "id": "rs_2",
+                "summary": [{"type": "summary_text", "text": "Part 2"}],
+                "encrypted_content": "cipher-2",
+            },
+        ]
+
+    @pytest.mark.asyncio
     async def test_sync_persists_is_summary_and_extra(self):
         """is_summary and extra metadata are passed to save_message."""
         import app.core.db as _db

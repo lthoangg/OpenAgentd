@@ -12,6 +12,7 @@ from app.agent.schemas.chat import (
     AssistantMessage,
     ChatMessage,
     ContentBlock,
+    EncryptedReasoningItem,
     HumanMessage,
     SystemMessage,
     TextBlock,
@@ -22,6 +23,9 @@ from app.models.chat import SessionMessage
 
 _content_block_adapter: TypeAdapter[ContentBlock] = TypeAdapter(ContentBlock)
 _tool_calls_adapter: TypeAdapter[list[ToolCall]] = TypeAdapter(list[ToolCall])
+_reasoning_items_adapter: TypeAdapter[list[EncryptedReasoningItem]] = TypeAdapter(
+    list[EncryptedReasoningItem]
+)
 
 
 def _attachment_hint_parts(message: str, attachments: list[dict]) -> list[TextBlock]:
@@ -77,6 +81,7 @@ def _chat_message_from_row(row: SessionMessage) -> ChatMessage:
         raw_blocks = extra.get("raw_content_blocks")
         encrypted = extra.get("reasoning_encrypted_content")
         item_id = extra.get("reasoning_item_id")
+        reasoning_items = extra.get("reasoning_items")
         return AssistantMessage(
             content=row.content,
             kind=row.kind,
@@ -107,6 +112,11 @@ def _chat_message_from_row(row: SessionMessage) -> ChatMessage:
             ),
             reasoning_encrypted_content=(
                 encrypted if isinstance(encrypted, str) and encrypted else None
+            ),
+            reasoning_items=(
+                _reasoning_items_adapter.validate_python(reasoning_items)
+                if isinstance(reasoning_items, list) and reasoning_items
+                else None
             ),
             tool_calls=(
                 _tool_calls_adapter.validate_python(row.tool_calls)

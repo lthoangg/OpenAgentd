@@ -27,6 +27,7 @@ from app.agent.schemas.chat import (
     ChatCompletionChunkChoice,
     ChatCompletionDelta,
     ChatMessage,
+    EncryptedReasoningItem,
     FunctionCall,
     FunctionCallDelta,
     HumanMessage,
@@ -116,7 +117,8 @@ class ResponsesHandler:
                 # full turn history — including `Reasoning` items — verbatim
                 # into `input`). Without this, stateless (store=false)
                 # multi-turn tool calls lose reasoning continuity.
-                if msg.reasoning_encrypted_content:
+                reasoning_items = msg.reasoning_items
+                if reasoning_items is None and msg.reasoning_encrypted_content:
                     # Me: upstream Codex CLI stores the `summary` field
                     # verbatim from `response.output_item.done` and replays
                     # it unmodified on the next turn (codex-rs protocol
@@ -125,19 +127,31 @@ class ResponsesHandler:
                     # We only keep the joined display text, not the original
                     # per-part list, so replay it as a single summary_text
                     # entry rather than dropping it as an empty list.
-                    summary = (
-                        [{"type": "summary_text", "text": msg.reasoning_content}]
-                        if msg.reasoning_content
-                        else []
-                    )
-                    reasoning_item: dict[str, Any] = {
+                    reasoning_items = [
+                        EncryptedReasoningItem(
+                            id=msg.reasoning_item_id,
+                            summary=(
+                                [
+                                    {
+                                        "type": "summary_text",
+                                        "text": msg.reasoning_content,
+                                    }
+                                ]
+                                if msg.reasoning_content
+                                else []
+                            ),
+                            encrypted_content=msg.reasoning_encrypted_content,
+                        )
+                    ]
+                for reasoning_item in reasoning_items or []:
+                    item: dict[str, Any] = {
                         "type": "reasoning",
-                        "summary": summary,
-                        "encrypted_content": msg.reasoning_encrypted_content,
+                        "summary": reasoning_item.summary,
+                        "encrypted_content": reasoning_item.encrypted_content,
                     }
-                    if msg.reasoning_item_id:
-                        reasoning_item["id"] = msg.reasoning_item_id
-                    input_items.append(reasoning_item)
+                    if reasoning_item.id:
+                        item["id"] = reasoning_item.id
+                    input_items.append(item)
                 if msg.content:
                     input_items.append(
                         {
@@ -300,8 +314,7 @@ class ResponsesHandler:
         output = data.get("output", [])
         content_parts: list[str] = []
         reasoning_parts: list[str] = []
-        reasoning_item_id: str | None = None
-        reasoning_encrypted_content: str | None = None
+        reasoning_items: list[EncryptedReasoningItem] = []
         tool_calls: list[ToolCall] = []
 
         for item in output:
@@ -317,8 +330,13 @@ class ResponsesHandler:
                 # Me: only present when `include: ["reasoning.encrypted_content"]`
                 # was requested — must be replayed verbatim on the next turn.
                 if item.get("encrypted_content"):
-                    reasoning_item_id = item.get("id")
-                    reasoning_encrypted_content = item.get("encrypted_content")
+                    reasoning_items.append(
+                        EncryptedReasoningItem(
+                            id=item.get("id"),
+                            summary=item.get("summary", []),
+                            encrypted_content=item["encrypted_content"],
+                        )
+                    )
             elif item_type == "function_call":
                 tool_calls.append(
                     ToolCall(
@@ -332,9 +350,10 @@ class ResponsesHandler:
 
         usage_dict = self._usage_dict(data.get("usage") or {})
         extra: dict[str, Any] = {"usage": usage_dict} if usage_dict is not None else {}
-        if reasoning_encrypted_content:
-            extra["reasoning_item_id"] = reasoning_item_id
-            extra["reasoning_encrypted_content"] = reasoning_encrypted_content
+        if reasoning_items:
+            extra["reasoning_items"] = [
+                item.model_dump(exclude_none=True) for item in reasoning_items
+            ]
         return AssistantMessage(
             content="\n".join(content_parts) if content_parts else None,
             # Me: reasoning parts each carry their own bold header
@@ -343,8 +362,7 @@ class ResponsesHandler:
             reasoning_content=(
                 "\n\n".join(reasoning_parts) if reasoning_parts else None
             ),
-            reasoning_item_id=reasoning_item_id,
-            reasoning_encrypted_content=reasoning_encrypted_content,
+            reasoning_items=reasoning_items or None,
             tool_calls=tool_calls if tool_calls else None,
             extra=extra or None,
         )
@@ -552,6 +570,7 @@ class ResponsesHandler:
                                     reasoning_encrypted_content=item.get(
                                         "encrypted_content"
                                     ),
+                                    reasoning_item_summary=item.get("summary", []),
                                 ),
                                 finish_reason=None,
                             )

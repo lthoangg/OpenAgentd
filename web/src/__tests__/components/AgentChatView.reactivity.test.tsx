@@ -40,7 +40,6 @@ mock.module('@/components/WorkspaceInfoCard', () => ({ WorkspaceInfoCard: () => 
 mock.module('@/components/CodingSidebar', () => ({ CodingSidebar: () => null }))
 mock.module('@/components/CodingWorkspacePanel', () => ({ CodingWorkspacePanel: () => null }))
 mock.module('@/components/CodingFileViewerPanel', () => ({ CodingFileViewerPanel: () => null }))
-mock.module('@/components/WorkspaceFilesPanel', () => ({ WorkspaceFilesPanel: () => null }))
 mock.module('@/components/Sidebar', () => ({ Sidebar: () => null }))
 mock.module('@/components/AppFooter', () => ({ AppFooter: () => null }))
 mock.module('@/components/AgentChatView/AgentChatPanels', () => ({ AgentChatPanels: () => null }))

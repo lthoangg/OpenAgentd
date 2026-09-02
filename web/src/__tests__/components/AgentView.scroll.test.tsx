@@ -1,10 +1,8 @@
 import { describe, it, expect, afterEach, beforeEach, mock } from "bun:test"
 import { act, render, cleanup } from "@testing-library/react"
-import { AgentPane } from "@/components/AgentPane"
 import { AgentView } from "@/components/AgentView"
 import { useAgentStore } from "@/stores/useAgentStore"
 import type { ContentBlock } from "@/api/types"
-import type { AgentStream } from "@/stores/useAgentStore"
 
 afterEach(() => {
   cleanup()
@@ -39,24 +37,6 @@ function renderStream(props: Partial<React.ComponentProps<typeof AgentView>> = {
       isWorking={props.isWorking ?? false}
     />,
   )
-}
-
-function makeAgentStream(blocks: ContentBlock[]): AgentStream {
-  return {
-    blocks,
-    currentBlocks: [],
-    currentText: "",
-    currentThinking: "",
-    status: "idle",
-    usage: {
-      promptTokens: 0,
-      completionTokens: 0,
-      totalTokens: 0,
-      cachedTokens: 0,
-    },
-    model: null,
-    lastError: null,
-  }
 }
 
 async function waitFrame() {
@@ -312,26 +292,6 @@ describe("attach-to-stream — session switch", () => {
     expect(el.scrollTop).toBe(500) // scrollHeight 1000 - clientHeight 500
   })
 
-  it("AgentPane re-attaches and scrolls to the bottom when the session changes", async () => {
-    act(() => {
-      useAgentStore.setState({ sessionId: "session-a" })
-    })
-    const { container } = render(
-      <AgentPane name="researcher" stream={makeAgentStream([makeTextBlock("b1", "Hello")])} isLead={false} />,
-    )
-    const el = container.querySelector(".overflow-y-auto") as HTMLDivElement
-
-    await fireScroll(el, 200)
-    expect(container.querySelector('button[aria-label="Scroll to bottom"]')).toBeTruthy()
-
-    await act(async () => {
-      useAgentStore.setState({ sessionId: "session-b" })
-    })
-    await waitFrame()
-
-    expect(container.querySelector('button[aria-label="Scroll to bottom"]')).toBeNull()
-    expect(el.scrollTop).toBe(500)
-  })
 })
 
 describe("attach-to-stream — smooth scroll no-op fallback (WKWebView)", () => {
@@ -360,54 +320,10 @@ describe("attach-to-stream — smooth scroll no-op fallback (WKWebView)", () => 
   })
 })
 
-describe("attach-to-stream — AgentPane mounted empty", () => {
-  it("starts observing content that appears after an empty mount", async () => {
-    const originalResizeObserver = globalThis.ResizeObserver
-    const resizeObservers: Array<{ targets: Element[] }> = []
-
-    globalThis.ResizeObserver = class {
-      private readonly entry: (typeof resizeObservers)[number]
-      constructor() {
-        this.entry = { targets: [] }
-        resizeObservers.push(this.entry)
-      }
-      observe(target: Element) {
-        this.entry.targets.push(target)
-      }
-      unobserve() {}
-      disconnect() {}
-    } as unknown as typeof globalThis.ResizeObserver
-
-    try {
-      // Pane mounts with zero blocks — the content div does not exist yet.
-      const { container, rerender } = render(
-        <AgentPane name="researcher" stream={makeAgentStream([])} isLead={false} />,
-      )
-      const el = container.querySelector(".overflow-y-auto") as HTMLDivElement
-      expect(el.querySelector(".space-y-3")).toBeNull()
-
-      // First blocks arrive (agent starts streaming).
-      await act(async () => {
-        rerender(
-          <AgentPane name="researcher" stream={makeAgentStream([makeTextBlock("b1", "Hi")])} isLead={false} />,
-        )
-      })
-
-      const content = el.querySelector(".space-y-3") as HTMLDivElement
-      expect(content).toBeTruthy()
-      // The auto-follow ResizeObserver must observe the late-mounted content.
-      expect(resizeObservers.some((o) => o.targets.includes(content))).toBe(true)
-    } finally {
-      globalThis.ResizeObserver = originalResizeObserver
-    }
-  })
-})
-
 describe("chat layout resize", () => {
   for (const [name, viewportWidth, renderChat] of [
     ["AgentView on desktop", 1440, () => renderStream({ blocks: [makeTextBlock("b1", "Hi")] })],
     ["AgentView on mobile", 390, () => renderStream({ blocks: [makeTextBlock("b1", "Hi")] })],
-    ["AgentPane in desktop split view", 1440, () => render(<AgentPane name="researcher" stream={makeAgentStream([makeTextBlock("b1", "Hi")])} isLead={false} />)],
   ] as const) {
     it(`${name} stays attached when collapsing content lowers the scroll range`, async () => {
       const originalResizeObserver = globalThis.ResizeObserver
@@ -684,16 +600,6 @@ describe("attach-to-stream — wheel/touch detach during stream growth", () => {
     expect(container.querySelector('button[aria-label="Scroll to bottom"]')).toBeNull()
   })
 
-  it("AgentPane detaches on wheel-up even when scroll events never observe an upward scrollTop", async () => {
-    const { container } = render(
-      <AgentPane name="researcher" stream={makeAgentStream([makeTextBlock("b1", "Hi")])} isLead={false} />,
-    )
-    const el = container.querySelector(".overflow-y-auto") as HTMLDivElement
-    await fireScroll(el, 0)
-
-    await fireWheel(el, -50)
-    expect(container.querySelector('button[aria-label="Scroll to bottom"]')).toBeTruthy()
-  })
 })
 
 /**
@@ -816,18 +722,6 @@ describe("AgentView — streaming auto-follow without compositor churn", () => {
     expect(el.className).toContain("oa-chat-scroll")
     expect(anchor).toBeTruthy()
     expect(anchor.getAttribute("aria-hidden")).toBe("true")
-    expect(anchor.style.overflowAnchor).toBe("auto")
-  })
-
-  it("pins a bottom sentinel in AgentPane as well", () => {
-    const { container } = render(
-      <AgentPane name="researcher" stream={makeAgentStream([makeTextBlock("b1", "Hi")])} isLead={false} />,
-    )
-    const el = container.querySelector(".overflow-y-auto") as HTMLDivElement
-    const anchor = el.querySelector("[data-chat-scroll-anchor]") as HTMLElement
-
-    expect(el.className).toContain("oa-chat-scroll")
-    expect(anchor).toBeTruthy()
     expect(anchor.style.overflowAnchor).toBe("auto")
   })
 

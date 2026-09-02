@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, mock } from 'bun:test'
-import { cleanup, render, screen } from '@testing-library/react'
+import { Profiler } from 'react'
+import { act, cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { PendingMessageQueue } from '@/components/PendingMessageQueue'
 import { useAgentStore } from '@/stores/useAgentStore'
@@ -17,6 +18,37 @@ afterEach(() => {
 })
 
 describe('PendingMessageQueue', () => {
+  it('does not re-render on stream deltas while nothing is queued', () => {
+    // `agentStreams` is replaced on every 16 ms SSE flush. With an empty queue
+    // there is nothing to reconcile, so the component must not subscribe to
+    // it — otherwise it flattens every block of every stream per token.
+    const onRender = mock(() => {})
+    useAgentStore.setState({ sessionId: 'session-1', _pendingMessages: [], agentStreams: {} })
+    render(
+      <Profiler id="queue" onRender={onRender}>
+        <PendingMessageQueue />
+      </Profiler>,
+    )
+    const rendersAfterMount = onRender.mock.calls.length
+
+    for (let i = 0; i < 3; i++) {
+      act(() => {
+        useAgentStore.setState({
+          agentStreams: {
+            openagentd: {
+              blocks: [],
+              currentBlocks: [{ id: `text-${i}`, type: 'text', content: `token ${i}` }],
+              status: 'working',
+              usage: { promptTokens: 0, completionTokens: 0, cachedTokens: 0 },
+            } as never,
+          },
+        })
+      })
+    }
+
+    expect(onRender.mock.calls.length).toBe(rendersAfterMount)
+  })
+
   it('renders queued messages for the active session only', () => {
     useAgentStore.setState({
       sessionId: 'session-1',

@@ -77,9 +77,13 @@ function QueuedMessageContent({ content, attachments }: { content: string; attac
 export const PendingMessageQueue = memo(function PendingMessageQueue() {
   const allMessages = useAgentStore((s) => s._pendingMessages)
   const sessionId = useAgentStore((s) => s.sessionId)
-  const agentStreams = useAgentStore((s) => s.agentStreams)
+  // `agentStreams` is replaced on every SSE flush. Subscribe to it only while
+  // something is queued; the empty-queue case (almost always) must not
+  // re-render — and re-flatten every block — per token on a phone WebView.
+  const agentStreams = useAgentStore((s) => (s._pendingMessages.length === 0 ? undefined : s.agentStreams))
 
   const messages = useMemo(() => {
+    if (allMessages.length === 0) return []
     const allBlocks = agentStreams
       ? Object.values(agentStreams).flatMap((s) => [...s.blocks, ...s.currentBlocks])
       : []

@@ -5,9 +5,12 @@ This directory owns the desktop-native shell and its Python sidecar bridge.
 ## Module map
 
 - `src/main.rs`: app state and lifecycle orchestration.
-- `src/config.rs`: saved servers and window/config persistence.
+- `src/config.rs`: window-state persistence plus the `AppHandle` adapters over
+  the shared server-config code in `../../native/shell-core/` (re-exported
+  under the desktop's existing names).
 - `src/window.rs`: WebViews, platform chrome, zoom, and injected bridge state.
-- `src/commands.rs`: Tauri commands exposed to the frontend.
+- `src/commands.rs`: Tauri commands exposed to the frontend; keyring and
+  download commands are thin wrappers over `openagentd-shell-core`.
 - `src/sidecar.rs`: sidecar discovery, spawn, handshake, health, and cleanup.
 - `src/menu.rs`: tray/menu construction, polling, and event routing.
 - `src/usage.rs`: usage formatting and shared HTTP client.

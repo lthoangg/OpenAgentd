@@ -2440,6 +2440,7 @@ dependencies = [
  "objc2-core-foundation",
  "objc2-foundation",
  "objc2-ui-kit",
+ "openagentd-shell-core",
  "reqwest 0.12.28",
  "serde",
  "serde_json",
@@ -2452,6 +2453,19 @@ dependencies = [
  "tempfile",
  "time",
  "tokio",
+ "url",
+]
+
+[[package]]
+name = "openagentd-shell-core"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "base64 0.23.1",
+ "keyring",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
  "url",
 ]
 

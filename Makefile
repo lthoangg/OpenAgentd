@@ -1,6 +1,6 @@
 # Makefile for openagentd
 
-.PHONY: all run dev dev-lan kill-dev-ports test coverage verify verify-backend verify-web verify-docs verify-version verify-native verify-desktop verify-mobile scenarios scenarios-chat scenarios-mentions scenarios-questions scenarios-lsp scenarios-performance health health-json prompt-budget prompt-budget-json migrate revision build-web icons build dist clean help
+.PHONY: all run dev dev-lan kill-dev-ports test coverage verify verify-backend verify-web verify-docs verify-version verify-native verify-shell-core verify-desktop verify-mobile scenarios scenarios-chat scenarios-mentions scenarios-questions scenarios-lsp scenarios-performance health health-json prompt-budget prompt-budget-json migrate revision build-web icons build dist clean help
 
 # Default target
 all: test
@@ -68,7 +68,12 @@ verify-version: ## Verify release-facing versions and release docs stay synchron
 		grep -F "**Latest release:** v$${VERSION} ·" documents/docs/features.md; \
 		grep -E '^updated: [0-9]{4}-[0-9]{2}-[0-9]{2}$$' documents/docs/features.md
 
-verify-native: verify-desktop verify-mobile ## Run desktop and mobile Rust checks (requires native build dependencies)
+verify-native: verify-shell-core verify-desktop verify-mobile ## Run shared-crate, desktop, and mobile Rust checks (requires native build dependencies)
+
+verify-shell-core: ## Format-check, lint, and test the Rust crate shared by both native shells (no Tauri deps)
+	cd native/shell-core && cargo fmt --check
+	cd native/shell-core && cargo clippy --all-targets -- -D warnings
+	cd native/shell-core && cargo test
 
 verify-desktop: ## Check, test, and lint the desktop Rust crate
 	cd desktop/src-tauri && TAURI_CONFIG="$$(cat tauri.dev.conf.json)" cargo check --locked

@@ -2644,6 +2644,7 @@ dependencies = [
  "nix",
  "notify-rust",
  "once_cell",
+ "openagentd-shell-core",
  "reqwest 0.12.28",
  "serde",
  "serde_json",
@@ -2663,6 +2664,19 @@ dependencies = [
  "tokio",
  "url",
  "windows 0.62.2",
+]
+
+[[package]]
+name = "openagentd-shell-core"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "base64 0.23.1",
+ "keyring",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "url",
 ]
 
 [[package]]

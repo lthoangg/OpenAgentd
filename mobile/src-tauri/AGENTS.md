@@ -6,8 +6,11 @@ integration for the mobile shell.
 
 ## Where to look
 
-- `src/lib.rs`: Tauri commands, remote-server normalization/health checks,
-  keyring access, downloads/sharing, plugin setup, and unit tests.
+- `src/lib.rs`: Tauri commands, runtime backend state, the reachability gate,
+  iOS share-sheet handling, plugin setup, and mobile-only unit tests.
+- `../../native/shell-core/`: server config persistence, URL normalization,
+  keyring access, and download limits shared with the desktop shell. Change
+  those behaviours there, with their tests, not in `lib.rs`.
 - `tauri.conf.json`: shared web build hook, window/bundle metadata, CSP, deep
   links, and packaged icons.
 - `capabilities/default.json`: frontend-to-native permissions.

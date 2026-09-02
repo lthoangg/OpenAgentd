@@ -919,8 +919,11 @@ def _apply_patch(patch_text: str) -> str:
 
 # Locks are per canonical path so unrelated agents can patch concurrently.
 # Sources and move destinations are both locked, and acquisition is sorted to
-# avoid deadlocks when two envelopes touch overlapping sets of paths.
+# avoid deadlocks when two envelopes touch overlapping sets of paths. Entries
+# are dropped once nobody holds or waits on them so the table cannot grow for
+# the daemon's lifetime.
 _path_locks: dict[Path, asyncio.Lock] = {}
+_path_lock_refs: dict[Path, int] = {}
 
 
 def _patch_paths(patch_text: str) -> list[Path]:
@@ -933,23 +936,56 @@ def _patch_paths(patch_text: str) -> list[Path]:
     return sorted(set(paths))
 
 
+def _checkout_lock(path: Path) -> asyncio.Lock:
+    _path_lock_refs[path] = _path_lock_refs.get(path, 0) + 1
+    return _path_locks.setdefault(path, asyncio.Lock())
+
+
+def _checkin_lock(path: Path) -> None:
+    remaining = _path_lock_refs.get(path, 0) - 1
+    if remaining <= 0:
+        _path_lock_refs.pop(path, None)
+        _path_locks.pop(path, None)
+    else:
+        _path_lock_refs[path] = remaining
+
+
+async def _acquire_all(locks: list[asyncio.Lock]) -> list[asyncio.Lock]:
+    """Acquire every lock in order; on cancellation release the ones taken.
+
+    A bare ``for lock in locks: await lock.acquire()`` leaks every lock taken
+    before the cancelled one, and an interrupted turn is a common event.
+    """
+    held: list[asyncio.Lock] = []
+    try:
+        for lock in locks:
+            await lock.acquire()
+            held.append(lock)
+    except BaseException:
+        for lock in reversed(held):
+            lock.release()
+        raise
+    return held
+
+
 async def _patch_file(patch_text: str) -> str:
     """Apply a patch envelope without stalling the shared event loop.
 
     One daemon serves every session, so the read/match/write — 28 ms on a
     2.3 MB file — must not run on the loop thread.
     """
-    locks = [
-        _path_locks.setdefault(path, asyncio.Lock())
-        for path in _patch_paths(patch_text)
-    ]
-    for lock in locks:
-        await lock.acquire()
+    paths = _patch_paths(patch_text)
+    locks = [_checkout_lock(path) for path in paths]
     try:
-        return await asyncio.to_thread(_apply_patch, patch_text)
+        held = await _acquire_all(locks)
+        try:
+            return await asyncio.to_thread(_apply_patch, patch_text)
+        finally:
+            for lock in reversed(held):
+                lock.release()
     finally:
-        for lock in reversed(locks):
-            lock.release()
+        for path in paths:
+            _checkin_lock(path)
 
 
 patch_file = Tool(

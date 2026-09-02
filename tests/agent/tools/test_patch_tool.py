@@ -11,6 +11,7 @@ import pytest
 from app.agent.errors import ToolArgumentError, ToolExecutionError
 from app.agent.denied_paths import (
     DeniedPathsConfig as SandboxConfig,
+    get_denied_paths,
     set_denied_paths as set_sandbox,
 )
 from app.agent.tools.builtin.filesystem import patch_file
@@ -443,6 +444,74 @@ async def test_concurrent_patches_to_one_file_do_not_lose_updates(sandbox_worksp
     )
 
     assert target.read_text(encoding="utf-8") == "ALPHA\nBETA\n"
+
+
+@pytest.mark.asyncio
+async def test_cancelled_lock_acquisition_releases_already_held_locks(
+    sandbox_workspace,
+):
+    """Interrupting a patch while it waits on its second lock must not leak the first.
+
+    Per-path locks are acquired in sorted order. If the turn is cancelled
+    while waiting on ``b.txt``, ``a.txt`` must be released, otherwise every
+    later envelope touching ``a.txt`` hangs forever.
+    """
+    from app.agent.tools.builtin.filesystem import patch as patch_module
+
+    (sandbox_workspace / "a.txt").write_text("a\n", encoding="utf-8")
+    (sandbox_workspace / "b.txt").write_text("b\n", encoding="utf-8")
+    b_path = get_denied_paths().validate_path("b.txt")
+
+    # Hold b.txt externally so the envelope blocks after taking a.txt.
+    held = patch_module._path_locks.setdefault(b_path, asyncio.Lock())
+    await held.acquire()
+    envelope = """*** Begin Patch
+*** Update File: a.txt
+@@
+-a
++A
+*** Update File: b.txt
+@@
+-b
++B
+*** End Patch"""
+    task = asyncio.create_task(patch_file.arun(patch_text=envelope))
+    await asyncio.sleep(0)  # let the task take a.txt and park on b.txt
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    held.release()
+
+    result = await asyncio.wait_for(
+        patch_file.arun(
+            patch_text="""*** Begin Patch
+*** Update File: a.txt
+@@
+-a
++A
+*** End Patch"""
+        ),
+        timeout=2,
+    )
+    assert "Patch applied successfully" in result
+
+
+@pytest.mark.asyncio
+async def test_path_locks_are_pruned_after_use(sandbox_workspace):
+    """The per-path lock table must not grow for the daemon's lifetime."""
+    from app.agent.tools.builtin.filesystem import patch as patch_module
+
+    (sandbox_workspace / "pruned.txt").write_text("x\n", encoding="utf-8")
+    await patch_file.arun(
+        patch_text="""*** Begin Patch
+*** Update File: pruned.txt
+@@
+-x
++y
+*** End Patch"""
+    )
+    pruned_path = get_denied_paths().validate_path("pruned.txt")
+    assert pruned_path not in patch_module._path_locks
 
 
 @pytest.mark.asyncio

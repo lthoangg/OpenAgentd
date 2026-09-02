@@ -636,6 +636,26 @@ OpenAgentd carries context across sessions via rolling-window summarization.
 - **`AGENTS.md` at repo root and subfolders** `[v1.9.0]` — written by `/init`;
   standard repo- and folder-scoped agent context files. Coding workspaces fall
   back to root `CLAUDE.md` when root `AGENTS.md` is absent.
+- **Global `AGENTS.md`** `[v2.9.0]` — a developer-wide instructions file at
+  `{config dir}/AGENTS.md` (`~/.config/openagentd/AGENTS.md` in production) is
+  injected into every coding turn ahead of the workspace file, so cross-project
+  preferences live in one place. Matches how pi, OpenCode, and Codex order
+  global → project guidance.
+- **Host environment in the shell tool** `[v2.9.0]` — the shell tool schema
+  states the OS, CPU architecture, and shell binary the command runs under
+  (e.g. `Darwin arm64, shell=zsh`), so the model stops guessing platform
+  commands. Static facts only, keeping the tool schema prompt-cache stable.
+- **Truncation markers name the omitted amount** `[v2.9.0]` — shell output
+  keeps half head / half tail and the marker now reads
+  `...output truncated (N lines omitted)...`, so the model can judge whether
+  the spilled full output is worth reading.
+- **One backend-connection rulebook for desktop and mobile** `[v2.9.0]` —
+  server URL normalization, the saved-servers file, keyring access keys, and
+  download limits now come from one shared native crate. Mobile gains the
+  desktop behaviours it lacked: a pasted `http://host:4082/api` connects
+  instead of probing `/api/api/health/live`, and removing a server matches
+  entries saved with a trailing slash or `/api`. Desktop gains mobile's
+  fallback to the default "Local CLI server" entry when the list empties.
 - **Workspace root injected into coding-mode system prompt** `[v1.133.0]` —
   coding agents are told their workspace's absolute
   path unconditionally, not only when an `AGENTS.md`/`CLAUDE.md` happens to

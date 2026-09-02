@@ -16,8 +16,8 @@
  * `useThemePreference`; the store swaps every session's palette so hidden
  * terminals wake up already matching.
  *
- * Font: follows the user's custom terminal font (Settings → Terminal,
- * `lib/terminal-font.ts`) live — a change there dispatches
+ * Font: follows the user's custom terminal font (`lib/terminal-font.ts`)
+ * live — a change there dispatches
  * `oa-terminal-font-change`, which this view forwards to
  * `useTerminalStore.syncFont` so every session (including ones not
  * currently attached) picks up the new stack immediately.
@@ -70,7 +70,7 @@ export function TerminalView({ sessionId }: TerminalViewProps) {
     useTerminalStore.getState().syncTheme(resolved)
   }, [resolved])
 
-  // Keep every live terminal's font and size in sync with Settings → Terminal
+  // Keep every live terminal's font and size in sync with stored preferences.
   useEffect(() => {
     useTerminalStore.getState().syncFont(readStoredTerminalFont())
     useTerminalStore.getState().syncFontSize(readStoredTerminalFontSize())

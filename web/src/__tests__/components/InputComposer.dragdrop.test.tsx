@@ -2,7 +2,7 @@ import { describe, it, expect, afterEach, mock } from "bun:test"
 import { render, screen, cleanup, fireEvent } from "@testing-library/react"
 import { useRef } from "react"
 import { InputComposer, type InputComposerHandle } from "@/components/InputComposer"
-import { useDragDrop } from "@/components/TeamChatView/useDragDrop"
+import { useDragDrop } from "@/components/AgentChatView/useDragDrop"
 
 mock.module("lucide-react", () => new Proxy({}, { get: () => () => null }))
 
@@ -10,7 +10,7 @@ afterEach(cleanup)
 
 /**
  * Mirrors the production tree: ``FloatingInputComposer`` renders *inside* the
- * ``<main>`` element that ``useDragDrop`` owns (TeamChatView/index.tsx), and
+ * ``<main>`` element that ``useDragDrop`` owns (AgentChatView/index.tsx), and
  * both the bar and ``<main>`` carry drop handlers. A drop landing on the pill
  * is seen by both — it must still attach the file exactly once, and must
  * still clear the drag overlay.

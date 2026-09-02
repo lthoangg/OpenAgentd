@@ -110,6 +110,15 @@ describe('SettingsHubPage — mobile preferences', () => {
 
     expect(screen.queryByText('Providers')).toBeNull()
   })
+
+  it('does not expose the removed Terminal or Notifications settings pages', () => {
+    renderHub({ status: 'ok', version: '1.2.3' })
+
+    expect(SETTINGS_SECTIONS).not.toContainEqual(expect.objectContaining({ id: 'terminal' }))
+    expect(SETTINGS_SECTIONS).not.toContainEqual(expect.objectContaining({ id: 'notifications' }))
+    expect(screen.queryByText('Terminal')).toBeNull()
+    expect(screen.queryByText('Notifications')).toBeNull()
+  })
 })
 
 // ── Community & Support ───────────────────────────────────────────────────

@@ -1,12 +1,9 @@
 /**
  * useSettingsDraft — the single save contract for every settings page.
  *
- * Before this hook, each settings page hand-rolled its own draft state and
- * `dirty` comparison: sandbox diffed arrays index-by-index, multimodal
- * `JSON.stringify`'d two normalized objects, title-generation compared three
- * fields by hand, terminal tracked an ad-hoc `saved` boolean, and
- * notifications skipped the concept entirely by writing on every keystroke.
- * Four contracts meant a user could not predict whether an edit had stuck.
+ * Before this hook, settings pages hand-rolled their own draft state and
+ * `dirty` comparison, which meant users could not predict whether an edit had
+ * stuck.
  *
  * The rebase rule: a draft follows the server snapshot until the user edits
  * it. We detect a new snapshot by *identity*, not by value, so refetching
@@ -18,7 +15,7 @@
  *     initial: DEFAULT_FORM,
  *     normalize,
  *     onSave: (value) => updateMut.mutateAsync(value),
- *     successTitle: 'Terminal settings saved',
+ *     successTitle: 'Settings saved',
  *   })
  *   draft.patch({ enabled: true })
  *   <SettingsPage draft={draft}>…</SettingsPage>

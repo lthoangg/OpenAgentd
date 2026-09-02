@@ -1,9 +1,9 @@
 """Agent orchestration service — transport-neutral entry points.
 
 Routes and (future) channel adapters hand a message off here. The service
-validates attachments against the team lead's capabilities, persists file
-bytes to the session uploads directory, initialises the stream store, and
-delegates to ``team.handle_user_message``.
+validates attachments against the agent's capabilities, persists file bytes to
+the session uploads directory, initialises the stream store, and delegates to
+``session.handle_user_message``.
 
 This module deliberately knows nothing about HTTP, multipart/form-data, or
 FastAPI ``UploadFile`` — inputs are bytes + filename + MIME. That keeps the
@@ -24,7 +24,6 @@ from uuid import uuid7
 from loguru import logger
 
 from app.core.paths import session_uploads_dir
-from app.agent.mode.team.member import is_busy
 from app.services import memory_stream_store as stream_store
 from app.services.stream_envelope import StreamEnvelope
 
@@ -34,7 +33,7 @@ def _uploads_dir(session_id: str, workspace: str | None = None) -> Path:
 
 
 if TYPE_CHECKING:
-    from app.agent.mode.team.team import AgentTeam
+    from app.agent.session import AgentSession
 
 
 # ── Attachment-validation rules (transport-neutral) ──────────────────────────
@@ -327,8 +326,8 @@ class AttachmentError(Exception):
         self.status = status
 
 
-class NoTeamConfigured(Exception):
-    """Raised when the service is called without a configured team."""
+class NoAgentConfigured(Exception):
+    """Raised when the service is called without a configured agent."""
 
 
 # ── Attachment categorisation + magic-byte validation ────────────────────────
@@ -427,7 +426,7 @@ async def _persist_attachment(
         "original_name": safe_original_name,
         "media_type": mime,
         "category": category,
-        "url": f"/api/team/{session_id}/uploads/{filename}",
+        "url": f"/api/agent/{session_id}/uploads/{filename}",
     }
     if att.source:
         meta["source"] = att.source
@@ -437,15 +436,15 @@ async def _persist_attachment(
 # ── Public entry points ──────────────────────────────────────────────────────
 
 
-def require_team(team: "AgentTeam | None") -> "AgentTeam":
-    """Return the team or raise :class:`NoTeamConfigured`."""
-    if team is None:
-        raise NoTeamConfigured("No agent team configured.")
-    return team
+def require_agent_session(session: "AgentSession | None") -> "AgentSession":
+    """Return the agent session or raise :class:`NoAgentConfigured`."""
+    if session is None:
+        raise NoAgentConfigured("No agent configured.")
+    return session
 
 
 async def validate_and_persist_attachments(
-    team: "AgentTeam",
+    session: "AgentSession",
     attachments: list[RawAttachment],
     session_id: str | None = None,
     workspace: str | None = None,
@@ -488,7 +487,7 @@ async def validate_and_persist_attachments(
 
 
 async def dispatch_user_message(
-    team: "AgentTeam",
+    session: "AgentSession",
     *,
     content: str,
     session_id: str | None,
@@ -503,14 +502,14 @@ async def dispatch_user_message(
     mentions: list[str] | None = None,
     origin: str = "user",
 ) -> tuple[str, int, str]:
-    """Send a user message through the team.
+    """Send a user message through the agent session.
 
     Handles the full ingress path:
 
     1. Resolve the session id (use the caller's or mint a fresh UUIDv7).
-    2. Validate attachments against the lead's capabilities + size caps.
+    2. Validate attachments against the agent's capabilities + size caps.
     3. Persist attachments to the app-managed session uploads directory.
-    4. Initialise stream store and deliver to the team.
+    4. Initialise stream store and deliver to the agent session.
 
     Returns ``(session_id, n_attachments, message_id)`` — ``message_id`` is
     the persisted user message's id, surfaced so the caller's HTTP response
@@ -523,11 +522,11 @@ async def dispatch_user_message(
     sid = session_id or str(uuid7())
 
     if atts:
-        _, metas = await validate_and_persist_attachments(team, atts, sid, workspace)
+        _, metas = await validate_and_persist_attachments(session, atts, sid, workspace)
     else:
         metas = []
 
-    _, message_id = await team.handle_user_message(
+    _, message_id = await session.handle_user_message(
         content=content,
         session_id=sid,
         interrupt=False,
@@ -552,17 +551,15 @@ async def dispatch_user_message(
     return sid, len(metas), message_id
 
 
-async def interrupt_team(team: "AgentTeam", session_id: str | None) -> list[str]:
-    """Cancel all working team members. Returns the cancelled member names."""
-    from app.agent.schemas.chat import HumanMessage
-    from app.agent.tools.builtin.todo import release_in_progress_for_actor
+async def interrupt_agent(session: "AgentSession", session_id: str | None) -> list[str]:
+    """Cancel working agent turn. Returns the cancelled agent name."""
     from app.core.db import resolve_db_factory
-    from app.services.chat_service import release_queued_user_messages, save_message
+    from app.services.chat_service import release_queued_user_messages
 
-    effective_session_id = session_id or getattr(team.lead, "session_id", None)
+    effective_session_id = session_id or getattr(session, "session_id", None)
     if effective_session_id:
         try:
-            db_factory = resolve_db_factory(team.lead.db_factory)
+            db_factory = resolve_db_factory(session.db_factory)
             async with db_factory() as db:
                 released = await release_queued_user_messages(
                     db, uuid.UUID(effective_session_id)
@@ -570,103 +567,34 @@ async def interrupt_team(team: "AgentTeam", session_id: str | None) -> list[str]
                 await db.commit()
             if released:
                 logger.info(
-                    "team_interrupt_released_queued session_id={} count={}",
+                    "agent_interrupt_released_queued session_id={} count={}",
                     effective_session_id,
                     len(released),
                 )
         except Exception as exc:
             logger.warning(
-                "team_interrupt_release_queue_failed session_id={} error={}",
+                "agent_interrupt_release_queue_failed session_id={} error={}",
                 effective_session_id,
                 exc,
             )
 
-    # Stop outranks a question the lead is parked on. An interrupt-only request
-    # returns before ``handle_user_message`` runs, so this is the only place a
-    # Stop can close it: leaving the row open would badge the session "needs
-    # input" with no turn left to resume, and hold the lead in ``waiting_input``
-    # — busy to everything that asks. Done before the sweep below so a freed
-    # lead is not reported as a cancelled member; it had no task running.
-    # Named explicitly: the lead's own binding is stale on a team rebuilt after
-    # the idle window, and would search a session that never had a question.
     try:
-        await team.dismiss_pending_question(
+        await session.dismiss_pending_question(
             reason="dismissed", session_id=effective_session_id
         )
     except Exception as exc:
-        # Cancelling the run matters more than closing the card.
         logger.warning(
-            "team_interrupt_dismiss_question_failed session_id={} error={}",
+            "agent_interrupt_dismiss_question_failed session_id={} error={}",
             effective_session_id,
             exc,
         )
 
-    working_members = [m for m in team.all_members if is_busy(m.state)]
-    working_ids = {id(member) for member in working_members}
-    names = [member.name for member in working_members]
-    active_tasks = [
-        task
-        for member in working_members
-        if (task := getattr(member, "_active_task", None)) is not None
-        and not task.done()
-    ]
+    names: list[str] = []
+    if session.is_busy():
+        names.append(session.name)
+        await session.handle_stop()
 
-    # Issue every cancellation before waiting for cleanup, so one slow task
-    # cannot delay cancellation of the others.
-    for member in working_members:
-        member.interrupt()
-    if active_tasks:
-        await asyncio.gather(*active_tasks, return_exceptions=True)
-
-    live_members = getattr(team, "members", {})
-    if isinstance(live_members, dict):
-        for handle, member in list(live_members.items()):
-            if id(member) not in working_ids:
-                continue
-            sid = effective_session_id
-            released = release_in_progress_for_actor(member.name, sid) if sid else []
-            suffix = (
-                f" In-progress todos reset to pending: {', '.join(released)}."
-                if released
-                else ""
-            )
-            content = (
-                f"[{member.name}]: Stopped before completing assigned work.{suffix}"
-            )
-            if sid:
-                try:
-                    db_factory = resolve_db_factory(team.lead.db_factory)
-                    async with db_factory() as db:
-                        await save_message(
-                            db,
-                            uuid.UUID(sid),
-                            HumanMessage(content=content),
-                            extra={"from_agent": member.name, "interrupted": True},
-                        )
-                        await db.commit()
-                except Exception as exc:
-                    logger.warning(
-                        "team_interrupt_notice_failed member={} error={}",
-                        member.name,
-                        exc,
-                    )
-            try:
-                await team._emit(
-                    agent=team.lead.name,
-                    event="inbox",
-                    extra={"content": content, "from_agent": member.name},
-                )
-            except Exception as exc:
-                logger.warning(
-                    "team_interrupt_notice_emit_failed member={} error={}",
-                    member.name,
-                    exc,
-                )
     if effective_session_id:
-        # A turn parked on `ask_user` emits nothing, so the store's sliding TTL
-        # can expire its state while the team is still live. Without
-        # `create_if_missing` this `done` is dropped and the client keeps showing
-        # an open turn.
         await stream_store.push_event(
             effective_session_id,
             StreamEnvelope.from_parts(event="done", data={}),
@@ -684,6 +612,6 @@ async def interrupt_team(team: "AgentTeam", session_id: str | None) -> list[str]
                 },
             )
         except Exception as exc:
-            logger.warning("team_interrupt_publish_failed error={}", exc)
-    logger.info("team_interrupt session_id={} cancelled={}", session_id, names)
+            logger.warning("agent_interrupt_publish_failed error={}", exc)
+    logger.info("agent_interrupt session_id={} cancelled={}", session_id, names)
     return names

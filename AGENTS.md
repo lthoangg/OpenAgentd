@@ -1,6 +1,6 @@
 # OpenAgentd Repository Guide
 
-OpenAgentd is a local-first agent cockpit: a FastAPI backend, one React UI,
+OpenAgentd is a local-first coding-agent cockpit: a FastAPI backend, one React UI,
 and separate Tauri desktop and mobile shells. The canonical catalogue of
 shipped behavior is `documents/docs/features.md`.
 
@@ -66,7 +66,7 @@ Python wheel as a native application build.
 - Keep FastAPI handlers focused on transport validation and response shaping.
   Durable behavior belongs in `app/services/` or the owning `app/agent/`
   subsystem; persistence tables belong in `app/models/` or scheduler models.
-- Keep provider/tool/team runtime behavior under `app/agent/`; do not move it
+- Keep provider/tool/agent runtime behavior under `app/agent/`; do not move it
   into route modules.
 - In the UI, TanStack Query owns server state and Zustand owns client/stream
   state. Keep backend wire handling in `web/src/api/`, queries in
@@ -79,7 +79,7 @@ Python wheel as a native application build.
 ## Safety constraints
 
 - Route every externally supplied workspace root through
-  `app.services.team_manager.validate_workspace()`. Resolve paths within a
+  `app.services.agent_manager.validate_workspace()`. Resolve paths within a
   workspace with the existing `_safe_resolve()` / `_safe_join*()` helpers.
 - Preserve constant-time secret comparison with `hmac.compare_digest`.
 - Treat auth, shell/file tools, MCP launch configuration, Tauri CSP/

@@ -1,4 +1,4 @@
-"""Send a team chat message, poll until done, print history.
+"""Send a chat message, poll stream until done, print history.
 
 Usage:
   uv run python -m manual.team_chat "your message here"
@@ -17,11 +17,21 @@ BASE = DEFAULT_BASE
 DEFAULT_WAIT = 180  # seconds
 
 
-def post_message(base: str, message: str, session_id: str | None) -> str:
-    payload: dict = {"message": message}
+def post_message(
+    base: str,
+    message: str,
+    session_id: str | None,
+    model: str | None = None,
+    thinking_level: str | None = None,
+) -> str:
+    payload: dict = {"message": message, "workspace": "."}
     if session_id:
         payload["session_id"] = session_id
-    r = httpx.post(f"{base}/team/chat", data=payload)
+    if model:
+        payload["model"] = model
+    if thinking_level:
+        payload["thinking_level"] = thinking_level
+    r = httpx.post(f"{base}/agent/chat", data=payload)
     r.raise_for_status()
     data = r.json()
     sid = data["session_id"]
@@ -35,7 +45,7 @@ def wait_for_done(base: str, sid: str, timeout: int) -> bool:
     start = time.monotonic()
     try:
         with httpx.stream(
-            "GET", f"{base}/team/{sid}/stream", timeout=timeout + 5
+            "GET", f"{base}/agent/{sid}/stream", timeout=timeout + 5
         ) as resp:
             for line in resp.iter_lines():
                 if time.monotonic() - start > timeout:
@@ -54,38 +64,25 @@ def wait_for_done(base: str, sid: str, timeout: int) -> bool:
 
 
 def print_history(base: str, sid: str):
-    r = httpx.get(f"{base}/team/{sid}/history", params={"limit": 1000})
+    r = httpx.get(f"{base}/agent/{sid}/history", params={"limit": 1000})
     r.raise_for_status()
     data = r.json()
 
     lead = data["lead"]
-    lead_name = lead.get("agent_name") or lead.get("name") or "lead"
-    _print_agent(lead_name, lead["messages"], is_lead=True)
+    lead_name = lead.get("agent_name") or lead.get("name") or "openagentd"
+    _print_agent(lead_name, lead["messages"])
 
-    for mb in data.get("members", []):
-        _print_agent(mb["name"], mb["messages"])
-
-    total = len(lead["messages"]) + sum(
-        len(mb["messages"]) for mb in data.get("members", [])
-    )
-    done_ct = sum(
-        1
-        for mb in data.get("members", [])
-        for m in mb["messages"]
-        if m.get("content") == "[DONE]"
-    )
-    print(f"\ntotal: {total} msgs | [DONE]: {done_ct}")
+    total = len(lead["messages"])
+    print(f"\ntotal: {total} msgs")
 
 
-def _print_agent(name: str, messages: list, *, is_lead: bool = False):
-    label = f"{name} [lead]" if is_lead else name
+def _print_agent(name: str, messages: list):
     print(f"\n{'=' * 60}")
-    print(f"  {label}: {len(messages)} msgs")
+    print(f"  {name}: {len(messages)} msgs")
     print("=" * 60)
     for m in messages:
         role = m["role"]
         content = (m.get("content") or "")[:140]
-        extra = m.get("extra")
         tc = m.get("tool_calls")
 
         if tc:
@@ -93,23 +90,32 @@ def _print_agent(name: str, messages: list, *, is_lead: bool = False):
                 fn = t["function"]["name"]
                 args = t["function"]["arguments"][:100]
                 print(f"  [{role}] CALL {fn}({args})")
-        elif role == "user" and extra:
-            frm = extra.get("from_agent") or ",".join(extra.get("from_agents", ["?"]))
-            print(f"  [{role}] from={frm} | {content}")
         else:
             print(f"  [{role}] {content}")
 
 
 def main():
-    p = argparse.ArgumentParser(description="Team chat smoke test")
+    p = argparse.ArgumentParser(description="Single-agent chat smoke test")
     p.add_argument("message", help="Message to send")
     p.add_argument("--session", default=None, help="Resume existing session")
+    p.add_argument(
+        "--model", default=None, help="Model override (e.g. opencode:hy3-free)"
+    )
+    p.add_argument(
+        "--thinking-level", default=None, help="Reasoning effort / thinking level"
+    )
     p.add_argument("--wait", type=int, default=DEFAULT_WAIT, help="Max wait seconds")
     p.add_argument("--base", default=BASE)
     args = p.parse_args()
     base = args.base.rstrip("/")
 
-    sid = post_message(base, args.message, args.session)
+    sid = post_message(
+        base,
+        args.message,
+        args.session,
+        model=args.model,
+        thinking_level=args.thinking_level,
+    )
     wait_for_done(base, sid, args.wait)
     print_history(base, sid)
 

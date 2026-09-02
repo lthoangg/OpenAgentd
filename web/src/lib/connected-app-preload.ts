@@ -1,7 +1,7 @@
 import type { QueryClient } from '@tanstack/react-query'
-import { getCodingWorkspaceTree, listProviders, listTeamSessions } from '@/api/client'
+import { getCodingWorkspaceTree, listProviders, listSessions } from '@/api/client'
 import { queryKeys } from '@/queries/keys'
-import { teamAgentsQueryOptions } from '@/queries/team-agents'
+import { agentRegistryQueryOptions } from '@/queries/agent-registry'
 import { preloadHeavyRenderers } from '@/lib/optimistic-preload'
 
 const SESSION_PAGE_SIZE = 20
@@ -11,10 +11,10 @@ export function preloadConnectedApp(client: QueryClient): void {
   // Warm heavy rendering chunks (markdown, mermaid, pdfjs) during idle time.
   preloadHeavyRenderers()
 
-  // Warms the single /team/agents entry read by both the home-page team probe
-  // and the chat header. See ``queries/team-agents.ts``.
+  // Warms the single /agent/agents entry read by both the home-page agent probe
+  // and the chat header. See ``queries/agent-registry.ts``.
   void client.prefetchQuery({
-    ...teamAgentsQueryOptions(),
+    ...agentRegistryQueryOptions(),
     staleTime: Infinity,
   })
   void client.prefetchQuery({
@@ -28,9 +28,9 @@ export function preloadConnectedApp(client: QueryClient): void {
     staleTime: 30_000,
   })
   void client.prefetchInfiniteQuery({
-    queryKey: queryKeys.team.sessions.workspace('__all_coding__'),
+    queryKey: queryKeys.session.sessions.workspace('__all_coding__'),
     queryFn: ({ pageParam }: { pageParam: string | null }) =>
-      listTeamSessions(pageParam, SESSION_PAGE_SIZE),
+      listSessions(pageParam, SESSION_PAGE_SIZE),
     initialPageParam: null as string | null,
   })
 }

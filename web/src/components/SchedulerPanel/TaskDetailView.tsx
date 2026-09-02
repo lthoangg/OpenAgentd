@@ -4,7 +4,7 @@ import type { ScheduledTaskResponse } from '@/api/types'
 import { formatRelativeDate, formatInTimezone } from '@/utils/format'
 import { formatScheduleLabel, slugify } from './utils'
 import { EditTaskForm } from './EditTaskForm'
-import { useTeamStore } from '@/stores/useTeamStore'
+import { useAgentStore } from '@/stores/useAgentStore'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -20,7 +20,7 @@ export function TaskDetailView({
   const [editing, setEditing] = useState(false)
   const [copiedPrompt, setCopiedPrompt] = useState(false)
   const [deleteConfirmationOpen, setDeleteConfirmationOpen] = useState(false)
-  const currentSessionId = useTeamStore((state) => state.sessionId)
+  const currentSessionId = useAgentStore((state) => state.sessionId)
 
   const deleteMutation = useDeleteScheduledTaskMutation()
   const pauseMutation = usePauseScheduledTaskMutation()
@@ -221,7 +221,7 @@ export function TaskDetailView({
                 {task.workspace ? (
                   <span className="inline-flex items-center gap-1.5">
                     <FolderOpen size={12} className="text-(--color-accent)" />
-                    <span>Coding team</span>
+                    <span>Coding agent</span>
                     {task.workspace && (
                       <Tooltip className="min-w-0 max-w-[200px]">
                         <TooltipTrigger
@@ -235,7 +235,7 @@ export function TaskDetailView({
                 ) : (
                   <span className="inline-flex items-center gap-1.5">
                     <Terminal size={12} className="text-(--color-accent)" />
-                    <span>Default team lead</span>
+                    <span>Default agent</span>
                   </span>
                 )}
               </p>

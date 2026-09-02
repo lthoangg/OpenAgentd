@@ -76,7 +76,7 @@ class DiagnosticsDirs(BaseModel):
     skills: DiagnosticsDirInfo
 
 
-class DiagnosticsTeam(BaseModel):
+class DiagnosticsAgent(BaseModel):
     loaded: bool
     loadable: bool | None
 
@@ -92,7 +92,7 @@ class DiagnosticsResponse(BaseModel):
     dirs: DiagnosticsDirs
     providers: dict[str, bool]
     env: dict[str, str]
-    team: DiagnosticsTeam
+    agent: DiagnosticsAgent
     mcp: DiagnosticsMcp
     log_tail: list[str]
     log_path: str
@@ -211,7 +211,7 @@ async def diagnostics(tail: int = 200) -> DiagnosticsResponse:
     tail = max(0, min(tail, 2000))
 
     from app.agent.mcp import mcp_manager
-    from app.services import team_manager
+    from app.services import agent_manager
 
     state_dir = Path(settings.OPENAGENTD_STATE_DIR)
     log_path = state_dir / "logs" / "app" / "app.log"
@@ -221,7 +221,7 @@ async def diagnostics(tail: int = 200) -> DiagnosticsResponse:
         """``True`` if the agents directory parses, ``False`` if missing/empty,
         ``None`` if it raises (treated as a soft 'unknown' in diagnostics)."""
         try:
-            return team_manager.validate_agents_dir()
+            return agent_manager.validate_agents_dir()
         except Exception:
             return None
 
@@ -250,8 +250,8 @@ async def diagnostics(tail: int = 200) -> DiagnosticsResponse:
         ),
         providers=_provider_status(),
         env=_safe_env_keys(("OPENAGENTD_", "APP_", "PYTHON")),
-        team=DiagnosticsTeam(
-            loaded=team_manager.current_team() is not None,
+        agent=DiagnosticsAgent(
+            loaded=agent_manager.current_agent_session() is not None,
             loadable=_agents_dir_loadable(),
         ),
         mcp=DiagnosticsMcp(

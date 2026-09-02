@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'bun:test'
-import { closestRestorableRoute } from '@/lib/route-restore'
+import { closestRestorableRoute, LAST_ROUTE_KEY, lastRouteStorageKey } from '@/lib/route-restore'
 import { router } from '@/router'
 
 describe('closestRestorableRoute', () => {
-  it('falls back stale coding session routes to the coding hub', () => {
-    expect(closestRestorableRoute('/coding/session-123')).toBe('/coding')
+  it('preserves coding session routes on reload and route restore', () => {
+    expect(closestRestorableRoute('/coding/session-123')).toBe('/coding/session-123')
   })
 
   it('normalizes legacy cockpit routes to coding', () => {
@@ -35,8 +35,30 @@ describe('closestRestorableRoute', () => {
     expect(closestRestorableRoute('/settings/providers?section=auth#provider')).toBe('/')
   })
 
-  it('preserves query/hash suffixes when falling back', () => {
-    expect(closestRestorableRoute('/coding/session-123?tab=files#diff')).toBe('/coding?tab=files#diff')
+  it('preserves query/hash suffixes on coding session routes', () => {
+    expect(closestRestorableRoute('/coding/session-123?tab=files#diff')).toBe('/coding/session-123?tab=files#diff')
+  })
+
+  it('preserves query/hash suffixes on scheduler and telemetry routes', () => {
+    expect(closestRestorableRoute('/scheduler?q=sync#task-1')).toBe('/scheduler?q=sync#task-1')
+    expect(closestRestorableRoute('/telemetry?days=7#traces')).toBe('/telemetry?days=7#traces')
+  })
+})
+
+describe('lastRouteStorageKey', () => {
+  it('returns plain key in browser environment without dataset params', () => {
+    delete document.documentElement.dataset.openagentdAppId
+    delete document.documentElement.dataset.openagentdWindowId
+    expect(lastRouteStorageKey()).toBe(LAST_ROUTE_KEY)
+  })
+
+  it('namespaces storage key when app and window ids are present on html dataset', () => {
+    document.documentElement.dataset.openagentdAppId = 'com.openagentd.desktop'
+    document.documentElement.dataset.openagentdWindowId = 'main'
+    expect(lastRouteStorageKey()).toBe('oa-last-route:com.openagentd.desktop:main')
+
+    delete document.documentElement.dataset.openagentdAppId
+    delete document.documentElement.dataset.openagentdWindowId
   })
 })
 

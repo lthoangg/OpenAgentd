@@ -7,7 +7,7 @@ from app.agent.tools.builtin.lsp import lsp_navigation
 from app.agent.tools.builtin.schedule import schedule_task
 from app.agent.tools.builtin.shell import shell_tool
 from app.agent.tools.builtin.skill import load_skill
-from app.agent.tools.builtin.todo import todo_manage, todo_manage_member
+from app.agent.tools.builtin.todo import todo_manage
 from app.agent.tools.builtin.web import web_search
 from app.agent.tools.multimodalities.image import generate_image
 from app.agent.tools.multimodalities.video import generate_video
@@ -52,8 +52,8 @@ def test_patch_text_description_keeps_grammar_and_replace_idiom():
     assert "*** Begin Patch" in patch_text
     assert "*** Add File:" in patch_text
     assert "*** Move to:" in patch_text
-    # Context matching is exact — the model must not expect fuzzy fallback.
-    assert "exactly" in patch_text
+    # Context matching prefers exact lines but documents its guarded repairs.
+    assert "unchanged context bytes are preserved" in patch_text
 
 
 def test_grep_description_has_no_dangling_tool_references():
@@ -91,20 +91,13 @@ def test_background_flag_description_steers_away_from_one_shot_commands():
     assert "foreground" in background
 
 
-def test_todo_descriptions_explain_assignment_claim_handoff():
-    lead_description = " ".join(todo_manage.description.split())
-    member_description = " ".join(todo_manage_member.description.split())
-    assert "Assigned tasks stay pending until claimed" in lead_description
-    # Assignment is delegation: the brief rides on the task itself.
-    assert "wakes its assignee automatically" in lead_description
-    # Completion carries the deliverable; notifications fan out on their own.
-    assert "record the outcome in `result`" in member_description
-    assert "notified automatically" in member_description
+def test_todo_description_is_clean():
+    description = " ".join(todo_manage.description.split())
+    assert "Manage the todo task list" in description
 
 
 def test_high_cost_coordination_descriptions_stay_compact():
-    assert len(todo_manage.description) < 1_200
-    assert len(todo_manage_member.description) < 600
+    assert len(todo_manage.description) < 500
     assert len(schedule_task.description) < 400
 
 

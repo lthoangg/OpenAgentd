@@ -11,15 +11,6 @@ Single-agent turn::
       ├── [chat {model}]               ← wrap_model_call (per LLM call)
       └── [execute_tool: {tool_name}]  ← wrap_tool_call (per tool)
 
-Team turn (pass ``lead_session_id``)::
-
-    [agent_run: lead]                  ← lead member span
-      ├── [chat gpt-4o]
-      └── [execute_tool: team_message]
-
-    [agent_run: researcher]            ← child of same trace via context propagation
-      └── [chat gpt-4o]
-
 Metrics emitted (via ``gen_ai.*`` OTel semantic conventions)
 -----------------------------------------------------
 - ``gen_ai.client.operation.duration``  — histogram (seconds) per LLM call
@@ -45,12 +36,7 @@ Usage::
     from app.agent.hooks.otel import OpenTelemetryHook
     hook = OpenTelemetryHook(agent_name="OpenAgentd", model_id="openai:gpt-4o")
 
-    # Team member
-    hook = OpenTelemetryHook(
-        agent_name="researcher",
-        model_id="openai:gpt-4o",
-        lead_session_id=team.lead.session_id,
-    )
+    hook = OpenTelemetryHook(agent_name="OpenAgentd", model_id="openai:gpt-4o")
 """
 
 from __future__ import annotations
@@ -77,10 +63,6 @@ if TYPE_CHECKING:
 
 _logger = logging.getLogger(__name__)
 
-# Me stable trace context store: lead_session_id → OTel context
-# Used to parent member spans under the lead's root span
-_lead_contexts: dict[str, OtelContext] = {}
-
 
 def _parse_model_id(model_id: str | None) -> tuple[str, str]:
     """Split 'provider:model' → (provider, model).  Graceful on bad input."""
@@ -98,18 +80,14 @@ class OpenTelemetryHook(BaseAgentHook):
     Args:
         agent_name: Display name for this agent (used in span names + attributes).
         model_id:   ``"provider:model"`` string from agent config (e.g. ``"openai:gpt-4o"``).
-        lead_session_id: For team members — the lead's stable session_id used as
-            the trace anchor.  ``None`` for single-agent mode.
     """
 
     def __init__(
         self,
         agent_name: str = "agent",
         model_id: str | None = None,
-        lead_session_id: str | None = None,
     ) -> None:
         self._agent_name = agent_name
-        self._lead_session_id = lead_session_id
         self._provider, self._model = _parse_model_id(model_id)
 
         self._tracer = get_tracer()
@@ -148,17 +126,13 @@ class OpenTelemetryHook(BaseAgentHook):
         ctx: "RunContext",
         state: "AgentState",
     ) -> None:
-        """Start root agent-run span.  For team members, child under lead trace."""
+        """Start the root agent-run span."""
         self._run_start = time.monotonic()
         session_id = ctx.session_id or "no-session"
-
-        # Me resolve parent context — team member links under lead's trace
-        parent_ctx = self._resolve_parent_context(session_id)
 
         span = self._tracer.start_span(
             f"agent_run {self._agent_name}",
             kind=SpanKind.INTERNAL,
-            context=parent_ctx,
             attributes={
                 "gen_ai.agent.name": self._agent_name,
                 "gen_ai.provider.name": self._provider,
@@ -171,12 +145,6 @@ class OpenTelemetryHook(BaseAgentHook):
         ctx_with_span = trace.set_span_in_context(span)
         self._agent_ctx_token = otel_context.attach(ctx_with_span)
         self._agent_span = span
-
-        # Me register lead context so team members can parent under it
-        if self._lead_session_id is None:
-            # Single-agent: register own session as anchor
-            _lead_contexts[session_id] = ctx_with_span
-        # Team members use lead_session_id — already registered by lead's before_agent
 
     async def after_agent(
         self,
@@ -367,15 +335,3 @@ class OpenTelemetryHook(BaseAgentHook):
                     "max_attempts": max_attempts,
                 },
             )
-
-    # ── Helpers ───────────────────────────────────────────────────────────────
-
-    def _resolve_parent_context(self, session_id: str) -> OtelContext | None:
-        """Return OTel context to use as parent.
-
-        - Team member: use lead's registered context so spans nest under lead trace.
-        - Single-agent: no parent (root span).
-        """
-        if self._lead_session_id and self._lead_session_id in _lead_contexts:
-            return _lead_contexts[self._lead_session_id]
-        return None

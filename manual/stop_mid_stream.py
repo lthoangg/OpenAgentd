@@ -30,7 +30,7 @@ follow-up SSE stream, then evaluates phase-agnostic invariants:
      in context for the next turn.
 
 Note: ``/undo`` correctness is *not* asserted here. ``/undo`` moves a soft
-"boundary" in the chat session that the ``/team/{sid}/history`` endpoint
+"boundary" in the chat session that the ``/agent/{sid}/history`` endpoint
 doesn't surface, so this script can't tell from the response whether the
 boundary moved. We verify ``/undo`` returned 202 (i.e. wasn't rejected
 with 409 because the lead was still working); the actual revert semantics
@@ -55,10 +55,11 @@ from dataclasses import dataclass, field
 import httpx
 
 from manual._common import DEFAULT_BASE
+
 BASE = DEFAULT_BASE
 FOLLOWUP = "Reply with the single word OK."
 FOLLOWUP_TIMEOUT = 120
-POST_STOP_SETTLE = 3.0          # how long Stop has to actually halt + flush
+POST_STOP_SETTLE = 3.0  # how long Stop has to actually halt + flush
 POST_UNDO_SETTLE = 0.5
 
 PROMPTS: dict[str, tuple[str, float]] = {
@@ -82,19 +83,23 @@ PROMPTS: dict[str, tuple[str, float]] = {
 # ── HTTP helpers ────────────────────────────────────────────────────────────
 
 
-def post_message(base: str, message: str, session_id: str | None = None) -> str:
-    data: dict[str, str] = {"message": message}
+def post_message(
+    base: str, message: str, session_id: str | None = None, model: str | None = None
+) -> str:
+    data: dict[str, str] = {"message": message, "workspace": "."}
     if session_id:
         data["session_id"] = session_id
-    r = httpx.post(f"{base}/team/chat", data=data, timeout=20)
+    if model:
+        data["model"] = model
+    r = httpx.post(f"{base}/agent/chat", data=data, timeout=20)
     r.raise_for_status()
     return r.json()["session_id"]
 
 
 def post_interrupt(base: str, session_id: str) -> None:
     r = httpx.post(
-        f"{base}/team/chat",
-        data={"session_id": session_id, "interrupt": "true"},
+        f"{base}/agent/chat",
+        data={"session_id": session_id, "interrupt": "true", "workspace": "."},
         timeout=20,
     )
     r.raise_for_status()
@@ -102,7 +107,7 @@ def post_interrupt(base: str, session_id: str) -> None:
 
 def post_undo(base: str, session_id: str) -> dict | None:
     r = httpx.post(
-        f"{base}/team/commands",
+        f"{base}/agent/commands",
         json={"command": "undo", "session_id": session_id},
         timeout=20,
     )
@@ -113,25 +118,23 @@ def post_undo(base: str, session_id: str) -> dict | None:
 
 def get_history(base: str, session_id: str) -> list[dict]:
     r = httpx.get(
-        f"{base}/team/{session_id}/history", params={"limit": 1000}, timeout=20
+        f"{base}/agent/{session_id}/history", params={"limit": 1000}, timeout=20
     )
     r.raise_for_status()
     return r.json()["lead"]["messages"]
 
 
-def stream_until_done(
-    base: str, sid: str, *, timeout: int
-) -> tuple[bool, bool, str]:
+def stream_until_done(base: str, sid: str, *, timeout: int) -> tuple[bool, bool, str]:
     """Return ``(done, saw_error, last_event)``.
 
-    Reads SSE on ``/team/{sid}/stream`` until a ``done`` event arrives, an
+    Reads SSE on ``/agent/{sid}/stream`` until a ``done`` event arrives, an
     ``error`` event arrives, or ``timeout`` elapses.
     """
     deadline = time.monotonic() + timeout
     last_event = ""
     saw_error = False
     try:
-        with httpx.stream("GET", f"{base}/team/{sid}/stream", timeout=timeout + 5) as r:
+        with httpx.stream("GET", f"{base}/agent/{sid}/stream", timeout=timeout + 5) as r:
             current_event = ""
             for line in r.iter_lines():
                 if time.monotonic() > deadline:
@@ -196,8 +199,8 @@ class RunReport:
     session_id: str
     stop_phase: str
     undid: bool
-    stop_held: bool = True           # I0 — Stop actually halted the turn
-    undo_409: bool = False           # /undo refused because lead was still working
+    stop_held: bool = True  # I0 — Stop actually halted the turn
+    undo_409: bool = False  # /undo refused because lead was still working
     pre_undo_count: int = 0
     post_undo_count: int = 0
     followup_done: bool = False
@@ -237,7 +240,9 @@ def check_invariants(report: RunReport, messages: list[dict]) -> None:
 
     # I0: Stop actually halted the turn.
     if not report.stop_held:
-        v.append("I0: Stop did not halt the turn — history kept growing after interrupt")
+        v.append(
+            "I0: Stop did not halt the turn — history kept growing after interrupt"
+        )
 
     # I1: every persisted tool_call.arguments parses as JSON or is "".
     for i, m in enumerate(messages):
@@ -264,7 +269,9 @@ def check_invariants(report: RunReport, messages: list[dict]) -> None:
     if report.followup_error:
         v.append(f"I3: follow-up SSE emitted error (last_event={report.last_event})")
     if not report.followup_done:
-        v.append(f"I4: follow-up SSE never reached done (last_event={report.last_event})")
+        v.append(
+            f"I4: follow-up SSE never reached done (last_event={report.last_event})"
+        )
 
     # I5: role ordering — no two consecutive assistant rows; every ``tool``
     #     row must follow an assistant row with tool_calls. Consecutive
@@ -282,7 +289,9 @@ def check_invariants(report: RunReport, messages: list[dict]) -> None:
             if j < 0 or messages[j].get("role") != "assistant":
                 v.append(f"I5: orphan tool row at msg#{i} (no assistant ancestor)")
             elif not (messages[j].get("tool_calls") or []):
-                v.append(f"I5: tool row at msg#{i} but assistant ancestor has no tool_calls")
+                v.append(
+                    f"I5: tool row at msg#{i} but assistant ancestor has no tool_calls"
+                )
         prev_role = role
 
     # I6 intentionally dropped — see module docstring.
@@ -291,12 +300,14 @@ def check_invariants(report: RunReport, messages: list[dict]) -> None:
 # ── Single run ──────────────────────────────────────────────────────────────
 
 
-def run_one(base: str, scenario: str, *, undo: bool) -> RunReport:
+def run_one(
+    base: str, scenario: str, *, undo: bool, model: str | None = None
+) -> RunReport:
     prompt, wait = PROMPTS[scenario]
     label = f"{scenario}{'+undo' if undo else ''}"
     print(f"\n── {label} ── prompt={prompt[:60]!r}... wait={wait}s")
 
-    sid = post_message(base, prompt)
+    sid = post_message(base, prompt, model=model)
     print(f"   session={sid}")
     time.sleep(wait)
     post_interrupt(base, sid)
@@ -315,8 +326,12 @@ def run_one(base: str, scenario: str, *, undo: bool) -> RunReport:
     )
 
     report = RunReport(
-        name=label, session_id=sid, stop_phase=phase, undid=undo,
-        stop_held=stop_held, pre_undo_count=len(pre),
+        name=label,
+        session_id=sid,
+        stop_phase=phase,
+        undid=undo,
+        stop_held=stop_held,
+        pre_undo_count=len(pre),
     )
 
     if undo:
@@ -332,7 +347,7 @@ def run_one(base: str, scenario: str, *, undo: bool) -> RunReport:
     else:
         report.post_undo_count = report.pre_undo_count
 
-    post_message(base, FOLLOWUP, session_id=sid)
+    post_message(base, FOLLOWUP, session_id=sid, model=model)
     done, saw_error, last = stream_until_done(base, sid, timeout=FOLLOWUP_TIMEOUT)
     report.followup_done = done
     report.followup_error = saw_error
@@ -358,8 +373,7 @@ def print_summary(reports: list[RunReport]) -> None:
         fu = "done" if r.followup_done else ("error" if r.followup_error else "stalled")
         result = "OK" if r.ok else f"FAIL ({len(r.violations)})"
         print(
-            f"  {r.name:<14} {r.stop_phase:<28} {r.final_count:>4}  "
-            f"{fu:<11}  {result}"
+            f"  {r.name:<14} {r.stop_phase:<28} {r.final_count:>4}  {fu:<11}  {result}"
         )
     failures = [r for r in reports if not r.ok]
     if failures:
@@ -376,6 +390,7 @@ def print_summary(reports: list[RunReport]) -> None:
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--base", default=BASE, help="API base URL")
+    p.add_argument("--model", default=None, help="Model override")
     p.add_argument(
         "--only",
         action="append",
@@ -398,9 +413,9 @@ def main() -> int:
 
     reports: list[RunReport] = []
     for scenario in scenarios:
-        reports.append(run_one(base, scenario, undo=False))
+        reports.append(run_one(base, scenario, undo=False, model=args.model))
         if not args.skip_undo:
-            reports.append(run_one(base, scenario, undo=True))
+            reports.append(run_one(base, scenario, undo=True, model=args.model))
 
     print_summary(reports)
     return 0 if all(r.ok for r in reports) else 1

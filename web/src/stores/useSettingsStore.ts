@@ -2,12 +2,12 @@
  * useSettingsStore — controls the VS Code–style settings modal.
  *
  * Navigation is self-contained: section + optional selectedName covers
- * all views (list, new-form, editor). No URL changes happen.
+ * the skill and MCP drill-down editors. The coding agent is a fixed editor.
  *
  * The last visited section is persisted, so reopening settings returns you
  * where you left off instead of resetting to About every time. Drill-down
  * views are collapsed to their parent list on rehydrate, because the item they
- * pointed at (an agent, a skill, an MCP server) may since have been deleted.
+ * pointed at (a skill or MCP server) may since have been deleted.
  */
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
@@ -17,8 +17,6 @@ import { useUIStore, _registerCloseSettings } from './useUIStore'
 export type SettingsSection =
   | 'about'
   | 'agents'
-  | 'agents-new'
-  | 'agents-edit'
   | 'skills'
   | 'skills-new'
   | 'skills-edit'
@@ -31,15 +29,13 @@ export type SettingsSection =
   // Replaced the former 'multimodal' | 'summarization' | 'title-generation'
   // sections, which are now collapsible groups on one Automation page.
   | 'automation'
-  | 'notifications'
-  | 'terminal'
 
 /**
  * Sections that are lists with `-new` / `-edit` drill-down views. Declared here
  * next to the union it describes, so the store and the section registry share
  * one definition instead of both hardcoding the same three prefixes.
  */
-const DRILL_DOWN_FAMILIES = ['agents', 'skills', 'mcp'] as const
+const DRILL_DOWN_FAMILIES = ['skills', 'mcp'] as const
 
 /**
  * Collapses a drill-down section to the list it belongs to. Used for restoring
@@ -47,13 +43,19 @@ const DRILL_DOWN_FAMILIES = ['agents', 'skills', 'mcp'] as const
  * empty pane) and for sidebar highlighting.
  */
 export function parentSection(section: SettingsSection): SettingsSection {
+  // Settings state is persisted without schema validation. Treat sections
+  // removed in older builds as About so an upgrade cannot reopen a dead page.
+  const persistedSection = section as string
+  if (persistedSection === 'notifications' || persistedSection === 'terminal') {
+    return 'about'
+  }
   return DRILL_DOWN_FAMILIES.find((f) => section.startsWith(f)) ?? section
 }
 
 interface SettingsStore {
   open: boolean
   section: SettingsSection
-  /** Name param for editor views (agents-edit, skills-edit, mcp-edit). */
+  /** Name param for editor views (skills-edit, mcp-edit). */
   selectedName: string | null
   /**
    * Opens the modal. Omit `section` to resume the last visited one; pass it

@@ -1,12 +1,12 @@
 import { useQuery } from '@tanstack/react-query'
-import { teamAgentsQueryOptions } from './team-agents'
+import { agentRegistryQueryOptions } from './agent-registry'
 
-/** Team mode — GET /team/agents */
-export function useTeamAgentsQuery(workspace?: string | null, enabled = true) {
+/** Agent metadata — GET /agent/agents */
+export function useAgentsQuery(workspace?: string | null, enabled = true) {
   return useQuery({
-    // Shared cache entry with useTeamStatusQuery, including its `staleTime`
-    // baseline. See ``team-agents.ts``.
-    ...teamAgentsQueryOptions(workspace),
+    // Shared cache entry with useAgentStatusQuery, including its `staleTime`
+    // baseline. See ``agent-registry.ts``.
+    ...agentRegistryQueryOptions(workspace),
     enabled,
   })
 }

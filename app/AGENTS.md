@@ -9,7 +9,7 @@ app, CLI, agent runtime, SQLModel persistence, scheduler, and migrations.
   shaping. Durable behavior does not belong in route handlers.
 - `services/`: application behavior shared by routes, CLI, scheduler, or the
   agent runtime.
-- `agent/`: provider, tool, MCP, permission, prompt, and multi-agent runtime.
+- `agent/`: provider, tool, MCP, permission, prompt, and single-agent runtime.
 - `core/`: configuration, paths, database/session factories, auth, logging,
   and telemetry primitives.
 - `models/` and `scheduler/models.py`: persisted SQLModel tables.

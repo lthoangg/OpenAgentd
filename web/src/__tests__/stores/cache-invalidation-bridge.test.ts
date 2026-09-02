@@ -1,7 +1,7 @@
 /**
  * applyCacheInvalidations — pure event-to-invalidation mapping.
  *
- * The team store's SSE reducer enqueues ``CacheInvalidation`` events
+ * The agent store's SSE reducer enqueues ``CacheInvalidation`` events
  * onto its ``cacheInvalidations`` queue; the coding route drains
  * the queue and hands events to ``applyCacheInvalidations``, which
  * translates them to ``queryClient.invalidateQueries`` calls.
@@ -13,7 +13,7 @@ import { describe, it, expect, mock } from 'bun:test'
 import { QueryClient, type InfiniteData } from '@tanstack/react-query'
 import { applyCacheInvalidations, patchSessionRunning, patchSessionTitle, prependSession, prependWorkspaceSession } from '@/stores/cache-invalidation-bridge'
 import { queryKeys } from '@/queries'
-import type { CacheInvalidation } from '@/stores/useTeamStore'
+import type { CacheInvalidation } from '@/stores/useAgentStore'
 import type { SessionPageResponse, SessionResponse } from '@/api/types'
 
 function makeMockClient() {
@@ -35,7 +35,7 @@ describe('applyCacheInvalidations', () => {
     applyCacheInvalidations(client, [{ kind: 'workspace_files', sessionId: 'sid-123' }])
     expect(client.invalidateQueries).toHaveBeenCalledTimes(1)
     expect(client.invalidateQueries).toHaveBeenCalledWith({
-      queryKey: queryKeys.team.files('sid-123'),
+      queryKey: queryKeys.session.files('sid-123'),
     })
   })
 
@@ -74,24 +74,6 @@ describe('applyCacheInvalidations', () => {
     })
   })
 
-  it('maps `team_agents` event to teamAgents()', () => {
-    const client = makeMockClient()
-    applyCacheInvalidations(client, [{ kind: 'team_agents' }])
-    expect(client.invalidateQueries).toHaveBeenCalledTimes(1)
-    expect(client.invalidateQueries).toHaveBeenCalledWith({
-      queryKey: queryKeys.teamAgents(),
-    })
-  })
-
-  it('maps `team_sessions` event to team session list', () => {
-    const client = makeMockClient()
-    applyCacheInvalidations(client, [{ kind: 'team_sessions' }])
-    expect(client.invalidateQueries).toHaveBeenCalledTimes(1)
-    expect(client.invalidateQueries).toHaveBeenCalledWith({
-      queryKey: queryKeys.team.sessions.all(),
-    })
-  })
-
   it('uses the exact key shape ["scheduler", "list"] (regression guard)', () => {
     const client = makeMockClient()
     applyCacheInvalidations(client, [{ kind: 'scheduler' }])
@@ -99,11 +81,11 @@ describe('applyCacheInvalidations', () => {
     expect(call.queryKey).toEqual(['scheduler', 'list'])
   })
 
-  it('uses the exact key shape ["team", "files", sessionId] (regression guard)', () => {
+  it('uses the exact key shape ["session", "files", sessionId] (regression guard)', () => {
     const client = makeMockClient()
     applyCacheInvalidations(client, [{ kind: 'workspace_files', sessionId: 'sid-xyz' }])
     const call = client.invalidateQueries.mock.calls[0][0] as { queryKey: readonly unknown[] }
-    expect(call.queryKey).toEqual(['team', 'files', 'sid-xyz'])
+    expect(call.queryKey).toEqual(['session', 'files', 'sid-xyz'])
   })
 
   it('uses the exact key shape ["todos", sessionId] (regression guard)', () => {
@@ -121,21 +103,17 @@ describe('applyCacheInvalidations', () => {
       { kind: 'scheduler' },
       { kind: 'workspace_files', sessionId: 'sid-1' },
       { kind: 'todos', sessionId: 'sid-1' },
-      { kind: 'team_agents' },
     ]
     applyCacheInvalidations(client, events)
-    expect(client.invalidateQueries).toHaveBeenCalledTimes(4)
+    expect(client.invalidateQueries).toHaveBeenCalledTimes(3)
     expect(client.invalidateQueries.mock.calls[0][0]).toEqual({
       queryKey: queryKeys.scheduler.list(),
     })
     expect(client.invalidateQueries.mock.calls[1][0]).toEqual({
-      queryKey: queryKeys.team.files('sid-1'),
+      queryKey: queryKeys.session.files('sid-1'),
     })
     expect(client.invalidateQueries.mock.calls[2][0]).toEqual({
       queryKey: queryKeys.todos('sid-1'),
-    })
-    expect(client.invalidateQueries.mock.calls[3][0]).toEqual({
-      queryKey: queryKeys.teamAgents(),
     })
   })
 
@@ -163,10 +141,10 @@ describe('applyCacheInvalidations', () => {
     ])
     expect(client.invalidateQueries).toHaveBeenCalledTimes(3)
     expect(client.invalidateQueries.mock.calls[0][0]).toEqual({
-      queryKey: queryKeys.team.files('sid-A'),
+      queryKey: queryKeys.session.files('sid-A'),
     })
     expect(client.invalidateQueries.mock.calls[1][0]).toEqual({
-      queryKey: queryKeys.team.files('sid-B'),
+      queryKey: queryKeys.session.files('sid-B'),
     })
     expect(client.invalidateQueries.mock.calls[2][0]).toEqual({
       queryKey: queryKeys.todos('sid-A'),
@@ -207,7 +185,7 @@ function makeSession(id: string, title: string | null): SessionResponse {
 function seedInfinite(
   client: QueryClient,
   pages: SessionResponse[][],
-  key: readonly unknown[] = queryKeys.team.sessions.infinite(),
+  key: readonly unknown[] = queryKeys.session.sessions.infinite(),
 ): void {
   const data: InfiniteData<SessionPageResponse> = {
     pages: pages.map((rows, i) => ({
@@ -222,7 +200,7 @@ function seedInfinite(
 
 function readInfinite(client: QueryClient): InfiniteData<SessionPageResponse> | undefined {
   return client.getQueryData<InfiniteData<SessionPageResponse>>(
-    queryKeys.team.sessions.infinite(),
+    queryKeys.session.sessions.infinite(),
   )
 }
 
@@ -326,7 +304,7 @@ describe('patchSessionTitle', () => {
   })
 
   it('does not seed an empty wrapper when the cache has never been populated', () => {
-    // Before useTeamSessionsQuery runs (e.g. before the user opens the
+    // Before useSessionsQuery runs (e.g. before the user opens the
     // sidebar), the cache is empty.  setQueriesData must not create a
     // bogus ``{ pages: [], pageParams: [] }`` entry that would later
     // confuse the hook.
@@ -402,29 +380,29 @@ describe('patchSessionTitle', () => {
   })
 
   it('patches the detail cache while leaving unrelated team caches alone', () => {
-    // ``queryKeys.team.sessions.all()`` returns ``['team', 'sessions']``
+    // ``queryKeys.session.sessions.all()`` returns ``['session', 'sessions']``
     // and matches every key starting with that prefix (the infinite key is
-    // ``['team', 'sessions', 'infinite']``). Detail caches are not infinite
+    // ``['session', 'sessions', 'infinite']``). Detail caches are not infinite
     // data, so update them directly; unrelated ``team.*`` caches stay intact.
     const client = new QueryClient()
     seedInfinite(client, [[makeSession('s1', 'Old')]])
-    client.setQueryData(queryKeys.team.sessions.detail('s1'), makeSession('s1', 'Detail'))
-    client.setQueryData(queryKeys.team.files('s1'), ['file-a.txt'])
-    client.setQueryData(queryKeys.teamAgents(), { lead: 'x' })
+    client.setQueryData(queryKeys.session.sessions.detail('s1'), makeSession('s1', 'Detail'))
+    client.setQueryData(queryKeys.session.files('s1'), ['file-a.txt'])
+    client.setQueryData(queryKeys.agentRegistry(), { lead: 'x' })
 
     patchSessionTitle(client, 's1', 'New')
 
     expect(readInfinite(client)!.pages[0].data[0].title).toBe('New')
-    expect(client.getQueryData(queryKeys.team.sessions.detail('s1'))).toEqual(makeSession('s1', 'New'))
-    expect(client.getQueryData(queryKeys.team.files('s1'))).toEqual(['file-a.txt'])
-    expect(client.getQueryData(queryKeys.teamAgents())).toEqual({ lead: 'x' })
+    expect(client.getQueryData(queryKeys.session.sessions.detail('s1'))).toEqual(makeSession('s1', 'New'))
+    expect(client.getQueryData(queryKeys.session.files('s1'))).toEqual(['file-a.txt'])
+    expect(client.getQueryData(queryKeys.agentRegistry())).toEqual({ lead: 'x' })
   })
 })
 
 describe('prependSession', () => {
   it('does not mutate workspace session caches when prepending the global session list', () => {
     const client = new QueryClient()
-    const workspaceKey = queryKeys.team.sessions.workspace('/repo/other')
+    const workspaceKey = queryKeys.session.sessions.workspace('/repo/other')
     seedInfinite(client, [[makeSession('other', 'Other')]], workspaceKey)
 
     expect(() => prependSession(client, makeSession('new', null))).not.toThrow()
@@ -454,7 +432,7 @@ describe('prependSession', () => {
 
   it('adds a coding session to the top of the workspace cache', () => {
     const client = new QueryClient()
-    const key = queryKeys.team.sessions.workspace('/repo/project')
+    const key = queryKeys.session.sessions.workspace('/repo/project')
     seedInfinite(client, [[makeSession('s1', 'A')]], key)
 
     prependWorkspaceSession(client, '/repo/project', makeSession('new', null))
@@ -464,7 +442,7 @@ describe('prependSession', () => {
 
   it('keeps existing visible workspace rows when prepending beyond the first-page size', () => {
     const client = new QueryClient()
-    const key = queryKeys.team.sessions.workspace('/repo/project')
+    const key = queryKeys.session.sessions.workspace('/repo/project')
     seedInfinite(client, [[
       makeSession('s1', 'A'),
       makeSession('s2', 'B'),
@@ -560,21 +538,21 @@ describe('patchSessionRunning', () => {
 
   it('also patches the session detail entry', () => {
     const client = new QueryClient()
-    client.setQueryData(queryKeys.team.sessions.detail('s1'), makeSession('s1', 'A'))
+    client.setQueryData(queryKeys.session.sessions.detail('s1'), makeSession('s1', 'A'))
 
     patchSessionRunning(client, 's1', true)
 
-    expect(client.getQueryData<SessionResponse>(queryKeys.team.sessions.detail('s1'))?.running).toBe(true)
+    expect(client.getQueryData<SessionResponse>(queryKeys.session.sessions.detail('s1'))?.running).toBe(true)
   })
 
   it('patches workspace-scoped session lists too (sessions.all prefix)', () => {
     const client = new QueryClient()
-    seedInfinite(client, [[makeSession('s1', 'A')]], queryKeys.team.sessions.workspace('/ws'))
+    seedInfinite(client, [[makeSession('s1', 'A')]], queryKeys.session.sessions.workspace('/ws'))
 
     expect(patchSessionRunning(client, 's1', true)).toBe(true)
 
     const after = client.getQueryData<InfiniteData<SessionPageResponse>>(
-      queryKeys.team.sessions.workspace('/ws'),
+      queryKeys.session.sessions.workspace('/ws'),
     )!
     expect(after.pages[0].data[0].running).toBe(true)
   })
@@ -617,7 +595,7 @@ describe('applyCacheInvalidations — session_running', () => {
     applyCacheInvalidations(bridge, [{ kind: 'session_running', sessionId: 'new-sid', running: true }])
 
     expect(invalidateQueries).toHaveBeenCalledWith({
-      queryKey: queryKeys.team.sessions.all(),
+      queryKey: queryKeys.session.sessions.all(),
     })
   })
 })

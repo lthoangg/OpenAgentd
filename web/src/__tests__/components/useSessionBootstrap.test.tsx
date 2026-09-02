@@ -3,11 +3,19 @@ import { createRef } from 'react'
 import type { RefObject } from 'react'
 import { cleanup, render, waitFor } from '@testing-library/react'
 import { QueryClient } from '@tanstack/react-query'
-import { useSessionBootstrap } from '@/components/TeamChatView/useSessionBootstrap'
-import type { UseSessionBootstrapArgs } from '@/components/TeamChatView/useSessionBootstrap'
+
+// Whether the OS drops background sockets (iOS/Android) decides if a resume
+// must reconnect. Toggled per test; defaults to the mobile behaviour.
+let suspendsSockets = true
+mock.module('@/hooks/use-platform', () => ({
+  backgroundSuspendsSockets: () => suspendsSockets,
+}))
+
+import { useSessionBootstrap } from '@/components/AgentChatView/useSessionBootstrap'
+import type { UseSessionBootstrapArgs } from '@/components/AgentChatView/useSessionBootstrap'
 import type { InputComposerHandle } from '@/components/InputComposer'
-import { useTeamStore } from '@/stores/useTeamStore'
-import { createDefaultAgentStream } from '@/stores/useTeamStore/defaults'
+import { useAgentStore } from '@/stores/useAgentStore'
+import { createDefaultAgentStream } from '@/stores/useAgentStore/defaults'
 
 function Harness({
   loadSession,
@@ -32,16 +40,15 @@ function Harness({
     isCodingSessionLoading: false,
     isMobile,
     paletteOpen: false,
-    sessionIdState: sessionId,
     sessionModel: null,
     sessionThinkingLevel: null,
     sessionTitle: null,
-    isTeamWorking: true,
+    isAgentWorking: true,
     inputRef: inputRef ?? createRef<InputComposerHandle>(),
     navigate: mock(() => {}) as never,
     queryClient: new QueryClient(),
     connectStream,
-    loadTeamStatus: mock(async () => {}),
+    loadAgentStatus: mock(async () => {}),
     loadSession,
     beginResolvedSession,
     consumeResolvedSessionReady: mock(() => false),
@@ -50,11 +57,12 @@ function Harness({
 }
 
 beforeEach(() => {
-  useTeamStore.setState({
+  suspendsSockets = true
+  useAgentStore.setState({
     sessionId: 'session-1',
     _workspace: null,
     isConnected: true,
-    isTeamWorking: true,
+    isAgentWorking: true,
     _unloading: false,
     _abortController: null,
   })
@@ -63,9 +71,10 @@ beforeEach(() => {
 afterEach(cleanup)
 
 describe('useSessionBootstrap foreground resume', () => {
-  it('reconciles history and replaces a stale connected stream after pageshow', async () => {
+  it('reconciles history and replaces a stale connected stream after pageshow on mobile', async () => {
+    suspendsSockets = true
     const loadSession = mock(async () => {
-      useTeamStore.setState({ isTeamWorking: true })
+      useAgentStore.setState({ isAgentWorking: true })
     })
     const connectStream = mock(() => new AbortController())
     render(<Harness loadSession={loadSession} connectStream={connectStream} />)
@@ -75,7 +84,7 @@ describe('useSessionBootstrap foreground resume', () => {
 
     loadSession.mockClear()
     connectStream.mockClear()
-    useTeamStore.setState({ _workspace: '/repo/app' })
+    useAgentStore.setState({ _workspace: '/repo/app' })
 
     window.dispatchEvent(new Event('pageshow'))
 
@@ -83,10 +92,11 @@ describe('useSessionBootstrap foreground resume', () => {
     expect(connectStream).toHaveBeenCalledTimes(1)
   })
 
-  it('does NOT abort or replace a live connected stream on visibilitychange when on desktop (non-mobile)', async () => {
+  it('does NOT abort or replace a live connected stream on visibilitychange on desktop', async () => {
+    suspendsSockets = false
     const loadSession = mock(async () => {})
     const connectStream = mock(() => new AbortController())
-    render(<Harness loadSession={loadSession} connectStream={connectStream} isMobile={false} />)
+    render(<Harness loadSession={loadSession} connectStream={connectStream} />)
 
     await waitFor(() => expect(loadSession).toHaveBeenCalledWith('session-1', '/repo/app'))
     expect(connectStream).toHaveBeenCalledTimes(1)
@@ -94,11 +104,11 @@ describe('useSessionBootstrap foreground resume', () => {
     loadSession.mockClear()
     connectStream.mockClear()
 
-    useTeamStore.setState({
+    useAgentStore.setState({
       sessionId: 'session-1',
       _workspace: null,
       isConnected: true,
-      isTeamWorking: true,
+      isAgentWorking: true,
     })
 
     // Simulate returning to the app on desktop
@@ -112,12 +122,11 @@ describe('useSessionBootstrap foreground resume', () => {
 
 describe('useSessionBootstrap session switch', () => {
   it('drops the previous session live stream when the route switches sessions', async () => {
-    useTeamStore.setState({
+    useAgentStore.setState({
       sessionId: 'session-1',
       sessionTitle: 'Session one',
       leadName: 'lead',
       agentNames: ['lead'],
-      activeAgent: 'lead',
       agentStreams: {
         lead: {
           ...createDefaultAgentStream(),
@@ -137,14 +146,14 @@ describe('useSessionBootstrap session switch', () => {
         sessionId="session-2"
         loadSession={loadSession}
         connectStream={connectStream}
-        beginResolvedSession={useTeamStore.getState().beginResolvedSession}
+        beginResolvedSession={useAgentStore.getState().beginResolvedSession}
       />,
     )
 
     await waitFor(() => expect(loadSession).toHaveBeenCalledWith('session-2', '/repo/app'))
-    const state = useTeamStore.getState()
+    const state = useAgentStore.getState()
     expect(state.sessionId).toBe('session-2')
-    expect(state.isTeamWorking).toBe(false)
+    expect(state.isAgentWorking).toBe(false)
     expect(state.sessionTitle).toBeNull()
     expect(state.agentStreams.lead.currentBlocks).toHaveLength(0)
     expect(state.agentStreams.lead.currentText).toBe('')
@@ -175,7 +184,7 @@ describe('useSessionBootstrap undo draft-restore', () => {
     }
 
     const loadSession = mock(async () => {
-      useTeamStore.setState({
+      useAgentStore.setState({
         leadName: 'lead',
         agentStreams: {
           lead: {
@@ -205,7 +214,7 @@ describe('useSessionBootstrap undo draft-restore', () => {
         loadSession={loadSession}
         connectStream={connectStream}
         inputRef={inputRef}
-        beginResolvedSession={useTeamStore.getState().beginResolvedSession}
+        beginResolvedSession={useAgentStore.getState().beginResolvedSession}
       />,
     )
 
@@ -219,11 +228,11 @@ describe('useSessionBootstrap undo draft-restore', () => {
 
 describe('useSessionBootstrap remount on screen switch', () => {
   it('loads history and connects stream when mounting for an already-active session', async () => {
-    useTeamStore.setState({
+    useAgentStore.setState({
       sessionId: 'session-1',
       _workspace: null,
       isConnected: true,
-      isTeamWorking: true,
+      isAgentWorking: true,
       _unloading: false,
       _abortController: null,
     })

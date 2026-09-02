@@ -1,14 +1,16 @@
 """Placeholder provider used when an agent has no real model configured.
 
-Generated agents carry the literal token ``__PROVIDER_MODEL__`` in their
-``model:`` frontmatter until the user picks a provider and model in the UI.
-Before that selection, ``build_provider`` cannot resolve the token to a real
-backend — historically this raised ``ValueError`` at load time and
-crashed the whole team manager.
+Legacy/generated agents and custom templates may carry the literal token
+``__PROVIDER_MODEL__`` in their ``model:`` frontmatter until the user picks a
+provider and model in the UI. New installations use a concrete default model;
+the token is retained only for backwards compatibility and custom agent
+templates. Before that selection, ``build_provider`` cannot resolve the token
+to a real backend — historically this raised ``ValueError`` at load time and
+crashed the whole agent manager.
 
 With this stub the loader still constructs an :class:`Agent` instance,
 but routes any LLM call to :class:`UnconfiguredProvider` which raises
-:class:`UnconfiguredProviderError`. The team member's turn-runner
+:class:`UnconfiguredProviderError`. The agent session's turn runner
 catches that specific error type and emits a typed SSE
 :class:`AgentNotConfiguredEvent` so the UI can render a "configure a
 provider" banner instead of a generic stack trace.
@@ -51,7 +53,7 @@ class UnconfiguredProvider(LLMProviderBase):
     """Stub provider that raises :class:`UnconfiguredProviderError` on use.
 
     Constructed by the loader when an agent's ``model:`` is still the
-    ``__PROVIDER_MODEL__`` placeholder. Lets the rest of the team
+    ``__PROVIDER_MODEL__`` placeholder. Lets the rest of the agent
     machinery (loading, registration, listing) continue to work — the
     failure is deferred to the first actual LLM call.
     """

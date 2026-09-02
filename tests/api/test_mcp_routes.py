@@ -432,8 +432,8 @@ class TestCreateServer:
             )
             assert response.status_code == 422
 
-    def test_create_server_does_not_reload_team(self) -> None:
-        """POST /api/mcp/servers must NOT trigger team_manager.reload().
+    def test_create_server_does_not_restart_agent(self) -> None:
+        """POST /api/mcp/servers must not restart the active agent.
 
         Mid-turn reloads tear down in-flight tool execution and rotate
         session IDs.  Agents instead pick up new MCP tools at the start
@@ -444,10 +444,6 @@ class TestCreateServer:
             patch("app.api.routes.mcp.mcp_manager") as mock_manager,
             patch("app.api.routes.mcp.load_config") as mock_load,
             patch("app.api.routes.mcp.save_config"),
-            # If the route accidentally re-introduces a team_manager
-            # import, this patch will succeed AND the AsyncMock below
-            # will record any reload() calls.  Sentinel-style assertion.
-            patch("app.services.team_manager.reload") as mock_reload,
         ):
             mock_load.return_value = MCPConfig()
             status = MCPServerStatus(
@@ -457,8 +453,6 @@ class TestCreateServer:
                 state="ready",
             )
             mock_manager.restart_server = AsyncMock(return_value=status)
-            mock_reload.return_value = AsyncMock()
-
             client = TestClient(app)
             response = client.post(
                 "/api/mcp/servers",
@@ -471,7 +465,6 @@ class TestCreateServer:
                 },
             )
             assert response.status_code == 201
-            mock_reload.assert_not_called()
 
 
 class TestUpdateServer:
@@ -816,7 +809,7 @@ class TestApply:
       2. Call ``mcp_manager.reload_from_config()`` to reconcile runners.
       3. Return the new server list with saved config payloads attached.
 
-    Crucially it must NOT reload the team — agents pick up new MCP
+    Crucially it must NOT restart the active agent. The agent picks up new MCP
     tools at the start of their next turn via the config-stamp drift
     check, so reloads don't tear down in-flight tool execution.
     """
@@ -826,7 +819,6 @@ class TestApply:
         with (
             patch("app.api.routes.mcp.mcp_manager") as mock_manager,
             patch("app.api.routes.mcp.load_config") as mock_load,
-            patch("app.services.team_manager.reload") as mock_reload,
         ):
             cfg = MCPConfig(
                 servers={"fs": StdioServerConfig(command="npx", args=["-y", "x"])}
@@ -855,9 +847,6 @@ class TestApply:
             assert data["servers"][0]["config"]["transport"] == "stdio"
             assert data["servers"][0]["config"]["command"] == "npx"
             mock_manager.reload_from_config.assert_awaited_once()
-            # Team must NOT be reloaded — drift detection picks up
-            # tool changes on the next turn instead.
-            mock_reload.assert_not_called()
 
     def test_apply_rejects_malformed_config_with_422(self) -> None:
         """A bad mcp.json must NOT trigger reload_from_config."""

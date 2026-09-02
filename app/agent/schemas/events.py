@@ -190,7 +190,7 @@ class PermissionAskedEvent(BaseModel):
     """An agent is requesting permission to run a tool call.
 
     The frontend should display an approval UI and POST a reply to
-    ``/team/{session_id}/permissions/{request_id}/reply``.
+    ``/agent/{session_id}/permissions/{request_id}/reply``.
     """
 
     type: Literal["permission_asked"] = "permission_asked"
@@ -212,10 +212,10 @@ class PermissionRepliedEvent(BaseModel):
 
 
 class QuestionAskedEvent(BaseModel):
-    """The lead agent suspended its turn to ask the user something.
+    """The agent suspended its turn to ask the user something.
 
     The frontend renders the question dock and POSTs to
-    ``/team/{session_id}/question/{question_id}/answer`` (or ``/dismiss``).
+    ``/agent/{session_id}/question/{question_id}/answer`` (or ``/dismiss``).
     Carries the full question payload so a client that just connected can
     render from the replayed event without an extra fetch.
     """

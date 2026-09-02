@@ -1,15 +1,11 @@
 """Tests for the offline prompt/token budget inspector."""
 
-from types import SimpleNamespace
-
 import tiktoken
 
 from manual.inspect_prompt import (
     _budget_entry,
     _builtin_prompt_budgets,
     _builtin_skill_budgets,
-    _inject_team_protocol,
-    _inject_team_tools,
     _restrict_skill_catalog_to_builtins,
     _serialize_tools,
 )
@@ -45,30 +41,6 @@ def test_serialize_tools_uses_compact_provider_style_json():
     assert items[0]["tokens"] > 0
 
 
-def test_team_protocol_is_part_of_inspected_system_prompt():
-    lead = SimpleNamespace(role="lead", name="openagentd")
-    member = SimpleNamespace(role="member", name="explorer")
-
-    lead_prompt = _inject_team_protocol("BASE", lead)
-    member_prompt = _inject_team_protocol("BASE", member)
-
-    assert lead_prompt.startswith("BASE\n\n---\n\n")
-    assert "## Lead workflow" in lead_prompt
-    assert "You are `explorer#1`" in member_prompt
-    assert "## Member workflow" in member_prompt
-
-
-def test_coding_prompt_inspection_does_not_include_lsp_runtime_tool():
-    """lsp injection is temporarily detached — mirrored in _inject_team_tools."""
-    lead = SimpleNamespace(role="lead", name="openagentd")
-
-    normal = _inject_team_tools([], lead, mode="normal")
-    coding = _inject_team_tools([], lead, mode="coding")
-
-    assert "lsp" not in {tool["function"]["name"] for tool in normal}
-    assert "lsp" not in {tool["function"]["name"] for tool in coding}
-
-
 def test_builtin_skill_budgets_count_stable_skill_bodies():
     encoding = tiktoken.get_encoding("o200k_base")
 
@@ -86,9 +58,7 @@ def test_builtin_prompt_budgets_include_every_first_party_profile():
     prompts = _builtin_prompt_budgets(encoding)
 
     assert {item["name"] for item in prompts} == {
-        "coding/openagentd",
-        "coding/coder",
-        "coding/explorer",
+        "code",
     }
     assert all(item["tokens"] > 0 for item in prompts)
 

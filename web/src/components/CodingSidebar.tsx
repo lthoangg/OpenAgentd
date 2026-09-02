@@ -43,7 +43,7 @@ import {
   Trash2,
   X,
 } from 'lucide-react'
-import { useDeleteTeamSessionMutation, useTeamSessionsQuery, useUpdateTeamSessionTitleMutation } from '@/queries/useSessionsQuery'
+import { useDeleteSessionMutation, useSessionsQuery, useUpdateSessionTitleMutation } from '@/queries/useSessionsQuery'
 import { queryKeys } from '@/queries/keys'
 import { getCodingWorkspaceTree, listWorktrees } from '@/api/client'
 import { workspaceLabel } from '@/utils/workspace'
@@ -158,7 +158,7 @@ export function CodingSidebar({
   const isTauriMobile = isTauri && (os === 'ios' || os === 'android')
   const mobileLongPressActions = isMobile && isTauriMobile && mobileOpen
   const prefersReducedMotion = useReducedMotion()
-  // ``onCollapse`` is wired by TeamChatView's left-chrome hamburger.
+  // ``onCollapse`` is wired by AgentChatView's left-chrome hamburger.
   // We don't render an inline collapse toggle anymore — the topbar
    // hamburger and ⌘B/Ctrl+B own that surface.
   void onCollapse
@@ -166,9 +166,9 @@ export function CodingSidebar({
   const queryClient = useQueryClient()
   const pushToast = useToastStore((s) => s.push)
   const openSettings = useSettingsStore((s) => s.openSettings)
-  const sessions = useTeamSessionsQuery()
-  const deleteSession = useDeleteTeamSessionMutation()
-  const updateSessionTitle = useUpdateTeamSessionTitleMutation()
+  const sessions = useSessionsQuery()
+  const deleteSession = useDeleteSessionMutation()
+  const updateSessionTitle = useUpdateSessionTitleMutation()
 
   const codingSessions = useMemo(
     () => (sessions.data?.pages.flatMap((page) => page.data) ?? []).filter((session) => session.workspace),

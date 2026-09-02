@@ -26,10 +26,21 @@ from app.agent.hooks.summarization import (
     _SUMMARISE_REQUEST,
 )
 from app.agent.schemas.chat import AssistantMessage, HumanMessage, ToolMessage
-from app.agent.state import AgentState, RunContext, UsageInfo
+from app.agent.state import AgentState, ModelRequest, RunContext, UsageInfo
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
+
+async def _trigger(hook: SummarizationHook, ctx: RunContext, state: AgentState) -> None:
+    req = ModelRequest(system_prompt="system", messages=tuple(state.messages_for_llm))
+    await hook.before_model(ctx, state, req)
+
+    async def _handler(r: ModelRequest) -> AssistantMessage:
+        return AssistantMessage(content="ok")
+
+    await hook.wrap_model_call(ctx, state, req, _handler)
+
 
 PASS = "\033[32mPASS\033[0m"
 FAIL = "\033[31mFAIL\033[0m"
@@ -46,10 +57,12 @@ def _hook(**kwargs) -> tuple[SummarizationHook, list[str]]:
     of conversation text sent to the summariser LLM.
     """
     captured_blobs: list[str] = []
+    captured_msgs: list[object] = []
 
     provider = MagicMock()
 
     async def _stream(messages, **__):
+        captured_msgs.extend(messages)
         for m in messages:
             if m.content:
                 captured_blobs.append(m.content)
@@ -67,6 +80,7 @@ def _hook(**kwargs) -> tuple[SummarizationHook, list[str]]:
         prompt_token_threshold=1,
         **kwargs,
     )
+    hook._captured_msgs = captured_msgs
     return hook, captured_blobs
 
 
@@ -78,6 +92,7 @@ def _check(label: str, condition: bool, detail: str = "") -> bool:
 
 
 # ── P2: tool result context ───────────────────────────────────────────────────
+
 
 async def test_p2_tool_result_stubbing() -> bool:
     print("\n[P2] Tool result context")
@@ -98,19 +113,23 @@ async def test_p2_tool_result_stubbing() -> bool:
         usage=UsageInfo(last_prompt_tokens=9999),
     )
 
-    await hook.before_model(ctx, state)
+    await _trigger(hook, ctx, state)
 
     blob = " ".join(captured)
+    tool_msg = next(
+        (m for m in getattr(hook, "_captured_msgs", []) if isinstance(m, ToolMessage)),
+        None,
+    )
 
     ok1 = _check(
         "tool output sent to summariser",
-        "SECRET_OUTPUT_12345" in blob,
-        f"blob snippet: {blob[:120]}",
+        tool_msg is not None and "SECRET_OUTPUT_12345" in (tool_msg.content or ""),
+        f"tool_msg: {tool_msg}",
     )
     ok2 = _check(
         "tool name preserved",
-        "[tool/shell]" in blob,
-        f"blob snippet: {blob[:120]}",
+        tool_msg is not None and tool_msg.name == "shell",
+        f"name: {getattr(tool_msg, 'name', None)}",
     )
     ok3 = _check(
         "old omitted marker absent",
@@ -126,13 +145,16 @@ async def test_p2_tool_result_stubbing() -> bool:
         ],
         usage=UsageInfo(last_prompt_tokens=9999),
     )
-    await hook2.before_model(ctx, state2)
-    blob2 = " ".join(captured2)
+    await _trigger(hook2, ctx, state2)
+    tool_msg2 = next(
+        (m for m in getattr(hook2, "_captured_msgs", []) if isinstance(m, ToolMessage)),
+        None,
+    )
 
     ok4 = _check(
         "nameless tool renders with output",
-        "[tool]: raw output no name" in blob2,
-        f"blob: {blob2[:120]}",
+        tool_msg2 is not None and tool_msg2.content == "raw output no name",
+        f"tool_msg2: {tool_msg2}",
     )
     ok5 = _check(
         "non-tool messages pass through unchanged",
@@ -146,6 +168,7 @@ async def test_p2_tool_result_stubbing() -> bool:
 
 # ── P5: merge vs fresh request ────────────────────────────────────────────────
 
+
 async def test_p5_merge_vs_fresh() -> bool:
     print("\n[P5] Merge vs fresh summarise request")
     all_pass = True
@@ -157,7 +180,7 @@ async def test_p5_merge_vs_fresh() -> bool:
         messages=[HumanMessage(content="hello world")],
         usage=UsageInfo(last_prompt_tokens=9999),
     )
-    await hook1.before_model(ctx, state1)
+    await _trigger(hook1, ctx, state1)
     blob1 = " ".join(captured1)
 
     ok1 = _check(
@@ -180,7 +203,7 @@ async def test_p5_merge_vs_fresh() -> bool:
         ],
         usage=UsageInfo(last_prompt_tokens=9999),
     )
-    await hook2.before_model(ctx, state2)
+    await _trigger(hook2, ctx, state2)
     blob2 = " ".join(captured2)
 
     ok2 = _check(
@@ -210,6 +233,7 @@ async def test_p5_merge_vs_fresh() -> bool:
 
 # ── P6: minimum-delta guard ───────────────────────────────────────────────────
 
+
 async def test_p6_min_delta_guard() -> bool:
     print("\n[P6] Minimum-delta guard (min_messages_since_last_summary=4)")
     all_pass = True
@@ -222,7 +246,7 @@ async def test_p6_min_delta_guard() -> bool:
         messages=[HumanMessage(content="initial message")],
         usage=UsageInfo(last_prompt_tokens=9999),
     )
-    await hook.before_model(ctx, state)
+    await _trigger(hook, ctx, state)
     ok1 = _check(
         "first summarisation fires regardless",
         len(captured) > 0,
@@ -232,7 +256,7 @@ async def test_p6_min_delta_guard() -> bool:
     state.messages.append(HumanMessage(content="one more"))
     state.usage.last_prompt_tokens = 9999
 
-    await hook.before_model(ctx, state)
+    await _trigger(hook, ctx, state)
     ok2 = _check(
         "skipped when only 1 new message (< 4)",
         len(captured) == 0,
@@ -245,7 +269,7 @@ async def test_p6_min_delta_guard() -> bool:
         state.messages.append(HumanMessage(content=f"extra msg {i}"))
     state.usage.last_prompt_tokens = 9999
 
-    await hook.before_model(ctx, state)
+    await _trigger(hook, ctx, state)
     ok3 = _check(
         "fires again after 4 new messages",
         len(captured) > 0,
@@ -253,16 +277,18 @@ async def test_p6_min_delta_guard() -> bool:
     )
 
     # Guard disabled with min=0
-    hook_zero, captured_zero = _hook(keep_last_assistants=0, min_messages_since_last_summary=0)
+    hook_zero, captured_zero = _hook(
+        keep_last_assistants=0, min_messages_since_last_summary=0
+    )
     state_zero = AgentState(
         messages=[HumanMessage(content="x")],
         usage=UsageInfo(last_prompt_tokens=9999),
     )
-    await hook_zero.before_model(ctx, state_zero)
+    await _trigger(hook_zero, ctx, state_zero)
     captured_zero.clear()
     state_zero.messages.append(HumanMessage(content="y"))
     state_zero.usage.last_prompt_tokens = 9999
-    await hook_zero.before_model(ctx, state_zero)
+    await _trigger(hook_zero, ctx, state_zero)
     ok4 = _check(
         "min=0 disables the guard — fires every eligible turn",
         len(captured_zero) > 0,
@@ -273,6 +299,7 @@ async def test_p6_min_delta_guard() -> bool:
 
 
 # ── Runner ────────────────────────────────────────────────────────────────────
+
 
 async def main() -> None:
     print("summarization improvements manual test")

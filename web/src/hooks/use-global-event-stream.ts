@@ -3,10 +3,11 @@ import { useQueryClient } from '@tanstack/react-query'
 import type { QueryClient } from '@tanstack/react-query'
 import { globalEventStream } from '@/api/global-events'
 import { onApiBaseUrlChange } from '@/api/base-url'
+import { backgroundSuspendsSockets } from '@/hooks/use-platform'
 import { sendDesktopNotification } from '@/lib/desktop-notifications'
 import { queryKeys } from '@/queries'
 import { patchSessionRunning, patchSessionTitle } from '@/stores/cache-invalidation-bridge'
-import { useTeamStore } from '@/stores/useTeamStore'
+import { useAgentStore } from '@/stores/useAgentStore'
 import { useLspInstallStore } from '@/stores/useLspInstallStore'
 
 const notifiedIds = new Set<string>()
@@ -28,7 +29,7 @@ function rememberNotification(id: string): boolean {
  * Turn events must NOT use this — see ``markSessionRunning``.
  */
 export function invalidateGlobalEventQueries(queryClient: QueryClient): void {
-  queryClient.invalidateQueries({ queryKey: queryKeys.team.sessions.all() })
+  queryClient.invalidateQueries({ queryKey: queryKeys.session.sessions.all() })
   queryClient.invalidateQueries({ queryKey: queryKeys.scheduler.list() })
 }
 
@@ -46,7 +47,7 @@ function markSessionRunning(
   needsInput: boolean = false,
 ): void {
   if (!patchSessionRunning(queryClient, sessionId, running, needsInput)) {
-    queryClient.invalidateQueries({ queryKey: queryKeys.team.sessions.all() })
+    queryClient.invalidateQueries({ queryKey: queryKeys.session.sessions.all() })
   }
 }
 
@@ -66,16 +67,16 @@ export async function handleGlobalEvent(
     // (last_run_at / next_run_at) is worth refreshing here.
     queryClient.invalidateQueries({ queryKey: queryKeys.scheduler.list() })
     if (!sessionId) {
-      queryClient.invalidateQueries({ queryKey: queryKeys.team.sessions.all() })
+      queryClient.invalidateQueries({ queryKey: queryKeys.session.sessions.all() })
       return false
     }
     markSessionRunning(queryClient, sessionId, true)
 
-    const before = useTeamStore.getState()
+    const before = useAgentStore.getState()
     if (before.sessionId !== sessionId) return true
     const sessionGeneration = before._sessionGeneration
     await before.loadSession(sessionId, before._workspace)
-    const after = useTeamStore.getState()
+    const after = useAgentStore.getState()
     if (connectionGeneration !== currentConnectionGeneration()) return false
     if (after.sessionId !== sessionId || after._sessionGeneration !== sessionGeneration) return false
     after.connectStream()
@@ -85,7 +86,7 @@ export async function handleGlobalEvent(
   if (type === 'session_turn_completed') {
     const sessionId = typeof event.session_id === 'string' ? event.session_id : null
     if (!sessionId) {
-      queryClient.invalidateQueries({ queryKey: queryKeys.team.sessions.all() })
+      queryClient.invalidateQueries({ queryKey: queryKeys.session.sessions.all() })
       return false
     }
     // No scheduler invalidation here: this fires on *every* interactive turn,
@@ -93,10 +94,10 @@ export async function handleGlobalEvent(
     // `scheduler` invalidation from the tool_end reducer.
     markSessionRunning(queryClient, sessionId, false)
 
-    const before = useTeamStore.getState()
+    const before = useAgentStore.getState()
     if (before.sessionId !== sessionId) return true
     // This notification travels over a *separate* global SSE connection from
-    // the session's own team stream, so it carries no ordering guarantee
+    // the session's own agent stream, so it carries no ordering guarantee
     // against that stream's trailing `done` event — it can arrive first. That
     // is safe: while the turn still looks live locally, reconcileTurnTail
     // delegates to loadSession, which now takes the server's run state over the
@@ -113,7 +114,7 @@ export async function handleGlobalEvent(
     const sessionId = typeof event.session_id === 'string' ? event.session_id : null
     const title = typeof event.title === 'string' ? event.title : null
     if (!sessionId || title === null) return false
-    if (useTeamStore.getState().sessionId === sessionId) useTeamStore.setState({ sessionTitle: title })
+    if (useAgentStore.getState().sessionId === sessionId) useAgentStore.setState({ sessionTitle: title })
     patchSessionTitle(queryClient, sessionId, title)
     return true
   }
@@ -157,7 +158,7 @@ export async function handleGlobalEvent(
     }
     const viewingAskingSession =
       kind === 'input_needed' && sessionId !== undefined
-      && useTeamStore.getState().sessionId === sessionId
+      && useAgentStore.getState().sessionId === sessionId
     await sendDesktopNotification(
       { kind, sessionId, title: event.title, body: event.body },
       { force: kind === 'input_needed' && !viewingAskingSession },
@@ -172,15 +173,15 @@ export async function reconcileCurrentSession(
   connectionGeneration: number,
   currentConnectionGeneration: () => number,
 ): Promise<void> {
-  const before = useTeamStore.getState()
+  const before = useAgentStore.getState()
   const sessionId = before.sessionId
   if (!sessionId) return
   const sessionGeneration = before._sessionGeneration
   await before.loadSession(sessionId, before._workspace)
-  const after = useTeamStore.getState()
+  const after = useAgentStore.getState()
   if (connectionGeneration !== currentConnectionGeneration()) return
   if (after.sessionId !== sessionId || after._sessionGeneration !== sessionGeneration) return
-  if (after.isTeamWorking) after.connectStream()
+  if (after.isAgentWorking) after.connectStream()
 }
 
 /** App-lifetime feed for session changes occurring outside this window. */
@@ -193,6 +194,8 @@ export function useGlobalEventStream(): void {
     let retryTimer: ReturnType<typeof setTimeout> | null = null
     let attempts = 0
     let controller: AbortController | null = null
+    // True between onOpen and the next onError/onDone: the socket is known live.
+    let opened = false
 
     const connect = (): number | null => {
       if (disposed) return null
@@ -203,9 +206,11 @@ export function useGlobalEventStream(): void {
       }
       controller?.abort()
       controller = new AbortController()
+      opened = false
       globalEventStream({
         onOpen: () => {
           if (disposed || generation !== connectionGeneration) return
+          opened = true
           attempts = 0
           invalidateGlobalEventQueries(queryClient)
           void reconcileCurrentSession(generation, () => connectionGeneration)
@@ -216,6 +221,7 @@ export function useGlobalEventStream(): void {
         },
         onError: (error) => {
           if (disposed || generation !== connectionGeneration) return
+          opened = false
           // Old servers do not have this optional endpoint; leave them alone.
           if (/GET \/events\/stream failed: 404/.test(error.message)) return
           const delay = Math.min(30_000, 1_500 * 2 ** attempts++)
@@ -223,6 +229,7 @@ export function useGlobalEventStream(): void {
         },
         onDone: () => {
           if (disposed || generation !== connectionGeneration) return
+          opened = false
           const delay = Math.min(30_000, 1_500 * 2 ** attempts++)
           retryTimer = setTimeout(connect, delay)
         },
@@ -233,11 +240,17 @@ export function useGlobalEventStream(): void {
     connect()
     const unsubscribeApiBaseUrl = onApiBaseUrlChange(connect)
     const resume = () => {
+      // A resume is a hint that the network or page came back. If the socket
+      // is still open and nothing is waiting to retry, there is nothing to
+      // recover; reconnecting would tear down a live stream and refetch every
+      // global query on the next onOpen — on desktop that is every alt-tab.
+      if (opened && retryTimer === null && !backgroundSuspendsSockets()) return
       connect()
     }
     const onVisibilityChange = () => {
       if (document.visibilityState === 'visible') resume()
     }
+    window.addEventListener('online', resume)
     window.addEventListener('pageshow', resume)
     document.addEventListener('visibilitychange', onVisibilityChange)
     return () => {
@@ -246,6 +259,7 @@ export function useGlobalEventStream(): void {
       controller?.abort()
       if (retryTimer) clearTimeout(retryTimer)
       unsubscribeApiBaseUrl()
+      window.removeEventListener('online', resume)
       window.removeEventListener('pageshow', resume)
       document.removeEventListener('visibilitychange', onVisibilityChange)
     }

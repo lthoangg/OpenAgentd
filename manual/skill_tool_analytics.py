@@ -118,60 +118,43 @@ def _print_table(title: str, counter: Counter, *, top: int) -> None:
 async def run(*, since_days: int | None, only: str, top: int) -> None:
     # Lazy import so APP_ENV is already set in os.environ before settings loads.
     from app.core.db import async_session_factory
-    from app.models.chat import ChatSession, SessionMessage
+    from app.models.chat import SessionMessage
 
     cutoff = None
     if since_days is not None:
         cutoff = datetime.now(timezone.utc) - timedelta(days=since_days)
 
-    tools_by_mode: dict[str, Counter] = {"normal": Counter(), "coding": Counter()}
-    skills_by_mode: dict[str, Counter] = {"normal": Counter(), "coding": Counter()}
-    sessions_seen: Counter = Counter()
+    tools_counter: Counter = Counter()
+    skills_counter: Counter = Counter()
+    total_messages_with_tools = 0
 
     async with async_session_factory() as s:
-        # Map every session id → its mode (member sessions inherit the lead's
-        # mode in practice, but we read each row's own mode and default sanely).
-        modes = dict(
-            (row.id, row.mode or "normal")
-            for row in (await s.exec(select(ChatSession))).all()
-        )
-
         stmt = select(SessionMessage).where(SessionMessage.tool_calls.is_not(None))
         if cutoff is not None:
             stmt = stmt.where(SessionMessage.created_at >= cutoff)
 
         for msg in (await s.exec(stmt)).all():
-            mode = modes.get(msg.session_id, "normal")
-            if mode not in tools_by_mode:
-                mode = "normal"
             counted_here = False
             for name, raw_args in _iter_calls(msg.tool_calls):
                 counted_here = True
-                tools_by_mode[mode][name] += 1
+                tools_counter[name] += 1
                 if name == "skill":
                     skill = _skill_name_from_args(raw_args) or "(unknown)"
-                    skills_by_mode[mode][skill] += 1
+                    skills_counter[skill] += 1
             if counted_here:
-                sessions_seen[mode] += 1
+                total_messages_with_tools += 1
 
     scope = f"last {since_days}d" if since_days is not None else "all time"
     print(f"== Skill / tool usage analytics ({scope}) ==")
-    print(
-        f"messages with tool calls — normal: {sessions_seen['normal']}, coding: {sessions_seen['coding']}"
-    )
+    print(f"messages with tool calls: {total_messages_with_tools}")
 
     if only in ("tools", "both"):
-        combined = tools_by_mode["normal"] + tools_by_mode["coding"]
-        _print_table("TOOLS — all modes", combined, top=top)
-        _print_table("TOOLS — coding mode only", tools_by_mode["coding"], top=top)
+        _print_table("TOOLS", tools_counter, top=top)
 
     if only in ("skills", "both"):
-        combined = skills_by_mode["normal"] + skills_by_mode["coding"]
-        _print_table("SKILLS — all modes", combined, top=top)
-        _print_table("SKILLS — normal mode", skills_by_mode["normal"], top=top)
-        _print_table("SKILLS — coding mode", skills_by_mode["coding"], top=top)
+        _print_table("SKILLS", skills_counter, top=top)
 
-        present = set(combined)
+        present = set(skills_counter)
         missing = sorted(_OP_SKILLS - present)
         if missing:
             print(f"\nOp-skills never invoked in this window: {', '.join(missing)}")

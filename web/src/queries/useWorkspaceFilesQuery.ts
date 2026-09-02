@@ -2,7 +2,7 @@
  * TanStack Query hook for the per-session workspace file listing.
  *
  * Mirrors the pattern in ``useMemoryQuery`` — the list is invalidated by the
- * team store whenever a write/edit/rm tool targets the agent workspace so the
+ * agent store whenever a write/edit/rm tool targets the agent workspace so the
  * panel reflects changes as soon as a turn finishes producing them.
  */
 import { useQuery } from '@tanstack/react-query'
@@ -15,7 +15,7 @@ export function useWorkspaceFilesQuery(sessionId: string | null | undefined) {
     ...workspaceFilesQueryOptions(sessionId ?? ''),
     enabled: !!sessionId,
     // Short stale time — the panel is visible only on demand and we also
-    // invalidate explicitly from the team store, so a small window is fine.
+    // invalidate explicitly from the agent store, so a small window is fine.
     staleTime: WORKSPACE_TREE_STALE_MS,
   })
 }

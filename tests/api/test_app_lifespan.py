@@ -34,9 +34,9 @@ def slim_lifespan(monkeypatch: pytest.MonkeyPatch) -> Mock:
     monkeypatch.setattr(app_module, "shutdown_otel", Mock())
     monkeypatch.setattr(app_module.stream_store, "close", AsyncMock())
     monkeypatch.setattr(
-        app_module.team_manager, "validate_agents_dir", Mock(return_value=True)
+        app_module.agent_manager, "validate_agents_dir", Mock(return_value=True)
     )
-    monkeypatch.setattr(app_module.team_manager, "stop", AsyncMock())
+    monkeypatch.setattr(app_module.agent_manager, "stop", AsyncMock())
     monkeypatch.setattr(app_module.task_scheduler, "stop", AsyncMock())
     monkeypatch.setattr(app_module.mcp_manager, "stop", AsyncMock())
     # Mock refresh_model_registry to prevent network/cache access during lifespan tests

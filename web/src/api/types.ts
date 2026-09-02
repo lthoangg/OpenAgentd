@@ -34,17 +34,8 @@ export interface AgentInfo {
   capabilities?: AgentCapabilities
 }
 
-export interface TeamAgentInfo extends AgentInfo {
-  is_lead: boolean
-}
-
-export interface TeamBlueprintInfo extends AgentInfo {
-  live_instances: string[]
-}
-
-export interface TeamAgentsResponse {
-  agents: TeamAgentInfo[]
-  blueprints: TeamBlueprintInfo[]
+export interface AgentRegistryResponse {
+  agents: AgentInfo[]
   mode?: string
   workspace?: string | null
 }
@@ -218,7 +209,7 @@ export interface SessionDetailResponse extends SessionResponse {
   messages: MessageResponse[]
 }
 
-export interface TeamSessionResolveResponse extends SessionResponse {
+export interface SessionResolveResponse extends SessionResponse {
   created: boolean
 }
 
@@ -231,19 +222,18 @@ export interface SessionPageResponse {
 
 
 
-export interface TeamStatusAgent {
+export interface AgentStatusAgent {
   name: string
   model: string
   state: string
 }
 
-export interface TeamStatusResponse {
-  team: string
-  lead: TeamStatusAgent
-  members: TeamStatusAgent[]
+export interface AgentStatusResponse {
+  lead: AgentStatusAgent
+  members: AgentStatusAgent[]
 }
 
-export interface TeamHistoryResponse {
+export interface SessionHistoryResponse {
   lead: SessionDetailResponse
   members: Array<{
     name: string
@@ -320,7 +310,7 @@ export interface ContentBlock {
    *  optional ``error: true``. Keeping this generic avoids one typed field
    *  per block variant. */
   extra?: Record<string, unknown> | null
-  /** Timestamp when block was created (for team mode display) */
+  /** Timestamp when block was created (for agent mode display) */
   timestamp?: Date
   /** File attachments (images, documents, etc.) — for user blocks */
   attachments?: MessageAttachment[]
@@ -343,22 +333,10 @@ export interface AgentUsage {
 
 // ── Agent management ────────────────────────────────────────────────────────
 
-/** Lightweight row for the agents list. Invalid files have `valid=false`. */
-export interface AgentSummary {
-  name: string
-  role: 'lead' | 'member'
-  description: string | null
-  model: string | null
-  tools: string[]
-  mcp: string[]
-  valid: boolean
-  error: string | null
-}
-
 /** Parsed frontmatter config — matches backend AgentConfig. */
 export interface AgentConfig {
-  name: string
-  role: 'lead' | 'member'
+  name: 'code'
+  role: 'lead'
   description?: string | null
   system_prompt?: string
   tools?: string[]
@@ -374,14 +352,6 @@ export interface AgentDetail {
   content: string
   config: AgentConfig | null
   error: string | null
-}
-
-export interface AgentDeleteResponse {
-  name: string
-}
-
-export interface AgentListResponse {
-  agents: AgentSummary[]
 }
 
 // ── Skill management ────────────────────────────────────────────────────────
@@ -462,7 +432,7 @@ export interface ChangedPaths {
   removed: string[]
 }
 
-export interface TeamCommandResponse {
+export interface AgentCommandResponse {
   status: string
   session_id: string
   command: 'continue' | 'compact' | 'undo' | 'redo' | 'redo-all' | 'redo_all'
@@ -509,8 +479,8 @@ export interface RegistryResponse {
 
 // ── Workspace files (artifacts panel) ────────────────────────────────────────
 //
-// Flat recursive listing of a session's agent workspace (``.openagentd/team/{sid}``).
-// File bytes are fetched through ``/api/team/{sid}/media/{path}`` — the same
+// Flat recursive listing of a session's agent workspace (``.openagentd/agent/{sid}``).
+// File bytes are fetched through ``/api/agent/{sid}/media/{path}`` — the same
 // proxy that renders inline markdown images.
 
 export interface WorkspaceFileInfo {
@@ -576,19 +546,13 @@ export interface TodoItem {
   task_id: string
   content: string
   status: 'pending' | 'in_progress' | 'completed' | 'cancelled'
-  priority: 'high' | 'medium' | 'low'
-  dependencies?: string[]
-  assigned_to?: string | null
-  claimed_by?: string | null
-  instructions?: string | null
-  result?: string | null
 }
 
 export interface TodosResponse {
   todos: TodoItem[]
 }
 
-export interface TeamChatResponse {
+export interface AgentChatResponse {
   status: string
   session_id: string
   message_id?: string | null

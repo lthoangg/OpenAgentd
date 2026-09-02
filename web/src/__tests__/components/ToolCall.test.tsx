@@ -616,104 +616,6 @@ describe("ToolCall — args formatting", () => {
 })
 
 // ---------------------------------------------------------------------------
-// team_message display (header + body-only args)
-// ---------------------------------------------------------------------------
-
-describe("ToolCall — team_message display", () => {
-  it("shows message body in args section, not raw JSON", async () => {
-    const user = userEvent.setup()
-    const args = JSON.stringify({ content: "hello world", to: ["worker_agent"] })
-    render(<ToolCall name="team_message" args={args} done={false} />)
-    await user.click(screen.getByRole("button"))
-    expect(screen.getByText("hello world")).toBeTruthy()
-    expect(screen.queryByText(/"content"/)).toBeNull()
-    expect(screen.queryByText(/"to"/)).toBeNull()
-  })
-
-  it("shows Messaging header with recipient name", () => {
-    const args = JSON.stringify({ content: "task details", to: ["researcher"] })
-    render(<ToolCall name="team_message" args={args} done={false} />)
-    expectPlainArg(getHeader("Messaging researcher"), "researcher")
-  })
-
-  it("shows Messaging team when to is empty", () => {
-    const args = JSON.stringify({ content: "broadcast", to: [] })
-    render(<ToolCall name="team_message" args={args} done={false} />)
-    expectPlainArg(getHeader("Messaging team"), "team")
-  })
-})
-
-// ---------------------------------------------------------------------------
-// team_manage display
-// ---------------------------------------------------------------------------
-
-describe("ToolCall — team_manage display", () => {
-  it("shows roster action in the header and members as args", async () => {
-    const user = userEvent.setup()
-    const args = JSON.stringify({ action: "spawn", members: ["executor", "explorer"] })
-    render(<ToolCall name="team_manage" args={args} done={false} />)
-
-    expectPlainArg(getHeader("Spawning executor, explorer"), "executor, explorer")
-    await user.click(screen.getByRole("button"))
-    expect(screen.getAllByText(/executor/).length).toBeGreaterThan(0)
-    expect(screen.getAllByText(/explorer/).length).toBeGreaterThan(0)
-    expect(screen.queryByText(/"members"/)).toBeNull()
-  })
-
-  it("renders grouped roster results", async () => {
-    const user = userEvent.setup()
-    const args = JSON.stringify({ action: "dismiss", members: ["executor#1"] })
-    render(
-      <ToolCall
-        name="team_manage"
-        args={args}
-        done={true}
-        result="Dismissed: executor#1. Errors: explorer#2: not live."
-      />,
-    )
-
-    await user.click(screen.getByRole("button"))
-    expect(screen.getByText("Dismissed")).toBeTruthy()
-    expect(screen.getAllByText("executor#1").length).toBeGreaterThan(0)
-    expect(screen.getByText("Errors")).toBeTruthy()
-  })
-
-  it("renders list layout for Spawnable blueprints and cleans up Available lists", async () => {
-    const user = userEvent.setup()
-    const args = JSON.stringify({ action: "list" })
-    render(
-      <ToolCall
-        name="team_manage"
-        args={args}
-        done={true}
-        result="Live: lead, coder#1. Spawnable blueprints: coder — Code specialist, writer. Available: ['coder', 'writer']."
-      />,
-    )
-
-    await user.click(screen.getByRole("button"))
-    expect(screen.getByText("Live")).toBeTruthy()
-    expect(screen.getByText("lead, coder#1")).toBeTruthy()
-
-    expect(screen.getByText("Spawnable blueprints")).toBeTruthy()
-    expect(screen.getByText("coder — Code specialist")).toBeTruthy()
-    expect(screen.getByText("writer")).toBeTruthy()
-
-    expect(screen.getByText("Available")).toBeTruthy()
-    expect(screen.getByText("coder, writer")).toBeTruthy()
-  })
-
-  it("hides dismiss arguments when there is no result", async () => {
-    const user = userEvent.setup()
-    const args = JSON.stringify({ action: "dismiss", members: ["executor#1"] })
-    render(<ToolCall name="team_manage" args={args} done={false} />)
-
-    expectPlainArg(getHeader("Dismissing executor#1"), "executor#1")
-    await user.click(screen.getByRole("button"))
-    expect(screen.queryByText("arguments")).toBeNull()
-  })
-})
-
-// ---------------------------------------------------------------------------
 // Custom tool display — skill
 // ---------------------------------------------------------------------------
 
@@ -921,12 +823,6 @@ describe("ToolCall — concise tool labels", () => {
     expect(title!.length).toBeLessThan(80)
   })
 
-  it("describes a team roster list without implying a mutation", () => {
-    render(<ToolCall name="team_manage" args={JSON.stringify({ action: "list", members: [] })} done={false} />)
-
-    expect(getHeader("Listing team roster…")).toBeTruthy()
-    expect(screen.queryByText("Managing team roster…")).toBeNull()
-  })
 })
 
 // ---------------------------------------------------------------------------

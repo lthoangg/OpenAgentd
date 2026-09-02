@@ -32,6 +32,7 @@ import httpx
 from app.agent.artifacts import tool_results_dir
 
 from manual._common import DEFAULT_BASE
+
 BASE = DEFAULT_BASE
 DEFAULT_WAIT = 180
 # Large file — CPython argparse.py (~114KB), well above the offload hook's
@@ -41,11 +42,15 @@ LARGE_FILE_URL = "https://raw.githubusercontent.com/python/cpython/main/Lib/argp
 OFFLOAD_MARKER = "[Tool result offloaded"
 
 
-def _post_turn(base: str, message: str, session_id: str | None) -> str:
-    payload: dict[str, str] = {"message": message}
+def _post_turn(
+    base: str, message: str, session_id: str | None, model: str | None = None
+) -> str:
+    payload: dict[str, str] = {"message": message, "workspace": "."}
+    if model:
+        payload["model"] = model
     if session_id:
         payload["session_id"] = session_id
-    response = httpx.post(f"{base}/team/chat", data=payload, timeout=30)
+    response = httpx.post(f"{base}/agent/chat", data=payload, timeout=30)
     response.raise_for_status()
     return str(response.json()["session_id"])
 
@@ -57,7 +62,7 @@ def _stream_events(base: str, session_id: str, wait: int) -> list[dict]:
     current_event = "message"
     data_buf: list[str] = []
     with httpx.stream(
-        "GET", f"{base}/team/{session_id}/stream", timeout=wait + 5
+        "GET", f"{base}/agent/{session_id}/stream", timeout=wait + 5
     ) as response:
         response.raise_for_status()
         for line in response.iter_lines():
@@ -88,16 +93,16 @@ def _tool_ends(events: list[dict], name: str) -> list[dict]:
 
 
 def _agent_name(base: str) -> str:
-    """Return the lead agent's name (first entry of ``GET /team/agents``)."""
-    response = httpx.get(f"{base}/team/agents", timeout=10)
+    """Return the configured agent's name (first entry of ``GET /agent/agents``)."""
+    response = httpx.get(f"{base}/agent/agents", timeout=10)
     response.raise_for_status()
     agents = response.json().get("agents") or []
     if not agents:
-        raise RuntimeError("GET /team/agents returned no agents")
+        raise RuntimeError("GET /agent/agents returned no agents")
     return str(agents[0]["name"])
 
 
-def run(base: str, wait: int) -> int:
+def run(base: str, wait: int, model: str | None = None) -> int:
     print("=" * 60)
     print("ToolResultOffloadHook Manual Test")
     print("=" * 60)
@@ -111,7 +116,7 @@ def run(base: str, wait: int) -> int:
         f"Use web_fetch to fetch {LARGE_FILE_URL} "
         "and tell me the first function defined in the file."
     )
-    sid = _post_turn(base, prompt, None)
+    sid = _post_turn(base, prompt, None, model=model)
     print(f"  Session: {sid}")
     events = _stream_events(base, sid, wait)
 
@@ -145,13 +150,11 @@ def run(base: str, wait: int) -> int:
     # ── Test 3: agent can `read` the offloaded file (no circular loop) ────
     print("\n[3/3] Verifying the agent can `read` the offloaded path...")
     prompt2 = f"Use read to read '{offload_path}' and tell me the first 3 lines."
-    sid = _post_turn(base, prompt2, sid)
+    sid = _post_turn(base, prompt2, sid, model=model)
     events2 = _stream_events(base, sid, wait)
 
     read_ends = _tool_ends(events2, "read")
-    read_offloaded = any(
-        OFFLOAD_MARKER in (e.get("result") or "") for e in read_ends
-    )
+    read_offloaded = any(OFFLOAD_MARKER in (e.get("result") or "") for e in read_ends)
     done_ok = any(e["event"] == "done" for e in events2)
 
     if done_ok and read_ends and not read_offloaded:
@@ -167,9 +170,13 @@ def run(base: str, wait: int) -> int:
         print(f"  read result preview: {(read_ends[0].get('result') or '')[:200]!r}")
 
     print("\n" + "=" * 60)
-    print(f"[{'PASS' if offloaded_end else 'FAIL'}] Offload fires on large web_fetch result")
+    print(
+        f"[{'PASS' if offloaded_end else 'FAIL'}] Offload fires on large web_fetch result"
+    )
     print(f"[{'PASS' if file_ok else 'FAIL'}] File written to session artifacts")
-    print(f"[{'PASS' if read_ok else 'FAIL'}] read can access the offloaded file without looping")
+    print(
+        f"[{'PASS' if read_ok else 'FAIL'}] read can access the offloaded file without looping"
+    )
     print("=" * 60)
     return 0 if (offloaded_end and file_ok and read_ok) else 1
 
@@ -177,8 +184,9 @@ def run(base: str, wait: int) -> int:
 if __name__ == "__main__":
     p = argparse.ArgumentParser(description="Test ToolResultOffloadHook")
     p.add_argument("--base", default=BASE, help="API base URL")
+    p.add_argument("--model", default=None, help="Model override")
     p.add_argument(
         "--wait", type=int, default=DEFAULT_WAIT, help="Timeout per turn (seconds)"
     )
     args = p.parse_args()
-    raise SystemExit(run(args.base.rstrip("/"), args.wait))
+    raise SystemExit(run(args.base.rstrip("/"), args.wait, model=args.model))

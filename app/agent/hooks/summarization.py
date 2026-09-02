@@ -531,7 +531,7 @@ class SummarizationHook(BaseAgentHook):
 
         * **Inbox message from another agent** — ``extra["from_agent"]`` is set
           to an agent name other than ``"user"``.  These are injected by
-          ``TeamInboxHook.before_model`` between LLM iterations and must not
+          an inbox hook between LLM iterations and must not
           be mistaken for a user-turn start.
         * **Summary message** — ``is_summary=True``.  Summaries are
           ``HumanMessage`` rows but they anchor past history, not new user input.
@@ -560,7 +560,7 @@ class SummarizationHook(BaseAgentHook):
         # Internal synthetics (/continue directive, mention context blocks).
         if extra.get("hidden_from_summary"):
             return False
-        # Inbox messages injected from other team members mid-loop.
+        # Queued messages injected while the turn is running.
         from_agent = extra.get("from_agent")
         if from_agent is not None and from_agent != "user":
             return False
@@ -625,7 +625,7 @@ class SummarizationHook(BaseAgentHook):
         self._pending_summary = (ctx, state)
 
         # The actual summariser LLM call runs from wrap_model_call(), after
-        # earlier prompt-building wrappers (date, memory, team protocol,
+        # earlier prompt-building wrappers (date, memory, agent protocol,
         # workspace instructions, etc.) have produced the same system prompt
         # the normal chat call would use. That keeps summarisation shaped like
         # a normal request with one extra final user instruction, preserving
@@ -1058,13 +1058,32 @@ class SummarizationHook(BaseAgentHook):
                 # conversation prefix — a net cache *miss* on OpenAI/codex.
                 # Letting it fall back to automatic prefix caching keeps it
                 # consistent with the normal turns.
-                stream = self._llm_provider.stream(
+                #
+                # Imported here, not at module top: ``app.agent.agent_loop``
+                # imports ``app.agent.hooks`` (for ``BaseAgentHook``) and this
+                # module is re-exported from ``app.agent.hooks``. A top-level
+                # import closes that loop and only works while
+                # ``hooks/__init__`` happens to bind ``BaseAgentHook`` first.
+                from app.agent.agent_loop.retry import (
+                    StreamRestart,
+                    stream_with_retry,
+                )
+
+                stream = stream_with_retry(
+                    primary_provider=self._llm_provider,
+                    primary_label=model_id or "summarizer",
+                    ctx=None,
+                    state=None,
+                    hooks=None,
                     messages=messages,
                     tools=tools,
                     **kwargs,
                 )
                 full_text = ""
                 async for chunk in stream:
+                    if isinstance(chunk, StreamRestart):
+                        full_text = ""
+                        continue
                     if chunk.usage is not None:
                         last_usage = chunk.usage
                     if not chunk.choices:

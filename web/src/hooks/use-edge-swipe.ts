@@ -3,7 +3,7 @@
  * chat layout.
  *
  * Replaces the two near-identical hand-rolled handler sets that used to
- * live inline in ``TeamChatView`` (left-edge → sidebar, right-edge →
+ * live inline in ``AgentChatView`` (left-edge → sidebar, right-edge →
  * actions). Those each tracked only their *own* drawer's open state, so
  * an edge swipe could fire while the *opposite* drawer was already open,
  * letting both drawers stack on screen at once.

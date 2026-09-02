@@ -22,7 +22,7 @@ from app.api.schemas.skills import (
     SkillSummary,
     SkillWriteRequest,
 )
-from app.services import agent_fs, team_manager
+from app.services import agent_fs
 from app.services.agent_fs import (
     AgentFsConflictError,
     AgentFsNotFoundError,
@@ -293,7 +293,6 @@ async def create_skill(body: SkillWriteRequest) -> SkillDetail:
     except AgentFsPathError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    team_manager.invalidate_skill_cache()
     _invalidate_skill_parse_cache()
     return SkillDetail(
         name=record.name,
@@ -330,7 +329,6 @@ async def update_skill(name: str, body: SkillWriteRequest) -> SkillDetail:
     except OSError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    team_manager.invalidate_skill_cache()
     _invalidate_skill_parse_cache()
     source = _skill_source(existing_path)
     return SkillDetail(
@@ -363,6 +361,5 @@ async def delete_skill(name: str) -> SkillDeleteResponse:
     except OSError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    team_manager.invalidate_skill_cache()
     _invalidate_skill_parse_cache()
     return SkillDeleteResponse(name=name)

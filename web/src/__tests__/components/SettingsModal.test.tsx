@@ -11,8 +11,10 @@
  * shell (backdrop + panel), not section content.
  */
 import { describe, it, expect, afterEach, mock } from 'bun:test'
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import React from 'react'
-import { render, screen, cleanup } from '@testing-library/react'
+import { act, render, screen, cleanup } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import '@testing-library/jest-dom'
 
@@ -51,7 +53,6 @@ mock.module('framer-motion', () => ({
 
 mock.module('@/components/settings/pages/settings.index', () => ({ SettingsHubPage: () => <div>hub</div> }))
 mock.module('@/components/settings/pages/settings.agents', () => ({ AgentsListPage: () => <div>agents</div> }))
-mock.module('@/components/settings/pages/settings.agents.new', () => ({ NewAgentPage: () => <div>new-agent</div> }))
 mock.module('@/components/settings/pages/settings.agents.$name', () => ({ AgentEditorPage: () => <div>agent-edit</div> }))
 mock.module('@/components/settings/pages/settings.skills', () => ({ SkillsListPage: () => <div>skills</div> }))
 mock.module('@/components/settings/pages/settings.skills.new', () => ({ NewSkillPage: () => <div>new-skill</div> }))
@@ -64,8 +65,6 @@ mock.module('@/components/settings/pages/settings.denied_paths', () => ({ Denied
 mock.module('@/components/settings/pages/settings.multimodal', () => ({ MultimodalSettingsPage: () => <div>multimodal</div> }))
 mock.module('@/components/settings/pages/settings.summarization', () => ({ SummarizationSettingsPage: () => <div>summarization</div> }))
 mock.module('@/components/settings/pages/settings.title-generation', () => ({ TitleGenerationSettingsPage: () => <div>title-gen</div> }))
-mock.module('@/components/settings/pages/settings.notifications', () => ({ NotificationSettingsPage: () => <div>notifications</div> }))
-mock.module('@/components/settings/pages/settings.terminal', () => ({ TerminalSettingsPage: () => <div>terminal</div> }))
 
 import { SettingsModal } from '@/components/SettingsModal'
 import { useSettingsStore } from '@/stores/useSettingsStore'
@@ -105,6 +104,40 @@ describe('SettingsModal — mobile edge-swipe exclusion', () => {
     const backdrop = document.querySelector('[aria-hidden="true"]')
     expect(backdrop).not.toBeNull()
     expect(backdrop).toHaveAttribute('data-swipe-ignore')
+  })
+
+  it('falls back to About when an old removed section is restored from storage', () => {
+    useSettingsStore.setState({
+      open: true,
+      section: 'terminal' as never,
+      selectedName: null,
+    })
+    renderModal()
+
+    expect(screen.getByRole('button', { name: 'About openagentd' }).getAttribute('aria-current')).toBe('page')
+  })
+})
+
+describe('SettingsModal — code splitting', () => {
+  it('renders a section page after it loads and switches sections in place', async () => {
+    useSettingsStore.setState({ open: true, section: 'providers', selectedName: null })
+    renderModal()
+
+    expect(await screen.findByText('providers')).toBeTruthy()
+
+    act(() => useSettingsStore.setState({ section: 'mcp' }))
+    expect(await screen.findByText('mcp')).toBeTruthy()
+  })
+
+  it('does not statically import any settings page into the app shell', () => {
+    // The modal is opened on demand, so its pages belong behind a dynamic
+    // import; a static import drags ~3.6k LOC into the first-paint bundle.
+    const source = readFileSync(
+      fileURLToPath(new URL('../../components/SettingsModal.tsx', import.meta.url)),
+      'utf8',
+    )
+    const staticPageImports = source.match(/^import .* from '@\/components\/settings\/pages\//gm) ?? []
+    expect(staticPageImports).toEqual([])
   })
 })
 

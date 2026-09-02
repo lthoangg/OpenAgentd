@@ -8,7 +8,7 @@ OpenAgentd migration is focused on reusable setup: agent identity, standing inst
 
 | Source material | OpenAgentd destination |
 |-----------------|------------------------|
-| Agent identity and behavior prompts | `~/.config/openagentd/agents/<name>.md` |
+| Agent identity and behavior prompts | `~/.config/openagentd/agents/code.md` |
 | Reusable workflows or commands | `~/.config/openagentd/skills/<skill>/SKILL.md` |
 | Project-local instructions | Keep as repo `AGENTS.md` for coding mode |
 | API keys | `~/.config/openagentd/.env` or **Settings → Providers** |
@@ -28,13 +28,7 @@ openagentd transfer migrate openclaw --from ~/.openclaw/workspace --model openai
 
 The importer reads these files when present: `AGENTS.md`, `SOUL.md`, `SOULS.md`, `TOOLS.md`.
 
-It writes one lead agent to `~/.config/openagentd/agents/openclaw.md`. Existing files are not overwritten unless you pass `--force`. The command also supports `--config-dir` for importing into a non-default OpenAgentd config directory.
-
-Use `--name` if you want a different agent filename:
-
-```bash
-openagentd transfer migrate openclaw --from ~/my-project --name project-agent --model openai:gpt-5.5
-```
+It writes the imported profile to the canonical `~/.config/openagentd/agents/code.md` target. Existing files are not overwritten unless you pass `--force`. The command also supports `--config-dir` for importing into a non-default OpenAgentd config directory.
 
 ## From Hermes Agent
 
@@ -46,7 +40,7 @@ openagentd transfer migrate hermes --from ~/.hermes --model openai:gpt-5.5
 
 The importer reads these files when present: `SOUL.md`, `.hermes.md`, `HERMES.md`, `AGENTS.md`, `CLAUDE.md`, `.cursorrules`.
 
-It writes one lead agent to `~/.config/openagentd/agents/hermes.md`. Existing files are not overwritten unless you pass `--force`. The command also supports `--config-dir` for importing into a non-default OpenAgentd config directory.
+It writes the imported profile to the canonical `~/.config/openagentd/agents/code.md` target. Existing files are not overwritten unless you pass `--force`. The command also supports `--config-dir` for importing into a non-default OpenAgentd config directory.
 
 Use `--from` with a project directory if your Hermes context is project-local instead of under `~/.hermes`.
 

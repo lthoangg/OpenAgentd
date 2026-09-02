@@ -41,38 +41,40 @@ class TestLive:
 
 
 class TestReady:
-    def test_ready_ok_when_db_and_team_healthy(self):
+    def test_ready_ok_when_db_and_agent_healthy(self):
         # ``validate_agents_dir`` returns True → agents dir is loadable.
-        with patch("app.services.team_manager.validate_agents_dir", return_value=True):
+        with patch("app.services.agent_manager.validate_agents_dir", return_value=True):
             client = TestClient(_make_app(db_ok=True))
             resp = client.get("/api/health/ready")
         assert resp.status_code == 200
         body = resp.json()
         assert body["status"] == "ok"
         assert body["checks"]["db"] == "ok"
-        assert body["checks"]["team"] == "ok"
+        assert body["checks"]["agent"] == "ok"
 
-    def test_ready_ok_when_db_healthy_but_team_missing(self):
+    def test_ready_ok_when_db_healthy_but_agent_missing(self):
         """Empty agents dir is tolerable — reported but still ready."""
-        with patch("app.services.team_manager.validate_agents_dir", return_value=False):
+        with patch(
+            "app.services.agent_manager.validate_agents_dir", return_value=False
+        ):
             client = TestClient(_make_app(db_ok=True))
             resp = client.get("/api/health/ready")
         assert resp.status_code == 200
         body = resp.json()
-        assert body["checks"]["team"] == "missing"
+        assert body["checks"]["agent"] == "missing"
 
-    def test_ready_marks_team_invalid_on_parse_error(self):
-        """A malformed agent .md surfaces as ``team=invalid``."""
+    def test_ready_marks_agent_invalid_on_parse_error(self):
+        """A malformed agent .md surfaces as ``agent=invalid``."""
         with patch(
-            "app.services.team_manager.validate_agents_dir",
+            "app.services.agent_manager.validate_agents_dir",
             side_effect=ValueError("bad yaml"),
         ):
             client = TestClient(_make_app(db_ok=True))
             resp = client.get("/api/health/ready")
-        # Team validation failure does not flip overall readiness — DB is
+        # Agent validation failure does not flip overall readiness — DB is
         # the gate.  But the per-check value must reflect the parse error.
         body = resp.json()
-        assert body["checks"]["team"] == "invalid"
+        assert body["checks"]["agent"] == "invalid"
 
 
 class TestLegacyAliasRemoved:

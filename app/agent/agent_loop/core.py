@@ -27,9 +27,12 @@ from pathlib import Path
 from typing import Any, Generic, TypeVar
 from uuid import uuid7 as _uuid7
 
-import httpx
 from loguru import logger
 
+from app.agent.agent_loop.retry import (
+    TRANSIENT_NETWORK_ERRORS,
+    is_transient_network_error,
+)
 from app.agent.agent_loop.streaming import stream_and_assemble
 from app.agent.agent_loop.tool_dispatch import gather_or_cancel
 from app.agent.agent_loop.tool_executor import make_tool_executor, sanitize_error
@@ -345,7 +348,7 @@ class Agent(Generic[TContext]):
             state.metadata["effective_model"] = active_model_id
 
         # Surface caller-supplied per-run metadata to tools/hooks.  Used by
-        # team leads to pass ``mode`` and ``workspace`` so the schedule tool
+        # callers to pass ``mode`` and ``workspace`` so the schedule tool
         # can derive routing targets without trusting LLM-supplied values.
         if config is not None and config.metadata:
             for key, value in config.metadata.items():
@@ -417,7 +420,7 @@ class Agent(Generic[TContext]):
         provided, ``DatabaseHook`` is not needed — the loop owns persistence.
 
         Agent role for plugin ``applies_to`` filtering is read from the
-        :mod:`app.agent.plugins.role` contextvar — team callers wrap the
+        :mod:`app.agent.plugins.role` contextvar — callers wrap the
         ``run()`` invocation with :func:`set_role`.
         """
         env, messages = await self._setup_run(
@@ -562,7 +565,7 @@ class Agent(Generic[TContext]):
             # Me sync after tool execution — captures tool results
             await self._sync(checkpointer, ctx, state)
 
-            # Structured end-turn: a tool in this batch (e.g. team_message
+            # Structured end-turn: a tool in this batch (e.g. a message tool
             # with end_turn=true) asked to finish the turn — tools executed,
             # now exit without another LLM call.  ``pop`` makes it one-shot.
             # The legacy ``<sleep>`` text sentinel is kept for back-compat.
@@ -693,12 +696,9 @@ class Agent(Generic[TContext]):
 
         try:
             assistant_msg = await model_chain(model_request)
-        except (
-            httpx.ConnectError,
-            httpx.ReadTimeout,
-            httpx.RemoteProtocolError,
-            TimeoutError,
-        ) as exc:
+        except TRANSIENT_NETWORK_ERRORS as exc:
+            if not is_transient_network_error(exc):
+                raise
             # The provider (and any fallback) exhausted its retry budget on
             # a transient connectivity failure.  Rather than letting this
             # kill the whole turn mid-task — abandoning the tool work
@@ -855,7 +855,7 @@ class Agent(Generic[TContext]):
                     # Raise rather than end quietly: a contentless assistant
                     # message is never persisted or rendered, so completing the
                     # run here is exactly the silent no-reply this guards
-                    # against.  Team members turn ProviderRequestError into a
+                    # against. Agent sessions turn ProviderRequestError into a
                     # visible turn error.
                     raise ProviderRequestError(
                         f"{effective_model or env.active_model_id} returned an "
@@ -1126,7 +1126,7 @@ class Agent(Generic[TContext]):
                 "tool_call_id": primary.id,
             }
             state.metadata["question_suspended"] = suspended
-            # Hand the suspension back to the caller (``TeamMemberBase``) so it
+            # Hand the suspension back to the caller so it
             # can park the agent in ``waiting_input``; ``state`` is run-local.
             if config is not None:
                 config.metadata["question_suspended"] = suspended

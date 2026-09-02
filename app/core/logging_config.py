@@ -63,6 +63,11 @@ def setup_logging(log_level: str = "INFO", file_log_level: str = "DEBUG") -> Non
     )
 
     # app.log: JSON, rotated.  Level is configurable (default DEBUG).
+    # ``enqueue`` hands serialization and the write() to loguru's worker
+    # thread so a log call from a coroutine never blocks the event loop on
+    # disk I/O (the API is single-loop; a slow or full disk would otherwise
+    # stall every in-flight SSE stream). ``lifespan`` awaits
+    # ``logger.complete()`` on shutdown so queued records are flushed.
     logger.add(
         APP_LOG_DIR / "app.log",
         level=file_log_level.upper(),
@@ -70,6 +75,7 @@ def setup_logging(log_level: str = "INFO", file_log_level: str = "DEBUG") -> Non
         rotation="10 MB",
         retention="7 days",
         encoding="utf-8",
+        enqueue=True,
     )
 
     # app-error.log: JSON, errors only, retained longer for postmortems
@@ -80,6 +86,7 @@ def setup_logging(log_level: str = "INFO", file_log_level: str = "DEBUG") -> Non
         rotation="10 MB",
         retention="14 days",
         encoding="utf-8",
+        enqueue=True,
     )
 
     # Silence noisy third-party stdlib loggers

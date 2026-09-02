@@ -1,13 +1,7 @@
-"""Capture and pretty-print every SSE event from a team turn.
+"""Capture and pretty-print every SSE event from an agent turn.
 
-Subscribes to /api/team/{session_id}/stream, parses each event, and prints a
-structured trace with timing, per-agent attribution, and truncated payloads.
-
-Useful for:
-  - Debugging event ordering across lead/member activations
-  - Verifying lifecycle states: idle, working, offline, error
-  - Verifying frontend handles every event type the backend emits
-  - Spotting unhandled/unknown event types (default branch)
+Subscribes to /api/agent/{session_id}/stream, parses each event, and prints a
+structured trace with timing and truncated payloads.
 
 Usage:
   uv run python -m manual.team_sse "research python 3.14 release notes"
@@ -45,7 +39,6 @@ CYAN = "\033[36m"
 
 EVENT_COLORS: dict[str, str] = {
     "agent_status": MAGENTA,
-    "inbox": CYAN,
     "message": "",
     "thinking": DIM,
     "tool_call": BLUE,
@@ -58,8 +51,10 @@ EVENT_COLORS: dict[str, str] = {
     "done": GREEN,
     "title_update": YELLOW,
     "session": DIM,
+    "question_asked": YELLOW,
+    "question_answered": GREEN,
     "permission_asked": YELLOW,
-    "permission_replied": GREEN,
+    "permission_resolved": GREEN,
 }
 
 
@@ -70,7 +65,7 @@ def _truncate(s: str, n: int = 100) -> str:
 
 def _fmt_event(evt: str, data: dict) -> str:
     """Return a one-line summary of an event."""
-    agent = data.get("agent") or data.get("metadata", {}).get("agent") or "-"
+    agent = data.get("agent") or data.get("metadata", {}).get("agent") or "openagentd"
     color = EVENT_COLORS.get(evt, "")
 
     if evt == "agent_status":
@@ -78,9 +73,6 @@ def _fmt_event(evt: str, data: dict) -> str:
         meta = data.get("metadata") or {}
         extra = f" msg={meta.get('message')!r}" if meta.get("message") else ""
         body = f"{agent} → {status}{extra}"
-    elif evt == "inbox":
-        frm = data.get("from_agent", "?")
-        body = f"{agent} ← {frm}: {_truncate(data.get('content', ''), 80)}"
     elif evt == "message":
         body = f"{agent}: {_truncate(data.get('text', ''), 90)}"
     elif evt == "thinking":
@@ -123,11 +115,21 @@ def _fmt_event(evt: str, data: dict) -> str:
     return f"{color}{evt:13s}{RESET} {body}"
 
 
-def post_message(base: str, message: str, session_id: str | None) -> str:
-    payload: dict = {"message": message}
+def post_message(
+    base: str,
+    message: str,
+    session_id: str | None,
+    model: str | None = None,
+    thinking_level: str | None = None,
+) -> str:
+    payload: dict = {"message": message, "workspace": "."}
     if session_id:
         payload["session_id"] = session_id
-    r = httpx.post(f"{base}/team/chat", data=payload)
+    if model:
+        payload["model"] = model
+    if thinking_level:
+        payload["thinking_level"] = thinking_level
+    r = httpx.post(f"{base}/agent/chat", data=payload)
     r.raise_for_status()
     sid = r.json()["session_id"]
     print(f"{BOLD}session{RESET}: {sid}")
@@ -154,7 +156,7 @@ def stream_events(
 
     try:
         with httpx.stream(
-            "GET", f"{base}/team/{sid}/stream", timeout=timeout + 5
+            "GET", f"{base}/agent/{sid}/stream", timeout=timeout + 5
         ) as resp:
             resp.raise_for_status()
             current_event = "message"
@@ -165,13 +167,11 @@ def stream_events(
                     print(f"{RED}[timeout]{RESET}")
                     break
 
-                # SSE frame: `event: X\ndata: Y\n\n`
                 if line.startswith("event:"):
                     current_event = line[6:].strip()
                 elif line.startswith("data:"):
                     data_buf.append(line[5:].strip())
                 elif line == "":
-                    # End of frame
                     if not data_buf:
                         continue
                     raw = "\n".join(data_buf)
@@ -182,9 +182,12 @@ def stream_events(
                         data = {"_raw": raw}
 
                     event_counts[current_event] += 1
-                    agent = data.get("agent") or data.get("metadata", {}).get("agent")
-                    if agent:
-                        per_agent[f"{agent}/{current_event}"] += 1
+                    agent = (
+                        data.get("agent")
+                        or data.get("metadata", {}).get("agent")
+                        or "openagentd"
+                    )
+                    per_agent[f"{agent}/{current_event}"] += 1
                     if current_event not in known:
                         unknown_types.add(current_event)
 
@@ -234,9 +237,15 @@ def print_summary(event_counts: Counter, per_agent: Counter) -> None:
 
 
 def main() -> None:
-    p = argparse.ArgumentParser(description="Capture and print team SSE events")
-    p.add_argument("message", help="Message to send to the team")
+    p = argparse.ArgumentParser(description="Capture and print agent SSE events")
+    p.add_argument("message", help="Message to send to the agent")
     p.add_argument("--session", default=None, help="Resume existing session id")
+    p.add_argument(
+        "--model", default=None, help="Model override (e.g. opencode:hy3-free)"
+    )
+    p.add_argument(
+        "--thinking-level", default=None, help="Reasoning effort / thinking level"
+    )
     p.add_argument("--wait", type=int, default=DEFAULT_WAIT, help="Max stream wait (s)")
     p.add_argument("--base", default=BASE)
     p.add_argument("--out", type=Path, help="Append raw events as JSONL to this file")
@@ -245,7 +254,13 @@ def main() -> None:
 
     base = args.base.rstrip("/")
     require_dev_server(base)
-    sid = post_message(base, args.message, args.session)
+    sid = post_message(
+        base,
+        args.message,
+        args.session,
+        model=args.model,
+        thinking_level=args.thinking_level,
+    )
     event_counts, per_agent = stream_events(base, sid, args.wait, args.out)
     if not args.no_summary:
         print_summary(event_counts, per_agent)

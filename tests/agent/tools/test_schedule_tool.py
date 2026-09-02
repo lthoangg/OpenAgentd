@@ -498,13 +498,13 @@ async def test_create_with_session_id_uuid(mock_task_scheduler, sample_task, cle
 
 
 @pytest.mark.asyncio
-async def test_create_with_session_id_current_uses_lead_session(
+async def test_create_with_session_id_current_uses_session(
     mock_task_scheduler, sample_task, clean_db
 ):
     sample_task.session_id = "019ef6e1-1111-7111-8111-111111111111"
     mock_task_scheduler.create.return_value = sample_task
     state = MagicMock()
-    state.metadata = {"lead_session_id": sample_task.session_id}
+    state.metadata = {"session_id": sample_task.session_id}
 
     with patch("app.scheduler.scheduler.task_scheduler", mock_task_scheduler):
         result = await schedule_task.arun(
@@ -1061,7 +1061,7 @@ async def test_mutation_out_of_scope_returns_not_found_and_never_mutates(
 async def test_mutation_normal_caller_cannot_touch_coding_task(
     action, mock_task_scheduler
 ):
-    """The default-team lead must not be able to pause/delete a coding
+    """The default agent must not be able to pause/delete a coding
     task by slug-guessing, even though it has no concept of workspaces."""
     coding_row = _make_task("coding", "/repo/a", name="coding-a")
     mock_task_scheduler.get_task.return_value = coding_row
@@ -1083,7 +1083,7 @@ async def test_mutation_normal_caller_cannot_touch_coding_task(
 async def test_mutation_coding_caller_cannot_touch_normal_task(
     action, mock_task_scheduler
 ):
-    """Symmetric to the previous test: a coding-team lead must not be
+    """Symmetric to the previous test: a coding agent must not be
     able to mutate a default-team reminder by slug-guessing."""
     normal_row = _make_task("normal", None, name="normal-a")
     mock_task_scheduler.get_task.return_value = normal_row

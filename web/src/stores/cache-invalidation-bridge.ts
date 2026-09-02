@@ -1,5 +1,5 @@
 import type { InfiniteData, QueryClient } from '@tanstack/react-query'
-import type { CacheInvalidation } from '@/stores/useTeamStore'
+import type { CacheInvalidation } from '@/stores/useAgentStore'
 import type { SessionPageResponse, SessionResponse, WorkspaceGitDiffResponse } from '@/api/types'
 import { getCodingWorkspaceGitDiff } from '@/api/client'
 import { queryKeys } from '@/queries'
@@ -16,7 +16,7 @@ export function applyCacheInvalidations(
   for (const event of events) {
     switch (event.kind) {
       case 'workspace_files':
-        queryClient.invalidateQueries({ queryKey: queryKeys.team.files(event.sessionId) })
+        queryClient.invalidateQueries({ queryKey: queryKeys.session.files(event.sessionId) })
         break
       case 'coding_workspace':
         queryClient.invalidateQueries({ queryKey: queryKeys.coding.files(event.workspace) })
@@ -38,17 +38,11 @@ export function applyCacheInvalidations(
       case 'todos':
         queryClient.invalidateQueries({ queryKey: queryKeys.todos(event.sessionId) })
         break
-      case 'team_agents':
-        queryClient.invalidateQueries({ queryKey: queryKeys.teamAgents() })
-        break
-      case 'team_sessions':
-        queryClient.invalidateQueries({ queryKey: queryKeys.team.sessions.all() })
-        break
       case 'session_running':
         // Patch in place; only fall back to a refetch when the session is not
         // in any cached page yet (nothing to patch).
         if (!patchSessionRunning(queryClient, event.sessionId, event.running)) {
-          queryClient.invalidateQueries({ queryKey: queryKeys.team.sessions.all() })
+          queryClient.invalidateQueries({ queryKey: queryKeys.session.sessions.all() })
         }
         break
     }
@@ -166,7 +160,7 @@ export function patchSessionRunning(
   let found = false
 
   queryClient.setQueriesData<InfiniteData<SessionPageResponse>>(
-    { queryKey: queryKeys.team.sessions.all() },
+    { queryKey: queryKeys.session.sessions.all() },
     (old) => {
       if (!isInfiniteSessionData(old)) return old
       let changed = false
@@ -192,7 +186,7 @@ export function patchSessionRunning(
   )
 
   queryClient.setQueryData<SessionResponse>(
-    queryKeys.team.sessions.detail(sessionId),
+    queryKeys.session.sessions.detail(sessionId),
     (old) =>
       old && (old.running !== running || (old.needs_input ?? false) !== needsInput)
         ? { ...old, running, needs_input: needsInput }
@@ -208,11 +202,11 @@ export function patchSessionTitle(
   title: string,
 ): void {
   queryClient.setQueryData<SessionResponse>(
-    queryKeys.team.sessions.detail(sessionId),
+    queryKeys.session.sessions.detail(sessionId),
     (old) => old ? { ...old, title } : old,
   )
   queryClient.setQueriesData<InfiniteData<SessionPageResponse>>(
-    { queryKey: queryKeys.team.sessions.all() },
+    { queryKey: queryKeys.session.sessions.all() },
     (old) => {
       if (!isInfiniteSessionData(old)) return old
       return {
@@ -251,7 +245,7 @@ export function prependSession(
   session: SessionResponse,
 ): void {
   queryClient.setQueryData<InfiniteData<SessionPageResponse>>(
-    queryKeys.team.sessions.infinite(),
+    queryKeys.session.sessions.infinite(),
     (old) => prependSessionToInfiniteData(old, session),
   )
 }
@@ -262,7 +256,7 @@ export function prependWorkspaceSession(
   session: SessionResponse,
 ): void {
   queryClient.setQueryData<InfiniteData<SessionPageResponse>>(
-    queryKeys.team.sessions.workspace(workspace),
+    queryKeys.session.sessions.workspace(workspace),
     (old) => prependSessionToInfiniteData(old, session),
   )
 }

@@ -22,7 +22,7 @@ class ScheduledTask(SQLModel, table=True):
     name: str = Field(
         sa_column=Column(sa.String(100), nullable=False, unique=True, index=True)
     )
-    # Every task delivers to the coding team for its workspace.
+    # Every task delivers to the agent session for its workspace.
     # API and scheduler validation require a real workspace. Keep direct ORM
     # construction representable with an invalid sentinel until validation.
     workspace: str = Field(default="", sa_column=Column(sa.String, nullable=False))

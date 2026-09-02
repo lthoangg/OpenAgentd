@@ -172,7 +172,7 @@ def _iter_md(root: Path):
 # Built-ins are prompt templates owned by OpenAgentd itself rather than the
 # user's command library. They are intentionally **not** listed by
 # ``discover_commands`` — the picker registers them as immediate-execute
-# actions (see ``TeamChatView``'s ``slashCommands``) — but they are
+# actions (see the agent chat view's ``slashCommands``) — but they are
 # resolvable through :func:`get_builtin_command` and the
 # ``/api/commands/{name}/render`` endpoint so the frontend can fetch the
 # rendered body without hardcoding the prompt in the bundle.

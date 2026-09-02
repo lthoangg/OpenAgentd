@@ -427,8 +427,8 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
 
 async function refreshBackendQueries(): Promise<void> {
   await queryClient.invalidateQueries({ queryKey: queryKeys.health() })
-  // ``agents()`` is a prefix of ``teamAgents(workspace)``, so this covers the
-  // shared /team/agents entry for every workspace after a backend switch.
+  // ``agents()`` is a prefix of ``agentRegistry(workspace)``, so this covers the
+  // shared /agent/agents entry for every workspace after a backend switch.
   await queryClient.invalidateQueries({ queryKey: queryKeys.agents() })
 }
 

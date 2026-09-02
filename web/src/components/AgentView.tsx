@@ -23,7 +23,6 @@ import { ChevronDown, ChevronUp, AlertCircle } from 'lucide-react'
 import { Thinking } from './Thinking'
 import { ToolCall } from './ToolCall'
 import { MCPAppResult } from './MCPAppResult'
-import { InboxBubble } from './InboxBubble'
 import { CompactionDivider } from './CompactionDivider'
 import { AssistantTurn } from './AssistantTurnFooter'
 import { PendingMessageQueue } from './PendingMessageQueue'
@@ -31,7 +30,7 @@ import { appendCurrentTurns, getVisibleTurnWindow, partitionTurns } from '@/util
 import { latestDirectUserBlockIdFromParts, liveBlockTail } from '@/utils/blocks'
 import { extractSleepPrefix } from '@/utils/format'
 import { latestMCPAppResourceBlockIdsFromParts, latestMCPAppResources, mcpAppResourceUri } from '@/utils/mcp-app-artifacts'
-import { useTeamStore } from '@/stores/useTeamStore'
+import { useAgentStore } from '@/stores/useAgentStore'
 import type { ContentBlock } from '@/api/types'
 import { UserBubble } from './AgentView/UserBubble'
 import { useAutoFollowScroll } from '@/hooks/useAutoFollowScroll'
@@ -86,11 +85,6 @@ interface AgentViewProps {
 const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionId, onRevert, latestMCPAppBlockIds, onMentionFileOpen }: { block: ContentBlock; isStreaming: boolean; sessionId?: string; onRevert?: () => void; latestMCPAppBlockIds?: Set<string>; onMentionFileOpen?: (path: string) => void }) {
   switch (block.type) {
     case 'user': {
-      // Me check if this is an inbox message (from another agent, not real user)
-      const fromAgent = block.extra?.from_agent as string | undefined
-      if (fromAgent && fromAgent !== 'user') {
-        return <InboxBubble content={block.content} fromAgent={fromAgent} />
-      }
       const blockModel = typeof block.extra?.model === 'string' ? block.extra.model : null
       return <UserBubble content={block.content} timestamp={block.timestamp} attachments={block.attachments} onRevert={onRevert} modelId={blockModel} onMentionFileOpen={onMentionFileOpen} mentions={block.extra?.mentions as string[] | undefined} />
     }
@@ -186,7 +180,7 @@ const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionI
 
 export function AgentView({ blocks, currentBlocks, isWorking, isTurnOpen = isWorking, isAwaitingRestart = false, isError, lastError, emptyState, onMentionFileOpen }: AgentViewProps) {
   const [renderedTurnCount, setRenderedTurnCount] = useState(INITIAL_RENDERED_TURNS)
-  const sessionId = useTeamStore((s) => s.sessionId) ?? undefined
+  const sessionId = useAgentStore((s) => s.sessionId) ?? undefined
   const prevScrollHeightRef = useRef<number | null>(null)
   const loadingOlderRef = useRef(false)
   const hiddenTurnCountRef = useRef(0)
@@ -195,7 +189,7 @@ export function AgentView({ blocks, currentBlocks, isWorking, isTurnOpen = isWor
   const onLoadOlderTopRef = useRef<() => void>(() => {})
 
   const handleRevert = useCallback(() => {
-    void useTeamStore.getState().undoTeam().then(async (response) => {
+    void useAgentStore.getState().undoAgent().then(async (response) => {
       const message = response?.message
       if (!message || message.role !== 'user' || message.is_summary) return
       window.dispatchEvent(
@@ -273,12 +267,12 @@ export function AgentView({ blocks, currentBlocks, isWorking, isTurnOpen = isWor
   const handleLoadOlderTop = useCallback(() => {
     if (hiddenTurnCountRef.current > 0) {
       showEarlierTurns()
-    } else if (useTeamStore.getState().hasMore && !loadingOlderRef.current) {
+    } else if (useAgentStore.getState().hasMore && !loadingOlderRef.current) {
       loadingOlderRef.current = true
       const el = scrollRef.current
       if (el) prevScrollHeightRef.current = el.scrollHeight
       pendingRestoreRef.current = true
-      void useTeamStore.getState().loadOlderMessages().finally(() => {
+      void useAgentStore.getState().loadOlderMessages().finally(() => {
         loadingOlderRef.current = false
       })
     }

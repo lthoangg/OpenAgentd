@@ -3,7 +3,7 @@
  *
  * Layout: tokens · view toggle · todos/files/agents etc.
  * Props-driven so previews and future single-agent surfaces can reuse
- * it without pulling in TeamChatView's stores. Design source:
+ * it without pulling in AgentChatView's stores. Design source:
  * `AgentTopbar` (`E8lml9`) in `.diagrams/OpenAgentd-ui.pen`.
  */
 
@@ -18,7 +18,6 @@ import {
 import { TopbarAction } from '@/components/ui/topbar-action'
 import { TokenMeter } from '@/components/ui/token-meter'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { ViewToggle, type ViewMode } from '@/components/ui/view-toggle'
 import { cn } from '@/lib/utils'
 
 export interface AgentTopbarTokens {
@@ -52,9 +51,6 @@ export interface AgentTopbarActionDescriptor {
 export interface AgentTopbarProps {
   /** Token totals; when omitted the TokenMeter is hidden. */
   tokens?: AgentTopbarTokens
-  /** Current view mode; when undefined the ViewToggle is hidden. */
-  viewMode?: ViewMode
-  onViewModeChange?: (mode: ViewMode) => void
   /** Force the mobile/desktop layout. Defaults to desktop. */
   isMobile?: boolean
   /**
@@ -83,8 +79,6 @@ export interface AgentTopbarProps {
  */
 export function AgentTopbar({
   tokens,
-  viewMode,
-  onViewModeChange,
   isMobile = false,
   todosSlot,
   todosAction,
@@ -95,7 +89,6 @@ export function AgentTopbar({
   className,
 }: AgentTopbarProps) {
   const showTokens = !isMobile && Boolean(tokens)
-  const showViewToggle = !isMobile && viewMode && onViewModeChange
 
   return (
     <div
@@ -119,10 +112,6 @@ export function AgentTopbar({
           pulsing={tokens.pulsing}
           className="mr-0.5"
         />
-      )}
-
-      {showViewToggle && viewMode && onViewModeChange && (
-        <ViewToggle value={viewMode} onValueChange={onViewModeChange} />
       )}
 
       {todosSlot ?? (todosAction && <AgentTopbarActionButton action={todosAction} fallbackIcon={ListChecks} />)}

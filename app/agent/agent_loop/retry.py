@@ -12,9 +12,12 @@ for logging.
 from __future__ import annotations
 
 import asyncio
+import http.client
 import json
 import random
 import re
+import socket
+import ssl
 from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING
 
@@ -37,6 +40,39 @@ if TYPE_CHECKING:
 # ``stream_with_retry`` performed exactly ``MAX_RETRIES`` attempts before
 # raising.
 MAX_RETRIES = 5
+
+# Transient transport and socket errors indicating network blips, connection
+# resets, DNS failures, or timeouts that should be retried automatically. These
+# are broad families; ``is_transient_network_error`` vetoes the members that
+# are misconfiguration rather than weather. (``socket.timeout`` is an alias of
+# ``TimeoutError`` and ``ssl.SSLError`` an ``OSError``, so both are covered.)
+TRANSIENT_NETWORK_ERRORS = (
+    httpx.RequestError,
+    ConnectionError,
+    TimeoutError,
+    socket.gaierror,
+    socket.herror,
+    ssl.SSLError,
+    http.client.HTTPException,
+)
+
+# Subclasses of the families above that will never succeed on retry: a cert
+# that fails verification, a base URL without a scheme, a body the client
+# cannot decode. Retrying them burns the whole backoff budget (~30 s) before
+# the user learns about a problem they have to fix by hand.
+_NON_TRANSIENT_NETWORK_ERRORS = (
+    ssl.SSLCertVerificationError,
+    httpx.UnsupportedProtocol,
+    httpx.DecodingError,
+    httpx.TooManyRedirects,
+)
+
+
+def is_transient_network_error(exc: BaseException) -> bool:
+    """Whether *exc* is a network blip worth retrying (see the tuples above)."""
+    return isinstance(exc, TRANSIENT_NETWORK_ERRORS) and not isinstance(
+        exc, _NON_TRANSIENT_NETWORK_ERRORS
+    )
 
 
 class StreamRestart:
@@ -109,7 +145,12 @@ async def _notify_provider_exhausted(
 # 529 is Anthropic's "overloaded" status — transient and explicitly retryable.
 # It also arrives via SSE error frames mid-stream (see the anthropic provider's
 # _raise_stream_error_event), which is the common case in practice.
-_RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504, 529}
+# Every other 5xx (502/503/504, Cloudflare 520–524, 529) is handled by the
+# range check in ``_is_retryable_http_error`` minus the permanent exclusions.
+_RETRYABLE_STATUS_CODES = {408, 429}
+# 501 Not Implemented and 505 HTTP Version Not Supported describe the request,
+# not the server's health; they never clear on retry.
+_PERMANENT_5XX_STATUS_CODES = {501, 505}
 _NON_RETRYABLE_429_MARKERS = (
     "usage_limit_reached",
     "usage_not_included",
@@ -159,7 +200,10 @@ def _backoff_delay(attempt: int, *, retry_after: int = 0) -> float:
 
 
 def _is_retryable_http_error(exc: httpx.HTTPStatusError) -> bool:
-    if exc.response.status_code in _RETRYABLE_STATUS_CODES:
+    status = exc.response.status_code
+    if status in _RETRYABLE_STATUS_CODES:
+        return True
+    if 500 <= status < 600 and status not in _PERMANENT_5XX_STATUS_CODES:
         return True
     try:
         payload = exc.response.json()
@@ -446,13 +490,9 @@ async def stream_with_retry(
             )
             if await _sleep_or_interrupted(delay, interrupt_event):
                 return
-        except (
-            httpx.ConnectError,
-            httpx.ReadError,
-            httpx.ReadTimeout,
-            httpx.RemoteProtocolError,
-            TimeoutError,
-        ) as exc:
+        except TRANSIENT_NETWORK_ERRORS as exc:
+            if not is_transient_network_error(exc):
+                raise
             last_exc = exc
             # Skip sleep on the last attempt.
             if attempt + 1 >= MAX_RETRIES:

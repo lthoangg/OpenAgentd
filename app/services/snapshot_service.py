@@ -184,22 +184,29 @@ async def _list_candidate_paths(gitdir: Path, worktree: Path) -> list[str]:
     tracked = [p for p in out_d.decode(errors="replace").split("\0") if p]
     untracked = [p for p in out_o.decode(errors="replace").split("\0") if p]
 
-    seen: set[str] = set()
-    result: list[str] = []
-    untracked_set = set(untracked)
-    for path in (*tracked, *untracked):
-        if path in seen:
-            continue
-        seen.add(path)
-        if path in untracked_set:
-            try:
-                size = (worktree / path).stat().st_size
-            except OSError:
+    def _filter() -> list[str]:
+        # One stat per untracked file. A workspace with a large ignored-less
+        # build tree can have thousands, so this walk stays off the loop.
+        seen: set[str] = set()
+        result: list[str] = []
+        untracked_set = set(untracked)
+        for path in (*tracked, *untracked):
+            if path in seen:
                 continue
-            if size > _MAX_FILE_SIZE:
-                continue
-        result.append(path)
-    return result
+            seen.add(path)
+            if path in untracked_set:
+                try:
+                    size = (worktree / path).stat().st_size
+                except OSError:
+                    continue
+                if size > _MAX_FILE_SIZE:
+                    continue
+            result.append(path)
+        return result
+
+    if not untracked:
+        return list(dict.fromkeys(tracked))
+    return await asyncio.to_thread(_filter)
 
 
 async def _stage(gitdir: Path, worktree: Path, paths: list[str]) -> bool:

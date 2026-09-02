@@ -6,18 +6,18 @@
  * bridge fans it back into the same keyboard events the web UI already uses.
  */
 import { useEffect } from 'react'
+import { useRouter, type AnyRouter } from '@tanstack/react-router'
 import { useUIStore } from '@/stores/useUIStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { getPlatform } from '@/hooks/use-platform'
 import { dispatchShortcutKey } from '@/lib/keyboard-shortcut'
-import { router } from '@/router'
 
 interface NotificationClickPayload {
   sessionId?: unknown
   mode?: unknown
 }
 
-function runDesktopCommand(command: unknown): void {
+function runDesktopCommand(command: unknown, router: AnyRouter): void {
   switch (command) {
     case 'coding':
       void router.navigate({ to: '/coding' })
@@ -43,7 +43,7 @@ function runDesktopCommand(command: unknown): void {
   }
 }
 
-export function openNotificationSession(payload: unknown): void {
+export function openNotificationSession(payload: unknown, router: AnyRouter): void {
   if (!payload || typeof payload !== 'object') return
   const notification = payload as NotificationClickPayload
   if (typeof notification.sessionId !== 'string') return
@@ -54,6 +54,9 @@ export function openNotificationSession(payload: unknown): void {
 let lastCommand: { command: unknown; timestamp: number } | null = null
 
 export function useDesktopCommands(): void {
+  // From context, not the `@/router` singleton: importing that here closes
+  // router.ts -> routes/__root.tsx -> this module -> router.ts.
+  const router = useRouter()
   useEffect(() => {
     let cleanup: (() => void) | undefined
     let cancelled = false
@@ -65,10 +68,10 @@ export function useDesktopCommands(): void {
           const now = Date.now()
           if (lastCommand && lastCommand.command === event.payload && now - lastCommand.timestamp < 450) return
           lastCommand = { command: event.payload, timestamp: now }
-          runDesktopCommand(event.payload)
+          runDesktopCommand(event.payload, router)
         })
         const unlistenNotification = await listen<NotificationClickPayload>('desktop-notification-clicked', (event) => {
-          openNotificationSession(event.payload)
+          openNotificationSession(event.payload, router)
         })
         if (cancelled) {
           unlisten()
@@ -88,5 +91,5 @@ export function useDesktopCommands(): void {
       cancelled = true
       cleanup?.()
     }
-  }, [])
+  }, [router])
 }

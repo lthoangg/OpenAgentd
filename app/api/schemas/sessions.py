@@ -15,7 +15,7 @@ class SessionCreate(BaseModel):
     agent_name: str | None = None
 
 
-class TeamSessionResolveRequest(BaseModel):
+class AgentSessionResolveRequest(BaseModel):
     workspace: str = Field(..., min_length=1)
     model: str | None = None
     thinking_level: str | None = None
@@ -25,11 +25,11 @@ class TeamSessionResolveRequest(BaseModel):
     worktree_branch: str | None = None
 
 
-class TeamSessionUpdateRequest(BaseModel):
+class AgentSessionUpdateRequest(BaseModel):
     title: str = Field(min_length=1, max_length=255)
 
 
-class TeamWorkspaceVisibilityRequest(BaseModel):
+class AgentWorkspaceVisibilityRequest(BaseModel):
     workspace: str
     hidden: bool
 
@@ -79,7 +79,7 @@ class SessionResponse(_ExcludeNoneModel):
     updated_at: datetime | None = None
 
 
-class TeamSessionResolveResponse(SessionResponse):
+class AgentSessionResolveResponse(SessionResponse):
     created: bool
 
 

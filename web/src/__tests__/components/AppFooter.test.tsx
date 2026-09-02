@@ -3,6 +3,9 @@ import { render, screen, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { AppFooter } from '@/components/AppFooter'
+
+const navigate = mock(() => Promise.resolve())
+mock.module('@tanstack/react-router', () => ({ useNavigate: () => navigate }))
 const mockOpenSettings = mock(() => {})
 
 mock.module('@/stores/useSettingsStore', () => ({
@@ -76,23 +79,6 @@ describe('AppFooter', () => {
     expect((await screen.findByRole('tooltip')).textContent).toBe('Fast mode active')
   })
 
-  it('renders ViewToggle with compact layout and triggers onViewModeChange', () => {
-    const onViewModeChange = mock(() => {})
-    renderWithQueryClient(
-      <AppFooter
-        viewMode="agent"
-        onViewModeChange={onViewModeChange}
-      />
-    )
-
-    const viewButton = screen.getByRole('button', { name: 'Switch to split view' })
-    expect(viewButton).toBeTruthy()
-    expect(viewButton.className).toContain('h-5')
-    expect(viewButton.className).toContain('w-5')
-
-    fireEvent.click(viewButton)
-    expect(onViewModeChange).toHaveBeenCalledWith('split')
-  })
 
   it('renders scheduler and help palette buttons and triggers actions', () => {
     const onToggleScheduler = mock(() => {})

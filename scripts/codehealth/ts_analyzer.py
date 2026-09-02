@@ -19,12 +19,11 @@ from pathlib import Path
 from scripts.codehealth.model import FileReport
 
 _IMPORT_RE = re.compile(
-    r"""(?:import|export)\s
+    r"""(?:import|export)\s(?!type\s)
         (?:[^'"]*?\sfrom\s)?      # optional binding list + 'from'
         ['"](?P<spec>[^'"]+)['"]""",
     re.VERBOSE,
 )
-_DYNAMIC_IMPORT_RE = re.compile(r"""import\(\s*['"](?P<spec>[^'"]+)['"]\s*\)""")
 _HOOK_RE = re.compile(r"\buse[A-Z]\w*\s*\(")
 _FUNC_RE = re.compile(
     r"(?:function\s+\w+\s*\()"
@@ -93,8 +92,10 @@ def analyze_ts_file(path: Path, repo_root: Path, src_root: Path) -> FileReport:
     report.num_functions = len(_FUNC_RE.findall(source))
     report.num_classes = len(_CLASS_RE.findall(source))
 
+    # Only import-time edges count toward coupling and cycles: ``import type``
+    # is erased at compile time and a dynamic ``import()`` is deferred (it is
+    # how a cycle is *broken*, and how the bundle is code-split).
     specs: list[str] = [m.group("spec") for m in _IMPORT_RE.finditer(source)]
-    specs += [m.group("spec") for m in _DYNAMIC_IMPORT_RE.finditer(source)]
     for spec in specs:
         resolved = _resolve_import(spec, path, src_root)
         if resolved is not None:

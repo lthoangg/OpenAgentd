@@ -30,7 +30,9 @@ def _default_log_path() -> Path:
     if state_dir:
         return Path(state_dir) / "logs" / "app" / "app.log"
     if os.getenv("APP_ENV", "development") == "production":
-        return Path.home() / ".local" / "state" / "openagentd" / "logs" / "app" / "app.log"
+        return (
+            Path.home() / ".local" / "state" / "openagentd" / "logs" / "app" / "app.log"
+        )
     return Path(".openagentd") / "dev" / "state" / "logs" / "app" / "app.log"
 
 
@@ -64,15 +66,21 @@ def _sample_context(record: dict[str, Any]) -> str:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Inspect repeated backend warnings/errors")
+    parser = argparse.ArgumentParser(
+        description="Inspect repeated backend warnings/errors"
+    )
     add_env_argument(parser)
     # Parse --env first so apply_env_override can set APP_ENV before _default_log_path runs.
     args, remaining = parser.parse_known_args()
     apply_env_override(args)
     parser.add_argument("--path", type=Path, default=_default_log_path())
     parser.add_argument("--level", choices=_LEVELS, help="Only show one severity")
-    parser.add_argument("--contains", help="Only include messages containing this substring")
-    parser.add_argument("--limit", type=int, default=15, help="Max grouped messages to print")
+    parser.add_argument(
+        "--contains", help="Only include messages containing this substring"
+    )
+    parser.add_argument(
+        "--limit", type=int, default=15, help="Max grouped messages to print"
+    )
     parser.add_argument(
         "--samples",
         type=int,

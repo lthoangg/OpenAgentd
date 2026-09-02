@@ -25,7 +25,7 @@ def test_returns_expected_shape():
         "dirs",
         "providers",
         "env",
-        "team",
+        "agent",
         "mcp",
         "log_tail",
         "log_path",

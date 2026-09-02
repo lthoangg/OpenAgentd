@@ -310,9 +310,8 @@ async def load_plugin_hooks(
     Errors in any single plugin are logged and isolated — the rest of
     the discovery continues so one typo doesn't disable every plugin.
 
-    ``role`` is the agent's role string (``"lead"`` / ``"member"`` for
-    teams, ``"agent"`` for direct-call fallback) used by ``applies_to``
-    filters.
+    ``role`` is the persisted agent role string (``"lead"`` / ``"member"``)
+    used by ``applies_to`` filters.
     """
     paths = [Path(d) for d in dirs]
     files = _discover_plugin_files(paths)

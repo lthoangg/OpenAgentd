@@ -33,8 +33,8 @@ export function createXterm(options: {
    * first: users running Powerlevel10k / Starship / oh-my-zsh themes
    * almost certainly have one installed locally (p10k's own
    * recommendation is MesloLGS NF), and a user-supplied exact font name
-   * (Settings → Terminal) is layered in front of the guess stack —
-   * that has to be manual rather than auto-detected (browsers don't
+   * is layered in front of the guess stack — that has to be manual rather
+   * than auto-detected (browsers don't
    * expose the OS's installed font list). Plain JetBrains Mono remains
    * the fallback for everyone else.
    */

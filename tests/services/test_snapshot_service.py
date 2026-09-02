@@ -247,6 +247,44 @@ async def test_restore_preserves_main_index_stat_cache(
 
 
 @pytest.mark.asyncio
+async def test_list_candidate_paths_stats_untracked_files_off_the_event_loop(
+    state_dir: Path, workspace: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Size-filtering untracked files must not stat them on the loop thread.
+
+    A workspace with thousands of untracked files would otherwise freeze every
+    SSE stream for the duration of the stat walk.
+    """
+    import threading
+
+    for i in range(5):
+        (workspace / f"u{i}.txt").write_text("x")
+    (workspace / "big.bin").write_bytes(b"0" * (snapshot_service._MAX_FILE_SIZE + 1))
+    await snapshot_service.track("offloop", workspace)  # init repo; files untracked
+    gitdir = snapshot_service.snapshot_dir("offloop")
+
+    loop_thread = threading.get_ident()
+    stat_threads: set[int] = set()
+    real_stat = snapshot_service.Path.stat
+
+    def spying_stat(self, *args, **kwargs):
+        if self.parent == workspace:
+            stat_threads.add(threading.get_ident())
+        return real_stat(self, *args, **kwargs)
+
+    monkeypatch.setattr(snapshot_service.Path, "stat", spying_stat)
+    # Make a change so `track` did not already stage everything.
+    (workspace / "u0.txt").write_text("changed")
+
+    candidates = await snapshot_service._list_candidate_paths(gitdir, workspace)
+
+    assert "big.bin" not in candidates
+    assert "u0.txt" in candidates
+    assert stat_threads, "expected untracked files to be size-checked"
+    assert loop_thread not in stat_threads
+
+
+@pytest.mark.asyncio
 async def test_remove_drops_repo(state_dir: Path, workspace: Path) -> None:
     (workspace / "a").write_text("x")
     await snapshot_service.track("doomed", workspace)

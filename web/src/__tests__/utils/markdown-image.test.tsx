@@ -61,14 +61,14 @@ describe("resolveImageSrc", () => {
   });
 
   it("passes existing /api/ URLs through unchanged (no double-prefix)", () => {
-    const api = `/api/team/${sid}/media/foo.png`;
+    const api = `/api/agent/${sid}/media/foo.png`;
     expect(resolveImageSrc(api, sid)).toBe(api);
   });
 
   it("adds the desktop token query param to existing /api/ URLs", () => {
     window.__OAD_TOKEN__ = "secret";
-    expect(resolveImageSrc(`/api/team/${sid}/media/foo.png`, sid)).toBe(
-      `/api/team/${sid}/media/foo.png?_token=secret`,
+    expect(resolveImageSrc(`/api/agent/${sid}/media/foo.png`, sid)).toBe(
+      `/api/agent/${sid}/media/foo.png?_token=secret`,
     );
   });
 
@@ -76,40 +76,40 @@ describe("resolveImageSrc", () => {
     const { setApiBaseUrl } = await import("@/api/base-url");
     setApiBaseUrl("http://127.0.0.1:4082");
 
-    expect(resolveImageSrc(`/api/team/${sid}/media/foo.png`, sid)).toBe(
-      `http://127.0.0.1:4082/api/team/${sid}/media/foo.png`,
+    expect(resolveImageSrc(`/api/agent/${sid}/media/foo.png`, sid)).toBe(
+      `http://127.0.0.1:4082/api/agent/${sid}/media/foo.png`,
     );
   });
 
   it("rewrites bare relative paths to the media proxy", () => {
     expect(resolveImageSrc("chart.png", sid)).toBe(
-      `/api/team/${sid}/media/chart.png`,
+      `/api/agent/${sid}/media/chart.png`,
     );
   });
 
   it("adds the desktop token query param to rewritten media proxy URLs", () => {
     window.__OAD_TOKEN__ = "secret";
     expect(resolveImageSrc("chart.png", sid)).toBe(
-      `/api/team/${sid}/media/chart.png?_token=secret`,
+      `/api/agent/${sid}/media/chart.png?_token=secret`,
     );
   });
 
   it("rewrites nested subpaths", () => {
     expect(resolveImageSrc("output/chart.png", sid)).toBe(
-      `/api/team/${sid}/media/output/chart.png`,
+      `/api/agent/${sid}/media/output/chart.png`,
     );
   });
 
   it("strips leading ./ from relative paths", () => {
     expect(resolveImageSrc("./chart.png", sid)).toBe(
-      `/api/team/${sid}/media/chart.png`,
+      `/api/agent/${sid}/media/chart.png`,
     );
   });
 
   it("strips leading slashes from bare paths", () => {
-    // A leading slash would produce ``/api/team/{sid}/media//foo.png`` — strip.
+    // A leading slash would produce ``/api/agent/{sid}/media//foo.png`` — strip.
     expect(resolveImageSrc("/chart.png", sid)).toBe(
-      `/api/team/${sid}/media/chart.png`,
+      `/api/agent/${sid}/media/chart.png`,
     );
   });
 
@@ -118,7 +118,7 @@ describe("resolveImageSrc", () => {
     // the implementation should still encode to protect against mistakes.
     const weird = "a/b";
     expect(resolveImageSrc("foo.png", weird)).toBe(
-      `/api/team/${encodeURIComponent(weird)}/media/foo.png`,
+      `/api/agent/${encodeURIComponent(weird)}/media/foo.png`,
     );
   });
 
@@ -150,7 +150,7 @@ describe("MarkdownBlock image rendering", () => {
       <MarkdownBlock content="![chart](chart.png)" sessionId={sid} />,
     );
     const img = screen.getByRole("img", { name: /chart/i });
-    expect(img).toHaveAttribute("src", `/api/team/${sid}/media/chart.png`);
+    expect(img).toHaveAttribute("src", `/api/agent/${sid}/media/chart.png`);
   });
 
   it("rewrites nested subpath", () => {
@@ -163,7 +163,7 @@ describe("MarkdownBlock image rendering", () => {
     const img = screen.getByRole("img", { name: /report/i });
     expect(img).toHaveAttribute(
       "src",
-      `/api/team/${sid}/media/out/report.png`,
+      `/api/agent/${sid}/media/out/report.png`,
     );
   });
 

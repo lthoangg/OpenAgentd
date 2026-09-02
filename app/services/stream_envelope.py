@@ -50,7 +50,7 @@ from app.agent.schemas.events import (
 
 # Me union of every event that can flow through the stream. ``from_event``
 # accepts any of these; we do not constrain at runtime because there is one
-# legacy producer (team.py generic lifecycle branch) that emits an ad-hoc
+# legacy producer that emits an ad-hoc
 # dict rather than a typed model — that path uses ``from_parts`` instead.
 AnyStreamEvent = Union[
     SessionEvent,
@@ -105,8 +105,8 @@ class StreamEnvelope(BaseModel):
     def from_parts(cls, event: str, data: dict[str, Any]) -> StreamEnvelope:
         """Escape hatch for ad-hoc events that have no typed ``*Event`` model.
 
-        Used by the team coordinator for generic lifecycle events and by
-        reconnect replay for ``inbox`` (which carries team-specific fields
+        Used for generic lifecycle events and by reconnect replay for ``inbox``
+        (which carries agent-specific fields
         not modelled in ``events.py``).  Prefer :meth:`from_event` for
         anything with a schema.
         """

@@ -45,6 +45,7 @@ from app.api.schemas.settings import (
     ProviderDisconnectRequest,
     ProviderDisconnectResponse,
     ProviderInfo,
+    ModelCostBody,
     ProviderModelsRequest,
     ProviderModelsResponse,
     ProviderSaveRequest,
@@ -368,6 +369,37 @@ async def _empty_models() -> list[str]:
     return []
 
 
+def _model_costs_for_provider(
+    provider_id: str, models: list[str]
+) -> dict[str, ModelCostBody]:
+    """Resolve per-token pricing for a list of provider model IDs."""
+    from app.agent.providers.model_metadata import get_model_cost
+
+    costs: dict[str, ModelCostBody] = {}
+    for model in models:
+        cost = get_model_cost(f"{provider_id}:{model}")
+        if (
+            cost.input is None
+            and cost.output is None
+            and cost.cache_read is None
+            and cost.cache_write is None
+        ):
+            cost = get_model_cost(model)
+        if (
+            cost.input is not None
+            or cost.output is not None
+            or cost.cache_read is not None
+            or cost.cache_write is not None
+        ):
+            costs[model] = ModelCostBody(
+                input=cost.input,
+                output=cost.output,
+                cache_read=cost.cache_read,
+                cache_write=cost.cache_write,
+            )
+    return costs
+
+
 async def _provider_is_reachable(entry: "ProviderEntry") -> bool:
     """Configuration check including a daemon probe for daemon providers.
 
@@ -413,6 +445,11 @@ async def list_providers() -> ProvidersListBody:
         entries, saved_states, reachability, strict=True
     ):
         provider_ui = provider_ui_settings.get(entry["id"], ProviderUiSettings())
+        cached_models = filter_opencode_models_for_access(
+            entry["id"],
+            provider_ui.cached_models,
+            has_credentials=is_saved,
+        )
         out.append(
             ProviderInfo(
                 id=entry["id"],
@@ -428,15 +465,12 @@ async def list_providers() -> ProvidersListBody:
                 is_configured=is_configured,
                 is_saved=is_saved,
                 is_reachable=is_configured if is_saved else None,
-                cached_models=filter_opencode_models_for_access(
-                    entry["id"],
-                    provider_ui.cached_models,
-                    has_credentials=is_saved,
-                ),
+                cached_models=cached_models,
                 visible_models=effective_visible_models(provider_ui),
                 is_disconnected=provider_ui.is_disconnected,
                 supports_fast_mode=entry.get("supports_fast_mode", False),
                 public_access=entry.get("public_access", False),
+                model_costs=_model_costs_for_provider(entry["id"], cached_models),
             )
         )
     has_any = any(p.is_configured for p in out)
@@ -502,8 +536,14 @@ async def list_provider_models(
             provider=provider_id,
             models=discovered,
             source="provider",
+            model_costs=_model_costs_for_provider(provider_id, discovered),
         )
-    return ProviderModelsResponse(provider=provider_id, models=[], source="provider")
+    return ProviderModelsResponse(
+        provider=provider_id,
+        models=[],
+        source="provider",
+        model_costs={},
+    )
 
 
 @router.get("/providers/usage-summary")

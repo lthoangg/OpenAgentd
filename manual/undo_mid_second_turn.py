@@ -23,10 +23,13 @@ import time
 import httpx
 
 from manual._common import DEFAULT_BASE
+
 BASE = DEFAULT_BASE
-FIRST  = "Reply with the single word READY."
-SECOND = ("Please write a detailed ~200 word response describing the "
-          "history and evolution of the Python programming language.")
+FIRST = "Reply with the single word READY."
+SECOND = (
+    "Please write a detailed ~200 word response describing the "
+    "history and evolution of the Python programming language."
+)
 MID_WAIT = 1.5
 POST_STOP_SETTLE = 2.0
 POST_UNDO_SETTLE = 0.5
@@ -34,30 +37,37 @@ FOLLOWUP = "Reply with the single word OK."
 TURN_TIMEOUT = 120
 
 
-def post_chat(base: str, message: str, sid: str | None = None) -> str:
-    data: dict[str, str] = {"message": message}
+def post_chat(
+    base: str, message: str, sid: str | None = None, model: str | None = None
+) -> str:
+    data: dict[str, str] = {"message": message, "workspace": "."}
     if sid:
         data["session_id"] = sid
-    r = httpx.post(f"{base}/team/chat", data=data, timeout=20)
+    if model:
+        data["model"] = model
+    r = httpx.post(f"{base}/agent/chat", data=data, timeout=20)
     r.raise_for_status()
     return r.json()["session_id"]
 
 
 def interrupt(base: str, sid: str) -> None:
-    r = httpx.post(f"{base}/team/chat",
-                   data={"session_id": sid, "interrupt": "true"}, timeout=20)
+    r = httpx.post(
+        f"{base}/agent/chat",
+        data={"session_id": sid, "interrupt": "true", "workspace": "."},
+        timeout=20,
+    )
     r.raise_for_status()
 
 
 def undo(base: str, sid: str) -> tuple[int, str]:
-    r = httpx.post(f"{base}/team/commands",
-                   json={"command": "undo", "session_id": sid}, timeout=20)
+    r = httpx.post(
+        f"{base}/agent/commands", json={"command": "undo", "session_id": sid}, timeout=20
+    )
     return r.status_code, r.text
 
 
 def history(base: str, sid: str) -> list[dict]:
-    r = httpx.get(f"{base}/team/{sid}/history",
-                  params={"limit": 1000}, timeout=20)
+    r = httpx.get(f"{base}/agent/{sid}/history", params={"limit": 1000}, timeout=20)
     r.raise_for_status()
     return r.json()["lead"]["messages"]
 
@@ -67,8 +77,7 @@ def stream_until_done(base: str, sid: str, *, timeout: int) -> tuple[bool, bool,
     last = ""
     err = False
     try:
-        with httpx.stream("GET", f"{base}/team/{sid}/stream",
-                          timeout=timeout + 5) as r:
+        with httpx.stream("GET", f"{base}/agent/{sid}/stream", timeout=timeout + 5) as r:
             for line in r.iter_lines():
                 if time.monotonic() > deadline:
                     return False, err, last
@@ -87,7 +96,9 @@ def stream_until_done(base: str, sid: str, *, timeout: int) -> tuple[bool, bool,
 def wait_for_done(base: str, sid: str, *, timeout: int) -> bool:
     done, err, last = stream_until_done(base, sid, timeout=timeout)
     if err or not done:
-        print(f"  ! stream ended without clean done: done={done} err={err} last={last!r}")
+        print(
+            f"  ! stream ended without clean done: done={done} err={err} last={last!r}"
+        )
     return done and not err
 
 
@@ -105,6 +116,7 @@ def tail(msgs: list[dict], n: int = 4) -> str:
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--base", default=BASE)
+    p.add_argument("--model", default=None, help="Model override")
     args = p.parse_args()
     base = args.base.rstrip("/")
 
@@ -116,7 +128,7 @@ def main() -> int:
         return 2
 
     print("── Turn 1 (let it finish) ─────────────────────────────────────")
-    sid = post_chat(base, FIRST)
+    sid = post_chat(base, FIRST, model=args.model)
     print(f"  session={sid}")
     if not wait_for_done(base, sid, timeout=TURN_TIMEOUT):
         print("FAIL: turn 1 did not finish cleanly")
@@ -126,7 +138,7 @@ def main() -> int:
     print(tail(h1))
 
     print("\n── Turn 2 (interrupt mid-stream) ──────────────────────────────")
-    post_chat(base, SECOND, sid=sid)
+    post_chat(base, SECOND, sid=sid, model=args.model)
     time.sleep(MID_WAIT)
     interrupt(base, sid)
     time.sleep(POST_STOP_SETTLE)
@@ -138,8 +150,10 @@ def main() -> int:
     code, body = undo(base, sid)
     print(f"  status={code} body={body[:120]}")
     if code != 202:
-        print("FAIL: /undo expected 202 (lead is idle after stop); got "
-              f"{code}. This is the precondition path documented in api/index.md.")
+        print(
+            "FAIL: /undo expected 202 (lead is idle after stop); got "
+            f"{code}. This is the precondition path documented in api/index.md."
+        )
         try:
             detail = json.loads(body).get("detail")
             print(f"  detail: {detail!r}")
@@ -180,8 +194,10 @@ def main() -> int:
         for x in problems:
             print(f"  - {x}")
         return 1
-    print("RESULT: OK — /undo accepted mid-stream-then-stopped, "
-          "boundary rolled back, follow-up completed.")
+    print(
+        "RESULT: OK — /undo accepted mid-stream-then-stopped, "
+        "boundary rolled back, follow-up completed."
+    )
     return 0
 
 

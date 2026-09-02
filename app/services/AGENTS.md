@@ -8,7 +8,7 @@ the service explicitly implements an API transport boundary.
 
 - `chat_service.py`: session/history orchestration; adjacent modules own
   revert/undo behavior and persisted stream history.
-- `team_manager.py`: team lifecycle, routing, and the authoritative
+- `agent_manager.py`: agent-session lifecycle and routing, plus the authoritative
   `validate_workspace()` check.
 - `stream_envelope.py`, `memory_stream_store.py`, and
   `event_broadcaster.py`: per-session and app-global live event behavior.
@@ -26,9 +26,9 @@ the service explicitly implements an API transport boundary.
 - Do not add real sleeps to tests; inject or patch timing behavior.
 - Workspace/file changes require traversal, symlink, media, and route tests.
   Do not create another workspace-root validator beside
-  `team_manager.validate_workspace()`.
+  `agent_manager.validate_workspace()`.
 - Session/history changes must account for SQLModel tables, stream state,
-  scheduler/team consumers, and frontend assumptions. Add a new Alembic
+  scheduler/agent consumers, and frontend assumptions. Add a new Alembic
   revision when persisted schema changes.
 
 ## Checks

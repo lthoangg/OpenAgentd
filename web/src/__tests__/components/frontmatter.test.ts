@@ -31,8 +31,8 @@ describe('splitFrontmatter', () => {
 
 describe('buildFrontmatter', () => {
   it('emits required fields', () => {
-    const out = buildFrontmatter({ name: 'alpha', role: 'lead' })
-    expect(out).toBe('name: alpha\nrole: lead')
+    const out = buildFrontmatter({ name: 'code', role: 'lead' })
+    expect(out).toBe('name: code\nrole: lead')
   })
 
   it('omits unset optional fields', () => {
@@ -106,11 +106,11 @@ describe('buildFrontmatter', () => {
 
 describe('combine', () => {
   it('produces a full .md file', () => {
-    const file = combine({ name: 'alpha', role: 'lead' }, 'You are alpha.')
+    const file = combine({ name: 'code', role: 'lead' }, 'You are code.')
     expect(file.startsWith('---\n')).toBe(true)
-    expect(file).toContain('name: alpha')
+    expect(file).toContain('name: code')
     expect(file).toContain('role: lead')
-    expect(file.endsWith('You are alpha.\n')).toBe(true)
+    expect(file.endsWith('You are code.\n')).toBe(true)
   })
 
   it('trims extra whitespace in body', () => {

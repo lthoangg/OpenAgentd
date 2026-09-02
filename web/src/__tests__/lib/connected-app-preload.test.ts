@@ -2,7 +2,7 @@ import { describe, expect, it, mock } from 'bun:test'
 import type { QueryClient } from '@tanstack/react-query'
 import { preloadConnectedApp } from '@/lib/connected-app-preload'
 import { queryKeys } from '@/queries/keys'
-import { teamAgentsQueryOptions } from '@/queries/team-agents'
+import { agentRegistryQueryOptions } from '@/queries/agent-registry'
 
 function createClient() {
   const prefetchQuery = mock(() => Promise.resolve())
@@ -22,15 +22,15 @@ describe('preloadConnectedApp', () => {
 
     expect(prefetchQuery).toHaveBeenCalledTimes(3)
     expect(prefetchQuery.mock.calls.map(([options]) => (options as { queryKey: readonly unknown[] }).queryKey)).toEqual([
-      // Shared /team/agents entry — same key the home-page probe and chat
+      // Shared /agent/agents entry — same key the home-page probe and chat
       // header read, so the preload warms both.
-      teamAgentsQueryOptions().queryKey,
+      agentRegistryQueryOptions().queryKey,
       queryKeys.settings.providers(),
       queryKeys.coding.tree(),
     ])
     expect(prefetchInfiniteQuery).toHaveBeenCalledTimes(1)
     expect(prefetchInfiniteQuery.mock.calls.map(([options]) => (options as { queryKey: readonly unknown[] }).queryKey)).toEqual([
-      queryKeys.team.sessions.workspace('__all_coding__'),
+      queryKeys.session.sessions.workspace('__all_coding__'),
     ])
   })
 })

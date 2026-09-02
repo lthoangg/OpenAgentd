@@ -312,34 +312,6 @@ describe("ToolResult — GenericResult fallback", () => {
 })
 
 // ---------------------------------------------------------------------------
-// team_message renderer
-// ---------------------------------------------------------------------------
-
-describe("ToolResult — team_message", () => {
-  it("renders success result text content", () => {
-    render(<ToolResult toolName="team_message" result="Message sent to researcher" />)
-    expect(screen.getByText("Message sent to researcher")).toBeTruthy()
-  })
-
-  it("renders error result starting with 'Agent(s) not found'", () => {
-    render(<ToolResult toolName="team_message" result="Agent(s) not found: researcher. Available: writer, analyst" />)
-    expect(screen.getByText(/Agent\(s\) not found/)).toBeTruthy()
-  })
-
-  it("renders error result starting with 'No valid recipients'", () => {
-    render(<ToolResult toolName="team_message" result="No valid recipients provided" />)
-    expect(screen.getByText(/No valid recipients/)).toBeTruthy()
-  })
-
-  it("renders result as a span element", () => {
-    render(<ToolResult toolName="team_message" result="Message sent" />)
-    const span = screen.getByText("Message sent")
-    expect(span.tagName.toLowerCase()).toBe("span")
-  })
-
-})
-
-// ---------------------------------------------------------------------------
 // LSP Diagnostics renderer
 // ---------------------------------------------------------------------------
 

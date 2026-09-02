@@ -19,12 +19,11 @@ const server = setupServer()
 let originalFetch: typeof fetch | undefined
 
 const AGENT = {
-  name: 'lead',
+  name: 'code',
   description: 'Lead agent.',
   model: 'openai:gpt-4o',
   tools: [{ name: 'read', description: 'Read a file.' }],
   mcp_servers: ['github'],
-  is_lead: true,
   capabilities: {
     input: { vision: true, document_text: true, audio: false, video: false },
     output: { text: true, image: false, audio: false },
@@ -34,8 +33,8 @@ const AGENT = {
 beforeEach(() => {
   server.listen({ onUnhandledRequest: 'bypass' })
   server.use(
-    http.get('http://localhost/api/team/agents', () =>
-      HttpResponse.json({ agents: [AGENT], blueprints: [] }),
+    http.get('http://localhost/api/agent/agents', () =>
+      HttpResponse.json({ agents: [AGENT] }),
     ),
     http.get('http://localhost/api/mcp/servers', () =>
       HttpResponse.json({

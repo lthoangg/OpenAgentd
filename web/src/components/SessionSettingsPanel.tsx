@@ -2,13 +2,13 @@
  * Session settings — the Shift+A overlay for the current chat session.
  *
  * Ordered by how often it's used: the session model, then the MCP server
- * switches, then the tool inventory collapsed at the bottom. The lead agent's
+ * switches, then the tool inventory collapsed at the bottom. The agent's
  * description and the capabilities matrix used to sit between them; both were
  * read-only prose that pushed the controls below the fold, so they're gone.
  * Agent details live in Settings, which is where you go to change them.
  *
  * Composition is deliberately thin: each section owns its own data and state,
- * this file only supplies the lead agent's identity and the session props.
+ * this file only supplies the agent's identity and the session props.
  */
 
 import { useEffect, useRef } from 'react'
@@ -22,8 +22,8 @@ import { formatShortcut } from '@/lib/keyboard-shortcut'
 import { SessionModelSettings } from './SessionModelSettings'
 import { SessionMcpServers } from './SessionMcpServers'
 import { SessionTools } from './SessionTools'
-import { useTeamAgentsQuery } from '@/queries/useAgentsQuery'
-import type { TeamAgentInfo } from '@/api/types'
+import { useAgentsQuery } from '@/queries/useAgentsQuery'
+import type { AgentInfo } from '@/api/types'
 
 interface SessionSettingsPanelProps {
   /** Controls drawer visibility. Parent keeps the component mounted so
@@ -45,7 +45,7 @@ export function SessionSettingsPanel({
   onClose,
 }: SessionSettingsPanelProps) {
   const { os } = usePlatform()
-  const { data, isLoading, refetch } = useTeamAgentsQuery(workspace)
+  const { data, isLoading, refetch } = useAgentsQuery(workspace)
   // Keyboard users land on the model field, not the close button.
   const modelInputRef = useRef<HTMLInputElement | null>(null)
 
@@ -54,15 +54,14 @@ export function SessionSettingsPanel({
     if (open) refetch()
   }, [open, refetch])
 
-  const allAgents: TeamAgentInfo[] = data?.agents ?? []
-  // Lead comes from the API `is_lead` flag if present, else first in list. Only
-  // the lead is shown: its config governs the session's default behaviour.
-  const leadAgent = allAgents.find((a) => a.is_lead) ?? allAgents[0]
+  const allAgents: AgentInfo[] = data?.agents ?? []
+  // The session uses the first (and currently only) configured agent.
+  const agent = allAgents[0]
 
   // `initialFocus` on the overlay covers the warm-cache path, but on a cold
   // cache the body is still a skeleton when the trap fires and there is no
   // model field to focus yet. Claim focus once the real content mounts.
-  const hasContent = !isLoading && !!leadAgent
+  const hasContent = !isLoading && !!agent
   useEffect(() => {
     if (!open || !hasContent) return
     const id = requestAnimationFrame(() => modelInputRef.current?.focus())
@@ -103,7 +102,7 @@ export function SessionSettingsPanel({
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain touch-pan-y">
-        {isLoading || !leadAgent ? (
+        {isLoading || !agent ? (
           <div role="status" aria-label="Loading session settings" className="space-y-3 p-3 sm:p-5">
             <Skeleton className="h-16" />
             <Skeleton className="h-24" />
@@ -112,7 +111,7 @@ export function SessionSettingsPanel({
           <>
             {onSessionModelSettingsChange && (
               <SessionModelSettings
-                defaultModel={leadAgent.model}
+                defaultModel={agent.model}
                 sessionModel={sessionModel}
                 sessionThinkingLevel={sessionThinkingLevel}
                 onChange={onSessionModelSettingsChange}
@@ -120,14 +119,14 @@ export function SessionSettingsPanel({
               />
             )}
             <SessionMcpServers
-              agentServers={leadAgent.mcp_servers ?? []}
+              agentServers={agent.mcp_servers ?? []}
               // Enabling a server changes the agent's live tool set, which the
               // agent payload carries.
               onServersChanged={refetch}
             />
             <SessionTools
-              tools={leadAgent.tools}
-              mcpServers={leadAgent.mcp_servers ?? []}
+              tools={agent.tools}
+              mcpServers={agent.mcp_servers ?? []}
             />
           </>
         )}

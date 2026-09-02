@@ -1,13 +1,13 @@
 /**
- * OpenAgentd API client — misc endpoints: health, team status, URL helpers.
+ * OpenAgentd API client — misc endpoints: health, agent status, URL helpers.
  */
 
 import { apiBaseUrl } from '../base-url'
 import { parseDetailOrThrow } from './_shared'
-import { listTeamAgents } from './team'
+import { listSessionAgents } from './agent'
 import type {
-  TeamAgentsResponse,
-  TeamStatusResponse,
+  AgentRegistryResponse,
+  AgentStatusResponse,
 } from '../types'
 
 export async function health(): Promise<{ status: string; version: string }> {
@@ -16,35 +16,32 @@ export async function health(): Promise<{ status: string; version: string }> {
   return res.json()
 }
 
-// ── Compat: team status derived from /team/agents ────────────────────────────
+// ── Agent status derived from /agent/agents ─────────────────────────────────
 //
 // There is no separate status endpoint: this is a projection of
-// `GET /team/agents`. It goes through `listTeamAgents` rather than fetching
-// directly so the team store's call shares one round trip with the header's
-// TanStack query (see the coalescing note in `client/team.ts`).
+// `GET /agent/agents`. It goes through `listSessionAgents` rather than fetching
+// directly so the session store's call shares one round trip with the header's
+// TanStack query (see the coalescing note in `client/agent.ts`).
 //
-// `/team/agents` carries no per-agent run state, so `state` is always 'idle'
+// `/agent/agents` carries no per-agent run state, so `state` is always 'idle'
 // here; live working/idle transitions come from the SSE `agent_status` events.
 
-export function shapeTeamStatus(data: TeamAgentsResponse): TeamStatusResponse | null {
+export function shapeAgentStatus(data: AgentRegistryResponse): AgentStatusResponse | null {
   const agents = data.agents ?? []
-  const lead = agents.find((a) => a.is_lead) ?? agents[0]
-  if (!lead) return null
+  const agent = agents[0]
+  if (!agent) return null
   return {
-    team: 'team',
-    lead: { name: lead.name, model: lead.model ?? '', state: 'idle' },
-    members: agents
-      .filter((a) => !a.is_lead)
-      .map((a) => ({ name: a.name, model: a.model ?? '', state: 'idle' })),
+    lead: { name: agent.name, model: agent.model ?? '', state: 'idle' },
+    members: [],
   }
 }
 
-export async function teamStatus(workspace?: string | null, sessionId?: string | null): Promise<TeamStatusResponse | null> {
+export async function agentStatus(workspace?: string | null, sessionId?: string | null): Promise<AgentStatusResponse | null> {
   if (!workspace) return null
   try {
-    return shapeTeamStatus(await listTeamAgents(workspace, sessionId))
+    return shapeAgentStatus(await listSessionAgents(workspace, sessionId))
   } catch {
-    // Soft failure: callers treat null as "team mode unavailable".
+    // Soft failure: callers treat null as "agent mode unavailable".
     return null
   }
 }

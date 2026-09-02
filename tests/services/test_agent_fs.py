@@ -105,35 +105,18 @@ def test_list_agents_sorted(fs_dirs):
 
 
 def test_list_agents_includes_nested_files(fs_dirs):
-    agent_fs.write_agent("openagentd", "x", create=True)
-    agent_fs.write_agent("coding/openagentd", "x", create=True)
+    agent_fs.write_agent("code", "x", create=True)
+    agent_fs.write_agent("nested/member", "x", create=True)
     assert agent_fs.list_agents() == [
-        "coding/coder",
-        "coding/explorer",
-        "coding/openagentd",
-        "openagentd",
+        "code",
+        "nested/member",
     ]
 
 
-def test_list_agents_materializes_coding_builtins_when_coding_lead_exists(fs_dirs):
-    agents_dir, _ = fs_dirs
-    agent_fs.write_agent(
-        "coding/openagentd",
-        "---\nname: openagentd\nrole: lead\nmodel: codex:gpt-5.4\n---\n",
-        create=True,
-    )
+def test_list_agents_includes_nested_executor(fs_dirs):
+    agent_fs.write_agent("nested/executor", "x", create=True)
 
-    assert "coding/explorer" in agent_fs.list_agents()
-    explorer = (agents_dir / "coding" / "explorer.md").read_text(encoding="utf-8")
-    assert "description: Checks the current codebase" in explorer
-    assert "model: codex:gpt-5.4" in explorer
-
-
-def test_list_agents_hides_retired_coding_executor(fs_dirs):
-    agent_fs.write_agent("coding/openagentd", "x", create=True)
-    agent_fs.write_agent("coding/executor", "x", create=True)
-
-    assert "coding/executor" not in agent_fs.list_agents()
+    assert "nested/executor" in agent_fs.list_agents()
 
 
 # ── Skills ───────────────────────────────────────────────────────────────────

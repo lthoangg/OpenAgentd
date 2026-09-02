@@ -1,6 +1,6 @@
 """Smoke-test team session resolve-or-create flows.
 
-Tests: POST /team/sessions/resolve, GET /team/sessions/{id}.
+Tests: POST /agent/sessions/resolve, GET /agent/sessions/{id}.
 
 Usage:
   uv run python -m manual.session_resolve
@@ -18,17 +18,18 @@ from uuid import UUID
 import httpx
 
 from manual._common import DEFAULT_BASE
+
 BASE = DEFAULT_BASE
 
 
 def resolve_session(base: str, payload: dict) -> dict:
-    r = httpx.post(f"{base}/team/sessions/resolve", json=payload, timeout=30)
+    r = httpx.post(f"{base}/agent/sessions/resolve", json=payload, timeout=30)
     r.raise_for_status()
     return r.json()
 
 
 def get_session(base: str, session_id: str) -> dict:
-    r = httpx.get(f"{base}/team/sessions/{session_id}", timeout=30)
+    r = httpx.get(f"{base}/agent/sessions/{session_id}", timeout=30)
     r.raise_for_status()
     return r.json()
 
@@ -61,53 +62,43 @@ def main() -> None:
         workspace = Path(temp_dir.name).resolve()
 
     try:
-        normal = resolve_session(args.base, {"mode": "normal"})
-        assert_uuid(normal["id"])
-        if normal["mode"] != "normal":
-            raise AssertionError(f"expected normal mode, got {normal['mode']!r}")
-        if normal.get("workspace") is not None:
-            raise AssertionError(f"normal session should not have workspace: {normal}")
-        normal_detail = get_session(args.base, normal["id"])
-        if normal_detail["id"] != normal["id"]:
-            raise AssertionError("normal detail id mismatch")
-
-        coding = resolve_session(
+        sess = resolve_session(
             args.base,
-            {"mode": "coding", "workspace": str(workspace)},
+            {"workspace": str(workspace)},
         )
-        assert_uuid(coding["id"])
-        if coding["mode"] != "coding":
-            raise AssertionError(f"expected coding mode, got {coding['mode']!r}")
-        if coding.get("workspace") != str(workspace):
+        assert_uuid(sess["id"])
+        if sess.get("workspace") != str(workspace):
             raise AssertionError(
-                f"coding workspace mismatch: expected {workspace}, got {coding.get('workspace')}"
+                f"workspace mismatch: expected {workspace}, got {sess.get('workspace')}"
             )
+        sess_detail = get_session(args.base, sess["id"])
+        if sess_detail["id"] != sess["id"]:
+            raise AssertionError("session detail id mismatch")
 
-        coding_again = resolve_session(
+        sess_again = resolve_session(
             args.base,
-            {"mode": "coding", "workspace": str(workspace)},
+            {"workspace": str(workspace)},
         )
-        if coding_again["id"] != coding["id"]:
+        if sess_again["id"] != sess["id"]:
             raise AssertionError(
-                "second coding resolve should reuse latest empty session: "
-                f"{coding['id']} != {coding_again['id']}"
+                "second resolve should reuse latest empty session: "
+                f"{sess['id']} != {sess_again['id']}"
             )
-        if coding_again.get("created") is not False:
-            raise AssertionError(f"second coding resolve should not create: {coding_again}")
+        if sess_again.get("created") is not False:
+            raise AssertionError(f"second resolve should not create: {sess_again}")
 
-        coding_new = resolve_session(
+        sess_new = resolve_session(
             args.base,
-            {"mode": "coding", "workspace": str(workspace), "create": True},
+            {"workspace": str(workspace), "create": True},
         )
-        if coding_new["id"] == coding["id"]:
-            raise AssertionError("forced coding create should allocate a fresh session")
-        if coding_new.get("created") is not True:
-            raise AssertionError(f"forced coding create should report created: {coding_new}")
+        if sess_new["id"] == sess["id"]:
+            raise AssertionError("forced create should allocate a fresh session")
+        if sess_new.get("created") is not True:
+            raise AssertionError(f"forced create should report created: {sess_new}")
 
         print("session_resolve: ok")
-        print(f"normal: {normal['id']} created={normal.get('created')}")
-        print(f"coding: {coding['id']} workspace={coding['workspace']}")
-        print(f"coding_new: {coding_new['id']} forced_create=True")
+        print(f"session: {sess['id']} workspace={sess['workspace']}")
+        print(f"session_new: {sess_new['id']} forced_create=True")
     finally:
         if temp_dir is not None and not args.keep_workspace:
             temp_dir.cleanup()

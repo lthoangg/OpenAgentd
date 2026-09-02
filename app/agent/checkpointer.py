@@ -230,9 +230,8 @@ class SQLiteCheckpointer(Checkpointer):
             stream store.  Together with *agent_name*, this lets ``sync()``
             call ``stream_store.commit_agent_content`` after persisting an
             assistant message so the replay buffer does not duplicate content
-            that is already in the DB.  In team mode this is the **lead's**
-            session id (not the member's); in single-agent chat it would be
-            the chat session id.  When ``None`` the cleanup step is skipped.
+            that is already in the DB. This is the chat session id. When
+            ``None`` the cleanup step is skipped.
         agent_name: Optional agent name that owns messages persisted through
             this checkpointer.  Required together with *stream_session_id*.
     """

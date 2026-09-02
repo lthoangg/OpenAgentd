@@ -12,7 +12,7 @@ import { useSettingsStore } from '@/stores/useSettingsStore'
 import { MacTitleBar } from '@/components/MacTitleBar'
 import { useMobileViewportGuards } from '@/hooks/use-mobile-viewport'
 import { useDesktopCommands } from '@/lib/desktop-commands'
-import { closestRestorableRoute } from '@/lib/route-restore'
+import { closestRestorableRoute, LAST_ROUTE_KEY, lastRouteStorageKey } from '@/lib/route-restore'
 import { getPlatform } from '@/hooks/use-platform'
 import { useContainerSelectAll } from '@/hooks/useContainerSelectAll'
 import { usePreventBackspaceNavigation } from '@/hooks/usePreventBackspaceNavigation'
@@ -68,23 +68,34 @@ export function Root() {
       return
     }
 
-    const LAST_ROUTE_KEY = 'oa-last-route'
+    const storageKey = lastRouteStorageKey()
+    const savedRoute = localStorage.getItem(storageKey) ?? localStorage.getItem(LAST_ROUTE_KEY)
+
     if (window.location.pathname === '/index.html') {
+      if (savedRoute && savedRoute !== '/' && savedRoute !== '/index.html') {
+        navigate({ to: closestRestorableRoute(savedRoute), replace: true })
+        return
+      }
       navigate({ to: closestRestorableRoute(window.location.pathname + window.location.search + window.location.hash), replace: true })
       return
     }
-    if (window.location.pathname === '/' && window.location.search === '') {
-      const savedRoute = localStorage.getItem(LAST_ROUTE_KEY)
-      if (savedRoute && savedRoute !== '/') {
+    if (window.location.pathname === '/') {
+      if (savedRoute && savedRoute !== '/' && savedRoute !== '/index.html') {
         navigate({ to: closestRestorableRoute(savedRoute), replace: true })
       }
     }
   }, [navigate])
 
   useEffect(() => {
-    const LAST_ROUTE_KEY = 'oa-last-route'
     const fullPath = window.location.pathname + window.location.search + window.location.hash
-    localStorage.setItem(LAST_ROUTE_KEY, fullPath)
+    const pathname = window.location.pathname
+    // Root is never saved, so a reload from the hub always lands on the last
+    // content route rather than the hub. That is the intended trade: users
+    // reload to recover a session far more often than to reach the hub, which
+    // is one click away from anywhere.
+    if (pathname !== '/' && pathname !== '/index.html') {
+      localStorage.setItem(lastRouteStorageKey(), fullPath)
+    }
   }, [location])
 
   return (

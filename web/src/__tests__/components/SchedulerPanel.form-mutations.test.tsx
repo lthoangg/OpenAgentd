@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ScheduledTaskResponse } from '@/api/types'
 import { CreateTaskForm } from '@/components/SchedulerPanel/CreateTaskForm'
 import { EditTaskForm } from '@/components/SchedulerPanel/EditTaskForm'
-import { useTeamStore } from '@/stores/useTeamStore'
+import { useAgentStore } from '@/stores/useAgentStore'
 import '@testing-library/jest-dom'
 
 mock.module('lucide-react', () => new Proxy({}, { get: () => () => null }))
@@ -49,7 +49,7 @@ describe('scheduler TanStack Form mutations', () => {
     updateMutate.mockClear()
     createPending = false
     updatePending = false
-    useTeamStore.setState({ sessionId: null, sessionTitle: null, _workspace: null })
+    useAgentStore.setState({ sessionId: null, sessionTitle: null, _workspace: null })
   })
 
   afterEach(() => cleanup())

@@ -220,116 +220,6 @@ function FileReadResult({ result }: { result: string }) {
 }
 
 // ---------------------------------------------------------------------------
-// Team message renderer
-// ---------------------------------------------------------------------------
-
-function TeamMessageResult({ result }: { result: string }) {
-  const isError =
-    result.startsWith('Agent(s) not found') ||
-    result.startsWith('No valid recipients')
-
-  return (
-    <span
-      className={`font-mono text-[11px] leading-relaxed break-words whitespace-pre-wrap ${
-        isError ? 'text-(--color-error)' : 'text-(--color-text-2)'
-      }`}
-    >
-      {result}
-    </span>
-  )
-}
-
-function TeamManageResult({ result }: { result: string }) {
-  const cleanValue = (value: string) => {
-    if (value.startsWith('[') && value.endsWith(']')) {
-      try {
-        const parsed = JSON.parse(value.replace(/'/g, '"'))
-        if (Array.isArray(parsed)) {
-          return parsed.join(', ')
-        }
-      } catch {
-        return value
-          .slice(1, -1)
-          .split(',')
-          .map((s) => s.trim().replace(/^['"]|['"]$/g, ''))
-          .filter(Boolean)
-          .join(', ')
-      }
-    }
-    return value
-  }
-
-  const groups = result
-    .split(/\.\s+/)
-    .map((part) => part.trim().replace(/\.$/, ''))
-    .filter(Boolean)
-    .map((part) => {
-      const [label, ...rest] = part.split(':')
-      return {
-        label: label.trim(),
-        value: cleanValue(rest.join(':').trim()),
-      }
-    })
-    .filter((group) => group.label && group.value)
-
-  if (groups.length === 0) {
-    return <GenericResult result={result} />
-  }
-
-  return (
-    <ul className="space-y-1.5">
-      {groups.map((group) => {
-        const isError = group.label.toLowerCase().includes('error')
-
-        if (group.label === 'Spawnable blueprints') {
-          const items = group.value
-            .split(',')
-            .map((item) => item.trim())
-            .filter(Boolean)
-
-          return (
-            <li
-              key={group.label}
-              className="block min-w-0 font-mono text-[11px] leading-relaxed"
-            >
-              <span className="text-(--color-text-muted)">{group.label}</span>
-              <span className="text-(--color-text-muted) select-none">:</span>
-              <ul className="mt-1 pl-3 space-y-0.5">
-                {items.map((item) => (
-                  <li key={item} className="flex gap-1.5 text-(--color-text-2)">
-                    <span className="text-(--color-text-muted) select-none">—</span>
-                    <span className="break-words">{item}</span>
-                  </li>
-                ))}
-              </ul>
-            </li>
-          )
-        }
-
-        return (
-          <li
-            key={`${group.label}:${group.value}`}
-            className="flex min-w-0 gap-2 font-mono text-[11px] leading-relaxed"
-          >
-            <span
-              className={`shrink-0 ${isError ? 'text-(--color-error)' : 'text-(--color-text-muted)'}`}
-            >
-              {group.label}
-            </span>
-            <span className="text-(--color-text-muted) select-none -ml-1">:</span>
-            <span
-              className={`min-w-0 break-words ${isError ? 'text-(--color-error)' : 'text-(--color-text-2)'}`}
-            >
-              {group.value}
-            </span>
-          </li>
-        )
-      })}
-    </ul>
-  )
-}
-
-// ---------------------------------------------------------------------------
 // Background-process renderer
 // ---------------------------------------------------------------------------
 
@@ -1049,12 +939,6 @@ function ToolResultInner({ toolName, operation, result, headerAction, onCollapse
   }
   if (FILE_READ_TOOLS.has(toolName)) {
     return <FileReadResult result={result} />
-  }
-  if (toolName === 'team_message') {
-    return <TeamMessageResult result={result} />
-  }
-  if (toolName === 'team_manage') {
-    return <TeamManageResult result={result} />
   }
   if (toolName === 'todo_manage') {
     return <TodoListResult result={result} />

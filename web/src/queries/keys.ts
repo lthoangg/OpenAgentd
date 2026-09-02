@@ -1,26 +1,26 @@
 export const queryKeys = {
   health: () => ['health'] as const,
   agents: () => ['agents'] as const,
-  teamAgents: (workspace?: string | null) => workspace ? ['agents', 'team', workspace] as const : ['agents', 'team'] as const,
-  team: {
-    // NOTE: there is no separate team-status key. The home-page "is team mode
-    // available" probe projects the shared ``teamAgents`` entry with `select`
-    // (see queries/useTeamStatusQuery.ts) so both surfaces share one request to
-    // the agent-globbing /team/agents endpoint.
+  agentRegistry: (workspace?: string | null) => workspace ? ['agents', 'registry', workspace] as const : ['agents', 'registry'] as const,
+  session: {
+    // NOTE: there is no separate agent-status key. The home-page "is agent mode
+    // available" probe projects the shared ``agentRegistry`` entry with `select`
+    // (see queries/useAgentStatusQuery.ts) so both surfaces share one request to
+    // the agent-globbing /agent/agents endpoint.
     sessions: {
-      all: () => ['team', 'sessions'] as const,
-      infinite: () => ['team', 'sessions', 'infinite'] as const,
-      workspace: (workspace: string) => ['team', 'sessions', 'workspace', workspace] as const,
+      all: () => ['session', 'sessions'] as const,
+      infinite: () => ['session', 'sessions', 'infinite'] as const,
+      workspace: (workspace: string) => ['session', 'sessions', 'workspace', workspace] as const,
       list: (offset: number, limit: number) =>
-        ['team', 'sessions', 'list', offset, limit] as const,
-      detail: (id: string) => ['team', 'sessions', id] as const,
+        ['session', 'sessions', 'list', offset, limit] as const,
+      detail: (id: string) => ['session', 'sessions', id] as const,
     },
     // Workspace-files listing per session — powers the Artifacts panel *and*
     // the InputComposer @-mention picker. Both go through the shared query options
     // in ``queries/workspace-files.ts``; do not add a second key for the same
     // endpoint, or the ``workspace_files`` invalidation will only reach one of
     // them and the expensive directory walk will run twice.
-    files: (sessionId: string) => ['team', 'files', sessionId] as const,
+    files: (sessionId: string) => ['session', 'files', sessionId] as const,
   },
   // Coding-mode workspace sidebar — keyed by the absolute workspace path
   // (a single project may be shared across multiple sessions/tabs, so the

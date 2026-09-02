@@ -48,7 +48,7 @@ def test_session_messages_index_shape() -> None:
 
     The uuid7 delta lookup has a separate ``(session_id, id)`` index because
     ``seq`` is per-session logical position: it cannot discover newly anchored
-    summaries or serve as one global watermark across team members.
+    summaries or serve as one global watermark across imported child sessions.
 
     The other exception is the active-summary lookup (``kind='summary'
     ORDER BY id DESC LIMIT 1``), which the covering index cannot serve
@@ -79,7 +79,7 @@ def test_session_messages_index_shape() -> None:
 def test_chat_sessions_parent_index_orders_by_created_at() -> None:
     """Sub-session lookups must not re-sort.
 
-    ``get_team_history`` and ``get_team_history_since`` both run
+    ``get_agent_history`` and ``get_agent_history_since`` both run
     ``WHERE parent_session_id = ? ORDER BY created_at`` on every team-history
     load. A bare ``parent_session_id`` index forced a temp B-tree; the
     composite serves the ordering directly and still covers plain
@@ -104,7 +104,7 @@ def test_member_restore_index_is_comparable_by_autogenerate() -> None:
     drop/add on every ``alembic check`` run, which is what made real drift easy
     to miss. The ``DESC`` bought nothing: SQLite walks an ASC index backwards to
     satisfy ``ORDER BY created_at DESC`` (see
-    ``app/agent/mode/team/team.py`` handle resolution).
+    the single-agent session runtime handle resolution).
     """
     index = next(
         idx

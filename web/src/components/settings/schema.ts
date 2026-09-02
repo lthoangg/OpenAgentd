@@ -22,14 +22,7 @@ z.config({ jitless: true })
  * Agent / skill filename stem.  Matches
  * ``app/services/agent_fs.py::_NAME_RE`` byte-for-byte.
  */
-export const agentNameSchema = z
-  .string()
-  .min(1, 'Required')
-  .max(64, 'Max 64 characters')
-  .regex(
-    /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/,
-    "Use letters, digits, '.', '_', '-' only (must start with a letter or digit)"
-  )
+export const agentNameSchema = z.literal('code')
 
 /**
  * ``provider:model`` identifier.  Both halves must be non-empty; we do NOT
@@ -43,8 +36,8 @@ export const modelSchema = z
     "Expected 'provider:model' (e.g. 'openai:gpt-5.4')"
   )
 
-/** Agent role — exactly one file in the team must be ``lead``. */
-export const roleSchema = z.enum(['lead', 'member'])
+/** Agent role — the coding profile uses the ``lead`` role for built-in tools. */
+export const roleSchema = z.literal('lead')
 
 /** Thinking level — empty string means "unset". */
 export const thinkingLevelSchema = z.string()
@@ -66,7 +59,7 @@ export const skillNameSchema = z
   .refine((value) => value.split('/').length <= 2, {
     message: "Only one nested level is allowed (e.g. 'parent/sub')",
   })
-  .refine((value) => value.split('/').every((part) => agentNameSchema.safeParse(part).success), {
+  .refine((value) => value.split('/').every((part) => /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$/.test(part)), {
     message: "Each segment must use letters, digits, '.', '_', '-' and start with a letter or digit",
   })
 

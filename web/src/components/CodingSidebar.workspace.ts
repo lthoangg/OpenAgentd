@@ -1,9 +1,9 @@
 import type { QueryClient } from '@tanstack/react-query'
-import type { TeamSessionResolveResponse } from '@/api/types'
-import { resolveTeamSession, setCodingWorkspaceVisibility } from '@/api/client'
+import type { SessionResolveResponse } from '@/api/types'
+import { resolveSession, setCodingWorkspaceVisibility } from '@/api/client'
 import { queryKeys } from '@/queries'
 import { prependSession, prependWorkspaceSession } from '@/stores/cache-invalidation-bridge'
-import { useTeamStore } from '@/stores/useTeamStore'
+import { useAgentStore } from '@/stores/useAgentStore'
 import { saveLastCodingWorkspace } from '@/utils/workspace'
 
 export async function selectCodingWorkspace(options: {
@@ -14,9 +14,9 @@ export async function selectCodingWorkspace(options: {
   queryClient: QueryClient
   refreshWorkspaceTree: () => Promise<void>
   navigate: (args: { to: string; params: { sessionId: string } }) => void
-  resolveTeamSessionFn?: typeof resolveTeamSession
+  resolveSessionFn?: typeof resolveSession
 }): Promise<{ skipped: boolean }> {
-  const state = useTeamStore.getState()
+  const state = useAgentStore.getState()
   const create = options.requestedCreate && !(
     state.isEmptyIdleSession() &&
     state.sessionId === options.currentSessionId &&
@@ -30,7 +30,7 @@ export async function selectCodingWorkspace(options: {
     model: state.sessionModel,
     thinkingLevel: state.sessionThinkingLevel,
   })
-  const session = await (options.resolveTeamSessionFn ?? resolveTeamSession)({
+  const session = await (options.resolveSessionFn ?? resolveSession)({
     workspace: options.path,
     model: state.sessionModel,
     thinkingLevel: state.sessionThinkingLevel,
@@ -48,14 +48,14 @@ export async function selectCodingWorkspace(options: {
 }
 
 export async function applyResolvedWorkspaceSession(options: {
-  session: TeamSessionResolveResponse
+  session: SessionResolveResponse
   path: string
   queryClient: QueryClient
   refreshWorkspaceTree: () => Promise<void>
   navigate: (args: { to: string; params: { sessionId: string } }) => void
   create: boolean
 }): Promise<void> {
-  const state = useTeamStore.getState()
+  const state = useAgentStore.getState()
   state.beginResolvedSession(options.session.id, {
     workspace: options.session.workspace ?? options.path,
     model: options.session.model ?? state.sessionModel,
@@ -80,7 +80,7 @@ export async function confirmWorkspaceRemoval(options: {
   setCodingWorkspaceVisibilityFn?: typeof setCodingWorkspaceVisibility
 }): Promise<Set<string>> {
   await (options.setCodingWorkspaceVisibilityFn ?? setCodingWorkspaceVisibility)(options.path, true)
-  await options.queryClient.invalidateQueries({ queryKey: queryKeys.team.sessions.all() })
+  await options.queryClient.invalidateQueries({ queryKey: queryKeys.session.sessions.all() })
   await options.refreshWorkspaceTree()
   const next = new Set(options.expandedWorkspaces)
   next.delete(options.path)

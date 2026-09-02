@@ -29,18 +29,17 @@ import {
   Zap,
 } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
+import { useNavigate } from '@tanstack/react-router'
 
 import { HealthDot } from './HealthDot'
 import { ThemeToggle } from './ThemeToggle'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { ViewToggle, type ViewMode } from '@/components/ui/view-toggle'
 import { usePlatform } from '@/hooks/use-platform'
 import { formatShortcut } from '@/lib/keyboard-shortcut'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { queryKeys } from '@/queries/keys'
 import { getCodingWorkspaceStatus } from '@/api/client'
 import { cn } from '@/lib/utils'
-import { router } from '@/router'
 
 export interface AppFooterProps {
   workspace?: string | null
@@ -48,8 +47,6 @@ export interface AppFooterProps {
   sessionModel?: string | null
   sessionThinkingLevel?: string | null
   sessionFastMode?: boolean
-  viewMode?: ViewMode
-  onViewModeChange?: (mode: ViewMode) => void
   onToggleScheduler?: () => void
   onToggleSessionSettings?: () => void
   onTogglePalette?: () => void
@@ -67,8 +64,6 @@ export const AppFooter = memo(function AppFooter({
   sessionModel,
   sessionThinkingLevel,
   sessionFastMode,
-  viewMode,
-  onViewModeChange,
   onToggleScheduler,
   onToggleSessionSettings,
   onTogglePalette,
@@ -76,6 +71,7 @@ export const AppFooter = memo(function AppFooter({
   className,
 }: AppFooterProps) {
   const { os } = usePlatform()
+  const navigate = useNavigate()
   const openSettings = useSettingsStore((s) => s.openSettings)
 
   const isCoding = Boolean(workspace)
@@ -172,19 +168,8 @@ export const AppFooter = memo(function AppFooter({
         )}
       </div>
 
-      {/* Right cluster: ViewMode, Scheduler, Utilities */}
+      {/* Right cluster: Scheduler, Utilities */}
       <div className="flex shrink-0 items-center gap-0.5 pl-2">
-        {viewMode && onViewModeChange && (
-          <>
-            <ViewToggle
-              value={viewMode}
-              onValueChange={onViewModeChange}
-              compact
-            />
-            <div className="mx-0.5 h-3 w-px bg-(--color-border-subtle)" aria-hidden="true" />
-          </>
-        )}
-
         {onToggleScheduler && (
           <Tooltip>
             <TooltipTrigger
@@ -214,7 +199,7 @@ export const AppFooter = memo(function AppFooter({
                 aria-label="Telemetry"
                 onClick={(e) => {
                   e.preventDefault()
-                  void router.navigate({ to: '/telemetry' })
+                  void navigate({ to: '/telemetry' })
                 }}
               >
                 <Activity size={12} aria-hidden="true" />

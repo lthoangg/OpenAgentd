@@ -994,7 +994,7 @@ class TestAttach:
 
     @pytest.mark.asyncio
     async def test_attach_replays_content_per_agent(self):
-        """Multi-agent turn: each agent's accumulated text replays separately."""
+        """Each agent turn replays its accumulated text separately."""
         await store.init_turn("sid-1")
         _turns["sid-1"].content = {
             "lead": ["lead text"],
@@ -1168,7 +1168,7 @@ class TestAttach:
     @pytest.mark.asyncio
     async def test_attach_replays_agent_statuses_before_content(self):
         """agent_status must replay BEFORE thinking/message so the composer
-        flips isTeamWorking=true before any content arrives. Without this the
+        flips isAgentWorking=true before any content arrives. Without this the
         stop button stays hidden on reconnect even while tokens stream in."""
         await store.init_turn("sid-1")
         _turns["sid-1"].agent_statuses = {
@@ -1263,6 +1263,36 @@ class TestAttach:
 
         status_events = [e for e in events if e.get("event") == "agent_status"]
         assert status_events == []
+
+    @pytest.mark.asyncio
+    async def test_attach_replays_waiting_input_status(self):
+        """A lead parked on ``ask_user`` is ``waiting_input`` — a live state.
+
+        A client that attaches mid-suspension without a history load (network
+        blip, second tab reusing its store) has to learn the lead is still live
+        but not working; dropping the status here leaves it reading as idle
+        with a question card still on screen.
+        """
+        await store.init_turn("sid-1")
+        await store.push_event(
+            "sid-1",
+            StreamEnvelope.from_parts(
+                "agent_status", {"agent": "lead", "status": "waiting_input"}
+            ),
+        )
+
+        async def _mark_done():
+            await asyncio.sleep(0.05)
+            await store.mark_done("sid-1")
+
+        task = asyncio.create_task(_mark_done())
+        events = [e async for e in store.attach("sid-1")]
+        await task
+
+        status_events = [e for e in events if e.get("event") == "agent_status"]
+        assert [json.loads(e["data"])["status"] for e in status_events] == [
+            "waiting_input"
+        ]
 
 
 # ---------------------------------------------------------------------------
@@ -1511,3 +1541,61 @@ class TestClose:
         await store.init_turn("sid-2")
         await store.close()
         assert len(_turns) == 0
+
+
+# ---------------------------------------------------------------------------
+# queued_turns push + replay
+# ---------------------------------------------------------------------------
+
+
+class TestQueuedTurnsReplay:
+    @pytest.mark.asyncio
+    async def test_push_queued_turn_start_records_in_state(self):
+        await store.init_turn("sid-1")
+        await store.push_event(
+            "sid-1",
+            StreamEnvelope.from_parts(
+                "queued_turn_start",
+                {
+                    "type": "queued_turn_start",
+                    "agent": "openagentd",
+                    "message_ids": ["msg-1", "msg-2"],
+                    "messages": [
+                        {"id": "msg-1", "content": "Queued 1"},
+                        {"id": "msg-2", "content": "Queued 2"},
+                    ],
+                },
+            ),
+        )
+        assert len(_turns["sid-1"].queued_turns) == 1
+        assert _turns["sid-1"].queued_turns[0]["message_ids"] == ["msg-1", "msg-2"]
+
+    @pytest.mark.asyncio
+    async def test_attach_replays_queued_turns(self):
+        await store.init_turn("sid-1")
+        await store.push_event(
+            "sid-1",
+            StreamEnvelope.from_parts(
+                "queued_turn_start",
+                {
+                    "type": "queued_turn_start",
+                    "agent": "openagentd",
+                    "message_ids": ["msg-1"],
+                    "messages": [{"id": "msg-1", "content": "Queued 1"}],
+                },
+            ),
+        )
+
+        async def _mark_done():
+            await asyncio.sleep(0.05)
+            await store.mark_done("sid-1")
+
+        task = asyncio.create_task(_mark_done())
+        events = [e async for e in store.attach("sid-1")]
+        await task
+
+        qt_events = [e for e in events if e.get("event") == "queued_turn_start"]
+        assert len(qt_events) == 1
+        data = json.loads(qt_events[0]["data"])
+        assert data["message_ids"] == ["msg-1"]
+        assert data["messages"] == [{"id": "msg-1", "content": "Queued 1"}]

@@ -1,26 +1,4 @@
-import { pathBasename } from '@/utils/workspace'
 import { splitFrontmatter, type AgentFrontmatter } from '../frontmatter'
-
-export const NORMAL_BUILT_IN_MEMBERS = new Set(['executor', 'explorer'])
-export const CODING_BUILT_IN_MEMBERS = new Set(['coder', 'explorer'])
-
-export function isBuiltInProfile(
-  name?: string,
-  role?: string | null,
-  agentPath?: string,
-): boolean {
-  if (!name || !role) return false
-  const path = agentPath ?? name
-  const normalized = path.replaceAll('\\', '/')
-  const parts = normalized.split('/').filter(Boolean)
-  const isCoding = parts.at(-2) === 'coding'
-  const basename = pathBasename(path).replace(/\.md$/i, '')
-  if (role === 'lead') return basename === 'openagentd'
-  if (role !== 'member') return false
-  return isCoding
-    ? CODING_BUILT_IN_MEMBERS.has(basename)
-    : NORMAL_BUILT_IN_MEMBERS.has(basename)
-}
 
 // ── Model combobox ──────────────────────────────────────────────────────────
 
@@ -30,7 +8,7 @@ export function parseFormState(raw: string): {
   error: string | null
 } {
   const { fm: fmText, body } = splitFrontmatter(raw)
-  const fm: AgentFrontmatter = { name: '', role: 'member' }
+  const fm: AgentFrontmatter = { name: 'code', role: 'lead' }
 
   if (!fmText.trim()) {
     return { fm, body, error: 'Missing YAML frontmatter (needs --- … --- header).' }
@@ -38,8 +16,8 @@ export function parseFormState(raw: string): {
 
   try {
     const parsed = parseSimpleYaml(fmText)
-    if (typeof parsed.name === 'string') fm.name = parsed.name
-    if (parsed.role === 'lead' || parsed.role === 'member') fm.role = parsed.role
+    // The settings surface edits only the canonical code agent. Ignore legacy
+    // names/roles when projecting raw content into the fixed form contract.
     if (typeof parsed.description === 'string') fm.description = parsed.description
     if (typeof parsed.model === 'string') fm.model = parsed.model
     if (typeof parsed.thinking_level === 'string') fm.thinking_level = parsed.thinking_level

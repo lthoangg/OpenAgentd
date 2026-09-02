@@ -289,21 +289,20 @@ def denied_paths(tmp_path):
 
 ---
 
-## Team test patterns
+## Agent session test patterns
 
-Use the fixtures from `tests/agent/mode/team/conftest.py`:
+Use the fixtures from the relevant `tests/agent` conftest:
 
 ```python
-# basic_team: AgentTeam with lead + member_a + member_b
-# lead_member, member_a, member_b: individual TeamMember fixtures
+# session: AgentSession fixture
 # mock_stream_store: autouse — patches all stream_store calls, yields push mock
 
-async def test_team_lifecycle(basic_team):
-    await basic_team.start()
-    await basic_team.stop()
+async def test_agent_session_lifecycle(session):
+    await session.start()
+    await session.stop()
 ```
 
-For custom provider responses, build a `MockTeamProvider(response_text="...")`.
+For custom provider responses, build a mock provider with the desired response text.
 
 ---
 

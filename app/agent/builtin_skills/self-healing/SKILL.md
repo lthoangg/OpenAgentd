@@ -11,16 +11,10 @@ description: >-
 
 Modifies on-disk agent configuration in response to user requests. All changes are surgical edits under `{OPENAGENTD_CONFIG_DIR}/`. No code changes, no restarts.
 
-## Modes — pick the right team first
+## Agent configuration
 
-| Mode | When active | Agent files |
-|------|-------------|-------------|
-| `normal` | default; no workspace attached | `{AGENTS_DIR}/*.md` |
-| `coding` | coding workspace attached | `{AGENTS_DIR}/coding/*.md` |
-
-Always edit the files for the mode you are currently running as. MCP servers and `multimodal.yaml` are global (shared by both modes).
-
-The `normal` lead includes `generate_image` / `generate_video` by default; the `coding` lead does not.
+The coding agent is always defined by `{AGENTS_DIR}/code.md`. MCP servers and
+`multimodal.yaml` are global.
 
 ## Scope
 
@@ -34,7 +28,7 @@ The `normal` lead includes `generate_image` / `generate_video` by default; the `
 
 ## Workflow
 
-1. **Identify the target file.** Ask "which agent?" only if ambiguous; default to the lead of the current mode.
+1. **Identify the target file.** Use `{AGENTS_DIR}/code.md`.
 2. **Read the current file.**
 3. **Compute the minimal diff** — change only what was asked. Never reformat unrelated lines.
 4. **Show a `diff` block** with a one-line summary.
@@ -59,15 +53,15 @@ Process restart required only for: adding/removing agent files, `.env` changes, 
 | Field | Values |
 |-------|--------|
 | `model` | `provider:model` — e.g. `openai:gpt-4o`, `anthropic:claude-...`, `googlegenai:gemini-...` |
-| `tools` | Extra tools on top of built-in profile: `web_search`, `web_fetch`, `read`, `patch`, `grep`, `glob`, `shell`, `generate_image`, `generate_video`, plus `<server>_<tool>` for MCP. Never add `skill` or `team_message` — injected automatically. |
+| `tools` | Extra tools on top of built-in profile: `web_search`, `web_fetch`, `read`, `patch`, `grep`, `glob`, `shell`, `generate_image`, `generate_video`, plus `<server>_<tool>` for MCP. Never add `skill` — injected automatically. |
 
-**Invariants:** exactly one `role: lead` per agents dir; `model` must contain `:`.
+**Invariants:** `model` must contain `:`.
 
 ## Recipes
 
 ### Find your own agent file
 ```bash
-grep -l 'role: lead' {AGENTS_DIR}/*.md {AGENTS_DIR}/coding/*.md
+printf '%s\n' {AGENTS_DIR}/code.md
 ```
 
 ### Setting up `multimodal.yaml`

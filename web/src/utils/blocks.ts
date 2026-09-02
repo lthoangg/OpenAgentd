@@ -31,7 +31,7 @@ function confirmedIdSet(blocks: ContentBlock[]): Set<string> {
  *
  * Defensive dedup: ids are stable identifiers now (server message id for
  * user blocks, message/toolCall-derived ids for assistant sub-blocks — see
- * parseTeamBlocks), so an id already present in `blocks` can only mean the
+ * parseAgentBlocks), so an id already present in `blocks` can only mean the
  * live copy is a stale duplicate of a row that has since been confirmed.
  * Drop it instead of trusting every upstream reconciliation path
  * (loadSession, reconcileTurnTail, the SSE reducer) to have already removed
@@ -196,7 +196,7 @@ export function initTool(
     {
       // Use the server-issued toolCallId as the block id when known — it's
       // already the stable identifier every reconciliation path matches on,
-      // and parseTeamBlocks gives the eventual persisted tool block the same
+      // and parseAgentBlocks gives the eventual persisted tool block the same
       // id, so a live/confirmed duplicate becomes a real id collision that
       // liveBlockTail's render-boundary dedup can actually catch.
       id: toolCallId ?? generateBlockId(),

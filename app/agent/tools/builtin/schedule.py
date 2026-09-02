@@ -1,8 +1,8 @@
-"""schedule_task tool — the team lead's personal reminder / self-scheduling loop engine.
+"""schedule_task tool — the agent's personal reminder / self-scheduling loop engine.
 
 Scheduling is **first-person**: every task the lead schedules fires back to
 *itself* (same mode, same workspace) at the target time. There is no
-cross-team or cross-workspace surface — the tool only ever sees and acts on
+cross-channel or cross-workspace surface — the tool only ever sees and acts on
 tasks bound to the calling lead's routing context.
 
 Beyond one-shot reminders, the tool doubles as a **loop engine**: combining
@@ -288,9 +288,7 @@ async def _schedule_task(
         from app.scheduler.schemas import ScheduledTaskCreate
 
         if session_id == "current":
-            current_session_id = getattr(_state, "metadata", {}).get(
-                "lead_session_id"
-            ) or getattr(_state, "metadata", {}).get("session_id")
+            current_session_id = getattr(_state, "metadata", {}).get("session_id")
             if not isinstance(current_session_id, str) or not current_session_id:
                 return "Error: session_id='current' is unavailable outside an active chat session."
             session_id = current_session_id

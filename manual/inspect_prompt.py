@@ -2,8 +2,8 @@
 
 Builds the stable request surface before conversation messages and provider
 envelope conversion:
-   1. system_prompt        — built-in/user prompt + date + team protocol
-   2. tools                — base tools + runtime team-tool schemas
+   1. system_prompt        — built-in/user prompt + date
+   2. tools                — base tools + runtime schemas
    3. builtin prompts      — every code-owned first-party prompt, separately
    4. bundled skills       — each on-demand skill body, separately
 
@@ -34,7 +34,6 @@ from __future__ import annotations
 import argparse
 import copy
 import json
-import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -103,71 +102,6 @@ def _serialize_tools(
     return serialized, _budget_entry(serialized, encoding), items
 
 
-def _inject_team_protocol(
-    prompt: str, agent_cfg, *, lead_name: str = "openagentd"
-) -> str:
-    """Append the static team protocol used by the selected role."""
-    from app.agent.mode.team.member import (
-        LEAD_COMMUNICATION_RULES,
-        LEAD_MESSAGE_FORMAT,
-        LEAD_PROTOCOL,
-        MEMBER_COMMUNICATION_RULES,
-        MEMBER_MESSAGE_FORMAT,
-        MEMBER_PROTOCOL,
-    )
-
-    if agent_cfg.role == "lead":
-        protocol = "\n\n".join(
-            [LEAD_COMMUNICATION_RULES, LEAD_MESSAGE_FORMAT, LEAD_PROTOCOL]
-        )
-    else:
-        runtime_name = (
-            agent_cfg.name
-            if re.fullmatch(r"[^#,/\s]+#\d+", agent_cfg.name)
-            else f"{agent_cfg.name}#1"
-        )
-        identity = (
-            "## Runtime identity\n"
-            f"You are `{runtime_name}`. Use this exact handle in reports; "
-            "do not use the blueprint name."
-        )
-        protocol = "\n\n".join(
-            [
-                identity,
-                MEMBER_COMMUNICATION_RULES,
-                MEMBER_MESSAGE_FORMAT.format(lead_name=lead_name),
-                MEMBER_PROTOCOL.format(lead_name=lead_name),
-            ]
-        )
-    return f"{prompt}\n\n---\n\n{protocol}"
-
-
-def _inject_team_tools(
-    tool_defs: list[dict], agent_cfg, *, mode: str = "normal"
-) -> list[dict]:
-    """Apply the same name-based runtime tool overrides as a team run."""
-    from app.agent.mode.team.mailbox import TeamMailbox
-    from app.agent.mode.team.manage import make_team_manage_tool
-    from app.agent.mode.team.tools import make_team_message_tool
-    from app.agent.tools.builtin.todo import make_todo_manage_tool
-
-    role = "lead" if agent_cfg.role == "lead" else "member"
-    tools = {definition["function"]["name"]: definition for definition in tool_defs}
-    mailbox = TeamMailbox()
-    mailbox.register(agent_cfg.name)
-    injected = [
-        make_team_message_tool(mailbox, agent_name=agent_cfg.name, role=role),
-        make_todo_manage_tool(role),
-    ]
-    # lsp navigation is currently detached from AgentTeam.get_injected_tools
-    # (app/agent/mode/team/team.py) — mirrored here to match runtime.
-    if role == "lead":
-        injected.append(make_team_manage_tool(object()))  # schema does not read team
-    for tool in injected:
-        tools[tool.name] = tool.definition
-    return list(tools.values())
-
-
 def _builtin_skill_budgets(encoding) -> list[dict[str, int | str]]:
     """Count bundled skill bodies as stable, repository-trackable content."""
     from app.agent.tools.builtin.skill import (
@@ -194,17 +128,11 @@ def _builtin_skill_budgets(encoding) -> list[dict[str, int | str]]:
 
 def _builtin_prompt_budgets(encoding) -> list[dict[str, int | str]]:
     """Count every code-owned first-party base prompt independently."""
-    from app.agent.builtin_prompts import (
-        BUILTIN_MEMBER_PROFILES,
-        CODING_OPENAGENTD_PROMPT,
-    )
+    from app.agent.builtin_prompts import CODING_OPENAGENTD_PROMPT
 
     prompts = {
-        "coding/openagentd": CODING_OPENAGENTD_PROMPT,
+        "code": CODING_OPENAGENTD_PROMPT,
     }
-    for mode, profiles in BUILTIN_MEMBER_PROFILES.items():
-        for name, profile in profiles.items():
-            prompts[f"{mode}/{name}"] = profile["prompt"]
     return [
         {"name": name, **_budget_entry(prompt, encoding)}
         for name, prompt in sorted(prompts.items())
@@ -310,7 +238,7 @@ def main() -> None:
     p.add_argument(
         "--agent",
         metavar="NAME",
-        help="Agent name to inspect (default: lead agent)",
+        help="Agent name to inspect (default: configured agent)",
     )
     p.add_argument(
         "--no-date",
@@ -341,11 +269,6 @@ def main() -> None:
         "--encoding",
         default="o200k_base",
         help="tiktoken encoding used for counts (default: o200k_base)",
-    )
-    p.add_argument(
-        "--no-team-protocol",
-        action="store_true",
-        help="Exclude the runtime team protocol and injected team tools",
     )
     p.add_argument(
         "--skills-scope",
@@ -428,23 +351,13 @@ def main() -> None:
         date_str = args.date or datetime.now(timezone.utc).strftime("%Y-%m-%d")
         system_prompt = _inject_date(system_prompt, date_str)
 
-    # 3. Team protocol and runtime tools. Team protocol follows date injection
-    # in TeamMemberBase._handle_messages().
-    if not args.no_team_protocol:
-        lead_cfg = next((cfg for cfg in configs if cfg.role == "lead"), agent_cfg)
-        system_prompt = _inject_team_protocol(
-            system_prompt, agent_cfg, lead_name=lead_cfg.name
-        )
-
     # Early exit for focused inspection
     if args.prompt_only:
         print(system_prompt)
         return
 
-    # 4. Tool definitions — constructor tools plus runtime-injected team tools.
+    # 3. Tool definitions — constructor tools.
     tool_defs = [t.definition for t in _expanded_agent._tools.values()]
-    if not args.no_team_protocol:
-        tool_defs = _inject_team_tools(tool_defs, agent_cfg, mode=_mode)
     if args.skills_scope == "builtin":
         tool_defs = _restrict_skill_catalog_to_builtins(tool_defs)
 
@@ -470,7 +383,6 @@ def main() -> None:
         "role": agent_cfg.role,
         "encoding": args.encoding,
         "skills_scope": args.skills_scope,
-        "team_protocol": not args.no_team_protocol,
         "scope": (
             "Static system prompt and compact OpenAI-style tool definitions; "
             "excludes conversation messages and provider envelope overhead."
@@ -483,7 +395,7 @@ def main() -> None:
         },
         "baseline": _sum_budgets(prompt_budget, tools_budget),
         "builtin_prompts": {
-            "scope": "Code-owned base prompts before team/date/workspace injection.",
+            "scope": "Code-owned base prompts before date/workspace injection.",
             "count": len(builtin_prompts),
             "items": builtin_prompts,
         },

@@ -14,13 +14,11 @@
  * from here.
  */
 import {
-  Bell,
   Info,
   KeyRound,
   Plug,
   Shield,
   Sparkles,
-  TerminalSquare,
   Wrench,
   type LucideIcon,
 } from 'lucide-react'
@@ -40,12 +38,10 @@ export type TopLevelSection = Extract<
   | 'denied_paths'
   | 'sandbox'
   | 'automation'
-  | 'notifications'
-  | 'terminal'
   | 'about'
 >
 
-type SettingsGroupId = 'build' | 'models' | 'system' | 'about'
+type SettingsGroupId = 'build' | 'models' | 'about'
 
 interface SettingsGroupDef {
   id: SettingsGroupId
@@ -53,14 +49,12 @@ interface SettingsGroupDef {
 }
 
 /**
- * Nav grouping. Previously all ten sections sat in one flat "Configuration"
- * list with no ordering principle, so Providers (a credential store) read as a
- * peer of Terminal (a font preference).
+ * Nav grouping keeps related sections together, so provider credentials and
+ * agent/tool settings remain distinct.
  */
 export const SETTINGS_GROUPS: readonly SettingsGroupDef[] = [
   { id: 'build', label: 'Agents & tools' },
   { id: 'models', label: 'Models' },
-  { id: 'system', label: 'System' },
   { id: 'about', label: 'About' },
 ]
 
@@ -114,18 +108,6 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionDef[] = [
     label: 'Denied Paths',
     icon: Shield,
     group: 'build',
-  },
-  {
-    id: 'terminal',
-    label: 'Terminal',
-    icon: TerminalSquare,
-    group: 'system',
-  },
-  {
-    id: 'notifications',
-    label: 'Notifications',
-    icon: Bell,
-    group: 'system',
   },
   {
     id: 'about',

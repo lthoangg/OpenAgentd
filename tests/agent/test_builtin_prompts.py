@@ -1,15 +1,5 @@
 """Behavioral contracts for first-party agent prompts."""
 
-from app.agent.builtin_prompts import BUILTIN_MEMBER_PROFILES
-
-
-def test_coder_prompt_defines_a_complete_implementation_handoff():
-    prompt = BUILTIN_MEMBER_PROFILES["coding"]["coder"]["prompt"]
-
-    assert "Read the relevant code and tests before editing" in prompt
-    assert "Do not revert unrelated work" in prompt
-    assert "Report changed files, checks and results" in prompt
-
 
 def test_coding_lead_prompt_constrains_when_to_interrupt_the_user():
     """One batched interruption, after exploring — not a stream of questions."""

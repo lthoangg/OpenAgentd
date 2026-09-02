@@ -5,8 +5,8 @@ import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { setApiBaseUrl } from '@/api/base-url'
 import { loadLastCodingWorkspace } from '@/utils/workspace'
-import { useTeamStore } from '@/stores/useTeamStore'
-import { createDefaultAgentStream } from '@/stores/useTeamStore/defaults'
+import { useAgentStore } from '@/stores/useAgentStore'
+import { createDefaultAgentStream } from '@/stores/useAgentStore/defaults'
 import {
   addExpandedPaths,
   buildWorktreeSourceByDirectory,
@@ -214,12 +214,12 @@ mock.module('@/queries/useSessionsQuery', () => ({
   queryKeys: {
     team: {
       sessions: {
-        infinite: () => ['team', 'sessions', 'infinite'],
-        workspace: (workspace: string) => ['team', 'sessions', 'workspace', workspace],
+        infinite: () => ['session', 'sessions', 'infinite'],
+        workspace: (workspace: string) => ['session', 'sessions', 'workspace', workspace],
       },
     },
   },
-  useTeamSessionsQuery: () => ({
+  useSessionsQuery: () => ({
     data: { pages: [{ data: sessionsData }] },
     isFetching: false,
     refetch: mock(() => {}),
@@ -231,8 +231,8 @@ mock.module('@/queries/useSessionsQuery', () => ({
     isFetchingNextPage: workspaceIsFetchingNextPage,
     fetchNextPage: fetchWorkspaceNextPage,
   }),
-  useDeleteTeamSessionMutation: () => ({ mutate: deleteSessionMutate }),
-  useUpdateTeamSessionTitleMutation: () => ({
+  useDeleteSessionMutation: () => ({ mutate: deleteSessionMutate }),
+  useUpdateSessionTitleMutation: () => ({
     mutate: updateSessionTitleMutate,
     isPending: false,
     isError: false,
@@ -243,10 +243,10 @@ describe('CodingSidebar helpers', () => {
   it('exports workspace browser helpers used by the component', async () => {
     globalThis.fetch = mock(async (input: unknown) => {
       const url = String(input)
-      if (url.includes('/api/team/workspace/browse')) {
+      if (url.includes('/api/agent/workspace/browse')) {
         return new Response(JSON.stringify(browseResponse))
       }
-      if (url.includes('/api/team/workspace/validate')) {
+      if (url.includes('/api/agent/workspace/validate')) {
         return new Response(JSON.stringify({ workspace: '/repo/project' }))
       }
       return new Response(null, { status: 404 })
@@ -450,7 +450,7 @@ describe('CodingSidebar helpers', () => {
       queryClient,
       refreshWorkspaceTree: async () => { refreshCount += 1 },
       navigate: selectionNavigate,
-      resolveTeamSessionFn: async () => ({
+      resolveSessionFn: async () => ({
         id: 'resolved-session',
         title: null,
         agent_name: null,
@@ -468,9 +468,9 @@ describe('CodingSidebar helpers', () => {
     })
     expect(refreshCount).toBe(1)
 
-    useTeamStore.setState({
+    useAgentStore.setState({
       sessionId: 'session-1',
-      isTeamWorking: false,
+      isAgentWorking: false,
       agentNames: ['lead'],
       agentStreams: { lead: createDefaultAgentStream() },
     })
@@ -635,7 +635,7 @@ describe('CodingSidebar workspace trust flow', () => {
       supports_bundled: true,
       servers: [],
     }
-    useTeamStore.setState({ isTeamWorking: false, sessionId: null })
+    useAgentStore.setState({ isAgentWorking: false, sessionId: null })
     navigate.mockClear()
     invokeMock.mockClear()
     dialogOpen.mockReset()
@@ -646,22 +646,22 @@ describe('CodingSidebar workspace trust flow', () => {
     validateError = null
     globalThis.fetch = mock(async (input: unknown) => {
       const url = String(input)
-      if (url.includes('/api/team/workspace/browse')) {
+      if (url.includes('/api/agent/workspace/browse')) {
         return new Response(JSON.stringify(browseResponse))
       }
-      if (url.includes('/api/team/workspace/validate')) {
+      if (url.includes('/api/agent/workspace/validate')) {
         if (validateError) {
           return new Response(JSON.stringify({ detail: validateError.message }), { status: 422 })
         }
         return new Response(JSON.stringify({ workspace: '/repo/project' }))
       }
-      if (url.includes('/api/team/workspace/worktrees')) {
+      if (url.includes('/api/agent/workspace/worktrees')) {
         return new Response(JSON.stringify([]))
       }
-      if (url.includes('/api/team/workspace/tree')) {
+      if (url.includes('/api/agent/workspace/tree')) {
         return new Response(JSON.stringify(workspaceTreeResponse()))
       }
-      if (url.endsWith('/api/team/sessions/resolve')) {
+      if (url.endsWith('/api/agent/sessions/resolve')) {
         return new Response(JSON.stringify({
           id: 'resolved-session',
           title: null,
@@ -768,19 +768,19 @@ describe('CodingSidebar workspace trust flow', () => {
     let resolveBody: unknown
     globalThis.fetch = mock(async (input: unknown, init: unknown) => {
       const url = String(input)
-      if (url.includes('/api/team/workspace/browse')) {
+      if (url.includes('/api/agent/workspace/browse')) {
         return new Response(JSON.stringify(browseResponse))
       }
-      if (url.includes('/api/team/workspace/validate')) {
+      if (url.includes('/api/agent/workspace/validate')) {
         return new Response(JSON.stringify({ workspace: '/repo/project' }))
       }
-      if (url.includes('/api/team/workspace/worktrees')) {
+      if (url.includes('/api/agent/workspace/worktrees')) {
         return new Response(JSON.stringify([]))
       }
-      if (url.includes('/api/team/workspace/tree')) {
+      if (url.includes('/api/agent/workspace/tree')) {
         return new Response(JSON.stringify(workspaceTreeResponse()))
       }
-      if (url.endsWith('/api/team/sessions/resolve')) {
+      if (url.endsWith('/api/agent/sessions/resolve')) {
         resolveBody = JSON.parse(String((init as RequestInit | undefined)?.body))
         return new Response(JSON.stringify({
           id: 'resolved-session',
@@ -1052,11 +1052,11 @@ describe('CodingSidebar workspace trust flow', () => {
     await user.click(screen.getByRole('button', { name: /^remove from sidebar$/i }))
 
     expect(screen.queryByLabelText('Collapse repository project')).toBeNull()
-    expect(globalThis.fetch).toHaveBeenCalledWith('/api/team/workspace/visibility', expect.objectContaining({
+    expect(globalThis.fetch).toHaveBeenCalledWith('/api/agent/workspace/visibility', expect.objectContaining({
       method: 'PATCH',
       body: JSON.stringify({ workspace: '/repo/project', hidden: true }),
     }))
-    expect(globalThis.fetch).not.toHaveBeenCalledWith('/api/team/workspace/worktrees', expect.objectContaining({ method: 'DELETE' }))
+    expect(globalThis.fetch).not.toHaveBeenCalledWith('/api/agent/workspace/worktrees', expect.objectContaining({ method: 'DELETE' }))
     expect(navigate).toHaveBeenCalledWith({ to: '/coding', replace: true })
   })
 
@@ -1074,9 +1074,9 @@ describe('CodingSidebar workspace trust flow', () => {
       },
     ]
     workspaceSessionsData = sessionsData
-    useTeamStore.setState({
+    useAgentStore.setState({
       sessionId: 'session-1',
-      isTeamWorking: false,
+      isAgentWorking: false,
       agentNames: ['lead'],
       agentStreams: {
         lead: {
@@ -1097,7 +1097,7 @@ describe('CodingSidebar workspace trust flow', () => {
     await user.click(screen.getByLabelText('Actions for project'))
     await user.click(screen.getByRole('menuitem', { name: /new session/i }))
 
-    expect(fetchSpy).not.toHaveBeenCalledWith('/api/team/sessions/resolve', expect.anything())
+    expect(fetchSpy).not.toHaveBeenCalledWith('/api/agent/sessions/resolve', expect.anything())
     expect(navigate).not.toHaveBeenCalled()
   })
 
@@ -1183,10 +1183,10 @@ describe('CodingSidebar workspace trust flow', () => {
     workspaceSessionsData = sessionsData
     globalThis.fetch = mock(async (input: unknown) => {
       const url = String(input)
-      if (url.includes('/api/team/workspace/tree')) {
+      if (url.includes('/api/agent/workspace/tree')) {
         return new Response(JSON.stringify({ repositories: [{ path: '/repo/project', name: 'project', worktrees: [{ path: '/data/worktrees/project/task-a', name: 'task-a', managed: true }] }] }))
       }
-      if (url.startsWith('/api/team/workspace/worktrees')) return new Response(JSON.stringify([]))
+      if (url.startsWith('/api/agent/workspace/worktrees')) return new Response(JSON.stringify([]))
       return new Response(null, { status: 404 })
     }) as typeof fetch
 
@@ -1225,11 +1225,11 @@ describe('CodingSidebar workspace trust flow', () => {
     let resolveBody: unknown
     globalThis.fetch = mock(async (input: unknown, init: unknown) => {
       const url = String(input)
-      if (url.includes('/api/team/workspace/tree')) {
+      if (url.includes('/api/agent/workspace/tree')) {
         return new Response(JSON.stringify({ repositories: [{ path: '/repo/project', name: 'project', worktrees: [{ path: '/data/worktrees/project/task-a', name: 'task-a', managed: true }] }] }))
       }
-      if (url.startsWith('/api/team/workspace/worktrees')) return new Response(JSON.stringify([]))
-      if (url.endsWith('/api/team/sessions/resolve')) {
+      if (url.startsWith('/api/agent/workspace/worktrees')) return new Response(JSON.stringify([]))
+      if (url.endsWith('/api/agent/sessions/resolve')) {
         resolveBody = JSON.parse(String((init as RequestInit | undefined)?.body))
         return new Response(JSON.stringify({
           id: 'resolved-worktree-session',
@@ -1248,9 +1248,9 @@ describe('CodingSidebar workspace trust flow', () => {
     localStorage.setItem('oa-coding-workspaces', JSON.stringify([{ id: 'main', path: '/repo/project', createdAt: '2026-05-01T00:00:00Z' }]))
 
     await renderCodingSidebarWithProps({ currentSessionId: 'session-1', workspace: '/repo/project' })
-    useTeamStore.setState({
+    useAgentStore.setState({
       sessionId: 'session-1',
-      isTeamWorking: false,
+      isAgentWorking: false,
       agentNames: ['lead'],
       agentStreams: { lead: createDefaultAgentStream() },
     })
@@ -1272,7 +1272,7 @@ describe('CodingSidebar workspace trust flow', () => {
         create: true,
       })
     })
-    expect(useTeamStore.getState()._workspace).toBe('/data/worktrees/project/task-a')
+    expect(useAgentStore.getState()._workspace).toBe('/data/worktrees/project/task-a')
     expect(navigate).toHaveBeenCalledWith({
       to: '/coding/$sessionId',
       params: { sessionId: 'resolved-worktree-session' },
@@ -1296,10 +1296,10 @@ describe('CodingSidebar workspace trust flow', () => {
     let renameBody: unknown
     globalThis.fetch = mock(async (input: unknown, init: unknown) => {
       const url = String(input)
-      if (url.includes('/api/team/workspace/tree')) {
+      if (url.includes('/api/agent/workspace/tree')) {
         return new Response(JSON.stringify({ repositories: [{ path: '/repo/project', name: 'project', worktrees: [{ path: '/data/worktrees/project/task-a', name: 'task-a', managed: true }] }] }))
       }
-      if (url.includes('/api/team/workspace/worktrees')) {
+      if (url.includes('/api/agent/workspace/worktrees')) {
         if ((init as RequestInit | undefined)?.method === 'PATCH') {
           renameBody = JSON.parse(String((init as RequestInit | undefined)?.body))
           return new Response(JSON.stringify({ name: 'Review UI', directory: '/data/worktrees/project/task-a', managed: true }))
@@ -1336,10 +1336,10 @@ describe('CodingSidebar workspace trust flow', () => {
     workspaceSessionsData = sessionsData
     globalThis.fetch = mock(async (input: unknown, init: unknown) => {
       const url = String(input)
-      if (url.includes('/api/team/workspace/tree')) {
+      if (url.includes('/api/agent/workspace/tree')) {
         return new Response(JSON.stringify({ repositories: [{ path: '/repo/project', name: 'project', worktrees: [{ path: '/data/worktrees/project/task-a', name: 'task-a', managed: true }] }] }))
       }
-      if (url.includes('/api/team/workspace/worktrees')) {
+      if (url.includes('/api/agent/workspace/worktrees')) {
         if ((init as RequestInit | undefined)?.method === 'DELETE') return new Response(JSON.stringify({ removed: true }))
         return new Response(JSON.stringify([]))
       }
@@ -1385,10 +1385,10 @@ describe('CodingSidebar workspace trust flow', () => {
     workspaceSessionsData = sessionsData
     globalThis.fetch = mock(async (input: unknown) => {
       const url = String(input)
-      if (url.includes('/api/team/workspace/tree')) {
+      if (url.includes('/api/agent/workspace/tree')) {
         return new Response(JSON.stringify({ repositories: [{ path: '/repo/project', name: 'project', worktrees: [{ path: '/data/worktrees/project/task-a', name: 'task-a', managed: true }] }] }))
       }
-      if (url.startsWith('/api/team/workspace/worktrees')) return new Response(JSON.stringify([]))
+      if (url.startsWith('/api/agent/workspace/worktrees')) return new Response(JSON.stringify([]))
       return new Response(null, { status: 404 })
     }) as typeof fetch
 

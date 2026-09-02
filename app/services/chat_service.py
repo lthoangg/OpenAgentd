@@ -55,7 +55,7 @@ async def create_chat_session(
         db: Async database session.
         title: Optional human-readable title.
         parent_session_id: If set, links this session as a child of another
-            (e.g. a subagent session within a supervisor run).
+            (e.g. a child session imported from an older deployment).
         agent_name: Name of the agent that owns this session.
     """
     logger.debug("creating_chat_session title={} agent_name={}", title, agent_name)
@@ -348,6 +348,11 @@ async def save_message(
     name = None
     reasoning_content = None
 
+    merged_extra = dict(getattr(message, "extra", None) or {})
+    if extra:
+        merged_extra.update(extra)
+    extra = merged_extra or None
+
     if isinstance(message, AssistantMessage):
         reasoning_content = message.reasoning_content
         if message.tool_calls:
@@ -601,8 +606,8 @@ async def list_sessions_page(
 ) -> tuple[list[ChatSession], str | None, bool]:
     """Return a cursor-paginated page of top-level sessions (newest-first).
 
-    Top-level sessions are those without a ``parent_session_id`` (team leads
-    and scheduled tasks). Sub-sessions are excluded.
+    Top-level sessions are those without a ``parent_session_id`` (interactive
+    and scheduled tasks). Imported child sessions are excluded.
 
     Args:
         db: Async database session.
@@ -710,7 +715,7 @@ async def delete_session(db: AsyncSession, session_id: UUID) -> bool:
         ``True`` if the session existed and was deleted, ``False`` if not found.
     """
     from sqlmodel import delete
-    from app.services import memory_stream_store, snapshot_service, team_manager
+    from app.services import agent_manager, memory_stream_store, snapshot_service
 
     async with db.begin():
         session = await db.get(ChatSession, session_id)
@@ -742,7 +747,7 @@ async def delete_session(db: AsyncSession, session_id: UUID) -> bool:
 
     # Stop producers before rows disappear so they cannot persist a late turn.
     session_ids = {str(sid) for sid in descendants}
-    await team_manager.evict_session_teams(session_ids)
+    await agent_manager.evict_sessions(session_ids)
 
     async with db.begin():
         await db.exec(
@@ -792,7 +797,7 @@ async def delete_session(db: AsyncSession, session_id: UUID) -> bool:
     return True
 
 
-class TeamHistoryMemberData(NamedTuple):
+class AgentHistoryMemberData(NamedTuple):
     """One sub-session and its paginated, non-summary messages."""
 
     session: ChatSession
@@ -885,7 +890,7 @@ async def resolve_legacy_history_cursor(
 
 async def resolve_legacy_delta_cursor(
     db: AsyncSession,
-    lead_session_id: UUID,
+    root_session_id: UUID,
     since: datetime,
 ) -> UUID:
     """Translate the old timestamp delta watermark to a uuid7 cursor.
@@ -897,8 +902,8 @@ async def resolve_legacy_delta_cursor(
     """
     tree_session_ids = select(ChatSession.id).where(
         sa.or_(
-            col(ChatSession.id) == lead_session_id,
-            col(ChatSession.parent_session_id) == lead_session_id,
+            col(ChatSession.id) == root_session_id,
+            col(ChatSession.parent_session_id) == root_session_id,
         )
     )
     row = (
@@ -916,20 +921,20 @@ async def resolve_legacy_delta_cursor(
     return row if row is not None else UUID(int=0)
 
 
-class TeamHistoryData(NamedTuple):
-    """Full history payload for a team lead session.
+class AgentHistoryData(NamedTuple):
+    """Full history payload for an agent session.
 
-    Returned by :func:`get_team_history`.
+    Returned by :func:`get_agent_history`.
 
     ``next_cursor``/``next_cursor_id`` together form the pagination cursor.
     The id component is required: ``created_at`` alone cannot break ties, and
-    team turns batch-insert lead and member rows that routinely share a
+    Imported child turns can batch-insert rows that routinely share a
     timestamp, so a timestamp-only cursor silently skips the tied rows.
     """
 
-    lead_session: ChatSession
+    root_session: ChatSession
     lead_messages: list[SessionMessage]
-    members: list[TeamHistoryMemberData]
+    members: list[AgentHistoryMemberData]
     has_more: bool
     next_cursor: int | None
     next_cursor_id: UUID | None = None
@@ -941,7 +946,7 @@ async def _fetch_member_pages(
     *,
     before_seq: int | None,
     before_id: UUID | None = None,
-) -> list[TeamHistoryMemberData]:
+) -> list[AgentHistoryMemberData]:
     """Fetch an index-bounded newest page for every sub-session.
 
     Each member uses one ``(session_id, seq, id)`` index walk capped at
@@ -965,7 +970,7 @@ async def _fetch_member_pages(
         return []
     before_predicate = _before_cursor_predicate(before_seq, before_id)
 
-    members: list[TeamHistoryMemberData] = []
+    members: list[AgentHistoryMemberData] = []
     for sub in sub_sessions:
         stmt = (
             select(SessionMessage)
@@ -981,21 +986,21 @@ async def _fetch_member_pages(
             stmt = stmt.where(before_predicate)
         raw_member = list((await db.exec(stmt)).all())
         member_msgs = list(reversed(raw_member[:_HISTORY_PAGE_SIZE]))
-        members.append(TeamHistoryMemberData(session=sub, messages=member_msgs))
+        members.append(AgentHistoryMemberData(session=sub, messages=member_msgs))
     return members
 
 
-class TeamHistoryDelta(NamedTuple):
+class AgentHistoryDelta(NamedTuple):
     """Messages persisted *after* a client-supplied cursor.
 
-    Returned by :func:`get_team_history_since`.  ``truncated`` means the delta
+    Returned by :func:`get_agent_history_since`.  ``truncated`` means the delta
     hit ``limit`` and the caller should fall back to a full page instead of
     stitching an incomplete tail onto its local state.
     """
 
-    lead_session: ChatSession
+    root_session: ChatSession
     lead_messages: list[SessionMessage]
-    members: list[TeamHistoryMemberData]
+    members: list[AgentHistoryMemberData]
     truncated: bool
 
 
@@ -1005,7 +1010,7 @@ async def _fetch_member_delta(
     *,
     since_id: UUID,
     limit: int,
-) -> list[TeamHistoryMemberData]:
+) -> list[AgentHistoryMemberData]:
     """Rows created after ``since_id`` for every member, page-bounded.
 
     uuid7 ids are globally creation-ordered, so one cursor is valid across
@@ -1016,7 +1021,7 @@ async def _fetch_member_delta(
     if not sub_sessions:
         return []
 
-    members: list[TeamHistoryMemberData] = []
+    members: list[AgentHistoryMemberData] = []
     for sub in sub_sessions:
         visible = list(
             (
@@ -1031,17 +1036,17 @@ async def _fetch_member_delta(
             ).all()
         )
         visible.sort(key=lambda row: (row.seq, row.id))
-        members.append(TeamHistoryMemberData(session=sub, messages=visible[:limit]))
+        members.append(AgentHistoryMemberData(session=sub, messages=visible[:limit]))
     return members
 
 
-async def get_team_history_since(
+async def get_agent_history_since(
     db: AsyncSession,
-    lead_session_id: UUID,
+    root_session_id: UUID,
     *,
     since_id: UUID,
     limit: int = _HISTORY_PAGE_SIZE,
-) -> TeamHistoryDelta | None:
+) -> AgentHistoryDelta | None:
     """Fetch only rows created after the uuid7 ``since_id`` cursor.
 
     Exists so the frontend's turn-completion reconciliation can adopt canonical
@@ -1057,13 +1062,13 @@ async def get_team_history_since(
 
     Returns ``None`` when the lead session does not exist.
     """
-    lead_session = await db.get(ChatSession, lead_session_id)
-    if lead_session is None:
+    root_session = await db.get(ChatSession, root_session_id)
+    if root_session is None:
         return None
 
     stmt = (
         select(SessionMessage)
-        .where(col(SessionMessage.session_id) == lead_session_id)
+        .where(col(SessionMessage.session_id) == root_session_id)
         .where(col(SessionMessage.id) > since_id)
         .where(_user_visible_predicate())
         .order_by(col(SessionMessage.id).asc())
@@ -1077,7 +1082,7 @@ async def get_team_history_since(
     sub_sessions = (
         await db.exec(
             select(ChatSession)
-            .where(col(ChatSession.parent_session_id) == lead_session_id)
+            .where(col(ChatSession.parent_session_id) == root_session_id)
             .order_by(col(ChatSession.created_at).asc())
         )
     ).all()
@@ -1087,22 +1092,22 @@ async def get_team_history_since(
     if any(len(member.messages) >= limit for member in members):
         truncated = True
 
-    return TeamHistoryDelta(
-        lead_session=lead_session,
+    return AgentHistoryDelta(
+        root_session=root_session,
         lead_messages=lead_messages,
         members=members,
         truncated=truncated,
     )
 
 
-async def get_team_history(
+async def get_agent_history(
     db: AsyncSession,
-    lead_session_id: UUID,
+    root_session_id: UUID,
     *,
     before_seq: int | None = None,
     before_id: UUID | None = None,
-) -> TeamHistoryData | None:
-    """Fetch the latest page of history for a team lead session and its sub-sessions.
+) -> AgentHistoryData | None:
+    """Fetch the latest page of history for an agent session and imported children.
 
     Fetches up to ``_HISTORY_PAGE_SIZE`` messages per session ordered by
     ``(seq, id) DESC`` (newest first), then reverses to chronological order
@@ -1112,8 +1117,8 @@ async def get_team_history(
 
     Returns ``None`` if the lead session does not exist.
     """
-    lead_session = await db.get(ChatSession, lead_session_id)
-    if lead_session is None:
+    root_session = await db.get(ChatSession, root_session_id)
+    if root_session is None:
         return None
 
     # Summaries are NOT filtered here: the compaction divider in the web UI
@@ -1122,7 +1127,7 @@ async def get_team_history(
     # backstop or refill loop is needed anymore.
     stmt = (
         select(SessionMessage)
-        .where(col(SessionMessage.session_id) == lead_session_id)
+        .where(col(SessionMessage.session_id) == root_session_id)
         .where(_user_visible_predicate())
         .order_by(
             col(SessionMessage.seq).desc(),
@@ -1145,7 +1150,7 @@ async def get_team_history(
     sub_sessions = (
         await db.exec(
             select(ChatSession)
-            .where(col(ChatSession.parent_session_id) == lead_session_id)
+            .where(col(ChatSession.parent_session_id) == root_session_id)
             .order_by(col(ChatSession.created_at).asc())
         )
     ).all()
@@ -1154,8 +1159,8 @@ async def get_team_history(
         db, sub_sessions, before_seq=before_seq, before_id=before_id
     )
 
-    return TeamHistoryData(
-        lead_session=lead_session,
+    return AgentHistoryData(
+        root_session=root_session,
         lead_messages=lead_msgs,
         members=members,
         has_more=has_more,

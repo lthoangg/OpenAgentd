@@ -1,7 +1,6 @@
-"""Print a chronological timeline of all messages across a team session.
+"""Print a chronological timeline of all messages in an agent session.
 
-Shows timestamps, agent, role, and message detail so you can trace the
-exact order of tool calls, inbox deliveries, and responses.
+Shows timestamps, role, and message detail.
 
 Usage:
   uv run python -m manual.team_timeline SESSION_ID
@@ -21,13 +20,6 @@ from manual._common import add_env_argument, apply_env_override
 
 
 async def run(session_id: str, *, full: bool = False) -> None:
-    """Print the chronological timeline across lead + member sessions.
-
-    Uses the shared ``async_session_factory`` so the script honours the same
-    XDG-based DB layout, pool sizing, and pragmas as the running server —
-    no separate engine, no leaked connections.
-    """
-    # Lazy import so APP_ENV is already in os.environ before settings loads.
     from app.core.db import async_session_factory
     from app.models.chat import ChatSession, SessionMessage
 
@@ -35,38 +27,26 @@ async def run(session_id: str, *, full: bool = False) -> None:
     sid = UUID(session_id)
 
     async with async_session_factory() as s:
-        # Resolve lead + all sub-sessions
-        result = await s.exec(
-            select(ChatSession).where(
-                (ChatSession.id == sid) | (ChatSession.parent_session_id == sid)
-            )
-        )
-        sessions = result.all()
-        if not sessions:
+        result = await s.exec(select(ChatSession).where(ChatSession.id == sid))
+        sess = result.first()
+        if not sess:
             print(f"No session found: {session_id}")
             return
 
-        sid_to_agent: dict[str, str] = {}
-        for sess in sessions:
-            label = sess.agent_name or "unknown"
-            sid_to_agent[sess.id] = label
-            role_tag = "[lead]" if sess.id == sid else "[member]"
-            print(f"  {sess.id}  {label} {role_tag}")
+        agent = sess.agent_name or "openagentd"
+        print(f"  {sess.id}  {agent} [session]")
 
-        # Fetch all messages ordered by created_at
-        all_sids = list(sid_to_agent.keys())
         result2 = await s.exec(
             select(SessionMessage)
-            .where(SessionMessage.session_id.in_(all_sids))
+            .where(SessionMessage.session_id == sid)
             .order_by(SessionMessage.created_at)
         )
         msgs = result2.all()
 
-    print(f"\n{'timestamp':26s}  {'agent':16s}  {'role':8s}  detail")
-    print("-" * 110)
+    print(f"\n{'timestamp':26s}  {'role':8s}  detail")
+    print("-" * 90)
 
     for m in msgs:
-        agent = sid_to_agent.get(m.session_id, "?")
         ts = str(m.created_at)[:23] if m.created_at else "?"
 
         if m.tool_calls:
@@ -76,41 +56,32 @@ async def run(session_id: str, *, full: bool = False) -> None:
                 args = fn.get("arguments") or ""
                 if trunc:
                     args = args[:trunc]
-                print(f"{ts:26s}  {agent:16s}  [asst  ]  CALL {name}({args})")
+                print(f"{ts:26s}  [asst  ]  CALL {name}({args})")
 
         elif m.tool_call_id:
             content = m.content or ""
             if trunc:
                 content = content[:trunc]
-            print(f"{ts:26s}  {agent:16s}  [tool  ]  RESULT {content}")
+            print(f"{ts:26s}  [tool  ]  RESULT {content}")
 
         else:
             content = m.content or ""
             if trunc:
                 content = content[:trunc]
-            extra = m.extra or {}
-            from_agents = extra.get("from_agents") or (
-                [extra["from_agent"]] if extra.get("from_agent") else []
-            )
-            tag = f" [inbox from={','.join(from_agents)}]" if from_agents else ""
-            sum_tag = " [SUMMARY]" if m.is_summary else ""
-            ctx_tag = " [excl]" if m.exclude_from_context else ""
-            print(
-                f"{ts:26s}  {agent:16s}  [{m.role:6s}]{tag}{sum_tag}{ctx_tag}  {content}"
-            )
+            kind_tag = f" [{m.kind}]" if m.kind != "chat" else ""
+            pin_tag = " [pin]" if getattr(m, "pinned", False) else ""
+            print(f"{ts:26s}  [{m.role:6s}]{kind_tag}{pin_tag}  {content}")
 
     print(f"\n{len(msgs)} messages total")
 
 
 def main() -> None:
-    p = argparse.ArgumentParser(
-        description="Timeline of all messages in a team session"
-    )
+    p = argparse.ArgumentParser(description="Timeline of all messages in a session")
     add_env_argument(p)
-    p.add_argument("session_id", help="Lead session ID")
+    p.add_argument("session_id", help="Session ID")
     p.add_argument("--full", action="store_true", help="Don't truncate message content")
     args = p.parse_args()
-    apply_env_override(args)  # must run before asyncio.run() triggers app imports
+    apply_env_override(args)
     asyncio.run(run(args.session_id, full=args.full))
 
 

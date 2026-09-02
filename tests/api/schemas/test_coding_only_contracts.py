@@ -2,7 +2,7 @@ import pytest
 from pydantic import ValidationError
 
 from app.api.schemas.chat import ChatForm
-from app.api.schemas.sessions import TeamSessionResolveRequest
+from app.api.schemas.sessions import AgentSessionResolveRequest
 from app.scheduler.schemas import ScheduledTaskCreate
 
 
@@ -13,7 +13,7 @@ def test_chat_requires_workspace():
 
 def test_session_resolution_requires_workspace():
     with pytest.raises(ValidationError):
-        TeamSessionResolveRequest()
+        AgentSessionResolveRequest()
 
 
 def test_scheduler_requires_workspace_and_has_no_mode_contract():

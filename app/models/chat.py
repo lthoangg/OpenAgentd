@@ -99,8 +99,8 @@ class ChatSession(SQLModel, table=True):
             "created_at",
             "id",
         ),
-        # Sub-session lookups (`get_team_history`, `get_team_history_since`)
-        # filter on parent_session_id and order by created_at on every team
+        # Sub-session lookups (`get_agent_history`, `get_agent_history_since`)
+        # filter on parent_session_id and order by created_at on every agent
         # history load. Ordering the index the same way keeps them out of a
         # temp B-tree, and the leading column still serves plain
         # parent_session_id lookups — including the ON DELETE CASCADE child
@@ -133,8 +133,8 @@ class ChatSession(SQLModel, table=True):
             nullable=True,
         ),
     )
-    # Top-level sessions (team leads, scheduled tasks) have parent_session_id=NULL.
-    # Team-member sessions are children of their lead via parent_session_id.
+    # Top-level sessions (interactive and scheduled) have parent_session_id=NULL.
+    # The nullable parent supports importing historical child sessions.
     agent_name: str | None = Field(default=None, max_length=100)
     title: str | None = Field(default=None, max_length=255)
     # Set when this session was created by the scheduler; None for interactive chat.
@@ -214,7 +214,7 @@ class CodingWorkspace(SQLModel, table=True):
 
 
 class PendingQuestion(SQLModel, table=True):
-    """A question the lead agent asked the user, and the turn waiting on it.
+    """A question the agent asked the user, and the turn waiting on it.
 
     Written when ``ask_user`` suspends a turn and resolved when the
     user answers or dismisses.  The row is what makes the suspension durable:
@@ -279,7 +279,7 @@ class SessionMessage(SQLModel, table=True):
     __table_args__ = (
         # The workhorse index. Every read filters on session_id and
         # then orders by (seq, id) — the transcript, the LLM window, and the
-        # team-history ROW_NUMBER() windows — so all three columns are required
+        # agent-history ROW_NUMBER() windows — so all three columns are required
         # to satisfy the sort without a temp B-tree. ``kind`` predicates apply
         # as residual filters; a dedicated kind index lost to this one on every
         # query shape (same reasoning that consolidated the old indexes in
@@ -354,7 +354,7 @@ class SessionMessage(SQLModel, table=True):
     #   chat     — interactive message. UI ✓. LLM ✓ when positioned at/after the
     #              active summary (or when no summary exists).
     #   note     — internal context for the LLM (mention blocks, truncation
-    #              recovery, roster changes, team inbox copies). UI ✗, LLM
+    #              recovery, roster changes, inbox copies). UI ✗, LLM
     #              same positional rule as chat.
     #   queued   — user message waiting for the current turn to finish.
     #              UI ✓ (queued badge), LLM ✓; promotion re-seqs it to the

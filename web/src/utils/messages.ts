@@ -7,7 +7,7 @@ import type { AgentUsage, ContentBlock, MessageResponse } from '@/api/types'
  * History fetches cut at arbitrary row boundaries — the pagination cursor can
  * split a call/result pair across pages, and a turn-tail delta can carry only
  * the result when a mid-turn reconcile already adopted the assistant row (it
- * is persisted before its tools finish). ``parseTeamBlocks`` used to drop such
+ * is persisted before its tools finish). ``parseAgentBlocks`` used to drop such
  * rows silently, losing the result and leaving the card stuck "running".
  * Callers collect them here and attach via {@link applyOrphanToolResults}
  * once the owning card is in reach.
@@ -176,7 +176,7 @@ export function sumUsageFromMessages(msgs: MessageResponse[]): AgentUsage {
 }
 
 /**
- * Parse DB messages into a flat ContentBlock[] — used by team agent/split view.
+ * Parse DB messages into a flat ContentBlock[] for the agent view.
  * User messages → type:'user' block (rendered as user bubble inline)
  * Assistant messages → thinking/tool/text blocks
  * Tool result messages → mutate matching tool block
@@ -185,7 +185,7 @@ export function sumUsageFromMessages(msgs: MessageResponse[]): AgentUsage {
  * assistant row is outside this batch — see {@link OrphanToolResult}. Without
  * it those rows are dropped, matching the old behavior.
  */
-export function parseTeamBlocks(
+export function parseAgentBlocks(
   msgs: MessageResponse[],
   orphanToolResults?: Record<string, OrphanToolResult>,
 ): ContentBlock[] {
@@ -193,7 +193,7 @@ export function parseTeamBlocks(
   const pendingToolBlocks: Map<string, ContentBlock> = new Map()
 
   for (const msg of sortMessages(msgs)) {
-    if (msg.extra?.queue_status === 'queued') continue
+    if (msg.kind === 'queued' || msg.extra?.queue_status === 'queued') continue
 
     // Summaries surface as inline "Session compacted" dividers rather than
     // being hidden — preserves the visual marker across page reloads.

@@ -124,11 +124,14 @@ export default defineConfig({
         },
       },
     },
-    // index chunk contains the full app shell (TeamChatView, CodingSidebar,
+    // index chunk contains the full app shell (AgentChatView, CodingSidebar,
     // Sidebar, InputBar, stores) which must be eagerly available on first
     // paint. Markdown/Tauri/icons/motion are split into separate chunks.
     // Route-level lazy loading is intentionally avoided to prevent Suspense
-    // waterfalls on tauri:// navigation. 1100 kB reflects the real baseline.
-    chunkSizeWarningLimit: 1100,
+    // waterfalls on tauri:// navigation; the Settings modal's pages are lazy
+    // because a modal is not on that path. Measured baseline after that split:
+    // ~1260 kB minified / ~364 kB gzip. The limit sits just above it so any
+    // regression that drags more into the shell fails loudly.
+    chunkSizeWarningLimit: 1300,
   },
 })

@@ -45,7 +45,7 @@ def session_artifacts_dir(session_id: str | None) -> Path:
 
 
 def workspace_dir(session_id: str) -> Path:
-    """Return the per-session agent workspace root (team sandbox)."""
+    """Return the per-session agent workspace root (agent sandbox)."""
     return Path(settings.OPENAGENTD_WORKSPACE_DIR) / session_id
 
 

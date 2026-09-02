@@ -22,7 +22,7 @@ import { useMemo, useState } from 'react'
 import { SectionCard, SectionCardHeader, SectionCardRows } from '@/components/ui/section-card'
 import { Textarea } from '@/components/ui/textarea'
 
-import { useAgentFilesQuery, useMcpServersQuery, useRegistryQuery } from '@/queries'
+import { useCodeAgentQuery, useMcpServersQuery, useRegistryQuery } from '@/queries'
 import { type MultiSelectOption } from './MultiSelect'
 import { combine, type AgentFrontmatter } from './frontmatter'
 import { FormFields, ParseErrorBanner } from './AgentForm/FormFields'
@@ -35,14 +35,10 @@ export interface AgentFormValue {
 
 interface Props {
   initial: string
-  /** Agent file path from the API route, e.g. "openagentd" or "coding/coder". */
-  agentPath?: string
   /** Fires on every keystroke with the up-to-date raw content. */
   onChange: (raw: string) => void
   /** Disabled when the caller is mid-save / validation. */
   disabled?: boolean
-  /** When creating a new agent the name is still editable. */
-  isNew?: boolean
   /** Controlled Form/Raw mode — owned by the parent so the sub-header
    *  toggle stays in sync with the form body. */
   mode: 'form' | 'raw'
@@ -51,10 +47,8 @@ interface Props {
 
 export function AgentForm({
   initial,
-  agentPath,
   onChange,
   disabled,
-  isNew,
   mode,
   onModeChange,
 }: Props) {
@@ -98,7 +92,7 @@ export function AgentForm({
 
   const registry = useRegistryQuery()
   const mcpServers = useMcpServersQuery()
-  const agentFiles = useAgentFilesQuery()
+  const codeAgent = useCodeAgentQuery()
 
   // Hide ``<server>_<tool>`` entries from the Tools picker — they are
   // granted en bloc via the MCP server picker below, so showing them in
@@ -126,7 +120,6 @@ export function AgentForm({
       }
     }) ?? []
 
-  const agentSummary = agentFiles.data?.agents.find((a) => a.name === agentPath)
   const modelOptions = registry.data?.models ?? []
 
   // Form → raw propagation. Runs whenever a form field changes.
@@ -164,12 +157,10 @@ export function AgentForm({
           fm={fm}
           body={body}
           disabled={disabled}
-          isNew={isNew}
           toolOptions={toolOptions}
           mcpOptions={mcpOptions}
           modelOptions={modelOptions}
-          agentPath={agentPath}
-          effectiveTools={agentSummary?.tools}
+          effectiveTools={codeAgent.data?.config?.tools}
           updateFromForm={updateFromForm}
         />
       ) : (

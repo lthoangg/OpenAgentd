@@ -33,6 +33,7 @@ import httpx
 
 
 from manual._common import DEFAULT_BASE
+
 BASE = DEFAULT_BASE
 DEFAULT_INITIAL = (
     "You must call the shell tool before answering. Run exactly: "
@@ -57,11 +58,18 @@ DEFAULT_FOLLOWUPS = [
 DEFAULT_EXPECT = ["ALPHA-QUEUED-OK", "BETA-QUEUED-OK", "Hoang"]
 
 
-def post_message(base: str, message: str, session_id: str | None = None) -> dict:
-    data: dict[str, str] = {"message": message}
+def post_message(
+    base: str,
+    message: str,
+    session_id: str | None = None,
+    model: str | None = None,
+) -> dict:
+    data: dict[str, str] = {"message": message, "workspace": "."}
     if session_id:
         data["session_id"] = session_id
-    response = httpx.post(f"{base}/team/chat", data=data, timeout=30)
+    if model:
+        data["model"] = model
+    response = httpx.post(f"{base}/agent/chat", data=data, timeout=30)
     response.raise_for_status()
     return response.json()
 
@@ -73,7 +81,7 @@ def stream_until_done(base: str, session_id: str, wait: int) -> list[dict]:
     data_buf: list[str] = []
 
     with httpx.stream(
-        "GET", f"{base}/team/{session_id}/stream", timeout=wait + 5
+        "GET", f"{base}/agent/{session_id}/stream", timeout=wait + 5
     ) as response:
         response.raise_for_status()
         for line in response.iter_lines():
@@ -101,7 +109,7 @@ def stream_until_done(base: str, session_id: str, wait: int) -> list[dict]:
 
 def get_history(base: str, session_id: str) -> list[dict]:
     response = httpx.get(
-        f"{base}/team/{session_id}/history", params={"limit": 1000}, timeout=30
+        f"{base}/agent/{session_id}/history", params={"limit": 1000}, timeout=30
     )
     response.raise_for_status()
     return list(response.json()["lead"]["messages"])
@@ -129,6 +137,7 @@ def _final_assistant_text(history: list[dict]) -> str:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--base", default=BASE)
+    parser.add_argument("--model", default=None, help="Model override")
     parser.add_argument("--initial", default=DEFAULT_INITIAL)
     parser.add_argument(
         "--followup",
@@ -150,7 +159,7 @@ def main() -> int:
     expected = args.expect if args.expect is not None else DEFAULT_EXPECT
 
     print(f"sending initial prompt: {args.initial!r}")
-    first = post_message(base, args.initial)
+    first = post_message(base, args.initial, model=args.model)
     session_id = str(first["session_id"])
     print(f"  session={session_id}")
 
@@ -161,7 +170,7 @@ def main() -> int:
             f"sending queued follow-up #{index} after delay "
             f"{args.queue_delay if index == 1 else args.between_delay}s: {followup!r}"
         )
-        response = post_message(base, followup, session_id=session_id)
+        response = post_message(base, followup, session_id=session_id, model=args.model)
         print(f"  response={response}")
         if response.get("status") != "queued":
             print(

@@ -69,7 +69,7 @@ cd web && bun test src/__tests__/path/to/Foo.test.tsx  # single file
   `mock.module('lucide-react', () => new Proxy({}, { get: () => () => null }))`.
 - `mock.module()` patches the global Bun module registry and is not undone by `mock.restore()` — always run with `--parallel` so files get their own worker. Place any `mock.module()` call **before** the import of the code that uses it.
 - Store tests reset state in `beforeEach` (`useXStore.setState(INITIAL)`).
-- Prefer firing real store actions/SSE handlers over asserting on mocked internals (e.g. `useTeamStore.getState()._handleSSEEvent(...)`, then read `getState()` back).
+- Prefer firing real store actions/SSE handlers over asserting on mocked internals (e.g. `useAgentStore.getState()._handleSSEEvent(...)`, then read `getState()` back).
 
 ## Placement
 

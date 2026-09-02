@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlmodel import SQLModel
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from app.agent.mode.team.hooks.queued_injection import QueuedMessageInjectionHook
+from app.agent.hooks.queued_injection import QueuedMessageInjectionHook
 from app.agent.schemas.chat import HumanMessage
 from app.agent.state import AgentState, ModelRequest, RunContext
 from app.services.chat_service import (

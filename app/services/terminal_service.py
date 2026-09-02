@@ -300,7 +300,7 @@ async def create_session(
     """Spawn the user's shell in a new PTY rooted at *workspace*.
 
     Callers are responsible for workspace validation
-    (``team_manager.validate_workspace``) — this function trusts its input.
+    (``agent_manager.validate_workspace``) — this function trusts its input.
     """
     if os.name == "nt":
         raise RuntimeError(

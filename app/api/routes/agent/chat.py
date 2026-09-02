@@ -1,0 +1,1061 @@
+"""Agent chat, SSE stream, agent listing, session CRUD, and history."""
+
+from __future__ import annotations
+
+import asyncio
+from datetime import UTC, datetime
+import json
+from pathlib import Path
+from typing import AsyncGenerator, Literal
+from uuid import UUID
+
+from fastapi import APIRouter, File, HTTPException, Query, Request, UploadFile
+from loguru import logger
+from pydantic import BaseModel
+from sse_starlette.sse import EventSourceResponse
+
+from app.agent.agent_loop import Agent
+from app.agent.session import ContinuePreconditionError
+from app.api.deps import AgentSessionDep, ChatFormDep, DbSession
+from app.api.routes.agent._helpers import (
+    _message_response,
+    _read_upload_as_attachment,
+    _require_agent_session,
+    _validate_workspace_or_422,
+    build_mention_context_blocks,
+    persist_queued_user_message,
+    resolve_chat_agent,
+    resolve_agent_for_existing_session,
+    validate_model_settings,
+)
+from app.api.routes.agents import is_registered_model_id
+from app.api.schemas.sessions import (
+    CodingWorkspaceTreeRepository,
+    CodingWorkspaceTreeResponse,
+    CodingWorkspaceTreeWorktree,
+    SessionDetailResponse,
+    SessionPageResponse,
+    SessionResponse,
+    AgentSessionResolveRequest,
+    AgentSessionResolveResponse,
+    AgentSessionUpdateRequest,
+    AgentWorkspaceVisibilityRequest,
+    CodingWorkspaceVisibilityResponse,
+)
+from app.api.schemas.agent import (
+    AgentInfoResponse,
+    ChangedPathsPayload,
+    CodingWorkspaceBrowseResponse,
+    CodingWorkspaceFolder,
+    CodingWorkspaceValidateResponse,
+    PendingQuestionResponse,
+    AgentRegistryResponse,
+    AgentChatResponse,
+    AgentCommandResponse,
+    AgentHistoryMember,
+    AgentHistoryResponse,
+)
+from app.api.routes.agent.worktrees import (
+    WorktreeCreateRequest,
+    create_coding_workspace_worktree,
+    find_managed_worktree_source,
+)
+from app.models.chat import ChatSession
+from app.services import (
+    agent_manager,
+    agent_service,
+    memory_stream_store as stream_store,
+    question_service,
+)
+from app.services.agent_service import AttachmentError, RawAttachment
+from app.services.coding_workspace_service import (
+    hide_coding_workspace,
+    list_visible_coding_workspaces,
+    upsert_coding_workspace,
+)
+from app.services.chat_service import (
+    BoundaryShift,
+    cancel_queued_user_message,
+    cleanup_reverted_tail,
+    delete_session,
+    get_agent_history,
+    get_agent_history_since,
+    get_latest_top_level_session,
+    list_sessions_page,
+    resolve_legacy_delta_cursor,
+    resolve_legacy_history_cursor,
+    save_message,
+    save_queued_user_message,
+    session_usage_totals,
+    update_session_title,
+)
+
+router = APIRouter()
+
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+
+class _Unset:
+    """Sentinel type: ``custom_threshold`` was not supplied by the caller."""
+
+
+_UNSET = _Unset()
+
+
+def _custom_prompt_token_threshold() -> int | None:
+    """Read the user's summarization threshold override.
+
+    This reads *and* YAML-parses ``settings.yaml`` on every call, so anything
+    serializing more than one agent in a single request must hoist it and pass
+    the result down via ``_serialize_agent(custom_threshold=...)``.
+    """
+    from app.core.runtime_settings import load_runtime_settings
+
+    try:
+        return load_runtime_settings().summarization.prompt_token_threshold
+    except Exception:
+        return None
+
+
+def _serialize_agent(
+    agent: Agent,
+    *,
+    workspace: str | None = None,
+    custom_threshold: int | None | _Unset = _UNSET,
+) -> dict:
+    """Serialize an Agent into the /agent/agents response shape.
+
+    ``custom_threshold`` is the summarization override from ``settings.yaml``.
+    Pass it explicitly when serializing several agents in one request; omitting
+    it falls back to loading settings here, which costs a file read plus a YAML
+    parse *per agent*.
+
+    ``workspace``, when given, binds the sandbox for the duration of tool
+    description computation only. Some tool descriptions are dynamic — the
+    ``skill`` tool in particular lists available skills by walking
+    ``get_sandbox().workspace_root``. Outside of an actual agent run there is
+    no sandbox bound to this coding workspace (it falls back to a process-
+    global temp-dir sandbox), so project-local skills under
+    ``{workspace}/.openagentd/skills`` would silently never appear in this
+    listing without this override.
+    """
+    from app.agent.hooks.summarization import resolve_prompt_token_threshold
+    from app.agent.mcp import mcp_manager
+    from app.agent.denied_paths import (
+        DeniedPathsConfig,
+        _denied_paths_ctx,
+        set_denied_paths,
+    )
+
+    _custom = (
+        _custom_prompt_token_threshold()
+        if isinstance(custom_threshold, _Unset)
+        else custom_threshold
+    )
+
+    tools_by_name = {t.name: t for t in agent._tools.values()}
+    for server_name in agent.mcp_servers:
+        server_tools = mcp_manager.get_tools_for_server(server_name) or []
+        for tool in server_tools:
+            tools_by_name.setdefault(tool.name, tool)
+    sandbox_token = (
+        set_denied_paths(DeniedPathsConfig(workspace=workspace)) if workspace else None
+    )
+    try:
+        tools_payload = [
+            {"name": t.name, "description": t.description or ""}
+            for t in tools_by_name.values()
+        ]
+    finally:
+        if sandbox_token is not None:
+            _denied_paths_ctx.reset(sandbox_token)
+
+    return {
+        "name": agent.name,
+        "description": agent.description or "",
+        "model": agent.model_id,
+        "summary_trigger_tokens": resolve_prompt_token_threshold(
+            agent.model_id, _custom
+        ),
+        "tools": tools_payload,
+        # MCP servers configured on the agent. The UI groups tools by name
+        # prefix (`<server>_<tool>`) using this list. Includes servers that
+        # exist in config but aren't ready (zero tools), so the UI can show
+        # them as "not ready" instead of silently hiding the section.
+        "mcp_servers": list(agent.mcp_servers),
+        "capabilities": agent.capabilities.to_dict(),
+    }
+
+
+def _changed_paths_payload(shift: BoundaryShift) -> dict:
+    """Serialise the A/M/D path partition from a /undo or /redo restore.
+
+    The client uses this to splice the cached Coding Workspace git
+    diff for just these paths instead of refetching the whole sidebar.
+    Empty lists are valid and meaningful — "no paths changed" still
+    tells the client to skip invalidation entirely.
+    """
+    return {
+        "added": shift.added,
+        "modified": shift.modified,
+        "removed": shift.removed,
+    }
+
+
+# ── Routes ────────────────────────────────────────────────────────────────────
+
+
+@router.post("/chat", status_code=202)
+async def agent_chat(
+    request: Request,
+    db: DbSession,
+    body: ChatFormDep,
+    files: list[UploadFile] = File(default=[]),
+) -> AgentChatResponse:
+    """Deliver a message to the agent (202). Accepts multipart/form-data.
+
+    Actions:
+    - **Standard send** (``interrupt=false``, ``message`` required):
+      Deliver a message and start a new turn.
+    - **Interrupt-only** (``interrupt=true``, ``message`` omitted):
+      Cancel the active turn. Partial output is already saved by the checkpointer.
+    - **Interrupt + follow-up** (``interrupt=true``, ``message`` provided):
+      Cancel the active turn, then deliver a new message.
+
+    Returns the session_id. Subscribe to GET /agent/stream/{session_id} to
+    receive the SSE event stream (supports reconnect + replay).
+    """
+    message = body.message
+    interrupt = body.interrupt
+    raw_form = await request.form()
+    model_provided = "model" in raw_form
+    thinking_level_provided = "thinking_level" in raw_form
+    model, thinking_level = await validate_model_settings(
+        body.model,
+        body.thinking_level,
+        is_registered_model_id=is_registered_model_id,
+    )
+
+    resolved = await resolve_chat_agent(
+        db, session_id=body.session_id, workspace=body.workspace
+    )
+    agent_obj = resolved.agent
+    session_id = resolved.session_id
+    session_uuid = resolved.session_uuid
+    workspace = resolved.workspace
+
+    fast_mode_service_tier = "fast" if body.fast_mode else None
+
+    # ── Interrupt (mutually exclusive with message) ─────────────────────────
+    if interrupt:
+        await agent_service.interrupt_agent(agent_obj, session_id)
+        return AgentChatResponse(status="interrupted", session_id=session_id)
+
+    assert message is not None
+
+    # Materialise the multipart uploads into transport-neutral attachments
+    # so agent_service can validate + persist them without knowing about
+    # FastAPI ``UploadFile``.
+    attachments: list[RawAttachment] = []
+    for file in files:
+        raw = await _read_upload_as_attachment(file)
+        if raw is not None:
+            attachments.append(raw)
+    mention_context_blocks = await build_mention_context_blocks(
+        message=message,
+        session_id=session_id,
+        workspace=workspace,
+        existing_total_bytes=sum(len(a.data) for a in attachments),
+        mentions=body.mentions,
+    )
+    async with agent_obj.user_message_lock:
+        if session_uuid is not None:
+            async with db.begin():
+                await cleanup_reverted_tail(db, session_uuid)
+
+        # A question on screen owns the turn but cannot drain a queue: resolving
+        # it resumes the suspended turn, and dismissing it just frees the lead.
+        # Queueing behind one would strand this message with nothing to carry
+        # it, so dispatch instead and let ``handle_user_message`` supersede the
+        # question — which is also the documented behaviour for a person who
+        # types instead of answering.
+        if (
+            session_uuid is not None
+            and agent_obj.has_active_user_turn()
+            and not agent_obj.is_awaiting_question_answer()
+        ):
+            queued_result = await persist_queued_user_message(
+                db,
+                agent_session=agent_obj,
+                session_id=session_id,
+                session_uuid=session_uuid,
+                workspace=workspace,
+                message=message,
+                attachments=attachments,
+                mention_context_blocks=mention_context_blocks,
+                mentions=body.mentions,
+                model=model,
+                model_provided=model_provided,
+                thinking_level=thinking_level,
+                thinking_level_provided=thinking_level_provided,
+                fast_mode_service_tier=fast_mode_service_tier,
+                save_queued_user_message=save_queued_user_message,
+                save_message=save_message,
+            )
+            if not agent_obj.has_active_user_turn():
+                await agent_obj._activate_queued_user_messages(session_id)
+            return AgentChatResponse(
+                status="queued",
+                session_id=session_id,
+                message_id=queued_result.message_id,
+            )
+
+        try:
+            sid, n_attachments, message_id = await agent_service.dispatch_user_message(
+                agent_obj,
+                content=message,
+                session_id=session_id,
+                attachments=attachments,
+                mention_context_blocks=mention_context_blocks,
+                workspace=workspace,
+                model=model,
+                model_provided=model_provided,
+                thinking_level=thinking_level,
+                thinking_level_provided=thinking_level_provided,
+                service_tier=fast_mode_service_tier,
+                mentions=body.mentions,
+            )
+        except AttachmentError as exc:
+            raise HTTPException(status_code=exc.status, detail=str(exc)) from exc
+
+        logger.info(
+            "agent_chat_received session_id={} attachments={}",
+            sid,
+            n_attachments,
+        )
+        return AgentChatResponse(
+            status="accepted", session_id=sid, message_id=message_id
+        )
+
+
+@router.delete("/sessions/{session_id}/queued-messages/{message_id}", status_code=204)
+async def cancel_queued_message(
+    db: DbSession,
+    session_id: UUID,
+    message_id: UUID,
+) -> None:
+    async with db.begin():
+        cancelled = await cancel_queued_user_message(db, session_id, message_id)
+    if not cancelled:
+        raise HTTPException(status_code=404, detail="Queued message not found.")
+
+
+class CommandRequest(BaseModel):
+    """Request body for ``POST /agent/commands``."""
+
+    command: Literal["compact", "undo", "redo", "redo-all", "redo_all"]
+    session_id: str
+
+
+@router.post("/commands", status_code=202)
+async def agent_command(
+    body: CommandRequest,
+    db: DbSession,
+) -> AgentCommandResponse:
+    """Run a slash-command on a session — no new user message persisted.
+
+    Currently supported:
+
+    * ``compact`` — force the existing summariser before the next model call
+      without adding a visible user message.
+    * ``undo`` / ``redo`` — move the visible conversation boundary backward or
+      forward without adding a user message.
+
+    Returns 202 with the session_id.  Subscribe to
+    ``GET /agent/stream/{session_id}`` for the SSE feed.
+
+    Returns 409 with a human-readable ``detail`` when the command cannot
+    be executed (lead is already working, invalid session state, etc.).
+    """
+    # A coding session's agent binding is authoritative regardless of which
+    # command is being run — every branch shares one lookup so a new
+    # command can't reintroduce the bug where only ``compact`` re-resolved
+    # to the agent session and ``undo``/``redo``/``redo-all`` silently ran
+    # (and got cached) against the workspace-less default session instead.
+    agent_obj = await resolve_agent_for_existing_session(db, body.session_id)
+
+    if body.command == "compact":
+        try:
+            sid = await agent_obj.handle_compact(body.session_id)
+        except ContinuePreconditionError as exc:
+            raise HTTPException(status_code=exc.status, detail=exc.reason) from exc
+        logger.info("agent_command_compact session_id={}", sid)
+        return AgentCommandResponse(
+            status="accepted", session_id=sid, command="compact"
+        )
+
+    if body.command == "undo":
+        try:
+            sid, shift = await agent_obj.handle_undo(body.session_id)
+        except ContinuePreconditionError as exc:
+            raise HTTPException(status_code=exc.status, detail=exc.reason) from exc
+        logger.info("agent_command_undo session_id={}", sid)
+        assert shift.target is not None
+        return AgentCommandResponse(
+            status="accepted",
+            session_id=sid,
+            command="undo",
+            message=_message_response(shift.target),
+            changed_paths=ChangedPathsPayload(**_changed_paths_payload(shift)),
+        )
+
+    if body.command == "redo":
+        try:
+            sid, shift = await agent_obj.handle_redo(body.session_id)
+        except ContinuePreconditionError as exc:
+            raise HTTPException(status_code=exc.status, detail=exc.reason) from exc
+        logger.info("agent_command_redo session_id={}", sid)
+        return AgentCommandResponse(
+            status="accepted",
+            session_id=sid,
+            command="redo",
+            message=(
+                _message_response(shift.target) if shift.target is not None else None
+            ),
+            changed_paths=ChangedPathsPayload(**_changed_paths_payload(shift)),
+        )
+
+    if body.command in ("redo-all", "redo_all"):
+        try:
+            sid, shift = await agent_obj.handle_redo_all(body.session_id)
+        except ContinuePreconditionError as exc:
+            raise HTTPException(status_code=exc.status, detail=exc.reason) from exc
+        logger.info("agent_command_redo_all session_id={}", sid)
+        return AgentCommandResponse(
+            status="accepted",
+            session_id=sid,
+            command="redo-all",
+            message=None,
+            changed_paths=ChangedPathsPayload(**_changed_paths_payload(shift)),
+        )
+
+    # Defensive — the Literal makes this unreachable, but pyright/ty wants it.
+    raise HTTPException(status_code=400, detail=f"Unknown command: {body.command}")
+
+
+async def _ensure_turn_for_open_question(session_id: str, db: DbSession) -> None:
+    """Give a durably-suspended turn somewhere to stream, if it has none.
+
+    Best-effort: a failure here must not stop the client from attaching, it
+    just leaves the connection behaving as it did before.
+    """
+    try:
+        sid = UUID(session_id)
+    except ValueError:
+        return
+    try:
+        if await question_service.get_pending_question(db, sid) is not None:
+            await stream_store.ensure_turn(session_id)
+    except Exception as exc:
+        logger.warning(
+            "stream_ensure_turn_failed session_id={} error={}", session_id, exc
+        )
+
+
+@router.get("/{session_id}/stream")
+async def agent_stream(session_id: str, db: DbSession):
+    """SSE stream for all agent events.
+
+    Replays buffered events from the current turn then delivers live events.
+    Safe to reconnect — resumes from where you left off within the TTL window.
+    """
+    # A turn suspended on `ask_user` is still open, but the in-memory state
+    # proving it can be gone: a restart drops it, and so does the sliding TTL,
+    # since a parked turn emits nothing to refresh it. `attach` returns at once
+    # without it, and the client — which correctly treats an open question as a
+    # live turn — reopens immediately on that clean close, in a tight loop.
+    # Re-establishing the state here parks the connection instead, and leaves it
+    # already attached when the answer restarts the turn.
+    await _ensure_turn_for_open_question(session_id, db)
+
+    async def _gen() -> AsyncGenerator[dict, None]:
+        try:
+            # No per-event disconnect poll: `EventSourceResponse` races the
+            # stream against its own `_listen_for_disconnect` task and cancels
+            # this generator at its next await when the client goes away.
+            # Polling here also consumed ASGI `receive` in competition with
+            # that listener, and cost ~180µs per event — 8x the cost of
+            # yielding the event itself on tool-output bursts.
+            async for event in stream_store.attach(session_id):
+                yield {
+                    "event": event.get("event", "message"),
+                    "data": event.get("data", "{}"),
+                }
+        except Exception as exc:
+            logger.exception("agent_stream_error type={}", type(exc).__name__)
+            from app.agent.errors import format_agent_error
+
+            err_info = format_agent_error(exc)
+            payload = json.dumps(
+                {
+                    "type": "error",
+                    "title": err_info.get("title", "Stream Error"),
+                    "message": f"stream_error:{type(exc).__name__}",
+                    "code": err_info.get("code", "stream_error"),
+                    "category": err_info.get("category", "network"),
+                }
+            )
+            yield {
+                "event": "error",
+                "data": payload,
+            }
+
+    return EventSourceResponse(_gen())
+
+
+@router.get("/agents")
+async def get_agent_registry(
+    workspace: str | None = Query(None, description="Coding workspace directory."),
+    session_id: str | None = Query(None, description="Coding session ID."),
+) -> AgentRegistryResponse:
+    """Return metadata for the single coding agent used by this session."""
+    if workspace:
+        try:
+            agent_obj = agent_manager.find_live_session(workspace, session_id)
+            if agent_obj is None:
+                agent_obj = await agent_manager.get_or_start_agent_session(
+                    workspace, session_id or "__agents__"
+                )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+    else:
+        agent_obj = await agent_manager.get_or_start_agent_session(
+            str(Path.cwd()), session_id
+        )
+    if not agent_obj:
+        raise HTTPException(status_code=404, detail="No agent configured")
+    custom_threshold = _custom_prompt_token_threshold()
+    agent_info = _serialize_agent(
+        agent_obj.agent,
+        workspace=agent_obj.workspace,
+        custom_threshold=custom_threshold,
+    )
+
+    return AgentRegistryResponse(
+        agents=[AgentInfoResponse(**agent_info)],
+        mode="coding",
+        workspace=agent_obj.workspace,
+    )
+
+
+@router.get("/workspace/validate")
+async def validate_coding_workspace(
+    workspace: str = Query(..., description="Coding workspace directory."),
+) -> CodingWorkspaceValidateResponse:
+    try:
+        resolved = agent_manager.validate_workspace(workspace)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return CodingWorkspaceValidateResponse(workspace=resolved)
+
+
+@router.get("/workspace/browse")
+async def browse_coding_workspace(
+    path: str | None = Query(None, description="Directory to list."),
+) -> CodingWorkspaceBrowseResponse:
+    return await asyncio.to_thread(_browse_coding_workspace, path)
+
+
+def _browse_coding_workspace(path: str | None) -> CodingWorkspaceBrowseResponse:
+    root = Path(path).expanduser().resolve() if path else Path.home().resolve()
+    if not root.is_dir():
+        raise HTTPException(status_code=422, detail=f"Not a directory: {root}")
+
+    directories: list[CodingWorkspaceFolder] = []
+    try:
+        entries = sorted(root.iterdir(), key=lambda entry: entry.name.lower())
+    except OSError as exc:
+        raise HTTPException(
+            status_code=403, detail=f"Cannot read directory: {root}"
+        ) from exc
+
+    for entry in entries:
+        if entry.name.startswith("."):
+            continue
+        try:
+            if entry.is_dir():
+                directories.append(
+                    CodingWorkspaceFolder(name=entry.name, path=str(entry.resolve()))
+                )
+        except OSError:
+            continue
+
+    return CodingWorkspaceBrowseResponse(
+        path=str(root),
+        parent=str(root.parent) if root.parent != root else None,
+        directories=directories,
+    )
+
+
+@router.get("/sessions")
+async def list_agent_sessions(
+    db: DbSession,
+    before: str | None = Query(
+        None,
+        description="Opaque pagination cursor — return sessions older than this.",
+    ),
+    limit: int = Query(20, ge=1, le=100),
+    workspace: str | None = Query(None),
+) -> SessionPageResponse:
+    """List agent sessions newest-first with an opaque cursor.
+
+    Pass ``before=<next_cursor>`` from the previous
+    page) to retrieve the next batch.  Omit to start from the newest.
+    """
+    try:
+        sessions, next_cursor, has_more = await list_sessions_page(
+            db,
+            before=before,
+            limit=limit,
+            workspace=workspace,
+        )
+    except ValueError:
+        raise HTTPException(
+            status_code=422,
+            detail="Invalid 'before' cursor.",
+        )
+
+    running_session_ids = stream_store.running_session_ids()
+    # One query for the whole page rather than a lookup per row.
+    awaiting = await question_service.sessions_awaiting_input(db)
+    return SessionPageResponse(
+        data=[
+            SessionResponse.model_validate(s).model_copy(
+                update={
+                    "running": str(s.id) in running_session_ids,
+                    "needs_input": s.id in awaiting,
+                }
+            )
+            for s in sessions
+        ],
+        next_cursor=next_cursor,
+        has_more=has_more,
+    )
+
+
+@router.post("/sessions/resolve")
+async def resolve_agent_session(
+    body: AgentSessionResolveRequest, db: DbSession
+) -> AgentSessionResolveResponse:
+    """Return the newest matching top-level session, creating one if absent."""
+    model, thinking_level = await validate_model_settings(
+        body.model,
+        body.thinking_level,
+        is_registered_model_id=is_registered_model_id,
+    )
+
+    workspace = body.workspace
+    if body.worktree_from or body.worktree_name or body.worktree_branch:
+        if not body.worktree_from or not body.worktree_name:
+            raise HTTPException(
+                status_code=422,
+                detail="worktree_from and worktree_name are required for worktree sessions.",
+            )
+        created_worktree = await create_coding_workspace_worktree(
+            WorktreeCreateRequest(
+                source_workspace=body.worktree_from,
+                name=body.worktree_name,
+                branch=body.worktree_branch,
+            )
+        )
+        workspace = created_worktree.directory
+        # A worktree request always represents a new coding workspace/session,
+        # even if the caller omitted create=true.
+        body.create = True
+    else:
+        workspace = _validate_workspace_or_422(workspace)
+
+    async with db.begin():
+        session = None
+        if not body.create:
+            session = await get_latest_top_level_session(
+                db, mode="coding", workspace=workspace
+            )
+        created = session is None
+        if session is None:
+            session = ChatSession(
+                workspace=workspace,
+                model=model,
+                thinking_level=thinking_level,
+            )
+            db.add(session)
+        if workspace:
+            managed_source = await find_managed_worktree_source(Path(workspace))
+            if managed_source:
+                await upsert_coding_workspace(
+                    db,
+                    path=managed_source,
+                    kind="repo",
+                    hidden=False,
+                )
+                await upsert_coding_workspace(
+                    db,
+                    path=workspace,
+                    kind="worktree",
+                    source_path=managed_source,
+                    managed=True,
+                    hidden=False,
+                )
+            else:
+                await upsert_coding_workspace(
+                    db, path=workspace, kind="repo", hidden=False
+                )
+        await db.flush()
+        await db.refresh(session)
+
+    data = SessionResponse.model_validate(session).model_dump()
+    return AgentSessionResolveResponse(**data, created=created)
+
+
+@router.patch("/workspace/visibility")
+async def update_coding_workspace_visibility(
+    body: AgentWorkspaceVisibilityRequest, db: DbSession
+) -> CodingWorkspaceVisibilityResponse:
+    # Hiding tolerates a workspace whose directory is gone (deleted or
+    # unmounted outside the app) so a stale sidebar entry stays removable;
+    # the restricted-root rule still applies. Unhiding requires a real
+    # directory. Both go through the single validation authority.
+    workspace = _validate_workspace_or_422(
+        body.workspace, require_exists=not body.hidden
+    )
+    async with db.begin():
+        if body.hidden:
+            await hide_coding_workspace(db, workspace)
+        else:
+            await upsert_coding_workspace(db, path=workspace, kind="repo", hidden=False)
+    return CodingWorkspaceVisibilityResponse(workspace=workspace, hidden=body.hidden)
+
+
+@router.get("/workspace/tree")
+async def list_coding_workspace_tree(db: DbSession) -> CodingWorkspaceTreeResponse:
+    rows = await list_visible_coding_workspaces(db)
+    repositories: dict[str, CodingWorkspaceTreeRepository] = {}
+    pending_worktrees = []
+    for row in rows:
+        if row.kind == "worktree":
+            pending_worktrees.append(row)
+            continue
+        repositories[row.path] = CodingWorkspaceTreeRepository(
+            path=row.path,
+            name=row.name or Path(row.path).name,
+            worktrees=[],
+        )
+    for row in pending_worktrees:
+        source = row.source_path
+        if not source:
+            continue
+        if source not in repositories:
+            repositories[source] = CodingWorkspaceTreeRepository(
+                path=source,
+                name=Path(source).name,
+                worktrees=[],
+            )
+        repositories[source].worktrees.append(
+            CodingWorkspaceTreeWorktree(
+                path=row.path,
+                name=row.name or Path(row.path).name,
+                managed=row.managed,
+            )
+        )
+    return CodingWorkspaceTreeResponse(repositories=list(repositories.values()))
+
+
+@router.get("/sessions/{session_id}")
+async def get_agent_session_detail(
+    session_id: UUID, db: DbSession
+) -> SessionDetailResponse:
+    """Return one agent session with its most recent messages."""
+    history = await get_agent_history(db, session_id)
+    if history is None:
+        raise HTTPException(status_code=404, detail="Session not found.")
+
+    lead_resp = SessionResponse.model_validate(history.root_session).model_copy(
+        update={
+            "running": str(history.root_session.id)
+            in stream_store.running_session_ids()
+        }
+    )
+    return SessionDetailResponse(
+        **lead_resp.model_dump(),
+        messages=[_message_response(m) for m in history.lead_messages],
+    )
+
+
+@router.patch("/sessions/{session_id}")
+async def update_agent_session(
+    session_id: UUID, body: AgentSessionUpdateRequest, db: DbSession
+) -> SessionResponse:
+    """Update editable metadata for a top-level agent session."""
+    title = body.title.strip()
+    if not title:
+        raise HTTPException(status_code=422, detail="Title cannot be empty.")
+    session = await update_session_title(db, session_id, title)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found.")
+    return SessionResponse.model_validate(session).model_copy(
+        update={"running": str(session.id) in stream_store.running_session_ids()}
+    )
+
+
+@router.delete("/sessions/{session_id}", status_code=204)
+async def delete_agent_session(session_id: UUID, db: DbSession) -> None:
+    """Delete an agent session, all its messages, and uploaded files."""
+    found = await delete_session(db, session_id)
+    if not found:
+        raise HTTPException(status_code=404, detail="Session not found.")
+
+
+def _parse_cursor(raw: str, field: str) -> datetime:
+    """Parse an ISO 8601 history cursor, rejecting malformed input with 422.
+
+    Naive values are assumed UTC: the ``created_at`` column is a ``TZDateTime``
+    that raises on a tz-naive value, so a cursor without an offset would
+    otherwise surface to the client as a 500 rather than a validation error.
+    Cursors echoed back from a previous response always carry an offset; this
+    only guards hand-built requests.
+    """
+    try:
+        parsed = datetime.fromisoformat(raw)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422, detail=f"Invalid {field} cursor: {raw}"
+        ) from exc
+    return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=UTC)
+
+
+def _parse_since_cursor(raw: str) -> UUID | datetime:
+    """Parse the current uuid7 delta cursor or a legacy ISO timestamp."""
+    try:
+        return UUID(raw)
+    except ValueError:
+        return _parse_cursor(raw, "since")
+
+
+def _parse_before_cursor(
+    raw: str,
+) -> tuple[int | None, datetime | None, UUID | None]:
+    """Parse an opaque ``before`` cursor.
+
+    Current form is ``"<seq>|<uuid>"``. Two legacy forms are still accepted —
+    ``"<created_at-iso>|<uuid>"`` and a bare ISO timestamp — because clients
+    treat the cursor as an opaque string and may echo back one persisted
+    before the seq remodel. Returns ``(seq, legacy_created_at, id)`` with
+    exactly one of the first two set.
+    """
+    head, _, raw_id = raw.partition("|")
+    message_id: UUID | None = None
+    if raw_id:
+        try:
+            message_id = UUID(raw_id)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=422, detail=f"Invalid before cursor: {raw}"
+            ) from exc
+    try:
+        return int(head), None, message_id
+    except ValueError:
+        return None, _parse_cursor(head, "before"), message_id
+
+
+@router.get("/{session_id}/history")
+async def agent_history(
+    db: DbSession,
+    agent: AgentSessionDep,
+    session_id: UUID,
+    before: str | None = Query(default=None),
+    since: str | None = Query(
+        default=None,
+        description="Opaque uuid7 cursor — return only rows created after it.",
+    ),
+) -> AgentHistoryResponse:
+    """Return a page of turn history (cursor-based, newest-first page).
+
+    Pass ``before`` (the opaque ``next_cursor`` from the previous response) to
+    load an older page. The cursor encodes ``"<seq>|<message-id>"``; the id
+    breaks ``seq`` ties. Legacy timestamp cursors persisted by older clients
+    are transparently resolved to their ``(seq, id)`` position.
+
+    Pass ``since`` (the id of the newest-created row the caller already holds)
+    to fetch only what was persisted after it.  That is how the frontend
+    adopts canonical message ids after a turn completes without re-downloading
+    the whole visible page, which exceeds a megabyte on an active session and
+    duplicates content the client already received over SSE.  A delta reports
+    ``has_more=False``/``next_cursor=None`` — it says nothing about older
+    history, so the caller keeps the pagination cursor it already has.
+    """
+    if before is not None and since is not None:
+        raise HTTPException(
+            status_code=422, detail="Pass either 'before' or 'since', not both."
+        )
+
+    if since is not None:
+        return await _agent_history_delta(
+            db, agent, session_id, _parse_since_cursor(since)
+        )
+
+    before_seq: int | None = None
+    before_id: UUID | None = None
+    if before is not None:
+        before_seq, legacy_dt, before_id = _parse_before_cursor(before)
+        if before_seq is None and legacy_dt is not None:
+            resolved = await resolve_legacy_history_cursor(
+                db, session_id, legacy_dt, before_id
+            )
+            if resolved is None:
+                before_seq, before_id = None, None
+                before = None
+            else:
+                before_seq, before_id = resolved
+
+    history = await get_agent_history(
+        db, session_id, before_seq=before_seq, before_id=before_id
+    )
+    if history is None:
+        raise HTTPException(status_code=404, detail="Lead session not found.")
+    if history.root_session.workspace:
+        try:
+            await agent_manager.get_or_start_agent_session(
+                history.root_session.workspace, str(history.root_session.id)
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+    else:
+        _require_agent_session(agent)
+
+    lead_resp = SessionResponse.model_validate(history.root_session).model_copy(
+        update={
+            "running": str(history.root_session.id)
+            in stream_store.running_session_ids()
+        }
+    )
+    lead_cost, lead_completion = await session_usage_totals(db, history.root_session.id)
+    lead_detail = SessionDetailResponse(
+        **lead_resp.model_dump(),
+        messages=[_message_response(m) for m in history.lead_messages],
+        estimated_cost_usd=lead_cost,
+        completion_tokens=lead_completion,
+    )
+
+    active_statuses = stream_store.get_agent_statuses(str(history.root_session.id))
+    member_histories = []
+    for member in history.members:
+        member_cost, member_completion = await session_usage_totals(
+            db, member.session.id
+        )
+        member_histories.append(
+            AgentHistoryMember(
+                name=member.session.agent_name or str(member.session.id),
+                session_id=str(member.session.id),
+                messages=[_message_response(m) for m in member.messages],
+                running=active_statuses.get(
+                    member.session.agent_name or str(member.session.id)
+                )
+                == "working",
+                estimated_cost_usd=member_cost,
+                completion_tokens=member_completion,
+            )
+        )
+
+    next_cursor = (
+        f"{history.next_cursor}|{history.next_cursor_id}"
+        if history.next_cursor is not None and history.next_cursor_id
+        else None
+    )
+    # Only a first page can be a cold load, and only a cold load needs to learn
+    # about an open question — paging backwards through history never does.
+    pending_row = (
+        None
+        if before is not None
+        else await question_service.get_pending_question(db, session_id)
+    )
+
+    return AgentHistoryResponse(
+        lead=lead_detail,
+        members=member_histories,
+        has_more=history.has_more,
+        next_cursor=next_cursor,
+        pending_question=(
+            PendingQuestionResponse.from_row(pending_row) if pending_row else None
+        ),
+    )
+
+
+async def _agent_history_delta(
+    db: DbSession,
+    agent: AgentSessionDep,
+    session_id: UUID,
+    since: UUID | datetime,
+) -> AgentHistoryResponse:
+    """Serve ``GET /{sid}/history?since=`` — messages newer than the cursor.
+
+    Shares the agent-readiness handling of the full-page branch so a coding
+    session still gets its agent started, keeping the two paths interchangeable
+    from the caller's point of view.
+    """
+    since_id = (
+        await resolve_legacy_delta_cursor(db, session_id, since)
+        if isinstance(since, datetime)
+        else since
+    )
+    delta = await get_agent_history_since(db, session_id, since_id=since_id)
+    if delta is None:
+        raise HTTPException(status_code=404, detail="Lead session not found.")
+    if delta.root_session.workspace:
+        try:
+            await agent_manager.get_or_start_agent_session(
+                delta.root_session.workspace, str(delta.root_session.id)
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+    else:
+        _require_agent_session(agent)
+
+    lead_resp = SessionResponse.model_validate(delta.root_session).model_copy(
+        update={
+            "running": str(delta.root_session.id) in stream_store.running_session_ids()
+        }
+    )
+    lead_cost, lead_completion = await session_usage_totals(db, delta.root_session.id)
+    active_statuses = stream_store.get_agent_statuses(str(delta.root_session.id))
+    member_histories = []
+    for member in delta.members:
+        member_cost, member_completion = await session_usage_totals(
+            db, member.session.id
+        )
+        member_histories.append(
+            AgentHistoryMember(
+                name=member.session.agent_name or str(member.session.id),
+                session_id=str(member.session.id),
+                messages=[_message_response(m) for m in member.messages],
+                running=active_statuses.get(
+                    member.session.agent_name or str(member.session.id)
+                )
+                == "working",
+                estimated_cost_usd=member_cost,
+                completion_tokens=member_completion,
+            )
+        )
+    return AgentHistoryResponse(
+        lead=SessionDetailResponse(
+            **lead_resp.model_dump(),
+            messages=[_message_response(m) for m in delta.lead_messages],
+            estimated_cost_usd=lead_cost,
+            completion_tokens=lead_completion,
+        ),
+        members=member_histories,
+        # A delta carries no information about older history.
+        has_more=False,
+        next_cursor=None,
+        truncated=delta.truncated,
+    )

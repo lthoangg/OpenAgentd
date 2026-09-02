@@ -131,6 +131,13 @@ export async function updateMultimodalSettings(
 
 // ── /settings/providers ──────────────────────────────────────────────────────
 
+export type ModelCostInfo = {
+  input?: number | null
+  output?: number | null
+  cache_read?: number | null
+  cache_write?: number | null
+}
+
 export type ProviderInfo = {
   id: string
   label: string
@@ -156,6 +163,7 @@ export type ProviderInfo = {
   is_disconnected: boolean
   supports_fast_mode: boolean
   public_access: boolean
+  model_costs?: Record<string, ModelCostInfo>
 }
 
 export type ProvidersListBody = {
@@ -172,6 +180,7 @@ export type ProviderModelsResponse = {
   provider: string
   models: string[]
   source: 'provider'
+  model_costs?: Record<string, ModelCostInfo>
 }
 
 export type ProviderUsageWindow = {

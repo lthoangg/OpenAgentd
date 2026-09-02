@@ -10,11 +10,10 @@ Usage:
 
 import argparse
 import asyncio
-import json
 
 from app.core.config import settings
 from app.agent.providers.openai import OpenAIProvider
-from app.agent.schemas.chat import HumanMessage, AssistantMessage, ToolMessage
+from app.agent.schemas.chat import HumanMessage
 
 
 # Simple test tools

@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import asyncio
+import os
+import stat
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -8,6 +11,7 @@ import pytest
 from app.agent.errors import ToolArgumentError, ToolExecutionError
 from app.agent.denied_paths import (
     DeniedPathsConfig as SandboxConfig,
+    get_denied_paths,
     set_denied_paths as set_sandbox,
 )
 from app.agent.tools.builtin.filesystem import patch_file
@@ -283,7 +287,7 @@ async def test_patch_handles_trimmed_line_context_matching(sandbox_workspace):
     assert "Patch applied successfully" in result
     assert (sandbox_workspace / "spaces.txt").read_text(
         encoding="utf-8"
-    ) == "def fn():\n    return 100\n"
+    ) == "def fn():   \n    return 100\n"
 
 
 @pytest.mark.asyncio
@@ -440,6 +444,74 @@ async def test_concurrent_patches_to_one_file_do_not_lose_updates(sandbox_worksp
     )
 
     assert target.read_text(encoding="utf-8") == "ALPHA\nBETA\n"
+
+
+@pytest.mark.asyncio
+async def test_cancelled_lock_acquisition_releases_already_held_locks(
+    sandbox_workspace,
+):
+    """Interrupting a patch while it waits on its second lock must not leak the first.
+
+    Per-path locks are acquired in sorted order. If the turn is cancelled
+    while waiting on ``b.txt``, ``a.txt`` must be released, otherwise every
+    later envelope touching ``a.txt`` hangs forever.
+    """
+    from app.agent.tools.builtin.filesystem import patch as patch_module
+
+    (sandbox_workspace / "a.txt").write_text("a\n", encoding="utf-8")
+    (sandbox_workspace / "b.txt").write_text("b\n", encoding="utf-8")
+    b_path = get_denied_paths().validate_path("b.txt")
+
+    # Hold b.txt externally so the envelope blocks after taking a.txt.
+    held = patch_module._path_locks.setdefault(b_path, asyncio.Lock())
+    await held.acquire()
+    envelope = """*** Begin Patch
+*** Update File: a.txt
+@@
+-a
++A
+*** Update File: b.txt
+@@
+-b
++B
+*** End Patch"""
+    task = asyncio.create_task(patch_file.arun(patch_text=envelope))
+    await asyncio.sleep(0)  # let the task take a.txt and park on b.txt
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    held.release()
+
+    result = await asyncio.wait_for(
+        patch_file.arun(
+            patch_text="""*** Begin Patch
+*** Update File: a.txt
+@@
+-a
++A
+*** End Patch"""
+        ),
+        timeout=2,
+    )
+    assert "Patch applied successfully" in result
+
+
+@pytest.mark.asyncio
+async def test_path_locks_are_pruned_after_use(sandbox_workspace):
+    """The per-path lock table must not grow for the daemon's lifetime."""
+    from app.agent.tools.builtin.filesystem import patch as patch_module
+
+    (sandbox_workspace / "pruned.txt").write_text("x\n", encoding="utf-8")
+    await patch_file.arun(
+        patch_text="""*** Begin Patch
+*** Update File: pruned.txt
+@@
+-x
++y
+*** End Patch"""
+    )
+    pruned_path = get_denied_paths().validate_path("pruned.txt")
+    assert pruned_path not in patch_module._path_locks
 
 
 @pytest.mark.asyncio
@@ -828,3 +900,298 @@ def main(arg):
     assert "Could not find patch context in main.py" in err_str
     assert "The patch was looking for this block:" in err_str
     assert "def main(arg):" in err_str
+
+
+@pytest.mark.asyncio
+async def test_patch_applies_repeated_updates_sequentially(sandbox_workspace):
+    target = sandbox_workspace / "repeated.txt"
+    target.write_text("a\nb\n", encoding="utf-8")
+
+    await patch_file.arun(
+        patch_text="""*** Begin Patch
+*** Update File: repeated.txt
+@@
+-a
++A
+*** Update File: repeated.txt
+@@
+-b
++B
+*** End Patch"""
+    )
+
+    assert target.read_text(encoding="utf-8") == "A\nB\n"
+
+
+@pytest.mark.asyncio
+async def test_patch_allows_delete_then_add_and_add_then_update(
+    sandbox_workspace,
+):
+    replaced = sandbox_workspace / "replaced.txt"
+    replaced.write_text("old\n", encoding="utf-8")
+
+    await patch_file.arun(
+        patch_text="""*** Begin Patch
+*** Delete File: replaced.txt
+*** Add File: replaced.txt
++new
+*** Add File: created.txt
++first
+*** Update File: created.txt
+@@
+-first
++final
+*** End Patch"""
+    )
+
+    assert replaced.read_text(encoding="utf-8") == "new\n"
+    assert (sandbox_workspace / "created.txt").read_text(encoding="utf-8") == "final\n"
+
+
+@pytest.mark.asyncio
+async def test_patch_rejects_add_collision(sandbox_workspace):
+    target = sandbox_workspace / "existing.txt"
+    target.write_text("keep\n", encoding="utf-8")
+
+    with pytest.raises(ToolExecutionError, match="already exists"):
+        await patch_file.arun(
+            patch_text="""*** Begin Patch
+*** Add File: existing.txt
++replace
+*** End Patch"""
+        )
+
+    assert target.read_text(encoding="utf-8") == "keep\n"
+
+
+@pytest.mark.asyncio
+async def test_patch_rejects_move_collision(sandbox_workspace):
+    source = sandbox_workspace / "source.txt"
+    destination = sandbox_workspace / "destination.txt"
+    source.write_text("source\n", encoding="utf-8")
+    destination.write_text("keep\n", encoding="utf-8")
+
+    with pytest.raises(ToolExecutionError, match="already exists"):
+        await patch_file.arun(
+            patch_text="""*** Begin Patch
+*** Update File: source.txt
+*** Move to: destination.txt
+*** End Patch"""
+        )
+
+    assert source.read_text(encoding="utf-8") == "source\n"
+    assert destination.read_text(encoding="utf-8") == "keep\n"
+
+
+@pytest.mark.asyncio
+async def test_patch_rejects_same_path_move_without_content_change(sandbox_workspace):
+    target = sandbox_workspace / "same.txt"
+    target.write_text("keep\n", encoding="utf-8")
+
+    with pytest.raises(ToolExecutionError, match="same path"):
+        await patch_file.arun(
+            patch_text="""*** Begin Patch
+*** Update File: same.txt
+*** Move to: same.txt
+*** End Patch"""
+        )
+
+
+@pytest.mark.asyncio
+async def test_patch_context_locator_scopes_following_hunk(sandbox_workspace):
+    target = sandbox_workspace / "scoped.py"
+    target.write_text(
+        "class First:\n    value = 1\n\nclass Second:\n    value = 1\n",
+        encoding="utf-8",
+    )
+
+    await patch_file.arun(
+        patch_text="""*** Begin Patch
+*** Update File: scoped.py
+@@
+class Second:
+@@
+-    value = 1
++    value = 2
+*** End Patch"""
+    )
+
+    assert target.read_text(encoding="utf-8") == (
+        "class First:\n    value = 1\n\nclass Second:\n    value = 2\n"
+    )
+
+
+@pytest.mark.asyncio
+async def test_patch_supports_context_headers_and_cursor(sandbox_workspace):
+    target = sandbox_workspace / "context.py"
+    target.write_text(
+        "class Foo:\n    def first(self):\n        return 1\n"
+        "    def second(self):\n        return 1\n",
+        encoding="utf-8",
+    )
+
+    await patch_file.arun(
+        patch_text="""*** Begin Patch
+*** Update File: context.py
+@@ class Foo
+@@     def second(self):
+-        return 1
++        return 2
+*** End Patch"""
+    )
+
+    assert "def first(self):\n        return 1" in target.read_text(encoding="utf-8")
+    assert "def second(self):\n        return 2" in target.read_text(encoding="utf-8")
+
+
+@pytest.mark.asyncio
+async def test_patch_rejects_nonuniform_indentation_fallback(sandbox_workspace):
+    target = sandbox_workspace / "indent.py"
+    original = "    if foo:\n  do_something()\n"
+    target.write_text(original, encoding="utf-8")
+
+    with pytest.raises(ToolExecutionError):
+        await patch_file.arun(
+            patch_text="""*** Begin Patch
+*** Update File: indent.py
+@@
+-if foo:
+-do_something()
++if bar:
++do_something_else()
+*** End Patch"""
+        )
+
+    assert target.read_text(encoding="utf-8") == original
+
+
+@pytest.mark.asyncio
+async def test_patch_preserves_trailing_whitespace_in_fuzzy_context(
+    sandbox_workspace,
+):
+    target = sandbox_workspace / "markdown.md"
+    target.write_bytes(b"title  \nbody  \n")
+
+    await patch_file.arun(
+        patch_text="""*** Begin Patch
+*** Update File: markdown.md
+@@
+ title
+-body
++changed
+*** End Patch"""
+    )
+
+    assert target.read_bytes() == b"title  \nchanged\n"
+
+
+@pytest.mark.asyncio
+async def test_patch_preserves_mode_on_update_and_move(sandbox_workspace):
+    source = sandbox_workspace / "executable.sh"
+    source.write_text("echo old\n", encoding="utf-8")
+    source.chmod(0o755)
+
+    await patch_file.arun(
+        patch_text="""*** Begin Patch
+*** Update File: executable.sh
+*** Move to: moved.sh
+@@
+-echo old
++echo new
+*** End Patch"""
+    )
+
+    moved = sandbox_workspace / "moved.sh"
+    assert stat.S_IMODE(moved.stat().st_mode) == 0o755
+
+
+@pytest.mark.asyncio
+async def test_patch_preserves_0644_mode_on_update(sandbox_workspace):
+    target = sandbox_workspace / "readable.txt"
+    target.write_text("old\n", encoding="utf-8")
+    target.chmod(0o644)
+
+    await patch_file.arun(
+        patch_text="""*** Begin Patch
+*** Update File: readable.txt
+@@
+-old
++new
+*** End Patch"""
+    )
+
+    assert stat.S_IMODE(target.stat().st_mode) == 0o644
+
+
+@pytest.mark.asyncio
+async def test_patch_add_uses_explicit_default_mode(sandbox_workspace):
+    await patch_file.arun(
+        patch_text="""*** Begin Patch
+*** Add File: new.txt
++content
+*** End Patch"""
+    )
+
+    assert stat.S_IMODE((sandbox_workspace / "new.txt").stat().st_mode) == 0o644
+
+
+@pytest.mark.asyncio
+async def test_patch_rollback_removes_prior_commit_on_later_failure(
+    sandbox_workspace,
+):
+    first = sandbox_workspace / "first.txt"
+    second = sandbox_workspace / "second.txt"
+    real_replace = os.replace
+
+    def fail_second(source, destination):
+        if Path(destination) == second:
+            raise OSError("disk full")
+        real_replace(source, destination)
+
+    with patch(
+        "app.agent.tools.builtin.filesystem.patch.os.replace",
+        side_effect=fail_second,
+    ):
+        with pytest.raises(ToolExecutionError):
+            await patch_file.arun(
+                patch_text="""*** Begin Patch
+*** Add File: first.txt
++first
+*** Add File: second.txt
++second
+*** End Patch"""
+            )
+
+    assert not first.exists()
+    assert not second.exists()
+
+
+@pytest.mark.asyncio
+async def test_patch_rejects_external_change_before_commit(
+    sandbox_workspace, monkeypatch
+):
+    target = sandbox_workspace / "concurrent.txt"
+    target.write_text("old\n", encoding="utf-8")
+    original_read_bytes = Path.read_bytes
+    reads = 0
+
+    def change_after_preflight(path):
+        nonlocal reads
+        data = original_read_bytes(path)
+        reads += 1
+        if path == target and reads == 1:
+            target.write_text("external\n", encoding="utf-8")
+        return data
+
+    monkeypatch.setattr(Path, "read_bytes", change_after_preflight)
+    with pytest.raises(ToolExecutionError, match="changed during patch"):
+        await patch_file.arun(
+            patch_text="""*** Begin Patch
+*** Update File: concurrent.txt
+@@
+-old
++new
+*** End Patch"""
+        )
+
+    assert target.read_text(encoding="utf-8") == "external\n"

@@ -19,8 +19,8 @@ from app.api.schemas.sessions import (
     SessionListResponse,
     SessionPageResponse,
     SessionResponse,
-    TeamSessionResolveRequest,
-    TeamSessionResolveResponse,
+    AgentSessionResolveRequest,
+    AgentSessionResolveResponse,
 )
 from app.api.schemas.settings import DeniedPathsSettingsBody, SandboxSettingsBody
 
@@ -37,8 +37,8 @@ __all__ = [
     "SessionListResponse",
     "SessionPageResponse",
     "SessionResponse",
-    "TeamSessionResolveRequest",
-    "TeamSessionResolveResponse",
+    "AgentSessionResolveRequest",
+    "AgentSessionResolveResponse",
     # Settings
     "DeniedPathsSettingsBody",
     "SandboxSettingsBody",

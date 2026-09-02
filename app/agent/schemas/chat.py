@@ -313,5 +313,5 @@ class ChatCompletionChunk(BaseModel):
     model: str
     choices: list[ChatCompletionChunkChoice]
     usage: Usage | None = None
-    # Set by SubagentStreamingHook to identify which agent produced this chunk
+    # Set by the streaming hook to identify which agent produced this chunk
     agent_name: str | None = None

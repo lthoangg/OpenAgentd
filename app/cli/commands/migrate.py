@@ -27,6 +27,8 @@ _HERMES_CONTEXT_FILES: tuple[str, ...] = (
     ".cursorrules",
 )
 
+_CANONICAL_AGENT_NAME = "code"
+
 
 @dataclass(slots=True)
 class MigrationResult:
@@ -42,14 +44,10 @@ def _migrate_agent(
     source_label: str,
     missing_msg: str,
     description: str,
-    name: str,
     model: str,
     force: bool = False,
 ) -> MigrationResult:
-    """Convert source directory prompt/context files into one lead agent."""
-    if Path(name).name != name:
-        raise ValueError("Agent name must be a filename, not a path")
-
+    """Convert source directory prompt/context files into one agent."""
     source_dir = source_dir.expanduser().resolve()
     if not source_dir.is_dir():
         raise ValueError(f"{source_label} does not exist: {source_dir}")
@@ -71,7 +69,7 @@ def _migrate_agent(
         raise ValueError(f"No {missing_msg} found in {source_dir}: {expected}")
 
     agents_dir = config_dir / "agents"
-    target = agents_dir / f"{name}.md"
+    target = agents_dir / f"{_CANONICAL_AGENT_NAME}.md"
     if target.exists() and not force:
         raise FileExistsError(
             f"Agent already exists: {target}. Pass --force to replace it."
@@ -79,7 +77,7 @@ def _migrate_agent(
 
     frontmatter = yaml.safe_dump(
         {
-            "name": name,
+            "name": _CANONICAL_AGENT_NAME,
             "role": "lead",
             "description": description,
             "model": model,
@@ -97,11 +95,10 @@ def migrate_openclaw_agent(
     source_dir: Path,
     config_dir: Path,
     *,
-    name: str,
     model: str,
     force: bool = False,
 ) -> MigrationResult:
-    """Convert OpenClaw workspace prompt files into one lead agent."""
+    """Convert OpenClaw workspace prompt files into one agent."""
     return _migrate_agent(
         source_dir,
         config_dir,
@@ -109,7 +106,6 @@ def migrate_openclaw_agent(
         source_label="OpenClaw workspace",
         missing_msg="OpenClaw prompt files",
         description="Migrated from OpenClaw/Hermes workspace prompt files.",
-        name=name,
         model=model,
         force=force,
     )
@@ -119,11 +115,10 @@ def migrate_hermes_agent(
     source_dir: Path,
     config_dir: Path,
     *,
-    name: str,
     model: str,
     force: bool = False,
 ) -> MigrationResult:
-    """Convert Hermes identity/context files into one lead agent."""
+    """Convert Hermes identity/context files into one agent."""
     return _migrate_agent(
         source_dir,
         config_dir,
@@ -131,7 +126,6 @@ def migrate_hermes_agent(
         source_label="Hermes home or project directory",
         missing_msg="Hermes context files",
         description="Migrated from Hermes identity/context files.",
-        name=name,
         model=model,
         force=force,
     )
@@ -148,7 +142,6 @@ def cmd_migrate(args: argparse.Namespace) -> None:
         result = migrate_openclaw_agent(
             source_dir,
             config_dir,
-            name=args.name or args.source,
             model=args.model,
             force=args.force,
         )
@@ -156,7 +149,6 @@ def cmd_migrate(args: argparse.Namespace) -> None:
         result = migrate_hermes_agent(
             source_dir,
             config_dir,
-            name=args.name or args.source,
             model=args.model,
             force=args.force,
         )

@@ -13,12 +13,12 @@
 import { describe, it, expect, afterEach, mock } from 'bun:test'
 import { render, screen, cleanup } from '@testing-library/react'
 import { AgentView } from '@/components/AgentView'
-import { useTeamStore } from '@/stores/useTeamStore'
+import { useAgentStore } from '@/stores/useAgentStore'
 import type { ContentBlock } from '@/api/types'
 
 afterEach(() => {
   cleanup()
-  useTeamStore.setState({ sessionId: null, _pendingMessages: [] })
+  useAgentStore.setState({ sessionId: null, _pendingMessages: [] })
 })
 
 // Suppress lucide SVG noise in Happy DOM
@@ -178,62 +178,3 @@ describe('AgentView — compaction block rendering', () => {
 })
 
 // ---------------------------------------------------------------------------
-// AgentPane uses the same BlockRenderer pattern — test it too
-// ---------------------------------------------------------------------------
-
-import { AgentPane } from '@/components/AgentPane'
-import type { AgentStream } from '@/stores/useTeamStore'
-
-function makeStream(overrides: Partial<AgentStream> = {}): AgentStream {
-  return {
-    blocks: [],
-    currentBlocks: [],
-    currentText: '',
-    currentThinking: '',
-    status: 'idle',
-    usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0, cachedTokens: 0 },
-    model: null,
-    lastError: null,
-    ...overrides,
-  }
-}
-
-function renderPane(stream: AgentStream) {
-  dividerCalls = []
-  return render(<AgentPane name="researcher" stream={stream} isLead={false} />)
-}
-
-describe('AgentPane — compaction block rendering', () => {
-  it('passes isStreaming=true to CompactionDivider for a live compacting block', () => {
-    renderPane(
-      makeStream({
-        blocks: [],
-        currentBlocks: [makeCompactionBlock('c1', 'Streaming…', 'compacting')],
-        status: 'working',
-      }),
-    )
-    expect(dividerCalls[0].isStreaming).toBe(true)
-  })
-
-  it('passes isStreaming=true to CompactionDivider for a compacting block in blocks while working', () => {
-    renderPane(
-      makeStream({
-        blocks: [makeCompactionBlock('c1', 'Streaming in blocks…', 'compacting')],
-        currentBlocks: [],
-        status: 'working',
-      }),
-    )
-    expect(dividerCalls[0].isStreaming).toBe(true)
-  })
-
-  it('passes isStreaming=false to CompactionDivider for a finalized compacted block', () => {
-    renderPane(
-      makeStream({
-        blocks: [makeCompactionBlock('c1', 'Done', 'compacted')],
-        currentBlocks: [],
-        status: 'idle',
-      }),
-    )
-    expect(dividerCalls[0].isStreaming).toBe(false)
-  })
-})

@@ -1,12 +1,9 @@
 """StreamPublisherHook — publishes agent events to the shared stream store.
 
 Reuses the same stream_store.push_event() / mark_done() infrastructure as the
-single-agent chat route, so the team SSE stream is identical in shape to the
-single-agent stream.  The frontend can subscribe to GET /team/stream/{session_id}
-and receive exactly the same event types it already handles.
-
-All events carry an ``agent`` field so the frontend can distinguish who is
-speaking when multiple members are active simultaneously.
+single-agent chat route. The frontend subscribes to
+GET /agent/{session_id}/stream and receives the same event types it already
+handles.
 """
 
 from __future__ import annotations
@@ -40,15 +37,12 @@ if TYPE_CHECKING:
 class StreamPublisherHook(BaseAgentHook):
     """Publishes every agent event to the stream store via stream_store.push_event().
 
-    Designed for team members: each member gets its own instance bound to the
-    shared lead session_id so all agents write to the same stream key,
-    and the frontend receives a unified event feed tagged by agent name.
-
-    ``mark_done`` is intentionally NOT called here — the team coordinator
-    (AgentTeam) calls it once after all members are idle, not per-member.
+    Publishes events for one agent session. ``mark_done`` is intentionally not
+    called here; the session coordinator marks the stream complete after the
+    turn finishes.
 
     Args:
-        session_id: The stream key suffix (team lead's session_id).
+        session_id: The stream key suffix for the agent session.
         agent_name: Name of the agent this hook is attached to.
         publish_reasoning: When false, suppress live ``thinking`` events while
             still allowing reasoning content to be assembled and persisted.

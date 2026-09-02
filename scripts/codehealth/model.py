@@ -16,7 +16,7 @@ class FileReport:
     """Per-file metrics used for god-file ranking and dependency mapping."""
 
     path: str
-    """Repo-relative POSIX path, e.g. ``app/agent/mode/team/team.py``."""
+    """Repo-relative POSIX path, e.g. ``app/agent/session.py``."""
 
     language: str
     """``python`` or ``typescript``."""

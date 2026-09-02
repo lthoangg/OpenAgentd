@@ -17,7 +17,7 @@ that ``openagentd = "app.cli:main"`` and existing test imports keep working.
 Re-exports are lazy (PEP 562): every CLI invocation pays this package's
 import cost, and the eager command imports used to pull the whole server
 stack (measured ~1.05s, ~75% of it through the artifact_cleanup →
-api.routes.team chain) before even parsing ``--version``. Command modules
+api.routes.agent chain) before even parsing ``--version``. Command modules
 are now imported on first attribute access or at dispatch time in
 :mod:`app.cli.main`.
 """

@@ -11,7 +11,7 @@ from app.api.schemas.snippets import (
     SnippetRenderResponse,
     SnippetSummary,
 )
-from app.services import team_manager
+from app.services import agent_manager
 from app.services.snippets import discover_snippets
 
 router = APIRouter()
@@ -21,7 +21,7 @@ def _workspace_path(workspace: str | None) -> Path:
     if workspace is None:
         raise HTTPException(status_code=422, detail="Snippet workspace is required.")
     try:
-        resolved = team_manager.validate_workspace(workspace)
+        resolved = agent_manager.validate_workspace(workspace)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     return Path(resolved)

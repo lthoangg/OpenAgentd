@@ -2,7 +2,7 @@
  * ThemeToggle — three-way preference control (System / Light / Dark).
  *
  * Expanded: segmented control of three icon-only buttons. Labels live on
- * `aria-label` and `title` only — same density rule as `ViewToggle`.
+ * `aria-label` and `title` only.
  * Collapsed: single icon button showing the current preference; click cycles
  * `system -> light -> dark -> system`.
  */

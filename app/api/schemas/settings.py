@@ -71,6 +71,20 @@ class LspToolsBody(BaseModel):
     typescript: LspTypescriptToolBody
 
 
+# ── Model Cost ──────────────────────────────────────────────────────────────
+
+
+class ModelCostBody(BaseModel):
+    """Per-token model pricing metadata (in USD per 1M tokens)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    input: float | None = None
+    output: float | None = None
+    cache_read: float | None = None
+    cache_write: float | None = None
+
+
 # ── Providers (Settings → Providers tab) ────────────────────────────────────
 
 
@@ -109,6 +123,8 @@ class ProviderInfo(BaseModel):
     supports_fast_mode: bool = False
     # Whether the provider exposes a limited model set without saved credentials.
     public_access: bool = False
+    # Model pricing metadata keyed by provider-local model ID.
+    model_costs: dict[str, ModelCostBody] = Field(default_factory=dict)
 
 
 class ProvidersListBody(BaseModel):
@@ -133,6 +149,8 @@ class ProviderModelsResponse(BaseModel):
     # registry fetched at runtime rather than bundled as stale static metadata.
     models: list[str] = Field(default_factory=list)
     source: Literal["provider"]
+    # Model pricing metadata keyed by provider-local model ID.
+    model_costs: dict[str, ModelCostBody] = Field(default_factory=dict)
 
 
 class ProviderUsageWindow(BaseModel):

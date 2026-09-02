@@ -67,12 +67,12 @@ mock.module('lucide-react', () => new Proxy({}, { get: () => () => null }))
 
 ```ts
 import { describe, it, expect, beforeEach } from 'bun:test'
-import { useTeamStore } from '@/stores/useTeamStore'
+import { useAgentStore } from '@/stores/useAgentStore'
 
 const INITIAL = { /* full initial state shape */ }
 
 beforeEach(() => {
-  useTeamStore.setState(INITIAL)
+  useAgentStore.setState(INITIAL)
 })
 ```
 
@@ -130,7 +130,7 @@ mock.module('@/utils/LazyMarkdownBlock', () => ({
 // MUST appear before any import that transitively requires it
 const mockPostChat = mock(() => Promise.resolve({ session_id: 'sid' }))
 mock.module('@/api/client', () => ({ postChat: mockPostChat }))
-import { useTeamStore } from '@/stores/useTeamStore' // import AFTER mock
+import { useAgentStore } from '@/stores/useAgentStore' // import AFTER mock
 ```
 
 ### `spyOn()` — per-call observation without full replacement
@@ -172,7 +172,7 @@ const makeCompactionBlock = (id: string, content: string, state: 'compacting' | 
 ### AgentStream factory (for `AgentPane` tests)
 
 ```ts
-import type { AgentStream } from '@/stores/useTeamStore'
+import type { AgentStream } from '@/stores/useAgentStore'
 
 function makeStream(overrides: Partial<AgentStream> = {}): AgentStream {
   return {
@@ -223,18 +223,18 @@ render(<AgentPane name="researcher" stream={makeStream({ status: 'working' })} i
 
 ```ts
 // Seed state
-useTeamStore.setState({
+useAgentStore.setState({
   agentStreams: { lead: makeStream({ blocks: [...] }) },
   agentNames: ['lead'], leadName: 'lead',
 })
 
 // Fire SSE events through the real reducer
-useTeamStore.getState()._handleSSEEvent('summarization_start', { agent: 'lead' })
-useTeamStore.getState()._handleSSEEvent('summarization_content', { agent: 'lead', text: 'Hello ' })
-useTeamStore.getState()._handleSSEEvent('summarization_end', { agent: 'lead', summary: 'Final' })
+useAgentStore.getState()._handleSSEEvent('summarization_start', { agent: 'lead' })
+useAgentStore.getState()._handleSSEEvent('summarization_content', { agent: 'lead', text: 'Hello ' })
+useAgentStore.getState()._handleSSEEvent('summarization_end', { agent: 'lead', summary: 'Final' })
 
 // Read resulting state
-const blocks = useTeamStore.getState().agentStreams.lead.blocks
+const blocks = useAgentStore.getState().agentStreams.lead.blocks
 ```
 
 ---

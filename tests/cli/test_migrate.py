@@ -4,7 +4,45 @@ from pathlib import Path
 
 import pytest
 
-from app.cli.commands.migrate import migrate_hermes_agent, migrate_openclaw_agent
+from app.cli.commands.migrate import (
+    cmd_migrate,
+    migrate_hermes_agent,
+    migrate_openclaw_agent,
+)
+from app.cli import build_parser
+
+
+def test_migrate_cli_uses_canonical_code_agent() -> None:
+    args = build_parser().parse_args(
+        ["transfer", "migrate", "openclaw", "--model", "openai:gpt-5.5"]
+    )
+
+    assert not hasattr(args, "name")
+
+
+def test_migrate_cli_writes_canonical_code_target(tmp_path: Path) -> None:
+    source = tmp_path / "openclaw"
+    source.mkdir()
+    (source / "SOUL.md").write_text("Imported identity", encoding="utf-8")
+    config = tmp_path / "config"
+    args = build_parser().parse_args(
+        [
+            "transfer",
+            "migrate",
+            "openclaw",
+            "--from",
+            str(source),
+            "--config-dir",
+            str(config),
+            "--model",
+            "openai:gpt-5.5",
+        ]
+    )
+
+    cmd_migrate(args)
+
+    assert (config / "agents" / "code.md").is_file()
+    assert not (config / "agents" / "openclaw.md").exists()
 
 
 def test_migrate_openclaw_agent_imports_prompt_files(tmp_path: Path):
@@ -20,14 +58,13 @@ def test_migrate_openclaw_agent_imports_prompt_files(tmp_path: Path):
     result = migrate_openclaw_agent(
         source,
         tmp_path / "config",
-        name="clawd",
         model="openai:gpt-5.5",
     )
 
     assert result.imported_files == ["AGENTS.md", "SOULS.md", "TOOLS.md"]
-    assert result.target == tmp_path / "config" / "agents" / "clawd.md"
+    assert result.target == tmp_path / "config" / "agents" / "code.md"
     content = result.target.read_text(encoding="utf-8")
-    assert "name: clawd" in content
+    assert "name: code" in content
     assert "role: lead" in content
     assert "model: openai:gpt-5.5" in content
     assert "# Imported from AGENTS.md" in content
@@ -41,7 +78,7 @@ def test_migrate_openclaw_agent_refuses_existing_target(tmp_path: Path):
     source = tmp_path / "openclaw-workspace"
     source.mkdir()
     (source / "SOUL.md").write_text("Soul instructions", encoding="utf-8")
-    target = tmp_path / "config" / "agents" / "openclaw.md"
+    target = tmp_path / "config" / "agents" / "code.md"
     target.parent.mkdir(parents=True)
     target.write_text("existing", encoding="utf-8")
 
@@ -49,7 +86,6 @@ def test_migrate_openclaw_agent_refuses_existing_target(tmp_path: Path):
         migrate_openclaw_agent(
             source,
             tmp_path / "config",
-            name="openclaw",
             model="openai:gpt-5.5",
         )
 
@@ -64,21 +100,6 @@ def test_migrate_openclaw_agent_requires_prompt_file(tmp_path: Path):
         migrate_openclaw_agent(
             source,
             tmp_path / "config",
-            name="openclaw",
-            model="openai:gpt-5.5",
-        )
-
-
-def test_migrate_openclaw_agent_rejects_path_name(tmp_path: Path):
-    source = tmp_path / "openclaw-workspace"
-    source.mkdir()
-    (source / "SOUL.md").write_text("Soul instructions", encoding="utf-8")
-
-    with pytest.raises(ValueError, match="filename"):
-        migrate_openclaw_agent(
-            source,
-            tmp_path / "config",
-            name="../openclaw",
             model="openai:gpt-5.5",
         )
 
@@ -93,14 +114,13 @@ def test_migrate_hermes_agent_imports_context_files(tmp_path: Path):
     result = migrate_hermes_agent(
         source,
         tmp_path / "config",
-        name="hermes",
         model="openai:gpt-5.5",
     )
 
     assert result.imported_files == ["SOUL.md", ".hermes.md", "AGENTS.md"]
-    assert result.target == tmp_path / "config" / "agents" / "hermes.md"
+    assert result.target == tmp_path / "config" / "agents" / "code.md"
     content = result.target.read_text(encoding="utf-8")
-    assert "name: hermes" in content
+    assert "name: code" in content
     assert "role: lead" in content
     assert "model: openai:gpt-5.5" in content
     assert "# Imported from SOUL.md" in content
@@ -117,6 +137,5 @@ def test_migrate_hermes_agent_requires_context_file(tmp_path: Path):
         migrate_hermes_agent(
             source,
             tmp_path / "config",
-            name="hermes",
             model="openai:gpt-5.5",
         )

@@ -164,7 +164,7 @@ describe('Coding workspace two-layer file preview', () => {
 
   it('opens file tabs from the plus file search', async () => {
     // The + button delegates to the parent-owned Command Palette via onOpenPalette.
-    // File search, filtering, and tab-opening all happen at the TeamChatView level;
+    // File search, filtering, and tab-opening all happen at the AgentChatView level;
     // CodingWorkspacePanel's responsibility is only to call the callback.
     const user = userEvent.setup()
     const { onOpenPalette } = await renderWorkspacePanel()
@@ -367,7 +367,7 @@ describe('Coding workspace two-layer file preview', () => {
   it('keeps mobile file search inside the workspace panel viewport', async () => {
     // The inline file-search dialog was removed; the + button now opens the
     // parent-owned Command Palette via onOpenPalette.  Palette positioning
-    // (fixed vs absolute) is handled at the TeamChatView level and tested
+    // (fixed vs absolute) is handled at the AgentChatView level and tested
     // in the CommandPalette unit tests.
     const user = userEvent.setup()
     const { onOpenPalette } = await renderWorkspacePanel(mock(() => {}), null, true)

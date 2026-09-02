@@ -44,8 +44,8 @@ def _check(label: str, ok: bool, detail: str = "") -> bool:
 
 def _post_upload(base: str) -> str:
     r = httpx.post(
-        f"{base}/team/chat",
-        data={"message": MESSAGE},
+        f"{base}/agent/chat",
+        data={"message": MESSAGE, "workspace": "."},
         files={"files": (FILENAME, PAYLOAD.encode(), "text/plain")},
         timeout=30,
     )
@@ -54,7 +54,7 @@ def _post_upload(base: str) -> str:
 
 
 def _history_messages(base: str, sid: str) -> list[dict]:
-    r = httpx.get(f"{base}/team/{sid}/history", params={"limit": 1000}, timeout=20)
+    r = httpx.get(f"{base}/agent/{sid}/history", params={"limit": 1000}, timeout=20)
     r.raise_for_status()
     return list(r.json()["lead"]["messages"])
 
@@ -147,7 +147,7 @@ def main() -> int:
     )
     ok &= _check(
         "synthetic visible to LLM context",
-        synthetic is not None and synthetic.exclude_from_context is False,
+        synthetic is not None and synthetic.kind == "note",
     )
     ok &= _check(
         "synthetic links to parent user row",

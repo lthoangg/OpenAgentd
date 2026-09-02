@@ -5,9 +5,7 @@
 import { apiBaseUrl } from '../base-url'
 import { parseDetailOrThrow } from './_shared'
 import type {
-  AgentListResponse,
   AgentDetail,
-  AgentDeleteResponse,
   RegistryResponse,
   SkillListResponse,
   SkillDetail,
@@ -18,41 +16,19 @@ import type {
   SnippetRenderResponse,
 } from '../types'
 
-export async function listAgents(): Promise<AgentListResponse> {
-  const res = await fetch(`${apiBaseUrl()}/agents`)
-  if (!res.ok) await parseDetailOrThrow(res, 'listAgents')
+export async function getCodeAgent(): Promise<AgentDetail> {
+  const res = await fetch(`${apiBaseUrl()}/agents/code`)
+  if (!res.ok) await parseDetailOrThrow(res, 'GET /agents/code')
   return res.json()
 }
 
-export async function getAgent(name: string): Promise<AgentDetail> {
-  const res = await fetch(`${apiBaseUrl()}/agents/${encodeURIComponent(name)}`)
-  if (!res.ok) await parseDetailOrThrow(res, `GET /agents/${name}`)
-  return res.json()
-}
-
-export async function createAgent(name: string, content: string): Promise<AgentDetail> {
-  const res = await fetch(`${apiBaseUrl()}/agents`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name, content }),
-  })
-  if (!res.ok) await parseDetailOrThrow(res, 'POST /agents')
-  return res.json()
-}
-
-export async function updateAgent(name: string, content: string): Promise<AgentDetail> {
-  const res = await fetch(`${apiBaseUrl()}/agents/${encodeURIComponent(name)}`, {
+export async function updateCodeAgent(content: string): Promise<AgentDetail> {
+  const res = await fetch(`${apiBaseUrl()}/agents/code`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name, content }),
+    body: JSON.stringify({ name: 'code', content }),
   })
-  if (!res.ok) await parseDetailOrThrow(res, `PUT /agents/${name}`)
-  return res.json()
-}
-
-export async function deleteAgent(name: string): Promise<AgentDeleteResponse> {
-  const res = await fetch(`${apiBaseUrl()}/agents/${encodeURIComponent(name)}`, { method: 'DELETE' })
-  if (!res.ok) await parseDetailOrThrow(res, `DELETE /agents/${name}`)
+  if (!res.ok) await parseDetailOrThrow(res, 'PUT /agents/code')
   return res.json()
 }
 

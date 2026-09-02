@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from 'react'
 import fuzzysort from 'fuzzysort'
 import { Check, ChevronDown, Copy, Loader2 } from 'lucide-react'
+import type { ModelCostInfo } from '@/api/client'
 import { SearchBar } from '@/components/ui/search-bar'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useIsMobile } from '@/hooks/use-mobile'
@@ -8,16 +9,26 @@ import { usePlatform } from '@/hooks/use-platform'
 import { mediumHapticFeedback } from '@/lib/haptics'
 import { useToastStore } from '@/stores/useToastStore'
 import { cn } from '@/lib/utils'
-import { MODEL_LONG_PRESS_MOVE_TOLERANCE, MODEL_LONG_PRESS_MS } from './providerUtils'
+import {
+  MODEL_LONG_PRESS_MOVE_TOLERANCE,
+  MODEL_LONG_PRESS_MS,
+  formatModelPriceBadge,
+  formatModelPriceTooltip,
+  formatTokenPrice,
+} from './providerUtils'
+
+export { formatModelPriceBadge, formatModelPriceTooltip, formatTokenPrice }
 
 type IndexedModel = {
   modelId: string
   qualifiedId: string
+  cost?: ModelCostInfo
 }
 
 export function ModelsPanel({
   providerId,
   models,
+  modelCosts,
   visibleModels,
   search,
   onSearchChange,
@@ -28,6 +39,7 @@ export function ModelsPanel({
 }: {
   providerId: string
   models: string[]
+  modelCosts?: Record<string, ModelCostInfo>
   visibleModels: string[]
   search: string
   onSearchChange: (v: string) => void
@@ -56,8 +68,13 @@ export function ModelsPanel({
   }
 
   const indexed = useMemo<IndexedModel[]>(
-    () => models.map((id) => ({ modelId: id, qualifiedId: `${providerId}:${id}` })),
-    [models, providerId],
+    () =>
+      models.map((id) => ({
+        modelId: id,
+        qualifiedId: `${providerId}:${id}`,
+        cost: modelCosts?.[id] ?? modelCosts?.[`${providerId}:${id}`],
+      })),
+    [models, providerId, modelCosts],
   )
 
   const visible = useMemo<IndexedModel[]>(() => {
@@ -127,10 +144,11 @@ export function ModelsPanel({
                 No matching models.
               </li>
             ) : (
-              visible.map(({ qualifiedId, modelId }) => (
+              visible.map(({ qualifiedId, modelId, cost }) => (
                 <ModelRow
                   key={qualifiedId}
                   qualifiedId={qualifiedId}
+                  cost={cost}
                   selected={!allVisible && visibleSet.has(modelId)}
                   savingVisibleModels={savingVisibleModels}
                   onToggleVisible={() => toggleVisibleModel(modelId)}
@@ -147,12 +165,14 @@ export function ModelsPanel({
 
 function ModelRow({
   qualifiedId,
+  cost,
   selected,
   savingVisibleModels,
   onToggleVisible,
   onCopy,
 }: {
   qualifiedId: string
+  cost?: ModelCostInfo
   selected: boolean
   savingVisibleModels: boolean
   onToggleVisible: () => void
@@ -164,6 +184,8 @@ function ModelRow({
   const [actionsPoint, setActionsPoint] = useState<{ x: number; y: number } | null>(null)
   const longPressTimerRef = useRef<number | null>(null)
   const longPressStartRef = useRef<{ x: number; y: number } | null>(null)
+  const priceBadge = formatModelPriceBadge(cost)
+  const priceTooltip = formatModelPriceTooltip(cost)
 
   const clearLongPress = () => {
     if (longPressTimerRef.current !== null) window.clearTimeout(longPressTimerRef.current)
@@ -173,7 +195,7 @@ function ModelRow({
 
   return (
     <li
-      className="group grid min-h-11 grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-1.5 rounded-xs px-2 py-1 hover:bg-(--bg-key) md:flex md:min-h-0"
+      className="group flex min-h-11 items-center gap-1.5 rounded-xs px-2 py-1 hover:bg-(--bg-key) md:min-h-0"
       onContextMenu={(e) => {
         if (isTauriMobile) return
         e.preventDefault()
@@ -210,6 +232,28 @@ function ModelRow({
         <TooltipContent>{qualifiedId}</TooltipContent>
       </Tooltip>
 
+      {/* Price badge */}
+      {priceBadge && (
+        <Tooltip>
+          <TooltipTrigger
+            className="shrink-0"
+            render={
+              <span
+                className={cn(
+                  'inline-flex items-center rounded-xs px-1.5 py-0.5 font-mono text-[9.5px] tabular-nums select-none',
+                  priceBadge.isFree
+                    ? 'bg-(--color-success-subtle) text-(--color-success) font-medium'
+                    : 'bg-(--bg-card) text-(--color-text-muted) border border-(--color-border)/60',
+                )}
+              >
+                {priceBadge.label}
+              </span>
+            }
+          />
+          {priceTooltip && <TooltipContent>{priceTooltip}</TooltipContent>}
+        </Tooltip>
+      )}
+
       {/* Visibility toggle */}
       <Tooltip>
         <TooltipTrigger
@@ -220,7 +264,7 @@ function ModelRow({
               disabled={savingVisibleModels}
               aria-label={`${selected ? 'Remove' : 'Show'} ${qualifiedId} in model pickers`}
               className={cn(
-                'flex h-8 min-w-[3.5rem] items-center justify-center gap-1 rounded-xs px-2 md:h-6 md:min-w-[3.5rem] md:px-1.5',
+                'flex h-8 min-w-[3.5rem] shrink-0 items-center justify-center gap-1 rounded-xs px-2 md:h-6 md:min-w-[3.5rem] md:px-1.5',
                 'text-[10px] font-medium transition-colors',
                 selected
                   ? 'bg-(--color-success-subtle) text-(--color-success)'
@@ -246,7 +290,7 @@ function ModelRow({
         onClick={() => void onCopy(qualifiedId)}
         aria-label={`Copy ${qualifiedId}`}
         className={cn(
-          'flex h-8 w-8 items-center justify-center rounded-xs md:h-6 md:w-6',
+          'flex h-8 w-8 shrink-0 items-center justify-center rounded-xs md:h-6 md:w-6',
           'text-(--color-text-muted)',
           'transition-colors hover:bg-(--bg-card) hover:text-(--color-text)',
           'opacity-100 md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100',

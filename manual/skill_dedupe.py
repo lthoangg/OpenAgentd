@@ -58,9 +58,9 @@ async def _check_tool_dedupe() -> None:
             first = await load_skill("manual-demo", _state=state)
             second = await load_skill("manual-demo", _state=state)
 
-    if first != "MANUAL_DEMO_FULL_BODY":
+    if "MANUAL_DEMO_FULL_BODY" not in first:
         raise AssertionError(f"first load returned unexpected body: {first!r}")
-    if second != "MANUAL_DEMO_FULL_BODY":
+    if "MANUAL_DEMO_FULL_BODY" not in second:
         raise AssertionError(f"duplicate load did not return full body: {second!r}")
 
 

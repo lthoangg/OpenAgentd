@@ -5,7 +5,7 @@ differ from the internal ``ToolCall.id`` used at dispatch time.  This class
 maintains a per-function-name FIFO queue of delta-sourced IDs and maps them
 to internal IDs at ``tool_start`` / ``tool_end`` time.
 
-Used by both single-agent (``chat.py``) and team (``StreamPublisherHook``)
+Used by both the agent chat route and ``StreamPublisherHook``
 streaming paths — one source of truth for the resolution algorithm.
 """
 

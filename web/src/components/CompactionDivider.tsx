@@ -12,7 +12,7 @@
  *      lets the user audit what the LLM will see going forward.
  *
  * While ``state === 'compacting'`` the body streams in via SSE
- * ``summarization_content`` deltas (see useTeamStore reducer). The
+ * ``summarization_content`` deltas (see useAgentStore reducer). The
  * divider re-renders on every delta, so the user sees the summary
  * being written in real time.
  */

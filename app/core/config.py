@@ -153,6 +153,12 @@ class Settings(BaseSettings):
     # or hermetic deployments to use only the existing cache and local overlay.
     OPENAGENTD_MODEL_REGISTRY_REFRESH: bool = True
 
+    # ``web_fetch`` refuses destinations that resolve to loopback, RFC1918,
+    # link-local, or other non-public addresses so a model-supplied URL cannot
+    # probe the local network (SSRF). Set to true to let the agent fetch your
+    # own dev servers (``http://localhost:3000``) and trusted internal hosts.
+    WEB_FETCH_ALLOW_PRIVATE_NETWORK: bool = False
+
     # Agents directory — contains per-agent .md files.
     # Empty string means "derive from OPENAGENTD_CONFIG_DIR" → ``{CONFIG_DIR}/agents``.
     # Override with an absolute or working-directory-relative path.

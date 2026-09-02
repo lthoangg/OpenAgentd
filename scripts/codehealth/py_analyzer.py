@@ -127,11 +127,10 @@ def analyze_python_file(
         # Still record LOC; skip structural metrics on parse failure.
         return report
 
-    # Package path of the current module, e.g. app.agent.
-    current_pkg = path.relative_to(repo_root).with_suffix("").parts
-    current_pkg = (
-        list(current_pkg[:-1]) if current_pkg[-1] == "__init__" else list(current_pkg)
-    )
+    # Package that owns this module, e.g. ``app.agent`` for both
+    # ``app/agent/__init__.py`` and ``app/agent/session.py`` — a relative
+    # import is resolved against the package, never the module itself.
+    current_pkg = list(path.relative_to(repo_root).with_suffix("").parts[:-1])
 
     for node in ast.walk(tree):
         if isinstance(node, ast.ClassDef):
@@ -142,7 +141,12 @@ def analyze_python_file(
             report.total_complexity += cx
             report.max_complexity = max(report.max_complexity, cx)
             report.max_function_loc = max(report.max_function_loc, _function_loc(node))
-        elif isinstance(node, ast.Import):
+
+    # Only import-time edges count toward coupling and cycles. An import
+    # inside a function body is deferred (usually *to* break a cycle) and a
+    # ``TYPE_CHECKING`` block never executes.
+    for node in _import_time_statements(tree.body):
+        if isinstance(node, ast.Import):
             for alias in node.names:
                 if alias.name.startswith(package_prefixes):
                     report.imports.add(alias.name)
@@ -152,6 +156,31 @@ def analyze_python_file(
                 report.imports.add(resolved)
 
     return report
+
+
+def _is_type_checking_guard(test: ast.expr) -> bool:
+    return (isinstance(test, ast.Name) and test.id == "TYPE_CHECKING") or (
+        isinstance(test, ast.Attribute) and test.attr == "TYPE_CHECKING"
+    )
+
+
+def _import_time_statements(body: list[ast.stmt]):
+    """Yield statements executed at import time, descending into blocks but
+    never into function or class-method bodies or ``TYPE_CHECKING`` guards."""
+    for node in body:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        if isinstance(node, ast.If) and _is_type_checking_guard(node.test):
+            yield from _import_time_statements(node.orelse)
+            continue
+        yield node
+        if isinstance(node, ast.ClassDef):
+            yield from _import_time_statements(node.body)
+        elif isinstance(node, (ast.If, ast.For, ast.While, ast.With, ast.Try)):
+            for field in ("body", "orelse", "finalbody"):
+                yield from _import_time_statements(getattr(node, field, []) or [])
+            for handler in getattr(node, "handlers", []) or []:
+                yield from _import_time_statements(handler.body)
 
 
 def collect_python_files(roots: list[Path]) -> list[Path]:

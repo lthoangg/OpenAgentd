@@ -179,6 +179,25 @@ function isEphemeralLive(block: ContentBlock): boolean {
   return block.type === 'thinking' || block.type === 'provider_status'
 }
 
+/** How many of a stream's live blocks a history snapshot can already cover.
+ *
+ *  `liveCountAtFetch` was sampled when the fetch started. If the stream's
+ *  current turn began *after* that sample, the snapshot cannot describe any of
+ *  it, so the caller's `turnStartedAfterFetch` value applies instead — `0`
+ *  when the turn is over (nothing to drop) or the full live length when it is
+ *  still running (the whole prefix is newer than the snapshot). */
+function snapshotCoverableCount(
+  stream: AgentStream,
+  fetchStartedAt: number,
+  liveCountAtFetch: number,
+  turnStartedAfterFetch: number,
+): number {
+  const turnStartedAt = stream._turnStartedAt
+  return turnStartedAt != null && turnStartedAt >= fetchStartedAt
+    ? turnStartedAfterFetch
+    : liveCountAtFetch
+}
+
 function dropSnapshotAlignedPrefix(stream: AgentStream, limit: number) {
   if (stream.currentBlocks.length === 0 || stream.blocks.length === 0 || limit <= 0) return
 
@@ -485,11 +504,10 @@ async function loadSessionImpl(
       const turnStillRunning = history.lead.running === true
       if (!turnStillRunning) {
         Object.entries(draft.agentStreams).forEach(([name, stream]) => {
-          const streamTurnStartedAt = stream._turnStartedAt
-          const count = streamTurnStartedAt != null && streamTurnStartedAt >= fetchStartedAt
-            ? 0
-            : (liveCountsAtFetch.get(name) ?? 0)
-          dropSnapshotCoveredBlocks(stream, count)
+          dropSnapshotCoveredBlocks(
+            stream,
+            snapshotCoverableCount(stream, fetchStartedAt, liveCountsAtFetch.get(name) ?? 0, 0),
+          )
         })
       }
 
@@ -546,11 +564,15 @@ async function loadSessionImpl(
           // the snapshot yet), so strip whatever the snapshot already covers
           // instead of rendering both copies.
           if (turnStillRunning) {
-            const streamTurnStartedAt = leadStream._turnStartedAt
-            const count = streamTurnStartedAt != null && streamTurnStartedAt >= fetchStartedAt
-              ? leadStream.currentBlocks.length
-              : (liveCountsAtFetch.get(leadName) ?? 0)
-            dropSnapshotAlignedPrefix(leadStream, count)
+            dropSnapshotAlignedPrefix(
+              leadStream,
+              snapshotCoverableCount(
+                leadStream,
+                fetchStartedAt,
+                liveCountsAtFetch.get(leadName) ?? 0,
+                leadStream.currentBlocks.length,
+              ),
+            )
           }
           removePersistedOptimisticUserBlocks(leadStream)
         }
@@ -641,11 +663,15 @@ async function loadSessionImpl(
           boundaryContent: boundaryMsg?.content,
         })
         if (memberHadNewerActivity && turnStillRunning) {
-          const streamTurnStartedAt = memberStream._turnStartedAt
-          const count = streamTurnStartedAt != null && streamTurnStartedAt >= fetchStartedAt
-            ? memberStream.currentBlocks.length
-            : (liveCountsAtFetch.get(member.name) ?? 0)
-          dropSnapshotAlignedPrefix(memberStream, count)
+          dropSnapshotAlignedPrefix(
+            memberStream,
+            snapshotCoverableCount(
+              memberStream,
+              fetchStartedAt,
+              liveCountsAtFetch.get(member.name) ?? 0,
+              memberStream.currentBlocks.length,
+            ),
+          )
           removePersistedOptimisticUserBlocks(memberStream)
         }
         if (!memberHadNewerActivity) {
@@ -1022,16 +1048,15 @@ export const createSessionSlice: StateCreator<
         }
       })
 
-      const confirmedUserIds = new Set(
-        delta.lead.messages
-          .filter((m) => m.role === 'user' && m.kind !== 'queued' && m.extra?.queue_status !== 'queued')
-          .map((m) => m.id),
+      // A user row the server now reports as a real (non-queued) message has
+      // left the queue; drop its optimistic twin. Matching on trimmed content
+      // is a fallback for rows whose optimistic id was never reconciled, so a
+      // deliberately repeated message ("yes" twice) may lose its duplicate.
+      const confirmedUser = delta.lead.messages.filter(
+        (m) => m.role === 'user' && m.kind !== 'queued' && m.extra?.queue_status !== 'queued',
       )
-      const confirmedUserContents = new Set(
-        delta.lead.messages
-          .filter((m) => m.role === 'user' && m.kind !== 'queued' && m.extra?.queue_status !== 'queued')
-          .map((m) => (m.content || '').trim()),
-      )
+      const confirmedUserIds = new Set(confirmedUser.map((m) => m.id))
+      const confirmedUserContents = new Set(confirmedUser.map((m) => (m.content || '').trim()))
       if (confirmedUserIds.size > 0 || confirmedUserContents.size > 0) {
         draft._pendingMessages = draft._pendingMessages.filter((msg) => {
           if (msg.sessionId && msg.sessionId !== sessionId) return true

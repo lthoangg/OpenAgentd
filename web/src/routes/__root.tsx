@@ -89,6 +89,10 @@ export function Root() {
   useEffect(() => {
     const fullPath = window.location.pathname + window.location.search + window.location.hash
     const pathname = window.location.pathname
+    // Root is never saved, so a reload from the hub always lands on the last
+    // content route rather than the hub. That is the intended trade: users
+    // reload to recover a session far more often than to reach the hub, which
+    // is one click away from anywhere.
     if (pathname !== '/' && pathname !== '/index.html') {
       localStorage.setItem(lastRouteStorageKey(), fullPath)
     }

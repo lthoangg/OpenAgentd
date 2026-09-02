@@ -116,6 +116,31 @@ def _disable_desktop_token_auth(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.delenv("OPENAGENTD_ACCESS_KEY", raising=False)
 
 
+@pytest.fixture(autouse=True)
+def _isolate_agent_registry():
+    """Start and finish every test with an empty ``agent_manager`` registry.
+
+    The registry is process-global. A route fixture that seeds a session named
+    ``lead`` (``set_agent_session``) and never clears it leaks into whichever
+    test runs next: ``GET /agent/agents`` then answers ``lead`` where ``code``
+    is expected, and ``get_or_start_agent_session`` hands back the leaked
+    object instead of starting one. Which test pays depends on ordering and
+    on how long earlier background turns take to unwind, so the failures look
+    random. Clearing in place (never rebinding) keeps every ``from … import
+    _sessions`` reference valid.
+    """
+    from app.services import agent_manager
+
+    def _clear() -> None:
+        agent_manager._sessions.clear()
+        agent_manager._session_last_used.clear()
+        agent_manager._session_start_locks.clear()
+
+    _clear()
+    yield
+    _clear()
+
+
 def set_openagentd_dirs(monkeypatch: pytest.MonkeyPatch, root: Path) -> None:
     """Point all four XDG dirs at subdirectories of ``root``.
 

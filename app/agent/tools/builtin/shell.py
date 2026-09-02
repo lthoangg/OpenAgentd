@@ -44,6 +44,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import platform
 import re
 import signal
 import subprocess
@@ -73,12 +74,30 @@ _SHELL_CAPABILITIES = (
     if sys.platform == "win32"
     else "&&, ||, pipes, variables, and subshells"
 )
+
+
+def environment_summary() -> str:
+    """One line of host facts for the tool description.
+
+    Peers (opencode, codex, claude code) give the model an ``<env>`` block; the
+    shell description is the natural, prompt-cache-stable home for the static
+    part — OS, architecture, and the shell binary the command will run under.
+    Volatile facts (git branch, dirty state) deliberately stay out so the tool
+    schema does not change between turns.
+    """
+    return (
+        f"Environment: {platform.system()} {platform.machine()}, "
+        f"shell={_shell_mod.name()}."
+    )
+
+
 _SHELL_DESCRIPTION = (
     f"Run a command through the user's {_SHELL_KIND}; supports {_SHELL_CAPABILITIES}. "
     "Returns stdout and stderr combined. "
     "stdin is /dev/null, so use non-interactive flags for commands that may prompt. "
     "Use background=true only for long-lived processes. "
-    "Prefer file tools for file operations."
+    "Prefer file tools for file operations. "
+    f"{environment_summary()}"
 )
 
 

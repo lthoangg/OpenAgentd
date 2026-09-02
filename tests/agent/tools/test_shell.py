@@ -336,6 +336,28 @@ async def test_shell_description_parameter(sandbox_workspace):
     assert "ok" in result
 
 
+def test_shell_description_carries_an_environment_block():
+    """The model must know which OS/arch/shell it is driving; peers inject this
+    as an <env> block and the shell description is the cache-stable place for it."""
+    import platform
+
+    desc = shell_tool.description
+    assert "Environment:" in desc
+    assert platform.system() in desc
+    assert platform.machine() in desc
+    assert shell_module._shell_mod.name() in desc
+
+
+def test_environment_summary_names_os_arch_and_shell(monkeypatch):
+    monkeypatch.setattr(shell_module.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(shell_module.platform, "machine", lambda: "x86_64")
+    monkeypatch.setattr(shell_module._shell_mod, "name", lambda *_: "bash")
+
+    assert (
+        shell_module.environment_summary() == "Environment: Linux x86_64, shell=bash."
+    )
+
+
 @pytest.mark.asyncio
 async def test_shell_emits_foreground_output_delta(sandbox_workspace, monkeypatch):
     monkeypatch.setattr(

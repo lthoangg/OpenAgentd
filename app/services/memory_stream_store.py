@@ -500,6 +500,11 @@ def get_agent_statuses(session_id: str) -> dict[str, str]:
     return dict(state.agent_statuses)
 
 
+_REPLAYABLE_AGENT_STATUSES = frozenset(
+    {"idle", "working", "waiting_input", "offline", "error"}
+)
+
+
 async def attach(session_id: str) -> AsyncGenerator[dict[str, str], None]:
     """Yield events in SSE wire shape for the current in-flight turn.
 
@@ -537,7 +542,7 @@ async def attach(session_id: str) -> AsyncGenerator[dict[str, str], None]:
             # false (and the stop button hidden) until the next `done`
             # event — even as tokens continued streaming in.
             for agent, status in state.agent_statuses.items():
-                if not agent or status not in ("idle", "working", "offline", "error"):
+                if not agent or status not in _REPLAYABLE_AGENT_STATUSES:
                     continue
                 yield StreamEnvelope.from_event(
                     AgentStatusEvent(

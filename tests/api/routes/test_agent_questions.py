@@ -88,10 +88,6 @@ class _FakeTeam:
         self.lead.session_id = session_id  # type: ignore[attr-defined]
         self.session_id = session_id
         self.mode = "coding"
-        self._cancel_event = asyncio.Event()
-        self._question_suspended = None
-        self._has_active_turn = False
-        self._active_task = None
         self.turns_ended = 0
         self.attached: list[str] = []
         self.started_with = None
@@ -104,12 +100,8 @@ class _FakeTeam:
     def state(self, value: str) -> None:
         self.lead.state = value
 
-    async def _emit(self, *_args, **_kwargs) -> None:
-        return None
-
-    async def _run_turn(self, *, question_resume: bool = False) -> None:
-        if question_resume:
-            self.lead.activate_for_question_answer()
+    async def resume_after_question_answer(self) -> None:
+        self.lead.activate_for_question_answer()
 
     async def end_turn_after_question_dismissed(self, session_id: str) -> bool:
         """Refuse a session that is not bound to this agent."""
@@ -565,6 +557,115 @@ async def test_dismiss_ends_the_turn_with_no_live_team(client, team, monkeypatch
 
     assert resp.status_code == 200
     assert (str(session_id), "done") in pushed
+
+
+async def test_dismiss_closes_the_turn_on_a_real_agent_session(client, team, tmp_path):
+    """The route drives the real ``AgentSession`` API, not the ``_FakeTeam`` one.
+
+    The fakes above accept whatever the route calls. This pins the contract to
+    the production class: a suspended session must come back idle, not busy,
+    with its stream closed — and the request must not 500 on a method the
+    class does not have.
+    """
+    from app.agent.agent_loop import Agent
+    from app.agent.session import AgentSession
+    from app.services import memory_stream_store as stream_store
+    from tests.agent.test_session import MockProvider
+
+    session_id = uuid.uuid4()
+    question_id = await _seed(session_id)
+    agent = AgentSession(
+        agent=Agent(llm_provider=MockProvider(), name="openagentd"),
+        workspace=str(tmp_path),
+    )
+    await agent.attach_to_session(str(session_id))
+    await stream_store.init_turn(str(session_id))
+    agent.state = "waiting_input"
+    agent._question_suspended = {
+        "question_id": question_id,
+        "session_id": session_id,
+    }
+    team["team"] = agent
+
+    try:
+        resp = await client.post(f"/{session_id}/question/{question_id}/dismiss")
+
+        assert resp.status_code == 200, resp.text
+        assert resp.json() == {"status": "ok", "resumed": False}
+        assert agent.state == "idle"
+        assert not agent.is_busy()
+        assert agent._question_suspended is None
+        assert str(session_id) not in stream_store.running_session_ids()
+    finally:
+        await stream_store.clear(str(session_id))
+
+
+async def test_answer_resumes_a_real_agent_session_into_the_open_stream(
+    client, team, tmp_path
+):
+    """End-to-end on the production class: the answer restarts the turn and the
+    resumed output reaches a subscriber that attached *before* the answer.
+
+    That subscriber is the browser tab showing the card. It stays attached
+    through the suspension (a parked turn is never ``done``), so the resume
+    must keep it — ``init_turn(keep_subscribers=True)`` — rather than dropping
+    it and streaming the rest of the turn to nobody.
+    """
+    from app.agent.agent_loop import Agent
+    from app.agent.session import AgentSession
+    from app.services import memory_stream_store as stream_store
+    from tests.agent.test_agent_run import make_text_chunk
+    from tests.agent.test_session import ScriptedProvider
+
+    session_id = uuid.uuid4()
+    question_id = await _seed(session_id)
+    agent = AgentSession(
+        agent=Agent(
+            llm_provider=ScriptedProvider([[make_text_chunk("Thanks, continuing.")]]),
+            name="openagentd",
+        ),
+        workspace=str(tmp_path),
+    )
+    await agent.attach_to_session(str(session_id))
+    await stream_store.init_turn(str(session_id))
+    agent.state = "waiting_input"
+    agent._question_suspended = {
+        "question_id": question_id,
+        "session_id": session_id,
+    }
+    team["team"] = agent
+
+    events: list[dict] = []
+
+    async def consume():
+        async for event in stream_store.attach(str(session_id)):
+            events.append(event)
+
+    consumer = asyncio.create_task(consume())
+    await asyncio.sleep(0.01)
+
+    try:
+        resp = await client.post(
+            f"/{session_id}/question/{question_id}/answer",
+            json={"answers": [["pnpm"], ["lint"]]},
+        )
+
+        assert resp.status_code == 200, resp.text
+        assert resp.json() == {"status": "ok", "resumed": True}
+        assert agent._active_task is not None
+        await agent._active_task
+        await asyncio.wait_for(consumer, timeout=2)
+
+        assert agent.state == "idle"
+        types = [e["event"] for e in events]
+        assert "question_answered" in types
+        assert "message" in types
+        assert types[-1] == "done"
+        assert types.index("question_answered") < types.index("message")
+    finally:
+        if not consumer.done():
+            consumer.cancel()
+        await stream_store.clear(str(session_id))
 
 
 async def test_answer_binds_a_stale_lead_before_resuming(client, team):

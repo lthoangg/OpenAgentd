@@ -19,7 +19,9 @@ mock.module('lucide-react', () => new Proxy({}, { get: () => () => null }))
 
 const answerQuestion = mock(async () => ({ status: 'answered', resumed: true }))
 const dismissQuestion = mock(async () => ({ status: 'dismissed', resumed: false }))
-mock.module('@/api/client', () => ({ answerQuestion, dismissQuestion }))
+// `markTurnResuming` may reopen the session stream after an answer.
+const agentStream = mock(() => {})
+mock.module('@/api/client', () => ({ answerQuestion, dismissQuestion, agentStream }))
 
 const pushToast = mock(() => {})
 mock.module('@/stores/useToastStore', () => ({
@@ -61,6 +63,7 @@ beforeEach(() => {
   clearQuestionDrafts()
   useAgentStore.setState({
     sessionId: 's-1',
+    isConnected: true,
     pendingQuestion: QUESTION,
     resolvedQuestions: {},
   })
@@ -139,6 +142,41 @@ describe('AskUser — waiting state', () => {
 
     await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Network unreachable'))
     expect(screen.getByRole('radio', { name: /bun/ })).toBeChecked()
+  })
+
+  /**
+   * 409 is the server saying the question is not open any more — another
+   * window or device already resolved it, or a new message superseded it. The
+   * form cannot succeed on retry (the row is gone), so keeping it up with an
+   * error strands the user until a reload. Close the card instead; the
+   * persisted result shows the real outcome on the next history load.
+   */
+  it('closes the card when the server says the question is already resolved', async () => {
+    answerQuestion.mockImplementation(async () => {
+      throw Object.assign(new Error('Question already resolved.'), { status: 409 })
+    })
+    render(<AskUser toolCallId="call-1" result={PLACEHOLDER} />)
+
+    fireEvent.click(screen.getByRole('button', { name: /send answer/i }))
+
+    await waitFor(() => expect(useAgentStore.getState().pendingQuestion).toBeNull())
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(screen.queryByRole('button', { name: /send answer/i })).toBeNull()
+    expect(screen.queryByText(/needs your input/i)).toBeNull()
+    expect(screen.getByText('Which package manager?')).toBeInTheDocument()
+    expect(pushToast).not.toHaveBeenCalled()
+  })
+
+  it('closes the card when a dismissal finds the question already resolved', async () => {
+    dismissQuestion.mockImplementation(async () => {
+      throw Object.assign(new Error('Question is not open.'), { status: 409 })
+    })
+    render(<AskUser toolCallId="call-1" result={PLACEHOLDER} />)
+
+    fireEvent.click(screen.getByRole('button', { name: /dismiss/i }))
+
+    await waitFor(() => expect(useAgentStore.getState().pendingQuestion).toBeNull())
+    expect(screen.queryByRole('alert')).toBeNull()
   })
 })
 

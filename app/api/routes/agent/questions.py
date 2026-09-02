@@ -17,7 +17,6 @@ after a reload, from a second device, and across a daemon restart:
 
 from __future__ import annotations
 
-import asyncio
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException
@@ -343,14 +342,8 @@ async def _resume_agent(session_id: str, db: DbSession) -> bool:
         await agent.attach_to_session(session_id)
 
     try:
-        agent._question_suspended = None
-        agent.state = "working"
-        await agent._emit("agent_status", status="working")
-        agent._cancel_event.clear()
-        agent._has_active_turn = True
-        agent._active_task = asyncio.create_task(agent._run_turn(question_resume=True))
+        await agent.resume_after_question_answer()
     except Exception as exc:
         logger.warning("question_resume_failed session_id={} error={}", session_id, exc)
-        agent._question_suspended = None
         return False
     return True

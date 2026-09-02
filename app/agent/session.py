@@ -595,7 +595,17 @@ class AgentSession:
             )
             await db.commit()
 
-        await stream_store.init_turn(self.session_id, keep_subscribers=True)
+        await self.resume_after_question_answer()
+
+    async def resume_after_question_answer(self) -> None:
+        """Restart the turn a suspended ``ask_user`` left open.
+
+        The answer is already persisted as the tool result, so the resumed run
+        reads it straight from history — no new user message is involved. The
+        SSE subscribers that watched the turn park are kept
+        (``keep_subscribers``): they are the tabs showing the card, and the
+        rest of the turn has to reach them.
+        """
         self._question_suspended = None
         self.state = "working"
         await self._emit("agent_status", status="working")
@@ -619,6 +629,112 @@ class AgentSession:
         self._question_suspended = None
         self.state = "idle"
         await self._emit("agent_status", status="idle")
+
+    async def end_turn_after_question_dismissed(self, session_id: str) -> bool:
+        """Close the turn a dismissed ``ask_user`` left open. ``True`` if handled.
+
+        Dismissing means "stop", so there is deliberately no further model call
+        — but a suspension never emitted ``done``, so the turn is still open on
+        every client and in the session list, and something has to close it.
+
+        Returns ``False`` when this session is not bound to *session_id*: an
+        evicted session is rebuilt under a fresh id, and closing *its* stream
+        would end a turn on the wrong channel. The caller then closes the
+        dismissed session's stream directly.
+        """
+        if self.session_id != session_id:
+            return False
+
+        self._question_suspended = None
+        if self.state == "waiting_input":
+            self.state = "idle"
+        await self._emit("agent_status", status="idle")
+
+        # A message queued while the agent was still working (before it asked)
+        # was never drained: the suspension skips activation. Let it run now
+        # rather than stranding it behind a bare ``done``.
+        if (
+            not self._cancel_event.is_set()
+            and await self._activate_queued_user_messages(session_id)
+        ):
+            return True
+
+        self._has_active_turn = False
+        await self._close_turn(session_id)
+        return True
+
+    async def _close_turn(
+        self, session_id: str, *, status: Literal["completed", "error"] = "completed"
+    ) -> None:
+        """Tell every listener the turn is over.
+
+        ``done`` + ``mark_done`` release the session's SSE subscribers;
+        ``session_turn_completed`` reaches the *global* stream, which is how
+        other windows drop the running badge and how the window showing this
+        session reconciles its live blocks against the persisted rows. A
+        turn that actually finished also raises the "session completed"
+        desktop notification; a failed one does not — the error is already on
+        screen as its own status.
+        """
+        await stream_store.push_event(
+            session_id,
+            StreamEnvelope.from_event(DoneEvent(metadata={"session_id": session_id})),
+            create_if_missing=True,
+        )
+        await stream_store.mark_done(session_id)
+        try:
+            from app.services import event_broadcaster
+
+            if status == "completed":
+                await event_broadcaster.publish(
+                    "desktop_notification",
+                    await self._completion_notification(session_id),
+                )
+            await event_broadcaster.publish(
+                "session_turn_completed",
+                {"session_id": session_id, "status": status},
+            )
+        except Exception as exc:
+            logger.warning(
+                "session_turn_completed_publish_failed session_id={} error={}",
+                session_id,
+                exc,
+            )
+
+    async def _completion_notification(self, session_id: str) -> dict[str, Any]:
+        """Payload for the ``assistant_done`` desktop notification.
+
+        Mirrors the ``input_needed`` notification ``ask_user`` raises: the
+        workspace name is the headline, the session title the body. The
+        metadata lookup is best-effort — a missing row still notifies.
+        """
+        title: str | None = None
+        workspace: str | None = None
+        try:
+            async with self.db_factory() as db:
+                row = await db.get(ChatSession, uuid.UUID(session_id))
+                if row is not None:
+                    title = row.title
+                    workspace = row.workspace
+        except Exception as exc:
+            logger.warning(
+                "completion_notification_metadata_failed session_id={} error={}",
+                session_id,
+                exc,
+            )
+        workspace_name = Path(workspace).name if workspace else None
+        return {
+            "type": "desktop_notification",
+            "notification_id": str(uuid.uuid4()),
+            "kind": "assistant_done",
+            "session_id": session_id,
+            "title": (
+                f"Session completed - {workspace_name}"
+                if workspace_name
+                else "Session completed"
+            ),
+            "body": (title or "").strip() or f"Session {session_id[:8]}",
+        }
 
     async def _run_turn(
         self,
@@ -702,16 +818,12 @@ class AgentSession:
                 if not activated:
                     self.state = "idle"
                     await self._emit("agent_status", status="idle")
-                    await stream_store.push_event(
-                        self.session_id,
-                        StreamEnvelope.from_event(
-                            DoneEvent(metadata={"session_id": self.session_id})
-                        ),
-                        create_if_missing=True,
-                    )
-                    await stream_store.mark_done(self.session_id)
+                    await self._close_turn(self.session_id)
             else:
-                await stream_store.mark_done(self.session_id)
+                # A failed turn is still a finished turn: without ``done`` and
+                # the global completion event, other windows keep the running
+                # badge and the session list never learns it stopped.
+                await self._close_turn(self.session_id, status="error")
 
             if not activated:
                 self._has_active_turn = False
@@ -839,6 +951,9 @@ class AgentSession:
                 interrupt_event=self._cancel_event,
             )
         except QuestionSuspended as suspended:
+            # Defensive only: the loop catches the tool's ``QuestionSuspended``
+            # itself (see ``_dispatch_question``) and returns normally, so the
+            # metadata read below is the path that actually fires.
             self._question_suspended = {
                 "question_id": suspended.question_id,
                 "session_id": suspended.session_id,
@@ -848,6 +963,21 @@ class AgentSession:
                 await _close_provider(runtime_provider)
             _denied_paths_ctx.reset(token)
             _permission_ctx.reset(perm_token)
+
+        # ``ask_user`` suspended the turn: the loop reports it through the run
+        # config rather than raising, because the turn is complete-and-resumable,
+        # not failed. Read ``config.metadata``, never the ``run_metadata`` dict
+        # passed in: ``RunConfig`` is a Pydantic model, so validation *copies*
+        # the mapping and the loop writes to that copy. Missing this parks
+        # nothing — ``_run_turn`` then closes the turn (``idle`` + ``done`` +
+        # ``mark_done``), every SSE subscriber disconnects, and the resumed turn
+        # after the answer streams into a channel nobody is attached to.
+        suspended_meta = config.metadata.get("question_suspended")
+        if isinstance(suspended_meta, dict) and self._question_suspended is None:
+            self._question_suspended = {
+                "question_id": suspended_meta["question_id"],
+                "session_id": suspended_meta["session_id"],
+            }
 
         if self._cancel_event.is_set() and self.db_factory:
             await _mark_last_assistant_interrupted(self.db_factory, sess_uuid)

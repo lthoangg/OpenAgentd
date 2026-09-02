@@ -64,6 +64,7 @@ const REASON_LABEL: Record<string, string> = {
   dismissed: 'Dismissed',
   superseded: 'Superseded by your next message',
   expired: 'No longer relevant',
+  resolved_elsewhere: 'Already resolved from another window or device',
   refused: 'Not asked — the agent already used its one question for this turn',
   merged: 'Merged into the other question card',
   failed: 'Not asked — the question failed to send, so the agent continued without it',
@@ -72,6 +73,22 @@ const REASON_LABEL: Record<string, string> = {
 
 function errorMessage(cause: unknown, fallback: string): string {
   return cause instanceof Error && cause.message ? cause.message : fallback
+}
+
+/**
+ * The server's "this question is not open any more" reply (see
+ * ``_open_question_or_conflict`` / ``_resolve_or_conflict`` in
+ * ``routes/agent/questions.py``). Another window or device got there first, or
+ * a new message superseded the question. Duck-typed on ``status`` rather than
+ * on the client's error class so the check does not depend on which module
+ * threw.
+ */
+function isAlreadyResolved(cause: unknown): boolean {
+  return (
+    typeof cause === 'object' &&
+    cause !== null &&
+    (cause as { status?: unknown }).status === 409
+  )
 }
 
 export function AskUser({
@@ -142,6 +159,15 @@ export function AskUser({
         }
       }
     } catch (cause) {
+      // Retrying cannot succeed: the row is gone. Close the card with what we
+      // know; the persisted result shows the real outcome on the next load.
+      // (Normally the resolution broadcast already closed it, and the store
+      // guard makes this a no-op.)
+      if (isAlreadyResolved(cause)) {
+        forgetQuestionDraft(questionId)
+        resolveQuestion(questionId, null, 'resolved_elsewhere')
+        return
+      }
       // Keep the form and the draft: the selection is still valid and the user
       // should be able to retry without re-picking anything.
       setError(errorMessage(cause, failure))

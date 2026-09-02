@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "bun:test"
+import { describe, it, expect, beforeEach, mock } from "bun:test"
 import { useAgentStore, isAwaitingRestartOutput } from "@/stores/useAgentStore"
 
 /**
@@ -31,6 +31,9 @@ const QUESTIONS = [
   },
 ]
 
+// Restored by `resetStore` — a test that stubs the action must not leak it.
+const realConnectStream = useAgentStore.getState().connectStream
+
 function resetStore() {
   useAgentStore.setState({
     agentStreams: {},
@@ -43,6 +46,7 @@ function resetStore() {
     pendingQuestion: null,
     resolvedQuestions: {},
     cacheInvalidations: [],
+    connectStream: realConnectStream,
   } as never)
 }
 
@@ -326,6 +330,32 @@ describe("useAgentStore — ask_user", () => {
       useAgentStore.getState().beginResolvedSession(null, { workspace: "/repo/app" })
 
       expect(awaitingRestart()).toBe(false)
+    })
+
+    /**
+     * The resumed turn streams into the session's SSE channel. A parked turn
+     * normally keeps that channel open, but a network blip while waiting
+     * leaves the client on a backoff timer — up to 30s — and the resumed
+     * output would sit unseen until it fires. Reattach at once instead.
+     */
+    it("reopens the stream when the answer lands while disconnected", () => {
+      const connectStream = mock(() => new AbortController())
+      useAgentStore.setState({ isConnected: false, connectStream } as never)
+      suspend()
+
+      useAgentStore.getState().markTurnResuming()
+
+      expect(connectStream).toHaveBeenCalledTimes(1)
+    })
+
+    it("leaves a live stream alone when the answer lands", () => {
+      const connectStream = mock(() => new AbortController())
+      useAgentStore.setState({ isConnected: true, connectStream } as never)
+      suspend()
+
+      useAgentStore.getState().markTurnResuming()
+
+      expect(connectStream).not.toHaveBeenCalled()
     })
   })
 

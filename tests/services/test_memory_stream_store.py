@@ -1264,6 +1264,36 @@ class TestAttach:
         status_events = [e for e in events if e.get("event") == "agent_status"]
         assert status_events == []
 
+    @pytest.mark.asyncio
+    async def test_attach_replays_waiting_input_status(self):
+        """A lead parked on ``ask_user`` is ``waiting_input`` — a live state.
+
+        A client that attaches mid-suspension without a history load (network
+        blip, second tab reusing its store) has to learn the lead is still live
+        but not working; dropping the status here leaves it reading as idle
+        with a question card still on screen.
+        """
+        await store.init_turn("sid-1")
+        await store.push_event(
+            "sid-1",
+            StreamEnvelope.from_parts(
+                "agent_status", {"agent": "lead", "status": "waiting_input"}
+            ),
+        )
+
+        async def _mark_done():
+            await asyncio.sleep(0.05)
+            await store.mark_done("sid-1")
+
+        task = asyncio.create_task(_mark_done())
+        events = [e async for e in store.attach("sid-1")]
+        await task
+
+        status_events = [e for e in events if e.get("event") == "agent_status"]
+        assert [json.loads(e["data"])["status"] for e in status_events] == [
+            "waiting_input"
+        ]
+
 
 # ---------------------------------------------------------------------------
 # summarization (start/content/end) push + replay

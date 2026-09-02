@@ -24,6 +24,39 @@ from app.agent.schemas.chat import (
     ChatMessage,
 )
 from app.agent.session import AgentSession
+from tests.agent.test_agent_run import make_text_chunk, make_tool_chunk
+
+ASK_USER_ARGS = (
+    '{"questions": [{"question": "Which one?", "header": "Pick", '
+    '"options": [{"label": "a"}, {"label": "b"}]}]}'
+)
+
+
+class ScriptedProvider(LLMProviderBase):
+    """Replays one pre-built chunk list per ``stream()`` call, in order."""
+
+    def __init__(self, scripts: list[list[ChatCompletionChunk]]) -> None:
+        super().__init__()
+        self.scripts = scripts
+        self.stream_call_count = 0
+
+    async def stream(
+        self, messages: list[ChatMessage], **kwargs: Any
+    ) -> AsyncIterator[ChatCompletionChunk]:
+        idx = min(self.stream_call_count, len(self.scripts) - 1)
+        self.stream_call_count += 1
+        for chunk in self.scripts[idx]:
+            yield chunk
+
+    async def complete(
+        self, messages: list[ChatMessage], **kwargs: Any
+    ) -> AssistantMessage:
+        return AssistantMessage(content="mock")
+
+    async def chat(
+        self, messages: list[ChatMessage], **kwargs: Any
+    ) -> AssistantMessage:
+        return await self.complete(messages, **kwargs)
 
 
 class MockProvider(LLMProviderBase):
@@ -371,3 +404,190 @@ async def test_agent_session_continuous_stream_across_queued_turns(
     assert "done" in event_types
     messages = [e for e in events if e.get("event") == "message"]
     assert len(messages) >= 2
+
+
+@pytest.mark.asyncio
+async def test_agent_session_parks_in_waiting_input_on_ask_user(db_factory, tmp_path):
+    """``ask_user`` suspends the turn — it must not end it.
+
+    The loop reports the suspension through ``config.metadata`` rather than
+    raising, so the session has to read it from there. If it does not, the turn
+    is closed like any other (``idle`` + ``done`` + ``mark_done``): every SSE
+    subscriber is unblocked and disconnects, and the resumed turn after the
+    answer streams into a stream nobody is attached to.
+    """
+    from app.services import memory_stream_store as stream_store
+
+    provider = ScriptedProvider(
+        [
+            [make_tool_chunk("ask_user", "call_ask_1", ASK_USER_ARGS)],
+            [make_text_chunk("Resumed after the answer.")],
+        ]
+    )
+    agent = Agent(
+        llm_provider=provider,
+        name="openagentd",
+        system_prompt="You are OpenAgentd.",
+    )
+    session = AgentSession(
+        agent=agent,
+        workspace=str(tmp_path),
+        db_factory=db_factory,
+    )
+
+    sid = str(uuid.uuid4())
+    await session.attach_to_session(sid)
+    await stream_store.init_turn(sid)
+
+    events: list[dict] = []
+
+    async def consume_stream():
+        async for event in stream_store.attach(sid):
+            events.append(event)
+
+    consumer = asyncio.create_task(consume_stream())
+    await asyncio.sleep(0.01)
+
+    await session.handle_user_message(
+        content="Do the thing",
+        session_id=sid,
+        workspace=str(tmp_path),
+    )
+    assert session._active_task is not None
+    await session._active_task
+
+    # Parked, not finished: the subscriber is still attached and the stream is
+    # still open, so the answer can resume into the same connection.
+    assert session.state == "waiting_input"
+    assert session.is_awaiting_question_answer()
+    assert session._question_suspended is not None
+    assert not consumer.done()
+    statuses = [e for e in events if e.get("event") == "agent_status"]
+    assert any('"waiting_input"' in e["data"] for e in statuses)
+    assert "done" not in [e.get("event") for e in events]
+    assert sid in stream_store.running_session_ids()
+
+    # The answer restarts the turn and the still-attached subscriber sees it.
+    await session.handle_question_answer(
+        session._question_suspended["question_id"], [["a"]]
+    )
+    assert session._active_task is not None
+    await session._active_task
+    await asyncio.wait_for(consumer, timeout=2)
+
+    assert session.state == "idle"
+    assert provider.stream_call_count == 2
+    event_types = [e.get("event") for e in events]
+    assert "message" in event_types
+    assert event_types[-1] == "done"
+
+
+class FailingProvider(LLMProviderBase):
+    """Every call fails the way a dead upstream does."""
+
+    async def stream(
+        self, messages: list[ChatMessage], **kwargs: Any
+    ) -> AsyncIterator[ChatCompletionChunk]:
+        raise RuntimeError("upstream exploded")
+        yield  # pragma: no cover — makes this an async generator
+
+    async def complete(
+        self, messages: list[ChatMessage], **kwargs: Any
+    ) -> AssistantMessage:
+        raise RuntimeError("upstream exploded")
+
+    async def chat(
+        self, messages: list[ChatMessage], **kwargs: Any
+    ) -> AssistantMessage:
+        return await self.complete(messages, **kwargs)
+
+
+async def _run_one_turn(session: AgentSession, sid: str, workspace: str) -> list[dict]:
+    """Drive a turn to completion and return everything the stream emitted."""
+    from app.services import memory_stream_store as stream_store
+
+    await session.attach_to_session(sid)
+    await stream_store.init_turn(sid)
+    events: list[dict] = []
+
+    async def consume():
+        async for event in stream_store.attach(sid):
+            events.append(event)
+
+    consumer = asyncio.create_task(consume())
+    await asyncio.sleep(0.01)
+    await session.handle_user_message(content="Go", session_id=sid, workspace=workspace)
+    assert session._active_task is not None
+    await session._active_task
+    await asyncio.wait_for(consumer, timeout=2)
+    return events
+
+
+@pytest.mark.asyncio
+async def test_agent_session_broadcasts_completion(db_factory, tmp_path, monkeypatch):
+    """A finished turn reaches the *global* stream too.
+
+    ``session_turn_completed`` is what other windows use to drop the running
+    badge and what the viewing window uses to reconcile its live blocks with
+    the persisted rows; ``assistant_done`` is the desktop notification.
+    """
+    published: list[tuple[str, dict]] = []
+
+    async def capture(event: str, data: dict) -> None:
+        published.append((event, data))
+
+    monkeypatch.setattr("app.services.event_broadcaster.publish", capture)
+    session = AgentSession(
+        agent=Agent(llm_provider=MockProvider(["Done."]), name="openagentd"),
+        workspace=str(tmp_path),
+        db_factory=db_factory,
+    )
+    sid = str(uuid.uuid4())
+
+    events = await _run_one_turn(session, sid, str(tmp_path))
+
+    assert [e["event"] for e in events][-1] == "done"
+    kinds = [(name, data.get("kind") or data.get("status")) for name, data in published]
+    assert ("desktop_notification", "assistant_done") in kinds
+    assert ("session_turn_completed", "completed") in kinds
+    notification = next(d for n, d in published if n == "desktop_notification")
+    assert notification["session_id"] == sid
+    assert notification["title"] == f"Session completed - {tmp_path.name}"
+
+
+@pytest.mark.asyncio
+async def test_agent_session_closes_the_turn_on_error(
+    db_factory, tmp_path, monkeypatch
+):
+    """A failed turn is still a finished turn.
+
+    The error status alone leaves every other window showing a running
+    session: ``done`` releases this session's subscribers and the global
+    event clears the badge. No completion notification — the error is
+    already its own signal.
+    """
+    published: list[tuple[str, dict]] = []
+
+    async def capture(event: str, data: dict) -> None:
+        published.append((event, data))
+
+    monkeypatch.setattr("app.services.event_broadcaster.publish", capture)
+    session = AgentSession(
+        agent=Agent(llm_provider=FailingProvider(), name="openagentd"),
+        workspace=str(tmp_path),
+        db_factory=db_factory,
+    )
+    sid = str(uuid.uuid4())
+
+    events = await _run_one_turn(session, sid, str(tmp_path))
+
+    assert session.state == "error"
+    types = [e["event"] for e in events]
+    assert types[-1] == "done"
+    statuses = [e for e in events if e["event"] == "agent_status"]
+    assert any('"error"' in e["data"] for e in statuses)
+    assert (
+        "session_turn_completed",
+        {"session_id": sid, "status": "error"},
+    ) in published
+    assert all(name != "desktop_notification" for name, _ in published)

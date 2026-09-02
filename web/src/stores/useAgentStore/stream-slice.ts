@@ -327,6 +327,12 @@ export const createStreamSlice: StateCreator<
       markRestartPending(lead)
       if (lead.status === 'waiting_input') lead.status = 'working'
     })
+    // A parked turn keeps its SSE channel open, so normally there is nothing
+    // to do here. But a network blip while waiting leaves this client on a
+    // reconnect backoff of up to 30s, and the resumed turn's output would sit
+    // unseen until that timer fired. Reattach now; the attach replays anything
+    // already emitted, so nothing is lost either way.
+    if (!get().isConnected) get().connectStream()
   },
 
   stopAgent: async () => {

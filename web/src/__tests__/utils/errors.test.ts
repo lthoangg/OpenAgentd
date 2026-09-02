@@ -38,4 +38,19 @@ describe('errors utility', () => {
     expect(isTransientNetworkError(new Error('Invalid tool argument: path required'))).toBe(false)
     expect(isTransientNetworkError(new Error('Model not supported'))).toBe(false)
   })
+
+  it('does not mistake digits or words embedded in other messages for gateway errors', () => {
+    expect(isTransientNetworkError(new Error('context window exceeded: 5030 tokens'))).toBe(false)
+    expect(isTransientNetworkError(new Error('port 5200 already in use'))).toBe(false)
+    expect(isTransientNetworkError(new Error('Session 15031 was archived'))).toBe(false)
+    expect(isTransientNetworkError(new Error('The operation was aborted by the user'))).toBe(false)
+    expect(isTransientNetworkError(new Error('Tool aborted: file too large'))).toBe(false)
+    expect(isTransientNetworkError(new Error('Model timeout setting must be a number'))).toBe(false)
+  })
+
+  it('still treats real gateway status lines and request timeouts as transient', () => {
+    expect(isTransientNetworkError(new Error('HTTP 520'))).toBe(true)
+    expect(isTransientNetworkError(new Error('Request timed out after 30s'))).toBe(true)
+    expect(isTransientNetworkError(new Error('The request timed out'))).toBe(true)
+  })
 })

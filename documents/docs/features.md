@@ -417,7 +417,11 @@ executes tools, manages its task list, and inspects workspace repositories.
   connection/write timeouts, and gateway errors (408, 5xx) automatically retry
   with exponential jittered backoff during LLM generation and summarization,
   while client streams automatically resume and synchronize when network
-  connectivity returns.
+  connectivity returns. Certificate verification failures, malformed provider
+  URLs, and 501/505 responses fail immediately instead of consuming the retry
+  budget. On iOS and Android, where the OS suspends background sockets, every
+  return to the foreground reconnects; on desktop a still-open stream is left
+  alone so switching windows does not tear it down.
 - **Automatic max-tokens truncation recovery** `[v1.87.0]` — when a provider
   hits the output token limit (`finish_reason="max_tokens"` or `"length"`), the
   loop automatically injects a recovery message (requesting a continuation for

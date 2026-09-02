@@ -3,6 +3,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import type { QueryClient } from '@tanstack/react-query'
 import { globalEventStream } from '@/api/global-events'
 import { onApiBaseUrlChange } from '@/api/base-url'
+import { backgroundSuspendsSockets } from '@/hooks/use-platform'
 import { sendDesktopNotification } from '@/lib/desktop-notifications'
 import { queryKeys } from '@/queries'
 import { patchSessionRunning, patchSessionTitle } from '@/stores/cache-invalidation-bridge'
@@ -193,6 +194,8 @@ export function useGlobalEventStream(): void {
     let retryTimer: ReturnType<typeof setTimeout> | null = null
     let attempts = 0
     let controller: AbortController | null = null
+    // True between onOpen and the next onError/onDone: the socket is known live.
+    let opened = false
 
     const connect = (): number | null => {
       if (disposed) return null
@@ -203,9 +206,11 @@ export function useGlobalEventStream(): void {
       }
       controller?.abort()
       controller = new AbortController()
+      opened = false
       globalEventStream({
         onOpen: () => {
           if (disposed || generation !== connectionGeneration) return
+          opened = true
           attempts = 0
           invalidateGlobalEventQueries(queryClient)
           void reconcileCurrentSession(generation, () => connectionGeneration)
@@ -216,6 +221,7 @@ export function useGlobalEventStream(): void {
         },
         onError: (error) => {
           if (disposed || generation !== connectionGeneration) return
+          opened = false
           // Old servers do not have this optional endpoint; leave them alone.
           if (/GET \/events\/stream failed: 404/.test(error.message)) return
           const delay = Math.min(30_000, 1_500 * 2 ** attempts++)
@@ -223,6 +229,7 @@ export function useGlobalEventStream(): void {
         },
         onDone: () => {
           if (disposed || generation !== connectionGeneration) return
+          opened = false
           const delay = Math.min(30_000, 1_500 * 2 ** attempts++)
           retryTimer = setTimeout(connect, delay)
         },
@@ -233,6 +240,11 @@ export function useGlobalEventStream(): void {
     connect()
     const unsubscribeApiBaseUrl = onApiBaseUrlChange(connect)
     const resume = () => {
+      // A resume is a hint that the network or page came back. If the socket
+      // is still open and nothing is waiting to retry, there is nothing to
+      // recover; reconnecting would tear down a live stream and refetch every
+      // global query on the next onOpen — on desktop that is every alt-tab.
+      if (opened && retryTimer === null && !backgroundSuspendsSockets()) return
       connect()
     }
     const onVisibilityChange = () => {

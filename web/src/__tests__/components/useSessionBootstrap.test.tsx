@@ -3,6 +3,14 @@ import { createRef } from 'react'
 import type { RefObject } from 'react'
 import { cleanup, render, waitFor } from '@testing-library/react'
 import { QueryClient } from '@tanstack/react-query'
+
+// Whether the OS drops background sockets (iOS/Android) decides if a resume
+// must reconnect. Toggled per test; defaults to the mobile behaviour.
+let suspendsSockets = true
+mock.module('@/hooks/use-platform', () => ({
+  backgroundSuspendsSockets: () => suspendsSockets,
+}))
+
 import { useSessionBootstrap } from '@/components/AgentChatView/useSessionBootstrap'
 import type { UseSessionBootstrapArgs } from '@/components/AgentChatView/useSessionBootstrap'
 import type { InputComposerHandle } from '@/components/InputComposer'
@@ -49,6 +57,7 @@ function Harness({
 }
 
 beforeEach(() => {
+  suspendsSockets = true
   useAgentStore.setState({
     sessionId: 'session-1',
     _workspace: null,
@@ -62,7 +71,8 @@ beforeEach(() => {
 afterEach(cleanup)
 
 describe('useSessionBootstrap foreground resume', () => {
-  it('reconciles history and replaces a stale connected stream after pageshow', async () => {
+  it('reconciles history and replaces a stale connected stream after pageshow on mobile', async () => {
+    suspendsSockets = true
     const loadSession = mock(async () => {
       useAgentStore.setState({ isAgentWorking: true })
     })
@@ -82,10 +92,11 @@ describe('useSessionBootstrap foreground resume', () => {
     expect(connectStream).toHaveBeenCalledTimes(1)
   })
 
-  it('does NOT abort or replace a live connected stream on visibilitychange when on desktop (non-mobile)', async () => {
+  it('does NOT abort or replace a live connected stream on visibilitychange on desktop', async () => {
+    suspendsSockets = false
     const loadSession = mock(async () => {})
     const connectStream = mock(() => new AbortController())
-    render(<Harness loadSession={loadSession} connectStream={connectStream} isMobile={false} />)
+    render(<Harness loadSession={loadSession} connectStream={connectStream} />)
 
     await waitFor(() => expect(loadSession).toHaveBeenCalledWith('session-1', '/repo/app'))
     expect(connectStream).toHaveBeenCalledTimes(1)

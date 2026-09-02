@@ -53,6 +53,51 @@ it('opens the global stream in the shared frontend runtime', () => {
   expect(globalEventStream).toHaveBeenCalledTimes(1)
 })
 
+describe('resume on visibility / online', () => {
+  function mount() {
+    const client = new QueryClient()
+    render(createElement(QueryClientProvider, { client }, createElement(GlobalEventStream)))
+    return client
+  }
+
+  it('leaves a live desktop connection alone when the window becomes visible again', () => {
+    // A localhost SSE socket survives the window being backgrounded on
+    // desktop. Reconnecting on every alt-tab tears it down and, via
+    // onOpen, refetches every global query for nothing.
+    mount()
+    globalCallbacks?.onOpen?.()
+    expect(globalEventStream).toHaveBeenCalledTimes(1)
+
+    document.dispatchEvent(new Event('visibilitychange'))
+    window.dispatchEvent(new Event('pageshow'))
+    window.dispatchEvent(new Event('online'))
+
+    expect(globalEventStream).toHaveBeenCalledTimes(1)
+    expect(globalSignals[0]?.aborted).toBe(false)
+  })
+
+  it('reconnects immediately on online when a backoff retry is pending', () => {
+    type Callbacks = GlobalCallbacks & { onError?: (error: Error) => void }
+    mount()
+    globalCallbacks?.onOpen?.()
+    ;(globalCallbacks as Callbacks | null)?.onError?.(new Error('Failed to fetch'))
+    expect(globalEventStream).toHaveBeenCalledTimes(1)
+
+    window.dispatchEvent(new Event('online'))
+
+    expect(globalEventStream).toHaveBeenCalledTimes(2)
+    expect(globalSignals[0]?.aborted).toBe(true)
+  })
+
+  it('reconnects before the connection has ever opened', () => {
+    // Nothing confirmed the socket is alive yet, so a resume is the only
+    // way to shortcut a stalled first connect.
+    mount()
+    window.dispatchEvent(new Event('online'))
+    expect(globalEventStream).toHaveBeenCalledTimes(2)
+  })
+})
+
 it('replaces the global stream on a backend switch and ignores old-backend LSP events', async () => {
   const client = new QueryClient()
   render(createElement(QueryClientProvider, { client }, createElement(GlobalEventStream)))

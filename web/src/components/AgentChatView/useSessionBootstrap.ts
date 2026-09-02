@@ -28,6 +28,7 @@ import { saveLastCodingWorkspace, workspaceLabel } from '@/utils/workspace'
 import { setTraySession } from '@/lib/tray'
 import { isEditableTarget } from '@/lib/is-editable-target'
 import { attachmentToFile } from './helpers'
+import { backgroundSuspendsSockets } from '@/hooks/use-platform'
 import { isDirectUserBlock } from '@/stores/useAgentStore/helpers'
 import type { InputComposerHandle } from '../InputComposer'
 import type { MessageAttachment } from '@/api/types'
@@ -196,10 +197,15 @@ export function useSessionBootstrap({
       if (state._workspace !== agentWorkspace) return
       if (resumeInFlightRef.current) return
 
-      // On desktop or browser builds, a localhost SSE connection remains alive
-      // while backgrounded. If connected and an active turn is in flight, do
-      // not abort the stream or clobber in-flight tool cards and text.
-      if (!isMobile && state.isConnected && (state.isAgentWorking || abortRef.current !== null)) {
+      // On desktop, a localhost SSE connection remains alive while
+      // backgrounded. If connected and an active turn is in flight, do not
+      // abort the stream or clobber in-flight tool cards and text. Keyed on
+      // the OS, not the viewport: a narrow desktop window keeps its sockets.
+      if (
+        !backgroundSuspendsSockets() &&
+        state.isConnected &&
+        (state.isAgentWorking || abortRef.current !== null)
+      ) {
         return
       }
 
@@ -232,7 +238,7 @@ export function useSessionBootstrap({
       window.removeEventListener('pageshow', resumeStream)
       document.removeEventListener('visibilitychange', handleVisibilityChange)
     }
-  }, [sessionId, agentWorkspace, isMobile, loadSession, connectStream])
+  }, [sessionId, agentWorkspace, loadSession, connectStream])
 
   // ── Commands / shortcuts ───────────────────────────────────────────────────
 

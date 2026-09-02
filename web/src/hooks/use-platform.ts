@@ -140,3 +140,18 @@ export function usePlatform(): PlatformInfo {
 export function getPlatform(): PlatformInfo {
   return compute()
 }
+
+/**
+ * Whether the OS suspends this page's sockets while it is backgrounded.
+ *
+ * iOS and Android freeze background WebViews and drop their connections
+ * without the page seeing an error, so a resume (visibility, pageshow,
+ * online) must reconnect. Desktop and laptop browsers keep a localhost SSE
+ * alive, and reconnecting there would tear down a healthy stream and trigger
+ * the refetch that follows every open. This is an OS question, not a viewport
+ * one: a narrow desktop window keeps its sockets, an iPad does not.
+ */
+export function backgroundSuspendsSockets(): boolean {
+  const os = getPlatform().os
+  return os === 'ios' || os === 'android'
+}

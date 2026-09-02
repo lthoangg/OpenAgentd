@@ -38,6 +38,7 @@ from app.agent.schemas.chat import (
     ToolMessage,
 )
 from app.agent.usage import Usage, provider_cost_model_id, usage_to_dict
+from app.core.version import VERSION
 
 CODEX_API_BASE = "https://chatgpt.com/backend-api/codex"
 CODEX_STREAM_IDLE_TIMEOUT_SECONDS = 300.0
@@ -52,7 +53,7 @@ _TURN_STATE_HEADER = "x-codex-turn-state"
 _DEFAULT_HEADERS = {
     "Content-Type": "application/json",
     "Accept": "text/event-stream",
-    "User-Agent": "openagentd/1.0.0",
+    "User-Agent": f"openagentd/{VERSION}",
     "originator": CODEX_ORIGINATOR,
 }
 
@@ -145,6 +146,10 @@ class _CodexResponsesHandler(ResponsesHandler):
             body.pop("instructions", None)
 
         body["store"] = False
+        # Codex's Responses client sends these controls explicitly rather than
+        # relying on backend defaults.
+        body["tool_choice"] = merged.get("tool_choice", "auto")
+        body["parallel_tool_calls"] = True
         # Me: upstream Codex CLI sends this unconditionally on every request
         # (codex-rs/core/src/client.rs: `let include = vec!["reasoning.encrypted_content"...]`)
         # regardless of store/service tier — required so `store: false` turns

@@ -30,13 +30,14 @@ import httpx
 from pydantic import BaseModel, SecretStr
 
 from app.core.secret_files import write_secret_file
+from app.core.version import VERSION
 
 # -- Constants ----------------------------------------------------------------
 
 CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann"
 ISSUER = "https://auth.openai.com"
 OAUTH_PORT = 1455
-_USER_AGENT = "openagentd/1.0.0"
+_USER_AGENT = f"openagentd/{VERSION}"
 CODEX_ORIGINATOR = "openagentd"
 _REFRESH_LOCK = Lock()
 

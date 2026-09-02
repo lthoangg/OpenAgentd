@@ -28,6 +28,7 @@ from app.agent.providers.codex.oauth import (
     _device_login,
     _extract_account_id,
 )
+from app.core.version import VERSION
 from app.agent.providers.codex.codex import (
     CODEX_STREAM_IDLE_TIMEOUT_SECONDS,
     _load_token,
@@ -762,6 +763,17 @@ class TestCodexResponsesHandlerBuildRequest:
         body = handler.build_request(messages, tools, False, {})
         assert "tools" in body
 
+    def test_build_request_enables_automatic_parallel_tool_calls(self):
+        """Codex explicitly requests upstream's automatic parallel tool mode."""
+        handler = _CodexResponsesHandler("gpt-5.4", "https://api.example.com", {})
+        messages = [HumanMessage(content="Hello")]
+        tools = [{"type": "function", "function": {"name": "test"}}]
+
+        body = handler.build_request(messages, tools, False, {})
+
+        assert body["tool_choice"] == "auto"
+        assert body["parallel_tool_calls"] is True
+
     def test_build_request_sends_none_as_explicit_reasoning_effort(self):
         handler = _CodexResponsesHandler("gpt-5.4", "https://api.example.com", {})
         messages = [HumanMessage(content="Hello")]
@@ -1020,7 +1032,7 @@ class TestCodexProviderInit:
 
             assert provider._responses.headers["Content-Type"] == "application/json"
             assert provider._responses.headers["Accept"] == "text/event-stream"
-            assert provider._responses.headers["User-Agent"] == "openagentd/1.0.0"
+            assert provider._responses.headers["User-Agent"] == f"openagentd/{VERSION}"
             assert provider._responses.headers["originator"] == CODEX_ORIGINATOR
 
     def test_init_creates_responses_handler(self):

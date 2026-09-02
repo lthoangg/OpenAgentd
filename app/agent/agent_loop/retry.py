@@ -306,6 +306,20 @@ def _extract_provider_error_message(body: str) -> str | None:
     return None
 
 
+# Provider bodies that blame the *model* rather than the credential. Some
+# gateways (OpenCode Zen) return these under 401, which would otherwise route
+# to the "reconnect provider" banner and send the user to re-login for nothing.
+_MODEL_PROBLEM_RE = re.compile(
+    r"\bmodel\b.*\b(not supported|unsupported|unavailable|not available|"
+    r"does not exist|not found|no access|decommissioned|deprecated|retired)\b",
+    re.IGNORECASE,
+)
+
+
+def _blames_the_model(detail: str | None) -> bool:
+    return bool(detail) and _MODEL_PROBLEM_RE.search(detail) is not None
+
+
 def classify_provider_http_error(
     exc: httpx.HTTPStatusError, *, provider_label: str
 ) -> Exception:
@@ -317,7 +331,8 @@ def classify_provider_http_error(
     in a domain error the UI knows how to render:
 
     - 401 / 403 → :class:`ProviderAuthenticationError` (UI shows a
-      "reconnect provider" banner)
+      "reconnect provider" banner) — unless the body blames the model
+      (retired / unsupported id), which is a request error like a 404.
     - 400 / 404 / 422 → :class:`ProviderRequestError` (UI shows the
       specific reason — bad model, unsupported param, context too long…)
     - any other 4xx → :class:`ProviderRequestError` (best-effort)
@@ -333,7 +348,7 @@ def classify_provider_http_error(
 
     suffix = f": {detail}" if detail else ""
     punctuation = "" if detail and detail.endswith((".", "!", "?")) else "."
-    if status in (401, 403):
+    if status in (401, 403) and not _blames_the_model(detail):
         return ProviderAuthenticationError(
             f"{provider_label} rejected the request — authentication failed "
             f"(HTTP {status}){suffix}{punctuation} Check the provider's API key "

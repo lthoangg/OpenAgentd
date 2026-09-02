@@ -10,7 +10,7 @@
  * Keep the storage key and logic here in sync with that script.
  */
 
-import { broadcastMessage } from './broadcast-sync'
+import { broadcastMessage } from './broadcast-channel'
 export type ThemePreference = 'light' | 'dark' | 'system'
 export type ResolvedTheme = 'light' | 'dark'
 

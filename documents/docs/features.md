@@ -2,7 +2,7 @@
 title: Features
 description: Canonical, version-cited catalogue of shipped user-visible OpenAgentd features.
 status: stable
-updated: 2026-08-28
+updated: 2026-09-02
 ---
 
 # Features
@@ -14,7 +14,7 @@ release that introduced it (where known). When you ship something new, **add it 
 > double-clickable app that runs an agent on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 16 providers. Your keys.
 
-**Latest release:** v2.8.1 · August 28, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v2.8.1)
+**Latest release:** v2.9.0 · September 2, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v2.9.0)
 
 ---
 
@@ -412,7 +412,7 @@ executes tools, manages its task list, and inspects workspace repositories.
   model endpoint exhausts its retry budget mid-task (`ReadTimeout` /
   `ConnectError`), the loop resumes the same turn from where it left off
   instead of dropping the agent after a tool call. Bounded and interrupt-aware.
-- **Network blip and disconnection resilience** `[v2.8.1]` — transient network
+- **Network blip and disconnection resilience** `[v2.9.0]` — transient network
   drops, socket resets, TLS handshake interruptions, DNS resolution glitches,
   connection/write timeouts, and gateway errors (408, 5xx) automatically retry
   with exponential jittered backoff during LLM generation and summarization,
@@ -735,7 +735,7 @@ agnostic by design.
 - **API key provider usage and credit monitor** `[v2.3.0]` — Settings → Providers shows live credit balances, key spend caps, and quota limits for configured API key providers (such as OpenRouter and DeepSeek) alongside OAuth providers.
 - **Provider plugin usage hooks** `[v1.33.0]` — OAuth provider plugins can
   surface live usage in the same Settings → Providers panel as built-ins.
-- **Provider-scoped visible models and pricing** `[v1.57.0, v1.63.0, v2.8.1]` — Settings → Providers lets
+- **Provider-scoped visible models and pricing** `[v1.57.0, v1.63.0, v2.9.0]` — Settings → Providers lets
   users choose which provider models appear in normal model pickers. Session
   settings and other pickers read a cached provider model list for instant
   open; when the cache is empty, `/api/agents/registry` warms configured
@@ -745,7 +745,7 @@ agnostic by design.
    `[v1.132.0]`. The providers page now includes a
   search plus status/kind filter bar for quickly narrowing long provider lists
   `[v1.74.0]`. Each model row in the listing displays its per-token pricing (USD per 1M tokens
-  input/output or `Free` badge) with tooltip breakdowns including cache read/write rates `[v2.8.1]`.
+  input/output or `Free` badge) with tooltip breakdowns including cache read/write rates `[v2.9.0]`.
 - **Curated multimodal model registry** `[v1.34.0]` — model modality gates,
   token limits, cost, support flags, and thinking-level metadata are maintained
   in one exact-match registry: runtime `models.dev` cache, explicit compatibility
@@ -790,7 +790,7 @@ MCP.
 - **Fast HTML & document extraction** `[v2.0.0]` — `web_fetch` uses `trafilatura` for
   clean HTML-to-markdown extraction, and `read` uses `anydoc` for robust document
   conversion, dropping `markitdown`.
-- **Safe, bounded web fetching** `[v2.8.1]` — `web_fetch` streams responses under
+- **Safe, bounded web fetching** `[v2.9.0]` — `web_fetch` streams responses under
   a 50 MB limit, validates every redirect against public-network policy, reports
   concise typed HTTP/network/conversion failures, and supports distinct Markdown,
   text, HTML-source, and raw-text output modes. Destinations that resolve to
@@ -1137,7 +1137,7 @@ Desktop is primary. CLI / server is the developer path.
   windows now do a frontend-only force reload without restarting the bundled
   sidecar, while bundled windows wait for backend readiness before the desktop
   UI finishes bootstrapping after reload.
-- **Reload preserves the current open page** `[v2.8.1]` — reloading in browser
+- **Reload preserves the current open page** `[v2.9.0]` — reloading in browser
   or desktop shells (Cmd+R / Ctrl+R) restores the active session, scheduler, or
   telemetry view instead of returning to the home workspace.
 - **Closest restorable route fallback after backend switches** `[v1.68.0]` —

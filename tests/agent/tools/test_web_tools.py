@@ -581,6 +581,63 @@ async def test_web_fetch_rejects_private_destination(monkeypatch):
         await web_module._validate_fetch_destination(httpx.URL("http://example.test"))
 
 
+@pytest.mark.asyncio
+async def test_web_fetch_private_destination_allowed_by_opt_in(monkeypatch):
+    """``WEB_FETCH_ALLOW_PRIVATE_NETWORK`` lets a local-first user fetch localhost."""
+
+    async def resolve(host, port):
+        return ["127.0.0.1"]
+
+    monkeypatch.setattr(web_module, "_resolve_host", resolve)
+    monkeypatch.setattr(web_module.settings, "WEB_FETCH_ALLOW_PRIVATE_NETWORK", True)
+
+    await web_module._validate_fetch_destination(httpx.URL("http://localhost:3000"))
+
+
+@pytest.mark.asyncio
+async def test_web_fetch_opt_in_does_not_relax_scheme_or_credential_checks(
+    monkeypatch,
+):
+    monkeypatch.setattr(web_module.settings, "WEB_FETCH_ALLOW_PRIVATE_NETWORK", True)
+
+    with pytest.raises(web_module.UnsafeURL):
+        await web_module._validate_fetch_destination(
+            httpx.URL("http://user:pw@localhost:3000")
+        )
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_web_fetch_reuses_one_pooled_client():
+    """Repeated fetches share a lifecycle-managed client instead of building one per call."""
+    await web_module.close_http_client()
+    respx.get("https://example.com/a").mock(
+        return_value=httpx.Response(
+            200, text="a", headers={"content-type": "text/plain"}
+        )
+    )
+    respx.get("https://example.com/b").mock(
+        return_value=httpx.Response(
+            200, text="b", headers={"content-type": "text/plain"}
+        )
+    )
+
+    await web_fetch("https://example.com/a")
+    first = web_module._get_http_client()
+    await web_fetch("https://example.com/b")
+    second = web_module._get_http_client()
+
+    assert first is second
+    assert not first.is_closed
+
+    await web_module.close_http_client()
+    assert first.is_closed
+    # A fetch after shutdown transparently opens a fresh client.
+    assert await web_fetch("https://example.com/a") == "a"
+    assert web_module._get_http_client() is not first
+    await web_module.close_http_client()
+
+
 def test_web_fetch_args_rejects_unsupported_scheme():
     with pytest.raises(ValueError, match=r"http\(s\)"):
         web_module.WebFetchArgs.model_validate({"url": "ftp://example.com"})

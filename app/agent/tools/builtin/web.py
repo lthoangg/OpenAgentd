@@ -13,12 +13,16 @@ from loguru import logger
 from pydantic import AliasChoices, BaseModel, Field, field_validator
 
 from app.agent.tools.registry import tool
+from app.core.config import settings
 
 _MAX_RESPONSE_MB = 50
 _MAX_RESPONSE_BYTES = _MAX_RESPONSE_MB * 1024 * 1024
 _DEFAULT_TIMEOUT = 30.0
 _MAX_TIMEOUT = 120.0
 _MAX_REDIRECTS = 10
+# Keep the pool modest: every session shares one client, and idle keep-alive
+# sockets to dozens of hosts are not worth holding open.
+_CLIENT_LIMITS = httpx.Limits(max_connections=20, max_keepalive_connections=10)
 
 WebFetchFormat = Literal["markdown", "html", "text", "raw"]
 
@@ -302,6 +306,15 @@ async def _resolve_host(host: str, port: int | None) -> list[str]:
 async def _validate_fetch_destination(
     url: httpx.URL,
 ) -> None:
+    """Reject schemes, credentials, and (by default) non-public destinations.
+
+    The address check is a resolve-then-validate step; the connection itself
+    is opened by httpx with its own lookup. A DNS server that answers with a
+    public address here and a private one moments later (rebinding) can
+    therefore slip past. Closing that gap means pinning the connection to the
+    validated address with SNI/Host overrides — a deliberate follow-up, not
+    something this check claims to cover.
+    """
     scheme = url.scheme.lower()
     if scheme not in {"http", "https"}:
         raise UnsafeURL("Only http:// and https:// URLs are supported.")
@@ -309,6 +322,8 @@ async def _validate_fetch_destination(
         raise UnsafeURL("The URL has no host.")
     if url.userinfo:
         raise UnsafeURL("URLs containing embedded credentials are not allowed.")
+    if settings.WEB_FETCH_ALLOW_PRIVATE_NETWORK:
+        return
     try:
         addresses = await _resolve_host(url.host, url.port)
     except OSError as exc:
@@ -403,6 +418,40 @@ async def _read_limited_response(response: httpx.Response, *, max_bytes: int) ->
     return b"".join(chunks)
 
 
+_http_client: httpx.AsyncClient | None = None
+_http_client_loop: asyncio.AbstractEventLoop | None = None
+
+
+def _get_http_client() -> httpx.AsyncClient:
+    """Return the shared fetch client, creating it on first use.
+
+    Redirects are followed manually so every hop is re-validated; the client
+    is shared so repeated fetches to one host reuse its keep-alive socket
+    instead of paying a fresh TCP+TLS handshake per call. Pooled sockets are
+    bound to the loop that opened them, so a client from a previous loop
+    (per-test loops, CLI one-shots) is discarded rather than reused.
+    """
+    global _http_client, _http_client_loop
+    loop = asyncio.get_running_loop()
+    if _http_client is None or _http_client.is_closed or _http_client_loop is not loop:
+        _http_client = httpx.AsyncClient(
+            follow_redirects=False,
+            verify=True,
+            timeout=_DEFAULT_TIMEOUT,
+            limits=_CLIENT_LIMITS,
+        )
+        _http_client_loop = loop
+    return _http_client
+
+
+async def close_http_client() -> None:
+    """Close the shared client. Called from the API lifespan on shutdown."""
+    global _http_client
+    client, _http_client = _http_client, None
+    if client is not None and not client.is_closed:
+        await client.aclose()
+
+
 async def _fetch_url(
     url: httpx.URL,
     *,
@@ -412,89 +461,87 @@ async def _fetch_url(
     requested_url = str(url)
     current_url = url
     redirects = 0
+    client = _get_http_client()
 
-    async with httpx.AsyncClient(
-        follow_redirects=False, verify=True, timeout=_DEFAULT_TIMEOUT
-    ) as client:
-        while True:
-            await _validate_fetch_destination(current_url)
-            try:
-                async with client.stream(
-                    "GET", current_url, headers=headers, timeout=timeout
-                ) as response:
-                    if _browser_challenge(response):
+    while True:
+        await _validate_fetch_destination(current_url)
+        try:
+            async with client.stream(
+                "GET", current_url, headers=headers, timeout=timeout
+            ) as response:
+                if _browser_challenge(response):
+                    raise FetchFailure(
+                        FetchError(
+                            FetchErrorKind.ACCESS_DENIED,
+                            "Browser verification required.",
+                            False,
+                            response.status_code,
+                            "Direct HTTP fetching was blocked by anti-bot protection. "
+                            "Try another source or use a browser-capable tool.",
+                        )
+                    )
+                if 300 <= response.status_code < 400:
+                    location = response.headers.get("location")
+                    if not location:
+                        raise FetchFailure(_http_error(response))
+                    if redirects >= _MAX_REDIRECTS:
                         raise FetchFailure(
                             FetchError(
-                                FetchErrorKind.ACCESS_DENIED,
-                                "Browser verification required.",
+                                FetchErrorKind.TOO_MANY_REDIRECTS,
+                                "Too many redirects.",
                                 False,
-                                response.status_code,
-                                "Direct HTTP fetching was blocked by anti-bot protection. "
-                                "Try another source or use a browser-capable tool.",
+                                hint="The URL redirected more than the allowed limit.",
                             )
                         )
-                    if 300 <= response.status_code < 400:
-                        location = response.headers.get("location")
-                        if not location:
-                            raise FetchFailure(_http_error(response))
-                        if redirects >= _MAX_REDIRECTS:
-                            raise FetchFailure(
-                                FetchError(
-                                    FetchErrorKind.TOO_MANY_REDIRECTS,
-                                    "Too many redirects.",
-                                    False,
-                                    hint="The URL redirected more than the allowed limit.",
-                                )
-                            )
-                        current_url = response.url.join(location)
-                        redirects += 1
-                        continue
-                    if response.status_code >= 400:
-                        raise FetchFailure(_http_error(response))
-                    content = await _read_limited_response(
-                        response, max_bytes=_MAX_RESPONSE_BYTES
-                    )
-                    content_type = response.headers.get("content-type")
-                    _, charset = _parse_content_type(content_type)
-                    return FetchResult(
-                        requested_url=requested_url,
-                        final_url=str(response.url),
-                        status_code=response.status_code,
-                        content_type=content_type,
-                        charset=charset,
-                        content=content,
-                        redirect_count=redirects,
-                    )
-            except FetchFailure:
-                raise
-            except httpx.TimeoutException as exc:
-                raise FetchFailure(
-                    FetchError(
-                        FetchErrorKind.TIMEOUT,
-                        "Request timed out.",
-                        True,
-                        hint="The request timed out. Retrying may succeed.",
-                    )
-                ) from exc
-            except httpx.TooManyRedirects as exc:
-                raise FetchFailure(
-                    FetchError(
-                        FetchErrorKind.TOO_MANY_REDIRECTS,
-                        "Too many redirects.",
-                        False,
-                    )
-                ) from exc
-            except httpx.InvalidURL as exc:
-                raise UnsafeURL(str(exc)) from exc
-            except httpx.RequestError as exc:
-                raise FetchFailure(
-                    FetchError(
-                        FetchErrorKind.NETWORK_ERROR,
-                        "Network error.",
-                        True,
-                        hint="The request could not reach the server. Retrying may succeed.",
-                    )
-                ) from exc
+                    current_url = response.url.join(location)
+                    redirects += 1
+                    continue
+                if response.status_code >= 400:
+                    raise FetchFailure(_http_error(response))
+                content = await _read_limited_response(
+                    response, max_bytes=_MAX_RESPONSE_BYTES
+                )
+                content_type = response.headers.get("content-type")
+                _, charset = _parse_content_type(content_type)
+                return FetchResult(
+                    requested_url=requested_url,
+                    final_url=str(response.url),
+                    status_code=response.status_code,
+                    content_type=content_type,
+                    charset=charset,
+                    content=content,
+                    redirect_count=redirects,
+                )
+        except FetchFailure:
+            raise
+        except httpx.TimeoutException as exc:
+            raise FetchFailure(
+                FetchError(
+                    FetchErrorKind.TIMEOUT,
+                    "Request timed out.",
+                    True,
+                    hint="The request timed out. Retrying may succeed.",
+                )
+            ) from exc
+        except httpx.TooManyRedirects as exc:
+            raise FetchFailure(
+                FetchError(
+                    FetchErrorKind.TOO_MANY_REDIRECTS,
+                    "Too many redirects.",
+                    False,
+                )
+            ) from exc
+        except httpx.InvalidURL as exc:
+            raise UnsafeURL(str(exc)) from exc
+        except httpx.RequestError as exc:
+            raise FetchFailure(
+                FetchError(
+                    FetchErrorKind.NETWORK_ERROR,
+                    "Network error.",
+                    True,
+                    hint="The request could not reach the server. Retrying may succeed.",
+                )
+            ) from exc
 
 
 class WebSearchArgs(BaseModel):

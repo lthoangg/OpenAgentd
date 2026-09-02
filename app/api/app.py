@@ -123,6 +123,10 @@ async def lifespan(app: FastAPI):
 
     await stream_store.close()
     await event_broadcaster.close()
+
+    from app.agent.tools.builtin.web import close_http_client
+
+    await close_http_client()
     await stop_otel_retention()
     shutdown_otel()
 

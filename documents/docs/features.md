@@ -735,7 +735,7 @@ agnostic by design.
 - **API key provider usage and credit monitor** `[v2.3.0]` — Settings → Providers shows live credit balances, key spend caps, and quota limits for configured API key providers (such as OpenRouter and DeepSeek) alongside OAuth providers.
 - **Provider plugin usage hooks** `[v1.33.0]` — OAuth provider plugins can
   surface live usage in the same Settings → Providers panel as built-ins.
-- **Provider-scoped visible models** `[v1.57.0, v1.63.0]` — Settings → Providers lets
+- **Provider-scoped visible models and pricing** `[v1.57.0, v1.63.0, v2.8.1]` — Settings → Providers lets
   users choose which provider models appear in normal model pickers. Session
   settings and other pickers read a cached provider model list for instant
   open; when the cache is empty, `/api/agents/registry` warms configured
@@ -744,7 +744,8 @@ agnostic by design.
    already saved, without retyping a secret the UI never echoes back
    `[v1.132.0]`. The providers page now includes a
   search plus status/kind filter bar for quickly narrowing long provider lists
-  `[v1.74.0]`.
+  `[v1.74.0]`. Each model row in the listing displays its per-token pricing (USD per 1M tokens
+  input/output or `Free` badge) with tooltip breakdowns including cache read/write rates `[v2.8.1]`.
 - **Curated multimodal model registry** `[v1.34.0]` — model modality gates,
   token limits, cost, support flags, and thinking-level metadata are maintained
   in one exact-match registry: runtime `models.dev` cache, explicit compatibility

@@ -959,6 +959,85 @@ def test_list_provider_models_returns_discovered_models(
     assert body["provider"] == "openai"
     assert body["source"] == "provider"
     assert body["models"] == ["model-a", "model-b"]
+    assert "model_costs" in body
+
+
+def test_list_provider_models_returns_model_costs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.agent.providers.model_metadata import ModelCost
+
+    async def _mock_models(_entry, **_kwargs):  # type: ignore[no-untyped-def]
+        return ["gpt-5", "unknown-model"]
+
+    monkeypatch.setattr(
+        "app.agent.providers.model_discovery.discover_provider_models", _mock_models
+    )
+    monkeypatch.setattr(
+        "app.agent.providers.model_metadata.get_model_cost",
+        lambda model_id: (
+            ModelCost(input=1.25, output=10.0, cache_read=0.125)
+            if "gpt-5" in model_id
+            else ModelCost()
+        ),
+    )
+
+    app = _make_app()
+    client = TestClient(app)
+    response = client.post(
+        "/api/settings/providers/openai/models",
+        json={"api_key": "[REDACTED]"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["models"] == ["gpt-5", "unknown-model"]
+    assert "gpt-5" in body["model_costs"]
+    assert body["model_costs"]["gpt-5"] == {
+        "input": 1.25,
+        "output": 10.0,
+        "cache_read": 0.125,
+        "cache_write": None,
+    }
+    assert "unknown-model" not in body["model_costs"]
+
+
+def test_list_providers_includes_model_costs_for_cached_models(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.agent.providers.model_metadata import ModelCost
+    from app.core import runtime_settings
+
+    snapshot = runtime_settings.RuntimeSettings(
+        providers={
+            "openai": runtime_settings.ProviderUiSettings(
+                cached_models=["gpt-5"],
+            )
+        }
+    )
+    monkeypatch.setattr(runtime_settings, "load_runtime_settings", lambda: snapshot)
+    monkeypatch.setattr(
+        "app.agent.providers.model_metadata.get_model_cost",
+        lambda model_id: (
+            ModelCost(input=1.25, output=10.0, cache_read=0.125)
+            if "gpt-5" in model_id
+            else ModelCost()
+        ),
+    )
+
+    app = _make_app()
+    client = TestClient(app)
+    response = client.get("/api/settings/providers")
+    assert response.status_code == 200
+    data = response.json()
+    openai_provider = next(p for p in data["providers"] if p["id"] == "openai")
+    assert openai_provider["cached_models"] == ["gpt-5"]
+    assert openai_provider["model_costs"]["gpt-5"] == {
+        "input": 1.25,
+        "output": 10.0,
+        "cache_read": 0.125,
+        "cache_write": None,
+    }
 
 
 def test_list_provider_models_filters_non_agent_models(

@@ -66,7 +66,12 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
 
   const autoModelsQ = useQuery({
     queryKey: queryKeys.settings.providerModels(provider.id),
-    queryFn: async () => ({ provider: provider.id, models: provider.cached_models, source: 'provider' as const }),
+    queryFn: async () => ({
+      provider: provider.id,
+      models: provider.cached_models,
+      model_costs: provider.model_costs,
+      source: 'provider' as const,
+    }),
     enabled: autoFetchEnabled,
     staleTime: 60_000,
   })
@@ -81,6 +86,14 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
     }
     return autoModelsQ.data?.models ?? provider.cached_models ?? []
   }, [autoModelsQ.data?.models, hasCandidateKey, provider.cached_models, provider.is_configured])
+
+  const modelCosts = useMemo(() => {
+    return {
+      ...(provider.model_costs ?? {}),
+      ...(autoModelsQ.data?.model_costs ?? {}),
+      ...(modelsMutation.data?.model_costs ?? {}),
+    }
+  }, [autoModelsQ.data?.model_costs, modelsMutation.data?.model_costs, provider.model_costs])
 
   const handleListModels = async () => {
     const extra = provider.kind === 'cloud_creds' ? cloudExtra : extraForRequest
@@ -101,7 +114,9 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
           return {
             ...current,
             providers: current.providers.map((item) =>
-              item.id === provider.id ? { ...item, cached_models: listed.models } : item,
+              item.id === provider.id
+                ? { ...item, cached_models: listed.models, model_costs: listed.model_costs }
+                : item,
             ),
           }
         })
@@ -539,6 +554,7 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
         <ModelsPanel
           providerId={provider.id}
           models={models}
+          modelCosts={modelCosts}
           visibleModels={provider.visible_models}
           search={modelSearch}
           onSearchChange={setModelSearch}

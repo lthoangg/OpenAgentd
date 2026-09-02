@@ -1,4 +1,4 @@
-import type { OAuthLoginEvent, ProviderInfo } from '@/api/client'
+import type { ModelCostInfo, OAuthLoginEvent, ProviderInfo } from '@/api/client'
 import { isTransientNetworkError } from '@/utils/errors'
 
 export const MODEL_LONG_PRESS_MS = 520
@@ -9,6 +9,80 @@ export function providerKindLabel(kind: ProviderInfo['kind']): string {
   if (kind === 'oauth') return 'OAuth'
   if (kind === 'local') return 'Local'
   return 'Cloud credentials'
+}
+
+export function formatTokenPrice(usdPerMillion: number): string {
+  if (usdPerMillion === 0) return '$0'
+  if (Number.isInteger(usdPerMillion)) {
+    return `$${usdPerMillion}`
+  }
+  if (usdPerMillion < 0.1) {
+    return `$${usdPerMillion.toFixed(4).replace(/0+$/, '').replace(/\.$/, '')}`
+  }
+  return `$${usdPerMillion.toFixed(2)}`
+}
+
+export function formatModelPriceBadge(cost?: ModelCostInfo): { label: string; isFree: boolean } | null {
+  if (!cost) return null
+  const { input, output } = cost
+  const hasInput = typeof input === 'number'
+  const hasOutput = typeof output === 'number'
+
+  if (!hasInput && !hasOutput) return null
+
+  if (input === 0 && output === 0) {
+    return { label: 'Free', isFree: true }
+  }
+
+  if (hasInput && hasOutput) {
+    return {
+      label: `${formatTokenPrice(input)} / ${formatTokenPrice(output)} / 1M`,
+      isFree: false,
+    }
+  }
+
+  if (hasInput) {
+    return {
+      label: `${formatTokenPrice(input)} in / 1M`,
+      isFree: false,
+    }
+  }
+
+  return {
+    label: `${formatTokenPrice(output!)} out / 1M`,
+    isFree: false,
+  }
+}
+
+export function formatModelPriceTooltip(cost?: ModelCostInfo): string | null {
+  if (!cost) return null
+  const { input, output, cache_read, cache_write } = cost
+  const hasInput = typeof input === 'number'
+  const hasOutput = typeof output === 'number'
+  const hasCacheRead = typeof cache_read === 'number'
+  const hasCacheWrite = typeof cache_write === 'number'
+
+  if (!hasInput && !hasOutput && !hasCacheRead && !hasCacheWrite) return null
+
+  if (input === 0 && output === 0 && !hasCacheRead && !hasCacheWrite) {
+    return 'Free (no token cost)'
+  }
+
+  const lines: string[] = []
+  if (hasInput) {
+    lines.push(`Input: ${formatTokenPrice(input)} / 1M tokens`)
+  }
+  if (hasOutput) {
+    lines.push(`Output: ${formatTokenPrice(output)} / 1M tokens`)
+  }
+  if (hasCacheRead) {
+    lines.push(`Cache read: ${formatTokenPrice(cache_read)} / 1M tokens`)
+  }
+  if (hasCacheWrite) {
+    lines.push(`Cache write: ${formatTokenPrice(cache_write)} / 1M tokens`)
+  }
+
+  return lines.join(' · ')
 }
 
 /** Daemon-style providers expose an optional base URL so users can point

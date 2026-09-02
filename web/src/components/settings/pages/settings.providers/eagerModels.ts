@@ -21,7 +21,9 @@ export async function eagerlyWarmProviderModels(
       return {
         ...current,
         providers: current.providers.map((item) =>
-          item.id === provider.id ? { ...item, cached_models: listed.models } : item,
+          item.id === provider.id
+            ? { ...item, cached_models: listed.models, model_costs: listed.model_costs }
+            : item,
         ),
       }
     })

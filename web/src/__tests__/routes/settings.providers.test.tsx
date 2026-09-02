@@ -319,6 +319,54 @@ describe('ProvidersSettingsPage', () => {
     expect(await screen.findByText('openai:new-model')).toBeTruthy()
   })
 
+  it('shows model prices in the model listing', async () => {
+    server.use(
+      http.get('http://localhost/api/settings/providers', () => HttpResponse.json({
+        has_any_configured: true,
+        providers: [
+          {
+            id: 'openai',
+            label: 'OpenAI',
+            description: 'OpenAI provider',
+            kind: 'api_key',
+            credentials: [],
+            env_var: 'OPENAI_API_KEY',
+            env_vars: [],
+            oauth_command: '',
+            docs_url: '',
+            is_configured: true,
+            is_saved: true,
+            is_reachable: true,
+            cached_models: ['gpt-5', 'free-model'],
+            visible_models: [],
+            model_costs: {
+              'gpt-5': { input: 1.25, output: 10, cache_read: 0.125 },
+              'free-model': { input: 0, output: 0 },
+            },
+          },
+        ],
+      })),
+      http.post('http://localhost/api/settings/providers/openai/models', () => HttpResponse.json({
+        provider: 'openai',
+        models: ['gpt-5', 'free-model'],
+        model_costs: {
+          'gpt-5': { input: 1.25, output: 10, cache_read: 0.125 },
+          'free-model': { input: 0, output: 0 },
+        },
+        source: 'provider',
+      })),
+    )
+
+    renderPage()
+
+    expect(await screen.findByText('OpenAI')).toBeTruthy()
+    await waitFor(() => expect(screen.getByText(/2 models available/i)).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: /2 models available/i }))
+    expect(await screen.findByText('openai:gpt-5')).toBeTruthy()
+    expect(screen.getByText('$1.25 / $10 / 1M')).toBeTruthy()
+    expect(screen.getByText('Free')).toBeTruthy()
+  })
+
   it('lists public OpenCode Zen models without an API key', async () => {
     let requestBody: unknown
     server.use(

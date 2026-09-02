@@ -96,7 +96,18 @@ def test_tail_text_cuts_by_lines_keeps_head_and_tail():
     assert "line0" in tail
     assert "line299" in tail
     assert "line150" not in tail
-    assert "...output truncated..." in tail
+    # Head 5 + tail 5 of 300 → 290 omitted. Naming the count (Codex's
+    # "…N truncated…" convention) lets the model judge whether the spill
+    # file is worth a read instead of guessing.
+    assert "...output truncated (290 lines omitted)..." in tail
+
+
+def test_tail_text_byte_cut_reports_omitted_bytes():
+    text = "\n".join("x" * 100 for _ in range(200))
+    tail, cut = _tail_text(text, max_lines=200, max_bytes=1024)
+    assert cut is True
+    assert "...output truncated (" in tail
+    assert "bytes omitted)..." in tail
 
 
 def test_tail_text_cuts_by_bytes():

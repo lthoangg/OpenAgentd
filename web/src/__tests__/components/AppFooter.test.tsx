@@ -3,6 +3,9 @@ import { render, screen, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { AppFooter } from '@/components/AppFooter'
+
+const navigate = mock(() => Promise.resolve())
+mock.module('@tanstack/react-router', () => ({ useNavigate: () => navigate }))
 const mockOpenSettings = mock(() => {})
 
 mock.module('@/stores/useSettingsStore', () => ({

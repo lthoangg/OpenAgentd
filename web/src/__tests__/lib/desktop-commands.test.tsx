@@ -1,7 +1,11 @@
 import { afterEach, describe, expect, it, mock } from 'bun:test'
 import { render, waitFor } from '@testing-library/react'
 
-import { router } from '@/router'
+// The hook reads the router from context; supply a stub without mounting the
+// route tree.
+const navigate = mock(async () => {})
+mock.module('@tanstack/react-router', () => ({ useRouter: () => ({ navigate }) }))
+
 import { useDesktopCommands } from '@/lib/desktop-commands'
 import { useUIStore } from '@/stores/useUIStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
@@ -42,6 +46,7 @@ function resetUIStore(): void {
   listener = null
   notificationListener = null
   unlistenCalls = 0
+  navigate.mockClear()
 }
 
 afterEach(resetUIStore)
@@ -157,18 +162,11 @@ describe('useDesktopCommands', () => {
   })
 
   it('navigates to /coding when the coding command is emitted', async () => {
-    const originalNavigate = router.navigate
-    const navigate = mock(async () => {})
-    router.navigate = navigate as typeof router.navigate
-    try {
-      await renderBridge()
+    await renderBridge()
 
-      listener?.({ payload: 'coding' })
+    listener?.({ payload: 'coding' })
 
-      expect(navigate).toHaveBeenCalledWith({ to: '/coding' })
-    } finally {
-      router.navigate = originalNavigate
-    }
+    expect(navigate).toHaveBeenCalledWith({ to: '/coding' })
   })
 
   it('unsubscribes from the Tauri event bus when the root unmounts', async () => {

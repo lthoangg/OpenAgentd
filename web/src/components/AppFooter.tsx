@@ -29,6 +29,7 @@ import {
   Zap,
 } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
+import { useNavigate } from '@tanstack/react-router'
 
 import { HealthDot } from './HealthDot'
 import { ThemeToggle } from './ThemeToggle'
@@ -39,7 +40,6 @@ import { useSettingsStore } from '@/stores/useSettingsStore'
 import { queryKeys } from '@/queries/keys'
 import { getCodingWorkspaceStatus } from '@/api/client'
 import { cn } from '@/lib/utils'
-import { router } from '@/router'
 
 export interface AppFooterProps {
   workspace?: string | null
@@ -71,6 +71,7 @@ export const AppFooter = memo(function AppFooter({
   className,
 }: AppFooterProps) {
   const { os } = usePlatform()
+  const navigate = useNavigate()
   const openSettings = useSettingsStore((s) => s.openSettings)
 
   const isCoding = Boolean(workspace)
@@ -198,7 +199,7 @@ export const AppFooter = memo(function AppFooter({
                 aria-label="Telemetry"
                 onClick={(e) => {
                   e.preventDefault()
-                  void router.navigate({ to: '/telemetry' })
+                  void navigate({ to: '/telemetry' })
                 }}
               >
                 <Activity size={12} aria-hidden="true" />

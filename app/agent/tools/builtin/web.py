@@ -7,7 +7,6 @@ from typing import Any, Literal
 
 import anydoc
 import httpx
-import trafilatura
 from ddgs import DDGS
 from loguru import logger
 from pydantic import AliasChoices, BaseModel, Field, field_validator
@@ -143,6 +142,10 @@ def _dropped_page_content(html: str, extracted: str | None) -> bool:
 
 def _html_to_markdown(html: str) -> str:
     """Convert an HTML page to Markdown while dropping navigation and scripts."""
+    # Deferred: trafilatura is ~320 ms of the sidecar's cold import and only
+    # needed once a fetch actually converts HTML. Runs under ``to_thread``.
+    import trafilatura
+
     if "<body" not in html.lower():
         html = f"<html><body>{html}</body></html>"
     extracted = trafilatura.extract(
@@ -158,6 +161,8 @@ def _html_to_markdown(html: str) -> str:
 
 def _html_to_text(html: str) -> str:
     """Extract readable text from HTML without Markdown formatting."""
+    import trafilatura
+
     if "<body" not in html.lower():
         html = f"<html><body>{html}</body></html>"
     return trafilatura.html2txt(html) or ""

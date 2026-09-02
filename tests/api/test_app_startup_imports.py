@@ -21,6 +21,10 @@ _FORBIDDEN_MODULES = [
     "ctranslate2",
     "av",
     "markitdown",
+    # Not native, but ~320 ms of a ~1 s sidecar cold import and only needed
+    # once web_fetch converts HTML. Keeping it deferred is a desktop
+    # time-to-ready win, so guard it like the native deps.
+    "trafilatura",
 ]
 
 

@@ -11,8 +11,10 @@
  * shell (backdrop + panel), not section content.
  */
 import { describe, it, expect, afterEach, mock } from 'bun:test'
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import React from 'react'
-import { render, screen, cleanup } from '@testing-library/react'
+import { act, render, screen, cleanup } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import '@testing-library/jest-dom'
 
@@ -113,6 +115,29 @@ describe('SettingsModal — mobile edge-swipe exclusion', () => {
     renderModal()
 
     expect(screen.getByRole('button', { name: 'About openagentd' }).getAttribute('aria-current')).toBe('page')
+  })
+})
+
+describe('SettingsModal — code splitting', () => {
+  it('renders a section page after it loads and switches sections in place', async () => {
+    useSettingsStore.setState({ open: true, section: 'providers', selectedName: null })
+    renderModal()
+
+    expect(await screen.findByText('providers')).toBeTruthy()
+
+    act(() => useSettingsStore.setState({ section: 'mcp' }))
+    expect(await screen.findByText('mcp')).toBeTruthy()
+  })
+
+  it('does not statically import any settings page into the app shell', () => {
+    // The modal is opened on demand, so its pages belong behind a dynamic
+    // import; a static import drags ~3.6k LOC into the first-paint bundle.
+    const source = readFileSync(
+      fileURLToPath(new URL('../../components/SettingsModal.tsx', import.meta.url)),
+      'utf8',
+    )
+    const staticPageImports = source.match(/^import .* from '@\/components\/settings\/pages\//gm) ?? []
+    expect(staticPageImports).toEqual([])
   })
 })
 

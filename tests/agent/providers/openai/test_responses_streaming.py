@@ -231,9 +231,12 @@ class TestResponsesStreaming:
             chunks.append(chunk)
 
         assert len(chunks) == 2
-        assert chunks[1].choices[0].delta.reasoning_item_id == "rs_1"
-        assert chunks[1].choices[0].delta.reasoning_encrypted_content == "cipher123"
-        assert chunks[1].choices[0].delta.reasoning_item_summary == [
+        assert chunks[1].choices[0].delta.reasoning_item is not None
+        assert chunks[1].choices[0].delta.reasoning_item.id == "rs_1"
+        assert (
+            chunks[1].choices[0].delta.reasoning_item.encrypted_content == "cipher123"
+        )
+        assert chunks[1].choices[0].delta.reasoning_item.summary == [
             {"type": "summary_text", "text": "Let me think"}
         ]
 
@@ -267,17 +270,23 @@ class TestResponsesStreaming:
 
         # Filter reasoning done chunks
         done_chunks = [
-            c for c in chunks if c.choices[0].delta.reasoning_encrypted_content
+            c for c in chunks if c.choices[0].delta.reasoning_item is not None
         ]
         assert len(done_chunks) == 2
-        assert done_chunks[0].choices[0].delta.reasoning_item_id == "rs_1"
-        assert done_chunks[0].choices[0].delta.reasoning_encrypted_content == "cipher1"
-        assert done_chunks[0].choices[0].delta.reasoning_item_summary == [
+        assert done_chunks[0].choices[0].delta.reasoning_item.id == "rs_1"
+        assert (
+            done_chunks[0].choices[0].delta.reasoning_item.encrypted_content
+            == "cipher1"
+        )
+        assert done_chunks[0].choices[0].delta.reasoning_item.summary == [
             {"type": "summary_text", "text": "Thought 1"}
         ]
-        assert done_chunks[1].choices[0].delta.reasoning_item_id == "rs_2"
-        assert done_chunks[1].choices[0].delta.reasoning_encrypted_content == "cipher2"
-        assert done_chunks[1].choices[0].delta.reasoning_item_summary == [
+        assert done_chunks[1].choices[0].delta.reasoning_item.id == "rs_2"
+        assert (
+            done_chunks[1].choices[0].delta.reasoning_item.encrypted_content
+            == "cipher2"
+        )
+        assert done_chunks[1].choices[0].delta.reasoning_item.summary == [
             {"type": "summary_text", "text": "Thought 2"}
         ]
 

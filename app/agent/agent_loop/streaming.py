@@ -280,17 +280,11 @@ async def stream_and_assemble(
             # Me: yielded once, fully assembled, after the provider stream
             # completes — assign rather than concatenate.
             raw_content_blocks = delta.anthropic_raw_blocks
-        if delta.reasoning_encrypted_content:
+        if delta.reasoning_item:
             # Me: delivered once, whole, when the reasoning item completes —
             # not incremental text like reasoning_content, so assign rather
             # than concatenate.
-            reasoning_items.append(
-                EncryptedReasoningItem(
-                    id=delta.reasoning_item_id,
-                    summary=delta.reasoning_item_summary or [],
-                    encrypted_content=delta.reasoning_encrypted_content,
-                )
-            )
+            reasoning_items.append(delta.reasoning_item)
         if delta.content:
             full_content += delta.content
 

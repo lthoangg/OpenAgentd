@@ -442,7 +442,7 @@ class TestNvidiaSettings:
 
 
 class TestAssistantMessageReasoningItems:
-    def test_init_with_reasoning_items_syncs_extra_and_aliases(self):
+    def test_init_with_reasoning_items_syncs_extra(self):
         msg = AssistantMessage(
             content="Done",
             reasoning_items=[
@@ -458,34 +458,12 @@ class TestAssistantMessageReasoningItems:
                 ),
             ],
         )
-        assert msg.reasoning_item_id == "rs_2"
-        assert msg.reasoning_encrypted_content == "cipher-2"
         assert msg.reasoning_items is not None
         assert len(msg.reasoning_items) == 2
         assert msg.extra is not None
-        assert msg.extra["reasoning_item_id"] == "rs_2"
-        assert msg.extra["reasoning_encrypted_content"] == "cipher-2"
         assert len(msg.extra["reasoning_items"]) == 2
         assert msg.extra["reasoning_items"][0]["id"] == "rs_1"
         assert msg.extra["reasoning_items"][1]["id"] == "rs_2"
-
-    def test_init_with_legacy_single_fields_creates_reasoning_items(self):
-        msg = AssistantMessage(
-            content="Done",
-            reasoning_content="Single thought",
-            reasoning_item_id="rs_1",
-            reasoning_encrypted_content="cipher-1",
-        )
-        assert msg.reasoning_items is not None
-        assert len(msg.reasoning_items) == 1
-        assert msg.reasoning_items[0].id == "rs_1"
-        assert msg.reasoning_items[0].encrypted_content == "cipher-1"
-        assert msg.reasoning_items[0].summary == [
-            {"type": "summary_text", "text": "Single thought"}
-        ]
-        assert msg.extra is not None
-        assert msg.extra["reasoning_item_id"] == "rs_1"
-        assert msg.extra["reasoning_encrypted_content"] == "cipher-1"
 
     def test_init_from_extra_with_reasoning_items_list(self):
         msg = AssistantMessage(
@@ -509,8 +487,6 @@ class TestAssistantMessageReasoningItems:
         assert len(msg.reasoning_items) == 2
         assert msg.reasoning_items[0].id == "rs_1"
         assert msg.reasoning_items[1].id == "rs_2"
-        assert msg.reasoning_item_id == "rs_2"
-        assert msg.reasoning_encrypted_content == "c2"
 
     def test_init_from_extra_with_legacy_single_encrypted_content(self):
         msg = AssistantMessage(
@@ -528,5 +504,3 @@ class TestAssistantMessageReasoningItems:
         assert msg.reasoning_items[0].summary == [
             {"type": "summary_text", "text": "Legacy thought"}
         ]
-        assert msg.reasoning_item_id == "rs_legacy"
-        assert msg.reasoning_encrypted_content == "c_legacy"

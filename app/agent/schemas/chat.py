@@ -223,16 +223,7 @@ class AssistantMessage(BaseMessage):
     # already-validated tool call list instead of re-parsing streamed JSON
     # (see ``_split_messages`` / ``_blocks_from_raw_content``).
     raw_content_blocks: list[dict] | None = Field(default=None, exclude=True)
-    # Me: OpenAI Responses API reasoning item id + encrypted_content — required
-    # to replay the reasoning item ahead of its function_call on the next turn
-    # (see codex-rs client.rs: `include: ["reasoning.encrypted_content"]` is
-    # sent unconditionally and the whole reasoning item is replayed verbatim).
-    # Without this, stateless (store=false) multi-turn tool calls lose reasoning
-    # continuity.
-    reasoning_item_id: str | None = Field(default=None, exclude=True)
-    reasoning_encrypted_content: str | None = Field(default=None, exclude=True)
     # All encrypted Responses reasoning items in their original output order.
-    # The singular fields remain the last-item compatibility view for old data.
     reasoning_items: list[EncryptedReasoningItem] | None = Field(
         default=None, exclude=True
     )
@@ -245,20 +236,10 @@ class AssistantMessage(BaseMessage):
     @model_validator(mode="after")
     def _sync_reasoning_extra(self) -> Self:
         if self.reasoning_items:
-            last = self.reasoning_items[-1]
-            self.reasoning_item_id = last.id
-            self.reasoning_encrypted_content = last.encrypted_content
-        elif self.reasoning_encrypted_content:
-            self.reasoning_items = [
-                EncryptedReasoningItem(
-                    id=self.reasoning_item_id,
-                    summary=(
-                        [{"type": "summary_text", "text": self.reasoning_content}]
-                        if self.reasoning_content
-                        else []
-                    ),
-                    encrypted_content=self.reasoning_encrypted_content,
-                )
+            if self.extra is None:
+                self.extra = {}
+            self.extra["reasoning_items"] = [
+                item.model_dump(exclude_none=True) for item in self.reasoning_items
             ]
         elif (
             self.extra
@@ -273,37 +254,22 @@ class AssistantMessage(BaseMessage):
                     items.append(EncryptedReasoningItem.model_validate(raw))
             if items:
                 self.reasoning_items = items
-                last = items[-1]
-                self.reasoning_item_id = last.id
-                self.reasoning_encrypted_content = last.encrypted_content
+        # Read-only backward compatibility for older session rows stored with singular extra keys
         elif self.extra and "reasoning_encrypted_content" in self.extra:
             encrypted = self.extra["reasoning_encrypted_content"]
             if isinstance(encrypted, str) and encrypted:
-                self.reasoning_encrypted_content = encrypted
-            item_id = self.extra.get("reasoning_item_id")
-            if isinstance(item_id, str) and item_id:
-                self.reasoning_item_id = item_id
-            self.reasoning_items = [
-                EncryptedReasoningItem(
-                    id=self.reasoning_item_id,
-                    summary=(
-                        [{"type": "summary_text", "text": self.reasoning_content}]
-                        if self.reasoning_content
-                        else []
-                    ),
-                    encrypted_content=encrypted,
-                )
-            ]
-
-        if self.reasoning_items:
-            if self.extra is None:
-                self.extra = {}
-            self.extra["reasoning_items"] = [
-                item.model_dump(exclude_none=True) for item in self.reasoning_items
-            ]
-            self.extra["reasoning_encrypted_content"] = self.reasoning_encrypted_content
-            if self.reasoning_item_id:
-                self.extra["reasoning_item_id"] = self.reasoning_item_id
+                item_id = self.extra.get("reasoning_item_id")
+                self.reasoning_items = [
+                    EncryptedReasoningItem(
+                        id=item_id if isinstance(item_id, str) and item_id else None,
+                        summary=(
+                            [{"type": "summary_text", "text": self.reasoning_content}]
+                            if self.reasoning_content
+                            else []
+                        ),
+                        encrypted_content=encrypted,
+                    )
+                ]
         return self
 
 
@@ -344,11 +310,9 @@ class ChatCompletionDelta(BaseModel):
     # the turn (see AssistantMessage.raw_content_blocks). Anthropic-specific
     # providers emit this once, after the stream completes.
     anthropic_raw_blocks: list[dict] | None = None
-    # Me: OpenAI Responses API reasoning item id + encrypted_content, delivered
+    # Me: OpenAI Responses API completed reasoning item — delivered
     # once when the reasoning output item completes (not incremental text).
-    reasoning_item_id: str | None = None
-    reasoning_encrypted_content: str | None = None
-    reasoning_item_summary: list[dict[str, Any]] | None = None
+    reasoning_item: EncryptedReasoningItem | None = None
 
     @field_validator("reasoning_content", mode="before")
     @classmethod

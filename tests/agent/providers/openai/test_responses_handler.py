@@ -151,8 +151,13 @@ class TestResponsesHandler:
         messages = [
             AssistantMessage(
                 content="Calling a tool.",
-                reasoning_item_id="rs_1",
-                reasoning_encrypted_content="cipher123",
+                reasoning_items=[
+                    {
+                        "id": "rs_1",
+                        "summary": [],
+                        "encrypted_content": "cipher123",
+                    }
+                ],
                 tool_calls=[
                     ToolCall(
                         id="call_123",
@@ -184,8 +189,15 @@ class TestResponsesHandler:
             AssistantMessage(
                 content="Calling a tool.",
                 reasoning_content="**Thinking about it**",
-                reasoning_item_id="rs_1",
-                reasoning_encrypted_content="cipher123",
+                reasoning_items=[
+                    {
+                        "id": "rs_1",
+                        "summary": [
+                            {"type": "summary_text", "text": "**Thinking about it**"}
+                        ],
+                        "encrypted_content": "cipher123",
+                    }
+                ],
                 tool_calls=[
                     ToolCall(
                         id="call_123",
@@ -655,8 +667,6 @@ class TestResponsesHandler:
             ]
         }
         result = handler.parse_response(data)
-        assert result.reasoning_item_id == "rs_1"
-        assert result.reasoning_encrypted_content == "cipher123"
         assert result.reasoning_items is not None
         assert len(result.reasoning_items) == 1
         assert result.reasoning_items[0].id == "rs_1"
@@ -694,9 +704,6 @@ class TestResponsesHandler:
         assert result.reasoning_items[0].encrypted_content == "cipher1"
         assert result.reasoning_items[1].id == "rs_2"
         assert result.reasoning_items[1].encrypted_content == "cipher2"
-        # Singular compatibility fields reflect the last item
-        assert result.reasoning_item_id == "rs_2"
-        assert result.reasoning_encrypted_content == "cipher2"
         assert result.extra is not None
         assert len(result.extra["reasoning_items"]) == 2
 
@@ -712,8 +719,7 @@ class TestResponsesHandler:
             ]
         }
         result = handler.parse_response(data)
-        assert result.reasoning_item_id is None
-        assert result.reasoning_encrypted_content is None
+        assert result.reasoning_items is None
 
     def test_parse_response_with_reasoning(self, handler):
         """Parse response with reasoning content."""

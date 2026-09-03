@@ -111,39 +111,13 @@ class ResponsesHandler:
                     input_items.append({"role": "user", "content": msg.content or ""})
 
             elif isinstance(msg, AssistantMessage):
-                # Me: replay the reasoning item ahead of its function_call(s),
+                # Me: replay the reasoning items ahead of function_call(s),
                 # matching upstream Codex CLI's history replay (codex-rs
                 # client_common.rs `get_formatted_input_for_request` clones the
                 # full turn history — including `Reasoning` items — verbatim
                 # into `input`). Without this, stateless (store=false)
                 # multi-turn tool calls lose reasoning continuity.
-                reasoning_items = msg.reasoning_items
-                if reasoning_items is None and msg.reasoning_encrypted_content:
-                    # Me: upstream Codex CLI stores the `summary` field
-                    # verbatim from `response.output_item.done` and replays
-                    # it unmodified on the next turn (codex-rs protocol
-                    # `ResponseItem::Reasoning.summary` has no
-                    # `skip_serializing_if` — it's always sent as received).
-                    # We only keep the joined display text, not the original
-                    # per-part list, so replay it as a single summary_text
-                    # entry rather than dropping it as an empty list.
-                    reasoning_items = [
-                        EncryptedReasoningItem(
-                            id=msg.reasoning_item_id,
-                            summary=(
-                                [
-                                    {
-                                        "type": "summary_text",
-                                        "text": msg.reasoning_content,
-                                    }
-                                ]
-                                if msg.reasoning_content
-                                else []
-                            ),
-                            encrypted_content=msg.reasoning_encrypted_content,
-                        )
-                    ]
-                for reasoning_item in reasoning_items or []:
+                for reasoning_item in msg.reasoning_items or []:
                     item: dict[str, Any] = {
                         "type": "reasoning",
                         "summary": reasoning_item.summary,
@@ -566,11 +540,11 @@ class ResponsesHandler:
                             ChatCompletionChunkChoice(
                                 index=0,
                                 delta=ChatCompletionDelta(
-                                    reasoning_item_id=item.get("id"),
-                                    reasoning_encrypted_content=item.get(
-                                        "encrypted_content"
+                                    reasoning_item=EncryptedReasoningItem(
+                                        id=item.get("id"),
+                                        summary=item.get("summary", []),
+                                        encrypted_content=item["encrypted_content"],
                                     ),
-                                    reasoning_item_summary=item.get("summary", []),
                                 ),
                                 finish_reason=None,
                             )

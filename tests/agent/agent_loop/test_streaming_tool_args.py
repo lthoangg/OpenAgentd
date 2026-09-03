@@ -11,6 +11,7 @@ from app.agent.schemas.chat import (
     ChatCompletionChunk,
     ChatCompletionChunkChoice,
     ChatCompletionDelta,
+    EncryptedReasoningItem,
     FunctionCallDelta,
     ToolCallDelta,
 )
@@ -38,8 +39,10 @@ class _ReasoningEncryptedContentProvider(LLMProviderBase):
                 ChatCompletionChunkChoice(
                     index=0,
                     delta=ChatCompletionDelta(
-                        reasoning_item_id="rs_1",
-                        reasoning_encrypted_content="cipher123",
+                        reasoning_item=EncryptedReasoningItem(
+                            id="rs_1",
+                            encrypted_content="cipher123",
+                        ),
                     ),
                 )
             ],
@@ -136,11 +139,14 @@ async def test_stream_and_assemble_carries_reasoning_encrypted_content() -> None
     )
 
     assert message.content == "Done"
-    assert message.reasoning_item_id == "rs_1"
-    assert message.reasoning_encrypted_content == "cipher123"
+    assert message.reasoning_items is not None
+    assert len(message.reasoning_items) == 1
+    assert message.reasoning_items[0].id == "rs_1"
+    assert message.reasoning_items[0].encrypted_content == "cipher123"
     assert message.extra is not None
-    assert message.extra["reasoning_item_id"] == "rs_1"
-    assert message.extra["reasoning_encrypted_content"] == "cipher123"
+    assert message.extra["reasoning_items"] == [
+        {"id": "rs_1", "summary": [], "encrypted_content": "cipher123"}
+    ]
 
 
 class _MultiReasoningEncryptedContentProvider(LLMProviderBase):
@@ -164,11 +170,11 @@ class _MultiReasoningEncryptedContentProvider(LLMProviderBase):
                 ChatCompletionChunkChoice(
                     index=0,
                     delta=ChatCompletionDelta(
-                        reasoning_item_id="rs_1",
-                        reasoning_encrypted_content="cipher1",
-                        reasoning_item_summary=[
-                            {"type": "summary_text", "text": "Thought 1"}
-                        ],
+                        reasoning_item=EncryptedReasoningItem(
+                            id="rs_1",
+                            summary=[{"type": "summary_text", "text": "Thought 1"}],
+                            encrypted_content="cipher1",
+                        ),
                     ),
                 )
             ],
@@ -181,11 +187,11 @@ class _MultiReasoningEncryptedContentProvider(LLMProviderBase):
                 ChatCompletionChunkChoice(
                     index=0,
                     delta=ChatCompletionDelta(
-                        reasoning_item_id="rs_2",
-                        reasoning_encrypted_content="cipher2",
-                        reasoning_item_summary=[
-                            {"type": "summary_text", "text": "Thought 2"}
-                        ],
+                        reasoning_item=EncryptedReasoningItem(
+                            id="rs_2",
+                            summary=[{"type": "summary_text", "text": "Thought 2"}],
+                            encrypted_content="cipher2",
+                        ),
                     ),
                 )
             ],
@@ -227,12 +233,8 @@ async def test_stream_and_assemble_collects_multiple_reasoning_encrypted_items()
     assert message.reasoning_items[0].encrypted_content == "cipher1"
     assert message.reasoning_items[1].id == "rs_2"
     assert message.reasoning_items[1].encrypted_content == "cipher2"
-    assert message.reasoning_item_id == "rs_2"
-    assert message.reasoning_encrypted_content == "cipher2"
     assert message.extra is not None
     assert len(message.extra["reasoning_items"]) == 2
-    assert message.extra["reasoning_item_id"] == "rs_2"
-    assert message.extra["reasoning_encrypted_content"] == "cipher2"
 
 
 class _CodexSpyProvider(LLMProviderBase):

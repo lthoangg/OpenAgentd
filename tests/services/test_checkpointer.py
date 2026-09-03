@@ -511,12 +511,13 @@ class TestSQLiteCheckpointerSync:
                 await _make_session(db, sid)
 
         cipher_only = AssistantMessage(
-            reasoning_item_id="rs_1",
-            reasoning_encrypted_content="cipher123",
-            extra={
-                "reasoning_item_id": "rs_1",
-                "reasoning_encrypted_content": "cipher123",
-            },
+            reasoning_items=[
+                {
+                    "id": "rs_1",
+                    "summary": [],
+                    "encrypted_content": "cipher123",
+                }
+            ],
         )
         cp = SQLiteCheckpointer(_db.async_session_factory)
         await cp.sync(_ctx(str(sid)), AgentState(messages=[cipher_only]))
@@ -527,8 +528,10 @@ class TestSQLiteCheckpointerSync:
         assert len(loaded.messages) == 1
         restored = loaded.messages[0]
         assert isinstance(restored, AssistantMessage)
-        assert restored.reasoning_item_id == "rs_1"
-        assert restored.reasoning_encrypted_content == "cipher123"
+        assert restored.reasoning_items is not None
+        assert len(restored.reasoning_items) == 1
+        assert restored.reasoning_items[0].id == "rs_1"
+        assert restored.reasoning_items[0].encrypted_content == "cipher123"
         assert ResponsesHandler(
             "gpt-5.4", "https://api.example.com", {}
         ).convert_messages([restored]) == [
@@ -582,8 +585,6 @@ class TestSQLiteCheckpointerSync:
         assert restored.reasoning_items[0].encrypted_content == "cipher-1"
         assert restored.reasoning_items[1].id == "rs_2"
         assert restored.reasoning_items[1].encrypted_content == "cipher-2"
-        assert restored.reasoning_item_id == "rs_2"
-        assert restored.reasoning_encrypted_content == "cipher-2"
         assert ResponsesHandler(
             "gpt-5.4", "https://api.example.com", {}
         ).convert_messages([restored])[:2] == [

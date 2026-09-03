@@ -42,6 +42,7 @@ from app.agent.schemas.chat import (
     ChatCompletionChunk,
     ChatCompletionChunkChoice,
     ChatCompletionDelta,
+    EncryptedReasoningItem,
     ToolMessage,
     ToolCallDelta,
     ToolCall,
@@ -920,9 +921,8 @@ class TestCodexResponsesHandlerBuildRequest:
         }
 
     @pytest.mark.asyncio
-    async def test_chat_carries_reasoning_encrypted_content_through(self):
-        """chat() must surface the reasoning item id/encrypted_content emitted
-        mid-stream onto the returned AssistantMessage so it can be persisted
+    async def test_chat_carries_reasoning_items_through(self):
+        """chat() must surface the reasoning item emitted mid-stream onto the returned AssistantMessage so it can be persisted
         and replayed on the next turn."""
         handler = _CodexResponsesHandler("gpt-5.4", "https://api.example.com", {})
 
@@ -935,8 +935,10 @@ class TestCodexResponsesHandlerBuildRequest:
                     ChatCompletionChunkChoice(
                         index=0,
                         delta=ChatCompletionDelta(
-                            reasoning_item_id="rs_1",
-                            reasoning_encrypted_content="cipher123",
+                            reasoning_item=EncryptedReasoningItem(
+                                id="rs_1",
+                                encrypted_content="cipher123",
+                            ),
                         ),
                     )
                 ],
@@ -957,8 +959,10 @@ class TestCodexResponsesHandlerBuildRequest:
         result = await handler.chat([HumanMessage(content="Hello")], None, {})
 
         assert result.content == "Done"
-        assert result.reasoning_item_id == "rs_1"
-        assert result.reasoning_encrypted_content == "cipher123"
+        assert result.reasoning_items is not None
+        assert len(result.reasoning_items) == 1
+        assert result.reasoning_items[0].id == "rs_1"
+        assert result.reasoning_items[0].encrypted_content == "cipher123"
 
     @pytest.mark.asyncio
     async def test_chat_carries_multiple_reasoning_items_through(self):
@@ -974,11 +978,11 @@ class TestCodexResponsesHandlerBuildRequest:
                     ChatCompletionChunkChoice(
                         index=0,
                         delta=ChatCompletionDelta(
-                            reasoning_item_id="rs_1",
-                            reasoning_encrypted_content="cipher1",
-                            reasoning_item_summary=[
-                                {"type": "summary_text", "text": "Thought 1"}
-                            ],
+                            reasoning_item=EncryptedReasoningItem(
+                                id="rs_1",
+                                summary=[{"type": "summary_text", "text": "Thought 1"}],
+                                encrypted_content="cipher1",
+                            ),
                         ),
                     )
                 ],
@@ -991,11 +995,11 @@ class TestCodexResponsesHandlerBuildRequest:
                     ChatCompletionChunkChoice(
                         index=0,
                         delta=ChatCompletionDelta(
-                            reasoning_item_id="rs_2",
-                            reasoning_encrypted_content="cipher2",
-                            reasoning_item_summary=[
-                                {"type": "summary_text", "text": "Thought 2"}
-                            ],
+                            reasoning_item=EncryptedReasoningItem(
+                                id="rs_2",
+                                summary=[{"type": "summary_text", "text": "Thought 2"}],
+                                encrypted_content="cipher2",
+                            ),
                         ),
                     )
                 ],
@@ -1022,13 +1026,11 @@ class TestCodexResponsesHandlerBuildRequest:
         assert result.reasoning_items[0].encrypted_content == "cipher1"
         assert result.reasoning_items[1].id == "rs_2"
         assert result.reasoning_items[1].encrypted_content == "cipher2"
-        assert result.reasoning_item_id == "rs_2"
-        assert result.reasoning_encrypted_content == "cipher2"
         assert result.extra is not None
         assert len(result.extra["reasoning_items"]) == 2
 
     @pytest.mark.asyncio
-    async def test_chat_leaves_reasoning_encrypted_content_none_when_absent(self):
+    async def test_chat_leaves_reasoning_items_none_when_absent(self):
         """No mid-stream reasoning item -> fields stay None (no regression for
         models/turns that don't return one)."""
         handler = _CodexResponsesHandler("gpt-5.4", "https://api.example.com", {})
@@ -1049,8 +1051,7 @@ class TestCodexResponsesHandlerBuildRequest:
 
         result = await handler.chat([HumanMessage(content="Hello")], None, {})
 
-        assert result.reasoning_item_id is None
-        assert result.reasoning_encrypted_content is None
+        assert result.reasoning_items is None
 
 
 # ============================================================================
@@ -1315,24 +1316,31 @@ class TestCodexPromptCachingAndReasoning:
     """Tests verifying prompt caching prefix matching and reasoning continuity."""
 
     def test_assistant_message_reasoning_extra_sync_and_roundtrip(self):
-        """AssistantMessage syncs reasoning_encrypted_content to extra and roundtrips via model_dump_full."""
+        """AssistantMessage syncs reasoning_items to extra and roundtrips via model_dump_full."""
         msg = AssistantMessage(
             content="Answer",
             reasoning_content="Thinking",
-            reasoning_item_id="rs_123",
-            reasoning_encrypted_content="enc_cipher",
+            reasoning_items=[
+                EncryptedReasoningItem(
+                    id="rs_123",
+                    encrypted_content="enc_cipher",
+                )
+            ],
         )
-        assert msg.extra["reasoning_encrypted_content"] == "enc_cipher"
-        assert msg.extra["reasoning_item_id"] == "rs_123"
+        assert msg.extra["reasoning_items"] == [
+            {"id": "rs_123", "summary": [], "encrypted_content": "enc_cipher"}
+        ]
 
-        # Model dump excludes top-level reasoning_encrypted_content, but model_dump_full preserves extra for DB.
         dumped_full = msg.model_dump_full()
-        assert dumped_full["extra"]["reasoning_encrypted_content"] == "enc_cipher"
+        assert dumped_full["extra"]["reasoning_items"] == [
+            {"id": "rs_123", "summary": [], "encrypted_content": "enc_cipher"}
+        ]
 
         # Restoring from dump populates instance fields back from extra.
         restored = AssistantMessage.model_validate(dumped_full)
-        assert restored.reasoning_encrypted_content == "enc_cipher"
-        assert restored.reasoning_item_id == "rs_123"
+        assert restored.reasoning_items is not None
+        assert restored.reasoning_items[0].id == "rs_123"
+        assert restored.reasoning_items[0].encrypted_content == "enc_cipher"
 
     def test_convert_messages_omits_id_when_reasoning_item_id_none(self):
         """Reasoning items without a reasoning_item_id omit the 'id' key entirely."""
@@ -1340,8 +1348,12 @@ class TestCodexPromptCachingAndReasoning:
         msg = AssistantMessage(
             content="Done",
             reasoning_content="Reasoning text",
-            reasoning_item_id=None,
-            reasoning_encrypted_content="encrypted_blob",
+            reasoning_items=[
+                EncryptedReasoningItem(
+                    id=None,
+                    encrypted_content="encrypted_blob",
+                )
+            ],
         )
         items = handler.convert_messages([msg])
         reasoning_item = items[0]
@@ -1382,8 +1394,13 @@ class TestCodexPromptCachingAndReasoning:
         turn1_assistant = AssistantMessage(
             content="Turn 1 response",
             reasoning_content="Turn 1 thinking",
-            reasoning_item_id="rs_1",
-            reasoning_encrypted_content="enc_turn_1",
+            reasoning_items=[
+                EncryptedReasoningItem(
+                    id="rs_1",
+                    summary=[{"type": "summary_text", "text": "Turn 1 thinking"}],
+                    encrypted_content="enc_turn_1",
+                )
+            ],
         )
 
         # Turn 2

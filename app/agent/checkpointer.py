@@ -468,7 +468,7 @@ class SQLiteCheckpointer(Checkpointer):
                                     and msg.reasoning_content.strip()
                                 )
                                 or msg.tool_calls
-                                or msg.reasoning_encrypted_content
+                                or msg.reasoning_items
                                 or msg.is_summary
                             )
                             if not has_content:

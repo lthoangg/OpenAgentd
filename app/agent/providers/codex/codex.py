@@ -238,14 +238,8 @@ class _CodexResponsesHandler(ResponsesHandler):
                 content += delta.content
             if delta.reasoning_content:
                 reasoning += delta.reasoning_content
-            if delta.reasoning_encrypted_content:
-                reasoning_items.append(
-                    EncryptedReasoningItem(
-                        id=delta.reasoning_item_id,
-                        summary=delta.reasoning_item_summary or [],
-                        encrypted_content=delta.reasoning_encrypted_content,
-                    )
-                )
+            if delta.reasoning_item:
+                reasoning_items.append(delta.reasoning_item)
             for tc in delta.tool_calls or []:
                 index = tc.index if tc.index is not None else len(calls)
                 call = calls.get(index)

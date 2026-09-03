@@ -31,9 +31,6 @@ const QUESTIONS = [
   },
 ]
 
-// Restored by `resetStore` — a test that stubs the action must not leak it.
-const realConnectStream = useAgentStore.getState().connectStream
-
 function resetStore() {
   useAgentStore.setState({
     agentStreams: {},
@@ -46,7 +43,7 @@ function resetStore() {
     pendingQuestion: null,
     resolvedQuestions: {},
     cacheInvalidations: [],
-    connectStream: realConnectStream,
+    connectStream: () => new AbortController(),
   } as never)
 }
 
@@ -348,14 +345,14 @@ describe("useAgentStore — ask_user", () => {
       expect(connectStream).toHaveBeenCalledTimes(1)
     })
 
-    it("leaves a live stream alone when the answer lands", () => {
+    it("replaces even a nominally connected stream when the answer lands", () => {
       const connectStream = mock(() => new AbortController())
       useAgentStore.setState({ isConnected: true, connectStream } as never)
       suspend()
 
       useAgentStore.getState().markTurnResuming()
 
-      expect(connectStream).not.toHaveBeenCalled()
+      expect(connectStream).toHaveBeenCalledTimes(1)
     })
   })
 

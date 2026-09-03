@@ -327,12 +327,12 @@ export const createStreamSlice: StateCreator<
       markRestartPending(lead)
       if (lead.status === 'waiting_input') lead.status = 'working'
     })
-    // A parked turn keeps its SSE channel open, so normally there is nothing
-    // to do here. But a network blip while waiting leaves this client on a
-    // reconnect backoff of up to 30s, and the resumed turn's output would sit
-    // unseen until that timer fired. Reattach now; the attach replays anything
-    // already emitted, so nothing is lost either way.
-    if (!get().isConnected) get().connectStream()
+    // Treat an answer as a stream handoff, even when isConnected still says
+    // true. That flag is optimistic (set before fetch attaches) and can remain
+    // stale after an aborted/suspended socket, which leaves the resumed tokens
+    // streaming to no browser until reload. Reattach unconditionally; attach
+    // replay covers anything emitted during the handoff.
+    get().connectStream()
   },
 
   stopAgent: async () => {

@@ -4,7 +4,8 @@ Design
 ------
 - _state: dict[session_id, TurnState]  — accumulated turn blob (reconnect replay)
 - _subscribers: dict[session_id, list[asyncio.Queue]]  — live fan-out to SSE clients
-- _cleanup tasks expire state after STREAM_TTL seconds
+- _cleanup tasks expire detached state after STREAM_TTL seconds and rotate the
+  replay payload while live clients remain attached
 
 Single-process only — no cross-worker fan-out. OpenAgentd's supported
 sidecar and personal-server launchers intentionally run one Uvicorn worker;
@@ -36,13 +37,11 @@ from app.services.stream_envelope import StreamEnvelope
 
 STREAM_TTL = 3600  # 1 hour
 
-# Hard ceiling on a single turn's replay-state lifetime, independent of the
-# sliding idle TTL above. ``_refresh_cleanup`` extends the deadline on every
-# event, so a turn that keeps emitting indefinitely (stuck/runaway agent
-# loop) would otherwise never expire and its accumulated content/thinking/
-# tool_calls would grow without bound. This bounds that growth by forcing
-# expiry ``_MAX_TURN_LIFETIME_SECONDS`` after the turn started, regardless
-# of ongoing activity.
+# Hard ceiling on one replay payload's lifetime, independent of the sliding
+# idle TTL above. ``_refresh_cleanup`` extends the deadline on every event, so
+# a turn that keeps emitting indefinitely would otherwise retain accumulated
+# content/thinking/tool_calls forever. Live subscriber queues survive rotation
+# so connected clients keep following the turn while replay memory stays bounded.
 _MAX_TURN_LIFETIME_SECONDS = 4 * 60 * 60  # 4 hours
 
 # Sentinel placed on subscriber queues when the turn finishes
@@ -115,6 +114,17 @@ class _TurnState:
         self.agent_not_configured = None
         self.queued_turns = []
 
+    def clear_replay_payload(self) -> None:
+        """Release accumulated replay data without detaching live clients."""
+        self.content = {}
+        self.thinking = {}
+        self.tool_calls = []
+        self.summarization = {}
+        self.usage = None
+        self.error = None
+        self.agent_not_configured = None
+        self.queued_turns = []
+
 
 # Me store all active turns here
 _turns: dict[str, _TurnState] = {}
@@ -139,8 +149,8 @@ def _refresh_cleanup(session_id: str, state: _TurnState) -> None:
     """Extend the sliding TTL without cancelling and recreating the timer.
 
     Capped at ``_created_at + _MAX_TURN_LIFETIME_SECONDS`` so a turn that
-    keeps emitting events indefinitely still expires and releases its
-    accumulated state instead of sliding forever.
+    keeps emitting events indefinitely still releases its accumulated replay
+    payload instead of sliding forever.
     """
     loop = asyncio.get_event_loop()
     hard_deadline = state._created_at + _MAX_TURN_LIFETIME_SECONDS
@@ -150,7 +160,7 @@ def _refresh_cleanup(session_id: str, state: _TurnState) -> None:
 
 
 def _expire_turn(session_id: str, state: _TurnState) -> None:
-    """Expire only after the latest activity deadline for this state object."""
+    """Expire detached state, or rotate replay data for attached clients."""
     if _turns.get(session_id) is not state:
         return
     loop = asyncio.get_event_loop()
@@ -161,6 +171,14 @@ def _expire_turn(session_id: str, state: _TurnState) -> None:
         )
         return
     state._cleanup_handle = None
+    if state.is_streaming and state.subscribers:
+        # Removing the state here strands every attached generator on its
+        # queue: later push_event calls can no longer find the state, so the
+        # browser receives neither more events nor a close signal to reconnect.
+        # Keep the lightweight routing state and bound only the replay payload.
+        state.clear_replay_payload()
+        _schedule_cleanup(session_id, state)
+        return
     _turns.pop(session_id, None)
 
 

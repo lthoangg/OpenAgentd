@@ -32,12 +32,14 @@ from app.agent.providers.openai.responses import ResponsesHandler
 from app.agent.schemas.chat import (
     AssistantMessage,
     ChatMessage,
+    EncryptedReasoningItem,
     FunctionCall,
     SystemMessage,
     ToolCall,
     ToolMessage,
 )
 from app.agent.usage import Usage, provider_cost_model_id, usage_to_dict
+from app.core.version import VERSION
 
 CODEX_API_BASE = "https://chatgpt.com/backend-api/codex"
 CODEX_STREAM_IDLE_TIMEOUT_SECONDS = 300.0
@@ -52,7 +54,7 @@ _TURN_STATE_HEADER = "x-codex-turn-state"
 _DEFAULT_HEADERS = {
     "Content-Type": "application/json",
     "Accept": "text/event-stream",
-    "User-Agent": "openagentd/1.0.0",
+    "User-Agent": f"openagentd/{VERSION}",
     "originator": CODEX_ORIGINATOR,
 }
 
@@ -70,6 +72,7 @@ class _CodexResponsesHandler(ResponsesHandler):
         # Sticky-routing token for the turn currently in flight, or None
         # between turns.  Scoped to a turn, never across turns.
         self._turn_state: str | None = None
+        self._request_session_id: str | None = None
         summary_capability = supports_reasoning_summary(
             cached_codex_catalog(), self.model
         )
@@ -145,6 +148,12 @@ class _CodexResponsesHandler(ResponsesHandler):
             body.pop("instructions", None)
 
         body["store"] = False
+        # Codex's Responses client sends these controls explicitly rather than
+        # relying on backend defaults.
+        body["tool_choice"] = merged.get("tool_choice", "auto")
+        body["parallel_tool_calls"] = True
+        session_id = merged.get("session_id")
+        self._request_session_id = session_id if isinstance(session_id, str) else None
         # Me: upstream Codex CLI sends this unconditionally on every request
         # (codex-rs/core/src/client.rs: `let include = vec!["reasoning.encrypted_content"...]`)
         # regardless of store/service tier — required so `store: false` turns
@@ -156,8 +165,11 @@ class _CodexResponsesHandler(ResponsesHandler):
         # requests on the same prompt-cache route.  The generic Responses
         # handler supports it, but keep the intent explicit here because this
         # endpoint is not api.openai.com.
-        if merged.get("prompt_cache_key") is not None:
-            body["prompt_cache_key"] = merged["prompt_cache_key"]
+        prompt_cache_key = merged.get("prompt_cache_key")
+        if prompt_cache_key is not None:
+            body["prompt_cache_key"] = prompt_cache_key
+        elif self._request_session_id:
+            body["prompt_cache_key"] = self._request_session_id
 
         service_tier = str(merged.get("service_tier") or "").lower()
         if service_tier not in _NO_SERVICE_TIER:
@@ -177,6 +189,8 @@ class _CodexResponsesHandler(ResponsesHandler):
         if isinstance(service_tier, str) and service_tier:
             routing_hint += f";tier={service_tier}"
         headers = {**self.headers, "x-codex-routing-hint": routing_hint}
+        if self._request_session_id:
+            headers["session-id"] = self._request_session_id
         if self._turn_state:
             headers = {**headers, _TURN_STATE_HEADER: self._turn_state}
         return headers
@@ -206,8 +220,7 @@ class _CodexResponsesHandler(ResponsesHandler):
         """Return a final message using Codex's required streaming endpoint."""
         content = ""
         reasoning = ""
-        reasoning_item_id: str | None = None
-        reasoning_encrypted_content: str | None = None
+        reasoning_items: list[EncryptedReasoningItem] = []
         usage: Usage | None = None
         # Tool calls arrive as deltas keyed by index — a turn that only calls a
         # tool streams no content at all, so dropping them here would surface
@@ -225,9 +238,8 @@ class _CodexResponsesHandler(ResponsesHandler):
                 content += delta.content
             if delta.reasoning_content:
                 reasoning += delta.reasoning_content
-            if delta.reasoning_encrypted_content:
-                reasoning_item_id = delta.reasoning_item_id
-                reasoning_encrypted_content = delta.reasoning_encrypted_content
+            if delta.reasoning_item:
+                reasoning_items.append(delta.reasoning_item)
             for tc in delta.tool_calls or []:
                 index = tc.index if tc.index is not None else len(calls)
                 call = calls.get(index)
@@ -247,15 +259,15 @@ class _CodexResponsesHandler(ResponsesHandler):
         extra: dict[str, Any] = {}
         if usage is not None:
             extra["usage"] = usage_to_dict(usage, provider_cost_model_id(self))
-        if reasoning_encrypted_content:
-            extra["reasoning_item_id"] = reasoning_item_id
-            extra["reasoning_encrypted_content"] = reasoning_encrypted_content
+        if reasoning_items:
+            extra["reasoning_items"] = [
+                item.model_dump(exclude_none=True) for item in reasoning_items
+            ]
 
         return AssistantMessage(
             content=content or None,
             reasoning_content=reasoning or None,
-            reasoning_item_id=reasoning_item_id,
-            reasoning_encrypted_content=reasoning_encrypted_content,
+            reasoning_items=reasoning_items or None,
             tool_calls=[calls[index] for index in sorted(calls)] or None,
             extra=extra or None,
         )
@@ -298,6 +310,8 @@ class CodexProvider(LLMProviderBase):
             ``service_tier="fast"`` — enable ChatGPT-subscription Codex Fast
             mode for supported models (GPT-5.5/GPT-5.4 at time of writing).
     """
+
+    provider_name: str | None = "codex"
 
     def __init__(
         self,

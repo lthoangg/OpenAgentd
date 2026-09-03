@@ -352,7 +352,7 @@ def test_deserialize_messages_reasoning_signature_absent_when_extra_missing(
 def test_deserialize_messages_restores_reasoning_encrypted_content_from_extra(
     session_id,
 ) -> None:
-    """reasoning_encrypted_content stored in extra must be restored onto
+    """Legacy reasoning_encrypted_content stored in extra must be restored onto
     AssistantMessage so it can be replayed as a `reasoning` input item ahead
     of its function_call on the next Codex/OpenAI turn."""
     db_messages = [
@@ -373,15 +373,17 @@ def test_deserialize_messages_restores_reasoning_encrypted_content_from_extra(
     assert len(result) == 1
     msg = result[0]
     assert isinstance(msg, AssistantMessage)
-    assert msg.reasoning_item_id == "rs_1"
-    assert msg.reasoning_encrypted_content == "cipher123"
+    assert msg.reasoning_items is not None
+    assert len(msg.reasoning_items) == 1
+    assert msg.reasoning_items[0].id == "rs_1"
+    assert msg.reasoning_items[0].encrypted_content == "cipher123"
 
 
 def test_deserialize_messages_reasoning_encrypted_content_absent_when_extra_missing(
     session_id,
 ) -> None:
     """Rows with no reasoning_encrypted_content in extra must deserialize
-    cleanly with both fields None."""
+    cleanly with reasoning_items None."""
     db_messages = [
         SessionMessage(
             id=uuid7(),
@@ -397,5 +399,46 @@ def test_deserialize_messages_reasoning_encrypted_content_absent_when_extra_miss
     assert len(result) == 1
     msg = result[0]
     assert isinstance(msg, AssistantMessage)
-    assert msg.reasoning_item_id is None
-    assert msg.reasoning_encrypted_content is None
+    assert msg.reasoning_items is None
+
+
+def test_deserialize_messages_restores_multiple_reasoning_items_from_extra(
+    session_id,
+) -> None:
+    """Multiple reasoning items stored in extra must be deserialized in order."""
+    db_messages = [
+        SessionMessage(
+            id=uuid7(),
+            session_id=session_id,
+            role="assistant",
+            content="Calling a tool.",
+            extra={
+                "reasoning_item_id": "rs_2",
+                "reasoning_encrypted_content": "cipher-2",
+                "reasoning_items": [
+                    {
+                        "id": "rs_1",
+                        "summary": [{"type": "summary_text", "text": "Thought 1"}],
+                        "encrypted_content": "cipher-1",
+                    },
+                    {
+                        "id": "rs_2",
+                        "summary": [{"type": "summary_text", "text": "Thought 2"}],
+                        "encrypted_content": "cipher-2",
+                    },
+                ],
+            },
+        ),
+    ]
+
+    result = deserialize_messages(db_messages)
+
+    assert len(result) == 1
+    msg = result[0]
+    assert isinstance(msg, AssistantMessage)
+    assert msg.reasoning_items is not None
+    assert len(msg.reasoning_items) == 2
+    assert msg.reasoning_items[0].id == "rs_1"
+    assert msg.reasoning_items[0].encrypted_content == "cipher-1"
+    assert msg.reasoning_items[1].id == "rs_2"
+    assert msg.reasoning_items[1].encrypted_content == "cipher-2"

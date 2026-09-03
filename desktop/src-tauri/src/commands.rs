@@ -1,6 +1,6 @@
 use anyhow::{anyhow, Result};
+use openagentd_shell_core::{resolve_download_bytes, safe_download_filename, DownloadSource};
 use serde::{Deserialize, Serialize};
-use std::path::Path;
 use std::sync::atomic::AtomicUsize;
 use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager};
@@ -17,8 +17,6 @@ use crate::config::{
 use crate::window::{create_app_window, frontend_init_script, show_main_window, MAIN_WINDOW};
 use crate::menu::update_tray_status;
 use crate::shutdown_sidecar_now;
-
-const ACCESS_KEY_SERVICE: &str = "openagentd.backend-access-key";
 
 #[cfg(target_os = "macos")]
 fn notification_application_identifier(dev: bool, identifier: &str) -> &str {
@@ -127,41 +125,22 @@ pub fn show_desktop_notification(
     Ok(())
 }
 
-fn access_key_entry(origin: &str) -> Result<keyring::Entry, String> {
-    let parsed = url::Url::parse(origin).map_err(|_| "invalid backend origin".to_string())?;
-    if !matches!(parsed.scheme(), "http" | "https") {
-        return Err("invalid backend origin".to_string());
-    }
-    let canonical = parsed.origin().ascii_serialization();
-    keyring::Entry::new(ACCESS_KEY_SERVICE, &canonical)
-        .map_err(|_| "credential store unavailable".to_string())
-}
+// Access keys live in the OS credential store, keyed by canonical origin;
+// the logic is shared with the mobile shell in `openagentd-shell-core`.
 
 #[tauri::command]
 pub fn secure_get_access_key(origin: String) -> Result<Option<String>, String> {
-    match access_key_entry(&origin)?.get_password() {
-        Ok(key) => Ok(Some(key)),
-        Err(keyring::Error::NoEntry) => Ok(None),
-        Err(_) => Err("credential store unavailable".to_string()),
-    }
+    openagentd_shell_core::get_access_key(&origin)
 }
 
 #[tauri::command]
 pub fn secure_set_access_key(origin: String, key: String) -> Result<(), String> {
-    if key.trim().is_empty() {
-        return Err("access key is required".to_string());
-    }
-    access_key_entry(&origin)?
-        .set_password(key.trim())
-        .map_err(|_| "credential store unavailable".to_string())
+    openagentd_shell_core::set_access_key(&origin, &key)
 }
 
 #[tauri::command]
 pub fn secure_delete_access_key(origin: String) -> Result<(), String> {
-    match access_key_entry(&origin)?.delete_credential() {
-        Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
-        Err(_) => Err("credential store unavailable".to_string()),
-    }
+    openagentd_shell_core::delete_access_key(&origin)
 }
 
 #[derive(Deserialize)]
@@ -175,101 +154,17 @@ pub struct SaveWorkspaceFileRequest {
     pub filename: String,
 }
 
-/// Ceiling on a single download, matching the mobile shell. Bounds the
-/// in-memory buffer below against a hostile or mistaken `Content-Length`.
-const MAX_DOWNLOAD_BYTES: usize = 100 * 1024 * 1024;
-
 /// Total budget for one workspace download. Overrides `shared_client`'s
 /// 10s default, which is sized for the usage-summary poll and would abort
 /// any sizeable file.
 const DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(300);
-
-fn decode_base64(payload: &str, what: &str) -> Result<Vec<u8>, String> {
-    use base64::Engine;
-    let bytes = base64::prelude::BASE64_STANDARD
-        .decode(payload.trim())
-        .map_err(|e| format!("{what}: {e}"))?;
-    if bytes.len() > MAX_DOWNLOAD_BYTES {
-        return Err(format!("{what}: file exceeds the 100 MB limit"));
-    }
-    Ok(bytes)
-}
-
-/// Resolve the bytes to save from whichever shape the frontend sent:
-/// a base64 payload, a `data:` URI, or a remote URL.
-async fn resolve_download_bytes(request: &SaveWorkspaceFileRequest) -> Result<Vec<u8>, String> {
-    match (request.base64.as_deref(), request.url.as_deref()) {
-        (Some(payload), _) => decode_base64(payload, "Decode attachment"),
-        (None, Some(url)) if url.starts_with("data:") => {
-            // data:<mime>;base64,<payload>
-            let payload = url
-                .split_once(',')
-                .map(|(_, payload)| payload)
-                .ok_or("Invalid data URI: missing comma")?;
-            decode_base64(payload, "Decode data URI")
-        }
-        (None, Some(url)) => {
-            let mut request_builder = crate::usage::shared_client()
-                .get(url)
-                .timeout(DOWNLOAD_TIMEOUT);
-            if let Ok(parsed) = url::Url::parse(url) {
-                let has_token_qs = parsed.query_pairs().any(|(k, _)| k == "_token");
-                if !has_token_qs {
-                    let origin = parsed.origin().ascii_serialization();
-                    if let Ok(Some(key)) = secure_get_access_key(origin) {
-                        request_builder = request_builder.bearer_auth(key);
-                    }
-                }
-            }
-            let mut response = request_builder
-                .send()
-                .await
-                .map_err(|e| format!("Download file: {e}"))?
-                .error_for_status()
-                .map_err(|e| format!("Download file: {e}"))?;
-            if response
-                .content_length()
-                .is_some_and(|length| length > MAX_DOWNLOAD_BYTES as u64)
-            {
-                return Err("Download file: file exceeds the 100 MB limit".to_string());
-            }
-            // Stream so a server that under-reports (or omits)
-            // Content-Length still cannot push us past the cap.
-            // Pre-reserve from the (already cap-checked) Content-Length so
-            // a ~100 MB body doesn't pay ~27 doubling reallocations; the
-            // `min` keeps a lying header from over-allocating.
-            let mut bytes = Vec::with_capacity(
-                response
-                    .content_length()
-                    .map_or(0, |length| length.min(MAX_DOWNLOAD_BYTES as u64) as usize),
-            );
-            while let Some(chunk) = response
-                .chunk()
-                .await
-                .map_err(|e| format!("Read downloaded file: {e}"))?
-            {
-                if bytes.len() + chunk.len() > MAX_DOWNLOAD_BYTES {
-                    return Err("Read downloaded file: file exceeds the 100 MB limit".to_string());
-                }
-                bytes.extend_from_slice(&chunk);
-            }
-            Ok(bytes)
-        }
-        (None, None) => Err("save_workspace_file: must supply either base64 or url".to_string()),
-    }
-}
 
 #[tauri::command]
 pub async fn save_workspace_file(
     app: AppHandle,
     request: SaveWorkspaceFileRequest,
 ) -> Result<bool, String> {
-    let filename = Path::new(&request.filename)
-        .file_name()
-        .and_then(|name| name.to_str())
-        .filter(|name| !name.is_empty())
-        .unwrap_or("download")
-        .to_string();
+    let filename = safe_download_filename(&request.filename);
     // Callback + oneshot instead of `blocking_save_file`, which parks a
     // tokio worker thread for as long as the user leaves the dialog open.
     let (tx, rx) = tokio::sync::oneshot::channel();
@@ -289,7 +184,15 @@ pub async fn save_workspace_file(
     let path = target
         .into_path()
         .map_err(|_| "Selected destination is not a local file path".to_string())?;
-    let bytes = resolve_download_bytes(&request).await?;
+    let bytes = resolve_download_bytes(
+        crate::usage::shared_client(),
+        DownloadSource {
+            base64: request.base64.as_deref(),
+            url: request.url.as_deref(),
+        },
+        DOWNLOAD_TIMEOUT,
+    )
+    .await?;
     tokio::fs::write(&path, bytes)
         .await
         .map_err(|e| format!("Write {}: {e}", path.display()))?;
@@ -646,13 +549,14 @@ pub async fn wait_for_health(base: &str, attempts: u32, delay: Duration) -> Resu
 }
 
 #[cfg(test)]
-mod credential_tests {
-    use super::access_key_entry;
-    use super::{resolve_download_bytes, SaveWorkspaceFileRequest, MAX_DOWNLOAD_BYTES};
+mod notification_tests {
     use super::{claim_notification_slot, MAX_PENDING_NOTIFICATIONS, PENDING_NOTIFICATIONS};
     use std::sync::atomic::Ordering;
     #[cfg(target_os = "macos")]
     use super::notification_application_identifier;
+
+    // Access-key and download behaviour is tested once in
+    // `openagentd-shell-core`; the desktop keeps only what is desktop-only.
 
     #[cfg(target_os = "macos")]
     #[test]
@@ -665,73 +569,6 @@ mod credential_tests {
             notification_application_identifier(false, "com.openagentd.desktop"),
             "com.openagentd.desktop"
         );
-    }
-
-    #[test]
-    fn access_key_origin_must_be_a_canonical_http_origin() {
-        assert!(access_key_entry("https://example.com").is_ok());
-        assert!(access_key_entry("https://example.com/api").is_ok());
-        assert!(access_key_entry("ftp://example.com").is_err());
-        assert!(access_key_entry("https://example.com/").is_ok());
-    }
-
-    // ── resolve_download_bytes ──────────────────────────────────────────
-    //
-    // The frontend (`web/src/lib/tauri-download.ts`) sends `{base64,
-    // filename}` for `blob:` sources and `{url, filename}` otherwise. The
-    // old desktop struct required `url`, so every attachment download failed
-    // deserialization with "missing field `url`", and `data:` URIs were
-    // handed to reqwest, which rejects the scheme outright.
-
-    fn request(base64: Option<&str>, url: Option<&str>) -> SaveWorkspaceFileRequest {
-        SaveWorkspaceFileRequest {
-            base64: base64.map(str::to_string),
-            url: url.map(str::to_string),
-            filename: "note.txt".to_string(),
-        }
-    }
-
-    #[tokio::test]
-    async fn base64_payload_from_a_blob_source_is_decoded() {
-        let bytes = resolve_download_bytes(&request(Some("SGVsbG8="), None))
-            .await
-            .expect("blob payload decodes");
-
-        assert_eq!(bytes, b"Hello");
-    }
-
-    #[tokio::test]
-    async fn data_uri_payload_is_decoded_without_a_network_fetch() {
-        let bytes = resolve_download_bytes(&request(None, Some("data:text/plain;base64,SGVsbG8=")))
-            .await
-            .expect("data URI decodes");
-
-        assert_eq!(bytes, b"Hello");
-    }
-
-    #[tokio::test]
-    async fn oversized_base64_payload_is_rejected() {
-        use base64::Engine;
-        let payload =
-            base64::prelude::BASE64_STANDARD.encode(vec![0u8; MAX_DOWNLOAD_BYTES + 1]);
-
-        let error = resolve_download_bytes(&request(Some(&payload), None))
-            .await
-            .expect_err("payload over the cap is rejected");
-
-        assert!(error.contains("100 MB"), "unexpected error: {error}");
-    }
-
-    #[tokio::test]
-    async fn a_request_with_neither_source_is_rejected() {
-        assert!(resolve_download_bytes(&request(None, None)).await.is_err());
-    }
-
-    #[tokio::test]
-    async fn a_malformed_data_uri_is_rejected() {
-        assert!(resolve_download_bytes(&request(None, Some("data:text/plain;base64")))
-            .await
-            .is_err());
     }
 
     // ── claim_notification_slot ─────────────────────────────────────────

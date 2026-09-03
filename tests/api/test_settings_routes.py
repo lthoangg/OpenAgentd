@@ -1232,7 +1232,7 @@ def test_get_codex_provider_usage_returns_active_limits(
     assert captured["headers"] == {
         "Authorization": "Bearer chatgpt-token",
         "Accept": "application/json",
-        "User-Agent": "openagentd/1.0.0",
+        "User-Agent": f"openagentd/{VERSION}",
         "originator": "openagentd",
         "ChatGPT-Account-Id": "account-123",
     }

@@ -1,6 +1,6 @@
 # Makefile for openagentd
 
-.PHONY: all run dev dev-lan kill-dev-ports test coverage verify verify-backend verify-web verify-docs verify-version verify-native verify-desktop verify-mobile scenarios scenarios-chat scenarios-mentions scenarios-questions scenarios-lsp scenarios-performance health health-json prompt-budget prompt-budget-json migrate revision build-web icons build dist clean help
+.PHONY: all run dev dev-lan kill-dev-ports test coverage verify verify-backend verify-web verify-docs verify-version verify-native verify-shell-core verify-desktop verify-mobile scenarios scenarios-chat scenarios-mentions scenarios-questions scenarios-lsp scenarios-performance health health-json prompt-budget prompt-budget-json migrate revision build-web icons build dist clean help
 
 # Default target
 all: test
@@ -68,7 +68,12 @@ verify-version: ## Verify release-facing versions and release docs stay synchron
 		grep -F "**Latest release:** v$${VERSION} ·" documents/docs/features.md; \
 		grep -E '^updated: [0-9]{4}-[0-9]{2}-[0-9]{2}$$' documents/docs/features.md
 
-verify-native: verify-desktop verify-mobile ## Run desktop and mobile Rust checks (requires native build dependencies)
+verify-native: verify-shell-core verify-desktop verify-mobile ## Run shared-crate, desktop, and mobile Rust checks (requires native build dependencies)
+
+verify-shell-core: ## Format-check, lint, and test the Rust crate shared by both native shells (no Tauri deps)
+	cd native/shell-core && cargo fmt --check
+	cd native/shell-core && cargo clippy --all-targets -- -D warnings
+	cd native/shell-core && cargo test
 
 verify-desktop: ## Check, test, and lint the desktop Rust crate
 	cd desktop/src-tauri && TAURI_CONFIG="$$(cat tauri.dev.conf.json)" cargo check --locked
@@ -103,10 +108,10 @@ health-json: ## Same as 'health' but emit JSON (for baselines / CI)
 	uv run python -m scripts.codehealth --json
 
 prompt-budget: ## Count system prompt, tool schema, and bundled skill tokens
-	@tmp=$$(mktemp -d); TMP_AGENTS=$$tmp uv run python -c 'import os; from pathlib import Path; from app.agent.loader import ensure_builtin_code_lead; p=Path(os.environ["TMP_AGENTS"]); ensure_builtin_code_lead(p)'; uv run python -m manual.inspect_prompt --dir $$tmp --date 2026-01-01 --skills-scope builtin --stats-only; status=$$?; rm -rf $$tmp; exit $$status
+	@tmp=$$(mktemp -d); TMP_AGENTS=$$tmp uv run python -c 'import os; from pathlib import Path; from app.agent.loader import ensure_builtin_code_agent; p=Path(os.environ["TMP_AGENTS"]); ensure_builtin_code_agent(p)'; uv run python -m manual.inspect_prompt --dir $$tmp --date 2026-01-01 --skills-scope builtin --stats-only; status=$$?; rm -rf $$tmp; exit $$status
 
 prompt-budget-json: ## Same as prompt-budget but emit stable JSON for tracking/CI
-	@tmp=$$(mktemp -d); TMP_AGENTS=$$tmp uv run python -c 'import os; from pathlib import Path; from app.agent.loader import ensure_builtin_code_lead; p=Path(os.environ["TMP_AGENTS"]); ensure_builtin_code_lead(p)'; uv run python -m manual.inspect_prompt --dir $$tmp --date 2026-01-01 --skills-scope builtin --stats-only --json; status=$$?; rm -rf $$tmp; exit $$status
+	@tmp=$$(mktemp -d); TMP_AGENTS=$$tmp uv run python -c 'import os; from pathlib import Path; from app.agent.loader import ensure_builtin_code_agent; p=Path(os.environ["TMP_AGENTS"]); ensure_builtin_code_agent(p)'; uv run python -m manual.inspect_prompt --dir $$tmp --date 2026-01-01 --skills-scope builtin --stats-only --json; status=$$?; rm -rf $$tmp; exit $$status
 
 migrate: ## Run Alembic migrations (dev only — production auto-migrates on startup)
 	uv run alembic -c app/alembic.ini upgrade head

@@ -13,7 +13,8 @@ the path you edit. The main local guides are:
   `app/services/AGENTS.md`.
 - Frontend: `web/AGENTS.md` and `web/src/AGENTS.md`.
 - Native shells: `desktop/AGENTS.md`, `desktop/src-tauri/AGENTS.md`,
-  `mobile/AGENTS.md`, and `mobile/src-tauri/AGENTS.md`.
+  `mobile/AGENTS.md`, `mobile/src-tauri/AGENTS.md`, and
+  `native/shell-core/AGENTS.md`.
 - Tests and diagnostics: `tests/AGENTS.md`, `tests/manual/AGENTS.md`, and
   `manual/AGENTS.md`.
 - Maintainer assets: `scripts/AGENTS.md`, `.openagentd/AGENTS.md`,
@@ -30,6 +31,8 @@ worktrees are not part of the tracked instruction hierarchy.
 - `web/`: shared React UI used by browser, desktop, and mobile clients.
 - `desktop/`: Tauri shell that can supervise a bundled Python sidecar.
 - `mobile/`: remote-backend-only Tauri shell; it does not bundle Python.
+- `native/shell-core/`: Tauri-free Rust crate shared by both shells (server
+  config, URL normalization, keyring, download limits).
 - `tests/`: pytest suite mirroring `app/`; `tests/manual/` holds standalone
   service scenarios.
 - `manual/`: live-server and provider smoke/debug scripts.
@@ -106,8 +109,9 @@ make verify-docs     # Markdown links/frontmatter/Make references
 make verify-version  # synchronized release versions and catalogue metadata
 make verify-desktop  # locked desktop cargo check/test/clippy
 make verify-mobile   # locked mobile cargo check
+make verify-shell-core # shared native crate fmt/clippy/test
 make verify          # portable backend + web + docs + version checks
-make verify-native   # desktop + mobile; native system dependencies required
+make verify-native   # shell-core + desktop + mobile; native system dependencies required
 ```
 
 Use focused checks while iterating, then run the applicable target above.

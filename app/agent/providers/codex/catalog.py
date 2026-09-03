@@ -12,6 +12,7 @@ from loguru import logger
 
 from app.agent.providers.codex.oauth import CODEX_ORIGINATOR, CodexOAuth
 from app.core.config import settings
+from app.core.version import VERSION
 
 CODEX_MODELS_URL = "https://chatgpt.com/backend-api/codex/models"
 CODEX_MODELS_CACHE_TTL_SECONDS = 60 * 60
@@ -50,7 +51,7 @@ def _fetch_catalog() -> Any | None:
         headers = {
             "Authorization": f"Bearer {oauth.access_token.get_secret_value()}",
             "Content-Type": "application/json",
-            "User-Agent": "openagentd/1.0.0",
+            "User-Agent": f"openagentd/{VERSION}",
             "originator": CODEX_ORIGINATOR,
         }
         if oauth.account_id:

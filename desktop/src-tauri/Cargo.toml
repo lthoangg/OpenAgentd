@@ -1,6 +1,6 @@
 [package]
 name = "openagentd-desktop"
-version = "2.9.0"
+version = "2.10.0"
 description = "OpenAgentd — on-machine coding agent (desktop shell)"
 authors = ["openagentd contributors"]
 license = "Apache-2.0"
@@ -13,6 +13,7 @@ rust-version = "1.77.2"
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+openagentd-shell-core = { path = "../../native/shell-core" }
 tauri = { version = "2", features = ["image-png", "protocol-asset", "tray-icon", "macos-private-api"] }
 tauri-plugin-positioner = { version = "2", features = ["tray-icon"] }
 # Tauri's image-png feature permits newer image releases whose MSRV exceeds ours.

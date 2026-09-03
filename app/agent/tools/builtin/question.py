@@ -19,7 +19,7 @@ TOOL_NAME = "ask_user"
 DESCRIPTION = (
     "Ask the user 1-4 questions and pause the turn until they answer. "
     "Use only when blocked on a decision the repository cannot answer, never for "
-    "approval or progress. One interruption per turn, so ask everything at once."
+    "approval or progress. Batch related questions together so you ask at once."
 )
 
 

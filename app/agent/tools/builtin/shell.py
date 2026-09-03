@@ -34,7 +34,7 @@ Or when truncated::
     ...output truncated (full output saved to the XDG session artifact directory)
 
     <first N/2 lines>
-    ...output truncated...
+    ...output truncated (K lines omitted)...
     <last N/2 lines>
 
 ``[Failed — exit code N]`` prefix when the command exits non-zero.
@@ -44,6 +44,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import platform
 import re
 import signal
 import subprocess
@@ -73,12 +74,30 @@ _SHELL_CAPABILITIES = (
     if sys.platform == "win32"
     else "&&, ||, pipes, variables, and subshells"
 )
+
+
+def environment_summary() -> str:
+    """One line of host facts for the tool description.
+
+    Peers (opencode, codex, claude code) give the model an ``<env>`` block; the
+    shell description is the natural, prompt-cache-stable home for the static
+    part — OS, architecture, and the shell binary the command will run under.
+    Volatile facts (git branch, dirty state) deliberately stay out so the tool
+    schema does not change between turns.
+    """
+    return (
+        f"Environment: {platform.system()} {platform.machine()}, "
+        f"shell={_shell_mod.name()}."
+    )
+
+
 _SHELL_DESCRIPTION = (
     f"Run a command through the user's {_SHELL_KIND}; supports {_SHELL_CAPABILITIES}. "
     "Returns stdout and stderr combined. "
     "stdin is /dev/null, so use non-interactive flags for commands that may prompt. "
     "Use background=true only for long-lived processes. "
-    "Prefer file tools for file operations."
+    "Prefer file tools for file operations. "
+    f"{environment_summary()}"
 )
 
 
@@ -450,6 +469,8 @@ def _tail_text(text: str, max_lines: int, max_bytes: int) -> tuple[str, bool]:
     Returns ``(tail_text, was_cut)`` where ``was_cut`` is True when not all
     output is included.  The head always starts at the first byte and the
     tail always ends at the last byte, so both ends stay deterministic.
+    The marker names how much was dropped so the model can decide whether
+    the spilled full output is worth reading.
     """
     lines = text.split("\n")
     if len(lines) <= max_lines and len(text.encode()) <= max_bytes:
@@ -458,23 +479,30 @@ def _tail_text(text: str, max_lines: int, max_bytes: int) -> tuple[str, bool]:
     if len(lines) > max_lines:
         head_limit = max_lines // 2
         tail_limit = max_lines - head_limit
+        omitted = len(lines) - head_limit - tail_limit
         text = "\n".join(
-            lines[:head_limit] + ["...output truncated..."] + lines[-tail_limit:]
+            lines[:head_limit]
+            + [f"...output truncated ({omitted} lines omitted)..."]
+            + lines[-tail_limit:]
         )
 
     encoded = text.encode()
     if len(encoded) <= max_bytes:
         return text, True
 
-    marker = b"\n...output truncated...\n"
-    if max_bytes <= len(marker):
+    # Reserve room for the marker before deciding how much content fits; the
+    # count is a small number so its width never blows the byte budget.
+    marker_probe = b"\n...output truncated (000000000 bytes omitted)...\n"
+    if max_bytes <= len(marker_probe):
         return encoded[-max_bytes:].decode("utf-8", errors="ignore"), True
-    content_bytes = max_bytes - len(marker)
+    content_bytes = max_bytes - len(marker_probe)
     head_bytes = content_bytes // 2
     tail_bytes = content_bytes - head_bytes
     head = encoded[:head_bytes].decode("utf-8", errors="ignore")
     tail = encoded[-tail_bytes:].decode("utf-8", errors="ignore")
-    return head + marker.decode() + tail, True
+    omitted_bytes = len(encoded) - head_bytes - tail_bytes
+    marker = f"\n...output truncated ({omitted_bytes} bytes omitted)...\n"
+    return head + marker + tail, True
 
 
 def _spill_dest() -> Path:
@@ -598,7 +626,11 @@ class _ForegroundOutput:
             return _tail_text(text, _OUTPUT_MAX_LINES, _OUTPUT_MAX_BYTES)
         head_text = _strip_ansi(b"".join(self._head).decode("utf-8", errors="replace"))
         tail_text = _strip_ansi(b"".join(self._tail).decode("utf-8", errors="replace"))
-        combined = head_text + "\n...output truncated...\n" + tail_text
+        combined = (
+            head_text
+            + f"\n...output truncated ({dropped} bytes omitted)...\n"
+            + tail_text
+        )
         inline, _ = _tail_text(combined, _OUTPUT_MAX_LINES, _OUTPUT_MAX_BYTES)
         return inline, True
 

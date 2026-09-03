@@ -8,6 +8,7 @@ from uuid import UUID
 from app.agent.schemas.chat import (
     AssistantMessage,
     ChatCompletionDelta,
+    EncryptedReasoningItem,
     FunctionCall,
     HumanMessage,
     ImageDataBlock,
@@ -433,3 +434,73 @@ class TestNvidiaSettings:
         s = Settings(NVIDIA_API_KEY="nvapi-test-key")  # type: ignore[arg-type]
         assert isinstance(s.NVIDIA_API_KEY, SecretStr)
         assert s.NVIDIA_API_KEY.get_secret_value() == "nvapi-test-key"
+
+
+# ---------------------------------------------------------------------------
+# AssistantMessage reasoning_items & backwards compatibility
+# ---------------------------------------------------------------------------
+
+
+class TestAssistantMessageReasoningItems:
+    def test_init_with_reasoning_items_syncs_extra(self):
+        msg = AssistantMessage(
+            content="Done",
+            reasoning_items=[
+                EncryptedReasoningItem(
+                    id="rs_1",
+                    summary=[{"type": "summary_text", "text": "Thought 1"}],
+                    encrypted_content="cipher-1",
+                ),
+                EncryptedReasoningItem(
+                    id="rs_2",
+                    summary=[{"type": "summary_text", "text": "Thought 2"}],
+                    encrypted_content="cipher-2",
+                ),
+            ],
+        )
+        assert msg.reasoning_items is not None
+        assert len(msg.reasoning_items) == 2
+        assert msg.extra is not None
+        assert len(msg.extra["reasoning_items"]) == 2
+        assert msg.extra["reasoning_items"][0]["id"] == "rs_1"
+        assert msg.extra["reasoning_items"][1]["id"] == "rs_2"
+
+    def test_init_from_extra_with_reasoning_items_list(self):
+        msg = AssistantMessage(
+            content="Done",
+            extra={
+                "reasoning_items": [
+                    {
+                        "id": "rs_1",
+                        "summary": [{"type": "summary_text", "text": "P1"}],
+                        "encrypted_content": "c1",
+                    },
+                    {
+                        "id": "rs_2",
+                        "summary": [{"type": "summary_text", "text": "P2"}],
+                        "encrypted_content": "c2",
+                    },
+                ]
+            },
+        )
+        assert msg.reasoning_items is not None
+        assert len(msg.reasoning_items) == 2
+        assert msg.reasoning_items[0].id == "rs_1"
+        assert msg.reasoning_items[1].id == "rs_2"
+
+    def test_init_from_extra_with_legacy_single_encrypted_content(self):
+        msg = AssistantMessage(
+            content="Done",
+            reasoning_content="Legacy thought",
+            extra={
+                "reasoning_item_id": "rs_legacy",
+                "reasoning_encrypted_content": "c_legacy",
+            },
+        )
+        assert msg.reasoning_items is not None
+        assert len(msg.reasoning_items) == 1
+        assert msg.reasoning_items[0].id == "rs_legacy"
+        assert msg.reasoning_items[0].encrypted_content == "c_legacy"
+        assert msg.reasoning_items[0].summary == [
+            {"type": "summary_text", "text": "Legacy thought"}
+        ]

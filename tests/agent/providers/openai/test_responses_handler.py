@@ -151,8 +151,13 @@ class TestResponsesHandler:
         messages = [
             AssistantMessage(
                 content="Calling a tool.",
-                reasoning_item_id="rs_1",
-                reasoning_encrypted_content="cipher123",
+                reasoning_items=[
+                    {
+                        "id": "rs_1",
+                        "summary": [],
+                        "encrypted_content": "cipher123",
+                    }
+                ],
                 tool_calls=[
                     ToolCall(
                         id="call_123",
@@ -184,8 +189,15 @@ class TestResponsesHandler:
             AssistantMessage(
                 content="Calling a tool.",
                 reasoning_content="**Thinking about it**",
-                reasoning_item_id="rs_1",
-                reasoning_encrypted_content="cipher123",
+                reasoning_items=[
+                    {
+                        "id": "rs_1",
+                        "summary": [
+                            {"type": "summary_text", "text": "**Thinking about it**"}
+                        ],
+                        "encrypted_content": "cipher123",
+                    }
+                ],
                 tool_calls=[
                     ToolCall(
                         id="call_123",
@@ -201,6 +213,47 @@ class TestResponsesHandler:
             "summary": [{"type": "summary_text", "text": "**Thinking about it**"}],
             "encrypted_content": "cipher123",
         }
+
+    def test_convert_messages_replays_multiple_reasoning_items_in_order(self, handler):
+        """Replay all stored encrypted reasoning items ahead of the assistant turn."""
+        messages = [
+            AssistantMessage(
+                content="Calling a tool.",
+                reasoning_items=[
+                    {
+                        "id": "rs_1",
+                        "summary": [{"type": "summary_text", "text": "First thought"}],
+                        "encrypted_content": "cipher-1",
+                    },
+                    {
+                        "id": "rs_2",
+                        "summary": [{"type": "summary_text", "text": "Second thought"}],
+                        "encrypted_content": "cipher-2",
+                    },
+                ],
+                tool_calls=[
+                    ToolCall(
+                        id="call_123",
+                        function=FunctionCall(name="get_weather", arguments="{}"),
+                    ),
+                ],
+            )
+        ]
+        result = handler.convert_messages(messages)
+        assert result[:2] == [
+            {
+                "type": "reasoning",
+                "id": "rs_1",
+                "summary": [{"type": "summary_text", "text": "First thought"}],
+                "encrypted_content": "cipher-1",
+            },
+            {
+                "type": "reasoning",
+                "id": "rs_2",
+                "summary": [{"type": "summary_text", "text": "Second thought"}],
+                "encrypted_content": "cipher-2",
+            },
+        ]
 
     def test_convert_messages_no_reasoning_item_without_encrypted_content(
         self, handler
@@ -614,8 +667,45 @@ class TestResponsesHandler:
             ]
         }
         result = handler.parse_response(data)
-        assert result.reasoning_item_id == "rs_1"
-        assert result.reasoning_encrypted_content == "cipher123"
+        assert result.reasoning_items is not None
+        assert len(result.reasoning_items) == 1
+        assert result.reasoning_items[0].id == "rs_1"
+        assert result.reasoning_items[0].encrypted_content == "cipher123"
+        assert result.reasoning_items[0].summary == [
+            {"type": "summary_text", "text": "Let me think..."}
+        ]
+
+    def test_parse_response_captures_multiple_reasoning_encrypted_items(self, handler):
+        """Multiple reasoning items with encrypted_content are all preserved in order."""
+        data = {
+            "output": [
+                {
+                    "type": "reasoning",
+                    "id": "rs_1",
+                    "summary": [{"type": "summary_text", "text": "Part 1 thought"}],
+                    "encrypted_content": "cipher1",
+                },
+                {
+                    "type": "reasoning",
+                    "id": "rs_2",
+                    "summary": [{"type": "summary_text", "text": "Part 2 thought"}],
+                    "encrypted_content": "cipher2",
+                },
+                {
+                    "type": "message",
+                    "content": [{"type": "output_text", "text": "Result"}],
+                },
+            ]
+        }
+        result = handler.parse_response(data)
+        assert result.reasoning_items is not None
+        assert len(result.reasoning_items) == 2
+        assert result.reasoning_items[0].id == "rs_1"
+        assert result.reasoning_items[0].encrypted_content == "cipher1"
+        assert result.reasoning_items[1].id == "rs_2"
+        assert result.reasoning_items[1].encrypted_content == "cipher2"
+        assert result.extra is not None
+        assert len(result.extra["reasoning_items"]) == 2
 
     def test_parse_response_without_encrypted_content_leaves_fields_none(self, handler):
         """No `include: reasoning.encrypted_content` requested -> nothing to capture."""
@@ -629,8 +719,7 @@ class TestResponsesHandler:
             ]
         }
         result = handler.parse_response(data)
-        assert result.reasoning_item_id is None
-        assert result.reasoning_encrypted_content is None
+        assert result.reasoning_items is None
 
     def test_parse_response_with_reasoning(self, handler):
         """Parse response with reasoning content."""

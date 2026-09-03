@@ -198,3 +198,25 @@ async def test_sse_failure_does_not_break_injection(db_factory):
 
     assert [m.content for m in state.messages] == ["still injected"]
     assert result is not None
+
+
+@pytest.mark.asyncio
+async def test_queued_injection_clears_question_resume_metadata(db_factory):
+    """Injecting queued messages clears any lingering question_resume marker."""
+    async with db_factory() as db:
+        chat = await create_chat_session(db, title="t")
+        await save_queued_user_message(db, chat.id, "new question after queue")
+        await db.commit()
+
+    hook = QueuedMessageInjectionHook(
+        session_id=str(chat.id), agent_name="lead", db_factory=db_factory
+    )
+
+    with patch("app.services.memory_stream_store.push_event", new_callable=AsyncMock):
+        state = _state()
+        state.metadata["question_resume"] = True
+        result = await hook.before_model(_ctx(str(chat.id)), state, _request())
+
+    assert "question_resume" not in state.metadata
+    assert [m.content for m in state.messages] == ["new question after queue"]
+    assert result is not None

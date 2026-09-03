@@ -143,6 +143,7 @@ def _usage_limit(
 
 def _usage_headers() -> dict[str, str]:
     from app.agent.providers.codex.oauth import CodexOAuth
+    from app.core.version import VERSION
 
     oauth = CodexOAuth.load()
     if oauth is None:
@@ -152,7 +153,7 @@ def _usage_headers() -> dict[str, str]:
     headers = {
         "Authorization": f"Bearer {oauth.access_token.get_secret_value()}",
         "Accept": "application/json",
-        "User-Agent": "openagentd/1.0.0",
+        "User-Agent": f"openagentd/{VERSION}",
         "originator": "openagentd",
     }
     if oauth.account_id:

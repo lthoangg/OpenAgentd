@@ -216,7 +216,7 @@ class TestResponsesStreaming:
             "event: response.reasoning_summary_text.delta",
             'data: {"type": "response.reasoning_summary_text.delta", "delta": "Let me think"}',
             "event: response.output_item.done",
-            'data: {"type": "response.output_item.done", "item": {"id": "rs_1", "type": "reasoning", "encrypted_content": "cipher123"}}',
+            'data: {"type": "response.output_item.done", "item": {"id": "rs_1", "type": "reasoning", "summary": [{"type": "summary_text", "text": "Let me think"}], "encrypted_content": "cipher123"}}',
         ]
 
         async def async_iter_lines():
@@ -231,8 +231,64 @@ class TestResponsesStreaming:
             chunks.append(chunk)
 
         assert len(chunks) == 2
-        assert chunks[1].choices[0].delta.reasoning_item_id == "rs_1"
-        assert chunks[1].choices[0].delta.reasoning_encrypted_content == "cipher123"
+        assert chunks[1].choices[0].delta.reasoning_item is not None
+        assert chunks[1].choices[0].delta.reasoning_item.id == "rs_1"
+        assert (
+            chunks[1].choices[0].delta.reasoning_item.encrypted_content == "cipher123"
+        )
+        assert chunks[1].choices[0].delta.reasoning_item.summary == [
+            {"type": "summary_text", "text": "Let me think"}
+        ]
+
+    async def test_parse_stream_captures_multiple_reasoning_items_on_item_done(
+        self, handler
+    ):
+        """Multiple completed reasoning items yield their respective encrypted content chunks in stream order."""
+        lines = [
+            "event: response.created",
+            'data: {"type": "response.created", "response": {"id": "resp_123"}}',
+            "event: response.reasoning_summary_text.delta",
+            'data: {"type": "response.reasoning_summary_text.delta", "delta": "Thought 1"}',
+            "event: response.output_item.done",
+            'data: {"type": "response.output_item.done", "item": {"id": "rs_1", "type": "reasoning", "summary": [{"type": "summary_text", "text": "Thought 1"}], "encrypted_content": "cipher1"}}',
+            "event: response.reasoning_summary_text.delta",
+            'data: {"type": "response.reasoning_summary_text.delta", "delta": "Thought 2"}',
+            "event: response.output_item.done",
+            'data: {"type": "response.output_item.done", "item": {"id": "rs_2", "type": "reasoning", "summary": [{"type": "summary_text", "text": "Thought 2"}], "encrypted_content": "cipher2"}}',
+        ]
+
+        async def async_iter_lines():
+            for line in lines:
+                yield line
+
+        response = MagicMock()
+        response.aiter_lines = lambda: async_iter_lines()
+
+        chunks = []
+        async for chunk in handler._parse_stream(response):
+            chunks.append(chunk)
+
+        # Filter reasoning done chunks
+        done_chunks = [
+            c for c in chunks if c.choices[0].delta.reasoning_item is not None
+        ]
+        assert len(done_chunks) == 2
+        assert done_chunks[0].choices[0].delta.reasoning_item.id == "rs_1"
+        assert (
+            done_chunks[0].choices[0].delta.reasoning_item.encrypted_content
+            == "cipher1"
+        )
+        assert done_chunks[0].choices[0].delta.reasoning_item.summary == [
+            {"type": "summary_text", "text": "Thought 1"}
+        ]
+        assert done_chunks[1].choices[0].delta.reasoning_item.id == "rs_2"
+        assert (
+            done_chunks[1].choices[0].delta.reasoning_item.encrypted_content
+            == "cipher2"
+        )
+        assert done_chunks[1].choices[0].delta.reasoning_item.summary == [
+            {"type": "summary_text", "text": "Thought 2"}
+        ]
 
     async def test_parse_stream_ignores_output_item_done_without_encrypted_content(
         self, handler

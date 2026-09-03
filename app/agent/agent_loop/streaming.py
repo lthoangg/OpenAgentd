@@ -27,6 +27,7 @@ from app.agent.usage import usage_to_dict
 from app.agent.schemas.chat import (
     AssistantMessage,
     ChatMessage,
+    EncryptedReasoningItem,
     HumanMessage,
     SystemMessage,
     ToolCall,
@@ -194,8 +195,7 @@ async def stream_and_assemble(
     reasoning_signature = ""
     redacted_thinking_blocks: list[dict] = []
     raw_content_blocks: list[dict] | None = None
-    reasoning_item_id: str | None = None
-    reasoning_encrypted_content: str | None = None
+    reasoning_items: list[EncryptedReasoningItem] = []
     tool_calls_buffer: dict[int, dict] = {}
     last_usage: Usage | None = None
     last_finish_reason: str | None = None
@@ -222,6 +222,11 @@ async def stream_and_assemble(
         interrupt_event=effective_interrupt,
         messages=provider_messages,
         tools=tool_defs or None,
+        **(
+            {"session_id": ctx.session_id}
+            if primary_provider.provider_name == "codex" and ctx.session_id
+            else {}
+        ),
     )
     async for chunk in _interruptible_stream(upstream, effective_interrupt):
         # Preemptive interrupt: break out of streaming early.  The wrapper
@@ -246,8 +251,7 @@ async def stream_and_assemble(
             reasoning_signature = ""
             redacted_thinking_blocks = []
             raw_content_blocks = None
-            reasoning_item_id = None
-            reasoning_encrypted_content = None
+            reasoning_items = []
             tool_calls_buffer = {}
             last_finish_reason = None
             continue
@@ -276,12 +280,11 @@ async def stream_and_assemble(
             # Me: yielded once, fully assembled, after the provider stream
             # completes — assign rather than concatenate.
             raw_content_blocks = delta.anthropic_raw_blocks
-        if delta.reasoning_encrypted_content:
+        if delta.reasoning_item:
             # Me: delivered once, whole, when the reasoning item completes —
             # not incremental text like reasoning_content, so assign rather
             # than concatenate.
-            reasoning_item_id = delta.reasoning_item_id
-            reasoning_encrypted_content = delta.reasoning_encrypted_content
+            reasoning_items.append(delta.reasoning_item)
         if delta.content:
             full_content += delta.content
 
@@ -411,17 +414,17 @@ async def stream_and_assemble(
     if raw_content_blocks:
         extra = extra or {}
         extra["raw_content_blocks"] = raw_content_blocks
-    if reasoning_encrypted_content:
+    if reasoning_items:
         extra = extra or {}
-        extra["reasoning_item_id"] = reasoning_item_id
-        extra["reasoning_encrypted_content"] = reasoning_encrypted_content
+        extra["reasoning_items"] = [
+            item.model_dump(exclude_none=True) for item in reasoning_items
+        ]
 
     msg = AssistantMessage(
         content=full_content or None,
         reasoning_content=reasoning or None,
         reasoning_signature=reasoning_signature or None,
-        reasoning_item_id=reasoning_item_id,
-        reasoning_encrypted_content=reasoning_encrypted_content or None,
+        reasoning_items=reasoning_items or None,
         tool_calls=tc_list or None,
         agent_id=agent_id,
         agent_name=agent_name,

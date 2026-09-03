@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
     paths:
+      - "native/shell-core/**"
       - "desktop/src-tauri/**"
       - "mobile/src-tauri/**"
       - ".github/workflows/tauri.yml"
@@ -11,6 +12,7 @@ on:
   pull_request:
     branches: [main]
     paths:
+      - "native/shell-core/**"
       - "desktop/src-tauri/**"
       - "mobile/src-tauri/**"
       - ".github/workflows/tauri.yml"
@@ -34,6 +36,7 @@ jobs:
     outputs:
       desktop: ${{ steps.filter.outputs.desktop }}
       mobile: ${{ steps.filter.outputs.mobile }}
+      shell_core: ${{ steps.filter.outputs.shell_core }}
     steps:
       - uses: actions/checkout@v7
 
@@ -41,13 +44,50 @@ jobs:
         id: filter
         with:
           filters: |
+            shell_core:
+              - 'native/shell-core/**'
+              - '.github/workflows/tauri.yml'
             desktop:
+              - 'native/shell-core/**'
               - 'desktop/src-tauri/**'
               - '.github/workflows/tauri.yml'
               - '.github/workflows/release-desktop.yml'
             mobile:
+              - 'native/shell-core/**'
               - 'mobile/src-tauri/**'
               - '.github/workflows/tauri.yml'
+
+  shell-core:
+    name: Cargo test (shell-core)
+    needs: changes
+    if: needs.changes.outputs.shell_core == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: native/shell-core
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      # No Tauri or WebKit here — the crate is deliberately platform-neutral,
+      # so this job stays fast and needs no system packages.
+      - name: Cache cargo registry + target
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: native/shell-core
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Cargo fmt
+        run: cargo fmt --check
+
+      - name: Cargo clippy
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Cargo test
+        run: cargo test
 
   desktop:
     name: Cargo check (desktop)

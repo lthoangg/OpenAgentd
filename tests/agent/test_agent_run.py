@@ -1262,6 +1262,39 @@ def test_classify_provider_http_error_codes():
     assert "400" in str(err)
 
 
+def test_classify_401_about_the_model_is_a_request_error_not_auth():
+    """OpenCode Zen answers a retired model id with 401 + "Model X is not
+    supported". Treating that as an auth failure shows the "reconnect provider"
+    banner and sends the user to re-login for nothing; the actionable fix is to
+    pick another model."""
+    import httpx
+
+    def make(status: int, body: dict) -> httpx.HTTPStatusError:
+        response = httpx.Response(
+            status, request=httpx.Request("POST", "http://x"), json=body
+        )
+        return httpx.HTTPStatusError("e", request=response.request, response=response)
+
+    for message in (
+        "Model hy3-free is not supported",
+        "The model `gpt-9` does not exist or you do not have access to it.",
+        "Upstream request failed: Model is unavailable.",
+    ):
+        err = classify_provider_http_error(
+            make(401, {"error": {"message": message}}), provider_label="opencode:x"
+        )
+        assert isinstance(err, ProviderRequestError), message
+        assert not isinstance(err, ProviderAuthenticationError), message
+        assert message in str(err)
+        assert "API key" not in str(err)
+
+    # A genuine credential failure still routes to the auth banner.
+    err = classify_provider_http_error(
+        make(401, {"error": {"message": "Invalid API key"}}), provider_label="p"
+    )
+    assert isinstance(err, ProviderAuthenticationError)
+
+
 async def test_stream_with_retry_on_connect_error():
     """ConnectError mid-stream is retried with backoff."""
     import httpx

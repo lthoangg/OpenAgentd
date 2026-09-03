@@ -1078,27 +1078,12 @@ class Agent(Generic[TContext]):
     ) -> str:
         """Run the batch's ``ask_user`` call and suspend the turn.
 
-        Enforces the one-interruption-per-turn budget, folds a duplicated call
-        into a single card, and persists everything the batch already produced
-        before handing control to the user.
+        Folds duplicated calls in the batch into a single card, and persists
+        everything the batch already produced before handing control to the user.
         """
         ctx = env.ctx
         state = env.state
         primary, duplicates = ask_calls[0], ask_calls[1:]
-
-        if state.metadata.get("question_resume") is True:
-            # A turn resumed from an answer has already spent its interruption.
-            # Refusing here is what stops an answer → ask → answer loop.
-            for tc in ask_calls:
-                messages.append(
-                    ToolMessage(
-                        content=ASK_BUDGET_EXHAUSTED,
-                        tool_call_id=tc.id,
-                        name=tc.function.name,
-                    )
-                )
-            logger.info("question_refused_budget agent={}", self.name)
-            return "ok"
 
         if duplicates:
             # The model split its questions across parallel calls; show one card.

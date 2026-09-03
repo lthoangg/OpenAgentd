@@ -173,6 +173,48 @@ class TestEnsureTurn:
 
 
 class TestCleanupExpiry:
+    @pytest.mark.asyncio
+    async def test_expire_turn_keeps_live_subscriber_following_stream(self):
+        """Replay cleanup must not detach a client from a running turn."""
+
+        class FakeLoop:
+            def __init__(self):
+                self.now = 120.0
+                self.calls: list[tuple[float, object, tuple[object, ...]]] = []
+
+            def time(self) -> float:
+                return self.now
+
+            def call_later(self, delay: float, callback, *args):
+                self.calls.append((delay, callback, args))
+                return MagicMock()
+
+        loop = FakeLoop()
+        subscriber: asyncio.Queue = asyncio.Queue()
+        state = store._TurnState()
+        state.content = {"lead": ["old replay payload"]}
+        state.subscribers.append(subscriber)
+        state._cleanup_deadline = loop.now
+        _turns["sid-1"] = state
+
+        with patch.object(store.asyncio, "get_event_loop", return_value=loop):
+            store._expire_turn("sid-1", state)
+
+            assert _turns["sid-1"] is state
+            assert state.subscribers == [subscriber]
+            assert state.content == {}
+
+            await store.push_event(
+                "sid-1",
+                StreamEnvelope.from_parts(
+                    "message", {"agent": "lead", "text": "still live"}
+                ),
+            )
+
+        event = subscriber.get_nowait()
+        assert event["event"] == "message"
+        assert json.loads(event["data"])["text"] == "still live"
+
     def test_expire_turn_rearms_then_expires_and_ignores_replaced_state(self):
         class FakeLoop:
             def __init__(self):

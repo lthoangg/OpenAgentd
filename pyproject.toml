@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "openagentd"
-version = "2.9.0"  # keep in sync with app/version.txt
+version = "2.10.0"  # keep in sync with app/version.txt
 description = "Self-hosted coding agent — streaming chat, tool use, and persistent memory"
 readme = "README.md"
 requires-python = ">=3.14"
@@ -88,7 +88,7 @@ dependencies = [
 # over the on-demand per-project install (app.services.lsp.managed). The
 # desktop sidecar omits this extra: its bundle stays ~22MB smaller and
 # downloads the project-pinned version into the user cache on first use.
-python-lsp = ["ruff==0.16.5", "ty==0.0.75"]
+python-lsp = ["ruff==0.16.5", "ty==0.0.78"]
 
 [project.urls]
 Repository = "https://github.com/lthoangg/openagentd"
@@ -112,7 +112,7 @@ dev = [
     # Python diagnostics for this repo's own lint/type checks. The runtime
     # installs them on demand per coding project instead of shipping them.
     "ruff==0.16.5",
-    "ty==0.0.75",
+    "ty==0.0.78",
     "pytest-timeout>=2.4.0",
     "pillow>=11.0.0",
 ]

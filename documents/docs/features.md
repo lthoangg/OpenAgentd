@@ -2,7 +2,7 @@
 title: Features
 description: Canonical, version-cited catalogue of shipped user-visible OpenAgentd features.
 status: stable
-updated: 2026-09-02
+updated: 2026-09-03
 ---
 
 # Features
@@ -14,7 +14,7 @@ release that introduced it (where known). When you ship something new, **add it 
 > double-clickable app that runs an agent on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 16 providers. Your keys.
 
-**Latest release:** v2.9.0 · September 2, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v2.9.0)
+**Latest release:** v2.10.0 · September 3, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v2.10.0)
 
 ---
 
@@ -638,20 +638,20 @@ OpenAgentd carries context across sessions via rolling-window summarization.
 - **`AGENTS.md` at repo root and subfolders** `[v1.9.0]` — written by `/init`;
   standard repo- and folder-scoped agent context files. Coding workspaces fall
   back to root `CLAUDE.md` when root `AGENTS.md` is absent.
-- **Global `AGENTS.md`** `[v2.9.0]` — a developer-wide instructions file at
+- **Global `AGENTS.md`** `[v2.10.0]` — a developer-wide instructions file at
   `{config dir}/AGENTS.md` (`~/.config/openagentd/AGENTS.md` in production) is
   injected into every coding turn ahead of the workspace file, so cross-project
   preferences live in one place. Matches how pi, OpenCode, and Codex order
   global → project guidance.
-- **Host environment in the shell tool** `[v2.9.0]` — the shell tool schema
+- **Host environment in the shell tool** `[v2.10.0]` — the shell tool schema
   states the OS, CPU architecture, and shell binary the command runs under
   (e.g. `Darwin arm64, shell=zsh`), so the model stops guessing platform
   commands. Static facts only, keeping the tool schema prompt-cache stable.
-- **Truncation markers name the omitted amount** `[v2.9.0]` — shell output
+- **Truncation markers name the omitted amount** `[v2.10.0]` — shell output
   keeps half head / half tail and the marker now reads
   `...output truncated (N lines omitted)...`, so the model can judge whether
   the spilled full output is worth reading.
-- **One backend-connection rulebook for desktop and mobile** `[v2.9.0]` —
+- **One backend-connection rulebook for desktop and mobile** `[v2.10.0]` —
   server URL normalization, the saved-servers file, keyring access keys, and
   download limits now come from one shared native crate. Mobile gains the
   desktop behaviours it lacked: a pasted `http://host:4082/api` connects
@@ -808,7 +808,7 @@ MCP.
   exactly where it stopped. Answering, dismissing, or simply typing something
   else are the only ways to move it — there is no timeout. Members keep working
   throughout and are never interrupted by an answer. Turns support multiple
-  questions across suspensions `[v2.9.0]`;
+  questions across suspensions `[v2.10.0]`;
   scheduled sessions never get the tool, because a cron job has nobody to ask.
 - **Fast HTML & document extraction** `[v2.0.0]` — `web_fetch` uses `trafilatura` for
   clean HTML-to-markdown extraction, and `read` uses `anydoc` for robust document

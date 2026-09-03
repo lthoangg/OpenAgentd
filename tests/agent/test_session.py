@@ -482,6 +482,146 @@ async def test_agent_session_parks_in_waiting_input_on_ask_user(db_factory, tmp_
     assert event_types[-1] == "done"
 
 
+async def test_agent_session_supports_multi_question_turns(db_factory, tmp_path):
+    """Turns support multiple ask_user suspensions and resumes."""
+    from app.services import memory_stream_store as stream_store
+
+    provider = ScriptedProvider(
+        [
+            [make_tool_chunk("ask_user", "call_ask_1", ASK_USER_ARGS)],
+            [make_tool_chunk("ask_user", "call_ask_2", ASK_USER_ARGS)],
+            [make_text_chunk("Resumed after both questions.")],
+        ]
+    )
+    agent = Agent(
+        llm_provider=provider,
+        name="openagentd",
+        system_prompt="You are OpenAgentd.",
+    )
+    session = AgentSession(
+        agent=agent,
+        workspace=str(tmp_path),
+        db_factory=db_factory,
+    )
+
+    sid = str(uuid.uuid4())
+    await session.attach_to_session(sid)
+    await stream_store.init_turn(sid)
+
+    events: list[dict] = []
+
+    async def consume_stream():
+        async for event in stream_store.attach(sid):
+            events.append(event)
+
+    consumer = asyncio.create_task(consume_stream())
+    await asyncio.sleep(0.01)
+
+    await session.handle_user_message(
+        content="Do the thing",
+        session_id=sid,
+        workspace=str(tmp_path),
+    )
+    assert session._active_task is not None
+    await session._active_task
+
+    # First suspension
+    assert session.state == "waiting_input"
+    assert session.is_awaiting_question_answer()
+    assert session._question_suspended is not None
+    q1_id = session._question_suspended["question_id"]
+
+    # Answer first question -> restarts turn and asks second question
+    await session.handle_question_answer(q1_id, [["a"]])
+    assert session._active_task is not None
+    await session._active_task
+
+    # Second suspension
+    assert session.state == "waiting_input"
+    assert session.is_awaiting_question_answer()
+    assert session._question_suspended is not None
+    q2_id = session._question_suspended["question_id"]
+    assert q2_id != q1_id
+
+    # Answer second question -> restarts turn and completes
+    await session.handle_question_answer(q2_id, [["b"]])
+    assert session._active_task is not None
+    await session._active_task
+    await asyncio.wait_for(consumer, timeout=2)
+
+    assert session.state == "idle"
+    assert provider.stream_call_count == 3
+    event_types = [e.get("event") for e in events]
+    assert "message" in event_types
+    assert event_types[-1] == "done"
+
+
+async def test_agent_session_allows_ask_user_after_queued_message_injected(
+    db_factory, tmp_path
+):
+    """When a queued message is injected into a resumed turn, ask_user is allowed."""
+    from app.services import memory_stream_store as stream_store
+    from app.services.chat_service import save_queued_user_message
+
+    provider = ScriptedProvider(
+        [
+            [make_tool_chunk("ask_user", "call_ask_1", ASK_USER_ARGS)],
+            [make_tool_chunk("ask_user", "call_ask_2", ASK_USER_ARGS)],
+            [make_text_chunk("Done after queued message and question.")],
+        ]
+    )
+    agent = Agent(
+        llm_provider=provider,
+        name="openagentd",
+        system_prompt="You are OpenAgentd.",
+    )
+    session = AgentSession(
+        agent=agent,
+        workspace=str(tmp_path),
+        db_factory=db_factory,
+    )
+
+    sid = str(uuid.uuid4())
+    sess_uuid = uuid.UUID(sid)
+    await session.attach_to_session(sid)
+    await stream_store.init_turn(sid)
+
+    await session.handle_user_message(
+        content="First instruction",
+        session_id=sid,
+        workspace=str(tmp_path),
+    )
+    assert session._active_task is not None
+    await session._active_task
+
+    assert session.state == "waiting_input"
+    q1_id = session._question_suspended["question_id"]
+
+    # Queue a user message while the session was suspended or resuming
+    async with db_factory() as db:
+        await save_queued_user_message(db, sess_uuid, "Queued instruction")
+        await db.commit()
+
+    # Answer the first question -> resumed turn pops the queued message and asks again
+    await session.handle_question_answer(q1_id, [["a"]])
+    assert session._active_task is not None
+    await session._active_task
+
+    # Should suspend on the second question, NOT refuse with ASK_BUDGET_EXHAUSTED
+    assert session.state == "waiting_input"
+    assert session._question_suspended is not None
+    q2_id = session._question_suspended["question_id"]
+    assert q2_id != q1_id
+
+    # Answer second question
+    await session.handle_question_answer(q2_id, [["b"]])
+    assert session._active_task is not None
+    await session._active_task
+
+    assert session.state == "idle"
+    assert provider.stream_call_count == 3
+
+
 class FailingProvider(LLMProviderBase):
     """Every call fails the way a dead upstream does."""
 

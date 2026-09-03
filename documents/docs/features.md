@@ -421,7 +421,9 @@ executes tools, manages its task list, and inspects workspace repositories.
   URLs, and 501/505 responses fail immediately instead of consuming the retry
   budget. On iOS and Android, where the OS suspends background sockets, every
   return to the foreground reconnects; on desktop a still-open stream is left
-  alone so switching windows does not tear it down.
+  alone so switching windows does not tear it down. Replay-state cleanup also
+  preserves attached session streams, so long silent tool runs and turns beyond
+  the replay-retention window continue delivering later output.
 - **Automatic max-tokens truncation recovery** `[v1.87.0]` — when a provider
   hits the output token limit (`finish_reason="max_tokens"` or `"length"`), the
   loop automatically injects a recovery message (requesting a continuation for
@@ -805,7 +807,8 @@ MCP.
   reload, a daemon restart, and a switch to another device, then resumes from
   exactly where it stopped. Answering, dismissing, or simply typing something
   else are the only ways to move it — there is no timeout. Members keep working
-  throughout and are never interrupted by an answer. One question per turn;
+  throughout and are never interrupted by an answer. Turns support multiple
+  questions across suspensions `[v2.9.0]`;
   scheduled sessions never get the tool, because a cron job has nobody to ask.
 - **Fast HTML & document extraction** `[v2.0.0]` — `web_fetch` uses `trafilatura` for
   clean HTML-to-markdown extraction, and `read` uses `anydoc` for robust document

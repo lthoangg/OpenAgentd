@@ -5,8 +5,7 @@ has to treat it unlike every other tool:
 
 * it runs **last** in a parallel batch, so its siblings' results are complete
   and persisted before the turn stops;
-* the turn gets **one** interruption — a resumed activation may not ask again,
-  which is what stops answer→ask→answer ping-pong;
+* multiple questions are supported across activations in a turn;
 * the suspension is recorded on ``state.metadata`` rather than raised out of
   ``run()``, so the caller can park the agent in ``waiting_input`` instead of
   treating it as an error or an interrupt.
@@ -33,7 +32,7 @@ from app.agent.schemas.chat import (
 from app.agent.schemas.agent import RunConfig
 from app.agent.tools.registry import InjectedArg, Tool
 
-from tests.agent.test_agent_run import make_text_chunk, make_tool_chunk
+from tests.agent.test_agent_run import make_tool_chunk
 
 QUESTION_ID = "00000000-0000-0000-0000-0000000000aa"
 SESSION_ID = "00000000-0000-0000-0000-0000000000bb"
@@ -246,41 +245,40 @@ async def test_two_asks_in_one_batch_merge_into_a_single_question_set():
     assert headers == ["Pick", "Also"]
 
 
-async def test_a_resumed_activation_may_not_ask_again():
-    """One interruption per turn — the budget does not reset on resume."""
+async def test_a_resumed_activation_may_ask_again():
+    """Multi-question turns: a resumed activation can ask again."""
     order: list[str] = []
     captured: list[dict] = []
     provider = ScriptedProvider(
         [
-            [make_tool_chunk("ask_user", "call-ask", ONE_QUESTION)],
-            [make_text_chunk("fine, proceeding")],
+            [make_tool_chunk("ask_user", "call-ask-2", OTHER_QUESTION)],
         ]
     )
     agent = Agent(name="lead", llm_provider=provider)
     config = RunConfig(session_id=SESSION_ID, metadata={"question_resume": True})
 
-    msgs = await agent.run(
+    await agent.run(
         [HumanMessage(content="go")],
         config=config,
         injected_tools=[_ask_tool(order, captured)],
     )
 
-    assert order == []  # tool never executed
-    assert config.metadata.get("question_suspended") is None
-    refusal = next(m for m in msgs if isinstance(m, ToolMessage))
-    assert "one interruption" in (refusal.content or "").lower()
-    # The loop continued instead of stopping.
-    assert provider.call_count == 2
+    assert order == ["ask"]
+    suspended = config.metadata.get("question_suspended")
+    assert suspended is not None
+    assert str(suspended["question_id"]) == QUESTION_ID
+    assert suspended["tool_call_id"] == "call-ask-2"
+    assert provider.call_count == 1
 
 
-async def test_asking_twice_in_one_turn_is_refused_on_the_second_call():
+async def test_asking_again_in_resumed_turn_suspends_again():
+    """Tools in a resumed turn run normally and a subsequent ask suspends."""
     order: list[str] = []
     captured: list[dict] = []
     provider = ScriptedProvider(
         [
             [make_tool_chunk("read", "call-read", '{"path": "a.py"}')],
-            [make_tool_chunk("ask_user", "call-ask", ONE_QUESTION)],
-            [make_text_chunk("proceeding without asking")],
+            [make_tool_chunk("ask_user", "call-ask-2", OTHER_QUESTION)],
         ]
     )
     agent = Agent(name="lead", llm_provider=provider)
@@ -291,5 +289,9 @@ async def test_asking_twice_in_one_turn_is_refused_on_the_second_call():
         config=config,
         injected_tools=[_ask_tool(order, captured), _slow_tool(order)],
     )
-
-    assert order == ["read"]
+    assert order == ["read", "ask"]
+    suspended = config.metadata.get("question_suspended")
+    assert suspended is not None
+    assert str(suspended["question_id"]) == QUESTION_ID
+    assert suspended["tool_call_id"] == "call-ask-2"
+    assert provider.call_count == 2

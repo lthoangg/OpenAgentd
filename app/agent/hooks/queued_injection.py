@@ -59,6 +59,10 @@ class QueuedMessageInjectionHook(BaseAgentHook):
                 HumanMessage(content=row.content or "", extra=row.extra)
             )
 
+        # Clear any question_resume marker so turns with injected queued messages
+        # can ask further clarifying questions.
+        state.metadata.pop("question_resume", None)
+
         from app.services import memory_stream_store as stream_store
         from app.services.stream_envelope import StreamEnvelope
 

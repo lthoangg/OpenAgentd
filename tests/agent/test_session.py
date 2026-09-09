@@ -32,6 +32,59 @@ ASK_USER_ARGS = (
 )
 
 
+async def test_undo_redo_restores_workspace_between_turns(tmp_path, monkeypatch):
+    from app.core.config import settings
+    from app.core.db import async_session_factory
+
+    monkeypatch.setattr(settings, "OPENAGENTD_STATE_DIR", str(tmp_path / "state"))
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    file = workspace / "file.txt"
+    file.write_text("original")
+    runtime = AgentSession(
+        agent=Agent(llm_provider=MockProvider(), name="openagentd"),
+        workspace=str(workspace),
+        db_factory=async_session_factory,
+    )
+    sid = str(uuid.uuid4())
+    for prompt, content in [("first", "first edit"), ("second", "second edit")]:
+        await runtime.handle_user_message(content=prompt, session_id=sid)
+        await runtime._active_task
+        file.write_text(content)
+
+    await runtime.handle_undo(sid)
+    assert file.read_text() == "first edit"
+    await runtime.handle_undo(sid)
+    assert file.read_text() == "original"
+    await runtime.handle_redo(sid)
+    assert file.read_text() == "first edit"
+    await runtime.handle_redo_all(sid)
+    assert file.read_text() == "second edit"
+
+
+async def test_new_message_after_undo_persists_branch(tmp_path):
+    from app.core.db import async_session_factory
+    from app.services.chat_service import get_messages_for_llm
+
+    runtime = AgentSession(
+        agent=Agent(llm_provider=MockProvider(), name="openagentd"),
+        workspace=str(tmp_path),
+        db_factory=async_session_factory,
+    )
+    sid = str(uuid.uuid4())
+    await runtime.handle_user_message(content="old turn", session_id=sid)
+    await runtime._active_task
+    await runtime.handle_undo(sid)
+    await runtime.handle_user_message(content="replacement", session_id=sid)
+    await runtime._active_task
+
+    async with async_session_factory() as db:
+        messages = await get_messages_for_llm(db, uuid.UUID(sid))
+    assert [msg.content for msg in messages if msg.role == "user"] == ["replacement"]
+    _, redo = await runtime.handle_redo(sid)
+    assert redo.applied is False
+
+
 class ScriptedProvider(LLMProviderBase):
     """Replays one pre-built chunk list per ``stream()`` call, in order."""
 

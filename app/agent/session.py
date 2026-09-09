@@ -54,6 +54,7 @@ from app.core.db import DbFactory, resolve_db_factory
 from app.core.paths import session_workspace_dir
 from app.models.chat import ChatSession, SessionMessage
 from app.services import memory_stream_store as stream_store
+from app.services import snapshot_service
 from app.services.chat_service import (
     BoundaryShift,
     cleanup_reverted_tail,
@@ -448,7 +449,14 @@ class AgentSession:
             extra["mentions"] = mentions
 
         user_msg = HumanMessage(content=content, extra=extra)
+        snapshot = await snapshot_service.track(
+            session_id, session_workspace_dir(session_id, self.workspace)
+        )
+        if snapshot:
+            user_msg.extra = {**extra, "snapshot": snapshot}
         async with db_factory() as db:
+            # Discard the old branch before appending its replacement.
+            await cleanup_reverted_tail(db, sess_uuid)
             persisted = await save_message(db, sess_uuid, user_msg)
             user_msg.db_id = persisted.id
             await db.commit()
@@ -850,6 +858,7 @@ class AgentSession:
                     runtime_thinking_level = sess_row.thinking_level
 
             history = await get_messages_for_llm(db, sess_uuid)
+            await db.commit()
 
         publisher_hook = StreamPublisherHook(
             session_id=self.session_id,

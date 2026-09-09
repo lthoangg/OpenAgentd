@@ -283,7 +283,7 @@ async def undo_session_messages(db: AsyncSession, session_id: UUID) -> BoundaryS
     # Undo targets: real user messages still in the LLM window (rows compacted
     # below the active summary are not targets — same as the old model), plus
     # any summary row (undoing "to" a summary reverts the compaction itself).
-    active = await get_active_summary(db, session_id)
+    active = await get_active_summary(db, session_id, boundary)
     stmt = (
         select(SessionMessage)
         .where(col(SessionMessage.session_id) == session_id)

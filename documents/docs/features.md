@@ -580,6 +580,9 @@ agent against it.
   `/redo` restores one undone turn; `/redo-all` `[v2.0.0]` restores all undone turns back
   to the live tip. Undoing turns now declaratively preserves and restores input composer
   draft text and synchronizes cache invalidation across open windows `[v2.8.0]`.
+  Direct and queued turns capture their starting workspace state; sending a new
+  message after undo replaces the undone branch without losing the new message,
+  and repeated undo can traverse context restored by undoing compaction `[v2.12.0]`.
 - **`/init` AGENTS.md analysis & generation** `[v1.9.0, v2.0.0]` — analyzes codebase
   structure and generates standard `AGENTS.md` context files at repository root and
   subdirectories with a guided analysis protocol.

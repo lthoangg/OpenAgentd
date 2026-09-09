@@ -8,9 +8,12 @@ from uuid import UUID
 from loguru import logger
 
 from app.agent.hooks.base import BaseAgentHook
-from app.agent.schemas.chat import HumanMessage
 from app.core.db import DbFactory, resolve_db_factory
 from app.services.chat_service import pop_queued_user_messages
+from app.services.chat_service_messages import (
+    apply_llm_content_overrides,
+    deserialize_messages,
+)
 
 if TYPE_CHECKING:
     from app.agent.state import AgentState, ModelRequest, RunContext
@@ -54,10 +57,7 @@ class QueuedMessageInjectionHook(BaseAgentHook):
                 return None
             await db.commit()
 
-        for row in queued:
-            state.messages.append(
-                HumanMessage(content=row.content or "", extra=row.extra)
-            )
+        state.messages.extend(apply_llm_content_overrides(deserialize_messages(queued)))
 
         # Clear any question_resume marker so turns with injected queued messages
         # can ask further clarifying questions.

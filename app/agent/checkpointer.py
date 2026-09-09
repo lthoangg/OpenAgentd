@@ -415,6 +415,8 @@ class SQLiteCheckpointer(Checkpointer):
         # sync, so this guards only the DB work — it is deliberately not an
         # early return.
         if new_messages or pin_updates:
+            saved_messages: list[tuple[ChatMessage, UUID]] = []
+            synced_ids: set[int] = set()
             async with self._session_factory() as db:
                 async with db.begin():
                     anchored_seq = await _resolve_summary_seqs(db, summary_anchors)
@@ -442,14 +444,6 @@ class SQLiteCheckpointer(Checkpointer):
                             .where(col(SessionMessage.id).in_(ids))
                             .values(pinned=flag)
                         )
-                    if pin_updates:
-                        flushed_pinned.update(pin_updates)
-                        logger.debug(
-                            "checkpointer_pinned_flags_updated session_id={} count={}",
-                            sid,
-                            len(pin_updates),
-                        )
-
                     # ── Persist new messages ──────────────────────────────────────────
                     # Rows are added without per-row flushes (``flush=False``)
                     # and flushed once after the loop: ids are client-side
@@ -488,7 +482,7 @@ class SQLiteCheckpointer(Checkpointer):
                                 seq=seq if seq is not None else await _next_tail(),
                                 flush=False,
                             )
-                            msg.db_id = row.id
+                            saved_messages.append((msg, row.id))
                             saved_summary = saved_summary or msg.is_summary
                         elif isinstance(msg, ToolMessage):
                             row = await save_message(
@@ -500,7 +494,7 @@ class SQLiteCheckpointer(Checkpointer):
                                 seq=await _next_tail(),
                                 flush=False,
                             )
-                            msg.db_id = row.id
+                            saved_messages.append((msg, row.id))
                         elif isinstance(msg, HumanMessage):
                             if msg.is_summary or (
                                 msg.extra and msg.extra.get("hidden_from_user")
@@ -517,7 +511,7 @@ class SQLiteCheckpointer(Checkpointer):
                                     seq=seq if seq is not None else await _next_tail(),
                                     flush=False,
                                 )
-                                msg.db_id = row.id
+                                saved_messages.append((msg, row.id))
                                 saved_summary = saved_summary or msg.is_summary
                                 logger.debug(
                                     "checkpointer_saved_hidden_human session_id={} db_id={}",
@@ -533,12 +527,25 @@ class SQLiteCheckpointer(Checkpointer):
                             )
                             continue
 
-                        persisted_ids.add(id(msg))
-                        if msg.db_id is not None:
-                            flushed_pinned[msg.db_id] = msg.pinned
+                        synced_ids.add(id(msg))
                     await db.flush()
                     if pin_updates or saved_summary:
                         await bump_history_revision(db, UUID(sid), structural=True)
+
+            # A failed flush/commit must leave every change eligible for retry.
+            for msg, message_id in saved_messages:
+                msg.db_id = message_id
+            persisted_ids.update(synced_ids)
+            flushed_pinned.update(pin_updates)
+            for msg in new_messages:
+                if id(msg) in synced_ids and msg.db_id is not None:
+                    flushed_pinned[msg.db_id] = msg.pinned
+            if pin_updates:
+                logger.debug(
+                    "checkpointer_pinned_flags_updated session_id={} count={}",
+                    sid,
+                    len(pin_updates),
+                )
 
         # Me drop this agent's stream buffer — once the assistant text is in
         # the DB, a mid-turn reconnect loading it via loadSession must not

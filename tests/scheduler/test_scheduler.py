@@ -1147,6 +1147,56 @@ class TestFireTaskErrors:
         assert row.status == "failed"
         assert row.next_fire_at is not None
 
+    async def test_failed_finite_task_retries_and_completes_on_success(
+        self, scheduler, db_factory
+    ):
+        task = _make_task(name="finite_retry", max_runs=1)
+        await scheduler.add(task)
+        await scheduler.stop()
+
+        async def _explode(*_a, **_kw):
+            raise RuntimeError("boom")
+
+        async def _get_team(*_args, **_kwargs):
+            return MagicMock()
+
+        with (
+            patch("app.services.agent_manager.get_or_start_agent_session", side_effect=_get_team),
+            patch(
+                "app.services.agent_service.dispatch_user_message",
+                side_effect=_explode,
+            ),
+        ):
+            await scheduler._fire_task(task)
+
+        row = await _db_task(db_factory, task.id)
+        assert row is not None
+        assert row.status == "failed"
+        assert row.run_count == 1
+
+        dispatched = False
+        async def _ok(*_a, **_kw):
+            nonlocal dispatched
+            dispatched = True
+            return (str(uuid4()), 0, str(uuid4()))
+
+        with (
+            patch("app.services.agent_manager.get_or_start_agent_session", side_effect=_get_team),
+            patch(
+                "app.services.agent_service.dispatch_user_message",
+                side_effect=_ok,
+            ),
+        ):
+            await scheduler._fire_task(task)
+
+        assert dispatched is True
+        row = await _db_task(db_factory, task.id)
+        assert row is not None
+        assert row.run_count == 2
+        assert row.status == "completed"
+        assert row.enabled is False
+        assert row.next_fire_at is None
+
 
 # ---------------------------------------------------------------------------
 # session_id resolution

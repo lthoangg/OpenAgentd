@@ -10,7 +10,9 @@ from sqlmodel import col, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.agent.schemas.chat import HumanMessage
-from app.models.chat import SEQ_STEP, MessageKind, SessionMessage
+from app.core.paths import session_workspace_dir
+from app.models.chat import SEQ_STEP, ChatSession, MessageKind, SessionMessage
+from app.services import snapshot_service
 
 _ATTACHMENT_FOR_KEY = "attachment_for_message_id"
 
@@ -54,12 +56,22 @@ async def _promote_queued(
     """Flip queued rows to ``chat`` and move them to the end of the session."""
     from app.services.chat_service import next_seq
 
+    if not queued:
+        return
+    session = await db.get(ChatSession, session_id)
+    snapshot = None
+    if session is not None:
+        snapshot = await snapshot_service.track(
+            str(session_id), session_workspace_dir(str(session_id), session.workspace)
+        )
     released_at = datetime.now(timezone.utc)
     base_seq = await next_seq(db, session_id)
     for i, row in enumerate(queued):
         extra = dict(row.extra or {})
         extra.pop("queue_status", None)
         extra.pop("queued_at", None)
+        if snapshot:
+            extra["snapshot"] = snapshot
         row.extra = extra or None
         row.kind = MessageKind.CHAT
         row.seq = base_seq + i * SEQ_STEP

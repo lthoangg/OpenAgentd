@@ -477,7 +477,13 @@ async def test_cleanup_reverted_middle_summary_restores_previous_summary_window(
 
     second_undo = await undo_session_messages(session, chat_session.id)
     assert second_undo.applied is True
-    assert second_undo.target and second_undo.target.id == second_summary.id
+    # Undoing summary 3 exposes summary 2's window, including its user turn.
+    assert second_undo.target and second_undo.target.id == second_window_user.id
+    await session.commit()
+
+    third_undo = await undo_session_messages(session, chat_session.id)
+    assert third_undo.applied is True
+    assert third_undo.target and third_undo.target.id == second_summary.id
     await session.commit()
 
     await cleanup_reverted_tail(session, chat_session.id)
@@ -725,6 +731,53 @@ async def test_undo_and_redo_skip_team_messages(session):
     assert first_redo.target and first_redo.target.id == second_user.id
     assert second_redo.applied is True
     assert second_redo.target is None
+
+
+async def test_repeated_undo_uses_summary_before_revert_boundary():
+    from app.core.db import async_session_factory
+
+    async with async_session_factory() as db:
+        chat = await create_chat_session(db)
+        user = await save_message(db, chat.id, HumanMessage(content="original"))
+        summary = await save_message(
+            db, chat.id, HumanMessage(content="summary"), is_summary=True
+        )
+        await db.commit()
+        first = await undo_session_messages(db, chat.id)
+        assert first.target.id == summary.id
+        second = await undo_session_messages(db, chat.id)
+        assert second.applied is True
+        assert second.target.id == user.id
+
+
+@pytest.mark.parametrize(
+    "activate", [pop_queued_user_messages, release_queued_user_messages]
+)
+async def test_queued_turn_snapshot_is_captured_on_activation(
+    tmp_path, monkeypatch, activate
+):
+    from app.core.config import settings
+    from app.core.db import async_session_factory
+
+    monkeypatch.setattr(settings, "OPENAGENTD_STATE_DIR", str(tmp_path / "state"))
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    file = workspace / "file.txt"
+    file.write_text("at enqueue")
+    async with async_session_factory() as db:
+        chat = await create_chat_session(db)
+        chat.workspace = str(workspace)
+        db.add(chat)
+        await save_queued_user_message(db, chat.id, "queued turn")
+        await db.commit()
+        file.write_text("at activation")
+        await activate(db, chat.id)
+        await db.commit()
+        file.write_text("after queued turn")
+        await undo_session_messages(db, chat.id)
+        assert file.read_text() == "at activation"
+        await redo_session_messages(db, chat.id)
+        assert file.read_text() == "after queued turn"
 
 
 @pytest.mark.asyncio

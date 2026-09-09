@@ -1,7 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { cleanup, renderHook } from '@testing-library/react'
+import { act, cleanup, renderHook } from '@testing-library/react'
+import type { AgentCommandResponse } from '@/api/types'
 import { BASE_SLASH_COMMANDS, filterBaseSlashCommands, parseBuiltInSlashCommand } from '@/components/AgentChatView/helpers'
 import { useSlashCommands } from '@/components/AgentChatView/useSlashCommands'
+
+const redo = mock(async (): Promise<AgentCommandResponse | undefined> => undefined)
+mock.module('@/stores/useAgentStore', () => ({
+  useAgentStore: { getState: () => ({ redoAgent: redo, redoAllAgent: redo }) },
+}))
+mock.module('lucide-react', () => new Proxy({}, { get: () => () => null }))
 
 mock.module('@/queries/useCommandsQuery', () => ({
   useCommandsQuery: () => ({ data: { commands: [] } }),
@@ -118,7 +125,29 @@ describe('useSlashCommands', () => {
     inputRef.current.setValue.mockClear()
     inputRef.current.setFiles.mockClear()
     handleNewSession.mockClear()
+    redo.mockImplementation(async () => undefined)
   })
+
+  for (const command of ['redo', 'redo-all'] as const) {
+    for (const successful of [false, true]) {
+      it(`${command} ${successful ? 'clears the draft on success' : 'preserves the draft after failure or a stale response'}`, async () => {
+        redo.mockImplementation(async () => successful
+          ? { status: 'accepted', session_id: 'session-1', command }
+          : undefined)
+        const { result } = renderHook(() => useSlashCommands({
+          agentWorkspace: '/tmp/project', inputRef, handleNewSession,
+        }))
+        await act(async () => { result.current.handleSlashCommand(command) })
+        if (successful) {
+          expect(inputRef.current.setValue).toHaveBeenCalledWith('')
+          expect(inputRef.current.setFiles).toHaveBeenCalledWith([])
+        } else {
+          expect(inputRef.current.setValue).not.toHaveBeenCalled()
+          expect(inputRef.current.setFiles).not.toHaveBeenCalled()
+        }
+      })
+    }
+  }
 
   it('filters slashCommands according to contextual state', () => {
     const { result } = renderHook(() =>

@@ -12,6 +12,16 @@ from app.agent.hooks.workspace_instructions import (
 )
 
 
+@pytest.fixture(autouse=True)
+def isolated_global_instructions(monkeypatch, tmp_path):
+    from app.core.config import settings
+
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path / "home"))
+    monkeypatch.setattr(
+        settings, "OPENAGENTD_CONFIG_DIR", str(tmp_path / "global-config")
+    )
+
+
 class _Request:
     system_prompt = "Base prompt"
 

@@ -137,13 +137,15 @@ export function useSlashCommands({
         })
         break
       case 'redo':
-        void useAgentStore.getState().redoAgent().then(() => {
+        void useAgentStore.getState().redoAgent().then((response) => {
+          if (!response) return
           inputRef.current?.setValue('')
           inputRef.current?.setFiles([])
         })
         break
       case 'redo-all':
-        void useAgentStore.getState().redoAllAgent().then(() => {
+        void useAgentStore.getState().redoAllAgent().then((response) => {
+          if (!response) return
           inputRef.current?.setValue('')
           inputRef.current?.setFiles([])
         })

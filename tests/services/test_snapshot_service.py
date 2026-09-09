@@ -204,6 +204,23 @@ async def test_restore_no_repo_returns_false(state_dir: Path, workspace: Path) -
     assert result.removed == []
 
 
+async def test_snapshot_round_trip_with_relative_state_dir(tmp_path, monkeypatch):
+    from app.core.config import settings
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(settings, "OPENAGENTD_STATE_DIR", "state")
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    file = workspace / "file.txt"
+    file.write_text("before")
+    snapshot = await snapshot_service.track("relative-state", workspace)
+    assert snapshot is not None
+    file.write_text("after")
+    result = await snapshot_service.restore("relative-state", workspace, snapshot)
+    assert result.ok is True
+    assert file.read_text() == "before"
+
+
 @pytest.mark.asyncio
 async def test_restore_unknown_hash_returns_false(
     state_dir: Path, workspace: Path

@@ -588,6 +588,8 @@ agent against it.
   Snapshots support relative `OPENAGENTD_STATE_DIR` paths. Delayed undo, redo,
   compaction, and stop responses cannot overwrite another session after navigation;
   failed or stale redo commands preserve composer drafts `[v2.12.0]`.
+  Commands without an available boundary or with failed workspace restores return 409
+  and preserve database state `[v2.12.0]`.
 - **`/init` AGENTS.md analysis & generation** `[v1.9.0, v2.0.0]` — analyzes codebase
   structure and generates standard `AGENTS.md` context files at repository root and
   subdirectories with a guided analysis protocol.

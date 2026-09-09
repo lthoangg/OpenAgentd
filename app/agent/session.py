@@ -542,6 +542,10 @@ class AgentSession:
         async with self._command_lock:
             async with self.db_factory() as db:
                 shift = await undo_session_messages(db, sess_uuid)
+                if not shift.applied:
+                    raise ContinuePreconditionError(
+                        shift.error or "No message to undo."
+                    )
                 await db.commit()
                 return session_id, shift
 
@@ -552,6 +556,10 @@ class AgentSession:
         async with self._command_lock:
             async with self.db_factory() as db:
                 shift = await redo_session_messages(db, sess_uuid)
+                if not shift.applied:
+                    raise ContinuePreconditionError(
+                        shift.error or "No undone message to redo."
+                    )
                 await db.commit()
                 return session_id, shift
 
@@ -562,6 +570,10 @@ class AgentSession:
         async with self._command_lock:
             async with self.db_factory() as db:
                 shift = await redo_all_session_messages(db, sess_uuid)
+                if not shift.applied:
+                    raise ContinuePreconditionError(
+                        shift.error or "No undone message to redo."
+                    )
                 await db.commit()
                 return session_id, shift
 

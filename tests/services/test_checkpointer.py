@@ -231,6 +231,57 @@ class TestSQLiteCheckpointerLoad:
 
 
 class TestSQLiteCheckpointerSync:
+    @pytest.mark.parametrize("failure_event", ["before_flush", "before_commit"])
+    async def test_failed_transaction_can_retry_messages_and_pin_updates(
+        self, failure_event
+    ):
+        from sqlalchemy.orm import Session
+
+        import app.core.db as _db
+
+        sid = uuid.uuid7()
+        async with _db.async_session_factory() as db:
+            async with db.begin():
+                await _make_session(db, sid)
+        cp = SQLiteCheckpointer(_db.async_session_factory)
+        existing = AssistantMessage(content="existing")
+        state = AgentState(messages=[existing])
+        await cp.sync(_ctx(str(sid)), state)
+        existing.pinned = True
+        state.messages.extend(
+            [
+                AssistantMessage(content="new answer"),
+                ToolMessage(content="new result", tool_call_id="call-1", name="tool"),
+                HumanMessage(content="new summary", is_summary=True),
+            ]
+        )
+
+        def fail_transaction(*_args):
+            raise RuntimeError("injected transaction failure")
+
+        event.listen(Session, failure_event, fail_transaction)
+        try:
+            with pytest.raises(RuntimeError, match="injected transaction failure"):
+                await cp.sync(_ctx(str(sid)), state)
+        finally:
+            event.remove(Session, failure_event, fail_transaction)
+
+        await cp.sync(_ctx(str(sid)), state)
+        async with _db.async_session_factory() as db:
+            rows = (
+                await db.exec(
+                    select(SessionMessage).where(SessionMessage.session_id == sid)
+                )
+            ).all()
+        assert {row.content for row in rows} == {
+            "existing",
+            "new answer",
+            "new result",
+            "new summary",
+        }
+        assert len(rows) == 4
+        assert next(row for row in rows if row.content == "existing").pinned is True
+
     @pytest.mark.asyncio
     async def test_sync_allocates_seq_tail_once_per_flush(self):
         """A flush of N new messages runs one MAX(seq) allocation, not N.

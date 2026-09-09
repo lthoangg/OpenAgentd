@@ -63,6 +63,7 @@ async def test_undo_redo_restores_workspace_between_turns(tmp_path, monkeypatch)
 
 
 async def test_new_message_after_undo_persists_branch(tmp_path):
+    from app.agent.session import ContinuePreconditionError
     from app.core.db import async_session_factory
     from app.services.chat_service import get_messages_for_llm
 
@@ -81,8 +82,8 @@ async def test_new_message_after_undo_persists_branch(tmp_path):
     async with async_session_factory() as db:
         messages = await get_messages_for_llm(db, uuid.UUID(sid))
     assert [msg.content for msg in messages if msg.role == "user"] == ["replacement"]
-    _, redo = await runtime.handle_redo(sid)
-    assert redo.applied is False
+    with pytest.raises(ContinuePreconditionError, match="No undone message to redo"):
+        await runtime.handle_redo(sid)
 
 
 class ScriptedProvider(LLMProviderBase):

@@ -27,6 +27,10 @@ _utc = timezone.utc
 
 
 def _schedule_exhausted(task: ScheduledTask) -> bool:
+    if task.status == "completed":
+        return True
+    if task.status == "failed":
+        return False
     return task.max_runs is not None and task.run_count >= task.max_runs
 
 

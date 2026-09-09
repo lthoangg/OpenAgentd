@@ -47,6 +47,7 @@ class BoundaryShift:
     added: list[str] = field(default_factory=list)
     modified: list[str] = field(default_factory=list)
     removed: list[str] = field(default_factory=list)
+    error: str | None = None
 
 
 # ── Position helpers ──────────────────────────────────────────────────────────
@@ -303,19 +304,27 @@ async def undo_session_messages(db: AsyncSession, session_id: UUID) -> BoundaryS
     rows = (await db.exec(stmt)).all()
     target = next((row for row in rows if is_undo_target(row)), None)
     if target is None:
-        return BoundaryShift(applied=False)
+        return BoundaryShift(applied=False, error="No message to undo.")
 
     workspace = session_workspace_dir(str(session_id), session.workspace)
     anchor = redo_anchor(session)
     just_tracked = False
-    if anchor is None:
+    target_snapshot = message_snapshot(target)
+    if target_snapshot and anchor is None:
+        anchor = await snapshot_service.track(str(session_id), workspace)
+        if anchor is None:
+            return BoundaryShift(
+                applied=False,
+                error="Failed to snapshot workspace state before undo.",
+            )
+        just_tracked = True
+    elif anchor is None:
         anchor = await snapshot_service.track(str(session_id), workspace)
         just_tracked = anchor is not None
 
     added: list[str] = []
     modified: list[str] = []
     removed: list[str] = []
-    target_snapshot = message_snapshot(target)
     if target_snapshot:
         result = await snapshot_service.restore(
             str(session_id),
@@ -323,6 +332,11 @@ async def undo_session_messages(db: AsyncSession, session_id: UUID) -> BoundaryS
             target_snapshot,
             skip_stage=just_tracked,
         )
+        if not result.ok:
+            return BoundaryShift(
+                applied=False,
+                error="Failed to restore workspace files.",
+            )
         added, modified, removed = result.added, result.modified, result.removed
 
     revert_state: dict = {
@@ -347,7 +361,7 @@ async def redo_session_messages(db: AsyncSession, session_id: UUID) -> BoundaryS
     session = await db.get(ChatSession, session_id)
     boundary = await revert_boundary(db, session_id)
     if session is None or boundary is None:
-        return BoundaryShift(applied=False)
+        return BoundaryShift(applied=False, error="No undone message to redo.")
     anchor = redo_anchor(session)
     next_user = (
         await db.exec(
@@ -368,6 +382,11 @@ async def redo_session_messages(db: AsyncSession, session_id: UUID) -> BoundaryS
     if next_user is None:
         if anchor:
             result = await snapshot_service.restore(str(session_id), workspace, anchor)
+            if not result.ok:
+                return BoundaryShift(
+                    applied=False,
+                    error="Failed to restore workspace files to live tip.",
+                )
             added, modified, removed = result.added, result.modified, result.removed
         session.revert = None
     else:
@@ -376,6 +395,11 @@ async def redo_session_messages(db: AsyncSession, session_id: UUID) -> BoundaryS
             result = await snapshot_service.restore(
                 str(session_id), workspace, next_snapshot
             )
+            if not result.ok:
+                return BoundaryShift(
+                    applied=False,
+                    error="Failed to restore workspace files.",
+                )
             added, modified, removed = result.added, result.modified, result.removed
         revert_state: dict = {
             "message_id": str(next_user.id),
@@ -401,7 +425,7 @@ async def redo_all_session_messages(
     session = await db.get(ChatSession, session_id)
     boundary = await revert_boundary(db, session_id)
     if session is None or boundary is None:
-        return BoundaryShift(applied=False)
+        return BoundaryShift(applied=False, error="No undone message to redo.")
     anchor = redo_anchor(session)
     workspace = session_workspace_dir(str(session_id), session.workspace)
     added: list[str] = []
@@ -409,6 +433,11 @@ async def redo_all_session_messages(
     removed: list[str] = []
     if anchor:
         result = await snapshot_service.restore(str(session_id), workspace, anchor)
+        if not result.ok:
+            return BoundaryShift(
+                applied=False,
+                error="Failed to restore workspace files to live tip.",
+            )
         added, modified, removed = result.added, result.modified, result.removed
     session.revert = None
     db.add(session)

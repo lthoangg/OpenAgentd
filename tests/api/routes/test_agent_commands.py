@@ -72,6 +72,99 @@ async def _seed_session_and_messages(
 
 
 class TestPostTeamCommands:
+    @pytest.mark.parametrize("command", ["undo", "redo", "redo-all", "redo_all"])
+    async def test_command_without_an_available_target_returns_conflict(
+        self, app_with_lead_only_team, command
+    ):
+        sid = uuid.uuid7()
+        await _seed_session_and_messages(sid, [])
+        client = TestClient(app_with_lead_only_team, raise_server_exceptions=False)
+        response = client.post(
+            "/api/agent/commands",
+            json={"command": command, "session_id": str(sid)},
+        )
+        assert response.status_code == 409
+        assert "No" in response.json()["detail"]
+
+    @pytest.mark.parametrize("command", ["undo", "redo", "redo-all", "redo_all"])
+    async def test_failed_workspace_restore_preserves_history_boundary(
+        self, app_with_lead_only_team, monkeypatch, tmp_path, command
+    ):
+        from app.services import snapshot_service
+
+        sid = uuid.uuid7()
+        first = SessionMessage(
+            session_id=sid,
+            role="user",
+            content="first",
+            seq=1024,
+            extra={"snapshot": "first-tree"},
+        )
+        second = SessionMessage(
+            session_id=sid,
+            role="user",
+            content="second",
+            seq=2048,
+            extra={"snapshot": "second-tree"},
+        )
+        boundary = (
+            None
+            if command == "undo"
+            else {"message_id": str(first.id), "snapshot": "live-tree"}
+        )
+        async with _db.async_session_factory() as db:
+            db.add(ChatSession(id=sid, workspace=str(tmp_path), revert=boundary))
+            db.add(first)
+            db.add(second)
+            await db.commit()
+        monkeypatch.setattr(
+            snapshot_service, "track", AsyncMock(return_value="live-tree")
+        )
+        monkeypatch.setattr(
+            snapshot_service,
+            "restore",
+            AsyncMock(return_value=snapshot_service.RestoreResult(ok=False)),
+        )
+        client = TestClient(app_with_lead_only_team, raise_server_exceptions=False)
+        response = client.post(
+            "/api/agent/commands", json={"command": command, "session_id": str(sid)}
+        )
+        assert response.status_code == 409
+        assert "restore" in response.json()["detail"].lower()
+        async with _db.async_session_factory() as db:
+            chat = await db.get(ChatSession, sid)
+            assert chat.revert == boundary
+
+    async def test_undo_does_not_restore_when_live_snapshot_capture_fails(
+        self, app_with_lead_only_team, monkeypatch, tmp_path
+    ):
+        from app.services import snapshot_service
+
+        sid = uuid.uuid7()
+        async with _db.async_session_factory() as db:
+            db.add(ChatSession(id=sid, workspace=str(tmp_path)))
+            db.add(
+                SessionMessage(
+                    session_id=sid,
+                    role="user",
+                    content="turn",
+                    extra={"snapshot": "before-turn"},
+                )
+            )
+            await db.commit()
+        restore = AsyncMock(return_value=snapshot_service.RestoreResult(ok=True))
+        monkeypatch.setattr(snapshot_service, "track", AsyncMock(return_value=None))
+        monkeypatch.setattr(snapshot_service, "restore", restore)
+        client = TestClient(app_with_lead_only_team, raise_server_exceptions=False)
+        response = client.post(
+            "/api/agent/commands", json={"command": "undo", "session_id": str(sid)}
+        )
+        assert response.status_code == 409
+        restore.assert_not_awaited()
+        async with _db.async_session_factory() as db:
+            chat = await db.get(ChatSession, sid)
+            assert chat.revert is None
+
     @pytest.mark.asyncio
     async def test_compact_returns_202_on_happy_path(
         self, app_with_lead_only_team, monkeypatch

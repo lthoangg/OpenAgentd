@@ -153,11 +153,11 @@ def cmd_demo(base: str, args: argparse.Namespace) -> None:
         "workspace": args.workspace or str(Path.cwd()),
     }
     task = _post(base, "/scheduler/tasks", body)
-    task_id = task["id"]
-    print(f"  created id={task_id}")
+    task_slug = task.get("slug") or task["id"]
+    print(f"  created slug={task_slug}")
 
     print("--- triggering immediately ---")
-    _post(base, f"/scheduler/tasks/{task_id}/trigger")
+    _post(base, f"/scheduler/tasks/{task_slug}/trigger")
     print("  dispatched (agent is running in background)")
 
     print("--- waiting 3s for run_count to increment ---")
@@ -166,8 +166,8 @@ def cmd_demo(base: str, args: argparse.Namespace) -> None:
     print("--- listing tasks ---")
     cmd_list(base)
 
-    print(f"--- deleting demo task {task_id} ---")
-    _delete(base, f"/scheduler/tasks/{task_id}")
+    print(f"--- deleting demo task {task_slug} ---")
+    _delete(base, f"/scheduler/tasks/{task_slug}")
     print("  done")
 
 
@@ -187,14 +187,14 @@ def cmd_finite_demo(base: str, args: argparse.Namespace) -> None:
         "workspace": args.workspace or str(Path.cwd()),
     }
     task = _post(base, "/scheduler/tasks", body)
-    task_id = task["id"]
+    task_slug = task.get("slug") or task["id"]
     _print_task(task, indent="  ")
 
     print("--- waiting for run_count=1 and status=completed ---")
     deadline = time.monotonic() + args.timeout
     final = task
     while time.monotonic() < deadline:
-        final = _get(base, f"/scheduler/tasks/{task_id}")
+        final = _get(base, f"/scheduler/tasks/{task_slug}")
         if (
             final.get("run_count") == 1
             and final.get("status") == "completed"
@@ -210,8 +210,8 @@ def cmd_finite_demo(base: str, args: argparse.Namespace) -> None:
         _print_task(final, indent="  ")
         raise SystemExit(1)
 
-    print(f"--- deleting finite demo task {task_id} ---")
-    _delete(base, f"/scheduler/tasks/{task_id}")
+    print(f"--- deleting finite demo task {task_slug} ---")
+    _delete(base, f"/scheduler/tasks/{task_slug}")
     print("  done")
 
 

@@ -2,7 +2,7 @@
 title: Features
 description: Canonical, version-cited catalogue of shipped user-visible OpenAgentd features.
 status: stable
-updated: 2026-09-08
+updated: 2026-09-09
 ---
 
 # Features
@@ -14,7 +14,7 @@ release that introduced it (where known). When you ship something new, **add it 
 > double-clickable app that runs an agent on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 16 providers. Your keys.
 
-**Latest release:** v2.12.0 · September 8, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v2.12.0)
+**Latest release:** v2.13.0 · September 9, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v2.13.0)
 
 ---
 
@@ -409,6 +409,7 @@ executes tools, manages its task list, and inspects workspace repositories.
 - **High-throughput chat persistence engine** `[v2.0.0]` — remodeled `session_messages`
   onto derived state (`seq` + `kind` + `pinned`) with partial SQL indexing,
   single-allocation checkpointers, and SQL-level compaction keep-tail calculation.
+  Checkpointer sync updates defer until the database transaction commits, preventing lost messages on retry `[v2.13.0]`.
 - **Incremental session history hydration** `[v2.0.0]` — hydrates session histories
   incrementally and materializes SQLite query-planner statistics (`ANALYZE`) after
   migrations for sub-millisecond query planning.
@@ -451,7 +452,7 @@ executes tools, manages its task list, and inspects workspace repositories.
   message restores both text and files into the composer `[v1.113.0]`.
   Injected queued messages are excluded from pre-promotion LLM windows and pruned from pending state on session reload so they never resurrect in the queue UI `[v2.12.0]`.
   Mid-turn injection preserves attachment path hints and message identity, matching
-  reloaded history `[v2.12.0]`.
+  reloaded history `[v2.13.0]`.
 - **`provider_status` SSE events in stream** `[v1.17.0]` — retry, exhaustion,
   and fallback transitions surface live in single-agent and split-pane views.
 - **Actionable provider HTTP errors** `[v1.56.0]` — non-retryable provider
@@ -584,12 +585,12 @@ agent against it.
   draft text and synchronizes cache invalidation across open windows `[v2.8.0]`.
   Direct and queued turns capture their starting workspace state; sending a new
   message after undo replaces the undone branch without losing the new message,
-  and repeated undo can traverse context restored by undoing compaction `[v2.12.0]`.
+  and repeated undo can traverse context restored by undoing compaction `[v2.13.0]`.
   Snapshots support relative `OPENAGENTD_STATE_DIR` paths. Delayed undo, redo,
   compaction, and stop responses cannot overwrite another session after navigation;
-  failed or stale redo commands preserve composer drafts `[v2.12.0]`.
+  failed or stale redo commands preserve composer drafts `[v2.13.0]`.
   Commands without an available boundary or with failed workspace restores return 409
-  and preserve database state `[v2.12.0]`.
+  and preserve database state `[v2.13.0]`.
 - **`/init` AGENTS.md analysis & generation** `[v1.9.0, v2.0.0]` — analyzes codebase
   structure and generates standard `AGENTS.md` context files at repository root and
   subdirectories with a guided analysis protocol.
@@ -832,6 +833,7 @@ MCP.
   throughout and are never interrupted by an answer. Turns support multiple
   questions across suspensions `[v2.10.0]`;
   scheduled sessions never get the tool, because a cron job has nobody to ask.
+  Failed scheduled tasks remain eligible to retry until their run limit is met `[v2.13.0]`.
 - **Fast HTML & document extraction** `[v2.0.0]` — `web_fetch` uses `trafilatura` for
   clean HTML-to-markdown extraction, and `read` uses `anydoc` for robust document
   conversion, dropping `markitdown`.

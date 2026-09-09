@@ -450,6 +450,8 @@ executes tools, manages its task list, and inspects workspace repositories.
   errors — the queued bubble lists the filenames, and cancelling the queued
   message restores both text and files into the composer `[v1.113.0]`.
   Injected queued messages are excluded from pre-promotion LLM windows and pruned from pending state on session reload so they never resurrect in the queue UI `[v2.12.0]`.
+  Mid-turn injection preserves attachment path hints and message identity, matching
+  reloaded history `[v2.12.0]`.
 - **`provider_status` SSE events in stream** `[v1.17.0]` — retry, exhaustion,
   and fallback transitions surface live in single-agent and split-pane views.
 - **Actionable provider HTTP errors** `[v1.56.0]` — non-retryable provider
@@ -583,6 +585,9 @@ agent against it.
   Direct and queued turns capture their starting workspace state; sending a new
   message after undo replaces the undone branch without losing the new message,
   and repeated undo can traverse context restored by undoing compaction `[v2.12.0]`.
+  Snapshots support relative `OPENAGENTD_STATE_DIR` paths. Delayed undo, redo,
+  compaction, and stop responses cannot overwrite another session after navigation;
+  failed or stale redo commands preserve composer drafts `[v2.12.0]`.
 - **`/init` AGENTS.md analysis & generation** `[v1.9.0, v2.0.0]` — analyzes codebase
   structure and generates standard `AGENTS.md` context files at repository root and
   subdirectories with a guided analysis protocol.

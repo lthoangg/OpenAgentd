@@ -30,11 +30,10 @@ function mergeChangedPaths(
 
 function enqueueWorkspaceInvalidation(
   set: (fn: (draft: AgentStore) => void) => void,
-  get: () => AgentStore,
+  workspace: string | null,
   sessionId: string,
   paths?: string[],
 ) {
-  const workspace = get()._workspace
   if (workspace && paths !== undefined) {
     if (paths.length === 0) return
     set((draft) => {
@@ -106,7 +105,7 @@ export const createStreamSlice: StateCreator<
   cacheInvalidations: [],
 
   compactAgent: async () => {
-    const sessionId = get().sessionId
+    const { sessionId, _sessionGeneration: generation } = get()
     if (!sessionId) {
       set((draft) => { draft.error = 'No active session to compact' })
       return
@@ -122,6 +121,7 @@ export const createStreamSlice: StateCreator<
         }
       })
       await postAgentCommand('compact', sessionId)
+      if (get().sessionId !== sessionId || get()._sessionGeneration !== generation) return
       set((draft) => {
         draft._leadRevertTime = null
         Object.values(draft.agentStreams).forEach((stream) => {
@@ -132,6 +132,7 @@ export const createStreamSlice: StateCreator<
       })
       get().connectStream()
     } catch (err) {
+      if (get().sessionId !== sessionId || get()._sessionGeneration !== generation) return
       set((draft) => {
         draft.error = err instanceof Error ? err.message : 'Failed to compact'
         draft.isAgentWorking = false
@@ -140,7 +141,7 @@ export const createStreamSlice: StateCreator<
   },
 
   undoAgent: async () => {
-    const sessionId = get().sessionId
+    const { sessionId, _sessionGeneration: generation, _workspace: workspace } = get()
     if (!sessionId) {
       set((draft) => { draft.error = 'No active session to undo' })
       return
@@ -159,6 +160,8 @@ export const createStreamSlice: StateCreator<
     try {
       set((draft) => { draft.error = null })
       const response = await postAgentCommand('undo', sessionId)
+      enqueueWorkspaceInvalidation(set, workspace, sessionId, mergeChangedPaths(response.changed_paths))
+      if (get().sessionId !== sessionId || get()._sessionGeneration !== generation) return
       const boundaryIso = response.message?.created_at
       const boundaryTime = boundaryIso ? new Date(boundaryIso).getTime() : null
       set((draft) => {
@@ -178,14 +181,9 @@ export const createStreamSlice: StateCreator<
           }
         }
       })
-      enqueueWorkspaceInvalidation(
-        set,
-        get,
-        sessionId,
-        mergeChangedPaths(response.changed_paths),
-      )
       return response
     } catch (err) {
+      if (get().sessionId !== sessionId || get()._sessionGeneration !== generation) return
       set((draft) => {
         draft.error = err instanceof Error ? err.message : 'Failed to undo'
       })
@@ -205,7 +203,7 @@ export const createStreamSlice: StateCreator<
   },
 
   redoAgent: async () => {
-    const sessionId = get().sessionId
+    const { sessionId, _sessionGeneration: generation, _workspace: workspace } = get()
     if (!sessionId) {
       set((draft) => { draft.error = 'No active session to redo' })
       return undefined
@@ -220,6 +218,8 @@ export const createStreamSlice: StateCreator<
     try {
       set((draft) => { draft.error = null })
       const response = await postAgentCommand('redo', sessionId)
+      enqueueWorkspaceInvalidation(set, workspace, sessionId, mergeChangedPaths(response.changed_paths))
+      if (get().sessionId !== sessionId || get()._sessionGeneration !== generation) return
       const boundaryIso = response.message?.created_at
       const boundaryTime = boundaryIso ? new Date(boundaryIso).getTime() : null
       set((draft) => {
@@ -232,14 +232,9 @@ export const createStreamSlice: StateCreator<
           })
         })
       })
-      enqueueWorkspaceInvalidation(
-        set,
-        get,
-        sessionId,
-        mergeChangedPaths(response.changed_paths),
-      )
       return response
     } catch (err) {
+      if (get().sessionId !== sessionId || get()._sessionGeneration !== generation) return
       const message = err instanceof Error ? err.message : String(err)
       if (message.includes('No undone message to redo')) {
         set((draft) => {
@@ -259,7 +254,7 @@ export const createStreamSlice: StateCreator<
   },
 
   redoAllAgent: async () => {
-    const sessionId = get().sessionId
+    const { sessionId, _sessionGeneration: generation, _workspace: workspace } = get()
     if (!sessionId) {
       set((draft) => { draft.error = 'No active session to redo' })
       return
@@ -274,6 +269,8 @@ export const createStreamSlice: StateCreator<
     try {
       set((draft) => { draft.error = null })
       const response = await postAgentCommand('redo-all', sessionId)
+      enqueueWorkspaceInvalidation(set, workspace, sessionId, mergeChangedPaths(response.changed_paths))
+      if (get().sessionId !== sessionId || get()._sessionGeneration !== generation) return
       set((draft) => {
         draft._leadRevertTime = null
         Object.values(draft.agentStreams).forEach((stream) => {
@@ -281,14 +278,9 @@ export const createStreamSlice: StateCreator<
           applyRevertBoundary(stream, null)
         })
       })
-      enqueueWorkspaceInvalidation(
-        set,
-        get,
-        sessionId,
-        mergeChangedPaths(response.changed_paths),
-      )
       return response
     } catch (err) {
+      if (get().sessionId !== sessionId || get()._sessionGeneration !== generation) return
       const message = err instanceof Error ? err.message : String(err)
       if (message.includes('No undone message to redo')) {
         set((draft) => {
@@ -336,19 +328,19 @@ export const createStreamSlice: StateCreator<
   },
 
   stopAgent: async () => {
-    const sessionId = get().sessionId
+    const { sessionId, _sessionGeneration: generation, _workspace: workspace } = get()
     if (!sessionId || !get().isAgentWorking) return
 
     try {
-      const workspace = get()._workspace
       if (!workspace) return
       await postAgentChat(null, sessionId, true, workspace)
+      if (get().sessionId !== sessionId || get()._sessionGeneration !== generation) return
       // Reloads immediately. The interrupt POST only *signals* cancellation, so
       // the trailing `done` can still be seconds away (a cancelled shell tool
       // alone can spend 2s draining stdout plus 5s reaping) — but the reload no
       // longer trusts the stale client-side `isAgentWorking`, so it adopts the
       // server's finished turn cleanly instead of racing that `done`.
-      await get().loadSession(sessionId, get()._workspace)
+      await get().loadSession(sessionId, workspace)
     } catch (err) {
       console.warn('stopAgent failed', err)
     }

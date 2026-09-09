@@ -60,7 +60,8 @@ def _lock(session_id: str) -> asyncio.Lock:
 
 def snapshot_dir(session_id: str) -> Path:
     """Return the on-disk ``GIT_DIR`` for this session's snapshot repo."""
-    return Path(settings.OPENAGENTD_STATE_DIR) / "snapshot" / session_id
+    # Git runs from the workspace, not the process's original working directory.
+    return Path(settings.OPENAGENTD_STATE_DIR).resolve() / "snapshot" / session_id
 
 
 def is_available() -> bool:

@@ -48,6 +48,44 @@ def _request() -> ModelRequest:
     return ModelRequest(messages=(), system_prompt="sys")
 
 
+async def test_injected_queue_preserves_identity_and_attachment_hints():
+    from app.core.db import async_session_factory
+    from app.services.chat_service import get_messages_for_llm
+
+    async with async_session_factory() as db:
+        chat = await create_chat_session(db)
+        queued = await save_queued_user_message(
+            db,
+            chat.id,
+            "inspect this file",
+            extra={
+                "attachments": [
+                    {
+                        "filename": "upload-123.txt",
+                        "original_name": "notes.txt",
+                        "category": "file",
+                    }
+                ]
+            },
+        )
+        await db.commit()
+
+    hook = QueuedMessageInjectionHook(
+        session_id=str(chat.id),
+        agent_name="lead",
+        db_factory=async_session_factory,
+    )
+    state = _state()
+    request = await hook.before_model(_ctx(str(chat.id)), state, _request())
+    async with async_session_factory() as db:
+        reloaded = await get_messages_for_llm(db, chat.id)
+
+    assert request is not None
+    assert request.messages[0].parts == reloaded[0].parts
+    assert state.messages[0].db_id == queued.id
+    assert "./uploads/upload-123.txt" in request.messages[0].parts[0].text
+
+
 @pytest.mark.asyncio
 async def test_empty_queue_returns_none(db_factory):
     async with db_factory() as db:

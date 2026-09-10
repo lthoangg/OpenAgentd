@@ -259,11 +259,10 @@ name: code
 role: lead
 model: openai:gpt-5.4
 ---
-<!-- Add extra prompt text below. -->
 `)
 
     expect(screen.getByText('Built-in OpenAgentd profile')).toBeTruthy()
-    expect(screen.getByText(/Extra prompt/)).toBeTruthy()
+    expect(screen.queryByText(/Extra prompt/)).toBeNull()
     expect(screen.getByText(/Built-in tools are always included/i)).toBeTruthy()
   })
 

@@ -16,8 +16,8 @@ from pydantic import BaseModel, model_validator
 
 from app.agent.agent_loop import Agent
 from app.agent.builtin_prompts import (
-    apply_openagentd_extra_prompt,
     openagentd_description_for_mode,
+    openagentd_prompt_for_mode,
     openagentd_tools_for_mode,
 )
 from app.agent.drift import ConfigStamp, detect_drift, stamp_agent_files
@@ -268,7 +268,7 @@ def _build_agent(
     if cfg.name == "code":
         cfg.description = cfg.description or openagentd_description_for_mode(mode)
         cfg.tools = [*openagentd_tools_for_mode(mode), *cfg.tools]
-        system_prompt = apply_openagentd_extra_prompt(mode, cfg.system_prompt)
+        system_prompt = openagentd_prompt_for_mode(mode)
 
     from app.agent.tools.builtin.schedule import schedule_task as _schedule_task_tool
     from app.agent.tools.builtin.skill import load_skill as _load_skill_tool

@@ -36,14 +36,18 @@ class QuestionOption(BaseModel):
     model_config = ConfigDict(json_schema_extra=_lean_schema)
 
     label: str = Field(
-        min_length=1, max_length=60, description="Display text, 1-5 words."
+        min_length=1,
+        max_length=60,
+        description="Display text for the option (1-5 words).",
     )
     description: str | None = Field(
-        default=None, max_length=200, description="One short line on what it means."
+        default=None,
+        max_length=200,
+        description="One short line explaining what selecting this option means.",
     )
     recommended: bool = Field(
         default=False,
-        description="Your preferred choice. Only one unless multiple is true.",
+        description="Your recommended choice. Select at most one unless multiple is true.",
     )
 
 
@@ -53,17 +57,23 @@ class Question(BaseModel):
     model_config = ConfigDict(json_schema_extra=_lean_schema)
 
     question: str = Field(
-        min_length=1, max_length=500, description="The complete question."
+        min_length=1,
+        max_length=500,
+        description="The complete question text explaining what decision is required and why.",
     )
     header: str = Field(
-        min_length=1, max_length=30, description="Tab label, max 30 chars."
+        min_length=1,
+        max_length=30,
+        description="Short tab or category label for the question (max 30 chars).",
     )
     options: list[QuestionOption] = Field(
         default_factory=list,
         max_length=5,
-        description="Choices, 2-5. Omit for free text only.",
+        description="List of 2 to 5 selectable choices. Omit for freeform text only.",
     )
-    multiple: bool = Field(default=False, description="Allow more than one choice.")
+    multiple: bool = Field(
+        default=False, description="Allow the user to select more than one choice."
+    )
     custom: bool = Field(
         default=True,
         description=(

@@ -172,6 +172,8 @@ export interface ToolCall {
   }
 }
 
+export type SessionInteractionMode = 'code' | 'plan'
+
 export interface SessionResponse {
   id: string
   title: string | null
@@ -183,6 +185,7 @@ export interface SessionResponse {
   mode?: string
   workspace?: string | null
   workspace_hidden?: boolean
+  interaction_mode?: SessionInteractionMode
   model?: string | null
   thinking_level?: string | null
   running?: boolean

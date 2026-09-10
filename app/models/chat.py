@@ -147,6 +147,13 @@ class ChatSession(SQLModel, table=True):
     # sentinel keeps direct ORM construction (notably historical transcript
     # fixtures) representable until it is routed through that boundary.
     workspace: str = Field(default="")
+    # Active interaction policy. Transition history itself is append-only in
+    # ``session_messages``; this projection makes new-turn policy lookup cheap.
+    interaction_mode: str = Field(
+        default="code",
+        max_length=16,
+        sa_column=Column(sa.String(16), nullable=False, server_default="code"),
+    )
     model: str | None = Field(default=None, max_length=255)
     thinking_level: str | None = Field(default=None, max_length=50)
     revert: dict | None = Field(

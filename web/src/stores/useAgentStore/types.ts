@@ -5,6 +5,7 @@ import type {
   PendingQuestion,
   QuestionItem,
   AgentCommandResponse,
+  SessionInteractionMode,
 } from '@/api/types'
 import type { OrphanToolResult } from '@/utils/messages'
 
@@ -138,6 +139,7 @@ export interface AgentStoreState {
   sidebarOpen: boolean
   sessionId: string | null
   sessionTitle: string | null
+  sessionInteractionMode: SessionInteractionMode
   sessionModel: string | null
   sessionThinkingLevel: string | null
   /** True while model/thinking settings are local overrides not yet confirmed by the server. */
@@ -190,6 +192,7 @@ export interface AgentStoreState {
 export interface AgentStoreActions {
   /** Resolves ``true`` when the backend accepted the message, ``false`` otherwise. */
   sendMessage: (content: string, files: File[] | undefined, options: { workspace: string; model?: string | null; thinkingLevel?: string | null; fastMode?: boolean; mentions?: string[] }) => Promise<boolean>
+  setSessionInteractionMode: (mode: SessionInteractionMode) => Promise<void>
   setSessionModelSettings: (model: string | null, thinkingLevel: string | null, fastMode?: boolean) => void
   compactAgent: () => Promise<void>
   undoAgent: () => Promise<AgentCommandResponse | undefined>
@@ -227,7 +230,7 @@ export interface AgentStoreActions {
    * Falls back to ``loadSession`` whenever a delta cannot be applied safely.
    */
   reconcileTurnTail: (sessionId: string, workspace?: string | null) => Promise<void>
-  beginResolvedSession: (sessionId: string | null, options: { workspace: string; model?: string | null; thinkingLevel?: string | null; fastMode?: boolean; skipInitialRestore?: boolean }) => void
+  beginResolvedSession: (sessionId: string | null, options: { workspace: string; interactionMode?: SessionInteractionMode; model?: string | null; thinkingLevel?: string | null; fastMode?: boolean; skipInitialRestore?: boolean }) => void
   loadOlderMessages: () => Promise<void>
   toggleSidebar: () => void
   dismissSetupRequired: () => void

@@ -113,6 +113,7 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
   const mainColumnRef = useRef<HTMLDivElement>(null)
 
   const [fileRefsEnabled, setFileRefsEnabled] = useState(false)
+  const [isSwitchingInteractionMode, setIsSwitchingInteractionMode] = useState(false)
 
   const { isDraggingFile, handleDragEnter, handleDragLeave, handleDragOver, handleDrop } = useDragDrop(inputRef)
 
@@ -133,6 +134,7 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
         isAgentWorking: s.isAgentWorking,
         sessionId: s.sessionId,
         sessionTitle: s.sessionTitle,
+        sessionInteractionMode: s.sessionInteractionMode,
         sessionModel: s.sessionModel,
         sessionThinkingLevel: s.sessionThinkingLevel,
         sessionFastMode: s.sessionFastMode,
@@ -167,6 +169,7 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
     isAgentWorking,
     sessionId: sessionIdState,
     sessionTitle,
+    sessionInteractionMode,
     sessionModel,
     sessionThinkingLevel,
 
@@ -562,6 +565,14 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
                 : `Coding in ${workspaceLabel(workspace)}`
             }
             capabilities={leadCapabilities}
+            interactionMode={sessionInteractionMode}
+            onInteractionModeChange={(mode) => {
+              setIsSwitchingInteractionMode(true)
+              void useAgentStore.getState().setSessionInteractionMode(mode).finally(() => {
+                setIsSwitchingInteractionMode(false)
+              })
+            }}
+            interactionModeDisabled={isSwitchingInteractionMode || !sessionIdState}
             revertedCount={leadRevertedCount}
             revertedMessages={leadRevertedMessages}
             onRedo={() => { void handleSlashCommand('redo') }}

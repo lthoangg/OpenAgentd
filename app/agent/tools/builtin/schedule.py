@@ -38,7 +38,7 @@ class ScheduleArgs(BaseModel):
     """Arguments for the schedule_task tool."""
 
     action: Literal["create", "list", "pause", "resume", "delete", "trigger"] = Field(
-        description="Reminder action; trigger runs it immediately."
+        description="Reminder action ('create', 'list', 'pause', 'resume', 'delete', 'trigger'); trigger runs it immediately."
     )
     # ── create-only fields ──────────────────────────────────────────────
     name: str | None = Field(
@@ -54,20 +54,20 @@ class ScheduleArgs(BaseModel):
     )
     at_datetime: str | None = Field(
         default=None,
-        description=("[create, schedule_type='at'] ISO-8601 datetime."),
+        description="[create, schedule_type='at'] ISO-8601 target datetime string (e.g. '2026-09-10T15:00:00Z').",
     )
     every_seconds: int | None = Field(
         default=None,
         gt=0,
-        description=("[create, schedule_type='every'] Interval in seconds."),
+        description="[create, schedule_type='every'] Recurring interval period in seconds.",
     )
     cron_expression: str | None = Field(
         default=None,
-        description=("[create, schedule_type='cron'] 5-field cron expression."),
+        description="[create, schedule_type='cron'] Standard 5-field cron expression (e.g. '0 9 * * 1-5').",
     )
     timezone: str = Field(
         default="UTC",
-        description=("[create] IANA timezone for cron and naive at datetimes."),
+        description="[create] IANA timezone for cron and naive at datetimes (defaults to UTC).",
     )
     prompt: str | None = Field(
         default=None,

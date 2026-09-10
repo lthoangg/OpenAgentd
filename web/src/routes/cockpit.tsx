@@ -84,6 +84,7 @@ function AgentLayoutBase() {
           const latest = useAgentStore.getState()
           latest.beginResolvedSession(session.id, {
             workspace: session.workspace ?? lastWorkspace.path,
+            interactionMode: session.interaction_mode,
             model: session.model ?? latest.sessionModel,
             thinkingLevel: session.thinking_level ?? latest.sessionThinkingLevel,
           })
@@ -145,6 +146,7 @@ function AgentLayoutBase() {
         const latest = useAgentStore.getState()
         latest.beginResolvedSession(session.id, {
           workspace: session.workspace ?? workspace,
+          interactionMode: session.interaction_mode,
           model: session.model ?? latest.sessionModel,
           thinkingLevel: session.thinking_level ?? latest.sessionThinkingLevel,
         })

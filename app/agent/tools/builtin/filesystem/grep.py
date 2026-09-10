@@ -30,7 +30,10 @@ _LITERAL_SCAN_CHUNK = 262144
 # Characters that give a pattern meaning beyond a plain substring
 _REGEX_META = frozenset(".^$*+?{}[]()|\\")
 
-_DESCRIPTION = "Search file contents by regex. Returns 'file:line: content'."
+_DESCRIPTION = (
+    "Search file contents across the workspace by regex. "
+    "Returns matches formatted as 'file:line: content'. Automatically skips binary files."
+)
 
 
 def _compile_pattern(pattern: str) -> re.Pattern[str]:
@@ -94,20 +97,22 @@ class GrepArgs(BaseModel):
 
     pattern: str = Field(
         validation_alias=AliasChoices("pattern", "query", "regex"),
-        description="Regex to match per line (e.g. 'def main', 'TODO|FIXME').",
+        description="Regular expression pattern to match per line (e.g. 'def main', 'TODO|FIXME', 'class \\w+Service').",
     )
     directory: str = Field(
         default=".",
         validation_alias=AliasChoices("directory", "dir", "path"),
-        description="Search root; '.' is the workspace root.",
+        description="Search root directory relative to the workspace; '.' is the workspace root.",
     )
     include: str = Field(
         default="*",
         validation_alias=AliasChoices("include", "glob", "file_pattern"),
-        description="Filename glob to filter files (e.g. '*.py').",
+        description="Filename glob pattern to filter scanned files (e.g. '*.py', '*.{ts,tsx}', 'Cargo.toml'). Defaults to '*'.",
     )
     max_results: int = Field(
-        default=100, ge=1, description="Maximum matching lines to return."
+        default=100,
+        ge=1,
+        description="Maximum matching lines to return across all scanned files (defaults to 100).",
     )
 
     @field_validator("pattern")

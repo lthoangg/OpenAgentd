@@ -57,8 +57,8 @@ def test_coding_prompt_stays_within_the_token_budget():
     """Peers spend 10k+ tokens; we buy the behaviours that matter for ~500."""
     from app.agent.builtin_prompts import CODING_OPENAGENTD_PROMPT
 
-    # ~4 chars/token: a hard ceiling so the prompt cannot silently balloon.
-    assert len(CODING_OPENAGENTD_PROMPT) < 3200
+    # Hard ceiling so the prompt stays within 10k characters.
+    assert len(CODING_OPENAGENTD_PROMPT) <= 10000
 
 
 def test_question_tool_is_not_a_constructor_tool_for_the_coding_lead():

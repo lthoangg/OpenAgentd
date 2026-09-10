@@ -6,7 +6,7 @@ import { RevertNotice } from './RevertNotice'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { getPlatform } from '@/hooks/use-platform'
 import { isPrimaryShortcut } from '@/lib/keyboard-shortcut'
-import type { AgentCapabilities } from '@/api/types'
+import type { AgentCapabilities, SessionInteractionMode } from '@/api/types'
 
 // ── Storage ──────────────────────────────────────────────────────────────────
 
@@ -104,6 +104,9 @@ interface FloatingInputComposerProps {
   placeholder?: string
   autoFocus?: boolean
   capabilities?: AgentCapabilities
+  interactionMode?: SessionInteractionMode
+  onInteractionModeChange?: (mode: SessionInteractionMode) => void
+  interactionModeDisabled?: boolean
   revertedCount?: number
   revertedMessages?: Array<{ role: string; content: string }>
   onRedo?: () => void

@@ -3,7 +3,6 @@ import { AlertCircle } from 'lucide-react'
 
 import { SectionCard, SectionCardHeader, SectionCardRows } from '@/components/ui/section-card'
 import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
 import { Dropdown, DropdownItem } from '@/components/ui/dropdown'
 import { Button } from '@/components/ui/button'
 import { MultiSelect, type MultiSelectOption } from '../MultiSelect'
@@ -107,7 +106,7 @@ export function FormFields({
         <div className="rounded-sm border border-(--color-border) bg-(--bg-card) px-3 py-2.5 text-xs text-(--color-text-muted)">
           <p className="font-semibold text-(--color-text)">Built-in OpenAgentd profile</p>
           <p className="mt-1 leading-relaxed">
-            OpenAgentd provides the default description, tools, skills, and prompt in code. Values saved here are additive overrides, so versioned built-ins can improve without overwriting your file.
+            OpenAgentd provides the default description, tools, skills, and system prompt in code. Custom instructions are configured via global or workspace AGENTS.md files.
           </p>
         </div>
       )}
@@ -218,25 +217,6 @@ export function FormFields({
             />
           </SettingsField>
 
-        </div>
-        </SectionCardRows>
-      </SectionCard>
-
-      {/* System prompt ─────────────────────────────────────────── */}
-      <SectionCard>
-        <SectionCardHeader>
-          {hasBuiltInProfile ? 'Extra prompt \u2014 appended after the built-in prompt' : 'System prompt \u2014 instructions at the top of every conversation'}
-        </SectionCardHeader>
-        <SectionCardRows>
-        <div className="px-3 py-3">
-          <Textarea
-            value={body}
-            onChange={(e) => updateFromForm(fm, e.target.value)}
-            disabled={disabled}
-            rows={14}
-            placeholder="You are …"
-            className="min-h-72 font-mono text-[13px] leading-relaxed"
-          />
         </div>
         </SectionCardRows>
       </SectionCard>

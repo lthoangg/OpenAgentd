@@ -24,6 +24,8 @@ from app.agent.schemas.chat import (
     ChatMessage,
 )
 from app.agent.session import AgentSession
+from app.agent.tools.registry import Tool
+from app.services.session_interaction_mode import set_session_interaction_mode
 from tests.agent.test_agent_run import make_text_chunk, make_tool_chunk
 
 ASK_USER_ARGS = (
@@ -202,6 +204,48 @@ async def test_agent_session_handle_user_message(db_factory, tmp_path):
 
     assert session.state == "idle"
     assert provider.call_count >= 1
+
+
+@pytest.mark.asyncio
+async def test_agent_session_enforces_persisted_plan_mode(db_factory, tmp_path):
+    executed = False
+
+    async def patch_workspace() -> str:
+        nonlocal executed
+        executed = True
+        return "patched"
+
+    provider = ScriptedProvider(
+        [
+            [make_tool_chunk("patch", "call_patch", "{}")],
+            [make_text_chunk("I will provide a plan instead.")],
+        ]
+    )
+    runtime = AgentSession(
+        agent=Agent(
+            llm_provider=provider,
+            name="openagentd",
+            tools=[Tool(patch_workspace, name="patch")],
+        ),
+        workspace=str(tmp_path),
+        db_factory=db_factory,
+    )
+    session_id = str(uuid.uuid4())
+    await runtime.attach_to_session(session_id)
+
+    async with db_factory() as db:
+        await set_session_interaction_mode(db, uuid.UUID(session_id), "plan")
+        await db.commit()
+
+    await runtime.handle_user_message(
+        content="Change the project",
+        session_id=session_id,
+        workspace=str(tmp_path),
+    )
+    assert runtime._active_task is not None
+    await runtime._active_task
+
+    assert executed is False
 
 
 @pytest.mark.asyncio

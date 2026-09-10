@@ -2,7 +2,7 @@
 title: OpenAgentd Features
 description: Version-cited catalogue of shipped OpenAgentd capabilities.
 status: stable
-updated: 2026-08-21
+updated: 2026-09-10
 ---
 
 # OpenAgentd

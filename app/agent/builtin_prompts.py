@@ -2,11 +2,6 @@
 
 from __future__ import annotations
 
-import re
-
-DEFAULT_EMPTY_PROMPT = "You are a helpful assistant."
-_EXTRA_PROMPT_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
-
 CODING_OPENAGENTD_DESCRIPTION = "Coding agent. Plans the work, implements surgical changes, and delivers a verified change."
 
 CODING_OPENAGENTD_TOOLS = [
@@ -93,29 +88,3 @@ def openagentd_tools_for_mode(mode: str = "coding") -> list[str]:
 def openagentd_prompt_for_mode(mode: str = "coding") -> str:
     """Return the built-in prompt."""
     return CODING_OPENAGENTD_PROMPT
-
-
-def _normalise_extra_prompt(extra_prompt: str) -> str:
-    """Remove seed-only comments before treating file body as user prompt."""
-    return _EXTRA_PROMPT_COMMENT_RE.sub("", extra_prompt).strip()
-
-
-def apply_builtin_extra_prompt(base_prompt: str, extra_prompt: str) -> str:
-    """Return a built-in prompt plus user-authored extra text."""
-    extra = _normalise_extra_prompt(extra_prompt)
-    if not extra or extra == DEFAULT_EMPTY_PROMPT or extra == base_prompt:
-        return base_prompt
-    return f"{base_prompt}\n\n## User extra prompt\n\n{extra}"
-
-
-def _looks_like_legacy_first_party_prompt(extra_prompt: str, *, name: str) -> bool:
-    extra = _normalise_extra_prompt(extra_prompt)
-    return bool(extra.startswith("You are **OpenAgentd**"))
-
-
-def apply_openagentd_extra_prompt(mode: str, extra_prompt: str) -> str:
-    """Return the built-in OpenAgentd prompt plus user-authored extra text."""
-    base = openagentd_prompt_for_mode(mode)
-    if _looks_like_legacy_first_party_prompt(extra_prompt, name="openagentd"):
-        return base
-    return apply_builtin_extra_prompt(base, extra_prompt)

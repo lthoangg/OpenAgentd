@@ -490,8 +490,9 @@ executes tools, manages its task list, and inspects workspace repositories.
  root profile tuned for workspace-aware coding sessions.
 - **Built-in first-party agent profile** `[v1.23.0, v1.118.0]` — the default `code`
  agent keeps its core prompts, tools, and descriptions versioned in code; generated/user
- `.md` files remain lightweight extension points for model knobs, extra
- capabilities, and extra prompt text.
+ `.md` files remain lightweight extension points for model knobs, thinking levels,
+ and extra capabilities, while custom instructions are maintained in global and
+ repository `AGENTS.md` files.
 - **Automatic first-run materialization** `[v1.37.0, v1.118.0]` — application
  startup creates missing first-party agent profile and editable runtime
  configuration directly from code. No separate initialization command or

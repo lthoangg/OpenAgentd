@@ -27,7 +27,7 @@ import { CompactionDivider } from './CompactionDivider'
 import { AssistantTurn } from './AssistantTurnFooter'
 import { PendingMessageQueue } from './PendingMessageQueue'
 import { appendCurrentTurns, getVisibleTurnWindow, partitionTurns } from '@/utils/turns'
-import { latestDirectUserBlockIdFromParts, liveBlockTail } from '@/utils/blocks'
+import { hasPlanContent, latestDirectUserBlockIdFromParts, liveBlockTail } from '@/utils/blocks'
 import { extractSleepPrefix } from '@/utils/format'
 import { latestMCPAppResourceBlockIdsFromParts, latestMCPAppResources, mcpAppResourceUri } from '@/utils/mcp-app-artifacts'
 import { useAgentStore } from '@/stores/useAgentStore'
@@ -80,6 +80,8 @@ interface AgentViewProps {
   emptyState?: React.ReactNode
   /** Open a mentioned workspace file in the coding workspace sidebar. */
   onMentionFileOpen?: (path: string) => void
+  /** Callback to switch to Code mode and start implementation of a proposed plan. */
+  onStartImplementing?: () => void
 }
 
 const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionId, onRevert, latestMCPAppBlockIds, onMentionFileOpen }: { block: ContentBlock; isStreaming: boolean; sessionId?: string; onRevert?: () => void; latestMCPAppBlockIds?: Set<string>; onMentionFileOpen?: (path: string) => void }) {
@@ -180,9 +182,10 @@ const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionI
   }
 })
 
-export function AgentView({ blocks, currentBlocks, isWorking, isTurnOpen = isWorking, isAwaitingRestart = false, isError, lastError, emptyState, onMentionFileOpen }: AgentViewProps) {
+export function AgentView({ blocks, currentBlocks, isWorking, isTurnOpen = isWorking, isAwaitingRestart = false, isError, lastError, emptyState, onMentionFileOpen, onStartImplementing }: AgentViewProps) {
   const [renderedTurnCount, setRenderedTurnCount] = useState(INITIAL_RENDERED_TURNS)
   const sessionId = useAgentStore((s) => s.sessionId) ?? undefined
+  const sessionInteractionMode = useAgentStore((s) => s.sessionInteractionMode)
   const prevScrollHeightRef = useRef<number | null>(null)
   const loadingOlderRef = useRef(false)
   const hiddenTurnCountRef = useRef(0)
@@ -351,6 +354,11 @@ export function AgentView({ blocks, currentBlocks, isWorking, isTurnOpen = isWor
                  }
                  // Me only the trailing turn (no user block after) can be "live"
                   const isTrailingTurn = globalTurnIndex === turnItems.length - 1
+                  const canStartImplementing =
+                    isTrailingTurn &&
+                    !isWorking &&
+                    sessionInteractionMode === 'plan' &&
+                    hasPlanContent(item.blocks)
                  return (
                    <AssistantTurn
                      key={`turn-${item.startIndex}-${item.blocks[0]?.id ?? k}`}
@@ -362,6 +370,7 @@ export function AgentView({ blocks, currentBlocks, isWorking, isTurnOpen = isWor
                      isTrailingTurn={isTrailingTurn}
                       totalBlocks={totalLen}
                       size="roomy"
+                      onStartImplementing={canStartImplementing ? onStartImplementing : undefined}
                       renderBlock={({ block, isStreaming }) => (
                        <BlockRenderer
                          block={block}

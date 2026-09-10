@@ -1,5 +1,5 @@
 ---
-description: Show current working state after a /clear so you can resume where you left off.
+description: Show current working state so you can resume where you left off.
 ---
 
 Run the following and show me the results so I can re-orient:

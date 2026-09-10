@@ -136,13 +136,26 @@ async def test_get_or_start_agent_session_starts_and_caches_session(
     fake_session.session_id = "sess-1"
 
     monkeypatch.setattr(
-        "app.services.agent_manager.load_agent_from_dir",
+        agent_manager,
+        "load_agent_from_dir",
         lambda *args, **kwargs: fake_session,
     )
+    monkeypatch.setattr(
+        "app.agent.loader.load_agent_from_dir",
+        lambda *args, **kwargs: fake_session,
+    )
+    agent_manager._sessions.clear()
+    agent_manager._session_last_used.clear()
+    agent_manager._session_start_locks.clear()
     agent_manager.set_agent_session(None)
 
     res = await agent_manager.get_or_start_agent_session(str(tmp_path), "sess-1")
-    assert res is fake_session
+    assert res is fake_session, (
+        f"res={res!r} (type {type(res)}), "
+        f"get_fn={agent_manager.get_or_start_agent_session!r}, "
+        f"load_fn={agent_manager.load_agent_from_dir!r}, "
+        f"sessions={list(agent_manager._sessions.keys())}"
+    )
     fake_session.start.assert_awaited_once()
 
     # Second call returns cached session

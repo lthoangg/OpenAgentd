@@ -559,8 +559,7 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
       !e.altKey &&
       !e.ctrlKey &&
       !e.metaKey &&
-      value.trim().length === 0 &&
-      files.length === 0 &&
+      !minimized &&
       onInteractionModeChange &&
       !interactionModeDisabled
     ) {

@@ -14,7 +14,7 @@ release that introduced it (where known). When you ship something new, **add it 
 > double-clickable app that runs an agent on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 16 providers. Your keys.
 
-**Latest release:** v2.14.0 · September 10, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v2.14.0)
+**Latest release:** v2.15.0 · September 10, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v2.15.0)
 
 ---
 
@@ -115,12 +115,12 @@ run from the terminal.
   opens files in the active workspace; `⌘⇧P`/`Ctrl+Shift+P` searches app actions.
   Both use the compact warm-paper search surface, keyboard navigation, and a
   visible warning when a capped workspace listing omits files.
-- **Plan and Code interaction modes** `[v2.14.0]` — the expanded composer switches an
+- **Plan and Code interaction modes** `[v2.14.0, updated v2.15.0]` — the expanded composer switches an
   existing session between Code (default) and Plan without starting a new
-  chat; `Tab` also toggles an empty composer. Mode transitions are preserved via
+  chat; `Tab` also toggles mode from the composer. Mode transitions are preserved via
   append-only hidden context notes in session history. In Plan mode, the agent explores
   the repository and produces decision-complete implementation plans, while the runtime
-  strictly blocks agent-initiated writes, patches, and arbitrary shell commands.
+  strictly blocks mutating file operations and patches while permitting read-only inspection and testing via shell. Proposed plans render with centered divider rules and an embedded "Approve" action that transitions the session to Code mode and initiates execution.
 - **Fullscreen view mode and traffic-light space reclamation** `[v2.0.0]` — automatically
   detects macOS fullscreen mode and reclaims the window traffic-light header padding to
   maximise message and diff reading area.

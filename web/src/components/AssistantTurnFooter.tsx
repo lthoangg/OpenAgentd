@@ -11,6 +11,7 @@ import { memo, useCallback, useMemo, useState, type ReactNode } from 'react'
 import { Copy, Check } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { formatTime, formatFullDateTime, lastTurnText } from '@/utils/format'
+import { PlanActionContext } from '@/utils/markdown-plan'
 import type { ContentBlock } from '@/api/types'
 
 export interface AssistantTurnFooterProps {
@@ -144,6 +145,8 @@ export interface AssistantTurnProps {
   renderBlock: (args: { block: ContentBlock; isStreaming: boolean; isLast: boolean }) => ReactNode
   /** Footer density. */
   size?: 'compact' | 'roomy'
+  /** Callback to switch to Code mode and start implementation of a proposed plan. */
+  onStartImplementing?: () => void
 }
 
 export const AssistantTurn = memo(function AssistantTurn({
@@ -156,13 +159,19 @@ export const AssistantTurn = memo(function AssistantTurn({
   totalBlocks,
   renderBlock,
   size = 'compact',
+  onStartImplementing,
 }: AssistantTurnProps) {
   // The footer reports on a *finished* turn, so it waits for the turn to close
   // rather than merely for the stream to stop.
   const turnIsOpen = isTurnOpen && isTrailingTurn
+  const planActionValue = useMemo(
+    () => ({ onStartImplementing: !turnIsOpen ? onStartImplementing : undefined }),
+    [turnIsOpen, onStartImplementing],
+  )
 
   return (
-    <div className="space-y-2">
+    <PlanActionContext.Provider value={planActionValue}>
+      <div className="space-y-2">
       {blocks.map((block, j) => {
         const absoluteIdx = startIndex + j
         const isLast = absoluteIdx === totalBlocks - 1
@@ -187,5 +196,6 @@ export const AssistantTurn = memo(function AssistantTurn({
       })}
       {!turnIsOpen && <AssistantTurnFooter turnBlocks={blocks} size={size} />}
     </div>
+    </PlanActionContext.Provider>
   )
 })

@@ -139,6 +139,13 @@ async def test_get_or_start_agent_session_starts_and_caches_session(
         "app.services.agent_manager.load_agent_from_dir",
         lambda *args, **kwargs: fake_session,
     )
+    monkeypatch.setattr(
+        "app.agent.loader.load_agent_from_dir",
+        lambda *args, **kwargs: fake_session,
+    )
+    agent_manager._sessions.clear()
+    agent_manager._session_last_used.clear()
+    agent_manager._session_start_locks.clear()
     agent_manager.set_agent_session(None)
 
     res = await agent_manager.get_or_start_agent_session(str(tmp_path), "sess-1")

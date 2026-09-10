@@ -25,6 +25,11 @@ import {
   MATH_INLINE_SENTINEL,
   MATH_BLOCK_SENTINEL,
 } from '@/utils/markdown-math'
+import {
+  ProposedPlanCard,
+  planMarkdownExtension,
+  normalizeProposedPlanTags,
+} from '@/utils/markdown-plan'
 
 // ── fixNestedFences ───────────────────────────────────────────────────────────
 
@@ -561,13 +566,19 @@ export const MarkdownBlock = memo(function MarkdownBlock({
           title={typeof title === 'string' ? title : undefined}
         />
       ),
+      'proposed-plan': ({ children }: { children?: React.ReactNode }) => (
+        <ProposedPlanCard>{children}</ProposedPlanCard>
+      ),
     }),
     [isStreaming, sessionId],
   )
 
   // Me: fixNestedFences is pure; memoize so we don't re-walk the whole
   // string on scroll-triggered parent re-renders either.
-  const fixedContent = useMemo(() => fixNestedFences(content), [content])
+  const fixedContent = useMemo(
+    () => fixNestedFences(normalizeProposedPlanTags(content)),
+    [content],
+  )
   const renderedContent = useMemo(
     () => isStreaming ? markClosedStreamingMermaidFences(fixedContent) : fixedContent,
     [fixedContent, isStreaming],
@@ -600,4 +611,8 @@ export const MarkdownBlock = memo(function MarkdownBlock({
 // retroactively reinterpret its opening lines as metadata, and ``headingIds``
 // is off because a streamed heading would otherwise change its own element id
 // on every delta.
-const _EXTENSIONS = [streamingMarkdownExtension(), mathMarkdownExtension()]
+const _EXTENSIONS = [
+  streamingMarkdownExtension(),
+  mathMarkdownExtension(),
+  planMarkdownExtension(),
+]

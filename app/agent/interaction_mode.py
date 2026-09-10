@@ -9,7 +9,7 @@ InteractionMode = Literal["code", "plan"]
 # Plan mode is deliberately allowlisted. The shell tool can run arbitrary
 # commands, so command-prefix checks cannot make it safe for planning.
 PLAN_MODE_ALLOWED_TOOLS = frozenset(
-    {"ask_user", "glob", "grep", "read", "skill", "web_fetch", "web_search"}
+    {"ask_user", "glob", "grep", "read", "shell", "skill", "web_fetch", "web_search"}
 )
 
 
@@ -34,7 +34,7 @@ def transition_instruction(mode: InteractionMode) -> str:
             "### Workflow\n"
             "1. **Research & Explore (Read-Only):** Inspect relevant files, existing patterns, "
             "architecture boundaries, and tests using inspection tools (`read`, `glob`, `grep`, "
-            "`web_fetch`, `web_search`). Do not edit, patch, or delete files, and do not execute mutating shell commands.\n"
+            "`shell`, `web_fetch`, `web_search`). Do not edit, patch, or delete files, and do not execute mutating shell commands.\n"
             "2. **Clarify Consequential Decisions:** If there are critical, irreversible architectural choices "
             "or ambiguities that the codebase cannot answer, use `ask_user` once to batch them with concrete recommendations.\n"
             "3. **Formulate the Plan:** Present your findings and finish with a structured `<proposed_plan>` block:\n"

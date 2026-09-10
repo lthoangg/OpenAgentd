@@ -1,5 +1,6 @@
 import { describe, it, expect } from "bun:test";
 import {
+  hasPlanContent,
   latestDirectUserBlockId,
   mergeBlocks,
   appendThinking,
@@ -779,5 +780,37 @@ describe("endCompaction", () => {
     expect(result[0].extra?.state).toBe("compacted");
     expect(result[0].extra?.error).toBe(true);
     expect(result[1].id).toBe("t1"); // live block untouched
+  });
+});
+
+// ---------------------------------------------------------------------------
+// hasPlanContent
+// ---------------------------------------------------------------------------
+
+describe("hasPlanContent", () => {
+  it("returns true when block contains <proposed_plan>", () => {
+    const blocks: ContentBlock[] = [
+      { id: "b1", type: "text", content: "Plan follows:\n<proposed_plan>\n## Summary\n</proposed_plan>" },
+    ];
+    expect(hasPlanContent(blocks)).toBe(true);
+  });
+
+  it("returns true when block contains markdown plan headers", () => {
+    expect(hasPlanContent([{ id: "b1", type: "text", content: "## Proposed Plan\n1. Do thing" }])).toBe(true);
+    expect(hasPlanContent([{ id: "b1", type: "text", content: "## Implementation Plan\n1. Do thing" }])).toBe(true);
+    expect(hasPlanContent([{ id: "b1", type: "text", content: "# Plan\n1. Do thing" }])).toBe(true);
+    expect(hasPlanContent([{ id: "b1", type: "text", content: "### Plan:\n1. Do thing" }])).toBe(true);
+    expect(hasPlanContent([{ id: "b1", type: "text", content: "**Plan:**\n1. Do thing" }])).toBe(true);
+  });
+
+  it("returns false for regular conversational text mentioning plan", () => {
+    expect(hasPlanContent([{ id: "b1", type: "text", content: "I plan to refactor this soon." }])).toBe(false);
+    expect(hasPlanContent([{ id: "b1", type: "text", content: "What is your plan for the weekend?" }])).toBe(false);
+    expect(hasPlanContent([{ id: "b1", type: "text", content: "Everything went according to plan." }])).toBe(false);
+  });
+
+  it("returns false for non-text blocks", () => {
+    expect(hasPlanContent([{ id: "b1", type: "thinking", content: "<proposed_plan>" }])).toBe(false);
+    expect(hasPlanContent([{ id: "b1", type: "tool", content: "## Proposed Plan" }])).toBe(false);
   });
 });

@@ -1,6 +1,9 @@
-import { describe, it, expect, afterEach, beforeEach } from "bun:test"
+import { describe, it, expect, afterEach, beforeEach, mock } from "bun:test"
+import { useContext } from "react"
 import { cleanup, render, screen } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
 import { AssistantTurn, AssistantTurnFooter } from "@/components/AssistantTurnFooter"
+import { PlanActionContext } from "@/utils/markdown-plan"
 import type { ContentBlock } from "@/api/types"
 
 beforeEach(() => {
@@ -179,5 +182,65 @@ describe("AssistantTurn — a turn suspended on a question", () => {
     renderTurn(false)
 
     expect(screen.getByText("1.2s")).toBeTruthy()
+  })
+})
+
+describe("AssistantTurn — onStartImplementing CTA", () => {
+  const blocks: ContentBlock[] = [{
+    id: "b1",
+    type: "text",
+    content: "<proposed_plan>\n## Summary\nFix the bug\n</proposed_plan>",
+  }]
+
+  function TestPlanConsumer() {
+    const { onStartImplementing } = useContext(PlanActionContext)
+    if (!onStartImplementing) return null
+    return (
+      <button onClick={onStartImplementing} data-testid="plan-action-btn">
+        Start implementing
+      </button>
+    )
+  }
+
+  it("provides onStartImplementing via PlanActionContext when turn is closed", async () => {
+    const onStartImplementing = mock(() => {})
+    render(
+      <AssistantTurn
+        blocks={blocks}
+        startIndex={0}
+        finalizedCount={1}
+        isWorking={false}
+        isTurnOpen={false}
+        isTrailingTurn
+        totalBlocks={1}
+        onStartImplementing={onStartImplementing}
+        renderBlock={() => <TestPlanConsumer />}
+      />,
+    )
+
+    const btn = screen.getByTestId("plan-action-btn")
+    expect(btn).toBeTruthy()
+
+    await userEvent.click(btn)
+    expect(onStartImplementing).toHaveBeenCalledTimes(1)
+  })
+
+  it("does not provide onStartImplementing via PlanActionContext when turn is still open", () => {
+    const onStartImplementing = mock(() => {})
+    render(
+      <AssistantTurn
+        blocks={blocks}
+        startIndex={0}
+        finalizedCount={1}
+        isWorking={true}
+        isTurnOpen={true}
+        isTrailingTurn
+        totalBlocks={1}
+        onStartImplementing={onStartImplementing}
+        renderBlock={() => <TestPlanConsumer />}
+      />,
+    )
+
+    expect(screen.queryByTestId("plan-action-btn")).toBeNull()
   })
 })

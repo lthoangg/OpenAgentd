@@ -14,7 +14,7 @@
  * (one primitive per ``useAgentStore`` call) to avoid the infinite loop
  * that returning a freshly-built object on every render would trigger.
  */
-import { memo, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useMemo, useRef, useState } from 'react'
 import { AnimatePresence } from 'framer-motion'
 import { useNavigate } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
@@ -40,11 +40,13 @@ const EMPTY_REVERTED_MESSAGES: RevertedMessage[] = []
 interface ActiveAgentViewProps {
   emptyState?: React.ReactNode
   onMentionFileOpen?: (path: string) => void
+  onStartImplementing?: () => void
 }
 
 const ActiveAgentView = memo(function ActiveAgentView({
   emptyState,
   onMentionFileOpen,
+  onStartImplementing,
 }: ActiveAgentViewProps) {
   const activeStream = useAgentStore((s) => {
     if (s.leadName && s.agentStreams[s.leadName]) return s.agentStreams[s.leadName]
@@ -68,6 +70,7 @@ const ActiveAgentView = memo(function ActiveAgentView({
       lastError={activeLastError}
       onMentionFileOpen={onMentionFileOpen}
       emptyState={emptyState}
+      onStartImplementing={onStartImplementing}
     />
   )
 })
@@ -364,6 +367,23 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
     setCodingPanel,
   })
 
+  const handleStartImplementing = useCallback(async () => {
+    if (!workspace || isSwitchingInteractionMode || !sessionIdState) return
+    setIsSwitchingInteractionMode(true)
+    try {
+      await useAgentStore.getState().setSessionInteractionMode('code')
+      const current = useAgentStore.getState()
+      await sendMessage('Start implementing the plan', undefined, {
+        workspace,
+        model: current.sessionModel || null,
+        thinkingLevel: current.sessionThinkingLevel || null,
+        fastMode: current.sessionFastMode,
+      })
+    } finally {
+      setIsSwitchingInteractionMode(false)
+    }
+  }, [workspace, isSwitchingInteractionMode, sessionIdState, sendMessage])
+
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
@@ -509,6 +529,7 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
           <div className="flex flex-1 flex-col min-h-0">
             <ActiveAgentView
               onMentionFileOpen={handleMentionFileOpen}
+              onStartImplementing={handleStartImplementing}
               emptyState={
                 workspace ? (
                   <div className="flex flex-col items-center justify-center py-16">

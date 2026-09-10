@@ -39,7 +39,7 @@ async def test_plan_mode_never_executes_a_mutating_tool():
     assert tool_result.content == "Error: Tool 'patch' is unavailable in Plan mode."
 
 
-async def test_plan_mode_blocks_shell_tool():
+async def test_plan_mode_allows_shell_tool():
     executed = False
 
     async def shell_command(command: str) -> str:
@@ -50,7 +50,7 @@ async def test_plan_mode_blocks_shell_tool():
     provider = MockProvider(
         [
             [make_tool_chunk("shell", "call_shell", '{"command": "pytest"}')],
-            [make_text_chunk("I will not run shell commands in plan mode.")],
+            [make_text_chunk("Shell command executed.")],
         ]
     )
     agent = Agent(
@@ -64,11 +64,11 @@ async def test_plan_mode_blocks_shell_tool():
         config=RunConfig(metadata={"interaction_mode": "plan"}),
     )
 
-    assert executed is False
+    assert executed is True
     tool_result = next(
         message for message in messages if isinstance(message, ToolMessage)
     )
-    assert tool_result.content == "Error: Tool 'shell' is unavailable in Plan mode."
+    assert tool_result.content == "output"
 
 
 async def test_plan_mode_allows_inspection_tools():

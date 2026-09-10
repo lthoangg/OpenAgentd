@@ -77,6 +77,23 @@ export function latestDirectUserBlockId(blocks: ContentBlock[]): string | undefi
   return undefined
 }
 
+const PLAN_CONTENT_REGEX =
+  /<proposed_plan\b|^\s*(?:#+\s*(?:proposed\s+|implementation\s+)?plan\b|\*\*(?:proposed\s+|implementation\s+)?plan:?\*\*)/im
+
+/**
+ * Returns true when the provided content blocks contain an explicit plan tag
+ * or plan heading (`<proposed_plan>`, `## Proposed Plan`, `## Implementation Plan`,
+ * `## Plan:`, `**Plan:**`).
+ */
+export function hasPlanContent(blocks: ContentBlock[]): boolean {
+  return blocks.some(
+    (b) =>
+      (b.type === 'text' || !b.type) &&
+      typeof b.content === 'string' &&
+      PLAN_CONTENT_REGEX.test(b.content),
+  )
+}
+
 /** Check the live suffix first, then the stable finalized history. This avoids
  * scanning a merged session-sized array for every streamed delta. */
 export function latestDirectUserBlockIdFromParts(

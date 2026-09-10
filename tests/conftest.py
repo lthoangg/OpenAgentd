@@ -24,6 +24,10 @@ from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.agent.providers.zai.zai import ZAIProvider
+from app.services import agent_manager as _agent_manager_init
+
+_ORIG_GET_OR_START_AGENT_SESSION = _agent_manager_init.get_or_start_agent_session
+_ORIG_LOAD_AGENT_FROM_DIR = _agent_manager_init.load_agent_from_dir
 
 
 # Windows does not support signal.SIGALRM; force thread timeout method on win32.
@@ -135,6 +139,8 @@ def _isolate_agent_registry():
         agent_manager._sessions.clear()
         agent_manager._session_last_used.clear()
         agent_manager._session_start_locks.clear()
+        agent_manager.get_or_start_agent_session = _ORIG_GET_OR_START_AGENT_SESSION
+        agent_manager.load_agent_from_dir = _ORIG_LOAD_AGENT_FROM_DIR
 
     _clear()
     yield

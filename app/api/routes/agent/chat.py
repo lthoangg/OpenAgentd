@@ -87,8 +87,8 @@ from app.services.chat_service import (
     save_message,
     save_queued_user_message,
     session_usage_totals,
-    update_session_title,
 )
+from app.services.session_interaction_mode import set_session_interaction_mode
 
 router = APIRouter()
 
@@ -797,12 +797,27 @@ async def update_agent_session(
     session_id: UUID, body: AgentSessionUpdateRequest, db: DbSession
 ) -> SessionResponse:
     """Update editable metadata for a top-level agent session."""
-    title = body.title.strip()
-    if not title:
-        raise HTTPException(status_code=422, detail="Title cannot be empty.")
-    session = await update_session_title(db, session_id, title)
-    if not session:
-        raise HTTPException(status_code=404, detail="Session not found.")
+    if body.interaction_mode is not None:
+        live_session = agent_manager.find_live_session_serving_session(str(session_id))
+        if live_session is not None and live_session.is_busy():
+            await live_session.handle_stop()
+
+    async with db.begin():
+        session = await db.get(ChatSession, session_id)
+        if session is None or session.parent_session_id is not None:
+            raise HTTPException(status_code=404, detail="Session not found.")
+        if body.title is not None:
+            title = body.title.strip()
+            if not title:
+                raise HTTPException(status_code=422, detail="Title cannot be empty.")
+            session.title = title
+            db.add(session)
+        if body.interaction_mode is not None:
+            session, _changed = await set_session_interaction_mode(
+                db, session_id, body.interaction_mode
+            )
+        await db.flush()
+        await db.refresh(session)
     return SessionResponse.model_validate(session).model_copy(
         update={"running": str(session.id) in stream_store.running_session_ids()}
     )

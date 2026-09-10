@@ -35,6 +35,7 @@ import type {
   WorktreeRemoveResponse,
   GitUndoResponse,
   GitRevertResponse,
+  SessionInteractionMode,
 } from '../types'
 
 export async function postAgentChat(
@@ -398,6 +399,19 @@ export async function updateSessionTitle(id: string, title: string): Promise<Ses
     body: JSON.stringify({ title }),
   })
   if (!res.ok) await parseDetailOrThrow(res, 'updateSessionTitle')
+  return res.json()
+}
+
+export async function updateSessionInteractionMode(
+  id: string,
+  interactionMode: SessionInteractionMode,
+): Promise<SessionResponse> {
+  const res = await fetch(`${apiBaseUrl()}/agent/sessions/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ interaction_mode: interactionMode }),
+  })
+  if (!res.ok) await parseDetailOrThrow(res, 'updateSessionInteractionMode')
   return res.json()
 }
 

@@ -8,11 +8,17 @@ const postAgentCommand = mock(async (): Promise<AgentCommandResponse> => ({
 }))
 const postAgentChat = mock(async () => ({ status: 'accepted', session_id: 'session-1' }))
 const sessionHistory = mock(async () => { throw new Error('not used') })
+const updateSessionInteractionMode = mock(async () => ({
+  id: 'session-1',
+  interaction_mode: 'plan' as const,
+  running: false,
+}))
 
 mock.module('@/api/client', () => ({
   cancelQueuedMessage: mock(async () => {}),
   postAgentChat,
   postAgentCommand,
+  updateSessionInteractionMode,
   sessionHistory,
   sessionHistorySince: mock(async () => { throw new Error('not used') }),
   agentStatus: mock(async () => { throw new Error('not used') }),
@@ -38,6 +44,7 @@ function makeStream(overrides: object = {}) {
 beforeEach(() => {
   postAgentCommand.mockClear()
   postAgentChat.mockClear()
+  updateSessionInteractionMode.mockClear()
   sessionHistory.mockClear()
   postAgentCommand.mockImplementation(async () => ({
     status: 'accepted', session_id: 'session-1', command: 'compact',
@@ -49,6 +56,7 @@ beforeEach(() => {
     agentNames: [],
     liveAgentNames: null,
     sessionId: null,
+    sessionInteractionMode: 'code',
     isAgentWorking: false,
     isConnected: false,
     error: null,
@@ -60,6 +68,17 @@ beforeEach(() => {
     cacheInvalidations: [],
     _abortController: null,
     _reconnectTimer: null,
+  })
+})
+
+describe('setSessionInteractionMode', () => {
+  it('persists the selected mode and adopts the response', async () => {
+    useAgentStore.setState({ sessionId: 'session-1', sessionInteractionMode: 'code' })
+
+    await useAgentStore.getState().setSessionInteractionMode('plan')
+
+    expect(updateSessionInteractionMode).toHaveBeenCalledWith('session-1', 'plan')
+    expect(useAgentStore.getState().sessionInteractionMode).toBe('plan')
   })
 })
 

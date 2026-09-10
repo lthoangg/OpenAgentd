@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field, model_validator
@@ -26,7 +27,14 @@ class AgentSessionResolveRequest(BaseModel):
 
 
 class AgentSessionUpdateRequest(BaseModel):
-    title: str = Field(min_length=1, max_length=255)
+    title: str | None = Field(default=None, min_length=1, max_length=255)
+    interaction_mode: Literal["code", "plan"] | None = None
+
+    @model_validator(mode="after")
+    def _requires_change(self) -> "AgentSessionUpdateRequest":
+        if self.title is None and self.interaction_mode is None:
+            raise ValueError("Provide a title or interaction_mode.")
+        return self
 
 
 class AgentWorkspaceVisibilityRequest(BaseModel):
@@ -61,6 +69,7 @@ class SessionResponse(_ExcludeNoneModel):
     agent_name: str | None = None
     scheduled_task_name: str | None = None
     workspace: str
+    interaction_mode: Literal["code", "plan"] = "code"
     model: str | None = None
     thinking_level: str | None = None
     revert: dict | None = None

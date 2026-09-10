@@ -426,6 +426,57 @@ describe("InputComposer — ref API", () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Interaction mode
+// ─────────────────────────────────────────────────────────────────────────────
+describe("InputComposer — interaction mode", () => {
+  it("shows the mode control only while expanded", () => {
+    const onInteractionModeChange = mock(() => {})
+    const { rerender } = render(
+      <InputComposer
+        minimized
+        interactionMode="code"
+        onInteractionModeChange={onInteractionModeChange}
+        onSubmit={() => {}}
+      />,
+    )
+
+    expect(screen.queryByRole("button", { name: "Code mode" })).toBeNull()
+
+    rerender(
+      <InputComposer
+        minimized={false}
+        interactionMode="code"
+        onInteractionModeChange={onInteractionModeChange}
+        onSubmit={() => {}}
+      />,
+    )
+
+    expect(screen.getByRole("button", { name: "Code mode" })).toBeTruthy()
+  })
+
+  it("switches modes with Tab only from an empty composer", async () => {
+    const user = userEvent.setup()
+    const onInteractionModeChange = mock(() => {})
+    render(
+      <InputComposer
+        interactionMode="code"
+        onInteractionModeChange={onInteractionModeChange}
+        onSubmit={() => {}}
+      />,
+    )
+
+    const textarea = screen.getByLabelText("Message input")
+    await user.click(textarea)
+    await user.keyboard("{Tab}")
+    expect(onInteractionModeChange).toHaveBeenCalledWith("plan")
+
+    await user.type(textarea, "Keep this draft")
+    await user.keyboard("{Tab}")
+    expect(onInteractionModeChange).toHaveBeenCalledTimes(1)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Minimized state
 // ─────────────────────────────────────────────────────────────────────────────
 describe("InputComposer — minimized state", () => {

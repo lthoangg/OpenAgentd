@@ -1,5 +1,5 @@
 import type { StateCreator } from 'zustand'
-import { agentStatus, sessionHistory, sessionHistorySince } from '@/api/client'
+import { agentStatus, sessionHistory, sessionHistorySince, updateSessionInteractionMode } from '@/api/client'
 import { applyOrphanToolResults, parseAgentBlocks, sumUsageFromMessages } from '@/utils/messages'
 import type { OrphanToolResult } from '@/utils/messages'
 import { createDefaultAgentStream } from './defaults'
@@ -7,7 +7,7 @@ import { applyRevertBoundary, revokeBlobUrlsFromBlocks } from './helpers'
 import { toPendingQuestion } from './sse-reducer'
 import { clearReconnectTimer } from './stream-slice'
 import type { AgentStream, AgentStore } from './types'
-import type { ContentBlock, MessageResponse } from '@/api/types'
+import type { ContentBlock, MessageResponse, SessionInteractionMode } from '@/api/types'
 
 function revertBoundaryTime(session: { revert?: { message_id?: string; created_at?: string } | null; messages: MessageResponse[] }): number | null {
   if (!session.revert) return null
@@ -345,6 +345,7 @@ export function resetSessionState(
   state: AgentStore,
   options: {
     sessionId: string | null
+    interactionMode?: SessionInteractionMode
     model?: string | null
     thinkingLevel?: string | null
     fastMode?: boolean
@@ -354,6 +355,7 @@ export function resetSessionState(
   const leadName = state.leadName ?? state.agentNames[0] ?? null
   state.sessionId = options.sessionId
   state.sessionTitle = null
+  state.sessionInteractionMode = options.interactionMode ?? 'code'
   state.sessionModel = options.model ?? null
   state.sessionThinkingLevel = options.thinkingLevel ?? null
   state._sessionSettingsDirty = false
@@ -413,6 +415,7 @@ export type SessionSlice = Pick<
   | 'liveAgentNames'
   | 'sessionId'
   | 'sessionTitle'
+  | 'sessionInteractionMode'
   | 'sessionModel'
   | 'sessionThinkingLevel'
   | '_sessionSettingsDirty'
@@ -430,6 +433,7 @@ export type SessionSlice = Pick<
   | 'beginResolvedSession'
   | 'isEmptyIdleSession'
   | 'consumeResolvedSessionReady'
+  | 'setSessionInteractionMode'
   | 'setSessionModelSettings'
   | 'loadAgentStatus'
   | 'loadSession'
@@ -470,6 +474,7 @@ async function loadSessionImpl(
     set((draft) => {
       draft.sessionId = sessionId
       draft.sessionTitle = history.lead.title ?? null
+      draft.sessionInteractionMode = history.lead.interaction_mode ?? 'code'
       if (!draft._sessionSettingsDirty && draft._sessionSettingsVersion === settingsVersion) {
         draft.sessionModel = history.lead.model ?? null
         draft.sessionThinkingLevel = history.lead.thinking_level ?? null
@@ -753,6 +758,7 @@ export const createSessionSlice: StateCreator<
   liveAgentNames: null,
   sessionId: null,
   sessionTitle: null,
+  sessionInteractionMode: 'code',
   sessionModel: null,
   sessionThinkingLevel: null,
   _sessionSettingsDirty: false,
@@ -795,6 +801,7 @@ export const createSessionSlice: StateCreator<
     if (staysOnSameSession && isWorkingOrHasBlocks) {
       set((state) => {
         if (sessionId) state.sessionId = sessionId
+        if (options?.interactionMode) state.sessionInteractionMode = options.interactionMode
         if (!preserveLocalSettings) {
           state.sessionModel = options?.model ?? state.sessionModel
           state.sessionThinkingLevel = options?.thinkingLevel ?? state.sessionThinkingLevel
@@ -811,6 +818,7 @@ export const createSessionSlice: StateCreator<
     set((state) => {
       resetSessionState(state, {
         sessionId,
+        interactionMode: options?.interactionMode,
         model: preserveLocalSettings ? localModel : options?.model,
         thinkingLevel: preserveLocalSettings ? localThinkingLevel : options?.thinkingLevel,
         fastMode: options?.fastMode,
@@ -851,6 +859,23 @@ export const createSessionSlice: StateCreator<
       draft._sessionSettingsVersion += 1
       if (fastMode !== undefined) draft.sessionFastMode = fastMode
     })
+  },
+
+  setSessionInteractionMode: async (mode) => {
+    const sessionId = get().sessionId
+    if (!sessionId || mode === get().sessionInteractionMode) return
+    try {
+      const session = await updateSessionInteractionMode(sessionId, mode)
+      set((draft) => {
+        if (draft.sessionId !== sessionId) return
+        draft.sessionInteractionMode = session.interaction_mode ?? mode
+        draft.isAgentWorking = session.running === true
+      })
+    } catch (err) {
+      set((draft) => {
+        draft.error = err instanceof Error ? err.message : 'Failed to switch interaction mode'
+      })
+    }
   },
 
   loadAgentStatus: async (workspace?: string | null, expectedGeneration?: number) => {
@@ -970,6 +995,7 @@ export const createSessionSlice: StateCreator<
     set((draft) => {
       // Metadata the delta carries authoritatively.
       draft.sessionTitle = delta.lead.title ?? draft.sessionTitle
+      draft.sessionInteractionMode = delta.lead.interaction_mode ?? draft.sessionInteractionMode
       if (!draft._sessionSettingsDirty && draft._sessionSettingsVersion === settingsVersion) {
         draft.sessionModel = delta.lead.model ?? draft.sessionModel
         draft.sessionThinkingLevel = delta.lead.thinking_level ?? draft.sessionThinkingLevel

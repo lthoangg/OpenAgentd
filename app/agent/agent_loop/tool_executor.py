@@ -27,6 +27,7 @@ from app.agent.errors import (
     ToolArgumentError,
     ToolNotFoundError,
 )
+from app.agent.interaction_mode import tool_allowed_in_mode
 from app.agent.schemas.chat import ContentBlock, TextBlock, ToolResult
 
 TOOL_TIMEOUT_SECONDS = 300.0
@@ -60,6 +61,12 @@ def make_tool_executor(
     """
 
     async def execute(ctx: RunContext, s: AgentState, tc: ToolCall) -> str:
+        interaction_mode = s.metadata.get("interaction_mode")
+        if isinstance(interaction_mode, str) and not tool_allowed_in_mode(
+            interaction_mode, tc.function.name
+        ):
+            return f"Error: Tool '{tc.function.name}' is unavailable in Plan mode."
+
         tool_start = time.monotonic()
         logger.info(
             "tool_start agent={} tool={} id={} args={}",

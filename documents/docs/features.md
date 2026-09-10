@@ -250,10 +250,11 @@ run from the terminal.
   - **`/init` AGENTS.md analysis & generation** `[v1.9.0, v2.0.0]` — analyzes codebase
     structure and generates standard `AGENTS.md` context files at repository root and
     subdirectories with a guided analysis protocol.
-  - **`/plan` slash command** `[v1.96.0]` — triggers a research-then-approve
-    workflow: the agent investigates the problem space and proposes a step-by-step
-    implementation plan, then waits for explicit approval before writing any code.
-    Loaded via the `oad/plan` skill.
+  - **Plan / Code interaction modes** `[v2.13.0]` — the expanded composer switches an
+    existing session between Code (default) and Plan without starting a new
+    chat; `Tab` also toggles an empty composer. Mode transitions are preserved in session history; Plan permits
+    repository and web research but blocks agent-initiated writes, shell
+    commands, scheduling, and other side-effectful tools.
 - **Bang shell commands** `[v1.39.0]` *(deprecated — removed in v2.0.0; use the coding
   workspace terminal instead)* — start a message with `!` to run the
   remainder directly through the shell tool without a model turn; history stored

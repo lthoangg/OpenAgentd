@@ -13,6 +13,7 @@ from sqlmodel import col, select
 
 from app.agent.agent_loop import Agent
 from app.agent.checkpointer import SQLiteCheckpointer
+from app.agent.interaction_mode import normalize_interaction_mode
 from app.agent.denied_paths import (
     DeniedPathsConfig,
     _denied_paths_ctx,
@@ -66,6 +67,7 @@ from app.services.chat_service import (
     save_message,
     undo_session_messages,
 )
+from app.services.session_interaction_mode import ensure_session_interaction_mode_prompt
 from app.services.stream_envelope import StreamEnvelope
 
 
@@ -427,6 +429,11 @@ class AgentSession:
 
             sess_row = await db.get(ChatSession, sess_uuid)
             if sess_row is not None:
+                session_mode = normalize_interaction_mode(sess_row.interaction_mode)
+                if session_mode == "plan":
+                    await ensure_session_interaction_mode_prompt(
+                        db, sess_uuid, session_mode
+                    )
                 sess_row.workspace = self.workspace or ""
                 if model_provided:
                     sess_row.model = model
@@ -858,12 +865,18 @@ class AgentSession:
         runtime_thinking_level: str | None = None,
     ) -> None:
         sess_uuid = uuid.UUID(self.session_id)
+        interaction_mode = "code"
 
         # Load session history from DB
         async with self.db_factory() as db:
             await cleanup_reverted_tail(db, sess_uuid)
             sess_row = await db.get(ChatSession, sess_uuid)
             if sess_row is not None:
+                interaction_mode = normalize_interaction_mode(sess_row.interaction_mode)
+                if interaction_mode == "plan":
+                    await ensure_session_interaction_mode_prompt(
+                        db, sess_uuid, interaction_mode
+                    )
                 if not runtime_model:
                     runtime_model = sess_row.model
                 if not runtime_thinking_level:
@@ -942,7 +955,10 @@ class AgentSession:
                 make_ask_user_tool(self.session_id, self.db_factory, self.name)
             )
 
-        run_metadata: dict[str, Any] = {"session_id": self.session_id}
+        run_metadata: dict[str, Any] = {
+            "session_id": self.session_id,
+            "interaction_mode": interaction_mode,
+        }
         if question_resume:
             run_metadata["question_resume"] = True
         if force_compaction:

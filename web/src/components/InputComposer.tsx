@@ -8,13 +8,14 @@ import { CHAR_WARN_THRESHOLD, findActiveSnippet } from './InputComposer.helpers'
 import { InputComposerSuggestions } from './InputComposer.suggestions'
 import { useInputComposerSuggestionEngine } from './InputComposer.suggestionEngine'
 import { MAX_TEXTAREA_HEIGHT, useTextareaAutosize } from './InputComposer.autosize'
-import type { AgentCapabilities } from '@/api/types'
+import type { AgentCapabilities, SessionInteractionMode } from '@/api/types'
 import { buildAcceptString } from './InputComposer.files'
 import { useInputComposerAttachments } from './InputComposer.attachments'
 import { cn } from '@/lib/utils'
 import { buildHistoryEntries } from './InputComposer.menus'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
+import { SessionModeToggle } from './SessionModeToggle'
 
 // Re-export the public type so callers can import ``FileRef`` from this module
 // alongside the component. (The helper ``findActiveMention`` is imported from
@@ -82,6 +83,9 @@ export interface InputComposerProps {
   placeholder?: string
   autoFocus?: boolean
   capabilities?: AgentCapabilities
+  interactionMode?: SessionInteractionMode
+  onInteractionModeChange?: (mode: SessionInteractionMode) => void
+  interactionModeDisabled?: boolean
   /**
    * When true, the component renders only the inner rounded pill (no
    * top border, no background row chrome). A parent wrapper is expected
@@ -168,6 +172,9 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
   placeholder = 'Message OpenAgentd…',
   autoFocus,
   capabilities,
+  interactionMode = 'code',
+  onInteractionModeChange,
+  interactionModeDisabled = false,
   floating = false,
   filesBelow = false,
   suggestionsBelow,
@@ -545,6 +552,23 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
     if (handlePickerMenuKeyDown(e)) return
     if (handleHistoryKeyDown(e)) return
 
+    if (
+      e.key === 'Tab' &&
+      !e.repeat &&
+      !e.shiftKey &&
+      !e.altKey &&
+      !e.ctrlKey &&
+      !e.metaKey &&
+      value.trim().length === 0 &&
+      files.length === 0 &&
+      onInteractionModeChange &&
+      !interactionModeDisabled
+    ) {
+      e.preventDefault()
+      onInteractionModeChange(interactionMode === 'code' ? 'plan' : 'code')
+      return
+    }
+
     if (e.key === 'Enter' && !e.shiftKey && !isMobile) {
       e.preventDefault()
       submit()
@@ -813,6 +837,13 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
     >
       {attachEl}
       {chatEl}
+      {!minimized && onInteractionModeChange && (
+        <SessionModeToggle
+          mode={interactionMode}
+          onChange={onInteractionModeChange}
+          disabled={interactionModeDisabled}
+        />
+      )}
       {/* Slot snaps w-0 ↔ flex-1 in lockstep with the card's w-fit ↔ w-full.
           ``-ml-2`` absorbs the parent gap-2 when collapsed. Expanded always
           takes the full row (flex-basis:100%, order:-1) so the textarea sits

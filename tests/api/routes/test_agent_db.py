@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timezone
+from unittest.mock import AsyncMock
 
 import pytest
 from fastapi.testclient import TestClient
@@ -164,6 +165,29 @@ class TestListTeamSessionsWithData:
             assert by_id[str(idle_id)]["running"] is False
         finally:
             await memory_stream_store.clear(str(running_id))
+
+    @pytest.mark.asyncio
+    async def test_session_mode_patch_persists_plan_and_hides_transition(
+        self, app_with_team, tmp_path
+    ):
+        import app.core.db as _db
+
+        lead_id = uuid.uuid7()
+        async with _db.async_session_factory() as db:
+            async with db.begin():
+                await _create_team_session(db, lead_id, workspace=str(tmp_path))
+
+        client = TestClient(app_with_team)
+        response = client.patch(
+            f"/api/agent/sessions/{lead_id}", json={"interaction_mode": "plan"}
+        )
+
+        assert response.status_code == 200
+        assert response.json()["interaction_mode"] == "plan"
+
+        history = client.get(f"/api/agent/{lead_id}/history")
+        assert history.status_code == 200
+        assert history.json()["lead"]["messages"] == []
 
     @pytest.mark.asyncio
     async def test_list_sessions_marks_sessions_awaiting_input(self, app_with_team):
@@ -547,6 +571,32 @@ class TestResolveTeamSession:
 
 
 class TestUpdateTeamSession:
+    @pytest.mark.asyncio
+    async def test_update_session_mode_stops_an_active_turn(
+        self, app_with_team, test_team, tmp_path, monkeypatch
+    ):
+        import app.core.db as _db
+
+        lead_id = uuid.uuid7()
+        async with _db.async_session_factory() as db:
+            async with db.begin():
+                await _create_team_session(db, lead_id, workspace=str(tmp_path))
+
+        test_team.state = "working"
+        test_team.handle_stop = AsyncMock()
+        monkeypatch.setattr(
+            "app.services.agent_manager.find_live_session_serving_session",
+            lambda _session_id: test_team,
+        )
+
+        client = TestClient(app_with_team)
+        response = client.patch(
+            f"/api/agent/sessions/{lead_id}", json={"interaction_mode": "plan"}
+        )
+
+        assert response.status_code == 200
+        test_team.handle_stop.assert_awaited_once()
+
     @pytest.mark.asyncio
     async def test_update_session_title(self, app_with_team):
         import app.core.db as _db

@@ -117,7 +117,7 @@ run from the terminal.
   visible warning when a capped workspace listing omits files.
 - **Plan and Code interaction modes** `[v2.14.0]` — the expanded composer switches an
   existing session between Code (default) and Plan without starting a new
-  chat; `Tab` also toggles an empty composer. Mode transitions are preserved via
+  chat; `Tab` also toggles mode from the composer. Mode transitions are preserved via
   append-only hidden context notes in session history. In Plan mode, the agent explores
   the repository and produces decision-complete implementation plans, while the runtime
   strictly blocks agent-initiated writes, patches, and arbitrary shell commands.

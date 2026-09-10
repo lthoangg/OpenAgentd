@@ -454,7 +454,7 @@ describe("InputComposer — interaction mode", () => {
     expect(screen.getByRole("button", { name: "Code mode" })).toBeTruthy()
   })
 
-  it("switches modes with Tab only from an empty composer", async () => {
+  it("switches modes with Tab when empty and when containing a draft", async () => {
     const user = userEvent.setup()
     const onInteractionModeChange = mock(() => {})
     render(
@@ -472,7 +472,45 @@ describe("InputComposer — interaction mode", () => {
 
     await user.type(textarea, "Keep this draft")
     await user.keyboard("{Tab}")
-    expect(onInteractionModeChange).toHaveBeenCalledTimes(1)
+    expect(onInteractionModeChange).toHaveBeenCalledTimes(2)
+    expect((textarea as HTMLTextAreaElement).value).toBe("Keep this draft")
+  })
+
+  it("does not switch modes on Tab when interactionModeDisabled is true", async () => {
+    const user = userEvent.setup()
+    const onInteractionModeChange = mock(() => {})
+    render(
+      <InputComposer
+        interactionMode="code"
+        interactionModeDisabled
+        onInteractionModeChange={onInteractionModeChange}
+        onSubmit={() => {}}
+      />,
+    )
+
+    const textarea = screen.getByLabelText("Message input")
+    await user.click(textarea)
+    await user.type(textarea, "Draft message")
+    await user.keyboard("{Tab}")
+    expect(onInteractionModeChange).not.toHaveBeenCalled()
+  })
+
+  it("does not switch modes on Shift+Tab", async () => {
+    const user = userEvent.setup()
+    const onInteractionModeChange = mock(() => {})
+    render(
+      <InputComposer
+        interactionMode="code"
+        onInteractionModeChange={onInteractionModeChange}
+        onSubmit={() => {}}
+      />,
+    )
+
+    const textarea = screen.getByLabelText("Message input")
+    await user.click(textarea)
+    await user.type(textarea, "Draft message")
+    await user.keyboard("{Shift>}{Tab}{/Shift}")
+    expect(onInteractionModeChange).not.toHaveBeenCalled()
   })
 })
 

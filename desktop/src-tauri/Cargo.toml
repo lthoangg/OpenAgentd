@@ -1,6 +1,6 @@
 [package]
 name = "openagentd-desktop"
-version = "2.14.0"
+version = "2.15.0"
 description = "OpenAgentd — on-machine coding agent (desktop shell)"
 authors = ["openagentd contributors"]
 license = "Apache-2.0"

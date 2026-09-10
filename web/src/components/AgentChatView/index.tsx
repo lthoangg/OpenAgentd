@@ -373,7 +373,7 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
     try {
       await useAgentStore.getState().setSessionInteractionMode('code')
       const current = useAgentStore.getState()
-      await sendMessage('Start implementing the plan', undefined, {
+      await sendMessage('Approve, proceed.', undefined, {
         workspace,
         model: current.sessionModel || null,
         thinkingLevel: current.sessionThinkingLevel || null,

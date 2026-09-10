@@ -197,7 +197,7 @@ describe("AssistantTurn — onStartImplementing CTA", () => {
     if (!onStartImplementing) return null
     return (
       <button onClick={onStartImplementing} data-testid="plan-action-btn">
-        Start implementing
+        Approve
       </button>
     )
   }

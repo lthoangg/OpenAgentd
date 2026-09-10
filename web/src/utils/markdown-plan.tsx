@@ -288,10 +288,10 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({ children }: Pro
             size="xs"
             onClick={onStartImplementing}
             className="gap-1 rounded-full font-medium shadow-xs"
-            aria-label="Start implementing"
+            aria-label="Approve"
           >
             <Play size={10} className="fill-current" aria-hidden="true" />
-            Start implementing
+            Approve
           </Button>
         )}
         <span className="h-px flex-1 bg-(--color-border)" aria-hidden />

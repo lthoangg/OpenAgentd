@@ -120,7 +120,7 @@ run from the terminal.
   chat; `Tab` also toggles mode from the composer. Mode transitions are preserved via
   append-only hidden context notes in session history. In Plan mode, the agent explores
   the repository and produces decision-complete implementation plans, while the runtime
-  strictly blocks mutating file operations and patches while permitting read-only inspection and testing via shell. Proposed plans render with centered divider rules and an embedded "Start implementing" action that transitions the session to Code mode and initiates execution.
+  strictly blocks mutating file operations and patches while permitting read-only inspection and testing via shell. Proposed plans render with centered divider rules and an embedded "Approve" action that transitions the session to Code mode and initiates execution.
 - **Fullscreen view mode and traffic-light space reclamation** `[v2.0.0]` — automatically
   detects macOS fullscreen mode and reclaims the window traffic-light header padding to
   maximise message and diff reading area.

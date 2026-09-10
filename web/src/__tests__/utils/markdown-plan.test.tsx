@@ -127,7 +127,7 @@ Ready to go.
     expect(planDivider).not.toBeNull()
     const button = planDivider?.querySelector('button')
     expect(button).not.toBeNull()
-    expect(button?.textContent).toContain('Start implementing')
+    expect(button?.textContent).toContain('Approve')
 
     await userEvent.click(button!)
     expect(onStartImplementing).toHaveBeenCalledTimes(1)

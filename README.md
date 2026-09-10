@@ -119,9 +119,9 @@ cd web && bun dev
 
 ### Built for the whole loop
 
-**Plan and delegate.** Ask for a plan before code changes, then let a lead split independent work across specialists. View the unified timeline when you want the story, or focus on one agent when you need detail.
+**Plan and code.** Toggle between Plan mode for read-only exploration and decision-complete plans, and Code mode for surgical implementation—switch mid-session right from the composer or with `Tab`.
 
-**Build and inspect.** Attach files, browse a coding workspace, use `@` mentions, review real-time diffs, and inspect structured tool output without leaving the conversation.
+**Build and inspect.** Attach files, browse a coding workspace, use `@` mentions, review real-time diffs, and inspect structured tool output without leaving the conversation. Delegate independent sub-tasks across specialists with a unified timeline.
 
 **Operate with confidence.** Manage providers, MCP servers, skills, path denylist permissions, scheduled tasks, todos, and local telemetry from the coding workspace. OpenAgentd supports desktop, browser, and touch-first mobile clients against the same API.
 

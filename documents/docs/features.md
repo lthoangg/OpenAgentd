@@ -2,7 +2,7 @@
 title: Features
 description: Canonical, version-cited catalogue of shipped user-visible OpenAgentd features.
 status: stable
-updated: 2026-09-09
+updated: 2026-09-10
 ---
 
 # Features
@@ -115,6 +115,12 @@ run from the terminal.
   opens files in the active workspace; `⌘⇧P`/`Ctrl+Shift+P` searches app actions.
   Both use the compact warm-paper search surface, keyboard navigation, and a
   visible warning when a capped workspace listing omits files.
+- **Plan and Code interaction modes** `[v2.13.0]` — the expanded composer switches an
+  existing session between Code (default) and Plan without starting a new
+  chat; `Tab` also toggles an empty composer. Mode transitions are preserved via
+  append-only hidden context notes in session history. In Plan mode, the agent explores
+  the repository and produces decision-complete implementation plans, while the runtime
+  strictly blocks agent-initiated writes, patches, and arbitrary shell commands.
 - **Fullscreen view mode and traffic-light space reclamation** `[v2.0.0]` — automatically
   detects macOS fullscreen mode and reclaims the window traffic-light header padding to
   maximise message and diff reading area.
@@ -250,11 +256,10 @@ run from the terminal.
   - **`/init` AGENTS.md analysis & generation** `[v1.9.0, v2.0.0]` — analyzes codebase
     structure and generates standard `AGENTS.md` context files at repository root and
     subdirectories with a guided analysis protocol.
-  - **Plan / Code interaction modes** `[v2.13.0]` — the expanded composer switches an
-    existing session between Code (default) and Plan without starting a new
-    chat; `Tab` also toggles an empty composer. Mode transitions are preserved in session history; Plan permits
-    repository and web research but blocks agent-initiated writes, shell
-    commands, scheduling, and other side-effectful tools.
+  - **`/plan` slash command** `[v1.96.0]` *(deprecated — superseded by Plan and Code interaction modes in v2.13.0)* — triggers
+    a research-then-approve workflow: the agent investigates the problem space and proposes a step-by-step
+    implementation plan, then waits for explicit approval before writing any code. Superseded by the first-class
+    Plan and Code interaction modes in the input composer.
 - **Bang shell commands** `[v1.39.0]` *(deprecated — removed in v2.0.0; use the coding
   workspace terminal instead)* — start a message with `!` to run the
   remainder directly through the shell tool without a model turn; history stored

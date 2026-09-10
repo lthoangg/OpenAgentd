@@ -795,6 +795,23 @@ describe("hasPlanContent", () => {
     expect(hasPlanContent(blocks)).toBe(true);
   });
 
+  it("returns false when <proposed_plan> is wrapped in backticks", () => {
+    expect(
+      hasPlanContent([{ id: "b1", type: "text", content: "Finish with a structured `<proposed_plan>` block:" }]),
+    ).toBe(false);
+    expect(
+      hasPlanContent([{ id: "b1", type: "text", content: "Use `<proposed_plan>` and `</proposed_plan>`" }]),
+    ).toBe(false);
+    expect(
+      hasPlanContent([{ id: "b1", type: "text", content: "```xml\n<proposed_plan>\n## Summary\n</proposed_plan>\n```" }]),
+    ).toBe(false);
+  });
+
+  it("returns true when un-backticked plan is present alongside backticked tag", () => {
+    const content = "Use `<proposed_plan>` to format:\n\n<proposed_plan>\n## Summary\nFix the bug\n</proposed_plan>";
+    expect(hasPlanContent([{ id: "b1", type: "text", content }])).toBe(true);
+  });
+
   it("returns true when block contains markdown plan headers", () => {
     expect(hasPlanContent([{ id: "b1", type: "text", content: "## Proposed Plan\n1. Do thing" }])).toBe(true);
     expect(hasPlanContent([{ id: "b1", type: "text", content: "## Implementation Plan\n1. Do thing" }])).toBe(true);

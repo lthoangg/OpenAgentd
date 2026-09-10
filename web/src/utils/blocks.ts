@@ -80,6 +80,13 @@ export function latestDirectUserBlockId(blocks: ContentBlock[]): string | undefi
 const PLAN_CONTENT_REGEX =
   /<proposed_plan\b|^\s*(?:#+\s*(?:proposed\s+|implementation\s+)?plan\b|\*\*(?:proposed\s+|implementation\s+)?plan:?\*\*)/im
 
+function stripBacktickCode(content: string): string {
+  if (!content.includes('`') && !content.includes('~')) return content
+  return content
+    .replace(/(?:^|\n)[ ]{0,3}(`{3,}|~{3,})[\s\S]*?(?:\n[ ]{0,3}\1\s*(?=\n|$)|$)/g, '\n')
+    .replace(/(`+)(?:[\s\S]*?)\1/g, '')
+}
+
 /**
  * Returns true when the provided content blocks contain an explicit plan tag
  * or plan heading (`<proposed_plan>`, `## Proposed Plan`, `## Implementation Plan`,
@@ -90,7 +97,7 @@ export function hasPlanContent(blocks: ContentBlock[]): boolean {
     (b) =>
       (b.type === 'text' || !b.type) &&
       typeof b.content === 'string' &&
-      PLAN_CONTENT_REGEX.test(b.content),
+      PLAN_CONTENT_REGEX.test(stripBacktickCode(b.content)),
   )
 }
 

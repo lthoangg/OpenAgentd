@@ -16,6 +16,33 @@ describe('normalizeProposedPlanTags', () => {
     expect(normalized).toContain('Here is the plan:\n\n<proposed_plan>\n')
     expect(normalized).toContain('\n</proposed_plan>\n\nthat is all.')
   })
+
+  it('leaves <proposed_plan> untouched when wrapped in inline backticks', () => {
+    const text = 'Finish with a structured `<proposed_plan>` block:'
+    expect(normalizeProposedPlanTags(text)).toBe(text)
+  })
+
+  it('leaves <proposed_plan> and </proposed_plan> untouched when wrapped in backticks', () => {
+    const text = 'Wrap your plan in `<proposed_plan>` and `</proposed_plan>` tags.'
+    expect(normalizeProposedPlanTags(text)).toBe(text)
+  })
+
+  it('leaves plan untouched when wrapped in inline backticks', () => {
+    const text = '`Here is <proposed_plan>## Step 1</proposed_plan>`'
+    expect(normalizeProposedPlanTags(text)).toBe(text)
+  })
+
+  it('leaves <proposed_plan> untouched inside fenced code blocks', () => {
+    const text = '```xml\n<proposed_plan>\n## Summary\n</proposed_plan>\n```'
+    expect(normalizeProposedPlanTags(text)).toBe(text)
+  })
+
+  it('normalizes un-backticked tags while preserving backticked tags in mixed content', () => {
+    const text = 'Use `<proposed_plan>`: Here is the plan: <proposed_plan>## Step 1</proposed_plan> that is all.'
+    const normalized = normalizeProposedPlanTags(text)
+    expect(normalized).toContain('Use `<proposed_plan>`:')
+    expect(normalized).toContain('\n\n<proposed_plan>\n## Step 1\n</proposed_plan>\n\nthat is all.')
+  })
 })
 
 describe('MarkdownBlock <proposed_plan> rendering', () => {
@@ -104,5 +131,79 @@ Ready to go.
 
     await userEvent.click(button!)
     expect(onStartImplementing).toHaveBeenCalledTimes(1)
+  })
+
+  it('renders normal markdown code and no plan divider when <proposed_plan> is wrapped in backticks', () => {
+    const content = 'Finish with a structured `<proposed_plan>` block:'
+    const { container } = render(<MarkdownBlock content={content} />)
+
+    const planDivider = container.querySelector('[data-testid="proposed-plan-divider"]')
+    expect(planDivider).toBeNull()
+
+    const code = container.querySelector('code')
+    expect(code).not.toBeNull()
+    expect(code?.textContent).toBe('<proposed_plan>')
+  })
+
+  it('renders normal markdown code and no plan divider when entire plan is wrapped in backticks', () => {
+    const content = '`<proposed_plan>## Step 1</proposed_plan>`'
+    const { container } = render(<MarkdownBlock content={content} />)
+
+    const planDivider = container.querySelector('[data-testid="proposed-plan-divider"]')
+    expect(planDivider).toBeNull()
+
+    const code = container.querySelector('code')
+    expect(code).not.toBeNull()
+    expect(code?.textContent).toContain('<proposed_plan>## Step 1</proposed_plan>')
+  })
+
+  it('renders fenced code block and no plan divider when inside a fenced code block', () => {
+    const content = '```xml\n<proposed_plan>\n## Summary\nFix the bug\n</proposed_plan>\n```'
+    const { container } = render(<MarkdownBlock content={content} />)
+
+    const planDivider = container.querySelector('[data-testid="proposed-plan-divider"]')
+    expect(planDivider).toBeNull()
+
+    const pre = container.querySelector('pre')
+    expect(pre).not.toBeNull()
+    expect(pre?.textContent).toContain('<proposed_plan>')
+  })
+
+  it('renders both inline code and plan divider in mixed content', () => {
+    const content = `
+Finish with a \`<proposed_plan>\` block:
+
+<proposed_plan>
+## Summary
+Fix the bug.
+</proposed_plan>
+`
+    const { container } = render(<MarkdownBlock content={content} />)
+
+    const code = container.querySelector('code')
+    expect(code).not.toBeNull()
+    expect(code?.textContent).toBe('<proposed_plan>')
+
+    const planDivider = container.querySelector('[data-testid="proposed-plan-divider"]')
+    expect(planDivider).not.toBeNull()
+    expect(planDivider?.textContent).toContain('Summary')
+    expect(planDivider?.textContent).toContain('Fix the bug.')
+  })
+
+  it('does not prematurely close plan divider when plan body mentions </proposed_plan> in backticks', () => {
+    const content = `
+<proposed_plan>
+## Note
+Remember to close with \`</proposed_plan>\`.
+
+## Final Step
+Done.
+</proposed_plan>
+`
+    const { container } = render(<MarkdownBlock content={content} />)
+    const planDivider = container.querySelector('[data-testid="proposed-plan-divider"]')
+    expect(planDivider).not.toBeNull()
+    expect(planDivider?.textContent).toContain('Final Step')
+    expect(planDivider?.textContent).toContain('Done.')
   })
 })

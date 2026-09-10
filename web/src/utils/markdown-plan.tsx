@@ -18,15 +18,145 @@ export interface PlanActionContextValue {
 export const PlanActionContext = createContext<PlanActionContextValue>({})
 
 /**
+ * Find all intervals [start, end] in markdown text that are inside code,
+ * either fenced code blocks (``` or ~~~) or inline code spans (`...`).
+ */
+export function getMarkdownCodeIntervals(content: string): Array<[number, number]> {
+  const intervals: Array<[number, number]> = []
+  const len = content.length
+  let i = 0
+
+  while (i < len) {
+    // 1. Fenced code block: must start at start of line with 0-3 leading spaces
+    const isLineStart = i === 0 || content[i - 1] === '\n'
+    if (isLineStart) {
+      let indent = 0
+      let p = i
+      while (p < len && content[p] === ' ' && indent < 3) {
+        p++
+        indent++
+      }
+      const fenceChar = content[p]
+      if (fenceChar === '`' || fenceChar === '~') {
+        let fenceLen = 0
+        let q = p
+        while (q < len && content[q] === fenceChar) {
+          q++
+          fenceLen++
+        }
+        if (fenceLen >= 3) {
+          const lineEnd = content.indexOf('\n', q)
+          if (lineEnd === -1) {
+            intervals.push([i, len])
+            break
+          }
+          let closeFound = false
+          let cur = lineEnd + 1
+          while (cur < len) {
+            const nextLineEnd = content.indexOf('\n', cur)
+            const line = nextLineEnd === -1 ? content.slice(cur) : content.slice(cur, nextLineEnd)
+            const closeMatch = line.match(/^[ ]{0,3}(`+|~+)\s*$/)
+            if (closeMatch && closeMatch[1]?.[0] === fenceChar && closeMatch[1].length >= fenceLen) {
+              const blockEnd = nextLineEnd === -1 ? len : nextLineEnd + 1
+              intervals.push([i, blockEnd])
+              i = blockEnd
+              closeFound = true
+              break
+            }
+            if (nextLineEnd === -1) break
+            cur = nextLineEnd + 1
+          }
+          if (closeFound) continue
+          // Unclosed fence (e.g. streaming)
+          intervals.push([i, len])
+          break
+        }
+      }
+    }
+
+    // 2. Inline code span: backtick run
+    if (content[i] === '`') {
+      let backtickLen = 0
+      let p = i
+      while (p < len && content[p] === '`') {
+        p++
+        backtickLen++
+      }
+      let closeIdx = -1
+      let q = p
+      while (q < len) {
+        if (content[q] === '`') {
+          let count = 0
+          while (q < len && content[q] === '`') {
+            q++
+            count++
+          }
+          if (count === backtickLen) {
+            closeIdx = q
+            break
+          }
+        } else {
+          q++
+        }
+      }
+
+      if (closeIdx !== -1) {
+        intervals.push([i, closeIdx])
+        i = closeIdx
+        continue
+      } else {
+        // Unclosed inline backticks (e.g. streaming) up to next blank line or EOF
+        const nextBlankLine = content.indexOf('\n\n', p)
+        const spanEnd = nextBlankLine === -1 ? len : nextBlankLine
+        intervals.push([i, spanEnd])
+        i = spanEnd
+        continue
+      }
+    }
+
+    i++
+  }
+
+  return intervals
+}
+
+export function isRangeInsideCode(intervals: Array<[number, number]>, start: number, end: number): boolean {
+  return intervals.some(([cStart, cEnd]) => cStart <= start && end <= cEnd)
+}
+
+/**
  * Normalize `<proposed_plan>` and `</proposed_plan>` boundaries so they always
  * sit on their own lines, enabling the block parser to recognize them reliably
  * even when preceded or followed by inline text or tight formatting.
+ *
+ * If `<proposed_plan>` or `</proposed_plan>` is wrapped by backticks (inline code
+ * or code fence), it is left untouched so it renders as normal markdown.
  */
 export function normalizeProposedPlanTags(content: string): string {
   if (!content.includes('proposed_plan')) return content
-  return content
-    .replace(/([^\n])\s*<proposed_plan\b([^>]*)>/gi, '$1\n\n<proposed_plan$2>\n')
-    .replace(/<\/proposed_plan>\s*([^\n])/gi, '\n</proposed_plan>\n\n$1')
+  const intervals = getMarkdownCodeIntervals(content)
+
+  let result = content.replace(/([^\n])\s*(<proposed_plan\b[^>]*>)/gi, (match, prefix, tag, offset) => {
+    const tagStart = offset + match.length - tag.length
+    const tagEnd = offset + match.length
+    if (isRangeInsideCode(intervals, tagStart, tagEnd)) {
+      return match
+    }
+    return prefix + '\n\n' + tag + '\n'
+  })
+
+  const closingIntervals = result === content ? intervals : getMarkdownCodeIntervals(result)
+
+  result = result.replace(/(<\/proposed_plan>)\s*([^\n])/gi, (match, tag, suffix, offset) => {
+    const tagStart = offset
+    const tagEnd = offset + tag.length
+    if (isRangeInsideCode(closingIntervals, tagStart, tagEnd)) {
+      return match
+    }
+    return '\n' + tag + '\n\n' + suffix
+  })
+
+  return result
 }
 
 /**
@@ -36,28 +166,36 @@ export function normalizeProposedPlanTags(content: string): string {
 export function parseProposedPlanBlock(context: BlockParseContext): BlockNode | undefined {
   const line = context.lines[context.index] ?? ''
   const trimmed = line.trim()
+  if (trimmed.startsWith('`') || trimmed.endsWith('`')) return undefined
+
   const openMatch = trimmed.match(/^<proposed_plan\b[^>]*>(.*)$/i)
   if (!openMatch) return undefined
 
   const firstRest = openMatch[1]?.trim() ?? ''
 
   // Single-line block: <proposed_plan>...content...</proposed_plan>
-  const closeMatch = firstRest.match(/^([\s\S]*?)<\/proposed_plan>/i)
-  if (closeMatch) {
-    context.consume(1)
-    const innerText = closeMatch[1].trim()
-    const children = innerText ? context.parseBlocks(innerText) : []
-    return {
-      type: 'component',
-      name: 'proposed-plan',
-      tagName: 'proposed-plan',
-      attributes: {},
-      properties: {},
-      children,
+  // Ensure the closing tag is not wrapped in backticks
+  const closeRegex = /<\/proposed_plan>/gi
+  let match: RegExpExecArray | null
+  while ((match = closeRegex.exec(firstRest)) !== null) {
+    const closeIdx = match.index
+    const lineIntervals = getMarkdownCodeIntervals(firstRest)
+    if (!isRangeInsideCode(lineIntervals, closeIdx, closeIdx + match[0].length)) {
+      context.consume(1)
+      const innerText = firstRest.slice(0, closeIdx).trim()
+      const children = innerText ? context.parseBlocks(innerText) : []
+      return {
+        type: 'component',
+        name: 'proposed-plan',
+        tagName: 'proposed-plan',
+        attributes: {},
+        properties: {},
+        children,
+      }
     }
   }
 
-  // Multi-line block: scan until </proposed_plan> or EOF (streaming)
+  // Multi-line block: scan until </proposed_plan> (not in backticks) or EOF (streaming)
   const bodyLines: string[] = []
   if (firstRest) bodyLines.push(firstRest)
 
@@ -66,14 +204,21 @@ export function parseProposedPlanBlock(context: BlockParseContext): BlockNode | 
 
   while (cursor < context.lines.length) {
     const currentLine = context.lines[cursor] ?? ''
-    const closeIdx = currentLine.toLowerCase().indexOf('</proposed_plan>')
-    if (closeIdx !== -1) {
-      closed = true
-      const beforeClose = currentLine.slice(0, closeIdx).trim()
-      if (beforeClose) bodyLines.push(beforeClose)
-      cursor++
-      break
+    closeRegex.lastIndex = 0
+    let foundClose = false
+    while ((match = closeRegex.exec(currentLine)) !== null) {
+      const closeIdx = match.index
+      const lineIntervals = getMarkdownCodeIntervals(currentLine)
+      if (!isRangeInsideCode(lineIntervals, closeIdx, closeIdx + match[0].length)) {
+        closed = true
+        foundClose = true
+        const beforeClose = currentLine.slice(0, closeIdx).trim()
+        if (beforeClose) bodyLines.push(beforeClose)
+        cursor++
+        break
+      }
     }
+    if (foundClose) break
     bodyLines.push(currentLine)
     cursor++
   }

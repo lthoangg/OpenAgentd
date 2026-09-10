@@ -18,15 +18,15 @@ class TodoAction(BaseModel):
     """A single task action for the task list."""
 
     action: Literal["create", "update", "delete", "read", "clear"] = Field(
-        description="Action to perform: create, update, delete, read, or clear."
+        description="Action to perform: 'create', 'update', 'delete', 'read', or 'clear'."
     )
     task_id: str | None = Field(
         default=None,
-        description="ID of the task to update or delete (e.g. 'task_1').",
+        description="Unique ID of the task to update or delete (e.g. 'task_1'). Required for update and delete.",
     )
     content: str | None = Field(
         default=None,
-        description="Task description (required for create; omit on update to leave unchanged).",
+        description="Task title or description (required for 'create'; omit on 'update' to leave unchanged).",
     )
     status: (
         Literal["pending", "in_progress", "completed", "cancelled", "finished"] | None

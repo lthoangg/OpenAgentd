@@ -57,14 +57,14 @@ class ReadArgs(BaseModel):
     offset: int = Field(
         default=1,
         ge=1,
-        description="1-indexed starting line. Ignored when path is a directory.",
+        description="1-indexed starting line number for paginated reading. Ignored when path is a directory.",
     )
     limit: int | None = Field(
         default=None,
         ge=1,
         description=(
-            "Maximum lines to return; omit for all remaining lines. Ignored "
-            "when path is a directory."
+            "Maximum lines to return from offset; omit or pass null for all remaining "
+            "lines. Ignored when path is a directory."
         ),
     )
     outline: bool = Field(

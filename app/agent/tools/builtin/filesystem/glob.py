@@ -21,8 +21,8 @@ from app.agent.tools.builtin.filesystem._ignore import (
 from app.agent.tools.registry import Tool
 
 _DESCRIPTION = (
-    "Find files by glob pattern. Use match='path' for full paths or match='name' "
-    "for filenames only."
+    "Find files by glob pattern across the workspace. Use match='path' for full paths or "
+    "match='name' for filenames only. Automatically filters out ignored and noisy directories."
 )
 
 
@@ -43,7 +43,7 @@ class GlobArgs(BaseModel):
     pattern: str = Field(
         validation_alias=AliasChoices("pattern", "glob"),
         description=(
-            "Glob pattern. Use '**/*.py' or 'src/**/*.ts' to match by full path, "
+            "Glob pattern to match. Use '**/*.py' or 'src/**/*.ts' to match by full path, "
             "or '*.py' with match='name' to match filename only. Brace "
             "alternation works: 'src/**/*.{ts,tsx}'. A pattern with no '/' is "
             "retried at any depth if nothing matches at the top level."
@@ -52,16 +52,16 @@ class GlobArgs(BaseModel):
     directory: str = Field(
         default=".",
         validation_alias=AliasChoices("directory", "dir", "path"),
-        description="Search root; '.' is the workspace root.",
+        description="Search root directory relative to the workspace; '.' is the workspace root.",
     )
     match: Literal["path", "name"] = Field(
         default="path",
-        description="Match full relative paths or filenames only.",
+        description="Match full relative paths ('path') or filenames only ('name'). Defaults to 'path'.",
     )
     max_results: int = Field(
         default=200,
         ge=1,
-        description="Maximum number of results to return.",
+        description="Maximum number of matching file paths to return (defaults to 200).",
     )
 
 

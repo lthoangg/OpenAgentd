@@ -638,12 +638,22 @@ class WebSearchArgs(BaseModel):
 
     query: str = Field(
         validation_alias=AliasChoices("query", "q", "search_query"),
-        description="Search query string.",
+        description="Search query string (keywords, error messages, documentation topics, or API names).",
     )
-    max_results: int = Field(default=5, ge=1, le=20, description="Results to return.")
-    page: int = Field(default=1, ge=1, description="Results page number.")
+    max_results: int = Field(
+        default=5,
+        ge=1,
+        le=20,
+        description="Maximum number of search results to return (1-20, defaults to 5).",
+    )
+    page: int = Field(
+        default=1,
+        ge=1,
+        description="Results page number for pagination (1-indexed, defaults to 1).",
+    )
     safesearch: Literal["on", "moderate", "off"] = Field(
-        default="moderate", description="Safe-search setting."
+        default="moderate",
+        description="Safe-search content filtering setting: 'moderate' (default), 'on', or 'off'.",
     )
 
 
@@ -715,16 +725,17 @@ class WebFetchArgs(BaseModel):
 
     url: str = Field(
         validation_alias=AliasChoices("url", "uri", "link"),
-        description="URL to fetch. https:// prepended if no scheme.",
+        description="URL to fetch. 'https://' is prepended if no scheme is specified.",
     )
     format: WebFetchFormat = Field(  # noqa: A003
-        default="markdown", description="Output format: markdown, html, text, or raw."
+        default="markdown",
+        description="Output conversion format: 'markdown' (default; converted readable text), 'html' (raw HTML), 'text' (plain text), or 'raw' (verbatim response).",
     )
     timeout: int | None = Field(
         default=None,
         ge=1,
         le=120,
-        description="Request timeout in seconds.",
+        description="Request timeout in seconds (1-120; defaults to 30s).",
     )
 
     @field_validator("url")

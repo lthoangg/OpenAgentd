@@ -88,12 +88,13 @@ class ImageArgs(BaseModel):
 
     prompt: str = Field(
         description=(
-            "Visual description for text-to-image, or the transformation "
+            "Visual description for text-to-image generation, or the transformation "
             "to apply when `images` is provided."
         )
     )
     filename: str | None = Field(
-        default=None, description="Optional slug for the saved file (no extension)."
+        default=None,
+        description="Optional slug for the saved file in the workspace (no extension).",
     )
     images: list[str] | None = Field(
         default=None,

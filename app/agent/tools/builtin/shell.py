@@ -106,18 +106,18 @@ class ShellArgs(BaseModel):
 
     command: str = Field(
         validation_alias=AliasChoices("command", "cmd"),
-        description=f"{_SHELL_KIND.capitalize()} command to run.",
+        description=f"The {_SHELL_KIND} command string to execute non-interactively.",
     )
     description: str = Field(
         default="",
-        description=("Purpose shown in logs and the activity UI."),
+        description="Short human-readable summary of the command's purpose, shown in logs and UI status.",
     )
     workdir: str | None = Field(
         default=None,
         validation_alias=AliasChoices("workdir", "cwd", "dir"),
         description=(
-            "Working directory; relative paths resolve inside the workspace, while "
-            "absolute paths may run outside it. Prefer this over cd."
+            "Working directory for command execution. Relative paths resolve inside "
+            "the workspace, while absolute paths may run outside it. Prefer this over cd."
         ),
     )
     timeout_seconds: int | None = Field(

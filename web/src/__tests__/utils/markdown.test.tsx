@@ -1,6 +1,6 @@
-import { describe, it, expect, spyOn } from "bun:test";
-import { render, screen } from "@testing-library/react";
-import { fixNestedFences, MarkdownBlock } from "@/utils/markdown";
+import { describe, it, expect, spyOn, mock } from "bun:test";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { fixNestedFences, MarkdownBlock, tableToMarkdown } from "@/utils/markdown";
 
 // ---------------------------------------------------------------------------
 // fixNestedFences
@@ -367,6 +367,97 @@ describe("MarkdownBlock tables", () => {
     const td = document.querySelector("td");
     expect(td).not.toBeNull();
     expect(td!.querySelectorAll("br").length).toBe(3);
+  });
+
+  it("renders a copy button in the top right of the table wrap with hover-only visibility", () => {
+    render(
+      <MarkdownBlock
+        content={["| A | B |", "|---|---|", "| 1 | 2 |"].join("\n")}
+      />,
+    );
+
+    const wrapper = document.querySelector(".oa-table-wrap");
+    expect(wrapper).not.toBeNull();
+    expect(wrapper?.className).toContain("group");
+    expect(wrapper?.className).toContain("relative");
+
+    const copyBtn = screen.getByRole("button", { name: /copy table/i });
+    expect(copyBtn).toBeTruthy();
+
+    const btnContainer = copyBtn.closest(".absolute");
+    expect(btnContainer).not.toBeNull();
+    expect(btnContainer?.className).toContain("top-1");
+    expect(btnContainer?.className).toContain("right-1");
+    expect(btnContainer?.className).toContain("opacity-0");
+    expect(btnContainer?.className).toContain("group-hover:opacity-100");
+  });
+
+  it("copies table content as formatted markdown when copy button is clicked", async () => {
+    const writeText = mock(() => Promise.resolve());
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText },
+      configurable: true,
+    });
+
+    render(
+      <MarkdownBlock
+        content={["| Name | Age |", "|---|---|", "| Alice | 30 |", "| Bob | 25 |"].join("\n")}
+      />,
+    );
+
+    const copyBtn = screen.getByRole("button", { name: /copy table/i });
+    fireEvent.click(copyBtn);
+
+    await waitFor(() =>
+      expect(writeText).toHaveBeenCalledWith(
+        ["| Name | Age |", "| --- | --- |", "| Alice | 30 |", "| Bob | 25 |"].join("\n"),
+      ),
+    );
+    await waitFor(() => expect(screen.getByRole("button", { name: "Copied" })).toBeTruthy());
+  });
+
+  it("copies column alignments in the separator row", async () => {
+    const writeText = mock(() => Promise.resolve());
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText },
+      configurable: true,
+    });
+
+    render(
+      <MarkdownBlock
+        content={[
+          "| Left | Center | Right | Default |",
+          "|:---|:---:|---:|---|",
+          "| 1 | 2 | 3 | 4 |",
+        ].join("\n")}
+      />,
+    );
+
+    const copyBtn = screen.getByRole("button", { name: /copy table/i });
+    fireEvent.click(copyBtn);
+
+    await waitFor(() =>
+      expect(writeText).toHaveBeenCalledWith(
+        [
+          "| Left | Center | Right | Default |",
+          "| :--- | :---: | ---: | --- |",
+          "| 1 | 2 | 3 | 4 |",
+        ].join("\n"),
+      ),
+    );
+  });
+
+  it("tableToMarkdown handles cells with line breaks and empty tables", () => {
+    const div = document.createElement("div");
+    div.innerHTML = "<table><thead><tr><th>Col</th></tr></thead><tbody><tr><td>Line 1<br>Line 2</td></tr></tbody></table>";
+    const table = div.querySelector("table")!;
+    expect(tableToMarkdown(table)).toBe(
+      ["| Col |", "| --- |", "| Line 1<br>Line 2 |"].join("\n"),
+    );
+
+    const emptyDiv = document.createElement("div");
+    emptyDiv.innerHTML = "<table></table>";
+    expect(tableToMarkdown(emptyDiv.querySelector("table")!)).toBe("");
   });
 });
 

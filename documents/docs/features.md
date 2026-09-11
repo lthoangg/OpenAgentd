@@ -302,6 +302,10 @@ run from the terminal.
   rendering is powered by `@tanstack/markdown` and code fences are highlighted with
   `@tanstack/highlight`, sharing one unified highlighter and caching highlights across
   re-renders for fluid scrolling and streaming.
+- **Markdown table copy button** `[v2.15.0]` — hovering over rendered markdown tables
+  reveals a compact copy button in the top-right corner that copies the table to
+  the clipboard as formatted GitHub Flavored Markdown (including column alignments
+  and line breaks), with zero overhead during rendering or streaming.
 - **Pin chat transcript via CSS `overflow-anchor`** `[v2.0.0]` — pins chat transcript
   scrolling using native browser `overflow-anchor` instead of per-frame JS `scrollTop`
   calculations, eliminating stream stutter and CPU churn during fast agent output.

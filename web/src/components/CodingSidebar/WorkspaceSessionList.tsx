@@ -1,6 +1,6 @@
-import { useEffect, useRef } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import type React from 'react'
-import { Loader2, Pencil, Trash2 } from 'lucide-react'
+import { ChevronRight, Loader2, Pencil, Trash2 } from 'lucide-react'
 import { useCodingWorkspaceSessionsQuery, useSessionSubagentsQuery } from '@/queries/useSessionsQuery'
 import type { SessionResponse } from '@/api/types'
 import { formatRelativeDate } from '@/utils/format'
@@ -56,9 +56,47 @@ function WorkspaceSessionRow({
           }))
         : (liveMembers ?? []))
 
+  const hasSubagents = subagents.length > 0
+  const isChildActive = subagents.some((sub) => sub.session_id === currentSessionId)
+  const hasWaitingSubagent = subagents.some(
+    (sub) => sub.status === 'waiting_lead' || sub.has_pending_question
+  )
+  const hasWorkingSubagent = subagents.some((sub) => sub.status === 'working')
+  const hasActiveWork = hasWaitingSubagent || hasWorkingSubagent
+
+  const [expandedOverride, setExpandedOverride] = useState<boolean | null>(null)
+  const isExpanded =
+    isChildActive ||
+    (expandedOverride !== null
+      ? expandedOverride
+      : (isCurrent || hasActiveWork))
+
   return (
     <div className="space-y-0.5">
-      <div className="group relative">
+      <div className="group relative flex items-center">
+        {hasSubagents ? (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation()
+              e.preventDefault()
+              setExpandedOverride(!isExpanded)
+            }}
+            className="flex h-6 w-4 shrink-0 items-center justify-center rounded-xs text-(--color-text-subtle) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
+            aria-expanded={isExpanded}
+            aria-label={isExpanded ? `Collapse ${subagents.length} subagents` : `Expand ${subagents.length} subagents`}
+            title={isExpanded ? `Collapse ${subagents.length} subagents` : `Expand ${subagents.length} subagents`}
+          >
+            <ChevronRight
+              size={11}
+              className={`shrink-0 transition-transform duration-150 ${isExpanded ? 'rotate-90' : ''}`}
+              aria-hidden="true"
+            />
+          </button>
+        ) : (
+          <span className="w-4 shrink-0" aria-hidden="true" />
+        )}
+        <div className="min-w-0 flex-1">
         <Tooltip className="w-full">
           <TooltipTrigger
             className="w-full"
@@ -102,11 +140,30 @@ function WorkspaceSessionRow({
                   aria-hidden={needsInput || isRunning ? undefined : true}
                 />
                 <span className={`min-w-0 flex-1 truncate ${isCurrent ? 'font-semibold text-(--color-text)' : 'font-medium'} ${isRunning ? 'session-title-breathe text-(--color-text)' : ''}`}>{sessionTitle}</span>
+                {hasSubagents && (
+                  <span
+                    className="ml-1 inline-flex shrink-0 items-center gap-1 rounded bg-(--bg-key)/70 px-1 py-0.2 font-mono text-[9px] text-(--color-text-subtle)"
+                    aria-label={`${subagents.length} subagent${subagents.length > 1 ? 's' : ''}`}
+                  >
+                    {!isExpanded && hasActiveWork && (
+                      <span
+                        className={`h-1.5 w-1.5 rounded-full ${
+                          hasWaitingSubagent
+                            ? 'animate-pulse bg-(--color-warning)'
+                            : 'session-title-breathe bg-(--color-accent)'
+                        }`}
+                        aria-label={hasWaitingSubagent ? 'Subagent waiting for lead' : 'Subagent working'}
+                      />
+                    )}
+                    <span>{subagents.length}</span>
+                  </span>
+                )}
               </LongPressButton>
             }
           />
           <TooltipContent>{`${sessionTitle} · ${sessionDate}`}</TooltipContent>
         </Tooltip>
+        </div>
         <button
           type="button"
           onClick={(e) => {
@@ -128,37 +185,35 @@ function WorkspaceSessionRow({
         </button>
       </div>
 
-      {subagents.length > 0 && (
-        <div className="ml-3 pl-2 border-l border-(--color-border-subtle) space-y-0.5 py-0.5">
+      {hasSubagents && isExpanded && (
+        <div className="ml-5 pl-2 border-l border-(--color-border-subtle) space-y-0.5 py-0.5">
           {subagents.map((sub) => {
             const isSubCurrent = sub.session_id === currentSessionId
             const subTitle = sub.title ? sub.title.replace(/^[^:]+:\s*/, '') : sub.member_id
             const isSubWorking = sub.status === 'working'
             const isSubWaiting = sub.status === 'waiting_lead' || sub.has_pending_question
+            const subSessionPayload: SessionResponse = {
+              id: sub.session_id,
+              parent_session_id: session.id,
+              title: `${sub.member_id}: ${subTitle}`,
+              workspace: session.workspace,
+              interaction_mode: 'code',
+              running: isSubWorking,
+              needs_input: isSubWaiting,
+              created_at: sub.created_at ?? null,
+              agent_name: sub.member_id,
+              updated_at: null,
+            }
             return (
-              <Tooltip key={sub.session_id} className="w-full">
+              <div key={sub.session_id} className="group/sub relative">
+                <Tooltip className="w-full">
                 <TooltipTrigger
                   className="w-full"
                   render={
                     <button
                       type="button"
                       onClick={(e) => {
-                        onSessionSelect(
-                          {
-                            id: sub.session_id,
-                            parent_session_id: session.id,
-                            title: `${sub.member_id}: ${subTitle}`,
-                            workspace: session.workspace,
-                            interaction_mode: 'code',
-                            running: isSubWorking,
-                            needs_input: isSubWaiting,
-                            created_at: sub.created_at ?? null,
-                            agent_name: sub.member_id,
-                            updated_at: null,
-                          },
-                          path,
-                          e,
-                        )
+                        onSessionSelect(subSessionPayload, path, e)
                       }}
                       className={`flex min-h-5 w-full items-center gap-1.5 rounded-sm px-1.5 py-0.5 text-left text-xs transition-colors ${
                         isSubCurrent
@@ -185,8 +240,21 @@ function WorkspaceSessionRow({
                     </button>
                   }
                 />
-                <TooltipContent>{`${sub.member_id}: ${subTitle}`}</TooltipContent>
+                <TooltipContent>
+                  {`${sub.member_id}: ${subTitle} · ${
+                    isSubWaiting ? 'Waiting for lead decision' : isSubWorking ? 'Working' : 'Completed'
+                  }`}
+                </TooltipContent>
               </Tooltip>
+              <button
+                type="button"
+                onClick={(e) => onSessionDelete(e, subSessionPayload)}
+                className={`absolute right-1 top-1/2 flex -translate-y-1/2 items-center justify-center rounded-xs p-1 text-(--color-text-subtle) opacity-0 transition-all hover:bg-(--color-error-subtle) hover:text-(--color-error) group-hover/sub:opacity-100 group-focus-within/sub:opacity-100 ${mobileLongPressActions ? 'hidden' : 'pointer-coarse:opacity-100'}`}
+                aria-label={`Delete subagent session ${sub.member_id}`}
+              >
+                <Trash2 size={10} />
+              </button>
+            </div>
             )
           })}
         </div>

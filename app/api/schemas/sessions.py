@@ -65,6 +65,7 @@ class CodingWorkspaceTreeResponse(BaseModel):
 
 class SessionResponse(_ExcludeNoneModel):
     id: UUID
+    parent_session_id: UUID | None = None
     title: str | None = None
     agent_name: str | None = None
     scheduled_task_name: str | None = None
@@ -84,6 +85,7 @@ class SessionResponse(_ExcludeNoneModel):
     # True when the lead suspended its turn on an ask_user and is
     # still waiting — drives the "needs input" badge in session lists.
     needs_input: bool = False
+    subagents: list[SessionResponse] = []
     created_at: datetime | None = None
     updated_at: datetime | None = None
 

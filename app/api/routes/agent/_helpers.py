@@ -205,6 +205,12 @@ async def resolve_chat_agent(
         async with db.begin():
             existing = await db.get(ChatSession, session_uuid)
 
+    if existing and existing.parent_session_id is not None:
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot chat directly with a subagent session. Subagents are orchestrated exclusively by the lead agent.",
+        )
+
     if existing and existing.workspace:
         persisted_workspace = _validate_workspace_or_422(existing.workspace)
         if workspace is not None:

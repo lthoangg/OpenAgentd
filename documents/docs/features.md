@@ -413,6 +413,13 @@ executes tools, manages its task list, and inspects workspace repositories.
 
 - **Single-agent cockpit** `[since v1.0, updated v2.1.0]` — exactly one primary agent
   configuration (`agents/code.md`) drives every conversation.
+- **Hub-and-Spoke agent teams** `[v2.15.0]` — the lead coding agent can spawn,
+  coordinate, and supervise specialized subagents via the unified `delegate` tool
+  loaded from markdown profiles (`agents/*.md`). Spawns use monotonic
+  instance handles (`profile#N`, e.g. `explorer#1`, `explorer#2`) permitting multiple concurrent
+  instances of the same profile. Communication follows a strict hub-and-spoke topology: subagents
+  interact exclusively with the lead (`ask_lead`, direct deliverables) and inherit the lead's active
+  model fallback. Stopping the lead cascades cancellation to all active child sessions.
 - **Clean taskboard checklist** `[v1.127.0, updated v2.1.0]` — the todo taskboard
   serves as a flat, user-readable checklist of tasks and statuses (`pending`,
   `in_progress`, `completed`, `cancelled`).
@@ -823,6 +830,8 @@ MCP.
 | Generation | `generate_image`, `generate_video` |
 | Scheduling | `schedule_task` (reminders + self-scheduling agentic loops) `[v1.70.0]` |
 | Tasks | `todo_manage` |
+| Team orchestration | `delegate` (lead agent) `[v2.15.0]` |
+| Subagent communication | `ask_lead` (subagents) `[v2.15.0]` |
 | Ask the user | `ask_user` (coding agent) `[v1.131.0, v2.1.0]` |
 | Utility | `skill` |
 

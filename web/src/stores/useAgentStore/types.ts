@@ -138,6 +138,7 @@ export interface AgentStoreState {
   liveAgentNames: string[] | null
   sidebarOpen: boolean
   sessionId: string | null
+  parentSessionId: string | null
   sessionTitle: string | null
   sessionInteractionMode: SessionInteractionMode
   sessionModel: string | null

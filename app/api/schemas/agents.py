@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Literal
-
 from pydantic import BaseModel, Field
 
 
@@ -15,8 +13,22 @@ class AgentDetail(BaseModel):
     error: str | None = None
 
 
+class AgentSummary(BaseModel):
+    name: str
+    role: str = "member"
+    description: str | None = None
+    model: str | None = None
+    tools: list[str] = []
+    valid: bool = True
+    error: str | None = None
+
+
+class AgentListResponse(BaseModel):
+    agents: list[AgentSummary]
+
+
 class AgentWriteRequest(BaseModel):
-    name: Literal["code"] = Field(description="Canonical coding-agent name.")
+    name: str = Field(description="Agent profile name.")
     content: str = Field(description="Full .md file contents.")
 
 
@@ -31,6 +43,13 @@ class ToolCatalogEntry(BaseModel):
 class SkillCatalogEntry(BaseModel):
     name: str
     description: str
+
+
+class MemberProfileCatalogEntry(BaseModel):
+    name: str
+    description: str | None = None
+    tools: list[str] = []
+    model: str | None = None
 
 
 class ModelCatalogEntry(BaseModel):
@@ -50,3 +69,4 @@ class RegistryResponse(BaseModel):
     skills: list[SkillCatalogEntry]
     providers: list[str]
     models: list[ModelCatalogEntry]
+    member_profiles: list[MemberProfileCatalogEntry] = []

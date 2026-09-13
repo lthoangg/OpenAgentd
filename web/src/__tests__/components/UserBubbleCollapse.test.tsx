@@ -546,6 +546,23 @@ describe("AgentView — UserBubble collapse feature", () => {
     const text = container.querySelector("p[class*='pr-6']")
     expect(text).toBeTruthy()
   })
+
+  it("renders incoming subagent message with handle badge and left-aligned container", () => {
+    const blocks: ContentBlock[] = [
+      {
+        id: "sub-msg-1",
+        type: "user",
+        content: "Here are the 4 verified auth routes in the codebase.",
+        extra: { from_agent: "explorer#1" },
+        timestamp: new Date(),
+      },
+    ]
+
+    render(<AgentView blocks={blocks} currentBlocks={[]} isWorking={false} />)
+    expect(screen.getByText("explorer#1")).toBeTruthy()
+    expect(screen.getByText("Subagent report")).toBeTruthy()
+    expect(screen.getByText(/Here are the 4 verified auth routes/)).toBeTruthy()
+  })
 })
 
 // ─────────────────────────────────────────────────────────────────────────────

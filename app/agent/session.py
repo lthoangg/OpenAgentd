@@ -186,6 +186,7 @@ class AgentSession:
         db_factory: DbFactory | None = None,
         provider_factory: ProviderFactory | None = None,
         extra_tools: dict[str, Tool] | None = None,
+        parent_session_id: str | None = None,
     ) -> None:
         self.agent = agent
         self.session_id = session_id or str(uuid.uuid4())
@@ -193,6 +194,7 @@ class AgentSession:
         self.db_factory = resolve_db_factory(db_factory)
         self.provider_factory = provider_factory or build_provider
         self.extra_tools = extra_tools or {}
+        self.parent_session_id = parent_session_id
 
         self.state: str = "idle"  # idle | working | waiting_input | offline | error
         self._cancel_event = asyncio.Event()
@@ -202,6 +204,8 @@ class AgentSession:
         self._active_task: asyncio.Task | None = None
         self._config_dirty: bool = False
         self._question_suspended: dict[str, Any] | None = None
+        self._lead_suspended: dict[str, Any] | None = None
+        self._last_error: str | None = None
         self.is_scheduler_session: bool = False
 
     @property
@@ -236,6 +240,10 @@ class AgentSession:
             self._active_task.cancel()
             with contextlib.suppress(asyncio.CancelledError, Exception):
                 await self._active_task
+        if self.parent_session_id is None:
+            from app.services import subagent_service
+
+            await subagent_service.stop_all_subagents(self.session_id)
         self.state = "offline"
         logger.info("agent_session_stopped session_id={}", self.session_id)
 
@@ -277,8 +285,14 @@ class AgentSession:
         async with self.db_factory() as db:
             row = await db.get(ChatSession, sess_uuid)
             if row is None:
+                parent_uuid = (
+                    uuid.UUID(self.parent_session_id)
+                    if self.parent_session_id
+                    else None
+                )
                 row = ChatSession(
                     id=sess_uuid,
+                    parent_session_id=parent_uuid,
                     agent_name=self.name,
                     title=title,
                     workspace=workspace or self.workspace or "",
@@ -493,6 +507,10 @@ class AgentSession:
         self._cancel_event.set()
         if self._active_task and not self._active_task.done():
             self._active_task.cancel()
+        if self.parent_session_id is None:
+            from app.services import subagent_service
+
+            await subagent_service.stop_all_subagents(self.session_id)
         await self.dismiss_pending_question(reason="dismissed")
         self.state = "idle"
         await self._emit("agent_status", status="idle")
@@ -703,6 +721,10 @@ class AgentSession:
         desktop notification; a failed one does not — the error is already on
         screen as its own status.
         """
+        if self.parent_session_id is not None:
+            # Subagents do not close the global session turn or trigger desktop notifications
+            return
+
         await stream_store.push_event(
             session_id,
             StreamEnvelope.from_event(DoneEvent(metadata={"session_id": session_id})),
@@ -817,6 +839,7 @@ class AgentSession:
                 logger.exception("agent_session_error name={} error={}", self.name, exc)
             self.state = "error"
             err_info = format_agent_error(exc, agent_name=self.name)
+            self._last_error = err_info["message"]
             await self._emit(
                 "agent_status",
                 status="error",
@@ -835,6 +858,13 @@ class AgentSession:
                     "agent_status",
                     status="waiting_input",
                     extra={"question_id": str(self._question_suspended["question_id"])},
+                )
+            elif self.state != "error" and self._lead_suspended is not None:
+                self.state = "waiting_lead"
+                await self._emit(
+                    "agent_status",
+                    status="waiting_lead",
+                    extra=self._lead_suspended,
                 )
             elif self.state != "error":
                 if self.session_id and not self._cancel_event.is_set():
@@ -892,7 +922,11 @@ class AgentSession:
         )
         effective_model = runtime_model or self.agent.model_id
         runtime_provider: LLMProviderBase | None = None
-        if effective_model and (runtime_model or runtime_thinking_level is not None):
+        model_overridden = bool(
+            (runtime_model and runtime_model != self.agent.model_id)
+            or (runtime_thinking_level is not None)
+        )
+        if model_overridden and effective_model:
             kwargs: dict[str, object] = {}
             if runtime_thinking_level is not None:
                 kwargs["thinking_level"] = runtime_thinking_level
@@ -915,22 +949,24 @@ class AgentSession:
             LspHook(enabled=True),
         ]
 
-        hooks.append(
-            QueuedMessageInjectionHook(
-                session_id=self.session_id,
-                agent_name=self.name,
-                db_factory=self.db_factory,
-                support_interrupt=provider_for_hooks.support_interrupt,
+        if self.parent_session_id is None:
+            hooks.append(
+                QueuedMessageInjectionHook(
+                    session_id=self.session_id,
+                    agent_name=self.name,
+                    db_factory=self.db_factory,
+                    support_interrupt=provider_for_hooks.support_interrupt,
+                )
             )
-        )
-        hooks.append(WorkspaceInstructionsHook(self.workspace))
 
-        title_hook = build_title_generation_hook(
-            default_provider=provider_for_hooks,
-            db_factory=self.db_factory,
-        )
-        if title_hook is not None:
-            hooks.append(title_hook)
+            title_hook = build_title_generation_hook(
+                default_provider=provider_for_hooks,
+                db_factory=self.db_factory,
+            )
+            if title_hook is not None:
+                hooks.append(title_hook)
+
+        hooks.append(WorkspaceInstructionsHook(self.workspace))
 
         checkpointer = SQLiteCheckpointer(
             self.db_factory,
@@ -940,20 +976,41 @@ class AgentSession:
         checkpointer.mark_loaded(self.session_id, history)
         hooks.append(ToolResultOffloadHook())
 
-        summ_hook = build_summarization_hook(
-            provider_for_hooks,
-            mode="coding",
-            model_id=effective_model,
-            support_interrupt=provider_for_hooks.support_interrupt,
+        summ_hook = (
+            build_summarization_hook(
+                provider_for_hooks,
+                mode="coding",
+                model_id=effective_model,
+                support_interrupt=provider_for_hooks.support_interrupt,
+            )
+            if self.parent_session_id is None
+            else None
         )
         if summ_hook:
             hooks.append(summ_hook)
 
         injected_tools: list[Tool] = []
-        if not self.is_scheduler_session:
+        if not self.is_scheduler_session and self.parent_session_id is None:
             injected_tools.append(
                 make_ask_user_tool(self.session_id, self.db_factory, self.name)
             )
+            from app.agent.tools.builtin.team import (
+                make_delegate_tool,
+            )
+
+            injected_tools.append(
+                make_delegate_tool(
+                    self.session_id,
+                    self.db_factory,
+                    provider_factory=self.provider_factory,
+                )
+            )
+        elif self.parent_session_id is not None:
+            from app.agent.tools.builtin.member import (
+                make_ask_lead_tool,
+            )
+
+            injected_tools.append(make_ask_lead_tool(self.parent_session_id, self.name))
 
         run_metadata: dict[str, Any] = {
             "session_id": self.session_id,
@@ -1015,6 +1072,9 @@ class AgentSession:
                 "question_id": suspended_meta["question_id"],
                 "session_id": suspended_meta["session_id"],
             }
+        suspended_lead = config.metadata.get("lead_suspended")
+        if isinstance(suspended_lead, dict) and self._lead_suspended is None:
+            self._lead_suspended = suspended_lead
 
         if self._cancel_event.is_set() and self.db_factory:
             await _mark_last_assistant_interrupted(self.db_factory, sess_uuid)

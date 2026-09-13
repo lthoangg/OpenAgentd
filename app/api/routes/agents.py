@@ -40,7 +40,10 @@ from app.api.routes.settings import (
 from app.api.schemas.base import _validation_detail
 from app.api.schemas.agents import (
     AgentDetail,
+    AgentListResponse,
+    AgentSummary,
     AgentWriteRequest,
+    MemberProfileCatalogEntry,
     ModelCatalogEntry,
     RegistryResponse,
     SkillCatalogEntry,
@@ -84,8 +87,8 @@ def _effective_config(cfg: AgentConfig, *, mode: str) -> AgentConfig:
     return data
 
 
-def _parse_content(content: str) -> AgentConfig:
-    """Parse the canonical coding-agent Markdown (no disk I/O)."""
+def _parse_content(content: str, expected_name: str | None = None) -> AgentConfig:
+    """Parse an agent Markdown file with YAML frontmatter."""
     from app.agent.loader import _FRONTMATTER_RE
 
     m = _FRONTMATTER_RE.match(content)
@@ -101,8 +104,17 @@ def _parse_content(content: str) -> AgentConfig:
         raise ValueError(f"Invalid YAML frontmatter: {exc}") from exc
     if not isinstance(raw_meta, dict):
         raise ValueError("Frontmatter must be a YAML mapping.")
-    if raw_meta.get("name") != "code":
-        raise ValueError("Canonical agent profile 'code.md' must declare name 'code'")
+    if expected_name:
+        expected_stem = Path(expected_name).name
+        actual_name = raw_meta.get("name")
+        if actual_name and actual_name not in (expected_name, expected_stem):
+            raise ValueError(
+                f"Agent profile declared name '{actual_name}', expected '{expected_name}'"
+            )
+        if "name" not in raw_meta:
+            raw_meta["name"] = expected_stem
+    elif "name" not in raw_meta:
+        raw_meta["name"] = "code"
     body = m.group(2).strip()
     raw_meta["system_prompt"] = body or "You are a helpful assistant."
     try:
@@ -349,12 +361,43 @@ async def get_registry(request: Request) -> RegistryResponse:
 
     models.sort(key=lambda item: (item.provider, item.model))
 
+    from app.agent.loader import load_member_profiles
+
+    member_profiles_map = load_member_profiles(agent_fs.agents_dir())
+    member_profiles = [
+        MemberProfileCatalogEntry(
+            name=p.name,
+            description=p.description,
+            tools=p.tools,
+            model=p.model,
+        )
+        for p in sorted(member_profiles_map.values(), key=lambda p: p.name)
+    ]
+
     return RegistryResponse(
         tools=tools,
         skills=skills,
         providers=providers,
         models=models,
+        member_profiles=member_profiles,
     )
+
+
+@router.get("/members")
+async def list_member_profiles_endpoint() -> list[MemberProfileCatalogEntry]:
+    """List available member profiles (*.md with role: member)."""
+    from app.agent.loader import load_member_profiles
+
+    profiles = load_member_profiles(agent_fs.agents_dir())
+    return [
+        MemberProfileCatalogEntry(
+            name=p.name,
+            description=p.description,
+            tools=p.tools,
+            model=p.model,
+        )
+        for p in sorted(profiles.values(), key=lambda p: p.name)
+    ]
 
 
 async def is_registered_model_id(model_id: str) -> bool:
@@ -450,3 +493,218 @@ async def update_agent(body: AgentWriteRequest) -> AgentDetail:
         content=record.content,
         config=cfg.model_dump(exclude_none=True),
     )
+
+
+@router.get("/members/{name}")
+async def get_member_agent_endpoint(name: str) -> AgentDetail:
+    """Read a member agent profile by name."""
+    try:
+        record = agent_fs.read_agent(name)
+    except AgentFsPathError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except AgentFsNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    config: dict[str, Any] | None = None
+    error: str | None = None
+    try:
+        cfg = _parse_content(record.content, expected_name=name)
+        config = _effective_config(cfg, mode="coding").model_dump(exclude_none=True)
+    except ValueError as exc:
+        error = str(exc)
+
+    return AgentDetail(
+        name=record.name,
+        path=record.path,
+        content=record.content,
+        config=config,
+        error=error,
+    )
+
+
+@router.put("/members/{name}")
+async def update_member_agent_endpoint(
+    name: str, body: AgentWriteRequest
+) -> AgentDetail:
+    """Update a member agent profile by name."""
+    if body.name != name:
+        raise HTTPException(
+            status_code=422,
+            detail=f"URL name '{name}' does not match body name '{body.name}'.",
+        )
+
+    try:
+        previous = agent_fs.read_agent(name)
+    except AgentFsNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except AgentFsPathError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    try:
+        cfg = _parse_content(body.content, expected_name=name)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    try:
+        record = agent_fs.write_agent(name, body.content, create=False)
+    except AgentFsPathError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    await _validate_or_restore(rollback_name=name, rollback_content=previous.content)
+
+    return AgentDetail(
+        name=record.name,
+        path=record.path,
+        content=record.content,
+        config=cfg.model_dump(exclude_none=True),
+    )
+
+
+@router.post("/members", status_code=201)
+async def create_member_agent_endpoint(body: AgentWriteRequest) -> AgentDetail:
+    """Create a new member agent profile."""
+    name = body.name.strip()
+    try:
+        cfg = _parse_content(body.content, expected_name=name)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    try:
+        record = agent_fs.write_agent(name, body.content, create=True)
+    except agent_fs.AgentFsConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except AgentFsPathError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    await _validate_or_restore(rollback_name=name, rollback_content=None)
+
+    config = _effective_config(cfg, mode="coding").model_dump(exclude_none=True)
+    return AgentDetail(
+        name=record.name,
+        path=record.path,
+        content=record.content,
+        config=config,
+    )
+
+
+@router.delete("/members/{name}", status_code=204)
+async def delete_member_agent_endpoint(name: str) -> None:
+    """Delete a custom member agent profile."""
+    if name == "code":
+        raise HTTPException(
+            status_code=400, detail="Cannot delete canonical coding agent 'code'."
+        )
+    try:
+        agent_fs.delete_agent(name)
+    except AgentFsNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except AgentFsPathError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("", response_model=AgentListResponse)
+async def list_agents_endpoint() -> AgentListResponse:
+    """List all agent profiles (*.md), including coding lead and subagent members."""
+    root = agent_fs.agents_dir()
+    if root.exists():
+        from app.agent.loader import (
+            ensure_builtin_code_agent,
+            ensure_builtin_member_agents,
+        )
+
+        ensure_builtin_code_agent(root)
+        ensure_builtin_member_agents(root)
+
+    names = agent_fs.list_agents()
+    summaries: list[AgentSummary] = []
+
+    ordered_names: list[str] = []
+    if "code" in names:
+        ordered_names.append("code")
+    for n in sorted(names):
+        if n != "code":
+            ordered_names.append(n)
+
+    for name in ordered_names:
+        try:
+            record = agent_fs.read_agent(name)
+            cfg = _parse_content(record.content, expected_name=name)
+            effective = _effective_config(cfg, mode="coding")
+            summaries.append(
+                AgentSummary(
+                    name=name,
+                    role=cfg.role or ("lead" if name == "code" else "member"),
+                    description=effective.description,
+                    model=effective.model,
+                    tools=effective.tools,
+                    valid=True,
+                    error=None,
+                )
+            )
+        except Exception as exc:
+            summaries.append(
+                AgentSummary(
+                    name=name,
+                    role="lead" if name == "code" else "member",
+                    valid=False,
+                    error=str(exc),
+                )
+            )
+    return AgentListResponse(agents=summaries)
+
+
+@router.post("", status_code=201, response_model=AgentDetail)
+async def create_agent_endpoint(body: AgentWriteRequest) -> AgentDetail:
+    """Create a new agent profile."""
+    name = body.name.strip()
+    if name == "code":
+        raise HTTPException(
+            status_code=409, detail="Canonical coding agent 'code' already exists."
+        )
+    return await create_member_agent_endpoint(body)
+
+
+@router.get("/{name}", response_model=AgentDetail)
+async def get_agent_by_name_endpoint(name: str) -> AgentDetail:
+    """Read an agent profile (code or member) by name."""
+    if name == "code":
+        return await get_agent()
+    try:
+        record = agent_fs.read_agent(name)
+    except (AgentFsPathError, AgentFsNotFoundError) as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    config: dict[str, Any] | None = None
+    error: str | None = None
+    try:
+        cfg = _parse_content(record.content, expected_name=name)
+        config = _effective_config(cfg, mode="coding").model_dump(exclude_none=True)
+    except ValueError as exc:
+        error = str(exc)
+
+    return AgentDetail(
+        name=record.name,
+        path=record.path,
+        content=record.content,
+        config=config,
+        error=error,
+    )
+
+
+@router.put("/{name}", response_model=AgentDetail)
+async def update_agent_by_name_endpoint(
+    name: str, body: AgentWriteRequest
+) -> AgentDetail:
+    """Update an agent profile by name."""
+    if name == "code":
+        return await update_agent(body)
+    return await update_member_agent_endpoint(name, body)
+
+
+@router.delete("/{name}", status_code=204)
+async def delete_agent_by_name_endpoint(name: str) -> None:
+    """Delete an agent profile by name."""
+    if name == "code":
+        raise HTTPException(
+            status_code=400, detail="Cannot delete canonical coding agent 'code'."
+        )
+    await delete_member_agent_endpoint(name)

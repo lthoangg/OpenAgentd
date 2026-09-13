@@ -16,8 +16,8 @@ export function parseFormState(raw: string): {
 
   try {
     const parsed = parseSimpleYaml(fmText)
-    // The settings surface edits only the canonical code agent. Ignore legacy
-    // names/roles when projecting raw content into the fixed form contract.
+    if (typeof parsed.name === 'string' && parsed.name.trim()) fm.name = parsed.name.trim()
+    if (parsed.role === 'lead' || parsed.role === 'member') fm.role = parsed.role
     if (typeof parsed.description === 'string') fm.description = parsed.description
     if (typeof parsed.model === 'string') fm.model = parsed.model
     if (typeof parsed.thinking_level === 'string') fm.thinking_level = parsed.thinking_level

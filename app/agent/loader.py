@@ -8,7 +8,7 @@ from __future__ import annotations
 import re
 import tempfile
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 import yaml
 from loguru import logger
@@ -32,7 +32,10 @@ __all__ = [
     "ConfigStamp",
     "ProviderFactory",
     "detect_drift",
+    "ensure_builtin_code_agent",
+    "ensure_builtin_member_agents",
     "load_agent_from_dir",
+    "load_member_profiles",
     "parse_agent_md",
     "rebuild_agent_from_disk",
     "stamp_agent_files",
@@ -129,14 +132,21 @@ def _builtin_agent_md(
     role: str = "lead",
     description: str,
     model: str,
+    tools: list[str] | None = None,
+    prompt: str = "",
 ) -> str:
-    return f"""---
-name: {name}
-role: {role}
-description: {description}
-model: {model}
----
-"""
+    meta: dict[str, Any] = {
+        "name": name,
+        "role": role,
+        "description": description,
+        "model": model,
+    }
+    if tools:
+        meta["tools"] = tools
+    yaml_header = yaml.safe_dump(meta, sort_keys=False)
+    if prompt:
+        return f"---\n{yaml_header}---\n\n{prompt.strip()}\n"
+    return f"---\n{yaml_header}---\n"
 
 
 def ensure_builtin_code_agent(agents_dir: Path, *, mode: str = "coding") -> bool:
@@ -158,6 +168,68 @@ def ensure_builtin_code_agent(agents_dir: Path, *, mode: str = "coding") -> bool
     )
     logger.info("builtin_code_agent_materialized mode={} path={}", mode, target)
     return True
+
+
+def ensure_builtin_member_agents(agents_dir: Path) -> list[str]:
+    """Materialise missing first-party member profile ``.md`` files.
+
+    User-owned files win: existing files are never overwritten.
+    """
+    from app.agent.builtin_prompts import BUILTIN_MEMBER_PROFILES
+    from app.core.config import DEFAULT_NEW_USER_MODEL
+
+    agents_dir.mkdir(parents=True, exist_ok=True)
+    written: list[str] = []
+    for name, profile in BUILTIN_MEMBER_PROFILES.items():
+        target = agents_dir / f"{name}.md"
+        if target.exists():
+            continue
+        _atomic_write_text(
+            target,
+            _builtin_agent_md(
+                name=profile["name"],
+                role=profile["role"],
+                description=profile["description"],
+                model=DEFAULT_NEW_USER_MODEL,
+                tools=profile.get("tools"),
+                prompt=profile.get("prompt", ""),
+            ),
+        )
+        written.append(target.name)
+        logger.info("builtin_member_agent_materialized name={} path={}", name, target)
+    return written
+
+
+def load_member_profiles(agents_dir: Path) -> dict[str, AgentConfig]:
+    """Load all member profiles (*.md with role: member) from agents directory.
+
+    Falls back to built-in member profiles if the directory does not contain them.
+    """
+    profiles: dict[str, AgentConfig] = {}
+    if agents_dir.is_dir():
+        for path in sorted(agents_dir.glob("*.md")):
+            try:
+                cfg = parse_agent_md(path)
+                if cfg.role == "member":
+                    profiles[cfg.name] = cfg
+            except Exception as exc:
+                logger.warning("failed_to_parse_member_md file={} error={}", path, exc)
+
+    # Ensure built-in profiles are available even if not materialized yet on disk
+    from app.agent.builtin_prompts import BUILTIN_MEMBER_PROFILES
+    from app.core.config import DEFAULT_NEW_USER_MODEL
+
+    for name, bp in BUILTIN_MEMBER_PROFILES.items():
+        if name not in profiles:
+            profiles[name] = AgentConfig(
+                name=bp["name"],
+                role="member",
+                description=bp["description"],
+                system_prompt=bp["prompt"],
+                tools=list(bp["tools"]),
+                model=DEFAULT_NEW_USER_MODEL,
+            )
+    return profiles
 
 
 def configure_unconfigured_agent_models(

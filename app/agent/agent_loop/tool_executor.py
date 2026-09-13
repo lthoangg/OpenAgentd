@@ -23,6 +23,7 @@ from typing import TYPE_CHECKING, Any
 from loguru import logger
 
 from app.agent.errors import (
+    LeadSuspended,
     QuestionSuspended,
     ToolArgumentError,
     ToolNotFoundError,
@@ -180,7 +181,7 @@ def make_tool_executor(
                 result[:_RESULT_PREVIEW_CHARS],
             )
 
-        except QuestionSuspended:
+        except (QuestionSuspended, LeadSuspended):
             # Control flow, not a failure: the turn is being handed to the user.
             # Swallowing it into an "Error: ..." result would strand the
             # already-persisted question with nothing waiting on the answer.

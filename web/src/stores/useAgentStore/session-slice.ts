@@ -354,6 +354,7 @@ export function resetSessionState(
 ) {
   const leadName = state.leadName ?? state.agentNames[0] ?? null
   state.sessionId = options.sessionId
+  state.parentSessionId = null
   state.sessionTitle = null
   state.sessionInteractionMode = options.interactionMode ?? 'code'
   state.sessionModel = options.model ?? null
@@ -414,6 +415,7 @@ export type SessionSlice = Pick<
   | 'agentNames'
   | 'liveAgentNames'
   | 'sessionId'
+  | 'parentSessionId'
   | 'sessionTitle'
   | 'sessionInteractionMode'
   | 'sessionModel'
@@ -473,6 +475,7 @@ async function loadSessionImpl(
 
     set((draft) => {
       draft.sessionId = sessionId
+      draft.parentSessionId = history.lead.parent_session_id ?? null
       draft.sessionTitle = history.lead.title ?? null
       draft.sessionInteractionMode = history.lead.interaction_mode ?? 'code'
       if (!draft._sessionSettingsDirty && draft._sessionSettingsVersion === settingsVersion) {
@@ -757,6 +760,7 @@ export const createSessionSlice: StateCreator<
   agentNames: [],
   liveAgentNames: null,
   sessionId: null,
+  parentSessionId: null,
   sessionTitle: null,
   sessionInteractionMode: 'code',
   sessionModel: null,

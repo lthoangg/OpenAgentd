@@ -136,6 +136,8 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
 
         isAgentWorking: s.isAgentWorking,
         sessionId: s.sessionId,
+        parentSessionId: s.parentSessionId,
+        leadName: s.leadName,
         sessionTitle: s.sessionTitle,
         sessionInteractionMode: s.sessionInteractionMode,
         sessionModel: s.sessionModel,
@@ -171,6 +173,8 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
 
     isAgentWorking,
     sessionId: sessionIdState,
+    parentSessionId,
+    leadName,
     sessionTitle,
     sessionInteractionMode,
     sessionModel,
@@ -457,6 +461,29 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
               </div>
             </div>
           )}
+        {parentSessionId && (
+          <div className="mx-3 mt-2 flex items-center justify-between gap-3 rounded-md border border-(--color-border-subtle) bg-(--bg-key)/25 px-3 py-1.5 text-xs text-(--color-text-2)">
+            <div className="flex items-center gap-2 min-w-0 truncate">
+              <span className="rounded bg-(--bg-key)/60 px-1.5 py-0.2 font-mono text-[11px] font-semibold text-(--color-text)">
+                {leadName}
+              </span>
+              <span className="truncate text-(--color-text-muted)">
+                Subagent session · Managed by lead
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                if (workspace) {
+                  navigate({ to: '/coding', search: { session: parentSessionId, workspace } })
+                }
+              }}
+              className="shrink-0 flex items-center gap-1 rounded font-medium text-(--color-accent) hover:underline text-xs"
+            >
+              ← Back to Lead
+            </button>
+          </div>
+        )}
         {setupRequired && (
           <div className="mx-3 mt-3 flex flex-col gap-3 rounded-sm border border-(--accent-blue)/35 bg-(--accent-blue-soft) p-3 text-sm text-(--color-text) shadow-sm sm:flex-row sm:items-center sm:justify-between">
             <div className="flex min-w-0 gap-3">
@@ -541,7 +568,27 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
           </div>
         )}
 
-        {workspace && (
+        {parentSessionId ? (
+          <div className="mx-auto w-full max-w-3xl px-4 py-3">
+            <div className="flex items-center justify-between gap-3 rounded-lg border border-(--color-border-subtle) bg-(--bg-card)/85 px-4 py-2 text-xs text-(--color-text-muted) shadow-xs backdrop-blur-xs">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="truncate">Subagents are orchestrated by the lead agent. Switch to the lead session to send instructions.</span>
+              </div>
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => {
+                  if (workspace && parentSessionId) {
+                    navigate({ to: '/coding', search: { session: parentSessionId, workspace } })
+                  }
+                }}
+                className="shrink-0 h-6 text-xs px-2.5"
+              >
+                Return to Lead
+              </Button>
+            </div>
+          </div>
+        ) : workspace ? (
           <FloatingInputComposer
             ref={inputRef}
             boundsRef={mainColumnRef}
@@ -599,7 +646,7 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
             onRedo={() => { void handleSlashCommand('redo') }}
             onRedoAll={() => { void handleSlashCommand('redo-all') }}
           />
-        )}
+        ) : null}
         </main>
         {/* Workspace files panel — coding workspace only.
             Desktop: in-flow flex sibling — pushes <main> left (no overlay).

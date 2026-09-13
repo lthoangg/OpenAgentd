@@ -176,6 +176,7 @@ export type SessionInteractionMode = 'code' | 'plan'
 
 export interface SessionResponse {
   id: string
+  parent_session_id?: string | null
   title: string | null
   agent_name: string | null
   revert?: { message_id?: string } | null
@@ -189,6 +190,7 @@ export interface SessionResponse {
   model?: string | null
   thinking_level?: string | null
   running?: boolean
+  subagents?: SessionResponse[]
   /**
    * Full-session usage totals — every user-visible message, compaction
    * summaries included (the summariser is a billed model call). Populated on
@@ -229,6 +231,44 @@ export interface AgentStatusAgent {
   name: string
   model: string
   state: string
+}
+
+export interface MemberProfile {
+  name: string
+  description?: string | null
+  tools: string[]
+  model?: string | null
+}
+
+export interface AgentSummary {
+  name: string
+  role: string
+  description?: string | null
+  model?: string | null
+  tools?: string[]
+  valid: boolean
+  error?: string | null
+}
+
+export interface AgentListResponse {
+  agents: AgentSummary[]
+}
+
+export interface LiveSubagent {
+  member_id: string
+  profile: string
+  title?: string
+  status: string
+  session_id: string
+  created_at?: string | null
+  last_error?: string | null
+  has_pending_question: boolean
+}
+
+export interface SubagentsResponse {
+  available_profiles: MemberProfile[]
+  live_members: LiveSubagent[]
+  subagents?: LiveSubagent[]
 }
 
 export interface AgentStatusResponse {

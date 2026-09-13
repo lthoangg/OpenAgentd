@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it, mock } from 'bun:test'
-import { cancelQueuedMessage, createWorktree, postAgentChat, resolveApiUrl, resolveSession, setCodingWorkspaceVisibility, updateSessionTitle, workspaceMediaUrl } from '@/api/client'
+import {
+  cancelQueuedMessage, createAgent, createWorktree, deleteAgent, getAgent,
+  listAgentFiles, listMemberProfiles, listSubagents, postAgentChat,
+  resolveApiUrl, resolveSession, setCodingWorkspaceVisibility, updateAgent,
+  updateSessionTitle, workspaceMediaUrl,
+} from '@/api/client'
 
 const originalFetch = globalThis.fetch
 
@@ -295,5 +300,86 @@ describe('updateSessionTitle', () => {
     globalThis.fetch = mock(() => Promise.resolve(new Response('bad', { status: 422 }))) as typeof fetch
 
     await expect(updateSessionTitle('sid', '')).rejects.toThrow('updateSessionTitle failed: 422')
+  })
+})
+
+describe('subagents API', () => {
+  it('fetches subagents for a session', async () => {
+    let url = ''
+    globalThis.fetch = mock((input) => {
+      url = String(input)
+      return Promise.resolve(new Response(JSON.stringify({
+        available_profiles: [{ name: 'explorer', tools: ['read'] }],
+        live_members: [{ member_id: 'explorer#1', status: 'working' }],
+      })))
+    }) as typeof fetch
+
+    const res = await listSubagents('session-123')
+    expect(url).toBe('/api/agent/sessions/session-123/subagents')
+    expect(res.available_profiles.length).toBe(1)
+    expect(res.live_members[0].member_id).toBe('explorer#1')
+  })
+
+  it('fetches member profiles from /agents/members', async () => {
+    let url = ''
+    globalThis.fetch = mock((input) => {
+      url = String(input)
+      return Promise.resolve(new Response(JSON.stringify([
+        { name: 'explorer', tools: ['glob', 'read'] },
+        { name: 'researcher', tools: ['web_search'] },
+      ])))
+    }) as typeof fetch
+
+    const res = await listMemberProfiles()
+    expect(url).toBe('/api/agents/members')
+    expect(res.length).toBe(2)
+    expect(res[0].name).toBe('explorer')
+  })
+
+  it('lists agent files via /agents', async () => {
+    let url = ''
+    globalThis.fetch = mock((input) => {
+      url = String(input)
+      return Promise.resolve(new Response(JSON.stringify({
+        agents: [
+          { name: 'code', role: 'lead' },
+          { name: 'explorer', role: 'member' },
+        ],
+      })))
+    }) as typeof fetch
+
+    const res = await listAgentFiles()
+    expect(url).toBe('/api/agents')
+    expect(res.agents.length).toBe(2)
+    expect(res.agents[0].name).toBe('code')
+    expect(res.agents[1].name).toBe('explorer')
+  })
+
+  it('manages agents via CRUD methods', async () => {
+    const calls: { url: string; method?: string }[] = []
+    globalThis.fetch = mock((input: any, init?: any) => {
+      calls.push({ url: String(input), method: init?.method })
+      return Promise.resolve(new Response(JSON.stringify({
+        name: 'reviewer',
+        path: '/tmp/reviewer.md',
+        content: '---\nname: reviewer\n---\nPrompt',
+      })))
+    }) as typeof fetch
+
+    await getAgent('reviewer')
+    expect(calls[0]).toEqual({ url: '/api/agents/reviewer', method: undefined })
+
+    await createAgent('reviewer', 'content')
+    expect(calls[1]).toEqual({ url: '/api/agents', method: 'POST' })
+
+    await updateAgent('reviewer', 'updated content')
+    expect(calls[2]).toEqual({ url: '/api/agents/reviewer', method: 'PUT' })
+
+    globalThis.fetch = mock((input: any, init?: any) => {
+      calls.push({ url: String(input), method: init?.method })
+      return Promise.resolve(new Response(null, { status: 204 }))
+    }) as typeof fetch
+    await deleteAgent('reviewer')
+    expect(calls[3]).toEqual({ url: '/api/agents/reviewer', method: 'DELETE' })
   })
 })

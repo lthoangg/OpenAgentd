@@ -6,6 +6,7 @@ import { apiBaseUrl } from '../base-url'
 import { parseDetailOrThrow } from './_shared'
 import type {
   AgentDetail,
+  AgentListResponse,
   RegistryResponse,
   SkillListResponse,
   SkillDetail,
@@ -20,6 +21,45 @@ export async function getCodeAgent(): Promise<AgentDetail> {
   const res = await fetch(`${apiBaseUrl()}/agents/code`)
   if (!res.ok) await parseDetailOrThrow(res, 'GET /agents/code')
   return res.json()
+}
+
+export async function listAgentFiles(): Promise<AgentListResponse> {
+  const res = await fetch(`${apiBaseUrl()}/agents`)
+  if (!res.ok) await parseDetailOrThrow(res, 'GET /agents')
+  return res.json()
+}
+
+export async function getAgent(name: string): Promise<AgentDetail> {
+  const res = await fetch(`${apiBaseUrl()}/agents/${encodeURIComponent(name)}`)
+  if (!res.ok) await parseDetailOrThrow(res, `GET /agents/${name}`)
+  return res.json()
+}
+
+export async function createAgent(name: string, content: string): Promise<AgentDetail> {
+  const res = await fetch(`${apiBaseUrl()}/agents`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, content }),
+  })
+  if (!res.ok) await parseDetailOrThrow(res, 'POST /agents')
+  return res.json()
+}
+
+export async function updateAgent(name: string, content: string): Promise<AgentDetail> {
+  const res = await fetch(`${apiBaseUrl()}/agents/${encodeURIComponent(name)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, content }),
+  })
+  if (!res.ok) await parseDetailOrThrow(res, `PUT /agents/${name}`)
+  return res.json()
+}
+
+export async function deleteAgent(name: string): Promise<void> {
+  const res = await fetch(`${apiBaseUrl()}/agents/${encodeURIComponent(name)}`, {
+    method: 'DELETE',
+  })
+  if (!res.ok) await parseDetailOrThrow(res, `DELETE /agents/${name}`)
 }
 
 export async function updateCodeAgent(content: string): Promise<AgentDetail> {

@@ -6,12 +6,13 @@ import asyncio
 from datetime import UTC, datetime
 import json
 from pathlib import Path
-from typing import AsyncGenerator, Literal
+from typing import Any, AsyncGenerator, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, File, HTTPException, Query, Request, UploadFile
 from loguru import logger
 from pydantic import BaseModel
+from sqlmodel import col, select
 from sse_starlette.sse import EventSourceResponse
 
 from app.agent.agent_loop import Agent
@@ -167,6 +168,21 @@ def _serialize_agent(
             {"name": t.name, "description": t.description or ""}
             for t in tools_by_name.values()
         ]
+        # Standard session tools (interactive lead tools)
+        session_tools = [
+            {
+                "name": "delegate",
+                "description": "Delegate a focused task to a specialized subagent (e.g. 'explorer' for codebase inspection, 'researcher' for external docs).",
+            },
+            {
+                "name": "ask_user",
+                "description": "Ask the user 1-4 questions and pause the turn until they answer.",
+            },
+        ]
+        existing_names = {t["name"] for t in tools_payload}
+        for st in session_tools:
+            if st["name"] not in existing_names:
+                tools_payload.append(st)
     finally:
         if sandbox_token is not None:
             _denied_paths_ctx.reset(sandbox_token)
@@ -629,12 +645,37 @@ async def list_agent_sessions(
     running_session_ids = stream_store.running_session_ids()
     # One query for the whole page rather than a lookup per row.
     awaiting = await question_service.sessions_awaiting_input(db)
+
+    session_ids = [s.id for s in sessions]
+    children_by_parent: dict[UUID, list[SessionResponse]] = {
+        sid: [] for sid in session_ids
+    }
+    if session_ids:
+        child_stmt = (
+            select(ChatSession)
+            .where(col(ChatSession.parent_session_id).in_(session_ids))
+            .order_by(col(ChatSession.created_at).asc())
+        )
+        child_rows = (await db.exec(child_stmt)).all()
+        for child in child_rows:
+            parent_id = child.parent_session_id
+            if parent_id is not None and parent_id in children_by_parent:
+                children_by_parent[parent_id].append(
+                    SessionResponse.model_validate(child).model_copy(
+                        update={
+                            "running": str(child.id) in running_session_ids,
+                            "needs_input": child.id in awaiting,
+                        }
+                    )
+                )
+
     return SessionPageResponse(
         data=[
             SessionResponse.model_validate(s).model_copy(
                 update={
                     "running": str(s.id) in running_session_ids,
                     "needs_input": s.id in awaiting,
+                    "subagents": children_by_parent.get(s.id, []),
                 }
             )
             for s in sessions
@@ -831,6 +872,14 @@ async def delete_agent_session(session_id: UUID, db: DbSession) -> None:
         raise HTTPException(status_code=404, detail="Session not found.")
 
 
+@router.get("/sessions/{session_id}/subagents")
+async def get_session_subagents(session_id: UUID) -> dict[str, Any]:
+    """List available member profiles and active subagent instances under this session."""
+    from app.services import subagent_service
+
+    return await subagent_service.list_subagents(str(session_id))
+
+
 def _parse_cursor(raw: str, field: str) -> datetime:
     """Parse an ISO 8601 history cursor, rejecting malformed input with 422.
 
@@ -938,14 +987,17 @@ async def agent_history(
     )
     if history is None:
         raise HTTPException(status_code=404, detail="Lead session not found.")
-    if history.root_session.workspace:
+    if (
+        history.root_session.workspace
+        and history.root_session.parent_session_id is None
+    ):
         try:
             await agent_manager.get_or_start_agent_session(
                 history.root_session.workspace, str(history.root_session.id)
             )
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
-    else:
+    elif history.root_session.parent_session_id is None:
         _require_agent_session(agent)
 
     lead_resp = SessionResponse.model_validate(history.root_session).model_copy(
@@ -1026,14 +1078,14 @@ async def _agent_history_delta(
     delta = await get_agent_history_since(db, session_id, since_id=since_id)
     if delta is None:
         raise HTTPException(status_code=404, detail="Lead session not found.")
-    if delta.root_session.workspace:
+    if delta.root_session.workspace and delta.root_session.parent_session_id is None:
         try:
             await agent_manager.get_or_start_agent_session(
                 delta.root_session.workspace, str(delta.root_session.id)
             )
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
-    else:
+    elif delta.root_session.parent_session_id is None:
         _require_agent_session(agent)
 
     lead_resp = SessionResponse.model_validate(delta.root_session).model_copy(

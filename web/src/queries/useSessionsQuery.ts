@@ -1,5 +1,5 @@
-import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { listSessions, deleteSession, updateSessionTitle } from '@/api/client'
+import { useInfiniteQuery, useMutation, useQueryClient, useQuery } from '@tanstack/react-query'
+import { listSessions, deleteSession, updateSessionTitle, listSubagents } from '@/api/client'
 import type { SessionPageResponse, SessionResponse } from '@/api/types'
 import { queryKeys } from './keys'
 import { patchSessionInPageData } from './session-cache'
@@ -50,5 +50,14 @@ export function useDeleteSessionMutation() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.session.sessions.all() })
     },
+  })
+}
+
+export function useSessionSubagentsQuery(sessionId: string | null | undefined, enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.session.subagents(sessionId ?? ''),
+    queryFn: () => listSubagents(sessionId!),
+    enabled: Boolean(sessionId) && enabled,
+    staleTime: 5000,
   })
 }

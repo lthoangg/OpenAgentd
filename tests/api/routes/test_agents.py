@@ -476,16 +476,52 @@ async def test_get_code_agent(fs_dirs, client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_agent_config_api_is_code_only(fs_dirs, client: AsyncClient):
+async def test_agent_config_api_list_and_manage(fs_dirs, client: AsyncClient):
     agents_dir, _ = fs_dirs
     (agents_dir / "code.md").write_text(LEAD_MD.replace("name: lead", "name: code"))
 
+    # GET /api/agents lists agents including code
+    res = await client.get("/api/agents")
+    assert res.status_code == 200
+    agents = res.json()["agents"]
+    names = [a["name"] for a in agents]
+    assert "code" in names
+
+    # GET /api/agents/lead returns 404 for nonexistent agent
     assert (await client.get("/api/agents/lead")).status_code == 404
-    assert (await client.get("/api/agents")).status_code == 404
+
+    # POST /api/agents fails with 409 for existing code agent
     assert (
         await client.post("/api/agents", json={"name": "code", "content": LEAD_MD})
-    ).status_code == 404
-    assert (await client.delete("/api/agents/code")).status_code == 405
+    ).status_code == 409
+
+    # DELETE /api/agents/code is rejected with 400
+    assert (await client.delete("/api/agents/code")).status_code == 400
+
+    # POST /api/agents succeeds for a new member agent
+    custom_md = MEMBER_MD.replace("name: worker", "name: helper")
+    create_res = await client.post(
+        "/api/agents", json={"name": "helper", "content": custom_md}
+    )
+    assert create_res.status_code == 201
+    assert create_res.json()["name"] == "helper"
+
+    # GET /api/agents/helper succeeds
+    get_res = await client.get("/api/agents/helper")
+    assert get_res.status_code == 200
+    assert get_res.json()["name"] == "helper"
+
+    # PUT /api/agents/helper updates the member agent
+    updated_md = custom_md.replace("Worker.", "Updated worker.")
+    put_res = await client.put(
+        "/api/agents/helper", json={"name": "helper", "content": updated_md}
+    )
+    assert put_res.status_code == 200
+
+    # DELETE /api/agents/helper deletes the member agent
+    del_res = await client.delete("/api/agents/helper")
+    assert del_res.status_code == 204
+    assert (await client.get("/api/agents/helper")).status_code == 404
 
 
 @pytest.mark.asyncio

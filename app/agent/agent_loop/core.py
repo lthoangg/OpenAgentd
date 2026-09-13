@@ -38,7 +38,7 @@ from app.agent.agent_loop.tool_dispatch import gather_or_cancel
 from app.agent.agent_loop.tool_executor import make_tool_executor, sanitize_error
 from app.agent.usage import usage_to_dict
 from app.agent.checkpointer import Checkpointer
-from app.agent.errors import ProviderRequestError, QuestionSuspended
+from app.agent.errors import LeadSuspended, ProviderRequestError, QuestionSuspended
 from app.agent.hooks import BaseAgentHook
 from app.agent.providers.base import LLMProviderBase
 from app.agent.providers.capabilities import ModelCapabilities, get_capabilities
@@ -82,7 +82,8 @@ PROVIDER_RESUME_BASE_DELAY = 2.0
 # coding-mode-lead-only), so a same-named constructor tool coming from a plugin
 # or MCP server is dropped rather than allowed to impersonate it.
 ASK_USER = "ask_user"
-RESERVED_INJECTED_TOOL_NAMES = frozenset({ASK_USER})
+ASK_LEAD = "ask_lead"
+RESERVED_INJECTED_TOOL_NAMES = frozenset({ASK_USER, ASK_LEAD})
 
 # Returned to the model in place of a second interruption. Phrased as a nudge
 # rather than a failure so the model proceeds instead of retrying.
@@ -1011,8 +1012,10 @@ class Agent(Generic[TContext]):
             ", ".join(tc.function.name for tc in tc_list),
         )
 
-        ask_calls = [tc for tc in tc_list if tc.function.name == ASK_USER]
-        other_calls = [tc for tc in tc_list if tc.function.name != ASK_USER]
+        ask_calls = [tc for tc in tc_list if tc.function.name in (ASK_USER, ASK_LEAD)]
+        other_calls = [
+            tc for tc in tc_list if tc.function.name not in (ASK_USER, ASK_LEAD)
+        ]
 
         # Execute tool calls in parallel, cancelling on interrupt
         results = await gather_or_cancel(
@@ -1121,6 +1124,21 @@ class Agent(Generic[TContext]):
                 suspension.question_id,
             )
             return "suspended"
+        except LeadSuspended as suspension:
+            suspended_lead = {
+                "question": suspension.question,
+                "options": suspension.options,
+                "tool_call_id": primary.id,
+            }
+            state.metadata["lead_suspended"] = suspended_lead
+            if config is not None:
+                config.metadata["lead_suspended"] = suspended_lead
+            logger.info(
+                "lead_suspended agent={} question={}",
+                self.name,
+                suspension.question,
+            )
+            return "suspended"
 
         # The tool declined to suspend (e.g. it could not resolve a call id) —
         # treat its return value as an ordinary result and keep going.
@@ -1199,7 +1217,7 @@ class Agent(Generic[TContext]):
         async with self._tool_semaphore:
             try:
                 result = await chain(ctx, state, tc)
-            except QuestionSuspended:
+            except (QuestionSuspended, LeadSuspended):
                 raise
             except Exception as exc:
                 logger.warning(

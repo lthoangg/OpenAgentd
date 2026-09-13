@@ -1,6 +1,8 @@
 import { useState } from 'react'
+import { Trash2 } from 'lucide-react'
 import {
-  useCodeAgentQuery,
+  useAgentFileQuery,
+  useDeleteAgentMutation,
   useUpdateAgentMutation,
 } from '@/queries'
 import { useToastStore } from '@/stores/useToastStore'
@@ -10,20 +12,30 @@ import { EditorSubHeader } from '@/components/settings/EditorSubHeader'
 import { contentEquals } from '@/components/settings/frontmatter'
 import { validateAgentDraft } from '@/components/settings/schema'
 import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 
 interface AgentEditorPageProps {
+  name?: string
   onBack: () => void
 }
 
-export function AgentEditorPage({ onBack }: AgentEditorPageProps) {
-  const name = 'code'
+export function AgentEditorPage({ name = 'code', onBack }: AgentEditorPageProps) {
   const push = useToastStore((s) => s.push)
-  const { data, isLoading, isError, error, refetch } = useCodeAgentQuery()
-  const updateMut = useUpdateAgentMutation()
+  const { data, isLoading, isError, error, refetch } = useAgentFileQuery(name)
+  const updateMut = useUpdateAgentMutation(name)
+  const deleteMut = useDeleteAgentMutation()
 
   const [draft, setDraft] = useState<string>(() => data?.content ?? '')
   const [saveError, setSaveError] = useState<string | null>(null)
   const [mode, setMode] = useState<'form' | 'raw'>('form')
+  const [deleteOpen, setDeleteOpen] = useState(false)
 
   // Re-seed draft when navigating to a different agent or when the query
   // first resolves. Using the agent name as the sentinel means switching
@@ -58,11 +70,22 @@ export function AgentEditorPage({ onBack }: AgentEditorPageProps) {
     }
   }
 
+  const handleDelete = async () => {
+    try {
+      await deleteMut.mutateAsync(name)
+      push({ tone: 'success', title: `Deleted agent "${name}"` })
+      setDeleteOpen(false)
+      onBack()
+    } catch (err) {
+      push({ tone: 'error', title: 'Failed to delete agent', description: String(err) })
+    }
+  }
+
   return (
     <div className="flex h-full flex-col">
       <EditorSubHeader
         kind="agent"
-        name="Coding agent"
+        name={name === 'code' ? 'Coding agent' : `Member: ${name}`}
         path={data?.path}
         dirty={dirty}
         invalid={invalid}
@@ -103,11 +126,43 @@ export function AgentEditorPage({ onBack }: AgentEditorPageProps) {
                 </>
               )}
             </div>
-            <span />
+            {name !== 'code' && (
+              <Button
+                variant="ghost"
+                size="xs"
+                className="text-(--color-error) hover:bg-(--color-error-subtle) hover:text-(--color-error)"
+                onClick={() => setDeleteOpen(true)}
+              >
+                <Trash2 size={12} className="mr-1" />
+                Delete profile
+              </Button>
+            )}
           </div>
         </div>
       </div>
 
+      <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete profile &ldquo;{name}&rdquo;?</DialogTitle>
+            <DialogDescription>
+              This will permanently delete the agent profile from your configuration directory. This cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setDeleteOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDelete}
+              disabled={deleteMut.isPending}
+            >
+              {deleteMut.isPending ? 'Deleting…' : 'Delete profile'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

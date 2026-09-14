@@ -22,11 +22,18 @@ function AgentLayoutBase() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const cachedSessionPages = queryClient.getQueryData<{
-    pages: Array<{ data: Array<{ id: string; workspace?: string | null }> }>
+    pages: Array<{
+      data: Array<{
+        id: string
+        workspace?: string | null
+        subagents?: Array<{ id: string; workspace?: string | null }>
+      }>
+    }>
   }>(queryKeys.session.sessions.infinite())
   const cachedSession = sessionId
     ? cachedSessionPages?.pages
       .flatMap((page) => page.data)
+      .flatMap((session) => [session, ...(session.subagents ?? []).map((sub) => ({ id: sub.id, workspace: sub.workspace ?? session.workspace }))])
       .find((session) => session.id === sessionId)
     : undefined
   const sessionQuery = useQuery({

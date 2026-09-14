@@ -93,6 +93,7 @@ export async function handleGlobalEvent(
     // and a turn that actually touched the scheduler already enqueues a
     // `scheduler` invalidation from the tool_end reducer.
     markSessionRunning(queryClient, sessionId, false)
+    queryClient.invalidateQueries({ queryKey: queryKeys.session.subagents(sessionId) })
 
     const before = useAgentStore.getState()
     if (before.sessionId !== sessionId) return true
@@ -116,6 +117,15 @@ export async function handleGlobalEvent(
     if (!sessionId || title === null) return false
     if (useAgentStore.getState().sessionId === sessionId) useAgentStore.setState({ sessionTitle: title })
     patchSessionTitle(queryClient, sessionId, title)
+    return true
+  }
+
+  if (type === 'subagent_spawned' || type === 'subagent_status') {
+    const leadId = typeof event.lead_session_id === 'string' ? event.lead_session_id : null
+    if (leadId) {
+      queryClient.invalidateQueries({ queryKey: queryKeys.session.subagents(leadId) })
+    }
+    queryClient.invalidateQueries({ queryKey: queryKeys.session.sessions.all() })
     return true
   }
 

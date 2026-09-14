@@ -474,8 +474,8 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
             <button
               type="button"
               onClick={() => {
-                if (workspace) {
-                  navigate({ to: '/coding', search: { session: parentSessionId, workspace } })
+                if (parentSessionId) {
+                  navigate({ to: '/coding/$sessionId', params: { sessionId: parentSessionId } })
                 }
               }}
               className="shrink-0 flex items-center gap-1 rounded font-medium text-(--color-accent) hover:underline text-xs"
@@ -578,8 +578,8 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
                 size="sm"
                 variant="secondary"
                 onClick={() => {
-                  if (workspace && parentSessionId) {
-                    navigate({ to: '/coding', search: { session: parentSessionId, workspace } })
+                  if (parentSessionId) {
+                    navigate({ to: '/coding/$sessionId', params: { sessionId: parentSessionId } })
                   }
                 }}
                 className="shrink-0 h-6 text-xs px-2.5"

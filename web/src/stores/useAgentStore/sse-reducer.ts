@@ -371,6 +371,10 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
           const sid = get().sessionId
           if (sid) events.push({ kind: 'todos', sessionId: sid })
         }
+        if (toolName === 'delegate' || toolName.startsWith('team_')) {
+          const sid = get().sessionId
+          if (sid) events.push({ kind: 'subagents', sessionId: sid })
+        }
         if (events.length > 0) {
           set((draft) => { draft.cacheInvalidations.push(...events) })
         }

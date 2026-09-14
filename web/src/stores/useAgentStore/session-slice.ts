@@ -496,6 +496,15 @@ async function loadSessionImpl(
 
       const allNames = Array.from(new Set([leadName, ...(liveNames ?? []), ...memberNames]))
       draft.agentNames = allNames
+
+      // Prune streams from previously viewed sessions that do not belong here
+      const validStreamNames = new Set([leadName, ...memberNames])
+      Object.keys(draft.agentStreams).forEach((streamName) => {
+        if (!validStreamNames.has(streamName)) {
+          delete draft.agentStreams[streamName]
+        }
+      })
+
       const leadRevertTime = revertBoundaryTime(history.lead)
       const boundaryId = history.lead.revert?.message_id
       const boundaryMsg = boundaryId ? history.lead.messages.find((msg) => msg.id === boundaryId) : undefined

@@ -38,6 +38,10 @@ export function applyCacheInvalidations(
       case 'todos':
         queryClient.invalidateQueries({ queryKey: queryKeys.todos(event.sessionId) })
         break
+      case 'subagents':
+        queryClient.invalidateQueries({ queryKey: queryKeys.session.subagents(event.sessionId) })
+        queryClient.invalidateQueries({ queryKey: queryKeys.session.sessions.all() })
+        break
       case 'session_running':
         // Patch in place; only fall back to a refetch when the session is not
         // in any cached page yet (nothing to patch).

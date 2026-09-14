@@ -352,6 +352,22 @@ async def spawn_subagent(
         child_session_uuid,
     )
 
+    try:
+        from app.services import event_broadcaster
+
+        await event_broadcaster.publish(
+            "subagent_spawned",
+            {
+                "lead_session_id": lead_session_id,
+                "session_id": str(child_session_uuid),
+                "handle": handle,
+                "profile": profile,
+                "workspace": workspace,
+            },
+        )
+    except Exception as exc:
+        logger.debug("Failed to publish subagent_spawned: {}", exc)
+
     # Start the member's turn with the task prompt
     brief = f"[Task from Lead]: {task}"
     await child_session.handle_user_message(
@@ -415,6 +431,21 @@ async def _await_member_turn(
     # Check if turn suspended on ask_lead
     if instance.pending_lead_question:
         instance.status = "waiting_lead"
+        try:
+            from app.services import event_broadcaster
+
+            await event_broadcaster.publish(
+                "subagent_status",
+                {
+                    "lead_session_id": instance.lead_session_id,
+                    "session_id": instance.session_id,
+                    "handle": instance.handle,
+                    "status": instance.status,
+                    "workspace": instance.session.workspace,
+                },
+            )
+        except Exception as exc:
+            logger.debug("Failed to publish subagent_status: {}", exc)
         q_text = instance.pending_lead_question.get("question", "")
         opts = instance.pending_lead_question.get("options")
         opts_text = f" (Options: {', '.join(opts)})" if opts else ""
@@ -463,6 +494,21 @@ async def _await_member_turn(
 
     # Turn completed: extract final assistant message
     instance.status = "completed"
+    try:
+        from app.services import event_broadcaster
+
+        await event_broadcaster.publish(
+            "subagent_status",
+            {
+                "lead_session_id": instance.lead_session_id,
+                "session_id": instance.session_id,
+                "handle": instance.handle,
+                "status": instance.status,
+                "workspace": instance.session.workspace,
+            },
+        )
+    except Exception as exc:
+        logger.debug("Failed to publish subagent_status: {}", exc)
     output = instance.last_result
     if not output:
         # Fall back to DB transcript for final assistant message

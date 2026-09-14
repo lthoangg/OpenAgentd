@@ -7,6 +7,7 @@ import app.core.db as core_db
 from app.models.chat import ChatSession
 from app.services.subagent_service import (
     AmbiguousMemberError,
+    MAX_CONCURRENT_MEMBERS,
     MemberNotFoundError,
     SubagentInstance,
     _instance_counters,
@@ -14,6 +15,7 @@ from app.services.subagent_service import (
     _reconciled_lead_sessions,
     allocate_instance_handle,
     list_subagents,
+    prune_subagent_output,
     reconcile_lead_instances,
     resolve_instance,
     stop_all_subagents,
@@ -185,3 +187,24 @@ async def test_stop_subagent_and_stop_all() -> None:
     await stop_all_subagents(lead_id)
     assert inst2.status == "error"
     assert stopped_count == 2
+
+
+def test_prune_subagent_output_within_budget() -> None:
+    short_output = "Found 3 files matching *.py."
+    assert (
+        prune_subagent_output(short_output, "child-123", max_chars=1000) == short_output
+    )
+
+
+def test_prune_subagent_output_truncates_large_payload() -> None:
+    giant_output = "A" * 5000 + "B" * 5000
+    pruned = prune_subagent_output(giant_output, "child-456", max_chars=2000)
+    assert len(pruned) <= 2200
+    assert "Output truncated" in pruned
+    assert "child-456" in pruned
+    assert pruned.startswith("A" * 500)
+    assert pruned.endswith("B" * 400)
+
+
+def test_max_concurrent_members_is_twenty() -> None:
+    assert MAX_CONCURRENT_MEMBERS == 20

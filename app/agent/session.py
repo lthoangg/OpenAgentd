@@ -605,6 +605,8 @@ class AgentSession:
     async def _activate_queued_user_messages(self, session_id: str) -> bool:
         if not self.db_factory:
             return False
+        if self.session_id != session_id:
+            self.session_id = session_id
         sess_uuid = uuid.UUID(session_id)
         async with self.db_factory() as db:
             queued = await pop_queued_user_messages(db, sess_uuid)

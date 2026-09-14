@@ -76,7 +76,10 @@ export async function handleGlobalEvent(
     if (before.sessionId !== sessionId) return true
     if (before.isConnected && before.isAgentWorking) return true
     const sessionGeneration = before._sessionGeneration
-    await before.loadSession(sessionId, before._workspace)
+    const targetWorkspace = (typeof event.workspace === 'string' && event.workspace)
+      ? event.workspace
+      : before._workspace
+    await before.loadSession(sessionId, targetWorkspace)
     const after = useAgentStore.getState()
     if (connectionGeneration !== currentConnectionGeneration()) return false
     if (after.sessionId !== sessionId || after._sessionGeneration !== sessionGeneration) return false

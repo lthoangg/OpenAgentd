@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from app.agent.loader import (
+    clear_member_profiles_cache,
     ensure_builtin_member_agents,
     load_member_profiles,
 )
@@ -52,3 +53,53 @@ You are a custom reviewer. Check for O(N^2) loops.
     assert profiles["custom_reviewer"].description == "Reviews code for performance"
     assert "You are a custom reviewer" in profiles["custom_reviewer"].system_prompt
     assert profiles["custom_reviewer"].tools == ["read", "grep"]
+
+
+def test_member_profiles_caching_and_invalidation(tmp_path: Path) -> None:
+    clear_member_profiles_cache()
+    custom_file = tmp_path / "fast_analyst.md"
+    custom_file.write_text(
+        """---
+name: fast_analyst
+role: member
+description: Version 1
+tools:
+  - read
+---
+Prompt v1
+""",
+        encoding="utf-8",
+    )
+
+    first = load_member_profiles(tmp_path)
+    assert first["fast_analyst"].description == "Version 1"
+
+    # Second call uses cache
+    second = load_member_profiles(tmp_path)
+    assert second["fast_analyst"].description == "Version 1"
+    assert second["fast_analyst"] is first["fast_analyst"]
+
+    # Updating the file invalidates cache via mtime
+    import time
+
+    time.sleep(0.01)
+    custom_file.write_text(
+        """---
+name: fast_analyst
+role: member
+description: Version 2
+tools:
+  - read
+---
+Prompt v2
+""",
+        encoding="utf-8",
+    )
+
+    third = load_member_profiles(tmp_path)
+    assert third["fast_analyst"].description == "Version 2"
+
+    # Clearing cache forces reload
+    clear_member_profiles_cache()
+    fourth = load_member_profiles(tmp_path)
+    assert fourth["fast_analyst"].description == "Version 2"

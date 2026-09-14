@@ -175,7 +175,7 @@ def find_live_session(
 def find_live_session_serving_session(session_id: str) -> AgentSession | None:
     """Find live session serving session_id."""
     for (_, sid), sess in _sessions.items():
-        if sid == session_id:
+        if sid == session_id or getattr(sess, "session_id", None) == session_id:
             return sess
     return None
 

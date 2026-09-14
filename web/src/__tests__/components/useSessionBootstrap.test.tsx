@@ -251,4 +251,31 @@ describe('useSessionBootstrap remount on screen switch', () => {
     await waitFor(() => expect(loadSession).toHaveBeenCalledWith('session-1', '/repo/app'))
     expect(connectStream).toHaveBeenCalledTimes(1)
   })
+
+  it('does not abort or clobber an active stream connected externally', async () => {
+    const externalController = new AbortController()
+    useAgentStore.setState({
+      sessionId: 'session-1',
+      _workspace: '/repo/app',
+      isConnected: true,
+      isAgentWorking: true,
+      _unloading: false,
+      _abortController: externalController,
+    })
+
+    const loadSession = mock(async () => {})
+    const connectStream = mock(() => new AbortController())
+
+    render(
+      <Harness
+        sessionId="session-1"
+        loadSession={loadSession}
+        connectStream={connectStream}
+      />,
+    )
+
+    expect(loadSession).not.toHaveBeenCalled()
+    expect(connectStream).not.toHaveBeenCalled()
+    expect(externalController.signal.aborted).toBe(false)
+  })
 })

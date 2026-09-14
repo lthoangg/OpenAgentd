@@ -26,9 +26,34 @@ from app.core.config import DEFAULT_NEW_USER_MODEL, settings
 from app.core.db import DbFactory, resolve_db_factory
 from app.models.chat import ChatSession, SessionMessage
 
-MAX_CONCURRENT_MEMBERS = 5
+MAX_CONCURRENT_MEMBERS = 20
+MAX_SUBAGENT_OUTPUT_CHARS = 32_000
 MAX_MEMBER_ITERATIONS = 30
 DEFAULT_MEMBER_TIMEOUT = 180.0
+
+
+def prune_subagent_output(
+    output: str,
+    child_session_id: str,
+    max_chars: int = MAX_SUBAGENT_OUTPUT_CHARS,
+) -> str:
+    """Safeguard subagent output length before delivery to lead transcript.
+
+    Preserves head and tail context if the deliverable exceeds *max_chars*,
+    pointing to the child session for the unabridged output.
+    """
+    if len(output) <= max_chars:
+        return output
+    head_len = max(500, max_chars - 1000)
+    tail_len = min(400, max_chars - head_len)
+    head = output[:head_len].rstrip()
+    tail = output[-tail_len:].lstrip() if tail_len > 0 else ""
+    truncated_msg = (
+        f"\n\n[... Output truncated: {len(output)} chars total exceeds lead message budget of {max_chars} chars. "
+        f"Full deliverable preserved in subagent session {child_session_id} ...]\n\n"
+    )
+    return f"{head}{truncated_msg}{tail}"
+
 
 _INSTANCE_HANDLE_RE = re.compile(r"^(?P<profile>[^#]+)#(?P<n>\d+)$")
 
@@ -723,10 +748,11 @@ async def on_subagent_turn_completed(
             inst._result_delivered = True
 
     try:
+        deliverable = prune_subagent_output(output, child_session_id)
         await deliver_message_to_lead(
             lead_session_id=lead_session_id,
             handle=effective_handle,
-            content=output,
+            content=deliverable,
             db_factory=db_maker,
         )
     except Exception as exc:

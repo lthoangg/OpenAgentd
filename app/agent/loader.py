@@ -36,6 +36,7 @@ __all__ = [
     "ensure_builtin_member_agents",
     "load_agent_from_dir",
     "load_member_profiles",
+    "clear_member_profiles_cache",
     "parse_agent_md",
     "rebuild_agent_from_disk",
     "stamp_agent_files",
@@ -200,11 +201,45 @@ def ensure_builtin_member_agents(agents_dir: Path) -> list[str]:
     return written
 
 
+_member_profiles_cache: dict[
+    str, tuple[float, tuple[tuple[str, int], ...], dict[str, AgentConfig]]
+] = {}
+
+
+def clear_member_profiles_cache() -> None:
+    """Clear in-memory cached member profiles."""
+    _member_profiles_cache.clear()
+
+
 def load_member_profiles(agents_dir: Path) -> dict[str, AgentConfig]:
     """Load all member profiles (*.md with role: member) from agents directory.
 
+    Cached in-memory using directory and file mtimes to avoid redundant disk reads
+    during repeated model tool serialization, while dynamically reloading when
+    profile files are added, modified, or deleted.
+
     Falls back to built-in member profiles if the directory does not contain them.
     """
+    cache_key = str(agents_dir.resolve()) if agents_dir.exists() else str(agents_dir)
+    dir_mtime = 0.0
+    file_signatures: list[tuple[str, int]] = []
+
+    if agents_dir.is_dir():
+        try:
+            dir_mtime = agents_dir.stat().st_mtime
+            for p in sorted(agents_dir.glob("*.md")):
+                try:
+                    file_signatures.append((p.name, p.stat().st_mtime_ns))
+                except OSError:
+                    continue
+        except OSError:
+            pass
+
+    sig_tuple = tuple(file_signatures)
+    cached = _member_profiles_cache.get(cache_key)
+    if cached is not None and cached[0] == dir_mtime and cached[1] == sig_tuple:
+        return dict(cached[2])
+
     profiles: dict[str, AgentConfig] = {}
     if agents_dir.is_dir():
         for path in sorted(agents_dir.glob("*.md")):
@@ -229,7 +264,9 @@ def load_member_profiles(agents_dir: Path) -> dict[str, AgentConfig]:
                 tools=list(bp["tools"]),
                 model=DEFAULT_NEW_USER_MODEL,
             )
-    return profiles
+
+    _member_profiles_cache[cache_key] = (dir_mtime, sig_tuple, profiles)
+    return dict(profiles)
 
 
 def configure_unconfigured_agent_models(

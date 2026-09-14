@@ -40,7 +40,11 @@ describe('agentNameSchema', () => {
     expect(agentNameSchema.safeParse('code').success).toBe(true)
   })
 
-  it.each(['', 'alpha', '.hidden', ' spaced', 'bad/slash', 'a'.repeat(65)])('rejects %p', (name) => {
+  it.each(['explorer', 'researcher', 'custom-member', 'agent_v1.0'])('accepts member agent name %p', (name) => {
+    expect(agentNameSchema.safeParse(name).success).toBe(true)
+  })
+
+  it.each(['', '.hidden', ' spaced', 'bad/slash', 'a'.repeat(65)])('rejects %p', (name) => {
     const res = agentNameSchema.safeParse(name)
     expect(res.success).toBe(false)
   })
@@ -69,8 +73,9 @@ describe('modelSchema', () => {
 // ── roleSchema ──────────────────────────────────────────────────────────────
 
 describe('roleSchema', () => {
-  it('accepts the canonical lead role', () => {
+  it('accepts lead and member roles', () => {
     expect(roleSchema.safeParse('lead').success).toBe(true)
+    expect(roleSchema.safeParse('member').success).toBe(true)
   })
   it('rejects anything else', () => {
     expect(roleSchema.safeParse('admin').success).toBe(false)
@@ -181,6 +186,21 @@ tools:
 ---
 
 You are code.
+`
+    expect(validateAgentDraft(raw)).toBeNull()
+  })
+
+  it('null on valid member draft', () => {
+    const raw = `---
+name: explorer
+role: member
+model: openai:gpt-5.4
+tools:
+  - read
+  - glob
+---
+
+You are explorer.
 `
     expect(validateAgentDraft(raw)).toBeNull()
   })

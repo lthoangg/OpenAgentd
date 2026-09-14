@@ -22,7 +22,14 @@ z.config({ jitless: true })
  * Agent / skill filename stem.  Matches
  * ``app/services/agent_fs.py::_NAME_RE`` byte-for-byte.
  */
-export const agentNameSchema = z.literal('code')
+export const agentNameSchema = z
+  .string()
+  .min(1, 'Required')
+  .max(64, 'Max 64 characters')
+  .regex(
+    /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$/,
+    "Letters, digits, '.', '_', '-' only (1-64 chars, starts with letter/digit)"
+  )
 
 /**
  * ``provider:model`` identifier.  Both halves must be non-empty; we do NOT
@@ -36,8 +43,8 @@ export const modelSchema = z
     "Expected 'provider:model' (e.g. 'openai:gpt-5.4')"
   )
 
-/** Agent role — the coding profile uses the ``lead`` role for built-in tools. */
-export const roleSchema = z.literal('lead')
+/** Agent role — lead for the coding lead, member for subagents. */
+export const roleSchema = z.enum(['lead', 'member'])
 
 /** Thinking level — empty string means "unset". */
 export const thinkingLevelSchema = z.string()

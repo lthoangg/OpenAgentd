@@ -154,6 +154,17 @@ def resolve_instance(lead_session_id: str, handle_or_profile: str) -> SubagentIn
     )
 
 
+def find_instance_by_session_id(
+    lead_session_id: str, child_session_id: str
+) -> SubagentInstance | None:
+    """Find a live subagent instance by its child session UUID string."""
+    instances = _live_instances.get(lead_session_id, {})
+    for inst in instances.values():
+        if inst.session_id == child_session_id:
+            return inst
+    return None
+
+
 def _resolve_agents_dir() -> Path:
     p = Path(settings.AGENTS_DIR)
     return p if p.is_absolute() else Path.cwd() / p
@@ -637,13 +648,18 @@ async def list_subagents(
                 handle = row.agent_name or str(row.id)
                 seen_handles.add(handle)
                 live_inst = live_map.get(handle)
-                status = live_inst.status if live_inst is not None else "completed"
-                last_error = live_inst.last_error if live_inst is not None else None
-                has_pending_question = (
-                    live_inst.pending_lead_question is not None
-                    if live_inst is not None
-                    else False
-                )
+                if live_inst is not None:
+                    if live_inst.status == "working":
+                        active_task = getattr(live_inst.session, "_active_task", None)
+                        if active_task is not None and active_task.done():
+                            live_inst.status = "completed"
+                    status = live_inst.status
+                    last_error = live_inst.last_error
+                    has_pending_question = live_inst.pending_lead_question is not None
+                else:
+                    status = "completed"
+                    last_error = None
+                    has_pending_question = False
 
                 parsed = parse_instance_handle(handle)
                 profile_name = parsed[0] if parsed else handle

@@ -39,7 +39,10 @@ function WorkspaceSessionRow({
   const sessionTitle = session.title || 'Untitled'
   const sessionDate = formatRelativeDate(session.created_at)
 
-  const isTargetSession = isCurrent || currentSessionId === session.id
+  const isChildSessionCurrent = Boolean(
+    currentSessionId && session.subagents?.some((s) => s.id === currentSessionId)
+  )
+  const isTargetSession = isCurrent || currentSessionId === session.id || isChildSessionCurrent
   const { data: subagentsData } = useSessionSubagentsQuery(session.id, isTargetSession)
   const liveMembers = subagentsData?.live_members ?? subagentsData?.subagents
   const subagents = (isTargetSession && liveMembers && liveMembers.length > 0)

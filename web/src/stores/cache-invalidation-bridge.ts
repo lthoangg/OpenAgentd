@@ -171,13 +171,31 @@ export function patchSessionRunning(
       const pages = old.pages.map((page) => {
         let pageChanged = false
         const data = page.data.map((session) => {
-          if (session.id !== sessionId) return session
-          found = true
-          if (session.running === running && (session.needs_input ?? false) === needsInput) {
-            return session
+          if (session.id === sessionId) {
+            found = true
+            if (session.running === running && (session.needs_input ?? false) === needsInput) {
+              return session
+            }
+            pageChanged = true
+            return { ...session, running, needs_input: needsInput }
           }
-          pageChanged = true
-          return { ...session, running, needs_input: needsInput }
+          if (session.subagents && session.subagents.some((sub) => sub.id === sessionId)) {
+            found = true
+            let subChanged = false
+            const newSubagents = session.subagents.map((sub) => {
+              if (sub.id !== sessionId) return sub
+              if (sub.running === running && (sub.needs_input ?? false) === needsInput) {
+                return sub
+              }
+              subChanged = true
+              return { ...sub, running, needs_input: needsInput }
+            })
+            if (subChanged) {
+              pageChanged = true
+              return { ...session, subagents: newSubagents }
+            }
+          }
+          return session
         })
         if (!pageChanged) return page
         changed = true

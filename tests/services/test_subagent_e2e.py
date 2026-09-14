@@ -16,6 +16,7 @@ from app.agent.schemas.chat import (
     ToolCallDelta,
 )
 from app.models.chat import ChatSession
+from app.services import memory_stream_store as stream_store
 from app.services.subagent_service import (
     _live_instances,
     _instance_counters,
@@ -181,6 +182,7 @@ async def test_subagent_end_to_end_flow(monkeypatch: pytest.MonkeyPatch) -> None
             )
         ).first()
         assert child_1 is not None
+        assert str(child_1.id) not in stream_store.running_session_ids()
 
     # 3. Spawn explorer#2 (sync mode, wait=True) which calls ask_lead
     res2 = await spawn_subagent(

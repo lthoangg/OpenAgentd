@@ -336,6 +336,61 @@ describe('handleGlobalEvent', () => {
     expect(connectStream).not.toHaveBeenCalled()
   })
 
+  it('patches subagent running state and invalidates subagents on subagent_status', async () => {
+    const client = new QueryClient()
+    client.setQueryData(queryKeys.session.subagents('lead-1'), { live_members: [] })
+    client.setQueryData(queryKeys.session.sessions.infinite(), {
+      pages: [{
+        data: [{
+          id: 'lead-1',
+          title: 'Lead',
+          agent_name: 'code',
+          created_at: null,
+          updated_at: null,
+          running: false,
+          subagents: [{
+            id: 'child-1',
+            title: 'Child',
+            agent_name: 'explorer#1',
+            created_at: null,
+            updated_at: null,
+            running: true,
+          }],
+        }],
+        next_cursor: null,
+        has_more: false,
+      }],
+      pageParams: [null],
+    })
+
+    await handleGlobalEvent(client, 'subagent_status', {
+      lead_session_id: 'lead-1',
+      session_id: 'child-1',
+      handle: 'explorer#1',
+      status: 'completed',
+      workspace: '/workspace',
+    }, 1, () => 1)
+
+    const data = client.getQueryData(queryKeys.session.sessions.infinite()) as {
+      pages: { data: { subagents?: { running?: boolean }[] }[] }[]
+    }
+    expect(data.pages[0].data[0].subagents?.[0].running).toBe(false)
+    expect(client.getQueryState(queryKeys.session.subagents('lead-1'))?.isInvalidated).toBe(true)
+  })
+
+  it('invalidates parent subagents on session_turn_completed with parent_session_id', async () => {
+    const client = new QueryClient()
+    client.setQueryData(queryKeys.session.subagents('lead-parent'), { live_members: [] })
+
+    await handleGlobalEvent(client, 'session_turn_completed', {
+      session_id: 'child-sess',
+      parent_session_id: 'lead-parent',
+      status: 'completed',
+    }, 1, () => 1)
+
+    expect(client.getQueryState(queryKeys.session.subagents('lead-parent'))?.isInvalidated).toBe(true)
+  })
+
   it('prompts for TypeScript tooling only when backend downloads are enabled', async () => {
     const client = new QueryClient()
     const payload = {

@@ -556,6 +556,24 @@ describe('patchSessionRunning', () => {
     )!
     expect(after.pages[0].data[0].running).toBe(true)
   })
+
+  it('patches nested subagent sessions in place when child id matches', () => {
+    const client = new QueryClient()
+    const lead = {
+      ...makeSession('lead-1', 'Lead'),
+      subagents: [
+        { ...makeSession('child-1', 'Child 1'), running: true },
+        { ...makeSession('child-2', 'Child 2'), running: false },
+      ],
+    }
+    seedInfinite(client, [[lead]])
+
+    expect(patchSessionRunning(client, 'child-1', false)).toBe(true)
+
+    const after = readInfinite(client)!
+    const child = after.pages[0].data[0].subagents?.[0]
+    expect(child?.running).toBe(false)
+  })
 })
 
 /**

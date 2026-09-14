@@ -721,10 +721,6 @@ class AgentSession:
         desktop notification; a failed one does not — the error is already on
         screen as its own status.
         """
-        if self.parent_session_id is not None:
-            # Subagents do not close the global session turn or trigger desktop notifications
-            return
-
         await stream_store.push_event(
             session_id,
             StreamEnvelope.from_event(DoneEvent(metadata={"session_id": session_id})),
@@ -734,14 +730,44 @@ class AgentSession:
         try:
             from app.services import event_broadcaster
 
-            if status == "completed":
-                await event_broadcaster.publish(
-                    "desktop_notification",
-                    await self._completion_notification(session_id),
-                )
+            if self.parent_session_id is None:
+                if status == "completed":
+                    await event_broadcaster.publish(
+                        "desktop_notification",
+                        await self._completion_notification(session_id),
+                    )
+            else:
+                try:
+                    from app.services import subagent_service
+
+                    inst = subagent_service.find_instance_by_session_id(
+                        self.parent_session_id, session_id
+                    )
+                    if inst:
+                        inst.status = "completed" if status == "completed" else "error"
+                    await event_broadcaster.publish(
+                        "subagent_status",
+                        {
+                            "lead_session_id": self.parent_session_id,
+                            "session_id": session_id,
+                            "handle": self.name,
+                            "status": "completed" if status == "completed" else "error",
+                            "workspace": self.workspace,
+                        },
+                    )
+                except Exception as exc:
+                    logger.debug("subagent_completion_broadcast_failed: {}", exc)
+
+            completed_payload: dict[str, Any] = {
+                "session_id": session_id,
+                "status": status,
+            }
+            if self.parent_session_id is not None:
+                completed_payload["parent_session_id"] = self.parent_session_id
+
             await event_broadcaster.publish(
                 "session_turn_completed",
-                {"session_id": session_id, "status": status},
+                completed_payload,
             )
         except Exception as exc:
             logger.warning(

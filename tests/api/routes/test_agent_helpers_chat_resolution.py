@@ -198,6 +198,34 @@ async def test_existing_session_without_workspace_is_not_routed_to_a_default_tea
 
 
 @pytest.mark.asyncio
+async def test_resolve_agent_for_existing_session_rejects_subagents(tmp_path):
+    import app.core.db as _db
+
+    parent_id = uuid.uuid7()
+    child_id = uuid.uuid7()
+    workspace = str(tmp_path / "project")
+
+    async with _db.async_session_factory() as db:
+        async with db.begin():
+            db.add(ChatSession(id=parent_id, agent_name="code", workspace=workspace))
+            db.add(
+                ChatSession(
+                    id=child_id,
+                    parent_session_id=parent_id,
+                    agent_name="explorer#1",
+                    workspace=workspace,
+                )
+            )
+
+    async with _db.async_session_factory() as db:
+        with pytest.raises(HTTPException) as exc_info:
+            await resolve_agent_for_existing_session(db, str(child_id))
+
+    assert exc_info.value.status_code == 400
+    assert "subagent" in exc_info.value.detail.lower()
+
+
+@pytest.mark.asyncio
 async def test_resolve_chat_agent_persisted_workspace_wins_over_matching_request(
     tmp_path, monkeypatch
 ):

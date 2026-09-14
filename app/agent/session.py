@@ -563,6 +563,10 @@ class AgentSession:
     async def handle_undo(self, session_id: str) -> tuple[str, BoundaryShift]:
         if self.is_busy():
             raise ContinuePreconditionError("Cannot undo while agent is busy.")
+        if self.parent_session_id is None:
+            from app.services import subagent_service
+
+            await subagent_service.stop_all_subagents(session_id)
         sess_uuid = uuid.UUID(session_id)
         async with self._command_lock:
             async with self.db_factory() as db:
@@ -577,6 +581,10 @@ class AgentSession:
     async def handle_redo(self, session_id: str) -> tuple[str, BoundaryShift]:
         if self.is_busy():
             raise ContinuePreconditionError("Cannot redo while agent is busy.")
+        if self.parent_session_id is None:
+            from app.services import subagent_service
+
+            await subagent_service.stop_all_subagents(session_id)
         sess_uuid = uuid.UUID(session_id)
         async with self._command_lock:
             async with self.db_factory() as db:
@@ -591,6 +599,10 @@ class AgentSession:
     async def handle_redo_all(self, session_id: str) -> tuple[str, BoundaryShift]:
         if self.is_busy():
             raise ContinuePreconditionError("Cannot redo while agent is busy.")
+        if self.parent_session_id is None:
+            from app.services import subagent_service
+
+            await subagent_service.stop_all_subagents(session_id)
         sess_uuid = uuid.UUID(session_id)
         async with self._command_lock:
             async with self.db_factory() as db:

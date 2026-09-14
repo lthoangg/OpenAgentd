@@ -605,6 +605,32 @@ describe("AgentView — UserBubble collapse feature", () => {
     await user.click(minimizeBtn)
     expect(screen.getByRole("button", { name: /Show full report/i })).toBeTruthy()
   })
+
+  it("copies subagent report content to clipboard when copy button is clicked", async () => {
+    const user = userEvent.setup()
+    const content = "Verified report content to copy"
+    const clipboardWriteText = mock(() => Promise.resolve())
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText: clipboardWriteText },
+      writable: true,
+    })
+
+    const blocks: ContentBlock[] = [
+      {
+        id: "sub-msg-copy",
+        type: "user",
+        content,
+        extra: { from_agent: "researcher#1" },
+        timestamp: new Date(),
+      },
+    ]
+
+    render(<AgentView blocks={blocks} currentBlocks={[]} isWorking={false} />)
+    const copyBtn = screen.getByLabelText("Copy report")
+    expect(copyBtn).toBeTruthy()
+    await user.click(copyBtn)
+    expect(clipboardWriteText).toHaveBeenCalledWith(content)
+  })
 })
 
 // ─────────────────────────────────────────────────────────────────────────────

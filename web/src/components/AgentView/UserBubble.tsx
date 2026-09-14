@@ -237,6 +237,15 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
             {timestamp && (
               <span className="text-[11px] text-(--color-text-subtle)">· {formatTime(timestamp)}</span>
             )}
+            <button
+              type="button"
+              onClick={handleCopy}
+              className="ml-0.5 flex h-4 w-4 items-center justify-center rounded text-(--color-text-muted) transition-colors hover:text-(--color-text) focus-visible:outline-none"
+              title="Copy report"
+              aria-label="Copy report"
+            >
+              {copied ? <Check size={11} aria-hidden="true" /> : <Copy size={11} aria-hidden="true" />}
+            </button>
           </div>
           <div
             className={cn(

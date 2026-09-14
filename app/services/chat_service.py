@@ -752,6 +752,13 @@ async def delete_session(db: AsyncSession, session_id: UUID) -> bool:
     # Stop producers before rows disappear so they cannot persist a late turn.
     session_ids = {str(sid) for sid in descendants}
     await agent_manager.evict_sessions(session_ids)
+    try:
+        from app.services import subagent_service
+
+        for sid in session_ids:
+            await subagent_service.stop_all_subagents(sid)
+    except Exception as exc:
+        logger.debug("delete_session_subagent_cleanup_failed: {}", exc)
 
     async with db.begin():
         await db.exec(

@@ -133,3 +133,41 @@ async def test_code_mode_allows_mutating_tools():
         message for message in messages if isinstance(message, ToolMessage)
     )
     assert tool_result.content == "applied patch"
+
+
+async def test_plan_mode_allows_delegate_tool():
+    executed = False
+
+    async def delegate(profile: str, task: str) -> str:
+        nonlocal executed
+        executed = True
+        return "dispatched to subagent"
+
+    provider = MockProvider(
+        [
+            [
+                make_tool_chunk(
+                    "delegate",
+                    "call_delegate",
+                    '{"profile": "explorer", "task": "map endpoints"}',
+                )
+            ],
+            [make_text_chunk("Delegated successfully.")],
+        ]
+    )
+    agent = Agent(
+        name="openagentd",
+        llm_provider=provider,
+        tools=[Tool(delegate, name="delegate")],
+    )
+
+    messages = await agent.run(
+        [HumanMessage(content="Explore endpoints")],
+        config=RunConfig(metadata={"interaction_mode": "plan"}),
+    )
+
+    assert executed is True
+    tool_result = next(
+        message for message in messages if isinstance(message, ToolMessage)
+    )
+    assert tool_result.content == "dispatched to subagent"

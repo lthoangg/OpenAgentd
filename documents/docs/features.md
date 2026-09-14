@@ -302,7 +302,7 @@ run from the terminal.
   rendering is powered by `@tanstack/markdown` and code fences are highlighted with
   `@tanstack/highlight`, sharing one unified highlighter and caching highlights across
   re-renders for fluid scrolling and streaming.
-- **Markdown table copy button** `[v2.15.0]` — hovering over rendered markdown tables
+- **Markdown table copy button** `[v2.16.0]` — hovering over rendered markdown tables
   reveals a compact copy button in the top-right corner that copies the table to
   the clipboard as formatted GitHub Flavored Markdown (including column alignments
   and line breaks), with zero overhead during rendering or streaming.
@@ -413,7 +413,7 @@ executes tools, manages its task list, and inspects workspace repositories.
 
 - **Single-agent cockpit** `[since v1.0, updated v2.1.0]` — exactly one primary agent
   configuration (`agents/code.md`) drives every conversation.
-- **Hub-and-Spoke agent teams** `[v2.15.0]` — the lead coding agent can spawn,
+- **Hub-and-Spoke agent teams** `[v2.16.0]` — the lead coding agent can spawn,
   coordinate, and supervise specialized subagents via the unified `delegate` tool
   loaded from markdown profiles (`agents/*.md`). Profiles and descriptions are dynamically
   reflected in the `delegate` tool description. Subagents run asynchronously in the background,
@@ -560,6 +560,12 @@ agent against it.
   and deleting session `[v1.117.0]`; repository/worktree context menu / action sheet includes
   copying the repo or worktree's absolute path `[v1.120.0]`; scroll-triggered pagination replaces
   the Load more button.
+- **Nested subagent sessions in the coding sidebar** `[v2.16.0]` — lead sessions with
+  delegated subagents render an expandable accordion of child sessions that defaults to
+  expanded while a child is running, waiting on the lead, or selected, and collapses to a
+  count pill with an activity dot so background work stays visible. Individual child rows
+  can be deleted from the sidebar, and opening one shows a read-only banner with a
+  **Return to Lead** action.
 - **Anchored & regex-optimized filesystem search** `[v2.0.0]` — `glob` pattern matching
   anchors walks at the literal prefix (up to 50x faster), `grep` pre-filters files using
   literal scanning and streams matches asynchronously off the main loop, and non-ignored
@@ -833,8 +839,8 @@ MCP.
 | Generation | `generate_image`, `generate_video` |
 | Scheduling | `schedule_task` (reminders + self-scheduling agentic loops) `[v1.70.0]` |
 | Tasks | `todo_manage` |
-| Team orchestration | `delegate` (lead agent) `[v2.15.0]` |
-| Subagent communication | `ask_lead` (subagents) `[v2.15.0]` |
+| Team orchestration | `delegate` (lead agent) `[v2.16.0]` |
+| Subagent communication | `ask_lead` (subagents) `[v2.16.0]` |
 | Ask the user | `ask_user` (coding agent) `[v1.131.0, v2.1.0]` |
 | Utility | `skill` |
 

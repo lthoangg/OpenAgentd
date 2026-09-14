@@ -253,7 +253,7 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
               isSubagentLongReport && !reportExpanded && "max-h-36 overflow-hidden",
             )}
           >
-            <LazyMarkdownBlock content={collapseDoubleNewlines(content)} />
+            <LazyMarkdownBlock content={collapseDoubleNewlines(content, true)} />
             {isSubagentLongReport && !reportExpanded && (
               <div className="pointer-events-none absolute inset-x-0 bottom-0 h-14 bg-gradient-to-t from-(--bg-card) via-(--bg-card)/80 to-transparent" />
             )}

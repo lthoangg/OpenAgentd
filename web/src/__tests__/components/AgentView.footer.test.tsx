@@ -641,6 +641,20 @@ describe("AgentView — AssistantFooter", () => {
       expect(el.textContent).toBe("Response line one\nResponse line two")
     })
 
+    it("preserves empty lines inside fenced code blocks in agent text response", async () => {
+      const codeText = "```python\ndef foo():\n    x = 1\n\n    return x\n```"
+      const { container } = renderStream({
+        blocks: [
+          makeUserBlock("u1", "Question"),
+          makeTextBlock("b1", `Prose one\n\n${codeText}\n\nProse two`),
+        ],
+        currentBlocks: [],
+        isWorking: false,
+      })
+      // Code block content should retain the blank line between `x = 1` and `return x`
+      expect(container.textContent).toContain("x = 1\n\n    return x")
+    })
+
     it("collapses double newlines in thinking block to a single newline for display", () => {
       const { container } = renderStream({
         blocks: [

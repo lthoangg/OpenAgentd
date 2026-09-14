@@ -40,7 +40,6 @@ export function applyCacheInvalidations(
         break
       case 'subagents':
         queryClient.invalidateQueries({ queryKey: queryKeys.session.subagents(event.sessionId) })
-        queryClient.invalidateQueries({ queryKey: queryKeys.session.sessions.all() })
         break
       case 'session_running':
         // Patch in place; only fall back to a refetch when the session is not

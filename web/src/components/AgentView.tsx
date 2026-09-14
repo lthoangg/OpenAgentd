@@ -92,7 +92,7 @@ const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionI
       return <UserBubble content={block.content} timestamp={block.timestamp} attachments={block.attachments} onRevert={onRevert} modelId={blockModel} onMentionFileOpen={onMentionFileOpen} mentions={block.extra?.mentions as string[] | undefined} fromAgent={fromAgent} />
     }
     case 'thinking':
-      return <Thinking content={collapseDoubleNewlines(block.content)} isStreaming={isStreaming} />
+      return <Thinking content={block.content} isStreaming={isStreaming} />
     case 'compaction': {
       const state = block.extra?.state === 'compacting' ? 'compacting' : 'compacted'
       const error = Boolean(block.extra?.error)
@@ -167,14 +167,14 @@ const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionI
       if (sleepPrefix !== null) {
         return (
           <div>
-            {sleepPrefix && <LazyMarkdownBlock content={collapseDoubleNewlines(sleepPrefix)} sessionId={sessionId} />}
+            {sleepPrefix && <LazyMarkdownBlock content={collapseDoubleNewlines(sleepPrefix, true)} sessionId={sessionId} />}
             <p className="text-xs text-(--color-text-subtle) italic">— idle —</p>
           </div>
         )
       }
       return (
         <div>
-          <LazyMarkdownBlock content={collapseDoubleNewlines(block.content)} sessionId={sessionId} isStreaming={isStreaming} />
+          <LazyMarkdownBlock content={collapseDoubleNewlines(block.content, true)} sessionId={sessionId} isStreaming={isStreaming} />
         </div>
       )
     }

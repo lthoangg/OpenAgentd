@@ -35,6 +35,42 @@ describe("collapseDoubleNewlines", () => {
   it("handles leading and trailing double newlines", () => {
     expect(collapseDoubleNewlines("\n\nhello\n\n")).toBe("\nhello\n");
   });
+
+  it("preserves empty lines inside fenced code blocks when preserveCodeFences is true", () => {
+    const text = [
+      "Intro line 1",
+      "",
+      "Intro line 2",
+      "```python",
+      "def foo():",
+      "    x = 1",
+      "",
+      "    return x",
+      "```",
+      "",
+      "Outro line",
+    ].join("\n");
+
+    const collapsed = collapseDoubleNewlines(text, true);
+    expect(collapsed).toContain("Intro line 1\nIntro line 2");
+    expect(collapsed).toContain("def foo():\n    x = 1\n\n    return x");
+    expect(collapsed).toContain("```\nOutro line");
+  });
+
+  it("preserves streaming unclosed code blocks when preserveCodeFences is true", () => {
+    const text = [
+      "Some prose",
+      "",
+      "```typescript",
+      "interface Foo {",
+      "  bar: string;",
+      "",
+      "  baz: number;",
+    ].join("\n");
+
+    const collapsed = collapseDoubleNewlines(text, true);
+    expect(collapsed).toContain("interface Foo {\n  bar: string;\n\n  baz: number;");
+  });
 });
 
 // ---------------------------------------------------------------------------

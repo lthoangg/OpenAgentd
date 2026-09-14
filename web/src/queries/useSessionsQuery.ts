@@ -49,6 +49,7 @@ export function useDeleteSessionMutation() {
     mutationFn: deleteSession,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.session.sessions.all() })
+      queryClient.invalidateQueries({ queryKey: ['session', 'subagents'] })
     },
   })
 }

@@ -143,8 +143,9 @@ export async function handleGlobalEvent(
         running: true,
       })
       queryClient.invalidateQueries({ queryKey: queryKeys.session.subagents(leadId) })
+    } else {
+      queryClient.invalidateQueries({ queryKey: queryKeys.session.sessions.all() })
     }
-    queryClient.invalidateQueries({ queryKey: queryKeys.session.sessions.all() })
     return true
   }
 
@@ -155,12 +156,14 @@ export async function handleGlobalEvent(
     if (subSessionId && status) {
       const isWorking = status === 'working'
       const isWaiting = status === 'waiting_lead'
-      patchSessionRunning(queryClient, subSessionId, isWorking, isWaiting)
+      const found = patchSessionRunning(queryClient, subSessionId, isWorking, isWaiting)
+      if (!found) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.session.sessions.all() })
+      }
     }
     if (leadId) {
       queryClient.invalidateQueries({ queryKey: queryKeys.session.subagents(leadId) })
     }
-    queryClient.invalidateQueries({ queryKey: queryKeys.session.sessions.all() })
     return true
   }
 

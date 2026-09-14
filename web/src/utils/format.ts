@@ -1,10 +1,38 @@
 /**
  * Collapse double (or multiple consecutive) newlines into a single newline
  * for display in agent responses and thinking traces (`\n\n` -> `\n`).
+ *
+ * When `preserveCodeFences` is true, code inside triple-backtick fences
+ * (```...```) is preserved verbatim so blank lines inside code blocks
+ * are not stripped.
  */
-export function collapseDoubleNewlines(content: string): string {
+export function collapseDoubleNewlines(
+  content: string,
+  preserveCodeFences = false,
+): string {
   if (typeof content !== 'string' || !content) return content
-  return content.replace(/\r\n/g, '\n').replace(/\n{2,}/g, '\n')
+  const normalized = content.replace(/\r\n/g, '\n')
+  if (!preserveCodeFences || !normalized.includes('```')) {
+    return normalized.replace(/\n{2,}/g, '\n')
+  }
+
+  const fenceRegex = /(?:^|\n)(`{3,})[^\n]*\n[\s\S]*?(?:\n\1(?=\n|$)|$)/g
+  let lastIndex = 0
+  let result = ''
+
+  for (const match of normalized.matchAll(fenceRegex)) {
+    const fenceStart = match[0].startsWith('\n') ? match.index + 1 : match.index
+    const prose = normalized.slice(lastIndex, fenceStart)
+    result += prose.replace(/\n{2,}/g, '\n')
+    const fenceText = normalized.slice(fenceStart, match.index + match[0].length)
+    result += fenceText
+    lastIndex = match.index + match[0].length
+  }
+
+  const tailProse = normalized.slice(lastIndex)
+  result += tailProse.replace(/\n{2,}/g, '\n')
+
+  return result
 }
 
 /**

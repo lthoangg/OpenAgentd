@@ -6,7 +6,7 @@ import { onApiBaseUrlChange } from '@/api/base-url'
 import { backgroundSuspendsSockets } from '@/hooks/use-platform'
 import { sendDesktopNotification } from '@/lib/desktop-notifications'
 import { queryKeys } from '@/queries'
-import { patchSessionRunning, patchSessionTitle } from '@/stores/cache-invalidation-bridge'
+import { appendSubagent, patchSessionRunning, patchSessionTitle } from '@/stores/cache-invalidation-bridge'
 import { useAgentStore } from '@/stores/useAgentStore'
 import { useLspInstallStore } from '@/stores/useLspInstallStore'
 
@@ -124,7 +124,27 @@ export async function handleGlobalEvent(
     return true
   }
 
-  if (type === 'subagent_spawned' || type === 'subagent_status') {
+  if (type === 'subagent_spawned') {
+    const leadId = typeof event.lead_session_id === 'string' ? event.lead_session_id : null
+    const subSessionId = typeof event.session_id === 'string' ? event.session_id : null
+    const handle = typeof event.handle === 'string' ? event.handle : null
+    const title = typeof event.title === 'string' ? event.title : (handle ?? 'Subagent')
+    const workspace = typeof event.workspace === 'string' ? event.workspace : ''
+    if (leadId && subSessionId) {
+      appendSubagent(queryClient, leadId, {
+        id: subSessionId,
+        title,
+        agent_name: handle,
+        workspace,
+        running: true,
+      })
+      queryClient.invalidateQueries({ queryKey: queryKeys.session.subagents(leadId) })
+    }
+    queryClient.invalidateQueries({ queryKey: queryKeys.session.sessions.all() })
+    return true
+  }
+
+  if (type === 'subagent_status') {
     const leadId = typeof event.lead_session_id === 'string' ? event.lead_session_id : null
     const subSessionId = typeof event.session_id === 'string' ? event.session_id : null
     const status = typeof event.status === 'string' ? event.status : null

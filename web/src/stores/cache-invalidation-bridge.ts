@@ -1,6 +1,6 @@
 import type { InfiniteData, QueryClient } from '@tanstack/react-query'
 import type { CacheInvalidation } from '@/stores/useAgentStore'
-import type { SessionPageResponse, SessionResponse, WorkspaceGitDiffResponse } from '@/api/types'
+import type { LiveSubagent, SessionPageResponse, SessionResponse, SubagentsResponse, WorkspaceGitDiffResponse } from '@/api/types'
 import { getCodingWorkspaceGitDiff } from '@/api/client'
 import { queryKeys } from '@/queries'
 
@@ -280,5 +280,80 @@ export function prependWorkspaceSession(
   queryClient.setQueryData<InfiniteData<SessionPageResponse>>(
     queryKeys.session.sessions.workspace(workspace),
     (old) => prependSessionToInfiniteData(old, session),
+  )
+}
+
+export function appendSubagent(
+  queryClient: Pick<QueryClient, 'setQueriesData' | 'setQueryData'>,
+  leadSessionId: string,
+  subagent: {
+    id: string
+    title: string
+    agent_name?: string | null
+    workspace?: string | null
+    running?: boolean
+    needs_input?: boolean
+    created_at?: string | null
+  },
+): void {
+  const childSession: SessionResponse = {
+    id: subagent.id,
+    parent_session_id: leadSessionId,
+    title: subagent.title,
+    workspace: subagent.workspace ?? '',
+    interaction_mode: 'code',
+    running: subagent.running ?? true,
+    needs_input: subagent.needs_input ?? false,
+    created_at: subagent.created_at ?? new Date().toISOString(),
+    agent_name: subagent.agent_name ?? null,
+    updated_at: null,
+  }
+
+  queryClient.setQueriesData<InfiniteData<SessionPageResponse>>(
+    { queryKey: queryKeys.session.sessions.all() },
+    (old) => {
+      if (!isInfiniteSessionData(old)) return old
+      let changed = false
+      const pages = old.pages.map((page) => {
+        let pageChanged = false
+        const data = page.data.map((session) => {
+          if (session.id !== leadSessionId) return session
+          const existing = session.subagents ?? []
+          if (existing.some((s) => s.id === childSession.id)) return session
+          pageChanged = true
+          return {
+            ...session,
+            subagents: [...existing, childSession],
+          }
+        })
+        if (!pageChanged) return page
+        changed = true
+        return { ...page, data }
+      })
+      return changed ? { ...old, pages } : old
+    },
+  )
+
+  queryClient.setQueryData<SubagentsResponse>(
+    queryKeys.session.subagents(leadSessionId),
+    (old) => {
+      if (!old) return old
+      const existing = old.live_members ?? old.subagents ?? []
+      if (existing.some((m) => m.session_id === childSession.id)) return old
+      const newMember: LiveSubagent = {
+        member_id: childSession.agent_name || childSession.id,
+        profile: childSession.agent_name?.split('#')[0] || 'member',
+        title: childSession.title ?? undefined,
+        status: childSession.running ? 'working' : 'completed',
+        session_id: childSession.id,
+        created_at: childSession.created_at ?? undefined,
+        last_error: undefined,
+        has_pending_question: childSession.needs_input === true,
+      }
+      return {
+        ...old,
+        live_members: [...existing, newMember],
+      }
+    },
   )
 }

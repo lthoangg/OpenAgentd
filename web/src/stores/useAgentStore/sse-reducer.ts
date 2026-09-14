@@ -857,6 +857,17 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
         })
         break
       }
+
+      case 'subagent_spawned':
+      case 'subagent_status': {
+        const leadId = (d.lead_session_id as string) || get().sessionId
+        if (leadId) {
+          set((draft) => {
+            draft.cacheInvalidations.push({ kind: 'subagents', sessionId: leadId })
+          })
+        }
+        break
+      }
     }
   }
 }

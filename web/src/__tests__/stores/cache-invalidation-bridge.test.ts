@@ -11,7 +11,7 @@
  */
 import { describe, it, expect, mock } from 'bun:test'
 import { QueryClient, type InfiniteData } from '@tanstack/react-query'
-import { applyCacheInvalidations, patchSessionRunning, patchSessionTitle, prependSession, prependWorkspaceSession } from '@/stores/cache-invalidation-bridge'
+import { appendSubagent, applyCacheInvalidations, patchSessionRunning, patchSessionTitle, prependSession, prependWorkspaceSession } from '@/stores/cache-invalidation-bridge'
 import { queryKeys } from '@/queries'
 import type { CacheInvalidation } from '@/stores/useAgentStore'
 import type { SessionPageResponse, SessionResponse } from '@/api/types'
@@ -573,6 +573,39 @@ describe('patchSessionRunning', () => {
     const after = readInfinite(client)!
     const child = after.pages[0].data[0].subagents?.[0]
     expect(child?.running).toBe(false)
+  })
+})
+
+describe('appendSubagent', () => {
+  it('appends a new subagent to session.subagents in cached pages', () => {
+    const client = new QueryClient()
+    const lead = {
+      ...makeSession('lead-1', 'Lead'),
+      subagents: [],
+    }
+    seedInfinite(client, [[lead]])
+    client.setQueryData(queryKeys.session.subagents('lead-1'), { live_members: [] })
+
+    appendSubagent(client, 'lead-1', {
+      id: 'child-1',
+      title: 'explorer#1: investigate',
+      agent_name: 'explorer#1',
+      workspace: '/workspace',
+      running: true,
+    })
+
+    const after = readInfinite(client)!
+    const subagents = after.pages[0].data[0].subagents
+    expect(subagents).toHaveLength(1)
+    expect(subagents?.[0].id).toBe('child-1')
+    expect(subagents?.[0].agent_name).toBe('explorer#1')
+    expect(subagents?.[0].running).toBe(true)
+
+    const subagentsCache = client.getQueryData<{ live_members: { member_id: string }[] }>(
+      queryKeys.session.subagents('lead-1'),
+    )
+    expect(subagentsCache?.live_members).toHaveLength(1)
+    expect(subagentsCache?.live_members[0].member_id).toBe('explorer#1')
   })
 })
 

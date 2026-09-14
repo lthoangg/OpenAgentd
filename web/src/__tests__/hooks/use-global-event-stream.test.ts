@@ -378,6 +378,44 @@ describe('handleGlobalEvent', () => {
     expect(client.getQueryState(queryKeys.session.subagents('lead-1'))?.isInvalidated).toBe(true)
   })
 
+  it('appends subagent and invalidates queries on subagent_spawned', async () => {
+    const client = new QueryClient()
+    client.setQueryData(queryKeys.session.subagents('lead-1'), { live_members: [] })
+    client.setQueryData(queryKeys.session.sessions.infinite(), {
+      pages: [{
+        data: [{
+          id: 'lead-1',
+          title: 'Lead',
+          agent_name: 'code',
+          created_at: null,
+          updated_at: null,
+          running: true,
+          subagents: [],
+        }],
+        next_cursor: null,
+        has_more: false,
+      }],
+      pageParams: [null],
+    })
+
+    await handleGlobalEvent(client, 'subagent_spawned', {
+      lead_session_id: 'lead-1',
+      session_id: 'child-1',
+      handle: 'explorer#1',
+      profile: 'explorer',
+      title: 'explorer#1: explore files',
+      workspace: '/workspace',
+    }, 1, () => 1)
+
+    const data = client.getQueryData(queryKeys.session.sessions.infinite()) as {
+      pages: { data: { subagents?: { id: string; agent_name?: string; running?: boolean }[] }[] }[]
+    }
+    expect(data.pages[0].data[0].subagents).toHaveLength(1)
+    expect(data.pages[0].data[0].subagents?.[0].id).toBe('child-1')
+    expect(data.pages[0].data[0].subagents?.[0].running).toBe(true)
+    expect(client.getQueryState(queryKeys.session.subagents('lead-1'))?.isInvalidated).toBe(true)
+  })
+
   it('invalidates parent subagents on session_turn_completed with parent_session_id', async () => {
     const client = new QueryClient()
     client.setQueryData(queryKeys.session.subagents('lead-parent'), { live_members: [] })

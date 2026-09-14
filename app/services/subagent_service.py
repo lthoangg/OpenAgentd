@@ -363,18 +363,26 @@ async def spawn_subagent(
         child_session_uuid,
     )
 
+    spawn_payload = {
+        "lead_session_id": lead_session_id,
+        "session_id": str(child_session_uuid),
+        "handle": handle,
+        "profile": profile,
+        "workspace": workspace,
+        "title": f"{handle}: {clean_task[:60]}",
+        "status": "working",
+        "running": True,
+    }
     try:
         from app.services import event_broadcaster
+        from app.services import memory_stream_store as stream_store
+        from app.services.stream_envelope import StreamEnvelope
 
-        await event_broadcaster.publish(
-            "subagent_spawned",
-            {
-                "lead_session_id": lead_session_id,
-                "session_id": str(child_session_uuid),
-                "handle": handle,
-                "profile": profile,
-                "workspace": workspace,
-            },
+        await event_broadcaster.publish("subagent_spawned", spawn_payload)
+        await stream_store.push_event(
+            lead_session_id,
+            StreamEnvelope.from_parts("subagent_spawned", spawn_payload),
+            create_if_missing=True,
         )
     except Exception as exc:
         logger.debug("Failed to publish subagent_spawned: {}", exc)
@@ -452,7 +460,7 @@ async def _await_member_turn(
                     "session_id": instance.session_id,
                     "handle": instance.handle,
                     "status": instance.status,
-                    "workspace": instance.session.workspace,
+                    "workspace": getattr(instance.session, "workspace", ""),
                 },
             )
         except Exception as exc:
@@ -505,18 +513,23 @@ async def _await_member_turn(
 
     # Turn completed: extract final assistant message
     instance.status = "completed"
+    status_payload = {
+        "lead_session_id": instance.lead_session_id,
+        "session_id": instance.session_id,
+        "handle": instance.handle,
+        "status": instance.status,
+        "workspace": getattr(instance.session, "workspace", ""),
+    }
     try:
         from app.services import event_broadcaster
+        from app.services import memory_stream_store as stream_store
+        from app.services.stream_envelope import StreamEnvelope
 
-        await event_broadcaster.publish(
-            "subagent_status",
-            {
-                "lead_session_id": instance.lead_session_id,
-                "session_id": instance.session_id,
-                "handle": instance.handle,
-                "status": instance.status,
-                "workspace": instance.session.workspace,
-            },
+        await event_broadcaster.publish("subagent_status", status_payload)
+        await stream_store.push_event(
+            instance.lead_session_id,
+            StreamEnvelope.from_parts("subagent_status", status_payload),
+            create_if_missing=True,
         )
     except Exception as exc:
         logger.debug("Failed to publish subagent_status: {}", exc)

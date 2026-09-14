@@ -98,7 +98,6 @@ _live_instances: dict[str, dict[str, SubagentInstance]] = {}
 # Monotonic counter per lead session per profile: lead_session_id -> {profile: next_int}
 _instance_counters: dict[str, dict[str, int]] = {}
 _reconciled_lead_sessions: set[str] = set()
-_service_lock = asyncio.Lock()
 
 
 def parse_instance_handle(handle: str) -> tuple[str, int] | None:
@@ -589,12 +588,13 @@ async def _await_member_turn(
             from app.services.chat_service import save_message
             from app.agent.schemas.chat import HumanMessage
 
+            deliverable = prune_subagent_output(output, instance.session_id)
             async with db_factory() as db:
                 await save_message(
                     db,
                     UUID(instance.lead_session_id),
                     HumanMessage(
-                        content=output,
+                        content=deliverable,
                         extra={"from_agent": instance.handle},
                     ),
                 )
@@ -1008,3 +1008,45 @@ async def stop_all_subagents(lead_session_id: str) -> None:
                 )
         inst.status = "error"
     logger.info("stopped_all_subagents lead_session_id={}", lead_session_id)
+
+
+def remove_subagent(child_session_id: str) -> bool:
+    """Stop and remove a subagent instance by child session ID.
+
+    Returns True if an instance was found and removed.
+    """
+    removed = False
+    for lead_id, instances in list(_live_instances.items()):
+        to_delete = [
+            handle
+            for handle, inst in instances.items()
+            if inst.session_id == child_session_id
+        ]
+        for handle in to_delete:
+            inst = instances.pop(handle)
+            removed = True
+            if inst.task_handle and not inst.task_handle.done():
+                inst.task_handle.cancel()
+            if inst.status not in ("completed", "error"):
+                try:
+                    asyncio.create_task(inst.session.handle_stop())
+                except Exception:
+                    pass
+        if not instances:
+            _live_instances.pop(lead_id, None)
+    return removed
+
+
+def cleanup_lead_session(lead_session_id: str) -> None:
+    """Stop all subagents and clean up all in-memory tracking for a lead session."""
+    instances = _live_instances.pop(lead_session_id, {})
+    for inst in instances.values():
+        if inst.task_handle and not inst.task_handle.done():
+            inst.task_handle.cancel()
+        if inst.status not in ("completed", "error"):
+            try:
+                asyncio.create_task(inst.session.handle_stop())
+            except Exception:
+                pass
+    _instance_counters.pop(lead_session_id, None)
+    _reconciled_lead_sessions.discard(lead_session_id)

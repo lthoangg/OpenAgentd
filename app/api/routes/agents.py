@@ -551,6 +551,10 @@ async def update_member_agent_endpoint(
 
     await _validate_or_restore(rollback_name=name, rollback_content=previous.content)
 
+    from app.agent.loader import clear_member_profiles_cache
+
+    clear_member_profiles_cache()
+
     return AgentDetail(
         name=record.name,
         path=record.path,
@@ -577,6 +581,10 @@ async def create_member_agent_endpoint(body: AgentWriteRequest) -> AgentDetail:
 
     await _validate_or_restore(rollback_name=name, rollback_content=None)
 
+    from app.agent.loader import clear_member_profiles_cache
+
+    clear_member_profiles_cache()
+
     config = _effective_config(cfg, mode="coding").model_dump(exclude_none=True)
     return AgentDetail(
         name=record.name,
@@ -599,6 +607,10 @@ async def delete_member_agent_endpoint(name: str) -> None:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except AgentFsPathError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    from app.agent.loader import clear_member_profiles_cache
+
+    clear_member_profiles_cache()
 
 
 @router.get("", response_model=AgentListResponse)

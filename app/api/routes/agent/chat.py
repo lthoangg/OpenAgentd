@@ -172,7 +172,11 @@ def _serialize_agent(
         session_tools = [
             {
                 "name": "delegate",
-                "description": "Delegate a focused task to a specialized subagent (e.g. 'explorer' for codebase inspection, 'researcher' for external docs).",
+                "description": (
+                    "Delegate a focused task to a specialized subagent running asynchronously in the background. "
+                    "Returns immediately after dispatching; the subagent will automatically send its deliverable "
+                    "back to you as a message when finished."
+                ),
             },
             {
                 "name": "ask_user",

@@ -190,6 +190,125 @@ async def test_stop_subagent_and_stop_all() -> None:
     assert stopped_count == 2
 
 
+@pytest.mark.asyncio
+async def test_remove_subagent_cancels_task_and_removes_from_live_instances() -> None:
+    from app.services.subagent_service import remove_subagent
+
+    lead_id = "test-lead-remove"
+    _live_instances[lead_id] = {}
+
+    cancelled = False
+
+    class DummyTask:
+        def done(self) -> bool:
+            return False
+
+        def cancel(self) -> None:
+            nonlocal cancelled
+            cancelled = True
+
+    class DummySession:
+        async def handle_stop(self) -> bool:
+            return True
+
+    inst = SubagentInstance(
+        handle="explorer#1",
+        profile_name="explorer",
+        lead_session_id=lead_id,
+        session_id="child-to-remove",
+        session=DummySession(),  # type: ignore[arg-type]
+        task_handle=DummyTask(),  # type: ignore[arg-type]
+        status="working",
+    )
+    _live_instances[lead_id]["explorer#1"] = inst
+
+    assert remove_subagent("child-to-remove") is True
+    assert cancelled is True
+    assert "explorer#1" not in _live_instances.get(lead_id, {})
+    assert remove_subagent("child-nonexistent") is False
+
+
+@pytest.mark.asyncio
+async def test_cleanup_lead_session_purges_all_tracking() -> None:
+    from app.services.subagent_service import cleanup_lead_session
+
+    lead_id = "test-lead-cleanup"
+    _live_instances[lead_id] = {}
+    _instance_counters[lead_id] = {"explorer": 5}
+    _reconciled_lead_sessions.add(lead_id)
+
+    class DummySession:
+        async def handle_stop(self) -> bool:
+            return True
+
+    inst = SubagentInstance(
+        handle="explorer#1",
+        profile_name="explorer",
+        lead_session_id=lead_id,
+        session_id="child-1",
+        session=DummySession(),  # type: ignore[arg-type]
+        status="working",
+    )
+    _live_instances[lead_id]["explorer#1"] = inst
+
+    cleanup_lead_session(lead_id)
+    assert lead_id not in _live_instances
+    assert lead_id not in _instance_counters
+    assert lead_id not in _reconciled_lead_sessions
+
+
+@pytest.mark.asyncio
+async def test_delete_session_removes_subagent_from_live_instances_and_list() -> None:
+    from app.services.chat_service import delete_session
+
+    lead_uuid = uuid7()
+    lead_id = str(lead_uuid)
+    child_uuid = uuid7()
+    child_id = str(child_uuid)
+
+    async with core_db.async_session_factory() as db:
+        parent = ChatSession(
+            id=lead_uuid,
+            agent_name="code",
+            workspace="",
+        )
+        child = ChatSession(
+            id=child_uuid,
+            parent_session_id=lead_uuid,
+            agent_name="explorer#1",
+            workspace="",
+        )
+        db.add(parent)
+        db.add(child)
+        await db.commit()
+
+    class DummySession:
+        async def handle_stop(self) -> bool:
+            return True
+
+    inst = SubagentInstance(
+        handle="explorer#1",
+        profile_name="explorer",
+        lead_session_id=lead_id,
+        session_id=child_id,
+        session=DummySession(),  # type: ignore[arg-type]
+        status="working",
+    )
+    _live_instances[lead_id] = {"explorer#1": inst}
+
+    # Delete the child session directly
+    async with core_db.async_session_factory() as db:
+        deleted = await delete_session(db, child_uuid)
+        assert deleted is True
+
+    # Verify it is removed from live instances
+    assert "explorer#1" not in _live_instances.get(lead_id, {})
+
+    # Verify list_subagents does not resurrect it
+    data = await list_subagents(lead_id, core_db.async_session_factory)
+    assert not any(m["member_id"] == "explorer#1" for m in data["live_members"])
+
+
 def test_prune_subagent_output_within_budget() -> None:
     short_output = "Found 3 files matching *.py."
     assert (

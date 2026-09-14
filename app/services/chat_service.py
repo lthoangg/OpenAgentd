@@ -757,6 +757,8 @@ async def delete_session(db: AsyncSession, session_id: UUID) -> bool:
 
         for sid in session_ids:
             await subagent_service.stop_all_subagents(sid)
+            subagent_service.remove_subagent(sid)
+            subagent_service.cleanup_lead_session(sid)
     except Exception as exc:
         logger.debug("delete_session_subagent_cleanup_failed: {}", exc)
 

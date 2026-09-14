@@ -16,7 +16,11 @@ from app.agent.schemas.chat import (
     ToolCallDelta,
 )
 from app.models.chat import ChatSession
+from app.models.chat import SessionMessage
 from app.services import memory_stream_store as stream_store
+from app.agent.tools.builtin.team import make_delegate_tool
+from app.agent.agent_loop import Agent
+from app.agent.session import AgentSession
 from app.services.subagent_service import (
     _live_instances,
     _instance_counters,
@@ -222,3 +226,124 @@ async def test_subagent_end_to_end_flow(monkeypatch: pytest.MonkeyPatch) -> None
     await stop_all_subagents(lead_id)
     for inst in _live_instances[lead_id].values():
         assert inst.status == "error"
+
+
+@pytest.mark.asyncio
+async def test_async_subagent_dispatch_and_lead_delivery(tmp_path, monkeypatch) -> None:
+    lead_uuid = uuid7()
+    lead_id = str(lead_uuid)
+
+    _live_instances.clear()
+    _instance_counters.clear()
+    _reconciled_lead_sessions.clear()
+
+    # Create lead chat session row
+    async with core_db.async_session_factory() as db:
+        lead_session_row = ChatSession(
+            id=lead_uuid,
+            title="Async Lead Session",
+            workspace=str(tmp_path),
+            model="mock-model",
+        )
+        db.add(lead_session_row)
+        await db.commit()
+
+    # Create fake explorer chunks returning a report
+    explorer_chunks = [
+        ChatCompletionChunk(
+            id="c1",
+            created=1,
+            model="mock-model",
+            choices=[
+                ChatCompletionChunkChoice(
+                    index=0,
+                    delta=ChatCompletionDelta(content="Discovered 3 database tables."),
+                    finish_reason="stop",
+                )
+            ],
+        )
+    ]
+
+    # Create fake lead chunks when lead is activated
+    lead_chunks = [
+        ChatCompletionChunk(
+            id="c2",
+            created=1,
+            model="mock-model",
+            choices=[
+                ChatCompletionChunkChoice(
+                    index=0,
+                    delta=ChatCompletionDelta(content="Understood the 3 tables."),
+                    finish_reason="stop",
+                )
+            ],
+        )
+    ]
+
+    provider_map = {
+        "explorer#1": ScriptedProvider([explorer_chunks]),
+        "lead": ScriptedProvider([lead_chunks]),
+    }
+
+    def mock_build_provider(model_id, **kwargs):
+        return provider_map.get("explorer#1", ScriptedProvider([]))
+
+    lead_agent = Agent(
+        llm_provider=provider_map["lead"],
+        system_prompt="You are lead.",
+        tools=[],
+        name="lead",
+        model_id="mock-model",
+    )
+    lead_session = AgentSession(
+        agent=lead_agent,
+        session_id=lead_id,
+        workspace=str(tmp_path),
+        db_factory=core_db.async_session_factory,
+        provider_factory=mock_build_provider,
+    )
+
+    from app.services import agent_manager
+
+    agent_manager._sessions[(str(tmp_path), lead_id)] = lead_session
+
+    # 1. Delegate tool invocation
+    tool = make_delegate_tool(
+        lead_id,
+        core_db.async_session_factory,
+        provider_factory=mock_build_provider,
+    )
+
+    res = await tool.arun(
+        profile="explorer",
+        task="Discover database tables",
+        _workspace=str(tmp_path),
+    )
+
+    # Verify delegate returns immediately with background dispatch message
+    assert "Subagent 'explorer#1' dispatched" in res
+    assert "running asynchronously in the background" in res
+
+    inst = _live_instances[lead_id]["explorer#1"]
+    assert inst.task_handle is not None
+
+    # Wait for child task to complete in background
+    await inst.task_handle
+
+    # Wait briefly for lead session activation task if started
+    if lead_session._active_task is not None:
+        await lead_session._active_task
+
+    # 2. Verify subagent output was delivered to lead session messages
+    async with core_db.async_session_factory() as db:
+        stmt = (
+            select(SessionMessage)
+            .where(col(SessionMessage.session_id) == lead_uuid)
+            .where(col(SessionMessage.role) == "user")
+        )
+        msgs = (await db.exec(stmt)).all()
+        subagent_delivered = [
+            m for m in msgs if m.extra and m.extra.get("from_agent") == "explorer#1"
+        ]
+        assert len(subagent_delivered) == 1
+        assert "Discovered 3 database tables." in (subagent_delivered[0].content or "")

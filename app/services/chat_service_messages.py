@@ -211,19 +211,29 @@ def apply_llm_content_overrides(messages: list[ChatMessage]) -> list[ChatMessage
     out: list[ChatMessage] = []
     for msg in messages:
         if isinstance(msg, HumanMessage) and msg.extra:
-            if msg.extra.get("attachment_for_message_id") and not msg.extra.get(
+            extra = msg.extra
+            if extra.get("attachment_for_message_id") and not extra.get(
                 "mention_context"
             ):
                 # Synthetic attachment rows stay in the DB for queue/history
                 # bookkeeping, but the LLM should consume the canonical
                 # attachment hint from the parent user row instead.
                 continue
-            attachments = msg.extra.get("attachments")
+            attachments = extra.get("attachments")
             if isinstance(attachments, list) and attachments:
                 msg = msg.model_copy(
                     update={
                         "parts": _attachment_hint_parts(msg.content or "", attachments)
                     }
+                )
+            from_agent = extra.get("from_agent")
+            if (
+                from_agent
+                and from_agent != "user"
+                and not (msg.content or "").startswith(f"[{from_agent}")
+            ):
+                msg = msg.model_copy(
+                    update={"content": f"[{from_agent}]:\n{msg.content or ''}"}
                 )
         out.append(msg)
     return out

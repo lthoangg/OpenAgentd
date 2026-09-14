@@ -208,6 +208,11 @@ async def test_full_lead_member_communication_cycle() -> None:
     )
     await lead_session._active_task
 
+    # Await explorer#1 task if still running in background
+    inst = _live_instances[lead_id].get("explorer#1")
+    if inst and inst.task_handle:
+        await inst.task_handle
+
     # 1. Verify Lead DB messages
     async with core_db.async_session_factory() as db:
         lead_msgs = (
@@ -218,7 +223,6 @@ async def test_full_lead_member_communication_cycle() -> None:
             )
         ).all()
 
-        # Messages: user -> assistant (tool call delegate) -> tool (result) -> assistant (final answer)
         assert len(lead_msgs) >= 4
         assert lead_msgs[0].role == "user"
         assert "auth routes located" in lead_msgs[0].content
@@ -230,11 +234,18 @@ async def test_full_lead_member_communication_cycle() -> None:
         tool_result_msg = lead_msgs[2]
         assert tool_result_msg.role == "tool"
         assert tool_result_msg.name == "delegate"
-        assert "Found 3 auth routes in app/api/auth.py" in tool_result_msg.content
+        assert "Subagent 'explorer#1' dispatched" in tool_result_msg.content
 
-        final_assistant_msg = lead_msgs[3]
-        assert final_assistant_msg.role == "assistant"
-        assert "Based on the explorer's report" in final_assistant_msg.content
+        # Member deliverable returned as a user message to lead with from_agent
+        subagent_delivered = [
+            m
+            for m in lead_msgs
+            if m.role == "user"
+            and m.extra
+            and m.extra.get("from_agent") == "explorer#1"
+        ]
+        assert len(subagent_delivered) == 1
+        assert "Found 3 auth routes in app/api/auth.py" in subagent_delivered[0].content
 
         # 2. Verify Member DB session
         child_sess = (

@@ -234,5 +234,32 @@ async def test_delegate_tool_reply_to_target() -> None:
 
     tool = make_delegate_tool(lead_id, db_factory=None)  # type: ignore[arg-type]
     res = await tool.arun(profile="explorer", target="explorer#1", task="Use JWT")
-    assert "completed task" in res
-    assert "Audited JWT auth" in res
+    assert "Message delivered to subagent 'explorer#1'" in res
+    assert "running in the background" in res
+
+
+def test_delegate_tool_dynamic_profile_descriptions(tmp_path, monkeypatch) -> None:
+    custom_agent_md = tmp_path / "custom.md"
+    custom_agent_md.write_text(
+        "---\n"
+        "name: custom\n"
+        "role: member\n"
+        "description: Custom domain analysis agent.\n"
+        "tools: [read]\n"
+        "---\n"
+        "Custom agent prompt.\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(
+        "app.services.subagent_service._resolve_agents_dir", lambda: tmp_path
+    )
+
+    tool = make_delegate_tool("lead-test-dyn", db_factory=None)  # type: ignore[arg-type]
+    desc = tool.description
+    assert "- profile='custom': Custom domain analysis agent." in desc
+    assert "- profile='explorer':" in desc
+    assert "- profile='researcher':" in desc
+
+    def_desc = tool.definition["function"]["description"]
+    assert "- profile='custom': Custom domain analysis agent." in def_desc

@@ -415,7 +415,10 @@ executes tools, manages its task list, and inspects workspace repositories.
   configuration (`agents/code.md`) drives every conversation.
 - **Hub-and-Spoke agent teams** `[v2.15.0]` — the lead coding agent can spawn,
   coordinate, and supervise specialized subagents via the unified `delegate` tool
-  loaded from markdown profiles (`agents/*.md`). Spawns use monotonic
+  loaded from markdown profiles (`agents/*.md`). Profiles and descriptions are dynamically
+  reflected in the `delegate` tool description. Subagents run asynchronously in the background,
+  automatically returning their deliverables or clarifying questions back to the lead session as
+  user messages tagged with `from_agent`. Spawns use monotonic
   instance handles (`profile#N`, e.g. `explorer#1`, `explorer#2`) permitting multiple concurrent
   instances of the same profile. Communication follows a strict hub-and-spoke topology: subagents
   interact exclusively with the lead (`ask_lead`, direct deliverables) and inherit the lead's active

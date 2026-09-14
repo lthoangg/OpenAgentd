@@ -50,7 +50,7 @@ class TeamSpawnArgs(BaseModel):
 class DelegateArgs(BaseModel):
     profile: str = Field(
         validation_alias=AliasChoices("profile", "agent", "member", "role"),
-        description="Subagent profile to delegate to: 'explorer' (codebase exploration & symbol tracing) or 'researcher' (web documentation & external APIs).",
+        description="Subagent profile name to delegate to (see available profiles in tool description).",
     )
     task: str = Field(
         validation_alias=AliasChoices("task", "message", "instruction", "query"),
@@ -68,6 +68,34 @@ class DelegateArgs(BaseModel):
         if not v.strip():
             raise ValueError("Field must not be blank")
         return v.strip()
+
+
+def _build_delegate_description() -> str:
+    from app.agent.loader import load_member_profiles
+    from app.services.subagent_service import _resolve_agents_dir
+
+    try:
+        profiles = load_member_profiles(_resolve_agents_dir())
+    except Exception:
+        profiles = {}
+
+    if profiles:
+        profile_bullets = "\n".join(
+            f"- profile='{name}': {p.description.strip()}"
+            for name, p in sorted(profiles.items())
+            if p.description
+        )
+        profiles_doc = f"\nAvailable subagent profiles:\n{profile_bullets}\n"
+    else:
+        profiles_doc = "\n"
+
+    return (
+        "Delegate a focused task to a specialized subagent running asynchronously in the background. "
+        "Returns immediately after dispatching; the subagent will automatically send its deliverable "
+        f"back to you as a message when finished.{profiles_doc}"
+        "To reply to a subagent that asked a question or send follow-up instructions, "
+        "provide target='<handle>' (e.g. target='explorer#1')."
+    )
 
 
 def make_delegate_tool(
@@ -94,7 +122,7 @@ def make_delegate_tool(
                     lead_session_id=lead_session_id,
                     member_id=target,
                     message=task,
-                    wait=True,
+                    wait=False,
                     db_factory=db_factory,
                 )
             else:
@@ -102,40 +130,32 @@ def make_delegate_tool(
                     lead_session_id=lead_session_id,
                     profile=profile,
                     task=task,
-                    wait=True,
+                    wait=False,
                     workspace=_workspace,
                     db_factory=db_factory,
                     provider_factory=provider_factory,
                 )
 
-            status = res.get("status")
-            member_id = res.get("member_id", target or profile)
-            if status == "waiting_lead":
-                q = res.get("question", "")
-                opts = res.get("options", [])
-                opts_str = f" Options: {opts}" if opts else ""
+            if target:
+                member_id = res.get("member_id", target)
                 return (
-                    f"[{member_id} is waiting for your decision]: {q}{opts_str}\n"
-                    f"To reply, call delegate(profile='{profile}', target='{member_id}', task='<your answer>')."
+                    f"Message delivered to subagent '{member_id}'. It is running in the "
+                    "background and will deliver its response as a message to you once finished."
                 )
-            elif status == "completed":
-                output = res.get("output", "")
-                return f"[{member_id} completed task]:\n{output}"
-            elif status == "error":
-                return f"[{member_id} failed]: {res.get('error', res.get('message', 'Unknown error'))}"
-            return json.dumps(res, indent=2)
+
+            member_id = res.get("member_id", profile)
+            return (
+                f"Subagent '{member_id}' dispatched with task: {task}\n"
+                "It is running asynchronously in the background. You will receive its "
+                "deliverable as a user message once it completes."
+            )
         except Exception as exc:
             return f"Error delegating to subagent: {exc}"
 
     return Tool(
         delegate,
         name="delegate",
-        description=(
-            "Delegate a focused task to a specialized subagent. "
-            "Use profile='explorer' to map codebase structure, trace symbols, and verify files. "
-            "Use profile='researcher' to search web documentation, inspect external library APIs, and check best practices. "
-            "To reply to a subagent that asked a question, provide target='<handle>' (e.g. target='explorer#1')."
-        ),
+        description=_build_delegate_description,
         args_schema=DelegateArgs,
     )
 

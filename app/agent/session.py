@@ -613,7 +613,8 @@ class AgentSession:
             return False
         message_ids = [str(row.id) for row in queued]
         messages_data = [
-            {"id": str(row.id), "content": row.content or ""} for row in queued
+            {"id": str(row.id), "content": row.content or "", "extra": row.extra}
+            for row in queued
         ]
         self._cancel_event.clear()
         self._has_active_turn = True
@@ -740,20 +741,14 @@ class AgentSession:
                 try:
                     from app.services import subagent_service
 
-                    inst = subagent_service.find_instance_by_session_id(
-                        self.parent_session_id, session_id
-                    )
-                    if inst:
-                        inst.status = "completed" if status == "completed" else "error"
-                    await event_broadcaster.publish(
-                        "subagent_status",
-                        {
-                            "lead_session_id": self.parent_session_id,
-                            "session_id": session_id,
-                            "handle": self.name,
-                            "status": "completed" if status == "completed" else "error",
-                            "workspace": self.workspace,
-                        },
+                    await subagent_service.on_subagent_turn_completed(
+                        lead_session_id=self.parent_session_id,
+                        child_session_id=session_id,
+                        status=status,
+                        workspace=self.workspace,
+                        handle=self.name,
+                        db_factory=self.db_factory,
+                        cancelled=self._cancel_event.is_set(),
                     )
                 except Exception as exc:
                     logger.debug("subagent_completion_broadcast_failed: {}", exc)
@@ -892,6 +887,18 @@ class AgentSession:
                     status="waiting_lead",
                     extra=self._lead_suspended,
                 )
+                if self.parent_session_id is not None:
+                    try:
+                        from app.services import subagent_service
+
+                        await subagent_service.on_subagent_question_asked(
+                            lead_session_id=self.parent_session_id,
+                            child_session_id=self.session_id,
+                            suspended_data=self._lead_suspended,
+                            db_factory=self.db_factory,
+                        )
+                    except Exception as exc:
+                        logger.warning("subagent_question_delivery_failed: {}", exc)
             elif self.state != "error":
                 if self.session_id and not self._cancel_event.is_set():
                     activated = await self._activate_queued_user_messages(

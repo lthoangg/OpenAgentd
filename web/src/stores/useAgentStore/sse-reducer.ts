@@ -453,9 +453,13 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
         const agent = (d.agent as string) || undefined
         const messageIds = Array.isArray(d.message_ids) ? new Set(d.message_ids as string[]) : null
         const eventMessages = Array.isArray(d.messages)
-          ? (d.messages as Array<{ id?: unknown; content?: unknown }>).flatMap((msg) => {
+          ? (d.messages as Array<{ id?: unknown; content?: unknown; extra?: unknown }>).flatMap((msg) => {
               if (typeof msg.id !== 'string' || typeof msg.content !== 'string') return []
-              return [{ id: msg.id, content: msg.content }]
+              return [{
+                id: msg.id,
+                content: msg.content,
+                extra: (msg.extra && typeof msg.extra === 'object' ? msg.extra : undefined) as Record<string, unknown> | undefined,
+              }]
             })
           : []
         set((draft) => {
@@ -491,10 +495,11 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
                   content: msg.content,
                   submittedAt: msg.submittedAt,
                   attachments: msg.attachments,
+                  extra: (msg as { extra?: Record<string, unknown> }).extra,
                 })),
                 ...eventMessages
                   .filter((msg) => !queuedIds.has(msg.id))
-                  .map((msg) => ({ ...msg, submittedAt: Date.now(), attachments: undefined })),
+                  .map((msg) => ({ ...msg, submittedAt: Date.now(), attachments: undefined, extra: msg.extra })),
               ]
             : Array.from(messageIds).flatMap((id) => {
                 const pending = queuedById.get(id)
@@ -504,10 +509,11 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
                     content: pending.content,
                     submittedAt: pending.submittedAt,
                     attachments: pending.attachments,
+                    extra: (pending as { extra?: Record<string, unknown> }).extra,
                   }]
                 }
                 const ev = eventById.get(id)
-                return ev ? [{ ...ev, submittedAt: Date.now(), attachments: undefined }] : []
+                return ev ? [{ ...ev, submittedAt: Date.now(), attachments: undefined, extra: ev.extra }] : []
               })
           if (messages.length === 0) return
           const now = Date.now()
@@ -591,6 +597,7 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
               content: msg.content,
               timestamp,
               ...(attachments ? { attachments } : {}),
+              ...(msg.extra ? { extra: msg.extra } : {}),
             })
           }
 

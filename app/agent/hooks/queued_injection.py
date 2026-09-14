@@ -68,7 +68,8 @@ class QueuedMessageInjectionHook(BaseAgentHook):
 
         message_ids = [str(row.id) for row in queued]
         messages_data = [
-            {"id": str(row.id), "content": row.content or ""} for row in queued
+            {"id": str(row.id), "content": row.content or "", "extra": row.extra}
+            for row in queued
         ]
         try:
             await stream_store.push_event(

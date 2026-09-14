@@ -64,6 +64,8 @@ class SubagentInstance:
     pending_lead_question: dict[str, Any] | None = None
     last_error: str | None = None
     created_at: float = field(default_factory=time.monotonic)
+    _question_delivered: bool = False
+    _result_delivered: bool = False
 
 
 # Module-level state: lead_session_id -> {handle: SubagentInstance}
@@ -353,6 +355,8 @@ async def spawn_subagent(
         session=child_session,
         status="working",
     )
+    instance._question_delivered = False
+    instance._result_delivered = False
     instances[handle] = instance
 
     logger.info(
@@ -468,21 +472,23 @@ async def _await_member_turn(
         q_text = instance.pending_lead_question.get("question", "")
         opts = instance.pending_lead_question.get("options")
         opts_text = f" (Options: {', '.join(opts)})" if opts else ""
-        try:
-            from app.services.chat_service import save_message
-            from app.agent.schemas.chat import HumanMessage
+        if not getattr(instance, "_question_delivered", False):
+            try:
+                from app.services.chat_service import save_message
+                from app.agent.schemas.chat import HumanMessage
 
-            async with db_factory() as db:
-                await save_message(
-                    db,
-                    UUID(instance.lead_session_id),
-                    HumanMessage(
-                        content=f"Question: {q_text}{opts_text}",
-                        extra={"from_agent": instance.handle},
-                    ),
-                )
-        except Exception as exc:
-            logger.debug("Failed to persist subagent question to lead: {}", exc)
+                async with db_factory() as db:
+                    await save_message(
+                        db,
+                        UUID(instance.lead_session_id),
+                        HumanMessage(
+                            content=f"Question: {q_text}{opts_text}",
+                            extra={"from_agent": instance.handle},
+                        ),
+                    )
+                instance._question_delivered = True
+            except Exception as exc:
+                logger.debug("Failed to persist subagent question to lead: {}", exc)
 
         return {
             "status": "waiting_lead",
@@ -553,7 +559,7 @@ async def _await_member_turn(
 
     instance.last_result = output
 
-    if output and output.strip():
+    if output and output.strip() and not getattr(instance, "_result_delivered", False):
         try:
             from app.services.chat_service import save_message
             from app.agent.schemas.chat import HumanMessage
@@ -567,6 +573,7 @@ async def _await_member_turn(
                         extra={"from_agent": instance.handle},
                     ),
                 )
+            instance._result_delivered = True
         except Exception as exc:
             logger.debug("Failed to persist subagent message to lead: {}", exc)
 
@@ -576,6 +583,188 @@ async def _await_member_turn(
         "output": output
         or f"Subagent '{instance.handle}' finished with no text output.",
     }
+
+
+async def deliver_message_to_lead(
+    *,
+    lead_session_id: str,
+    handle: str,
+    content: str,
+    db_factory: DbFactory | None = None,
+) -> None:
+    """Persist an inter-agent message to the lead session and activate its turn if idle."""
+    from app.models.chat import ChatSession
+    from app.services import agent_manager
+    from app.services.chat_service import save_message
+    from app.services.chat_service_queue import save_queued_user_message
+
+    db_maker = resolve_db_factory(db_factory)
+    lead_uuid = UUID(lead_session_id)
+
+    # 1. Persist as queued user message in the lead session
+    async with db_maker() as db:
+        async with db.begin():
+            await save_queued_user_message(
+                db,
+                lead_uuid,
+                content,
+                extra={"from_agent": handle},
+                save_message=save_message,
+            )
+
+    # 2. Resolve live or persisted lead agent session
+    lead_session = agent_manager.find_live_session_serving_session(lead_session_id)
+    if lead_session is None:
+        async with db_maker() as db:
+            lead_row = await db.get(ChatSession, lead_uuid)
+            if lead_row and lead_row.workspace:
+                try:
+                    lead_session = await agent_manager.get_or_start_agent_session(
+                        lead_row.workspace, lead_session_id
+                    )
+                except Exception as exc:
+                    logger.debug(
+                        "Failed to get_or_start_agent_session for lead={}: {}",
+                        lead_session_id,
+                        exc,
+                    )
+
+    # 3. If lead session is available and not currently executing a turn, activate!
+    if lead_session is not None:
+        async with lead_session.user_message_lock:
+            if not lead_session.has_active_user_turn():
+                if lead_session.session_id != lead_session_id:
+                    await lead_session.attach_to_session(lead_session_id)
+                await lead_session._activate_queued_user_messages(lead_session_id)
+
+
+async def on_subagent_turn_completed(
+    *,
+    lead_session_id: str,
+    child_session_id: str,
+    status: str,
+    workspace: str = "",
+    handle: str = "",
+    db_factory: DbFactory | None = None,
+    cancelled: bool = False,
+) -> None:
+    """Handle completion of an asynchronous subagent turn."""
+    db_maker = resolve_db_factory(db_factory)
+    inst = find_instance_by_session_id(lead_session_id, child_session_id)
+    if inst is not None:
+        inst.status = "completed" if status == "completed" else "error"
+        effective_handle = inst.handle
+    else:
+        effective_handle = handle or f"subagent-{child_session_id[:8]}"
+
+    status_payload = {
+        "lead_session_id": lead_session_id,
+        "session_id": child_session_id,
+        "handle": effective_handle,
+        "status": "completed" if status == "completed" else "error",
+        "workspace": workspace,
+    }
+    try:
+        from app.services import event_broadcaster
+        from app.services import memory_stream_store as stream_store
+        from app.services.stream_envelope import StreamEnvelope
+
+        await event_broadcaster.publish("subagent_status", status_payload)
+        await stream_store.push_event(
+            lead_session_id,
+            StreamEnvelope.from_parts("subagent_status", status_payload),
+            create_if_missing=True,
+        )
+    except Exception as exc:
+        logger.debug("subagent_status_broadcast_failed: {}", exc)
+
+    if cancelled:
+        return
+
+    if inst and (
+        inst.status in ("stopped", "cancelled") or inst.last_error == "Stopped by lead"
+    ):
+        return
+
+    # Extract final output
+    output: str | None = None
+    if status == "completed":
+        if inst and inst.last_result:
+            output = inst.last_result
+        if not output:
+            async with db_maker() as db:
+                stmt = (
+                    select(SessionMessage)
+                    .where(col(SessionMessage.session_id) == UUID(child_session_id))
+                    .where(col(SessionMessage.role) == "assistant")
+                    .order_by(
+                        col(SessionMessage.seq).desc(),
+                        col(SessionMessage.id).desc(),
+                    )
+                    .limit(1)
+                )
+                last_msg = (await db.exec(stmt)).first()
+                if last_msg and last_msg.content:
+                    output = last_msg.content
+        if not output or not output.strip():
+            output = (
+                f"Subagent '{effective_handle}' completed task with no text output."
+            )
+        if inst:
+            inst.last_result = output
+            inst._result_delivered = True
+    else:
+        err = (
+            getattr(inst, "last_error", None) if inst else None
+        ) or "Subagent turn failed with error."
+        output = f"Subagent '{effective_handle}' encountered an error: {err}"
+        if inst:
+            inst._result_delivered = True
+
+    try:
+        await deliver_message_to_lead(
+            lead_session_id=lead_session_id,
+            handle=effective_handle,
+            content=output,
+            db_factory=db_maker,
+        )
+    except Exception as exc:
+        logger.warning("Failed to deliver subagent result to lead: {}", exc)
+
+
+async def on_subagent_question_asked(
+    *,
+    lead_session_id: str,
+    child_session_id: str,
+    suspended_data: dict[str, Any],
+    db_factory: DbFactory | None = None,
+) -> None:
+    """Handle an ask_lead question suspension from an asynchronous subagent."""
+    db_maker = resolve_db_factory(db_factory)
+    inst = find_instance_by_session_id(lead_session_id, child_session_id)
+    handle = inst.handle if inst else f"subagent-{child_session_id[:8]}"
+
+    q_text = suspended_data.get("question", "")
+    opts = suspended_data.get("options")
+    opts_text = f" (Options: {', '.join(opts)})" if opts else ""
+    content = (
+        f"Question from {handle}: {q_text}{opts_text}\n"
+        f"To reply, call delegate(profile='{inst.profile_name if inst else 'explorer'}', "
+        f"target='{handle}', task='<your answer>')."
+    )
+
+    if inst:
+        inst._question_delivered = True
+
+    try:
+        await deliver_message_to_lead(
+            lead_session_id=lead_session_id,
+            handle=handle,
+            content=content,
+            db_factory=db_maker,
+        )
+    except Exception as exc:
+        logger.warning("Failed to deliver subagent question to lead: {}", exc)
 
 
 async def send_subagent_message(
@@ -594,6 +783,8 @@ async def send_subagent_message(
         # Resolving suspended ask_lead turn
         instance.pending_lead_question = None
         instance.status = "working"
+        instance._question_delivered = False
+        instance._result_delivered = False
 
         # Write answer as tool result message for ask_lead
         tool_call_id = getattr(instance, "_pending_tool_call_id", None)
@@ -614,6 +805,8 @@ async def send_subagent_message(
     else:
         # New instruction turn
         instance.status = "working"
+        instance._question_delivered = False
+        instance._result_delivered = False
         await instance.session.handle_user_message(
             content=f"[Lead]: {message}",
             session_id=instance.session_id,

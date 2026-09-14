@@ -626,4 +626,32 @@ describe("AgentView — AssistantFooter", () => {
       expect(timeEl?.textContent).toMatch(/\d+:\d+/)
     })
   })
+
+  describe("newline collapsing in response and thinking", () => {
+    it("collapses double newlines in agent text response to a single newline for display", async () => {
+      const { findByText } = renderStream({
+        blocks: [
+          makeUserBlock("u1", "Question"),
+          makeTextBlock("b1", "Response line one\n\nResponse line two"),
+        ],
+        currentBlocks: [],
+        isWorking: false,
+      })
+      const el = await findByText(/Response line one/)
+      expect(el.textContent).toBe("Response line one\nResponse line two")
+    })
+
+    it("collapses double newlines in thinking block to a single newline for display", () => {
+      const { container } = renderStream({
+        blocks: [
+          makeUserBlock("u1", "Question"),
+          makeThinkingBlock("t1", "Reasoning line one\n\nReasoning line two"),
+        ],
+        currentBlocks: [],
+        isWorking: false,
+      })
+      expect(container.textContent).toContain("Reasoning line one\nReasoning line two")
+      expect(container.textContent).not.toContain("Reasoning line one\n\nReasoning line two")
+    })
+  })
 })

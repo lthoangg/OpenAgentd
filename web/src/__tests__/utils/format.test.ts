@@ -1,5 +1,41 @@
 import { describe, it, expect } from "bun:test";
-import { formatTokens, formatRelativeDate, formatDate, isSleepMessage, extractSleepPrefix, shortId, formatTime, formatFullDateTime, lastTurnText } from "@/utils/format";
+import { formatTokens, formatRelativeDate, formatDate, isSleepMessage, extractSleepPrefix, collapseDoubleNewlines, shortId, formatTime, formatFullDateTime, lastTurnText } from "@/utils/format";
+
+// ---------------------------------------------------------------------------
+// collapseDoubleNewlines
+// ---------------------------------------------------------------------------
+
+describe("collapseDoubleNewlines", () => {
+  it("returns empty or falsy text unchanged", () => {
+    expect(collapseDoubleNewlines("")).toBe("");
+    expect(collapseDoubleNewlines(null as unknown as string)).toBe(null as unknown as string);
+    expect(collapseDoubleNewlines(undefined as unknown as string)).toBe(undefined as unknown as string);
+  });
+
+  it("leaves single newlines and non-newline text unchanged", () => {
+    expect(collapseDoubleNewlines("hello world")).toBe("hello world");
+    expect(collapseDoubleNewlines("line 1\nline 2\nline 3")).toBe("line 1\nline 2\nline 3");
+  });
+
+  it("collapses double newlines to a single newline", () => {
+    expect(collapseDoubleNewlines("line 1\n\nline 2")).toBe("line 1\nline 2");
+    expect(collapseDoubleNewlines("first\n\nsecond\n\nthird")).toBe("first\nsecond\nthird");
+  });
+
+  it("collapses three or more consecutive newlines to a single newline", () => {
+    expect(collapseDoubleNewlines("line 1\n\n\nline 2")).toBe("line 1\nline 2");
+    expect(collapseDoubleNewlines("line 1\n\n\n\nline 2")).toBe("line 1\nline 2");
+  });
+
+  it("normalizes CRLF double newlines to a single newline", () => {
+    expect(collapseDoubleNewlines("line 1\r\n\r\nline 2")).toBe("line 1\nline 2");
+    expect(collapseDoubleNewlines("line 1\r\n\r\n\r\nline 2")).toBe("line 1\nline 2");
+  });
+
+  it("handles leading and trailing double newlines", () => {
+    expect(collapseDoubleNewlines("\n\nhello\n\n")).toBe("\nhello\n");
+  });
+});
 
 // ---------------------------------------------------------------------------
 // formatTokens

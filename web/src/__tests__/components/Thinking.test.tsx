@@ -76,4 +76,12 @@ describe('Thinking', () => {
     // No raw asterisks should leak into the rendered text.
     expect(container.textContent).not.toContain('**')
   })
+
+  it('collapses double newlines in thinking content to a single newline for display', () => {
+    const text = 'Line one.\n\nLine two.\n\n\nLine three.'
+    const { container } = render(<Thinking content={text} />)
+
+    expect(container.textContent).toContain('Line one.\nLine two.\nLine three.')
+    expect(container.textContent).not.toContain('\n\n')
+  })
 })

@@ -955,4 +955,70 @@ describe('queued messages mid-turn injection and reconciliation', () => {
     expect(pending.some((m) => m.id === 'pm-1')).toBe(false)
     expect(pending.some((m) => m.id === 'pm-2')).toBe(true)
   })
+
+  it('loads correct chat history when switching between subsession and lead session', async () => {
+    // 1. Load subagent session
+    mockSessionHistory.mockImplementationOnce(() => Promise.resolve({
+      lead: {
+        id: 'child-sess',
+        parent_session_id: 'lead-sess',
+        agent_name: 'explorer#1',
+        running: false,
+        messages: [
+          { id: 'cm-1', role: 'user', content: '[Task from Lead]: inspect code', kind: 'chat' },
+          { id: 'cm-2', role: 'assistant', content: 'Found 3 files', kind: 'chat' },
+        ],
+      },
+      members: [],
+      has_more: false,
+      next_cursor: null,
+    }))
+
+    await useAgentStore.getState().loadSession('child-sess')
+    let state = useAgentStore.getState()
+    expect(state.sessionId).toBe('child-sess')
+    expect(state.parentSessionId).toBe('lead-sess')
+    expect(state.leadName).toBe('explorer#1')
+    expect(state.agentStreams['explorer#1'].blocks.map((b) => b.content)).toEqual([
+      '[Task from Lead]: inspect code',
+      'Found 3 files',
+    ])
+
+    // 2. Switch back to lead session
+    mockSessionHistory.mockImplementationOnce(() => Promise.resolve({
+      lead: {
+        id: 'lead-sess',
+        parent_session_id: null,
+        agent_name: 'code',
+        running: false,
+        messages: [
+          { id: 'lm-1', role: 'user', content: 'Hello lead', kind: 'chat' },
+          { id: 'lm-2', role: 'assistant', content: 'Lead response', kind: 'chat' },
+        ],
+      },
+      members: [
+        {
+          name: 'explorer#1',
+          session_id: 'child-sess',
+          messages: [
+            { id: 'cm-1', role: 'user', content: '[Task from Lead]: inspect code', kind: 'chat' },
+            { id: 'cm-2', role: 'assistant', content: 'Found 3 files', kind: 'chat' },
+          ],
+        },
+      ],
+      has_more: false,
+      next_cursor: null,
+    }))
+
+    await useAgentStore.getState().loadSession('lead-sess')
+    state = useAgentStore.getState()
+    expect(state.sessionId).toBe('lead-sess')
+    expect(state.parentSessionId).toBeNull()
+    expect(state.leadName).toBe('code')
+    // Active lead stream must hold lead messages, not member messages
+    expect(state.agentStreams['code'].blocks.map((b) => b.content)).toEqual([
+      'Hello lead',
+      'Lead response',
+    ])
+  })
 })

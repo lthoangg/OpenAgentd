@@ -10,6 +10,7 @@
  */
 import { splitSections } from '@/utils/thinking'
 import { useSmoothStream } from '@/hooks/useSmoothStream'
+import { collapseDoubleNewlines } from '@/utils/format'
 
 interface ThinkingProps {
   content: string
@@ -18,7 +19,8 @@ interface ThinkingProps {
 
 export function Thinking({ content, isStreaming = false }: ThinkingProps) {
   const smoothedContent = useSmoothStream(content, isStreaming)
-  const sections = splitSections(smoothedContent)
+  const displayContent = collapseDoubleNewlines(smoothedContent)
+  const sections = splitSections(displayContent)
 
   return (
     <div className="my-2 min-w-0 space-y-2 font-mono text-xs leading-relaxed text-(--color-text-2) [overflow-wrap:anywhere]">

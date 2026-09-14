@@ -21,6 +21,7 @@ export const queryKeys = {
     // endpoint, or the ``workspace_files`` invalidation will only reach one of
     // them and the expensive directory walk will run twice.
     files: (sessionId: string) => ['session', 'files', sessionId] as const,
+    subagents: (sessionId: string) => ['session', 'subagents', sessionId] as const,
   },
   // Coding-mode workspace sidebar — keyed by the absolute workspace path
   // (a single project may be shared across multiple sessions/tabs, so the

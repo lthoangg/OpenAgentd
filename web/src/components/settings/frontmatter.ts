@@ -35,8 +35,8 @@ export function splitFrontmatter(raw: string): { fm: string; body: string } {
  */
 export function buildFrontmatter(fm: AgentFrontmatter): string {
   const lines: string[] = []
-  lines.push('name: code')
-  lines.push('role: lead')
+  lines.push(`name: ${fm.name || 'code'}`)
+  lines.push(`role: ${fm.role || (fm.name === 'code' ? 'lead' : 'member')}`)
   if (fm.description) lines.push(`description: ${escapeScalar(fm.description)}`)
   if (fm.model) lines.push(`model: ${fm.model}`)
   if (fm.thinking_level) lines.push(`thinking_level: ${fm.thinking_level}`)

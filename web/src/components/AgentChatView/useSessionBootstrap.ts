@@ -98,7 +98,20 @@ export function useSessionBootstrap({
     if (isCodingSessionLoading) return
     if (!sessionId) return
     const store = useAgentStore.getState()
-    if (abortRef.current && store.sessionId === sessionId && (store.isConnected || store.isAgentWorking)) return
+    const activeController =
+      abortRef.current && !abortRef.current.signal.aborted
+        ? abortRef.current
+        : store._abortController && !store._abortController.signal.aborted
+          ? store._abortController
+          : null
+    if (
+      activeController &&
+      store.sessionId === sessionId &&
+      (store.isConnected || store.isAgentWorking)
+    ) {
+      abortRef.current = activeController
+      return
+    }
 
     if (store.sessionId !== sessionId) {
       // Switching chats: reset through the store (aborts the old SSE, bumps
@@ -172,7 +185,9 @@ export function useSessionBootstrap({
 
     return () => {
       cancelled = true
-      abortRef.current?.abort()
+      if (abortRef.current && !abortRef.current.signal.aborted) {
+        abortRef.current.abort()
+      }
       abortRef.current = null
     }
   }, [
@@ -201,10 +216,16 @@ export function useSessionBootstrap({
       // backgrounded. If connected and an active turn is in flight, do not
       // abort the stream or clobber in-flight tool cards and text. Keyed on
       // the OS, not the viewport: a narrow desktop window keeps its sockets.
+      const active =
+        abortRef.current && !abortRef.current.signal.aborted
+          ? abortRef.current
+          : state._abortController && !state._abortController.signal.aborted
+            ? state._abortController
+            : null
       if (
         !backgroundSuspendsSockets() &&
         state.isConnected &&
-        (state.isAgentWorking || abortRef.current !== null)
+        (state.isAgentWorking || active !== null)
       ) {
         return
       }
@@ -214,13 +235,18 @@ export function useSessionBootstrap({
       // true even though the stream can no longer deliver events. Always
       // reconcile persisted history and replace the stream on foreground.
       resumeInFlightRef.current = true
+      active?.abort()
       abortRef.current?.abort()
       state._abortController?.abort()
+      abortRef.current = null
       useAgentStore.setState({ _unloading: false, isConnected: false, _abortController: null })
       void loadSession(sessionId, agentWorkspace).then(() => {
         const current = useAgentStore.getState()
         if (current.sessionId !== sessionId || current._workspace !== agentWorkspace) return
-        if (current.isAgentWorking) abortRef.current = connectStream()
+        if (current.isAgentWorking) {
+          const controller = connectStream()
+          if (controller) abortRef.current = controller
+        }
       }).finally(() => {
         resumeInFlightRef.current = false
       })
@@ -248,6 +274,7 @@ export function useSessionBootstrap({
     if (!workspace) return
     if (isEmptyIdleSession()) return
     abortRef.current?.abort()
+    useAgentStore.getState()._abortController?.abort()
     abortRef.current = null
     // Eagerly delete the current session's draft before beginResolvedSession
     // resets store.sessionId to null. The InputComposer's onValueChange('') effect

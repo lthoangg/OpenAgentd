@@ -546,6 +546,91 @@ describe("AgentView — UserBubble collapse feature", () => {
     const text = container.querySelector("p[class*='pr-6']")
     expect(text).toBeTruthy()
   })
+
+  it("renders incoming subagent message with handle badge and left-aligned container", () => {
+    const blocks: ContentBlock[] = [
+      {
+        id: "sub-msg-1",
+        type: "user",
+        content: "Here are the 4 verified auth routes in the codebase.",
+        extra: { from_agent: "explorer#1" },
+        timestamp: new Date(),
+      },
+    ]
+
+    render(<AgentView blocks={blocks} currentBlocks={[]} isWorking={false} />)
+    expect(screen.getByText("explorer#1")).toBeTruthy()
+    expect(screen.getByText("Subagent report")).toBeTruthy()
+    expect(screen.getByText(/Here are the 4 verified auth routes/)).toBeTruthy()
+  })
+
+  it("minimizes long subagent report by default with a Show full report button", async () => {
+    const user = userEvent.setup()
+    const longReport = "Found following items in repository:\n" + Array.from({ length: 8 }, (_, i) => `- Item ${i + 1}: /src/path/to/module_${i + 1}.py`).join("\n")
+    const blocks: ContentBlock[] = [
+      {
+        id: "sub-msg-long",
+        type: "user",
+        content: longReport,
+        extra: { from_agent: "explorer#1" },
+        timestamp: new Date(),
+      },
+    ]
+
+    const { container } = render(<AgentView blocks={blocks} currentBlocks={[]} isWorking={false} />)
+
+    // Clamped wrapper initially present
+    expect(container.querySelector("div[class*='max-h-36'][class*='overflow-hidden']")).toBeTruthy()
+    // Bottom preview fade initially present
+    expect(container.querySelector("div[class*='pointer-events-none'][class*='inset-x-0'][class*='bottom-0']")).toBeTruthy()
+
+    // Toggle button initially says "Show full report"
+    const toggleBtn = screen.getByRole("button", { name: /Show full report/i })
+    expect(toggleBtn).toBeTruthy()
+    expect(toggleBtn.getAttribute("aria-expanded")).toBe("false")
+
+    // Click expand
+    await user.click(toggleBtn)
+
+    // Clamped class and fade are gone
+    expect(container.querySelector("div[class*='max-h-36'][class*='overflow-hidden']")).toBeNull()
+    expect(container.querySelector("div[class*='pointer-events-none'][class*='inset-x-0'][class*='bottom-0']")).toBeNull()
+
+    // Toggle button now says "Minimize"
+    const minimizeBtn = screen.getByRole("button", { name: /Minimize/i })
+    expect(minimizeBtn).toBeTruthy()
+    expect(minimizeBtn.getAttribute("aria-expanded")).toBe("true")
+
+    // Click minimize to collapse again
+    await user.click(minimizeBtn)
+    expect(screen.getByRole("button", { name: /Show full report/i })).toBeTruthy()
+  })
+
+  it("copies subagent report content to clipboard when copy button is clicked", async () => {
+    const user = userEvent.setup()
+    const content = "Verified report content to copy"
+    const clipboardWriteText = mock(() => Promise.resolve())
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText: clipboardWriteText },
+      writable: true,
+    })
+
+    const blocks: ContentBlock[] = [
+      {
+        id: "sub-msg-copy",
+        type: "user",
+        content,
+        extra: { from_agent: "researcher#1" },
+        timestamp: new Date(),
+      },
+    ]
+
+    render(<AgentView blocks={blocks} currentBlocks={[]} isWorking={false} />)
+    const copyBtn = screen.getByLabelText("Copy report")
+    expect(copyBtn).toBeTruthy()
+    await user.click(copyBtn)
+    expect(clipboardWriteText).toHaveBeenCalledWith(content)
+  })
 })
 
 // ─────────────────────────────────────────────────────────────────────────────

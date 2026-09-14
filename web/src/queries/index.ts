@@ -9,8 +9,12 @@ export {
 export { useWorkspaceFilesQuery } from './useWorkspaceFilesQuery'
 export {
   useCodeAgentQuery,
+  useAgentFileQuery,
+  useAgentFilesListQuery,
   useRegistryQuery,
   useUpdateAgentMutation,
+  useCreateAgentMutation,
+  useDeleteAgentMutation,
 } from './useAgentSettingsQueries'
 export {
   useSkillFilesQuery,

@@ -36,6 +36,8 @@ import type {
   GitUndoResponse,
   GitRevertResponse,
   SessionInteractionMode,
+  MemberProfile,
+  SubagentsResponse,
 } from '../types'
 
 export async function postAgentChat(
@@ -418,6 +420,24 @@ export async function updateSessionInteractionMode(
 export async function deleteSession(id: string): Promise<void> {
   const res = await fetch(`${apiBaseUrl()}/agent/sessions/${id}`, { method: 'DELETE' })
   if (!res.ok) await parseDetailOrThrow(res, 'deleteSession')
+}
+
+/**
+ * List available member profiles and live subagent instances for a session.
+ */
+export async function listSubagents(sessionId: string): Promise<SubagentsResponse> {
+  const res = await fetch(`${apiBaseUrl()}/agent/sessions/${encodeURIComponent(sessionId)}/subagents`)
+  if (!res.ok) await parseDetailOrThrow(res, 'listSubagents')
+  return res.json()
+}
+
+/**
+ * List available member profiles (*.md with role: member).
+ */
+export async function listMemberProfiles(): Promise<MemberProfile[]> {
+  const res = await fetch(`${apiBaseUrl()}/agents/members`)
+  if (!res.ok) await parseDetailOrThrow(res, 'listMemberProfiles')
+  return res.json()
 }
 
 export async function sessionHistory(sessionId: string, before?: string): Promise<SessionHistoryResponse> {

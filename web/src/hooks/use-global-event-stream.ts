@@ -6,7 +6,7 @@ import { onApiBaseUrlChange } from '@/api/base-url'
 import { backgroundSuspendsSockets } from '@/hooks/use-platform'
 import { sendDesktopNotification } from '@/lib/desktop-notifications'
 import { queryKeys } from '@/queries'
-import { patchSessionRunning, patchSessionTitle } from '@/stores/cache-invalidation-bridge'
+import { appendSubagent, patchSessionRunning, patchSessionTitle } from '@/stores/cache-invalidation-bridge'
 import { useAgentStore } from '@/stores/useAgentStore'
 import { useLspInstallStore } from '@/stores/useLspInstallStore'
 
@@ -63,9 +63,9 @@ export async function handleGlobalEvent(
 
   if (type === 'session_turn_started') {
     const sessionId = typeof event.session_id === 'string' ? event.session_id : null
-    // Only the scheduler publishes this event, so its task bookkeeping
-    // (last_run_at / next_run_at) is worth refreshing here.
-    queryClient.invalidateQueries({ queryKey: queryKeys.scheduler.list() })
+    if (event.source === 'scheduled_task' || event.task_slug) {
+      queryClient.invalidateQueries({ queryKey: queryKeys.scheduler.list() })
+    }
     if (!sessionId) {
       queryClient.invalidateQueries({ queryKey: queryKeys.session.sessions.all() })
       return false
@@ -74,8 +74,12 @@ export async function handleGlobalEvent(
 
     const before = useAgentStore.getState()
     if (before.sessionId !== sessionId) return true
+    if (before.isConnected && before.isAgentWorking) return true
     const sessionGeneration = before._sessionGeneration
-    await before.loadSession(sessionId, before._workspace)
+    const targetWorkspace = (typeof event.workspace === 'string' && event.workspace)
+      ? event.workspace
+      : before._workspace
+    await before.loadSession(sessionId, targetWorkspace)
     const after = useAgentStore.getState()
     if (connectionGeneration !== currentConnectionGeneration()) return false
     if (after.sessionId !== sessionId || after._sessionGeneration !== sessionGeneration) return false
@@ -93,6 +97,11 @@ export async function handleGlobalEvent(
     // and a turn that actually touched the scheduler already enqueues a
     // `scheduler` invalidation from the tool_end reducer.
     markSessionRunning(queryClient, sessionId, false)
+    const parentSessionId = typeof event.parent_session_id === 'string' ? event.parent_session_id : null
+    if (parentSessionId) {
+      queryClient.invalidateQueries({ queryKey: queryKeys.session.subagents(parentSessionId) })
+    }
+    queryClient.invalidateQueries({ queryKey: queryKeys.session.subagents(sessionId) })
 
     const before = useAgentStore.getState()
     if (before.sessionId !== sessionId) return true
@@ -116,6 +125,45 @@ export async function handleGlobalEvent(
     if (!sessionId || title === null) return false
     if (useAgentStore.getState().sessionId === sessionId) useAgentStore.setState({ sessionTitle: title })
     patchSessionTitle(queryClient, sessionId, title)
+    return true
+  }
+
+  if (type === 'subagent_spawned') {
+    const leadId = typeof event.lead_session_id === 'string' ? event.lead_session_id : null
+    const subSessionId = typeof event.session_id === 'string' ? event.session_id : null
+    const handle = typeof event.handle === 'string' ? event.handle : null
+    const title = typeof event.title === 'string' ? event.title : (handle ?? 'Subagent')
+    const workspace = typeof event.workspace === 'string' ? event.workspace : ''
+    if (leadId && subSessionId) {
+      appendSubagent(queryClient, leadId, {
+        id: subSessionId,
+        title,
+        agent_name: handle,
+        workspace,
+        running: true,
+      })
+      queryClient.invalidateQueries({ queryKey: queryKeys.session.subagents(leadId) })
+    } else {
+      queryClient.invalidateQueries({ queryKey: queryKeys.session.sessions.all() })
+    }
+    return true
+  }
+
+  if (type === 'subagent_status') {
+    const leadId = typeof event.lead_session_id === 'string' ? event.lead_session_id : null
+    const subSessionId = typeof event.session_id === 'string' ? event.session_id : null
+    const status = typeof event.status === 'string' ? event.status : null
+    if (subSessionId && status) {
+      const isWorking = status === 'working'
+      const isWaiting = status === 'waiting_lead'
+      const found = patchSessionRunning(queryClient, subSessionId, isWorking, isWaiting)
+      if (!found) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.session.sessions.all() })
+      }
+    }
+    if (leadId) {
+      queryClient.invalidateQueries({ queryKey: queryKeys.session.subagents(leadId) })
+    }
     return true
   }
 

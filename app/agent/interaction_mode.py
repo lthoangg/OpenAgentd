@@ -9,7 +9,21 @@ InteractionMode = Literal["code", "plan"]
 # Plan mode is deliberately allowlisted. The shell tool can run arbitrary
 # commands, so command-prefix checks cannot make it safe for planning.
 PLAN_MODE_ALLOWED_TOOLS = frozenset(
-    {"ask_user", "glob", "grep", "read", "shell", "skill", "web_fetch", "web_search"}
+    {
+        "ask_user",
+        "delegate",
+        "glob",
+        "grep",
+        "read",
+        "shell",
+        "skill",
+        "team_list",
+        "team_manage",
+        "team_stop",
+        "team_wait",
+        "web_fetch",
+        "web_search",
+    }
 )
 
 

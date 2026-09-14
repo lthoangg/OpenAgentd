@@ -34,6 +34,7 @@ export type CacheInvalidation =
   | { kind: 'coding_workspace_paths'; workspace: string; paths: string[] }
   | { kind: 'scheduler' }
   | { kind: 'todos'; sessionId: string }
+  | { kind: 'subagents'; sessionId: string }
   /**
    * A turn started or finished for ``sessionId``. Patches that row's
    * ``running`` flag in place instead of refetching the whole (infinite,
@@ -138,6 +139,7 @@ export interface AgentStoreState {
   liveAgentNames: string[] | null
   sidebarOpen: boolean
   sessionId: string | null
+  parentSessionId: string | null
   sessionTitle: string | null
   sessionInteractionMode: SessionInteractionMode
   sessionModel: string | null

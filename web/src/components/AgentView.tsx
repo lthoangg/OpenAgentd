@@ -28,7 +28,7 @@ import { AssistantTurn } from './AssistantTurnFooter'
 import { PendingMessageQueue } from './PendingMessageQueue'
 import { appendCurrentTurns, getVisibleTurnWindow, partitionTurns } from '@/utils/turns'
 import { hasPlanContent, latestDirectUserBlockIdFromParts, liveBlockTail } from '@/utils/blocks'
-import { extractSleepPrefix } from '@/utils/format'
+import { collapseDoubleNewlines, extractSleepPrefix } from '@/utils/format'
 import { latestMCPAppResourceBlockIdsFromParts, latestMCPAppResources, mcpAppResourceUri } from '@/utils/mcp-app-artifacts'
 import { useAgentStore } from '@/stores/useAgentStore'
 import type { ContentBlock } from '@/api/types'
@@ -88,7 +88,8 @@ const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionI
   switch (block.type) {
     case 'user': {
       const blockModel = typeof block.extra?.model === 'string' ? block.extra.model : null
-      return <UserBubble content={block.content} timestamp={block.timestamp} attachments={block.attachments} onRevert={onRevert} modelId={blockModel} onMentionFileOpen={onMentionFileOpen} mentions={block.extra?.mentions as string[] | undefined} />
+      const fromAgent = typeof block.extra?.from_agent === 'string' ? block.extra.from_agent : null
+      return <UserBubble content={block.content} timestamp={block.timestamp} attachments={block.attachments} onRevert={onRevert} modelId={blockModel} onMentionFileOpen={onMentionFileOpen} mentions={block.extra?.mentions as string[] | undefined} fromAgent={fromAgent} />
     }
     case 'thinking':
       return <Thinking content={block.content} isStreaming={isStreaming} />
@@ -166,14 +167,14 @@ const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionI
       if (sleepPrefix !== null) {
         return (
           <div>
-            {sleepPrefix && <LazyMarkdownBlock content={sleepPrefix} sessionId={sessionId} />}
+            {sleepPrefix && <LazyMarkdownBlock content={collapseDoubleNewlines(sleepPrefix, true)} sessionId={sessionId} />}
             <p className="text-xs text-(--color-text-subtle) italic">— idle —</p>
           </div>
         )
       }
       return (
         <div>
-          <LazyMarkdownBlock content={block.content} sessionId={sessionId} isStreaming={isStreaming} />
+          <LazyMarkdownBlock content={collapseDoubleNewlines(block.content, true)} sessionId={sessionId} isStreaming={isStreaming} />
         </div>
       )
     }

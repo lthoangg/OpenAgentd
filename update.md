@@ -1,6 +1,6 @@
 # OpenAgentd improvement plan and progress
 
-Last updated: 2026-09-06
+Last updated: 2026-09-14
 
 ## Goal and scope
 
@@ -133,6 +133,7 @@ These are completed runs, not a claim that the entire 37-item programme is done.
 | Workspace mention/path-safety scenarios | 30 passed, 0 failed. |
 | Persistence query-count scenarios | 10/10 passed. |
 | `git diff --check` | Passed. |
+| `make verify` (2026-09-14) | Passed after the dependency batch: Python pins (ruff 0.16.7, ty 0.0.80; 4,597 passed, 8 skipped), pinned CI actions, the web toolchain subset (3,104 tests), and desktop/mobile `cargo update` (`make verify-desktop`, `make verify-mobile`). Web production budgets stayed green (1,901,136 raw / 567,295 gzip / 1,255,002 largest chunk). The web majors that exceed an eager or chunk budget (react 19.3, zod 4.6, lucide 1.44, ext-apps 2.0, mermaid 12) were held back pending freed startup headroom. |
 
 ### Batch outcome
 

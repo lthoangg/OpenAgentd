@@ -163,6 +163,25 @@ class QuestionSuspended(OpenAgentdError):
         super().__init__(f"Turn suspended awaiting user answer ({question_id})")
 
 
+class LeadSuspended(OpenAgentdError):
+    """Control flow: member agent's ``ask_lead`` handed the turn to the lead agent.
+
+    Not a failure — the member is parked waiting for guidance or decision from
+    the lead agent. Raising unwinds the tool call and the agent loop cleanly.
+    """
+
+    def __init__(
+        self,
+        question: str,
+        options: list[str] | None = None,
+        tool_call_id: str | None = None,
+    ) -> None:
+        self.question = question
+        self.options = options or []
+        self.tool_call_id = tool_call_id
+        super().__init__(f"Turn suspended awaiting lead answer: {question}")
+
+
 # ── Denied path errors ───────────────────────────────────────────────────
 
 

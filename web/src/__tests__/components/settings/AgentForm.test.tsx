@@ -17,6 +17,7 @@ import {
   combine,
   type AgentFrontmatter,
 } from '@/components/settings/frontmatter'
+import { parseFormState } from '@/components/settings/AgentForm/utils'
 
 // ── Module mocks ─────────────────────────────────────────────────────────────
 
@@ -125,6 +126,32 @@ describe('frontmatter — mcp field', () => {
     }
     expect(buildFrontmatter(fm)).not.toContain('mcp:')
     expect(buildFrontmatter({ ...fm, mcp: [] })).not.toContain('mcp:')
+  })
+
+  it('preserves name and role for member agent profiles', () => {
+    const fm: AgentFrontmatter = {
+      name: 'explorer',
+      role: 'member',
+      description: 'Explores code',
+      model: 'openai:gpt-4o',
+    }
+    const yaml = buildFrontmatter(fm)
+    expect(yaml).toContain('name: explorer')
+    expect(yaml).toContain('role: member')
+  })
+
+  it('parses name and role from member profile markdown', () => {
+    const raw = `---
+name: researcher
+role: member
+description: Research agent
+---
+
+Prompt body`
+    const { fm, body } = parseFormState(raw)
+    expect(fm.name).toBe('researcher')
+    expect(fm.role).toBe('member')
+    expect(body).toBe('Prompt body')
   })
 
   it('survives a combine → split round-trip', () => {

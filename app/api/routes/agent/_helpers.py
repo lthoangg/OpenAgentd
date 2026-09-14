@@ -161,6 +161,11 @@ async def resolve_agent_for_existing_session(
         existing = await db.get(ChatSession, session_uuid)
     if existing is None or not existing.workspace:
         raise HTTPException(status_code=404, detail="Session not found.")
+    if existing.parent_session_id is not None:
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot run commands directly on a subagent session. Subagents are orchestrated exclusively by the lead agent.",
+        )
     try:
         agent_obj = await agent_manager.get_or_start_agent_session(
             _validate_workspace_or_422(existing.workspace), session_id
@@ -204,6 +209,12 @@ async def resolve_chat_agent(
             raise HTTPException(status_code=422, detail="Invalid session id.") from exc
         async with db.begin():
             existing = await db.get(ChatSession, session_uuid)
+
+    if existing and existing.parent_session_id is not None:
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot chat directly with a subagent session. Subagents are orchestrated exclusively by the lead agent.",
+        )
 
     if existing and existing.workspace:
         persisted_workspace = _validate_workspace_or_422(existing.workspace)

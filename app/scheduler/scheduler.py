@@ -15,7 +15,7 @@ from uuid import UUID, uuid5, NAMESPACE_URL
 from loguru import logger
 from sqlmodel import col, select
 
-from app.core.db import DbFactory
+from app.core.db import DbFactory, resolve_db_factory
 from app.scheduler.cron import next_fire
 from app.scheduler.models import ScheduledTask
 from app.services import event_broadcaster
@@ -115,8 +115,8 @@ class TaskScheduler:
     from the FastAPI lifespan.
     """
 
-    def __init__(self, db_factory: DbFactory) -> None:
-        self._db = db_factory
+    def __init__(self, db_factory: DbFactory | None = None) -> None:
+        self._db_factory = db_factory
         # task slug → running asyncio.Task
         self._tasks: dict[str, asyncio.Task[None]] = {}
         self._fire_tasks: set[asyncio.Task[None]] = set()
@@ -124,6 +124,14 @@ class TaskScheduler:
         self._firing_ids: set[UUID] = set()
         self._fire_versions: dict[UUID, int] = {}
         self._pending_fire_counts: dict[UUID, int] = {}
+
+    @property
+    def _db(self) -> DbFactory:
+        return resolve_db_factory(self._db_factory)
+
+    @_db.setter
+    def _db(self, value: DbFactory | None) -> None:
+        self._db_factory = value
 
     # ── Lifecycle ─────────────────────────────────────────────────────────────
 
@@ -821,6 +829,5 @@ class TaskScheduler:
 
 # ── Module-level singleton ────────────────────────────────────────────────────
 
-from app.core.db import async_session_factory  # noqa: E402
 
-task_scheduler = TaskScheduler(db_factory=async_session_factory)
+task_scheduler = TaskScheduler()

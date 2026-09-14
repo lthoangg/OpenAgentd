@@ -12,7 +12,8 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.api.schemas import ChatForm
 from app.core.config import Settings, settings
-from app.core.db import async_session_factory, get_session
+from app.core import db as _db
+from app.core.db import get_session
 
 if TYPE_CHECKING:
     from app.agent.session import AgentSession
@@ -36,7 +37,7 @@ DbSession = Annotated[AsyncSession, Depends(get_session)]
 
 
 def get_session_factory() -> async_sessionmaker[AsyncSession]:
-    return async_session_factory
+    return _db.async_session_factory
 
 
 DbSessionFactory = Annotated[

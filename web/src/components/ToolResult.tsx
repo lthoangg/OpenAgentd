@@ -15,6 +15,7 @@
 import { Check, Circle, ExternalLink, FileText, Globe, Loader2, Minus } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import type { ReactNode } from 'react'
+import { LazyMarkdownBlock } from '@/utils/LazyMarkdownBlock'
 import { truncateForDisplay } from './ToolCall/displayText'
 
 // ---------------------------------------------------------------------------
@@ -822,6 +823,131 @@ const SHELL_TOOLS = new Set(['shell'])
 const WEB_SEARCH_TOOLS = new Set(['web_search'])
 const BACKGROUND_PROCESS_TOOLS = new Set(['bg'])
 const SCHEDULE_TOOLS = new Set(['schedule_task'])
+const TEAM_TOOLS = new Set(['delegate', 'team_spawn', 'team_send', 'team_wait', 'team_list', 'team_stop', 'team_manage'])
+
+function TeamToolResult({ result }: { result: string }) {
+  const parsed = tryParseJSON(result)
+  if (!parsed || typeof parsed !== 'object') {
+    return <GenericResult result={result} />
+  }
+
+  const obj = parsed as Record<string, unknown>
+  const status = typeof obj.status === 'string' ? obj.status : null
+  const memberId = typeof obj.member_id === 'string' ? obj.member_id : null
+  const output = typeof obj.output === 'string' ? obj.output : typeof obj.result === 'string' ? obj.result : null
+  const message = typeof obj.message === 'string' ? obj.message : null
+  const pendingQuestion = obj.pending_question && typeof obj.pending_question === 'object'
+    ? (obj.pending_question as { question?: string; options?: string[] })
+    : (typeof obj.question === 'string' ? { question: obj.question, options: Array.isArray(obj.options) ? (obj.options as string[]) : undefined } : null)
+  const results = obj.results && typeof obj.results === 'object' ? (obj.results as Record<string, Record<string, unknown>>) : null
+  const liveMembers = Array.isArray(obj.live_members)
+    ? (obj.live_members as Record<string, unknown>[])
+    : (Array.isArray(obj.subagents) ? (obj.subagents as Record<string, unknown>[]) : null)
+
+  return (
+    <div className="flex flex-col gap-2 font-mono text-[11px] leading-relaxed text-(--color-text-2)">
+      <div className="flex flex-wrap items-center gap-1.5 font-sans">
+        {memberId && (
+          <span className="rounded bg-(--bg-key)/60 px-1.5 py-0.5 font-mono text-[11px] font-semibold text-(--color-text)">
+            {memberId}
+          </span>
+        )}
+        {status && (
+          <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${
+            status === 'completed'
+              ? 'bg-(--color-success-subtle) text-(--color-success)'
+              : status === 'waiting_lead'
+                ? 'bg-(--color-warning-subtle) text-(--color-warning) font-semibold animate-pulse'
+                : status === 'spawned'
+                  ? 'bg-(--color-info-subtle) text-(--color-accent)'
+                  : status === 'stopped'
+                    ? 'bg-(--bg-key) text-(--color-text-muted)'
+                    : 'bg-(--color-error-subtle) text-(--color-error)'
+          }`}>
+            <span className={`h-1.5 w-1.5 rounded-full ${
+              status === 'completed'
+                ? 'bg-(--color-success)'
+                : status === 'waiting_lead'
+                  ? 'bg-(--color-warning)'
+                  : status === 'spawned'
+                    ? 'bg-(--color-accent)'
+                    : status === 'stopped'
+                      ? 'bg-(--color-text-subtle)'
+                      : 'bg-(--color-error)'
+            }`} />
+            {status === 'waiting_lead' ? 'waiting for lead decision' : status}
+          </span>
+        )}
+      </div>
+
+      {pendingQuestion?.question && (
+        <div className="rounded-md border border-(--color-warning)/30 bg-(--color-warning-subtle)/50 p-2.5 font-sans text-xs text-(--color-text)">
+          <div className="font-semibold text-(--color-warning) mb-1 flex items-center gap-1.5">
+            <span>Clarification needed from lead:</span>
+          </div>
+          <div className="text-(--color-text) mb-1.5">{pendingQuestion.question}</div>
+          {pendingQuestion.options && pendingQuestion.options.length > 0 && (
+            <div className="flex flex-wrap gap-1 mt-1">
+              {pendingQuestion.options.map((opt, i) => (
+                <span key={i} className="rounded border border-(--color-warning)/30 bg-(--bg-card) px-2 py-0.5 text-[11px] font-medium text-(--color-text)">
+                  {opt}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {output && (
+        <div className="max-h-[calc(16*1.55em)] overflow-y-auto rounded bg-(--bg-card)/40 p-2 border border-(--color-border-subtle) text-xs">
+          <LazyMarkdownBlock content={truncateForDisplay(output)} />
+        </div>
+      )}
+
+      {!output && message && (
+        <div className="font-sans text-xs text-(--color-text-muted)">
+          {message}
+        </div>
+      )}
+
+      {results && (
+        <div className="flex flex-col gap-2">
+          {Object.entries(results).map(([handle, resObj]) => {
+            const resStatus = typeof resObj.status === 'string' ? resObj.status : 'done'
+            const resOutput = typeof resObj.output === 'string' ? resObj.output : typeof resObj.result === 'string' ? resObj.result : null
+            return (
+              <div key={handle} className="rounded border border-(--color-border-subtle) bg-(--bg-card)/40 p-2 font-sans">
+                <div className="flex items-center gap-1.5 mb-1.5">
+                  <span className="font-mono text-[11px] font-semibold text-(--color-text)">{handle}</span>
+                  <span className="text-[10px] rounded px-1.5 py-0.2 bg-(--bg-key)/50 text-(--color-text-muted)">{resStatus}</span>
+                </div>
+                {resOutput && (
+                  <div className="max-h-48 overflow-y-auto text-xs">
+                    <LazyMarkdownBlock content={truncateForDisplay(resOutput)} />
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {liveMembers && liveMembers.length > 0 && (
+        <div className="space-y-1 font-sans">
+          <div className="text-[10px] uppercase font-semibold text-(--color-text-muted)">Subagent Roster</div>
+          <div className="grid gap-1">
+            {liveMembers.map((m, idx) => (
+              <div key={idx} className="flex items-center justify-between rounded bg-(--bg-key)/30 px-2 py-1 text-xs">
+                <span className="font-mono font-medium text-(--color-text)">{String(m.member_id || m.profile)}</span>
+                <span className="text-[10px] text-(--color-text-muted)">{String(m.status)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
 
 export interface LspDiagnosticItem {
   filePath: string
@@ -942,6 +1068,9 @@ function ToolResultInner({ toolName, operation, result, headerAction, onCollapse
   }
   if (toolName === 'todo_manage') {
     return <TodoListResult result={result} />
+  }
+  if (TEAM_TOOLS.has(toolName)) {
+    return <TeamToolResult result={result} />
   }
   // web_fetch, date, math, skill, etc.
   return <GenericResult result={result} />

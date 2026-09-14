@@ -66,3 +66,40 @@ def test_question_tool_is_not_a_constructor_tool_for_the_coding_lead():
     from app.agent.builtin_prompts import CODING_OPENAGENTD_TOOLS
 
     assert "ask_user" not in CODING_OPENAGENTD_TOOLS
+
+
+def test_member_prompts_match_pruned_toolset_and_topology():
+    """Member prompts instruct delivering findings in response text, using ask_lead,
+    and strictly forbid direct user communication, file mutations, or pruned tools."""
+    from app.agent.builtin_prompts import (
+        EXPLORER_MEMBER_PROMPT,
+        EXPLORER_MEMBER_TOOLS,
+        RESEARCHER_MEMBER_PROMPT,
+        RESEARCHER_MEMBER_TOOLS,
+    )
+
+    assert set(EXPLORER_MEMBER_TOOLS) == {"glob", "grep", "read"}
+    assert set(RESEARCHER_MEMBER_TOOLS) == {
+        "glob",
+        "grep",
+        "read",
+        "web_fetch",
+        "web_search",
+    }
+
+    for prompt in (EXPLORER_MEMBER_PROMPT, RESEARCHER_MEMBER_PROMPT):
+        # Enforces direct response text for deliverables (no send_to_lead)
+        assert "response text" in prompt
+        assert "ask_lead" in prompt
+        assert "send_to_lead" not in prompt
+
+        # Enforces hub-and-spoke topology and read-only invariants
+        assert "strictly with the lead" in prompt
+        assert "never prompt the human user" in prompt
+        assert "do not modify any files" in prompt
+
+        # Strictly excludes user/lead tools
+        assert "ask_user" not in prompt
+        assert "delegate" not in prompt
+        assert "team_spawn" not in prompt
+        assert "team_send" not in prompt

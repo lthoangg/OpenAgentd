@@ -442,3 +442,68 @@ describe("ToolResult — todo_manage", () => {
     expect(screen.getByText("something unexpected")).toBeTruthy()
   })
 })
+
+// ---------------------------------------------------------------------------
+// Team tools renderer
+// ---------------------------------------------------------------------------
+
+describe("ToolResult — team tools", () => {
+  it("renders completed subagent output with handle and status", () => {
+    const res = JSON.stringify({
+      status: "completed",
+      member_id: "explorer#1",
+      output: "Audit finished: 5 endpoints found.",
+    })
+    render(<ToolResult toolName="team_spawn" result={res} />)
+    expect(screen.getByText("explorer#1")).toBeTruthy()
+    expect(screen.getByText("completed")).toBeTruthy()
+    expect(screen.getByText(/Audit finished: 5 endpoints found\./)).toBeTruthy()
+  })
+
+  it("renders waiting_lead pending question and discrete options", () => {
+    const res = JSON.stringify({
+      status: "waiting_lead",
+      member_id: "explorer#2",
+      pending_question: {
+        question: "Should I include OAuth routes?",
+        options: ["yes", "no"],
+      },
+    })
+    render(<ToolResult toolName="team_send" result={res} />)
+    expect(screen.getByText("explorer#2")).toBeTruthy()
+    expect(screen.getByText("waiting for lead decision")).toBeTruthy()
+    expect(screen.getByText("Should I include OAuth routes?")).toBeTruthy()
+    expect(screen.getByText("yes")).toBeTruthy()
+    expect(screen.getByText("no")).toBeTruthy()
+  })
+
+  it("renders multi-member results for team_wait", () => {
+    const res = JSON.stringify({
+      status: "completed",
+      results: {
+        "explorer#1": { status: "completed", output: "Found 3 files" },
+        "researcher#1": { status: "completed", output: "Fetched docs" },
+      },
+    })
+    render(<ToolResult toolName="team_wait" result={res} />)
+    expect(screen.getByText("explorer#1")).toBeTruthy()
+    expect(screen.getByText("researcher#1")).toBeTruthy()
+    expect(screen.getByText(/Found 3 files/)).toBeTruthy()
+    expect(screen.getByText(/Fetched docs/)).toBeTruthy()
+  })
+
+  it("renders roster list for team_list and team_manage", () => {
+    const res = JSON.stringify({
+      available_profiles: [{ name: "explorer" }],
+      live_members: [
+        { member_id: "explorer#1", status: "working" },
+        { member_id: "researcher#1", status: "completed" },
+      ],
+    })
+    render(<ToolResult toolName="team_manage" result={res} />)
+    expect(screen.getByText("Subagent Roster")).toBeTruthy()
+    expect(screen.getByText("explorer#1")).toBeTruthy()
+    expect(screen.getByText("working")).toBeTruthy()
+    expect(screen.getByText("researcher#1")).toBeTruthy()
+  })
+})

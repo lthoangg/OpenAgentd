@@ -6,10 +6,11 @@
  * across all views.
  */
 
-import { memo, useMemo, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Markdown } from '@tanstack/markdown/react'
 import { streamingMarkdownExtension } from '@tanstack/markdown/extensions/streaming'
-import { ImageOff, FileVideo } from 'lucide-react'
+import { ImageOff, FileVideo, Check, Copy } from 'lucide-react'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { resolveApiUrl } from '@/api/client'
 import { apiUrl } from '@/api/base-url'
 import { withTokenParam } from '@/api/auth'
@@ -480,6 +481,113 @@ function renderCellWithBr(children: React.ReactNode): React.ReactNode {
   return children
 }
 
+function extractCellText(cell: HTMLTableCellElement): string {
+  let text = ''
+  function walk(node: Node) {
+    if (node.nodeType === Node.TEXT_NODE) {
+      text += node.nodeValue ?? ''
+    } else if (node.nodeType === Node.ELEMENT_NODE) {
+      if ((node as Element).tagName === 'BR') {
+        text += '<br>'
+      } else {
+        for (let i = 0; i < node.childNodes.length; i++) {
+          walk(node.childNodes[i])
+        }
+      }
+    }
+  }
+  walk(cell)
+  return text.trim().replace(/\r?\n/g, '<br>').replace(/\|/g, '\\|')
+}
+
+export function tableToMarkdown(table: HTMLTableElement): string {
+  const rows = Array.from(table.rows)
+  if (rows.length === 0) return ''
+  const headerRow = rows[0]
+  const headerCells = Array.from(headerRow.cells)
+  if (headerCells.length === 0) return ''
+
+  const lines: string[] = []
+  lines.push(`| ${headerCells.map(extractCellText).join(' | ')} |`)
+  lines.push(
+    `| ${headerCells
+      .map((c) => {
+        const align = c.style.textAlign || c.getAttribute('align')
+        if (align === 'center') return ':---:'
+        if (align === 'right') return '---:'
+        if (align === 'left') return ':---'
+        return '---'
+      })
+      .join(' | ')} |`,
+  )
+  const colCount = headerCells.length
+  for (let i = 1; i < rows.length; i++) {
+    const cells = Array.from(rows[i].cells)
+    const cellTexts = cells.map(extractCellText)
+    while (cellTexts.length < colCount) {
+      cellTexts.push('')
+    }
+    lines.push(`| ${cellTexts.join(' | ')} |`)
+  }
+  return lines.join('\n')
+}
+
+export const MarkdownTable = memo(function MarkdownTable(
+  props: React.HTMLAttributes<HTMLTableElement>,
+) {
+  const tableRef = useRef<HTMLTableElement>(null)
+  const [copied, setCopied] = useState(false)
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current)
+    }
+  }, [])
+
+  const handleCopy = useCallback(async () => {
+    const table = tableRef.current
+    if (!table) return
+    const text = tableToMarkdown(table)
+    if (!text) return
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopied(true)
+      if (timeoutRef.current) clearTimeout(timeoutRef.current)
+      timeoutRef.current = setTimeout(() => setCopied(false), 1500)
+    } catch {
+      // Clipboard access is best-effort.
+    }
+  }, [])
+
+  return (
+    <div className="oa-table-wrap group relative">
+      <div className="pointer-events-none absolute top-1 right-1 z-10 opacity-0 transition-opacity duration-150 group-hover:pointer-events-auto group-hover:opacity-100 focus-within:pointer-events-auto focus-within:opacity-100">
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <button
+                type="button"
+                onClick={handleCopy}
+                className="flex h-5 w-5 items-center justify-center rounded-xs border border-(--color-border) bg-(--bg-card) text-(--color-text-muted) shadow-xs transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)"
+                aria-label={copied ? 'Copied' : 'Copy table'}
+              >
+                {copied ? (
+                  <Check size={11} className="text-(--color-success)" />
+                ) : (
+                  <Copy size={11} />
+                )}
+              </button>
+            }
+          />
+          <TooltipContent>{copied ? 'Copied' : 'Copy table'}</TooltipContent>
+        </Tooltip>
+      </div>
+      <table ref={tableRef} {...props} />
+    </div>
+  )
+})
+
 // ── MarkdownBlock ─────────────────────────────────────────────────────────────
 
 /** Shared prose markdown renderer — handles nested fences with math and syntax highlighting.
@@ -544,11 +652,7 @@ export const MarkdownBlock = memo(function MarkdownBlock({
         }
         return <code {...props}>{children}</code>
       },
-      table: (props: React.HTMLAttributes<HTMLTableElement>) => (
-        <div className="oa-table-wrap">
-          <table {...props} />
-        </div>
-      ),
+      table: MarkdownTable,
       td: ({ children, ...props }: React.HTMLAttributes<HTMLTableCellElement>) => (
         <td {...props}>{renderCellWithBr(children)}</td>
       ),

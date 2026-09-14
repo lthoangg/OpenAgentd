@@ -7,7 +7,12 @@
  */
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
+  createAgent,
+  deleteAgent,
+  getAgent,
   getCodeAgent,
+  listAgentFiles,
+  updateAgent,
   updateCodeAgent,
   getRegistry,
   type ProvidersListBody,
@@ -60,6 +65,24 @@ export function useCodeAgentQuery() {
   })
 }
 
+/** Settings query for any agent by name. */
+export function useAgentFileQuery(name: string = 'code') {
+  return useQuery({
+    queryKey: queryKeys.agentFiles.detail(name),
+    queryFn: () => (name === 'code' ? getCodeAgent() : getAgent(name)),
+    staleTime: 10_000,
+  })
+}
+
+/** Settings query listing all agent profiles. */
+export function useAgentFilesListQuery() {
+  return useQuery({
+    queryKey: queryKeys.agentFiles.list(),
+    queryFn: listAgentFiles,
+    staleTime: 10_000,
+  })
+}
+
 export function useRegistryQuery() {
   const client = useQueryClient()
   return useQuery({
@@ -83,15 +106,37 @@ function invalidateAgentFiles(client: ReturnType<typeof useQueryClient>) {
   // shared /agent/agents entry (home-page probe + chat header) — no separate
   // status key to invalidate.
   client.invalidateQueries({ queryKey: queryKeys.agents() })
+  client.invalidateQueries({ queryKey: queryKeys.agentFiles.list() })
 }
 
-export function useUpdateAgentMutation() {
+export function useUpdateAgentMutation(name: string = 'code') {
   const client = useQueryClient()
   return useMutation({
-    mutationFn: ({ content }: { content: string }) => updateCodeAgent(content),
+    mutationFn: ({ content }: { content: string }) =>
+      name === 'code' ? updateCodeAgent(content) : updateAgent(name, content),
     onSuccess: () => {
       invalidateAgentFiles(client)
-      client.invalidateQueries({ queryKey: queryKeys.agentFiles.detail('code') })
+      client.invalidateQueries({ queryKey: queryKeys.agentFiles.detail(name) })
+    },
+  })
+}
+
+export function useCreateAgentMutation() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: ({ name, content }: { name: string; content: string }) => createAgent(name, content),
+    onSuccess: () => {
+      invalidateAgentFiles(client)
+    },
+  })
+}
+
+export function useDeleteAgentMutation() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (name: string) => deleteAgent(name),
+    onSuccess: () => {
+      invalidateAgentFiles(client)
     },
   })
 }

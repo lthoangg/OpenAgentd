@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useState, memo } from 'react'
 import { Check, ChevronDown, ChevronUp, Copy, Undo2 } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { LazyMarkdownBlock } from '@/utils/LazyMarkdownBlock'
 
 import { FileLightbox, type FileLightboxItem, type FileLightboxItemType } from '../FileLightbox'
 import { FileTypeIcon } from '../FileTypeIcon'
 import { findCommittedMentions } from '../InputComposer.mentions'
 import { resolveApiUrl } from '@/api/client'
 import { openExternalUrl } from '@/lib/open-external'
-import { formatTime, formatFullDateTime } from '@/utils/format'
+import { collapseDoubleNewlines, formatTime, formatFullDateTime } from '@/utils/format'
 import type { MessageAttachment } from '@/api/types'
 import { cn } from '@/lib/utils'
 
@@ -193,10 +194,11 @@ function AttachmentThumb({ item, onOpen }: { item: FileLightboxItem; onOpen: () 
   )
 }
 
-export const UserBubble = memo(function UserBubble({ content, timestamp, attachments, onRevert, modelId, onMentionFileOpen, mentions }: { content: string; timestamp?: Date; attachments?: MessageAttachment[]; onRevert?: () => void; modelId?: string | null; onMentionFileOpen?: (path: string) => void; mentions?: string[] }) {
+export const UserBubble = memo(function UserBubble({ content, timestamp, attachments, onRevert, modelId, onMentionFileOpen, mentions, fromAgent }: { content: string; timestamp?: Date; attachments?: MessageAttachment[]; onRevert?: () => void; modelId?: string | null; onMentionFileOpen?: (path: string) => void; mentions?: string[]; fromAgent?: string | null }) {
   const [showTime, setShowTime] = useState(false)
   const [copied, setCopied] = useState(false)
   const [expanded, setExpanded] = useState(false)
+  const [reportExpanded, setReportExpanded] = useState(false)
   const modelName = shortModelName(modelId)
 
   const handleCopy = async () => {
@@ -211,12 +213,75 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
 
   const lines = content.split('\n')
   const needsCollapse = lines.length > USER_COLLAPSE_LINES || content.length > USER_COLLAPSE_CHARS
+  const isSubagentLongReport = content.length > 240 || lines.length > 5
   const visibleContent = needsCollapse && !expanded
     ? lines.length > USER_COLLAPSE_LINES
       ? lines.slice(0, USER_COLLAPSE_LINES).join('\n')
       : `${content.slice(0, USER_COLLAPSE_CHARS).trimEnd()}...`
     : content
   const visibleAttachments = attachments?.filter((att) => att.source !== 'mention') ?? []
+
+  if (fromAgent) {
+    return (
+      <div
+        className="group mb-3 flex justify-start"
+        onMouseEnter={() => setShowTime(true)}
+        onMouseLeave={() => setShowTime(false)}
+      >
+        <div className="flex max-w-full flex-col items-start gap-1.5 md:max-w-[85%]">
+          <div className="flex items-center gap-1.5 px-0.5 text-xs text-(--color-text-muted)">
+            <span className="rounded bg-(--bg-key)/70 px-1.5 py-0.5 font-mono text-[11px] font-semibold text-(--color-text)">
+              {fromAgent}
+            </span>
+            <span className="text-[11px] text-(--color-text-subtle)">Subagent report</span>
+            {timestamp && (
+              <span className="text-[11px] text-(--color-text-subtle)">· {formatTime(timestamp)}</span>
+            )}
+            <button
+              type="button"
+              onClick={handleCopy}
+              className="ml-0.5 flex h-4 w-4 items-center justify-center rounded text-(--color-text-muted) transition-colors hover:text-(--color-text) focus-visible:outline-none"
+              title="Copy report"
+              aria-label="Copy report"
+            >
+              {copied ? <Check size={11} aria-hidden="true" /> : <Copy size={11} aria-hidden="true" />}
+            </button>
+          </div>
+          <div
+            className={cn(
+              "relative min-w-0 max-w-full rounded-md border border-(--color-border) bg-(--bg-card) px-3.5 py-2.5 text-sm leading-relaxed text-(--color-text) shadow-xs transition-all",
+              isSubagentLongReport && !reportExpanded && "max-h-36 overflow-hidden",
+            )}
+          >
+            <LazyMarkdownBlock content={collapseDoubleNewlines(content, true)} />
+            {isSubagentLongReport && !reportExpanded && (
+              <div className="pointer-events-none absolute inset-x-0 bottom-0 h-14 bg-gradient-to-t from-(--bg-card) via-(--bg-card)/80 to-transparent" />
+            )}
+          </div>
+          {isSubagentLongReport && (
+            <button
+              type="button"
+              onClick={() => setReportExpanded((v) => !v)}
+              aria-expanded={reportExpanded}
+              className="mt-0.5 flex items-center gap-1 text-xs font-medium text-(--color-accent) hover:underline focus-visible:outline-none"
+            >
+              {reportExpanded ? (
+                <>
+                  <ChevronUp size={13} aria-hidden="true" />
+                  <span>Minimize</span>
+                </>
+              ) : (
+                <>
+                  <ChevronDown size={13} aria-hidden="true" />
+                  <span>Show full report</span>
+                </>
+              )}
+            </button>
+          )}
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div

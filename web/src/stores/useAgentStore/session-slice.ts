@@ -352,8 +352,11 @@ export function resetSessionState(
     workspace?: string | null
   },
 ) {
-  const leadName = state.leadName ?? state.agentNames[0] ?? null
+  const leadCandidate = state.leadName && !state.leadName.includes('#') ? state.leadName : null
+  const fallbackCandidate = state.agentNames.find((n) => !n.includes('#')) ?? null
+  const leadName = leadCandidate ?? fallbackCandidate ?? (state.leadName ?? state.agentNames[0] ?? null)
   state.sessionId = options.sessionId
+  state.parentSessionId = null
   state.sessionTitle = null
   state.sessionInteractionMode = options.interactionMode ?? 'code'
   state.sessionModel = options.model ?? null
@@ -385,7 +388,7 @@ export function resetSessionState(
   state.liveAgentNames = leadName ? [leadName] : null
 
   Object.keys(state.agentStreams).forEach((name) => {
-    if (name !== leadName) {
+    if (!leadName || name !== leadName) {
       delete state.agentStreams[name]
       return
     }
@@ -414,6 +417,7 @@ export type SessionSlice = Pick<
   | 'agentNames'
   | 'liveAgentNames'
   | 'sessionId'
+  | 'parentSessionId'
   | 'sessionTitle'
   | 'sessionInteractionMode'
   | 'sessionModel'
@@ -473,6 +477,7 @@ async function loadSessionImpl(
 
     set((draft) => {
       draft.sessionId = sessionId
+      draft.parentSessionId = history.lead.parent_session_id ?? null
       draft.sessionTitle = history.lead.title ?? null
       draft.sessionInteractionMode = history.lead.interaction_mode ?? 'code'
       if (!draft._sessionSettingsDirty && draft._sessionSettingsVersion === settingsVersion) {
@@ -487,12 +492,23 @@ async function loadSessionImpl(
       })
 
       const memberNames = history.members.map((m) => m.name)
-      const leadName = history.lead.agent_name ?? liveNames?.[0] ?? draft.leadName ?? 'lead'
+      const isSubagentSession = Boolean(history.lead.parent_session_id)
+      const leadName =
+        history.lead.agent_name || (isSubagentSession ? 'member' : 'code')
       draft.leadName = leadName
       if (liveNames !== null) draft.liveAgentNames = liveNames
 
       const allNames = Array.from(new Set([leadName, ...(liveNames ?? []), ...memberNames]))
       draft.agentNames = allNames
+
+      // Prune streams from previously viewed sessions that do not belong here
+      const validStreamNames = new Set([leadName, ...memberNames])
+      Object.keys(draft.agentStreams).forEach((streamName) => {
+        if (!validStreamNames.has(streamName)) {
+          delete draft.agentStreams[streamName]
+        }
+      })
+
       const leadRevertTime = revertBoundaryTime(history.lead)
       const boundaryId = history.lead.revert?.message_id
       const boundaryMsg = boundaryId ? history.lead.messages.find((msg) => msg.id === boundaryId) : undefined
@@ -757,6 +773,7 @@ export const createSessionSlice: StateCreator<
   agentNames: [],
   liveAgentNames: null,
   sessionId: null,
+  parentSessionId: null,
   sessionTitle: null,
   sessionInteractionMode: 'code',
   sessionModel: null,
@@ -944,6 +961,12 @@ export const createSessionSlice: StateCreator<
     const state = get()
     const since = state._syncedThrough
 
+    const reload = async () => {
+      const inflightKey = `${sessionId}\u0000${workspace ?? ''}`
+      inflightLoadSession.delete(inflightKey)
+      await get().loadSession(sessionId, workspace)
+    }
+
     // No confirmed baseline, a turn is still producing content, or the turn
     // compacted: an anchored summary cannot be tail-spliced safely, so take
     // the full page.
@@ -953,7 +976,7 @@ export const createSessionSlice: StateCreator<
       state.isAgentWorking ||
       Object.values(state.agentStreams).some(hasUnsyncedCompaction)
     ) {
-      await get().loadSession(sessionId, workspace)
+      await reload()
       return
     }
 
@@ -964,7 +987,7 @@ export const createSessionSlice: StateCreator<
       delta = await sessionHistorySince(sessionId, since)
     } catch {
       // Never leave the tail unreconciled — fall back to the full page.
-      await get().loadSession(sessionId, workspace)
+      await reload()
       return
     }
 
@@ -973,7 +996,7 @@ export const createSessionSlice: StateCreator<
     // Too far behind to stitch, or a new turn started while the delta was in
     // flight (its blocks postdate this snapshot).
     if (delta.truncated || get().isAgentWorking) {
-      await get().loadSession(sessionId, workspace)
+      await reload()
       return
     }
 
@@ -988,7 +1011,7 @@ export const createSessionSlice: StateCreator<
       const newest = newestMessageAt(delta)
       // Already covered by whoever moved the watermark: nothing left to splice.
       if (newest === null || (syncedNow !== null && newest <= syncedNow)) return
-      await get().loadSession(sessionId, workspace)
+      await reload()
       return
     }
 
@@ -1030,7 +1053,9 @@ export const createSessionSlice: StateCreator<
         stream._unsyncedBlockIds = []
       }
 
-      const leadName = delta.lead.agent_name ?? draft.leadName
+      const isSubagentSession = Boolean(delta.lead.parent_session_id)
+      const leadName =
+        delta.lead.agent_name || draft.leadName || (isSubagentSession ? 'member' : 'code')
       if (leadName) {
         if (!draft.agentStreams[leadName]) {
           draft.agentStreams[leadName] = createDefaultAgentStream()

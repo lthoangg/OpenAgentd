@@ -611,6 +611,117 @@ function getToolDisplayInternal(name: string, parsed: Record<string, unknown>): 
     }
   }
 
+  // ── Team and Subagent coordination tools ─────────────────────────
+  if (name === 'delegate') {
+    const profile = str(parsed, 'profile') || 'subagent'
+    const target = str(parsed, 'target')
+    const task = str(parsed, 'task')
+    return {
+      header: target ? <>Reply to <Arg>{target}</Arg></> : <>Delegate to <Arg>{profile}</Arg></>,
+      headerTitle: target ? `Reply to ${target}` : `Delegate to ${profile}`,
+      formattedArgs: task,
+    }
+  }
+
+  if (name === 'team_spawn') {
+    const profile = str(parsed, 'profile') || 'subagent'
+    const subagentName = str(parsed, 'name')
+    const task = str(parsed, 'task')
+    const wait = parsed.wait !== false
+    const label = subagentName || profile
+    return {
+      header: <>Spawn subagent <Arg>{label}</Arg>{wait ? '' : ' (async)'}</>,
+      headerTitle: `Spawn subagent ${label}`,
+      formattedArgs: task,
+    }
+  }
+
+  if (name === 'team_send') {
+    const member = str(parsed, 'member_id') || str(parsed, 'to') || 'subagent'
+    const message = str(parsed, 'message') || str(parsed, 'content')
+    return {
+      header: <>Message to <Arg>{member}</Arg></>,
+      headerTitle: `Message to ${member}`,
+      formattedArgs: message,
+    }
+  }
+
+  if (name === 'team_manage') {
+    const action = str(parsed, 'action') || 'list'
+    if (action === 'list') {
+      return {
+        header: 'Listing team subagents…',
+        headerTitle: 'Listing team subagents…',
+        formattedArgs: null,
+      }
+    }
+    if (action === 'stop') {
+      const member = str(parsed, 'member_id') || 'subagent'
+      return {
+        header: <>Stopping subagent <Arg>{member}</Arg></>,
+        headerTitle: `Stopping subagent ${member}`,
+        formattedArgs: null,
+      }
+    }
+    if (action === 'wait') {
+      const members = Array.isArray(parsed.member_ids)
+        ? (parsed.member_ids as unknown[]).map(String).join(', ')
+        : (str(parsed, 'member_id') || 'all')
+      return {
+        header: <>Waiting for <Arg>{members}</Arg>…</>,
+        headerTitle: `Waiting for ${members}…`,
+        formattedArgs: null,
+      }
+    }
+  }
+
+  if (name === 'team_list') {
+    return {
+      header: 'Listing team subagents…',
+      headerTitle: 'Listing team subagents…',
+      formattedArgs: null,
+    }
+  }
+
+  if (name === 'team_wait') {
+    const members = Array.isArray(parsed.member_ids)
+      ? (parsed.member_ids as unknown[]).map(String).join(', ')
+      : 'all'
+    return {
+      header: <>Waiting for <Arg>{members}</Arg>…</>,
+      headerTitle: `Waiting for ${members}…`,
+      formattedArgs: null,
+    }
+  }
+
+  if (name === 'team_stop') {
+    const member = str(parsed, 'member_id') || 'subagent'
+    return {
+      header: <>Stopping subagent <Arg>{member}</Arg></>,
+      headerTitle: `Stopping subagent ${member}`,
+      formattedArgs: null,
+    }
+  }
+
+  if (name === 'send_to_lead') {
+    const message = str(parsed, 'message') || str(parsed, 'content')
+    const endTurn = parsed.end_turn === true
+    return {
+      header: endTurn ? 'Reporting final deliverables to lead…' : 'Reporting progress to lead…',
+      headerTitle: endTurn ? 'Reporting final deliverables to lead' : 'Reporting progress to lead',
+      formattedArgs: message,
+    }
+  }
+
+  if (name === 'ask_lead') {
+    const question = str(parsed, 'question')
+    return {
+      header: question ? <>Asking lead: <Arg>{trunc(question, 50)}</Arg></> : 'Asking lead…',
+      headerTitle: question ? `Asking lead: ${question}` : 'Asking lead',
+      formattedArgs: question,
+    }
+  }
+
   // ── Default: tool name as header, pretty-printed JSON as args ──────
   // Hide args entirely if the object is empty.
   if (Object.keys(parsed).length === 0) {

@@ -88,6 +88,32 @@ async def test_new_message_after_undo_persists_branch(tmp_path):
         await runtime.handle_redo(sid)
 
 
+async def test_handle_undo_stops_all_subagents(tmp_path, monkeypatch):
+    from app.core.db import async_session_factory
+
+    stopped_lead_id = None
+
+    async def mock_stop_all(lead_id: str):
+        nonlocal stopped_lead_id
+        stopped_lead_id = lead_id
+
+    monkeypatch.setattr(
+        "app.services.subagent_service.stop_all_subagents", mock_stop_all
+    )
+
+    runtime = AgentSession(
+        agent=Agent(llm_provider=MockProvider(), name="openagentd"),
+        workspace=str(tmp_path),
+        db_factory=async_session_factory,
+    )
+    sid = str(uuid.uuid4())
+    await runtime.handle_user_message(content="initial turn", session_id=sid)
+    await runtime._active_task
+    await runtime.handle_undo(sid)
+
+    assert stopped_lead_id == sid
+
+
 class ScriptedProvider(LLMProviderBase):
     """Replays one pre-built chunk list per ``stream()`` call, in order."""
 

@@ -63,9 +63,9 @@ export async function handleGlobalEvent(
 
   if (type === 'session_turn_started') {
     const sessionId = typeof event.session_id === 'string' ? event.session_id : null
-    // Only the scheduler publishes this event, so its task bookkeeping
-    // (last_run_at / next_run_at) is worth refreshing here.
-    queryClient.invalidateQueries({ queryKey: queryKeys.scheduler.list() })
+    if (event.source === 'scheduled_task' || event.task_slug) {
+      queryClient.invalidateQueries({ queryKey: queryKeys.scheduler.list() })
+    }
     if (!sessionId) {
       queryClient.invalidateQueries({ queryKey: queryKeys.session.sessions.all() })
       return false
@@ -74,6 +74,7 @@ export async function handleGlobalEvent(
 
     const before = useAgentStore.getState()
     if (before.sessionId !== sessionId) return true
+    if (before.isConnected && before.isAgentWorking) return true
     const sessionGeneration = before._sessionGeneration
     await before.loadSession(sessionId, before._workspace)
     const after = useAgentStore.getState()

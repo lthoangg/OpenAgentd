@@ -165,6 +165,31 @@ describe('handleGlobalEvent', () => {
     expect(connectStream).not.toHaveBeenCalled()
   })
 
+  it('connects stream on session_turn_started when idle without re-querying scheduler for subagents', async () => {
+    const client = new QueryClient()
+    const loadSession = mock(async () => {})
+    const connectStream = mock(() => new AbortController())
+    useAgentStore.setState({
+      sessionId: 'lead-sess',
+      _workspace: '/workspace',
+      _sessionGeneration: 1,
+      isConnected: false,
+      isAgentWorking: false,
+      loadSession,
+      connectStream,
+    })
+
+    await handleGlobalEvent(client, 'session_turn_started', {
+      session_id: 'lead-sess',
+      source: 'queued_activation',
+      from_agent: 'explorer#1',
+    }, 1, () => 1)
+
+    expect(loadSession).toHaveBeenCalledWith('lead-sess', '/workspace')
+    expect(connectStream).toHaveBeenCalledTimes(1)
+    expect(client.getQueryState(queryKeys.scheduler.list())?.isInvalidated).toBeFalsy()
+  })
+
   it('reconciles only the turn tail on session_turn_completed', async () => {
     const client = new QueryClient()
     const reconcileTurnTail = mock(async () => {})

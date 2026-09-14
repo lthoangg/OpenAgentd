@@ -820,6 +820,25 @@ class AgentSession:
         self.state = "working"
         self._question_suspended = None
         await self._emit("agent_status", status="working")
+        if self.session_id:
+            try:
+                from app.services import event_broadcaster
+                from datetime import datetime, timezone
+
+                started_payload: dict[str, Any] = {
+                    "session_id": self.session_id,
+                    "started_at": datetime.now(timezone.utc).isoformat(),
+                }
+                if queued_activation_event:
+                    started_payload["source"] = "queued_activation"
+                if self.parent_session_id is not None:
+                    started_payload["parent_session_id"] = self.parent_session_id
+                if self.workspace:
+                    started_payload["workspace"] = self.workspace
+                await event_broadcaster.publish("session_turn_started", started_payload)
+            except Exception as exc:
+                logger.debug("session_turn_started_publish_failed: {}", exc)
+
         if queued_activation_event and self.session_id:
             try:
                 await stream_store.push_event(

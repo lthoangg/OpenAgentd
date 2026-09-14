@@ -617,10 +617,11 @@ async def deliver_message_to_lead(
     if lead_session is None:
         async with db_maker() as db:
             lead_row = await db.get(ChatSession, lead_uuid)
-            if lead_row and lead_row.workspace:
+            if lead_row:
+                ws = lead_row.workspace or str(Path.cwd())
                 try:
                     lead_session = await agent_manager.get_or_start_agent_session(
-                        lead_row.workspace, lead_session_id
+                        ws, lead_session_id
                     )
                 except Exception as exc:
                     logger.debug(

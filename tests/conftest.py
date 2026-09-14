@@ -181,6 +181,11 @@ async def setup_db():
     db_path = Path(_test_db_tmpdir.name) / "test.sqlite"
     _TEST_DB_URL = f"sqlite+aiosqlite:///{db_path}"
 
+    # Eagerly import all model modules so SQLModel.metadata knows every table
+    # regardless of which test module runs first on this xdist worker.
+    import app.models.chat  # noqa: F401
+    import app.scheduler.models  # noqa: F401
+
     engine = create_async_engine(
         _TEST_DB_URL,
         connect_args={"check_same_thread": False},

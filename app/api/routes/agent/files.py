@@ -55,7 +55,7 @@ from app.api.schemas.agent import (
     GitRevertRequest,
     GitRevertResponse,
 )
-from app.core.db import async_session_factory
+from app.core import db as _db
 from app.core.paths import session_workspace_dir
 from app.models.chat import ChatSession
 from app.services import agent_manager
@@ -122,7 +122,7 @@ def _guess_mime(path: Path) -> str:
 async def _session_row(session_id: str) -> ChatSession | None:
     """Best-effort load of the chat session row for path resolution."""
     try:
-        async with async_session_factory() as db:
+        async with _db.async_session_factory() as db:
             return await db.get(ChatSession, uuid.UUID(session_id))
     except Exception:
         return None

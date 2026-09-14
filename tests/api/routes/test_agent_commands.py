@@ -53,13 +53,16 @@ async def app_with_lead_only_team():
 async def _seed_session_and_messages(
     session_id: uuid.UUID,
     msgs: list[tuple[str, str | None, list[dict] | None]],
+    workspace: str | None = None,
 ) -> None:
     """Seed a session + a list of ``(role, content, tool_calls)`` rows."""
     import app.core.db as _db
+    import tempfile
 
+    ws = workspace or tempfile.mkdtemp(prefix="test-cmd-ws-")
     async with _db.async_session_factory() as db:
         async with db.begin():
-            db.add(ChatSession(id=session_id, agent_name="lead", workspace="/tmp"))
+            db.add(ChatSession(id=session_id, agent_name="lead", workspace=ws))
             for role, content, tool_calls in msgs:
                 db.add(
                     SessionMessage(

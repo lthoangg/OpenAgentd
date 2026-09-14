@@ -278,4 +278,46 @@ describe('useSessionBootstrap remount on screen switch', () => {
     expect(connectStream).not.toHaveBeenCalled()
     expect(externalController.signal.aborted).toBe(false)
   })
+
+  it('adopts active store._abortController across renders even if previous controller was aborted', async () => {
+    const deadController = new AbortController()
+    deadController.abort()
+    const liveController = new AbortController()
+
+    useAgentStore.setState({
+      sessionId: 'session-1',
+      _workspace: '/repo/app',
+      isConnected: true,
+      isAgentWorking: true,
+      _unloading: false,
+      _abortController: liveController,
+    })
+
+    const loadSession = mock(async () => {})
+    const connectStream = mock(() => new AbortController())
+
+    const { rerender } = render(
+      <Harness
+        sessionId="session-1"
+        loadSession={loadSession}
+        connectStream={connectStream}
+      />,
+    )
+
+    expect(loadSession).not.toHaveBeenCalled()
+    expect(connectStream).not.toHaveBeenCalled()
+    expect(liveController.signal.aborted).toBe(false)
+
+    rerender(
+      <Harness
+        sessionId="session-1"
+        loadSession={loadSession}
+        connectStream={connectStream}
+      />,
+    )
+
+    expect(loadSession).not.toHaveBeenCalled()
+    expect(connectStream).not.toHaveBeenCalled()
+    expect(liveController.signal.aborted).toBe(false)
+  })
 })

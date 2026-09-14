@@ -98,10 +98,14 @@ export function useSessionBootstrap({
     if (isCodingSessionLoading) return
     if (!sessionId) return
     const store = useAgentStore.getState()
-    const activeController = abortRef.current ?? store._abortController
+    const activeController =
+      abortRef.current && !abortRef.current.signal.aborted
+        ? abortRef.current
+        : store._abortController && !store._abortController.signal.aborted
+          ? store._abortController
+          : null
     if (
       activeController &&
-      !activeController.signal.aborted &&
       store.sessionId === sessionId &&
       (store.isConnected || store.isAgentWorking)
     ) {
@@ -181,8 +185,9 @@ export function useSessionBootstrap({
 
     return () => {
       cancelled = true
-      const active = abortRef.current ?? useAgentStore.getState()._abortController
-      active?.abort()
+      if (abortRef.current && !abortRef.current.signal.aborted) {
+        abortRef.current.abort()
+      }
       abortRef.current = null
     }
   }, [
@@ -211,11 +216,16 @@ export function useSessionBootstrap({
       // backgrounded. If connected and an active turn is in flight, do not
       // abort the stream or clobber in-flight tool cards and text. Keyed on
       // the OS, not the viewport: a narrow desktop window keeps its sockets.
-      const active = abortRef.current ?? state._abortController
+      const active =
+        abortRef.current && !abortRef.current.signal.aborted
+          ? abortRef.current
+          : state._abortController && !state._abortController.signal.aborted
+            ? state._abortController
+            : null
       if (
         !backgroundSuspendsSockets() &&
         state.isConnected &&
-        (state.isAgentWorking || (active !== null && !active.signal.aborted))
+        (state.isAgentWorking || active !== null)
       ) {
         return
       }

@@ -970,6 +970,8 @@ export const createSessionSlice: StateCreator<
       state.isAgentWorking ||
       Object.values(state.agentStreams).some(hasUnsyncedCompaction)
     ) {
+      const inflightKey = `${sessionId}\u0000${workspace ?? ''}`
+      inflightLoadSession.delete(inflightKey)
       await get().loadSession(sessionId, workspace)
       return
     }
@@ -981,6 +983,8 @@ export const createSessionSlice: StateCreator<
       delta = await sessionHistorySince(sessionId, since)
     } catch {
       // Never leave the tail unreconciled — fall back to the full page.
+      const inflightKey = `${sessionId}\u0000${workspace ?? ''}`
+      inflightLoadSession.delete(inflightKey)
       await get().loadSession(sessionId, workspace)
       return
     }
@@ -990,6 +994,8 @@ export const createSessionSlice: StateCreator<
     // Too far behind to stitch, or a new turn started while the delta was in
     // flight (its blocks postdate this snapshot).
     if (delta.truncated || get().isAgentWorking) {
+      const inflightKey = `${sessionId}\u0000${workspace ?? ''}`
+      inflightLoadSession.delete(inflightKey)
       await get().loadSession(sessionId, workspace)
       return
     }
@@ -1005,6 +1011,8 @@ export const createSessionSlice: StateCreator<
       const newest = newestMessageAt(delta)
       // Already covered by whoever moved the watermark: nothing left to splice.
       if (newest === null || (syncedNow !== null && newest <= syncedNow)) return
+      const inflightKey = `${sessionId}\u0000${workspace ?? ''}`
+      inflightLoadSession.delete(inflightKey)
       await get().loadSession(sessionId, workspace)
       return
     }

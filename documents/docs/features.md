@@ -422,7 +422,7 @@ executes tools, manages its task list, and inspects workspace repositories.
   instance handles (`profile#N`, e.g. `explorer#1`, `explorer#2`) permitting multiple concurrent
   instances of the same profile. Communication follows a strict hub-and-spoke topology: subagents
   interact exclusively with the lead (`ask_lead`, direct deliverables) and inherit the lead's active
-  model fallback. Stopping the lead cascades cancellation to all active child sessions.
+  model fallback. Deliverables rendered in the lead chat view are minimized by default with expandable preview toggles to keep transcripts compact. Stopping the lead cascades cancellation to all active child sessions.
 - **Clean taskboard checklist** `[v1.127.0, updated v2.1.0]` — the todo taskboard
   serves as a flat, user-readable checklist of tasks and statuses (`pending`,
   `in_progress`, `completed`, `cancelled`).

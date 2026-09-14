@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from uuid import uuid7
 import pytest
 
@@ -208,3 +209,53 @@ def test_prune_subagent_output_truncates_large_payload() -> None:
 
 def test_max_concurrent_members_is_twenty() -> None:
     assert MAX_CONCURRENT_MEMBERS == 20
+
+
+@pytest.mark.asyncio
+async def test_deliver_message_to_lead_activates_session() -> None:
+    from app.services import agent_manager
+    from app.services.subagent_service import deliver_message_to_lead
+
+    lead_uuid = uuid7()
+    lead_id = str(lead_uuid)
+
+    async with core_db.async_session_factory() as db:
+        parent = ChatSession(
+            id=lead_uuid,
+            agent_name="code",
+            workspace="/test/ws",
+        )
+        db.add(parent)
+        await db.commit()
+
+    activated = False
+
+    class MockLeadSession:
+        session_id = lead_id
+        workspace = "/test/ws"
+        user_message_lock = asyncio.Lock()
+
+        def has_active_user_turn(self) -> bool:
+            return False
+
+        async def attach_to_session(self, session_id: str) -> None:
+            self.session_id = session_id
+
+        async def _activate_queued_user_messages(self, session_id: str) -> bool:
+            nonlocal activated
+            activated = True
+            return True
+
+    mock_sess = MockLeadSession()
+    agent_manager._sessions[("/test/ws", lead_id)] = mock_sess  # type: ignore[assignment]
+
+    try:
+        await deliver_message_to_lead(
+            lead_session_id=lead_id,
+            handle="explorer#1",
+            content="Explorer findings here.",
+            db_factory=core_db.async_session_factory,
+        )
+        assert activated is True
+    finally:
+        agent_manager._sessions.pop(("/test/ws", lead_id), None)

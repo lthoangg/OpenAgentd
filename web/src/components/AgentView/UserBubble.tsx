@@ -198,6 +198,7 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
   const [showTime, setShowTime] = useState(false)
   const [copied, setCopied] = useState(false)
   const [expanded, setExpanded] = useState(false)
+  const [reportExpanded, setReportExpanded] = useState(false)
   const modelName = shortModelName(modelId)
 
   const handleCopy = async () => {
@@ -212,6 +213,7 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
 
   const lines = content.split('\n')
   const needsCollapse = lines.length > USER_COLLAPSE_LINES || content.length > USER_COLLAPSE_CHARS
+  const isSubagentLongReport = content.length > 240 || lines.length > 5
   const visibleContent = needsCollapse && !expanded
     ? lines.length > USER_COLLAPSE_LINES
       ? lines.slice(0, USER_COLLAPSE_LINES).join('\n')
@@ -236,9 +238,37 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
               <span className="text-[11px] text-(--color-text-subtle)">· {formatTime(timestamp)}</span>
             )}
           </div>
-          <div className="relative min-w-0 max-w-full overflow-hidden rounded-md border border-(--color-border) bg-(--bg-card) px-3.5 py-2.5 text-sm leading-relaxed text-(--color-text) shadow-xs">
+          <div
+            className={cn(
+              "relative min-w-0 max-w-full rounded-md border border-(--color-border) bg-(--bg-card) px-3.5 py-2.5 text-sm leading-relaxed text-(--color-text) shadow-xs transition-all",
+              isSubagentLongReport && !reportExpanded && "max-h-36 overflow-hidden",
+            )}
+          >
             <LazyMarkdownBlock content={content} />
+            {isSubagentLongReport && !reportExpanded && (
+              <div className="pointer-events-none absolute inset-x-0 bottom-0 h-14 bg-gradient-to-t from-(--bg-card) via-(--bg-card)/80 to-transparent" />
+            )}
           </div>
+          {isSubagentLongReport && (
+            <button
+              type="button"
+              onClick={() => setReportExpanded((v) => !v)}
+              aria-expanded={reportExpanded}
+              className="mt-0.5 flex items-center gap-1 text-xs font-medium text-(--color-accent) hover:underline focus-visible:outline-none"
+            >
+              {reportExpanded ? (
+                <>
+                  <ChevronUp size={13} aria-hidden="true" />
+                  <span>Minimize</span>
+                </>
+              ) : (
+                <>
+                  <ChevronDown size={13} aria-hidden="true" />
+                  <span>Show full report</span>
+                </>
+              )}
+            </button>
+          )}
         </div>
       </div>
     )

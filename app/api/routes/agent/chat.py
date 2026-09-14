@@ -729,6 +729,7 @@ async def resolve_agent_session(
                 workspace=workspace,
                 model=model,
                 thinking_level=thinking_level,
+                agent_name="code",
             )
             db.add(session)
         if workspace:
@@ -1000,10 +1001,14 @@ async def agent_history(
     elif history.root_session.parent_session_id is None:
         _require_agent_session(agent)
 
+    effective_name = history.root_session.agent_name or (
+        "code" if history.root_session.parent_session_id is None else "member"
+    )
     lead_resp = SessionResponse.model_validate(history.root_session).model_copy(
         update={
+            "agent_name": effective_name,
             "running": str(history.root_session.id)
-            in stream_store.running_session_ids()
+            in stream_store.running_session_ids(),
         }
     )
     lead_cost, lead_completion = await session_usage_totals(db, history.root_session.id)
@@ -1088,9 +1093,13 @@ async def _agent_history_delta(
     elif delta.root_session.parent_session_id is None:
         _require_agent_session(agent)
 
+    effective_name = delta.root_session.agent_name or (
+        "code" if delta.root_session.parent_session_id is None else "member"
+    )
     lead_resp = SessionResponse.model_validate(delta.root_session).model_copy(
         update={
-            "running": str(delta.root_session.id) in stream_store.running_session_ids()
+            "agent_name": effective_name,
+            "running": str(delta.root_session.id) in stream_store.running_session_ids(),
         }
     )
     lead_cost, lead_completion = await session_usage_totals(db, delta.root_session.id)

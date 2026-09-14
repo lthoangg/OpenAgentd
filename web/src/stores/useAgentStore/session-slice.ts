@@ -352,7 +352,9 @@ export function resetSessionState(
     workspace?: string | null
   },
 ) {
-  const leadName = state.leadName ?? state.agentNames[0] ?? null
+  const leadCandidate = state.leadName && !state.leadName.includes('#') ? state.leadName : null
+  const fallbackCandidate = state.agentNames.find((n) => !n.includes('#')) ?? null
+  const leadName = leadCandidate ?? fallbackCandidate ?? (state.leadName ?? state.agentNames[0] ?? null)
   state.sessionId = options.sessionId
   state.parentSessionId = null
   state.sessionTitle = null
@@ -386,7 +388,7 @@ export function resetSessionState(
   state.liveAgentNames = leadName ? [leadName] : null
 
   Object.keys(state.agentStreams).forEach((name) => {
-    if (name !== leadName) {
+    if (!leadName || name !== leadName) {
       delete state.agentStreams[name]
       return
     }
@@ -490,7 +492,9 @@ async function loadSessionImpl(
       })
 
       const memberNames = history.members.map((m) => m.name)
-      const leadName = history.lead.agent_name ?? liveNames?.[0] ?? draft.leadName ?? 'lead'
+      const isSubagentSession = Boolean(history.lead.parent_session_id)
+      const leadName =
+        history.lead.agent_name || (isSubagentSession ? 'member' : 'code')
       draft.leadName = leadName
       if (liveNames !== null) draft.liveAgentNames = liveNames
 
@@ -1043,7 +1047,9 @@ export const createSessionSlice: StateCreator<
         stream._unsyncedBlockIds = []
       }
 
-      const leadName = delta.lead.agent_name ?? draft.leadName
+      const isSubagentSession = Boolean(delta.lead.parent_session_id)
+      const leadName =
+        delta.lead.agent_name || draft.leadName || (isSubagentSession ? 'member' : 'code')
       if (leadName) {
         if (!draft.agentStreams[leadName]) {
           draft.agentStreams[leadName] = createDefaultAgentStream()

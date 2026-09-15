@@ -280,10 +280,12 @@ async def spawn_subagent(
 
     lead_model: str | None = None
     lead_thinking_level: str | None = None
+    lead_interaction_mode: str | None = None
     async with db_maker() as db:
         lead_row = await db.get(ChatSession, UUID(lead_session_id))
         if lead_row is not None:
             lead_model = lead_row.model
+            lead_interaction_mode = lead_row.interaction_mode
             lead_thinking_level = lead_row.thinking_level
 
     handle = allocate_instance_handle(lead_session_id, profile, explicit_name=name)
@@ -367,6 +369,7 @@ async def spawn_subagent(
             workspace=workspace,
             model=effective_model,
             thinking_level=effective_thinking_level,
+            interaction_mode=lead_interaction_mode or "code",
         )
         db.add(row)
         await db.commit()
@@ -782,6 +785,8 @@ async def on_subagent_question_asked(
 
     if inst:
         inst._question_delivered = True
+        if "tool_call_id" in suspended_data and suspended_data["tool_call_id"]:
+            setattr(inst, "_pending_tool_call_id", suspended_data["tool_call_id"])
 
     try:
         await deliver_message_to_lead(
@@ -815,6 +820,12 @@ async def send_subagent_message(
 
         # Write answer as tool result message for ask_lead
         tool_call_id = getattr(instance, "_pending_tool_call_id", None)
+        if (
+            not tool_call_id
+            and hasattr(instance.session, "_lead_suspended")
+            and instance.session._lead_suspended
+        ):
+            tool_call_id = instance.session._lead_suspended.get("tool_call_id")
         if tool_call_id:
             async with db_maker() as db:
                 tool_msg = SessionMessage(

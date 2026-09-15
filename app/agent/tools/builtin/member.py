@@ -93,14 +93,15 @@ def make_ask_lead_tool(lead_session_id: str, member_handle: str) -> Tool:
     async def ask_lead(
         question: str,
         options: list[str] | None = None,
+        _tool_call_id: Annotated[str | None, InjectedArg()] = None,
         _state: Annotated[Any, InjectedArg()] = None,
     ) -> str:
         from app.services import subagent_service
 
         instances = subagent_service._live_instances.get(lead_session_id, {})
         inst = instances.get(member_handle)
-        tool_call_id = None
-        if _state is not None and hasattr(_state, "metadata"):
+        tool_call_id = _tool_call_id
+        if not tool_call_id and _state is not None and hasattr(_state, "metadata"):
             tool_call_id = _state.metadata.get("current_tool_call_id")
 
         if inst is not None:

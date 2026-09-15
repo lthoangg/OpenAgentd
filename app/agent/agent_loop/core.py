@@ -1128,7 +1128,7 @@ class Agent(Generic[TContext]):
             suspended_lead = {
                 "question": suspension.question,
                 "options": suspension.options,
-                "tool_call_id": primary.id,
+                "tool_call_id": suspension.tool_call_id or primary.id,
             }
             state.metadata["lead_suspended"] = suspended_lead
             if config is not None:

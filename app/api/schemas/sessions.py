@@ -59,8 +59,20 @@ class CodingWorkspaceTreeRepository(BaseModel):
     worktrees: list[CodingWorkspaceTreeWorktree] = Field(default_factory=list)
 
 
+class CodingWorkspaceTreeChat(BaseModel):
+    """The prebuilt chat ("cockpit") workspace shown as a pinned sidebar row.
+
+    Not a repository: it is never stored in ``coding_workspaces`` and its path
+    is not offered as a worktree source. ``name`` is the display label.
+    """
+
+    path: str
+    name: str
+
+
 class CodingWorkspaceTreeResponse(BaseModel):
     repositories: list[CodingWorkspaceTreeRepository]
+    chat: CodingWorkspaceTreeChat | None = None
 
 
 class SessionResponse(_ExcludeNoneModel):

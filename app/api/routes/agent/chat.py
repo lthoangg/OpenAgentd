@@ -31,6 +31,7 @@ from app.api.routes.agent._helpers import (
 )
 from app.api.routes.agents import is_registered_model_id
 from app.api.schemas.sessions import (
+    CodingWorkspaceTreeChat,
     CodingWorkspaceTreeRepository,
     CodingWorkspaceTreeResponse,
     CodingWorkspaceTreeWorktree,
@@ -60,6 +61,12 @@ from app.api.routes.agent.worktrees import (
     WorktreeCreateRequest,
     create_coding_workspace_worktree,
     find_managed_worktree_source,
+)
+from app.core.chat_workspace import (
+    CHAT_WORKSPACE_NAME,
+    chat_workspace_root,
+    is_chat_workspace,
+    workspace_mode,
 )
 from app.models.chat import ChatSession
 from app.services import (
@@ -562,7 +569,7 @@ async def get_agent_registry(
 
     return AgentRegistryResponse(
         agents=[AgentInfoResponse(**agent_info)],
-        mode="coding",
+        mode=workspace_mode(agent_obj.workspace),
         workspace=agent_obj.workspace,
     )
 
@@ -734,7 +741,10 @@ async def resolve_agent_session(
                 agent_name="code",
             )
             db.add(session)
-        if workspace:
+        # The chat root is not a repository: it is surfaced by the workspace
+        # tree as a pinned row, so no ``coding_workspaces`` row is written for
+        # it (a stale one would only shadow the pinned entry).
+        if workspace and not is_chat_workspace(workspace):
             managed_source = await find_managed_worktree_source(Path(workspace))
             if managed_source:
                 await upsert_coding_workspace(
@@ -783,10 +793,17 @@ async def update_coding_workspace_visibility(
 
 @router.get("/workspace/tree")
 async def list_coding_workspace_tree(db: DbSession) -> CodingWorkspaceTreeResponse:
+    chat_path = str(chat_workspace_root())
     rows = await list_visible_coding_workspaces(db)
     repositories: dict[str, CodingWorkspaceTreeRepository] = {}
     pending_worktrees = []
     for row in rows:
+        # The chat root is presented as the pinned ``chat`` entry below, never
+        # as a repository — including a legacy row created before it was
+        # reserved (its sessions group under the chat row instead) and any
+        # worktree pointing at it.
+        if is_chat_workspace(row.path) or is_chat_workspace(row.source_path):
+            continue
         if row.kind == "worktree":
             pending_worktrees.append(row)
             continue
@@ -812,7 +829,10 @@ async def list_coding_workspace_tree(db: DbSession) -> CodingWorkspaceTreeRespon
                 managed=row.managed,
             )
         )
-    return CodingWorkspaceTreeResponse(repositories=list(repositories.values()))
+    return CodingWorkspaceTreeResponse(
+        repositories=list(repositories.values()),
+        chat=CodingWorkspaceTreeChat(path=chat_path, name=CHAT_WORKSPACE_NAME),
+    )
 
 
 @router.get("/sessions/{session_id}")

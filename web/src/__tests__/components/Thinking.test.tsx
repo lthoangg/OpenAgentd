@@ -77,11 +77,10 @@ describe('Thinking', () => {
     expect(container.textContent).not.toContain('**')
   })
 
-  it('collapses double newlines in thinking content to a single newline for display', () => {
+  it('preserves double newlines in thinking content as-is', () => {
     const text = 'Line one.\n\nLine two.\n\n\nLine three.'
     const { container } = render(<Thinking content={text} />)
 
-    expect(container.textContent).toContain('Line one.\nLine two.\nLine three.')
-    expect(container.textContent).not.toContain('\n\n')
+    expect(container.textContent).toContain('Line one.\n\nLine two.\n\n\nLine three.')
   })
 })

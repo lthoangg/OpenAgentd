@@ -73,7 +73,7 @@ class ScheduleArgs(BaseModel):
         default=None,
         description=(
             "[create] Prompt delivered when the task fires; for loops, describe "
-            "one iteration."
+            "one iteration and include stopping/exit conditions."
         ),
     )
     session_id: str | None = Field(
@@ -100,7 +100,10 @@ class ScheduleArgs(BaseModel):
     slug: str | None = Field(
         default=None,
         validation_alias=AliasChoices("slug", "task_slug"),
-        description="Task slug for pause, resume, delete, or trigger.",
+        description=(
+            "Task slug identifier returned from create or list (e.g. 'check-build-status-a1b2'). "
+            "Required for pause, resume, delete, or trigger."
+        ),
     )
 
     @model_validator(mode="after")

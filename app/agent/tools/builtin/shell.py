@@ -96,7 +96,9 @@ _SHELL_DESCRIPTION = (
     "Returns stdout and stderr combined. "
     "stdin is /dev/null, so use non-interactive flags for commands that may prompt. "
     "Use background=true only for long-lived processes. "
-    "Prefer file tools for file operations. "
+    "Prefer file tools for file operations: do NOT use shell commands "
+    "('cat', 'head', 'sed', 'awk') for file inspection or editing when read and patch apply. "
+    "Never run interactive pagers or prompts (use --no-pager, -y, -q). "
     f"{environment_summary()}"
 )
 
@@ -106,11 +108,17 @@ class ShellArgs(BaseModel):
 
     command: str = Field(
         validation_alias=AliasChoices("command", "cmd"),
-        description=f"The {_SHELL_KIND} command string to execute non-interactively.",
+        description=(
+            f"The {_SHELL_KIND} command string to execute non-interactively. "
+            "Chain dependent commands with '&&' so execution halts on error."
+        ),
     )
     description: str = Field(
         default="",
-        description="Short human-readable summary of the command's purpose, shown in logs and UI status.",
+        description=(
+            "Short human-readable summary of the command's purpose, shown in logs and UI status "
+            "(e.g. 'run backend tests', 'build web assets')."
+        ),
     )
     workdir: str | None = Field(
         default=None,

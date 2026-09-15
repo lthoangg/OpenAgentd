@@ -627,18 +627,22 @@ describe("AgentView — AssistantFooter", () => {
     })
   })
 
-  describe("newline collapsing in response and thinking", () => {
-    it("collapses double newlines in agent text response to a single newline for display", async () => {
-      const { findByText } = renderStream({
+  describe("newline handling in response and thinking", () => {
+    it("preserves paragraph separation in agent text response", async () => {
+      const { container, findByText } = renderStream({
         blocks: [
           makeUserBlock("u1", "Question"),
-          makeTextBlock("b1", "Response line one\n\nResponse line two"),
+          makeTextBlock("b1", "Response line one\n\n\n\nResponse line two"),
         ],
         currentBlocks: [],
         isWorking: false,
       })
-      const el = await findByText(/Response line one/)
-      expect(el.textContent).toBe("Response line one\nResponse line two")
+      const p1 = await findByText("Response line one")
+      const p2 = await findByText("Response line two")
+      expect(p1.tagName).toBe("P")
+      expect(p2.tagName).toBe("P")
+      expect(container.textContent).toContain("Response line one")
+      expect(container.textContent).toContain("Response line two")
     })
 
     it("preserves empty lines inside fenced code blocks in agent text response", async () => {
@@ -655,7 +659,7 @@ describe("AgentView — AssistantFooter", () => {
       expect(container.textContent).toContain("x = 1\n\n    return x")
     })
 
-    it("collapses double newlines in thinking block to a single newline for display", () => {
+    it("preserves double newlines in thinking block as-is", () => {
       const { container } = renderStream({
         blocks: [
           makeUserBlock("u1", "Question"),
@@ -664,8 +668,7 @@ describe("AgentView — AssistantFooter", () => {
         currentBlocks: [],
         isWorking: false,
       })
-      expect(container.textContent).toContain("Reasoning line one\nReasoning line two")
-      expect(container.textContent).not.toContain("Reasoning line one\n\nReasoning line two")
+      expect(container.textContent).toContain("Reasoning line one\n\nReasoning line two")
     })
   })
 })

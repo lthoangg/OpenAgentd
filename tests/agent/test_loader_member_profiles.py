@@ -55,6 +55,26 @@ You are a custom reviewer. Check for O(N^2) loops.
     assert profiles["custom_reviewer"].tools == ["read", "grep"]
 
 
+def test_load_member_profiles_defaults_missing_tools_and_prompt(tmp_path: Path) -> None:
+    file = tmp_path / "explorer.md"
+    file.write_text(
+        """---
+name: explorer
+role: member
+description: Explores the codebase
+---
+""",
+        encoding="utf-8",
+    )
+
+    profiles = load_member_profiles(tmp_path)
+    assert "explorer" in profiles
+    assert profiles["explorer"].tools == ["glob", "grep", "read"]
+    from app.agent.builtin_prompts import EXPLORER_MEMBER_PROMPT
+
+    assert profiles["explorer"].system_prompt == EXPLORER_MEMBER_PROMPT
+
+
 def test_member_profiles_caching_and_invalidation(tmp_path: Path) -> None:
     clear_member_profiles_cache()
     custom_file = tmp_path / "fast_analyst.md"

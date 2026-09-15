@@ -21,8 +21,10 @@ from app.agent.tools.builtin.filesystem._ignore import (
 from app.agent.tools.registry import Tool
 
 _DESCRIPTION = (
-    "Find files by glob pattern across the workspace. Use match='path' for full paths or "
-    "match='name' for filenames only. Automatically filters out ignored and noisy directories."
+    "Find files and directories by glob pattern across the workspace. "
+    "Does not search file contents (use grep for contents). Use match='path' "
+    "for full paths or match='name' for filenames only. Automatically filters "
+    "out ignored and noisy directories."
 )
 
 
@@ -43,10 +45,10 @@ class GlobArgs(BaseModel):
     pattern: str = Field(
         validation_alias=AliasChoices("pattern", "glob"),
         description=(
-            "Glob pattern to match. Use '**/*.py' or 'src/**/*.ts' to match by full path, "
-            "or '*.py' with match='name' to match filename only. Brace "
-            "alternation works: 'src/**/*.{ts,tsx}'. A pattern with no '/' is "
-            "retried at any depth if nothing matches at the top level."
+            "Glob pattern to match file paths. Use '**/*.py' or 'src/**/*.{ts,tsx}' "
+            "to match recursively across directories, or '*.py' with match='name' "
+            "to match filename only. Brace alternation works: 'src/**/*.{ts,tsx}'. "
+            "Does not accept regex."
         ),
     )
     directory: str = Field(

@@ -54,7 +54,11 @@ class DelegateArgs(BaseModel):
     )
     task: str = Field(
         validation_alias=AliasChoices("task", "message", "instruction", "query"),
-        description="Detailed task instructions, questions, or clarification for the subagent.",
+        description=(
+            "Detailed, bounded task instructions with explicit expected deliverables. "
+            "Specify target files, symbols, or questions, and the desired return format. "
+            "When replying to a subagent's question, provide the concrete decision."
+        ),
     )
     target: str | None = Field(
         default=None,
@@ -71,28 +75,33 @@ class DelegateArgs(BaseModel):
 
 
 def _build_delegate_description() -> str:
+    from loguru import logger
+
     from app.agent.loader import load_member_profiles
     from app.services.subagent_service import _resolve_agents_dir
 
     try:
         profiles = load_member_profiles(_resolve_agents_dir())
-    except Exception:
+    except Exception as exc:
+        logger.warning("failed_to_load_member_profiles_for_delegate error={}", exc)
         profiles = {}
 
     if profiles:
         profile_bullets = "\n".join(
             f"- profile='{name}': {p.description.strip()}"
+            if p.description and p.description.strip()
+            else f"- profile='{name}'"
             for name, p in sorted(profiles.items())
-            if p.description
         )
-        profiles_doc = f"\nAvailable subagent profiles:\n{profile_bullets}\n"
+        profiles_doc = f"\n\nAvailable subagent profiles:\n{profile_bullets}\n\n"
     else:
-        profiles_doc = "\n"
+        profiles_doc = "\n\n"
 
     return (
         "Delegate a focused task to a specialized subagent running asynchronously in the background. "
         "Returns immediately after dispatching; the subagent will automatically send its deliverable "
         f"back to you as a message when finished.{profiles_doc}"
+        "To run tasks concurrently, call delegate multiple times in the same turn. "
         "To reply to a subagent that asked a question or send follow-up instructions, "
         "provide target='<handle>' (e.g. target='explorer#1')."
     )

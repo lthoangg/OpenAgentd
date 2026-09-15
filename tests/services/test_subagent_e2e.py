@@ -222,6 +222,32 @@ async def test_subagent_end_to_end_flow(monkeypatch: pytest.MonkeyPatch) -> None
     assert reply_res["status"] == "completed"
     assert "audited OAuth" in reply_res["output"]
 
+    # Verify child_2 persisted ask_lead tool answer and is no longer running
+    async with core_db.async_session_factory() as db:
+        child_2 = (
+            await db.exec(
+                select(ChatSession).where(
+                    col(ChatSession.parent_session_id) == lead_uuid,
+                    col(ChatSession.agent_name) == "explorer#2",
+                )
+            )
+        ).first()
+        assert child_2 is not None
+        assert str(child_2.id) not in stream_store.running_session_ids()
+        child_2_msgs = (
+            await db.exec(
+                select(SessionMessage).where(
+                    col(SessionMessage.session_id) == child_2.id
+                )
+            )
+        ).all()
+        tool_answers = [
+            m for m in child_2_msgs if m.role == "tool" and m.name == "ask_lead"
+        ]
+        assert len(tool_answers) == 1
+        assert "Yes, include OAuth" in tool_answers[0].content
+        assert tool_answers[0].tool_call_id == "c2"
+
     # 6. Stop all subagents
     await stop_all_subagents(lead_id)
     for inst in _live_instances[lead_id].values():

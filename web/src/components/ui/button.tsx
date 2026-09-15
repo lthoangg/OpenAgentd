@@ -21,7 +21,7 @@ const BASE = [
   "[&_svg:not([class*='size-'])]:size-3.5",
 ].join(' ')
 
-const VARIANT: Record<string, string> = {
+const VARIANT = {
   default: [
     'border-(--color-border) bg-(--bg-card)',
     'text-(--color-text)',
@@ -63,14 +63,14 @@ const VARIANT: Record<string, string> = {
     'text-(--accent-blue-text) underline-offset-4',
     'hover:underline hover:text-(--accent-blue-text)/80',
   ].join(' '),
-}
+} as const
 
 // Corner radius follows the app's --radius-* scale (index.css @theme) rather
 // than bare Tailwind `rounded` (which is an un-themed 4px default that drifts
 // from every hand-rolled icon button in the app, most of which use rounded-md
 // /rounded-sm). xs/icon-xs use radius-xs, sm/icon-sm use radius-sm, everything
 // else uses radius-md — matching the most common hand-rolled icon-button radius.
-const SIZE: Record<string, string> = {
+const SIZE = {
   xs:       'h-6 px-2 text-[11px] rounded-xs gap-1',
   trigger:  'px-2 py-1 text-xs rounded-md gap-1.5',
   sm:       'h-8 px-2.5 text-xs rounded-sm',
@@ -79,7 +79,7 @@ const SIZE: Record<string, string> = {
   icon:     'size-9 p-0 rounded-md',
   'icon-xs':'size-6 p-0 rounded-xs',
   'icon-sm':'size-8 p-0 rounded-sm',
-}
+} as const
 
 // ─── buttonVariants helper (kept for external consumers) ─────────────────────
 

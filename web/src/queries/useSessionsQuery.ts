@@ -3,6 +3,7 @@ import { listSessions, deleteSession, updateSessionTitle, listSubagents } from '
 import type { SessionPageResponse, SessionResponse } from '@/api/types'
 import { queryKeys } from './keys'
 import { patchSessionInPageData } from './session-cache'
+import { removeSubagent } from '@/stores/cache-invalidation-bridge'
 
 const PAGE_SIZE = 20
 const CODING_WORKSPACE_PAGE_SIZE = 5
@@ -46,7 +47,13 @@ export function useUpdateSessionTitleMutation() {
 export function useDeleteSessionMutation() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: deleteSession,
+    mutationFn: async (target: string | { id: string; parent_session_id?: string | null }) => {
+      const id = typeof target === 'string' ? target : target.id
+      const parentId = typeof target === 'string' ? null : target.parent_session_id
+      await deleteSession(id)
+      removeSubagent(queryClient, id, parentId)
+      return { id, parentId }
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.session.sessions.all() })
       queryClient.invalidateQueries({ queryKey: ['session', 'subagents'] })

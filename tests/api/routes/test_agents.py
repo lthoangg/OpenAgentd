@@ -691,3 +691,33 @@ async def test_delete_skill(fs_dirs, client: AsyncClient):
     res = await client.delete("/api/skills/research")
     assert res.status_code == 200
     assert not (skills_dir / "research").exists()
+
+
+def test_effective_config_member_profile_no_implicit_lead_tools():
+    from app.agent.loader import AgentConfig
+    from app.api.routes.agents import _effective_config
+
+    member_cfg = AgentConfig(
+        name="custom_analyst",
+        role="member",
+        tools=["read", "grep"],
+    )
+    effective = _effective_config(member_cfg, mode="coding")
+    assert effective.tools == ["read", "grep"]
+    assert "skill" not in effective.tools
+    assert "todo_manage" not in effective.tools
+    assert "schedule_task" not in effective.tools
+
+
+def test_effective_config_builtin_member_defaults():
+    from app.agent.loader import AgentConfig
+    from app.api.routes.agents import _effective_config
+
+    explorer_cfg = AgentConfig(
+        name="explorer",
+        role="member",
+        tools=[],
+    )
+    effective = _effective_config(explorer_cfg, mode="coding")
+    assert effective.tools == ["glob", "grep", "read"]
+    assert "You are **explorer**" in effective.system_prompt

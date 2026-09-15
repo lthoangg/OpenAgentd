@@ -338,7 +338,7 @@ describe('SchedulerPanel — Edit Task Form', () => {
       return new Response('{}', { status: 200 })
     }) as unknown as typeof fetch
 
-    const user = userEvent.setup()
+    const user = userEvent.setup({ delay: null })
     renderSchedulerPanel()
     await screen.findByText('Daily report')
     expect(screen.getByText('Weekly sync')).toBeInTheDocument()
@@ -348,7 +348,7 @@ describe('SchedulerPanel — Edit Task Form', () => {
 
     expect(searchInput).toHaveValue('daily')
     expect(screen.getByText('Weekly sync')).toBeInTheDocument()
-    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 200)) })
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 250)) })
     expect(screen.queryByText('Weekly sync')).toBeNull()
   })
 

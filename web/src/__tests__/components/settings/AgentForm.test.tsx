@@ -381,4 +381,99 @@ System prompt here
       registryFixture.models.splice(0, registryFixture.models.length, ...originalModels)
     }
   })
+
+  it('renders member profile with explicit tools and without lead-only built-in tools', () => {
+    const memberRaw = `---
+name: explorer
+role: member
+model: openai:gpt-5.4
+tools:
+  - read
+---
+
+You are explorer. Inspect the codebase thoroughly.
+`
+    render(
+      <AgentForm
+        initial={memberRaw}
+        agentName="explorer"
+        effectiveTools={['read']}
+        onChange={() => {}}
+        mode="form"
+        onModeChange={() => {}}
+      />
+    )
+
+    expect(screen.queryByText('Built-in OpenAgentd profile')).toBeNull()
+    expect(screen.queryByText('Built-in tools')).toBeNull()
+    expect(screen.getByText(/1 selected of 2 available/i)).toBeTruthy()
+
+    const promptArea = screen.getByLabelText('System prompt') as HTMLTextAreaElement
+    expect(promptArea.value.trim()).toBe('You are explorer. Inspect the codebase thoroughly.')
+  })
+
+  it('allows viewing and editing the system prompt in form mode', async () => {
+    const user = userEvent.setup()
+    const memberRaw = `---
+name: explorer
+role: member
+model: openai:gpt-5.4
+tools:
+  - read
+---
+
+Initial prompt
+`
+    const onChange = mock(() => {})
+    render(
+      <AgentForm
+        initial={memberRaw}
+        agentName="explorer"
+        onChange={onChange}
+        mode="form"
+        onModeChange={() => {}}
+      />
+    )
+
+    const promptArea = screen.getByLabelText('System prompt') as HTMLTextAreaElement
+    expect(promptArea.value.trim()).toBe('Initial prompt')
+
+    await user.clear(promptArea)
+    await user.type(promptArea, 'Updated custom prompt')
+
+    const lastCall = onChange.mock.calls.at(-1)
+    expect(lastCall).toBeDefined()
+    const nextRaw = lastCall![0] as string
+    expect(nextRaw).toContain('Updated custom prompt')
+  })
+
+  it('provides button to load default prompt for lead code agent when prompt is empty', async () => {
+    const user = userEvent.setup()
+    const codeRaw = `---
+name: code
+role: lead
+model: openai:gpt-5.4
+---
+`
+    const onChange = mock(() => {})
+    render(
+      <AgentForm
+        initial={codeRaw}
+        agentName="code"
+        defaultPrompt="You are OpenAgentd built-in coding agent."
+        onChange={onChange}
+        mode="form"
+        onModeChange={() => {}}
+      />
+    )
+
+    expect(screen.getByText(/Using built-in system prompt/i)).toBeTruthy()
+    const loadBtn = screen.getByRole('button', { name: 'Load default prompt' })
+    await user.click(loadBtn)
+
+    const lastCall = onChange.mock.calls.at(-1)
+    expect(lastCall).toBeDefined()
+    const nextRaw = lastCall![0] as string
+    expect(nextRaw).toContain('You are OpenAgentd built-in coding agent.')
+  })
 })

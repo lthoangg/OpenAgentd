@@ -66,6 +66,12 @@ context changes nothing and is rejected rather than silently applied. To
 delete lines, prefix every line you want gone with '-' — pasting them bare
 reads as unchanged context and removes nothing.
 
+Key rules:
+- Provide 2 to 3 lines of unchanged context above and below edits to ensure unique matching.
+- To make multiple edits in one file, place multiple sequential @@ hunks under a single '*** Update File: <path>' section; do not repeat '*** Update File' for the same path.
+- In '*** Add File: <path>', every content line—including blank lines—must start with '+' ('+' alone on an empty line).
+- Do not re-read files after calling patch; the tool raises an error on failure and commits atomically on success.
+
 Example:
 *** Begin Patch
 *** Add File: hello.txt

@@ -263,3 +263,31 @@ def test_delegate_tool_dynamic_profile_descriptions(tmp_path, monkeypatch) -> No
 
     def_desc = tool.definition["function"]["description"]
     assert "- profile='custom': Custom domain analysis agent." in def_desc
+    assert "\n\nAvailable subagent profiles:\n" in def_desc
+    assert "\n\nTo run tasks concurrently" in def_desc
+
+
+def test_delegate_tool_description_markdown_and_empty_description_fallback(
+    tmp_path, monkeypatch
+) -> None:
+    no_desc_md = tmp_path / "nodesc.md"
+    no_desc_md.write_text(
+        "---\n"
+        "name: nodesc\n"
+        "role: member\n"
+        "tools: [read]\n"
+        "---\n"
+        "No description agent prompt.\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(
+        "app.services.subagent_service._resolve_agents_dir", lambda: tmp_path
+    )
+
+    tool = make_delegate_tool("lead-test-nodesc", db_factory=None)  # type: ignore[arg-type]
+    desc = tool.description
+    assert "\n\nAvailable subagent profiles:\n" in desc
+    assert "- profile='nodesc'" in desc
+    assert "- profile='explorer':" in desc
+    assert "\n\nTo run tasks concurrently" in desc

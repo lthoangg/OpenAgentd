@@ -246,6 +246,14 @@ def load_member_profiles(agents_dir: Path) -> dict[str, AgentConfig]:
             try:
                 cfg = parse_agent_md(path)
                 if cfg.role == "member":
+                    from app.agent.builtin_prompts import BUILTIN_MEMBER_PROFILES
+
+                    if cfg.name in BUILTIN_MEMBER_PROFILES:
+                        bp = BUILTIN_MEMBER_PROFILES[cfg.name]
+                        if not cfg.tools:
+                            cfg.tools = list(bp["tools"])
+                        if not cfg.system_prompt.strip():
+                            cfg.system_prompt = bp["prompt"]
                     profiles[cfg.name] = cfg
             except Exception as exc:
                 logger.warning("failed_to_parse_member_md file={} error={}", path, exc)
@@ -373,11 +381,12 @@ def _build_agent(
     source_path: Path | None = None,
     mode: str = "coding",
 ) -> Agent:
-    system_prompt = cfg.system_prompt
+    system_prompt = cfg.system_prompt.strip() or openagentd_prompt_for_mode(mode)
     if cfg.name == "code":
         cfg.description = cfg.description or openagentd_description_for_mode(mode)
         cfg.tools = [*openagentd_tools_for_mode(mode), *cfg.tools]
-        system_prompt = openagentd_prompt_for_mode(mode)
+        if not cfg.system_prompt.strip():
+            system_prompt = openagentd_prompt_for_mode(mode)
 
     from app.agent.tools.builtin.schedule import schedule_task as _schedule_task_tool
     from app.agent.tools.builtin.skill import load_skill as _load_skill_tool

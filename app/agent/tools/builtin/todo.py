@@ -32,7 +32,11 @@ class TodoAction(BaseModel):
         Literal["pending", "in_progress", "completed", "cancelled", "finished"] | None
     ) = Field(
         default=None,
-        description="Status for create/update ('pending', 'in_progress', 'completed', 'cancelled') or filter for clear ('finished', 'completed', 'cancelled').",
+        description=(
+            "Task state: 'pending' (queued), 'in_progress' (currently active, max 1), "
+            "'completed' (verified), or 'cancelled'. For action='clear', status filters "
+            "which tasks to remove ('finished' removes completed and cancelled)."
+        ),
     )
 
     @field_validator("action", mode="before")
@@ -163,7 +167,9 @@ def _coerce_actions(value: Any) -> Any:
 class TodoArgs(BaseModel):
     """Arguments for the todo_manage tool."""
 
-    actions: list[TodoAction] = Field(description="Ordered list of actions to execute.")
+    actions: list[TodoAction] = Field(
+        description="Ordered list of actions to execute atomically in sequence (batching create, update, delete, clear, or read)."
+    )
 
     @model_validator(mode="before")
     @classmethod
@@ -253,8 +259,10 @@ def _consolidate_outcomes(log_parts: Sequence[str]) -> list[str]:
 # ---------------------------------------------------------------------------
 
 _DESCRIPTION = """\
-Manage the todo task list. Actions execute in order. Use create, update, delete,
-read, or clear to track tasks and keep progress visible to the user.\
+Manage the todo task list for tracking multi-step progress. Actions execute in order.
+Use proactively for complex tasks (3+ steps). Maintain real-time state: keep at most
+ONE task 'in_progress' at any time, and mark tasks 'completed' immediately upon
+verification. Actions can be batched.\
 """
 
 

@@ -103,3 +103,12 @@ def test_member_prompts_match_pruned_toolset_and_topology():
         assert "delegate" not in prompt
         assert "team_spawn" not in prompt
         assert "team_send" not in prompt
+
+
+def test_coding_lead_prompt_does_not_contain_subagent_delegation():
+    """Lead prompt stays tool-agnostic; subagent delegation is defined in delegate tool."""
+    from app.agent.builtin_prompts import CODING_OPENAGENTD_PROMPT
+
+    assert "## Subagent delegation" not in CODING_OPENAGENTD_PROMPT
+    assert "explorer" not in CODING_OPENAGENTD_PROMPT
+    assert "researcher" not in CODING_OPENAGENTD_PROMPT

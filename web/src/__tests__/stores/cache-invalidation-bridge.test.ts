@@ -11,7 +11,7 @@
  */
 import { describe, it, expect, mock } from 'bun:test'
 import { QueryClient, type InfiniteData } from '@tanstack/react-query'
-import { appendSubagent, applyCacheInvalidations, patchSessionRunning, patchSessionTitle, prependSession, prependWorkspaceSession } from '@/stores/cache-invalidation-bridge'
+import { appendSubagent, removeSubagent, applyCacheInvalidations, patchSessionRunning, patchSessionTitle, prependSession, prependWorkspaceSession } from '@/stores/cache-invalidation-bridge'
 import { queryKeys } from '@/queries'
 import type { CacheInvalidation } from '@/stores/useAgentStore'
 import type { SessionPageResponse, SessionResponse } from '@/api/types'
@@ -657,5 +657,35 @@ describe('applyCacheInvalidations — session_running', () => {
     expect(invalidateQueries).toHaveBeenCalledWith({
       queryKey: queryKeys.session.sessions.all(),
     })
+  })
+})
+
+describe('removeSubagent', () => {
+  it('removes subagent from infinite session pages and subagents query data', () => {
+    const client = new QueryClient()
+    const parentSession = {
+      ...makeSession('lead-1', 'Lead Session'),
+      subagents: [
+        { ...makeSession('sub-1', 'Subagent 1'), parent_session_id: 'lead-1' },
+        { ...makeSession('sub-2', 'Subagent 2'), parent_session_id: 'lead-1' },
+      ],
+    }
+    seedInfinite(client, [[parentSession]])
+    client.setQueryData(queryKeys.session.subagents('lead-1'), {
+      live_members: [
+        { session_id: 'sub-1', member_id: 'explorer#1' },
+        { session_id: 'sub-2', member_id: 'explorer#2' },
+      ],
+      subagents: [],
+    })
+
+    removeSubagent(client, 'sub-1', 'lead-1')
+
+    const after = readInfinite(client)!
+    expect(after.pages[0].data[0].subagents?.map((s) => s.id)).toEqual(['sub-2'])
+    const subagentsCache = client.getQueryData<{ live_members: { session_id: string }[] }>(
+      queryKeys.session.subagents('lead-1'),
+    )
+    expect(subagentsCache?.live_members.map((m) => m.session_id)).toEqual(['sub-2'])
   })
 })

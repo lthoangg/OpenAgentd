@@ -496,6 +496,8 @@ class AgentSession:
 
         await stream_store.init_turn(session_id, keep_subscribers=True)
         self.state = "working"
+        self._question_suspended = None
+        self._lead_suspended = None
         self._cancel_event.clear()
         self._has_active_turn = True
         self._active_task = asyncio.create_task(self._run_turn())
@@ -512,6 +514,7 @@ class AgentSession:
 
             await subagent_service.stop_all_subagents(self.session_id)
         await self.dismiss_pending_question(reason="dismissed")
+        self._lead_suspended = None
         self.state = "idle"
         await self._emit("agent_status", status="idle")
         return True
@@ -667,6 +670,7 @@ class AgentSession:
         rest of the turn has to reach them.
         """
         self._question_suspended = None
+        self._lead_suspended = None
         self.state = "working"
         await self._emit("agent_status", status="working")
         self._cancel_event.clear()
@@ -833,6 +837,7 @@ class AgentSession:
             await stream_store.init_turn(self.session_id, keep_subscribers=True)
         self.state = "working"
         self._question_suspended = None
+        self._lead_suspended = None
         await self._emit("agent_status", status="working")
         if self.session_id:
             try:

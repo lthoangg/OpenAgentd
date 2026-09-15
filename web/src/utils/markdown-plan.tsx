@@ -273,8 +273,18 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({ children }: Pro
         <span className="h-px flex-1 bg-(--color-border)" aria-hidden />
       </div>
 
-      {/* Body: plain assistant-style prose */}
-      <div className="space-y-2 text-sm text-(--color-text)">
+      {/* Body: plain assistant-style prose.
+       *
+       * This wrapper carries no `text-*` size/leading utility on purpose. The
+       * enclosing markdown block already renders inside `.oa-prose`, whose
+       * unlayered `line-height: 1.75` beats Tailwind's layered `.text-sm`
+       * (line-height 1.4286). Re-declaring `text-sm` here shadows that
+       * inherited leading for every child, which made the plan body read
+       * tighter than a normal assistant response. `space-y-2` is likewise
+       * omitted: `.oa-prose`'s own paragraph/list/heading margins are
+       * unlayered and already win over the utility layer.
+       */}
+      <div className="text-(--color-text)">
         {children}
       </div>
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import shutil
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -13,6 +14,17 @@ from app.services import snapshot_service
 pytestmark = pytest.mark.skipif(
     shutil.which("git") is None, reason="git binary not available"
 )
+
+
+def _git_run(cwd: Path, *args: str) -> str:
+    result = subprocess.run(
+        ["git", *args],
+        cwd=str(cwd),
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return result.stdout
 
 
 @pytest.fixture
@@ -77,7 +89,7 @@ def test_delete_extras_unlinks_workspace_symlink_without_touching_target(
 
 
 @pytest.mark.asyncio
-async def test_snapshot_maintenance_prunes_unreachable_objects(
+async def test_snapshot_maintenance_repacks_without_pruning(
     state_dir: Path, workspace: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     calls: list[tuple[str, ...]] = []
@@ -87,11 +99,13 @@ async def test_snapshot_maintenance_prunes_unreachable_objects(
         return 0, b"", b""
 
     monkeypatch.setattr(snapshot_service, "_git", fake_git)
-    await snapshot_service._maintain_repo(state_dir / "git", workspace)
+    await snapshot_service._maintain_repo(state_dir / "git")
 
-    assert calls == [
-        ("--git-dir", str(state_dir / "git"), "gc", "--auto", "--prune=now")
-    ]
+    assert any("repack" in args for args in calls)
+    assert not any("prune" in args for args in calls), (
+        "Periodic maintenance must never prune: a pre-existing repo keeps its "
+        "snapshots alive only through the index until prune() re-creates refs."
+    )
 
 
 @pytest.mark.asyncio
@@ -330,3 +344,109 @@ async def test_track_skips_oversized_untracked_files(
     await snapshot_service.restore("sess-big", workspace, snapshot)
     assert small.read_text() == "ok"
     assert big.exists()
+
+
+@pytest.mark.asyncio
+async def test_track_seeds_snapshot_repo_from_workspace_git(
+    state_dir: Path, workspace: Path
+) -> None:
+    """Committed workspace objects are borrowed, not copied, into the repo."""
+    _git_run(workspace, "init")
+    (workspace / "committed.txt").write_text("committed")
+    _git_run(workspace, "add", "committed.txt")
+    _git_run(
+        workspace,
+        "-c",
+        "user.email=test@example.com",
+        "-c",
+        "user.name=test",
+        "commit",
+        "-m",
+        "init",
+    )
+
+    snapshot = await snapshot_service.track("sess-seed", workspace)
+    assert snapshot is not None
+
+    gitdir = snapshot_service.snapshot_dir("sess-seed")
+    alternates = (gitdir / "objects" / "info" / "alternates").read_text()
+    assert str((workspace / ".git" / "objects").resolve()) in alternates, (
+        "the snapshot repo must borrow the workspace's object store"
+    )
+
+    blob = _git_run(workspace, "rev-parse", "HEAD:committed.txt").strip()
+    local_blob = gitdir / "objects" / blob[:2] / blob[2:]
+    assert not local_blob.exists(), (
+        "an object already present in the workspace repo must not be stored twice"
+    )
+
+    result = await snapshot_service.restore("sess-seed", workspace, snapshot)
+    assert result.ok is True
+
+
+@pytest.mark.asyncio
+async def test_track_anchors_snapshot_with_reachability_ref(
+    state_dir: Path, workspace: Path
+) -> None:
+    (workspace / "a.txt").write_text("v1")
+
+    tree = await snapshot_service.track("sess-ref", workspace)
+    assert tree is not None
+
+    gitdir = snapshot_service.snapshot_dir("sess-ref")
+    refs = await snapshot_service._list_snapshot_refs(gitdir)
+    assert tree in refs, "every tracked snapshot needs a reachability ref"
+
+
+@pytest.mark.asyncio
+async def test_prune_keeps_only_referenced_snapshots(
+    state_dir: Path, workspace: Path
+) -> None:
+    (workspace / "a.txt").write_text("v1")
+    first = await snapshot_service.track("sess-prune", workspace)
+    (workspace / "a.txt").write_text("v2")
+    second = await snapshot_service.track("sess-prune", workspace)
+    (workspace / "a.txt").write_text("v3")
+    orphan = await snapshot_service.track("sess-prune", workspace)
+    assert first and second and orphan
+    assert orphan not in {first, second}
+
+    await snapshot_service.prune("sess-prune", [first, second])
+
+    gitdir = snapshot_service.snapshot_dir("sess-prune")
+    refs = await snapshot_service._list_snapshot_refs(gitdir)
+    assert set(refs) == {first, second}
+
+    result = await snapshot_service.restore("sess-prune", workspace, first)
+    assert result.ok is True
+    assert (workspace / "a.txt").read_text() == "v1"
+
+
+@pytest.mark.asyncio
+async def test_prune_size_cap_drops_oldest_but_keeps_protected(
+    state_dir: Path, workspace: Path
+) -> None:
+    hashes: list[str] = []
+    for index in range(6):
+        (workspace / "big.txt").write_text("x" * 20_000 + f"-{index}")
+        tracked = await snapshot_service.track("sess-cap", workspace)
+        assert tracked is not None
+        hashes.append(tracked)
+    anchor = hashes[-1]
+
+    await snapshot_service.prune("sess-cap", hashes, max_bytes=1024, protected=[anchor])
+
+    gitdir = snapshot_service.snapshot_dir("sess-cap")
+    refs = await snapshot_service._list_snapshot_refs(gitdir)
+    assert anchor in refs, "the redo anchor must survive the cap"
+    assert len(refs) < len(hashes), "the cap must drop the oldest snapshots"
+
+    # A later sweep still carries the dropped hashes in its keep set; they must
+    # stay gone rather than being re-anchored and repacked every pass.
+    await snapshot_service.prune("sess-cap", hashes, max_bytes=1024, protected=[anchor])
+    assert set(await snapshot_service._list_snapshot_refs(gitdir)) == set(refs)
+
+
+@pytest.mark.asyncio
+async def test_prune_without_repo_is_a_no_op(state_dir: Path) -> None:
+    await snapshot_service.prune("sess-none", ["0" * 40])

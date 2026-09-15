@@ -42,6 +42,10 @@ from app.services import (
     event_broadcaster,
     memory_stream_store as stream_store,
 )
+from app.services.snapshot_maintenance import (
+    start_snapshot_maintenance,
+    stop_snapshot_maintenance,
+)
 
 from app.core.version import VERSION
 
@@ -78,6 +82,7 @@ async def lifespan(app: FastAPI):
 
     setup_otel(service_name="openagentd")
     start_otel_retention()
+    start_snapshot_maintenance()
 
     try:
         mcp_config = load_mcp_config()
@@ -127,6 +132,7 @@ async def lifespan(app: FastAPI):
     from app.agent.tools.builtin.web import close_http_client
 
     await close_http_client()
+    await stop_snapshot_maintenance()
     await stop_otel_retention()
     shutdown_otel()
 

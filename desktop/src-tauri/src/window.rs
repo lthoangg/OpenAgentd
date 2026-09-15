@@ -146,6 +146,28 @@ pub fn frontend_init_script(token: Option<&str>, base_url: &str) -> String {
     frontend_init_script_with_path(token, base_url, None)
 }
 
+/// Define the window's identity (`__OAD_APP_ID__` / `__OAD_WINDOW_ID__`) as
+/// webview globals.
+///
+/// These are registered as an *initialization script* (see [`build_app_window`]),
+/// so they are re-applied on every document load — including reloads and the
+/// reload that follows a per-window backend switch. The frontend keys window
+/// state (theme preference, last route) off this identity; the URL query
+/// params are only the initial-load carrier and are dropped once the SPA
+/// router rewrites `window.location` to a bare route path. Without this,
+/// reloaded windows lost their scope and fell back to the shared legacy key.
+///
+/// Both values are interpolated through `serde_json::to_string` so a
+/// window label can never break out of the JS string literal.
+pub fn window_identity_init_script(app_id: &str, window_label: &str) -> String {
+    format!(
+        "Object.defineProperty(window, '__OAD_APP_ID__', {{ value: {app_id_json}, writable: true, configurable: true }});\
+Object.defineProperty(window, '__OAD_WINDOW_ID__', {{ value: {window_id_json}, writable: true, configurable: true }});",
+        app_id_json = serde_json::to_string(app_id).unwrap_or_else(|_| "\"\"".into()),
+        window_id_json = serde_json::to_string(window_label).unwrap_or_else(|_| "\"\"".into()),
+    )
+}
+
 pub fn frontend_init_script_with_path(
     token: Option<&str>,
     base_url: &str,
@@ -219,6 +241,11 @@ pub async fn build_app_window(
     init_script: String,
 ) -> Result<tauri::WebviewWindow> {
     let url = frontend_webview_url(app, &label)?;
+    // Re-applied on every document load by the webview, so the frontend keeps
+    // its window identity across reloads even when `window.location` no longer
+    // carries the `oa-app-id` / `oa-window-id` query params.
+    let identity_script = window_identity_init_script(&app.config().identifier, &label);
+    let init_script = format!("{identity_script}{init_script}");
     let saved_size = load_window_state(app).ok().flatten();
     let initial_size = saved_size.unwrap_or(SavedWindowState {
         width: 1280,
@@ -356,5 +383,30 @@ pub fn apply_zoom_to_window(app: &AppHandle, label: &str, factor: f64) {
         if let Err(e) = window.set_zoom(factor) {
             log::warn!("set_zoom({factor}) failed for {}: {e}", window.label());
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn window_identity_script_defines_both_globals() {
+        let script = window_identity_init_script("com.openagentd.desktop", "main-2");
+
+        assert!(script.contains("__OAD_APP_ID__"));
+        assert!(script.contains("__OAD_WINDOW_ID__"));
+        assert!(script.contains("\"com.openagentd.desktop\""));
+        assert!(script.contains("\"main-2\""));
+    }
+
+    #[test]
+    fn window_identity_script_json_escapes_labels() {
+        // A label containing quotes/backslashes must stay a valid JS string
+        // literal — `serde_json::to_string` is what guarantees it.
+        let script = window_identity_init_script("app", "main\"; alert(1); //");
+
+        assert!(script.contains(r#""main\"; alert(1); //""#));
+        assert!(!script.contains(r#"value: "main";"#));
     }
 }

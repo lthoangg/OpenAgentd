@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import os
 import shutil
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -48,6 +49,23 @@ _locks: dict[str, asyncio.Lock] = {}
 _last_hashes: dict[tuple[str, Path], str] = {}
 _track_counts: dict[str, int] = {}
 _MAINTENANCE_INTERVAL = 16
+
+#: Ref prefix holding one reachability anchor per retained snapshot tree.
+_SNAPSHOT_REF_PREFIX = "refs/openagentd/snapshots"
+
+#: Sessions whose snapshot repo has already been offered a seed once.
+_seed_attempted: set[str] = set()
+
+#: Size-cap enforcement rounds before giving up on an unsatisfiable cap.
+_SIZE_CAP_ROUNDS = 12
+
+
+def seed_objects_enabled() -> bool:
+    """Whether snapshot repos may borrow the workspace repo's object store."""
+    raw = os.getenv("SNAPSHOT_SEED_OBJECTS")
+    if raw is None:
+        return True
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _lock(session_id: str) -> asyncio.Lock:
@@ -105,16 +123,336 @@ def _gitdir_args(gitdir: Path, worktree: Path) -> list[str]:
     return ["--git-dir", str(gitdir), "--work-tree", str(worktree)]
 
 
-async def _maintain_repo(gitdir: Path, worktree: Path) -> None:
-    """Pack snapshot objects and prune unreachable intermediate trees."""
-    await _git(
-        "--git-dir",
-        str(gitdir),
-        "gc",
-        "--auto",
-        "--prune=now",
+def _gitdir_only(gitdir: Path) -> list[str]:
+    """``--git-dir`` prefix for commands that never touch the worktree."""
+    return ["--git-dir", str(gitdir)]
+
+
+def _snapshot_ref(tree: str) -> str:
+    return f"{_SNAPSHOT_REF_PREFIX}/{tree}"
+
+
+async def _repack(gitdir: Path) -> None:
+    """Delta-compress reachable local objects, borrowing none from alternates.
+
+    ``--local`` keeps the pack to objects this repo owns; without it git would
+    copy the borrowed workspace objects into the snapshot repo and undo the
+    seeding. Unreachable objects are never intentionally added to a pack, so
+    loose snapshots that predate the reachability refs stay where they are.
+    """
+    code, _, err = await _git(
+        *_CORE_FLAGS,
+        *_gitdir_only(gitdir),
+        "repack",
+        "-a",
+        "-d",
+        "-q",
+        "-l",
+    )
+    if code != 0:
+        logger.warning(
+            "snapshot_repack_failed gitdir={} stderr={}",
+            gitdir,
+            err.decode(errors="replace"),
+        )
+
+
+async def _prune_loose(gitdir: Path) -> None:
+    """Drop loose objects that neither a ref nor the index reaches anymore."""
+    code, _, err = await _git(*_gitdir_only(gitdir), "prune", "--expire=now")
+    if code != 0:
+        logger.warning(
+            "snapshot_prune_failed gitdir={} stderr={}",
+            gitdir,
+            err.decode(errors="replace"),
+        )
+
+
+async def _clean_temp_packs(gitdir: Path) -> None:
+    """Remove pack temporaries a crashed git may have left behind."""
+    pack_dir = gitdir / "objects" / "pack"
+
+    def _sweep() -> None:
+        for entry in pack_dir.glob("tmp_pack_*"):
+            try:
+                entry.unlink()
+            except OSError:
+                continue
+
+    await asyncio.to_thread(_sweep)
+
+
+async def _maintain_repo(gitdir: Path) -> None:
+    """Pack reachable snapshot objects without ever pruning.
+
+    A pre-existing repo keeps its snapshots alive only through the index and
+    the message rows, so pruning here would destroy snapshots that predate the
+    reachability refs. Reclamation belongs to :func:`prune`, which re-anchors
+    every retained snapshot before it runs.
+    """
+    await _repack(gitdir)
+    await _clean_temp_packs(gitdir)
+
+
+async def _ensure_ref(gitdir: Path, tree: str) -> None:
+    """Keep *tree* reachable so repack and prune cannot collect it."""
+    if not tree:
+        return
+    ref = _snapshot_ref(tree)
+    code, _, _ = await _git(
+        *_gitdir_only(gitdir), "rev-parse", "--verify", "--quiet", ref
+    )
+    if code == 0:
+        return
+    code, out, err = await _git(
+        *_gitdir_only(gitdir), "commit-tree", tree, "-m", "snapshot"
+    )
+    if code != 0:
+        logger.warning(
+            "snapshot_ref_commit_failed gitdir={} tree={} stderr={}",
+            gitdir,
+            tree,
+            err.decode(errors="replace"),
+        )
+        return
+    commit = out.decode(errors="replace").strip()
+    if not commit:
+        return
+    code, _, err = await _git(*_gitdir_only(gitdir), "update-ref", ref, commit)
+    if code != 0:
+        logger.warning(
+            "snapshot_ref_update_failed gitdir={} tree={} stderr={}",
+            gitdir,
+            tree,
+            err.decode(errors="replace"),
+        )
+
+
+async def _list_snapshot_refs(gitdir: Path) -> dict[str, str]:
+    """Map each anchored tree hash to the ref name holding it."""
+    code, out, _ = await _git(
+        *_gitdir_only(gitdir),
+        "for-each-ref",
+        "--format=%(refname)",
+        _SNAPSHOT_REF_PREFIX,
+    )
+    if code != 0:
+        return {}
+    refs: dict[str, str] = {}
+    for line in out.decode(errors="replace").splitlines():
+        name = line.strip()
+        tree = name.rsplit("/", 1)[-1]
+        if tree:
+            refs[tree] = name
+    return refs
+
+
+async def _present_trees(gitdir: Path, trees: Sequence[str]) -> set[str]:
+    """Subset of *trees* still resolvable locally or through an alternate."""
+    if not trees:
+        return set()
+    stdin = ("\n".join(trees) + "\n").encode()
+    code, out, _ = await _git(
+        *_gitdir_only(gitdir),
+        "cat-file",
+        "--batch-check=%(objectname)",
+        stdin=stdin,
+    )
+    if code != 0:
+        # Unresolvable batch: assume every candidate survives, so a transient
+        # failure never drops a reachable snapshot.
+        return set(trees)
+    present: set[str] = set()
+    for line in out.decode(errors="replace").splitlines():
+        value = line.strip()
+        if value and not value.endswith("missing"):
+            present.add(value)
+    return present
+
+
+async def _local_size_bytes(gitdir: Path) -> int:
+    """Bytes this repo owns (loose objects plus packs; alternates excluded)."""
+    code, out, _ = await _git(*_gitdir_only(gitdir), "count-objects", "-v")
+    if code != 0:
+        return 0
+    total_kib = 0
+    for line in out.decode(errors="replace").splitlines():
+        key, _, value = line.partition(":")
+        if key.strip() not in {"size", "size-pack"}:
+            continue
+        try:
+            total_kib += int(value.strip())
+        except ValueError:
+            continue
+    return total_kib * 1024
+
+
+async def local_size_bytes(session_id: str) -> int:
+    """Local object-store bytes for this session's snapshot repo."""
+    gitdir = snapshot_dir(session_id)
+    if not (gitdir / "HEAD").exists():
+        return 0
+    return await _local_size_bytes(gitdir)
+
+
+async def _enforce_size_cap(
+    gitdir: Path,
+    ordered: list[str],
+    max_bytes: int,
+    protected: set[str],
+) -> list[str]:
+    """Drop the oldest unprotected snapshots until the repo fits *max_bytes*."""
+    remaining = list(ordered)
+    for _ in range(_SIZE_CAP_ROUNDS):
+        size = await _local_size_bytes(gitdir)
+        if size <= max_bytes:
+            return remaining
+        droppable = [tree for tree in remaining if tree not in protected]
+        if not droppable:
+            logger.warning(
+                "snapshot_size_cap_exceeded gitdir={} size={} cap={}",
+                gitdir,
+                size,
+                max_bytes,
+            )
+            return remaining
+        per_snapshot = max(1, size // max(1, len(remaining)))
+        drop_count = min(len(droppable), max(1, (size - max_bytes) // per_snapshot + 1))
+        for tree in droppable[:drop_count]:
+            await _git(*_gitdir_only(gitdir), "update-ref", "-d", _snapshot_ref(tree))
+            remaining.remove(tree)
+        await _repack(gitdir)
+        await _prune_loose(gitdir)
+    return remaining
+
+
+async def prune(
+    session_id: str,
+    keep: Sequence[str],
+    *,
+    max_bytes: int | None = None,
+    protected: Sequence[str] = (),
+) -> None:
+    """Reclaim snapshot objects the session no longer references.
+
+    Every hash in *keep* is made reachable first, so the repack/prune pass can
+    only release objects no retained snapshot needs. With *max_bytes* set, the
+    oldest snapshots outside *protected* are dropped until this session's
+    local object store fits.
+    """
+    if not is_available():
+        return
+    gitdir = snapshot_dir(session_id)
+    if not (gitdir / "HEAD").exists():
+        return
+    candidates = [tree for tree in dict.fromkeys(keep) if tree]
+    present = await _present_trees(gitdir, candidates)
+    # A snapshot the size cap dropped earlier is gone, not re-provisioned:
+    # re-anchoring it every sweep would repack the same data forever.
+    ordered = [tree for tree in candidates if tree in present]
+    protected_set = {tree for tree in protected if tree}
+    async with _lock(session_id):
+        existing = await _list_snapshot_refs(gitdir)
+        wanted = set(ordered)
+        for tree in ordered:
+            if tree not in existing:
+                await _ensure_ref(gitdir, tree)
+        for tree, ref in existing.items():
+            if tree not in wanted:
+                await _git(*_gitdir_only(gitdir), "update-ref", "-d", ref)
+        await _repack(gitdir)
+        await _prune_loose(gitdir)
+        if max_bytes is not None:
+            await _enforce_size_cap(gitdir, ordered, max_bytes, protected_set)
+        await _clean_temp_packs(gitdir)
+
+
+def _read_alternates(objects_dir: Path) -> list[Path]:
+    """Alternate object dirs the source repo itself borrows from."""
+    try:
+        raw = (objects_dir / "info" / "alternates").read_text(errors="replace")
+    except OSError:
+        return []
+    resolved: list[Path] = []
+    for line in raw.splitlines():
+        entry = line.strip()
+        if not entry or entry.startswith("#"):
+            continue
+        candidate = Path(entry)
+        if not candidate.is_absolute():
+            candidate = (objects_dir / candidate).resolve()
+        resolved.append(candidate)
+    return resolved
+
+
+def _alternate_object_dirs(source_objects: Path) -> list[str]:
+    """Absolute object dirs to borrow, following the source's own chain."""
+    result: list[str] = []
+    for candidate in (source_objects, *_read_alternates(source_objects)):
+        if not candidate.is_dir():
+            continue
+        text = str(candidate)
+        if text not in result:
+            result.append(text)
+    return result
+
+
+async def _seed_objects(gitdir: Path, worktree: Path, *, copy_index: bool) -> bool:
+    """Borrow the workspace repo's already-hashed objects.
+
+    Committed content is content-addressed, so pointing this repo's object
+    store at the workspace's ``objects`` directory stops snapshots from
+    storing a second copy of the same tree. Best effort: any failure leaves
+    the repo self-contained, which is the behavior without seeding.
+    """
+    if not seed_objects_enabled():
+        return False
+    code, out, _ = await _git(
+        "rev-parse",
+        "--path-format=absolute",
+        "--git-common-dir",
         cwd=worktree,
     )
+    if code != 0:
+        return False
+    common_dir = out.decode(errors="replace").strip()
+    if not common_dir:
+        return False
+    source_objects = Path(common_dir) / "objects"
+    alternates = _alternate_object_dirs(source_objects)
+    if not alternates:
+        return False
+    info_dir = gitdir / "objects" / "info"
+    await asyncio.to_thread(info_dir.mkdir, parents=True, exist_ok=True)
+    await asyncio.to_thread(
+        (info_dir / "alternates").write_text,
+        "\n".join(alternates) + "\n",
+    )
+    if copy_index:
+        source_index = Path(common_dir) / "index"
+        if source_index.is_file():
+            try:
+                await asyncio.to_thread(shutil.copyfile, source_index, gitdir / "index")
+            except OSError as exc:
+                logger.debug(
+                    "snapshot_seed_index_failed gitdir={} error={}", gitdir, exc
+                )
+    logger.info(
+        "snapshot_seeded_objects gitdir={} alternates={}", gitdir, len(alternates)
+    )
+    return True
+
+
+async def _ensure_seed(gitdir: Path, worktree: Path, *, copy_index: bool) -> None:
+    """Seed a repo's object store once, tolerating any failure."""
+    key = str(gitdir)
+    if key in _seed_attempted:
+        return
+    _seed_attempted.add(key)
+    try:
+        await _seed_objects(gitdir, worktree, copy_index=copy_index)
+    except OSError as exc:
+        logger.debug("snapshot_seed_failed gitdir={} error={}", gitdir, exc)
 
 
 async def _init_repo(gitdir: Path, worktree: Path) -> bool:
@@ -122,6 +460,7 @@ async def _init_repo(gitdir: Path, worktree: Path) -> bool:
     gitdir.mkdir(parents=True, exist_ok=True)
     head_file = gitdir / "HEAD"
     if head_file.exists():
+        await _ensure_seed(gitdir, worktree, copy_index=False)
         return True
 
     code, _, err = await _git(
@@ -146,6 +485,7 @@ async def _init_repo(gitdir: Path, worktree: Path) -> bool:
     ):
         await _git("--git-dir", str(gitdir), "config", key, value)
 
+    await _ensure_seed(gitdir, worktree, copy_index=True)
     logger.info("snapshot_initialised session_gitdir={}", gitdir)
     return True
 
@@ -272,10 +612,11 @@ async def track(session_id: str, workspace: Path) -> str | None:
         snapshot_hash = out.decode().strip()
         if not snapshot_hash:
             return None
+        await _ensure_ref(gitdir, snapshot_hash)
         _last_hashes[cache_key] = snapshot_hash
         _track_counts[session_id] = _track_counts.get(session_id, 0) + 1
         if _track_counts[session_id] % _MAINTENANCE_INTERVAL == 0:
-            await _maintain_repo(gitdir, workspace)
+            await _maintain_repo(gitdir)
         logger.debug(
             "snapshot_tracked session_id={} hash={}",
             session_id,
@@ -459,4 +800,5 @@ async def remove(session_id: str) -> None:
                 if cache_key[0] == session_id:
                     del _last_hashes[cache_key]
             _track_counts.pop(session_id, None)
+            _seed_attempted.discard(str(gitdir))
     _locks.pop(session_id, None)

@@ -1,8 +1,13 @@
 // Pre-paint theme application. Keep in sync with web/src/lib/theme.ts.
 (function () {
   try {
-    var appId = new URLSearchParams(window.location.search).get('oa-app-id');
-    var windowId = new URLSearchParams(window.location.search).get('oa-window-id');
+    // Rust injects these as webview globals on every document load, so they
+    // survive reloads even though the SPA router drops the query params. The
+    // params remain the fallback for browser/dev builds.
+    var appId = window.__OAD_APP_ID__
+      || new URLSearchParams(window.location.search).get('oa-app-id');
+    var windowId = window.__OAD_WINDOW_ID__
+      || new URLSearchParams(window.location.search).get('oa-window-id');
     if (appId) document.documentElement.dataset.openagentdAppId = appId;
     if (windowId) document.documentElement.dataset.openagentdWindowId = windowId;
     var storageKey = appId && windowId

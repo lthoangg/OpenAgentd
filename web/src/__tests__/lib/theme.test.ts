@@ -6,6 +6,7 @@ import {
   readStoredPreference,
   setThemePreference,
   THEME_STORAGE_KEY,
+  themeStorageKey,
 } from '@/lib/theme'
 
 afterEach(() => {
@@ -13,6 +14,8 @@ afterEach(() => {
   history.replaceState(null, '', '/')
   delete document.documentElement.dataset.openagentdAppId
   delete document.documentElement.dataset.openagentdWindowId
+  delete window.__OAD_APP_ID__
+  delete window.__OAD_WINDOW_ID__
   document.documentElement.classList.remove('dark', 'light')
   document.querySelector('meta[name="theme-color"][data-openagentd-theme]')?.remove()
 })
@@ -76,5 +79,58 @@ describe('theme', () => {
     expect(document.documentElement.classList.contains('dark')).toBe(true)
     channel.close()
     cleanup()
+  })
+
+  // Rust injects `__OAD_APP_ID__` / `__OAD_WINDOW_ID__` as webview globals on
+  // every document load. After a reload the SPA router has already stripped
+  // the `oa-window-id` query param, so this injected identity is the only
+  // thing keeping a reloaded window's theme scoped instead of collapsing it
+  // onto the shared legacy key.
+  describe('injected window identity', () => {
+    it('scopes the theme key without URL params', () => {
+      window.__OAD_APP_ID__ = 'com.openagentd.desktop'
+      window.__OAD_WINDOW_ID__ = 'main-2'
+
+      expect(themeStorageKey()).toBe('oa-theme:com.openagentd.desktop:main-2')
+
+      setThemePreference('dark')
+
+      expect(localStorage.getItem('oa-theme:com.openagentd.desktop:main-2')).toBe('dark')
+      expect(localStorage.getItem(THEME_STORAGE_KEY)).toBeNull()
+      expect(readStoredPreference()).toBe('dark')
+    })
+
+    it('keeps distinct reloaded windows isolated', () => {
+      window.__OAD_APP_ID__ = 'com.openagentd.desktop'
+      window.__OAD_WINDOW_ID__ = 'main-2'
+      setThemePreference('dark')
+
+      window.__OAD_WINDOW_ID__ = 'main-3'
+      expect(readStoredPreference()).toBe('system')
+
+      setThemePreference('light')
+      expect(localStorage.getItem('oa-theme:com.openagentd.desktop:main-2')).toBe('dark')
+      expect(localStorage.getItem('oa-theme:com.openagentd.desktop:main-3')).toBe('light')
+    })
+
+    it('does not apply a broadcast change despite no URL params', () => {
+      const queryClient = new QueryClient()
+      const cleanup = initBroadcastSync(queryClient)
+
+      window.__OAD_APP_ID__ = 'com.openagentd.desktop'
+      window.__OAD_WINDOW_ID__ = 'main-2'
+      applyTheme('dark')
+
+      const channel = new BroadcastChannel('openagentd-sync')
+      channel.postMessage({
+        type: 'theme_changed',
+        preference: 'light',
+        storageKey: 'oa-theme:com.openagentd.desktop:main',
+      })
+
+      expect(document.documentElement.classList.contains('dark')).toBe(true)
+      channel.close()
+      cleanup()
+    })
   })
 })

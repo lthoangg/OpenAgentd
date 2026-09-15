@@ -33,6 +33,7 @@ async def _cleanup_result(args: argparse.Namespace) -> tuple[CleanupResult, str 
                 db,
                 older_than_days=args.older_than_days,
                 dry_run=args.dry_run,
+                vacuum=args.vacuum,
             )
         except OperationalError as exc:
             if not _is_missing_chat_sessions_table(exc):
@@ -56,6 +57,14 @@ async def _run_cleanup(args: argparse.Namespace) -> None:
     print(f"  {_dim('Expired messages:')} {result.expired_messages}")
     print(f"  {_dim('Candidates:')} {len(result.candidates)}")
     print(f"  {_dim('Total:')}      {_format_bytes(result.total_bytes)}")
+
+    if result.vacuum_reclaimed_bytes is not None:
+        print(
+            f"  {_dim('Vacuum reclaimed:')} "
+            f"{_format_bytes(result.vacuum_reclaimed_bytes)}"
+        )
+    if result.vacuum_error:
+        print(f"  {_yellow('Vacuum skipped:')} {result.vacuum_error}")
 
     if warning:
         print(f"  {_yellow(warning)}")

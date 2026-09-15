@@ -356,3 +356,52 @@ export function appendSubagent(
     },
   )
 }
+
+export function removeSubagent(
+  queryClient: Pick<QueryClient, 'setQueriesData' | 'setQueryData'>,
+  childSessionId: string,
+  parentSessionId?: string | null,
+): void {
+  queryClient.setQueriesData<InfiniteData<SessionPageResponse>>(
+    { queryKey: queryKeys.session.sessions.all() },
+    (old) => {
+      if (!isInfiniteSessionData(old)) return old
+      let changed = false
+      const pages = old.pages.map((page) => {
+        let pageChanged = false
+        const data = page.data.map((session) => {
+          if (parentSessionId && session.id !== parentSessionId) return session
+          const existing = session.subagents ?? []
+          if (!existing.some((s) => s.id === childSessionId)) return session
+          pageChanged = true
+          return {
+            ...session,
+            subagents: existing.filter((s) => s.id !== childSessionId),
+          }
+        })
+        if (!pageChanged) return page
+        changed = true
+        return { ...page, data }
+      })
+      return changed ? { ...old, pages } : old
+    },
+  )
+
+  if (parentSessionId) {
+    queryClient.setQueryData<SubagentsResponse>(
+      queryKeys.session.subagents(parentSessionId),
+      (old) => {
+        if (!old) return old
+        const existingLive = old.live_members ?? []
+        const existingSub = old.subagents ?? []
+        const newLive = existingLive.filter((m) => m.session_id !== childSessionId)
+        const newSub = existingSub.filter((m) => m.session_id !== childSessionId)
+        return {
+          ...old,
+          live_members: newLive,
+          subagents: newSub,
+        }
+      },
+    )
+  }
+}

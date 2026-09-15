@@ -8,7 +8,7 @@ import { FileTypeIcon } from '../FileTypeIcon'
 import { findCommittedMentions } from '../InputComposer.mentions'
 import { resolveApiUrl } from '@/api/client'
 import { openExternalUrl } from '@/lib/open-external'
-import { collapseDoubleNewlines, formatTime, formatFullDateTime } from '@/utils/format'
+import { formatTime, formatFullDateTime, normalizeProseNewlines } from '@/utils/format'
 import type { MessageAttachment } from '@/api/types'
 import { cn } from '@/lib/utils'
 
@@ -253,7 +253,7 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
               isSubagentLongReport && !reportExpanded && "max-h-36 overflow-hidden",
             )}
           >
-            <LazyMarkdownBlock content={collapseDoubleNewlines(content, true)} />
+            <LazyMarkdownBlock content={normalizeProseNewlines(content)} />
             {isSubagentLongReport && !reportExpanded && (
               <div className="pointer-events-none absolute inset-x-0 bottom-0 h-14 bg-gradient-to-t from-(--bg-card) via-(--bg-card)/80 to-transparent" />
             )}

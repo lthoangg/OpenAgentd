@@ -1,5 +1,5 @@
 import { describe, it, expect } from "bun:test";
-import { formatTokens, formatRelativeDate, formatDate, isSleepMessage, extractSleepPrefix, collapseDoubleNewlines, shortId, formatTime, formatFullDateTime, lastTurnText } from "@/utils/format";
+import { formatTokens, formatRelativeDate, formatDate, isSleepMessage, extractSleepPrefix, collapseDoubleNewlines, normalizeProseNewlines, shortId, formatTime, formatFullDateTime, lastTurnText } from "@/utils/format";
 
 // ---------------------------------------------------------------------------
 // collapseDoubleNewlines
@@ -70,6 +70,28 @@ describe("collapseDoubleNewlines", () => {
 
     const collapsed = collapseDoubleNewlines(text, true);
     expect(collapsed).toContain("interface Foo {\n  bar: string;\n\n  baz: number;");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// normalizeProseNewlines
+// ---------------------------------------------------------------------------
+
+describe("normalizeProseNewlines", () => {
+  it("preserves paragraph boundaries (double newlines)", () => {
+    expect(normalizeProseNewlines("Paragraph 1\n\nParagraph 2")).toBe("Paragraph 1\n\nParagraph 2");
+  });
+
+  it("normalizes CRLF to LF while preserving paragraphs", () => {
+    expect(normalizeProseNewlines("Paragraph 1\r\n\r\nParagraph 2")).toBe("Paragraph 1\n\nParagraph 2");
+  });
+
+  it("collapses runaway 3+ newlines to standard double newline", () => {
+    expect(normalizeProseNewlines("Paragraph 1\n\n\n\nParagraph 2")).toBe("Paragraph 1\n\nParagraph 2");
+  });
+
+  it("leaves single newlines unchanged", () => {
+    expect(normalizeProseNewlines("Line 1\nLine 2")).toBe("Line 1\nLine 2");
   });
 });
 

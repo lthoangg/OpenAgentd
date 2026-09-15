@@ -45,7 +45,7 @@ function WorkspaceSessionRow({
   const isTargetSession = isCurrent || currentSessionId === session.id || isChildSessionCurrent
   const { data: subagentsData } = useSessionSubagentsQuery(session.id, isTargetSession)
   const liveMembers = subagentsData?.live_members ?? subagentsData?.subagents
-  const subagents = (isTargetSession && liveMembers && liveMembers.length > 0)
+  const subagents = (isTargetSession && liveMembers !== undefined)
     ? liveMembers
     : (session.subagents && session.subagents.length > 0
         ? session.subagents.map((s) => ({

@@ -154,7 +154,7 @@ export function AgentEditorPage({ name = 'code', onBack }: AgentEditorPageProps)
               Cancel
             </Button>
             <Button
-              variant="destructive"
+              variant="danger"
               onClick={handleDelete}
               disabled={deleteMut.isPending}
             >

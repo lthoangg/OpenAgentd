@@ -1089,7 +1089,7 @@ export function CodingWorkspacePanel({
               </DialogDescription>
             </DialogHeader>
             <DialogFooter>
-              <Button type="button" variant="outline" disabled={discarding} onClick={() => setDiscardTarget(null)}>
+              <Button type="button" variant="default" disabled={discarding} onClick={() => setDiscardTarget(null)}>
                 Cancel
               </Button>
               <Button

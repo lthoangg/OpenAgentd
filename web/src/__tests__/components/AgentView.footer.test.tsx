@@ -628,17 +628,21 @@ describe("AgentView — AssistantFooter", () => {
   })
 
   describe("newline collapsing in response and thinking", () => {
-    it("collapses double newlines in agent text response to a single newline for display", async () => {
-      const { findByText } = renderStream({
+    it("preserves paragraph separation while normalizing runaway newlines in agent text response", async () => {
+      const { container, findByText } = renderStream({
         blocks: [
           makeUserBlock("u1", "Question"),
-          makeTextBlock("b1", "Response line one\n\nResponse line two"),
+          makeTextBlock("b1", "Response line one\n\n\n\nResponse line two"),
         ],
         currentBlocks: [],
         isWorking: false,
       })
-      const el = await findByText(/Response line one/)
-      expect(el.textContent).toBe("Response line one\nResponse line two")
+      const p1 = await findByText("Response line one")
+      const p2 = await findByText("Response line two")
+      expect(p1.tagName).toBe("P")
+      expect(p2.tagName).toBe("P")
+      expect(container.textContent).toContain("Response line one")
+      expect(container.textContent).toContain("Response line two")
     })
 
     it("preserves empty lines inside fenced code blocks in agent text response", async () => {

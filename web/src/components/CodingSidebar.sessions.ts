@@ -17,6 +17,10 @@ export function getFallbackSessionAfterDelete(
   codingSessions: SessionResponse[],
 ): SessionResponse | null {
   if (deleteTarget.id !== currentSessionId) return null
+  if (deleteTarget.parent_session_id) {
+    const parent = codingSessions.find((s) => s.id === deleteTarget.parent_session_id)
+    if (parent) return parent
+  }
   return codingSessions.find((session) => session.id !== deleteTarget.id && session.workspace === deleteTarget.workspace)
     ?? codingSessions.find((session) => session.id !== deleteTarget.id)
     ?? null
@@ -41,7 +45,7 @@ export function applySessionDelete(options: {
   deleteTarget: SessionResponse
   currentSessionId: string | undefined
   codingSessions: SessionResponse[]
-  mutateDelete: (id: string) => void
+  mutateDelete: (target: string | { id: string; parent_session_id?: string | null }) => void
   navigate: (args: { to: string; params?: { sessionId: string }; replace: true }) => void
 }): void {
   const fallbackSession = getFallbackSessionAfterDelete(
@@ -49,7 +53,11 @@ export function applySessionDelete(options: {
     options.currentSessionId,
     options.codingSessions,
   )
-  options.mutateDelete(options.deleteTarget.id)
+  options.mutateDelete(
+    options.deleteTarget.parent_session_id
+      ? { id: options.deleteTarget.id, parent_session_id: options.deleteTarget.parent_session_id }
+      : options.deleteTarget.id,
+  )
   if (options.deleteTarget.id !== options.currentSessionId) return
   if (fallbackSession) {
     if (fallbackSession.workspace) saveLastCodingWorkspace(fallbackSession.workspace)

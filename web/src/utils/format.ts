@@ -36,6 +36,16 @@ export function collapseDoubleNewlines(
 }
 
 /**
+ * Normalize prose newlines for Markdown rendering:
+ * Converts CRLF to LF and collapses runaway blank lines (`\n{3,}` -> `\n\n`)
+ * while strictly preserving paragraph boundaries (`\n\n`).
+ */
+export function normalizeProseNewlines(content: string): string {
+  if (typeof content !== 'string' || !content) return content
+  return content.replace(/\r\n/g, '\n').replace(/\n{3,}/g, '\n\n')
+}
+
+/**
  * Me check if content ends with a sleep sentinel.
  * Returns the text before the sentinel (may be empty), or null if not present.
  */

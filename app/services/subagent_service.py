@@ -192,8 +192,13 @@ def find_instance_by_session_id(
 
 
 def _resolve_agents_dir() -> Path:
-    p = Path(settings.AGENTS_DIR)
-    return p if p.is_absolute() else Path.cwd() / p
+    from app.services.agent_fs import agents_dir
+
+    try:
+        return agents_dir()
+    except Exception:
+        p = Path(settings.AGENTS_DIR)
+        return p if p.is_absolute() else Path.cwd() / p
 
 
 def _build_member_tools(

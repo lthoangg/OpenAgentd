@@ -5,9 +5,13 @@ const APP_NAME = 'OpenAgentd'
 export function buildDesktopWindowTitle(options: {
   workspace?: string | null
   sessionTitle?: string | null
+  /** Display label for the workspace; defaults to its basename. */
+  workspaceName?: string | null
 }): string {
   const title = options.sessionTitle?.trim()
   if (title) return title
+  const name = options.workspaceName?.trim()
+  if (name) return name
   if (options.workspace) {
     return workspaceLabel(options.workspace)
   }
@@ -26,6 +30,7 @@ export function buildDesktopWindowTitle(options: {
 export function syncDesktopWindowTitle(options: {
   workspace?: string | null
   sessionTitle?: string | null
+  workspaceName?: string | null
 }): void {
   const title = buildDesktopWindowTitle(options)
   if (typeof document !== 'undefined') document.title = title

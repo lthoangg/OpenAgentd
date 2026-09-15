@@ -441,6 +441,74 @@ class TestLoadSkill:
             _sandbox_ctx.reset(token)
 
 
+class TestChatWorkspaceSkillRoots:
+    """A chat workspace is not a project — its skills are global/bundled only."""
+
+    @pytest.fixture(autouse=True)
+    def _clear_skill_cache(self):
+        _discover_skills_cached.cache_clear()
+        yield
+        _discover_skills_cached.cache_clear()
+
+    @pytest.mark.asyncio
+    async def test_project_skill_roots_are_skipped(self, tmp_path, monkeypatch):
+        import app.agent.tools.builtin.skill as skill_mod
+
+        chat_root = tmp_path / "home"
+        chat_root.mkdir()
+        global_skills = tmp_path / "config-skills"
+        monkeypatch.setattr(
+            "app.core.config.settings.CHAT_WORKSPACE_DIR", str(chat_root)
+        )
+        monkeypatch.setattr(skill_mod, "_SKILLS_DIR", global_skills)
+
+        project_skill = chat_root / ".openagentd" / "skills" / "chat-proj-skill"
+        project_skill.mkdir(parents=True)
+        (project_skill / "SKILL.md").write_text(
+            "---\nname: chat-proj-skill\ndescription: project scoped\n---\nBody."
+        )
+        global_skill = global_skills / "chat-global-skill"
+        global_skill.mkdir(parents=True)
+        (global_skill / "SKILL.md").write_text(
+            "---\nname: chat-global-skill\ndescription: global scoped\n---\nBody."
+        )
+
+        token = set_sandbox(SandboxConfig(workspace=str(chat_root), session_id="s1"))
+        try:
+            names = discover_skills()
+            assert "chat-global-skill" in names
+            assert "chat-proj-skill" not in names
+        finally:
+            _sandbox_ctx.reset(token)
+
+    @pytest.mark.asyncio
+    async def test_home_agent_skill_is_rendered_as_a_global_path(
+        self, tmp_path, monkeypatch
+    ):
+        """With the home directory as the chat root, ``~/.agents/skills`` is the
+        *global* universal root, so it must render an absolute directory."""
+        chat_root = tmp_path / "home"
+        shared = chat_root / ".agents" / "skills" / "chat-shared-skill"
+        shared.mkdir(parents=True)
+        (shared / "SKILL.md").write_text(
+            "---\nname: chat-shared-skill\ndescription: universal\n---\nBody."
+        )
+        monkeypatch.setattr(
+            "app.core.config.settings.CHAT_WORKSPACE_DIR", str(chat_root)
+        )
+        monkeypatch.setattr(Path, "home", classmethod(lambda cls: chat_root))
+
+        token = set_sandbox(SandboxConfig(workspace=str(chat_root), session_id="s1"))
+        try:
+            result = await load_skill("chat-shared-skill")
+        finally:
+            _sandbox_ctx.reset(token)
+
+        first_line = result.splitlines()[0]
+        assert first_line.startswith("Skill directory:")
+        assert str(shared.resolve()) in first_line
+
+
 # ---------------------------------------------------------------------------
 # Path-token substitution
 #

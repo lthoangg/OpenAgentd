@@ -43,6 +43,12 @@ import { cn } from '@/lib/utils'
 
 export interface AppFooterProps {
   workspace?: string | null
+  /**
+   * True when ``workspace`` is the chat root (see ``useChatWorkspace``). Chat
+   * workspaces are not repositories, so the branch + dirty indicator is
+   * dropped and the git status probe is skipped.
+   */
+  chatWorkspace?: boolean
   sessionId?: string | null
   sessionModel?: string | null
   sessionThinkingLevel?: string | null
@@ -60,6 +66,7 @@ function formatModelDisplay(model: string): string {
 
 export const AppFooter = memo(function AppFooter({
   workspace,
+  chatWorkspace = false,
   sessionId: _sessionId,
   sessionModel,
   sessionThinkingLevel,
@@ -74,7 +81,7 @@ export const AppFooter = memo(function AppFooter({
   const navigate = useNavigate()
   const openSettings = useSettingsStore((s) => s.openSettings)
 
-  const isCoding = Boolean(workspace)
+  const isCoding = Boolean(workspace) && !chatWorkspace
   const statusQuery = useQuery({
     queryKey: queryKeys.coding.status(workspace ?? ''),
     queryFn: ({ signal }) => getCodingWorkspaceStatus(workspace!, signal),

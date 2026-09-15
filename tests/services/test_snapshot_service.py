@@ -169,6 +169,32 @@ async def test_track_missing_workspace_returns_none(
 
 
 @pytest.mark.asyncio
+async def test_track_skips_chat_workspace(
+    state_dir: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The chat root is never staged — undo degrades to message-level only."""
+    from app.core.config import settings
+
+    chat_root = tmp_path / "home"
+    (chat_root / ".ssh").mkdir(parents=True)
+    (chat_root / ".ssh" / "id_rsa").write_text("secret")
+    monkeypatch.setattr(settings, "CHAT_WORKSPACE_DIR", str(chat_root))
+
+    calls: list[tuple[str, ...]] = []
+    original_git = snapshot_service._git
+
+    async def record_git(*args: str, **kwargs: object) -> tuple[int, bytes, bytes]:
+        calls.append(args)
+        return await original_git(*args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(snapshot_service, "_git", record_git)
+
+    assert await snapshot_service.track("sess-chat", chat_root) is None
+    assert calls == []
+    assert not snapshot_service.snapshot_dir("sess-chat").exists()
+
+
+@pytest.mark.asyncio
 async def test_restore_reports_modified_added_removed_and_round_trips(
     state_dir: Path, workspace: Path
 ) -> None:

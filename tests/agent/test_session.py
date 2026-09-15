@@ -88,6 +88,85 @@ async def test_new_message_after_undo_persists_branch(tmp_path):
         await runtime.handle_redo(sid)
 
 
+@pytest.mark.asyncio
+async def test_chat_workspace_loads_no_project_instructions(tmp_path, monkeypatch):
+    """A chat workspace runs the same agent but never adopts project context.
+
+    End-to-end across the turn wiring: the system prompt reaching the provider
+    carries the chat root but not the ``AGENTS.md`` sitting in it, while the
+    same file *is* injected for a real coding workspace.
+    """
+    from app.core.config import settings
+    from app.core.db import async_session_factory
+
+    chat_root = tmp_path / "home"
+    chat_root.mkdir()
+    (chat_root / "AGENTS.md").write_text("LOCAL PROJECT RULE", encoding="utf-8")
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "AGENTS.md").write_text("LOCAL PROJECT RULE", encoding="utf-8")
+    monkeypatch.setattr(settings, "CHAT_WORKSPACE_DIR", str(chat_root))
+
+    async def system_prompt_for(workspace: Path) -> str:
+        provider = PromptCapturingProvider()
+        session = AgentSession(
+            agent=Agent(llm_provider=provider, name="openagentd", system_prompt="Base"),
+            workspace=str(workspace),
+            db_factory=async_session_factory,
+        )
+        sid = str(uuid.uuid4())
+        await session.handle_user_message(content="hello", session_id=sid)
+        assert session._active_task is not None
+        await session._active_task
+        assert provider.system_prompt is not None
+        return provider.system_prompt
+
+    chat_prompt = await system_prompt_for(chat_root)
+    assert "LOCAL PROJECT RULE" not in chat_prompt
+    assert str(chat_root.resolve()) in chat_prompt
+
+    repo_prompt = await system_prompt_for(repo)
+    assert "LOCAL PROJECT RULE" in repo_prompt
+
+
+@pytest.mark.asyncio
+async def test_chat_workspace_undo_needs_no_file_snapshot(tmp_path, monkeypatch):
+    """Undo works in a chat workspace, at message level only.
+
+    Chat never stages the root, so the undone turn has no file anchor: the
+    boundary still moves and the home tree is left exactly as it was.
+    """
+    from app.core.config import settings
+    from app.core.db import async_session_factory
+    from app.services.chat_service import get_messages_for_llm
+
+    monkeypatch.setattr(settings, "OPENAGENTD_STATE_DIR", str(tmp_path / "state"))
+    chat_root = tmp_path / "home"
+    chat_root.mkdir()
+    file = chat_root / "notes.txt"
+    file.write_text("original", encoding="utf-8")
+    monkeypatch.setattr(settings, "CHAT_WORKSPACE_DIR", str(chat_root))
+
+    session = AgentSession(
+        agent=Agent(llm_provider=MockProvider(), name="openagentd"),
+        workspace=str(chat_root),
+        db_factory=async_session_factory,
+    )
+    sid = str(uuid.uuid4())
+    await session.handle_user_message(content="tidy my notes", session_id=sid)
+    await session._active_task
+
+    _, shift = await session.handle_undo(sid)
+
+    assert shift.applied is True
+    assert file.read_text(encoding="utf-8") == "original"
+    # No snapshot repo was ever created for this session.
+    assert not (Path(settings.OPENAGENTD_STATE_DIR) / "snapshot" / sid).exists()
+    async with async_session_factory() as db:
+        messages = await get_messages_for_llm(db, uuid.UUID(sid))
+    assert [msg.content for msg in messages if msg.role == "user"] == []
+
+
 async def test_handle_undo_stops_all_subagents(tmp_path, monkeypatch):
     from app.core.db import async_session_factory
 
@@ -187,6 +266,37 @@ class MockProvider(LLMProviderBase):
         **kwargs: Any,
     ) -> AssistantMessage:
         return await self.complete(messages, **kwargs)
+
+
+class PromptCapturingProvider(MockProvider):
+    """MockProvider that records the system prompt the turn actually sent."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.system_prompt: str | None = None
+
+    def _capture(self, messages: list[ChatMessage]) -> None:
+        for message in messages:
+            if message.role == "system":
+                self.system_prompt = str(message.content)
+                return
+
+    async def stream(
+        self,
+        messages: list[ChatMessage],
+        **kwargs: Any,
+    ) -> AsyncIterator[ChatCompletionChunk]:
+        self._capture(messages)
+        async for chunk in super().stream(messages, **kwargs):
+            yield chunk
+
+    async def complete(
+        self,
+        messages: list[ChatMessage],
+        **kwargs: Any,
+    ) -> AssistantMessage:
+        self._capture(messages)
+        return await super().complete(messages, **kwargs)
 
 
 @pytest_asyncio.fixture

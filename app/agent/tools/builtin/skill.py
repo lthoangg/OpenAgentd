@@ -27,6 +27,7 @@ from pydantic import AliasChoices, BaseModel, Field
 
 from app.agent.denied_paths import get_denied_paths
 from app.agent.tools.registry import InjectedArg, tool
+from app.core.chat_workspace import is_chat_workspace
 
 
 class SkillArgs(BaseModel):
@@ -70,20 +71,34 @@ def _iter_skill_roots() -> list[Path]:
     6. ``~/.config/opencode/skills/``      (global, opencode reuse)
     7. bundled OpenAgentd skills           (read-only fallback)
 
+    Roots 1-3 are project-scoped and are skipped for a chat workspace (see
+    ``app.core.chat_workspace``) — including when the chat root *is* the home
+    directory, where ``~/.agents/skills`` would otherwise look like a project
+    root. Roots 4-7 are global and always apply.
+
     Earlier entries win on a name collision. ``_SKILLS_DIR`` is
     referenced indirectly (via the module-level binding) so existing
     tests that monkeypatch it keep working.
     """
     project_root = _project_root()
-    return [
-        project_root / ".openagentd" / "skills",
-        project_root / ".agents" / "skills",
-        project_root / ".opencode" / "skills",
-        _SKILLS_DIR,
-        Path.home() / ".agents" / "skills",
-        Path.home() / ".config" / "opencode" / "skills",
-        _builtin_skills_dir(),
-    ]
+    roots: list[Path] = []
+    if not is_chat_workspace(project_root):
+        roots.extend(
+            [
+                project_root / ".openagentd" / "skills",
+                project_root / ".agents" / "skills",
+                project_root / ".opencode" / "skills",
+            ]
+        )
+    roots.extend(
+        [
+            _SKILLS_DIR,
+            Path.home() / ".agents" / "skills",
+            Path.home() / ".config" / "opencode" / "skills",
+            _builtin_skills_dir(),
+        ]
+    )
+    return roots
 
 
 def _builtin_skills_dir() -> Path:
@@ -117,7 +132,10 @@ def _render_tokens(text: str, *, skill_dir: Path | None = None) -> str:
             workspace = None
 
         is_project_skill = False
-        if workspace is not None:
+        # A chat workspace has no project skill roots, so every skill it can
+        # load is global or bundled — and is therefore rendered as an absolute
+        # path, exactly as ``_iter_skill_roots`` scans it.
+        if workspace is not None and not is_chat_workspace(workspace):
             project_roots = [
                 (workspace / ".openagentd" / "skills").resolve(),
                 (workspace / ".agents" / "skills").resolve(),

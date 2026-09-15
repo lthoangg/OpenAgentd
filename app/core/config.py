@@ -168,6 +168,13 @@ class Settings(BaseSettings):
     # Empty string means "derive from OPENAGENTD_CONFIG_DIR" → ``{CONFIG_DIR}/skills``.
     SKILLS_DIR: str = ""
 
+    # Root the prebuilt Chat workspace runs in. Empty string means "the user's
+    # home directory" — the default product behaviour for chat ("cockpit")
+    # sessions, which run in the same screen as coding workspaces but load only
+    # global instructions, skills, commands, and snippets. Point it at another
+    # directory to keep ``~`` usable as a coding workspace.
+    CHAT_WORKSPACE_DIR: str = ""
+
     # User-defined plugin directories — absolute paths separated by the OS
     # path separator (``:`` on POSIX, ``;`` on Windows — same convention as
     # ``PATH`` / ``PYTHONPATH``).  Splitting on a hardcoded ``:`` would corrupt

@@ -7,7 +7,8 @@ import { MobileHeaderAction } from './MobileHeaderAction'
 import { MobileChatActions } from './MobileChatActions'
 import { TodosPopover } from '@/components/TodosPopover'
 import { TokenMeter } from '@/components/ui/token-meter'
-import type { TodoItem } from '@/api/types'
+import type { CodingWorkspaceTreeChat, TodoItem } from '@/api/types'
+import { isChatWorkspacePath } from '@/queries/useChatWorkspace'
 import { workspaceLabel } from '@/utils/workspace'
 
 interface AgentChatHeaderProps {
@@ -15,6 +16,8 @@ interface AgentChatHeaderProps {
   isMacOverlay: boolean
   isMobile: boolean
   workspace: string | null
+  /** Chat entry from the workspace tree — labels the chat root as "Chat". */
+  chatWorkspace?: CodingWorkspaceTreeChat | null
   sessionTitle: string | null
   onCodingSidebarToggle: () => void
   headerTokens?: AgentTopbarTokens
@@ -38,6 +41,7 @@ export const AgentChatHeader = memo(function AgentChatHeader({
   isMacOverlay,
   isMobile,
   workspace,
+  chatWorkspace = null,
   sessionTitle,
   onCodingSidebarToggle,
   headerTokens,
@@ -56,6 +60,14 @@ export const AgentChatHeader = memo(function AgentChatHeader({
   onCloseMobileActionsMenu,
 }: AgentChatHeaderProps) {
   const activeTodoCount = todos.filter((todo) => todo.status === 'pending' || todo.status === 'in_progress').length
+  // The chat workspace reads as "Chat" rather than the home directory's
+  // basename, on every label derived from the workspace path.
+  const isChatWorkspace = isChatWorkspacePath(workspace, chatWorkspace)
+  const workspaceName = workspace ? workspaceLabel(workspace, chatWorkspace) : ''
+  // The tooltip exists to disambiguate a truncated basename (two workspaces can
+  // share one), so it keeps revealing the real path for coding workspaces —
+  // but never the home path for chat, whose label is already unambiguous.
+  const workspaceTooltip = isChatWorkspace ? workspaceName : workspace
 
   return (
     <header
@@ -84,7 +96,7 @@ export const AgentChatHeader = memo(function AgentChatHeader({
                 className="min-w-0 max-w-xs lg:max-w-md xl:max-w-xl"
                 render={
                   <span className="flex min-w-0 max-w-xs items-baseline gap-1 text-sm lg:max-w-md xl:max-w-xl">
-                    <span className="shrink-0 font-semibold text-(--color-text)">{workspaceLabel(workspace)}</span>
+                    <span className="shrink-0 font-semibold text-(--color-text)">{workspaceName}</span>
                     {sessionTitle && (
                       <>
                         <span className="shrink-0 text-(--color-text-muted)">·</span>
@@ -94,7 +106,7 @@ export const AgentChatHeader = memo(function AgentChatHeader({
                   </span>
                 }
               />
-              <TooltipContent>{sessionTitle ? `${workspaceLabel(workspace)}: ${sessionTitle}` : workspace}</TooltipContent>
+              <TooltipContent>{sessionTitle ? `${workspaceName}: ${sessionTitle}` : workspaceTooltip}</TooltipContent>
             </Tooltip>
           ) : null}
         </div>
@@ -106,7 +118,7 @@ export const AgentChatHeader = memo(function AgentChatHeader({
           {isMobile && (
             <div className="min-w-0 flex items-baseline gap-1 text-sm">
               {workspace ? (
-                <span className="truncate font-semibold text-(--color-text)">{workspaceLabel(workspace)}</span>
+                <span className="truncate font-semibold text-(--color-text)">{workspaceName}</span>
               ) : (
                 <span className="truncate font-semibold text-(--color-text)">Choose a workspace</span>
               )}

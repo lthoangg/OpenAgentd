@@ -472,6 +472,33 @@ def test_commands_three_levels_deep_ignored(roots):
     assert result == {}
 
 
+def test_chat_workspace_sees_global_commands_only(roots, monkeypatch, tmp_path):
+    """A chat workspace is not a project: its command roots are global-only."""
+    _cwd, proj_oad, _proj_agents, _proj_oc, global_oad, global_agents, _global_oc = (
+        roots
+    )
+    from app.core import config as config_module
+
+    chat_root = tmp_path / "chat"
+    chat_root.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr(config_module.settings, "CHAT_WORKSPACE_DIR", str(chat_root))
+
+    _write(proj_oad / "commit.md", "---\ndescription: project\n---\nproject body\n")
+    _write(global_oad / "global.md", "---\ndescription: global\n---\nglobal body\n")
+    _write(global_agents / "universal.md", "---\ndescription: u\n---\nu body\n")
+    # Would be project-local if the chat root counted as a project.
+    _write(
+        chat_root / ".openagentd" / "commands" / "chat.md",
+        "---\ndescription: chat\n---\nchat body\n",
+    )
+
+    result = discover_commands(workspace=chat_root)
+
+    assert set(result.keys()) == {"global", "universal"}
+    assert result["global"].source == "global-openagentd"
+    assert result["universal"].source == "global-agents"
+
+
 # ── Builtin commands ────────────────────────────────────────────────────────
 
 

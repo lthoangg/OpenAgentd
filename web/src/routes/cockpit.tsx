@@ -7,8 +7,9 @@ import { useAgentStore } from '@/stores/useAgentStore'
 import { applyCacheInvalidations, patchSessionTitle } from '@/stores/cache-invalidation-bridge'
 import { initBroadcastSync, broadcastMessage } from '@/lib/broadcast-sync'
 import { queryKeys } from '@/queries'
-import { loadLastCodingWorkspace, removeCodingWorkspace, saveLastCodingWorkspace, shouldRestoreLastCodingWorkspace, workspaceFromSession } from '@/utils/workspace'
+import { loadLastCodingWorkspace, removeCodingWorkspace, saveLastCodingWorkspace, shouldRestoreLastCodingWorkspace, workspaceFromSession, workspaceLabel } from '@/utils/workspace'
 import { syncDesktopWindowTitle } from '@/lib/window-title'
+import { useChatWorkspace } from '@/queries/useChatWorkspace'
 
 /**
  * Coding workspace layout for /coding and its session routes.
@@ -43,6 +44,8 @@ function AgentLayoutBase() {
     staleTime: 30_000,
   })
   const workspace = workspaceFromSession(sessionId, cachedSession?.workspace ?? sessionQuery.data?.workspace)
+  const chatWorkspace = useChatWorkspace()
+  const workspaceName = workspace ? workspaceLabel(workspace, chatWorkspace) : null
 
   const navigateRef = useRef(navigate)
   const sessionIdRef = useRef(sessionId)
@@ -60,13 +63,13 @@ function AgentLayoutBase() {
   }, [mode, workspace])
 
   useEffect(() => {
-    syncDesktopWindowTitle({ workspace, sessionTitle: useAgentStore.getState().sessionTitle })
+    syncDesktopWindowTitle({ workspace, workspaceName, sessionTitle: useAgentStore.getState().sessionTitle })
     return useAgentStore.subscribe((state, prev) => {
       if (state.sessionTitle !== prev.sessionTitle) {
-        syncDesktopWindowTitle({ workspace, sessionTitle: state.sessionTitle })
+        syncDesktopWindowTitle({ workspace, workspaceName, sessionTitle: state.sessionTitle })
       }
     })
-  }, [mode, workspace])
+  }, [mode, workspace, workspaceName])
 
   useEffect(() => {
     if (sessionId) return

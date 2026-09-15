@@ -11,6 +11,7 @@ from pathlib import Path
 
 from loguru import logger
 
+from app.core.chat_workspace import is_chat_workspace
 from app.core.config import settings
 
 
@@ -576,12 +577,21 @@ async def track(session_id: str, workspace: Path) -> str | None:
     """Snapshot the workspace state and return its tree hash.
 
     Returns ``None`` when git is unavailable, the workspace does not exist,
-    or any git invocation fails. Safe to call concurrently — locked
-    per-session.
+    the workspace is the chat root, or any git invocation fails. Safe to call
+    concurrently — locked per-session.
+
+    Chat workspaces are skipped: their root is the user's home directory, so
+    staging it would walk and copy the whole tree into the snapshot repo on
+    every message. Undo/redo still work there — they move the message boundary
+    and simply have no file-level anchor to restore (see
+    ``app/services/chat_service_revert.py``, which already tolerates a missing
+    snapshot).
     """
     if not is_available():
         return None
     if not workspace.exists() or not workspace.is_dir():
+        return None
+    if is_chat_workspace(workspace):
         return None
 
     gitdir = snapshot_dir(session_id)

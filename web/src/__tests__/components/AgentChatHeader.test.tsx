@@ -2,6 +2,7 @@ import type { ComponentProps } from 'react'
 import { describe, expect, it } from 'bun:test'
 import { render, screen } from '@testing-library/react'
 import '@testing-library/jest-dom'
+import userEvent from '@testing-library/user-event'
 
 import { AgentChatHeader } from '@/components/AgentChatView/AgentChatHeader'
 
@@ -59,5 +60,41 @@ describe('AgentChatHeader', () => {
   it('hides token meter when headerTokens is undefined', () => {
     renderHeader({ headerTokens: undefined })
     expect(screen.queryByRole('button', { name: /Input:/i })).not.toBeInTheDocument()
+  })
+
+  it('labels the chat workspace "Chat" instead of its home-directory basename', () => {
+    renderHeader({
+      isMobile: false,
+      workspace: '/Users/name',
+      chatWorkspace: { path: '/Users/name', name: 'Chat' },
+      sessionTitle: null,
+    })
+
+    expect(screen.getByText('Chat')).toBeInTheDocument()
+    expect(screen.queryByText('name')).not.toBeInTheDocument()
+  })
+
+  it('keeps revealing the real path when hovering a coding workspace', async () => {
+    const user = userEvent.setup()
+    renderHeader({ isMobile: false, sessionTitle: null })
+
+    await user.hover(screen.getByText('Workspace A'))
+
+    expect(screen.getByRole('tooltip')).toHaveTextContent('/Users/name/Workspace A')
+  })
+
+  it('never leaks the home path into the chat workspace tooltip', async () => {
+    const user = userEvent.setup()
+    renderHeader({
+      isMobile: false,
+      workspace: '/Users/name',
+      chatWorkspace: { path: '/Users/name', name: 'Chat' },
+      sessionTitle: null,
+    })
+
+    await user.hover(screen.getByText('Chat'))
+
+    expect(screen.getByRole('tooltip')).toHaveTextContent('Chat')
+    expect(screen.queryByText('/Users/name')).not.toBeInTheDocument()
   })
 })

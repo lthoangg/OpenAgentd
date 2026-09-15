@@ -25,6 +25,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from app.core.chat_workspace import is_chat_workspace
 from app.core.config import settings
 from app.services.commands import _iter_md, _parse_frontmatter
 
@@ -43,12 +44,24 @@ class Snippet:
 def _candidate_roots(workspace: Path) -> list[tuple[Path, str]]:
     home = Path.home()
     config = Path(settings.OPENAGENTD_CONFIG_DIR)
-    return [
-        (workspace / ".openagentd" / "snippets", "project-openagentd"),
-        (workspace / ".agents" / "snippets", "project-agents"),
-        (config / "snippets", "global-openagentd"),
-        (home / ".agents" / "snippets", "global-agents"),
-    ]
+    # Project roots are coding-only — a chat workspace (see
+    # ``app.core.chat_workspace``) is not a project and sees global snippets
+    # only.
+    roots: list[tuple[Path, str]] = []
+    if not is_chat_workspace(workspace):
+        roots.extend(
+            [
+                (workspace / ".openagentd" / "snippets", "project-openagentd"),
+                (workspace / ".agents" / "snippets", "project-agents"),
+            ]
+        )
+    roots.extend(
+        [
+            (config / "snippets", "global-openagentd"),
+            (home / ".agents" / "snippets", "global-agents"),
+        ]
+    )
+    return roots
 
 
 def discover_snippets(workspace: Path) -> dict[str, Snippet]:

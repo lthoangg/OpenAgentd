@@ -14,7 +14,7 @@ release that introduced it (where known). When you ship something new, **add it 
 > double-clickable app that runs an agent on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 16 providers. Your keys.
 
-**Latest release:** v2.18.0 · September 15, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v2.18.0)
+**Latest release:** v2.19.0 · September 15, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v2.19.0)
 
 ---
 
@@ -71,11 +71,24 @@ run from the terminal.
   selection, and backend-log-path copy actions instead of waiting indefinitely;
   native startup failures surface immediately, and Retry re-spawns the builtin
   backend without allowing duplicate sidecar processes `[v1.113.0]`.
-- **Coding-only architecture and root redirect** `[v2.4.0]` — OpenAgentd operates
-  exclusively as a coding workspace. Root `/` and legacy Cockpit URLs redirect to `/coding`,
+- **Workspace-required architecture and root redirect** `[v2.4.0, updated v2.19.0]` — OpenAgentd runs on one
+  screen built around workspaces. Root `/` and legacy Cockpit URLs redirect to `/coding`,
   workspaces are required across chat, scheduler, and terminals, and database
-  migration permanently removes legacy workspace-less records. Telemetry is accessible via the
+  migration permanently removes legacy workspace-less records. The workspace-less
+  chat surface itself returned in v2.19.0 as a pinned Chat workspace rather than a
+  separate mode (see below). Telemetry is accessible via the
   desktop status footer and mobile navigation.
+- **Chat workspace** `[v2.19.0]` — the prebuilt **Chat** row in the coding
+  sidebar runs the same agent on the same screen with its root in your home
+  directory, so the agent reads, runs, and edits your own files with relative
+  paths. Chat is not a project: workspace instruction files, project skills,
+  project slash commands, and project snippets load only for real workspaces,
+  while global instructions, skills, commands, and snippets still apply.
+  Chat is not a repository either, so the pinned row offers no worktree or
+  removal actions and the workspace dock has no Git tab; file-level undo is
+  off, and `/undo` moves the conversation boundary only. Set
+  `CHAT_WORKSPACE_DIR` to run Chat elsewhere and keep your home directory
+  usable as a coding workspace.
 - **Connection-ready screen warmup** `[v1.113.3]` — after either the bundled
   sidecar or an external server connects, the app preloads coding data in the
   background so the first session can render from cache.

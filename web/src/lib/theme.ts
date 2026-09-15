@@ -11,12 +11,11 @@
  */
 
 import { broadcastMessage } from './broadcast-channel'
+import { windowScopedKey } from './desktop-window-identity'
 export type ThemePreference = 'light' | 'dark' | 'system'
 export type ResolvedTheme = 'light' | 'dark'
 
 export const THEME_STORAGE_KEY = 'oa-theme'
-const DESKTOP_APP_ID_PARAM = 'oa-app-id'
-const DESKTOP_WINDOW_ID_PARAM = 'oa-window-id'
 const MEDIA_QUERY = '(prefers-color-scheme: dark)'
 
 /**
@@ -25,13 +24,7 @@ const MEDIA_QUERY = '(prefers-color-scheme: dark)'
  * legacy key.
  */
 export function themeStorageKey(): string {
-  const appId = document.documentElement.dataset.openagentdAppId
-    ?? new URLSearchParams(window.location.search).get(DESKTOP_APP_ID_PARAM)
-  const windowId = document.documentElement.dataset.openagentdWindowId
-    ?? new URLSearchParams(window.location.search).get(DESKTOP_WINDOW_ID_PARAM)
-  return appId && windowId
-    ? `${THEME_STORAGE_KEY}:${appId}:${windowId}`
-    : appId ? `${THEME_STORAGE_KEY}:${appId}` : THEME_STORAGE_KEY
+  return windowScopedKey(THEME_STORAGE_KEY)
 }
 const THEME_COLOR: Record<ResolvedTheme, string> = {
   light: '#FAFAFA',

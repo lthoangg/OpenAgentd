@@ -49,6 +49,8 @@ describe('lastRouteStorageKey', () => {
   it('returns plain key in browser environment without dataset params', () => {
     delete document.documentElement.dataset.openagentdAppId
     delete document.documentElement.dataset.openagentdWindowId
+    delete window.__OAD_APP_ID__
+    delete window.__OAD_WINDOW_ID__
     expect(lastRouteStorageKey()).toBe(LAST_ROUTE_KEY)
   })
 
@@ -59,6 +61,18 @@ describe('lastRouteStorageKey', () => {
 
     delete document.documentElement.dataset.openagentdAppId
     delete document.documentElement.dataset.openagentdWindowId
+  })
+
+  it('namespaces storage key from the injected identity after a reload', () => {
+    delete document.documentElement.dataset.openagentdAppId
+    delete document.documentElement.dataset.openagentdWindowId
+    window.__OAD_APP_ID__ = 'com.openagentd.desktop'
+    window.__OAD_WINDOW_ID__ = 'main-2'
+
+    expect(lastRouteStorageKey()).toBe('oa-last-route:com.openagentd.desktop:main-2')
+
+    delete window.__OAD_APP_ID__
+    delete window.__OAD_WINDOW_ID__
   })
 })
 

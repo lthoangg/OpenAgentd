@@ -384,3 +384,23 @@ async def test_workspace_instructions_hook_is_noop_without_a_workspace():
     await hook.wrap_model_call(None, None, Request(), handler)  # type: ignore[arg-type]
 
     assert seen["prompt"] == "Base prompt"
+
+
+@pytest.mark.asyncio
+async def test_chat_mode_skips_workspace_instructions_but_reports_the_root(tmp_path):
+    """A chat workspace has no project instructions — its root is still reported."""
+    (tmp_path / "AGENTS.md").write_text("Project rule.", encoding="utf-8")
+    global_md = tmp_path / "config-agents.md"
+    global_md.write_text("Global rule.", encoding="utf-8")
+
+    hook = WorkspaceInstructionsHook(
+        str(tmp_path),
+        include_workspace_instructions=False,
+        global_instructions=global_md,
+    )
+    prompt = await _capture(hook)
+
+    assert "Global rule." in prompt
+    assert "Project rule." not in prompt
+    assert "## Workspace Instructions" not in prompt
+    assert str(tmp_path.resolve()) in prompt

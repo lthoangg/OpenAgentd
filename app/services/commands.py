@@ -38,6 +38,7 @@ from pathlib import Path
 
 import yaml
 
+from app.core.chat_workspace import is_chat_workspace
 from app.core.config import settings
 
 
@@ -61,11 +62,15 @@ def _candidate_roots(workspace: Path | None = None) -> list[tuple[Path, str]]:
     Roots that don't exist are still returned — the caller filters them
     out — so the precedence rule is deterministic regardless of which
     sources happen to be present on disk.
+
+    The three project roots are coding-only: a chat workspace (see
+    ``app.core.chat_workspace``) is not a project, so only the global roots
+    below it are consulted.
     """
     home = Path.home()
     config = Path(settings.OPENAGENTD_CONFIG_DIR)
     roots: list[tuple[Path, str]] = []
-    if workspace is not None:
+    if workspace is not None and not is_chat_workspace(workspace):
         roots.extend(
             [
                 (workspace / ".openagentd" / "commands", "project-openagentd"),

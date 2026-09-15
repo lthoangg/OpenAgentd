@@ -108,3 +108,26 @@ def test_nested_snippet_names_use_slash(roots):
     result = discover_snippets(cwd)
 
     assert set(result.keys()) == {"git/commit"}
+
+
+def test_chat_workspace_sees_global_snippets_only(roots, monkeypatch):
+    """A chat workspace is not a project: its snippet roots are global-only."""
+    _cwd, project, project_agents, global_root, global_agents = roots
+    from app.core import config as config_module
+
+    chat_root = global_agents.parents[1] / "chat"
+    chat_root.mkdir(parents=True)
+    monkeypatch.setattr(config_module.settings, "CHAT_WORKSPACE_DIR", str(chat_root))
+
+    _write(project / "review.md", "project body\n")
+    _write(project_agents / "agents.md", "project agents body\n")
+    _write(global_root / "review.md", "global body\n")
+    _write(global_agents / "agents.md", "global agents body\n")
+    # A file that would look project-local if the chat root counted as one.
+    _write(chat_root / ".openagentd" / "snippets" / "chat.md", "chat project body\n")
+
+    result = discover_snippets(chat_root)
+
+    assert set(result.keys()) == {"review", "agents"}
+    assert result["review"].source == "global-openagentd"
+    assert result["agents"].source == "global-agents"

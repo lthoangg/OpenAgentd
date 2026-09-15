@@ -5,6 +5,12 @@ Two sources, rendered broad → scoped like pi/opencode/codex:
 1. Global ``{CONFIG_DIR}/AGENTS.md`` (``~/.config/openagentd/AGENTS.md`` in
    production) — the developer's cross-project preferences.
 2. Workspace ``AGENTS.md`` (falling back to ``CLAUDE.md``) at the root.
+
+Source 2 is project-scoped, so a chat workspace (see
+``app.core.chat_workspace``) suppresses it via
+``include_workspace_instructions=False``: the root is still reported so the
+agent knows where relative paths resolve, but nothing at that root is treated
+as project instructions.
 """
 
 from __future__ import annotations
@@ -45,9 +51,11 @@ class WorkspaceInstructionsHook(BaseAgentHook):
         self,
         workspace: str | None,
         *,
+        include_workspace_instructions: bool = True,
         global_instructions: Path | None = None,
     ) -> None:
         self._workspace = Path(workspace).resolve() if workspace else None
+        self._include_workspace_instructions = include_workspace_instructions
         self._global_instructions = (
             global_instructions
             if global_instructions is not None
@@ -71,7 +79,11 @@ class WorkspaceInstructionsHook(BaseAgentHook):
                 f"## Global Instructions\n\nSource: `{self._global_instructions}`\n\n"
                 f"{global_instructions}"
             )
-        instructions = self._read_workspace_instructions()
+        instructions = (
+            self._read_workspace_instructions()
+            if self._include_workspace_instructions
+            else ""
+        )
         if instructions:
             blocks.append(f"## Workspace Instructions\n\n{instructions}")
         if not blocks:

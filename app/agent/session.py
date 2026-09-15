@@ -51,6 +51,7 @@ from app.agent.schemas.chat import HumanMessage
 from app.agent.schemas.events import DoneEvent
 from app.agent.tools.builtin.question import make_ask_user_tool
 from app.agent.tools.registry import Tool
+from app.core.chat_workspace import workspace_mode
 from app.core.db import DbFactory, resolve_db_factory
 from app.core.paths import session_workspace_dir
 from app.models.chat import ChatSession, SessionMessage
@@ -967,6 +968,10 @@ class AgentSession:
     ) -> None:
         sess_uuid = uuid.UUID(self.session_id)
         interaction_mode = "code"
+        # Chat workspaces are not projects: they keep the coding prompt and
+        # tools, but load no workspace-scoped instructions, skills, commands,
+        # or snippets, and skip coding-only hooks.
+        agent_mode = workspace_mode(self.workspace)
 
         # Load session history from DB
         async with self.db_factory() as db:
@@ -1017,7 +1022,7 @@ class AgentSession:
             inject_current_date,
             publisher_hook,
             otel_hook,
-            LspHook(enabled=True),
+            LspHook(enabled=agent_mode == "coding"),
         ]
 
         if self.parent_session_id is None:
@@ -1037,7 +1042,12 @@ class AgentSession:
             if title_hook is not None:
                 hooks.append(title_hook)
 
-        hooks.append(WorkspaceInstructionsHook(self.workspace))
+        hooks.append(
+            WorkspaceInstructionsHook(
+                self.workspace,
+                include_workspace_instructions=agent_mode == "coding",
+            )
+        )
 
         checkpointer = SQLiteCheckpointer(
             self.db_factory,
@@ -1050,7 +1060,7 @@ class AgentSession:
         summ_hook = (
             build_summarization_hook(
                 provider_for_hooks,
-                mode="coding",
+                mode=agent_mode,
                 model_id=effective_model,
                 support_interrupt=provider_for_hooks.support_interrupt,
             )

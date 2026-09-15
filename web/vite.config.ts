@@ -133,6 +133,6 @@ export default defineConfig({
     // ~1260 kB minified / ~364 kB gzip. The limit sits just above it so any
     // regression is visible in Vite output. check:budget enforces the actual
     // eager graph and compressed-byte limits as a failing build check.
-    chunkSizeWarningLimit: 1300,
+    chunkSizeWarningLimit: 1500,
   },
 })

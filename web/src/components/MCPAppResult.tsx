@@ -6,8 +6,8 @@ import {
   type McpUiResourceCsp,
   type McpUiResourcePermissions,
 } from '@modelcontextprotocol/ext-apps/app-bridge'
+import { JSONRPCMessageSchema } from '@modelcontextprotocol/core'
 import {
-  JSONRPCMessageSchema,
   type CallToolResult,
   type JSONRPCMessage,
   type ListResourcesResult,
@@ -15,8 +15,9 @@ import {
   type ReadResourceResult,
   type Resource,
   type Tool,
-} from '@modelcontextprotocol/sdk/types.js'
-import type { Transport, TransportSendOptions } from '@modelcontextprotocol/sdk/shared/transport.js'
+  type Transport,
+  type TransportSendOptions,
+} from '@modelcontextprotocol/client'
 import { ExternalLink, Maximize2, X } from 'lucide-react'
 import { callMcpAppTool } from '@/api/client'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'

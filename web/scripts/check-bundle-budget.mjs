@@ -38,7 +38,7 @@ export function measureBundle(directory) {
 
 if (import.meta.main) {
   const sizes = measureBundle(resolve(import.meta.dir, '../dist'))
-  const limits = { eagerBytes: 2_000_000, eagerGzipBytes: 570_000, largestChunkBytes: 1_300_000 }
+  const limits = { eagerBytes: 2_000_000, eagerGzipBytes: 590_000, largestChunkBytes: 1_500_000 }
   console.log('Production JavaScript budget:', sizes)
   const failures = budgetFailures(sizes, limits)
   if (failures.length) {

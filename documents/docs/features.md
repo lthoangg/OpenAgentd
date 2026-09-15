@@ -306,9 +306,9 @@ run from the terminal.
   reveals a compact copy button in the top-right corner that copies the table to
   the clipboard as formatted GitHub Flavored Markdown (including column alignments
   and line breaks), with zero overhead during rendering or streaming.
-- **Markdown paragraph preservation** `[v2.17.0]` — prose and report markdown rendering preserves
-  paragraph boundaries, blockquotes, and lists by normalizing excessive whitespace without indiscriminately
-  collapsing double newlines into single lines.
+- **As-is reasoning and response formatting** `[v2.17.0]` — agent thinking traces and
+  assistant responses render as-is without synthetic newline collapsing or manipulation,
+  preserving the exact line breaks and spacing emitted by reasoning and chat models.
 - **Pin chat transcript via CSS `overflow-anchor`** `[v2.0.0]` — pins chat transcript
   scrolling using native browser `overflow-anchor` instead of per-frame JS `scrollTop`
   calculations, eliminating stream stutter and CPU churn during fast agent output.

@@ -168,3 +168,21 @@ def test_rebuild_agent_from_disk(tmp_path):
     agent = rebuild_agent_from_disk(f, provider_factory=factory)
     assert agent.name == "openagentd"
     assert "patch" in agent._tools
+
+
+def test_build_agent_with_custom_code_prompt():
+    factory, _ = _make_provider_factory()
+    cfg = AgentConfig(name="code", system_prompt="Custom lead prompt instructions.")
+    tools = _default_tool_registry()
+    agent = _build_agent(cfg, tools, factory)
+    assert agent.system_prompt == "Custom lead prompt instructions."
+
+
+def test_build_agent_code_default_prompt():
+    factory, _ = _make_provider_factory()
+    cfg = AgentConfig(name="code", system_prompt="")
+    tools = _default_tool_registry()
+    agent = _build_agent(cfg, tools, factory)
+    from app.agent.builtin_prompts import openagentd_prompt_for_mode
+
+    assert agent.system_prompt == openagentd_prompt_for_mode("coding")

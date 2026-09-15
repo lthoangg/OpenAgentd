@@ -35,6 +35,12 @@ export interface AgentFormValue {
 
 interface Props {
   initial: string
+  /** Agent name from route, e.g. "code", "explorer", "researcher". */
+  agentName?: string
+  /** Effective tools for this agent, supplied by the API. */
+  effectiveTools?: string[]
+  /** Default/effective system prompt for this agent. */
+  defaultPrompt?: string
   /** Fires on every keystroke with the up-to-date raw content. */
   onChange: (raw: string) => void
   /** Disabled when the caller is mid-save / validation. */
@@ -47,6 +53,9 @@ interface Props {
 
 export function AgentForm({
   initial,
+  agentName,
+  effectiveTools,
+  defaultPrompt,
   onChange,
   disabled,
   mode,
@@ -57,7 +66,15 @@ export function AgentForm({
   // Seed form state from the initial raw content. Subsequent edits update
   // `raw` via `updateFromForm` / `updateFromRaw` — never from `initial`.
   const seed = useMemo(() => parseFormState(initial), [initial])
-  const [fm, setFm] = useState<AgentFrontmatter>(seed.fm)
+  const isLead = (agentName ? agentName === 'code' : seed.fm.name === 'code') || seed.fm.role === 'lead'
+  const initialFm = useMemo(() => {
+    const f = { ...seed.fm }
+    if (!isLead && f.tools === undefined && effectiveTools && effectiveTools.length > 0) {
+      f.tools = [...effectiveTools]
+    }
+    return f
+  }, [seed.fm, isLead, effectiveTools])
+  const [fm, setFm] = useState<AgentFrontmatter>(initialFm)
   const [body, setBody] = useState(seed.body)
   const [parseError, setParseError] = useState<string | null>(seed.error)
 
@@ -70,6 +87,10 @@ export function AgentForm({
   const [lastInitial, setLastInitial] = useState(initial)
   if (initial !== lastInitial) {
     const freshSeed = parseFormState(initial)
+    const freshIsLead = (agentName ? agentName === 'code' : freshSeed.fm.name === 'code') || freshSeed.fm.role === 'lead'
+    if (!freshIsLead && freshSeed.fm.tools === undefined && effectiveTools && effectiveTools.length > 0) {
+      freshSeed.fm.tools = [...effectiveTools]
+    }
     setLastInitial(initial)
     setRaw(initial)
     setFm(freshSeed.fm)
@@ -94,12 +115,27 @@ export function AgentForm({
   const mcpServers = useMcpServersQuery()
   const codeAgent = useCodeAgentQuery()
 
+  const memberDisallowed = new Set([
+    'ask_user',
+    'team_spawn',
+    'team_send',
+    'team_list',
+    'team_wait',
+    'team_stop',
+    'schedule_task',
+    'todo_manage',
+    'skill',
+    'note',
+    'delegate',
+  ])
+
   // Hide ``<server>_<tool>`` entries from the Tools picker — they are
   // granted en bloc via the MCP server picker below, so showing them in
   // both places would let the user pick the same capability twice.
   const toolOptions: MultiSelectOption[] =
     registry.data?.tools
       .filter((t) => !mcpServers.data?.servers.some((s) => t.name.startsWith(`${s.name}_`)))
+      .filter((t) => isLead || !memberDisallowed.has(t.name))
       .map((t) => ({
         value: t.name,
         label: t.name,
@@ -145,7 +181,8 @@ export function AgentForm({
           disabled={disabled}
           toolOptions={toolOptions}
           modelOptions={modelOptions}
-          effectiveTools={codeAgent.data?.config?.tools}
+          effectiveTools={isLead ? (effectiveTools ?? codeAgent.data?.config?.tools) : effectiveTools}
+          defaultPrompt={defaultPrompt}
           updateFromForm={updateFromForm}
         />
       ) : (

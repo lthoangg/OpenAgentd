@@ -3,6 +3,7 @@ import { AlertCircle } from 'lucide-react'
 
 import { SectionCard, SectionCardHeader, SectionCardRows } from '@/components/ui/section-card'
 import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
 import { Dropdown, DropdownItem } from '@/components/ui/dropdown'
 import { Button } from '@/components/ui/button'
 import { MultiSelect, type MultiSelectOption } from '../MultiSelect'
@@ -48,6 +49,7 @@ export function FormFields({
   toolOptions,
   modelOptions,
   effectiveTools,
+  defaultPrompt,
   updateFromForm,
 }: {
   fm: AgentFrontmatter
@@ -56,8 +58,12 @@ export function FormFields({
   toolOptions: MultiSelectOption[]
   modelOptions: (ModelOption & { thinking_levels?: string[] })[]
   effectiveTools?: string[]
+  defaultPrompt?: string
   updateFromForm: (next: AgentFrontmatter, nextBody: string) => void
 }) {
+  const isLead = fm.name === 'code' || fm.role === 'lead'
+  const hasBuiltInProfile = isLead
+
   // Per-field errors computed fresh from zod on render. For the scalar
   // string fields we validate whenever the value is non-empty; empty is
   // handled by the caller's full-form check before save.
@@ -90,15 +96,16 @@ export function FormFields({
     return levels && levels.length > 0 ? levels : FALLBACK_THINKING_LEVELS
   }, [currentModelOptions, fm.model])
 
-  const hasBuiltInProfile = true
   const implicitToolNames = new Set(['skill', 'todo_manage', 'schedule_task', 'note'])
-  const builtInTools = (effectiveTools ?? []).filter(
-    (tool) => implicitToolNames.has(tool) || hasBuiltInProfile,
-  ).filter((tool) => !(fm.tools ?? []).includes(tool))
-  const extraToolOptions = (hasBuiltInProfile
-    ? toolOptions.filter((option) => !builtInTools.includes(option.value))
-    : toolOptions
-  ).filter((option) => !implicitToolNames.has(option.value))
+
+  // For the lead agent (code), core tools and implicit tools are built in.
+  // For member agents, only the tools explicitly granted in frontmatter are active.
+  const builtInTools = isLead
+    ? (effectiveTools ?? []).filter((tool) => !(fm.tools ?? []).includes(tool))
+    : []
+  const extraToolOptions = isLead
+    ? toolOptions.filter((option) => !builtInTools.includes(option.value) && !implicitToolNames.has(option.value))
+    : toolOptions.filter((option) => !implicitToolNames.has(option.value))
 
   return (
     <div className="flex flex-col gap-4">
@@ -191,9 +198,9 @@ export function FormFields({
       {/* Capabilities ──────────────────────────────────────────── */}
       <SectionCard>
         <SectionCardHeader>
-          {hasBuiltInProfile
+          {isLead
             ? 'Capabilities \u2014 extra tools and skills on top of the built-in profile'
-            : 'Capabilities \u2014 tools and skills'}
+            : 'Capabilities \u2014 tools'}
         </SectionCardHeader>
         <SectionCardRows>
         <div className="px-3 py-3 flex flex-col gap-4">
@@ -217,6 +224,45 @@ export function FormFields({
             />
           </SettingsField>
 
+        </div>
+        </SectionCardRows>
+      </SectionCard>
+
+      {/* System prompt ─────────────────────────────────────────── */}
+      <SectionCard>
+        <SectionCardHeader>
+          {isLead
+            ? 'System prompt \u2014 custom instructions'
+            : "System prompt \u2014 instructions defining this agent's behavior"}
+        </SectionCardHeader>
+        <SectionCardRows>
+        <div className="px-3 py-3 flex flex-col gap-2">
+          {isLead && !body.trim() && (
+            <div className="flex items-center justify-between text-xs text-(--color-text-muted)">
+              <span>Using built-in system prompt. Edit below to override.</span>
+              {defaultPrompt && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="xs"
+                  className="min-h-11 md:min-h-0"
+                  onClick={() => updateFromForm(fm, defaultPrompt)}
+                  disabled={disabled}
+                >
+                  Load default prompt
+                </Button>
+              )}
+            </div>
+          )}
+          <Textarea
+            value={body}
+            onChange={(e) => updateFromForm(fm, e.target.value)}
+            disabled={disabled}
+            rows={14}
+            placeholder={defaultPrompt || 'You are …'}
+            className="min-h-72 font-mono text-[13px] leading-relaxed"
+            aria-label="System prompt"
+          />
         </div>
         </SectionCardRows>
       </SectionCard>

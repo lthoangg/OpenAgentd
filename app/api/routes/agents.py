@@ -68,21 +68,31 @@ def _effective_config(cfg: AgentConfig, *, mode: str) -> AgentConfig:
     API config; callers edit extras, not the expanded runtime prompt.
     """
     data = cfg.model_copy(deep=True)
-    implicit_tools = ["skill"]
     if data.role == "lead":
-        implicit_tools += ["todo_manage", "schedule_task", "note"]
-    data.tools = [*implicit_tools, *data.tools]
-    if data.role == "lead" and data.name == "code":
-        from app.agent.builtin_prompts import (
-            openagentd_description_for_mode,
-            openagentd_tools_for_mode,
-        )
+        implicit_tools = ["skill", "todo_manage", "schedule_task", "note"]
+        data.tools = [*implicit_tools, *data.tools]
+        if data.name == "code":
+            from app.agent.builtin_prompts import (
+                openagentd_description_for_mode,
+                openagentd_prompt_for_mode,
+                openagentd_tools_for_mode,
+            )
 
-        data.description = data.description or openagentd_description_for_mode(mode)
-        data.tools = list(
-            dict.fromkeys([*openagentd_tools_for_mode(mode), *data.tools])
-        )
-        data.mcp = list(dict.fromkeys(data.mcp))
+            data.description = data.description or openagentd_description_for_mode(mode)
+            data.system_prompt = data.system_prompt or openagentd_prompt_for_mode(mode)
+            data.tools = list(
+                dict.fromkeys([*openagentd_tools_for_mode(mode), *data.tools])
+            )
+            data.mcp = list(dict.fromkeys(data.mcp))
+    elif data.role == "member":
+        from app.agent.builtin_prompts import BUILTIN_MEMBER_PROFILES
+
+        if data.name in BUILTIN_MEMBER_PROFILES:
+            bp = BUILTIN_MEMBER_PROFILES[data.name]
+            data.description = data.description or bp["description"]
+            data.system_prompt = data.system_prompt or bp["prompt"]
+            if not data.tools:
+                data.tools = list(bp["tools"])
     data.tools = list(dict.fromkeys(data.tools))
     return data
 

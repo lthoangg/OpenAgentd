@@ -105,6 +105,9 @@ export function AgentEditorPage({ name = 'code', onBack }: AgentEditorPageProps)
           {data && (
             <AgentForm
               initial={data.content}
+              agentName={name}
+              effectiveTools={data.config?.tools}
+              defaultPrompt={data.config?.system_prompt}
               onChange={setDraft}
               disabled={updateMut.isPending}
               mode={mode}

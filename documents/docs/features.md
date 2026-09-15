@@ -306,6 +306,9 @@ run from the terminal.
   reveals a compact copy button in the top-right corner that copies the table to
   the clipboard as formatted GitHub Flavored Markdown (including column alignments
   and line breaks), with zero overhead during rendering or streaming.
+- **Markdown paragraph preservation** `[v2.17.0]` — prose and report markdown rendering preserves
+  paragraph boundaries, blockquotes, and lists by normalizing excessive whitespace without indiscriminately
+  collapsing double newlines into single lines.
 - **Pin chat transcript via CSS `overflow-anchor`** `[v2.0.0]` — pins chat transcript
   scrolling using native browser `overflow-anchor` instead of per-frame JS `scrollTop`
   calculations, eliminating stream stutter and CPU churn during fast agent output.
@@ -413,16 +416,25 @@ executes tools, manages its task list, and inspects workspace repositories.
 
 - **Single-agent cockpit** `[since v1.0, updated v2.1.0]` — exactly one primary agent
   configuration (`agents/code.md`) drives every conversation.
-- **Hub-and-Spoke agent teams** `[v2.16.0]` — the lead coding agent can spawn,
+- **Hub-and-Spoke agent teams** `[v2.16.0, updated v2.17.0]` — the lead coding agent can spawn,
   coordinate, and supervise specialized subagents via the unified `delegate` tool
   loaded from markdown profiles (`agents/*.md`). Profiles and descriptions are dynamically
-  reflected in the `delegate` tool description. Subagents run asynchronously in the background,
+  reflected in the `delegate` tool description with CommonMark list separation. Subagents run asynchronously in the background,
   automatically returning their deliverables or clarifying questions back to the lead session as
   user messages tagged with `from_agent`. Spawns use monotonic
   instance handles (`profile#N`, e.g. `explorer#1`, `explorer#2`) permitting multiple concurrent
   instances of the same profile. Communication follows a strict hub-and-spoke topology: subagents
   interact exclusively with the lead (`ask_lead`, direct deliverables) and inherit the lead's active
-  model fallback. Deliverables rendered in the lead chat view are minimized by default with expandable preview toggles to keep transcripts compact. Stopping the lead cascades cancellation to all active child sessions.
+  model fallback and interaction mode (including Plan mode read-only invariants `[v2.17.0]`). Clarifying
+  questions via `ask_lead` preserve tool call IDs across turn suspensions, ensuring tool response
+  messages persist reliably to the child session database upon lead reply `[v2.17.0]`. Deliverables rendered in the lead chat view are minimized by default with expandable preview toggles to keep transcripts compact. Stopping the lead cascades cancellation to all active child sessions.
+- **System prompt editor and profile-scoped tools** `[v2.17.0]` — Agent settings
+  features a dedicated System prompt card with a monospace textarea bound to the
+  Markdown prompt body across all agent profiles (both the lead coding agent and member subagents).
+  For the lead agent, a "Load default prompt" action populates the built-in instructions into
+  the editor for customized tuning. Member agent configuration isolates profile-scoped tools,
+  filtering out lead-only orchestration tools (`delegate`, `todo_manage`, `schedule_task`,
+  `note`) and providing fallback toolsets and default instructions when omitted from disk.
 - **Clean taskboard checklist** `[v1.127.0, updated v2.1.0]` — the todo taskboard
   serves as a flat, user-readable checklist of tasks and statuses (`pending`,
   `in_progress`, `completed`, `cancelled`).
@@ -561,10 +573,12 @@ agent against it.
   copying the repo or worktree's absolute path `[v1.120.0]`; scroll-triggered pagination replaces
   the Load more button.
 - **Nested subagent sessions in the coding sidebar** `[v2.16.0]` — lead sessions with
+- **Nested subagent sessions in the coding sidebar** `[v2.16.0, updated v2.17.0]` — lead sessions with
   delegated subagents render an expandable accordion of child sessions that defaults to
   expanded while a child is running, waiting on the lead, or selected, and collapses to a
   count pill with an activity dot so background work stays visible. Individual child rows
-  can be deleted from the sidebar, and opening one shows a read-only banner with a
+  can be deleted from the sidebar with instant cache pruning `[v2.17.0]`, falling back cleanly to the
+  parent lead session, and opening one shows a read-only banner with a
   **Return to Lead** action.
 - **Anchored & regex-optimized filesystem search** `[v2.0.0]` — `glob` pattern matching
   anchors walks at the literal prefix (up to 50x faster), `grep` pre-filters files using
@@ -834,7 +848,7 @@ MCP.
 | Category | Tools |
 |---|---|
 | Filesystem | `read` (files + directory listings), `patch` (create/edit/delete/move), `glob`, `grep` |
-| Shell | `shell` (supports `background=true` returning spawned PID `[v2.0.0]`) |
+| Shell | `shell` (supports `background=true` returning spawned PID `[v2.0.0]`; read-only in Plan mode `[v2.17.0]`) |
 | Web | `web_search`, `web_fetch` (fast HTML extraction via `trafilatura` `[v2.0.0]`) |
 | Generation | `generate_image`, `generate_video` |
 | Scheduling | `schedule_task` (reminders + self-scheduling agentic loops) `[v1.70.0]` |
@@ -1029,6 +1043,7 @@ Four orthogonal ways to add capability.
     The tool inventory is grouped by origin (built-in, then one group per MCP server)
     and open by default so available tools are immediately visible; the name/description filter appears past eight tools `[v1.125.0]`.
 - **Sandboxed UI artifacts** `[v1.36.0]` *(beta)* — tool-produced HTML UI
+- **Sandboxed UI artifacts** `[v1.36.0, updated v2.17.0]` *(beta)* — tool-produced HTML UI
   resources render as sandboxed sibling chat artifacts. The first producer is
   MCP Apps: MCP tools that declare `_meta.ui.resourceUri` can render `ui://`
   resources with MIME `text/html;profile=mcp-app`. First slice targets
@@ -1038,7 +1053,8 @@ Four orthogonal ways to add capability.
   newest artifact for that resource. The same-server bridge can invoke tools
   currently advertised by the artifact's originating MCP server only `[v1.37.0]`.
   Production desktop and mobile Tauri shells allow `about:` frames so `srcdoc`
-  MCP Apps render interactively under the packaged CSP `[v1.44.11]`.
+  MCP Apps render interactively under the packaged CSP `[v1.44.11]`. The MCP app
+  host runs on `@modelcontextprotocol/ext-apps` v2.0 with modular client/core architecture `[v2.17.0]`.
 - **MCP `PATH` resolution on desktop** `[v1.17.x]` — desktop auto-resolves the
   shell `PATH` so `npx` / `uvx` stdio servers can find their commands. Restart
   any MCP server in Settings to re-detect.

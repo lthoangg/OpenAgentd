@@ -88,7 +88,7 @@ Next implementation priorities after this batch:
 | ID | Plan | Status | Progress and remaining work |
 | --- | --- | --- | --- |
 | 18 | Make contrast requirements executable | Partial | Input/textarea placeholders no longer dilute muted text to 60%; a solid theme-aware keyboard outline supplements decorative focus rings. Remaining: browser-computed contrast assertions, both-theme inspection, and broader state coverage. |
-| 19 | Enforce touch targets through primitives | Partial | Shared buttons have coarse-pointer minimum targets; Settings close and transcript scroll-to-bottom controls are enlarged on narrow layouts. Remaining: dense raw-button call sites and visual/touch parity checks. |
+| 19 | Enforce touch targets through primitives | Partial | Shared buttons have coarse-pointer minimum targets and the Settings close control is enlarged on narrow layouts. The transcript scroll-to-bottom control is intentionally compact (28px) at every breakpoint, so it no longer meets the coarse-pointer minimum. Remaining: dense raw-button call sites and visual/touch parity checks. |
 | 20 | Remove essential tooltip-only information | Pending | Add tap-accessible full paths, titles, and state explanations; retain tooltips as supplementary information. |
 | 21 | Guide developers to their first useful task | Pending | Connect workspace/provider/model readiness to useful investigation/review starting actions. Preserve drafts and require explicit submission; never auto-run a suggested task. |
 | 22 | Surface sessions needing attention | Pending | Design a durable activity model before adding cross-workspace status views. It must cover input requests, failed runs, notifications, pagination, and restart behavior without changing the normal recent-session list. |

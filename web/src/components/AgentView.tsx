@@ -419,10 +419,10 @@ export function AgentView({ blocks, currentBlocks, isWorking, isTurnOpen = isWor
     {showScrollBtn && (
         <button
           onClick={() => scrollToBottom('smooth')}
-          className="absolute bottom-16 left-1/2 z-10 flex h-11 w-11 -translate-x-1/2 items-center justify-center rounded-sm border border-(--color-border) bg-(--bg-card) p-1 text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2) md:h-8 md:w-8"
+          className="absolute bottom-16 left-1/2 z-10 flex h-7 w-7 -translate-x-1/2 items-center justify-center rounded-sm border border-(--color-border) bg-(--bg-card) text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2) active:scale-90 motion-reduce:active:scale-100"
           aria-label="Scroll to bottom"
         >
-          <ChevronDown size={16} />
+          <ChevronDown size={14} />
         </button>
 
     )}

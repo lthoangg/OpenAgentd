@@ -632,6 +632,11 @@ agent against it.
   failed or stale redo commands preserve composer drafts `[v2.13.0]`.
   Commands without an available boundary or with failed workspace restores return 409
   and preserve database state `[v2.13.0]`.
+  Snapshot repos borrow the workspace repository's object store, so committed
+  content is stored once, and every snapshot is anchored by a ref so background
+  repacking never drops a live undo point. A per-session size cap
+  (`SNAPSHOT_MAX_BYTES`, default 256 MiB) drops the oldest snapshots once a repo
+  outgrows it; `SNAPSHOT_SEED_OBJECTS=false` disables object reuse `[v2.17.0]`.
 - **`/init` AGENTS.md analysis & generation** `[v1.9.0, v2.0.0]` — analyzes codebase
   structure and generates standard `AGENTS.md` context files at repository root and
   subdirectories with a guided analysis protocol.

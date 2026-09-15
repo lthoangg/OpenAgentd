@@ -31,6 +31,8 @@ def slim_lifespan(monkeypatch: pytest.MonkeyPatch) -> Mock:
     monkeypatch.setattr(app_module, "setup_otel", Mock())
     monkeypatch.setattr(app_module, "start_otel_retention", Mock())
     monkeypatch.setattr(app_module, "stop_otel_retention", AsyncMock())
+    monkeypatch.setattr(app_module, "start_snapshot_maintenance", Mock())
+    monkeypatch.setattr(app_module, "stop_snapshot_maintenance", AsyncMock())
     monkeypatch.setattr(app_module, "shutdown_otel", Mock())
     monkeypatch.setattr(app_module.stream_store, "close", AsyncMock())
     monkeypatch.setattr(

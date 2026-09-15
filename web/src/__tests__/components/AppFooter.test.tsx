@@ -17,14 +17,18 @@ mock.module('@/queries/useHealthQuery', () => ({
   useHealthQuery: () => ({ isSuccess: true, isError: false, isLoading: false }),
 }))
 
+const statusProbes: string[] = []
 mock.module('@/api/client', () => ({
-  getCodingWorkspaceStatus: mock(async () => ({
-    workspace: '/path/to/project',
-    name: 'project',
-    is_git_repo: true,
-    branch: 'main',
-    dirty: { staged: 1, unstaged: 2, untracked: 0 },
-  })),
+  getCodingWorkspaceStatus: async (workspace: string) => {
+    statusProbes.push(workspace)
+    return {
+      workspace: '/path/to/project',
+      name: 'project',
+      is_git_repo: true,
+      branch: 'main',
+      dirty: { staged: 1, unstaged: 2, untracked: 0 },
+    }
+  },
 }))
 
 function renderWithQueryClient(ui: React.ReactElement) {
@@ -39,12 +43,28 @@ function renderWithQueryClient(ui: React.ReactElement) {
 describe('AppFooter', () => {
   beforeEach(() => {
     mockOpenSettings.mockClear()
+    statusProbes.length = 0
   })
 
   it('renders backend status indicator', () => {
     renderWithQueryClient(<AppFooter />)
     expect(screen.getByRole('status', { name: 'Application status' })).toBeTruthy()
     expect(screen.getByText('local')).toBeTruthy()
+  })
+
+  it('shows the git branch for a coding workspace', async () => {
+    renderWithQueryClient(<AppFooter workspace="/path/to/project" />)
+
+    expect(await screen.findByText('main')).toBeTruthy()
+    expect(statusProbes).toEqual(['/path/to/project'])
+  })
+
+  it('skips the git branch and its probe for the chat workspace', () => {
+    renderWithQueryClient(<AppFooter workspace="/Users/name" chatWorkspace />)
+
+    expect(screen.getByRole('status', { name: 'Application status' })).toBeTruthy()
+    expect(screen.queryByText('main')).toBeNull()
+    expect(statusProbes).toEqual([])
   })
 
   it('renders model name and thinking level when provided and triggers session settings', async () => {

@@ -32,6 +32,17 @@ function renderCard() {
   )
 }
 
+function renderChatCard() {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  })
+  return render(
+    <QueryClientProvider client={client}>
+      <WorkspaceInfoCard workspace="/Users/someone" chatWorkspace />
+    </QueryClientProvider>,
+  )
+}
+
 afterEach(() => {
   cleanup()
   requestCount = 0
@@ -49,5 +60,16 @@ describe('WorkspaceInfoCard', () => {
     await user.click(screen.getByRole('button', { name: 'Retry workspace status' }))
     await waitFor(() => expect(screen.getByText('main')).toBeInTheDocument())
     expect(getCodingWorkspaceStatus).toHaveBeenCalledTimes(2)
+  })
+
+  it('renders a chat empty state without git status or the home path', () => {
+    renderChatCard()
+
+    expect(screen.getByRole('heading', { name: 'Chat' })).toBeInTheDocument()
+    expect(screen.getByText(/runs here, in your home directory/i)).toBeInTheDocument()
+    // No repository-shaped fallbacks leaking into the chat surface.
+    expect(screen.queryByText('Not a git repository')).toBeNull()
+    expect(screen.queryByText('/Users/someone')).toBeNull()
+    expect(getCodingWorkspaceStatus).not.toHaveBeenCalled()
   })
 })

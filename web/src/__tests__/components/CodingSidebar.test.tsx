@@ -90,12 +90,14 @@ let workspaceSessionsData: TestSession[] = []
 let workspaceHasNextPage = false
 let workspaceIsFetchingNextPage = false
 const fetchWorkspaceNextPage = mock(() => {})
+let chatWorkspaceEntry: { path: string; name: string } | null = null
 const workspaceTreeResponse = () => ({
   repositories: Array.from(new Set(sessionsData.filter((session) => session.mode === 'coding' && session.workspace).map((session) => session.workspace as string))).map((path) => ({
     path,
     name: path.split('/').pop() || path,
     worktrees: [],
   })),
+  chat: chatWorkspaceEntry,
 })
 
 class IntersectionObserverStub {
@@ -176,6 +178,7 @@ mock.module('lucide-react', () => ({
   HelpCircle: Icon,
   Home: Icon,
   Loader2: Icon,
+  MessageCircle: Icon,
   MoreHorizontal: Icon,
   Plus: Icon,
   Search: Icon,
@@ -622,6 +625,7 @@ describe('CodingSidebar workspace trust flow', () => {
     localStorage.clear()
     sessionsData = []
     workspaceSessionsData = []
+    chatWorkspaceEntry = null
     workspaceHasNextPage = false
     workspaceIsFetchingNextPage = false
     isTauri = true
@@ -1577,5 +1581,52 @@ describe('CodingSidebar workspace trust flow', () => {
 
     await user.click(copyOption)
     expect(writeText).toHaveBeenCalledWith('/repo/project')
+  })
+
+  it('pins the chat workspace and keeps repository actions off it', async () => {
+    chatWorkspaceEntry = { path: '/home/user', name: 'Chat' }
+    sessionsData = [
+      {
+        id: 'chat-1',
+        title: 'Trip planning',
+        agent_name: 'code',
+        created_at: '2026-09-15T00:00:00Z',
+        updated_at: '2026-09-15T00:00:00Z',
+        workspace: '/home/user',
+      },
+    ]
+    workspaceSessionsData = sessionsData
+
+    await renderCodingSidebarForSessions('chat-1')
+
+    // Labelled "Chat" rather than the home directory's basename, and the
+    // session list under it is reachable from the pinned row.
+    expect(screen.getByText('Chat')).toBeTruthy()
+    expect(screen.queryByText('user')).toBeNull()
+
+    // No worktree/repo action menu: the chat root is not a repository.
+    expect(screen.queryByLabelText('Actions for Chat')).toBeNull()
+    expect(screen.getByLabelText('New session in Chat')).toBeTruthy()
+  })
+
+  it('keeps repository rows and their action menu unchanged', async () => {
+    chatWorkspaceEntry = { path: '/home/user', name: 'Chat' }
+    sessionsData = [
+      {
+        id: 'session-1',
+        title: 'Feature session',
+        agent_name: 'lead',
+        created_at: '2026-05-13T00:00:00Z',
+        updated_at: '2026-05-13T00:00:00Z',
+        mode: 'coding',
+        workspace: '/repo/project',
+      },
+    ]
+    workspaceSessionsData = sessionsData
+
+    await renderCodingSidebarForSessions('session-1')
+
+    expect(screen.getByText('project')).toBeTruthy()
+    expect(screen.getByLabelText('Actions for project')).toBeTruthy()
   })
 })

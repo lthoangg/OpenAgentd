@@ -6,13 +6,18 @@
  * "what's on your mind?" mascot with concrete context about the workspace
  * the agent is bound to: name, path, git branch, dirty counts, last commit.
  *
+ * The chat workspace renders a chat variant instead: its root is the user's
+ * home directory, so the path, git branch, and dirty counts are noise (and
+ * the path would just echo the account name). Pass ``chatWorkspace`` to get
+ * that variant — it also skips the git status request entirely.
+ *
  * Backed by ``GET /api/agent/workspace/status``. Fetched once on mount;
  * manual refresh via the button — no polling.
  */
 
 import { useQuery } from '@tanstack/react-query'
 import { formatDistanceToNowStrict } from 'date-fns'
-import { Folder, GitBranch, RefreshCw } from 'lucide-react'
+import { Folder, GitBranch, MessageCircle, RefreshCw } from 'lucide-react'
 import { formatFullDateTime } from '@/utils/format'
 
 import { getCodingWorkspaceStatus } from '@/api/client'
@@ -23,17 +28,38 @@ import { workspaceLabel } from '@/utils/workspace'
 
 interface Props {
   workspace: string
+  /** True when ``workspace`` is the chat root (see ``useChatWorkspace``). */
+  chatWorkspace?: boolean
 }
 
-export function WorkspaceInfoCard({ workspace }: Props) {
+export function WorkspaceInfoCard({ workspace, chatWorkspace = false }: Props) {
   const { data, isLoading, isError, isFetching, refetch } = useQuery({
     queryKey: queryKeys.coding.status(workspace),
     queryFn: ({ signal }) => getCodingWorkspaceStatus(workspace, signal),
+    // Chat has no repository to report on, so the git-shaped request is
+    // skipped rather than rendered as "Not a git repository".
+    enabled: !chatWorkspace,
     // Workspace status is informational and can be reused across route
     // transitions; cache briefly to avoid duplicate git status probes when
     // coding views remount for the same workspace.
     staleTime: 30_000,
   })
+
+  if (chatWorkspace) {
+    return (
+      <div className="mx-auto w-full max-w-md px-4 py-4">
+        <div className="flex min-w-0 items-center gap-2">
+          <MessageCircle size={16} className="shrink-0 text-(--color-accent)" aria-hidden="true" />
+          <h2 className="truncate text-sm font-medium text-(--color-text)">Chat</h2>
+        </div>
+        <p className="mt-2 text-xs text-(--color-text-muted)">
+          OpenAgentd runs here, in your home directory. Ask about your own files by
+          name, type <span className="font-medium text-(--color-text-2)">@</span> to
+          reference one, or drop a file into the composer.
+        </p>
+      </div>
+    )
+  }
 
   const name = data?.name ?? workspaceLabel(workspace)
   const dirty = data?.dirty

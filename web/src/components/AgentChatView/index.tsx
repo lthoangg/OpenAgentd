@@ -25,6 +25,7 @@ import { CodingWorkspacePanel } from '../CodingWorkspacePanel'
 import { CodingFileViewerPanel } from '../CodingFileViewerPanel'
 import { useTodosQuery } from '@/queries/useTodosQuery'
 import { useProvidersQuery } from '@/queries'
+import { isChatWorkspacePath, useChatWorkspace } from '@/queries/useChatWorkspace'
 import { useAgentStore, isAwaitingRestartOutput } from '@/stores/useAgentStore'
 import { useShallow } from 'zustand/react/shallow'
 import { useUIStore } from '@/stores/useUIStore'
@@ -107,6 +108,11 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
   const queryClient = useQueryClient()
   const isMobile = useIsMobile()
   const { isMacOverlay } = usePlatform()
+  // Chat sessions run on the same screen as coding workspaces but the root is
+  // not a repository: labels read "Chat" and the dock has no Git tab.
+  const chatWorkspace = useChatWorkspace()
+  const isChatWorkspace = isChatWorkspacePath(workspace, chatWorkspace)
+  const workspaceName = workspace ? workspaceLabel(workspace, chatWorkspace) : ''
   // Manual drag pattern: a mousedown handler that only starts a drag
   // when the user pressed on the bare header, not on a child button.
   // The hook returns `{}` outside Tauri so the spread is a no-op in
@@ -310,6 +316,7 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
   } = useSessionBootstrap({
     sessionId,
     workspace,
+    chatWorkspace,
     agentWorkspace,
     hasCodingWorkspace,
     isCodingSessionLoading,
@@ -404,6 +411,7 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
           isMacOverlay={isMacOverlay}
           isMobile={isMobile}
           workspace={workspace}
+          chatWorkspace={chatWorkspace}
           sessionTitle={sessionTitle}
           onCodingSidebarToggle={handleCodingSidebarToggle}
           headerTokens={headerTokens}
@@ -506,16 +514,26 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
           <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
             <div className="h-8 w-8 animate-spin rounded-full border-2 border-(--color-border) border-t-(--color-accent)" />
             <div>
-              <h2 className="text-sm font-medium text-(--color-text)">Opening coding session…</h2>
-              <p className="mt-1 text-xs text-(--color-text-muted)">Loading the saved workspace for this session.</p>
+              <h2 className="text-sm font-medium text-(--color-text)">
+                {isChatWorkspace ? 'Opening chat…' : 'Opening coding session…'}
+              </h2>
+              <p className="mt-1 text-xs text-(--color-text-muted)">
+                {isChatWorkspace
+                  ? 'Loading this conversation.'
+                  : 'Loading the saved workspace for this session.'}
+              </p>
             </div>
           </div>
         ) : workspace && agentRegistryLoading ? (
           <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
             <div className="h-8 w-8 animate-spin rounded-full border-2 border-(--color-border) border-t-(--color-accent)" />
             <div>
-              <h2 className="text-sm font-medium text-(--color-text)">Opening coding workspace…</h2>
-              <p className="mt-1 text-xs text-(--color-text-muted)">Preparing agents for {workspace}</p>
+              <h2 className="text-sm font-medium text-(--color-text)">
+                {isChatWorkspace ? 'Opening chat…' : 'Opening coding workspace…'}
+              </h2>
+              <p className="mt-1 text-xs text-(--color-text-muted)">
+                {isChatWorkspace ? 'Preparing Chat' : `Preparing agents for ${workspace}`}
+              </p>
             </div>
           </div>
         ) : !workspace ? (
@@ -537,7 +555,7 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
               emptyState={
                 workspace ? (
                   <div className="flex flex-col items-center justify-center py-16">
-                    <WorkspaceInfoCard workspace={workspace} />
+                    <WorkspaceInfoCard workspace={workspace} chatWorkspace={isChatWorkspace} />
                   </div>
                 ) : undefined
               }
@@ -610,7 +628,9 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
             placeholder={
               isAgentWorking
                 ? 'Agent working… type to interrupt'
-                : `Coding in ${workspaceLabel(workspace)}`
+                : isChatWorkspace
+                  ? 'Ask anything…'
+                  : `Coding in ${workspaceName}`
             }
             capabilities={leadCapabilities}
             interactionMode={sessionInteractionMode}
@@ -648,6 +668,7 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
             <CodingWorkspacePanel
               workspace={workspace}
               open
+              chatWorkspace={isChatWorkspace}
               initialTab={codingPanel}
               mobile={isMobile}
               mobileDragOffset={codingPanelDragOffset}
@@ -669,6 +690,7 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
 
       <AppFooter
         workspace={workspace}
+        chatWorkspace={isChatWorkspace}
         sessionId={sessionIdState}
         sessionModel={sessionModel}
         sessionThinkingLevel={sessionThinkingLevel}

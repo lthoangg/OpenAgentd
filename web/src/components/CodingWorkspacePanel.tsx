@@ -89,6 +89,7 @@ export function CodingWorkspacePanel({
   onFileSelect,
   onAddComment,
   onOpenPalette,
+  chatWorkspace = false,
 }: {
   workspace: string
   open: boolean
@@ -103,11 +104,28 @@ export function CodingWorkspacePanel({
   onFileSelect?: (file: WorkspaceFileInfo | null) => void
   onAddComment?: (path: string, startLine: number, endLine: number) => void
   onOpenPalette?: () => void
+  /**
+   * True when ``workspace`` is the chat root (see ``useChatWorkspace``).
+   * Chat workspaces are not repositories: the Git review tab is hidden and its
+   * git queries stay disabled so opening the dock on ``~`` neither probes a
+   * home-sized repo nor offers whole-home discard/revert actions.
+   */
+  chatWorkspace?: boolean
 }) {
   const prefersReducedMotion = useReducedMotion()
   const { os } = usePlatform()
-  const [tabs, setTabs] = useState<WorkspacePanelTab[]>([{ id: 'review', type: 'review', title: 'Git' }])
-  const [activeTabId, setActiveTabId] = useState('review')
+  // Chat workspaces have no Git review tab — the root is not a repository.
+  const defaultTabId = chatWorkspace ? '' : 'review'
+  const [tabs, setTabs] = useState<WorkspacePanelTab[]>(
+    chatWorkspace ? [] : [{ id: 'review', type: 'review', title: 'Git' }],
+  )
+  // A panel mounted for a coding workspace can be re-used for a chat one, so
+  // filter the review tab out of the strip rather than only skipping it at
+  // construction time.
+  const visibleTabs = chatWorkspace
+    ? tabs.filter((tab) => tab.type !== 'review')
+    : tabs
+  const [activeTabId, setActiveTabId] = useState(defaultTabId)
   const [mobileFileActions, setMobileFileActions] = useState<ChangedFileInfo | null>(null)
   const [mobileCommitActions, setMobileCommitActions] = useState<{ sha: string; shortSha: string; subject: string } | null>(null)
   const [desktopCommitActions, setDesktopCommitActions] = useState<{ sha: string; shortSha: string; subject: string; x: number; y: number } | null>(null)
@@ -129,13 +147,13 @@ export function CodingWorkspacePanel({
   const diff = useQuery({
     queryKey: queryKeys.coding.diff(workspace),
     queryFn: ({ signal }) => getCodingWorkspaceGitDiff(workspace, undefined, signal),
-    enabled: open,
+    enabled: open && !chatWorkspace,
     staleTime: 5_000,
   })
   const workspaceStatus = useQuery({
     queryKey: queryKeys.coding.status(workspace),
     queryFn: ({ signal }) => getCodingWorkspaceStatus(workspace, signal),
-    enabled: open,
+    enabled: open && !chatWorkspace,
     staleTime: 10_000,
   })
   const changedFiles = useMemo(() => collectChangedFiles(diff.data), [diff.data])
@@ -174,7 +192,7 @@ export function CodingWorkspacePanel({
     queryFn: ({ pageParam, signal }) => getCodingWorkspaceGitHistory(workspace, historyLimit, pageParam, allBranches, signal),
     initialPageParam: null as string | null,
     getNextPageParam: (lastPage) => lastPage.next_cursor ?? null,
-    enabled: open && activeTabId === 'review' && (subTab === 'commits' || subTab === 'tree'),
+    enabled: open && !chatWorkspace && activeTabId === 'review' && (subTab === 'commits' || subTab === 'tree'),
     staleTime: 10_000,
   })
 
@@ -237,7 +255,7 @@ export function CodingWorkspacePanel({
   const commitDiff = useQuery({
     queryKey: queryKeys.coding.commitDiff(workspace, expandedCommitSha ?? ''),
     queryFn: ({ signal }) => getCodingWorkspaceCommitDiff(workspace, expandedCommitSha ?? '', signal),
-    enabled: open && activeTabId === 'review' && subTab === 'commits' && expandedCommitSha !== null,
+    enabled: open && !chatWorkspace && activeTabId === 'review' && subTab === 'commits' && expandedCommitSha !== null,
     staleTime: 30_000,
   })
 
@@ -338,17 +356,24 @@ export function CodingWorkspacePanel({
   }, [terminalOpenKey, focusOrOpenTerminal, handledTerminalOpenKeyRef])
 
   useEffect(() => {
+    // Switching an already-mounted panel to a chat workspace drops the stale
+    // Git tab (the root is not a repository).
+    if (chatWorkspace && activeTabId === 'review') {
+      setActiveTabId('')
+      return
+    }
     if (activeTabId === 'review') return
+    if (activeTabId === defaultTabId) return
     if (activeTabId.startsWith('terminal:')) {
       const termId = activeTabId.slice(9)
       const isLiveInStore = terminalMetas.some((m) => m.id === termId)
       if (!isLiveInStore && !tabs.some((tab) => tab.id === activeTabId)) {
-        setActiveTabId('review')
+        setActiveTabId(defaultTabId)
       }
     } else if (!tabs.some((tab) => tab.id === activeTabId)) {
-      setActiveTabId('review')
+      setActiveTabId(defaultTabId)
     }
-  }, [tabs, activeTabId, terminalMetas])
+  }, [tabs, activeTabId, terminalMetas, defaultTabId, chatWorkspace])
 
   const closeTab = (id: string) => {
     if (id === 'review') return
@@ -361,7 +386,7 @@ export function CodingWorkspacePanel({
     }
     setTabs((current) => current.filter((item) => item.id !== id))
     if (activeTabId === id) {
-      setActiveTabId('review')
+      setActiveTabId(defaultTabId)
       onFileSelect?.(null)
     }
   }
@@ -518,7 +543,7 @@ export function CodingWorkspacePanel({
         )}
         <div className="flex min-w-0 items-center gap-1 border-b border-(--color-border) bg-(--bg-card) px-2 py-1">
           <div className={cn('scrollbar-none flex min-w-0 items-center gap-1 overflow-x-auto', mobile ? 'max-w-[calc(100%-4rem)]' : 'max-w-[calc(100%-2rem)]')}>
-            {tabs.map((tabItem) => (tabItem.type === 'terminal' ? (
+            {visibleTabs.map((tabItem) => (tabItem.type === 'terminal' ? (
               <TerminalTabButton
                 key={tabItem.id}
                 buttonRef={(node) => {
@@ -619,7 +644,7 @@ export function CodingWorkspacePanel({
           </Tooltip>
         </div>
         <div className="min-h-0 flex-1 overflow-hidden">
-          {activeTab?.type === 'review' ? (
+          {!chatWorkspace && activeTab?.type === 'review' ? (
             <div className="flex h-full min-h-0 flex-col">
               {diff.data?.is_git_repo && (
                 <div className="flex min-h-9 shrink-0 items-center justify-between gap-2 border-b border-(--color-border) bg-(--bg-card) p-1">
@@ -813,15 +838,26 @@ export function CodingWorkspacePanel({
               termId={activeTab.termId}
               workspace={workspace}
             />
+          ) : chatWorkspace ? (
+            <div className="flex h-full items-center justify-center px-4">
+              <p className="max-w-56 text-center text-xs text-(--color-text-subtle)">
+                This is the chat workspace, so there is no Git changes view. Open a
+                file with{' '}
+                <span className="font-medium text-(--color-text-muted)">{formatShortcut('P', os)}</span>{' '}
+                or start a terminal.
+              </p>
+            </div>
           ) : null}
         </div>
         <button
           type="button"
           onClick={() => {
             void files.refetch()
-            void diff.refetch()
-            if (subTab === 'commits' || subTab === 'tree') {
-              void gitHistory.refetch()
+            if (!chatWorkspace) {
+              void diff.refetch()
+              if (subTab === 'commits' || subTab === 'tree') {
+                void gitHistory.refetch()
+              }
             }
           }}
           className="flex h-9 items-center justify-center gap-1.5 border-t border-(--color-border) bg-(--bg-card) px-3 text-xs text-(--color-text-muted) hover:bg-(--bg-key)"

@@ -67,8 +67,19 @@ export interface CodingWorkspaceTreeRepository {
   worktrees: CodingWorkspaceTreeWorktree[]
 }
 
+/**
+ * The prebuilt chat workspace, rendered as a pinned sidebar row. It is not a
+ * repository: the backend never stores it in `coding_workspaces`, so it has no
+ * worktrees and its path is not a valid worktree source.
+ */
+export interface CodingWorkspaceTreeChat {
+  path: string
+  name: string
+}
+
 export interface CodingWorkspaceTreeResponse {
   repositories: CodingWorkspaceTreeRepository[]
+  chat?: CodingWorkspaceTreeChat | null
 }
 
 export interface WorkspaceBrowseResponse {

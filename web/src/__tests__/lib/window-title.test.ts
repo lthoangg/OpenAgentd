@@ -17,4 +17,20 @@ describe('buildDesktopWindowTitle', () => {
   it('falls back to the app name when no title is available', () => {
     expect(buildDesktopWindowTitle({ sessionTitle: '   ' })).toBe('OpenAgentd')
   })
+
+  it('prefers the chat label over the workspace basename', () => {
+    expect(
+      buildDesktopWindowTitle({ workspace: '/Users/name', workspaceName: 'Chat' }),
+    ).toBe('Chat')
+  })
+
+  it('lets the session title win over the workspace label', () => {
+    expect(
+      buildDesktopWindowTitle({
+        workspace: '/Users/name',
+        workspaceName: 'Chat',
+        sessionTitle: 'Trip planning',
+      }),
+    ).toBe('Trip planning')
+  })
 })

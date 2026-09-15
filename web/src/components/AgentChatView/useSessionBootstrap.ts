@@ -25,6 +25,7 @@ import { resolveSession } from '@/api/client'
 import { useAgentStore } from '@/stores/useAgentStore'
 import { prependSession, prependWorkspaceSession } from '@/stores/cache-invalidation-bridge'
 import { saveLastCodingWorkspace, workspaceLabel } from '@/utils/workspace'
+import { isChatWorkspacePath } from '@/queries/useChatWorkspace'
 import { setTraySession } from '@/lib/tray'
 import { isEditableTarget } from '@/lib/is-editable-target'
 import { attachmentToFile } from './helpers'
@@ -40,6 +41,8 @@ interface SessionDraft {
 export interface UseSessionBootstrapArgs {
   sessionId?: string
   workspace: string | null
+  /** Chat entry from the workspace tree — labels the tray as "Chat". */
+  chatWorkspace?: { path: string; name: string } | null
   agentWorkspace: string | null
   hasCodingWorkspace: boolean
   isCodingSessionLoading: boolean
@@ -69,6 +72,7 @@ export interface UseSessionBootstrapResult {
 export function useSessionBootstrap({
   sessionId,
   workspace,
+  chatWorkspace = null,
   agentWorkspace,
   hasCodingWorkspace,
   isCodingSessionLoading,
@@ -431,14 +435,18 @@ export function useSessionBootstrap({
   //   - everything else → empty (tray shows ``No active session``)
   useEffect(() => {
     let label = ''
-    const identity = workspace ? workspaceLabel(workspace) : sessionTitle ?? ''
+    const workspaceName = workspace ? workspaceLabel(workspace, chatWorkspace) : ''
+    const identity = workspace ? workspaceName : sessionTitle ?? ''
     if (isAgentWorking) {
       label = identity ? `Working: ${identity}` : 'Working…'
     } else if (workspace) {
-      label = `Coding: ${workspaceLabel(workspace)}`
+      // Chat's workspace name *is* "Chat", so "Chat: Chat" would be silly.
+      label = isChatWorkspacePath(workspace, chatWorkspace)
+        ? sessionTitle ? `Chat: ${sessionTitle}` : 'Chat'
+        : `Coding: ${workspaceName}`
     }
     void setTraySession(label)
-  }, [workspace, sessionTitle, isAgentWorking])
+  }, [workspace, sessionTitle, isAgentWorking, chatWorkspace])
 
   return {
     isEmptyIdleSession,

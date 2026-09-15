@@ -7,6 +7,7 @@ export {
   useUpdateSessionTitleMutation,
 } from './useSessionsQuery'
 export { useWorkspaceFilesQuery } from './useWorkspaceFilesQuery'
+export { useChatWorkspace, isChatWorkspacePath } from './useChatWorkspace'
 export {
   useCodeAgentQuery,
   useAgentFileQuery,

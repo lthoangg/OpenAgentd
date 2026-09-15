@@ -10,7 +10,11 @@ import type { ContentBlock } from '@/api/types'
 // which surfaces as an unrelated module-resolution error rather than a test
 // failure. The real icons render fine and cost nothing measurable.
 mock.module('@tanstack/react-router', () => ({ useNavigate: () => () => Promise.resolve() }))
-mock.module('@tanstack/react-query', () => ({ useQueryClient: () => ({}) }))
+mock.module('@tanstack/react-query', () => ({
+  useQueryClient: () => ({}),
+  useQuery: () => ({ data: undefined, isLoading: false }),
+  QueryClientProvider: ({ children }: { children: unknown }) => children,
+}))
 mock.module('@/queries/useTodosQuery', () => ({ useTodosQuery: () => ({ data: { todos: [] } }) }))
 mock.module('@/queries', () => ({ useProvidersQuery: () => ({ data: { providers: [] } }) }))
 mock.module('@/queries/useAgentsQuery', () => ({
@@ -135,7 +139,7 @@ mock.module('@/components/AgentChatView/useDragDrop', () => ({
     handleDrop: () => {},
   }),
 }))
-mock.module('@/utils/workspace', () => ({ workspaceLabel: (workspace: string) => workspace }))
+mock.module('@/utils/workspace', () => ({ workspaceLabel: (workspace: string) => workspace, sameWorkspacePath: (a: string, b: string) => a === b, getChatWorkspaceEntry: () => null, setChatWorkspaceEntry: () => {} }))
 
 const initialState = typeof useAgentStore.getInitialState === 'function'
   ? useAgentStore.getInitialState()

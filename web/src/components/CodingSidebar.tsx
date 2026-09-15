@@ -34,6 +34,7 @@ import {
   GitBranch,
   HelpCircle,
   Loader2,
+  MessageCircle,
   MoreHorizontal,
   Pencil,
   Plus,
@@ -42,6 +43,7 @@ import {
   X,
 } from 'lucide-react'
 import { useDeleteSessionMutation, useSessionsQuery, useUpdateSessionTitleMutation } from '@/queries/useSessionsQuery'
+import { isChatWorkspacePath, useChatWorkspace } from '@/queries/useChatWorkspace'
 import { queryKeys } from '@/queries/keys'
 import { getCodingWorkspaceTree, listWorktrees } from '@/api/client'
 import { workspaceLabel } from '@/utils/workspace'
@@ -180,7 +182,15 @@ export function CodingSidebar({
     () => new Map(workspaceTree.map((repo) => [repo.path, repo])),
     [workspaceTree],
   )
-  const visibleWorkspaces = workspaceTree.map((repo) => repo.path)
+  // The chat workspace is a pinned, non-repository row: the backend never
+  // stores it in ``coding_workspaces``, so it is prepended here.
+  const chatWorkspace = useChatWorkspace()
+  const isChatPath = (path: string | null | undefined) =>
+    isChatWorkspacePath(path, chatWorkspace)
+  const visibleWorkspaces = [
+    ...(chatWorkspace ? [chatWorkspace.path] : []),
+    ...workspaceTree.map((repo) => repo.path).filter((path) => !isChatPath(path)),
+  ]
   const activeWorkspace = workspace ?? null
   const worktreeSourceByDirectory = buildWorktreeSourceByDirectory(workspaceTree)
 
@@ -489,7 +499,10 @@ export function CodingSidebar({
   }
 
   const deletedWorktreeSet = removedWorktreePaths
-  const sourceWorkspaces = sourceWorkspacePaths(workspaceTree, deletedWorktreeSet)
+  const sourceWorkspaces = [
+    ...(chatWorkspace ? [chatWorkspace.path] : []),
+    ...sourceWorkspacePaths(workspaceTree, deletedWorktreeSet).filter((path) => !isChatPath(path)),
+  ]
   const activeWorktreeSource = activeWorkspace ? worktreeSourceByDirectory.get(activeWorkspace) : null
 
   const rightPanelWidth = typeof document !== 'undefined'
@@ -679,6 +692,10 @@ export function CodingSidebar({
           const sourceSessions = sessionsByWorkspace.get(path) ?? []
           const sourceRunningSessions = sourceSessions.filter((s) => s.running === true)
           const sourceHasRunningSession = sourceRunningSessions.length > 0
+          // Chat is pinned and not a repository: no worktrees, no rename, no
+          // removal — only the expand toggle and "New session" apply.
+          const sourceIsChat = isChatPath(path)
+          const sourceLabel = sourceIsChat ? (chatWorkspace?.name ?? path) : workspaceLabel(path)
           const repository = workspaceByPath.get(path)
           const nestedWorktrees = visibleNestedWorktrees(repository, deletedWorktreeSet)
 
@@ -691,21 +708,28 @@ export function CodingSidebar({
                     render={
                       <LongPressButton
                         enabled={mobileLongPressActions}
-                        onLongPress={() => setMobileWorkspaceActions({ path, kind: 'main' })}
+                        onLongPress={() => {
+                          if (sourceIsChat) return
+                          setMobileWorkspaceActions({ path, kind: 'main' })
+                        }}
                         type="button"
                         onClick={() => toggleWorkspaceExpanded(path)}
                         onContextMenu={(event) => {
-                          if (mobileLongPressActions) return
+                          if (mobileLongPressActions || sourceIsChat) return
                           event.preventDefault()
                           setDesktopWorkspaceActions({ path, kind: 'main', x: event.clientX, y: event.clientY })
                         }}
                         className="flex min-w-0 flex-1 items-center gap-1.5 truncate rounded-sm px-1.5 py-1 text-left text-xs"
                         aria-expanded={sourceIsExpanded}
-                        aria-label={`${sourceIsExpanded ? 'Collapse' : 'Expand'} repository ${workspaceLabel(path)}`}
+                        aria-label={`${sourceIsExpanded ? 'Collapse' : 'Expand'} ${sourceIsChat ? 'chat workspace' : 'repository'} ${sourceLabel}`}
                       >
-                        <Folder size={11} className="shrink-0 text-(--color-accent)" aria-hidden="true" />
+                        {sourceIsChat ? (
+                          <MessageCircle size={11} className="shrink-0 text-(--color-accent)" aria-hidden="true" />
+                        ) : (
+                          <Folder size={11} className="shrink-0 text-(--color-accent)" aria-hidden="true" />
+                        )}
                         <span className={`truncate font-mono ${sourceIsActive ? 'font-semibold text-(--color-text)' : 'text-(--color-text-2) group-hover:text-(--color-text)'}`}>
-                          {workspaceLabel(path)}
+                          {sourceLabel}
                         </span>
                         {sourceIsPending && (
                           <span>
@@ -715,7 +739,7 @@ export function CodingSidebar({
                       </LongPressButton>
                     }
                   />
-                  <TooltipContent>{path}</TooltipContent>
+                  <TooltipContent>{sourceIsChat ? 'Chat workspace' : path}</TooltipContent>
                 </Tooltip>
                 <Tooltip>
                   <TooltipTrigger
@@ -724,7 +748,7 @@ export function CodingSidebar({
                         type="button"
                         onClick={() => { void selectWorkspace(path, { create: true }) }}
                         className={`ml-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-xs border border-(--color-border) text-(--color-text-muted) transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) ${mobileLongPressActions ? 'hidden' : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:opacity-100'}`}
-                        aria-label={`New session in ${workspaceLabel(path)}`}
+                        aria-label={`New session in ${sourceLabel}`}
                       >
                         <Plus size={11} aria-hidden="true" />
                       </button>
@@ -732,21 +756,23 @@ export function CodingSidebar({
                   />
                   <TooltipContent>New session</TooltipContent>
                 </Tooltip>
-                <Tooltip>
-                  <TooltipTrigger
-                    render={
-                      <button
-                        type="button"
-                        onClick={(event) => setDesktopWorkspaceActions({ path, kind: 'main', x: event.clientX, y: event.clientY })}
-                        className={`mr-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-xs text-(--color-text-subtle) transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) ${mobileLongPressActions ? 'hidden' : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:opacity-100'}`}
-                        aria-label={`Actions for ${workspaceLabel(path)}`}
-                      >
-                        <MoreHorizontal size={12} aria-hidden="true" />
-                      </button>
-                    }
-                  />
-                  <TooltipContent>Workspace actions</TooltipContent>
-                </Tooltip>
+                {!sourceIsChat && (
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={
+                        <button
+                          type="button"
+                          onClick={(event) => setDesktopWorkspaceActions({ path, kind: 'main', x: event.clientX, y: event.clientY })}
+                          className={`mr-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-xs text-(--color-text-subtle) transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) ${mobileLongPressActions ? 'hidden' : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:opacity-100'}`}
+                          aria-label={`Actions for ${sourceLabel}`}
+                        >
+                          <MoreHorizontal size={12} aria-hidden="true" />
+                        </button>
+                      }
+                    />
+                    <TooltipContent>Workspace actions</TooltipContent>
+                  </Tooltip>
+                )}
               </div>
 
               {(sourceIsExpanded || sourceHasRunningSession) && (

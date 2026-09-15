@@ -9,7 +9,45 @@ export function pathBasename(path: string): string {
   return trimmed.split(/[\\/]/).pop() || path
 }
 
-export function workspaceLabel(workspace: string): string {
+/**
+ * Compare two workspace paths the way the backend does: trailing separators
+ * are noise, everything else must match exactly (the backend hands the client
+ * a resolved absolute path).
+ */
+export function sameWorkspacePath(a: string | null | undefined, b: string | null | undefined): boolean {
+  if (!a || !b) return false
+  return a.replace(/[\\/]+$/, '') === b.replace(/[\\/]+$/, '')
+}
+
+/**
+ * Latest chat workspace entry from the workspace tree (`useChatWorkspace`).
+ *
+ * Label helpers are called from dozens of places that have no business
+ * fetching the tree — scheduler task badges, terminal contexts, window
+ * titles. Mirroring the query's last value here keeps one definition of
+ * "which path is Chat" without threading the entry through every call site.
+ * Callers that *have* the entry pass it explicitly, which always wins.
+ */
+let chatWorkspaceEntry: { path: string; name: string } | null = null
+
+export function setChatWorkspaceEntry(entry: { path: string; name: string } | null): void {
+  chatWorkspaceEntry = entry
+}
+
+export function getChatWorkspaceEntry(): { path: string; name: string } | null {
+  return chatWorkspaceEntry
+}
+
+/**
+ * Display label for a workspace. The chat workspace passes its own entry
+ * (``{ path, name }`` from the workspace tree) so it reads as "Chat" instead
+ * of the home directory's basename.
+ */
+export function workspaceLabel(
+  workspace: string,
+  chat: { path: string; name: string } | null = chatWorkspaceEntry,
+): string {
+  if (chat && sameWorkspacePath(workspace, chat.path)) return chat.name
   return pathBasename(workspace)
 }
 

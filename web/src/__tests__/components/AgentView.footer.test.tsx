@@ -627,8 +627,8 @@ describe("AgentView — AssistantFooter", () => {
     })
   })
 
-  describe("newline collapsing in response and thinking", () => {
-    it("preserves paragraph separation while normalizing runaway newlines in agent text response", async () => {
+  describe("newline handling in response and thinking", () => {
+    it("preserves paragraph separation in agent text response", async () => {
       const { container, findByText } = renderStream({
         blocks: [
           makeUserBlock("u1", "Question"),
@@ -659,7 +659,7 @@ describe("AgentView — AssistantFooter", () => {
       expect(container.textContent).toContain("x = 1\n\n    return x")
     })
 
-    it("collapses double newlines in thinking block to a single newline for display", () => {
+    it("preserves double newlines in thinking block as-is", () => {
       const { container } = renderStream({
         blocks: [
           makeUserBlock("u1", "Question"),
@@ -668,8 +668,7 @@ describe("AgentView — AssistantFooter", () => {
         currentBlocks: [],
         isWorking: false,
       })
-      expect(container.textContent).toContain("Reasoning line one\nReasoning line two")
-      expect(container.textContent).not.toContain("Reasoning line one\n\nReasoning line two")
+      expect(container.textContent).toContain("Reasoning line one\n\nReasoning line two")
     })
   })
 })

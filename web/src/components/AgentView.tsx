@@ -28,7 +28,7 @@ import { AssistantTurn } from './AssistantTurnFooter'
 import { PendingMessageQueue } from './PendingMessageQueue'
 import { appendCurrentTurns, getVisibleTurnWindow, partitionTurns } from '@/utils/turns'
 import { hasPlanContent, latestDirectUserBlockIdFromParts, liveBlockTail } from '@/utils/blocks'
-import { extractSleepPrefix, normalizeProseNewlines } from '@/utils/format'
+import { extractSleepPrefix } from '@/utils/format'
 import { latestMCPAppResourceBlockIdsFromParts, latestMCPAppResources, mcpAppResourceUri } from '@/utils/mcp-app-artifacts'
 import { useAgentStore } from '@/stores/useAgentStore'
 import type { ContentBlock } from '@/api/types'
@@ -167,14 +167,14 @@ const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionI
       if (sleepPrefix !== null) {
         return (
           <div>
-            {sleepPrefix && <LazyMarkdownBlock content={normalizeProseNewlines(sleepPrefix)} sessionId={sessionId} />}
+            {sleepPrefix && <LazyMarkdownBlock content={sleepPrefix} sessionId={sessionId} />}
             <p className="text-xs text-(--color-text-subtle) italic">— idle —</p>
           </div>
         )
       }
       return (
         <div>
-          <LazyMarkdownBlock content={normalizeProseNewlines(block.content)} sessionId={sessionId} isStreaming={isStreaming} />
+          <LazyMarkdownBlock content={block.content} sessionId={sessionId} isStreaming={isStreaming} />
         </div>
       )
     }

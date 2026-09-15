@@ -14,7 +14,7 @@ release that introduced it (where known). When you ship something new, **add it 
 > double-clickable app that runs an agent on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 16 providers. Your keys.
 
-**Latest release:** v2.17.0 · September 15, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v2.17.0)
+**Latest release:** v2.18.0 · September 15, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v2.18.0)
 
 ---
 
@@ -636,7 +636,7 @@ agent against it.
   content is stored once, and every snapshot is anchored by a ref so background
   repacking never drops a live undo point. A per-session size cap
   (`SNAPSHOT_MAX_BYTES`, default 256 MiB) drops the oldest snapshots once a repo
-  outgrows it; `SNAPSHOT_SEED_OBJECTS=false` disables object reuse `[v2.17.0]`.
+  outgrows it; `SNAPSHOT_SEED_OBJECTS=false` disables object reuse `[v2.18.0]`.
 - **`/init` AGENTS.md analysis & generation** `[v1.9.0, v2.0.0]` — analyzes codebase
   structure and generates standard `AGENTS.md` context files at repository root and
   subdirectories with a guided analysis protocol.
@@ -1216,7 +1216,7 @@ Desktop is primary. CLI / server is the developer path.
 - **CLI upgrade** `[v1.41.0]` — `openagentd upgrade` stops the background
   server, delegates to the detected package manager, then restarts it when it
   was running.
-- **CLI artifact cleanup** `[v2.17.0]` — `openagentd cleanup` previews a dry run
+- **CLI artifact cleanup** `[v2.18.0]` — `openagentd cleanup` previews a dry run
   and, with `--apply`, deletes sessions older than `--older-than-days`
   (default 14) together with their messages, session artifacts, undo/redo
   snapshot repos, and app-managed telemetry, logging, and worktree state that

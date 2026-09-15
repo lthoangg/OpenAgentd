@@ -841,8 +841,7 @@ export function CodingWorkspacePanel({
           ) : chatWorkspace ? (
             <div className="flex h-full items-center justify-center px-4">
               <p className="max-w-56 text-center text-xs text-(--color-text-subtle)">
-                This is the chat workspace, so there is no Git changes view. Open a
-                file with{' '}
+                Open a file with{' '}
                 <span className="font-medium text-(--color-text-muted)">{formatShortcut('P', os)}</span>{' '}
                 or start a terminal.
               </p>

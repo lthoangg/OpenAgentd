@@ -15,8 +15,8 @@ const filesResponse = { workspace: WORKSPACE, truncated: true, files: [] }
 
 const Icon = () => null
 mock.module('lucide-react', () => ({
-  Check: Icon, ChevronDown: Icon, ChevronLeft: Icon, ChevronRight: Icon,
-  Copy: Icon, Download: Icon, ExternalLink: Icon, File: Icon, FileText: Icon,
+  Check: Icon, CheckSquare: Icon, ChevronDown: Icon, ChevronLeft: Icon, ChevronRight: Icon,
+  ClipboardPaste: Icon, Copy: Icon, Download: Icon, ExternalLink: Icon, File: Icon, FileText: Icon,
   Folder: Icon, FolderOpen: Icon, GitCompare: Icon, Loader2: Icon, Plus: Icon,
   Pencil: Icon, RefreshCw: Icon, RotateCcw: Icon, Search: Icon, TerminalSquare: Icon, Undo2: Icon, X: Icon,
 }))
@@ -69,7 +69,7 @@ describe('CodingWorkspacePanel chat workspace', () => {
     await renderPanel(true)
 
     expect(screen.queryByRole('button', { name: 'Git' })).toBeNull()
-    expect(screen.getByText(/no Git changes view/i)).toBeTruthy()
+    expect(screen.getByText(/start a terminal/i)).toBeTruthy()
     expect(
       requestedUrls.filter(
         (url) =>
@@ -84,6 +84,6 @@ describe('CodingWorkspacePanel chat workspace', () => {
     await renderPanel(false)
 
     expect(screen.getByRole('button', { name: 'Git' })).toBeTruthy()
-    expect(screen.queryByText(/no Git changes view/i)).toBeNull()
+    expect(screen.queryByText(/start a terminal/i)).toBeNull()
   })
 })

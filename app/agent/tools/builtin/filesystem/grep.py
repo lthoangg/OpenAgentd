@@ -97,7 +97,11 @@ class GrepArgs(BaseModel):
 
     pattern: str = Field(
         validation_alias=AliasChoices("pattern", "query", "regex"),
-        description="Regular expression pattern to match per line (e.g. 'def main', 'TODO|FIXME', 'class \\w+Service').",
+        description=(
+            "Regular expression pattern to match per line (e.g. 'def main', 'TODO|FIXME', "
+            "'class \\w+Service'). For literal code containing special characters "
+            "(e.g. '()[]{}*.?+^$|'), escape them or search for the identifier substring."
+        ),
     )
     directory: str = Field(
         default=".",
@@ -107,7 +111,10 @@ class GrepArgs(BaseModel):
     include: str = Field(
         default="*",
         validation_alias=AliasChoices("include", "glob", "file_pattern"),
-        description="Filename glob pattern to filter scanned files (e.g. '*.py', '*.{ts,tsx}', 'Cargo.toml'). Defaults to '*'.",
+        description=(
+            "Filename glob pattern to filter scanned files (e.g. '*.py', '*.{ts,tsx}', "
+            "'Cargo.toml'). Restricting this significantly speeds up searches. Defaults to '*'."
+        ),
     )
     max_results: int = Field(
         default=100,

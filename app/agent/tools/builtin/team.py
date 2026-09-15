@@ -54,7 +54,11 @@ class DelegateArgs(BaseModel):
     )
     task: str = Field(
         validation_alias=AliasChoices("task", "message", "instruction", "query"),
-        description="Detailed task instructions, questions, or clarification for the subagent.",
+        description=(
+            "Detailed, bounded task instructions with explicit expected deliverables. "
+            "Specify target files, symbols, or questions, and the desired return format. "
+            "When replying to a subagent's question, provide the concrete decision."
+        ),
     )
     target: str | None = Field(
         default=None,

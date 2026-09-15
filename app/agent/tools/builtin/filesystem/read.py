@@ -37,8 +37,10 @@ _MAX_LINE_CHARS = 2_000  # one minified line must not eat the whole budget
 _DESCRIPTION = (
     "Read a file, or list a directory's immediate children. Text comes back "
     "verbatim (including HTML), PNG/JPG/GIF/WebP images as vision input, and "
-    "PDF/DOCX as extracted text. Set outline=True to return a high-level symbol "
-    "outline (classes, functions, methods, headers) with exact line numbers. "
+    "PDF/DOCX as extracted text. Directories list immediate children only "
+    "(use glob for recursive searches). For large or unfamiliar source files "
+    "(>500 lines), set outline=True first to inspect symbol declarations and "
+    "line numbers before reading targeted slices. "
     "Content is byte-exact, so a line can be copied straight into a patch hunk. "
     "Call this in parallel when you already know several files you need."
 )
@@ -50,8 +52,8 @@ class ReadArgs(BaseModel):
     path: str = Field(
         validation_alias=AliasChoices("path", "file_path", "filename", "filepath"),
         description=(
-            "Workspace-relative or permitted absolute path — a file to read, "
-            "or a directory to list."
+            "Workspace-relative path (e.g. 'src/app.py' or 'src/') or permitted "
+            "absolute path to a file to read or directory to list."
         ),
     )
     offset: int = Field(
@@ -72,8 +74,8 @@ class ReadArgs(BaseModel):
         description=(
             "When true, returns a high-level symbol outline (classes, functions, "
             "methods, interfaces, headings) with exact line numbers instead of "
-            "full content. Useful for exploring large or unfamiliar files before "
-            "targeted reading."
+            "full content. Highly recommended for exploring large files (>500 lines) "
+            "before targeted reading."
         ),
     )
 

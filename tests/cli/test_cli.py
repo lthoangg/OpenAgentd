@@ -508,6 +508,12 @@ class TestBuildParser:
         args = build_parser().parse_args(["cleanup", "--apply"])
         assert args.dry_run is False
 
+    def test_cleanup_subcommand_vacuum_flag(self):
+        assert build_parser().parse_args(["cleanup"]).vacuum is False
+        assert (
+            build_parser().parse_args(["cleanup", "--apply", "--vacuum"]).vacuum is True
+        )
+
     def test_migrate_openclaw_subcommand(self):
         args = build_parser().parse_args(
             ["transfer", "migrate", "openclaw", "--model", "openai:gpt-5.5"]
@@ -1083,6 +1089,62 @@ class TestCmdCleanupReporting:
         assert "/tmp/a" not in out
         assert "/tmp/b" not in out
         assert "Expired sessions:" in out
+
+    def test_cleanup_prints_vacuum_reclaim(self, monkeypatch, capsys):
+        from app.cli.commands import cleanup as cleanup_mod
+        from app.services.artifact_cleanup import CleanupResult
+
+        args = build_parser().parse_args(["cleanup", "--apply", "--vacuum"])
+
+        async def fake_cleanup_result(_args):
+            return (
+                CleanupResult(
+                    dry_run=False,
+                    candidates=[],
+                    deleted=[],
+                    expired_sessions=1,
+                    expired_messages=2,
+                    vacuum_reclaimed_bytes=5 * 1024 * 1024,
+                ),
+                None,
+            )
+
+        monkeypatch.setattr(cleanup_mod, "_cleanup_result", fake_cleanup_result)
+
+        cmd_cleanup(args)
+
+        out = capsys.readouterr().out
+        assert "Vacuum reclaimed:" in out
+        assert "5.0 MB" in out
+        assert "Vacuum skipped:" not in out
+
+    def test_cleanup_prints_vacuum_skip_reason(self, monkeypatch, capsys):
+        from app.cli.commands import cleanup as cleanup_mod
+        from app.services.artifact_cleanup import CleanupResult
+
+        args = build_parser().parse_args(["cleanup", "--apply", "--vacuum"])
+
+        async def fake_cleanup_result(_args):
+            return (
+                CleanupResult(
+                    dry_run=False,
+                    candidates=[],
+                    deleted=[],
+                    expired_sessions=1,
+                    expired_messages=2,
+                    vacuum_error="database is locked",
+                ),
+                None,
+            )
+
+        monkeypatch.setattr(cleanup_mod, "_cleanup_result", fake_cleanup_result)
+
+        cmd_cleanup(args)
+
+        out = capsys.readouterr().out
+        assert "Vacuum skipped:" in out
+        assert "database is locked" in out
+        assert "Vacuum reclaimed:" not in out
 
 
 class TestCmdUpgrade:

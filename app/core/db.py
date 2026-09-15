@@ -170,6 +170,35 @@ def _optimize_sqlite(db_path: Path) -> None:
         logger.debug("sqlite_optimize_skipped error={}", exc)
 
 
+def vacuum_sqlite(db_path: Path) -> tuple[int, int]:
+    """Rebuild the SQLite file, returning ``(size_before, size_after)`` bytes.
+
+    ``DELETE`` only marks pages free — the file keeps its high-water mark
+    until ``VACUUM`` rewrites it compactly, so deleting rows alone never
+    returns disk space to the OS. ``VACUUM`` cannot run inside a transaction
+    and needs an exclusive lock, so it is deliberately kept out of SQLAlchemy
+    sessions and run on a short-lived stdlib connection (same pattern as
+    :func:`_optimize_sqlite`). Unlike that best-effort startup helper this one
+    lets ``sqlite3.Error`` propagate, so the caller can decide whether a lock
+    held by a live server is fatal.
+    """
+    import sqlite3
+
+    size_before = db_path.stat().st_size
+    conn = sqlite3.connect(db_path)
+    try:
+        # Wait for a live server's writer instead of failing immediately.
+        conn.execute("PRAGMA busy_timeout=5000")
+        conn.execute("VACUUM")
+        # VACUUM rewrites the main file; fold the WAL back so the ``-wal``
+        # does not retain the pre-vacuum high-water mark.
+        conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        conn.commit()
+    finally:
+        conn.close()
+    return size_before, db_path.stat().st_size
+
+
 def _run_alembic_upgrade(cfg: Config) -> None:
     """Invoke ``alembic upgrade head`` and log the outcome.
 

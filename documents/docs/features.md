@@ -1211,6 +1211,13 @@ Desktop is primary. CLI / server is the developer path.
 - **CLI upgrade** `[v1.41.0]` — `openagentd upgrade` stops the background
   server, delegates to the detected package manager, then restarts it when it
   was running.
+- **CLI artifact cleanup** `[v2.17.0]` — `openagentd cleanup` previews a dry run
+  and, with `--apply`, deletes sessions older than `--older-than-days`
+  (default 14) together with their messages, session artifacts, undo/redo
+  snapshot repos, and app-managed telemetry, logging, and worktree state that
+  no live session owns. `--vacuum` then rebuilds the SQLite file so pages freed
+  by the deleted rows return to disk; a lock held by a running server is
+  reported rather than failing the pass.
 - **Docker** *(deprecated, removed in v1.23.0)* — the `Dockerfile`,
   `docker-compose.yaml`, and the `ghcr.io/lthoangg/openagentd` image are
   no longer maintained. Use the CLI install paths above; revisit if there

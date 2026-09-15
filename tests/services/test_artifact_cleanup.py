@@ -6,6 +6,7 @@ from pathlib import Path
 import uuid
 
 import pytest
+from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
 from sqlmodel import select
 
@@ -413,3 +414,72 @@ async def test_cleanup_counts_expired_messages_in_sql(monkeypatch):
     assert result.expired_messages == 1
     assert "count(*)" in statements[0].lower()
     assert "session_messages.id" not in statements[0]
+
+
+@pytest.mark.asyncio
+async def test_cleanup_vacuum_reclaims_freed_pages(monkeypatch):
+    """``vacuum=True`` shrinks the file after rows are deleted."""
+    from app.core import db as core_db
+
+    async with core_db.async_session_factory() as session:
+        # Grow the file with a throwaway blob, then free it. Pages are marked
+        # free but the file keeps its high-water mark until VACUUM runs.
+        await session.execute(text("CREATE TABLE _bloat (payload BLOB)"))
+        await session.execute(text("INSERT INTO _bloat VALUES (zeroblob(4000000))"))
+        await session.execute(text("DELETE FROM _bloat"))
+        await session.execute(text("DROP TABLE _bloat"))
+        await session.commit()
+
+        result = await cleanup_generated_artifacts(
+            session, older_than_days=7, dry_run=False, vacuum=True
+        )
+
+    assert result.vacuum_error is None
+    assert result.vacuum_reclaimed_bytes is not None
+    assert result.vacuum_reclaimed_bytes > 0
+
+
+@pytest.mark.asyncio
+async def test_cleanup_skips_vacuum_on_dry_run(monkeypatch):
+    """A dry run must never touch the database file."""
+    from app.core import db as core_db
+    from app.services import artifact_cleanup as cleanup_mod
+
+    calls: list[Path] = []
+
+    def record(path):
+        calls.append(path)
+        return 1, 1
+
+    monkeypatch.setattr(cleanup_mod, "vacuum_sqlite", record)
+
+    async with core_db.async_session_factory() as session:
+        result = await cleanup_generated_artifacts(
+            session, older_than_days=7, dry_run=True, vacuum=True
+        )
+
+    assert calls == []
+    assert result.vacuum_reclaimed_bytes is None
+    assert result.vacuum_error is None
+
+
+@pytest.mark.asyncio
+async def test_cleanup_reports_vacuum_failure_without_raising(monkeypatch):
+    """A lock held by a live server is surfaced, not raised."""
+    import sqlite3
+
+    from app.core import db as core_db
+    from app.services import artifact_cleanup as cleanup_mod
+
+    def locked(_path):
+        raise sqlite3.OperationalError("database is locked")
+
+    monkeypatch.setattr(cleanup_mod, "vacuum_sqlite", locked)
+
+    async with core_db.async_session_factory() as session:
+        result = await cleanup_generated_artifacts(
+            session, older_than_days=7, dry_run=False, vacuum=True
+        )
+
+    assert result.vacuum_reclaimed_bytes is None
+    assert "database is locked" in (result.vacuum_error or "")

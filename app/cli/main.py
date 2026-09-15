@@ -284,6 +284,14 @@ def build_parser() -> argparse.ArgumentParser:
         default=50,
         help="Maximum candidate paths to print (default: 50)",
     )
+    p_cleanup.add_argument(
+        "--vacuum",
+        action="store_true",
+        help=(
+            "Rebuild the SQLite file so pages freed by deleted rows return to "
+            "the OS (requires --apply; skipped on dry runs)"
+        ),
+    )
     p_cleanup.set_defaults(func=cmd_cleanup, dry_run=True)
 
     # ── upgrade ───────────────────────────────────────────────────────────────

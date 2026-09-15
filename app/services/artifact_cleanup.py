@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import shutil
+import sqlite3
 from collections.abc import Iterable, Sequence
 from stat import S_ISREG
 from dataclasses import dataclass
@@ -11,6 +12,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import UUID
 
+from loguru import logger
 from sqlalchemy.exc import OperationalError
 from sqlmodel import col, delete, func, select
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -18,6 +20,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from app.agent.artifacts import SESSIONS_DIR
 from app.api.routes.agent.worktrees import find_managed_worktree_source
 from app.core.config import settings
+from app.core.db import vacuum_sqlite
 from app.models.chat import ChatSession, SessionMessage
 from app.services import snapshot_service
 
@@ -40,6 +43,8 @@ class CleanupResult:
     deleted: list[Path]
     expired_sessions: int = 0
     expired_messages: int = 0
+    vacuum_reclaimed_bytes: int | None = None
+    vacuum_error: str | None = None
 
     @property
     def total_bytes(self) -> int:
@@ -93,6 +98,21 @@ def _is_missing_chat_sessions_table(exc: OperationalError) -> bool:
     return "no such table" in detail and "chat_sessions" in detail
 
 
+def _sqlite_path(db: AsyncSession) -> Path | None:
+    """Return the on-disk SQLite file behind *db*, or ``None`` otherwise.
+
+    ``VACUUM`` is file-level maintenance, so it needs the path rather than a
+    connection. An in-memory or non-SQLite database has nothing to compact.
+    """
+    url = getattr(db.get_bind(), "url", None)
+    if url is None or not url.drivername.startswith("sqlite"):
+        return None
+    database = url.database
+    if not database or database == ":memory:":
+        return None
+    return Path(database).expanduser()
+
+
 @dataclass(frozen=True)
 class _CleanupSession:
     id: UUID
@@ -123,6 +143,7 @@ async def cleanup_generated_artifacts(
     *,
     older_than_days: int | None = None,
     dry_run: bool = True,
+    vacuum: bool = False,
 ) -> CleanupResult:
     """Clean generated artifacts that are safe to derive or delete.
 
@@ -131,6 +152,12 @@ async def cleanup_generated_artifacts(
     - app-managed session artifact directories whose DB session no longer exists;
     - old snapshot repositories for sessions whose DB rows are gone;
     - old managed git worktrees under ``OPENAGENTD_DATA_DIR/worktrees``.
+
+    With ``vacuum=True`` the pass also rebuilds the SQLite file after the
+    deletions are committed, returning freed pages to the OS — row deletion
+    alone leaves the file at its high-water mark. ``VACUUM`` needs an
+    exclusive lock, so a lock held by a running server is reported through
+    :attr:`CleanupResult.vacuum_error` rather than raised.
 
     It intentionally does not delete config, cache credentials, or the DB.
     """
@@ -266,10 +293,27 @@ async def cleanup_generated_artifacts(
             }:
                 snapshot_service._locks.pop(candidate.path.name, None)
 
+    vacuum_reclaimed_bytes: int | None = None
+    vacuum_error: str | None = None
+    if vacuum and not dry_run:
+        db_path = _sqlite_path(db)
+        if db_path is None:
+            vacuum_error = "database is not a file-backed SQLite URL"
+        else:
+            try:
+                before, after = await asyncio.to_thread(vacuum_sqlite, db_path)
+            except sqlite3.Error as exc:
+                vacuum_error = str(exc)
+                logger.warning("cleanup_vacuum_failed db={} error={}", db_path, exc)
+            else:
+                vacuum_reclaimed_bytes = max(before - after, 0)
+
     return CleanupResult(
         dry_run=dry_run,
         candidates=candidates,
         deleted=deleted,
         expired_sessions=len(expired_session_ids),
         expired_messages=expired_messages,
+        vacuum_reclaimed_bytes=vacuum_reclaimed_bytes,
+        vacuum_error=vacuum_error,
     )

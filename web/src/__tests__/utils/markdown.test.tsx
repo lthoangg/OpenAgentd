@@ -376,10 +376,10 @@ describe("MarkdownBlock tables", () => {
       />,
     );
 
-    const wrapper = document.querySelector(".oa-table-wrap");
-    expect(wrapper).not.toBeNull();
-    expect(wrapper?.className).toContain("group");
-    expect(wrapper?.className).toContain("relative");
+    const container = document.querySelector(".oa-table-container");
+    expect(container).not.toBeNull();
+    expect(container?.className).toContain("group");
+    expect(container?.className).toContain("relative");
 
     const copyBtn = screen.getByRole("button", { name: /copy table/i });
     expect(copyBtn).toBeTruthy();
@@ -390,6 +390,30 @@ describe("MarkdownBlock tables", () => {
     expect(btnContainer?.className).toContain("right-1");
     expect(btnContainer?.className).toContain("opacity-0");
     expect(btnContainer?.className).toContain("group-hover:opacity-100");
+  });
+
+  it("keeps copy button outside the horizontal scroll container so it stays fixed during scroll", () => {
+    render(
+      <MarkdownBlock
+        content={["| Col 1 | Col 2 | Col 3 |", "|---|---|---|", "| A | B | C |"].join("\n")}
+      />,
+    );
+
+    const container = document.querySelector(".oa-table-container");
+    const scrollWrap = document.querySelector(".oa-table-wrap");
+    const copyBtn = screen.getByRole("button", { name: /copy table/i });
+    const btnContainer = copyBtn.closest(".absolute");
+
+    expect(container).not.toBeNull();
+    expect(scrollWrap).not.toBeNull();
+    expect(btnContainer).not.toBeNull();
+
+    // Container hosts both the fixed copy button and the scrolling table wrapper
+    expect(container?.contains(btnContainer!)).toBe(true);
+    expect(container?.contains(scrollWrap!)).toBe(true);
+
+    // Button is not inside the scrollable wrapper, preventing scroll drift
+    expect(scrollWrap?.contains(btnContainer!)).toBe(false);
   });
 
   it("copies table content as formatted markdown when copy button is clicked", async () => {

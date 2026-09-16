@@ -29,6 +29,7 @@ import { isChatWorkspacePath, useChatWorkspace } from '@/queries/useChatWorkspac
 import { useAgentStore, isAwaitingRestartOutput } from '@/stores/useAgentStore'
 import { useShallow } from 'zustand/react/shallow'
 import { useUIStore } from '@/stores/useUIStore'
+import { useToastStore } from '@/stores/useToastStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { useAgentsQuery } from '@/queries/useAgentsQuery'
 import { useRegistryQuery } from '@/queries/useAgentSettingsQueries'
@@ -42,12 +43,14 @@ interface ActiveAgentViewProps {
   emptyState?: React.ReactNode
   onMentionFileOpen?: (path: string) => void
   onStartImplementing?: () => void
+  isSwitchingInteractionMode?: boolean
 }
 
 const ActiveAgentView = memo(function ActiveAgentView({
   emptyState,
   onMentionFileOpen,
   onStartImplementing,
+  isSwitchingInteractionMode,
 }: ActiveAgentViewProps) {
   const activeStream = useAgentStore((s) => {
     if (s.leadName && s.agentStreams[s.leadName]) return s.agentStreams[s.leadName]
@@ -72,6 +75,7 @@ const ActiveAgentView = memo(function ActiveAgentView({
       onMentionFileOpen={onMentionFileOpen}
       emptyState={emptyState}
       onStartImplementing={onStartImplementing}
+      isSwitchingInteractionMode={isSwitchingInteractionMode}
     />
   )
 })
@@ -106,13 +110,16 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
   const navigate = useNavigate()
   const openSettings = useSettingsStore((s) => s.openSettings)
   const queryClient = useQueryClient()
+  const pushToast = useToastStore((s) => s.push)
   const isMobile = useIsMobile()
   const { isMacOverlay } = usePlatform()
+  const storeWorkspace = useAgentStore((s) => s._workspace)
+  const effectiveWorkspace = workspace || storeWorkspace
   // Chat sessions run on the same screen as coding workspaces but the root is
   // not a repository: labels read "Chat" and the dock has no Git tab.
   const chatWorkspace = useChatWorkspace()
-  const isChatWorkspace = isChatWorkspacePath(workspace, chatWorkspace)
-  const workspaceName = workspace ? workspaceLabel(workspace, chatWorkspace) : ''
+  const isChatWorkspace = isChatWorkspacePath(effectiveWorkspace, chatWorkspace)
+  const workspaceName = effectiveWorkspace ? workspaceLabel(effectiveWorkspace, chatWorkspace) : ''
   // Manual drag pattern: a mousedown handler that only starts a drag
   // when the user pressed on the bare header, not on a child button.
   // The hook returns `{}` outside Tauri so the spread is a no-op in
@@ -379,13 +386,23 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
   })
 
   const handleStartImplementing = useCallback(async () => {
-    if (!workspace || isSwitchingInteractionMode || !sessionIdState) return
+    if (!effectiveWorkspace || isSwitchingInteractionMode || !sessionIdState) return
     setIsSwitchingInteractionMode(true)
     try {
-      await useAgentStore.getState().setSessionInteractionMode('code')
+      const success = await useAgentStore.getState().setSessionInteractionMode('code')
+      if (!success) {
+        const err = useAgentStore.getState().error
+        const errorMsg = typeof err === 'string' ? err : err?.message || 'Failed to switch to Code mode'
+        pushToast({
+          tone: 'error',
+          title: 'Could not switch to Code mode',
+          description: errorMsg,
+        })
+        return
+      }
       const current = useAgentStore.getState()
       await sendMessage('Approve, proceed.', undefined, {
-        workspace,
+        workspace: effectiveWorkspace,
         model: current.sessionModel || null,
         thinkingLevel: current.sessionThinkingLevel || null,
         fastMode: current.sessionFastMode,
@@ -393,7 +410,7 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
     } finally {
       setIsSwitchingInteractionMode(false)
     }
-  }, [workspace, isSwitchingInteractionMode, sessionIdState, sendMessage])
+  }, [effectiveWorkspace, isSwitchingInteractionMode, sessionIdState, sendMessage, pushToast])
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
@@ -536,7 +553,7 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
               </p>
             </div>
           </div>
-        ) : !workspace ? (
+        ) : !effectiveWorkspace ? (
           <EmptyState
             icon={FolderCode}
             title="No workspace attached"
@@ -552,10 +569,11 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
             <ActiveAgentView
               onMentionFileOpen={handleMentionFileOpen}
               onStartImplementing={handleStartImplementing}
+              isSwitchingInteractionMode={isSwitchingInteractionMode}
               emptyState={
-                workspace ? (
+                effectiveWorkspace ? (
                   <div className="flex flex-col items-center justify-center py-16">
-                    <WorkspaceInfoCard workspace={workspace} chatWorkspace={isChatWorkspace} />
+                    <WorkspaceInfoCard workspace={effectiveWorkspace} chatWorkspace={isChatWorkspace} />
                   </div>
                 ) : undefined
               }

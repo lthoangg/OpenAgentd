@@ -82,6 +82,8 @@ interface AgentViewProps {
   onMentionFileOpen?: (path: string) => void
   /** Callback to switch to Code mode and start implementation of a proposed plan. */
   onStartImplementing?: () => void
+  /** True when interaction mode is actively transitioning to Code mode. */
+  isSwitchingInteractionMode?: boolean
 }
 
 const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionId, onRevert, latestMCPAppBlockIds, onMentionFileOpen }: { block: ContentBlock; isStreaming: boolean; sessionId?: string; onRevert?: () => void; latestMCPAppBlockIds?: Set<string>; onMentionFileOpen?: (path: string) => void }) {
@@ -183,7 +185,7 @@ const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionI
   }
 })
 
-export function AgentView({ blocks, currentBlocks, isWorking, isTurnOpen = isWorking, isAwaitingRestart = false, isError, lastError, emptyState, onMentionFileOpen, onStartImplementing }: AgentViewProps) {
+export function AgentView({ blocks, currentBlocks, isWorking, isTurnOpen = isWorking, isAwaitingRestart = false, isError, lastError, emptyState, onMentionFileOpen, onStartImplementing, isSwitchingInteractionMode = false }: AgentViewProps) {
   const [renderedTurnCount, setRenderedTurnCount] = useState(INITIAL_RENDERED_TURNS)
   const sessionId = useAgentStore((s) => s.sessionId) ?? undefined
   const sessionInteractionMode = useAgentStore((s) => s.sessionInteractionMode)
@@ -372,6 +374,7 @@ export function AgentView({ blocks, currentBlocks, isWorking, isTurnOpen = isWor
                       totalBlocks={totalLen}
                       size="roomy"
                       onStartImplementing={canStartImplementing ? onStartImplementing : undefined}
+                     isSwitchingInteractionMode={isSwitchingInteractionMode}
                       renderBlock={({ block, isStreaming }) => (
                        <BlockRenderer
                          block={block}

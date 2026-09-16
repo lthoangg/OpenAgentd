@@ -133,6 +133,27 @@ Ready to go.
     expect(onStartImplementing).toHaveBeenCalledTimes(1)
   })
 
+  it('renders Approve button as disabled when isSwitching is true', () => {
+    const onStartImplementing = mock(() => {})
+    const content = `
+<proposed_plan>
+## Summary
+Ready to go.
+</proposed_plan>
+`
+    const { container } = render(
+      <PlanActionContext.Provider value={{ onStartImplementing, isSwitching: true }}>
+        <MarkdownBlock content={content} />
+      </PlanActionContext.Provider>,
+    )
+    const planDivider = container.querySelector('[data-testid="proposed-plan-divider"]')
+    expect(planDivider).not.toBeNull()
+    const button = planDivider?.querySelector('button')
+    expect(button).not.toBeNull()
+    expect(button?.hasAttribute('disabled')).toBe(true)
+    expect(container.querySelector('.animate-spin')).not.toBeNull()
+  })
+
   it('renders normal markdown code and no plan divider when <proposed_plan> is wrapped in backticks', () => {
     const content = 'Finish with a structured `<proposed_plan>` block:'
     const { container } = render(<MarkdownBlock content={content} />)

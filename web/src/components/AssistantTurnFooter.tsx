@@ -147,6 +147,8 @@ export interface AssistantTurnProps {
   size?: 'compact' | 'roomy'
   /** Callback to switch to Code mode and start implementation of a proposed plan. */
   onStartImplementing?: () => void
+  /** True when interaction mode is actively transitioning to Code mode. */
+  isSwitchingInteractionMode?: boolean
 }
 
 export const AssistantTurn = memo(function AssistantTurn({
@@ -160,13 +162,17 @@ export const AssistantTurn = memo(function AssistantTurn({
   renderBlock,
   size = 'compact',
   onStartImplementing,
+  isSwitchingInteractionMode = false,
 }: AssistantTurnProps) {
   // The footer reports on a *finished* turn, so it waits for the turn to close
   // rather than merely for the stream to stop.
   const turnIsOpen = isTurnOpen && isTrailingTurn
   const planActionValue = useMemo(
-    () => ({ onStartImplementing: !turnIsOpen ? onStartImplementing : undefined }),
-    [turnIsOpen, onStartImplementing],
+    () => ({
+      onStartImplementing: !turnIsOpen ? onStartImplementing : undefined,
+      isSwitching: isSwitchingInteractionMode,
+    }),
+    [turnIsOpen, onStartImplementing, isSwitchingInteractionMode],
   )
 
   return (

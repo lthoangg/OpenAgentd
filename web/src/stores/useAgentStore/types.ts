@@ -194,7 +194,7 @@ export interface AgentStoreState {
 export interface AgentStoreActions {
   /** Resolves ``true`` when the backend accepted the message, ``false`` otherwise. */
   sendMessage: (content: string, files: File[] | undefined, options: { workspace: string; model?: string | null; thinkingLevel?: string | null; fastMode?: boolean; mentions?: string[] }) => Promise<boolean>
-  setSessionInteractionMode: (mode: SessionInteractionMode) => Promise<void>
+  setSessionInteractionMode: (mode: SessionInteractionMode) => Promise<boolean>
   setSessionModelSettings: (model: string | null, thinkingLevel: string | null, fastMode?: boolean) => void
   compactAgent: () => Promise<void>
   undoAgent: () => Promise<AgentCommandResponse | undefined>

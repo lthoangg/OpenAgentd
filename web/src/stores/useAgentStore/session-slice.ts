@@ -880,18 +880,22 @@ export const createSessionSlice: StateCreator<
 
   setSessionInteractionMode: async (mode) => {
     const sessionId = get().sessionId
-    if (!sessionId || mode === get().sessionInteractionMode) return
+    if (!sessionId) return false
+    if (mode === get().sessionInteractionMode) return true
     try {
       const session = await updateSessionInteractionMode(sessionId, mode)
       set((draft) => {
         if (draft.sessionId !== sessionId) return
         draft.sessionInteractionMode = session.interaction_mode ?? mode
         draft.isAgentWorking = session.running === true
+        draft.error = null
       })
+      return true
     } catch (err) {
       set((draft) => {
         draft.error = err instanceof Error ? err.message : 'Failed to switch interaction mode'
       })
+      return false
     }
   },
 

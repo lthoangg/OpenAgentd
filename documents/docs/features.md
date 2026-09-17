@@ -14,7 +14,7 @@ release that introduced it (where known). When you ship something new, **add it 
 > double-clickable app that runs an agent on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 16 providers. Your keys.
 
-**Latest release:** v2.21.0 · September 17, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v2.21.0)
+**Latest release:** v2.22.0 · September 17, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v2.22.0)
 
 ---
 
@@ -719,6 +719,15 @@ agent against it.
 
 OpenAgentd carries context across sessions via rolling-window summarization.
 
+- **Persistent Markdown memory subsystem** `[v2.22.0]` — file-backed persistent knowledge
+  in global (`{OPENAGENTD_CONFIG_DIR}/memory/`) storing authoritative human-editable `.md` pages.
+  Dynamically compiles a bounded
+  XML catalog (`<openagentd_memory>`) capped at 1,500 rendered characters into
+  `state.system_prompt` during `before_agent` (0 filesystem I/O across model turns),
+  pins `preferences.md` directives (<= 400 chars), synchronizes concurrent edits with reference-counted
+  path locks and quoted strong SHA-256 ETags (HTTP 412/428), provides `/memory` slash
+  commands, and exposes a Settings viewer/editor with conflict resolution and deterministic
+  wikilink linting.
 - **`/compact` rolling-window summarization** `[v1.5.0, v2.7.0]` — compresses old turns
   into a single summary message kept in context; UI shows the unabridged
   conversation. Preserves reasoning and loaded skill/tool context; skill
@@ -1099,8 +1108,7 @@ Four orthogonal ways to add capability.
   on mtime change, token substitution. Compatible with the opencode skill spec.
   One nested namespace level (`parent/sub`) is supported `[v1.27.x]`; Settings
   lists the full runtime-visible catalog and can edit/delete non-bundled skills
-  in place `[v1.27.x]`. The bundled `browser-use` skill for CLI-driven browser
-  automation is *(deprecated)* `[v1.43.4]`.
+  in place `[v1.27.x]`.
   - **Reference files and scripts support** `[v1.87.0, v1.92.0]` — fully compatible with the
     `agentskills.io` specification. Resolves `{SKILL_DIR}` and `${SKILL_DIR}` placeholders
     inside loaded skill instructions. Project-level skill directories resolve to clean relative

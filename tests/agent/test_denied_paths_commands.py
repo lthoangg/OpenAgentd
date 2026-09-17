@@ -203,3 +203,24 @@ def test_allowed_internal_roots_permit_command_path_tokens(tmp_path: Path) -> No
     denied_paths = _make(tmp_path, denied_roots=[state_root])
 
     assert denied_paths.check_command(f"tail -n 220 {log_path}") is None
+
+
+def test_shell_denied_roots_blocks_memory_access_in_commands(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config_dir = tmp_path / "config"
+    monkeypatch.setattr(
+        "app.core.config.settings.OPENAGENTD_CONFIG_DIR", str(config_dir)
+    )
+    mem_dir = config_dir / "memory"
+    mem_dir.mkdir(parents=True, exist_ok=True)
+    target = mem_dir / "secret_notes.md"
+    target.touch()
+
+    ws = tmp_path / "ws"
+
+    denied_paths = DeniedPathsConfig(workspace=str(ws))
+
+    # check_command catches access to global memory directory
+    hit = denied_paths.check_command(f"cat {target}")
+    assert hit is not None

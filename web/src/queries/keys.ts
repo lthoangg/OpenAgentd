@@ -87,4 +87,9 @@ export const queryKeys = {
     providerModels: (providerId: string) => ['settings', 'providers', providerId, 'models'] as const,
     providerUsage: (providerId: string) => ['settings', 'providers', providerId, 'usage'] as const,
   },
+  memory: {
+    tree: () => ['memory', 'tree'] as const,
+    file: (path: string) => ['memory', 'file', path] as const,
+    lint: () => ['memory', 'lint'] as const,
+  },
 }

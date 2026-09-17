@@ -208,7 +208,7 @@ uploads/
 .openagentd/dev/
 .openagentd/evals/
 .openagentd/sessions/
-.openagentd/browser-use/
+.openagentd/screenshots/
 **/.openagentd/cache/
 **/.openagentd/config/
 **/.openagentd/data/

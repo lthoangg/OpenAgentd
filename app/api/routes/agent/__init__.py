@@ -24,6 +24,7 @@ from fastapi import APIRouter
 from app.api.routes.agent import (
     chat,
     files,
+    memory,
     permissions,
     questions,
     todos,
@@ -33,6 +34,7 @@ from app.api.routes.agent import (
 router = APIRouter()
 router.include_router(chat.router)
 router.include_router(files.router)
+router.include_router(memory.router)
 router.include_router(todos.router)
 router.include_router(permissions.router)
 router.include_router(questions.router)

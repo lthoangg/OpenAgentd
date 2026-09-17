@@ -31,6 +31,7 @@ from app.agent.errors import (
 from app.agent.hooks.base import BaseAgentHook
 from app.agent.hooks.dynamic_prompt import inject_current_date
 from app.agent.hooks.lsp import LspHook
+from app.agent.hooks.memory_context import MemoryContextHook
 from app.agent.hooks.otel import OpenTelemetryHook
 from app.agent.hooks.queued_injection import QueuedMessageInjectionHook
 from app.agent.hooks.stream_publisher import StreamPublisherHook
@@ -53,6 +54,7 @@ from app.agent.tools.builtin.question import make_ask_user_tool
 from app.agent.tools.registry import Tool
 from app.core.chat_workspace import workspace_mode
 from app.core.db import DbFactory, resolve_db_factory
+from app.services.memory.models import MemoryContextSnapshot
 from app.core.paths import session_workspace_dir
 from app.models.chat import ChatSession, SessionMessage
 from app.services import memory_stream_store as stream_store
@@ -208,6 +210,7 @@ class AgentSession:
         self._lead_suspended: dict[str, Any] | None = None
         self._last_error: str | None = None
         self.is_scheduler_session: bool = False
+        self.memory_context_snapshot: MemoryContextSnapshot | None = None
 
     @property
     def name(self) -> str:
@@ -266,11 +269,56 @@ class AgentSession:
         except Exception as exc:
             logger.warning("session_emit_failed event={} error={}", event, exc)
 
+    async def bind_session(
+        self,
+        session_id: str | uuid.UUID,
+        workspace: str | None = None,
+        *,
+        title: str | None = None,
+    ) -> None:
+        sess_str = str(session_id)
+        old_session_id = self.session_id
+        old_workspace = self.workspace
+        new_workspace = workspace if workspace is not None else self.workspace
+
+        if old_session_id != sess_str or old_workspace != new_workspace:
+            self.memory_context_snapshot = None
+
+        self.session_id = sess_str
+        self.workspace = new_workspace
+
+        try:
+            from app.services.memory import get_memory_manager
+            from app.services.memory.store import resolve_memory_scope
+
+            manager = get_memory_manager()
+            global_scope = resolve_memory_scope()
+            await manager.reconcile(global_scope)
+        except Exception as exc:
+            logger.warning("session_bind_memory_reconcile_failed error={}", exc)
+
+        await self._ensure_db_session(title=title, workspace=self.workspace)
+
     async def attach_to_session(
         self, session_id: str, *, title: str | None = None
     ) -> None:
-        self.session_id = session_id
-        await self._ensure_db_session(title=title, workspace=self.workspace)
+        await self.bind_session(session_id, workspace=self.workspace, title=title)
+
+    async def ensure_memory_context_current(self) -> MemoryContextSnapshot:
+        from app.services.memory import get_memory_manager
+        from app.services.memory.store import resolve_memory_scope
+
+        global_scope = resolve_memory_scope()
+        manager = get_memory_manager()
+
+        global_snap = await manager.get_global_snapshot(global_scope)
+
+        if (
+            self.memory_context_snapshot is None
+            or self.memory_context_snapshot.global_snapshot is not global_snap
+        ):
+            self.memory_context_snapshot = await manager.get_context(global_scope)
+        return self.memory_context_snapshot
 
     async def _ensure_db_session(
         self,
@@ -414,14 +462,11 @@ class AgentSession:
         mentions: list[str] | None = None,
         origin: str = "user",
     ) -> tuple[str, str]:
-        if workspace is not None:
-            self.workspace = workspace
-
-        is_new_session = self.session_id != session_id
-        if is_new_session:
-            await self.attach_to_session(
-                session_id, title=content[:100] if content else None
-            )
+        await self.bind_session(
+            session_id,
+            workspace=workspace,
+            title=content[:100] if content else None,
+        )
 
         if await self._has_open_question():
             if origin != "user":
@@ -530,10 +575,7 @@ class AgentSession:
         if self.is_busy():
             raise ContinuePreconditionError("Cannot continue while agent is busy.")
 
-        if workspace is not None:
-            self.workspace = workspace
-        if self.session_id != session_id:
-            await self.attach_to_session(session_id)
+        await self.bind_session(session_id, workspace=workspace)
 
         await stream_store.init_turn(session_id, keep_subscribers=True)
         self.state = "working"
@@ -554,8 +596,7 @@ class AgentSession:
     ) -> str:
         if self.is_busy():
             raise ContinuePreconditionError("Cannot compact while agent is busy.")
-        if self.session_id != session_id:
-            await self.attach_to_session(session_id)
+        await self.bind_session(session_id, workspace=workspace)
 
         await stream_store.init_turn(session_id, keep_subscribers=True)
         self.state = "working"
@@ -1031,6 +1072,7 @@ class AgentSession:
             publisher_hook,
             otel_hook,
             LspHook(enabled=agent_mode == "coding"),
+            MemoryContextHook(self),
         ]
 
         if self.parent_session_id is None:

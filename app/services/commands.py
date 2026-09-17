@@ -1926,6 +1926,13 @@ _BUILTIN_COMMANDS: dict[str, Command] = {
         path=Path("<builtin>"),
         source="builtin",
     ),
+    "memory": Command(
+        name="memory",
+        description="Inspect, search, or lint persistent memory.",
+        body="",
+        path=Path("<builtin>"),
+        source="builtin",
+    ),
 }
 
 
@@ -1976,3 +1983,73 @@ def render_command(command: Command, arguments: str = "") -> str:
     if args:
         return f"{command.body}\n\n{args}"
     return command.body
+
+
+async def render_memory_command(
+    arguments: str = "",
+    workspace: Path | None = None,
+) -> str:
+    """Execute built-in /memory slash command suite."""
+    from app.services.memory import get_memory_manager
+    from app.services.memory.store import read_page, resolve_memory_scope
+
+    manager = get_memory_manager()
+    global_scope = resolve_memory_scope()
+
+    # Reconcile scope
+    await manager.reconcile(global_scope)
+
+    args = arguments.strip()
+    parts = args.split(maxsplit=1)
+    subcommand = parts[0].lower() if parts else ""
+    sub_arg = parts[1].strip() if len(parts) > 1 else ""
+
+    if not subcommand:
+        # /memory — Shows compact memory catalog
+        snapshot = await manager.get_context(global_scope)
+        return snapshot.content or "No memory pages found."
+
+    if subcommand == "show":
+        if not sub_arg:
+            return "Usage: /memory show <page> (e.g. /memory show preferences.md)"
+        page_path = sub_arg
+        if ":" in sub_arg:
+            scope_prefix, page_path = sub_arg.split(":", 1)
+            if scope_prefix == "workspace":
+                return "Error: Workspace memory has been removed. Only global memory is supported."
+            elif scope_prefix != "global":
+                return f"Error: Unknown memory scope '{scope_prefix}'. Use 'global' or omit prefix."
+
+        if not page_path.endswith(".md"):
+            page_path += ".md"
+
+        try:
+            page = await read_page(global_scope, page_path)
+            content = page.content
+            if len(content) > 2000:
+                content = content[:2000] + "\n\n... [Truncated at 2,000 characters]"
+            return f"### Memory: {page.path}\n\n{content}"
+        except Exception as exc:
+            return f"Error reading memory page '{sub_arg}': {exc}"
+
+    if subcommand == "search":
+        if not sub_arg:
+            return "Usage: /memory search <query>"
+        results = await manager.search(global_scope, sub_arg)
+        if not results:
+            return f"No memory pages matching '{sub_arg}' found."
+        lines = [f"### Memory Search Results for '{sub_arg}':\n"]
+        for r in results:
+            lines.append(f"- **{r['path']}** — {r['title']}")
+        return "\n".join(lines)
+
+    if subcommand == "lint":
+        findings = list(await manager.lint(global_scope))
+        if not findings:
+            return "### Memory Lint Report\n\nNo issues found! All memory pages and links are valid."
+        lines = ["### Memory Lint Report\n"]
+        for f in findings:
+            lines.append(f"- **[{f.code}]** `{f.path}`: {f.message}")
+        return "\n".join(lines)
+
+    return f"Unknown /memory subcommand '{subcommand}'. Supported subcommands: show, search, lint."

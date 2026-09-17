@@ -404,3 +404,50 @@ async def test_render_rejects_blocked_system_workspace(client, blocked):
     )
     assert res.status_code == 422
     assert "restricted system directory" in res.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_builtin_memory_command(client, tmp_path, monkeypatch):
+    config_dir = tmp_path / "config"
+    config_dir.mkdir(parents=True, exist_ok=True)
+    from app.core import config as config_module
+
+    monkeypatch.setattr(
+        config_module.settings, "OPENAGENTD_CONFIG_DIR", str(config_dir)
+    )
+
+    mem_dir = config_dir / "memory"
+    mem_dir.mkdir(parents=True, exist_ok=True)
+    (mem_dir / "preferences.md").write_text("# Preferences\nBe concise.\n")
+    (mem_dir / "topics.md").write_text("# Topics\nOverview.\n")
+
+    # 1. /memory (catalog overview)
+    res = await client.post("/api/commands/memory/render", json={"arguments": ""})
+    assert res.status_code == 200
+    content = res.json()["content"]
+    assert "<openagentd_memory>" in content
+    assert "Be concise." in content
+
+    # 2. /memory show global:preferences.md
+    res_show = await client.post(
+        "/api/commands/memory/render",
+        json={"arguments": "show global:preferences.md"},
+    )
+    assert res_show.status_code == 200
+    assert "Be concise." in res_show.json()["content"]
+
+    # 3. /memory search
+    res_search = await client.post(
+        "/api/commands/memory/render",
+        json={"arguments": "search concise"},
+    )
+    assert res_search.status_code == 200
+    assert "preferences.md" in res_search.json()["content"]
+
+    # 4. /memory lint
+    res_lint = await client.post(
+        "/api/commands/memory/render",
+        json={"arguments": "lint"},
+    )
+    assert res_lint.status_code == 200
+    assert "Memory Lint Report" in res_lint.json()["content"]

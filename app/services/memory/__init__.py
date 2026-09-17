@@ -1,0 +1,61 @@
+"""Persistent Markdown memory subsystem."""
+
+from app.services.memory.manager import (
+    MemoryManager,
+    get_memory_manager,
+    reset_memory_manager,
+)
+from app.services.memory.models import (
+    GlobalMemorySnapshot,
+    LintFinding,
+    MemoryContextSnapshot,
+    MemoryFrontmatter,
+    MemoryPage,
+    MemoryScope,
+)
+from app.services.memory.store import (
+    MAX_MEMORY_PAGE_BYTES,
+    MemoryContainmentError,
+    MemoryError,
+    MemoryPageNotFoundError,
+    MemoryPayloadTooLargeError,
+    MemoryPreconditionFailedError,
+    MemoryPreconditionRequiredError,
+    MemoryScopeAuthorizationError,
+    assert_authorized_memory_path,
+    assert_no_memory_symlinks,
+    compute_etag,
+    delete_page,
+    global_memory_root,
+    read_page,
+    resolve_memory_scope,
+    write_page,
+)
+
+__all__ = [
+    "MAX_MEMORY_PAGE_BYTES",
+    "GlobalMemorySnapshot",
+    "LintFinding",
+    "MemoryContainmentError",
+    "MemoryContextSnapshot",
+    "MemoryError",
+    "MemoryFrontmatter",
+    "MemoryManager",
+    "MemoryPage",
+    "MemoryPageNotFoundError",
+    "MemoryPayloadTooLargeError",
+    "MemoryPreconditionFailedError",
+    "MemoryPreconditionRequiredError",
+    "MemoryScope",
+    "MemoryScopeAuthorizationError",
+    "assert_authorized_memory_path",
+    "assert_no_memory_symlinks",
+    "compute_etag",
+    "delete_page",
+    "get_memory_manager",
+    "global_memory_root",
+    "read_page",
+    "reset_memory_manager",
+    "resolve_memory_scope",
+    "write_page",
+]

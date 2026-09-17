@@ -18,7 +18,18 @@ from pydantic import AliasChoices, BaseModel, Field, field_validator
 
 from app.agent.denied_paths import get_denied_paths
 from app.agent.tools.builtin.filesystem._config_watch import notify_fs_change
+from app.core.path_locks import acquire_all_locks, checkin_lock, checkout_lock
+from app.core.path_locks import (
+    _path_locks as _path_locks,
+    _path_lock_refs as _path_lock_refs,
+)
 from app.agent.tools.registry import Tool
+from app.services.memory.store import (
+    MAX_MEMORY_PAGE_BYTES,
+    assert_authorized_memory_path,
+    assert_no_memory_symlinks,
+    global_memory_root,
+)
 
 PatchKind = Literal["add", "update", "delete"]
 
@@ -777,7 +788,18 @@ def _ensure_parent(path: Path, created_dirs: list[Path]) -> None:
     created_dirs.extend(missing)
 
 
-def _apply_patch(patch_text: str) -> str:
+def _is_memory_path(path: Path) -> bool:
+    try:
+        g_root = global_memory_root()
+        if path.resolve().is_relative_to(g_root):
+            return True
+    except Exception:
+        pass
+    posix = path.as_posix()
+    return "/.openagentd/memory" in posix or "\\.openagentd\\memory" in posix
+
+
+def _apply_patch(patch_text: str) -> tuple[str, list[Path]]:
     """Apply a parsed patch envelope to the workspace. Synchronous.
 
     Read-modify-write with no locking of its own — the caller serialises it.
@@ -857,6 +879,19 @@ def _apply_patch(patch_text: str) -> str:
     final_paths = [path for path in touched if virtual[path] is not None]
     deleted_paths = [path for path in touched if virtual[path] is None]
 
+    # Memory guardrails: size, extension, symlinks, and cross-workspace authorization
+    for path in touched:
+        if _is_memory_path(path):
+            if path.suffix.lower() != ".md":
+                raise ValueError(f"Memory files must have a .md extension: {path.name}")
+            assert_no_memory_symlinks(path)
+            assert_authorized_memory_path(path)
+            vfile = virtual[path]
+            if vfile is not None and len(vfile.content) > MAX_MEMORY_PAGE_BYTES:
+                raise ValueError(
+                    f"Memory page exceeds maximum size of 256 KiB: {path.name} ({len(vfile.content)} bytes)"
+                )
+
     def is_changed(path: Path) -> bool:
         before = original[path]
         after = virtual[path]
@@ -907,8 +942,6 @@ def _apply_patch(patch_text: str) -> str:
         _cleanup_empty_dirs(created_dirs)
         raise
 
-    for path in changed:
-        notify_fs_change(path)
     logger.info("patch_applied files={}", len(changed))
     summary = "\n".join(denied_paths.display_path(path) for path in changed)
     diff_meta = json.dumps(
@@ -919,17 +952,9 @@ def _apply_patch(patch_text: str) -> str:
     )
     return (
         f"@@ openagentd-diff-meta {diff_meta}\n"
-        f"Patch applied successfully. Updated paths:\n{summary}"
+        f"Patch applied successfully. Updated paths:\n{summary}",
+        changed,
     )
-
-
-# Locks are per canonical path so unrelated agents can patch concurrently.
-# Sources and move destinations are both locked, and acquisition is sorted to
-# avoid deadlocks when two envelopes touch overlapping sets of paths. Entries
-# are dropped once nobody holds or waits on them so the table cannot grow for
-# the daemon's lifetime.
-_path_locks: dict[Path, asyncio.Lock] = {}
-_path_lock_refs: dict[Path, int] = {}
 
 
 def _patch_paths(patch_text: str) -> list[Path]:
@@ -942,38 +967,6 @@ def _patch_paths(patch_text: str) -> list[Path]:
     return sorted(set(paths))
 
 
-def _checkout_lock(path: Path) -> asyncio.Lock:
-    _path_lock_refs[path] = _path_lock_refs.get(path, 0) + 1
-    return _path_locks.setdefault(path, asyncio.Lock())
-
-
-def _checkin_lock(path: Path) -> None:
-    remaining = _path_lock_refs.get(path, 0) - 1
-    if remaining <= 0:
-        _path_lock_refs.pop(path, None)
-        _path_locks.pop(path, None)
-    else:
-        _path_lock_refs[path] = remaining
-
-
-async def _acquire_all(locks: list[asyncio.Lock]) -> list[asyncio.Lock]:
-    """Acquire every lock in order; on cancellation release the ones taken.
-
-    A bare ``for lock in locks: await lock.acquire()`` leaks every lock taken
-    before the cancelled one, and an interrupted turn is a common event.
-    """
-    held: list[asyncio.Lock] = []
-    try:
-        for lock in locks:
-            await lock.acquire()
-            held.append(lock)
-    except BaseException:
-        for lock in reversed(held):
-            lock.release()
-        raise
-    return held
-
-
 async def _patch_file(patch_text: str) -> str:
     """Apply a patch envelope without stalling the shared event loop.
 
@@ -981,17 +974,20 @@ async def _patch_file(patch_text: str) -> str:
     2.3 MB file — must not run on the loop thread.
     """
     paths = _patch_paths(patch_text)
-    locks = [_checkout_lock(path) for path in paths]
+    locks = [checkout_lock(path) for path in paths]
     try:
-        held = await _acquire_all(locks)
+        held = await acquire_all_locks(locks)
         try:
-            return await asyncio.to_thread(_apply_patch, patch_text)
+            result_str, changed = await asyncio.to_thread(_apply_patch, patch_text)
+            for path in changed:
+                notify_fs_change(path)
+            return result_str
         finally:
             for lock in reversed(held):
                 lock.release()
     finally:
         for path in paths:
-            _checkin_lock(path)
+            checkin_lock(path)
 
 
 patch_file = Tool(

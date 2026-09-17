@@ -31,6 +31,16 @@ def ensure_workspace_initialized() -> None:
     for plugin_dir in settings.plugin_dirs():
         plugin_dir.mkdir(parents=True, exist_ok=True)
 
+    # Ensure global memory directory and starter preferences.md exist
+    global_mem_dir = config_dir / "memory"
+    global_mem_dir.mkdir(parents=True, exist_ok=True)
+    pref_file = global_mem_dir / "preferences.md"
+    if not pref_file.exists():
+        pref_file.write_text(
+            "# User Preferences\n\nStanding directives and preferences across all workspaces.\n",
+            encoding="utf-8",
+        )
+
     from app.agent.tools.multimodalities._config import ensure_default_config
     from app.core.config import DEFAULT_NEW_USER_MODEL
     from app.core.runtime_settings import ensure_runtime_settings

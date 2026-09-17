@@ -37,7 +37,7 @@ from app.agent.schemas.chat import (
             "https://opencode.ai/zen/v1",
             "https://opencode.ai/docs/zen/",
             "OPENCODE_ZEN_API_KEY",
-            True,
+            False,
         ),
         (
             "opencode-go",
@@ -86,43 +86,50 @@ def test_opencode_provider_is_registered_and_builds_provider(
     }
 
 
-def test_opencode_zero_cost_model_builds_with_public_credential_without_key(
+def test_opencode_requires_zen_api_key(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.delenv("OPENCODE_ZEN_API_KEY", raising=False)
 
     with patch("app.core.config.settings") as settings:
         settings.OPENCODE_ZEN_API_KEY = None
+        with pytest.raises(ValueError, match="OpenCode Zen API key is required"):
+            build_provider("opencode:deepseek-v4-flash")
+
+
+def test_opencode_rejects_free_models(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OPENCODE_ZEN_API_KEY", "zen-key")
+
+    with patch("app.core.config.settings") as settings:
+        settings.OPENCODE_ZEN_API_KEY = SecretStr("zen-key")
         with patch(
             "app.agent.providers.model_metadata.get_model_cost",
             return_value=ModelCost(input=0),
         ):
-            built = build_provider("opencode:anonymous-model")
+            with pytest.raises(
+                ValueError,
+                match="free OpenCode models only open using OpenCode's own harness",
+            ):
+                build_provider("opencode:free-model")
 
-    assert isinstance(built, OpenCodeProvider)
-    assert built.provider_name == "opencode"
-    assert built.api_key == "public"
 
-
-def test_opencode_nonzero_cost_model_requires_zen_key_even_with_free_suffix(
+def test_opencode_paid_model_builds_with_zen_key(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.delenv("OPENCODE_ZEN_API_KEY", raising=False)
-    monkeypatch.setenv("OPENCODE_GO_API_KEY", "go-key")
+    monkeypatch.setenv("OPENCODE_ZEN_API_KEY", "zen-key")
 
     with patch("app.core.config.settings") as settings:
-        settings.OPENCODE_ZEN_API_KEY = None
+        settings.OPENCODE_ZEN_API_KEY = SecretStr("zen-key")
         with patch(
             "app.agent.providers.model_metadata.get_model_cost",
             return_value=ModelCost(input=1),
         ):
-            with pytest.raises(
-                ValueError,
-                match=(
-                    "OpenCode Zen model 'misleading-free' requires OPENCODE_ZEN_API_KEY"
-                ),
-            ):
-                build_provider("opencode:misleading-free")
+            built = build_provider("opencode:paid-model")
+
+    assert isinstance(built, OpenCodeProvider)
+    assert built.provider_name == "opencode"
 
 
 def test_opencode_go_requires_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -197,7 +204,7 @@ def test_opencode_provider_uses_each_models_documented_api_family(
 def test_opencode_deepseek_replays_reasoning_content_for_tool_calls() -> None:
     provider = OpenCodeProvider(
         api_key="opencode-key",
-        model="deepseek-v4-flash-free",
+        model="deepseek-v4-flash",
         provider_id="opencode",
         base_url="https://opencode.ai/zen/v1",
     )
@@ -267,29 +274,6 @@ def test_opencode_provider_defaults_unknown_transport_to_chat_completions() -> N
     assert delegate._use_responses is False
 
 
-def test_opencode_chat_completions_require_a_terminal_sse_frame() -> None:
-    """Only free Zen chat-completions streams reject a truncated EOF."""
-    provider = OpenCodeProvider(
-        api_key="opencode-key",
-        model="hy3-free",
-        provider_id="opencode",
-        base_url="https://opencode.ai/zen/v1",
-    )
-
-    with patch(
-        "app.agent.providers.opencode.opencode.get_model_transport",
-        return_value=ModelTransport(
-            endpoint_variant="default", api_family="chat_completions"
-        ),
-    ):
-        delegate = provider._delegate()
-
-    assert delegate._completions.require_sse_sentinel is True
-    assert delegate._completions.retryable_finish_reasons == frozenset(
-        {"network_error"}
-    )
-
-
 def test_opencode_paid_chat_completions_keep_the_default_eof_compatibility() -> None:
     """The free-model safeguard must not alter paid or other providers."""
     provider = OpenCodeProvider(
@@ -348,10 +332,9 @@ async def test_opencode_provider_discovers_models_with_its_own_api_key(
 
 
 @respx.mock
-async def test_opencode_provider_discovers_only_public_models_without_key(
+async def test_opencode_provider_discovers_only_paid_models_with_key(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.delenv("OPENCODE_ZEN_API_KEY", raising=False)
     route = respx.get("https://opencode.ai/zen/v1/models").mock(
         return_value=Response(
             200,
@@ -376,11 +359,24 @@ async def test_opencode_provider_discovers_only_public_models_without_key(
         side_effect=costs.__getitem__,
     ):
         models = await discover_provider_models(
-            entry, overrides={"OPENCODE_ZEN_API_KEY": ""}
+            entry, overrides={"OPENCODE_ZEN_API_KEY": "zen-key"}
         )
 
-    assert models == ["anonymous-model"]
-    assert route.calls[0].request.headers["Authorization"] == "Bearer public"
+    assert models == ["misleading-free"]
+    assert route.calls[0].request.headers["Authorization"] == "Bearer zen-key"
+
+
+@respx.mock
+async def test_opencode_provider_discovers_no_models_without_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("OPENCODE_ZEN_API_KEY", raising=False)
+    entry = find("opencode")
+    assert entry is not None
+    models = await discover_provider_models(
+        entry, overrides={"OPENCODE_ZEN_API_KEY": ""}
+    )
+    assert models == []
 
 
 def test_opencode_api_keys_are_separate_secret_settings(

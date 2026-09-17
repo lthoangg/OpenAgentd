@@ -367,8 +367,7 @@ describe('ProvidersSettingsPage', () => {
     expect(screen.getByText('Free')).toBeTruthy()
   })
 
-  it('lists public OpenCode Zen models without an API key', async () => {
-    let requestBody: unknown
+  it('requires an API key for OpenCode Zen and disables listing without credentials', async () => {
     server.use(
       http.get('http://localhost/api/settings/providers', () => HttpResponse.json({
         has_any_configured: false,
@@ -384,7 +383,7 @@ describe('ProvidersSettingsPage', () => {
             env_vars: [],
             oauth_command: '',
             docs_url: 'https://opencode.ai/docs/zen/',
-            public_access: true,
+            public_access: false,
             is_configured: false,
             is_saved: false,
             is_reachable: null,
@@ -395,26 +394,14 @@ describe('ProvidersSettingsPage', () => {
           },
         ],
       })),
-      http.post('http://localhost/api/settings/providers/opencode/models', async ({ request }) => {
-        requestBody = await request.json()
-        return HttpResponse.json({
-          provider: 'opencode',
-          models: ['big-pickle'],
-          source: 'provider',
-        })
-      }),
     )
 
     renderPage()
 
     expect(await screen.findByText('OpenCode Zen')).toBeTruthy()
-    expect(screen.getByText(/Free models are available without an API key/i)).toBeTruthy()
+    expect(screen.queryByText(/Free models are available without an API key/i)).toBeNull()
     const listModels = screen.getByRole('button', { name: 'List models' })
-    expect(listModels.getAttribute('disabled')).toBeNull()
-    fireEvent.click(listModels)
-
-    await waitFor(() => expect(requestBody).toEqual({ api_key: '' }))
-    expect(await screen.findByText('opencode:big-pickle')).toBeTruthy()
+    expect(listModels.getAttribute('disabled')).not.toBeNull()
   })
 
   it('refreshes models for a saved api-key provider without retyping the key', async () => {

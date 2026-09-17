@@ -4,7 +4,7 @@ from collections.abc import Iterable
 
 from app.agent.providers import model_metadata
 
-from .constants import GO_PROVIDER_ID, PROVIDER_IDS, ZEN_PROVIDER_ID
+from .constants import PROVIDER_IDS, ZEN_PROVIDER_ID
 
 
 def model_is_accessible(
@@ -14,11 +14,11 @@ def model_is_accessible(
     has_credentials: bool,
 ) -> bool:
     """Return whether the current OpenCode credentials may use a model."""
-    if provider_id not in PROVIDER_IDS or has_credentials:
+    if provider_id not in PROVIDER_IDS:
         return True
-    if provider_id == GO_PROVIDER_ID:
+    if not has_credentials:
         return False
-    return (
+    return not (
         provider_id == ZEN_PROVIDER_ID
         and model_metadata.get_model_cost(f"{ZEN_PROVIDER_ID}:{model_id}").input == 0
     )
@@ -31,9 +31,9 @@ def filter_opencode_models_for_access(
     has_credentials: bool,
 ) -> list[str]:
     """Hide OpenCode models that the current credentials cannot use."""
-    if provider_id not in PROVIDER_IDS or has_credentials:
+    if provider_id not in PROVIDER_IDS:
         return list(model_ids)
-    if provider_id == GO_PROVIDER_ID:
+    if not has_credentials:
         return []
     return [
         model_id
@@ -41,6 +41,6 @@ def filter_opencode_models_for_access(
         if model_is_accessible(
             provider_id,
             model_id,
-            has_credentials=False,
+            has_credentials=has_credentials,
         )
     ]

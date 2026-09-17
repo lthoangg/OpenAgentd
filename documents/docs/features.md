@@ -14,7 +14,7 @@ release that introduced it (where known). When you ship something new, **add it 
 > double-clickable app that runs an agent on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 16 providers. Your keys.
 
-**Latest release:** v2.20.0 · September 17, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v2.20.0)
+**Latest release:** v2.21.0 · September 17, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v2.21.0)
 
 ---
 
@@ -770,7 +770,7 @@ agnostic by design.
 | Google Gemini | `googlegenai:gemini-3.1-flash` | `GOOGLE_API_KEY` |
 | Google Vertex AI | `vertexai:gemini-3-flash-preview` | `VERTEXAI_API_KEY` or GCP creds |
 | OpenAI | `openai:gpt-5.5` | `OPENAI_API_KEY` |
-| OpenCode Zen | `opencode:big-pickle` | none for free models; `OPENCODE_ZEN_API_KEY` for paid models `[v1.124.0]` |
+| OpenCode Zen | `opencode:claude-sonnet-4-6` | `OPENCODE_ZEN_API_KEY` `[v1.124.0]` |
 | OpenCode Go | `opencode-go:deepseek-v4-flash` | `OPENCODE_GO_API_KEY` `[v1.124.0]` |
 | OpenRouter | `openrouter:qwen/qwen3.6-plus:free` | `OPENROUTER_API_KEY` |
 | ZAI / GLM | `zai:glm-5-turbo` | `ZAI_API_KEY` |
@@ -785,9 +785,10 @@ agnostic by design.
 | CLIProxyAPI (local) | `cliproxy:gemini-2.5-pro` | `CLIPROXY_API_KEY` (optional) |
 | Ollama (local + cloud) | `ollama:llama3.2` · `ollama:kimi-k2.6-cloud` | none (cloud: `ollama signin`) |
 
-- **Keyless first-run model** `[v1.124.0]` — new installations start with
-  `opencode:big-pickle` across the built-in agent profile, while
-  existing agent model choices remain unchanged.
+- **Keyless first-run model** `[v1.124.0]` *(deprecated — removed)* — previously
+  defaulted new installations to OpenCode Zen free models; removed because
+  OpenCode free models only open within OpenCode's own harness. OpenCode Zen
+  now requires `OPENCODE_ZEN_API_KEY`.
 - **Drop-in provider plugins** `[v1.6.0]` — Python files in the configured
   plugins directory register new providers at startup.
 - **Resilient provider construction** `[v1.17.0]` — missing/unavailable
@@ -903,6 +904,12 @@ MCP.
   questions across suspensions `[v2.10.0]`;
   scheduled sessions never get the tool, because a cron job has nobody to ask.
   Failed scheduled tasks remain eligible to retry until their run limit is met `[v2.13.0]`.
+- **Resilient web search Exa fallback** `[v2.21.0]` — `web_search` uses `web_search_exa`
+  with Server-Sent Events (SSE) stream parsing and normalized result structures
+  when DDGS search backends are unreachable or return no results.
+- **Search usage guidance** `[v2.21.0]` — `web_search` instructions guide agents to
+  write focused queries, fetch known URLs directly, evaluate primary sources,
+  and report uncertainty when search results cannot be verified.
 - **Fast HTML & document extraction** `[v2.0.0]` — `web_fetch` uses `trafilatura` for
   clean HTML-to-markdown extraction, and `read` uses `anydoc` for robust document
   conversion, dropping `markitdown`.

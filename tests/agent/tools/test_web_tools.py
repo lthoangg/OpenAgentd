@@ -42,7 +42,7 @@ async def test_web_search_exception_returns_string():
 
 @pytest.mark.asyncio
 async def test_web_search_exa_fallback_with_error():
-    """When DDGS fails and Exa returns an error, the error message is returned."""
+    """When DDGS fails and Exa returns an error (JSON or JSON-RPC error), the error message is returned."""
     with patch("app.agent.tools.builtin.web.DDGS") as mock_ddgs_class:
         mock_ddgs = mock_ddgs_class.return_value
         mock_ddgs.text.return_value = None
@@ -65,8 +65,8 @@ async def test_web_search_exa_fallback_with_error():
 
 
 @pytest.mark.asyncio
-async def test_web_search_exa_fallback_success():
-    """When DDGS fails but Exa succeeds, results from Exa are returned."""
+async def test_web_search_exa_fallback_legacy_json_success():
+    """When DDGS fails but Exa succeeds with legacy JSON list/dict, results are returned."""
     with patch("app.agent.tools.builtin.web.DDGS") as mock_ddgs_class:
         mock_ddgs = mock_ddgs_class.return_value
         mock_ddgs.text.return_value = None
@@ -79,7 +79,11 @@ async def test_web_search_exa_fallback_success():
                         "jsonrpc": "2.0",
                         "id": 1,
                         "result": [
-                            {"title": "Exa Result", "url": "https://example.com"}
+                            {
+                                "title": "Exa JSON Result",
+                                "href": "https://example.com/json",
+                                "body": "Snippet",
+                            }
                         ],
                     },
                 )
@@ -88,7 +92,59 @@ async def test_web_search_exa_fallback_success():
             result = await web_search("test query")
             assert isinstance(result, list)
             assert len(result) == 1
-            assert result[0]["title"] == "Exa Result"
+            assert result[0]["title"] == "Exa JSON Result"
+
+
+@pytest.mark.asyncio
+async def test_web_search_exa_fallback_sse_success():
+    """When DDGS fails but Exa succeeds via text/event-stream, results are parsed."""
+    with patch("app.agent.tools.builtin.web.DDGS") as mock_ddgs_class:
+        mock_ddgs = mock_ddgs_class.return_value
+        mock_ddgs.text.return_value = None
+
+        sse_text = (
+            "event: message\n"
+            'data: {"result":{"content":[{"type":"text","text":"Title: Exa SSE\\nURL: https://example.com/sse\\nHighlights:\\nSample highlight"}],"isError":false},"jsonrpc":"2.0","id":1}\n\n'
+        )
+        with respx.mock:
+            respx.post("https://mcp.exa.ai/mcp").mock(
+                return_value=httpx.Response(
+                    200,
+                    text=sse_text,
+                    headers={"content-type": "text/event-stream"},
+                )
+            )
+
+            result = await web_search("test query")
+            assert isinstance(result, list)
+            assert len(result) == 1
+            assert result[0]["title"] == "Exa SSE"
+            assert result[0]["href"] == "https://example.com/sse"
+            assert result[0]["body"] == "Sample highlight"
+
+
+@pytest.mark.asyncio
+async def test_web_search_exa_fallback_sse_is_error():
+    """When Exa returns an MCP tool-level error (isError: true), the error string is returned."""
+    with patch("app.agent.tools.builtin.web.DDGS") as mock_ddgs_class:
+        mock_ddgs = mock_ddgs_class.return_value
+        mock_ddgs.text.return_value = None
+
+        sse_text = (
+            "event: message\n"
+            'data: {"result":{"content":[{"type":"text","text":"Tool failed"}],"isError":true},"jsonrpc":"2.0","id":1}\n\n'
+        )
+        with respx.mock:
+            respx.post("https://mcp.exa.ai/mcp").mock(
+                return_value=httpx.Response(
+                    200,
+                    text=sse_text,
+                    headers={"content-type": "text/event-stream"},
+                )
+            )
+
+            result = await web_search("test query")
+            assert result == "Error: Tool failed"
 
 
 @pytest.mark.asyncio

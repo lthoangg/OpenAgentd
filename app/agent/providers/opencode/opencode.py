@@ -7,7 +7,6 @@ model registry normalizes that package to a provider-neutral API family.
 
 from __future__ import annotations
 
-import hmac
 from collections.abc import AsyncIterator
 from typing import Any
 
@@ -25,11 +24,7 @@ from app.agent.schemas.chat import AssistantMessage, ChatCompletionChunk, ChatMe
 from .access import model_is_accessible
 from .constants import (
     API_KEY_ENV_BY_PROVIDER,
-    GO_API_KEY_ENV,
-    GO_PROVIDER_ID,
-    PUBLIC_API_KEY,
     ZEN_API_KEY_ENV,
-    ZEN_PROVIDER_ID,
 )
 
 
@@ -79,32 +74,15 @@ class OpenCodeProvider(LLMProviderBase):
         if not resolved_key:
             env_var = API_KEY_ENV_BY_PROVIDER.get(provider_id, ZEN_API_KEY_ENV)
             raise ValueError(f"OpenCode API key is required. Set {env_var}.")
+        if not model_is_accessible(provider_id, model, has_credentials=True):
+            raise ValueError(
+                f"OpenCode Zen model '{model}' is not supported; "
+                "free OpenCode models only open using OpenCode's own harness."
+            )
         self.api_key = resolved_key
         self.model = model
         self.provider_id = provider_id
         self.base_url = base_url.rstrip("/")
-        self._requires_terminal_sse_frame = (
-            provider_id == ZEN_PROVIDER_ID
-            and model_is_accessible(
-                provider_id,
-                model,
-                has_credentials=False,
-            )
-        )
-        if hmac.compare_digest(resolved_key, PUBLIC_API_KEY):
-            if provider_id == GO_PROVIDER_ID:
-                raise ValueError(
-                    f"OpenCode Go API key is required. Set {GO_API_KEY_ENV}."
-                )
-            if not model_is_accessible(
-                provider_id,
-                model,
-                has_credentials=False,
-            ):
-                raise ValueError(
-                    f"OpenCode Zen model '{model}' requires {ZEN_API_KEY_ENV}; "
-                    "only free Zen models support keyless access."
-                )
 
     def _delegate(
         self,
@@ -151,26 +129,13 @@ class OpenCodeProvider(LLMProviderBase):
             if self.model.startswith("deepseek-")
             else ChatCompletionsOnlyProvider
         )
-        delegate = provider_type(
+        return provider_type(
             api_key=self.api_key,
             model=self.model,
             base_url=self.base_url,
             max_tokens=self.max_tokens,
             model_kwargs=self.model_kwargs,
         )
-        if self._requires_terminal_sse_frame:
-            # Zen's free-model gateway has been observed closing streams after
-            # partial output. Unlike generic OpenAI-compatible endpoints, Zen
-            # must send its documented ``[DONE]`` frame; treating EOF as
-            # success leaves an agent visibly stopped mid-turn. The retry
-            # wrapper converts this protocol error into a fresh attempt. Scope
-            # strictness to free Zen models so all other providers and models
-            # retain their current EOF compatibility.
-            delegate._completions.require_sse_sentinel = True
-            delegate._completions.retryable_finish_reasons = frozenset(
-                {"network_error"}
-            )
-        return delegate
 
     async def chat(
         self,

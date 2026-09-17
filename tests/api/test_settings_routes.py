@@ -222,7 +222,7 @@ def test_list_providers_marks_only_zen_as_publicly_accessible(
 
     assert response.status_code == 200
     providers = {provider["id"]: provider for provider in response.json()["providers"]}
-    assert providers["opencode"]["public_access"] is True
+    assert providers["opencode"]["public_access"] is False
     assert providers["opencode"]["env_var"] == "OPENCODE_ZEN_API_KEY"
     assert providers["opencode"]["is_saved"] is False
     assert providers["opencode"]["is_configured"] is False
@@ -230,7 +230,7 @@ def test_list_providers_marks_only_zen_as_publicly_accessible(
     assert providers["opencode-go"]["env_var"] == "OPENCODE_GO_API_KEY"
 
 
-def test_list_providers_hides_cached_paid_models_without_opencode_keys(
+def test_list_providers_hides_cached_models_without_opencode_keys(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     from app.agent.providers.model_metadata import ModelCost
@@ -266,7 +266,7 @@ def test_list_providers_hides_cached_paid_models_without_opencode_keys(
 
     assert response.status_code == 200
     providers = {provider["id"]: provider for provider in response.json()["providers"]}
-    assert providers["opencode"]["cached_models"] == ["anonymous-model"]
+    assert providers["opencode"]["cached_models"] == []
     assert providers["opencode-go"]["cached_models"] == []
 
 

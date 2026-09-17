@@ -134,7 +134,7 @@ class ProviderStatusEvent(BaseModel):
 
     type: Literal["provider_status"] = "provider_status"
     agent: str
-    status: Literal["retrying", "exhausted"]
+    status: Literal["retrying", "exhausted", "waiting_quota"]
     model: str | None = None
     attempt: int | None = None
     max_attempts: int | None = None
@@ -142,6 +142,8 @@ class ProviderStatusEvent(BaseModel):
     error_type: str | None = None
     status_code: int | None = None
     retry_after: int | None = None
+    message: str | None = None
+    resets_at: int | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 

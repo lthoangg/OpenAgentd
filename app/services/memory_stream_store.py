@@ -343,7 +343,17 @@ async def push_event(
             if agent and status:
                 state.agent_statuses[agent] = status
                 if status == "error":
-                    state.agent_errors[agent] = data.get("metadata", {})
+                    meta = data.get("metadata")
+                    state.agent_errors[agent] = (
+                        meta
+                        if isinstance(meta, dict) and meta
+                        else {
+                            "message": data.get("message"),
+                            "title": data.get("title"),
+                            "code": data.get("code"),
+                            "category": data.get("category"),
+                        }
+                    )
                 else:
                     state.agent_errors.pop(agent, None)
 

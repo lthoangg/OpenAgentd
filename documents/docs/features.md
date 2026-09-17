@@ -500,6 +500,14 @@ executes tools, manages its task list, and inspects workspace repositories.
   reloaded history `[v2.13.0]`.
 - **`provider_status` SSE events in stream** `[v1.17.0]` — retry, exhaustion,
   and fallback transitions surface live in single-agent and split-pane views.
+- **Automatic provider quota-exhaustion wait and resume** `[v2.19.0]` — when an
+  OAuth provider (such as Codex, GitHub Copilot, or Grok) or any configured
+  model hits rate-limiting or quota exhaustion with a known reset window
+  (detected via headers, JSON metadata, body text phrasing, or live usage API
+  lookup), the agent does not abort or fail. It transitions to an
+  interruptible quota-wait state, emits live `waiting_quota` status events,
+  displays the reset time in the transcript, and automatically resumes work
+  once the window resets. The user can manually stop or interrupt at any time.
 - **Actionable provider HTTP errors** `[v1.56.0]` — non-retryable provider
   responses (400/401/403/404/422) are classified into typed errors that carry
   the provider's own explanation instead of a bare status code. 401/403 render

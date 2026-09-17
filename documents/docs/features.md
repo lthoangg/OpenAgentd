@@ -14,7 +14,7 @@ release that introduced it (where known). When you ship something new, **add it 
 > double-clickable app that runs an agent on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 16 providers. Your keys.
 
-**Latest release:** v2.21.0 · September 17, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v2.21.0)
+**Latest release:** v2.22.0 · September 17, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v2.22.0)
 
 ---
 
@@ -719,7 +719,7 @@ agent against it.
 
 OpenAgentd carries context across sessions via rolling-window summarization.
 
-- **Persistent Markdown memory subsystem** `[v2.21.0]` — file-backed persistent knowledge
+- **Persistent Markdown memory subsystem** `[v2.22.0]` — file-backed persistent knowledge
   in global (`{OPENAGENTD_CONFIG_DIR}/memory/`) storing authoritative human-editable `.md` pages.
   Dynamically compiles a bounded
   XML catalog (`<openagentd_memory>`) capped at 1,500 rendered characters into

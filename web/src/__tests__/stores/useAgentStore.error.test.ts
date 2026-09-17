@@ -285,4 +285,41 @@ describe("_handleSSEEvent structured error handling", () => {
     useAgentStore.getState()._handleSSEEvent("done", {});
     expect(useAgentStore.getState().agentStreams["lead"].blocks.length).toBe(1);
   });
+
+  it("surfaces agent_status quota error into provider_status error block and lastError", () => {
+    useAgentStore.setState({
+      leadName: "code",
+      agentStreams: {
+        code: {
+          blocks: [],
+          currentBlocks: [],
+          status: "working",
+          usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0, cachedTokens: 0 },
+          model: null,
+          lastError: null,
+          currentText: "",
+          currentThinking: "",
+        },
+      },
+    });
+
+    const quotaMsg = "The configured LLM provider quota is exhausted. Reset in 26d 6h, which exceeds the maximum auto-wait of 1d.";
+    useAgentStore.getState()._handleSSEEvent("agent_status", {
+      agent: "code",
+      status: "error",
+      message: quotaMsg,
+      title: "Rate Limit Exceeded",
+      code: "provider_rate_limit",
+      category: "provider",
+    });
+
+    const codeStream = useAgentStore.getState().agentStreams["code"];
+    expect(codeStream.status).toBe("error");
+    expect(codeStream.lastError).toBe(quotaMsg);
+    expect(codeStream.blocks.length).toBe(1);
+    expect(codeStream.blocks[0].type).toBe("provider_status");
+    expect(codeStream.blocks[0].content).toBe(quotaMsg);
+    expect(codeStream.blocks[0].extra?.status).toBe("error");
+    expect(codeStream.blocks[0].extra?.title).toBe("Rate Limit Exceeded");
+  });
 });

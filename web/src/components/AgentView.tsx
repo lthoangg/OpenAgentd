@@ -19,7 +19,7 @@ import { useState, useRef, useEffect, useCallback, useMemo, memo, lazy, Suspense
 import OctobotMascot from '@/assets/brand/octobot-agentd-source.png'
 
 import { LazyMarkdownBlock } from '@/utils/LazyMarkdownBlock'
-import { ChevronDown, ChevronUp, AlertCircle } from 'lucide-react'
+import { ChevronDown, ChevronUp, AlertCircle, Clock } from 'lucide-react'
 import { Thinking } from './Thinking'
 import { ToolCall } from './ToolCall'
 const MCPAppResult = lazy(() => import('./MCPAppResult').then((module) => ({ default: module.MCPAppResult })))
@@ -121,6 +121,21 @@ const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionI
               <span>{title || 'Provider Error'}</span>
             </div>
             <p className="mt-1 text-(--color-error)/90 leading-relaxed break-words">{customMsg || block.content}</p>
+          </div>
+        )
+      }
+
+      if (status === 'waiting_quota') {
+        const model = block.extra?.model
+        return (
+          <div className="my-2 rounded-md border border-(--color-warning)/30 bg-(--color-warning-subtle) px-3 py-2 text-xs">
+            <div className="flex items-center gap-1.5 font-medium text-(--color-warning)">
+              <Clock size={14} className="shrink-0 animate-pulse" />
+              <span>Quota Limit Reached · Waiting for Reset</span>
+            </div>
+            <p className="mt-1 text-(--color-text-muted) leading-relaxed break-words">
+              {customMsg || `Provider quota exhausted for ${String(model ?? 'model')}. Waiting for reset. Agent will automatically resume work. You can stop anytime.`}
+            </p>
           </div>
         )
       }

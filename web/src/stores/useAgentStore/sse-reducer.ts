@@ -653,13 +653,17 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
             if (draft.liveAgentNames) draft.liveAgentNames = draft.liveAgentNames.filter((name) => name !== agent)
           } else if (status === 'error') {
             const meta = d.metadata as Record<string, unknown> | undefined
-            const lastErr = (meta?.message as string) ?? null
-            const errTitle = meta?.title as string | undefined
-            const errCode = meta?.code as string | undefined
-            const errCategory = meta?.category as AgentError['category'] | undefined
+            const lastErr = (meta?.message as string) ?? (d.message as string) ?? null
+            const errTitle = (meta?.title as string) ?? (d.title as string) ?? undefined
+            const errCode = (meta?.code as string) ?? (d.code as string) ?? undefined
+            const errCategory = (meta?.category as AgentError['category']) ?? (d.category as AgentError['category']) ?? undefined
 
             draft.agentStreams[agent].status = 'error'
             draft.agentStreams[agent].lastError = lastErr
+            if (draft.leadName && draft.agentStreams[draft.leadName]) {
+              draft.agentStreams[draft.leadName].status = 'error'
+              draft.agentStreams[draft.leadName].lastError = lastErr
+            }
             if (draft.liveAgentNames && !draft.liveAgentNames.includes(agent)) draft.liveAgentNames.push(agent)
 
             if (lastErr && !draft.error) {
@@ -669,6 +673,46 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
                 code: errCode,
                 category: errCategory || 'system',
                 agent,
+              }
+            }
+
+            const isProvider = errCategory === 'provider' ||
+              errCode?.startsWith('provider_') ||
+              `${errTitle ?? ''} ${lastErr ?? ''}`.toLowerCase().includes('provider') ||
+              `${errTitle ?? ''} ${lastErr ?? ''}`.toLowerCase().includes('rate limit') ||
+              `${errTitle ?? ''} ${lastErr ?? ''}`.toLowerCase().includes('quota') ||
+              `${errTitle ?? ''} ${lastErr ?? ''}`.toLowerCase().includes('invalid api key')
+
+            if (isProvider && lastErr) {
+              const targets = new Set<string>()
+              if (agent) targets.add(agent)
+              if (draft.leadName) targets.add(draft.leadName)
+
+              for (const targetAgent of targets) {
+                ensureAgent(draft, targetAgent)
+                const stream = draft.agentStreams[targetAgent]
+                const alreadyHas = stream.currentBlocks.some(
+                  (b) => b.type === 'provider_status' && b.extra?.status === 'error' && (b.extra?.message === lastErr || b.content === lastErr)
+                ) || stream.blocks.some(
+                  (b) => b.type === 'provider_status' && b.extra?.status === 'error' && (b.extra?.message === lastErr || b.content === lastErr)
+                )
+                if (!alreadyHas) {
+                  const errorBlock: ContentBlock = {
+                    id: generateBlockId(),
+                    type: 'provider_status',
+                    content: lastErr,
+                    extra: {
+                      type: 'provider_status',
+                      status: 'error',
+                      title: errTitle || 'Provider Error',
+                      message: lastErr,
+                      code: errCode,
+                      category: 'provider',
+                    },
+                    timestamp: new Date(),
+                  }
+                  appendLocalBlocks(stream, [errorBlock])
+                }
               }
             }
           }
@@ -773,26 +817,41 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
             code?.startsWith('provider_') ||
             `${title ?? ''} ${message}`.toLowerCase().includes('provider') ||
             `${title ?? ''} ${message}`.toLowerCase().includes('rate limit') ||
+            `${title ?? ''} ${message}`.toLowerCase().includes('quota') ||
             `${title ?? ''} ${message}`.toLowerCase().includes('invalid api key')
 
           if (isProvider) {
-            ensureAgent(draft, effectiveAgent)
-            const stream = draft.agentStreams[effectiveAgent]
-            const errorBlock: ContentBlock = {
-              id: generateBlockId(),
-              type: 'provider_status',
-              content: message,
-              extra: {
-                type: 'provider_status',
-                status: 'error',
-                title: title || 'Provider Error',
-                message,
-                code,
-                category: 'provider',
-              },
-              timestamp: new Date(),
+            const targets = new Set<string>()
+            if (agent) targets.add(agent)
+            if (draft.leadName) targets.add(draft.leadName)
+            if (targets.size === 0) targets.add(effectiveAgent)
+
+            for (const targetAgent of targets) {
+              ensureAgent(draft, targetAgent)
+              const stream = draft.agentStreams[targetAgent]
+              const alreadyHas = stream.currentBlocks.some(
+                (b) => b.type === 'provider_status' && b.extra?.status === 'error' && (b.extra?.message === message || b.content === message)
+              ) || stream.blocks.some(
+                (b) => b.type === 'provider_status' && b.extra?.status === 'error' && (b.extra?.message === message || b.content === message)
+              )
+              if (!alreadyHas) {
+                const errorBlock: ContentBlock = {
+                  id: generateBlockId(),
+                  type: 'provider_status',
+                  content: message,
+                  extra: {
+                    type: 'provider_status',
+                    status: 'error',
+                    title: title || 'Provider Error',
+                    message,
+                    code,
+                    category: 'provider',
+                  },
+                  timestamp: new Date(),
+                }
+                appendLocalBlocks(stream, [errorBlock])
+              }
             }
-            appendLocalBlocks(stream, [errorBlock])
           }
         })
         break

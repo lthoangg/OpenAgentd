@@ -904,6 +904,9 @@ MCP.
   questions across suspensions `[v2.10.0]`;
   scheduled sessions never get the tool, because a cron job has nobody to ask.
   Failed scheduled tasks remain eligible to retry until their run limit is met `[v2.13.0]`.
+- **Search usage guidance** `[v2.20.0]` — `web_search` instructions guide agents to
+  write focused queries, fetch known URLs directly, evaluate primary sources,
+  and report uncertainty when search results cannot be verified.
 - **Fast HTML & document extraction** `[v2.0.0]` — `web_fetch` uses `trafilatura` for
   clean HTML-to-markdown extraction, and `read` uses `anydoc` for robust document
   conversion, dropping `markitdown`.

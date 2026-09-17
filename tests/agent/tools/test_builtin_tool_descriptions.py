@@ -128,8 +128,30 @@ def test_multimodal_descriptions_keep_output_and_cross_field_constraints():
     assert "Mutually exclusive" in video_properties["extend_video"]["description"]
 
 
-def test_simple_tools_do_not_repeat_examples_or_unstable_result_shapes():
-    assert web_search.description == "Search the web."
+def test_web_search_description_distinguishes_search_from_fetch():
+    description = web_search.description
+    assert "known URL" in description
+    assert "web_fetch" in description
+    assert "not full pages" in description
+
+
+def test_web_search_description_limits_unproductive_search_loops():
+    description = web_search.description
+    assert "reformulate" in description
+    assert "service failure" in description
+    assert "not proof" in description
+    assert "another source" in description
+    assert "uncertainty" in description
+
+
+def test_web_search_description_requires_source_verification():
+    description = web_search.description
+    assert "snippets" in description
+    assert "official" in description
+    assert "untrusted" in description
+    assert "secrets" in description
+    # Fallback payloads differ; do not promise a fixed result schema.
+    assert "typically" in description
 
 
 def test_shell_description_states_streams_are_combined():

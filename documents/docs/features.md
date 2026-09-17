@@ -2,7 +2,7 @@
 title: Features
 description: Canonical, version-cited catalogue of shipped user-visible OpenAgentd features.
 status: stable
-updated: 2026-09-15
+updated: 2026-09-17
 ---
 
 # Features
@@ -14,7 +14,7 @@ release that introduced it (where known). When you ship something new, **add it 
 > double-clickable app that runs an agent on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 16 providers. Your keys.
 
-**Latest release:** v2.19.0 · September 15, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v2.19.0)
+**Latest release:** v2.20.0 · September 17, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v2.20.0)
 
 ---
 
@@ -500,7 +500,7 @@ executes tools, manages its task list, and inspects workspace repositories.
   reloaded history `[v2.13.0]`.
 - **`provider_status` SSE events in stream** `[v1.17.0]` — retry, exhaustion,
   and fallback transitions surface live in single-agent and split-pane views.
-- **Automatic provider quota-exhaustion wait and resume** `[v2.19.0]` — when an
+- **Automatic provider quota-exhaustion wait and resume** `[v2.20.0]` — when an
   OAuth provider (such as Codex, GitHub Copilot, or Grok) or any configured
   model hits rate-limiting or quota exhaustion with a known reset window
   (detected via headers, JSON metadata, body text phrasing, or live usage API
@@ -1068,7 +1068,7 @@ Four orthogonal ways to add capability.
     schemas benefit automatically; plain-text descriptions render identically to before.
     The tool inventory is grouped by origin (built-in, then one group per MCP server)
     and open by default so available tools are immediately visible; the name/description filter appears past eight tools `[v1.125.0]`.
-  - **Multimodal image tool returns** `[v2.19.0]` — MCP tools can return image
+  - **Multimodal image tool returns** `[v2.20.0]` — MCP tools can return image
     MIME types (`ImageContent` and image embedded resources), which are
     translated to structured `ImageDataBlock` parts for vision models while
     preserving concise textual summaries in transcripts and history.

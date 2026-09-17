@@ -47,7 +47,7 @@ def test_ensure_workspace_initialized_creates_roots_and_builtin_defaults(
     assert (config / "settings.yaml").is_file()
     assert (config / "multimodal.yaml").is_file()
 
-    default_model = "opencode:deepseek-v4-flash-free"
+    default_model = "opencode:big-pickle"
     for agent_file in (config / "agents").rglob("*.md"):
         assert f"model: {default_model}" in agent_file.read_text(encoding="utf-8")
     assert f"model: {default_model}" in (config / "settings.yaml").read_text(
@@ -91,4 +91,4 @@ def test_ensure_workspace_initialized_restores_missing_default_agent(
     assert lead.is_file()
     text = lead.read_text(encoding="utf-8")
     assert "role: lead" in text
-    assert "model: opencode:deepseek-v4-flash-free" in text
+    assert "model: opencode:big-pickle" in text

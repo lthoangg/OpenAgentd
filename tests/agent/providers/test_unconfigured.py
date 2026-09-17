@@ -20,7 +20,6 @@ from app.agent.providers.unconfigured import (
     UnconfiguredProvider,
     UnconfiguredProviderError,
 )
-from app.core.config import PROVIDER_MODEL_TOKEN
 
 
 def test_unconfigured_error_is_value_error() -> None:
@@ -30,7 +29,7 @@ def test_unconfigured_error_is_value_error() -> None:
 
 def test_build_provider_raises_unconfigured_for_placeholder() -> None:
     with pytest.raises(UnconfiguredProviderError):
-        build_provider(PROVIDER_MODEL_TOKEN)
+        build_provider("__PROVIDER_MODEL__")
 
 
 def test_build_provider_still_raises_value_error_for_garbage() -> None:
@@ -66,11 +65,11 @@ def test_loader_substitutes_unconfigured_stub(tmp_path) -> None:
 
     agent_md = tmp_path / "openagentd.md"
     agent_md.write_text(
-        f"""---
+        """---
 name: openagentd
 role: lead
 description: Test agent.
-model: {PROVIDER_MODEL_TOKEN}
+model: __PROVIDER_MODEL__
 tools: []
 ---
 
@@ -83,4 +82,4 @@ You are a test agent.
     assert agent is not None
     assert isinstance(agent.llm_provider, UnconfiguredProvider)
     # model_id carries the placeholder so the UI can show what's wrong.
-    assert agent.model_id == PROVIDER_MODEL_TOKEN
+    assert agent.model_id == "__PROVIDER_MODEL__"

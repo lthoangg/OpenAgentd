@@ -15,7 +15,7 @@ catches that specific error type and emits a typed SSE
 :class:`AgentNotConfiguredEvent` so the UI can render a "configure a
 provider" banner instead of a generic stack trace.
 
-See ``app.core.config.PROVIDER_MODEL_TOKEN`` for the canonical sentinel.
+See ``app.core.config.DEFAULT_NEW_USER_MODEL`` for the default user model.
 """
 
 from __future__ import annotations

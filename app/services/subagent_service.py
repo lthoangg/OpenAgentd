@@ -296,11 +296,9 @@ async def spawn_subagent(
     handle = allocate_instance_handle(lead_session_id, profile, explicit_name=name)
     child_session_uuid = uuid7()
 
-    from app.core.config import PROVIDER_MODEL_TOKEN
-
     if model_override:
         effective_model = model_override
-    elif cfg.model and cfg.model not in (DEFAULT_NEW_USER_MODEL, PROVIDER_MODEL_TOKEN):
+    elif cfg.model and cfg.model != DEFAULT_NEW_USER_MODEL:
         effective_model = cfg.model
     elif lead_model:
         effective_model = lead_model

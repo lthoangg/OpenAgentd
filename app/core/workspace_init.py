@@ -32,14 +32,12 @@ def ensure_workspace_initialized() -> None:
         plugin_dir.mkdir(parents=True, exist_ok=True)
 
     from app.agent.tools.multimodalities._config import ensure_default_config
-    from app.core.config import DEFAULT_NEW_USER_MODEL, PROVIDER_MODEL_TOKEN
+    from app.core.config import DEFAULT_NEW_USER_MODEL
     from app.core.runtime_settings import ensure_runtime_settings
 
     ensure_runtime_settings(
         config_dir / "settings.yaml",
-        provider_model=(
-            DEFAULT_NEW_USER_MODEL if is_new_user else PROVIDER_MODEL_TOKEN
-        ),
+        provider_model=DEFAULT_NEW_USER_MODEL,
     )
     ensure_default_config()
 

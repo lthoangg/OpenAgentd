@@ -115,6 +115,7 @@ make verify-native   # shell-core + desktop + mobile; native system dependencies
 ```
 
 Use focused checks while iterating, then run the applicable target above.
+Always run Bun tests with `--parallel` (`bun test --cwd web --parallel` or `cd web && bun test --parallel <path>`) for per-file module isolation.
 Cross-surface API or event changes require both backend and web checks. Run
 `make help` for maintained scenario, health, migration, and build targets.
 

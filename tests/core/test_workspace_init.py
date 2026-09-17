@@ -41,6 +41,8 @@ def test_ensure_workspace_initialized_creates_roots_and_builtin_defaults(
     assert (config / "agents").is_dir()
     assert (config / "skills").is_dir()
     assert (config / "plugins").is_dir()
+    assert (config / "memory").is_dir()
+    assert (config / "memory" / "preferences.md").is_file()
     assert (tmp_path / "cache").is_dir()
     assert (config / "agents" / "code.md").is_file()
     assert not (config / "agents" / "coding").exists()

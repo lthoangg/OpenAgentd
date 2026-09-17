@@ -105,6 +105,8 @@ class DeniedPathsConfig:
         session_id: str | None = None,
         denied_roots: list[Path] | None = None,
         denied_patterns: list[str] | None = None,
+        shell_denied_roots: list[Path] | None = None,
+        shell_denied_patterns: list[str] | None = None,
         max_execution_seconds: int | None = None,
         max_output_bytes: int | None = None,
         allow_network: bool | None = None,
@@ -140,6 +142,24 @@ class DeniedPathsConfig:
         self._compiled_patterns: tuple[tuple[str, re.Pattern[str]], ...] = tuple(
             (pat, re.compile(fnmatch.translate(pat))) for pat in self.denied_patterns
         )
+
+        if shell_denied_roots is None:
+            shell_denied_roots = [
+                Path(settings.OPENAGENTD_CONFIG_DIR).resolve() / "memory",
+                self.workspace_root / ".openagentd" / "memory",
+            ]
+        self.shell_denied_roots: list[Path] = [
+            Path(p).resolve() for p in shell_denied_roots
+        ]
+
+        if shell_denied_patterns is None:
+            shell_denied_patterns = []
+        self.shell_denied_patterns: list[str] = list(shell_denied_patterns)
+        self._compiled_shell_patterns: tuple[tuple[str, re.Pattern[str]], ...] = tuple(
+            (pat, re.compile(fnmatch.translate(pat)))
+            for pat in self.shell_denied_patterns
+        )
+
         # Populated on first use by ``_shielded_denied_roots``.
         self._shielded_roots_cache: tuple[tuple[Path, tuple[Path, ...]], ...] | None = (
             None
@@ -158,6 +178,17 @@ class DeniedPathsConfig:
         return session_artifacts_dir(self.session_id) / name
 
     # ── Path validation ───────────────────────────────────────────────────
+
+    def _is_shell_denied(self, resolved: Path) -> Path | str | None:
+        """Return the shell-denied root or glob pattern that matched, or None."""
+        for denied in self.shell_denied_roots:
+            if _path_is_under(resolved, denied):
+                return denied
+        resolved_str = str(resolved)
+        for pattern, rx in self._compiled_shell_patterns:
+            if rx.match(resolved_str):
+                return pattern
+        return None
 
     def _is_denied(self, resolved: Path) -> Path | str | None:
         """Return the denied root or glob pattern that matched, or None.
@@ -295,6 +326,8 @@ class DeniedPathsConfig:
                 continue
 
             hit = self._is_denied(resolved)
+            if hit is None:
+                hit = self._is_shell_denied(resolved)
             if hit is not None:
                 logger.warning(
                     "path_command_denied token={} resolved={} denied={}",

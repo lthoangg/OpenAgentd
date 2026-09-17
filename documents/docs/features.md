@@ -719,6 +719,16 @@ agent against it.
 
 OpenAgentd carries context across sessions via rolling-window summarization.
 
+- **Persistent Markdown memory subsystem** `[v2.21.0]` — file-backed persistent knowledge
+  in global (`{OPENAGENTD_CONFIG_DIR}/memory/`) and workspace (`{ws}/.openagentd/memory/`)
+  roots storing authoritative human-editable `.md` pages. Dynamically compiles a bounded
+  XML catalog (`<openagentd_memory>`) capped at 1,500 rendered characters into
+  `state.system_prompt` during `before_agent` (0 filesystem I/O across model turns),
+  pins `preferences.md` directives (<= 400 chars), enforces scope isolation (Chat mode
+  strictly accesses Global scope), synchronizes concurrent edits with reference-counted
+  path locks and quoted strong SHA-256 ETags (HTTP 412/428), provides `/memory` slash
+  commands, and exposes a Settings viewer/editor with conflict resolution and deterministic
+  wikilink linting.
 - **`/compact` rolling-window summarization** `[v1.5.0, v2.7.0]` — compresses old turns
   into a single summary message kept in context; UI shows the unabridged
   conversation. Preserves reasoning and loaded skill/tool context; skill

@@ -57,6 +57,13 @@ async def render(
     cmd = discover_commands(workspace_path).get(name) or get_builtin_command(name)
     if cmd is None:
         raise HTTPException(status_code=404, detail=f"Command '{name}' not found.")
+
+    if cmd.name == "memory" and cmd.source == "builtin":
+        from app.services.commands import render_memory_command
+
+        content = await render_memory_command(body.arguments, workspace_path)
+        return CommandRenderResponse(name=cmd.name, content=content)
+
     return CommandRenderResponse(
         name=cmd.name, content=render_command(cmd, body.arguments)
     )

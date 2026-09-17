@@ -14,6 +14,7 @@
  * from here.
  */
 import {
+  Brain,
   Info,
   KeyRound,
   Plug,
@@ -34,6 +35,7 @@ export type TopLevelSection = Extract<
   | 'agents'
   | 'skills'
   | 'mcp'
+  | 'memory'
   | 'providers'
   | 'denied_paths'
   | 'sandbox'
@@ -89,6 +91,12 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionDef[] = [
     icon: Plug,
     group: 'build',
     mobileTab: true,
+  },
+  {
+    id: 'memory',
+    label: 'Memory',
+    icon: Brain,
+    group: 'build',
   },
   {
     id: 'providers',

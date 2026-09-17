@@ -24,6 +24,13 @@ export {
   useUpdateSkillMutation,
   useDeleteSkillMutation,
 } from './useSkillFilesQuery'
+export {
+  useMemoryTreeQuery,
+  useMemoryFileQuery,
+  useMemoryLintQuery,
+  useSaveMemoryFileMutation,
+  useDeleteMemoryFileMutation,
+} from './useMemoryQuery'
 export { useObservabilitySummaryQuery } from './useObservabilitySummaryQuery'
 export {
   useInfiniteTracesQuery,

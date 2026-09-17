@@ -103,16 +103,28 @@ def notify_fs_change(resolved_path: Path) -> None:
             )
 
     if not under_skills_root:
-        return
+        pass
+    else:
+        try:
+            from app.agent.tools.builtin.skill import _discover_skills_cached
 
+            _discover_skills_cached.cache_clear()
+            logger.debug("fs_config_watch_skill_cache_cleared path={}", resolved_path)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "fs_config_watch_skill_cache_clear_failed path={} error={}",
+                resolved_path,
+                exc,
+            )
+
+    # Notify memory subsystem if a memory path was touched
     try:
-        from app.agent.tools.builtin.skill import _discover_skills_cached
+        from app.services.memory import get_memory_manager
 
-        _discover_skills_cached.cache_clear()
-        logger.debug("fs_config_watch_skill_cache_cleared path={}", resolved_path)
-    except Exception as exc:  # noqa: BLE001
+        get_memory_manager().invalidate_by_path(resolved_path)
+    except Exception as exc:  # noqa: BLE001 — defensive
         logger.warning(
-            "fs_config_watch_skill_cache_clear_failed path={} error={}",
+            "fs_config_watch_memory_invalidate_failed path={} error={}",
             resolved_path,
             exc,
         )

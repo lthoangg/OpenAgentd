@@ -510,3 +510,21 @@ class TestSkillsRootsDegradedResolution:
             "config_watch_project_skills_roots_failed" in m
             for m in caplog_loguru.messages
         ), f"project-root failure was swallowed silently: {caplog_loguru.messages}"
+
+
+def test_notify_fs_change_invalidates_memory_manager(tmp_path: Path, monkeypatch):
+    from app.services.memory import get_memory_manager
+
+    manager = get_memory_manager()
+    ws = tmp_path / "ws"
+    mem_file = ws / ".openagentd" / "memory" / "notes.md"
+    mem_file.parent.mkdir(parents=True, exist_ok=True)
+    mem_file.write_text("# Notes\n")
+
+    scope_key = f"workspace:{(ws / '.openagentd' / 'memory').resolve().as_posix()}"
+    state = manager._get_state(scope_key)
+    initial_epoch = state.epoch
+
+    notify_fs_change(mem_file)
+
+    assert state.epoch > initial_epoch

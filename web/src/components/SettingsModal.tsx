@@ -67,6 +67,11 @@ const NewMcpServerPage = lazy(() =>
 const McpServerDetailPage = lazy(() =>
   import('@/components/settings/pages/settings.mcp.$name').then((m) => ({ default: m.McpServerDetailPage })),
 )
+const MemorySettingsPage = lazy(() =>
+  import('@/components/settings/pages/settings.memory').then((m) => ({
+    default: m.MemorySettingsPage,
+  })),
+)
 const ProvidersSettingsPage = lazy(() =>
   import('@/components/settings/pages/settings.providers').then((m) => ({ default: m.ProvidersSettingsPage })),
 )
@@ -284,6 +289,7 @@ function SectionContent({
       return selectedName ? (
         <McpServerDetailPage name={selectedName} onBack={() => setSection('mcp')} />
       ) : null
+    case 'memory':       return <MemorySettingsPage />
     case 'providers':    return <ProvidersSettingsPage />
     case 'denied_paths':
     case 'sandbox':      return <DeniedPathsSettingsPage />

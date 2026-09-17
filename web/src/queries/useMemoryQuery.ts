@@ -6,35 +6,30 @@ import {
   putMemoryFile,
   deleteMemoryFile,
   lintMemory,
-  type MemoryScopeKind,
 } from '@/api/client'
 import { queryKeys } from './keys'
 
-export function useMemoryTreeQuery(scope: MemoryScopeKind = 'global', workspace?: string | null) {
+export function useMemoryTreeQuery() {
   return useQuery({
-    queryKey: queryKeys.memory.tree(scope, workspace),
-    queryFn: () => getMemoryTree(scope, workspace),
+    queryKey: queryKeys.memory.tree(),
+    queryFn: () => getMemoryTree(),
     staleTime: 5_000,
   })
 }
 
-export function useMemoryFileQuery(
-  path: string | null,
-  scope: MemoryScopeKind = 'global',
-  workspace?: string | null,
-) {
+export function useMemoryFileQuery(path: string | null) {
   return useQuery({
-    queryKey: queryKeys.memory.file(path ?? '', scope, workspace),
-    queryFn: () => getMemoryFile(path as string, scope, workspace),
+    queryKey: queryKeys.memory.file(path ?? ''),
+    queryFn: () => getMemoryFile(path as string),
     enabled: !!path,
     staleTime: 5_000,
   })
 }
 
-export function useMemoryLintQuery(workspace?: string | null, enabled: boolean = false) {
+export function useMemoryLintQuery(enabled: boolean = false) {
   return useQuery({
-    queryKey: queryKeys.memory.lint(workspace),
-    queryFn: () => lintMemory(workspace),
+    queryKey: queryKeys.memory.lint(),
+    queryFn: () => lintMemory(),
     enabled,
   })
 }
@@ -45,20 +40,16 @@ export function useSaveMemoryFileMutation() {
     mutationFn: ({
       path,
       content,
-      scope,
       ifMatch,
-      workspace,
     }: {
       path: string
       content: string
-      scope: MemoryScopeKind
       ifMatch?: string | null
-      workspace?: string | null
-    }) => putMemoryFile(path, content, scope, ifMatch, workspace),
+    }) => putMemoryFile(path, content, ifMatch),
     onSuccess: (_data, vars) => {
-      client.invalidateQueries({ queryKey: queryKeys.memory.tree(vars.scope, vars.workspace) })
-      client.invalidateQueries({ queryKey: queryKeys.memory.file(vars.path, vars.scope, vars.workspace) })
-      client.invalidateQueries({ queryKey: queryKeys.memory.lint(vars.workspace) })
+      client.invalidateQueries({ queryKey: queryKeys.memory.tree() })
+      client.invalidateQueries({ queryKey: queryKeys.memory.file(vars.path) })
+      client.invalidateQueries({ queryKey: queryKeys.memory.lint() })
     },
   })
 }
@@ -68,19 +59,15 @@ export function useDeleteMemoryFileMutation() {
   return useMutation({
     mutationFn: ({
       path,
-      scope,
       ifMatch,
-      workspace,
     }: {
       path: string
-      scope: MemoryScopeKind
       ifMatch: string
-      workspace?: string | null
-    }) => deleteMemoryFile(path, scope, ifMatch, workspace),
+    }) => deleteMemoryFile(path, ifMatch),
     onSuccess: (_data, vars) => {
-      client.invalidateQueries({ queryKey: queryKeys.memory.tree(vars.scope, vars.workspace) })
-      client.invalidateQueries({ queryKey: queryKeys.memory.file(vars.path, vars.scope, vars.workspace) })
-      client.invalidateQueries({ queryKey: queryKeys.memory.lint(vars.workspace) })
+      client.invalidateQueries({ queryKey: queryKeys.memory.tree() })
+      client.invalidateQueries({ queryKey: queryKeys.memory.file(vars.path) })
+      client.invalidateQueries({ queryKey: queryKeys.memory.lint() })
     },
   })
 }

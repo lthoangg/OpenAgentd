@@ -5,23 +5,19 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Literal
 
 from pydantic import BaseModel
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True)
 class MemoryScope:
-    """Identity and filesystem root of an isolated memory scope."""
+    """Identity and filesystem root of the persistent memory scope."""
 
-    kind: Literal["global", "workspace"]
     root: Path
 
     @property
     def scope_key(self) -> str:
-        if self.kind == "global":
-            return "global"
-        return f"workspace:{self.root.resolve().as_posix()}"
+        return "global"
 
 
 class MemoryFrontmatter(BaseModel):
@@ -50,27 +46,19 @@ class GlobalMemorySnapshot:
 
 
 @dataclass(frozen=True, slots=True)
-class WorkspaceMemorySnapshot:
-    """Bounded compiled snapshot of Workspace memory."""
-
-    knowledge_catalog: str  # workspace catalog entries (<= 1100 chars)
-
-
-@dataclass(frozen=True, slots=True)
 class MemoryContextSnapshot:
     """Composed immutable prompt-facing snapshot held by an AgentSession."""
 
     global_snapshot: GlobalMemorySnapshot
-    workspace_snapshot: WorkspaceMemorySnapshot | None
     content: str  # final XML-delimited prompt block (<= 1500 chars)
     content_hash: str  # SHA-256 of final rendered content
 
 
 @dataclass
 class ScopeState:
-    """Internal race-control and caching state for a single scope."""
+    """Internal race-control and caching state for memory compilation."""
 
-    snapshot: GlobalMemorySnapshot | WorkspaceMemorySnapshot | None = None
+    snapshot: GlobalMemorySnapshot | None = None
     compile_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     epoch: int = 0
 

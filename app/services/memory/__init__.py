@@ -12,7 +12,6 @@ from app.services.memory.models import (
     MemoryFrontmatter,
     MemoryPage,
     MemoryScope,
-    WorkspaceMemorySnapshot,
 )
 from app.services.memory.store import (
     MAX_MEMORY_PAGE_BYTES,
@@ -29,8 +28,7 @@ from app.services.memory.store import (
     delete_page,
     global_memory_root,
     read_page,
-    resolve_memory_scopes,
-    workspace_memory_root,
+    resolve_memory_scope,
     write_page,
 )
 
@@ -50,7 +48,6 @@ __all__ = [
     "MemoryPreconditionRequiredError",
     "MemoryScope",
     "MemoryScopeAuthorizationError",
-    "WorkspaceMemorySnapshot",
     "assert_authorized_memory_path",
     "assert_no_memory_symlinks",
     "compute_etag",
@@ -59,7 +56,6 @@ __all__ = [
     "global_memory_root",
     "read_page",
     "reset_memory_manager",
-    "resolve_memory_scopes",
-    "workspace_memory_root",
+    "resolve_memory_scope",
     "write_page",
 ]

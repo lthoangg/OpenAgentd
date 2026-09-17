@@ -146,7 +146,6 @@ class DeniedPathsConfig:
         if shell_denied_roots is None:
             shell_denied_roots = [
                 Path(settings.OPENAGENTD_CONFIG_DIR).resolve() / "memory",
-                self.workspace_root / ".openagentd" / "memory",
             ]
         self.shell_denied_roots: list[Path] = [
             Path(p).resolve() for p in shell_denied_roots

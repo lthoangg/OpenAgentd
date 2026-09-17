@@ -11,7 +11,6 @@ from loguru import logger
 
 from app.services.memory.context import (
     compile_global_snapshot,
-    compile_workspace_snapshot,
     compose_memory_context,
     search_memory,
 )
@@ -22,7 +21,6 @@ from app.services.memory.models import (
     MemoryContextSnapshot,
     MemoryScope,
     ScopeState,
-    WorkspaceMemorySnapshot,
 )
 from app.services.memory.store import global_memory_root
 
@@ -78,14 +76,6 @@ class MemoryManager:
             g_root = global_memory_root()
             if resolved.is_relative_to(g_root):
                 self.invalidate("global")
-                return
-            # Check for workspace memory root: {ws}/.openagentd/memory/
-            # Traverse parents to find .openagentd/memory
-            for parent in (resolved, *resolved.parents):
-                if parent.name == "memory" and parent.parent.name == ".openagentd":
-                    canonical_root = parent.resolve()
-                    self.invalidate(f"workspace:{canonical_root.as_posix()}")
-                    return
         except Exception as exc:
             logger.warning(
                 "memory_invalidate_by_path_failed path={} error={}", path, exc
@@ -109,30 +99,10 @@ class MemoryManager:
                 state.snapshot = candidate
                 return candidate
 
-    async def get_workspace_snapshot(
-        self, scope: MemoryScope
-    ) -> WorkspaceMemorySnapshot:
-        """Return the compiled WorkspaceMemorySnapshot, single-flight compiled off-loop."""
-        state = self._get_state(scope.scope_key)
-        if isinstance(state.snapshot, WorkspaceMemorySnapshot):
-            return state.snapshot
-
-        async with state.compile_lock:
-            if isinstance(state.snapshot, WorkspaceMemorySnapshot):
-                return state.snapshot
-            while True:
-                start_epoch = state.epoch
-                candidate = await asyncio.to_thread(compile_workspace_snapshot, scope)
-                if state.epoch != start_epoch:
-                    # A mutation occurred during compilation; retry
-                    continue
-                state.snapshot = candidate
-                return candidate
-
     async def reconcile(
         self,
         scope: MemoryScope,
-    ) -> GlobalMemorySnapshot | WorkspaceMemorySnapshot:
+    ) -> GlobalMemorySnapshot:
         """Reconcile disk changes under single-flight lock, retaining existing snapshot if content unchanged."""
         state = self._get_state(scope.scope_key)
         async with state.compile_lock:
@@ -141,14 +111,7 @@ class MemoryManager:
                 start_sig = await asyncio.to_thread(
                     _get_scope_signature_sync, scope.root
                 )
-                if scope.kind == "global":
-                    candidate: (
-                        GlobalMemorySnapshot | WorkspaceMemorySnapshot
-                    ) = await asyncio.to_thread(compile_global_snapshot, scope)
-                else:
-                    candidate = await asyncio.to_thread(
-                        compile_workspace_snapshot, scope
-                    )
+                candidate = await asyncio.to_thread(compile_global_snapshot, scope)
                 end_sig = await asyncio.to_thread(_get_scope_signature_sync, scope.root)
                 if state.epoch != start_epoch or end_sig != start_sig:
                     continue
@@ -157,7 +120,7 @@ class MemoryManager:
                 existing = state.snapshot
                 if (
                     existing is not None
-                    and isinstance(existing, type(candidate))
+                    and isinstance(existing, GlobalMemorySnapshot)
                     and candidate == existing
                 ):
                     # Retain existing object identity to keep downstream sessions stable
@@ -168,49 +131,36 @@ class MemoryManager:
 
     async def get_context(
         self,
-        global_scope: MemoryScope,
-        workspace_scope: MemoryScope | None,
-        *,
-        is_chat: bool,
+        scope: MemoryScope,
     ) -> MemoryContextSnapshot:
         """Compose current memory context into an immutable MemoryContextSnapshot."""
-        global_snap = await self.get_global_snapshot(global_scope)
-        ws_snap = (
-            await self.get_workspace_snapshot(workspace_scope)
-            if workspace_scope
-            else None
-        )
+        global_snap = await self.get_global_snapshot(scope)
 
         content = compose_memory_context(
             global_snap,
-            ws_snap,
-            is_chat=is_chat,
-            global_root=global_scope.root,
-            workspace_root=workspace_scope.root if workspace_scope else None,
+            global_root=scope.root,
         )
         content_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()
         return MemoryContextSnapshot(
             global_snapshot=global_snap,
-            workspace_snapshot=ws_snap,
             content=content,
             content_hash=content_hash,
         )
 
     async def search(
         self,
-        scopes: list[MemoryScope],
+        scope: MemoryScope,
         query: str,
     ) -> list[dict[str, str]]:
         """Execute deterministic search off the event loop."""
-        return await asyncio.to_thread(search_memory, scopes, query)
+        return await asyncio.to_thread(search_memory, scope, query)
 
     async def lint(
         self,
         scope: MemoryScope,
-        global_scope: MemoryScope | None = None,
     ) -> list[LintFinding]:
         """Execute deterministic lint suite off the event loop."""
-        return await asyncio.to_thread(lint_memory_scope, scope, global_scope)
+        return await asyncio.to_thread(lint_memory_scope, scope)
 
 
 _global_memory_manager: MemoryManager | None = None

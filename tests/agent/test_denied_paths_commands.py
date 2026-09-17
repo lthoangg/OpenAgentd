@@ -205,24 +205,22 @@ def test_allowed_internal_roots_permit_command_path_tokens(tmp_path: Path) -> No
     assert denied_paths.check_command(f"tail -n 220 {log_path}") is None
 
 
-def test_shell_denied_roots_blocks_memory_access_in_commands(tmp_path: Path) -> None:
-    ws = tmp_path / "ws"
-    mem_dir = ws / ".openagentd" / "memory"
+def test_shell_denied_roots_blocks_memory_access_in_commands(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config_dir = tmp_path / "config"
+    monkeypatch.setattr(
+        "app.core.config.settings.OPENAGENTD_CONFIG_DIR", str(config_dir)
+    )
+    mem_dir = config_dir / "memory"
     mem_dir.mkdir(parents=True, exist_ok=True)
     target = mem_dir / "secret_notes.md"
     target.touch()
 
+    ws = tmp_path / "ws"
+
     denied_paths = DeniedPathsConfig(workspace=str(ws))
 
-    # check_command catches access to workspace memory directory
+    # check_command catches access to global memory directory
     hit = denied_paths.check_command(f"cat {target}")
     assert hit is not None
-
-    # check_command catches relative access
-    hit_rel = denied_paths.check_command("echo test > .openagentd/memory/notes.md")
-    assert hit_rel is not None
-
-    # validate_path allows memory files (read and patch tools continue working)
-    validated = denied_paths.validate_path(".openagentd/memory/secret_notes.md")
-    assert validated == target.resolve()
-    assert not denied_paths.is_denied_path(target)

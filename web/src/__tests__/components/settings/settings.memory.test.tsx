@@ -13,7 +13,6 @@ const mockSaveMutate = mock(async () => ({
   path: 'preferences.md',
   content: 'Updated preferences',
   etag: '"new-etag"',
-  scope: 'global',
   frontmatter: null,
 }))
 
@@ -21,8 +20,8 @@ const mockDeleteMutate = mock(async () => ({}))
 
 let mockTreeData = {
   pages: [
-    { path: 'preferences.md', title: 'Preferences', type: 'general', scope: 'global' },
-    { path: 'topics/db.md', title: 'Database', type: 'topic', scope: 'global' },
+    { path: 'preferences.md', title: 'Preferences', type: 'general' },
+    { path: 'topics/db.md', title: 'Database', type: 'topic' },
   ],
 }
 
@@ -30,7 +29,6 @@ let mockFileData = {
   path: 'preferences.md',
   content: '# Preferences\nInitial text\n',
   etag: '"etag-123"',
-  scope: 'global',
   frontmatter: null,
 }
 
@@ -55,14 +53,6 @@ mock.module('@/queries', () => ({
   }),
 }))
 
-mock.module('@/stores/useAgentStore', () => ({
-  useAgentStore: (fn: any) => fn({ _workspace: '/test/workspace' }),
-}))
-
-mock.module('@/queries/useChatWorkspace', () => ({
-  isChatWorkspacePath: () => false,
-}))
-
 mock.module('@/api/client', () => ({
   ApiValidationError,
   lintMemory: mock(async () => ({
@@ -76,11 +66,9 @@ describe('MemorySettingsPage', () => {
     mockSaveMutate.mockClear()
   })
 
-  it('renders memory tabs and lists pages', () => {
+  it('renders memory header and lists pages', () => {
     render(<MemorySettingsPage />)
     expect(screen.getByText('Memory')).toBeDefined()
-    expect(screen.getByText('Global Memory')).toBeDefined()
-    expect(screen.getByText('Workspace Memory')).toBeDefined()
     expect(screen.getAllByText('preferences.md').length).toBeGreaterThan(0)
     expect(screen.getByText('topics/db.md')).toBeDefined()
   })

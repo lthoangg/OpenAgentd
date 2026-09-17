@@ -885,7 +885,7 @@ def _apply_patch(patch_text: str) -> tuple[str, list[Path]]:
             if path.suffix.lower() != ".md":
                 raise ValueError(f"Memory files must have a .md extension: {path.name}")
             assert_no_memory_symlinks(path)
-            assert_authorized_memory_path(path, denied_paths.workspace_root)
+            assert_authorized_memory_path(path)
             vfile = virtual[path]
             if vfile is not None and len(vfile.content) > MAX_MEMORY_PAGE_BYTES:
                 raise ValueError(

@@ -88,10 +88,8 @@ export const queryKeys = {
     providerUsage: (providerId: string) => ['settings', 'providers', providerId, 'usage'] as const,
   },
   memory: {
-    tree: (scope: 'global' | 'workspace', workspace?: string | null) =>
-      ['memory', 'tree', scope, workspace] as const,
-    file: (path: string, scope: 'global' | 'workspace', workspace?: string | null) =>
-      ['memory', 'file', scope, path, workspace] as const,
-    lint: (workspace?: string | null) => ['memory', 'lint', workspace] as const,
+    tree: () => ['memory', 'tree'] as const,
+    file: (path: string) => ['memory', 'file', path] as const,
+    lint: () => ['memory', 'lint'] as const,
   },
 }

@@ -35,16 +35,11 @@ def _strip_fenced_code_blocks(text: str) -> str:
     return "".join(out)
 
 
-def lint_memory_scope(
-    scope: MemoryScope,
-    global_scope: MemoryScope | None = None,
-) -> list[LintFinding]:
-    """Run deterministic structural lint over a single memory scope."""
+def lint_memory_scope(scope: MemoryScope) -> list[LintFinding]:
+    """Run deterministic structural lint over global memory."""
     findings: list[LintFinding] = []
     if not scope.root.is_dir():
         return findings
-
-    g_root = (global_scope.root if global_scope else scope.root).resolve()
 
     for path in sorted(scope.root.rglob("*.md"), key=lambda p: p.as_posix()):
         if not path.is_file():
@@ -58,7 +53,7 @@ def lint_memory_scope(
                 findings.append(
                     LintFinding(
                         code="PAGE_TOO_LARGE",
-                        path=f"{scope.kind}:{rel_posix}",
+                        path=rel_posix,
                         message=f"Memory page size ({size} bytes) exceeds limit ({MAX_MEMORY_PAGE_BYTES} bytes)",
                     )
                 )
@@ -67,7 +62,7 @@ def lint_memory_scope(
             findings.append(
                 LintFinding(
                     code="INVALID_PAGE",
-                    path=f"{scope.kind}:{rel_posix}",
+                    path=rel_posix,
                     message=f"Could not stat page: {exc}",
                 )
             )
@@ -80,7 +75,7 @@ def lint_memory_scope(
             findings.append(
                 LintFinding(
                     code="INVALID_PAGE",
-                    path=f"{scope.kind}:{rel_posix}",
+                    path=rel_posix,
                     message=f"Could not read page: {exc}",
                 )
             )
@@ -101,7 +96,7 @@ def lint_memory_scope(
                         findings.append(
                             LintFinding(
                                 code="INVALID_FRONTMATTER",
-                                path=f"{scope.kind}:{rel_posix}",
+                                path=rel_posix,
                                 message="Frontmatter must be a YAML mapping",
                             )
                         )
@@ -109,7 +104,7 @@ def lint_memory_scope(
                     findings.append(
                         LintFinding(
                             code="INVALID_FRONTMATTER",
-                            path=f"{scope.kind}:{rel_posix}",
+                            path=rel_posix,
                             message=f"Malformed YAML frontmatter: {exc}",
                         )
                     )
@@ -121,43 +116,31 @@ def lint_memory_scope(
             if not raw_target:
                 continue
 
-            # Check directionality & target
             if raw_target.startswith("workspace:"):
-                if scope.kind == "global":
-                    findings.append(
-                        LintFinding(
-                            code="INVALID_WIKILINK_TARGET",
-                            path=f"{scope.kind}:{rel_posix}",
-                            message=f"Global page cannot link to workspace memory: [[{raw_target}]]",
-                        )
+                findings.append(
+                    LintFinding(
+                        code="INVALID_WIKILINK_TARGET",
+                        path=rel_posix,
+                        message=f"Workspace memory is not supported; use global memory: [[{raw_target}]]",
                     )
-                    continue
-                target_subpath = raw_target[len("workspace:") :].strip()
-                target_file = scope.root / (
-                    target_subpath
-                    if target_subpath.endswith(".md")
-                    else f"{target_subpath}.md"
                 )
+                continue
             elif raw_target.startswith("global:"):
                 target_subpath = raw_target[len("global:") :].strip()
-                target_file = g_root / (
-                    target_subpath
-                    if target_subpath.endswith(".md")
-                    else f"{target_subpath}.md"
-                )
             else:
                 target_subpath = raw_target
-                target_file = scope.root / (
-                    target_subpath
-                    if target_subpath.endswith(".md")
-                    else f"{target_subpath}.md"
-                )
+
+            target_file = scope.root / (
+                target_subpath
+                if target_subpath.endswith(".md")
+                else f"{target_subpath}.md"
+            )
 
             if not target_file.is_file():
                 findings.append(
                     LintFinding(
                         code="BROKEN_LINK",
-                        path=f"{scope.kind}:{rel_posix}",
+                        path=rel_posix,
                         message=f"Broken wikilink target not found: [[{raw_target}]]",
                     )
                 )

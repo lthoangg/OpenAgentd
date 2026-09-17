@@ -42,11 +42,10 @@ async def test_memory_context_hook_injects_prompt(tmp_path: Path, monkeypatch):
     pref_file = config_dir / "memory" / "preferences.md"
     pref_file.parent.mkdir(parents=True, exist_ok=True)
     pref_file.write_text("Always write concise code.\n")
+    (config_dir / "memory" / "auth.md").write_text("# Auth\nUse JWT tokens.\n")
 
     ws = tmp_path / "ws"
     ws.mkdir(parents=True, exist_ok=True)
-    (ws / ".openagentd" / "memory").mkdir(parents=True, exist_ok=True)
-    (ws / ".openagentd" / "memory" / "auth.md").write_text("# Auth\nUse JWT tokens.\n")
 
     session = MagicMock()
     session.workspace = str(ws)
@@ -68,7 +67,7 @@ async def test_memory_context_hook_injects_prompt(tmp_path: Path, monkeypatch):
     assert "<openagentd_memory>" in state.system_prompt
     assert "<global_preferences>" in state.system_prompt
     assert "Always write concise code." in state.system_prompt
-    assert "[[auth]]" in state.system_prompt
+    assert "[[global:auth]]" in state.system_prompt
     assert "Use JWT tokens." in state.system_prompt
     assert "</openagentd_memory>" in state.system_prompt
 

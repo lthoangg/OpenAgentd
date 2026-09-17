@@ -12,7 +12,6 @@ from typing import Any
 import yaml
 from loguru import logger
 
-from app.core.chat_workspace import is_chat_workspace
 from app.core.config import settings
 from app.core.path_locks import path_lock
 from app.services.memory.models import (
@@ -64,42 +63,9 @@ def global_memory_root() -> Path:
     return (config_dir / "memory").resolve()
 
 
-def workspace_memory_root(workspace: str | Path) -> Path:
-    """Canonical workspace memory root: {validated_workspace}/.openagentd/memory/."""
-    from app.services import agent_manager
-
-    validated = agent_manager.validate_workspace(str(workspace))
-    return (Path(validated).resolve() / ".openagentd" / "memory").resolve()
-
-
-def resolve_memory_scopes(
-    workspace: str | Path | None,
-    *,
-    is_chat: bool | None = None,
-) -> tuple[MemoryScope, MemoryScope | None]:
-    """Resolve the active Global scope and optional Workspace scope.
-
-    Chat workspaces (e.g. user home directory) strictly resolve Global scope only.
-    """
-    global_scope = MemoryScope(kind="global", root=global_memory_root())
-
-    if workspace is None:
-        return global_scope, None
-
-    ws_path = Path(workspace).resolve()
-    chat_mode = is_chat if is_chat is not None else is_chat_workspace(ws_path)
-    if chat_mode:
-        return global_scope, None
-
-    try:
-        ws_root = workspace_memory_root(ws_path)
-        workspace_scope = MemoryScope(kind="workspace", root=ws_root)
-        return global_scope, workspace_scope
-    except Exception as exc:
-        logger.warning(
-            "workspace_memory_root_resolution_failed ws={} error={}", workspace, exc
-        )
-        return global_scope, None
+def resolve_memory_scope() -> MemoryScope:
+    """Resolve the active global memory scope."""
+    return MemoryScope(root=global_memory_root())
 
 
 def assert_no_memory_symlinks(path: Path) -> None:
@@ -121,13 +87,8 @@ def assert_no_memory_symlinks(path: Path) -> None:
             pass
 
 
-def assert_authorized_memory_path(
-    path: Path,
-    active_workspace: str | Path | None = None,
-    *,
-    is_chat: bool = False,
-) -> None:
-    """Policy A check: memory paths must end with .md and belong only to Global or active Workspace."""
+def assert_authorized_memory_path(path: Path) -> None:
+    """Check that memory paths must end with .md and belong only to Global memory."""
     if path.suffix.lower() != ".md":
         raise MemoryContainmentError(
             f"Memory files must have a .md extension: {path.name}"
@@ -137,25 +98,9 @@ def assert_authorized_memory_path(
 
     resolved = path.resolve()
     g_root = global_memory_root()
-    if resolved.is_relative_to(g_root):
-        return
-
-    if is_chat or not active_workspace:
+    if not resolved.is_relative_to(g_root):
         raise MemoryScopeAuthorizationError(
-            f"Workspace memory access is not authorized for path: {path}"
-        )
-
-    w_root = workspace_memory_root(active_workspace)
-    if resolved.is_relative_to(w_root):
-        return
-
-    # Path is not under active workspace memory or global memory
-    if (
-        ".openagentd/memory" in path.as_posix()
-        or ".openagentd\\memory" in path.as_posix()
-    ):
-        raise MemoryScopeAuthorizationError(
-            f"Cross-workspace memory mutation is strictly forbidden: {path}"
+            f"Memory mutation is only allowed in global memory ({g_root}): {path}"
         )
 
 
@@ -368,7 +313,6 @@ def _list_pages_sync(scope: MemoryScope) -> list[dict[str, Any]]:
                     "path": rel_posix,
                     "title": title,
                     "type": fm.type if fm else "general",
-                    "scope": scope.kind,
                 }
             )
         except OSError:

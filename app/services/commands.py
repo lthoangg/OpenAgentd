@@ -1990,18 +1990,14 @@ async def render_memory_command(
     workspace: Path | None = None,
 ) -> str:
     """Execute built-in /memory slash command suite."""
-    from app.core.chat_workspace import is_chat_workspace
     from app.services.memory import get_memory_manager
-    from app.services.memory.store import read_page, resolve_memory_scopes
+    from app.services.memory.store import read_page, resolve_memory_scope
 
     manager = get_memory_manager()
-    is_chat = is_chat_workspace(workspace) if workspace else True
-    global_scope, workspace_scope = resolve_memory_scopes(workspace, is_chat=is_chat)
+    global_scope = resolve_memory_scope()
 
-    # Reconcile scopes
+    # Reconcile scope
     await manager.reconcile(global_scope)
-    if workspace_scope:
-        await manager.reconcile(workspace_scope)
 
     args = arguments.strip()
     parts = args.split(maxsplit=1)
@@ -2010,60 +2006,45 @@ async def render_memory_command(
 
     if not subcommand:
         # /memory — Shows compact memory catalog
-        snapshot = await manager.get_context(
-            global_scope, workspace_scope, is_chat=is_chat
-        )
+        snapshot = await manager.get_context(global_scope)
         return snapshot.content or "No memory pages found."
 
     if subcommand == "show":
         if not sub_arg:
-            return (
-                "Usage: /memory show <scope:page> "
-                "(e.g. /memory show global:preferences.md or /memory show workspace:auth.md)"
-            )
-        target_scope = global_scope
+            return "Usage: /memory show <page> (e.g. /memory show preferences.md)"
         page_path = sub_arg
         if ":" in sub_arg:
             scope_prefix, page_path = sub_arg.split(":", 1)
             if scope_prefix == "workspace":
-                if workspace_scope is None:
-                    return "Error: Workspace memory is not available in Chat mode or without an active workspace."
-                target_scope = workspace_scope
+                return "Error: Workspace memory has been removed. Only global memory is supported."
             elif scope_prefix != "global":
-                return f"Error: Unknown memory scope '{scope_prefix}'. Use 'global' or 'workspace'."
+                return f"Error: Unknown memory scope '{scope_prefix}'. Use 'global' or omit prefix."
 
         if not page_path.endswith(".md"):
             page_path += ".md"
 
         try:
-            page = await read_page(target_scope, page_path)
+            page = await read_page(global_scope, page_path)
             content = page.content
             if len(content) > 2000:
                 content = content[:2000] + "\n\n... [Truncated at 2,000 characters]"
-            return f"### Memory: {target_scope.kind}:{page.path}\n\n{content}"
+            return f"### Memory: {page.path}\n\n{content}"
         except Exception as exc:
             return f"Error reading memory page '{sub_arg}': {exc}"
 
     if subcommand == "search":
         if not sub_arg:
             return "Usage: /memory search <query>"
-        scopes = [global_scope]
-        if workspace_scope:
-            scopes.append(workspace_scope)
-        results = await manager.search(scopes, sub_arg)
+        results = await manager.search(global_scope, sub_arg)
         if not results:
             return f"No memory pages matching '{sub_arg}' found."
         lines = [f"### Memory Search Results for '{sub_arg}':\n"]
         for r in results:
-            lines.append(f"- **{r['scope']}:{r['path']}** — {r['title']}")
+            lines.append(f"- **{r['path']}** — {r['title']}")
         return "\n".join(lines)
 
     if subcommand == "lint":
         findings = list(await manager.lint(global_scope))
-        if workspace_scope:
-            findings.extend(
-                await manager.lint(workspace_scope, global_scope=global_scope)
-            )
         if not findings:
             return "### Memory Lint Report\n\nNo issues found! All memory pages and links are valid."
         lines = ["### Memory Lint Report\n"]

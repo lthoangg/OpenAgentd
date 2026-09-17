@@ -22,12 +22,9 @@ import {
 import {
   lintMemory,
   ApiValidationError,
-  type MemoryScopeKind,
   type MemoryFindingItem,
 } from '@/api/client'
-import { useAgentStore } from '@/stores/useAgentStore'
 import { useToastStore } from '@/stores/useToastStore'
-import { isChatWorkspacePath } from '@/queries/useChatWorkspace'
 import { useUnsavedSettings } from '@/hooks/useUnsavedSettings'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -39,18 +36,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { ICON_SIZE, ICON_SIZE_INLINE, TEXT } from '@/components/settings/tokens'
 import { cn } from '@/lib/utils'
 
 export function MemorySettingsPage() {
   const push = useToastStore((s) => s.push)
-  const rawWorkspace = useAgentStore((s) => s._workspace)
-  const isChat = isChatWorkspacePath(rawWorkspace)
-  const workspace = isChat ? null : rawWorkspace
 
-  const [scope, setScope] = useState<MemoryScopeKind>('global')
   const [selectedPath, setSelectedPath] = useState<string | null>(null)
   const [draftContent, setDraftContent] = useState<string>('')
   const [newFileOpen, setNewFileOpen] = useState(false)
@@ -65,13 +57,13 @@ export function MemorySettingsPage() {
     data: treeData,
     isLoading: treeLoading,
     refetch: refetchTree,
-  } = useMemoryTreeQuery(scope, workspace)
+  } = useMemoryTreeQuery()
 
   const {
     data: fileData,
     isLoading: fileLoading,
     refetch: refetchFile,
-  } = useMemoryFileQuery(selectedPath, scope, workspace)
+  } = useMemoryFileQuery(selectedPath)
 
   const saveMut = useSaveMemoryFileMutation()
   const deleteMut = useDeleteMemoryFileMutation()
@@ -99,9 +91,7 @@ export function MemorySettingsPage() {
       await saveMut.mutateAsync({
         path: selectedPath,
         content: draftContent,
-        scope,
         ifMatch: fileData?.etag,
-        workspace,
       })
       push({ tone: 'success', title: `Saved "${selectedPath}"` })
       refetchTree()
@@ -139,9 +129,7 @@ export function MemorySettingsPage() {
     try {
       await deleteMut.mutateAsync({
         path: selectedPath,
-        scope,
         ifMatch: fileData.etag,
-        workspace,
       })
       push({ tone: 'success', title: `Deleted "${selectedPath}"` })
       setDeleteOpen(false)
@@ -165,8 +153,6 @@ export function MemorySettingsPage() {
       await saveMut.mutateAsync({
         path: filename,
         content: `# ${filename.replace('.md', '')}\n\n`,
-        scope,
-        workspace,
       })
       push({ tone: 'success', title: `Created "${filename}"` })
       setNewFileOpen(false)
@@ -182,7 +168,7 @@ export function MemorySettingsPage() {
   const handleRunLint = async () => {
     setIsLinting(true)
     try {
-      const report = await lintMemory(workspace)
+      const report = await lintMemory()
       setLintFindings(report.findings)
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
@@ -219,34 +205,11 @@ export function MemorySettingsPage() {
         </Button>
       </header>
 
-      {/* Scope toggle & description bar */}
-      <div className="flex flex-col gap-2.5 border-b border-(--color-border) bg-(--bg-page) px-3 py-2.5 sm:px-4">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <p className={TEXT.body}>
-            Persistent human-editable Markdown knowledge base and standing directives.
-          </p>
-          <Tabs
-            value={scope}
-            onValueChange={(val) => {
-              setScope(val as MemoryScopeKind)
-              setSelectedPath(null)
-            }}
-          >
-            <TabsList className="h-7">
-              <TabsTrigger value="global" className="px-2.5 text-xs">
-                Global Memory
-              </TabsTrigger>
-              <TabsTrigger
-                value="workspace"
-                disabled={isChat}
-                title={isChat ? 'Workspace memory is unavailable in Chat mode' : undefined}
-                className={cn('px-2.5 text-xs', isChat && 'opacity-50 cursor-not-allowed')}
-              >
-                Workspace Memory{isChat ? ' (Chat mode)' : ''}
-              </TabsTrigger>
-            </TabsList>
-          </Tabs>
-        </div>
+      {/* Description bar */}
+      <div className="border-b border-(--color-border) bg-(--bg-page) px-3 py-2.5 sm:px-4">
+        <p className={TEXT.body}>
+          Persistent human-editable Markdown knowledge base and standing directives across all workspaces.
+        </p>
       </div>
 
       {/* Lint findings banner */}
@@ -516,7 +479,7 @@ export function MemorySettingsPage() {
           <DialogHeader>
             <DialogTitle>New Memory Page</DialogTitle>
             <DialogDescription>
-              Enter the page path relative to {scope} memory (e.g.{' '}
+              Enter the page path relative to global memory (e.g.{' '}
               <code className="rounded-xs border border-(--color-border) bg-(--bg-key) px-1 py-0.5 font-mono text-[11px] text-(--color-text)">
                 topics/database.md
               </code>

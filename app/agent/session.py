@@ -288,18 +288,12 @@ class AgentSession:
         self.workspace = new_workspace
 
         try:
-            from app.core.chat_workspace import is_chat_workspace
             from app.services.memory import get_memory_manager
-            from app.services.memory.store import resolve_memory_scopes
+            from app.services.memory.store import resolve_memory_scope
 
             manager = get_memory_manager()
-            is_chat = is_chat_workspace(self.workspace)
-            global_scope, workspace_scope = resolve_memory_scopes(
-                self.workspace, is_chat=is_chat
-            )
+            global_scope = resolve_memory_scope()
             await manager.reconcile(global_scope)
-            if workspace_scope:
-                await manager.reconcile(workspace_scope)
         except Exception as exc:
             logger.warning("session_bind_memory_reconcile_failed error={}", exc)
 
@@ -311,31 +305,19 @@ class AgentSession:
         await self.bind_session(session_id, workspace=self.workspace, title=title)
 
     async def ensure_memory_context_current(self) -> MemoryContextSnapshot:
-        from app.core.chat_workspace import is_chat_workspace
         from app.services.memory import get_memory_manager
-        from app.services.memory.store import resolve_memory_scopes
+        from app.services.memory.store import resolve_memory_scope
 
-        is_chat = is_chat_workspace(self.workspace)
-        global_scope, workspace_scope = resolve_memory_scopes(
-            self.workspace, is_chat=is_chat
-        )
+        global_scope = resolve_memory_scope()
         manager = get_memory_manager()
 
         global_snap = await manager.get_global_snapshot(global_scope)
-        ws_snap = (
-            await manager.get_workspace_snapshot(workspace_scope)
-            if workspace_scope
-            else None
-        )
 
         if (
             self.memory_context_snapshot is None
             or self.memory_context_snapshot.global_snapshot is not global_snap
-            or self.memory_context_snapshot.workspace_snapshot is not ws_snap
         ):
-            self.memory_context_snapshot = await manager.get_context(
-                global_scope, workspace_scope, is_chat=is_chat
-            )
+            self.memory_context_snapshot = await manager.get_context(global_scope)
         return self.memory_context_snapshot
 
     async def _ensure_db_session(

@@ -515,14 +515,16 @@ class TestSkillsRootsDegradedResolution:
 def test_notify_fs_change_invalidates_memory_manager(tmp_path: Path, monkeypatch):
     from app.services.memory import get_memory_manager
 
+    config_dir = tmp_path / "config"
+    monkeypatch.setattr(
+        "app.core.config.settings.OPENAGENTD_CONFIG_DIR", str(config_dir)
+    )
     manager = get_memory_manager()
-    ws = tmp_path / "ws"
-    mem_file = ws / ".openagentd" / "memory" / "notes.md"
+    mem_file = config_dir / "memory" / "notes.md"
     mem_file.parent.mkdir(parents=True, exist_ok=True)
     mem_file.write_text("# Notes\n")
 
-    scope_key = f"workspace:{(ws / '.openagentd' / 'memory').resolve().as_posix()}"
-    state = manager._get_state(scope_key)
+    state = manager._get_state("global")
     initial_epoch = state.epoch
 
     notify_fs_change(mem_file)

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Literal
 from pydantic import BaseModel, Field
 
 
@@ -12,7 +11,6 @@ class MemoryPageSummary(BaseModel):
     path: str
     title: str
     type: str = "general"
-    scope: Literal["global", "workspace"]
 
 
 class MemoryTreeResponse(BaseModel):
@@ -27,7 +25,6 @@ class MemoryFileResponse(BaseModel):
     path: str
     content: str
     etag: str
-    scope: Literal["global", "workspace"]
     frontmatter: dict[str, str | None] | None = None
 
 
@@ -40,7 +37,6 @@ class MemoryWriteRequest(BaseModel):
 class MemorySearchResult(BaseModel):
     """Result of a keyword/title search over memory pages."""
 
-    scope: Literal["global", "workspace"]
     path: str
     title: str
 

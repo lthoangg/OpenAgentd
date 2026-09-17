@@ -132,4 +132,61 @@ describe('MemorySettingsPage', () => {
       expect(screen.getByText(/Target \[\[missing\]\] not found/)).toBeDefined()
     })
   })
+
+  it('saves with Cmd+S keyboard shortcut when dirty', async () => {
+    render(<MemorySettingsPage />)
+    const textarea = screen.getByPlaceholderText('Markdown content...') as HTMLTextAreaElement
+    fireEvent.change(textarea, { target: { value: '# Preferences\nKeyboard save content\n' } })
+
+    fireEvent.keyDown(window, { key: 's', metaKey: true })
+
+    await waitFor(() => {
+      expect(mockSaveMutate).toHaveBeenCalled()
+    })
+    const callArgs = mockSaveMutate.mock.calls[0][0] as any
+    expect(callArgs.path).toBe('preferences.md')
+    expect(callArgs.content).toContain('Keyboard save content')
+  })
+
+  it('opens delete confirmation dialog and deletes file', async () => {
+    render(<MemorySettingsPage />)
+    const deleteBtn = screen.getByText('Delete')
+    fireEvent.click(deleteBtn)
+
+    await waitFor(() => {
+      expect(screen.getByText('Delete Memory Page')).toBeDefined()
+    })
+
+    // Inside dialog, there's another Delete button in the footer
+    const confirmBtn = screen.getAllByRole('button', { name: 'Delete' }).pop()!
+    fireEvent.click(confirmBtn)
+
+    await waitFor(() => {
+      expect(mockDeleteMutate).toHaveBeenCalled()
+    })
+    const callArgs = mockDeleteMutate.mock.calls[0][0] as any
+    expect(callArgs.path).toBe('preferences.md')
+  })
+
+  it('opens new memory page dialog and creates page', async () => {
+    render(<MemorySettingsPage />)
+    const newPageBtn = screen.getByLabelText('New Page')
+    fireEvent.click(newPageBtn)
+
+    await waitFor(() => {
+      expect(screen.getByText('New Memory Page')).toBeDefined()
+    })
+
+    const input = screen.getByPlaceholderText('topics/new-page.md') as HTMLInputElement
+    fireEvent.change(input, { target: { value: 'topics/notes.md' } })
+
+    const createBtn = screen.getByRole('button', { name: 'Create' })
+    fireEvent.click(createBtn)
+
+    await waitFor(() => {
+      expect(mockSaveMutate).toHaveBeenCalled()
+    })
+    const callArgs = mockSaveMutate.mock.calls[0][0] as any
+    expect(callArgs.path).toBe('topics/notes.md')
+  })
 })

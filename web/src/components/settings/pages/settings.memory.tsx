@@ -1,8 +1,17 @@
 /**
  * /settings/memory — Persistent Markdown memory viewer, editor, and linter.
  */
-import { useState, useEffect } from 'react'
-import { AlertCircle, Brain, CheckCircle2, FileText, Plus, RefreshCw, Trash2 } from 'lucide-react'
+import { useState, useEffect, useRef } from 'react'
+import {
+  AlertCircle,
+  Brain,
+  CheckCircle2,
+  FileText,
+  Plus,
+  RefreshCw,
+  Save,
+  Trash2,
+} from 'lucide-react'
 
 import {
   useMemoryTreeQuery,
@@ -19,9 +28,9 @@ import {
 import { useAgentStore } from '@/stores/useAgentStore'
 import { useToastStore } from '@/stores/useToastStore'
 import { isChatWorkspacePath } from '@/queries/useChatWorkspace'
+import { useUnsavedSettings } from '@/hooks/useUnsavedSettings'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
 import {
   Dialog,
   DialogContent,
@@ -30,6 +39,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { ICON_SIZE, ICON_SIZE_INLINE, TEXT } from '@/components/settings/tokens'
 import { cn } from '@/lib/utils'
 
 export function MemorySettingsPage() {
@@ -78,6 +90,9 @@ export function MemorySettingsPage() {
     }
   }, [fileData])
 
+  const isDirty = fileData ? draftContent !== fileData.content : draftContent.length > 0
+  useUnsavedSettings(isDirty)
+
   const handleSave = async () => {
     if (!selectedPath) return
     try {
@@ -100,6 +115,24 @@ export function MemorySettingsPage() {
       }
     }
   }
+
+  const saveActionRef = useRef({ handleSave, isDirty, isSaving: saveMut.isPending, selectedPath })
+  useEffect(() => {
+    saveActionRef.current = { handleSave, isDirty, isSaving: saveMut.isPending, selectedPath }
+  })
+
+  // Cmd/Ctrl+S keyboard shortcut to save
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (!((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's')) return
+      const current = saveActionRef.current
+      if (!current.selectedPath || !current.isDirty || current.isSaving) return
+      e.preventDefault()
+      void current.handleSave()
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [])
 
   const handleDelete = async () => {
     if (!selectedPath || !fileData) return
@@ -159,32 +192,60 @@ export function MemorySettingsPage() {
     }
   }
 
-  const isDirty = fileData ? draftContent !== fileData.content : draftContent.length > 0
-
   return (
-    <div className="flex h-full flex-col space-y-4 p-6 text-(--text-primary)">
-      {/* Header */}
-      <div className="flex items-center justify-between border-b border-(--border) pb-4">
-        <div className="flex items-center space-x-3">
-          <Brain className="h-6 w-6 text-(--text-primary)" />
-          <div>
-            <h1 className="text-lg font-semibold">Memory</h1>
-            <p className="text-xs text-(--text-secondary)">
-              Persistent human-editable Markdown knowledge base and standing directives.
-            </p>
-          </div>
-        </div>
-        <div className="flex items-center space-x-2">
-          <Button
-            variant="subtle"
-            size="sm"
-            onClick={handleRunLint}
-            disabled={isLinting}
-            className="flex items-center space-x-1 text-xs"
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-(--bg-page) text-(--color-text)">
+      {/* Sticky Header matching Settings standard */}
+      <header className="sticky top-0 z-10 flex h-11 shrink-0 items-center gap-2 border-b border-(--color-border) bg-(--bg-page) px-3 sm:px-4 select-none">
+        <Brain
+          size={ICON_SIZE}
+          className="shrink-0 text-(--color-text-muted)"
+          aria-hidden="true"
+        />
+        <h1 className={cn('truncate', TEXT.title)}>Memory</h1>
+        <div className="min-w-1 flex-1" />
+        <Button
+          variant="subtle"
+          size="sm"
+          onClick={handleRunLint}
+          disabled={isLinting}
+          className="flex items-center gap-1.5 text-xs"
+        >
+          <RefreshCw
+            size={ICON_SIZE_INLINE}
+            className={cn('shrink-0', isLinting && 'animate-spin')}
+            aria-hidden="true"
+          />
+          <span>{isLinting ? 'Linting…' : 'Run Lint'}</span>
+        </Button>
+      </header>
+
+      {/* Scope toggle & description bar */}
+      <div className="flex flex-col gap-2.5 border-b border-(--color-border) bg-(--bg-page) px-3 py-2.5 sm:px-4">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <p className={TEXT.body}>
+            Persistent human-editable Markdown knowledge base and standing directives.
+          </p>
+          <Tabs
+            value={scope}
+            onValueChange={(val) => {
+              setScope(val as MemoryScopeKind)
+              setSelectedPath(null)
+            }}
           >
-            <RefreshCw className={cn('h-3.5 w-3.5', isLinting && 'animate-spin')} />
-            <span>{isLinting ? 'Linting...' : 'Run Lint'}</span>
-          </Button>
+            <TabsList className="h-7">
+              <TabsTrigger value="global" className="px-2.5 text-xs">
+                Global Memory
+              </TabsTrigger>
+              <TabsTrigger
+                value="workspace"
+                disabled={isChat}
+                title={isChat ? 'Workspace memory is unavailable in Chat mode' : undefined}
+                className={cn('px-2.5 text-xs', isChat && 'opacity-50 cursor-not-allowed')}
+              >
+                Workspace Memory{isChat ? ' (Chat mode)' : ''}
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
         </div>
       </div>
 
@@ -192,38 +253,43 @@ export function MemorySettingsPage() {
       {lintFindings !== null && (
         <div
           className={cn(
-            'rounded-md p-3 text-xs',
+            'mx-3 my-2.5 sm:mx-4 rounded-sm border p-3 text-xs',
             lintFindings.length === 0
-              ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
-              : 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20',
+              ? 'border-(--color-success)/30 bg-(--color-success-subtle) text-(--color-accent-green-text)'
+              : 'border-(--color-warning)/30 bg-(--color-warning-subtle) text-(--color-accent-orange-text)',
           )}
         >
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-2 font-medium">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 font-medium">
               {lintFindings.length === 0 ? (
                 <>
-                  <CheckCircle2 className="h-4 w-4" />
+                  <CheckCircle2 size={14} className="shrink-0" aria-hidden="true" />
                   <span>All memory pages and wikilinks are valid.</span>
                 </>
               ) : (
                 <>
-                  <AlertCircle className="h-4 w-4" />
+                  <AlertCircle size={14} className="shrink-0" aria-hidden="true" />
                   <span>{lintFindings.length} issue(s) found:</span>
                 </>
               )}
             </div>
             <button
+              type="button"
               onClick={() => setLintFindings(null)}
-              className="text-xs underline hover:no-underline"
+              className="cursor-pointer text-xs underline hover:no-underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)"
             >
               Dismiss
             </button>
           </div>
           {lintFindings.length > 0 && (
-            <ul className="mt-2 list-inside list-disc space-y-1">
+            <ul className="mt-2 space-y-1.5 font-normal">
               {lintFindings.map((f, i) => (
-                <li key={i}>
-                  <strong>[{f.code}]</strong> <code className="font-mono">{f.path}</code>: {f.message}
+                <li key={i} className="flex flex-wrap items-center gap-1.5 leading-relaxed">
+                  <span className="font-mono font-semibold">[{f.code}]</span>
+                  <code className="rounded-xs border border-(--color-border) bg-(--bg-key) px-1 py-0.5 font-mono text-[11px] text-(--color-text)">
+                    {f.path}
+                  </code>
+                  <span>{f.message}</span>
                 </li>
               ))}
             </ul>
@@ -231,141 +297,158 @@ export function MemorySettingsPage() {
         </div>
       )}
 
-      {/* Scope toggle */}
-      <div className="flex items-center space-x-2 border-b border-(--border) pb-2">
-        <button
-          type="button"
-          onClick={() => {
-            setScope('global')
-            setSelectedPath(null)
-          }}
-          className={cn(
-            'px-3 py-1 text-xs font-medium rounded-md transition-colors',
-            scope === 'global'
-              ? 'bg-(--bg-selection) text-(--text-primary)'
-              : 'text-(--text-secondary) hover:text-(--text-primary)',
-          )}
-        >
-          Global Memory
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            if (!isChat) {
-              setScope('workspace')
-              setSelectedPath(null)
-            }
-          }}
-          disabled={isChat}
-          title={isChat ? 'Workspace memory is unavailable in Chat mode' : undefined}
-          className={cn(
-            'px-3 py-1 text-xs font-medium rounded-md transition-colors',
-            scope === 'workspace'
-              ? 'bg-(--bg-selection) text-(--text-primary)'
-              : 'text-(--text-secondary) hover:text-(--text-primary)',
-            isChat && 'opacity-40 cursor-not-allowed',
-          )}
-        >
-          Workspace Memory {isChat && '(Chat mode)'}
-        </button>
-      </div>
-
-      {/* Split pane */}
-      <div className="flex flex-1 overflow-hidden rounded-md border border-(--border)">
+      {/* Split pane: File list + Editor */}
+      <div className="flex min-h-0 flex-1 flex-col md:flex-row overflow-hidden border-t border-(--color-border) bg-(--bg-page)">
         {/* Left pane: File list */}
-        <div className="flex w-64 flex-col border-r border-(--border) bg-(--bg-sidebar)">
-          <div className="flex items-center justify-between border-b border-(--border) p-2">
-            <span className="text-xs font-medium text-(--text-secondary) uppercase tracking-wider">
+        <div className="flex w-full md:w-60 lg:w-64 shrink-0 flex-col border-b md:border-b-0 md:border-r border-(--color-border) bg-(--bg-sidebar)">
+          <div className="flex h-8.5 shrink-0 items-center justify-between border-b border-(--color-border)/60 bg-(--bg-key)/30 px-3 select-none">
+            <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-(--color-text-subtle)">
               Pages ({treeData?.pages.length ?? 0})
             </span>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setNewFileOpen(true)}
-              className="h-6 w-6 p-0"
-              title="New Page"
-            >
-              <Plus className="h-3.5 w-3.5" />
-            </Button>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    onClick={() => setNewFileOpen(true)}
+                    className="h-6 w-6 text-(--color-text-muted) hover:text-(--color-text)"
+                    aria-label="New Page"
+                  >
+                    <Plus size={12} aria-hidden="true" />
+                  </Button>
+                }
+              />
+              <TooltipContent>New Page</TooltipContent>
+            </Tooltip>
           </div>
-          <div className="flex-1 overflow-y-auto p-1 space-y-0.5">
+          <div className="min-h-0 flex-1 overflow-y-auto p-1.5 space-y-0.5">
             {treeLoading ? (
-              <p className="p-3 text-xs text-(--text-tertiary)">Loading pages...</p>
+              <p className="p-3 text-center font-mono text-xs text-(--color-text-muted)">
+                Loading pages…
+              </p>
             ) : treeData?.pages.length === 0 ? (
-              <p className="p-3 text-xs text-(--text-tertiary)">No memory pages yet.</p>
-            ) : (
-              treeData?.pages.map((p) => (
-                <button
-                  key={p.path}
-                  type="button"
-                  onClick={() => setSelectedPath(p.path)}
-                  className={cn(
-                    'flex w-full items-center space-x-2 rounded px-2 py-1.5 text-left text-xs transition-colors',
-                    selectedPath === p.path
-                      ? 'bg-(--bg-selection) text-(--text-primary) font-medium'
-                      : 'text-(--text-secondary) hover:bg-(--bg-hover) hover:text-(--text-primary)',
-                  )}
+              <div className="flex flex-col items-center justify-center p-6 text-center">
+                <p className="text-xs text-(--color-text-muted)">No memory pages yet.</p>
+                <Button
+                  variant="subtle"
+                  size="xs"
+                  onClick={() => setNewFileOpen(true)}
+                  className="mt-2.5"
                 >
-                  <FileText className="h-3.5 w-3.5 shrink-0 opacity-70" />
-                  <span className="truncate">{p.path}</span>
-                </button>
-              ))
+                  <Plus size={11} aria-hidden="true" />
+                  Create page
+                </Button>
+              </div>
+            ) : (
+              treeData?.pages.map((p) => {
+                const active = selectedPath === p.path
+                return (
+                  <button
+                    key={p.path}
+                    type="button"
+                    onClick={() => setSelectedPath(p.path)}
+                    aria-current={active ? 'page' : undefined}
+                    className={cn(
+                      'group flex w-full items-center gap-2 rounded-xs px-2.5 py-1.5 text-left text-xs transition-colors',
+                      'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40',
+                      active
+                        ? 'border border-(--color-border-strong) bg-(--bg-key)/70 font-semibold text-(--color-text)'
+                        : 'border border-transparent text-(--color-text-muted) hover:bg-(--bg-key)/40 hover:text-(--color-text)',
+                    )}
+                  >
+                    <FileText
+                      size={12}
+                      className={cn(
+                        'shrink-0 transition-colors',
+                        active ? 'text-(--color-text)' : 'text-(--color-text-muted)',
+                      )}
+                      aria-hidden="true"
+                    />
+                    <span className="truncate font-mono text-[11px]">{p.path}</span>
+                  </button>
+                )
+              })
             )}
           </div>
         </div>
 
         {/* Right pane: Editor */}
-        <div className="flex flex-1 flex-col bg-(--bg-card)">
+        <div className="flex min-h-0 flex-1 flex-col bg-(--bg-card)">
           {selectedPath ? (
             <>
-              <div className="flex items-center justify-between border-b border-(--border) px-4 py-2">
-                <div className="flex items-center space-x-2 truncate">
-                  <span className="font-mono text-xs font-medium text-(--text-primary)">
+              <div className="flex h-8.5 shrink-0 items-center justify-between border-b border-(--color-border) bg-(--bg-key)/20 px-3 select-none">
+                <div className="flex min-w-0 items-center gap-2 truncate">
+                  <FileText size={12} className="shrink-0 text-(--color-text-muted)" aria-hidden="true" />
+                  <span className="truncate font-mono text-xs font-semibold text-(--color-text)">
                     {selectedPath}
                   </span>
                   {fileData?.etag && (
-                    <span className="rounded bg-(--bg-key) px-1.5 py-0.5 font-mono text-[10px] text-(--text-tertiary)">
+                    <span
+                      title={`ETag: ${fileData.etag}`}
+                      className="shrink-0 rounded-xs border border-(--color-border) bg-(--bg-key) px-1.5 py-0.5 font-mono text-[10px] text-(--color-text-subtle) select-none"
+                    >
                       {fileData.etag.slice(1, 9)}...
                     </span>
                   )}
+                  {isDirty && (
+                    <span className="hidden items-center gap-1 font-mono text-[10px] text-(--color-text-muted) sm:inline-flex">
+                      <span
+                        className="h-1.5 w-1.5 rounded-full bg-(--color-text) animate-pulse"
+                        aria-hidden="true"
+                      />
+                      Unsaved
+                    </span>
+                  )}
                 </div>
-                <div className="flex items-center space-x-2">
+                <div className="flex items-center gap-1.5">
                   <Button
                     variant="ghost"
-                    size="sm"
+                    size="xs"
                     onClick={() => setDeleteOpen(true)}
-                    className="text-xs text-rose-500 hover:text-rose-600 hover:bg-rose-500/10"
+                    className="text-(--color-error) hover:bg-(--color-error-subtle) hover:text-(--color-error)"
                   >
-                    <Trash2 className="h-3.5 w-3.5 mr-1" />
-                    Delete
+                    <Trash2 size={11} aria-hidden="true" />
+                    <span>Delete</span>
                   </Button>
                   <Button
                     variant="primary"
-                    size="sm"
+                    size="xs"
                     onClick={handleSave}
                     disabled={!isDirty || saveMut.isPending}
-                    className="text-xs"
                   >
-                    {saveMut.isPending ? 'Saving...' : 'Save'}
+                    <Save size={11} aria-hidden="true" />
+                    <span>{saveMut.isPending ? 'Saving…' : 'Save'}</span>
                   </Button>
                 </div>
               </div>
-              <div className="flex-1 p-3">
+              <div className="relative flex min-h-0 flex-1 flex-col">
                 {fileLoading ? (
-                  <p className="p-4 text-xs text-(--text-tertiary)">Loading content...</p>
+                  <p className="p-4 text-center font-mono text-xs text-(--color-text-muted)">
+                    Loading content…
+                  </p>
                 ) : (
-                  <Textarea
+                  <textarea
                     value={draftContent}
                     onChange={(e) => setDraftContent(e.target.value)}
                     placeholder="Markdown content..."
-                    className="h-full w-full resize-none font-mono text-xs leading-relaxed"
+                    spellCheck={false}
+                    className="h-full w-full min-h-0 flex-1 resize-none border-0 bg-transparent p-3 font-mono text-xs leading-relaxed text-(--color-text) placeholder:text-(--color-text-muted) outline-none focus:outline-none focus-visible:outline-none"
                   />
                 )}
               </div>
             </>
           ) : (
-            <div className="flex h-full items-center justify-center text-xs text-(--text-tertiary)">
-              Select a memory page to edit or create a new one.
+            <div className="flex h-full flex-1 flex-col items-center justify-center p-6 text-center select-none">
+              <Brain
+                size={28}
+                className="mb-2 text-(--color-text-muted) opacity-30"
+                aria-hidden="true"
+              />
+              <p className="text-xs font-semibold text-(--color-text)">No page selected</p>
+              <p className="mt-1 text-[11px] text-(--color-text-muted)">
+                Select a memory page to edit or create a new one.
+              </p>
             </div>
           )}
         </div>
@@ -373,14 +456,15 @@ export function MemorySettingsPage() {
 
       {/* Conflict Dialog (412 Precondition Failed) */}
       <Dialog open={conflictOpen} onOpenChange={setConflictOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Conflict Detected</DialogTitle>
             <DialogDescription>
-              This memory file was modified externally or by the agent. Reload to see the latest changes?
+              This memory file was modified externally or by the agent. Reload to see the latest
+              changes?
             </DialogDescription>
           </DialogHeader>
-          <DialogFooter className="mt-4 flex justify-end space-x-2">
+          <DialogFooter className="mt-4 flex justify-end gap-2">
             <Button variant="subtle" size="sm" onClick={() => setConflictOpen(false)}>
               Keep My Draft
             </Button>
@@ -404,15 +488,18 @@ export function MemorySettingsPage() {
 
       {/* Delete Confirmation Dialog */}
       <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Delete Memory Page</DialogTitle>
             <DialogDescription>
-              Are you sure you want to delete <code className="font-mono">{selectedPath}</code>?
-              This action cannot be undone.
+              Are you sure you want to delete{' '}
+              <code className="rounded-xs border border-(--color-border) bg-(--bg-key) px-1 py-0.5 font-mono text-[11px] text-(--color-text)">
+                {selectedPath}
+              </code>
+              ? This action cannot be undone.
             </DialogDescription>
           </DialogHeader>
-          <DialogFooter className="mt-4 flex justify-end space-x-2">
+          <DialogFooter className="mt-4 flex justify-end gap-2">
             <Button variant="subtle" size="sm" onClick={() => setDeleteOpen(false)}>
               Cancel
             </Button>
@@ -425,11 +512,15 @@ export function MemorySettingsPage() {
 
       {/* New File Dialog */}
       <Dialog open={newFileOpen} onOpenChange={setNewFileOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>New Memory Page</DialogTitle>
             <DialogDescription>
-              Enter the page path relative to {scope} memory (e.g. <code className="font-mono">topics/database.md</code>).
+              Enter the page path relative to {scope} memory (e.g.{' '}
+              <code className="rounded-xs border border-(--color-border) bg-(--bg-key) px-1 py-0.5 font-mono text-[11px] text-(--color-text)">
+                topics/database.md
+              </code>
+              ).
             </DialogDescription>
           </DialogHeader>
           <div className="py-2">
@@ -437,11 +528,11 @@ export function MemorySettingsPage() {
               value={newFileName}
               onChange={(e) => setNewFileName(e.target.value)}
               placeholder="topics/new-page.md"
-              className="text-xs font-mono"
+              className="font-mono text-xs"
               autoFocus
             />
           </div>
-          <DialogFooter className="mt-4 flex justify-end space-x-2">
+          <DialogFooter className="mt-4 flex justify-end gap-2">
             <Button variant="subtle" size="sm" onClick={() => setNewFileOpen(false)}>
               Cancel
             </Button>

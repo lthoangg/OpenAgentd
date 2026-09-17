@@ -34,6 +34,10 @@ on:
         type: choice
         options: [all, windows, macos, linux]
         default: all
+      run_id:
+        description: "Run ID to publish existing artifacts from (optional)"
+        required: false
+        default: ""
 
 permissions:
   contents: write
@@ -87,6 +91,7 @@ jobs:
 
   build:
     needs: prepare
+    if: github.event.inputs.run_id == ''
     name: Build (${{ matrix.platform }} / ${{ matrix.arch }})
     runs-on: ${{ matrix.runner }}
     strategy:
@@ -387,13 +392,15 @@ jobs:
     needs: [prepare, build]
     name: Publish release
     runs-on: ubuntu-latest
-    if: github.event.inputs.platform == 'all'
+    if: always() && needs.prepare.result == 'success' && (github.event.inputs.platform == 'all' || github.event.inputs.run_id != '') && (github.event.inputs.run_id != '' || needs.build.result == 'success')
     steps:
       - uses: actions/checkout@v7
 
       - uses: actions/download-artifact@v8
         with:
           path: _artifacts
+          run-id: ${{ github.event.inputs.run_id != '' && github.event.inputs.run_id || github.run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Flatten artefacts
         run: |
@@ -423,13 +430,29 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="${{ needs.prepare.outputs.tag }}"
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" _release/* --clobber
-          else
-            gh release create "$TAG" _release/* \
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" \
               --title "$TAG" \
               --generate-notes
           fi
+          for file in _release/*; do
+            [ -f "$file" ] || continue
+            echo "Uploading $file..."
+            uploaded=false
+            for attempt in 1 2 3 4 5; do
+              if gh release upload "$TAG" "$file" --clobber; then
+                uploaded=true
+                echo "Successfully uploaded $file"
+                break
+              fi
+              echo "Upload failed for $file (attempt $attempt), retrying in 5s..."
+              sleep 5
+            done
+            if [ "$uploaded" != "true" ]; then
+              echo "error: failed to upload $file after 5 attempts" >&2
+              exit 1
+            fi
+          done
 
       # The Tauri updater (configured in tauri.conf.json) fetches
       # ``releases/download/latest-desktop/latest.json``. That URL must

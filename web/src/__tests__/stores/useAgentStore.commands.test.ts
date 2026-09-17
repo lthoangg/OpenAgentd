@@ -73,12 +73,41 @@ beforeEach(() => {
 
 describe('setSessionInteractionMode', () => {
   it('persists the selected mode and adopts the response', async () => {
+    updateSessionInteractionMode.mockImplementation(async () => ({
+      id: 'session-1',
+      interaction_mode: 'plan' as const,
+      running: false,
+    }))
     useAgentStore.setState({ sessionId: 'session-1', sessionInteractionMode: 'code' })
 
-    await useAgentStore.getState().setSessionInteractionMode('plan')
+    const result = await useAgentStore.getState().setSessionInteractionMode('plan')
 
+    expect(result).toBe(true)
     expect(updateSessionInteractionMode).toHaveBeenCalledWith('session-1', 'plan')
     expect(useAgentStore.getState().sessionInteractionMode).toBe('plan')
+  })
+
+  it('returns true when mode is already active without calling backend', async () => {
+    updateSessionInteractionMode.mockClear()
+    useAgentStore.setState({ sessionId: 'session-1', sessionInteractionMode: 'code' })
+
+    const result = await useAgentStore.getState().setSessionInteractionMode('code')
+
+    expect(result).toBe(true)
+    expect(updateSessionInteractionMode).not.toHaveBeenCalled()
+  })
+
+  it('returns false and records error when updateSessionInteractionMode fails', async () => {
+    updateSessionInteractionMode.mockImplementation(async () => {
+      throw new Error('Network error')
+    })
+    useAgentStore.setState({ sessionId: 'session-1', sessionInteractionMode: 'plan', error: null })
+
+    const result = await useAgentStore.getState().setSessionInteractionMode('code')
+
+    expect(result).toBe(false)
+    expect(useAgentStore.getState().sessionInteractionMode).toBe('plan')
+    expect(useAgentStore.getState().error).toBe('Network error')
   })
 })
 

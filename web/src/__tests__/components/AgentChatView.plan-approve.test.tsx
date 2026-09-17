@@ -5,6 +5,8 @@ import { AgentChatView } from '@/components/AgentChatView'
 
 const sentMessages: string[] = []
 let switchedMode: string | null = null
+let setSessionInteractionModeResult = true
+const toastedAlerts: Array<{ tone: string; title: string; description?: string }> = []
 
 mock.module('@tanstack/react-router', () => ({
   useNavigate: () => mock(() => Promise.resolve()),
@@ -37,7 +39,9 @@ mock.module('@/stores/useUIStore', () => ({
   }),
 }))
 mock.module('@/stores/useToastStore', () => ({
-  useToastStore: (selector: (s: { push: () => void }) => unknown) => selector({ push: () => {} }),
+  useToastStore: (selector: (s: { push: (t: { tone: string; title: string; description?: string }) => void }) => unknown) => selector({
+    push: (t: { tone: string; title: string; description?: string }) => { toastedAlerts.push(t) },
+  }),
 }))
 mock.module('@/components/CodingSidebar', () => ({ CodingSidebar: () => null }))
 mock.module('@/components/AgentChatView/AgentChatPanels', () => ({ AgentChatPanels: () => null }))
@@ -62,10 +66,10 @@ mock.module('@/components/FloatingInputComposer', () => ({
   }),
 }))
 mock.module('@/components/AgentView', () => ({
-  AgentView: ({ onStartImplementing }: { onStartImplementing?: () => void }) => (
+  AgentView: ({ onStartImplementing, isSwitchingInteractionMode }: { onStartImplementing?: () => void; isSwitchingInteractionMode?: boolean }) => (
     <div>
       {onStartImplementing && (
-        <button onClick={onStartImplementing} data-testid="start-implementing-btn">
+        <button onClick={onStartImplementing} disabled={isSwitchingInteractionMode} data-testid="start-implementing-btn">
           Approve
         </button>
       )}
@@ -83,6 +87,7 @@ mock.module('@/stores/useAgentStore', () => {
     },
     setSessionInteractionMode: async (mode: string) => {
       switchedMode = mode
+      return setSessionInteractionModeResult
     },
     beginResolvedSession: () => {},
     consumeResolvedSessionReady: () => false,
@@ -103,6 +108,8 @@ mock.module('@/stores/useAgentStore', () => {
     sessionInteractionMode: 'plan',
     leadName: 'lead',
     isConnected: false,
+    error: 'Simulated failure',
+    _workspace: '/repo/from-store',
   }
   return {
     useAgentStore: Object.assign(
@@ -119,11 +126,45 @@ afterEach(cleanup)
 beforeEach(() => {
   sentMessages.length = 0
   switchedMode = null
+  setSessionInteractionModeResult = true
+  toastedAlerts.length = 0
 })
 
 describe('AgentChatView plan approve action', () => {
   it('switches to code mode and sends "Approve, proceed." when approve is clicked', async () => {
     render(<AgentChatView sessionId="test-session" workspace="/repo/project" />)
+
+    const btn = screen.getByTestId('start-implementing-btn')
+    expect(btn).toBeTruthy()
+
+    fireEvent.click(btn)
+
+    await waitFor(() => {
+      expect(switchedMode).toBe('code')
+      expect(sentMessages).toEqual(['Approve, proceed.'])
+    })
+  })
+
+  it('does not send message and pushes toast when setSessionInteractionMode fails', async () => {
+    setSessionInteractionModeResult = false
+    render(<AgentChatView sessionId="test-session" workspace="/repo/project" />)
+
+    const btn = screen.getByTestId('start-implementing-btn')
+    expect(btn).toBeTruthy()
+
+    fireEvent.click(btn)
+
+    await waitFor(() => {
+      expect(switchedMode).toBe('code')
+      expect(sentMessages).toEqual([])
+      expect(toastedAlerts.length).toBe(1)
+      expect(toastedAlerts[0].title).toBe('Could not switch to Code mode')
+      expect(toastedAlerts[0].description).toBe('Simulated failure')
+    })
+  })
+
+  it('falls back to store._workspace when workspace prop is null', async () => {
+    render(<AgentChatView sessionId="test-session" workspace={null} />)
 
     const btn = screen.getByTestId('start-implementing-btn')
     expect(btn).toBeTruthy()

@@ -17,10 +17,6 @@ PLAN_MODE_ALLOWED_TOOLS = frozenset(
         "read",
         "shell",
         "skill",
-        "team_list",
-        "team_manage",
-        "team_stop",
-        "team_wait",
         "web_fetch",
         "web_search",
     }

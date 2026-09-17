@@ -7,12 +7,13 @@
  */
 
 import { createContext, useContext, memo, type ReactNode } from 'react'
-import { Play } from 'lucide-react'
+import { Loader2, Play } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import type { BlockNode, BlockParseContext, MarkdownExtension } from '@tanstack/markdown'
 
 export interface PlanActionContextValue {
   onStartImplementing?: () => void
+  isSwitching?: boolean
 }
 
 export const PlanActionContext = createContext<PlanActionContextValue>({})
@@ -255,7 +256,7 @@ export interface ProposedPlanCardProps {
 }
 
 export const ProposedPlanCard = memo(function ProposedPlanCard({ children }: ProposedPlanCardProps) {
-  const { onStartImplementing } = useContext(PlanActionContext)
+  const { onStartImplementing, isSwitching } = useContext(PlanActionContext)
 
   return (
     <div
@@ -296,11 +297,16 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({ children }: Pro
             type="button"
             variant="primary"
             size="xs"
+            disabled={isSwitching}
             onClick={onStartImplementing}
             className="gap-1 rounded-full font-medium shadow-xs"
             aria-label="Approve"
           >
-            <Play size={10} className="fill-current" aria-hidden="true" />
+            {isSwitching ? (
+              <Loader2 size={10} className="animate-spin" aria-hidden="true" />
+            ) : (
+              <Play size={10} className="fill-current" aria-hidden="true" />
+            )}
             Approve
           </Button>
         )}

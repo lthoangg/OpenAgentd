@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import contextlib
 import time
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from app.agent.hooks.base import BaseAgentHook
 from app.agent.tool_id_resolver import ToolIdResolver
@@ -363,11 +363,15 @@ class StreamPublisherHook(BaseAgentHook):
         error_type: str,
         status_code: int | None = None,
         retry_after: int | None = None,
+        *,
+        status: Literal["retrying", "exhausted", "waiting_quota"] = "retrying",
+        message: str | None = None,
+        resets_at: int | None = None,
     ) -> None:
         await self._push(
             ProviderStatusEvent(
                 agent=self._agent_name,
-                status="retrying",
+                status=status,
                 model=model,
                 attempt=attempt,
                 max_attempts=max_attempts,
@@ -375,6 +379,8 @@ class StreamPublisherHook(BaseAgentHook):
                 error_type=error_type,
                 status_code=status_code,
                 retry_after=retry_after,
+                message=message,
+                resets_at=resets_at,
             )
         )
 

@@ -64,9 +64,9 @@ From `web/`:
 bun run lint
 bun run typecheck
 bunx tsc -p tsconfig.test.json --noEmit
-bun run test
+bun test --parallel
 bun run build
 ```
 
-Use `bun run test:file <path>` for focused iteration, then run `make verify-web`
-from the repository root.
+Always run `bun test` with `--parallel` (`bun test --parallel <path>`) for
+per-file module isolation, then run `make verify-web` from the repository root.

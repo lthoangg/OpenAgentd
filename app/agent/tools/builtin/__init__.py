@@ -12,14 +12,7 @@ from .member import (
 from .schedule import schedule_task
 from .shell import shell_tool
 from .skill import discover_skills, load_skill
-from .team import (
-    make_delegate_tool,
-    make_team_list_tool,
-    make_team_send_tool,
-    make_team_spawn_tool,
-    make_team_stop_tool,
-    make_team_wait_tool,
-)
+from .team import make_delegate_tool
 from .todo import todo_manage
 from .web import web_fetch, web_search
 
@@ -39,9 +32,4 @@ __all__ = [
     "make_ask_lead_tool",
     "make_send_to_lead_tool",
     "make_delegate_tool",
-    "make_team_spawn_tool",
-    "make_team_send_tool",
-    "make_team_list_tool",
-    "make_team_wait_tool",
-    "make_team_stop_tool",
 ]

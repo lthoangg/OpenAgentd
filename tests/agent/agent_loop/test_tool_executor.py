@@ -21,7 +21,13 @@ from typing import Annotated
 from pydantic import BaseModel, Field, field_validator
 
 from app.agent.agent_loop.tool_executor import make_tool_executor
-from app.agent.schemas.chat import FunctionCall, ToolCall
+from app.agent.schemas.chat import (
+    FunctionCall,
+    ImageDataBlock,
+    TextBlock,
+    ToolCall,
+    ToolResult,
+)
 from app.agent.state import AgentState, RunContext
 from app.agent.tools.registry import tool
 
@@ -267,3 +273,53 @@ async def test_executor_tool_custom_timeout_error_retains_message():
         _make_ctx(), _make_state(), _tool_call("custom_timeout_tool", "{}")
     )
     assert result == "Error: Internal connection failed to database"
+
+
+async def test_executor_handles_tool_result_with_image_only():
+    """A tool returning ToolResult with only ImageDataBlock synthesizes a text summary."""
+
+    @tool
+    async def get_screenshot() -> ToolResult:
+        """Screenshot tool."""
+        return ToolResult(
+            parts=[ImageDataBlock(data="b64data", media_type="image/png")]
+        )
+
+    state = _make_state()
+    execute = make_tool_executor(
+        {"get_screenshot": get_screenshot}, agent_name="tester"
+    )
+    result = await execute(_make_ctx(), state, _tool_call("get_screenshot", "{}"))
+
+    assert result == "[image: image/png]"
+    parts = state.metadata["_multimodal_tool_parts"]["call_1"]
+    assert len(parts) == 1
+    assert isinstance(parts[0], ImageDataBlock)
+    assert parts[0].data == "b64data"
+    assert parts[0].media_type == "image/png"
+
+
+async def test_executor_handles_tool_result_with_text_and_image():
+    """A tool returning ToolResult with TextBlock and ImageDataBlock uses TextBlock for result string."""
+
+    @tool
+    async def generate_chart() -> ToolResult:
+        """Chart tool."""
+        return ToolResult(
+            parts=[
+                TextBlock(text="Sales chart generated"),
+                ImageDataBlock(data="b64data", media_type="image/jpeg"),
+            ]
+        )
+
+    state = _make_state()
+    execute = make_tool_executor(
+        {"generate_chart": generate_chart}, agent_name="tester"
+    )
+    result = await execute(_make_ctx(), state, _tool_call("generate_chart", "{}"))
+
+    assert result == "Sales chart generated"
+    parts = state.metadata["_multimodal_tool_parts"]["call_1"]
+    assert len(parts) == 2
+    assert isinstance(parts[0], TextBlock)
+    assert isinstance(parts[1], ImageDataBlock)

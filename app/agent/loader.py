@@ -47,9 +47,9 @@ _FRONTMATTER_RE = re.compile(r"^\s*---\r?\n(.*?)\r?\n---\r?\n?(.*)", re.DOTALL)
 
 def member_model_is_configured(model: str | None) -> bool:
     """Return whether a model is configured."""
-    from app.core.config import PROVIDER_MODEL_TOKEN
+    from app.core.config import DEFAULT_NEW_USER_MODEL
 
-    return bool(model and model.strip() and model.strip() != PROVIDER_MODEL_TOKEN)
+    return bool(model and model.strip() and model.strip() != DEFAULT_NEW_USER_MODEL)
 
 
 class AgentConfig(BaseModel):
@@ -67,9 +67,7 @@ class AgentConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate(self) -> "AgentConfig":
-        from app.core.config import PROVIDER_MODEL_TOKEN
-
-        if self.model and self.model != PROVIDER_MODEL_TOKEN and ":" not in self.model:
+        if self.model and self.model != "__PROVIDER_MODEL__" and ":" not in self.model:
             raise ValueError(
                 f"Agent '{self.name}': invalid model '{self.model}' "
                 "(expected format: 'provider:model', e.g. 'googlegenai:gemini-3.1-flash')"
@@ -280,8 +278,8 @@ def load_member_profiles(agents_dir: Path) -> dict[str, AgentConfig]:
 def configure_unconfigured_agent_models(
     agents_dir: Path, provider_model: str
 ) -> list[str]:
-    """Assign *provider_model* to agent files that still use the placeholder."""
-    from app.core.config import PROVIDER_MODEL_TOKEN
+    """Assign *provider_model* to agent files that still use the default user model."""
+    from app.core.config import DEFAULT_NEW_USER_MODEL
 
     updated: list[str] = []
     for path in sorted(agents_dir.rglob("*.md")):
@@ -290,13 +288,16 @@ def configure_unconfigured_agent_models(
             cfg = parse_agent_md(path)
         except Exception:
             continue
-        if cfg.model != PROVIDER_MODEL_TOKEN:
+        if (
+            cfg.model not in (DEFAULT_NEW_USER_MODEL, "__PROVIDER_MODEL__")
+            or cfg.model == provider_model
+        ):
             continue
         match = _FRONTMATTER_RE.match(text)
         if match is None:
             continue
         start, end = match.span(1)
-        frontmatter = text[start:end].replace(PROVIDER_MODEL_TOKEN, provider_model, 1)
+        frontmatter = text[start:end].replace(cfg.model, provider_model, 1)
         path.write_text(f"{text[:start]}{frontmatter}{text[end:]}", encoding="utf-8")
         updated.append(str(path.relative_to(agents_dir)))
     return updated

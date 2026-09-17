@@ -12,10 +12,12 @@ from app.agent.errors import ToolExecutionError
 from app.agent.mcp.tools import (
     MCPTool,
     _extract_app_resource,
+    _extract_parts,
     _extract_text,
+    _normalize_image_mime,
     _sanitize_schema,
 )
-from app.agent.schemas.chat import ToolResult
+from app.agent.schemas.chat import ImageDataBlock, TextBlock, ToolResult
 
 
 class TestSanitizeSchema:
@@ -220,6 +222,130 @@ class TestExtractText:
         """_extract_text converts non-list content to string."""
         result = _extract_text("plain string")
         assert result == "plain string"
+
+
+class TestNormalizeImageMime:
+    """Test _normalize_image_mime function."""
+
+    def test_normalize_default_when_none(self) -> None:
+        assert _normalize_image_mime(None) == "image/png"
+
+    def test_normalize_default_when_empty(self) -> None:
+        assert _normalize_image_mime("") == "image/png"
+
+    def test_normalize_jpeg_alias(self) -> None:
+        assert _normalize_image_mime("image/jpg") == "image/jpeg"
+
+    def test_normalize_bare_extension(self) -> None:
+        assert _normalize_image_mime("png") == "image/png"
+        assert _normalize_image_mime("jpg") == "image/jpeg"
+        assert _normalize_image_mime("jpeg") == "image/jpeg"
+        assert _normalize_image_mime("webp") == "image/webp"
+
+    def test_normalize_strips_parameters(self) -> None:
+        assert _normalize_image_mime("image/png; charset=utf-8") == "image/png"
+
+    def test_normalize_preserves_standard_mimes(self) -> None:
+        assert _normalize_image_mime("image/png") == "image/png"
+        assert _normalize_image_mime("image/jpeg") == "image/jpeg"
+        assert _normalize_image_mime("image/gif") == "image/gif"
+        assert _normalize_image_mime("image/webp") == "image/webp"
+        assert _normalize_image_mime("image/svg+xml") == "image/svg+xml"
+
+
+class TestExtractParts:
+    """Test _extract_parts function."""
+
+    def test_extract_parts_empty_or_none(self) -> None:
+        assert _extract_parts([]) == []
+        assert _extract_parts(None) == []
+
+    def test_extract_parts_non_list(self) -> None:
+        parts = _extract_parts("plain text")
+        assert len(parts) == 1
+        assert isinstance(parts[0], TextBlock)
+        assert parts[0].text == "plain text"
+
+    def test_extract_parts_text_block(self) -> None:
+        block = SimpleNamespace(type="text", text="Hello world")
+        parts = _extract_parts([block])
+        assert len(parts) == 1
+        assert isinstance(parts[0], TextBlock)
+        assert parts[0].text == "Hello world"
+
+    def test_extract_parts_image_block_mime_type(self) -> None:
+        block = SimpleNamespace(type="image", data="b64data", mime_type="image/png")
+        parts = _extract_parts([block])
+        assert len(parts) == 1
+        assert isinstance(parts[0], ImageDataBlock)
+        assert parts[0].data == "b64data"
+        assert parts[0].media_type == "image/png"
+
+    def test_extract_parts_image_block_camel_case_mime(self) -> None:
+        block = SimpleNamespace(type="image", data="b64data", mimeType="image/jpg")
+        parts = _extract_parts([block])
+        assert len(parts) == 1
+        assert isinstance(parts[0], ImageDataBlock)
+        assert parts[0].data == "b64data"
+        assert parts[0].media_type == "image/jpeg"
+
+    def test_extract_parts_image_block_dict(self) -> None:
+        block = {"type": "image", "data": "b64dict", "mimeType": "image/gif"}
+        parts = _extract_parts([block])
+        assert len(parts) == 1
+        assert isinstance(parts[0], ImageDataBlock)
+        assert parts[0].data == "b64dict"
+        assert parts[0].media_type == "image/gif"
+
+    def test_extract_parts_image_block_without_data(self) -> None:
+        block = SimpleNamespace(type="image", mime_type="image/png")
+        parts = _extract_parts([block])
+        assert len(parts) == 1
+        assert isinstance(parts[0], TextBlock)
+        assert "[image: image/png]" in parts[0].text
+
+    def test_extract_parts_resource_blob_with_image_mime(self) -> None:
+        resource = SimpleNamespace(
+            blob="b64blob", mime_type="image/png", uri="ui://chart.png"
+        )
+        block = SimpleNamespace(type="resource", resource=resource)
+        parts = _extract_parts([block])
+        assert len(parts) == 1
+        assert isinstance(parts[0], ImageDataBlock)
+        assert parts[0].data == "b64blob"
+        assert parts[0].media_type == "image/png"
+
+    def test_extract_parts_resource_blob_with_guessed_mime(self) -> None:
+        resource = SimpleNamespace(blob="b64blob", uri="file:///tmp/cat.webp")
+        block = SimpleNamespace(type="resource", resource=resource)
+        parts = _extract_parts([block])
+        assert len(parts) == 1
+        assert isinstance(parts[0], ImageDataBlock)
+        assert parts[0].data == "b64blob"
+        assert parts[0].media_type == "image/webp"
+
+    def test_extract_parts_resource_text(self) -> None:
+        resource = SimpleNamespace(text="res content", uri="ui://text.txt")
+        block = SimpleNamespace(type="resource", resource=resource)
+        parts = _extract_parts([block])
+        assert len(parts) == 1
+        assert isinstance(parts[0], TextBlock)
+        assert parts[0].text == "res content"
+
+    def test_extract_parts_mixed(self) -> None:
+        blocks = [
+            SimpleNamespace(type="text", text="Header:"),
+            SimpleNamespace(type="image", data="b64img", mime_type="image/png"),
+            SimpleNamespace(type="text", text="Footer"),
+        ]
+        parts = _extract_parts(blocks)
+        assert len(parts) == 3
+        assert isinstance(parts[0], TextBlock)
+        assert parts[0].text == "Header:"
+        assert isinstance(parts[1], ImageDataBlock)
+        assert parts[1].data == "b64img"
+        assert isinstance(parts[2], TextBlock)
+        assert parts[2].text == "Footer"
 
 
 class TestMCPToolDefinition:
@@ -569,6 +695,107 @@ class TestMCPToolArun:
         with pytest.raises(ToolExecutionError, match="no message"):
             await tool.arun()
 
+    @pytest.mark.asyncio
+    async def test_arun_with_image_content_returns_tool_result(self) -> None:
+        session = AsyncMock()
+        result = SimpleNamespace(
+            is_error=False,
+            content=[
+                SimpleNamespace(
+                    type="image",
+                    data="b64data",
+                    mime_type="image/png",
+                )
+            ],
+        )
+        session.call_tool.return_value = result
+
+        mcp_tool = SimpleNamespace(
+            name="screenshot",
+            description="Capture screen",
+            input_schema={"type": "object"},
+        )
+        tool = MCPTool(
+            server_name="screen",
+            mcp_tool=mcp_tool,  # type: ignore[arg-type]
+            session_provider=lambda: session,
+        )
+
+        res = await tool.arun()
+        assert isinstance(res, ToolResult)
+        assert len(res.parts) == 1
+        assert isinstance(res.parts[0], ImageDataBlock)
+        assert res.parts[0].data == "b64data"
+        assert res.parts[0].media_type == "image/png"
+
+    @pytest.mark.asyncio
+    async def test_arun_with_text_and_image_content_returns_tool_result(self) -> None:
+        session = AsyncMock()
+        result = SimpleNamespace(
+            is_error=False,
+            content=[
+                SimpleNamespace(type="text", text="Look at this chart:"),
+                SimpleNamespace(
+                    type="image",
+                    data="b64data",
+                    mime_type="image/jpeg",
+                ),
+            ],
+        )
+        session.call_tool.return_value = result
+
+        mcp_tool = SimpleNamespace(
+            name="plot",
+            description="Plot chart",
+            input_schema={"type": "object"},
+        )
+        tool = MCPTool(
+            server_name="analytics",
+            mcp_tool=mcp_tool,  # type: ignore[arg-type]
+            session_provider=lambda: session,
+        )
+
+        res = await tool.arun()
+        assert isinstance(res, ToolResult)
+        assert len(res.parts) == 2
+        assert isinstance(res.parts[0], TextBlock)
+        assert res.parts[0].text == "Look at this chart:"
+        assert isinstance(res.parts[1], ImageDataBlock)
+        assert res.parts[1].data == "b64data"
+        assert res.parts[1].media_type == "image/jpeg"
+
+    @pytest.mark.asyncio
+    async def test_arun_with_embedded_image_resource_returns_tool_result(self) -> None:
+        session = AsyncMock()
+        resource = SimpleNamespace(
+            blob="blobdata",
+            mime_type="image/webp",
+            uri="ui://canvas.webp",
+        )
+        result = SimpleNamespace(
+            is_error=False,
+            content=[SimpleNamespace(type="resource", resource=resource)],
+        )
+        session.call_tool.return_value = result
+
+        mcp_tool = SimpleNamespace(
+            name="render",
+            description="Render canvas",
+            input_schema={"type": "object"},
+        )
+        tool = MCPTool(
+            server_name="canvas",
+            mcp_tool=mcp_tool,  # type: ignore[arg-type]
+            session_provider=lambda: session,
+        )
+
+        res = await tool.arun()
+        assert isinstance(res, ToolResult)
+        assert len(res.parts) == 1
+        assert isinstance(res.parts[0], ImageDataBlock)
+        assert res.parts[0].data == "blobdata"
+        assert res.parts[0].media_type == "image/webp"
+
 
 class TestRealSDKModels:
     """Contract tests against real MCP SDK models, not hand-rolled doubles.
@@ -670,3 +897,66 @@ class TestRealSDKModels:
         assert extracted["html"] == "<h1>hi</h1>"
         # Our outward-facing payload keeps camelCase for the frontend contract.
         assert extracted["mimeType"] == MCP_APP_MIME_TYPE
+
+    @pytest.mark.asyncio
+    async def test_arun_returns_tool_result_on_real_image_content(self) -> None:
+        """A real ``CallToolResult`` with ``ImageContent`` returns ``ToolResult``."""
+        from mcp.types import CallToolResult, ImageContent
+        from mcp.types import Tool as MCPToolDef
+
+        session = AsyncMock()
+        session.call_tool.return_value = CallToolResult(
+            content=[
+                ImageContent(type="image", data="b64realimg", mimeType="image/png")
+            ],
+        )
+
+        mcp_tool = MCPToolDef.model_validate(
+            {"name": "take_pic", "inputSchema": {"type": "object"}}
+        )
+        tool = MCPTool(
+            server_name="camera", mcp_tool=mcp_tool, session_provider=lambda: session
+        )
+
+        res = await tool.arun()
+        assert isinstance(res, ToolResult)
+        assert len(res.parts) == 1
+        assert isinstance(res.parts[0], ImageDataBlock)
+        assert res.parts[0].data == "b64realimg"
+        assert res.parts[0].media_type == "image/png"
+
+    @pytest.mark.asyncio
+    async def test_arun_returns_tool_result_on_real_embedded_image_resource(
+        self,
+    ) -> None:
+        """A real ``CallToolResult`` with embedded image resource returns ``ToolResult``."""
+        from mcp.types import BlobResourceContents, CallToolResult, EmbeddedResource
+        from mcp.types import Tool as MCPToolDef
+
+        session = AsyncMock()
+        session.call_tool.return_value = CallToolResult(
+            content=[
+                EmbeddedResource(
+                    type="resource",
+                    resource=BlobResourceContents(
+                        uri="ui://image.jpeg",
+                        blob="b64blobjpeg",
+                        mimeType="image/jpeg",
+                    ),
+                )
+            ],
+        )
+
+        mcp_tool = MCPToolDef.model_validate(
+            {"name": "get_asset", "inputSchema": {"type": "object"}}
+        )
+        tool = MCPTool(
+            server_name="assets", mcp_tool=mcp_tool, session_provider=lambda: session
+        )
+
+        res = await tool.arun()
+        assert isinstance(res, ToolResult)
+        assert len(res.parts) == 1
+        assert isinstance(res.parts[0], ImageDataBlock)
+        assert res.parts[0].data == "b64blobjpeg"
+        assert res.parts[0].media_type == "image/jpeg"

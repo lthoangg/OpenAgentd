@@ -19,7 +19,7 @@ import { useState, useRef, useEffect, useCallback, useMemo, memo, lazy, Suspense
 import OctobotMascot from '@/assets/brand/octobot-agentd-source.png'
 
 import { LazyMarkdownBlock } from '@/utils/LazyMarkdownBlock'
-import { ChevronDown, ChevronUp, AlertCircle } from 'lucide-react'
+import { ChevronDown, ChevronUp, AlertCircle, Clock } from 'lucide-react'
 import { Thinking } from './Thinking'
 import { ToolCall } from './ToolCall'
 const MCPAppResult = lazy(() => import('./MCPAppResult').then((module) => ({ default: module.MCPAppResult })))
@@ -82,6 +82,8 @@ interface AgentViewProps {
   onMentionFileOpen?: (path: string) => void
   /** Callback to switch to Code mode and start implementation of a proposed plan. */
   onStartImplementing?: () => void
+  /** True when interaction mode is actively transitioning to Code mode. */
+  isSwitchingInteractionMode?: boolean
 }
 
 const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionId, onRevert, latestMCPAppBlockIds, onMentionFileOpen }: { block: ContentBlock; isStreaming: boolean; sessionId?: string; onRevert?: () => void; latestMCPAppBlockIds?: Set<string>; onMentionFileOpen?: (path: string) => void }) {
@@ -119,6 +121,21 @@ const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionI
               <span>{title || 'Provider Error'}</span>
             </div>
             <p className="mt-1 text-(--color-error)/90 leading-relaxed break-words">{customMsg || block.content}</p>
+          </div>
+        )
+      }
+
+      if (status === 'waiting_quota') {
+        const model = block.extra?.model
+        return (
+          <div className="my-2 rounded-md border border-(--color-warning)/30 bg-(--color-warning-subtle) px-3 py-2 text-xs">
+            <div className="flex items-center gap-1.5 font-medium text-(--color-warning)">
+              <Clock size={14} className="shrink-0 animate-pulse" />
+              <span>Quota Limit Reached · Waiting for Reset</span>
+            </div>
+            <p className="mt-1 text-(--color-text-muted) leading-relaxed break-words">
+              {customMsg || `Provider quota exhausted for ${String(model ?? 'model')}. Waiting for reset. Agent will automatically resume work. You can stop anytime.`}
+            </p>
           </div>
         )
       }
@@ -183,7 +200,7 @@ const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionI
   }
 })
 
-export function AgentView({ blocks, currentBlocks, isWorking, isTurnOpen = isWorking, isAwaitingRestart = false, isError, lastError, emptyState, onMentionFileOpen, onStartImplementing }: AgentViewProps) {
+export function AgentView({ blocks, currentBlocks, isWorking, isTurnOpen = isWorking, isAwaitingRestart = false, isError, lastError, emptyState, onMentionFileOpen, onStartImplementing, isSwitchingInteractionMode = false }: AgentViewProps) {
   const [renderedTurnCount, setRenderedTurnCount] = useState(INITIAL_RENDERED_TURNS)
   const sessionId = useAgentStore((s) => s.sessionId) ?? undefined
   const sessionInteractionMode = useAgentStore((s) => s.sessionInteractionMode)
@@ -372,6 +389,7 @@ export function AgentView({ blocks, currentBlocks, isWorking, isTurnOpen = isWor
                       totalBlocks={totalLen}
                       size="roomy"
                       onStartImplementing={canStartImplementing ? onStartImplementing : undefined}
+                     isSwitchingInteractionMode={isSwitchingInteractionMode}
                       renderBlock={({ block, isStreaming }) => (
                        <BlockRenderer
                          block={block}

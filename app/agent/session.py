@@ -900,15 +900,23 @@ class AgentSession:
             self.state = "error"
             err_info = format_agent_error(exc, agent_name=self.name)
             self._last_error = err_info["message"]
+            error_data = {
+                "message": err_info["message"],
+                "title": err_info["title"],
+                "code": err_info["code"],
+                "category": err_info["category"],
+            }
             await self._emit(
                 "agent_status",
                 status="error",
                 extra={
-                    "message": err_info["message"],
-                    "title": err_info["title"],
-                    "code": err_info["code"],
-                    "category": err_info["category"],
+                    **error_data,
+                    "metadata": error_data,
                 },
+            )
+            await self._emit(
+                "error",
+                extra=error_data,
             )
         finally:
             activated = False

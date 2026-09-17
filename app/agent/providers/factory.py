@@ -122,13 +122,11 @@ def build_provider(
             "No model specified. Set 'model' in the agent's .md frontmatter "
             "(format: 'provider:model', e.g. 'googlegenai:gemini-3.1-flash')."
         )
-    # Agents seeded with the placeholder token surface as "not configured"
+    # Legacy agents seeded with the placeholder token surface as "not configured"
     # rather than the generic invalid-format error — the caller (loader)
     # catches this specifically to substitute an UnconfiguredProvider stub
     # so the agent loads but defers the failure to LLM-call time.
-    from app.core.config import PROVIDER_MODEL_TOKEN
-
-    if model_str == PROVIDER_MODEL_TOKEN or PROVIDER_MODEL_TOKEN in model_str:
+    if model_str == "__PROVIDER_MODEL__" or "__PROVIDER_MODEL__" in model_str:
         raise UnconfiguredProviderError()
     if ":" not in model_str:
         raise ValueError(

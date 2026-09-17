@@ -148,6 +148,12 @@ def make_tool_executor(
                 result = " ".join(
                     p.text for p in result_raw.parts if isinstance(p, TextBlock)
                 )
+                if not result:
+                    result = " ".join(
+                        f"[{p.type.replace('_data', '')}: {getattr(p, 'media_type', '?')}]"
+                        for p in result_raw.parts
+                        if not isinstance(p, TextBlock)
+                    )
                 pending: dict[str, list[ContentBlock]] = s.metadata.setdefault(
                     "_multimodal_tool_parts", {}
                 )

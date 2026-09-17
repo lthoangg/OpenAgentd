@@ -685,6 +685,35 @@ def test_configure_default_model_updates_unconfigured_agents(
     ).read_text(encoding="utf-8")
 
 
+def test_configure_default_model_updates_default_new_user_model_agents(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.core.config import DEFAULT_NEW_USER_MODEL
+
+    monkeypatch.setattr(
+        settings_routes.settings, "OPENAGENTD_CONFIG_DIR", str(tmp_path)
+    )
+    agents = tmp_path / "agents"
+    agents.mkdir()
+    (agents / "code.md").write_text(
+        f"---\nname: code\nrole: lead\nmodel: {DEFAULT_NEW_USER_MODEL}\n---\n",
+        encoding="utf-8",
+    )
+
+    app = _make_app()
+    client = TestClient(app)
+    response = client.post(
+        "/api/settings/default-model",
+        json={"provider_model": "googlegenai:gemini-3-flash-preview"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"agents_updated": ["code.md"]}
+    assert "model: googlegenai:gemini-3-flash-preview" in (
+        agents / "code.md"
+    ).read_text(encoding="utf-8")
+
+
 def test_configure_default_model_preserves_configured_agents(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

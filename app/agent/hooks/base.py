@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 from app.agent.schemas.chat import (
     AssistantMessage,
@@ -113,8 +113,12 @@ class BaseAgentHook(ABC):
         error_type: str,
         status_code: int | None = None,
         retry_after: int | None = None,
+        *,
+        status: Literal["retrying", "exhausted", "waiting_quota"] = "retrying",
+        message: str | None = None,
+        resets_at: int | None = None,
     ) -> None:
-        """Called when a provider call will be retried."""
+        """Called when a provider call will be retried or is waiting for quota reset."""
 
     async def on_provider_exhausted(
         self,

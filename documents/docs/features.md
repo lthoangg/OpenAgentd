@@ -2,7 +2,7 @@
 title: Features
 description: Canonical, version-cited catalogue of shipped user-visible OpenAgentd features.
 status: stable
-updated: 2026-09-15
+updated: 2026-09-17
 ---
 
 # Features
@@ -14,7 +14,7 @@ release that introduced it (where known). When you ship something new, **add it 
 > double-clickable app that runs an agent on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 16 providers. Your keys.
 
-**Latest release:** v2.19.0 · September 15, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v2.19.0)
+**Latest release:** v2.20.0 · September 17, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v2.20.0)
 
 ---
 
@@ -500,6 +500,14 @@ executes tools, manages its task list, and inspects workspace repositories.
   reloaded history `[v2.13.0]`.
 - **`provider_status` SSE events in stream** `[v1.17.0]` — retry, exhaustion,
   and fallback transitions surface live in single-agent and split-pane views.
+- **Automatic provider quota-exhaustion wait and resume** `[v2.20.0]` — when an
+  OAuth provider (such as Codex, GitHub Copilot, or Grok) or any configured
+  model hits rate-limiting or quota exhaustion with a known reset window
+  (detected via headers, JSON metadata, body text phrasing, or live usage API
+  lookup), the agent does not abort or fail. It transitions to an
+  interruptible quota-wait state, emits live `waiting_quota` status events,
+  displays the reset time in the transcript, and automatically resumes work
+  once the window resets. The user can manually stop or interrupt at any time.
 - **Actionable provider HTTP errors** `[v1.56.0]` — non-retryable provider
   responses (400/401/403/404/422) are classified into typed errors that carry
   the provider's own explanation instead of a bare status code. 401/403 render
@@ -762,7 +770,7 @@ agnostic by design.
 | Google Gemini | `googlegenai:gemini-3.1-flash` | `GOOGLE_API_KEY` |
 | Google Vertex AI | `vertexai:gemini-3-flash-preview` | `VERTEXAI_API_KEY` or GCP creds |
 | OpenAI | `openai:gpt-5.5` | `OPENAI_API_KEY` |
-| OpenCode Zen | `opencode:deepseek-v4-flash-free` | none for free models; `OPENCODE_ZEN_API_KEY` for paid models `[v1.124.0]` |
+| OpenCode Zen | `opencode:big-pickle` | none for free models; `OPENCODE_ZEN_API_KEY` for paid models `[v1.124.0]` |
 | OpenCode Go | `opencode-go:deepseek-v4-flash` | `OPENCODE_GO_API_KEY` `[v1.124.0]` |
 | OpenRouter | `openrouter:qwen/qwen3.6-plus:free` | `OPENROUTER_API_KEY` |
 | ZAI / GLM | `zai:glm-5-turbo` | `ZAI_API_KEY` |
@@ -778,7 +786,7 @@ agnostic by design.
 | Ollama (local + cloud) | `ollama:llama3.2` · `ollama:kimi-k2.6-cloud` | none (cloud: `ollama signin`) |
 
 - **Keyless first-run model** `[v1.124.0]` — new installations start with
-  `opencode:deepseek-v4-flash-free` across the built-in agent profile, while
+  `opencode:big-pickle` across the built-in agent profile, while
   existing agent model choices remain unchanged.
 - **Drop-in provider plugins** `[v1.6.0]` — Python files in the configured
   plugins directory register new providers at startup.
@@ -1060,6 +1068,10 @@ Four orthogonal ways to add capability.
     schemas benefit automatically; plain-text descriptions render identically to before.
     The tool inventory is grouped by origin (built-in, then one group per MCP server)
     and open by default so available tools are immediately visible; the name/description filter appears past eight tools `[v1.125.0]`.
+  - **Multimodal image tool returns** `[v2.20.0]` — MCP tools can return image
+    MIME types (`ImageContent` and image embedded resources), which are
+    translated to structured `ImageDataBlock` parts for vision models while
+    preserving concise textual summaries in transcripts and history.
 - **Sandboxed UI artifacts** `[v1.36.0]` *(beta)* — tool-produced HTML UI
 - **Sandboxed UI artifacts** `[v1.36.0, updated v2.17.0]` *(beta)* — tool-produced HTML UI
   resources render as sandboxed sibling chat artifacts. The first producer is

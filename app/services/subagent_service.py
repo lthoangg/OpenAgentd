@@ -233,11 +233,7 @@ def _build_member_tools(
         # Strictly disallow lead-only / user tools
         if name in (
             "ask_user",
-            "team_spawn",
-            "team_send",
-            "team_list",
-            "team_wait",
-            "team_stop",
+            "delegate",
             "schedule_task",
         ):
             continue

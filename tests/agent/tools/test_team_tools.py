@@ -5,14 +5,7 @@ from pydantic import ValidationError
 
 from app.agent.tools.builtin.team import (
     DelegateArgs,
-    TeamListArgs,
-    TeamManageArgs,
-    TeamSendArgs,
-    TeamSpawnArgs,
-    TeamStopArgs,
-    TeamWaitArgs,
     make_delegate_tool,
-    make_team_manage_tool,
 )
 from app.agent.tools.builtin.member import (
     AskLeadArgs,
@@ -100,36 +93,6 @@ def test_resolve_instance_exact_and_bare() -> None:
         resolve_instance(lead_id, "nonexistent#1")
 
 
-def test_team_tool_args_validation() -> None:
-    # TeamSpawnArgs
-    spawn_args = TeamSpawnArgs(profile="explorer", task="Find auth routes")
-    assert spawn_args.profile == "explorer"
-    assert spawn_args.wait is True
-
-    with pytest.raises(ValidationError):
-        TeamSpawnArgs(profile="", task="Find auth routes")
-
-    # TeamSendArgs
-    send_args = TeamSendArgs(member_id="explorer#1", message="Proceed with v2")
-    assert send_args.member_id == "explorer#1"
-    assert send_args.message == "Proceed with v2"
-
-    with pytest.raises(ValidationError):
-        TeamSendArgs(member_id="explorer#1", message="   ")
-
-    # TeamWaitArgs
-    wait_args = TeamWaitArgs(member_ids=["explorer#1", "explorer#2"], timeout=60)
-    assert wait_args.member_ids == ["explorer#1", "explorer#2"]
-    assert wait_args.timeout == 60
-
-    # TeamStopArgs
-    stop_args = TeamStopArgs(member_id="explorer#1")
-    assert stop_args.member_id == "explorer#1"
-
-    # TeamListArgs
-    assert TeamListArgs() is not None
-
-
 def test_member_tool_args_validation() -> None:
     # SendToLeadArgs
     send_args = SendToLeadArgs(message="Found 5 routes", end_turn=True)
@@ -146,41 +109,6 @@ def test_member_tool_args_validation() -> None:
 
     with pytest.raises(ValidationError):
         AskLeadArgs(question="")
-
-
-@pytest.mark.asyncio
-async def test_team_manage_tool() -> None:
-    lead_id = "test-lead-manage"
-    _live_instances[lead_id] = {}
-
-    class DummySession:
-        async def handle_stop(self) -> None:
-            pass
-
-    inst = SubagentInstance(
-        handle="explorer#1",
-        profile_name="explorer",
-        lead_session_id=lead_id,
-        session_id="child-1",
-        session=DummySession(),  # type: ignore[arg-type]
-        status="working",
-    )
-    _live_instances[lead_id]["explorer#1"] = inst
-
-    tool = make_team_manage_tool(lead_id, db_factory=None)  # type: ignore[arg-type]
-
-    # 1. Action: list
-    list_res = await tool.arun(action="list")
-    assert "explorer#1" in list_res
-
-    # 2. Action: stop
-    stop_res = await tool.arun(action="stop", member_id="explorer#1")
-    assert "stopped" in stop_res
-    assert _live_instances[lead_id]["explorer#1"].last_error == "Stopped by lead"
-
-    # 3. Action: invalid action validation
-    with pytest.raises(ValidationError):
-        TeamManageArgs(action="invalid_action")  # type: ignore[arg-type]
 
 
 def test_delegate_args_validation() -> None:

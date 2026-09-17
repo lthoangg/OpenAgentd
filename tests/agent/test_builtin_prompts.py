@@ -101,8 +101,6 @@ def test_member_prompts_match_pruned_toolset_and_topology():
         # Strictly excludes user/lead tools
         assert "ask_user" not in prompt
         assert "delegate" not in prompt
-        assert "team_spawn" not in prompt
-        assert "team_send" not in prompt
 
 
 def test_coding_lead_prompt_does_not_contain_subagent_delegation():

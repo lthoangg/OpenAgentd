@@ -12,13 +12,14 @@ server remains obvious while avoiding the extra ``mcp_`` prefix.
 from __future__ import annotations
 
 import base64
+import mimetypes
 from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 from pydantic import BaseModel
 
 from app.agent.errors import ToolExecutionError
-from app.agent.schemas.chat import TextBlock, ToolResult
+from app.agent.schemas.chat import ContentBlock, ImageDataBlock, TextBlock, ToolResult
 from app.agent.tools.registry import Tool
 from app.agent.tools.schema import sanitize_tool_schema as _sanitize_schema
 
@@ -132,6 +133,8 @@ class MCPTool(Tool):
                 f"MCP tool '{self.name}' returned error: {text or '(no message)'}"
             )
 
+        parts = _extract_parts(result.content)
+        has_images = any(isinstance(p, ImageDataBlock) for p in parts)
         text_summary = _extract_text(result.content)
 
         mcp_app_meta = _get_ui_meta(self._mcp_tool)
@@ -147,8 +150,11 @@ class MCPTool(Tool):
                         app_resource["resourceMeta"] = await _get_listing_resource_meta(
                             session, resource_uri
                         )
+                    app_parts = list(parts)
+                    if not any(isinstance(p, TextBlock) for p in app_parts):
+                        app_parts.insert(0, TextBlock(text=text_summary))
                     return ToolResult(
-                        parts=[TextBlock(text=text_summary)],
+                        parts=app_parts,
                         mcp_app={
                             "server": self._server_name,
                             "tool": self._remote_name,
@@ -170,6 +176,9 @@ class MCPTool(Tool):
                     resource_uri,
                     exc,
                 )
+
+        if has_images:
+            return ToolResult(parts=parts)
 
         return text_summary
 
@@ -256,9 +265,7 @@ def _extract_text(content: Any) -> str:
     """Best-effort flatten an MCP ``CallToolResult.content`` list to a string.
 
     MCP content is a list of typed blocks (``TextContent``, ``ImageContent``,
-    ``EmbeddedResource``). For now we only render ``TextContent`` and
-    summarise the rest, since the agent loop already has rich multimodal
-    handling and we don't want to leak base64 image blobs back through here.
+    ``EmbeddedResource``).
     """
     if not content:
         return ""
@@ -267,18 +274,152 @@ def _extract_text(content: Any) -> str:
 
     parts: list[str] = []
     for block in content:
-        block_type = getattr(block, "type", None)
+        block_type = _get_block_type(block)
         if block_type == "text":
-            parts.append(getattr(block, "text", "") or "")
+            parts.append(_get_text(block) or "")
         elif block_type == "image":
-            mime = getattr(block, "mime_type", "image/*")
+            mime = _get_mime_type(block) or "image/*"
             parts.append(f"[image: {mime}]")
         elif block_type == "resource":
-            uri = getattr(getattr(block, "resource", None), "uri", "?")
+            res = _get_resource(block)
+            uri = (
+                (res.get("uri") if isinstance(res, dict) else getattr(res, "uri", None))
+                if res
+                else None
+            ) or "?"
             parts.append(f"[resource: {uri}]")
         else:
             parts.append(str(block))
     return "\n".join(parts)
+
+
+def _normalize_image_mime(mime: str | None) -> str:
+    """Normalize an image MIME type string to a standard media_type."""
+    if not mime:
+        return "image/png"
+    clean = mime.split(";")[0].strip().lower()
+    if clean == "image/jpg":
+        return "image/jpeg"
+    if "/" not in clean:
+        if clean in ("jpg", "jpeg"):
+            return "image/jpeg"
+        return f"image/{clean}"
+    return clean
+
+
+def _get_block_type(block: Any) -> str | None:
+    if isinstance(block, dict):
+        return block.get("type")
+    return getattr(block, "type", None)
+
+
+def _get_mime_type(item: Any) -> str | None:
+    if isinstance(item, dict):
+        return item.get("mime_type") or item.get("mimeType")
+    return getattr(item, "mime_type", None) or getattr(item, "mimeType", None)
+
+
+def _get_data(item: Any) -> str | None:
+    if isinstance(item, dict):
+        return item.get("data")
+    return getattr(item, "data", None)
+
+
+def _get_text(item: Any) -> str | None:
+    if isinstance(item, dict):
+        return item.get("text")
+    return getattr(item, "text", None)
+
+
+def _get_resource(block: Any) -> Any:
+    if isinstance(block, dict):
+        return block.get("resource")
+    return getattr(block, "resource", None)
+
+
+def _extract_parts(content: Any) -> list[ContentBlock]:
+    """Extract structured ContentBlock items from MCP CallToolResult.content.
+
+    Translates:
+    - Text blocks -> TextBlock
+    - Image blocks (with base64 data) -> ImageDataBlock
+    - Embedded resources with image MIME types and base64 blobs -> ImageDataBlock
+    - Embedded resources with text -> TextBlock
+    - Other resources / unknown blocks -> TextBlock
+    """
+    if not content:
+        return []
+    if not isinstance(content, list):
+        return [TextBlock(text=str(content))]
+
+    parts: list[ContentBlock] = []
+    for block in content:
+        block_type = _get_block_type(block)
+        if block_type == "text":
+            text = _get_text(block) or ""
+            parts.append(TextBlock(text=text))
+        elif block_type == "image":
+            data = _get_data(block)
+            mime = _get_mime_type(block)
+            if data and isinstance(data, str):
+                parts.append(
+                    ImageDataBlock(
+                        data=data,
+                        media_type=_normalize_image_mime(mime),
+                    )
+                )
+            else:
+                parts.append(TextBlock(text=f"[image: {mime or 'image/*'}]"))
+        elif block_type == "resource":
+            res = _get_resource(block)
+            blob = (
+                (
+                    res.get("blob")
+                    if isinstance(res, dict)
+                    else getattr(res, "blob", None)
+                )
+                if res
+                else None
+            )
+            mime = _get_mime_type(res) if res else None
+            uri = (
+                (res.get("uri") if isinstance(res, dict) else getattr(res, "uri", None))
+                if res
+                else None
+            ) or "?"
+            if not mime and uri and uri != "?":
+                mime = mimetypes.guess_type(uri)[0]
+
+            if (
+                blob
+                and isinstance(blob, str)
+                and mime
+                and (mime.startswith("image/") or "/" not in mime)
+            ):
+                parts.append(
+                    ImageDataBlock(
+                        data=blob,
+                        media_type=_normalize_image_mime(mime),
+                    )
+                )
+            else:
+                res_text = (
+                    (
+                        res.get("text")
+                        if isinstance(res, dict)
+                        else getattr(res, "text", None)
+                    )
+                    if res
+                    else None
+                )
+                if res_text:
+                    parts.append(TextBlock(text=res_text))
+                else:
+                    parts.append(TextBlock(text=f"[resource: {uri}]"))
+        else:
+            parts.append(TextBlock(text=str(block)))
+
+    return parts
 
 
 # ── Type alias for the session-resolution callback ──────────────────────────

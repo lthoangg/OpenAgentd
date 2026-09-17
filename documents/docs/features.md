@@ -1060,6 +1060,10 @@ Four orthogonal ways to add capability.
     schemas benefit automatically; plain-text descriptions render identically to before.
     The tool inventory is grouped by origin (built-in, then one group per MCP server)
     and open by default so available tools are immediately visible; the name/description filter appears past eight tools `[v1.125.0]`.
+  - **Multimodal image tool returns** `[v2.19.0]` — MCP tools can return image
+    MIME types (`ImageContent` and image embedded resources), which are
+    translated to structured `ImageDataBlock` parts for vision models while
+    preserving concise textual summaries in transcripts and history.
 - **Sandboxed UI artifacts** `[v1.36.0]` *(beta)* — tool-produced HTML UI
 - **Sandboxed UI artifacts** `[v1.36.0, updated v2.17.0]` *(beta)* — tool-produced HTML UI
   resources render as sandboxed sibling chat artifacts. The first producer is

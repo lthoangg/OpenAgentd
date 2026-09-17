@@ -7,7 +7,6 @@ from app.agent.providers.opencode.constants import (
     GO_BASE_URL,
     GO_LABEL,
     GO_PROVIDER_ID,
-    PUBLIC_API_KEY,
     ZEN_API_KEY_ENV,
     ZEN_BASE_URL,
     ZEN_LABEL,
@@ -31,7 +30,6 @@ OPENAI_COMPATIBLE_PROVIDER_SPECS: dict[str, OpenAICompatibleProviderSpec] = {
         label=ZEN_LABEL,
         env_var=ZEN_API_KEY_ENV,
         base_url=ZEN_BASE_URL,
-        default_api_key=PUBLIC_API_KEY,
     ),
     GO_PROVIDER_ID: OpenAICompatibleProviderSpec(
         provider_id=GO_PROVIDER_ID,

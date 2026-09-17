@@ -83,3 +83,31 @@ You are a test agent.
     assert isinstance(agent.llm_provider, UnconfiguredProvider)
     # model_id carries the placeholder so the UI can show what's wrong.
     assert agent.model_id == "__PROVIDER_MODEL__"
+
+
+def test_loader_substitutes_unconfigured_stub_when_api_key_missing(
+    tmp_path, monkeypatch
+) -> None:
+    """An agent with an unconfigured provider loads with a stub rather than failing."""
+    from app.agent.loader import rebuild_agent_from_disk
+
+    monkeypatch.delenv("OPENCODE_ZEN_API_KEY", raising=False)
+    agent_md = tmp_path / "code.md"
+    agent_md.write_text(
+        """---
+name: code
+role: lead
+description: Test agent.
+model: opencode:claude-sonnet-4-6
+tools: []
+---
+
+You are a test agent.
+""",
+        encoding="utf-8",
+    )
+
+    agent = rebuild_agent_from_disk(agent_md)
+    assert agent is not None
+    assert isinstance(agent.llm_provider, UnconfiguredProvider)
+    assert agent.model_id == "opencode:claude-sonnet-4-6"

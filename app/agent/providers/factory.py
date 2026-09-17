@@ -33,7 +33,6 @@ from app.agent.providers.ollama import OllamaProvider
 from app.agent.providers.opencode.opencode import OpenCodeProvider
 from app.agent.providers.opencode.constants import (
     PROVIDER_IDS as OPENCODE_PROVIDER_IDS,
-    ZEN_PROVIDER_ID,
 )
 from app.agent.providers.openai import ChatCompletionsOnlyProvider, OpenAIProvider
 from app.agent.providers.openai.compatible import OPENAI_COMPATIBLE_PROVIDER_SPECS
@@ -96,7 +95,9 @@ def require_api_key(secret: SecretStr | None, env_var: str, label: str) -> str:
     env_value = os.getenv(env_var, "")
     if env_value:
         return env_value
-    raise ValueError(f"{label} API key is required. Set {env_var} in your .env file.")
+    raise UnconfiguredProviderError(
+        message=f"{label} API key is required. Set {env_var} in your .env file."
+    )
 
 
 def _with_provider_name(
@@ -157,12 +158,7 @@ def build_provider(
             spec = OPENAI_COMPATIBLE_PROVIDER_SPECS[name]
             configured_key = getattr(s, spec.env_var, None)
             api_key = configured_key
-            if name == ZEN_PROVIDER_ID:
-                try:
-                    api_key = require_api_key(configured_key, spec.env_var, spec.label)
-                except ValueError:
-                    api_key = spec.default_api_key
-            elif not spec.default_api_key:
+            if not spec.default_api_key:
                 api_key = require_api_key(configured_key, spec.env_var, spec.label)
             typed_api_key = cast(str | SecretStr | None, api_key)
             base_url = spec.base_url

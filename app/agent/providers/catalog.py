@@ -117,7 +117,6 @@ _CATALOG: list[ProviderEntry] = [
         "kind": "api_key",
         "env_var": ZEN_API_KEY_ENV,
         "models_dev_provider_id": ZEN_PROVIDER_ID,
-        "public_access": True,
         "docs_url": ZEN_DOCS_URL,
     },
     {

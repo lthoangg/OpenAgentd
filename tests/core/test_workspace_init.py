@@ -47,12 +47,10 @@ def test_ensure_workspace_initialized_creates_roots_and_builtin_defaults(
     assert (config / "settings.yaml").is_file()
     assert (config / "multimodal.yaml").is_file()
 
-    default_model = "opencode:big-pickle"
+    default_model = "__PROVIDER_MODEL__"
     for agent_file in (config / "agents").rglob("*.md"):
         assert f"model: {default_model}" in agent_file.read_text(encoding="utf-8")
-    assert f"model: {default_model}" in (config / "settings.yaml").read_text(
-        encoding="utf-8"
-    )
+    assert "model:" not in (config / "settings.yaml").read_text(encoding="utf-8")
 
 
 def test_ensure_workspace_initialized_preserves_existing_agents(
@@ -91,4 +89,4 @@ def test_ensure_workspace_initialized_restores_missing_default_agent(
     assert lead.is_file()
     text = lead.read_text(encoding="utf-8")
     assert "role: lead" in text
-    assert "model: opencode:big-pickle" in text
+    assert "model: __PROVIDER_MODEL__" in text

@@ -273,4 +273,4 @@ class Settings(BaseSettings):
 settings = Settings()  # pyright: ignore[reportCallIssue]
 
 #: Keyless model assigned to agent files created on a user's first run.
-DEFAULT_NEW_USER_MODEL = "opencode:big-pickle"
+DEFAULT_NEW_USER_MODEL = "__PROVIDER_MODEL__"

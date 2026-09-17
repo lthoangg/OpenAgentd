@@ -281,6 +281,12 @@ def configure_unconfigured_agent_models(
     """Assign *provider_model* to agent files that still use the default user model."""
     from app.core.config import DEFAULT_NEW_USER_MODEL
 
+    unconfigured_models = (
+        DEFAULT_NEW_USER_MODEL,
+        "__PROVIDER_MODEL__",
+        "opencode:big-pickle",
+        "opencode:deepseek-v4-flash-free",
+    )
     updated: list[str] = []
     for path in sorted(agents_dir.rglob("*.md")):
         text = path.read_text(encoding="utf-8")
@@ -288,10 +294,7 @@ def configure_unconfigured_agent_models(
             cfg = parse_agent_md(path)
         except Exception:
             continue
-        if (
-            cfg.model not in (DEFAULT_NEW_USER_MODEL, "__PROVIDER_MODEL__")
-            or cfg.model == provider_model
-        ):
+        if cfg.model not in unconfigured_models or cfg.model == provider_model:
             continue
         match = _FRONTMATTER_RE.match(text)
         if match is None:
@@ -438,10 +441,18 @@ def _build_agent(
                 {"thinking_level": cfg.thinking_level} if cfg.thinking_level else None
             ),
         )
-    except UnconfiguredProviderError:
+    except (UnconfiguredProviderError, ValueError) as exc:
         from app.agent.providers.unconfigured import UnconfiguredProvider
 
-        provider_instance = UnconfiguredProvider()
+        logger.warning(
+            "agent_provider_unavailable agent={} model={} error={}",
+            cfg.name,
+            cfg.model,
+            exc,
+        )
+        provider_instance = UnconfiguredProvider(
+            agent_name=cfg.name, message=str(exc) if str(exc) else None
+        )
 
     agent = Agent(
         llm_provider=provider_instance,

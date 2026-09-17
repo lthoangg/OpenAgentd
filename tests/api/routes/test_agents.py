@@ -213,7 +213,7 @@ async def test_registry_hides_cached_paid_models_without_opencode_keys(
             "id": "opencode",
             "kind": "api_key",
             "label": "OpenCode Zen",
-            "public_access": True,
+            "public_access": False,
         },
         {
             "id": "opencode-go",
@@ -253,10 +253,20 @@ async def test_registry_hides_cached_paid_models_without_opencode_keys(
     request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace()))
     registry = await agents_routes.get_registry(request)
 
-    assert [model.id for model in registry.models] == ["opencode:anonymous-model"]
-    assert await agents_routes.is_registered_model_id("opencode:anonymous-model")
+    assert [model.id for model in registry.models] == []
+    assert not await agents_routes.is_registered_model_id("opencode:anonymous-model")
     assert not await agents_routes.is_registered_model_id("opencode:paid-model")
     assert not await agents_routes.is_registered_model_id("opencode-go:go-model")
+
+    monkeypatch.setattr(
+        agents_routes,
+        "_provider_is_configured",
+        lambda entry: entry.get("id") == "opencode",
+    )
+    registry_configured = await agents_routes.get_registry(request)
+    assert [model.id for model in registry_configured.models] == ["opencode:paid-model"]
+    assert await agents_routes.is_registered_model_id("opencode:paid-model")
+    assert not await agents_routes.is_registered_model_id("opencode:anonymous-model")
 
 
 @pytest.mark.asyncio

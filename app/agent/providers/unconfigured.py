@@ -62,9 +62,12 @@ class UnconfiguredProvider(LLMProviderBase):
     # Use the literal sentinel so logs make it obvious why a call failed.
     model: str = "__unconfigured__"
 
-    def __init__(self, agent_name: str | None = None) -> None:
+    def __init__(
+        self, agent_name: str | None = None, message: str | None = None
+    ) -> None:
         super().__init__()
         self._agent_name = agent_name
+        self._message = message
 
     async def chat(
         self,
@@ -72,7 +75,7 @@ class UnconfiguredProvider(LLMProviderBase):
         tools: list[dict] | None = None,
         **kwargs: Any,
     ) -> AssistantMessage:
-        raise UnconfiguredProviderError(self._agent_name)
+        raise UnconfiguredProviderError(self._agent_name, message=self._message)
 
     def stream(
         self,
@@ -85,7 +88,7 @@ class UnconfiguredProvider(LLMProviderBase):
         # an iterator whose first ``__anext__`` raises — bare ``raise``
         # here would fire at call-time and skip the agent loop's hooks.
         async def _raise() -> AsyncIterator[ChatCompletionChunk]:
-            raise UnconfiguredProviderError(self._agent_name)
+            raise UnconfiguredProviderError(self._agent_name, message=self._message)
             yield  # pragma: no cover — unreachable, here to make this a generator
 
         return _raise()

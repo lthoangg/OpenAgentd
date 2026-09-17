@@ -20,5 +20,3 @@ ZEN_BASE_URL = "https://opencode.ai/zen/v1"
 GO_BASE_URL = "https://opencode.ai/zen/go/v1"
 ZEN_DOCS_URL = "https://opencode.ai/docs/zen/"
 GO_DOCS_URL = "https://opencode.ai/docs/go/"
-
-PUBLIC_API_KEY = "public"

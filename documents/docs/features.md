@@ -770,7 +770,7 @@ agnostic by design.
 | Google Gemini | `googlegenai:gemini-3.1-flash` | `GOOGLE_API_KEY` |
 | Google Vertex AI | `vertexai:gemini-3-flash-preview` | `VERTEXAI_API_KEY` or GCP creds |
 | OpenAI | `openai:gpt-5.5` | `OPENAI_API_KEY` |
-| OpenCode Zen | `opencode:big-pickle` | none for free models; `OPENCODE_ZEN_API_KEY` for paid models `[v1.124.0]` |
+| OpenCode Zen | `opencode:claude-sonnet-4-6` | `OPENCODE_ZEN_API_KEY` `[v1.124.0]` |
 | OpenCode Go | `opencode-go:deepseek-v4-flash` | `OPENCODE_GO_API_KEY` `[v1.124.0]` |
 | OpenRouter | `openrouter:qwen/qwen3.6-plus:free` | `OPENROUTER_API_KEY` |
 | ZAI / GLM | `zai:glm-5-turbo` | `ZAI_API_KEY` |
@@ -785,9 +785,10 @@ agnostic by design.
 | CLIProxyAPI (local) | `cliproxy:gemini-2.5-pro` | `CLIPROXY_API_KEY` (optional) |
 | Ollama (local + cloud) | `ollama:llama3.2` · `ollama:kimi-k2.6-cloud` | none (cloud: `ollama signin`) |
 
-- **Keyless first-run model** `[v1.124.0]` — new installations start with
-  `opencode:big-pickle` across the built-in agent profile, while
-  existing agent model choices remain unchanged.
+- **Keyless first-run model** `[v1.124.0]` *(deprecated — removed)* — previously
+  defaulted new installations to OpenCode Zen free models; removed because
+  OpenCode free models only open within OpenCode's own harness. OpenCode Zen
+  now requires `OPENCODE_ZEN_API_KEY`.
 - **Drop-in provider plugins** `[v1.6.0]` — Python files in the configured
   plugins directory register new providers at startup.
 - **Resilient provider construction** `[v1.17.0]` — missing/unavailable

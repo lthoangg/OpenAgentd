@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import hmac
 import os
 from collections.abc import Mapping
 
@@ -10,7 +9,9 @@ from loguru import logger
 
 from app.agent.providers.catalog import ProviderEntry
 from app.agent.providers.opencode.access import filter_opencode_models_for_access
-from app.agent.providers.opencode.constants import PUBLIC_API_KEY, ZEN_PROVIDER_ID
+from app.agent.providers.opencode.constants import (
+    PROVIDER_IDS as OPENCODE_PROVIDER_IDS,
+)
 from app.agent.providers.openai.compatible import OPENAI_COMPATIBLE_PROVIDER_SPECS
 from app.core.config import settings
 
@@ -256,13 +257,11 @@ async def discover_provider_models(
                     base_url=base_url,
                     api_key=api_key,
                 )
-                if provider_id == ZEN_PROVIDER_ID and hmac.compare_digest(
-                    api_key, PUBLIC_API_KEY
-                ):
+                if provider_id in OPENCODE_PROVIDER_IDS:
                     models = filter_opencode_models_for_access(
                         provider_id,
                         models,
-                        has_credentials=False,
+                        has_credentials=bool(api_key),
                     )
             case "zai":
                 models = await _openai_compatible_models(

@@ -904,6 +904,9 @@ MCP.
   questions across suspensions `[v2.10.0]`;
   scheduled sessions never get the tool, because a cron job has nobody to ask.
   Failed scheduled tasks remain eligible to retry until their run limit is met `[v2.13.0]`.
+- **Resilient web search Exa fallback** `[v2.20.0]` — `web_search` uses `web_search_exa`
+  with Server-Sent Events (SSE) stream parsing and normalized result structures
+  when DDGS search backends are unreachable or return no results.
 - **Search usage guidance** `[v2.20.0]` — `web_search` instructions guide agents to
   write focused queries, fetch known URLs directly, evaluate primary sources,
   and report uncertainty when search results cannot be verified.

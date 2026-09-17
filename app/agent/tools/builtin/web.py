@@ -2,6 +2,8 @@ import asyncio
 from dataclasses import dataclass
 from enum import StrEnum
 import ipaddress
+import json
+import re
 import socket
 from typing import Any, Literal
 
@@ -9,6 +11,7 @@ import anydoc
 import httpcore
 import httpx
 from ddgs import DDGS
+from httpx2._sse import _SSEParser
 from httpcore._backends.anyio import AnyIOBackend
 from loguru import logger
 from pydantic import AliasChoices, BaseModel, Field, field_validator
@@ -633,6 +636,62 @@ async def _fetch_url(
             ) from exc
 
 
+def _parse_exa_text_content(text: str) -> list[dict[str, str]]:
+    """Parse Exa MCP plain text response containing Title/URL/Highlights blocks."""
+    entries = []
+    raw_blocks = re.split(r"\n(?=Title:\s*)", text.strip())
+    for block in raw_blocks:
+        if not block.strip():
+            continue
+        lines = block.strip().splitlines()
+        title = ""
+        url = ""
+        body_lines = []
+        in_highlights = False
+        for line in lines:
+            if line.startswith("Title:"):
+                title = line[len("Title:") :].strip()
+            elif line.startswith("URL:"):
+                url = line[len("URL:") :].strip()
+            elif line.startswith("Published:") or line.startswith("Author:"):
+                continue
+            elif line.startswith("Highlights:"):
+                in_highlights = True
+            elif in_highlights:
+                body_lines.append(line)
+            else:
+                body_lines.append(line)
+        body = "\n".join(body_lines).strip()
+        if title or url:
+            entries.append({"title": title, "href": url, "body": body})
+    return entries
+
+
+def _extract_exa_response_data(response: httpx.Response) -> dict[str, Any]:
+    """Extract JSON-RPC payload from an HTTP or SSE response from Exa MCP."""
+    content_type = response.headers.get("content-type", "")
+    text = response.text
+    if "text/event-stream" in content_type or text.startswith("event:"):
+        parser = _SSEParser()
+        events = list(parser.decode(text)) + list(parser.flush())
+        for ev in events:
+            if ev.data:
+                try:
+                    parsed = json.loads(ev.data)
+                    if isinstance(parsed, dict):
+                        return parsed
+                except Exception:
+                    pass
+        return {}
+    try:
+        parsed = response.json()
+        if isinstance(parsed, dict):
+            return parsed
+    except Exception:
+        pass
+    return {}
+
+
 class WebSearchArgs(BaseModel):
     """Arguments for the web_search tool."""
 
@@ -722,7 +781,7 @@ async def web_search(
         "id": 1,
         "method": "tools/call",
         "params": {
-            "name": "search",
+            "name": "web_search_exa",
             "arguments": {"query": query, "numResults": max_results},
         },
     }
@@ -730,11 +789,30 @@ async def web_search(
         async with httpx.AsyncClient(timeout=_DEFAULT_TIMEOUT) as client:
             response = await client.post(url, headers=headers, json=data)
             response.raise_for_status()
-            result = response.json()
-            if "error" in result:
-                logger.debug(f"Exa search error: {result['error']}")
-                return f"Error: {result['error']}"
-            return result.get("result", [])
+            payload = _extract_exa_response_data(response)
+            if "error" in payload:
+                logger.debug(f"Exa search error: {payload['error']}")
+                return f"Error: {payload['error']}"
+            result = payload.get("result")
+            if isinstance(result, dict):
+                if result.get("isError"):
+                    content = result.get("content", [])
+                    err_msg = content[0].get("text", "") if content else "Unknown error"
+                    logger.debug(f"Exa tool error: {err_msg}")
+                    return f"Error: {err_msg}"
+                content = result.get("content", [])
+                if (
+                    isinstance(content, list)
+                    and content
+                    and isinstance(content[0], dict)
+                ):
+                    text = content[0].get("text", "")
+                    parsed_entries = _parse_exa_text_content(text)
+                    if parsed_entries:
+                        return parsed_entries
+            elif isinstance(result, list):
+                return result
+            return "No result found"
     except Exception as e:
         logger.debug(f"Error during Exa search: {str(e)}")
         return "No result found"

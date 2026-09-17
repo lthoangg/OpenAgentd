@@ -48,7 +48,7 @@ _OP_SKILLS = {
     "skill-installer",
     "plugin-installer",
     "self-healing",
-    "browser-use",
+    "browser-skill",
 }
 
 

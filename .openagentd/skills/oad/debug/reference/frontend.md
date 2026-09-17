@@ -15,7 +15,7 @@ bun test --reporter=verbose  # full test suite
 bun test <path/to/test>    # focused test file
 ```
 
-For live UI issues (visual regression, interaction bugs, DOM/CSS state) use browser-use to drive the real UI — see the **Live UI verification** section below.
+For live UI issues (visual regression, interaction bugs, DOM/CSS state) use browser-skill (`bsk`) to drive the real UI — see the **Live UI verification** section below.
 
 ---
 
@@ -82,7 +82,7 @@ bun test --reporter=verbose
 
 ---
 
-## Live UI verification (browser-use)
+## Live UI verification (browser-skill / bsk)
 
 Use when you need real rendered state: focus/keyboard behavior, layout, scroll position, component state transitions, console errors.
 
@@ -95,44 +95,45 @@ Use when you need real rendered state: focus/keyboard behavior, layout, scroll p
 lsof -ti:5173 >/dev/null 2>&1 && echo up || echo down
 # if down:
 cd web && bun dev   # background; wait for :5173
-browser-use doctor
+bsk doctor
 ```
 
 ### Core loop
 
 ```bash
-browser-use --session fe open "http://localhost:5173/cockpit"  # /cockpit = real chat UI
-browser-use --session fe state                                  # discover element indices
-browser-use --session fe click <index>
-browser-use --session fe type "..."
-browser-use --session fe eval "<expression returning string>"
-browser-use --session fe screenshot "$(pwd)/.openagentd/browser-use/<name>.png"
-browser-use --session fe close
+bsk session start --json                                      # retain session_id <id>
+bsk navigate "http://localhost:5173/cockpit" --session <id>   # /cockpit = real chat UI
+bsk observe --session <id>                                    # discover @eN element refs
+bsk click @e3 --session <id>
+bsk fill @e3 --value "..." --session <id>
+bsk evaluate "<expression returning string>" --session <id>
+bsk screenshot --session <id> --out "$(pwd)/.openagentd/screenshots/<name>.png"
+bsk session stop <id>
 ```
 
 ### Hard-won rules
 
-- **Controlled React inputs:** use `click` then `type` — do NOT set `textarea.value` via `eval`.
+- **Controlled React inputs:** use `click` then `fill` — do NOT set `textarea.value` via `evaluate`.
 - **Composer starts minimized on desktop.** Click `Expand input bar` first.
-- **`eval` must return a string/number.** Wrap objects with `JSON.stringify(...)`. Use an IIFE for multi-statement expressions.
+- **`evaluate` must return a string/number.** Wrap objects with `JSON.stringify(...)`. Use an IIFE for multi-statement expressions.
 - **Scope selectors** — `.overflow-y-auto` exists in sidebar AND chat. Use `document.getElementById('main').querySelector(...)`.
 - **Screenshots need absolute paths.** Use `$(pwd)/...`.
 
-### Console tap (install after every `open`)
+### Diagnostics and console
 
-```bash
-browser-use --session fe eval "(function(){ if(window.__oaTap) return 'already'; window.__oaLogs=[]; window.__oaTap=true; ['log','warn','error','info'].forEach(function(k){ var o=console[k].bind(console); console[k]=function(){ try{ window.__oaLogs.push(k+': '+Array.from(arguments).map(function(a){try{return typeof a==='object'?JSON.stringify(a):String(a)}catch(e){return String(a)}}).join(' ')); if(window.__oaLogs.length>500)window.__oaLogs.shift(); }catch(e){} return o.apply(null,arguments); }; }); window.addEventListener('error',function(e){window.__oaLogs.push('window.error: '+(e.message||e))}); window.addEventListener('unhandledrejection',function(e){window.__oaLogs.push('unhandledrejection: '+((e.reason&&e.reason.message)||e.reason))}); return 'tap installed'; })()"
-# read back:
-browser-use --session fe eval "(window.__oaLogs||[]).slice(-15).join(' || ') || 'no logs'"
+Use `bsk console --session <id>` for console logs directly, or evaluate:
+
+```
+bsk console --session <id>
 ```
 
 ### Focus / keyboard / mobile spoofing
 
 ```bash
 # Focus check after toggle:
-browser-use --session fe eval "document.querySelector('textarea').getAttribute('aria-label') + '|active=' + (document.activeElement && document.activeElement.getAttribute('aria-label'))"
+bsk evaluate "document.querySelector('textarea').getAttribute('aria-label') + '|active=' + (document.activeElement && document.activeElement.getAttribute('aria-label'))" --session <id>
 
 # Spoof mobile keyboard (viewport shrinks to 460px):
-browser-use --session fe eval "document.documentElement.setAttribute('data-mobile-shell','ios'); document.documentElement.style.setProperty('--app-vh','460px'); ''"
-browser-use --session fe eval "const e=document.querySelector('.mobile-viewport'); e ? getComputedStyle(e).height : 'no .mobile-viewport'"  # PASS: 460px
+bsk evaluate "document.documentElement.setAttribute('data-mobile-shell','ios'); document.documentElement.style.setProperty('--app-vh','460px'); ''" --session <id>
+bsk evaluate "const e=document.querySelector('.mobile-viewport'); e ? getComputedStyle(e).height : 'no .mobile-viewport'" --session <id>  # PASS: 460px
 ```

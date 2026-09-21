@@ -85,6 +85,52 @@ async def test_get_usage_returns_only_premium_interactions(
 
 
 @pytest.mark.asyncio
+async def test_get_usage_skips_fake_percent_on_token_based_billing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "app.agent.providers.copilot.oauth.CopilotOAuth.load",
+        lambda: CopilotOAuth(github_token=SecretStr("github-token")),
+    )
+    _FakeClient.payload = {
+        "copilot_plan": "business",
+        "quota_reset_date_utc": "2026-10-01T00:00:00.000Z",
+        "token_based_billing": True,
+        "quota_snapshots": {
+            "chat": {
+                "quota_id": "chat",
+                "percent_remaining": 100.0,
+                "unlimited": True,
+                "remaining": 0,
+                "entitlement": 0,
+                "credits_used": 0,
+            },
+            "premium_interactions": {
+                "quota_id": "premium_interactions",
+                "percent_remaining": 100.0,
+                "unlimited": True,
+                "remaining": 0,
+                "entitlement": 0,
+                "credits_used": 237,
+                "quota_reset_at": 0,
+            },
+        },
+    }
+    monkeypatch.setattr(usage.httpx2, "Client", _FakeClient)
+
+    result = await usage.get_usage()
+
+    assert [limit.limit_id for limit in result.limits] == ["premium_interactions"]
+    premium = result.limits[0]
+    assert premium.primary is None
+    assert premium.credits is not None
+    assert premium.credits.unlimited is True
+    assert premium.credits.has_credits is True
+    assert premium.credits.balance == "237/\u221e"
+    assert premium.plan_type == "business"
+
+
+@pytest.mark.asyncio
 async def test_get_usage_missing_premium_snapshot_returns_empty_limits(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

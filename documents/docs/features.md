@@ -856,7 +856,9 @@ agnostic by design.
   so pickers stop offering models the provider can no longer serve; connected
   providers keep both — an expired access token is refreshed, not a disconnection.
 - **Copilot usage monitor** `[v1.33.0]` — Settings → Providers shows live Copilot
-  premium request quota from the saved OAuth token.
+  premium request quota from the saved OAuth token. Token-based / pooled-credit
+  seats skip a fake 0% quota window and show used credits as `N/∞` in Settings
+  and the usage tray instead of "unlimited" `[v2.23.0]`.
 - **API key provider usage and credit monitor** `[v2.3.0]` — Settings → Providers shows live credit balances, key spend caps, and quota limits for configured API key providers (such as OpenRouter and DeepSeek) alongside OAuth providers.
 - **Provider plugin usage hooks** `[v1.33.0]` — OAuth provider plugins can
   surface live usage in the same Settings → Providers panel as built-ins.

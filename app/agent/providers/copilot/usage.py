@@ -125,6 +125,12 @@ def _extract_plan_type(payload: Mapping[str, Any]) -> str | None:
     return _normalize_plan(plan)
 
 
+def _as_number(value: object) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        return None
+    return float(value)
+
+
 def _usage_payload() -> Mapping[str, Any]:
     try:
         with httpx2.Client(timeout=5.0) as client:
@@ -156,26 +162,45 @@ def _usage_limit(
         return None
     values = cast("dict[str, object]", data)
     percent_remaining = values.get("percent_remaining")
+    unlimited = values.get("unlimited") is True
+    remaining_n = _as_number(values.get("remaining"))
+    entitlement_n = _as_number(values.get("entitlement"))
+    credits_used_n = _as_number(values.get("credits_used"))
+    has_entitlement = entitlement_n is not None and entitlement_n > 0
+    used_percent = None
+    percent_remaining_n = _as_number(percent_remaining)
+    if percent_remaining_n is not None:
+        used_percent = max(0.0, min(100.0, 100.0 - percent_remaining_n))
+    # Token-based / pooled-credit seats report ``percent_remaining=100`` with
+    # ``unlimited=true`` and a zeroed remaining/entitlement bucket. That 0%
+    # window is not usage; ``credits_used`` is.
+    fake_zero_percent = (
+        used_percent == 0.0
+        and not has_entitlement
+        and (unlimited or credits_used_n is not None)
+    )
     primary = None
-    if isinstance(percent_remaining, int | float):
+    if used_percent is not None and not fake_zero_percent:
         reset_at = _parse_timestamp(values.get("quota_reset_at")) or fallback_reset_at
         primary = ProviderUsageWindow(
-            used_percent=max(0.0, min(100.0, 100.0 - float(percent_remaining))),
+            used_percent=used_percent,
             resets_at=reset_at,
         )
-    unlimited = values.get("unlimited") is True
-    remaining = values.get("remaining")
-    entitlement = values.get("entitlement")
     balance = None
-    if (
-        isinstance(remaining, int | float)
-        and isinstance(entitlement, int | float)
-        and entitlement > 0
-    ):
-        balance = f"{int(remaining)}/{int(entitlement)}"
+    if remaining_n is not None and entitlement_n is not None and entitlement_n > 0:
+        balance = f"{int(remaining_n)}/{int(entitlement_n)}"
+    elif credits_used_n is not None:
+        used = int(credits_used_n)
+        if entitlement_n is not None and entitlement_n > 0:
+            balance = f"{used}/{int(entitlement_n)}"
+        elif unlimited:
+            balance = f"{used}/\u221e"
+        else:
+            balance = str(used)
     credits = ProviderUsageCredits(
         has_credits=unlimited
-        or bool(isinstance(remaining, int | float) and remaining > 0),
+        or bool(remaining_n is not None and remaining_n > 0)
+        or credits_used_n is not None,
         unlimited=unlimited,
         balance=balance,
     )

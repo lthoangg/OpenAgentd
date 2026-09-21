@@ -190,6 +190,23 @@ describe('UsagePanel', () => {
     expect(screen.getByText('No usage credits left')).toBeTruthy()
   })
 
+  it('renders an unlimited credit balance as used/infinity instead of unlimited copy', () => {
+    renderWithQuery(
+      <UsagePanel
+        limits={[
+          makeLimit({
+            limit_name: 'Premium requests',
+            primary: null,
+            secondary: null,
+            credits: { has_credits: true, unlimited: true, balance: '237/\u221e' },
+          }),
+        ]}
+      />,
+    )
+    expect(screen.getByText('237/\u221e')).toBeTruthy()
+    expect(screen.queryByText('Unlimited usage')).toBeNull()
+  })
+
   it('renders a period-only limit as neutral availability rather than unlimited usage', () => {
     const nowS = Math.floor(Date.now() / 1000)
     renderWithQuery(

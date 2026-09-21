@@ -45,7 +45,7 @@ async def test_direct_smoke_verifies_prefix_shape_and_skill_inclusion() -> None:
 
     assert result == {
         "first_shared_prefix_messages": 4,
-        "second_shared_prefix_messages": 10,
+        "second_shared_prefix_messages": 9,
         "skill_included": True,
         "multi_skill_included": True,
         "non_skill_tool_compacted": True,

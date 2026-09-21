@@ -746,9 +746,17 @@ class SummarizationHook(BaseAgentHook):
         has_prior_summary = any(m.is_summary for m in to_summarise)
         request_line = _MERGE_REQUEST if has_prior_summary else _SUMMARISE_REQUEST
         prompt = system_prompt if system_prompt is not None else state.system_prompt
+        # Match the main streaming path's wire normalization. Session startup
+        # commonly produces adjacent mode-context and user messages; leaving
+        # them separate here makes the summarizer diverge near the start of an
+        # otherwise identical cached prefix.
+        from app.agent.agent_loop.streaming import _merge_consecutive_user_messages
+
+        prefix_messages = _merge_consecutive_user_messages(
+            [*([SystemMessage(content=prompt)] if prompt else []), *to_summarise]
+        )
         summariser_messages = [
-            *([SystemMessage(content=prompt)] if prompt else []),
-            *to_summarise,
+            *prefix_messages,
             HumanMessage(content=f"{request_line}\n\n{self._summary_prompt}"),
         ]
 
@@ -1049,15 +1057,14 @@ class SummarizationHook(BaseAgentHook):
                 span.set_attribute("gen_ai.request.model", model_name)
                 if provider_name:
                     span.set_attribute("gen_ai.provider.name", provider_name)
+            if provider_name == "codex" and ctx.session_id:
+                # Match normal Codex turns: the provider derives both its
+                # prompt_cache_key and session-id routing header from this.
+                kwargs["session_id"] = ctx.session_id
             try:
-                # No explicit prompt_cache_key: the main chat/coding turns rely
-                # on the provider's automatic prefix caching (keyed on the token
-                # prefix). Forcing a session-scoped key here routes the
-                # summarization request to a different cache partition than the
-                # conversation turns, so it cannot reuse the already-warmed
-                # conversation prefix — a net cache *miss* on OpenAI/codex.
-                # Letting it fall back to automatic prefix caching keeps it
-                # consistent with the normal turns.
+                # Generic providers use automatic prefix caching. Codex gets
+                # the same session_id as normal turns above so its adapter can
+                # preserve the session-scoped cache route.
                 #
                 # Imported here, not at module top: ``app.agent.agent_loop``
                 # imports ``app.agent.hooks`` (for ``BaseAgentHook``) and this

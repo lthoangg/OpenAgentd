@@ -19,6 +19,7 @@ from typing import Any
 
 import httpx
 
+from app.agent.agent_loop.streaming import _merge_consecutive_user_messages
 from app.agent.hooks.base import BaseAgentHook
 from app.agent.hooks.summarization import SummarizationHook
 from app.agent.providers.base import LLMProviderBase
@@ -318,10 +319,9 @@ async def _run_direct_compaction(
         "base prompt\n\nCurrent date (UTC): 2026-06-15"
         "\n\n## Workspace Instructions\nUse project rules."
     )
-    normal_prefix: list[ChatMessage] = [
-        SystemMessage(content=final_prompt),
-        *request.messages,
-    ]
+    normal_prefix: list[ChatMessage] = _merge_consecutive_user_messages(
+        [SystemMessage(content=final_prompt), *request.messages]
+    )
     assert provider.messages is not None
     summarizer_prefix = provider.messages[:-1]
 

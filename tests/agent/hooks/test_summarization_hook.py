@@ -901,6 +901,46 @@ async def test_summariser_passes_tool_defs_without_prompt_cache_key():
     assert call_kwargs["tool_choice"] == "none"
 
 
+@pytest.mark.asyncio
+async def test_codex_summariser_reuses_session_cache_route():
+    provider = MagicMock()
+    provider.provider_name = "codex"
+
+    async def _stream(*_, **__):
+        chunk = MagicMock()
+        chunk.choices = [MagicMock()]
+        chunk.choices[0].delta.content = "Summary."
+        chunk.usage = None
+        yield chunk
+
+    provider.stream.return_value = _stream()
+    hook = SummarizationHook(
+        llm_provider=provider,
+        summary_prompt="test summary prompt",
+        prompt_token_threshold=1,
+        keep_last_assistants=0,
+    )
+    state = AgentState(
+        messages=[HumanMessage(content="msg1")],
+        usage=UsageInfo(last_prompt_tokens=1),
+    )
+    ctx = _make_ctx(session_id="session-123")
+
+    await hook.before_model(ctx, state)
+    await hook.wrap_model_call(
+        ctx,
+        state,
+        ModelRequest(
+            messages=tuple(state.messages_for_llm), system_prompt=state.system_prompt
+        ),
+        _noop_model_handler,
+    )
+
+    call_kwargs = provider.stream.call_args.kwargs
+    assert call_kwargs["session_id"] == "session-123"
+    assert "prompt_cache_key" not in call_kwargs
+
+
 # ---------------------------------------------------------------------------
 # is BaseAgentHook subclass
 # ---------------------------------------------------------------------------
@@ -1070,6 +1110,61 @@ async def test_summariser_input_preserves_normal_call_prefix(mock_provider):
     assert captured[0].content == "stable agent prompt"
     assert captured[1].content == "what is the capital of France?"
     assert captured[2].content == "Paris."
+
+
+@pytest.mark.asyncio
+async def test_summariser_normalizes_adjacent_user_messages_like_main_call(
+    mock_provider,
+):
+    """Compaction must preserve the exact wire prefix used by normal calls."""
+    hook = SummarizationHook(
+        llm_provider=mock_provider,
+        summary_prompt="test summary prompt",
+        prompt_token_threshold=1,
+        keep_last_assistants=0,
+    )
+    ctx = _make_ctx()
+    state = AgentState(
+        messages=[
+            HumanMessage(content="<interaction_mode>Plan mode</interaction_mode>"),
+            HumanMessage(content="Redesign the coding screen."),
+            AssistantMessage(content="I will inspect the current UI."),
+        ],
+        usage=UsageInfo(last_prompt_tokens=9999),
+        system_prompt="stable agent prompt",
+    )
+    captured: list = []
+
+    async def _capturing_stream(messages, **__):
+        captured.extend(messages)
+        chunk = MagicMock()
+        chunk.choices = [MagicMock()]
+        chunk.choices[0].delta.content = "Summary."
+        chunk.usage = None
+        yield chunk
+
+    mock_provider.stream = lambda messages, **kw: _capturing_stream(messages)
+
+    await hook.before_model(ctx, state)
+    await hook.wrap_model_call(
+        ctx,
+        state,
+        ModelRequest(
+            messages=tuple(state.messages_for_llm), system_prompt=state.system_prompt
+        ),
+        _noop_model_handler,
+    )
+
+    assert [type(m) for m in captured] == [
+        SystemMessage,
+        HumanMessage,
+        AssistantMessage,
+        HumanMessage,
+    ]
+    assert captured[1].content == (
+        "<interaction_mode>Plan mode</interaction_mode>\n\nRedesign the coding screen."
+    )
+    assert captured[2].content == "I will inspect the current UI."
 
 
 @pytest.mark.asyncio

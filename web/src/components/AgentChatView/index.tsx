@@ -381,6 +381,11 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
     hasVisibleMessages: leadHasVisibleBlocks,
   })
 
+  const handleFindInTranscript = useCallback(() => {
+    setFindOpen(true)
+    setFindActiveIndex(0)
+  }, [])
+
   const {
     paletteCommands,
     quickOpenWorkspaceFiles,
@@ -400,10 +405,7 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
     handleToggleQuickOpen,
     handleToggleScheduler,
     handleOpenTerminal,
-    handleFindInTranscript: () => {
-      setFindOpen(true)
-      setFindActiveIndex(0)
-    },
+    handleFindInTranscript,
     setCodingFileViewer,
     setCodingFileViewerDetached,
     setCodingFileOpenKey,
@@ -470,6 +472,8 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
         setShowMobileActions={handleSetShowMobileActions}
         mobileActionsDragOffset={actionsDragOffset}
         onToggleScheduler={handleToggleScheduler}
+        onFindInTranscript={handleFindInTranscript}
+        onOpenTerminal={workspace && !isChatWorkspace ? handleOpenTerminal : undefined}
         onCloseMobileActionsMenu={closeMobileActionsMenu}
       />
 

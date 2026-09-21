@@ -984,7 +984,7 @@ export function CodingSidebar({
           )}
         </div>
         <div className="flex items-center gap-2">
-          <HealthDot />
+          <HealthDot labeled className="h-11 max-w-24" />
           <ThemeToggle collapsed />
         </div>
       </div>

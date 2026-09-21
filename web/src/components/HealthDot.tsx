@@ -59,7 +59,7 @@ export function HealthDot({
               aria-label={label}
             >
               <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${bgColor} ${pulseClass}`} aria-hidden="true" />
-              {labeled ? <span>{connectionLabel}</span> : null}
+              {labeled ? <span className="min-w-0 truncate">{connectionLabel}</span> : null}
             </button>
           }
         />

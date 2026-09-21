@@ -1,5 +1,5 @@
 import type { ComponentProps } from 'react'
-import { describe, expect, it } from 'bun:test'
+import { describe, expect, it, mock } from 'bun:test'
 import { render, screen } from '@testing-library/react'
 import '@testing-library/jest-dom'
 import userEvent from '@testing-library/user-event'
@@ -27,6 +27,8 @@ function renderHeader(overrides: Partial<ComponentProps<typeof AgentChatHeader>>
     setShowMobileActions: () => undefined,
     mobileActionsDragOffset: null,
     onToggleScheduler: () => undefined,
+    onFindInTranscript: () => undefined,
+    onOpenTerminal: () => undefined,
     onCloseMobileActionsMenu: () => undefined,
     ...overrides,
   }
@@ -60,6 +62,26 @@ describe('AgentChatHeader', () => {
   it('hides token meter when headerTokens is undefined', () => {
     renderHeader({ headerTokens: undefined })
     expect(screen.queryByRole('button', { name: /Input:/i })).not.toBeInTheDocument()
+  })
+
+  it('runs mobile transcript and terminal actions before closing the drawer', async () => {
+    const user = userEvent.setup()
+    const onFindInTranscript = mock(() => {})
+    const onOpenTerminal = mock(() => {})
+    const onCloseMobileActionsMenu = mock(() => {})
+    renderHeader({
+      showMobileActions: true,
+      onFindInTranscript,
+      onOpenTerminal,
+      onCloseMobileActionsMenu,
+    })
+
+    await user.click(screen.getByRole('button', { name: 'Find in transcript' }))
+    await user.click(screen.getByRole('button', { name: 'Open terminal' }))
+
+    expect(onFindInTranscript).toHaveBeenCalledTimes(1)
+    expect(onOpenTerminal).toHaveBeenCalledTimes(1)
+    expect(onCloseMobileActionsMenu).toHaveBeenCalledTimes(2)
   })
 
   it('labels the chat workspace "Chat" instead of its home-directory basename', () => {

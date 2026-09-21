@@ -193,7 +193,9 @@ mock.module('@/components/ThemeToggle', () => ({
 }))
 
 mock.module('@/components/HealthDot', () => ({
-  HealthDot: () => <div aria-label="Connected" />,
+  HealthDot: ({ labeled = false }: { labeled?: boolean }) => (
+    <div aria-label="Connected">{labeled ? 'backend-name' : null}</div>
+  ),
 }))
 
 mock.module('@/components/ui/button', () => ({
@@ -740,6 +742,14 @@ describe('CodingSidebar workspace trust flow', () => {
 
     expect(screen.getAllByRole('button', { name: 'Telemetry' })).toHaveLength(1)
     expect(screen.queryByRole('button', { name: 'Open Quick Open' })).toBeNull()
+  })
+
+  it('shows the connected backend name in the mobile sidebar footer', async () => {
+    isMobile = true
+
+    await renderCodingSidebarWithProps({ mobileOpen: true })
+
+    expect(screen.getByText('backend-name')).toBeTruthy()
   })
 
   it('opens command palette and closes mobile drawer from the (?) help button', async () => {

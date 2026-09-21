@@ -33,6 +33,8 @@ interface AgentChatHeaderProps {
   setShowMobileActions: Dispatch<SetStateAction<boolean>>
   mobileActionsDragOffset?: number | null
   onToggleScheduler: () => void
+  onFindInTranscript: () => void
+  onOpenTerminal?: () => void
   onCloseMobileActionsMenu: () => void
 }
 
@@ -57,6 +59,8 @@ export const AgentChatHeader = memo(function AgentChatHeader({
   setShowMobileActions,
   mobileActionsDragOffset = null,
   onToggleScheduler,
+  onFindInTranscript,
+  onOpenTerminal,
   onCloseMobileActionsMenu,
 }: AgentChatHeaderProps) {
   const activeTodoCount = todos.filter((todo) => todo.status === 'pending' || todo.status === 'in_progress').length
@@ -170,6 +174,8 @@ export const AgentChatHeader = memo(function AgentChatHeader({
               dragOffset={mobileActionsDragOffset}
               workspace={workspace}
               onScheduler={() => { onToggleScheduler(); onCloseMobileActionsMenu() }}
+              onFindInTranscript={() => { onFindInTranscript(); onCloseMobileActionsMenu() }}
+              onOpenTerminal={onOpenTerminal ? () => { onOpenTerminal(); onCloseMobileActionsMenu() } : undefined}
             />
           </>
         ) : (

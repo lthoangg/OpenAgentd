@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'framer-motion'
-import { CalendarClock, MoreHorizontal, X } from 'lucide-react'
+import { CalendarClock, MoreHorizontal, Search, TerminalSquare, X } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { workspaceLabel } from '@/utils/workspace'
@@ -12,6 +12,8 @@ export interface MobileChatActionsProps {
   dragOffset?: number | null
   workspace: string | null
   onScheduler: () => void
+  onFindInTranscript?: () => void
+  onOpenTerminal?: () => void
 }
 
 export function MobileChatActions({
@@ -20,6 +22,8 @@ export function MobileChatActions({
   dragOffset = null,
   workspace,
   onScheduler,
+  onFindInTranscript,
+  onOpenTerminal,
 }: MobileChatActionsProps) {
   // Reduced motion: fade the drawer instead of sliding it 280px. `x` is still
   // applied while a drag is in flight — the drawer has to track the finger,
@@ -95,9 +99,28 @@ export function MobileChatActions({
 
               <div className="flex-1 overflow-y-auto overscroll-contain touch-pan-y p-2">
                 <div className="px-2 py-2 text-xs font-medium text-(--color-text-muted)">Session</div>
+                <button
+                  type="button"
+                  onClick={onFindInTranscript}
+                  disabled={!onFindInTranscript}
+                  className="flex min-h-10 w-full items-center gap-2 rounded-md px-2 text-left text-sm transition-colors hover:bg-(--bg-key) active:bg-(--bg-key)/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 disabled:opacity-45"
+                >
+                  <Search size={15} aria-hidden="true" />
+                  <span className="flex-1">Find in transcript</span>
+                </button>
                 <button type="button" onClick={onScheduler} className="flex min-h-10 w-full items-center gap-2 rounded-md px-2 text-left text-sm transition-colors hover:bg-(--bg-key) active:bg-(--bg-key)/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40">
                   <CalendarClock size={15} aria-hidden="true" />
                   <span className="flex-1">Scheduler</span>
+                </button>
+                <div className="px-2 py-2 text-xs font-medium text-(--color-text-muted)">Workspace</div>
+                <button
+                  type="button"
+                  onClick={onOpenTerminal}
+                  disabled={!onOpenTerminal}
+                  className="flex min-h-10 w-full items-center gap-2 rounded-md px-2 text-left text-sm transition-colors hover:bg-(--bg-key) active:bg-(--bg-key)/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 disabled:opacity-45"
+                >
+                  <TerminalSquare size={15} aria-hidden="true" />
+                  <span className="flex-1">Open terminal</span>
                 </button>
               </div>
             </motion.aside>

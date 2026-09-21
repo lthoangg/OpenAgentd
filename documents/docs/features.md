@@ -131,10 +131,12 @@ run from the terminal.
   `⌘F`/`Ctrl+F` finds user, assistant, and thinking text in the current transcript
   and highlights each match in place;
   `⌘D`/`Ctrl+D` toggles the files and git dock. `⌘N`/`Ctrl+N` starts a new
-  session and is a no-op on an already empty idle session. The status footer
-  names the connected backend (`builtin` or the saved server name/host) instead
-  of a hardcoded local label. Empty coding sessions offer Ask about this repo,
-  Generate AGENTS.md, and Open terminal.
+  session and is a no-op on an already empty idle session. The desktop status
+  footer and mobile sidebar name the connected backend (`builtin` or the saved
+  server name/host) instead of a hardcoded local label. Mobile chat actions
+  expose transcript find and terminal access without a hardware keyboard.
+  Empty coding sessions offer Ask about this repo, Generate AGENTS.md, and Open
+  terminal.
 - **Plan and Code interaction modes** `[v2.14.0, updated v2.15.0]` — the expanded composer switches an
   existing session between Code (default) and Plan without starting a new
   chat; `Tab` also toggles mode from the composer. Mode transitions are preserved via

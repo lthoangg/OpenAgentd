@@ -33,6 +33,7 @@ import { latestMCPAppResourceBlockIdsFromParts, latestMCPAppResources, mcpAppRes
 import { useAgentStore } from '@/stores/useAgentStore'
 import type { ContentBlock } from '@/api/types'
 import { UserBubble } from './AgentView/UserBubble'
+import { EmptyState } from '@/components/ui/empty-state'
 import { useAutoFollowScroll } from '@/hooks/useAutoFollowScroll'
 
 const INITIAL_RENDERED_TURNS = 80
@@ -325,19 +326,23 @@ export function AgentView({ blocks, currentBlocks, isWorking, isTurnOpen = isWor
       <div ref={contentRef} className="mx-auto max-w-3xl px-3 py-5 sm:px-4 sm:py-6">
         {isEmpty && (
            emptyState ?? (
-             <div className="flex select-none flex-col items-center justify-center gap-4 py-16">
-               <img
-                 src={OctobotMascot}
-                 className="opacity-90"
-                 width={120}
-                 height={120}
-                 alt=""
-                 aria-hidden="true"
-               />
-               <h2 className="font-heading text-4xl font-bold text-(--color-text)">
-                 what&rsquo;s on your mind?
-               </h2>
-             </div>
+             // Same weight as every other blank state (see `EmptyState`); the
+             // mascot rides in the chip instead of as a 4xl hero.
+             <EmptyState
+               fill={false}
+               className="py-16 select-none"
+               icon={
+                 <img
+                   src={OctobotMascot}
+                   className="opacity-90"
+                   width={28}
+                   height={28}
+                   alt=""
+                   aria-hidden="true"
+                 />
+               }
+               title={'what\u2019s on your mind?'}
+             />
            )
          )}
 

@@ -249,7 +249,7 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
           </div>
           <div
             className={cn(
-              "relative min-w-0 max-w-full rounded-md border border-(--color-border) bg-(--bg-card) px-3.5 py-2.5 text-sm leading-relaxed text-(--color-text) shadow-xs transition-all",
+              "relative min-w-0 max-w-full rounded-md border border-(--color-border) bg-(--bg-card) px-3.5 py-2.5 text-sm leading-relaxed text-(--color-text) transition-all",
               isSubagentLongReport && !reportExpanded && "max-h-36 overflow-hidden",
             )}
           >
@@ -295,7 +295,9 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
            <AttachmentStrip attachments={visibleAttachments} />
          )}
 
-          <div className="relative min-w-0 max-w-full overflow-hidden rounded-sm border border-(--color-border) bg-(--bg-card) px-3 py-2.5 text-sm leading-relaxed text-(--color-text) shadow-sm selectable-text">
+          {/* No shadow: the bubble is a tonal step above the page, not a
+              floating layer (see DESIGN.md — Elevation & Depth). */}
+          <div className="relative min-w-0 max-w-full overflow-hidden rounded-sm border border-(--color-border) bg-(--bg-card) px-3 py-2.5 text-sm leading-relaxed text-(--color-text) selectable-text">
            {/* Expand / collapse button — top-right inside bubble */}
            {needsCollapse && (
              <Tooltip className="absolute top-1.5 right-1.5 z-10">

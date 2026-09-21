@@ -86,7 +86,7 @@ async def oauth_disconnect(provider_id: str) -> OAuthDisconnectResponse:
         find_provider_plugin,
     )
     from app.core.config import settings
-    from app.core.runtime_settings import clear_provider_cached_models
+    from app.core.runtime_settings import forget_provider_models
 
     entry = find(provider_id)
     plugin = find_provider_plugin(provider_id)
@@ -119,7 +119,7 @@ async def oauth_disconnect(provider_id: str) -> OAuthDisconnectResponse:
         if plugin_dir.is_dir():
             shutil.rmtree(plugin_dir, ignore_errors=True)
 
-    clear_provider_cached_models(provider_id)
+    forget_provider_models(provider_id)
     return OAuthDisconnectResponse(ok=True, provider=provider_id)
 
 

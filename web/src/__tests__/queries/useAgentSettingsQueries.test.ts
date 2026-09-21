@@ -229,4 +229,92 @@ describe('useRegistryQuery', () => {
       'openai:gpt-5',
     ])
   })
+
+  it('placeholder registry omits cached models of a provider that is not connected', async () => {
+    globalThis.fetch = mock(async () =>
+      new Promise<Response>(() => {
+        // Intentionally unresolved: assert placeholder data before registry fetch completes.
+      })
+    ) as typeof fetch
+
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+    const providers: ProvidersListBody = {
+      has_any_configured: false,
+      providers: [
+        {
+          id: 'openai',
+          label: 'OpenAI',
+          description: 'OpenAI',
+          kind: 'api_key',
+          credentials: [],
+          saved_credentials: {},
+          env_var: 'OPENAI_API_KEY',
+          env_vars: [],
+          oauth_command: '',
+          docs_url: '',
+          is_configured: false,
+          is_saved: true,
+          is_reachable: false,
+          cached_models: ['gpt-5'],
+          visible_models: [],
+          is_disconnected: false,
+          supports_fast_mode: false,
+          public_access: false,
+        },
+      ],
+    }
+    queryClient.setQueryData(queryKeys.settings.providers(), providers)
+
+    const { result } = renderHook(() => useRegistryQuery(), {
+      wrapper: createWrapper(queryClient),
+    })
+
+    expect(result.current.data?.models).toEqual([])
+  })
+
+  it('placeholder registry omits cached models of a disconnected provider', async () => {
+    globalThis.fetch = mock(async () =>
+      new Promise<Response>(() => {
+        // Intentionally unresolved: assert placeholder data before registry fetch completes.
+      })
+    ) as typeof fetch
+
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+    const providers: ProvidersListBody = {
+      has_any_configured: true,
+      providers: [
+        {
+          id: 'openai',
+          label: 'OpenAI',
+          description: 'OpenAI',
+          kind: 'api_key',
+          credentials: [],
+          saved_credentials: {},
+          env_var: 'OPENAI_API_KEY',
+          env_vars: [],
+          oauth_command: '',
+          docs_url: '',
+          is_configured: true,
+          is_saved: true,
+          is_reachable: true,
+          cached_models: ['gpt-5'],
+          visible_models: [],
+          is_disconnected: true,
+          supports_fast_mode: false,
+          public_access: false,
+        },
+      ],
+    }
+    queryClient.setQueryData(queryKeys.settings.providers(), providers)
+
+    const { result } = renderHook(() => useRegistryQuery(), {
+      wrapper: createWrapper(queryClient),
+    })
+
+    expect(result.current.data?.models).toEqual([])
+  })
 })

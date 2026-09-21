@@ -81,11 +81,14 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
   )
 
   const models = useMemo<string[]>(() => {
-    if (!provider.is_configured && !hasCandidateKey) {
-      return provider.cached_models ?? []
-    }
+    // Models listed by an explicit refresh in this session are known-good.
+    const justListed = modelsMutation.data?.models
+    if (justListed) return justListed
+    // Without a live connection there is nothing to show: a cached list from a
+    // provider whose credentials stopped working would offer unusable models.
+    if (!provider.is_configured) return []
     return autoModelsQ.data?.models ?? provider.cached_models ?? []
-  }, [autoModelsQ.data?.models, hasCandidateKey, provider.cached_models, provider.is_configured])
+  }, [autoModelsQ.data?.models, modelsMutation.data?.models, provider.cached_models, provider.is_configured])
 
   const modelCosts = useMemo(() => {
     return {

@@ -420,7 +420,7 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
       className="mobile-safe-shell mobile-viewport flex h-dvh flex-col bg-(--bg-page)"
       {...edgeSwipeHandlers}
     >
-      {/* 40 px header above the sidebar/content row. On macOS Tauri it
+      {/* 36 px header above the sidebar/content row. On macOS Tauri it
           doubles as the window drag region via useTauriDrag, with a
           70 px left inset reserved for the OS traffic-lights. */}
         <AgentChatHeader
@@ -487,7 +487,7 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
             </div>
           )}
         {setupRequired && (
-          <div className="mx-3 mt-3 flex flex-col gap-3 rounded-sm border border-(--accent-blue)/35 bg-(--accent-blue-soft) p-3 text-sm text-(--color-text) shadow-sm sm:flex-row sm:items-center sm:justify-between">
+          <div className="mx-3 mt-3 flex flex-col gap-3 rounded-sm border border-(--accent-blue)/35 bg-(--accent-blue-soft) p-3 text-sm text-(--color-text) sm:flex-row sm:items-center sm:justify-between">
             <div className="flex min-w-0 gap-3">
               <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-(--accent-blue)" aria-hidden="true" />
               <div className="min-w-0">
@@ -514,7 +514,7 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
           </div>
         )}
         {!setupRequired && !hasConfiguredModelProvider && (
-          <div className="mx-3 mt-3 flex flex-col gap-3 rounded-sm border border-(--color-border) bg-(--bg-card) p-3 text-sm text-(--color-text) shadow-sm sm:flex-row sm:items-center sm:justify-between">
+          <div className="mx-3 mt-3 flex flex-col gap-3 rounded-sm border border-(--color-border) bg-(--bg-card) p-3 text-sm text-(--color-text) sm:flex-row sm:items-center sm:justify-between">
             <div className="flex min-w-0 gap-3">
               <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-(--color-accent)" aria-hidden="true" />
               <div className="min-w-0">
@@ -583,7 +583,7 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
 
         {parentSessionId ? (
           <div className="mx-auto w-full max-w-3xl px-4 py-3">
-            <div className="flex items-center justify-between gap-3 rounded-lg border border-(--color-border-subtle) bg-(--bg-card)/85 px-4 py-2 text-xs text-(--color-text-muted) shadow-xs backdrop-blur-xs">
+            <div className="flex items-center justify-between gap-3 rounded-lg border border-(--color-border-subtle) bg-(--bg-card) px-4 py-2 text-xs text-(--color-text-muted)">
               <div className="flex items-center gap-2 min-w-0">
                 <span className="shrink-0 rounded bg-(--bg-key)/60 px-1.5 py-0.5 font-mono text-[11px] font-semibold text-(--color-text)">
                   {leadName}

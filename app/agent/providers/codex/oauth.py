@@ -111,7 +111,15 @@ class CodexOAuth(BaseModel):
                 return current
 
             source = current or self
-            tokens = _refresh_access_token(source.refresh_token.get_secret_value())
+            try:
+                tokens = _refresh_access_token(source.refresh_token.get_secret_value())
+            except httpx.HTTPStatusError as exc:
+                if exc.response.status_code in (400, 401):
+                    p.unlink(missing_ok=True)
+                    from app.core.runtime_settings import forget_provider_models
+
+                    forget_provider_models("codex")
+                raise
             new = CodexOAuth(
                 access_token=SecretStr(tokens["access_token"]),
                 refresh_token=SecretStr(

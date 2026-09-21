@@ -33,6 +33,7 @@ import { latestMCPAppResourceBlockIdsFromParts, latestMCPAppResources, mcpAppRes
 import { useAgentStore } from '@/stores/useAgentStore'
 import type { ContentBlock } from '@/api/types'
 import { UserBubble } from './AgentView/UserBubble'
+import { EmptyState } from '@/components/ui/empty-state'
 import { useAutoFollowScroll } from '@/hooks/useAutoFollowScroll'
 
 const INITIAL_RENDERED_TURNS = 80
@@ -50,6 +51,135 @@ function isDirectUserBlock(block: ContentBlock): boolean {
  *  is left staring at a blank chat area with no dots and no content. */
 function isBlankContentBlock(block: ContentBlock): boolean {
   return (block.type === 'thinking' || block.type === 'text') && block.content.trim().length === 0
+}
+
+interface QuotaWait {
+  model?: string
+  message?: string
+  resetsAt?: number
+}
+
+const QUOTA_WAIT_STORAGE_PREFIX = 'openagentd:quota-wait:'
+
+function quotaWaitStorageKey(sessionId: string): string {
+  return `${QUOTA_WAIT_STORAGE_PREFIX}${encodeURIComponent(sessionId)}`
+}
+
+function readStoredQuotaWait(sessionId: string | undefined): QuotaWait | null {
+  if (!sessionId || typeof window === 'undefined') return null
+
+  try {
+    const raw = window.localStorage.getItem(quotaWaitStorageKey(sessionId))
+    if (!raw) return null
+    const stored = JSON.parse(raw) as { model?: unknown; resetsAt?: unknown }
+    if (typeof stored.resetsAt !== 'number' || !Number.isFinite(stored.resetsAt)) return null
+    if (stored.resetsAt <= Date.now() / 1000) {
+      window.localStorage.removeItem(quotaWaitStorageKey(sessionId))
+      return null
+    }
+    return {
+      model: typeof stored.model === 'string' ? stored.model : undefined,
+      resetsAt: stored.resetsAt,
+    }
+  } catch {
+    return null
+  }
+}
+
+function saveQuotaWait(sessionId: string | undefined, wait: QuotaWait): void {
+  if (!sessionId || wait.resetsAt === undefined || typeof window === 'undefined') return
+
+  try {
+    window.localStorage.setItem(
+      quotaWaitStorageKey(sessionId),
+      JSON.stringify({ model: wait.model, resetsAt: wait.resetsAt }),
+    )
+  } catch {
+    // Storage can be unavailable in private browsing or when disabled.
+  }
+}
+
+function removeStoredQuotaWait(sessionId: string | undefined): void {
+  if (!sessionId || typeof window === 'undefined') return
+  try {
+    window.localStorage.removeItem(quotaWaitStorageKey(sessionId))
+  } catch {
+    // Storage can be unavailable in private browsing or when disabled.
+  }
+}
+
+function quotaWaitFromBlock(block: ContentBlock): QuotaWait | null {
+  if (block.type !== 'provider_status' || block.extra?.status !== 'waiting_quota') return null
+
+  const model = typeof block.extra.model === 'string' ? block.extra.model : undefined
+  const resetsAt = typeof block.extra.resets_at === 'number' && Number.isFinite(block.extra.resets_at)
+    ? block.extra.resets_at
+    : typeof block.extra.retry_after === 'number' && Number.isFinite(block.extra.retry_after)
+    ? Date.now() / 1000 + block.extra.retry_after
+    : undefined
+  return {
+    model,
+    message: typeof block.extra.message === 'string' ? block.extra.message : undefined,
+    resetsAt,
+  }
+}
+
+function latestQuotaWait(blocks: ContentBlock[]): QuotaWait | null {
+  for (let index = blocks.length - 1; index >= 0; index -= 1) {
+    const wait = quotaWaitFromBlock(blocks[index])
+    if (wait) return wait
+  }
+  return null
+}
+
+function formatQuotaCountdown(resetsAt: number, now = Date.now()): string {
+  const remainingSeconds = resetsAt - now / 1000
+  if (remainingSeconds <= 0) return 'Resetting now'
+
+  const totalMinutes = Math.ceil(remainingSeconds / 60)
+  if (totalMinutes < 1) return 'Resets in <1m'
+
+  const days = Math.floor(totalMinutes / (24 * 60))
+  const hours = Math.floor((totalMinutes % (24 * 60)) / 60)
+  const minutes = totalMinutes % 60
+  if (days > 0) return `Resets in ${days}d ${String(hours).padStart(2, '0')}h`
+  if (hours > 0) return `Resets in ${hours}h ${String(minutes).padStart(2, '0')}m`
+  return `Resets in ${minutes}m`
+}
+
+function QuotaWaitNotice({ wait, sessionId, persist }: { wait: QuotaWait; sessionId?: string; persist: boolean }) {
+  const [now, setNow] = useState(() => Date.now())
+
+  useEffect(() => {
+    const interval = window.setInterval(() => setNow(Date.now()), 60_000)
+    return () => window.clearInterval(interval)
+  }, [])
+
+  useEffect(() => {
+    if (persist) saveQuotaWait(sessionId, { model: wait.model, resetsAt: wait.resetsAt })
+  }, [persist, sessionId, wait.model, wait.resetsAt])
+
+  useEffect(() => {
+    if (wait.resetsAt !== undefined && now >= wait.resetsAt * 1000) {
+      removeStoredQuotaWait(sessionId)
+    }
+  }, [now, sessionId, wait.resetsAt])
+
+  const countdown = wait.resetsAt === undefined ? null : formatQuotaCountdown(wait.resetsAt, now)
+  const model = wait.model ?? 'model'
+
+  return (
+    <div className="my-2 rounded-md border border-(--color-warning)/30 bg-(--color-warning-subtle) px-3 py-2 text-xs">
+      <div className="flex items-center gap-1.5 font-medium text-(--color-warning)">
+        <Clock size={14} className="shrink-0 animate-pulse" />
+        <span>Quota Limit Reached · Waiting for Reset</span>
+        {countdown && <span className="ml-auto shrink-0 font-normal" aria-live="polite">{countdown}</span>}
+      </div>
+      <p className="mt-1 text-(--color-text-muted) leading-relaxed break-words">
+        {wait.message || `Provider quota exhausted for ${model}. Waiting for reset. Agent will automatically resume work. You can stop anytime.`}
+      </p>
+    </div>
+  )
 }
 
 interface AgentViewProps {
@@ -126,18 +256,8 @@ const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionI
       }
 
       if (status === 'waiting_quota') {
-        const model = block.extra?.model
-        return (
-          <div className="my-2 rounded-md border border-(--color-warning)/30 bg-(--color-warning-subtle) px-3 py-2 text-xs">
-            <div className="flex items-center gap-1.5 font-medium text-(--color-warning)">
-              <Clock size={14} className="shrink-0 animate-pulse" />
-              <span>Quota Limit Reached · Waiting for Reset</span>
-            </div>
-            <p className="mt-1 text-(--color-text-muted) leading-relaxed break-words">
-              {customMsg || `Provider quota exhausted for ${String(model ?? 'model')}. Waiting for reset. Agent will automatically resume work. You can stop anytime.`}
-            </p>
-          </div>
-        )
+        const wait = quotaWaitFromBlock(block)
+        return wait ? <QuotaWaitNotice wait={wait} sessionId={sessionId} persist /> : null
       }
 
       const model = block.extra?.model
@@ -248,6 +368,14 @@ export function AgentView({ blocks, currentBlocks, isWorking, isTurnOpen = isWor
     () => latestMCPAppResourceBlockIdsFromParts(finalizedMCPAppResources, currentBlocks),
     [currentBlocks, finalizedMCPAppResources],
   )
+  const liveQuotaWait = useMemo(
+    () => latestQuotaWait([...blocks, ...liveTail]),
+    [blocks, liveTail],
+  )
+  const storedQuotaWait = useMemo(() => readStoredQuotaWait(sessionId), [sessionId])
+
+  const restoredQuotaWait = liveQuotaWait ? null : storedQuotaWait
+  const visibleQuotaWait = liveQuotaWait ?? restoredQuotaWait
 
   const lastBlock = liveTail.length > 0 ? liveTail[liveTail.length - 1] : blocks[blocks.length - 1]
   const lastContent = lastBlock
@@ -256,7 +384,8 @@ export function AgentView({ blocks, currentBlocks, isWorking, isTurnOpen = isWor
   const isUserMessage = lastBlock ? isDirectUserBlock(lastBlock) : false
   const isEmpty = !isWorking &&
     !blocks.some((b) => b.type !== 'compaction') &&
-    !liveTail.some((b) => b.type !== 'compaction')
+    !liveTail.some((b) => b.type !== 'compaction') &&
+    !visibleQuotaWait
 
   const handleLoadOlderTopTrigger = useCallback(() => {
     onLoadOlderTopRef.current()
@@ -325,19 +454,23 @@ export function AgentView({ blocks, currentBlocks, isWorking, isTurnOpen = isWor
       <div ref={contentRef} className="mx-auto max-w-3xl px-3 py-5 sm:px-4 sm:py-6">
         {isEmpty && (
            emptyState ?? (
-             <div className="flex select-none flex-col items-center justify-center gap-4 py-16">
-               <img
-                 src={OctobotMascot}
-                 className="opacity-90"
-                 width={120}
-                 height={120}
-                 alt=""
-                 aria-hidden="true"
-               />
-               <h2 className="font-heading text-4xl font-bold text-(--color-text)">
-                 what&rsquo;s on your mind?
-               </h2>
-             </div>
+             // Same weight as every other blank state (see `EmptyState`); the
+             // mascot rides in the chip instead of as a 4xl hero.
+             <EmptyState
+               fill={false}
+               className="py-16 select-none"
+               icon={
+                 <img
+                   src={OctobotMascot}
+                   className="opacity-90"
+                   width={28}
+                   height={28}
+                   alt=""
+                   aria-hidden="true"
+                 />
+               }
+               title={'what\u2019s on your mind?'}
+             />
            )
          )}
 
@@ -403,6 +536,10 @@ export function AgentView({ blocks, currentBlocks, isWorking, isTurnOpen = isWor
                    />
                  )
                 })}
+
+            {restoredQuotaWait && (
+              <QuotaWaitNotice wait={restoredQuotaWait} sessionId={sessionId} persist={false} />
+            )}
 
             {/* Me show dots when:
              *   1. pending - user just sent, agent hasn't woken yet (no agent_status event yet), OR

@@ -1,6 +1,6 @@
 # OpenAgentd improvement plan and progress
 
-Last updated: 2026-09-14
+Last updated: 2026-09-21
 
 ## Goal and scope
 
@@ -87,7 +87,7 @@ Next implementation priorities after this batch:
 
 | ID | Plan | Status | Progress and remaining work |
 | --- | --- | --- | --- |
-| 18 | Make contrast requirements executable | Partial | Input/textarea placeholders no longer dilute muted text to 60%; a solid theme-aware keyboard outline supplements decorative focus rings. Remaining: browser-computed contrast assertions, both-theme inspection, and broader state coverage. |
+| 18 | Make contrast requirements executable | Partial | Input/textarea placeholders no longer dilute muted text to 60%; a solid theme-aware keyboard outline supplements decorative focus rings. The dark surface ramp now keeps the sidebar below the page and cards above it, where sidebar and card previously shared one tone; inputs match the page in both themes; and transcript turn metadata moved off the 11px/subtle floor. Remaining: browser-computed contrast assertions, both-theme inspection, and broader state coverage. |
 | 19 | Enforce touch targets through primitives | Partial | Shared buttons have coarse-pointer minimum targets and the Settings close control is enlarged on narrow layouts. The transcript scroll-to-bottom control is intentionally compact (28px) at every breakpoint, so it no longer meets the coarse-pointer minimum. Remaining: dense raw-button call sites and visual/touch parity checks. |
 | 20 | Remove essential tooltip-only information | Pending | Add tap-accessible full paths, titles, and state explanations; retain tooltips as supplementary information. |
 | 21 | Guide developers to their first useful task | Pending | Connect workspace/provider/model readiness to useful investigation/review starting actions. Preserve drafts and require explicit submission; never auto-run a suggested task. |
@@ -111,7 +111,7 @@ Next implementation priorities after this batch:
 | 34 | Pin toolchains and automate dependency security checks | Partial | Web CI pins Bun 1.4.0. Remaining: coordinated toolchain pins across workflows and dependency/license/SBOM security gates. |
 | 35 | Make configuration writes atomic and corruption-aware | Partial | Python runtime/server settings use the existing owner-only atomic writer. Native backend configuration uses temporary-file replacement and serializes in-process mutations; corrupt input is preserved and reported rather than reset. Native URLs are canonicalized and reject credentials/query/fragment data. Remaining: cross-process read-modify-write coordination and fault-injection tests for native replacement failures. |
 | 36 | Reduce authentication data in URLs | Partial | Fetch-based session/global SSE uses Authorization headers. Remaining URL helper rejects unrelated origins, deduplicates credentials, and preserves fragments. Tests pass. Remaining: short-lived download/navigation credentials and review of other unavoidable URL-token uses. |
-| 37 | Correct documentation and contract drift | Partial | Added this progress ledger. Feature catalogue documents verified activity/settings/Git behavior and corrects Automation save semantics; design guidance now distinguishes solid keyboard outlines from decorative rings. Remaining: other stale implementation comments and historical catalogue claims identified in the audit. |
+| 37 | Correct documentation and contract drift | Partial | Added this progress ledger. Feature catalogue documents verified activity/settings/Git behavior and corrects Automation save semantics; design guidance now distinguishes solid keyboard outlines from decorative rings. DESIGN.md overlay radius (8px to 12px), the overlay panel tone, the dark ramp table, and the 36px app-header token are corrected, and AgentChatView's stale 40px header comment is fixed. Remaining: other stale implementation comments and historical catalogue claims identified in the audit. |
 
 ## Verification record
 

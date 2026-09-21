@@ -250,6 +250,7 @@ class TestRegistryExcludesDisconnectedProviders:
         monkeypatch.setattr(
             settings_routes.settings, "OPENAGENTD_CONFIG_DIR", str(tmp_path)
         )
+        monkeypatch.setenv("OPENAI_API_KEY", "test-key")
         save_runtime_settings(
             RuntimeSettings(
                 providers={
@@ -279,6 +280,7 @@ class TestRegistryExcludesDisconnectedProviders:
         monkeypatch.setattr(
             settings_routes.settings, "OPENAGENTD_CONFIG_DIR", str(tmp_path)
         )
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
         save_runtime_settings(
             RuntimeSettings(
                 providers={
@@ -377,6 +379,7 @@ class TestIsRegisteredModelId:
         monkeypatch.setattr(
             settings_routes.settings, "OPENAGENTD_CONFIG_DIR", str(tmp_path)
         )
+        monkeypatch.setenv("OPENAI_API_KEY", "test-key")
         save_runtime_settings(
             RuntimeSettings(
                 providers={

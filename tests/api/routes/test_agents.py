@@ -292,7 +292,7 @@ async def test_registry_filters_cached_models_using_refreshed_visible_models(
         "all_providers",
         lambda: [{"id": "openai", "kind": "api_key", "label": "OpenAI"}],
     )
-    monkeypatch.setattr(agents_routes, "_provider_is_configured", lambda _entry: False)
+    monkeypatch.setattr(agents_routes, "_provider_is_configured", lambda _entry: True)
     monkeypatch.setattr(agents_routes, "is_agent_model_id", lambda _model_id: True)
 
     request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace()))
@@ -330,7 +330,7 @@ async def test_registry_ignores_visible_models_no_longer_listed(
         "all_providers",
         lambda: [{"id": "openai", "kind": "api_key", "label": "OpenAI"}],
     )
-    monkeypatch.setattr(agents_routes, "_provider_is_configured", lambda _entry: False)
+    monkeypatch.setattr(agents_routes, "_provider_is_configured", lambda _entry: True)
     monkeypatch.setattr(agents_routes, "is_agent_model_id", lambda _model_id: True)
 
     request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace()))
@@ -358,6 +358,7 @@ async def test_is_registered_model_reads_provider_ui_state_from_one_snapshot(
         )
     )
     monkeypatch.setattr(agents_routes, "load_runtime_settings", load_settings)
+    monkeypatch.setattr(agents_routes, "_provider_is_configured", lambda _entry: True)
 
     assert await agents_routes.is_registered_model_id("openai:gpt-5") is True
     assert load_settings.call_count == 1
@@ -397,6 +398,7 @@ async def test_registry_model_fast_mode_matches_provider_support(
         ),
     )
     monkeypatch.setattr("app.api.routes.agents.is_agent_model_id", lambda mid: True)
+    monkeypatch.setattr(agents_routes, "_provider_is_configured", lambda _entry: True)
 
     res = await client.get("/api/agents/registry")
     assert res.status_code == 200
@@ -446,6 +448,7 @@ async def test_registry_plugin_provider_fast_mode_stamped(
         ),
     )
     monkeypatch.setattr("app.api.routes.agents.is_agent_model_id", lambda mid: True)
+    monkeypatch.setattr(agents_routes, "_provider_is_configured", lambda _entry: True)
 
     res = await client.get("/api/agents/registry")
     assert res.status_code == 200

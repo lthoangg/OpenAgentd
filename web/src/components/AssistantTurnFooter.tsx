@@ -99,16 +99,16 @@ export const AssistantTurnFooter = memo(function AssistantTurnFooter({ turnBlock
         </Tooltip>
       )}
       {modelName && (
-        <span className="font-mono text-(--color-text-subtle) text-xs">{modelName}</span>
+        <span className="font-mono text-[11px] text-(--color-text-muted)">{modelName}</span>
       )}
       {timestamp && (
-        <Tooltip className="text-(--color-text-subtle) text-xs">
-          <TooltipTrigger render={<span className="text-(--color-text-subtle) text-xs">{formatTime(timestamp)}</span>} />
+        <Tooltip className="text-[11px] text-(--color-text-muted)">
+          <TooltipTrigger render={<span className="text-[11px] text-(--color-text-muted)">{formatTime(timestamp)}</span>} />
           <TooltipContent>{formatFullDateTime(timestamp)}</TooltipContent>
         </Tooltip>
       )}
       {responseDurationMs !== undefined && (
-        <span className="font-mono text-(--color-text-subtle) text-xs">{formatDuration(responseDurationMs)}</span>
+        <span className="font-mono text-[11px] text-(--color-text-muted)">{formatDuration(responseDurationMs)}</span>
       )}
     </div>
   )

@@ -126,20 +126,32 @@ class GrokOAuth(BaseModel):
                 return current
             source = current or self
             if source.refresh_token is None:
+                token_path.unlink(missing_ok=True)
+                from app.core.runtime_settings import forget_provider_models
+
+                forget_provider_models("grok")
                 raise ValueError(
                     "Grok Build OAuth session cannot be refreshed. Reconnect it."
                 )
-            response = httpx.post(
-                f"{ISSUER}/oauth2/token",
-                headers={"x-grok-client-version": VERSION},
-                data={
-                    "grant_type": "refresh_token",
-                    "refresh_token": source.refresh_token.get_secret_value(),
-                    "client_id": CLIENT_ID,
-                },
-                timeout=30.0,
-            )
-            response.raise_for_status()
+            try:
+                response = httpx.post(
+                    f"{ISSUER}/oauth2/token",
+                    headers={"x-grok-client-version": VERSION},
+                    data={
+                        "grant_type": "refresh_token",
+                        "refresh_token": source.refresh_token.get_secret_value(),
+                        "client_id": CLIENT_ID,
+                    },
+                    timeout=30.0,
+                )
+                response.raise_for_status()
+            except httpx.HTTPStatusError as exc:
+                if exc.response.status_code in (400, 401):
+                    token_path.unlink(missing_ok=True)
+                    from app.core.runtime_settings import forget_provider_models
+
+                    forget_provider_models("grok")
+                raise
             data = response.json()
             access_token = data.get("access_token")
             if not isinstance(access_token, str) or not access_token:

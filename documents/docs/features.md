@@ -2,7 +2,7 @@
 title: Features
 description: Canonical, version-cited catalogue of shipped user-visible OpenAgentd features.
 status: stable
-updated: 2026-09-17
+updated: 2026-09-21
 ---
 
 # Features
@@ -14,7 +14,7 @@ release that introduced it (where known). When you ship something new, **add it 
 > double-clickable app that runs an agent on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 16 providers. Your keys.
 
-**Latest release:** v2.22.0 · September 17, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v2.22.0)
+**Latest release:** v2.23.0 · September 21, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v2.23.0)
 
 ---
 
@@ -500,14 +500,15 @@ executes tools, manages its task list, and inspects workspace repositories.
   reloaded history `[v2.13.0]`.
 - **`provider_status` SSE events in stream** `[v1.17.0]` — retry, exhaustion,
   and fallback transitions surface live in single-agent and split-pane views.
-- **Automatic provider quota-exhaustion wait and resume** `[v2.20.0]` — when an
+- **Automatic provider quota-exhaustion wait and resume** `[v2.20.0, updated v2.22.0]` — when an
   OAuth provider (such as Codex, GitHub Copilot, or Grok) or any configured
   model hits rate-limiting or quota exhaustion with a known reset window
   (detected via headers, JSON metadata, body text phrasing, or live usage API
   lookup), the agent does not abort or fail. It transitions to an
   interruptible quota-wait state, emits live `waiting_quota` status events,
-  displays the reset time in the transcript, and automatically resumes work
-  once the window resets. The user can manually stop or interrupt at any time.
+  displays a minute-updating countdown in the transcript, restores an active
+  countdown after a browser page reload, and automatically resumes work once
+  the window resets. The user can manually stop or interrupt at any time.
 - **Actionable provider HTTP errors** `[v1.56.0]` — non-retryable provider
   responses (400/401/403/404/422) are classified into typed errors that carry
   the provider's own explanation instead of a bare status code. 401/403 render
@@ -735,8 +736,7 @@ OpenAgentd carries context across sessions via rolling-window summarization.
   instruction tool-call pairs remain active after repeated compaction while the
   summarizer keeps the same cacheable prompt prefix as normal chat turns.
 - **`AGENTS.md` at repo root and subfolders** `[v1.9.0]` — written by `/init`;
-  standard repo- and folder-scoped agent context files. Coding workspaces fall
-  back to root `CLAUDE.md` when root `AGENTS.md` is absent.
+  standard repo- and folder-scoped agent context files.
 - **Global `AGENTS.md`** `[v2.10.0]` — a developer-wide instructions file at
   `{config dir}/AGENTS.md` (`~/.config/openagentd/AGENTS.md` in production) is
   injected into every coding turn ahead of the workspace file, so cross-project
@@ -759,7 +759,7 @@ OpenAgentd carries context across sessions via rolling-window summarization.
   fallback to the default "Local CLI server" entry when the list empties.
 - **Workspace root injected into coding-mode system prompt** `[v1.133.0]` —
   coding agents are told their workspace's absolute
-  path unconditionally, not only when an `AGENTS.md`/`CLAUDE.md` happens to
+  path unconditionally, not only when an `AGENTS.md` happens to
   exist.
 - **Per-message provider metadata** `[v1.17.0]` — assistant messages persist
   the model that generated each reply (visible in inspector).
@@ -851,9 +851,15 @@ agnostic by design.
 - **Hide / show a provider** `[v1.92.0]` — Settings → Providers lets you
   temporarily hide a configured provider's models (**Hide** / **Show** in header); its models disappear from
   every picker and the warm-cache loop skips it, while saved credentials stay
-  on disk. Connected OAuth providers also offer **Disconnect** in the card body (`DELETE /api/auth/{provider}`) to delete saved OAuth account tokens from disk and log out.
+  on disk and **Show** restores them. Connected OAuth providers also offer **Disconnect** in the card body (`DELETE /api/auth/{provider}`) to delete saved OAuth account tokens from disk and log out.
+  A provider that loses its connection (API key deleted, OAuth session revoked or
+  refresh rejected) drops its cached model list and saved visible-model selection,
+  so pickers stop offering models the provider can no longer serve; connected
+  providers keep both — an expired access token is refreshed, not a disconnection.
 - **Copilot usage monitor** `[v1.33.0]` — Settings → Providers shows live Copilot
-  premium request quota from the saved OAuth token.
+  premium request quota from the saved OAuth token. Token-based / pooled-credit
+  seats skip a fake 0% quota window and show used credits as `N/∞` in Settings
+  and the usage tray instead of "unlimited" `[v2.23.0]`.
 - **API key provider usage and credit monitor** `[v2.3.0]` — Settings → Providers shows live credit balances, key spend caps, and quota limits for configured API key providers (such as OpenRouter and DeepSeek) alongside OAuth providers.
 - **Provider plugin usage hooks** `[v1.33.0]` — OAuth provider plugins can
   surface live usage in the same Settings → Providers panel as built-ins.
@@ -864,7 +870,11 @@ agnostic by design.
   providers' caches on demand, and **List models** remains the per-provider
   manual refresh / verification action — available whenever credentials are
    already saved, without retyping a secret the UI never echoes back
-   `[v1.132.0]`. The providers page now includes a
+   `[v1.132.0]`. A model the provider no longer serves is pruned from both the
+   cached list and the saved visible selection on the next refresh, and is dropped
+   immediately when a chat attempt comes back with a model-not-available error, so
+   retired model ids (for example a withdrawn DeepSeek preview) stop being
+   selectable. The providers page now includes a
   search plus status/kind filter bar for quickly narrowing long provider lists
   `[v1.74.0]`. Each model row in the listing displays its per-token pricing (USD per 1M tokens
   input/output or `Free` badge) with tooltip breakdowns including cache read/write rates `[v2.9.0]`.

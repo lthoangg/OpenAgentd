@@ -10,11 +10,16 @@
  * Zero external deps — matches the house rule for `components/ui/`.
  */
 import type { LucideIcon } from 'lucide-react'
-import type { ReactNode } from 'react'
+import { isValidElement, type ReactNode } from 'react'
 import { cn } from '@/lib/utils'
 
 interface EmptyStateProps {
-  icon: LucideIcon
+  /**
+   * Chip content. Pass a Lucide component (the common case) or an already
+   * rendered node — brand art, a custom glyph — when the state needs a mark
+   * rather than an icon.
+   */
+  icon: LucideIcon | ReactNode
   title: string
   body?: string
   /** Action slot (e.g. a <Button>). Rendered under the body. */
@@ -28,8 +33,25 @@ interface EmptyStateProps {
   className?: string
 }
 
+/**
+ * The chip hosts either an element the caller rendered or a component to
+ * instantiate at the primitive's icon size. `isValidElement` tells them apart:
+ * lucide-react exports forwardRef objects, which are not valid elements.
+ */
+function EmptyStateIcon({ icon, tone }: { icon: EmptyStateProps['icon']; tone: 'muted' | 'error' }) {
+  if (isValidElement(icon)) return icon
+  const IconComponent = icon as LucideIcon
+  return (
+    <IconComponent
+      size={20}
+      aria-hidden="true"
+      className={tone === 'error' ? 'text-(--color-error)' : 'text-(--color-text-muted)'}
+    />
+  )
+}
+
 export function EmptyState({
-  icon: Icon,
+  icon,
   title,
   body,
   action,
@@ -49,11 +71,7 @@ export function EmptyState({
               : 'border-(--color-border) bg-(--bg-key)',
           )}
         >
-          <Icon
-            size={20}
-            aria-hidden="true"
-            className={tone === 'error' ? 'text-(--color-error)' : 'text-(--color-text-muted)'}
-          />
+          <EmptyStateIcon icon={icon} tone={tone} />
         </div>
         <div className="space-y-1.5">
           <h2 className="text-sm font-semibold text-(--color-text)">{title}</h2>

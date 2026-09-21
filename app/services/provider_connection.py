@@ -40,7 +40,8 @@ def provider_is_configured(entry: "ProviderEntry") -> bool:
     if kind == "local":
         return True
     if kind == "oauth":
-        if entry["id"] == "copilot":
+        provider_id = entry["id"]
+        if provider_id == "copilot":
             if (
                 os.environ.get("COPILOT_GITHUB_TOKEN")
                 or os.environ.get("GH_TOKEN")
@@ -54,7 +55,10 @@ def provider_is_configured(entry: "ProviderEntry") -> bool:
             "copilot": cache_dir / "copilot_oauth.json",
             "grok": cache_dir / "grok_oauth.json",
         }
-        token_file = token_files.get(entry["id"])
+        token_file = token_files.get(provider_id)
+        # An expired access token is *not* a disconnection: the provider holds a
+        # refresh token and renews the session on the next call, so its cached
+        # model list stays valid. Only a missing token file means no session.
         return bool(token_file and token_file.is_file())
     if kind == "cloud_creds":
         if entry["id"] == "bedrock":

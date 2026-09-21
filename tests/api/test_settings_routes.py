@@ -295,6 +295,7 @@ def test_list_providers_reads_provider_ui_state_from_one_settings_snapshot(
     )
     load_settings = Mock(side_effect=[snapshot, refreshed_snapshot])
     monkeypatch.setattr(runtime_settings, "load_runtime_settings", load_settings)
+    monkeypatch.setattr(settings_routes, "_provider_is_configured", lambda _entry: True)
 
     client = TestClient(_make_app())
     response = client.get("/api/settings/providers")
@@ -337,6 +338,7 @@ def test_list_providers_prunes_stale_visible_models(
         }
     )
     monkeypatch.setattr(runtime_settings, "load_runtime_settings", lambda: snapshot)
+    monkeypatch.setattr(settings_routes, "_provider_is_configured", lambda _entry: True)
 
     client = TestClient(_make_app())
     response = client.get("/api/settings/providers")
@@ -348,6 +350,41 @@ def test_list_providers_prunes_stale_visible_models(
         if provider["id"] == "googlegenai"
     )
     assert google["visible_models"] == ["gemini-cached"]
+
+
+def test_list_providers_keeps_cached_models_for_stopped_daemon(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A saved daemon that is not answering keeps its cached models: losing
+    credentials is what invalidates them, not a temporarily stopped process."""
+    from app.core import runtime_settings
+
+    snapshot = runtime_settings.RuntimeSettings(
+        providers={
+            "ollama": runtime_settings.ProviderUiSettings(
+                cached_models=["llama3"],
+                visible_models=["llama3"],
+            )
+        }
+    )
+    monkeypatch.setattr(runtime_settings, "load_runtime_settings", lambda: snapshot)
+    monkeypatch.setattr(settings_routes, "_provider_is_configured", lambda _entry: True)
+
+    async def _unreachable(_entry):  # type: ignore[no-untyped-def]
+        return False
+
+    monkeypatch.setattr(settings_routes, "_local_provider_reachable", _unreachable)
+    settings_routes._local_reachable_cache.clear()
+
+    client = TestClient(_make_app())
+    response = client.get("/api/settings/providers")
+
+    assert response.status_code == 200
+    ollama = next(p for p in response.json()["providers"] if p["id"] == "ollama")
+    assert ollama["is_configured"] is False
+    assert ollama["is_saved"] is True
+    assert ollama["cached_models"] == ["llama3"]
+    assert ollama["visible_models"] == ["llama3"]
 
 
 def test_list_providers_marks_configured_when_env_var_set(
@@ -433,7 +470,11 @@ def test_list_providers_router9_requires_both_env_var_and_daemon(
 def test_list_providers_marks_oauth_file_configured(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """OAuth providers persist token files directly under CACHE_DIR."""
+    """OAuth providers persist token files directly under CACHE_DIR.
+
+    The presence of the file *is* the connection: an expired access token is
+    renewed from the stored refresh token, so expiry never means "disconnected".
+    """
     monkeypatch.setattr(settings_routes.settings, "OPENAGENTD_CACHE_DIR", str(tmp_path))
     (tmp_path / "codex_oauth.json").write_text("{}", encoding="utf-8")
 
@@ -1045,6 +1086,7 @@ def test_list_providers_includes_model_costs_for_cached_models(
         }
     )
     monkeypatch.setattr(runtime_settings, "load_runtime_settings", lambda: snapshot)
+    monkeypatch.setattr(settings_routes, "_provider_is_configured", lambda _entry: True)
     monkeypatch.setattr(
         "app.agent.providers.model_metadata.get_model_cost",
         lambda model_id: (
@@ -1689,6 +1731,7 @@ def test_registry_uses_cached_provider_models(
     monkeypatch.setattr(
         settings_routes.settings, "OPENAGENTD_CONFIG_DIR", str(tmp_path)
     )
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
     save_runtime_settings(
         RuntimeSettings(
             providers={"openai": {"cached_models": ["gpt-5", "gpt-5-mini"]}}
@@ -1717,6 +1760,7 @@ def test_registry_filters_cached_models_by_visible_models(
     monkeypatch.setattr(
         settings_routes.settings, "OPENAGENTD_CONFIG_DIR", str(tmp_path)
     )
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
     save_runtime_settings(
         RuntimeSettings(
             providers={
@@ -1779,6 +1823,7 @@ def test_registry_includes_static_multimodal_models_without_cached_discovery(
     monkeypatch.setattr(
         settings_routes.settings, "OPENAGENTD_CONFIG_DIR", str(tmp_path)
     )
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
 
     async def _none(_entry, **_kwargs):  # type: ignore[no-untyped-def]
         return []

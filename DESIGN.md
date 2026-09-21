@@ -174,7 +174,7 @@ spacing:
   2xl: 32px
   gutter: 8px
   card-padding: 12px
-  app-header: 40px
+  app-header: 36px
   mac-traffic-inset: 70px
   content-max: 768px
   overlay-max: 860px
@@ -322,7 +322,7 @@ components:
     rounded: "{rounded.sm}"
     padding: 12px
   overlay-modal:
-    backgroundColor: "{colors.bg-card}"
+    backgroundColor: "{colors.bg-page}"
     textColor: "{colors.on-surface}"
     rounded: "{rounded.lg}"
     width: 860px
@@ -406,18 +406,22 @@ separate scales tuned for dense monospace reading.
 
 ### Dark mode
 
-Dark mode inverts the ramp while keeping the same warmth — it is brown-black, not
-blue-black. Front-matter tokens carry the canonical light values; substitute
-these when `color-scheme: dark`:
+Dark mode keeps the ramp's *ordering* — the sidebar below the page, cards above
+it — shifted into brown-black rather than blue-black. It is not an inversion of
+the tones: `bg-sidebar` stays the recessed rail on both sides, so cards inside
+the sidebar and the dock remain distinguishable from their container.
+Front-matter tokens carry the canonical light values; substitute these when
+`color-scheme: dark`:
 
 | Token | Light | Dark |
 |---|---|---|
 | `bg-page` / `bg-input` | `#FAF6EC` | `#15110D` |
-| `bg-sidebar` / `bg-card` | `#F5EFDD` / `#FFFBF1` | `#1C1813` |
+| `bg-sidebar` | `#F5EFDD` | `#110D0A` |
+| `bg-card` | `#FFFBF1` | `#1C1813` |
 | `bg-key` | `#F0E9D4` | `#2A2219` |
 | `bg-send` | `#2D241B` | `#F5EBD8` |
 | `surface` / `surface-2` | `#FFFDF7` / `#F5EBD8` | `#221C16` / `#2A2219` |
-| `color-bg-elevated` | `#FFFDF7` | `#1C1813` |
+| `color-bg-elevated` | `#FFFDF7` | `#221C16` |
 | `border-subtle` / `border` / `border-strong` | `#E7DCBF` / `#D9CFA9` / `#B8A47E` | `#2C231A` / `#3A2F23` / `#5C4B36` |
 | `on-surface` | `#1A1714` | `#F5EBD8` |
 | `on-surface-2` | `#4B3E32` | `#C5B59A` |
@@ -476,7 +480,7 @@ desktop-first and walk styles back down.
 
 **Fixed geometry:**
 
-- `app-header` (40px) — the shared top bar across every platform shell.
+- `app-header` (36px) — the shared top bar across every platform shell.
 - `mac-traffic-inset` (70px) — left inset that clears the macOS traffic-light
   overlay (12px origin + ~58px button group).
 - `content-max` (768px) — reading measure for transcripts and prose.
@@ -607,7 +611,7 @@ background, tuned text tone, solid dot.
 
 **Overlays & Dialogs** come in three geometries — `modal` (centered card, capped at
 `overlay-max`), `sheet` (edge drawer), and `palette` (compact 480px search card).
-All three are `position: fixed`, share `rounded-lg` (8px — the panel ceiling) and a 1px border, and go
+All three are `position: fixed`, share `rounded-lg` (12px — the panel ceiling) and a 1px border, and go
 edge-to-edge below 768px.
 
 ## Platform Shell

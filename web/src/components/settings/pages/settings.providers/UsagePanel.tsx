@@ -205,17 +205,18 @@ function CreditsRow({
   const text = spend?.reached
     ? 'Usage limit reached'
     : credits.unlimited
-      ? 'Unlimited usage'
+      ? (credits.balance ?? 'Unlimited usage')
       : credits.has_credits
         ? 'Credits available'
         : 'No usage credits left'
+  const showBalance = Boolean(credits.balance) && text !== credits.balance
   return (
     <div className="px-3 py-1.5 space-y-1">
       <div className="flex items-center justify-between text-xs gap-2 min-w-0">
         <span className="font-medium truncate text-(--color-text)">{label}</span>
         <div className="flex items-center gap-1.5 shrink-0 text-[11px] text-(--color-text-muted) tabular-nums">
           <span>{text}</span>
-          {credits.balance && (
+          {showBalance && (
             <>
               <span className="text-(--color-text-subtle)">·</span>
               <span>{credits.balance}</span>

@@ -188,7 +188,7 @@ export function itemRows(item: TrayUsageItem, now: number = Date.now() / 1000): 
       const value = reached
         ? 'Limit reached'
         : limit.credits.unlimited
-          ? 'Unlimited'
+          ? (limit.credits.balance ?? 'Unlimited')
           : limit.credits.has_credits
             ? (limit.credits.balance ?? 'Credits available')
             : 'No usage credits left'

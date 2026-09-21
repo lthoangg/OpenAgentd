@@ -556,7 +556,10 @@ fn format_credits_line(label: &str, credits: &UsageCredits, spend: Option<&Usage
     let text = if spend.is_some_and(|spend| spend.reached) {
         format!("\u{1F534} {label} \u{00B7} usage limit reached")
     } else if credits.unlimited {
-        format!("\u{1F7E2} {label} \u{00B7} unlimited usage")
+        match credits.balance.as_deref().filter(|balance| !balance.is_empty()) {
+            Some(balance) => format!("\u{1F7E2} {label} \u{00B7} {balance}"),
+            None => format!("\u{1F7E2} {label} \u{00B7} unlimited usage"),
+        }
     } else if credits.has_credits {
         let balance = credits
             .balance
@@ -976,6 +979,45 @@ mod tests {
         assert!(rows[0].text.contains("period available"), "{}", rows[0].text);
         assert!(rows[0].text.contains("ends 6d"), "{}", rows[0].text);
         assert!(!rows[0].text.contains("unlimited"), "{}", rows[0].text);
+    }
+
+    #[test]
+    fn unlimited_credits_with_a_balance_show_the_ratio_not_unlimited_copy() {
+        let item = UsageSummaryItem {
+            provider: "copilot".to_string(),
+            label: "GitHub Copilot".to_string(),
+            status: "ok".to_string(),
+            error: None,
+            stale: false,
+            usage: Some(UsageResponse {
+                provider: "copilot".to_string(),
+                limits: vec![UsageLimit {
+                    limit_id: Some("premium_interactions".to_string()),
+                    limit_name: Some("Premium requests".to_string()),
+                    primary: None,
+                    secondary: None,
+                    credits: Some(UsageCredits {
+                        has_credits: true,
+                        unlimited: true,
+                        balance: Some("237/\u{221e}".to_string()),
+                    }),
+                    spend: None,
+                    plan_type: Some("business".to_string()),
+                    rate_limit_reached_type: None,
+                    period_start_at: None,
+                    period_end_at: None,
+                }],
+            }),
+        };
+        let rows = format_item_rows(&item, 1_000, 3);
+        assert_eq!(rows.len(), 1);
+        assert!(
+            rows[0].text.contains("237/\u{221e}"),
+            "{}",
+            rows[0].text
+        );
+        assert!(!rows[0].text.contains("unlimited"), "{}", rows[0].text);
+        assert!(!rows[0].text.contains("0%"), "{}", rows[0].text);
     }
 
     #[test]

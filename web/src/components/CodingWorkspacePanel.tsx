@@ -343,6 +343,17 @@ export function CodingWorkspacePanel({
     else openTerminal()
   }, [workspace, openTerminal])
 
+  // Header action rather than a full-width footer button: a panel made of
+  // 28px rows should not end in its heaviest control.
+  const handleRefresh = useCallback(() => {
+    void files.refetch()
+    if (chatWorkspace) return
+    void diff.refetch()
+    if (subTab === 'commits' || subTab === 'tree') {
+      void gitHistory.refetch()
+    }
+  }, [files, diff, gitHistory, subTab, chatWorkspace])
+
   const fallbackHandledTerminalOpenKeyRef = useRef(0)
   const handledTerminalOpenKeyRef = parentHandledTerminalOpenKeyRef ?? fallbackHandledTerminalOpenKeyRef
   useEffect(() => {
@@ -542,7 +553,9 @@ export function CodingWorkspacePanel({
           />
         )}
         <div className="flex min-w-0 items-center gap-1 border-b border-(--color-border) bg-(--bg-card) px-2 py-1">
-          <div className={cn('scrollbar-none flex min-w-0 items-center gap-1 overflow-x-auto', mobile ? 'max-w-[calc(100%-4rem)]' : 'max-w-[calc(100%-2rem)]')}>
+          {/* Reserve room for the three trailing actions (search, terminal,
+              refresh) so the tab strip scrolls instead of pushing them out. */}
+          <div className={cn('scrollbar-none flex min-w-0 items-center gap-1 overflow-x-auto', mobile ? 'max-w-[calc(100%-7.5rem)]' : 'max-w-[calc(100%-5.75rem)]')}>
             {visibleTabs.map((tabItem) => (tabItem.type === 'terminal' ? (
               <TerminalTabButton
                 key={tabItem.id}
@@ -641,6 +654,21 @@ export function CodingWorkspacePanel({
               }
             />
             <TooltipContent>New terminal</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <button
+                  type="button"
+                  onClick={handleRefresh}
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-sm text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text) md:h-7 md:w-7"
+                  aria-label="Refresh"
+                >
+                  <RefreshCw size={14} aria-hidden="true" />
+                </button>
+              }
+            />
+            <TooltipContent>Refresh</TooltipContent>
           </Tooltip>
         </div>
         <div className="min-h-0 flex-1 overflow-hidden">
@@ -848,21 +876,6 @@ export function CodingWorkspacePanel({
             </div>
           ) : null}
         </div>
-        <button
-          type="button"
-          onClick={() => {
-            void files.refetch()
-            if (!chatWorkspace) {
-              void diff.refetch()
-              if (subTab === 'commits' || subTab === 'tree') {
-                void gitHistory.refetch()
-              }
-            }
-          }}
-          className="flex h-9 items-center justify-center gap-1.5 border-t border-(--color-border) bg-(--bg-card) px-3 text-xs text-(--color-text-muted) hover:bg-(--bg-key)"
-        >
-          <RefreshCw size={12} /> Refresh
-        </button>
         <Dialog open={mobileFileActions !== null} onOpenChange={(open) => { if (!open) setMobileFileActions(null) }}>
           <DialogContent>
             <DialogHeader>

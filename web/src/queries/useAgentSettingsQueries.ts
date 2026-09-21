@@ -25,6 +25,9 @@ function placeholderRegistryFromProviders(data: ProvidersListBody | undefined): 
 
   const models: ModelCatalogEntry[] = []
   for (const provider of data.providers) {
+    if (!provider.is_configured || provider.is_disconnected) {
+      continue
+    }
     // Ignore visible selections for models the provider no longer lists: a
     // stale entry would whitelist nothing and hide every remaining model of
     // the provider while the real registry is loading.

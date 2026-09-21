@@ -108,9 +108,7 @@ export const AppFooter = memo(function AppFooter({
     >
       {/* Left cluster: Connection, Git / Workspace, Model */}
       <div className="flex min-w-0 items-center gap-1 overflow-hidden">
-        <HealthDot>
-          <span>local</span>
-        </HealthDot>
+        <HealthDot labeled />
 
         {isCoding && isGit && branch && (
           <>
@@ -230,7 +228,7 @@ export const AppFooter = memo(function AppFooter({
                 </button>
               }
             />
-            <TooltipContent>{`Help and shortcuts (${formatShortcut('P', os, { shift: true })})`}</TooltipContent>
+            <TooltipContent>{`Help and shortcuts (${formatShortcut('K', os)})`}</TooltipContent>
           </Tooltip>
         )}
 

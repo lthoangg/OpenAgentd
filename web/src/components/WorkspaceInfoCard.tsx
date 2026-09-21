@@ -30,9 +30,12 @@ interface Props {
   workspace: string
   /** True when ``workspace`` is the chat root (see ``useChatWorkspace``). */
   chatWorkspace?: boolean
+  onAsk?: () => void
+  onInit?: () => void
+  onOpenTerminal?: () => void
 }
 
-export function WorkspaceInfoCard({ workspace, chatWorkspace = false }: Props) {
+export function WorkspaceInfoCard({ workspace, chatWorkspace = false, onAsk, onInit, onOpenTerminal }: Props) {
   const { data, isLoading, isError, isFetching, refetch } = useQuery({
     queryKey: queryKeys.coding.status(workspace),
     queryFn: ({ signal }) => getCodingWorkspaceStatus(workspace, signal),
@@ -164,6 +167,26 @@ export function WorkspaceInfoCard({ workspace, chatWorkspace = false }: Props) {
         </div>
       ) : (
         <p className="mt-3 text-xs text-(--color-text-subtle)">Not a git repository</p>
+      )}
+
+      {(onAsk || onInit || onOpenTerminal) && (
+        <div className="mt-4 flex flex-wrap justify-center gap-2">
+          {onAsk && (
+            <Button type="button" size="xs" variant="subtle" onClick={onAsk}>
+              Ask about this repo
+            </Button>
+          )}
+          {onInit && (
+            <Button type="button" size="xs" variant="subtle" onClick={onInit}>
+              Generate AGENTS.md
+            </Button>
+          )}
+          {onOpenTerminal && (
+            <Button type="button" size="xs" variant="subtle" onClick={onOpenTerminal}>
+              Open terminal
+            </Button>
+          )}
+        </div>
       )}
     </div>
   )

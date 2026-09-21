@@ -979,7 +979,7 @@ export function CodingSidebar({
                   </button>
                 }
               />
-              <TooltipContent>{`Help and shortcuts (${formatShortcut('P', os, { shift: true })})`}</TooltipContent>
+              <TooltipContent>{`Help and shortcuts (${formatShortcut('K', os)})`}</TooltipContent>
             </Tooltip>
           )}
         </div>

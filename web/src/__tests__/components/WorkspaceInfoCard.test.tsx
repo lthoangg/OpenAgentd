@@ -71,5 +71,35 @@ describe('WorkspaceInfoCard', () => {
     expect(screen.queryByText('Not a git repository')).toBeNull()
     expect(screen.queryByText('/Users/someone')).toBeNull()
     expect(getCodingWorkspaceStatus).not.toHaveBeenCalled()
+    expect(screen.queryByRole('button', { name: 'Ask about this repo' })).toBeNull()
+  })
+
+  it('offers starter actions on a coding empty state', async () => {
+    const user = userEvent.setup()
+    const onAsk = mock(() => {})
+    const onInit = mock(() => {})
+    const onOpenTerminal = mock(() => {})
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+    requestCount = 1
+    render(
+      <QueryClientProvider client={client}>
+        <WorkspaceInfoCard
+          workspace="/work/project"
+          onAsk={onAsk}
+          onInit={onInit}
+          onOpenTerminal={onOpenTerminal}
+        />
+      </QueryClientProvider>,
+    )
+
+    await waitFor(() => expect(screen.getByText('main')).toBeInTheDocument())
+    await user.click(screen.getByRole('button', { name: 'Ask about this repo' }))
+    await user.click(screen.getByRole('button', { name: 'Generate AGENTS.md' }))
+    await user.click(screen.getByRole('button', { name: 'Open terminal' }))
+    expect(onAsk).toHaveBeenCalledTimes(1)
+    expect(onInit).toHaveBeenCalledTimes(1)
+    expect(onOpenTerminal).toHaveBeenCalledTimes(1)
   })
 })

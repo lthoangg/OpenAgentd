@@ -125,9 +125,15 @@ run from the terminal.
   OpenAgentd does not play an extra in-app sound. Background-process completion
   alerts are deprecated and no longer emitted by app clients.
 - **Quick Open and Command Palette** `[v2.3.0]` — `⌘P`/`Ctrl+P` searches and
-  opens files in the active workspace; `⌘⇧P`/`Ctrl+Shift+P` searches app actions.
+  opens files in the active workspace; `⌘K`/`Ctrl+K` searches app actions.
   Both use the compact warm-paper search surface, keyboard navigation, and a
   visible warning when a capped workspace listing omits files.
+  `⌘F`/`Ctrl+F` finds user and assistant text in the current transcript;
+  `⌘D`/`Ctrl+D` toggles the files and git dock. `⌘N`/`Ctrl+N` starts a new
+  session and is a no-op on an already empty idle session. The status footer
+  names the connected backend (`builtin` or the saved server name/host) instead
+  of a hardcoded local label. Empty coding sessions offer Ask about this repo,
+  Generate AGENTS.md, and Open terminal.
 - **Plan and Code interaction modes** `[v2.14.0, updated v2.15.0]` — the expanded composer switches an
   existing session between Code (default) and Plan without starting a new
   chat; `Tab` also toggles mode from the composer. Mode transitions are preserved via

@@ -2,7 +2,9 @@ import { useState } from 'react'
 
 import { AppBackendDialog } from '@/components/AppBackendDialog'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { useHealthQuery } from '@/queries/useHealthQuery'
+import { useBackendStatusQuery, useHealthQuery } from '@/queries/useHealthQuery'
+import { formatBackendConnectionLabel } from '@/lib/app-backend'
+import { apiBaseUrl } from '@/api/base-url'
 import { cn } from '@/lib/utils'
 
 /**
@@ -13,13 +15,16 @@ import { cn } from '@/lib/utils'
  */
 export function HealthDot({
   className,
-  children,
+  labeled = false,
 }: {
   className?: string
-  children?: React.ReactNode
+  /** When true, render the connected backend name next to the dot. */
+  labeled?: boolean
 } = {}) {
   const health = useHealthQuery()
+  const backendStatus = useBackendStatusQuery()
   const [dialogOpen, setDialogOpen] = useState(false)
+  const connectionLabel = formatBackendConnectionLabel(backendStatus.data ?? null, apiBaseUrl())
 
   let bgColor = 'bg-(--color-text-muted)'
   let pulseClass = 'animate-pulse'
@@ -38,7 +43,7 @@ export function HealthDot({
       ? 'Backend error — change backend connection'
       : 'Connecting — change backend connection'
 
-  const defaultClasses = children
+  const defaultClasses = labeled
     ? 'flex h-5 items-center gap-1.5 rounded-sm px-1.5 font-mono text-[10.5px] text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)'
     : 'flex h-8 w-8 items-center justify-center rounded-md transition-colors hover:bg-(--bg-key) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) md:h-8 md:w-8'
 
@@ -54,7 +59,7 @@ export function HealthDot({
               aria-label={label}
             >
               <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${bgColor} ${pulseClass}`} aria-hidden="true" />
-              {children}
+              {labeled ? <span>{connectionLabel}</span> : null}
             </button>
           }
         />

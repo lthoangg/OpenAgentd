@@ -39,6 +39,7 @@ export interface UseCommandPaletteArgs {
   handleToggleQuickOpen: () => void
   handleToggleScheduler: () => void
   handleOpenTerminal: () => void
+  handleFindInTranscript: () => void
 
   setCodingFileViewer: Dispatch<SetStateAction<WorkspaceFileInfo | null>>
   setCodingFileViewerDetached: Dispatch<SetStateAction<boolean>>
@@ -68,6 +69,7 @@ export function useCommandPalette({
   handleToggleQuickOpen,
   handleToggleScheduler,
   handleOpenTerminal,
+  handleFindInTranscript,
   setCodingFileViewer,
   setCodingFileViewerDetached,
   setCodingFileOpenKey,
@@ -84,6 +86,7 @@ export function useCommandPalette({
     handleNewSession,
     handleOpenTerminal,
     navigate,
+    handleFindInTranscript,
   })
 
   // ── Quick Open workspace file search ───────────────────────────────────────
@@ -121,10 +124,11 @@ export function useCommandPalette({
     [
       { hotkey: 'Mod+N', callback: handleNewSession, options: { meta: { name: 'New session' } } },
       { hotkey: 'Mod+Shift+A', callback: handleToggleAgentCapabilities, options: { meta: { name: 'Agent capabilities' } } },
-      { hotkey: 'Mod+F', callback: handleWorkspaceFiles, options: { meta: { name: 'Workspace files' } } },
+      { hotkey: 'Mod+F', callback: handleFindInTranscript, options: { meta: { name: 'Find in transcript' } } },
+      { hotkey: 'Mod+D', callback: handleWorkspaceFiles, options: { meta: { name: 'Workspace files' } } },
       { hotkey: 'Mod+T', callback: () => handleSetShowTodos((v) => !v), options: { enabled: Boolean(sessionIdState), meta: { name: 'Todos' } } },
       { hotkey: 'Mod+P', callback: handleToggleQuickOpen, options: { enabled: !isMobile && hasQuickOpenWorkspace, meta: { name: 'Quick Open' } } },
-      { hotkey: 'Mod+Shift+P', callback: handleTogglePalette, options: { enabled: !isMobile, meta: { name: 'Command palette' } } },
+      { hotkey: 'Mod+K', callback: handleTogglePalette, options: { enabled: !isMobile, meta: { name: 'Command palette' } } },
       // Mod+B belongs to the general sidebar. Only the coding sidebar owns this
       // registration when coding mode is active, preventing duplicate handlers.
       { hotkey: 'Mod+B', callback: handleCodingSidebarToggle, options: { meta: { name: 'Coding sidebar' } } },

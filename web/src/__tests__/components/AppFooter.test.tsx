@@ -15,6 +15,17 @@ mock.module('@/stores/useSettingsStore', () => ({
 
 mock.module('@/queries/useHealthQuery', () => ({
   useHealthQuery: () => ({ isSuccess: true, isError: false, isLoading: false }),
+  useBackendStatusQuery: () => ({
+    data: {
+      mode: 'bundled',
+      base_url: 'http://127.0.0.1:4082',
+      sidecar_running: true,
+      external: false,
+      supports_bundled: true,
+      servers: [],
+    },
+    isSuccess: true,
+  }),
 }))
 
 const statusProbes: string[] = []
@@ -49,7 +60,8 @@ describe('AppFooter', () => {
   it('renders backend status indicator', () => {
     renderWithQueryClient(<AppFooter />)
     expect(screen.getByRole('status', { name: 'Application status' })).toBeTruthy()
-    expect(screen.getByText('local')).toBeTruthy()
+    expect(screen.queryByText('local')).toBeNull()
+    expect(screen.getByText('builtin')).toBeTruthy()
   })
 
   it('shows the git branch for a coding workspace', async () => {

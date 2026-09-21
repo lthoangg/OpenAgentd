@@ -40,6 +40,7 @@ function makeArgs(overrides: Partial<Parameters<typeof useAgentCommands>[0]> = {
     handleCodingSidebarToggle: noop,
     handleOpenTerminal: noop,
     handleNewSession: noop,
+    handleFindInTranscript: noop,
     // navigate is only called inside action lambdas; tests that need
     // it pass their own spy.
     navigate: mock(() => Promise.resolve()) as unknown as Parameters<
@@ -65,10 +66,14 @@ describe("useAgentCommands — shortcut labels", () => {
     expect(byId(result.current, "new-chat").shortcut).toBe("Ctrl+N")
     expect(byId(result.current, "agent-info").shortcut).toBe("Ctrl+Shift+A")
     expect(byId(result.current, "todos").shortcut).toBe("Ctrl+T")
-    expect(byId(result.current, "workspace-files").shortcut).toBe("Ctrl+F")
+    expect(byId(result.current, "workspace-files").shortcut).toBe("Ctrl+D")
     expect(byId(result.current, "scheduled-tasks").shortcut).toBe("Ctrl+S")
     expect(byId(result.current, "collapse-sidebar").shortcut).toBe("Ctrl+B")
     expect(byId(result.current, "go-settings").shortcut).toBe("Ctrl+,")
+    expect(byId(result.current, "new-chat").label).toBe("New Session")
+    expect(byId(result.current, "find-transcript").shortcut).toBe("Ctrl+F")
+    expect(byId(result.current, "find-transcript").label).toBe("Find in Transcript")
+    expect(result.current.find((c) => c.id === "go-home")).toBeUndefined()
   })
 })
 
@@ -158,17 +163,6 @@ describe("useAgentCommands — open-terminal", () => {
 //  Navigation commands
 // ════════════════════════════════════════════════════════════════════════════
 describe("useAgentCommands — navigation", () => {
-  it("go-home navigates to '/'", () => {
-    const navigate = mock(() => Promise.resolve())
-    const { result } = renderHook(() =>
-      useAgentCommands(
-        makeArgs({ navigate: navigate as unknown as Parameters<typeof useAgentCommands>[0]["navigate"] }),
-      ),
-    )
-    byId(result.current, "go-home").action()
-    expect(navigate).toHaveBeenCalledWith({ to: "/" })
-  })
-
   it("go-settings opens the Settings modal at the agents section", () => {
     const openSettings = mock(() => {})
     useSettingsStore.setState({ openSettings })

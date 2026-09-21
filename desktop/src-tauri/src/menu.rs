@@ -161,7 +161,7 @@ pub fn install_desktop_menus(app: &tauri::App) -> Result<()> {
         MENU_COMMAND_PALETTE,
         "Command Palette…",
         true,
-        Some("CmdOrCtrl+Shift+P"),
+        Some("CmdOrCtrl+K"),
     )?;
     let view_scheduler = MenuItem::with_id(
         app,

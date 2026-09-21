@@ -68,7 +68,7 @@ describe('useDesktopCommands', () => {
     })
   })
 
-  it('dispatches the same Ctrl+Shift+P keyboard event used by the in-app command palette shortcut', async () => {
+  it('dispatches the same Ctrl+K keyboard event used by the in-app command palette shortcut', async () => {
     const events: KeyboardEvent[] = []
     const onKeyDown = (event: KeyboardEvent) => events.push(event)
     window.addEventListener('keydown', onKeyDown)
@@ -78,10 +78,10 @@ describe('useDesktopCommands', () => {
       listener?.({ payload: 'command_palette' })
 
       expect(events).toHaveLength(1)
-      expect(events[0].key).toBe('p')
+      expect(events[0].key).toBe('k')
       expect(events[0].ctrlKey).toBe(true)
       expect(events[0].metaKey).toBe(false)
-      expect(events[0].shiftKey).toBe(true)
+      expect(events[0].shiftKey).toBe(false)
       expect(events[0].bubbles).toBe(true)
     } finally {
       window.removeEventListener('keydown', onKeyDown)

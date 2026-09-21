@@ -44,6 +44,12 @@ interface ActiveAgentViewProps {
   onMentionFileOpen?: (path: string) => void
   onStartImplementing?: () => void
   isSwitchingInteractionMode?: boolean
+  findOpen?: boolean
+  findQuery?: string
+  findActiveIndex?: number
+  onFindQueryChange?: (query: string) => void
+  onFindClose?: () => void
+  onFindActiveIndexChange?: (index: number) => void
 }
 
 const ActiveAgentView = memo(function ActiveAgentView({
@@ -51,6 +57,12 @@ const ActiveAgentView = memo(function ActiveAgentView({
   onMentionFileOpen,
   onStartImplementing,
   isSwitchingInteractionMode,
+  findOpen,
+  findQuery,
+  findActiveIndex,
+  onFindQueryChange,
+  onFindClose,
+  onFindActiveIndexChange,
 }: ActiveAgentViewProps) {
   const activeStream = useAgentStore((s) => {
     if (s.leadName && s.agentStreams[s.leadName]) return s.agentStreams[s.leadName]
@@ -76,6 +88,12 @@ const ActiveAgentView = memo(function ActiveAgentView({
       emptyState={emptyState}
       onStartImplementing={onStartImplementing}
       isSwitchingInteractionMode={isSwitchingInteractionMode}
+      findOpen={findOpen}
+      findQuery={findQuery}
+      findActiveIndex={findActiveIndex}
+      onFindQueryChange={onFindQueryChange}
+      onFindClose={onFindClose}
+      onFindActiveIndexChange={onFindActiveIndexChange}
     />
   )
 })
@@ -130,6 +148,9 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
 
   const [fileRefsEnabled, setFileRefsEnabled] = useState(false)
   const [isSwitchingInteractionMode, setIsSwitchingInteractionMode] = useState(false)
+  const [findOpen, setFindOpen] = useState(false)
+  const [findQuery, setFindQuery] = useState('')
+  const [findActiveIndex, setFindActiveIndex] = useState(0)
 
   const { isDraggingFile, handleDragEnter, handleDragLeave, handleDragOver, handleDrop } = useDragDrop(inputRef)
 
@@ -379,6 +400,10 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
     handleToggleQuickOpen,
     handleToggleScheduler,
     handleOpenTerminal,
+    handleFindInTranscript: () => {
+      setFindOpen(true)
+      setFindActiveIndex(0)
+    },
     setCodingFileViewer,
     setCodingFileViewerDetached,
     setCodingFileOpenKey,
@@ -570,10 +595,29 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
               onMentionFileOpen={handleMentionFileOpen}
               onStartImplementing={handleStartImplementing}
               isSwitchingInteractionMode={isSwitchingInteractionMode}
+              findOpen={findOpen}
+              findQuery={findQuery}
+              findActiveIndex={findActiveIndex}
+              onFindQueryChange={(query) => {
+                setFindQuery(query)
+                setFindActiveIndex(0)
+              }}
+              onFindClose={() => {
+                setFindOpen(false)
+                setFindQuery('')
+                setFindActiveIndex(0)
+              }}
+              onFindActiveIndexChange={setFindActiveIndex}
               emptyState={
                 effectiveWorkspace ? (
                   <div className="flex flex-col items-center justify-center py-16">
-                    <WorkspaceInfoCard workspace={effectiveWorkspace} chatWorkspace={isChatWorkspace} />
+                    <WorkspaceInfoCard
+                      workspace={effectiveWorkspace}
+                      chatWorkspace={isChatWorkspace}
+                      onAsk={isChatWorkspace ? undefined : () => inputRef.current?.focus()}
+                      onInit={isChatWorkspace ? undefined : () => handleSlashCommand('init')}
+                      onOpenTerminal={isChatWorkspace ? undefined : handleOpenTerminal}
+                    />
                   </div>
                 ) : undefined
               }

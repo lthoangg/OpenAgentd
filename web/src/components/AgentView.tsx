@@ -35,6 +35,8 @@ import type { ContentBlock } from '@/api/types'
 import { UserBubble } from './AgentView/UserBubble'
 import { EmptyState } from '@/components/ui/empty-state'
 import { useAutoFollowScroll } from '@/hooks/useAutoFollowScroll'
+import { TranscriptFind } from './AgentView/TranscriptFind'
+import { collectTranscriptFindMatches } from './AgentView/transcript-find'
 
 const INITIAL_RENDERED_TURNS = 80
 const TURN_RENDER_STEP = 80
@@ -214,6 +216,12 @@ interface AgentViewProps {
   onStartImplementing?: () => void
   /** True when interaction mode is actively transitioning to Code mode. */
   isSwitchingInteractionMode?: boolean
+  findOpen?: boolean
+  findQuery?: string
+  findActiveIndex?: number
+  onFindQueryChange?: (query: string) => void
+  onFindClose?: () => void
+  onFindActiveIndexChange?: (index: number) => void
 }
 
 const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionId, onRevert, latestMCPAppBlockIds, onMentionFileOpen }: { block: ContentBlock; isStreaming: boolean; sessionId?: string; onRevert?: () => void; latestMCPAppBlockIds?: Set<string>; onMentionFileOpen?: (path: string) => void }) {
@@ -320,7 +328,25 @@ const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionI
   }
 })
 
-export function AgentView({ blocks, currentBlocks, isWorking, isTurnOpen = isWorking, isAwaitingRestart = false, isError, lastError, emptyState, onMentionFileOpen, onStartImplementing, isSwitchingInteractionMode = false }: AgentViewProps) {
+export function AgentView({
+  blocks,
+  currentBlocks,
+  isWorking,
+  isTurnOpen = isWorking,
+  isAwaitingRestart = false,
+  isError,
+  lastError,
+  emptyState,
+  onMentionFileOpen,
+  onStartImplementing,
+  isSwitchingInteractionMode = false,
+  findOpen = false,
+  findQuery = '',
+  findActiveIndex = 0,
+  onFindQueryChange,
+  onFindClose,
+  onFindActiveIndexChange,
+}: AgentViewProps) {
   const [renderedTurnCount, setRenderedTurnCount] = useState(INITIAL_RENDERED_TURNS)
   const sessionId = useAgentStore((s) => s.sessionId) ?? undefined
   const sessionInteractionMode = useAgentStore((s) => s.sessionInteractionMode)
@@ -349,6 +375,15 @@ export function AgentView({ blocks, currentBlocks, isWorking, isTurnOpen = isWor
   // `[...blocks, ...liveTail]` copy is never needed here — nothing reads full
   // merged content, only counts and the last block).
   const liveTail = useMemo(() => liveBlockTail(blocks, currentBlocks), [blocks, currentBlocks])
+  const searchableBlocks = useMemo(() => [...blocks, ...liveTail], [blocks, liveTail])
+  const findMatches = useMemo(
+    () => (findOpen ? collectTranscriptFindMatches(searchableBlocks, findQuery) : []),
+    [findOpen, findQuery, searchableBlocks],
+  )
+  const clampedFindIndex = findMatches.length === 0
+    ? 0
+    : ((findActiveIndex % findMatches.length) + findMatches.length) % findMatches.length
+  const activeFindBlockId = findMatches[clampedFindIndex]?.blockId ?? null
   const totalLen = blocks.length + liveTail.length
   const latestUserBlockId = useMemo(
     () => latestDirectUserBlockIdFromParts(blocks, currentBlocks),
@@ -448,8 +483,37 @@ export function AgentView({ blocks, currentBlocks, isWorking, isTurnOpen = isWor
     prevScrollHeightRef.current = null
   }, [blocks.length, renderedTurnCount, scrollRef, attachedRef])
 
+  const cycleFind = useCallback((delta: number) => {
+    if (findMatches.length === 0) return
+    const next = ((clampedFindIndex + delta) % findMatches.length + findMatches.length) % findMatches.length
+    onFindActiveIndexChange?.(next)
+  }, [clampedFindIndex, findMatches.length, onFindActiveIndexChange])
+
+  useEffect(() => {
+    if (!findOpen || !activeFindBlockId) return
+    const root = scrollRef.current
+    if (!root) return
+    const el = Array.from(root.querySelectorAll('[data-find-block]')).find(
+      (node) => node.getAttribute('data-find-block') === activeFindBlockId,
+    )
+    if (!(el instanceof HTMLElement)) return
+    attachedRef.current = false
+    el.scrollIntoView({ block: 'center' })
+  }, [activeFindBlockId, attachedRef, findOpen, scrollRef])
+
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
+    {findOpen && (
+      <TranscriptFind
+        query={findQuery}
+        matchCount={findMatches.length}
+        activeIndex={clampedFindIndex}
+        onQueryChange={(next) => onFindQueryChange?.(next)}
+        onNext={() => cycleFind(1)}
+        onPrev={() => cycleFind(-1)}
+        onClose={() => onFindClose?.()}
+      />
+    )}
     <div ref={scrollRef} className="oa-chat-scroll flex-1 overflow-y-auto">
       <div ref={contentRef} className="mx-auto max-w-3xl px-3 py-5 sm:px-4 sm:py-6">
         {isEmpty && (
@@ -492,15 +556,20 @@ export function AgentView({ blocks, currentBlocks, isWorking, isTurnOpen = isWor
                  const globalTurnIndex = hiddenTurnCount + k
                  if (item.kind === 'user') {
                    return (
-                     <BlockRenderer
+                     <div
                        key={item.block.id}
-                       block={item.block}
-                       isStreaming={false}
+                       data-find-block={item.block.id}
+                       className={activeFindBlockId === item.block.id ? 'rounded-sm ring-1 ring-(--color-accent)/50' : undefined}
+                     >
+                       <BlockRenderer
+                         block={item.block}
+                         isStreaming={false}
                          sessionId={sessionId}
                          onRevert={item.block.id === latestUserBlockId ? handleRevert : undefined}
                          latestMCPAppBlockIds={mcpAppResourceUri(item.block) ? latestMCPAppBlockIds : undefined}
                          onMentionFileOpen={onMentionFileOpen}
-                        />
+                       />
+                     </div>
                    )
                  }
                  // Me only the trailing turn (no user block after) can be "live"
@@ -524,14 +593,19 @@ export function AgentView({ blocks, currentBlocks, isWorking, isTurnOpen = isWor
                       onStartImplementing={canStartImplementing ? onStartImplementing : undefined}
                      isSwitchingInteractionMode={isSwitchingInteractionMode}
                       renderBlock={({ block, isStreaming }) => (
-                       <BlockRenderer
-                         block={block}
-                            isStreaming={isStreaming}
-                            sessionId={sessionId}
-                            onRevert={isDirectUserBlock(block) && block.id === latestUserBlockId ? handleRevert : undefined}
-                            latestMCPAppBlockIds={mcpAppResourceUri(block) ? latestMCPAppBlockIds : undefined}
-                         onMentionFileOpen={onMentionFileOpen}
-                          />
+                       <div
+                         data-find-block={block.id}
+                         className={activeFindBlockId === block.id ? 'rounded-sm ring-1 ring-(--color-accent)/50' : undefined}
+                       >
+                         <BlockRenderer
+                           block={block}
+                           isStreaming={isStreaming}
+                           sessionId={sessionId}
+                           onRevert={isDirectUserBlock(block) && block.id === latestUserBlockId ? handleRevert : undefined}
+                           latestMCPAppBlockIds={mcpAppResourceUri(block) ? latestMCPAppBlockIds : undefined}
+                           onMentionFileOpen={onMentionFileOpen}
+                         />
+                       </div>
                      )}
                    />
                  )

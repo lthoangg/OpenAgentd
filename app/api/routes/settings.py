@@ -29,6 +29,7 @@ from app.core.secret_files import write_secret_file
 from app.core.runtime_settings import (
     clear_provider_cached_models,
     effective_visible_models,
+    forget_provider_models,
     provider_is_disconnected,
     provider_visible_models,
     set_provider_cached_models,
@@ -445,11 +446,22 @@ async def list_providers() -> ProvidersListBody:
         entries, saved_states, reachability, strict=True
     ):
         provider_ui = provider_ui_settings.get(entry["id"], ProviderUiSettings())
-        cached_models = filter_opencode_models_for_access(
-            entry["id"],
-            provider_ui.cached_models,
-            has_credentials=is_saved,
-        )
+        # ``is_saved`` is the static credential check, ``is_configured`` adds the
+        # daemon probe. Only lost *credentials* invalidate the model state: a
+        # stopped local daemon keeps its cached list so its models come back
+        # when it restarts.
+        if not is_saved:
+            if provider_ui.cached_models or provider_ui.visible_models:
+                forget_provider_models(entry["id"])
+            cached_models: list[str] = []
+            visible_models: list[str] = []
+        else:
+            cached_models = filter_opencode_models_for_access(
+                entry["id"],
+                provider_ui.cached_models,
+                has_credentials=is_saved,
+            )
+            visible_models = effective_visible_models(provider_ui)
         out.append(
             ProviderInfo(
                 id=entry["id"],
@@ -466,7 +478,7 @@ async def list_providers() -> ProvidersListBody:
                 is_saved=is_saved,
                 is_reachable=is_configured if is_saved else None,
                 cached_models=cached_models,
-                visible_models=effective_visible_models(provider_ui),
+                visible_models=visible_models,
                 is_disconnected=provider_ui.is_disconnected,
                 supports_fast_mode=entry.get("supports_fast_mode", False),
                 public_access=entry.get("public_access", False),

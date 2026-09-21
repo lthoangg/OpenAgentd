@@ -141,6 +141,48 @@ async def _mark_last_assistant_interrupted(
         )
 
 
+def _split_provider_model(model_id: str | None) -> tuple[str, str] | None:
+    """Split ``"provider:model"`` into its parts, or None when malformed."""
+    if not model_id or ":" not in model_id:
+        return None
+    provider, model = model_id.split(":", 1)
+    if not provider or not model:
+        return None
+    return provider, model
+
+
+def _forget_provider_credentials(model_id: str | None) -> None:
+    """Drop cached models and any dead OAuth token file for a provider whose
+    credentials the provider just rejected."""
+    parts = _split_provider_model(model_id)
+    if parts is None:
+        return
+    from app.core.config import settings
+    from app.core.runtime_settings import forget_provider_models
+
+    provider_id = parts[0]
+    forget_provider_models(provider_id)
+    cache_dir = Path(settings.OPENAGENTD_CACHE_DIR or "")
+    token_files = {
+        "codex": cache_dir / "codex_oauth.json",
+        "copilot": cache_dir / "copilot_oauth.json",
+        "grok": cache_dir / "grok_oauth.json",
+    }
+    token_file = token_files.get(provider_id)
+    if token_file is not None:
+        token_file.unlink(missing_ok=True)
+
+
+def _forget_retired_model(model_id: str | None) -> None:
+    """Drop a model the provider no longer serves from the cached/visible lists."""
+    parts = _split_provider_model(model_id)
+    if parts is None:
+        return
+    from app.core.runtime_settings import remove_provider_model
+
+    remove_provider_model(*parts)
+
+
 def _schedule_provider_close(provider: LLMProviderBase | None) -> None:
     if provider is None:
         return
@@ -938,6 +980,15 @@ class AgentSession:
                 logger.warning("agent_session_error name={} error={}", self.name, exc)
             else:
                 logger.exception("agent_session_error name={} error={}", self.name, exc)
+            if isinstance(exc, ProviderAuthenticationError) and exc.provider:
+                _forget_provider_credentials(exc.provider)
+            if isinstance(exc, ProviderRequestError):
+                from app.agent.agent_loop.retry import blames_the_model
+
+                if exc.status_code == 404 or blames_the_model(str(exc)):
+                    _forget_retired_model(
+                        runtime_model or getattr(self.agent, "model_id", None)
+                    )
             self.state = "error"
             err_info = format_agent_error(exc, agent_name=self.name)
             self._last_error = err_info["message"]

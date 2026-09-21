@@ -18,6 +18,7 @@ from app.core.runtime_settings import (
     effective_visible_models,
     load_runtime_settings,
     provider_visible_models,
+    remove_provider_model,
     save_runtime_settings,
     set_provider_cached_models,
 )
@@ -105,6 +106,69 @@ class TestSetProviderCachedModelsPrunesVisible:
 
 
 # ── effective_visible_models ─────────────────────────────────────────────────
+
+
+class TestRemoveProviderModel:
+    def test_drops_model_from_cached_and_visible(self, settings_dir: Path) -> None:
+        save_runtime_settings(
+            RuntimeSettings(
+                providers={
+                    "deepseek": ProviderUiSettings(
+                        cached_models=["deepseek-v4-flash", "deepseek-v4-pro"],
+                        visible_models=["deepseek-v4-flash"],
+                    )
+                }
+            )
+        )
+
+        remove_provider_model("deepseek", "deepseek-v4-flash")
+
+        cfg = load_runtime_settings(settings_dir / "settings.yaml")
+        ui = cfg.providers["deepseek"]
+        assert ui.cached_models == ["deepseek-v4-pro"]
+        assert ui.visible_models == []
+
+    def test_accepts_prefixed_model_id(self, settings_dir: Path) -> None:
+        save_runtime_settings(
+            RuntimeSettings(
+                providers={
+                    "deepseek": ProviderUiSettings(cached_models=["deepseek-v4-flash"])
+                }
+            )
+        )
+
+        remove_provider_model("deepseek", "deepseek:deepseek-v4-flash")
+
+        cfg = load_runtime_settings(settings_dir / "settings.yaml")
+        assert "deepseek" not in cfg.providers
+
+    def test_is_a_noop_when_provider_is_absent(self, settings_dir: Path) -> None:
+        save_runtime_settings(RuntimeSettings())
+
+        remove_provider_model("deepseek", "deepseek-v4-flash")
+
+        assert "deepseek" not in load_runtime_settings().providers
+
+    def test_keeps_other_models_and_providers(self, settings_dir: Path) -> None:
+        save_runtime_settings(
+            RuntimeSettings(
+                providers={
+                    "deepseek": ProviderUiSettings(
+                        cached_models=["deepseek-v4-flash", "deepseek-v4-pro"],
+                        visible_models=["deepseek-v4-pro"],
+                        last_listed_at=1,
+                    ),
+                    "openai": ProviderUiSettings(cached_models=["gpt-5"]),
+                }
+            )
+        )
+
+        remove_provider_model("deepseek", "deepseek-v4-flash")
+
+        cfg = load_runtime_settings(settings_dir / "settings.yaml")
+        assert cfg.providers["deepseek"].cached_models == ["deepseek-v4-pro"]
+        assert cfg.providers["deepseek"].visible_models == ["deepseek-v4-pro"]
+        assert cfg.providers["openai"].cached_models == ["gpt-5"]
 
 
 class TestEffectiveVisibleModels:

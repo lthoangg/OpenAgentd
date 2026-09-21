@@ -602,7 +602,8 @@ _MODEL_PROBLEM_RE = re.compile(
 )
 
 
-def _blames_the_model(detail: str | None) -> bool:
+def blames_the_model(detail: str | None) -> bool:
+    """Return whether a provider error body blames the requested model id."""
     return bool(detail) and _MODEL_PROBLEM_RE.search(detail) is not None
 
 
@@ -634,7 +635,7 @@ def classify_provider_http_error(
 
     suffix = f": {detail}" if detail else ""
     punctuation = "" if detail and detail.endswith((".", "!", "?")) else "."
-    if status in (401, 403) and not _blames_the_model(detail):
+    if status in (401, 403) and not blames_the_model(detail):
         return ProviderAuthenticationError(
             f"{provider_label} rejected the request — authentication failed "
             f"(HTTP {status}){suffix}{punctuation} Check the provider's API key "

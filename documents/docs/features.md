@@ -850,7 +850,11 @@ agnostic by design.
 - **Hide / show a provider** `[v1.92.0]` — Settings → Providers lets you
   temporarily hide a configured provider's models (**Hide** / **Show** in header); its models disappear from
   every picker and the warm-cache loop skips it, while saved credentials stay
-  on disk. Connected OAuth providers also offer **Disconnect** in the card body (`DELETE /api/auth/{provider}`) to delete saved OAuth account tokens from disk and log out.
+  on disk and **Show** restores them. Connected OAuth providers also offer **Disconnect** in the card body (`DELETE /api/auth/{provider}`) to delete saved OAuth account tokens from disk and log out.
+  A provider that loses its connection (API key deleted, OAuth session revoked or
+  refresh rejected) drops its cached model list and saved visible-model selection,
+  so pickers stop offering models the provider can no longer serve; connected
+  providers keep both — an expired access token is refreshed, not a disconnection.
 - **Copilot usage monitor** `[v1.33.0]` — Settings → Providers shows live Copilot
   premium request quota from the saved OAuth token.
 - **API key provider usage and credit monitor** `[v2.3.0]` — Settings → Providers shows live credit balances, key spend caps, and quota limits for configured API key providers (such as OpenRouter and DeepSeek) alongside OAuth providers.
@@ -863,7 +867,11 @@ agnostic by design.
   providers' caches on demand, and **List models** remains the per-provider
   manual refresh / verification action — available whenever credentials are
    already saved, without retyping a secret the UI never echoes back
-   `[v1.132.0]`. The providers page now includes a
+   `[v1.132.0]`. A model the provider no longer serves is pruned from both the
+   cached list and the saved visible selection on the next refresh, and is dropped
+   immediately when a chat attempt comes back with a model-not-available error, so
+   retired model ids (for example a withdrawn DeepSeek preview) stop being
+   selectable. The providers page now includes a
   search plus status/kind filter bar for quickly narrowing long provider lists
   `[v1.74.0]`. Each model row in the listing displays its per-token pricing (USD per 1M tokens
   input/output or `Free` badge) with tooltip breakdowns including cache read/write rates `[v2.9.0]`.

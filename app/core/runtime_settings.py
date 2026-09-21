@@ -135,6 +135,64 @@ def clear_provider_cached_models(provider_id: str) -> None:
     save_runtime_settings(cfg)
 
 
+def forget_provider_models(provider_id: str) -> None:
+    """Forget a provider's cached *and* visible models.
+
+    Used when the provider is no longer connected at all (credentials removed,
+    OAuth session revoked): the cached list is unusable and the visible
+    selection would otherwise whitelist model ids the provider can no longer
+    serve. A provider that is merely hidden keeps both lists.
+    """
+    cfg = load_runtime_settings()
+    current = cfg.providers.get(provider_id)
+    if current is None:
+        return
+    if not current.cached_models and not current.visible_models:
+        return
+    next_settings = current.model_copy(
+        update={"cached_models": [], "visible_models": [], "last_listed_at": None}
+    )
+    if next_settings.is_disconnected:
+        cfg.providers[provider_id] = next_settings
+    else:
+        cfg.providers.pop(provider_id, None)
+    save_runtime_settings(cfg)
+
+
+def remove_provider_model(provider_id: str, model: str) -> None:
+    """Drop a model the provider no longer serves from the cached and visible lists.
+
+    Accepts either a bare model id or a ``provider:model`` id. Called when the
+    provider itself rejects the model (retired / decommissioned), so the picker
+    stops offering a selection that cannot work.
+    """
+    cfg = load_runtime_settings()
+    current = cfg.providers.get(provider_id)
+    if current is None:
+        return
+    model_name = model.split(":", 1)[-1].strip() if ":" in model else model.strip()
+    next_cached = [m for m in current.cached_models if m != model_name and m != model]
+    next_visible = [m for m in current.visible_models if m != model_name and m != model]
+    if next_cached == current.cached_models and next_visible == current.visible_models:
+        return
+    updated = current.model_copy(
+        update={
+            "cached_models": next_cached,
+            "visible_models": next_visible,
+        }
+    )
+    if (
+        updated.is_disconnected
+        or updated.visible_models
+        or updated.cached_models
+        or updated.last_listed_at is not None
+    ):
+        cfg.providers[provider_id] = updated
+    else:
+        cfg.providers.pop(provider_id, None)
+    save_runtime_settings(cfg)
+
+
 def provider_is_disconnected(provider_id: str) -> bool:
     return (
         load_runtime_settings()

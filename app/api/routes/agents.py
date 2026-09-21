@@ -29,6 +29,7 @@ from app.agent.providers.opencode.constants import PROVIDER_IDS as OPENCODE_PROV
 from app.core.runtime_settings import (
     ProviderUiSettings,
     effective_visible_models,
+    forget_provider_models,
     load_runtime_settings,
     set_provider_cached_models,
 )
@@ -191,11 +192,11 @@ async def _warm_provider_model_cache() -> None:
     candidates = []
     for entry in provider_entries:
         provider_ui = provider_ui_settings.get(entry["id"], ProviderUiSettings())
-        if (
-            _provider_is_configured(entry)
-            and not provider_ui.is_disconnected
-            and not provider_ui.cached_models
-        ):
+        if not _provider_is_configured(entry):
+            if provider_ui.cached_models:
+                forget_provider_models(entry["id"])
+            continue
+        if not provider_ui.is_disconnected and not provider_ui.cached_models:
             candidates.append(entry)
     if not candidates:
         return
@@ -337,9 +338,13 @@ async def get_registry(request: Request) -> RegistryResponse:
         provider_ui = provider_ui_settings.get(provider, ProviderUiSettings())
         if provider_ui.is_disconnected:
             continue
-        has_credentials = provider not in OPENCODE_PROVIDER_IDS or (
-            _provider_is_configured(entry)
-        )
+        is_configured = _provider_is_configured(entry)
+        if not is_configured:
+            if provider_ui.cached_models:
+                forget_provider_models(provider)
+            if provider not in OPENCODE_PROVIDER_IDS:
+                continue
+        has_credentials = is_configured
         visible = set(effective_visible_models(provider_ui))
         # 1. Add cached/discovered agent models
         for model in provider_ui.cached_models:
@@ -428,12 +433,17 @@ async def is_registered_model_id(model_id: str) -> bool:
     if provider_ui.is_disconnected:
         return False
 
+    is_configured = _provider_is_configured(entry)
+    if not is_configured:
+        if provider_ui.cached_models:
+            forget_provider_models(provider)
+        if provider not in OPENCODE_PROVIDER_IDS:
+            return False
+
     visible = set(effective_visible_models(provider_ui))
     if visible and model not in visible:
         return False
-    has_credentials = provider not in OPENCODE_PROVIDER_IDS or (
-        _provider_is_configured(entry)
-    )
+    has_credentials = is_configured
     if not model_is_accessible(
         provider,
         model,

@@ -15,6 +15,7 @@ from sqlmodel import SQLModel
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.agent.agent_loop import Agent
+from app.agent.errors import ProviderRequestError
 from app.agent.providers.base import LLMProviderBase
 from app.agent.schemas.chat import (
     AssistantMessage,
@@ -876,6 +877,36 @@ class FailingProvider(LLMProviderBase):
         return await self.complete(messages, **kwargs)
 
 
+class ModelRetiredProvider(LLMProviderBase):
+    """Every call fails the way a provider does for a model id it dropped."""
+
+    async def stream(
+        self, messages: list[ChatMessage], **kwargs: Any
+    ) -> AsyncIterator[ChatCompletionChunk]:
+        raise ProviderRequestError(
+            "p rejected the request (HTTP 400): The model `retired-model` "
+            "does not exist anymore.",
+            status_code=400,
+            provider="custom:retired-model",
+        )
+        yield  # pragma: no cover - makes this an async generator
+
+    async def complete(
+        self, messages: list[ChatMessage], **kwargs: Any
+    ) -> AssistantMessage:
+        raise ProviderRequestError(
+            "p rejected the request (HTTP 400): The model `retired-model` "
+            "does not exist anymore.",
+            status_code=400,
+            provider="custom:retired-model",
+        )
+
+    async def chat(
+        self, messages: list[ChatMessage], **kwargs: Any
+    ) -> AssistantMessage:
+        return await self.complete(messages, **kwargs)
+
+
 async def _run_one_turn(session: AgentSession, sid: str, workspace: str) -> list[dict]:
     """Drive a turn to completion and return everything the stream emitted."""
     from app.services import memory_stream_store as stream_store
@@ -965,3 +996,45 @@ async def test_agent_session_closes_the_turn_on_error(
         {"session_id": sid, "status": "error"},
     ) in published
     assert all(name != "desktop_notification" for name, _ in published)
+
+
+@pytest.mark.asyncio
+async def test_retired_model_is_dropped_when_the_provider_rejects_it(
+    db_factory, tmp_path, monkeypatch
+):
+    """A model the provider no longer serves stops being offered once a turn
+    fails on it, instead of staying in the picker as a broken selection."""
+    from app.core.runtime_settings import (
+        ProviderUiSettings,
+        RuntimeSettings,
+        load_runtime_settings,
+        save_runtime_settings,
+    )
+
+    save_runtime_settings(
+        RuntimeSettings(
+            providers={
+                "custom": ProviderUiSettings(
+                    cached_models=["retired-model", "live-model"],
+                    visible_models=["retired-model", "live-model"],
+                )
+            }
+        )
+    )
+
+    session = AgentSession(
+        agent=Agent(
+            llm_provider=ModelRetiredProvider(),
+            name="openagentd",
+            model_id="custom:retired-model",
+        ),
+        workspace=str(tmp_path),
+        db_factory=db_factory,
+    )
+
+    await _run_one_turn(session, str(uuid.uuid4()), str(tmp_path))
+
+    assert session.state == "error"
+    ui = load_runtime_settings().providers["custom"]
+    assert ui.cached_models == ["live-model"]
+    assert ui.visible_models == ["live-model"]

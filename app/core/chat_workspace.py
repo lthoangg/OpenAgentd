@@ -3,7 +3,7 @@
 Chat runs on the same screen as coding workspaces with the same agent profile,
 tools, and prompt. The only difference is *scope*: a chat session's root is the
 user's home directory, and that root is not treated as a project — no
-workspace ``AGENTS.md``/``CLAUDE.md``, no ``{root}/.openagentd|.agents|.opencode``
+workspace ``AGENTS.md``, no ``{root}/.openagentd|.agents|.opencode``
 skills, commands, or snippets. Global and bundled context is still loaded.
 
 The root lives in ``CHAT_WORKSPACE_DIR`` (default: the user's home). Everything

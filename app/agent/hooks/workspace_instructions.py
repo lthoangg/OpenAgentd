@@ -4,7 +4,7 @@ Two sources, rendered broad → scoped like pi/opencode/codex:
 
 1. Global ``{CONFIG_DIR}/AGENTS.md`` (``~/.config/openagentd/AGENTS.md`` in
    production) — the developer's cross-project preferences.
-2. Workspace ``AGENTS.md`` (falling back to ``CLAUDE.md``) at the root.
+2. Workspace ``AGENTS.md`` (or ``.agents/AGENTS.md``) at the root.
 
 Source 2 is project-scoped, so a chat workspace (see
 ``app.core.chat_workspace``) suppresses it via
@@ -97,7 +97,7 @@ class WorkspaceInstructionsHook(BaseAgentHook):
     def _read_workspace_instructions(self) -> str:
         if self._workspace is None:
             return ""
-        for filename in ("AGENTS.md", ".agents/AGENTS.md", "CLAUDE.md"):
+        for filename in ("AGENTS.md", ".agents/AGENTS.md"):
             instructions = self._read_instruction_file(self._workspace / filename)
             if instructions:
                 return instructions

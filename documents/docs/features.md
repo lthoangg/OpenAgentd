@@ -735,8 +735,7 @@ OpenAgentd carries context across sessions via rolling-window summarization.
   instruction tool-call pairs remain active after repeated compaction while the
   summarizer keeps the same cacheable prompt prefix as normal chat turns.
 - **`AGENTS.md` at repo root and subfolders** `[v1.9.0]` — written by `/init`;
-  standard repo- and folder-scoped agent context files. Coding workspaces fall
-  back to root `CLAUDE.md` when root `AGENTS.md` is absent.
+  standard repo- and folder-scoped agent context files.
 - **Global `AGENTS.md`** `[v2.10.0]` — a developer-wide instructions file at
   `{config dir}/AGENTS.md` (`~/.config/openagentd/AGENTS.md` in production) is
   injected into every coding turn ahead of the workspace file, so cross-project
@@ -759,7 +758,7 @@ OpenAgentd carries context across sessions via rolling-window summarization.
   fallback to the default "Local CLI server" entry when the list empties.
 - **Workspace root injected into coding-mode system prompt** `[v1.133.0]` —
   coding agents are told their workspace's absolute
-  path unconditionally, not only when an `AGENTS.md`/`CLAUDE.md` happens to
+  path unconditionally, not only when an `AGENTS.md` happens to
   exist.
 - **Per-message provider metadata** `[v1.17.0]` — assistant messages persist
   the model that generated each reply (visible in inspector).

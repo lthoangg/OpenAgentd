@@ -68,16 +68,21 @@
 :root.dark {
     color-scheme: dark;
 
-    /* Surfaces */
+    /* Surfaces
+     * Same ordering as light mode, not an inversion of the tones: the sidebar
+     * sits *below* the page (a recessed rail), cards sit above it, and the
+     * input matches the page. Collapsing --bg-sidebar onto --bg-card left the
+     * sidebar reading as a raised panel and made every card inside it
+     * invisible against its own container. */
     --bg-page:           #15110D;
-    --bg-sidebar:        #1C1813;
+    --bg-sidebar:        #110D0A;
     --bg-card:           #1C1813;
-    --bg-input:          #1C1813;
+    --bg-input:          #15110D;
     --bg-key:            #2A2219;
     --bg-send:           #F5EBD8;
     --color-surface:     #221C16;
     --color-surface-2:   #2A2219;
-    --color-bg-elevated: #1C1813;
+    --color-bg-elevated: #221C16;
 
     /* Borders */
     --border-soft:         #2C231A;

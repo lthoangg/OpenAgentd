@@ -23,7 +23,7 @@ describe('collectTranscriptFindMatches', () => {
     expect(collectTranscriptFindMatches([user('u1', 'hello')], '   ')).toEqual([])
   })
 
-  it('matches user and assistant text, case-insensitively, and skips thinking and tools', () => {
+  it('matches user, assistant, and thinking text, case-insensitively, and skips tools', () => {
     const matches = collectTranscriptFindMatches(
       [
         user('u1', 'Hello world'),
@@ -33,7 +33,7 @@ describe('collectTranscriptFindMatches', () => {
       ],
       'HELLO',
     )
-    expect(matches.map((match) => match.blockId)).toEqual(['u1', 'a1'])
+    expect(matches.map((match) => match.blockId)).toEqual(['u1', 'th1', 'a1'])
   })
 
   it('records every occurrence inside a block', () => {

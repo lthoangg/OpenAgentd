@@ -6,7 +6,11 @@ export interface TranscriptFindMatch {
   end: number
 }
 
-const SEARCHABLE_TYPES = new Set<ContentBlock['type']>(['user', 'text'])
+const TRANSCRIPT_FIND_BLOCK_TYPES = new Set<ContentBlock['type']>([
+  'user',
+  'text',
+  'thinking',
+])
 
 export function collectTranscriptFindMatches(
   blocks: ContentBlock[],
@@ -17,7 +21,7 @@ export function collectTranscriptFindMatches(
   const needle = query.toLowerCase()
   const matches: TranscriptFindMatch[] = []
   for (const block of blocks) {
-    if (!SEARCHABLE_TYPES.has(block.type)) continue
+    if (!TRANSCRIPT_FIND_BLOCK_TYPES.has(block.type)) continue
     const haystack = block.content
     if (!haystack) continue
     const lower = haystack.toLowerCase()
@@ -30,4 +34,8 @@ export function collectTranscriptFindMatches(
     }
   }
   return matches
+}
+
+export function isTranscriptFindableBlock(type: ContentBlock['type']): boolean {
+  return TRANSCRIPT_FIND_BLOCK_TYPES.has(type)
 }

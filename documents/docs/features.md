@@ -128,7 +128,8 @@ run from the terminal.
   opens files in the active workspace; `⌘K`/`Ctrl+K` searches app actions.
   Both use the compact warm-paper search surface, keyboard navigation, and a
   visible warning when a capped workspace listing omits files.
-  `⌘F`/`Ctrl+F` finds user and assistant text in the current transcript;
+  `⌘F`/`Ctrl+F` finds user, assistant, and thinking text in the current transcript
+  and highlights each match in place;
   `⌘D`/`Ctrl+D` toggles the files and git dock. `⌘N`/`Ctrl+N` starts a new
   session and is a no-op on an already empty idle session. The status footer
   names the connected backend (`builtin` or the saved server name/host) instead

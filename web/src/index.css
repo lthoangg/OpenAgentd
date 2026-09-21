@@ -1082,3 +1082,17 @@ html[data-app-hidden="true"] *::after {
     display: none !important;
   }
 }
+
+/* Transcript find: highlight the matched substring only. */
+mark[data-transcript-find] {
+  background: var(--accent-orange-soft);
+  color: inherit;
+  border-radius: 2px;
+  padding: 0 0.08em;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+mark[data-transcript-find][data-transcript-find-active] {
+  background: color-mix(in srgb, var(--accent-orange) 42%, var(--accent-orange-soft));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent-orange-text) 40%, transparent);
+}

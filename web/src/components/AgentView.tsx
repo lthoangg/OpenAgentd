@@ -36,7 +36,8 @@ import { UserBubble } from './AgentView/UserBubble'
 import { EmptyState } from '@/components/ui/empty-state'
 import { useAutoFollowScroll } from '@/hooks/useAutoFollowScroll'
 import { TranscriptFind } from './AgentView/TranscriptFind'
-import { collectTranscriptFindMatches } from './AgentView/transcript-find'
+import { collectTranscriptFindMatches, isTranscriptFindableBlock } from './AgentView/transcript-find'
+import { applyTranscriptFindHighlight, clearTranscriptFindHighlight } from './AgentView/transcript-find-highlight'
 
 const INITIAL_RENDERED_TURNS = 80
 const TURN_RENDER_STEP = 80
@@ -383,7 +384,6 @@ export function AgentView({
   const clampedFindIndex = findMatches.length === 0
     ? 0
     : ((findActiveIndex % findMatches.length) + findMatches.length) % findMatches.length
-  const activeFindBlockId = findMatches[clampedFindIndex]?.blockId ?? null
   const totalLen = blocks.length + liveTail.length
   const latestUserBlockId = useMemo(
     () => latestDirectUserBlockIdFromParts(blocks, currentBlocks),
@@ -490,16 +490,29 @@ export function AgentView({
   }, [clampedFindIndex, findMatches.length, onFindActiveIndexChange])
 
   useEffect(() => {
-    if (!findOpen || !activeFindBlockId) return
     const root = scrollRef.current
     if (!root) return
-    const el = Array.from(root.querySelectorAll('[data-find-block]')).find(
-      (node) => node.getAttribute('data-find-block') === activeFindBlockId,
-    )
-    if (!(el instanceof HTMLElement)) return
-    attachedRef.current = false
-    el.scrollIntoView({ block: 'center' })
-  }, [activeFindBlockId, attachedRef, findOpen, scrollRef])
+    if (!findOpen) {
+      clearTranscriptFindHighlight(root)
+      return
+    }
+    let observer: MutationObserver | null = null
+    const paint = (scrollActive: boolean) => {
+      observer?.disconnect()
+      const active = applyTranscriptFindHighlight(root, findQuery, clampedFindIndex)
+      if (scrollActive && active) {
+        attachedRef.current = false
+        active.scrollIntoView({ block: 'center' })
+      }
+      observer?.observe(root, { subtree: true, childList: true, characterData: true })
+    }
+    observer = new MutationObserver(() => paint(false))
+    paint(true)
+    return () => {
+      observer?.disconnect()
+      clearTranscriptFindHighlight(root)
+    }
+  }, [attachedRef, clampedFindIndex, findOpen, findQuery, scrollRef])
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
@@ -558,8 +571,7 @@ export function AgentView({
                    return (
                      <div
                        key={item.block.id}
-                       data-find-block={item.block.id}
-                       className={activeFindBlockId === item.block.id ? 'rounded-sm ring-1 ring-(--color-accent)/50' : undefined}
+                       data-find-block={isTranscriptFindableBlock(item.block.type) ? item.block.id : undefined}
                      >
                        <BlockRenderer
                          block={item.block}
@@ -594,8 +606,7 @@ export function AgentView({
                      isSwitchingInteractionMode={isSwitchingInteractionMode}
                       renderBlock={({ block, isStreaming }) => (
                        <div
-                         data-find-block={block.id}
-                         className={activeFindBlockId === block.id ? 'rounded-sm ring-1 ring-(--color-accent)/50' : undefined}
+                         data-find-block={isTranscriptFindableBlock(block.type) ? block.id : undefined}
                        >
                          <BlockRenderer
                            block={block}

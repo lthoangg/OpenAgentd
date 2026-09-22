@@ -620,9 +620,6 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
                     <WorkspaceInfoCard
                       workspace={effectiveWorkspace}
                       chatWorkspace={isChatWorkspace}
-                      onAsk={isChatWorkspace ? undefined : () => inputRef.current?.focus()}
-                      onInit={isChatWorkspace ? undefined : () => handleSlashCommand('init')}
-                      onOpenTerminal={isChatWorkspace ? undefined : handleOpenTerminal}
                     />
                   </div>
                 ) : undefined

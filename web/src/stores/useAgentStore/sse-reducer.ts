@@ -620,6 +620,19 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
         break
       }
 
+      case 'interaction_mode': {
+        // A switch queued behind an active turn has landed. Adopt it and drop
+        // the pending marker so the toggle stops advertising a queued change.
+        const mode = d.interaction_mode
+        if (mode === 'code' || mode === 'plan') {
+          set((draft) => {
+            draft.sessionInteractionMode = mode
+            draft.sessionPendingInteractionMode = null
+          })
+        }
+        break
+      }
+
       case 'agent_status': {
         const agent = d.agent as string
         const status = d.status as string

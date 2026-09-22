@@ -70,7 +70,10 @@ from app.services.chat_service import (
     save_message,
     undo_session_messages,
 )
-from app.services.session_interaction_mode import ensure_session_interaction_mode_prompt
+from app.services.session_interaction_mode import (
+    ensure_session_interaction_mode_prompt,
+    set_session_interaction_mode,
+)
 from app.services.stream_envelope import StreamEnvelope
 
 
@@ -251,6 +254,10 @@ class AgentSession:
         self._question_suspended: dict[str, Any] | None = None
         self._lead_suspended: dict[str, Any] | None = None
         self._last_error: str | None = None
+        # A Plan/Code switch requested while a turn is in flight. The running
+        # turn keeps the mode it was authorised under; this is applied when the
+        # turn closes. See ``queue_interaction_mode``.
+        self._pending_interaction_mode: str | None = None
         self.is_scheduler_session: bool = False
         self.memory_context_snapshot: MemoryContextSnapshot | None = None
 
@@ -268,6 +275,44 @@ class AgentSession:
 
     def is_busy(self) -> bool:
         return self.state in {"working", "waiting_input"} or self._has_active_turn
+
+    @property
+    def pending_interaction_mode(self) -> str | None:
+        """Mode requested mid-turn that has not been applied yet."""
+        return self._pending_interaction_mode
+
+    def queue_interaction_mode(self, mode: str) -> None:
+        """Defer a Plan/Code switch until the in-flight turn closes.
+
+        Applying it immediately is not safe: the running turn snapshots the
+        mode into its run metadata at turn start, so it would keep the old
+        tool policy anyway, and ``set_session_interaction_mode`` appends a
+        pinned instruction message plus a structural history revision, which
+        would interleave with the messages the turn is still writing.
+
+        The turn was authorised under the old mode when the user sent it, so
+        the switch binds from the next turn. Stopping the turn instead would
+        take that choice away from the user, who already has an explicit stop.
+        """
+        self._pending_interaction_mode = normalize_interaction_mode(mode)
+
+    async def _apply_pending_interaction_mode(self) -> None:
+        """Persist a queued Plan/Code switch now that the turn has closed."""
+        mode = self._pending_interaction_mode
+        if mode is None or not self.session_id or not self.db_factory:
+            return
+        self._pending_interaction_mode = None
+        try:
+            async with self.db_factory() as db:
+                async with db.begin():
+                    _session, changed = await set_session_interaction_mode(
+                        db, uuid.UUID(self.session_id), mode
+                    )
+        except Exception as exc:
+            logger.warning("interaction_mode_apply_failed mode={} error={}", mode, exc)
+            return
+        if changed:
+            await self._emit("interaction_mode", extra={"interaction_mode": mode})
 
     def has_active_user_turn(self) -> bool:
         return self._has_active_turn or self.is_busy()
@@ -1012,6 +1057,15 @@ class AgentSession:
             )
         finally:
             activated = False
+            # A queued Plan/Code switch binds from the next turn. Apply it only
+            # once the turn actually closes: ``waiting_input``/``waiting_lead``
+            # are resumable, so the turn is still live and the switch keeps
+            # waiting. Applying it before ``_activate_queued_user_messages``
+            # means a message queued behind the switch runs in the new mode.
+            if self.state == "error" or (
+                self._question_suspended is None and self._lead_suspended is None
+            ):
+                await self._apply_pending_interaction_mode()
             if self.state != "error" and self._question_suspended is not None:
                 self.state = "waiting_input"
                 await self._emit(

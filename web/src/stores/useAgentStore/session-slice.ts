@@ -359,6 +359,7 @@ export function resetSessionState(
   state.parentSessionId = null
   state.sessionTitle = null
   state.sessionInteractionMode = options.interactionMode ?? 'code'
+  state.sessionPendingInteractionMode = null
   state.sessionModel = options.model ?? null
   state.sessionThinkingLevel = options.thinkingLevel ?? null
   state._sessionSettingsDirty = false
@@ -420,6 +421,7 @@ export type SessionSlice = Pick<
   | 'parentSessionId'
   | 'sessionTitle'
   | 'sessionInteractionMode'
+  | 'sessionPendingInteractionMode'
   | 'sessionModel'
   | 'sessionThinkingLevel'
   | '_sessionSettingsDirty'
@@ -480,6 +482,7 @@ async function loadSessionImpl(
       draft.parentSessionId = history.lead.parent_session_id ?? null
       draft.sessionTitle = history.lead.title ?? null
       draft.sessionInteractionMode = history.lead.interaction_mode ?? 'code'
+      draft.sessionPendingInteractionMode = history.lead.pending_interaction_mode ?? null
       if (!draft._sessionSettingsDirty && draft._sessionSettingsVersion === settingsVersion) {
         draft.sessionModel = history.lead.model ?? null
         draft.sessionThinkingLevel = history.lead.thinking_level ?? null
@@ -776,6 +779,7 @@ export const createSessionSlice: StateCreator<
   parentSessionId: null,
   sessionTitle: null,
   sessionInteractionMode: 'code',
+  sessionPendingInteractionMode: null,
   sessionModel: null,
   sessionThinkingLevel: null,
   _sessionSettingsDirty: false,
@@ -881,12 +885,16 @@ export const createSessionSlice: StateCreator<
   setSessionInteractionMode: async (mode) => {
     const sessionId = get().sessionId
     if (!sessionId) return false
-    if (mode === get().sessionInteractionMode) return true
+    const effective = get().sessionPendingInteractionMode ?? get().sessionInteractionMode
+    if (mode === effective) return true
     try {
       const session = await updateSessionInteractionMode(sessionId, mode)
       set((draft) => {
         if (draft.sessionId !== sessionId) return
         draft.sessionInteractionMode = session.interaction_mode ?? mode
+        // The backend queues a switch requested mid-turn rather than stopping
+        // the turn, so the toggle tracks the queued mode until it lands.
+        draft.sessionPendingInteractionMode = session.pending_interaction_mode ?? null
         draft.isAgentWorking = session.running === true
         draft.error = null
       })

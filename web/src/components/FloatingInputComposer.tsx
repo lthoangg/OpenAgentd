@@ -105,6 +105,7 @@ interface FloatingInputComposerProps {
   autoFocus?: boolean
   capabilities?: AgentCapabilities
   interactionMode?: SessionInteractionMode
+  interactionModePending?: boolean
   onInteractionModeChange?: (mode: SessionInteractionMode) => void
   interactionModeDisabled?: boolean
   revertedCount?: number

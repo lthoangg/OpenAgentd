@@ -572,9 +572,16 @@ class TestResolveTeamSession:
 
 class TestUpdateTeamSession:
     @pytest.mark.asyncio
-    async def test_update_session_mode_stops_an_active_turn(
+    async def test_update_session_mode_queues_behind_an_active_turn(
         self, app_with_team, test_team, tmp_path, monkeypatch
     ):
+        """Switching mode mid-turn must not kill the turn the user is watching.
+
+        The running turn snapshots its mode at turn start, so applying now
+        would neither bind it nor be safe: ``set_session_interaction_mode``
+        appends a pinned instruction and bumps the history revision, which
+        would interleave with the messages the turn is still writing.
+        """
         import app.core.db as _db
 
         lead_id = uuid.uuid7()
@@ -595,7 +602,43 @@ class TestUpdateTeamSession:
         )
 
         assert response.status_code == 200
-        test_team.handle_stop.assert_awaited_once()
+        test_team.handle_stop.assert_not_awaited()
+        assert test_team.pending_interaction_mode == "plan"
+        # The persisted mode still reports what the running turn was
+        # authorised under; the queued switch is reported separately.
+        assert response.json()["interaction_mode"] == "code"
+        assert response.json()["pending_interaction_mode"] == "plan"
+
+        async with _db.async_session_factory() as db:
+            row = await db.get(ChatSession, lead_id)
+            assert row.interaction_mode == "code"
+
+    @pytest.mark.asyncio
+    async def test_update_session_mode_applies_immediately_when_idle(
+        self, app_with_team, test_team, tmp_path, monkeypatch
+    ):
+        import app.core.db as _db
+
+        lead_id = uuid.uuid7()
+        async with _db.async_session_factory() as db:
+            async with db.begin():
+                await _create_team_session(db, lead_id, workspace=str(tmp_path))
+
+        test_team.state = "idle"
+        test_team._has_active_turn = False
+        monkeypatch.setattr(
+            "app.services.agent_manager.find_live_session_serving_session",
+            lambda _session_id: test_team,
+        )
+
+        client = TestClient(app_with_team)
+        response = client.patch(
+            f"/api/agent/sessions/{lead_id}", json={"interaction_mode": "plan"}
+        )
+
+        assert response.status_code == 200
+        assert response.json()["interaction_mode"] == "plan"
+        assert response.json().get("pending_interaction_mode") is None
 
     @pytest.mark.asyncio
     async def test_update_session_title(self, app_with_team):

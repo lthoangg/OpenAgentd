@@ -198,6 +198,8 @@ export interface SessionResponse {
   workspace?: string | null
   workspace_hidden?: boolean
   interaction_mode?: SessionInteractionMode
+  /** Mode switch queued behind an active turn; applies when that turn closes. */
+  pending_interaction_mode?: SessionInteractionMode | null
   model?: string | null
   thinking_level?: string | null
   running?: boolean

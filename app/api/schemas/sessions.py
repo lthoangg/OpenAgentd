@@ -83,6 +83,10 @@ class SessionResponse(_ExcludeNoneModel):
     scheduled_task_name: str | None = None
     workspace: str
     interaction_mode: Literal["code", "plan"] = "code"
+    #: Set when a Plan/Code switch was requested while a turn was in flight.
+    #: ``interaction_mode`` still reports the mode the running turn was
+    #: authorised under; this is what it becomes when that turn closes.
+    pending_interaction_mode: Literal["code", "plan"] | None = None
     model: str | None = None
     thinking_level: str | None = None
     revert: dict | None = None

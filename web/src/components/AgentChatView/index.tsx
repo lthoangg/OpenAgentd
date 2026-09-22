@@ -174,6 +174,7 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
         leadName: s.leadName,
         sessionTitle: s.sessionTitle,
         sessionInteractionMode: s.sessionInteractionMode,
+        sessionPendingInteractionMode: s.sessionPendingInteractionMode,
         sessionModel: s.sessionModel,
         sessionThinkingLevel: s.sessionThinkingLevel,
         sessionFastMode: s.sessionFastMode,
@@ -211,6 +212,7 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
     leadName,
     sessionTitle,
     sessionInteractionMode,
+    sessionPendingInteractionMode,
     sessionModel,
     sessionThinkingLevel,
 
@@ -699,7 +701,11 @@ export function AgentChatView({ sessionId, workspace = null, codingSessionLoadin
                   : `Coding in ${workspaceName}`
             }
             capabilities={leadCapabilities}
-            interactionMode={sessionInteractionMode}
+            // A switch requested mid-turn is queued server-side, so the toggle
+            // shows what the user picked while the turn finishes under the old
+            // mode.
+            interactionMode={sessionPendingInteractionMode ?? sessionInteractionMode}
+            interactionModePending={sessionPendingInteractionMode !== null}
             onInteractionModeChange={(mode) => {
               setIsSwitchingInteractionMode(true)
               void useAgentStore.getState().setSessionInteractionMode(mode).finally(() => {

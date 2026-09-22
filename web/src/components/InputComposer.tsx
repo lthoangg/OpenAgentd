@@ -84,6 +84,8 @@ export interface InputComposerProps {
   autoFocus?: boolean
   capabilities?: AgentCapabilities
   interactionMode?: SessionInteractionMode
+  /** True while `interactionMode` is a queued switch waiting on the active turn. */
+  interactionModePending?: boolean
   onInteractionModeChange?: (mode: SessionInteractionMode) => void
   interactionModeDisabled?: boolean
   /**
@@ -173,6 +175,7 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
   autoFocus,
   capabilities,
   interactionMode = 'code',
+  interactionModePending = false,
   onInteractionModeChange,
   interactionModeDisabled = false,
   floating = false,
@@ -839,6 +842,7 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
       {!minimized && onInteractionModeChange && (
         <SessionModeToggle
           mode={interactionMode}
+          pending={interactionModePending}
           onChange={onInteractionModeChange}
           disabled={interactionModeDisabled}
         />

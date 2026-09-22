@@ -835,6 +835,17 @@ async def list_coding_workspace_tree(db: DbSession) -> CodingWorkspaceTreeRespon
     )
 
 
+def _pending_interaction_mode(session_id: UUID) -> str | None:
+    """Return a Plan/Code switch queued behind this session's active turn.
+
+    Lives on the live :class:`AgentSession` rather than the database: it only
+    matters for the lifetime of the turn it is waiting on, and that turn dies
+    with the process anyway.
+    """
+    live_session = agent_manager.find_live_session_serving_session(str(session_id))
+    return live_session.pending_interaction_mode if live_session else None
+
+
 @router.get("/sessions/{session_id}")
 async def get_agent_session_detail(
     session_id: UUID, db: DbSession
@@ -847,7 +858,10 @@ async def get_agent_session_detail(
     lead_resp = SessionResponse.model_validate(history.root_session).model_copy(
         update={
             "running": str(history.root_session.id)
-            in stream_store.running_session_ids()
+            in stream_store.running_session_ids(),
+            "pending_interaction_mode": _pending_interaction_mode(
+                history.root_session.id
+            ),
         }
     )
     return SessionDetailResponse(
@@ -861,10 +875,33 @@ async def update_agent_session(
     session_id: UUID, body: AgentSessionUpdateRequest, db: DbSession
 ) -> SessionResponse:
     """Update editable metadata for a top-level agent session."""
-    if body.interaction_mode is not None:
-        live_session = agent_manager.find_live_session_serving_session(str(session_id))
-        if live_session is not None and live_session.is_busy():
-            await live_session.handle_stop()
+    # A mode switch during an active turn is queued, not applied: the running
+    # turn snapshots its mode at turn start, and applying now would append the
+    # mode instruction mid-stream and interleave with the history the turn is
+    # still writing. The session applies it when the turn closes.
+    live_session = (
+        agent_manager.find_live_session_serving_session(str(session_id))
+        if body.interaction_mode is not None
+        else None
+    )
+    if live_session is not None and live_session.is_busy():
+        live_session.queue_interaction_mode(body.interaction_mode)
+        async with db.begin():
+            session = await db.get(ChatSession, session_id)
+            if session is None or session.parent_session_id is not None:
+                raise HTTPException(status_code=404, detail="Session not found.")
+            if body.title is not None:
+                title = body.title.strip()
+                if not title:
+                    raise HTTPException(status_code=422, detail="Title cannot be empty.")
+                session.title = title
+                db.add(session)
+        return SessionResponse.model_validate(session).model_copy(
+            update={
+                "running": str(session.id) in stream_store.running_session_ids(),
+                "pending_interaction_mode": body.interaction_mode,
+            }
+        )
 
     async with db.begin():
         session = await db.get(ChatSession, session_id)

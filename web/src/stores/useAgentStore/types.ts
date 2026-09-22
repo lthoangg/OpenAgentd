@@ -142,6 +142,13 @@ export interface AgentStoreState {
   parentSessionId: string | null
   sessionTitle: string | null
   sessionInteractionMode: SessionInteractionMode
+  /**
+   * Mode the user picked while a turn was in flight. The backend queues it
+   * rather than stopping the turn, so the toggle shows this as selected while
+   * `sessionInteractionMode` still reports what the running turn was
+   * authorised under.
+   */
+  sessionPendingInteractionMode: SessionInteractionMode | null
   sessionModel: string | null
   sessionThinkingLevel: string | null
   /** True while model/thinking settings are local overrides not yet confirmed by the server. */

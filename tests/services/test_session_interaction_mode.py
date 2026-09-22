@@ -14,6 +14,64 @@ from app.services.session_interaction_mode import (
 
 
 @pytest.mark.asyncio
+async def test_queued_mode_is_applied_when_the_turn_closes():
+    """A switch requested mid-turn lands once, after the turn has finished."""
+    from app.agent.agent_loop import Agent
+    from app.agent.session import AgentSession
+    from app.core.db import async_session_factory
+    from tests.agent.test_agent_run import MockProvider
+
+    async with async_session_factory() as db:
+        session = await create_chat_session(db, workspace="/workspace")
+        await db.commit()
+        session_id = session.id
+
+    agent = Agent(name="lead", llm_provider=MockProvider([]), system_prompt="Lead")
+    live = AgentSession(agent=agent, session_id=str(session_id))
+
+    live.queue_interaction_mode("plan")
+    assert live.pending_interaction_mode == "plan"
+
+    # Still untouched while the turn is notionally in flight.
+    async with async_session_factory() as db:
+        row = await db.get(type(session), session_id)
+        assert row.interaction_mode == "code"
+
+    await live._apply_pending_interaction_mode()
+
+    assert live.pending_interaction_mode is None
+    async with async_session_factory() as db:
+        row = await db.get(type(session), session_id)
+        assert row.interaction_mode == "plan"
+        # Exactly one pinned instruction, not one per poll.
+        llm_messages = await get_messages_for_llm(db, session_id)
+        assert sum("## Plan mode" in m.content for m in llm_messages) == 1
+
+
+@pytest.mark.asyncio
+async def test_applying_without_a_queued_mode_is_a_no_op():
+    from app.agent.agent_loop import Agent
+    from app.agent.session import AgentSession
+    from app.core.db import async_session_factory
+    from tests.agent.test_agent_run import MockProvider
+
+    async with async_session_factory() as db:
+        session = await create_chat_session(db, workspace="/workspace")
+        await db.commit()
+        session_id = session.id
+
+    agent = Agent(name="lead", llm_provider=MockProvider([]), system_prompt="Lead")
+    live = AgentSession(agent=agent, session_id=str(session_id))
+
+    await live._apply_pending_interaction_mode()
+
+    async with async_session_factory() as db:
+        row = await db.get(type(session), session_id)
+        assert row.interaction_mode == "code"
+        assert await get_messages_for_llm(db, session_id) == []
+
+
+@pytest.mark.asyncio
 async def test_default_code_mode_does_not_inject_synthetic_prompt():
     from app.core.db import async_session_factory
 

@@ -313,10 +313,6 @@ pub async fn app_use_external_backend(
     persist: Option<bool>,
 ) -> Result<AppBackendStatus, String> {
     let normalized = normalize_external_base_url(&base_url).map_err(|e| format!("{e:#}"))?;
-    wait_for_health(&normalized, 8, Duration::from_millis(250))
-        .await
-        .map_err(|e| format!("External backend is not reachable: {e:#}"))?;
-
     let state: tauri::State<'_, AppState> = app.state();
     state
         .window_backend_base_urls

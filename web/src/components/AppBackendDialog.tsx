@@ -92,9 +92,9 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
       if (accessKey.trim()) await setStoredAccessKey(accessKey, target)
       const next = await switchToExternalAppBackend(target, nextName, persist)
       await primeStoredAccessKey(next.base_url)
+      delete window.__OAD_TOKEN__
       setApiBaseUrl(next.base_url)
       installDesktopAuth()
-      delete window.__OAD_TOKEN__
       const nextBaseUrl = normalizeServerBaseUrl(next.base_url)
       const shouldReload = nextBaseUrl !== currentBaseUrl
       await refreshBackendQueries()
@@ -140,7 +140,7 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
 
   async function connectBundled() {
     const currentBaseUrl = normalizeServerBaseUrl(status?.base_url || apiBaseUrl().replace(/\/api$/, ''))
-    const next = await runConnectionSwitch(() => switchToBundledAppBackend())
+    const next = await runConnectionSwitch(() => switchToBundledAppBackend(), true)
     if (next?.base_url && normalizeServerBaseUrl(next.base_url) !== currentBaseUrl) {
       window.location.reload()
     }
@@ -185,7 +185,10 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
     }
   }
 
-  async function runConnectionSwitch(action: () => Promise<void>): Promise<AppBackendStatus | null> {
+  async function runConnectionSwitch(
+    action: () => Promise<void>,
+    applyAuth = false,
+  ): Promise<AppBackendStatus | null> {
     setPending(true)
     setError(null)
     try {
@@ -193,6 +196,10 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
       const next = await getAppBackendStatus()
       if (next?.base_url) {
         setApiBaseUrl(next.base_url)
+        if (applyAuth) {
+          await primeStoredAccessKey(next.base_url)
+          installDesktopAuth()
+        }
       }
       await refreshBackendQueries()
       setStatus(next)
@@ -234,7 +241,7 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
                 <SectionCardRow>
                   <button
                     type="button"
-                    onClick={() => {}}
+                    onClick={() => { editServer('', '') }}
                     className="flex min-w-0 flex-1 items-center gap-2 rounded-xs text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40"
                     disabled={pending}
                   >

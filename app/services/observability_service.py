@@ -32,7 +32,13 @@ from loguru import logger
 
 _CACHE_BUCKET_SECONDS = 5
 _CACHE_MAXSIZE = 64
-FileSignatures = tuple[tuple[str, int, int], ...]
+#: Per-file cache key: ``(path, size, mtime_ns, inode)``.
+#:
+#: The inode is what makes rotation detectable. Filesystems quantise mtime
+#: (commonly to milliseconds), so replacing a span file with a same-size file
+#: inside one tick leaves path, size, and mtime_ns all identical. ``os.replace``
+#: always yields a fresh inode, so it catches the swap the clock cannot.
+FileSignatures = tuple[tuple[str, int, int, int], ...]
 
 
 @dataclass(frozen=True)
@@ -248,13 +254,13 @@ def _cache_context(days: int) -> tuple[int, str, FileSignatures]:
     now = datetime.now(timezone.utc)
     spans_dir = _spans_dir()
     files = _candidate_files(now - timedelta(days=days))
-    signatures: list[tuple[str, int, int]] = []
+    signatures: list[tuple[str, int, int, int]] = []
     for path in files:
         try:
             stat = path.stat()
         except FileNotFoundError:
             continue
-        signatures.append((str(path), stat.st_size, stat.st_mtime_ns))
+        signatures.append((str(path), stat.st_size, stat.st_mtime_ns, stat.st_ino))
     return (
         int(now.timestamp()) // _CACHE_BUCKET_SECONDS,
         str(spans_dir),
@@ -263,7 +269,7 @@ def _cache_context(days: int) -> tuple[int, str, FileSignatures]:
 
 
 def _signature_paths(signatures: FileSignatures) -> list[Path]:
-    return [Path(path) for path, _size, _mtime_ns in signatures]
+    return [Path(path) for path, _size, _mtime_ns, _inode in signatures]
 
 
 def _percent(part: int | float, total: int | float) -> float:

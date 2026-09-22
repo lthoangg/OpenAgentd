@@ -128,7 +128,7 @@ function SidebarRow({
       {count !== undefined && count !== null && (
         <span
           className={cn(
-            'shrink-0 font-mono text-[10px] tabular-nums px-1.5 py-0.5 rounded-xs border transition-colors',
+            'shrink-0 font-mono text-xs md:text-[10px] tabular-nums px-1.5 py-0.5 rounded-xs border transition-colors',
             active
               ? 'font-semibold text-(--color-text) bg-(--bg-page) border-(--color-border-strong)'
               : 'text-(--color-text-muted) bg-(--bg-key)/50 border-(--color-border)',
@@ -143,7 +143,7 @@ function SidebarRow({
 
 function GroupLabel({ children }: { children: string }) {
   return (
-    <p className="px-4 pt-3 pb-1 font-mono text-[10px] font-bold tracking-wider text-(--color-text-subtle)/85 uppercase select-none">
+    <p className="px-4 pt-3 pb-1 font-mono text-xs md:text-[10px] font-bold tracking-wider text-(--color-text-subtle)/85 uppercase select-none">
       {children}
     </p>
   )

@@ -265,7 +265,7 @@ export function MemorySettingsPage() {
         {/* Left pane: File list */}
         <div className="flex w-full md:w-60 lg:w-64 shrink-0 flex-col border-b md:border-b-0 md:border-r border-(--color-border) bg-(--bg-sidebar)">
           <div className="flex h-8.5 shrink-0 items-center justify-between border-b border-(--color-border)/60 bg-(--bg-key)/30 px-3 select-none">
-            <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-(--color-text-subtle)">
+            <span className="font-mono text-xs md:text-[10px] font-bold uppercase tracking-wider text-(--color-text-subtle)">
               Pages ({treeData?.pages.length ?? 0})
             </span>
             <Tooltip>
@@ -349,13 +349,13 @@ export function MemorySettingsPage() {
                   {fileData?.etag && (
                     <span
                       title={`ETag: ${fileData.etag}`}
-                      className="shrink-0 rounded-xs border border-(--color-border) bg-(--bg-key) px-1.5 py-0.5 font-mono text-[10px] text-(--color-text-subtle) select-none"
+                      className="shrink-0 rounded-xs border border-(--color-border) bg-(--bg-key) px-1.5 py-0.5 font-mono text-xs md:text-[10px] text-(--color-text-subtle) select-none"
                     >
                       {fileData.etag.slice(1, 9)}...
                     </span>
                   )}
                   {isDirty && (
-                    <span className="hidden items-center gap-1 font-mono text-[10px] text-(--color-text-muted) sm:inline-flex">
+                    <span className="hidden items-center gap-1 font-mono text-xs md:text-[10px] text-(--color-text-muted) sm:inline-flex">
                       <span
                         className="h-1.5 w-1.5 rounded-full bg-(--color-text) animate-pulse"
                         aria-hidden="true"

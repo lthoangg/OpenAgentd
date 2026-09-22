@@ -379,7 +379,7 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
         </span>
 
         {elapsedMs !== undefined && (
-          <span className="shrink-0 font-mono text-[10px] text-(--color-text-muted)">{formatDuration(elapsedMs)}</span>
+          <span className="shrink-0 font-mono text-xs md:text-[10px] text-(--color-text-muted)">{formatDuration(elapsedMs)}</span>
         )}
 
         {hasDetails && (
@@ -422,7 +422,7 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
                   {formattedArgs && (
                     <div>
                       <div onClick={() => setManualExpanded(false)} className="group/result-header flex cursor-pointer items-center justify-between gap-3 border-b border-(--color-border) bg-(--bg-sidebar) py-0.5 pr-1.5 pl-3 transition-colors hover:text-(--color-text)">
-                        <span className="font-mono text-[10px] font-semibold uppercase tracking-wider text-(--color-text-muted) transition-colors group-hover/result-header:text-(--color-text)">
+                        <span className="font-mono text-xs md:text-[10px] font-semibold uppercase tracking-wider text-(--color-text-muted) transition-colors group-hover/result-header:text-(--color-text)">
                           {isShellTerminal ? 'terminal' : 'arguments'}
                         </span>
                         <Tooltip>
@@ -476,7 +476,7 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
                   {shownLiveOutput && !isShellTerminal && (
                     <div>
                       <div onClick={() => setManualExpanded(false)} className={`group/result-header flex cursor-pointer items-center justify-between gap-3 border-b border-(--color-border) bg-(--bg-sidebar) py-0.5 pr-1.5 pl-3 transition-colors hover:text-(--color-text) ${formattedArgs ? 'border-t' : ''}`}>
-                        <span className="font-mono text-[10px] font-semibold uppercase tracking-wider text-(--color-text-muted) transition-colors group-hover/result-header:text-(--color-text)">
+                        <span className="font-mono text-xs md:text-[10px] font-semibold uppercase tracking-wider text-(--color-text-muted) transition-colors group-hover/result-header:text-(--color-text)">
                           output
                         </span>
                       </div>
@@ -500,7 +500,7 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
                     ) : (
                       <div>
                         <div onClick={() => setManualExpanded(false)} className={`group/result-header flex cursor-pointer items-center justify-between gap-3 border-b border-(--color-border) bg-(--bg-sidebar) py-0.5 pr-1.5 pl-3 transition-colors hover:text-(--color-text) ${formattedArgs || shownLiveOutput ? 'border-t' : ''}`}>
-                          <span className="font-mono text-[10px] font-semibold uppercase tracking-wider text-(--color-text-muted) transition-colors group-hover/result-header:text-(--color-text)">
+                          <span className="font-mono text-xs md:text-[10px] font-semibold uppercase tracking-wider text-(--color-text-muted) transition-colors group-hover/result-header:text-(--color-text)">
                             result
                           </span>
                           {resultCopyButton}

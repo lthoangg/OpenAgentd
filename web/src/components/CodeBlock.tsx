@@ -56,7 +56,7 @@ export function CodeBlock({ children, language, rawText, noHeader = false }: Cod
     <div className="surface-raised group relative my-1.5 overflow-hidden border border-(--color-border) bg-(--bg-card)">
       {language ? (
         <div className="flex items-center justify-between gap-3 border-b border-(--color-border) bg-(--bg-key) py-0.5 pr-1.5 pl-3">
-          <span className="font-mono text-[10px] font-semibold uppercase tracking-wider text-(--color-text-muted)">
+          <span className="font-mono text-xs md:text-[10px] font-semibold uppercase tracking-wider text-(--color-text-muted)">
             {language}
           </span>
           {copyButton}

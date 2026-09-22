@@ -88,7 +88,7 @@ export const SidebarItem = memo(function SidebarItem({
         (rightSlot !== undefined ? (
           rightSlot
         ) : kbd ? (
-          <kbd className="shrink-0 rounded-xs border border-(--color-border) bg-(--bg-page) px-1 py-0.5 font-mono text-[10px] text-(--color-text-subtle)">
+          <kbd className="shrink-0 rounded-xs border border-(--color-border) bg-(--bg-page) px-1 py-0.5 font-mono text-xs md:text-[10px] text-(--color-text-subtle)">
             {renderKbd(kbd)}
           </kbd>
         ) : null)}

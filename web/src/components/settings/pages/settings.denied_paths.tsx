@@ -177,17 +177,17 @@ function DeniedPathsHelpPopover() {
         <ul className="flex flex-col gap-1.5">
           {EXAMPLES.map((ex) => (
             <li key={ex.pattern} className="flex flex-col gap-0.5">
-              <code className="self-start rounded-sm bg-(--bg-key) px-1.5 py-0.5 font-mono text-[10px] text-(--color-text)">
+              <code className="self-start rounded-sm bg-(--bg-key) px-1.5 py-0.5 font-mono text-xs md:text-[10px] text-(--color-text)">
                 {ex.pattern}
               </code>
-              <span className="text-[10px] leading-snug text-(--color-text-muted)">
+              <span className="text-xs md:text-[10px] leading-snug text-(--color-text-muted)">
                 {ex.description}
               </span>
             </li>
           ))}
         </ul>
 
-        <p className="border-t border-(--color-border) pt-2 text-[10px] leading-snug text-(--color-text-muted)">
+        <p className="border-t border-(--color-border) pt-2 text-xs md:text-[10px] leading-snug text-(--color-text-muted)">
           Built-in DB / state / cache paths are always denied; matching is
           logical-OR across patterns: one match blocks access.
         </p>

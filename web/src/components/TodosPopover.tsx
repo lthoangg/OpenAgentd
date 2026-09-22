@@ -161,7 +161,7 @@ export function TodosPopover({
         {todos.length > 0 && (
           <span
             className={cn(
-              'font-mono text-[10px] tabular-nums text-(--color-text-subtle)',
+              'font-mono text-xs md:text-[10px] tabular-nums text-(--color-text-subtle)',
               allDone && 'text-(--color-success)',
             )}
           >
@@ -238,7 +238,7 @@ export function TodosPopover({
                       render={
                         <div
                           className={cn(
-                            'truncate text-[12px] leading-4',
+                            'truncate text-xs leading-4',
                             isStruck
                               ? 'text-(--color-text-subtle) line-through decoration-(--color-text-subtle)/40'
                               : isInProgress

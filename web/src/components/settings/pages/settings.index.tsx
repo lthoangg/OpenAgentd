@@ -106,7 +106,7 @@ function UpdateSettingsCard() {
             </button>
           ) : null}
         </div>
-        <span className="rounded-xs bg-(--bg-key) px-1.5 py-0.5 text-[10px] font-semibold text-(--color-text-muted) border border-(--color-border) select-none">{title}</span>
+        <span className="rounded-xs bg-(--bg-key) px-1.5 py-0.5 text-xs md:text-[10px] font-semibold text-(--color-text-muted) border border-(--color-border) select-none">{title}</span>
       </div>
 
       <div className="mt-4 flex flex-wrap justify-end gap-2">
@@ -188,7 +188,7 @@ export function SettingsHubPage() {
           </span>
           <div>
             <h1 className="text-xs font-semibold text-(--color-text)">About openagentd</h1>
-            <p className="text-[10px] font-mono text-(--color-text-subtle)">
+            <p className="text-xs md:text-[10px] font-mono text-(--color-text-subtle)">
               {version
                 ? `On-machine AI assistant · v${version}`
                 : 'On-machine AI assistant'}

@@ -26,7 +26,7 @@ export function SummaryView({ data }: { data: ObservabilitySummary }) {
           <p className="text-xs text-(--color-text-2)">
             Spans are sampled at <strong>{Math.round(data.sample_ratio * 100)}%</strong>.
             Figures for non-error, non-slow spans are approximate. Set{' '}
-            <code className="rounded-sm bg-(--bg-card) px-1 py-0.5 text-[10px]">
+            <code className="rounded-sm bg-(--bg-card) px-1 py-0.5 text-xs md:text-[10px]">
               OTEL_SPAN_SAMPLE_RATIO=1.0
             </code>{' '}
             to disable sampling.

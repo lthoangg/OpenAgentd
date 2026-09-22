@@ -241,22 +241,22 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
 
         <div className="hidden flex-1 sm:block" />
 
-        <span className="rounded-xs border border-(--color-border) bg-(--bg-key) px-1.5 py-0.5 text-[9px] font-semibold text-(--color-text-muted)">
+        <span className="rounded-xs border border-(--color-border) bg-(--bg-key) px-1.5 py-0.5 text-[11px] md:text-[9px] font-semibold text-(--color-text-muted)">
           {providerKindLabel(provider.kind)}
         </span>
 
         {isConfiguredButUnreachable ? (
-          <span className="inline-flex items-center gap-1 rounded-xs bg-(--color-error-subtle) px-1.5 py-0.5 text-[9px] font-semibold text-(--color-error) border border-(--color-error)/15">
+          <span className="inline-flex items-center gap-1 rounded-xs bg-(--color-error-subtle) px-1.5 py-0.5 text-[11px] md:text-[9px] font-semibold text-(--color-error) border border-(--color-error)/15">
             <AlertCircle size={10} aria-hidden="true" />
             Failed
           </span>
         ) : provider.is_disconnected ? (
-          <span className="inline-flex items-center gap-1 rounded-xs bg-(--bg-key) px-1.5 py-0.5 text-[9px] font-semibold text-(--color-text-muted) border border-(--color-border)">
+          <span className="inline-flex items-center gap-1 rounded-xs bg-(--bg-key) px-1.5 py-0.5 text-[11px] md:text-[9px] font-semibold text-(--color-text-muted) border border-(--color-border)">
             <WifiOff size={10} aria-hidden="true" />
             Hidden
           </span>
         ) : isConnected ? (
-          <span className="inline-flex items-center gap-1 rounded-xs bg-(--color-success-subtle) px-1.5 py-0.5 text-[9px] font-semibold text-(--color-success) border border-(--color-success)/15">
+          <span className="inline-flex items-center gap-1 rounded-xs bg-(--color-success-subtle) px-1.5 py-0.5 text-[11px] md:text-[9px] font-semibold text-(--color-success) border border-(--color-success)/15">
             <CheckCircle2 size={10} aria-hidden="true" />
             Connected
           </span>
@@ -335,7 +335,7 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
           </div>
           {daemon && (
             <label className="block">
-              <span className="text-[10.5px] font-medium text-(--color-text-muted)">Base URL (optional)</span>
+              <span className="text-xs md:text-[10px] font-medium text-(--color-text-muted)">Base URL (optional)</span>
               <Input
                 type="url"
                 value={baseUrl}
@@ -348,17 +348,17 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
             </label>
           )}
           {hasCandidateKey && !hasVerifiedKey && (
-            <p className="text-[10.5px] text-(--color-text-subtle) leading-normal">
+            <p className="text-xs md:text-[10px] text-(--color-text-subtle) leading-normal">
               Click <span className="font-medium text-(--color-text)">List models</span> to verify this key before saving.
             </p>
           )}
           {!hasCandidateKey && provider.public_access && !provider.is_configured && (
-            <p className="text-[10.5px] text-(--color-text-subtle) leading-normal">
+            <p className="text-xs md:text-[10px] text-(--color-text-subtle) leading-normal">
               Free models are available without an API key. Add a key to use paid models.
             </p>
           )}
           {!hasCandidateKey && provider.is_configured && (
-            <p className="text-[10.5px] text-(--color-text-subtle) leading-normal">
+            <p className="text-xs md:text-[10px] text-(--color-text-subtle) leading-normal">
               Key saved. Type a new one above only if you want to replace it.
             </p>
           )}
@@ -481,7 +481,7 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
               Save
             </Button>
           </div>
-          <p className="text-[10.5px] text-(--color-text-subtle) leading-normal">
+          <p className="text-xs md:text-[10px] text-(--color-text-subtle) leading-normal">
             Leave blank to use the default daemon at <span className="font-mono text-(--color-text)">{daemon.placeholder}</span>.
           </p>
         </div>
@@ -493,7 +493,7 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
           <div className="grid gap-2 sm:grid-cols-2">
             {provider.credentials.map((credential) => (
               <label key={credential.name} className="block">
-                <span className="text-[10.5px] font-medium text-(--color-text-muted)">{credential.label}</span>
+                <span className="text-xs md:text-[10px] font-medium text-(--color-text-muted)">{credential.label}</span>
                 <Input
                   type={credential.secret ? 'password' : 'text'}
                   value={cloudValues[credential.name] ?? provider.saved_credentials[credential.name] ?? ''}
@@ -533,12 +533,12 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
             </Button>
           </div>
           {hasCloudCandidate && !hasVerifiedCloud && (
-            <p className="text-[10.5px] text-(--color-text-subtle) leading-normal">
+            <p className="text-xs md:text-[10px] text-(--color-text-subtle) leading-normal">
               Click <span className="font-medium text-(--color-text)">List models</span> to verify these credentials before saving.
             </p>
           )}
           {!hasCloudCandidate && provider.is_configured && (
-            <p className="text-[10.5px] text-(--color-text-subtle) leading-normal">
+            <p className="text-xs md:text-[10px] text-(--color-text-subtle) leading-normal">
               Credentials saved. Type new values above only if you want to replace them.
             </p>
           )}
@@ -547,7 +547,7 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
 
       {/* ── Detected providers (local without base URL) ─────────────── */}
       {provider.kind !== 'api_key' && provider.kind !== 'oauth' && provider.kind !== 'cloud_creds' && !daemon && (
-        <p className="text-[10.5px] text-(--color-text-subtle) leading-normal">
+        <p className="text-xs md:text-[10px] text-(--color-text-subtle) leading-normal">
           Detected from local environment or system credentials.
         </p>
       )}

@@ -274,7 +274,7 @@ export function ModelCombobox({
                     >
                       <span className="min-w-0 truncate">{o.id}</span>
                       {o.vision && (
-                        <span className="shrink-0 text-[10px] text-(--color-text-muted)">
+                        <span className="shrink-0 text-xs md:text-[10px] text-(--color-text-muted)">
                           vision
                         </span>
                       )}

@@ -205,7 +205,7 @@ export function InputComposerSuggestions({
 
   const categoryBadge = (category?: string) =>
     category ? (
-      <span className="shrink-0 rounded-xs border border-(--color-border) bg-(--bg-key) px-1.5 py-0.5 font-mono text-[10px] text-(--color-text-muted)">
+      <span className="shrink-0 rounded-xs border border-(--color-border) bg-(--bg-key) px-1.5 py-0.5 font-mono text-xs md:text-[10px] text-(--color-text-muted)">
         {category}
       </span>
     ) : null
@@ -223,7 +223,7 @@ export function InputComposerSuggestions({
         {menu.kind === 'slash' && menu.rows.map((cmd) => {
           if (cmd.isSeparator) {
             return (
-              <div key={cmd.id} className="px-2 pt-2.5 pb-1 text-[10px] font-semibold uppercase tracking-wide text-(--color-text-muted)">{cmd.label}</div>
+              <div key={cmd.id} className="px-2 pt-2.5 pb-1 text-xs md:text-[10px] font-semibold uppercase tracking-wide text-(--color-text-muted)">{cmd.label}</div>
             )
           }
           const idx = menu.selectable.findIndex((item) => item.id === cmd.id)

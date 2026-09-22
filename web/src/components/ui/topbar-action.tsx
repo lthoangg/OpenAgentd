@@ -55,7 +55,7 @@ export const TopbarAction = forwardRef<HTMLButtonElement, TopbarActionProps>(
           <span className={cn(hideLabelOnMobile && 'hidden md:inline')}>{label}</span>
         )}
         {badge && (
-          <span className="font-mono text-[10px] text-(--color-text-muted)">{badge}</span>
+          <span className="font-mono text-xs md:text-[10px] text-(--color-text-muted)">{badge}</span>
         )}
         {indicator && (
           <span

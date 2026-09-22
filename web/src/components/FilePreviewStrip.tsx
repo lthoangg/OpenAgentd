@@ -280,7 +280,7 @@ function TextCard({ file, onRemove, onOpen }: Omit<CardProps, 'blobUrl'> & { blo
             <TooltipContent>{file.name}</TooltipContent>
           </Tooltip>
         </div>
-        <pre className="h-[68px] overflow-hidden whitespace-pre-wrap break-all px-2 py-1.5 font-mono text-[10px] leading-relaxed text-(--color-text-muted) select-none">
+        <pre className="h-[68px] overflow-hidden whitespace-pre-wrap break-all px-2 py-1.5 font-mono text-xs md:text-[10px] leading-relaxed text-(--color-text-muted) select-none">
           {snippet ?? ''}
         </pre>
       </button>

@@ -263,7 +263,7 @@ function PaletteOverlay({ commands, onClose, workspaceFiles = [], filesTruncated
                   return (
                     <p
                       key={`h-${i}`}
-                      className="px-2.5 pb-1 pt-2 font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-(--color-text-subtle) select-none"
+                      className="px-2.5 pb-1 pt-2 font-mono text-xs md:text-[10px] font-semibold uppercase tracking-[0.08em] text-(--color-text-subtle) select-none"
                     >
                       {row.label}
                     </p>
@@ -296,11 +296,11 @@ function PaletteOverlay({ commands, onClose, workspaceFiles = [], filesTruncated
           </div>
 
           <div className="flex items-center gap-2 border-t border-(--color-border) bg-(--bg-sidebar) px-3 py-2">
-            <kbd className="rounded-xs border border-(--color-border) bg-(--bg-card) px-1 py-0.5 font-mono text-[10px] text-(--color-text-muted)">↑↓</kbd>
+            <kbd className="rounded-xs border border-(--color-border) bg-(--bg-card) px-1 py-0.5 font-mono text-xs md:text-[10px] text-(--color-text-muted)">↑↓</kbd>
             <span className="text-xs text-(--color-text-muted)">navigate</span>
-            <kbd className="rounded-xs border border-(--color-border) bg-(--bg-card) px-1 py-0.5 font-mono text-[10px] text-(--color-text-muted)">↵</kbd>
+            <kbd className="rounded-xs border border-(--color-border) bg-(--bg-card) px-1 py-0.5 font-mono text-xs md:text-[10px] text-(--color-text-muted)">↵</kbd>
             <span className="text-xs text-(--color-text-muted)">run</span>
-            <kbd className="rounded-xs border border-(--color-border) bg-(--bg-card) px-1 py-0.5 font-mono text-[10px] text-(--color-text-muted)">Esc</kbd>
+            <kbd className="rounded-xs border border-(--color-border) bg-(--bg-card) px-1 py-0.5 font-mono text-xs md:text-[10px] text-(--color-text-muted)">Esc</kbd>
             <span className="text-xs text-(--color-text-muted)">close</span>
             {hasFiles && filesTruncated && (
               <Tooltip className="ml-auto min-w-0">
@@ -344,7 +344,7 @@ function FileRow({ file, idx, isActive, onRun, onActivate }: FileRowProps) {
         </span>
         {file.path !== file.name && (
           <span
-            className="block truncate font-mono text-[10.5px] text-(--color-text-muted)"
+            className="block truncate font-mono text-xs md:text-[10px] text-(--color-text-muted)"
             title={file.path}
           >
             {file.path}
@@ -387,7 +387,7 @@ function CommandRow({ cmd, idx, isActive, onRun, onActivate }: CommandRowProps) 
       </div>
       <div className="flex shrink-0 items-center gap-2">
         {cmd.shortcut && (
-          <kbd className="rounded-xs border border-(--color-border) bg-(--bg-card) px-1.5 py-0.5 font-mono text-[10px] text-(--color-text-muted)">
+          <kbd className="rounded-xs border border-(--color-border) bg-(--bg-card) px-1.5 py-0.5 font-mono text-xs md:text-[10px] text-(--color-text-muted)">
             {cmd.shortcut}
           </kbd>
         )}

@@ -81,7 +81,7 @@ export function SpanDetailPanel({
 
         {tokens.length > 0 && (
           <>
-            <h4 className="mb-2 mt-5 text-[10px] font-semibold uppercase tracking-wide text-(--color-text-muted)">
+            <h4 className="mb-2 mt-5 text-xs md:text-[10px] font-semibold uppercase tracking-wide text-(--color-text-muted)">
               Token usage
             </h4>
             <div className="grid grid-cols-2 gap-2">
@@ -90,7 +90,7 @@ export function SpanDetailPanel({
                   key={t.label}
                   className="rounded-sm border border-(--color-border) bg-(--bg-card) p-2"
                 >
-                  <p className="text-[9px] uppercase tracking-wide text-(--color-text-muted)">
+                  <p className="text-[11px] md:text-[9px] uppercase tracking-wide text-(--color-text-muted)">
                     {t.label}
                   </p>
                   <p className="mt-0.5 text-sm font-semibold tabular-nums text-(--color-text)">
@@ -104,21 +104,21 @@ export function SpanDetailPanel({
 
         {estimatedCost !== null && (
           <>
-            <h4 className="mb-2 mt-5 text-[10px] font-semibold uppercase tracking-wide text-(--color-text-muted)">
+            <h4 className="mb-2 mt-5 text-xs md:text-[10px] font-semibold uppercase tracking-wide text-(--color-text-muted)">
               Estimated cost
             </h4>
             <div className="rounded-sm border border-(--color-border) bg-(--bg-card) p-3">
               <p className="text-lg font-semibold tabular-nums text-(--color-text)">
                 {formatUsd(estimatedCost)}
               </p>
-              <p className="mt-1 text-[10px] text-(--color-text-muted)">
+              <p className="mt-1 text-xs md:text-[10px] text-(--color-text-muted)">
                 Based on registry pricing and provider usage tokens.
               </p>
             </div>
           </>
         )}
 
-        <h4 className="mb-2 mt-5 text-[10px] font-semibold uppercase tracking-wide text-(--color-text-muted)">
+        <h4 className="mb-2 mt-5 text-xs md:text-[10px] font-semibold uppercase tracking-wide text-(--color-text-muted)">
           Attributes
         </h4>
         {attrs.length === 0 ? (

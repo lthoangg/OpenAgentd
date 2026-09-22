@@ -6,12 +6,20 @@
  * `text-[10px]`, `text-[9px]`) and six icon sizes (11 through 16). That is what
  * made the surface feel unfinished rather than deliberately dense.
  *
- * Three type steps, one icon size. Import these instead of writing raw
+ * Two type steps, one icon size. Import these instead of writing raw
  * arbitrary-value classes:
  *
  *   step 1 (12px / text-xs)  - titles, labels, body copy. The default.
  *   step 2 (11px)            - hints, errors, secondary metadata.
- *   step 3 (10.5px)          - section header strips only (see SectionCardHeader).
+ *
+ * Anything below 11px is legible only on a pointer-precision screen, so those
+ * sizes are always written as a responsive pair with a mobile floor rather
+ * than as a bare arbitrary value:
+ *
+ *   text-xs md:text-[10px]   - dense metadata (12px on phones, 10px on desktop).
+ *   text-[11px] md:text-[9px] - micro badges (11px on phones, 9px on desktop).
+ *
+ * Every size in the app is a whole pixel; there is no 9.5/10.5/11.5 step.
  */
 
 /** Single icon size for every glyph in settings. */

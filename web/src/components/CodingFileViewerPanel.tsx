@@ -560,7 +560,7 @@ export function DiffPreview({ diff }: { diff: string }) {
                 <div className="sticky left-0 z-[1] shrink-0 border-r border-(--color-border)/40 bg-inherit">
                   <span className="block w-9 py-0.5" />
                 </div>
-                <span className="px-3 py-0.5 text-[10px] italic text-(--color-text-subtle)">
+                <span className="px-3 py-0.5 text-xs md:text-[10px] italic text-(--color-text-subtle)">
                   {p.text}
                 </span>
               </div>
@@ -581,7 +581,7 @@ export function DiffPreview({ diff }: { diff: string }) {
                 <div className="sticky left-0 z-[1] shrink-0 border-r border-(--color-border)/40 bg-inherit">
                   <span className="block w-9 py-0.5" />
                 </div>
-                <span className="px-3 py-0.5 text-[10px] italic text-(--color-text-subtle)">
+                <span className="px-3 py-0.5 text-xs md:text-[10px] italic text-(--color-text-subtle)">
                   {p.skipped} line{p.skipped === 1 ? '' : 's'} unchanged
                 </span>
               </div>
@@ -600,7 +600,7 @@ export function DiffPreview({ diff }: { diff: string }) {
                 isRemoved && 'bg-(--color-diff-del-bg) text-(--color-diff-del-text)',
               )}
             >
-              <div className="sticky left-0 z-[1] flex shrink-0 select-none border-r border-(--color-border)/40 bg-inherit text-right text-[10px] text-(--color-text-subtle)">
+              <div className="sticky left-0 z-[1] flex shrink-0 select-none border-r border-(--color-border)/40 bg-inherit text-right text-xs md:text-[10px] text-(--color-text-subtle)">
                 <span className="w-9 py-0.5 pr-1.5">{p.lineNo}</span>
               </div>
               <pre className="m-0 min-w-0 flex-1 whitespace-pre-wrap break-words px-2 py-0.5 [overflow-wrap:anywhere]">{p.text}</pre>
@@ -693,9 +693,9 @@ export function CodingFileViewerPanel({
         )}
         <header className="flex shrink-0 items-center justify-between gap-3 border-b border-(--color-border) px-3 py-3">
           <div className="min-w-0 flex-1">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-(--color-text-subtle)">File</p>
+            <p className="text-xs md:text-[10px] font-semibold uppercase tracking-[0.14em] text-(--color-text-subtle)">File</p>
             <p className="mt-1 truncate font-mono text-xs text-(--color-text)">{file.path}</p>
-            <p className="mt-0.5 text-[10px] text-(--color-text-subtle)">{formatBytes(file.size)} · {file.mime}</p>
+            <p className="mt-0.5 text-xs md:text-[10px] text-(--color-text-subtle)">{formatBytes(file.size)} · {file.mime}</p>
           </div>
           <div className="flex shrink-0 items-center gap-1">
             <Tooltip>

@@ -124,7 +124,7 @@ export function SchedulerPanel({
                       : 'Scheduled Tasks'}
                 </h2>
                 {tasks.length > 0 && (!isMobile || mobilePane === 'list') && (
-                  <span className="rounded-full bg-(--bg-key) px-1.5 py-0.2 font-mono text-[10px] font-semibold text-(--color-text-subtle)">
+                  <span className="rounded-full bg-(--bg-key) px-1.5 py-0.2 font-mono text-xs md:text-[10px] font-semibold text-(--color-text-subtle)">
                     {tasks.length}
                   </span>
                 )}

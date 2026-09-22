@@ -37,7 +37,7 @@ function FilterChip({
       disabled={disabled}
       className={cn(
         'inline-flex min-h-10 items-center gap-1 rounded-xs border px-2 sm:min-h-6',
-        'text-[10.5px] font-medium transition-colors select-none',
+        'text-xs md:text-[10px] font-medium transition-colors select-none',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40',
         active
           ? 'border-(--color-border-strong) bg-(--bg-key) text-(--color-text)'
@@ -160,7 +160,7 @@ export function ProvidersSettingsPage() {
         <KeyRound size={13} className="shrink-0 text-(--color-text-muted)" aria-hidden="true" />
         <h1 className="truncate text-xs font-semibold text-(--color-text)">Providers</h1>
         <div className="min-w-1 flex-1" />
-        <span className="hidden shrink-0 text-[10px] font-medium text-(--color-text-subtle) sm:inline">
+        <span className="hidden shrink-0 text-xs md:text-[10px] font-medium text-(--color-text-subtle) sm:inline">
           {connectedCount} connected
         </span>
       </header>

@@ -336,7 +336,7 @@ function OptionRow({
         <span className="block text-xs leading-relaxed text-(--color-text)">
           {plainLabel ? label : <InlineMarkdown text={label} variant="code" />}
           {recommended && (
-            <span className="ml-1.5 rounded-xs bg-(--bg-key) px-1 py-0.5 text-[10px] text-(--color-text-muted)">
+            <span className="ml-1.5 rounded-xs bg-(--bg-key) px-1 py-0.5 text-xs md:text-[10px] text-(--color-text-muted)">
               Recommended
             </span>
           )}

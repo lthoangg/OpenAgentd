@@ -385,7 +385,7 @@ export function MermaidBlock({ source, highlightedCode }: MermaidBlockProps) {
       <Tabs value={view} onValueChange={setView} className="gap-0">
         <div className="flex items-center justify-between gap-3 border-b border-(--color-border) bg-(--bg-key) py-0.5 pr-1.5 pl-3">
           <div className="flex items-center gap-2">
-            <span className="font-mono text-[10px] font-semibold uppercase tracking-wider text-(--color-text-muted)">
+            <span className="font-mono text-xs md:text-[10px] font-semibold uppercase tracking-wider text-(--color-text-muted)">
               Mermaid
             </span>
             <TabsList aria-label="Mermaid block view" className="h-6 border-0 bg-transparent p-0">

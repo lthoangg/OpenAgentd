@@ -18,7 +18,7 @@ export function Stat({
 }) {
   return (
     <div className="rounded-sm border border-(--color-border) bg-(--bg-card) p-3">
-      <p className="text-[10px] uppercase tracking-wide text-(--color-text-muted)">
+      <p className="text-xs md:text-[10px] uppercase tracking-wide text-(--color-text-muted)">
         {label}
       </p>
       <p
@@ -51,7 +51,7 @@ export function Table({
             {headers.map((h, i) => (
               <th
                 key={h}
-                className={`px-3 py-1.5 font-semibold text-[10px] uppercase tracking-wider text-(--color-text-muted) ${
+                className={`px-3 py-1.5 font-semibold text-xs md:text-[10px] uppercase tracking-wider text-(--color-text-muted) ${
                   align[i] === 'right' ? 'text-right' : 'text-left'
                 }`}
               >
@@ -103,7 +103,7 @@ export function Th({
 }) {
   return (
     <th
-      className={`px-3 py-1.5 font-semibold text-[10px] uppercase tracking-wider text-(--color-text-muted) ${
+      className={`px-3 py-1.5 font-semibold text-xs md:text-[10px] uppercase tracking-wider text-(--color-text-muted) ${
         align === 'right' ? 'text-right' : 'text-left'
       }`}
     >
@@ -128,7 +128,7 @@ export function Td({
       className={`px-3 py-2 tabular-nums ${
         align === 'right' ? 'text-right' : 'text-left'
       } ${muted ? 'text-(--color-text-muted)' : 'text-(--color-text-2)'} ${
-        mono ? 'font-mono text-[10.5px]' : ''
+        mono ? 'font-mono text-xs md:text-[10px]' : ''
       }`}
     >
       {children}

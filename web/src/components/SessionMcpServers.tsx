@@ -172,7 +172,7 @@ export function SessionMcpServers({ agentServers, onServersChanged }: SessionMcp
   return (
     <section className="border-t border-(--color-border)">
       <div className="flex items-center justify-between gap-2 px-3 pt-3 pb-1.5 sm:px-5">
-        <h3 className="text-[10px] font-semibold uppercase tracking-widest text-(--color-text-muted)">
+        <h3 className="text-xs md:text-[10px] font-semibold uppercase tracking-widest text-(--color-text-muted)">
           MCP servers
         </h3>
         <button

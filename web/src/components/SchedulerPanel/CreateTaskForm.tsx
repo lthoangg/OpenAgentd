@@ -99,7 +99,7 @@ export function CreateTaskForm({
             {values.title && (
               <div className="mt-1 flex items-center gap-1.5 text-xs text-(--color-text-muted)">
                 <span>Slug identifier:</span>
-                <code className="rounded-xs border border-(--color-border-subtle) bg-(--bg-key)/80 px-1.5 py-0.5 font-mono text-[10.5px] text-(--color-text-2)">
+                <code className="rounded-xs border border-(--color-border-subtle) bg-(--bg-key)/80 px-1.5 py-0.5 font-mono text-xs md:text-[10px] text-(--color-text-2)">
                   {slugify(values.title)}
                 </code>
               </div>

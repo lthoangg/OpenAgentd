@@ -173,7 +173,7 @@ export function SettingsListView({
 function ListCard({ row }: { row: ListViewRow }) {
   if (row.kind === 'group') {
     return (
-      <div className="px-1 pt-3 pb-1 font-mono text-[9px] font-bold uppercase tracking-wider text-(--color-text-subtle) select-none">
+      <div className="px-1 pt-3 pb-1 font-mono text-[11px] md:text-[9px] font-bold uppercase tracking-wider text-(--color-text-subtle) select-none">
         {row.title}
       </div>
     )
@@ -228,7 +228,7 @@ function ListCard({ row }: { row: ListViewRow }) {
 
           {/* Role / type badge */}
           {row.badge && (
-            <span className="shrink-0 rounded-xs border border-(--color-border) bg-(--bg-key) px-1.5 py-px font-mono text-[9px] font-semibold uppercase tracking-wide text-(--color-text-muted) select-none">
+            <span className="shrink-0 rounded-xs border border-(--color-border) bg-(--bg-key) px-1.5 py-px font-mono text-[11px] md:text-[9px] font-semibold uppercase tracking-wide text-(--color-text-muted) select-none">
               {row.badge}
             </span>
           )}
@@ -257,7 +257,7 @@ function ListCard({ row }: { row: ListViewRow }) {
 
         {/* Meta / path line */}
         {row.meta && (
-          <p className="mt-0.5 truncate font-mono text-[9px] text-(--color-text-subtle)">
+          <p className="mt-0.5 truncate font-mono text-[11px] md:text-[9px] text-(--color-text-subtle)">
             {row.meta}
           </p>
         )}

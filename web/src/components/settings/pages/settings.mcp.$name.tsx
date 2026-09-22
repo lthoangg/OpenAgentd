@@ -232,10 +232,10 @@ function StatusCard({ server }: { server: NonNullable<ReturnType<typeof useMcpSe
         <Stat label="Started">{server.started_at ? formatFullDateTime(new Date(server.started_at)) : '—'}</Stat>
         {server.tool_names.length > 0 && (
           <div className="sm:col-span-2">
-            <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-(--color-text-muted) select-none">Tools ({server.tool_names.length})</p>
+            <p className="mb-1.5 text-xs md:text-[10px] font-semibold uppercase tracking-wide text-(--color-text-muted) select-none">Tools ({server.tool_names.length})</p>
             <div className="flex flex-wrap gap-1">
               {server.tool_names.map((tool) => (
-                <span key={tool} className="rounded-xs border border-(--color-border) bg-(--bg-key) px-1.5 py-0.5 font-mono text-[10.5px] text-(--color-text-muted)">{tool}</span>
+                <span key={tool} className="rounded-xs border border-(--color-border) bg-(--bg-key) px-1.5 py-0.5 font-mono text-xs md:text-[10px] text-(--color-text-muted)">{tool}</span>
               ))}
             </div>
           </div>
@@ -270,7 +270,7 @@ function RestartCard({
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <Button
-            variant="default" size="xs" className="h-8 px-2 text-[10.5px]"
+            variant="default" size="xs" className="h-8 px-2 text-xs md:text-[10px]"
             onClick={onRestart} disabled={pending || !enabled}
             aria-label={pending ? 'Restarting' : 'Restart server'}
           >
@@ -284,7 +284,7 @@ function RestartCard({
           )}
         </div>
         <Button
-          variant="danger-subtle" size="xs" className="h-8 px-2 text-[10.5px]"
+          variant="danger-subtle" size="xs" className="h-8 px-2 text-xs md:text-[10px]"
           onClick={onDelete} disabled={deletePending}
         >
           <Trash2 size={12} aria-hidden="true" />

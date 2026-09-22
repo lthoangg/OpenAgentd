@@ -296,7 +296,7 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
                       <ServerStatusDot status={serverHealth[normalizedServerUrl] ?? serverHealth[server.base_url]} />
                       <span className="min-w-0 flex-1">
                         <span className="block truncate font-semibold text-(--color-text)">{server.name || server.base_url}</span>
-                        {server.name ? <span className="block truncate font-mono text-[10px] text-(--color-text-subtle)">{server.base_url}</span> : null}
+                        {server.name ? <span className="block truncate font-mono text-xs md:text-[10px] text-(--color-text-subtle)">{server.base_url}</span> : null}
                       </span>
                     </button>
                     {active ? (
@@ -342,7 +342,7 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
             <SectionCardHeader>Configure Server</SectionCardHeader>
             <div className="p-3.5 space-y-3.5">
               <div className="grid gap-1.5">
-                <label className="text-[10.5px] font-semibold text-(--color-text-muted)" htmlFor="app-backend-url">
+                <label className="text-xs md:text-[10px] font-semibold text-(--color-text-muted)" htmlFor="app-backend-url">
                   Server URL
                 </label>
                 <Input
@@ -355,7 +355,7 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
               </div>
 
               <div className="grid gap-1.5">
-                <label className="text-[10.5px] font-semibold text-(--color-text-muted)" htmlFor="app-backend-key">
+                <label className="text-xs md:text-[10px] font-semibold text-(--color-text-muted)" htmlFor="app-backend-key">
                   Access key
                 </label>
                 <div className="flex gap-2">
@@ -374,7 +374,7 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
               </div>
 
               <div className="grid gap-1.5">
-                <label className="text-[10.5px] font-semibold text-(--color-text-muted)" htmlFor="app-backend-name">
+                <label className="text-xs md:text-[10px] font-semibold text-(--color-text-muted)" htmlFor="app-backend-name">
                   Server name
                 </label>
                 <div className="flex gap-2">
@@ -399,7 +399,7 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
             </div>
           </SectionCard>
 
-          <p className="text-[10.5px] leading-relaxed text-(--color-text-subtle)">
+          <p className="text-xs md:text-[10px] leading-relaxed text-(--color-text-subtle)">
             Test the server URL and access key before saving. Save & Connect stores new servers or overwrites an edited server configuration, then connects to it. Use builtin returns this app to the bundled sidecar.
           </p>
 

@@ -390,7 +390,7 @@ export function MCPAppResult({ mcpApp, sessionId, toolCallId }: MCPAppResultProp
       className={isFullscreen ? "fixed inset-0 z-50 flex min-h-0 flex-col overflow-hidden bg-(--bg-page) [[data-mobile-shell]_&]:pt-[env(safe-area-inset-top)] [[data-mobile-shell]_&]:pb-[env(safe-area-inset-bottom)] [[data-mobile-shell]_&]:pl-[env(safe-area-inset-left)] [[data-mobile-shell]_&]:pr-[env(safe-area-inset-right)]" : 'flex flex-col gap-2'}
       {...(isFullscreen ? { 'data-swipe-ignore': true } : {})}
     >
-      <div className={isFullscreen ? 'hidden' : 'flex items-center justify-between gap-2 font-mono text-[10px] text-(--color-text-muted)'}>
+      <div className={isFullscreen ? 'hidden' : 'flex items-center justify-between gap-2 font-mono text-xs md:text-[10px] text-(--color-text-muted)'}>
         {resourceUri ? (
           <Tooltip className="min-w-0">
             <TooltipTrigger
@@ -405,14 +405,14 @@ export function MCPAppResult({ mcpApp, sessionId, toolCallId }: MCPAppResultProp
         <button
           type="button"
           onClick={() => setDisplayMode(FULLSCREEN_DISPLAY_MODE)}
-          className="inline-flex shrink-0 cursor-pointer items-center gap-1 rounded-full border border-(--color-border) px-1.5 py-0.5 text-[10px] uppercase tracking-wide transition-colors hover:bg-(--bg-key) focus-visible:ring-2 focus-visible:ring-(--focus-ring) focus-visible:outline-none"
+          className="inline-flex shrink-0 cursor-pointer items-center gap-1 rounded-full border border-(--color-border) px-1.5 py-0.5 text-xs md:text-[10px] uppercase tracking-wide transition-colors hover:bg-(--bg-key) focus-visible:ring-2 focus-visible:ring-(--focus-ring) focus-visible:outline-none"
           aria-label={`Open ${title} fullscreen`}
         >
           <Maximize2 size={9} aria-hidden /> MCP App
         </button>
       </div>
       {error && (
-        <p className="rounded-md border border-(--color-error) px-2 py-1 font-mono text-[10px] text-(--color-error)">
+        <p className="rounded-md border border-(--color-error) px-2 py-1 font-mono text-xs md:text-[10px] text-(--color-error)">
           MCP app bridge error: {error}
         </p>
       )}
@@ -436,7 +436,7 @@ export function MCPAppResult({ mcpApp, sessionId, toolCallId }: MCPAppResultProp
           </button>
         ) : null}
       </div>
-      <p className={isFullscreen ? 'hidden' : 'flex items-center gap-1 font-mono text-[10px] text-(--color-text-muted)'}>
+      <p className={isFullscreen ? 'hidden' : 'flex items-center gap-1 font-mono text-xs md:text-[10px] text-(--color-text-muted)'}>
         <ExternalLink size={10} aria-hidden />
         Experimental sandbox: app can render and receive the initial tool input/result; app tool calls stay bound to this artifact and its MCP server's current advertised tools.
       </p>

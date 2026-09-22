@@ -276,14 +276,14 @@ export function FormFields({
 function CapabilityChips({ label, values }: { label: string; values: string[] }) {
   return (
     <div className="rounded-xs border border-(--color-border) bg-(--bg-key)/30 px-2.5 py-2">
-      <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-(--color-text-muted) select-none">
+      <p className="mb-1.5 text-xs md:text-[10px] font-semibold uppercase tracking-wide text-(--color-text-muted) select-none">
         {label}
       </p>
       <div className="flex flex-wrap gap-1.5">
         {values.map((value) => (
           <span
             key={value}
-            className="rounded-xs border border-(--color-border) bg-(--bg-key) px-1.5 py-0.5 font-mono text-[10.5px] text-(--color-text-muted)"
+            className="rounded-xs border border-(--color-border) bg-(--bg-key) px-1.5 py-0.5 font-mono text-xs md:text-[10px] text-(--color-text-muted)"
           >
             {value}
           </span>

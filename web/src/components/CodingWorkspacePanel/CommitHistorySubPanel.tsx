@@ -182,7 +182,7 @@ export function CommitHistorySubPanel({
                       <TooltipContent>{safeDecodeURIComponent(commit.subject)}</TooltipContent>
                     </Tooltip>
                   </div>
-                  <span className="shrink-0 rounded-xs border border-(--color-border-subtle) bg-(--bg-card) px-1 py-0.5 font-mono text-[9px] text-(--color-text-subtle)">
+                  <span className="shrink-0 rounded-xs border border-(--color-border-subtle) bg-(--bg-card) px-1 py-0.5 font-mono text-[11px] md:text-[9px] text-(--color-text-subtle)">
                     {commit.short_sha}
                   </span>
                 </div>
@@ -192,7 +192,7 @@ export function CommitHistorySubPanel({
                     {commit.refs.split(',').map((ref) => (
                       <span
                         key={ref}
-                        className="text-[9px] font-semibold px-1 rounded-xs bg-(--color-accent)/10 text-(--color-accent) border border-(--color-accent)/20"
+                        className="text-[11px] md:text-[9px] font-semibold px-1 rounded-xs bg-(--color-accent)/10 text-(--color-accent) border border-(--color-accent)/20"
                       >
                         {ref.trim()}
                       </span>
@@ -200,7 +200,7 @@ export function CommitHistorySubPanel({
                   </div>
                 )}
 
-                <div className="flex w-full items-center justify-between text-[10px] text-(--color-text-muted) mt-1">
+                <div className="flex w-full items-center justify-between text-xs md:text-[10px] text-(--color-text-muted) mt-1">
                   <span>{commit.author_name}</span>
                   <span>
                     {new Date(commit.timestamp * 1000).toLocaleDateString('en-GB')}{' '}
@@ -237,7 +237,7 @@ export function CommitHistorySubPanel({
         })}
 
         {gitHistory.isFetchingNextPage && (
-          <p className="text-center py-2 text-[10px] text-(--color-text-subtle)">Loading more commits…</p>
+          <p className="text-center py-2 text-xs md:text-[10px] text-(--color-text-subtle)">Loading more commits…</p>
         )}
         <div ref={sentinelRef} className="h-1" />
         {gitHistory.hasNextPage && (
@@ -295,7 +295,7 @@ export function CommitHistorySubPanel({
                               setExpandedCommitSha(fullSha)
                               setSubTab('commits')
                             }}
-                            className="shrink-0 cursor-pointer rounded-xs border border-(--color-border-subtle) bg-(--bg-card) px-1 py-0.5 font-mono text-[9px] text-(--color-text-subtle) transition-colors hover:border-(--color-accent)/30 hover:bg-(--color-accent)/10 hover:text-(--color-accent)"
+                            className="shrink-0 cursor-pointer rounded-xs border border-(--color-border-subtle) bg-(--bg-card) px-1 py-0.5 font-mono text-[11px] md:text-[9px] text-(--color-text-subtle) transition-colors hover:border-(--color-accent)/30 hover:bg-(--color-accent)/10 hover:text-(--color-accent)"
                           >
                             {line.sha.substring(0, 7)}
                           </button>
@@ -311,7 +311,7 @@ export function CommitHistorySubPanel({
                           const isHead = trimmed.includes('HEAD ->')
                           const isRemote = trimmed.includes('origin/')
                           const badgeClassName = cn(
-                            'text-[10px] font-semibold px-1 py-0.5 rounded-xs border truncate leading-none select-none',
+                            'text-xs md:text-[10px] font-semibold px-1 py-0.5 rounded-xs border truncate leading-none select-none',
                             isHead
                               ? 'bg-(--color-diff-add-bg) text-(--color-diff-add-text) border-(--color-success)/20'
                               : isRemote

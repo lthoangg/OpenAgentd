@@ -132,14 +132,14 @@ export function GitReviewSubPanel({
                           <ExternalLink size={11} aria-hidden="true" />
                         </span>
                       )}
-                      <span className="shrink-0 font-mono text-[10px] text-(--color-diff-add-text)">
+                      <span className="shrink-0 font-mono text-xs md:text-[10px] text-(--color-diff-add-text)">
                         {changedFile.additions > 0 ? `+${changedFile.additions}` : ''}
                       </span>
-                      <span className="shrink-0 font-mono text-[10px] text-(--color-diff-del-text)">
+                      <span className="shrink-0 font-mono text-xs md:text-[10px] text-(--color-diff-del-text)">
                         {changedFile.deletions > 0 ? `-${changedFile.deletions}` : ''}
                       </span>
                       <span
-                        className="shrink-0 font-mono text-[10px] font-semibold text-(--accent-orange-text)"
+                        className="shrink-0 font-mono text-xs md:text-[10px] font-semibold text-(--accent-orange-text)"
                         aria-label={CHANGED_STATUS_LABELS[changedFile.status]}
                       >
                         {changedFile.status}

@@ -101,12 +101,12 @@ function SingleFileDiff({ path, kind, moveTo, lines, oldStart = 1, newStart = 1,
           </>
         )}
         {(additions > 0 || deletions > 0) && (
-          <span className="ml-auto inline-flex items-center gap-1 font-mono text-[10px] font-semibold select-none shrink-0">
+          <span className="ml-auto inline-flex items-center gap-1 font-mono text-xs md:text-[10px] font-semibold select-none shrink-0">
             {additions > 0 && <span className="text-[var(--color-diff-add-text)]">+{additions}</span>}
             {deletions > 0 && <span className="text-[var(--color-diff-del-text)]">-{deletions}</span>}
           </span>
         )}
-        <span className={`rounded-xs px-1 py-px text-[9px] font-semibold tracking-wide uppercase select-none ${badgeClass} ${additions === 0 && deletions === 0 ? 'ml-auto' : ''}`}>
+        <span className={`rounded-xs px-1 py-px text-[11px] md:text-[9px] font-semibold tracking-wide uppercase select-none ${badgeClass} ${additions === 0 && deletions === 0 ? 'ml-auto' : ''}`}>
           {badgeLabel}
         </span>
         <ChevronRight
@@ -167,7 +167,7 @@ function SingleFileDiff({ path, kind, moveTo, lines, oldStart = 1, newStart = 1,
                     return (
                       <div key={idx} className={`flex min-w-0 items-stretch ${lineBg} ${lineText}`}>
                         {/* Line Numbers */}
-                        <div className="sticky left-0 z-[1] flex shrink-0 select-none border-r border-(--color-border)/40 bg-inherit text-right text-[10px] text-(--color-text-subtle)">
+                        <div className="sticky left-0 z-[1] flex shrink-0 select-none border-r border-(--color-border)/40 bg-inherit text-right text-xs md:text-[10px] text-(--color-text-subtle)">
                           <span className="w-9 py-0.5 pr-1.5">{line.num}</span>
                         </div>
                         {/* Code Line */}

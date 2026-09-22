@@ -824,7 +824,7 @@ export function CodingSidebar({
                                   <ChevronRight size={11} className={`shrink-0 text-(--color-text-subtle) transition-transform ${isExpanded ? 'rotate-90' : ''}`} aria-hidden="true" />
                                   <GitBranch size={12} className="shrink-0 text-(--accent-orange-text)" aria-hidden="true" />
                                   <span className="min-w-0 flex-1 truncate font-mono">{item.name}</span>
-                                  {!item.managed && <span className="shrink-0 rounded-full bg-(--bg-key) px-1.5 py-0.5 text-[9px] text-(--color-text-subtle)">external</span>}
+                                  {!item.managed && <span className="shrink-0 rounded-full bg-(--bg-key) px-1.5 py-0.5 text-[11px] md:text-[9px] text-(--color-text-subtle)">external</span>}
                                   {isPending && (
                                     <span>
                                       <Loader2 size={11} className="shrink-0 animate-spin text-(--color-text-muted)" aria-hidden="true" />
@@ -1232,7 +1232,7 @@ export function CodingSidebar({
             </DialogHeader>
             <div className="min-h-0 flex-1 space-y-2.5 overflow-y-auto px-3 py-3 sm:px-4">
               <div className="rounded-sm border border-(--color-border) bg-(--bg-page) px-2.5 py-1.5">
-                <div className="mb-0.5 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-(--color-text-subtle)">
+                <div className="mb-0.5 flex items-center gap-1.5 text-xs md:text-[10px] font-semibold uppercase tracking-[0.12em] text-(--color-text-subtle)">
                   <Folder size={12} aria-hidden="true" />
                   Source workspace
                 </div>
@@ -1259,7 +1259,7 @@ export function CodingSidebar({
                     maxLength={80}
                     autoFocus
                   />
-                  <p className="text-[10px] font-normal text-(--color-text-subtle)">Blank uses “session”.</p>
+                  <p className="text-xs md:text-[10px] font-normal text-(--color-text-subtle)">Blank uses “session”.</p>
                 </label>
                 <label className="block space-y-1 text-xs font-medium text-(--color-text-2)">
                   <span>Branch</span>
@@ -1270,13 +1270,13 @@ export function CodingSidebar({
                     className="min-h-9 w-full min-w-0 rounded-sm border border-(--color-border) bg-(--bg-page) px-2.5 py-1 font-mono text-sm text-(--color-text) outline-none transition-colors placeholder:text-(--color-text-subtle) focus:outline-none focus-visible:outline-none focus-visible:border-(--focus-ring) focus-visible:ring-2 focus-visible:ring-(--focus-ring)/25 md:min-h-8"
                     maxLength={255}
                   />
-                  <p className="text-[10px] font-normal text-(--color-text-subtle)">Blank defaults to openagentd/name.</p>
+                  <p className="text-xs md:text-[10px] font-normal text-(--color-text-subtle)">Blank defaults to openagentd/name.</p>
                 </label>
               </div>
               <div className="rounded-sm border border-(--color-border) bg-(--bg-page) px-2.5 py-2 text-xs text-(--color-text-muted)">
                 <div className="mb-1 flex items-center justify-between gap-2">
                     <p className="font-medium text-(--color-text-2)">Existing worktrees</p>
-                    <span className="rounded-full bg-(--bg-key) px-2 py-0.5 text-[10px] text-(--color-text-subtle)">{worktreeOptions.length}</span>
+                    <span className="rounded-full bg-(--bg-key) px-2 py-0.5 text-xs md:text-[10px] text-(--color-text-subtle)">{worktreeOptions.length}</span>
                 </div>
                 {worktreeOptions.length === 0 ? (
                     <p className="py-1 text-(--color-text-subtle)">No worktrees yet.</p>
@@ -1315,7 +1315,7 @@ export function CodingSidebar({
                               <TooltipContent>Remove managed worktree</TooltipContent>
                             </Tooltip>
                           ) : (
-                            <span className="rounded-full bg-(--bg-key) px-2 py-0.5 text-[10px] text-(--color-text-subtle)">external</span>
+                            <span className="rounded-full bg-(--bg-key) px-2 py-0.5 text-xs md:text-[10px] text-(--color-text-subtle)">external</span>
                           )}
                         </li>
                       ))}

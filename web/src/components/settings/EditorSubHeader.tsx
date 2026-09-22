@@ -115,7 +115,7 @@ export function EditorSubHeader({
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-semibold leading-tight text-(--color-text)">{name}</p>
         {path && (
-          <p className="truncate font-mono text-[10px] text-(--color-text-muted)">
+          <p className="truncate font-mono text-xs md:text-[10px] text-(--color-text-muted)">
             {path}
           </p>
         )}

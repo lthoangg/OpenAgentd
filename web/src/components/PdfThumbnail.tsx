@@ -90,7 +90,7 @@ export function PdfThumbnail({ src, className, canvasClassName }: PdfThumbnailPr
       {status === 'error' && (
         <div className="flex h-full w-full flex-col items-center justify-center gap-1 text-(--color-text-subtle)">
           <File size={20} />
-          <span className="text-[10px]">Couldn't render preview</span>
+          <span className="text-xs md:text-[10px]">Couldn't render preview</span>
         </div>
       )}
       <canvas

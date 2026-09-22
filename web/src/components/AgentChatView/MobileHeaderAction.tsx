@@ -33,7 +33,7 @@ export function MobileHeaderAction({
           >
             <Icon size={14} strokeWidth={1.8} aria-hidden="true" />
             {badge > 0 && (
-              <span className="absolute right-0.5 top-0.5 min-w-3.5 rounded-full bg-(--color-accent) px-1 text-center font-mono text-[9px] leading-3.5 text-(--bg-page)">
+              <span className="absolute right-0.5 top-0.5 min-w-3.5 rounded-full bg-(--color-accent) px-1 text-center font-mono text-[11px] md:text-[9px] leading-3.5 text-(--bg-page)">
                 {badge > 9 ? '9+' : badge}
               </span>
             )}

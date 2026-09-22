@@ -128,7 +128,7 @@ export function TaskListItem({
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-1.5">
             <p className="truncate text-sm font-semibold text-(--color-text)">{task.name}</p>
-            <span className="rounded-xs border border-(--color-border-subtle) bg-(--bg-key)/70 px-1.5 py-0.5 font-mono text-[10px] text-(--color-text-subtle) break-all">
+            <span className="rounded-xs border border-(--color-border-subtle) bg-(--bg-key)/70 px-1.5 py-0.5 font-mono text-xs md:text-[10px] text-(--color-text-subtle) break-all">
               {slugify(task.name)}
             </span>
           </div>
@@ -140,7 +140,7 @@ export function TaskListItem({
 
           <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
             <WorkspaceBadge task={task} />
-            <span className={`inline-flex items-center gap-1 rounded-xs border px-1.5 py-0.5 text-[10.5px] font-medium capitalize ${statusBadgeStyle}`}>
+            <span className={`inline-flex items-center gap-1 rounded-xs border px-1.5 py-0.5 text-xs md:text-[10px] font-medium capitalize ${statusBadgeStyle}`}>
               <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${statusDotColor}`} aria-hidden="true" />
               <span className={statusColor}>{task.status}</span>
             </span>

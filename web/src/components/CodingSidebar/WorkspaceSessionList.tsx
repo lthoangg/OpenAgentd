@@ -145,7 +145,7 @@ function WorkspaceSessionRow({
                 <span className={`min-w-0 flex-1 truncate ${isCurrent ? 'font-semibold text-(--color-text)' : 'font-medium'} ${isRunning ? 'session-title-breathe text-(--color-text)' : ''}`}>{sessionTitle}</span>
                 {hasSubagents && (
                   <span
-                    className="ml-1 inline-flex shrink-0 items-center gap-1 rounded bg-(--bg-key)/70 px-1 py-0.2 font-mono text-[9px] text-(--color-text-subtle)"
+                    className="ml-1 inline-flex shrink-0 items-center gap-1 rounded bg-(--bg-key)/70 px-1 py-0.2 font-mono text-[11px] md:text-[9px] text-(--color-text-subtle)"
                     aria-label={`${subagents.length} subagent${subagents.length > 1 ? 's' : ''}`}
                   >
                     {!isExpanded && hasActiveWork && (
@@ -234,7 +234,7 @@ function WorkspaceSessionRow({
                         }`}
                         aria-label={isSubWaiting ? 'Subagent waiting for lead' : isSubWorking ? 'Subagent working' : undefined}
                       />
-                      <span className="font-mono text-[10px] font-semibold text-(--color-text) shrink-0">
+                      <span className="font-mono text-xs md:text-[10px] font-semibold text-(--color-text) shrink-0">
                         {sub.member_id}
                       </span>
                       <span className="min-w-0 flex-1 truncate text-[11px] text-(--color-text-muted)">

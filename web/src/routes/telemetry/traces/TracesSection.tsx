@@ -40,7 +40,7 @@ export function TracesSection({
       <SectionCardHeader className="flex flex-wrap items-center justify-between gap-2 py-1.5">
         <span>Recent traces</span>
         {total > 0 && (
-          <span className="text-[10px] font-normal tracking-normal text-(--color-text-muted)">
+          <span className="text-xs md:text-[10px] font-normal tracking-normal text-(--color-text-muted)">
             Showing {Math.min(traces.length, total)} of {total}
           </span>
         )}

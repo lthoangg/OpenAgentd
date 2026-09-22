@@ -179,7 +179,7 @@ export function SessionModelSettings({
               <Tooltip>
                 <TooltipTrigger
                   render={
-                    <span className="flex h-4 items-center gap-1 rounded-xs border border-(--color-border) bg-(--bg-key) px-1.5 text-[10px] font-normal leading-none text-(--color-text-muted)">
+                    <span className="flex h-4 items-center gap-1 rounded-xs border border-(--color-border) bg-(--bg-key) px-1.5 text-xs md:text-[10px] font-normal leading-none text-(--color-text-muted)">
                       <Eye size={10} aria-hidden />
                       Vision
                     </span>

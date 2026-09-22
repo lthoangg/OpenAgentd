@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from 'react'
 import fuzzysort from 'fuzzysort'
-import { Check, ChevronDown, Copy, Loader2 } from 'lucide-react'
+import { Check, ChevronDown, Copy, EyeOff, Loader2 } from 'lucide-react'
 import type { ModelCostInfo } from '@/api/client'
 import { SearchBar } from '@/components/ui/search-bar'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
@@ -232,7 +232,7 @@ function ModelRow({
         <TooltipContent>{qualifiedId}</TooltipContent>
       </Tooltip>
 
-      {/* Price badge */}
+      {/* Price badge — hidden on mobile to save space; full label on desktop */}
       {priceBadge && (
         <Tooltip>
           <TooltipTrigger
@@ -240,7 +240,7 @@ function ModelRow({
             render={
               <span
                 className={cn(
-                  'inline-flex items-center rounded-xs px-1.5 py-0.5 font-mono text-[11px] md:text-[9px] tabular-nums select-none',
+                  'hidden md:inline-flex items-center rounded-xs px-1.5 py-0.5 font-mono text-[9px] tabular-nums select-none',
                   priceBadge.isFree
                     ? 'bg-(--color-success-subtle) text-(--color-success) font-medium'
                     : 'bg-(--bg-card) text-(--color-text-muted) border border-(--color-border)/60',
@@ -254,7 +254,7 @@ function ModelRow({
         </Tooltip>
       )}
 
-      {/* Visibility toggle */}
+      {/* Visibility toggle — icon-only on mobile, labelled on desktop */}
       <Tooltip>
         <TooltipTrigger
           render={
@@ -264,7 +264,7 @@ function ModelRow({
               disabled={savingVisibleModels}
               aria-label={`${selected ? 'Remove' : 'Show'} ${qualifiedId} in model pickers`}
               className={cn(
-                'flex h-8 min-w-[3.5rem] shrink-0 items-center justify-center gap-1 rounded-xs px-2 md:h-6 md:min-w-[3.5rem] md:px-1.5',
+                'flex h-8 w-8 shrink-0 items-center justify-center gap-1 rounded-xs md:h-6 md:min-w-[3.5rem] md:w-auto md:px-1.5',
                 'text-xs md:text-[10px] font-medium transition-colors',
                 selected
                   ? 'bg-(--color-success-subtle) text-(--color-success)'
@@ -272,32 +272,36 @@ function ModelRow({
                 savingVisibleModels && 'opacity-50 cursor-not-allowed',
               )}
             >
-              {savingVisibleModels
-                ? <Loader2 size={10} className="animate-spin" aria-hidden="true" />
-                : selected
-                  ? <Check size={10} aria-hidden="true" />
-                  : null}
-              {selected ? 'Visible' : 'Show'}
+              {savingVisibleModels ? (
+                <Loader2 size={10} className="animate-spin" aria-hidden="true" />
+              ) : selected ? (
+                <Check size={10} aria-hidden="true" />
+              ) : (
+                <EyeOff size={11} className="md:hidden" aria-hidden="true" />
+              )}
+              <span className="hidden md:inline">{selected ? 'Visible' : 'Show'}</span>
             </button>
           }
         />
         <TooltipContent>{selected ? 'Remove from visible models' : 'Add to visible models'}</TooltipContent>
       </Tooltip>
 
-      {/* Copy button */}
-      <button
-        type="button"
-        onClick={() => void onCopy(qualifiedId)}
-        aria-label={`Copy ${qualifiedId}`}
-        className={cn(
-          'flex h-8 w-8 shrink-0 items-center justify-center rounded-xs md:h-6 md:w-6',
-          'text-(--color-text-muted)',
-          'transition-colors hover:bg-(--bg-card) hover:text-(--color-text)',
-          'opacity-100 md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100',
-        )}
-      >
-        <Copy size={11} aria-hidden="true" />
-      </button>
+      {/* Copy button — hidden on Tauri mobile (use long-press context menu instead) */}
+      {!isTauriMobile && (
+        <button
+          type="button"
+          onClick={() => void onCopy(qualifiedId)}
+          aria-label={`Copy ${qualifiedId}`}
+          className={cn(
+            'flex h-8 w-8 shrink-0 items-center justify-center rounded-xs md:h-6 md:w-6',
+            'text-(--color-text-muted)',
+            'transition-colors hover:bg-(--bg-card) hover:text-(--color-text)',
+            'opacity-100 md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100',
+          )}
+        >
+          <Copy size={11} aria-hidden="true" />
+        </button>
+      )}
 
       {/* Context menu */}
       {actionsPoint && (

@@ -21,6 +21,32 @@ mock.module('@/api/client', () => ({ getCodingWorkspaceStatus }))
 
 import { WorkspaceInfoCard } from '@/components/WorkspaceInfoCard'
 
+/**
+ * Force `useIsMobile` on or off by stubbing the shared MOBILE_QUERY match.
+ * Returns a cleanup function.
+ */
+function mockIsMobile(isMobile: boolean) {
+  const originalMatchMedia = window.matchMedia
+  window.matchMedia = (query: string) => {
+    if (query.includes('max-width') || query.includes('max-height')) {
+      return {
+        matches: isMobile,
+        media: query,
+        onchange: null,
+        addListener: () => {},
+        removeListener: () => {},
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        dispatchEvent: () => true,
+      } as MediaQueryList
+    }
+    return originalMatchMedia(query)
+  }
+  return () => {
+    window.matchMedia = originalMatchMedia
+  }
+}
+
 function renderCard() {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -101,5 +127,33 @@ describe('WorkspaceInfoCard', () => {
     expect(onAsk).toHaveBeenCalledTimes(1)
     expect(onInit).toHaveBeenCalledTimes(1)
     expect(onOpenTerminal).toHaveBeenCalledTimes(1)
+  })
+
+  it('drops the starter prompt suggestions on mobile', async () => {
+    const restore = mockIsMobile(true)
+    try {
+      const client = new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      })
+      requestCount = 1
+      render(
+        <QueryClientProvider client={client}>
+          <WorkspaceInfoCard
+            workspace="/work/project"
+            onAsk={() => {}}
+            onInit={() => {}}
+            onOpenTerminal={() => {}}
+          />
+        </QueryClientProvider>,
+      )
+
+      // The workspace context itself still renders — only the chips go away.
+      await waitFor(() => expect(screen.getByText('main')).toBeInTheDocument())
+      expect(screen.queryByRole('button', { name: 'Ask about this repo' })).toBeNull()
+      expect(screen.queryByRole('button', { name: 'Generate AGENTS.md' })).toBeNull()
+      expect(screen.queryByRole('button', { name: 'Open terminal' })).toBeNull()
+    } finally {
+      restore()
+    }
   })
 })

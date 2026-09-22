@@ -230,7 +230,7 @@ export function CodingSidebar({
   const [mobileSessionActions, setMobileSessionActions] = useState<{ session: SessionResponse; workspacePath: string } | null>(null)
   const [desktopSessionActions, setDesktopSessionActions] = useState<{ session: SessionResponse; workspacePath: string; x: number; y: number } | null>(null)
   const [desktopWorkspaceActions, setDesktopWorkspaceActions] = useState<{ path: string; kind: 'main' | 'worktree'; source?: string; worktree?: WorktreeInfo; x: number; y: number } | null>(null)
-  const [mobileWorkspaceActions, setMobileWorkspaceActions] = useState<{ path: string; kind: 'main' | 'worktree'; source?: string; worktree?: WorktreeInfo } | null>(null)
+  const [mobileWorkspaceActions, setMobileWorkspaceActions] = useState<{ path: string; kind: 'main' | 'worktree' | 'chat'; source?: string; worktree?: WorktreeInfo } | null>(null)
   // Workspace pending removal — null when no confirmation is open. The
   // confirmation dialog reads this; ``confirmRemoveWorkspace`` commits.
   const [removeWorkspaceTarget, setRemoveWorkspaceTarget] = useState<string | null>(null)
@@ -708,10 +708,10 @@ export function CodingSidebar({
                     render={
                       <LongPressButton
                         enabled={mobileLongPressActions}
-                        onLongPress={() => {
-                          if (sourceIsChat) return
-                          setMobileWorkspaceActions({ path, kind: 'main' })
-                        }}
+                        // Chat gets the sheet too, just a narrower one: on
+                        // touch the inline "+" is hidden, so this is the only
+                        // way left to start a new chat session.
+                        onLongPress={() => setMobileWorkspaceActions({ path, kind: sourceIsChat ? 'chat' : 'main' })}
                         type="button"
                         onClick={() => toggleWorkspaceExpanded(path)}
                         onContextMenu={(event) => {
@@ -1095,8 +1095,20 @@ export function CodingSidebar({
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{mobileWorkspaceActions ? workspaceLabel(mobileWorkspaceActions.path) : 'Workspace actions'}</DialogTitle>
-            <DialogDescription>{mobileWorkspaceActions?.kind === 'worktree' ? 'Choose a worktree action.' : 'Choose a main workspace action.'}</DialogDescription>
+            <DialogTitle>
+              {mobileWorkspaceActions?.kind === 'chat'
+                ? (chatWorkspace?.name ?? 'Chat')
+                : mobileWorkspaceActions
+                  ? workspaceLabel(mobileWorkspaceActions.path)
+                  : 'Workspace actions'}
+            </DialogTitle>
+            <DialogDescription>
+              {mobileWorkspaceActions?.kind === 'worktree'
+                ? 'Choose a worktree action.'
+                : mobileWorkspaceActions?.kind === 'chat'
+                  ? 'Choose a chat action.'
+                  : 'Choose a main workspace action.'}
+            </DialogDescription>
           </DialogHeader>
           <DialogFooter className="flex-col items-stretch gap-2 p-3 sm:flex-col">
             <Button
@@ -1112,19 +1124,23 @@ export function CodingSidebar({
               <Plus size={14} aria-hidden="true" />
               New session
             </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              className="justify-start"
-              onClick={() => {
-                const action = mobileWorkspaceActions
-                setMobileWorkspaceActions(null)
-                if (action) void navigator.clipboard.writeText(action.path)
-              }}
-            >
-              <Copy size={14} aria-hidden="true" />
-              Copy repo absolute path
-            </Button>
+            {/* Chat's root is the home directory — the path is noise there,
+                and there is no repository to act on. */}
+            {mobileWorkspaceActions?.kind !== 'chat' && (
+              <Button
+                type="button"
+                variant="ghost"
+                className="justify-start"
+                onClick={() => {
+                  const action = mobileWorkspaceActions
+                  setMobileWorkspaceActions(null)
+                  if (action) void navigator.clipboard.writeText(action.path)
+                }}
+              >
+                <Copy size={14} aria-hidden="true" />
+                Copy repo absolute path
+              </Button>
+            )}
             {mobileWorkspaceActions?.kind === 'main' ? (
               <>
                 <Button

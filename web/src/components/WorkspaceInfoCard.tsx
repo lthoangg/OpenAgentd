@@ -13,6 +13,10 @@
  *
  * Backed by ``GET /api/agent/workspace/status``. Fetched once on mount;
  * manual refresh via the button — no polling.
+ *
+ * The starter action chips are desktop-only. On a phone the empty state is
+ * already competing with the composer and the keyboard, and the same actions
+ * are reachable from the composer and the chat actions drawer.
  */
 
 import { useQuery } from '@tanstack/react-query'
@@ -23,6 +27,7 @@ import { formatFullDateTime } from '@/utils/format'
 import { getCodingWorkspaceStatus } from '@/api/client'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { useIsMobile } from '@/hooks/use-mobile'
 import { queryKeys } from '@/queries'
 import { workspaceLabel } from '@/utils/workspace'
 
@@ -36,6 +41,7 @@ interface Props {
 }
 
 export function WorkspaceInfoCard({ workspace, chatWorkspace = false, onAsk, onInit, onOpenTerminal }: Props) {
+  const isMobile = useIsMobile()
   const { data, isLoading, isError, isFetching, refetch } = useQuery({
     queryKey: queryKeys.coding.status(workspace),
     queryFn: ({ signal }) => getCodingWorkspaceStatus(workspace, signal),
@@ -169,7 +175,7 @@ export function WorkspaceInfoCard({ workspace, chatWorkspace = false, onAsk, onI
         <p className="mt-3 text-xs text-(--color-text-subtle)">Not a git repository</p>
       )}
 
-      {(onAsk || onInit || onOpenTerminal) && (
+      {!isMobile && (onAsk || onInit || onOpenTerminal) && (
         <div className="mt-4 flex flex-wrap justify-center gap-2">
           {onAsk && (
             <Button type="button" size="xs" variant="subtle" onClick={onAsk}>

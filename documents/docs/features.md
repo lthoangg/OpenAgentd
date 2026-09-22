@@ -136,7 +136,10 @@ run from the terminal.
   server name/host) instead of a hardcoded local label. Mobile chat actions
   expose transcript find and terminal access without a hardware keyboard.
   Empty coding sessions offer Ask about this repo, Generate AGENTS.md, and Open
-  terminal.
+  terminal on desktop; those starter chips are omitted on mobile, where the
+  composer and chat actions drawer already cover them. Press and hold the
+  pinned Chat row in the mobile sidebar to start a new chat session, since the
+  inline `+` is hidden on touch.
 - **Plan and Code interaction modes** `[v2.14.0, updated v2.15.0]` — the expanded composer switches an
   existing session between Code (default) and Plan without starting a new
   chat; `Tab` also toggles mode from the composer. Mode transitions are preserved via

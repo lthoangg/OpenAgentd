@@ -1619,6 +1619,54 @@ describe('CodingSidebar workspace trust flow', () => {
     expect(screen.getByLabelText('New session in Chat')).toBeTruthy()
   })
 
+  it('offers a new chat session from the long-press action list on touch', async () => {
+    // On a touch build the inline "+" is hidden, so the pinned Chat row is the
+    // only affordance left — long-pressing it has to surface "New session"
+    // rather than bailing out the way repository-only actions do.
+    isMobile = true
+    platformOs = 'ios'
+    chatWorkspaceEntry = { path: '/home/user', name: 'Chat' }
+    sessionsData = [
+      {
+        id: 'chat-1',
+        title: 'Trip planning',
+        agent_name: 'code',
+        created_at: '2026-09-15T00:00:00Z',
+        updated_at: '2026-09-15T00:00:00Z',
+        workspace: '/home/user',
+      },
+    ]
+    workspaceSessionsData = sessionsData
+
+    await renderCodingSidebarWithProps({
+      currentSessionId: 'chat-1',
+      workspace: '/home/user',
+      mobileOpen: true,
+    })
+
+    const chatRow = screen.getByRole('button', { name: /chat workspace Chat$/ })
+    fireEvent.pointerDown(chatRow, { pointerType: 'touch', clientX: 20, clientY: 20 })
+
+    const newSession = await waitFor(
+      () => screen.getByRole('button', { name: 'New session' }),
+      { timeout: 1500 },
+    )
+
+    // Repository-shaped actions stay off the chat root.
+    expect(screen.queryByRole('button', { name: /copy repo absolute path/i })).toBeNull()
+    expect(screen.queryByRole('button', { name: /create worktree/i })).toBeNull()
+    expect(screen.queryByRole('button', { name: /remove from sidebar/i })).toBeNull()
+
+    fireEvent.click(newSession)
+
+    await waitFor(() => {
+      expect(navigate).toHaveBeenCalledWith({
+        to: '/coding/$sessionId',
+        params: { sessionId: 'resolved-session' },
+      })
+    })
+  })
+
   it('keeps repository rows and their action menu unchanged', async () => {
     chatWorkspaceEntry = { path: '/home/user', name: 'Chat' }
     sessionsData = [

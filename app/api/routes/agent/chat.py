@@ -885,6 +885,7 @@ async def update_agent_session(
         else None
     )
     if live_session is not None and live_session.is_busy():
+        assert body.interaction_mode is not None  # guaranteed by ternary above
         live_session.queue_interaction_mode(body.interaction_mode)
         async with db.begin():
             session = await db.get(ChatSession, session_id)
@@ -893,7 +894,9 @@ async def update_agent_session(
             if body.title is not None:
                 title = body.title.strip()
                 if not title:
-                    raise HTTPException(status_code=422, detail="Title cannot be empty.")
+                    raise HTTPException(
+                        status_code=422, detail="Title cannot be empty."
+                    )
                 session.title = title
                 db.add(session)
         return SessionResponse.model_validate(session).model_copy(

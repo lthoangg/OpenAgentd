@@ -13,7 +13,7 @@ from sqlmodel import col, select
 
 from app.agent.agent_loop import Agent
 from app.agent.checkpointer import SQLiteCheckpointer
-from app.agent.interaction_mode import normalize_interaction_mode
+from app.agent.interaction_mode import InteractionMode, normalize_interaction_mode
 from app.agent.denied_paths import (
     DeniedPathsConfig,
     _denied_paths_ctx,
@@ -257,7 +257,7 @@ class AgentSession:
         # A Plan/Code switch requested while a turn is in flight. The running
         # turn keeps the mode it was authorised under; this is applied when the
         # turn closes. See ``queue_interaction_mode``.
-        self._pending_interaction_mode: str | None = None
+        self._pending_interaction_mode: InteractionMode | None = None
         self.is_scheduler_session: bool = False
         self.memory_context_snapshot: MemoryContextSnapshot | None = None
 
@@ -281,7 +281,7 @@ class AgentSession:
         """Mode requested mid-turn that has not been applied yet."""
         return self._pending_interaction_mode
 
-    def queue_interaction_mode(self, mode: str) -> None:
+    def queue_interaction_mode(self, mode: InteractionMode) -> None:
         """Defer a Plan/Code switch until the in-flight turn closes.
 
         Applying it immediately is not safe: the running turn snapshots the

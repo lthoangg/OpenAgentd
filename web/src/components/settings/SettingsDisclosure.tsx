@@ -55,7 +55,7 @@ export function SettingsDisclosure({
           aria-expanded={open}
           aria-controls={panelId}
           className={cn(
-            'flex w-full min-h-11 items-center gap-2 px-3 py-2 text-left md:min-h-8',
+            'flex w-full min-h-9 items-center gap-2 px-3 py-2 text-left md:min-h-8',
             'transition-colors hover:bg-(--bg-key)/40 hover:text-(--color-text)',
             'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-(--focus-ring)/40',
           )}

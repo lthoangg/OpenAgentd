@@ -36,21 +36,21 @@ export function TerminalActionSheet({
           <DialogDescription>Choose an action for the terminal surface.</DialogDescription>
         </DialogHeader>
         <DialogFooter className="flex-col items-stretch gap-2 p-3 sm:flex-col">
-          <Button type="button" variant="ghost" className="justify-start gap-2 min-h-11 md:min-h-0" onClick={onSelectAll}>
+          <Button type="button" variant="ghost" className="justify-start gap-2 min-h-9 md:min-h-0" onClick={onSelectAll}>
             <CheckSquare size={14} aria-hidden="true" />
             Select All
           </Button>
           <Button
             type="button"
             variant="ghost"
-            className="justify-start gap-2 min-h-11 md:min-h-0"
+            className="justify-start gap-2 min-h-9 md:min-h-0"
             onClick={onCopy}
             disabled={!hasSelection}
           >
             <Copy size={14} aria-hidden="true" />
             Copy
           </Button>
-          <Button type="button" variant="ghost" className="justify-start gap-2 min-h-11 md:min-h-0" onClick={onPaste}>
+          <Button type="button" variant="ghost" className="justify-start gap-2 min-h-9 md:min-h-0" onClick={onPaste}>
             <ClipboardPaste size={14} aria-hidden="true" />
             Paste
           </Button>

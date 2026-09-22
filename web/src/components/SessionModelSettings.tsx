@@ -220,9 +220,9 @@ export function SessionModelSettings({
             // be mid-edit, so never commit it from here.
             onValueChange={(level) => commit(sessionModel ?? '', level)}
             trigger={selectedThinkingLabel}
-            // Matches ModelCombobox's input height (min-h-11 md:min-h-9) so the
+            // Matches ModelCombobox's input height (min-h-9) so the
             // two controls are the same size, not just the same top edge.
-            className="min-h-11 w-full md:min-h-9"
+            className="min-h-9 w-full"
             aria-label="Thinking level"
           >
             {thinkingOptions.map((level) => (

@@ -205,7 +205,7 @@ export function ModelCombobox({
           aria-invalid={invalid || undefined}
           autoComplete="off"
           spellCheck={false}
-          className="min-h-11 pr-9 font-mono md:min-h-9"
+          className="min-h-9 pr-9 font-mono"
         />
         {query && (
           <button

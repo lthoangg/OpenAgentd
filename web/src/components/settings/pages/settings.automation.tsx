@@ -240,7 +240,7 @@ export function AutomationSettingsPage() {
         }
       >
         <div className="space-y-3">
-          <label className="flex min-h-11 cursor-pointer items-center gap-3 text-xs select-none md:min-h-0">
+          <label className="flex min-h-9 cursor-pointer items-center gap-3 text-xs select-none md:min-h-0">
             <Switch
               checked={titlesDraft.value.enabled}
               onCheckedChange={(checked) => titlesDraft.patch({ enabled: checked })}
@@ -276,7 +276,7 @@ export function AutomationSettingsPage() {
                       wait_timeout_seconds: parseInt(e.target.value, 10) || 0,
                     })
                   }
-                  className="min-h-11 font-mono md:min-h-9"
+                  className="min-h-9 font-mono"
                 />
               </SettingsField>
             </div>
@@ -309,7 +309,7 @@ export function AutomationSettingsPage() {
                   raw.trim() === '' || Number.isNaN(parsed) ? null : parsed,
               })
             }}
-            className="min-h-11 max-w-xs font-mono md:min-h-9"
+            className="min-h-9 max-w-xs font-mono"
           />
         </SettingsField>
       </SettingsDisclosure>
@@ -429,7 +429,7 @@ function ListField({
         value={value}
         onValueChange={(next) => next && onChange(next)}
         trigger={label}
-        className="min-h-11 w-full font-mono md:min-h-9"
+        className="min-h-9 w-full font-mono"
       >
         {optional ? <DropdownItem value={PROVIDER_DEFAULT}>Provider default</DropdownItem> : null}
         {options.map((option) => (

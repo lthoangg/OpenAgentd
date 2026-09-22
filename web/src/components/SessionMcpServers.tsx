@@ -77,7 +77,7 @@ function ServerRow({
     return (
       <li
         aria-label={name}
-        className="flex min-h-11 items-center gap-2.5 px-3 py-2 sm:px-5"
+        className="flex min-h-9 items-center gap-2.5 px-3 py-2 sm:px-5"
       >
         <Plug size={12} className="shrink-0 text-(--color-text-muted)" aria-hidden />
         <span className="flex-1 truncate text-xs font-medium text-(--color-text-2)">{name}</span>
@@ -92,7 +92,7 @@ function ServerRow({
     <li
       aria-label={name}
       aria-busy={busy || undefined}
-      className="flex min-h-11 flex-wrap items-center gap-x-2.5 gap-y-1 px-3 py-2 sm:px-5"
+      className="flex min-h-9 flex-wrap items-center gap-x-2.5 gap-y-1 px-3 py-2 sm:px-5"
     >
       <McpStatusDot server={server} />
       <span className="min-w-0 flex-1 truncate text-xs font-medium text-(--color-text)">

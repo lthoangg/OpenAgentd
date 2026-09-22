@@ -241,7 +241,7 @@ export function CommitHistorySubPanel({
         )}
         <div ref={sentinelRef} className="h-1" />
         {gitHistory.hasNextPage && (
-          <Button size="sm" className="w-full min-h-11 md:min-h-8"
+          <Button size="sm" className="w-full min-h-9 md:min-h-8"
             disabled={gitHistory.isFetchingNextPage}
             onClick={() => void gitHistory.fetchNextPage()}>
             Load more commits

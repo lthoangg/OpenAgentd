@@ -94,7 +94,7 @@ export function EditorSubHeader({
             <Button
               size="icon-sm"
               variant="ghost"
-              className="h-11 w-11 md:h-7 md:w-7"
+              className="h-9 w-9 md:h-7 md:w-7"
               onClick={onBack}
               aria-label="Back to list"
             >
@@ -184,7 +184,7 @@ export function EditorSubHeader({
               render={
                 <Button
                   size="sm"
-                  className="min-h-11 md:min-h-0"
+                  className="min-h-9 md:min-h-0"
                   onClick={onSave}
                   disabled={saveDisabled}
                   aria-label={saving ? 'Saving' : 'Save'}
@@ -197,7 +197,7 @@ export function EditorSubHeader({
             <TooltipContent>{saveTooltip}</TooltipContent>
           </Tooltip>
         ) : (
-          <Button size="sm" className="min-h-11 md:min-h-0" onClick={onSave} disabled={saveDisabled}>
+          <Button size="sm" className="min-h-9 md:min-h-0" onClick={onSave} disabled={saveDisabled}>
             <Save size={12} aria-hidden="true" />
             {saving ? 'Saving…' : 'Save'}
           </Button>

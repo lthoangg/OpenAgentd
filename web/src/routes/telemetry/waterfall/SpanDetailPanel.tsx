@@ -50,7 +50,7 @@ export function SpanDetailPanel({
         </Tooltip>
         <button
           onClick={onClose}
-          className="flex h-11 w-11 items-center justify-center rounded-sm text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-7 md:w-7"
+          className="flex h-9 w-9 items-center justify-center rounded-sm text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-7 md:w-7"
           aria-label="Close span detail"
         >
           <X size={14} />

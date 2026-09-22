@@ -144,7 +144,7 @@ function SaveBar({ draft }: { draft: DraftControls }) {
           <Button
             size="sm"
             variant="ghost"
-            className="min-h-11 md:min-h-0"
+            className="min-h-9 md:min-h-0"
             onClick={draft.reset}
             disabled={draft.isSaving}
           >
@@ -153,7 +153,7 @@ function SaveBar({ draft }: { draft: DraftControls }) {
           </Button>
           <Button
             size="sm"
-            className="min-h-11 md:min-h-0"
+            className="min-h-9 md:min-h-0"
             onClick={() => void draft.save()}
             disabled={!draft.canSave}
           >

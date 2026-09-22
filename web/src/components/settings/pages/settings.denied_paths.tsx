@@ -84,7 +84,7 @@ export function DeniedPathsSettingsPage() {
             body="Agents have unrestricted filesystem access, apart from the built-in DB, state and cache denial."
             tips={['**/.env blocks that file at any depth', 'secrets/** blocks a whole folder']}
             action={
-              <Button size="sm" className="min-h-11 md:min-h-0" onClick={addRow}>
+              <Button size="sm" className="min-h-9 md:min-h-0" onClick={addRow}>
                 <Plus size={12} aria-hidden="true" />
                 Add pattern
               </Button>
@@ -100,7 +100,7 @@ export function DeniedPathsSettingsPage() {
                     onChange={(e) => updateAt(idx, e.target.value)}
                     placeholder="**/.env"
                     aria-label={`Pattern ${idx + 1}`}
-                    className="min-h-11 font-mono text-xs md:min-h-9"
+                    className="min-h-9 font-mono text-xs"
                   />
                   <Tooltip>
                     <TooltipTrigger
@@ -122,7 +122,7 @@ export function DeniedPathsSettingsPage() {
               ))}
             </ul>
 
-            <Button size="sm" variant="default" className="mt-2 min-h-11 md:min-h-0" onClick={addRow}>
+            <Button size="sm" variant="default" className="mt-2 min-h-9 md:min-h-0" onClick={addRow}>
               <Plus size={12} aria-hidden="true" />
               Add pattern
             </Button>
@@ -159,7 +159,7 @@ function DeniedPathsHelpPopover() {
         render={
           <button
             type="button"
-            className="inline-flex min-h-11 items-center gap-0.5 rounded-xs text-(--color-text) underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 md:min-h-0"
+            className="inline-flex min-h-9 items-center gap-0.5 rounded-xs text-(--color-text) underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 md:min-h-0"
           >
             See examples
             <ChevronDown

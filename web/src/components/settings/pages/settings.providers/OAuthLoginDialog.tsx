@@ -153,7 +153,7 @@ export function OAuthLoginDialog({
                   {deviceCodeHelp(provider.id)}
                 </p>
                 {deviceEvent.verification_uri && (
-                  <Button className="mt-4 min-h-11 sm:min-h-0" size="sm" onClick={() => void openExternalUrl(deviceEvent.verification_uri!)}>
+                  <Button className="mt-4 min-h-9 sm:min-h-0" size="sm" onClick={() => void openExternalUrl(deviceEvent.verification_uri!)}>
                     Open authorization page
                   </Button>
                 )}
@@ -165,7 +165,7 @@ export function OAuthLoginDialog({
                     If the Codex page says your admin must enable device-code authentication, switch to browser sign-in.
                   </p>
                   <Button
-                    className="mt-3 min-h-11 w-full sm:min-h-0"
+                    className="mt-3 min-h-9 w-full sm:min-h-0"
                     size="sm"
                     variant="default"
                     onClick={() => {
@@ -201,9 +201,9 @@ export function OAuthLoginDialog({
             >
               <label className="block text-xs font-medium text-(--color-text-muted)">
                 Paste authorization callback URL/code
-                <Input value={code} onChange={(event) => setCode(event.target.value)} className="mt-1 min-h-11 sm:min-h-9" autoComplete="off" />
+                <Input value={code} onChange={(event) => setCode(event.target.value)} className="mt-1 min-h-9" autoComplete="off" />
               </label>
-              <Button type="submit" size="sm" className="min-h-11 w-full sm:min-h-0 sm:w-auto" disabled={!code.trim() || submittingCode}>
+              <Button type="submit" size="sm" className="min-h-9 w-full sm:min-h-0 sm:w-auto" disabled={!code.trim() || submittingCode}>
                 {submittingCode && <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />}
                 Finish connection
               </Button>

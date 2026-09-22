@@ -28,7 +28,7 @@ export function ParseErrorBanner({
         <p className="font-medium">Parse error</p>
         <p className="mt-0.5 opacity-90">{message}</p>
       </div>
-      <Button size="xs" variant="default" className="min-h-11 md:min-h-0" onClick={onSwitchToRaw}>
+      <Button size="xs" variant="default" className="min-h-9 md:min-h-0" onClick={onSwitchToRaw}>
         Open raw
       </Button>
     </div>
@@ -131,7 +131,7 @@ export function FormFields({
           >
             <Input
               type="text"
-              className="min-h-11 md:min-h-9"
+              className="min-h-9"
               value={fm.description ?? ''}
               onChange={(e) =>
                 updateFromForm({ ...fm, description: e.target.value || null }, body)
@@ -182,7 +182,7 @@ export function FormFields({
                 updateFromForm({ ...fm, thinking_level: v === '__none__' ? null : v }, body)
               }}
               trigger="Thinking level"
-              className="min-h-11 w-full md:min-h-9"
+              className="min-h-9 w-full"
               disabled={disabled}
             >
               <DropdownItem value="__none__">(default)</DropdownItem>
@@ -245,7 +245,7 @@ export function FormFields({
                   type="button"
                   variant="ghost"
                   size="xs"
-                  className="min-h-11 md:min-h-0"
+                  className="min-h-9 md:min-h-0"
                   onClick={() => updateFromForm(fm, defaultPrompt)}
                   disabled={disabled}
                 >

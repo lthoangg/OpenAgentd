@@ -77,7 +77,7 @@ export function McpServerForm({
               placeholder="filesystem"
               aria-invalid={!!errors?.name || undefined}
               aria-describedby={errors?.name ? 'mcp-name-error' : undefined}
-              className="min-h-11 font-mono md:min-h-9"
+              className="min-h-9 font-mono"
             />
           </SettingsField>
 
@@ -127,7 +127,7 @@ export function McpServerForm({
                   placeholder="npx"
                   aria-invalid={!!errors?.command || undefined}
                   aria-describedby={errors?.command ? 'mcp-command-error' : undefined}
-                  className="min-h-11 font-mono md:min-h-9"
+                  className="min-h-9 font-mono"
                 />
               </SettingsField>
 
@@ -173,7 +173,7 @@ export function McpServerForm({
                   placeholder="https://mcp.example.com/v1"
                   aria-invalid={!!errors?.url || undefined}
                   aria-describedby={errors?.url ? 'mcp-url-error' : undefined}
-                  className="min-h-11 font-mono md:min-h-9"
+                  className="min-h-9 font-mono"
                 />
               </SettingsField>
 
@@ -220,7 +220,7 @@ export function McpServerForm({
                       onChange={(e) => set({ oauthClientIdEnv: e.target.value })}
                       disabled={disabled}
                       placeholder="client id"
-                      className="min-h-11 font-mono md:min-h-9"
+                      className="min-h-9 font-mono"
                     />
                   </SettingsField>
                   <SettingsField label="Client secret" hint="Paste the OAuth app client secret.">
@@ -229,7 +229,7 @@ export function McpServerForm({
                       onChange={(e) => set({ oauthClientSecretEnv: e.target.value })}
                       disabled={disabled}
                       placeholder="client secret"
-                      className="min-h-11 font-mono md:min-h-9"
+                      className="min-h-9 font-mono"
                     />
                   </SettingsField>
                 </div>
@@ -394,7 +394,7 @@ function PairListField({
         <Button
           size="xs"
           variant="ghost"
-          className="min-h-11 md:min-h-0"
+          className="min-h-9 md:min-h-0"
           onClick={append}
           disabled={disabled}
           aria-label={`Add ${label.toLowerCase()}`}
@@ -417,7 +417,7 @@ function PairListField({
                 aria-describedby={error ? errorId : undefined}
                 disabled={disabled}
                 placeholder={keyPlaceholder}
-                className="min-h-11 font-mono md:min-h-9"
+                className="min-h-9 font-mono"
               />
               <Input
                 value={pair.value}
@@ -426,7 +426,7 @@ function PairListField({
                 aria-describedby={error ? errorId : undefined}
                 disabled={disabled}
                 placeholder={valuePlaceholder}
-                className="min-h-11 font-mono md:min-h-9"
+                className="min-h-9 font-mono"
               />
               <Button
                 size="icon-xs"

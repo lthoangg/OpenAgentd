@@ -76,7 +76,7 @@ describe('DeniedPathsSettingsPage', () => {
     // The save bar only mounts once there are unsaved edits.
     expect(screen.queryByRole('button', { name: /^Save$/i })).toBeNull()
     fireEvent.change(pattern, { target: { value: '**/.env.local' } })
-    expect((await screen.findByRole('button', { name: /^Save$/i })).className).toContain('min-h-11')
+    expect((await screen.findByRole('button', { name: /^Save$/i })).className).toContain('min-h-9')
 
     const remove = screen.getByRole('button', { name: /Remove pattern 1/i })
     expect(remove.className).toContain('h-9')
@@ -85,7 +85,7 @@ describe('DeniedPathsSettingsPage', () => {
     expect(remove.className).toContain('md:w-7')
 
     const add = screen.getByRole('button', { name: /Add pattern/i })
-    expect(add.className).toContain('min-h-11')
+    expect(add.className).toContain('min-h-9')
     expect(add.className).toContain('md:min-h-0')
   })
 
@@ -99,7 +99,7 @@ describe('DeniedPathsSettingsPage', () => {
     renderPage()
 
     const add = await screen.findByRole('button', { name: /Add pattern/i })
-    expect(add.className).toContain('min-h-11')
+    expect(add.className).toContain('min-h-9')
     expect(add.className).toContain('md:min-h-0')
   })
 
@@ -113,7 +113,7 @@ describe('DeniedPathsSettingsPage', () => {
     renderPage()
 
     const trigger = await screen.findByRole('button', { name: /See examples/i })
-    expect(trigger.className).toContain('min-h-11')
+    expect(trigger.className).toContain('min-h-9')
     expect(trigger.className).toContain('md:min-h-0')
   })
 })

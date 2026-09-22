@@ -100,7 +100,7 @@ export function SchedulerPanel({
                 render={
                   <button
                     onClick={handleBackToList}
-                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-sm text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-7 md:w-7"
+                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-sm text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-7 md:w-7"
                     aria-label="Back to task list"
                   >
                     <ArrowLeft size={14} />
@@ -166,7 +166,7 @@ export function SchedulerPanel({
                 render={
                   <button
                     onClick={handleOpenCreate}
-                    className="flex h-11 w-11 items-center justify-center rounded-sm border border-(--color-border) bg-(--bg-card) text-(--color-text) transition-colors hover:bg-(--bg-key) md:h-7 md:w-7"
+                    className="flex h-9 w-9 items-center justify-center rounded-sm border border-(--color-border) bg-(--bg-card) text-(--color-text) transition-colors hover:bg-(--bg-key) md:h-7 md:w-7"
                     aria-label="Create new task"
                   >
                     <Plus size={13} />
@@ -181,7 +181,7 @@ export function SchedulerPanel({
               render={
                 <button
                   onClick={onClose}
-                  className="flex h-11 w-11 items-center justify-center rounded-sm text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-7 md:w-7"
+                  className="flex h-9 w-9 items-center justify-center rounded-sm text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-7 md:w-7"
                   aria-label="Close scheduler panel"
                 >
                   <X size={14} />

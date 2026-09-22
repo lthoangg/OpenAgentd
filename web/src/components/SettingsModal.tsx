@@ -217,7 +217,7 @@ function MobileTabBar({
       className="shrink-0 border-t border-(--color-border) bg-(--bg-sidebar) p-2 md:hidden"
     >
       <select aria-label="Settings section" value={parentSection(section)}
-        className="min-h-11 w-full rounded-sm border border-(--color-border) bg-(--bg-input) px-3 text-base text-(--color-text)"
+        className="min-h-9 w-full rounded-sm border border-(--color-border) bg-(--bg-input) px-3 text-base text-(--color-text)"
         onChange={(event) => {
           const item = SETTINGS_SECTIONS.find((candidate) => candidate.id === event.target.value)
           if (item) onSelect(item.id)
@@ -402,7 +402,7 @@ export function SettingsModal() {
                     <button
                       type="button"
                       onClick={closeSettings}
-                      className="flex h-11 w-11 items-center justify-center rounded-sm text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text) transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) md:h-7 md:w-7"
+                      className="flex h-9 w-9 items-center justify-center rounded-sm text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text) transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) md:h-7 md:w-7"
                       aria-label="Close settings"
                     >
                       <X size={14} aria-hidden="true" />

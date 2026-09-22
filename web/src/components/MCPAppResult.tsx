@@ -429,7 +429,7 @@ export function MCPAppResult({ mcpApp, sessionId, toolCallId }: MCPAppResultProp
           <button
             type="button"
             onClick={() => setDisplayMode(INLINE_DISPLAY_MODE)}
-            className="absolute right-4 top-4 flex h-11 w-11 cursor-pointer items-center justify-center rounded-sm border border-(--color-border) bg-(--bg-card) text-(--color-text) transition-colors hover:bg-(--bg-key) focus-visible:ring-2 focus-visible:ring-(--color-text) focus-visible:outline-none [[data-mobile-shell]_&]:top-[max(4rem,calc(env(safe-area-inset-top)+1rem))]"
+            className="absolute right-4 top-4 flex h-9 w-9 cursor-pointer items-center justify-center rounded-sm border border-(--color-border) bg-(--bg-card) text-(--color-text) transition-colors hover:bg-(--bg-key) focus-visible:ring-2 focus-visible:ring-(--color-text) focus-visible:outline-none [[data-mobile-shell]_&]:top-[max(4rem,calc(env(safe-area-inset-top)+1rem))]"
             aria-label="Close fullscreen MCP app"
           >
             <X size={18} aria-hidden />

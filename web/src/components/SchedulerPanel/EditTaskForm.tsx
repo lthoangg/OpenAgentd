@@ -80,7 +80,7 @@ export function EditTaskForm({
                   variant="ghost"
                   size="icon-xs"
                   onClick={onCancel}
-                  className="h-11 w-11 rounded-sm text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text) md:h-7 md:w-7"
+                  className="h-9 w-9 rounded-sm text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text) md:h-7 md:w-7"
                   aria-label="Cancel edit"
                 >
                   <X size={13} />

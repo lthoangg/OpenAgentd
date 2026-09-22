@@ -101,7 +101,7 @@ export function ModelsPanel({
         onClick={onToggle}
         aria-expanded={expanded}
         className={cn(
-          'flex min-h-11 w-full items-center justify-between gap-2 px-3 py-2 text-left md:min-h-0',
+          'flex min-h-9 w-full items-center justify-between gap-2 px-3 py-2 text-left md:min-h-0',
           'text-[10.5px] text-(--color-text-muted) transition-colors',
           'hover:bg-(--bg-key)/40 hover:text-(--color-text)',
           'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40',
@@ -195,7 +195,7 @@ function ModelRow({
 
   return (
     <li
-      className="group flex min-h-11 items-center gap-1.5 rounded-xs px-2 py-1 hover:bg-(--bg-key) md:min-h-0"
+      className="group flex min-h-9 items-center gap-1.5 rounded-xs px-2 py-1 hover:bg-(--bg-key) md:min-h-0"
       onContextMenu={(e) => {
         if (isTauriMobile) return
         e.preventDefault()

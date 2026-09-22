@@ -158,7 +158,7 @@ export function McpServerDetailPage({ name, onBack }: McpServerDetailPageProps) 
                     <span className="text-xs font-semibold">OAuth needed to connect</span>
                   </div>
                   <p className="mb-3 text-xs text-(--color-text-muted)">Connect OAuth to authorize this MCP server.</p>
-                  <Button variant="default" size="sm" className="min-h-11 md:min-h-0"
+                  <Button variant="default" size="sm" className="min-h-9 md:min-h-0"
                     onClick={handleConnectOAuth} disabled={connectOAuthMut.isPending || !server.enabled}>
                     {connectOAuthMut.isPending ? 'Connecting…' : 'Connect OAuth'}
                   </Button>
@@ -177,9 +177,9 @@ export function McpServerDetailPage({ name, onBack }: McpServerDetailPageProps) 
 
               {dirty && (
                 <div className="flex items-center gap-2 text-xs text-(--color-text-muted)">
-                  <Button variant="ghost" size="xs" className="min-h-11 md:min-h-0"
+                  <Button variant="ghost" size="xs" className="min-h-9 md:min-h-0"
                     onClick={() => seedDraft && setDraft(seedDraft)}>Discard changes</Button>
-                  <Button variant="ghost" size="xs" className="min-h-11 md:min-h-0"
+                  <Button variant="ghost" size="xs" className="min-h-9 md:min-h-0"
                     onClick={onBack}>Leave without saving</Button>
                 </div>
               )}

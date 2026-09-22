@@ -211,7 +211,7 @@ export function SettingsHubPage() {
                     key={item.id}
                     type="button"
                     onClick={() => setSection(item.id)}
-                    className="flex min-h-11 w-full items-center justify-between py-2.5 text-left text-xs text-(--color-text) hover:bg-(--bg-key)/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40"
+                    className="flex min-h-9 w-full items-center justify-between py-2.5 text-left text-xs text-(--color-text) hover:bg-(--bg-key)/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40"
                   >
                     <span className="flex items-center gap-2.5">
                       <Icon size={ICON_SIZE} className="text-(--color-text-muted)" aria-hidden="true" />

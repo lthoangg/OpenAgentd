@@ -171,7 +171,7 @@ export function SessionTools({
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
-        className="flex min-h-11 w-full items-center gap-2 px-3 py-2.5 text-left transition-colors hover:bg-(--bg-key)/20 sm:px-5"
+        className="flex min-h-9 w-full items-center gap-2 px-3 py-2.5 text-left transition-colors hover:bg-(--bg-key)/20 sm:px-5"
       >
         <h3 className="text-[10px] font-semibold uppercase tracking-widest text-(--color-text-muted)">
           Tools

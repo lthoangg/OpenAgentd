@@ -118,11 +118,11 @@ export function AgentEditorPage({ name = 'code', onBack }: AgentEditorPageProps)
             <div className="flex items-center gap-2">
               {dirty && (
                 <>
-                  <Button variant="ghost" size="xs" className="min-h-11 md:min-h-0"
+                  <Button variant="ghost" size="xs" className="min-h-9 md:min-h-0"
                     onClick={() => data && setDraft(data.content)}>
                     Discard changes
                   </Button>
-                  <Button variant="ghost" size="xs" className="min-h-11 md:min-h-0"
+                  <Button variant="ghost" size="xs" className="min-h-9 md:min-h-0"
                     onClick={onBack}>
                     Leave without saving
                   </Button>

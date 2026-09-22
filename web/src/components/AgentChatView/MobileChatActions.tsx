@@ -89,7 +89,7 @@ export function MobileChatActions({
                   <button
                     type="button"
                     onClick={() => onOpenChange(false)}
-                    className="flex h-11 w-11 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
+                    className="flex h-9 w-9 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
                     aria-label="Close chat actions"
                   >
                     <X size={14} aria-hidden="true" />

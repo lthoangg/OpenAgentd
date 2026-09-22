@@ -236,7 +236,7 @@ function LightboxButton({
             type="button"
             onClick={onClick}
             aria-label={label}
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md bg-white/10 text-white/80 transition-colors hover:bg-white/20 hover:text-white focus-visible:ring-2 focus-visible:ring-white focus-visible:outline-none sm:h-9 sm:w-9"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-white/10 text-white/80 transition-colors hover:bg-white/20 hover:text-white focus-visible:ring-2 focus-visible:ring-white focus-visible:outline-none"
           >
             {icon}
           </button>

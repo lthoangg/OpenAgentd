@@ -261,22 +261,21 @@ describe('AutomationSettingsPage', () => {
     const enabled = await screen.findByRole('switch', {
       name: /generate titles automatically/i,
     })
-    expect(enabled.parentElement?.className).toContain('min-h-11')
+    expect(enabled.parentElement?.className).toContain('min-h-9')
     expect(enabled.parentElement?.className).toContain('md:min-h-0')
 
     const waitTimeout = screen.getByLabelText('Wait timeout seconds')
-    expect(waitTimeout.className).toContain('min-h-11')
-    expect(waitTimeout.className).toContain('md:min-h-9')
+    expect(waitTimeout.className).toContain('min-h-9')
 
     // Dirty the page so the save bar mounts, then assert its touch targets.
     fireEvent.change(waitTimeout, { target: { value: '5' } })
 
     const save = await screen.findByRole('button', { name: /^save$/i })
-    expect(save.className).toContain('min-h-11')
+    expect(save.className).toContain('min-h-9')
     expect(save.className).toContain('md:min-h-0')
 
     const reset = screen.getByRole('button', { name: /reset/i })
-    expect(reset.className).toContain('min-h-11')
+    expect(reset.className).toContain('min-h-9')
     expect(reset.className).toContain('md:min-h-0')
   })
 
@@ -291,8 +290,7 @@ describe('AutomationSettingsPage', () => {
     )
     expect(inputs.length).toBe(2)
     for (const input of inputs) {
-      expect(input.className).toContain('min-h-11')
-      expect(input.className).toContain('md:min-h-9')
+      expect(input.className).toContain('min-h-9')
     }
   })
 })

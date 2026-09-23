@@ -157,10 +157,14 @@ async def seq_before_row(
 
 
 async def _llm_window_rows(
-    db: AsyncSession, session_id: UUID, *, exclude_queued: bool = False
+    db: AsyncSession,
+    session_id: UUID,
+    *,
+    exclude_queued: bool = False,
+    session: ChatSession | None = None,
 ) -> list[SessionMessage]:
     """Fetch the derived LLM window (boundary-aware)."""
-    boundary = await _revert_boundary(db, session_id)
+    boundary = await _revert_boundary(db, session_id, session=session)
     summary = await _get_active_summary(db, session_id, boundary)
     stmt = _llm_window_stmt(
         session_id, summary, boundary, exclude_queued=exclude_queued
@@ -172,9 +176,11 @@ async def get_messages_for_llm_after(
     db: AsyncSession,
     session_id: UUID,
     cursor: tuple[int, UUID],
+    *,
+    session: ChatSession | None = None,
 ) -> list[ChatMessage]:
     """Deserialize only visible LLM rows after an append-only cursor."""
-    boundary = await _revert_boundary(db, session_id)
+    boundary = await _revert_boundary(db, session_id, session=session)
     summary = await _get_active_summary(db, session_id, boundary)
     stmt = _llm_window_stmt(session_id, summary, boundary, exclude_queued=True)
     seq, message_id = cursor

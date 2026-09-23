@@ -36,6 +36,7 @@ from app.services._tool_state import match_tool_end, match_tool_start
 from app.services.stream_envelope import StreamEnvelope
 
 STREAM_TTL = 3600  # 1 hour
+FINISHED_TURN_TTL = 60  # Finished turns expire after 60s once streaming completes
 
 # Hard ceiling on one replay payload's lifetime, independent of the sliding
 # idle TTL above. ``_refresh_cleanup`` extends the deadline on every event, so
@@ -164,6 +165,16 @@ def _refresh_cleanup(session_id: str, state: _TurnState) -> None:
     state._cleanup_deadline = min(loop.time() + STREAM_TTL, hard_deadline)
     if state._cleanup_handle is None:
         _schedule_cleanup(session_id, state)
+
+
+def _schedule_finished_cleanup(session_id: str, state: _TurnState) -> None:
+    """Schedule prompt expiry for a finished turn (60s)."""
+    _cancel_cleanup(state)
+    loop = asyncio.get_event_loop()
+    state._cleanup_deadline = loop.time() + FINISHED_TURN_TTL
+    state._cleanup_handle = loop.call_later(
+        FINISHED_TURN_TTL, _expire_turn, session_id, state
+    )
 
 
 def _expire_turn(session_id: str, state: _TurnState) -> None:
@@ -475,7 +486,7 @@ async def mark_done(session_id: str) -> None:
         if state is None:
             return
         state.is_streaming = False
-        _refresh_cleanup(session_id, state)
+        _schedule_finished_cleanup(session_id, state)
         # Me send sentinel to all subscribers so they exit
         for q in list(state.subscribers):
             _terminate_subscriber(q)

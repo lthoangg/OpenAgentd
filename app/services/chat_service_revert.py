@@ -123,8 +123,11 @@ def revert_message_id(session: ChatSession | None) -> UUID | None:
         return None
 
 
-async def revert_boundary(db: AsyncSession, session_id: UUID) -> SessionMessage | None:
-    session = await db.get(ChatSession, session_id)
+async def revert_boundary(
+    db: AsyncSession, session_id: UUID, session: ChatSession | None = None
+) -> SessionMessage | None:
+    if session is None:
+        session = await db.get(ChatSession, session_id)
     message_id = revert_message_id(session)
     if message_id is None:
         return None
@@ -279,7 +282,7 @@ async def undo_session_messages(db: AsyncSession, session_id: UUID) -> BoundaryS
     session = await db.get(ChatSession, session_id)
     if session is None:
         return BoundaryShift(applied=False)
-    boundary = await revert_boundary(db, session_id)
+    boundary = await revert_boundary(db, session_id, session=session)
 
     # Undo targets: real user messages still in the LLM window (rows compacted
     # below the active summary are not targets — same as the old model), plus
@@ -359,7 +362,7 @@ async def undo_session_messages(db: AsyncSession, session_id: UUID) -> BoundaryS
 
 async def redo_session_messages(db: AsyncSession, session_id: UUID) -> BoundaryShift:
     session = await db.get(ChatSession, session_id)
-    boundary = await revert_boundary(db, session_id)
+    boundary = await revert_boundary(db, session_id, session=session)
     if session is None or boundary is None:
         return BoundaryShift(applied=False, error="No undone message to redo.")
     anchor = redo_anchor(session)
@@ -423,7 +426,7 @@ async def redo_all_session_messages(
     db: AsyncSession, session_id: UUID
 ) -> BoundaryShift:
     session = await db.get(ChatSession, session_id)
-    boundary = await revert_boundary(db, session_id)
+    boundary = await revert_boundary(db, session_id, session=session)
     if session is None or boundary is None:
         return BoundaryShift(applied=False, error="No undone message to redo.")
     anchor = redo_anchor(session)
@@ -460,7 +463,7 @@ async def cleanup_reverted_tail(db: AsyncSession, session_id: UUID) -> int:
     automatically.
     """
     session = await db.get(ChatSession, session_id)
-    boundary = await revert_boundary(db, session_id)
+    boundary = await revert_boundary(db, session_id, session=session)
     if session is None or boundary is None:
         return 0
     result = await db.exec(

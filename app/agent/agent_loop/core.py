@@ -474,13 +474,16 @@ class Agent(Generic[TContext]):
             # before_model: hooks may return a modified ModelRequest.
             # SummarizationHook mutates state.messages and returns updated messages
             # in the new ModelRequest — so the current LLM call sees the summary.
+            hook_updated = False
             for hook in combined_hooks:
                 updated = await hook.before_model(ctx, state, model_request)
                 if updated is not None:
                     model_request = updated
+                    hook_updated = True
 
-            # Me sync after before_model — persists summarization changes
-            await self._sync(checkpointer, ctx, state)
+            # Sync after before_model only when a hook modified state (e.g. summarization)
+            if hook_updated:
+                await self._sync(checkpointer, ctx, state)
 
             if state.metadata.get("stop_after_before_model") is True:
                 await self._run_before_model_only(
@@ -521,9 +524,6 @@ class Agent(Generic[TContext]):
             for hook in combined_hooks:
                 await hook.after_model(ctx, state, assistant_msg)
 
-            # Me sync after after_model — captures assistant message + usage
-            await self._sync(checkpointer, ctx, state)
-
             handled = await self._handle_finish_reason(
                 env=env,
                 messages=messages,
@@ -534,6 +534,7 @@ class Agent(Generic[TContext]):
             if handled == "continue":
                 continue
             if handled == "break":
+                await self._sync(checkpointer, ctx, state)
                 break
 
             tc_list = assistant_msg.tool_calls or []
@@ -541,6 +542,7 @@ class Agent(Generic[TContext]):
             # Pre-dispatch interrupt check — skip tool execution entirely
             if interrupt_event is not None and interrupt_event.is_set():
                 self._skip_tool_dispatch_for_interrupt(messages, tc_list)
+                await self._sync(checkpointer, ctx, state)
                 break
 
             dispatch = await self._dispatch_tools(
@@ -552,6 +554,7 @@ class Agent(Generic[TContext]):
                 config=config,
             )
             if dispatch == "cancelled":
+                await self._sync(checkpointer, ctx, state)
                 break
             if dispatch == "suspended":
                 # Turn handed to the user. Everything is persisted and the

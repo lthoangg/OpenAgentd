@@ -334,13 +334,17 @@ class SQLiteCheckpointer(Checkpointer):
         async with self._session_factory() as db:
             revision = await get_history_revision(db, UUID(session_id))
             cursor = await get_history_cursor(db, UUID(session_id))
+            if cursor is None:
+                logger.debug("checkpointer_load_empty session_id={}", session_id)
+                return None
+
             cached = self._loaded.get(session_id)
             if (
                 cached is not None
                 and self._loaded_revision.get(session_id) == revision
                 and self._loaded_cursor.get(session_id) == cursor
             ):
-                return AgentState(messages=copy.deepcopy(cached.messages))
+                return AgentState(messages=list(cached.messages))
 
             # Keep revision/cursor/window reads on one checked-out connection.
             # The old two-context shape paid a second pool checkout and could
@@ -354,7 +358,7 @@ class SQLiteCheckpointer(Checkpointer):
 
         # Me auto-register loaded messages + compute seed tokens via mark_loaded()
         self.mark_loaded(session_id, messages)
-        self._loaded[session_id] = AgentState(messages=copy.deepcopy(messages))
+        self._loaded[session_id] = AgentState(messages=list(messages))
         self._loaded_revision[session_id] = revision
         self._loaded_cursor[session_id] = cursor
 
@@ -409,7 +413,12 @@ class SQLiteCheckpointer(Checkpointer):
             if flushed_pinned.get(msg.db_id, False) != msg.pinned:
                 pin_updates[msg.db_id] = msg.pinned
 
-        summary_anchors = _summary_anchor_ids(state.messages, persisted_ids)
+        has_new_summary = any(getattr(m, "is_summary", False) for m in new_messages)
+        summary_anchors = (
+            _summary_anchor_ids(state.messages, persisted_ids)
+            if has_new_summary
+            else {}
+        )
 
         # NOTE: the stream-buffer commit further down must still run on a no-op
         # sync, so this guards only the DB work — it is deliberately not an

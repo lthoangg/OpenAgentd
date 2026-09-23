@@ -26,6 +26,7 @@ from sqlmodel import SQLModel
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.agent.checkpointer import SQLiteCheckpointer
+from app.agent.hooks.base import BaseAgentHook
 from app.agent.schemas.chat import (
     AssistantMessage,
     FunctionCall,
@@ -33,7 +34,13 @@ from app.agent.schemas.chat import (
     ToolCall,
     ToolMessage,
 )
-from app.agent.state import AgentState, RunContext
+from app.agent.state import (
+    AgentState,
+    ModelRequest,
+    RunContext,
+    build_model_chain,
+    build_tool_chain,
+)
 from app.services import memory_stream_store as stream_store
 from app.services.chat_service import (
     create_chat_session,
@@ -330,11 +337,61 @@ async def benchmark_memory_stream_cleanup() -> None:
     assert sid not in stream_store._turns
 
 
+async def benchmark_hook_chain() -> None:
+    print("\n══════════════════════════════════════════════════════════════════════")
+    print(" Benchmark 5: Hook Chain Dispatch (Filtered vs Full Wrappers)")
+    print("══════════════════════════════════════════════════════════════════════")
+
+    class PassthroughHook(BaseAgentHook):
+        pass
+
+    class ActiveToolHook(BaseAgentHook):
+        async def wrap_tool_call(self, ctx, state, tc, handler):
+            return await handler(ctx, state, tc)
+
+    class ActiveModelHook(BaseAgentHook):
+        async def wrap_model_call(self, ctx, state, request, handler):
+            return await handler(request)
+
+    hooks = [PassthroughHook() for _ in range(10)] + [
+        ActiveToolHook(),
+        ActiveModelHook(),
+    ]
+    ctx = RunContext(session_id="bench", run_id="bench", agent_name="assistant")
+    state = AgentState(messages=[])
+    tc = ToolCall(id="call_1", function=FunctionCall(name="test", arguments="{}"))
+
+    async def dummy_tool(c, s, t):
+        return "ok"
+
+    async def dummy_model(req):
+        return AssistantMessage(content="ok")
+
+    start = time.perf_counter()
+    for _ in range(5000):
+        chain = build_tool_chain(hooks, dummy_tool)
+        await chain(ctx, state, tc)
+    tool_chain_duration = (time.perf_counter() - start) / 5000 * 1000  # ms
+
+    start_m = time.perf_counter()
+    req = ModelRequest(messages=(), system_prompt="test")
+    for _ in range(5000):
+        m_chain = build_model_chain(hooks, ctx, state, dummy_model)
+        await m_chain(req)
+    model_chain_duration = (time.perf_counter() - start_m) / 5000 * 1000  # ms
+
+    print(
+        f"  Tool Chain (12 hooks):  {tool_chain_duration:6.4f} ms/dispatch (10 passthroughs pruned)\n"
+        f"  Model Chain (12 hooks): {model_chain_duration:6.4f} ms/dispatch (10 passthroughs pruned)"
+    )
+
+
 async def main() -> None:
     await benchmark_deepcopy_vs_shallow()
     await benchmark_db_transactions()
     await benchmark_query_counts()
     await benchmark_memory_stream_cleanup()
+    await benchmark_hook_chain()
     print("\n══════════════════════════════════════════════════════════════════════")
     print(" All Benchmarks Completed Successfully")
     print("══════════════════════════════════════════════════════════════════════\n")

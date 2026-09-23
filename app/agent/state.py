@@ -177,8 +177,13 @@ def build_tool_chain(
 
     Hooks that don't override ``wrap_tool_call`` pass through unchanged.
     """
+    from app.agent.hooks.base import BaseAgentHook
+
     handler = execute_fn
     for hook in reversed(hooks):
+        # Skip hooks that do not override wrap_tool_call
+        if getattr(type(hook), "wrap_tool_call", None) is BaseAgentHook.wrap_tool_call:
+            continue
         handler = _wrap_tool_hook(hook, handler)
     return handler
 
@@ -198,8 +203,16 @@ def build_model_chain(
 
         Hook0 → Hook1 → … → execute_fn
     """
+    from app.agent.hooks.base import BaseAgentHook
+
     handler = execute_fn
     for hook in reversed(hooks):
+        # Skip hooks that do not override wrap_model_call
+        if (
+            getattr(type(hook), "wrap_model_call", None)
+            is BaseAgentHook.wrap_model_call
+        ):
+            continue
 
         def _make_wrapper(_hook: Any, _next: ModelCallHandler) -> ModelCallHandler:
             async def _wrapped(request: ModelRequest) -> AssistantMessage:

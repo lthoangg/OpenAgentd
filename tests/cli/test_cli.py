@@ -1148,7 +1148,19 @@ class TestCmdCleanupReporting:
 
 
 class TestCmdUpgrade:
-    def test_upgrade_runs_package_manager_without_restart(self, monkeypatch):
+    FAKE_INSTALLER = Path("/nonexistent/openagentd-install.sh")
+
+    @pytest.fixture(autouse=True)
+    def _fake_installer(self, monkeypatch):
+        """v2 migrates uv/pipx/pip installs by running the v3 installer."""
+        from app.cli.commands import upgrade as upgrade_mod
+
+        monkeypatch.setattr(upgrade_mod, "_IS_WINDOWS", False)
+        monkeypatch.setattr(
+            upgrade_mod, "_download_installer", lambda: self.FAKE_INSTALLER
+        )
+
+    def test_uv_install_migrates_to_v3_via_installer(self, monkeypatch):
         from app.cli.commands import upgrade as upgrade_mod
 
         args = build_parser().parse_args(["upgrade"])
@@ -1166,7 +1178,74 @@ class TestCmdUpgrade:
 
         upgrade_mod.cmd_upgrade(args)
 
-        assert run_calls == [["uv", "tool", "upgrade", "openagentd"]]
+        assert run_calls == [["sh", str(self.FAKE_INSTALLER), "--cli"]]
+
+    def test_pip_install_migrates_then_removes_the_pip_package(self, monkeypatch):
+        from app.cli.commands import upgrade as upgrade_mod
+
+        args = build_parser().parse_args(["upgrade"])
+        run_calls: list[list[str]] = []
+        monkeypatch.setattr(upgrade_mod, "_find_pids", lambda: [])
+        monkeypatch.setattr(
+            upgrade_mod, "_upgrade_command", lambda: ("pip", ["unused"])
+        )
+        monkeypatch.setattr(
+            upgrade_mod, "_run", lambda command: run_calls.append(command) or 0
+        )
+
+        upgrade_mod.cmd_upgrade(args)
+
+        assert run_calls == [
+            ["sh", str(self.FAKE_INSTALLER), "--cli"],
+            [upgrade_mod.sys.executable, "-m", "pip", "uninstall", "-y", "openagentd"],
+        ]
+
+    def test_windows_migration_runs_detached_and_skips_restart(self, monkeypatch):
+        from app.cli.commands import upgrade as upgrade_mod
+
+        args = build_parser().parse_args(["upgrade"])
+        spawned: list[tuple[str, Path]] = []
+        run_calls: list[list[str]] = []
+        monkeypatch.setattr(upgrade_mod, "_IS_WINDOWS", True)
+        monkeypatch.setattr(upgrade_mod, "_find_pids", lambda: [1234])
+        monkeypatch.setattr(upgrade_mod, "cmd_stop", Mock())
+        monkeypatch.setattr(
+            upgrade_mod, "_upgrade_command", lambda: ("uv tool", ["unused"])
+        )
+        monkeypatch.setattr(
+            upgrade_mod, "_spawn_windows_migration", lambda m, p: spawned.append((m, p))
+        )
+        monkeypatch.setattr(
+            upgrade_mod, "_run", lambda command: run_calls.append(command) or 0
+        )
+
+        upgrade_mod.cmd_upgrade(args)
+
+        assert spawned == [("uv tool", self.FAKE_INSTALLER)]
+        assert run_calls == [], "no restart: the v2 shim is still locked"
+
+    def test_installer_download_failure_exits_with_notice(self, monkeypatch, capsys):
+        from app.cli.commands import upgrade as upgrade_mod
+
+        def boom():
+            raise OSError("offline")
+
+        args = build_parser().parse_args(["upgrade"])
+        monkeypatch.delenv("OPENAGENTD_HIDE_V2_NOTICE", raising=False)
+        monkeypatch.setattr(upgrade_mod, "_find_pids", lambda: [])
+        monkeypatch.setattr(
+            upgrade_mod, "_upgrade_command", lambda: ("pipx", ["unused"])
+        )
+        monkeypatch.setattr(upgrade_mod, "_download_installer", boom)
+        monkeypatch.setattr(upgrade_mod, "_run", Mock(return_value=0))
+
+        with pytest.raises(SystemExit) as exc:
+            upgrade_mod.cmd_upgrade(args)
+
+        assert exc.value.code == 1
+        out = capsys.readouterr().out
+        assert "offline" in out
+        assert "no longer supported" in out
 
     def test_brew_upgrade_does_not_relink_formula_without_restart(self, monkeypatch):
         from app.cli.commands import upgrade as upgrade_mod
@@ -1219,7 +1298,7 @@ class TestCmdUpgrade:
 
         stop.assert_called_once_with(args)
         assert run_calls == [
-            ["pipx", "upgrade", "openagentd"],
+            ["sh", str(self.FAKE_INSTALLER), "--cli"],
             [
                 "/usr/local/bin/openagentd",
                 "server",

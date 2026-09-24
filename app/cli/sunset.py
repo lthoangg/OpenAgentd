@@ -17,12 +17,6 @@ INSTALL_UNIX = f"curl -LsSf {REPO_RAW}/install.sh | sh -s -- --cli"
 INSTALL_WINDOWS = f"& ([scriptblock]::Create((irm {REPO_RAW}/install.ps1))) -Cli"
 HIDE_ENV = "OPENAGENTD_HIDE_V2_NOTICE"
 
-_UNINSTALL = {
-    "uv tool": "uv tool uninstall openagentd",
-    "pipx": "pipx uninstall openagentd",
-    "pip": f"{sys.executable} -m pip uninstall -y openagentd",
-}
-
 
 def notice_lines(manager: str | None = None) -> list[str]:
     """The notice text. ``manager`` is the detected installer, if known."""
@@ -30,14 +24,17 @@ def notice_lines(manager: str | None = None) -> list[str]:
     lines = [
         "OpenAgentd v2 (Python) is no longer supported and will receive no further updates.",
         "OpenAgentd v3 is a single native binary that uses the same data, config and plugins",
-        "(v2 .py plugins need a .ts/.js port). Install it with:",
-        f"    {install}",
+        "(v2 .py plugins need a .ts/.js port).",
+        "Switch with: openagentd upgrade",
+        f"or install v3 directly (removes a uv/pipx v2 install): {install}",
     ]
     if manager == "brew":
-        lines.append("Homebrew installs move to v3 with `brew upgrade openagentd`.")
-    elif manager in _UNINSTALL:
         lines.append(
-            f"Then remove v2 so it does not shadow v3 on PATH: {_UNINSTALL[manager]}"
+            "Homebrew installs move to v3 with `brew upgrade openagentd` as well."
+        )
+    elif manager == "pip":
+        lines.append(
+            f"Then remove the pip copy: {sys.executable} -m pip uninstall -y openagentd"
         )
     lines.append(f"Set {HIDE_ENV}=1 to hide this notice.")
     return lines

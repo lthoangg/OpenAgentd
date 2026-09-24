@@ -18,6 +18,7 @@ def test_notice_points_to_v3_installer(monkeypatch):
     assert sunset.print_notice(out)
     text = out.getvalue()
     assert "no longer supported" in text
+    assert "openagentd upgrade" in text
     assert "install.sh | sh -s -- --cli" in text or "install.ps1" in text
 
 
@@ -31,8 +32,7 @@ def test_notice_skips_non_tty_and_hide_env(monkeypatch):
 @pytest.mark.parametrize(
     ("manager", "expected"),
     [
-        ("uv tool", "uv tool uninstall openagentd"),
-        ("pipx", "pipx uninstall openagentd"),
+        ("pip", "-m pip uninstall -y openagentd"),
         ("brew", "brew upgrade"),
     ],
 )

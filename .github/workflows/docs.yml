@@ -55,7 +55,7 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Install uv & Python 3.14
-        uses: astral-sh/setup-uv@v10.1.0
+        uses: astral-sh/setup-uv@v10.2.0
         with:
           python-version: "3.14"
           # No lockfile to key a cache on; the tooling tests' few deps

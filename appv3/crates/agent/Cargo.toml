@@ -28,7 +28,7 @@ futures.workspace = true
 async-trait.workspace = true
 regex.workspace = true
 sha2.workspace = true
-rand = "0.8"
+rand = "0.10"
 httpdate = "1"
 unicode-normalization = "0.1"
 

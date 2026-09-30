@@ -25,4 +25,4 @@ chrono.workspace = true
 base64 = "0.22"
 url = "2"
 hex = "0.4"
-rand = "0.8"
+rand = "0.10"

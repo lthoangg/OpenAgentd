@@ -15,7 +15,7 @@ appv3-memory.workspace = true
 appv3-mcp.workspace = true
 appv3-terminal.workspace = true
 appv3-preview.workspace = true
-base64 = "0.22"
+base64 = "0.23"
 indexmap = { version = "2", features = ["serde"] }
 sqlx.workspace = true
 anyhow.workspace = true

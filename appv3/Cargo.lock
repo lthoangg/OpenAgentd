@@ -180,7 +180,7 @@ dependencies = [
  "appv3-tools",
  "async-stream",
  "axum",
- "base64 0.22.1",
+ "base64 0.23.1",
  "bytes",
  "chrono",
  "dunce",
@@ -249,7 +249,7 @@ name = "appv3-core"
 version = "3.3.0"
 dependencies = [
  "anyhow",
- "base64 0.22.1",
+ "base64 0.23.1",
  "chrono",
  "directories",
  "dunce",
@@ -292,7 +292,7 @@ name = "appv3-jsplugin"
 version = "3.3.0"
 dependencies = [
  "appv3-core",
- "base64 0.22.1",
+ "base64 0.23.1",
  "chrono",
  "dunce",
  "fancy-regex",
@@ -326,7 +326,7 @@ dependencies = [
  "appv3-providers",
  "appv3-tools",
  "async-trait",
- "base64 0.22.1",
+ "base64 0.23.1",
  "chrono",
  "futures",
  "indexmap",
@@ -389,7 +389,7 @@ dependencies = [
  "appv3-jsplugin",
  "async-stream",
  "async-trait",
- "base64 0.22.1",
+ "base64 0.23.1",
  "chrono",
  "futures",
  "hex",
@@ -429,7 +429,7 @@ dependencies = [
  "appv3-core",
  "appv3-providers",
  "async-trait",
- "base64 0.22.1",
+ "base64 0.23.1",
  "chrono",
  "dunce",
  "encoding_rs",

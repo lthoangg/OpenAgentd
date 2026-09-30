@@ -16,7 +16,7 @@ uuid.workspace = true
 chrono.workspace = true
 regex.workspace = true
 fancy-regex = "0.14"
-base64 = "0.22"
+base64 = "0.23"
 hex = "0.4"
 rand = "0.8"
 rquickjs = { version = "0.14", features = ["futures", "loader"] }

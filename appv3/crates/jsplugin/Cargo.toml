@@ -21,7 +21,7 @@ hex = "0.4"
 rand = "0.8"
 rquickjs = { version = "0.14", features = ["futures", "loader"] }
 oxc_allocator = "0.146"
-oxc_codegen = "0.146"
+oxc_codegen = "0.151"
 oxc_diagnostics = "0.146"
 oxc_parser = "0.146"
 oxc_semantic = "0.146"

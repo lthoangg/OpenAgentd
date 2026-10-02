@@ -1698,9 +1698,10 @@ Desktop is primary. CLI / server is the developer path.
   print the v3 install command plus the step that removes the uv/pipx/pip copy.
   `OPENAGENTD_HIDE_V2_NOTICE=1` hides it; the desktop sidecar never shows it.
 - **Concise native CLI** `[v3.1.0]` — `openagentd --help` lists eight command
-  groups with short examples, errors print as one `error: …` line, and usage
+  groups (nine with `tui` since `[v3.4.0]`) with short examples, errors print as one `error: …` line, and usage
   errors exit 2. Bare `openagentd` prints help instead of starting the server
-  (use `openagentd server start`); the name is kept for a future terminal UI.
+  (use `openagentd server start`). Since `[v3.4.0]` bare `openagentd` in a
+  terminal opens the terminal UI; scripts and pipes still get the help.
 - **CLI server control** `[v1.41.0, v2.4.0, v3.1.0]` — `openagentd server start|stop|restart`,
   `openagentd server status`, `openagentd server logs`, and `openagentd server
   start --host 0.0.0.0 --key` make the CLI the control plane for desktop/mobile backends.
@@ -1717,6 +1718,23 @@ Desktop is primary. CLI / server is the developer path.
   Since `[v3.1.0]`, `-C/--cd DIR` picks another workspace, `-c/--continue`
   continues the workspace's latest session, `--session ID` continues a given
   session, and `--json` prints every stream event as one JSON line.
+- **Terminal UI** `[v3.4.0]` — `openagentd tui` (or bare `openagentd` in a
+  terminal) chats with the agent in the current folder, in the style of Claude
+  Code. It is a client of the background server, which it starts when needed
+  (`--url` connects to another server, with its key in `OPENAGENTD_ACCESS_KEY`),
+  so the same session stays live in the desktop and web apps. Replies stream
+  as markdown into the terminal's own scrollback, with thinking, each tool call
+  and its live output, one status line per running sub-agent, and the agent's
+  questions and plan reviews answered from the keyboard. Messages typed while
+  the agent works are queued; Esc stops the turn. The prompt is multi-line
+  (Shift+Enter, Alt+Enter, Ctrl+J, or `\` then Enter), ↑/↓ recalls earlier
+  prompts for the folder, `@` completes workspace files as mentions,
+  `-c/--continue`, `--session ID`, and `/sessions` reopen sessions with their
+  history, `--model provider:model` or `/model` (a filterable list of the
+  registry's models) picks the model, defaulting to the session's own model or
+  else the newest one used in this folder or anywhere, and `--theme dark|light|auto` (default `auto`, from the terminal's
+  background) sets the colors. Settings, providers, and MCP servers stay in the
+  desktop and web apps.
 - **CLI start --wait** `[v1.73.0, v2.4.0]` — `openagentd server start --wait`
   starts the background server and polls `/api/health/ready` until the database
   connection and the agent session are fully ready; since v3.1.0 it exits 1 when

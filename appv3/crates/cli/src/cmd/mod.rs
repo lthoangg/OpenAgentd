@@ -7,4 +7,5 @@ pub mod self_update;
 pub mod serve;
 pub mod server;
 pub mod transfer;
+pub mod tui;
 pub mod upgrade;

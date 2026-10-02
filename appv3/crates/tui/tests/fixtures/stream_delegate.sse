@@ -1,0 +1,57 @@
+event: agent_status
+data: {"type":"agent_status","agent":"code","status":"working","metadata":{}}
+
+event: tool_call
+data: {"type":"tool_call","agent":"code","tool_call_id":"call_311356","name":"read","metadata":{}}
+
+event: usage
+data: {"type":"usage","prompt_tokens":9438,"completion_tokens":16,"total_tokens":9454,"cached_tokens":null,"thoughts_tokens":59,"tool_use_tokens":null,"estimated_cost_usd":null,"metadata":{"agent":"code","model":"gemini-3.5-flash"}}
+
+event: tool_start
+data: {"type":"tool_start","agent":"code","tool_call_id":"call_311356","name":"read","arguments":"{\"path\": \"notes.txt\"}","metadata":{}}
+
+event: permission_asked
+data: {"type":"permission_asked","request_id":"324359c6-9da7-4cbe-8670-b8719124b086","session_id":"01a0f6a7-89c9-77ae-b91e-951dc7f8a15f","tool":"read","patterns":["notes.txt"],"metadata":{"tool_call_id":"call_311356","agent":"code"}}
+
+event: tool_end
+data: {"type":"tool_end","agent":"code","tool_call_id":"call_311356","name":"read","result":"hello world\n","metadata":{"duration_ms":0.413}}
+
+event: tool_call
+data: {"type":"tool_call","agent":"code","tool_call_id":"call_371825","name":"delegate","metadata":{}}
+
+event: usage
+data: {"type":"usage","prompt_tokens":9527,"completion_tokens":28,"total_tokens":9555,"cached_tokens":null,"thoughts_tokens":33,"tool_use_tokens":null,"estimated_cost_usd":null,"metadata":{"agent":"code","model":"gemini-3.5-flash"}}
+
+event: tool_start
+data: {"type":"tool_start","agent":"code","tool_call_id":"call_371825","name":"delegate","arguments":"{\"task\": \"Please list the files in the workspace directory.\", \"profile\": \"helper\"}","metadata":{}}
+
+event: permission_asked
+data: {"type":"permission_asked","request_id":"b2d9bc27-5808-48cb-95a5-155d2e65bbd0","session_id":"01a0f6a7-89c9-77ae-b91e-951dc7f8a15f","tool":"delegate","patterns":["delegate"],"metadata":{"tool_call_id":"call_371825","agent":"code"}}
+
+event: subagent_spawned
+data: {"lead_session_id":"01a0f6a7-89c9-77ae-b91e-951dc7f8a15f","session_id":"01a0f6a7-972d-75bf-a40b-f604139d52c5","handle":"helper#1","profile":"helper","workspace":"/tmp/ws","title":"helper#1: Please list the files in the workspace directory.","status":"working","running":true}
+
+event: tool_end
+data: {"type":"tool_end","agent":"code","tool_call_id":"call_371825","name":"delegate","result":"Subagent 'helper#1' dispatched with task: Please list the files in the workspace directory.\nIt is running asynchronously in the background. You will receive its deliverable as a user message once it completes.","metadata":{"duration_ms":5.78}}
+
+event: thinking
+data: {"type":"thinking","agent":"code","text":"**Considering Asynchronous Response**\n\nI'm now considering the asynchronous nature of the helper. The initial thought was to check for alternative turns or messages. However, I've realized in certain systems, a direct wait for the subagent's response might be necessary. Currently leaning towards a 'wait' approach, but I'm open to continuously checking for a message.\n\n\n","metadata":{"model":"gemini-3.5-flash","thinking_level":"low"}}
+
+event: message
+data: {"type":"message","agent":"code","text":"I have read `notes.txt` and successfully dispatched the helper agent to list the files in the workspace. I","metadata":{"model":"gemini-3.5-flash","thinking_level":"low"}}
+
+event: message
+data: {"type":"message","agent":"code","text":" am now waiting for the helper agent's report.","metadata":{"model":"gemini-3.5-flash","thinking_level":"low"}}
+
+event: usage
+data: {"type":"usage","prompt_tokens":9642,"completion_tokens":34,"total_tokens":9676,"cached_tokens":4046,"thoughts_tokens":154,"tool_use_tokens":null,"estimated_cost_usd":null,"metadata":{"agent":"code","model":"gemini-3.5-flash"}}
+
+event: usage
+data: {"type":"usage","prompt_tokens":28607,"completion_tokens":78,"total_tokens":28685,"cached_tokens":4046,"thoughts_tokens":246,"tool_use_tokens":null,"estimated_cost_usd":null,"metadata":{"turn_total":true,"agent":"code","models":["gemini-3.5-flash"]}}
+
+event: agent_status
+data: {"type":"agent_status","agent":"code","status":"idle"}
+
+event: done
+data: {"type":"done","metadata":{"session_id":"01a0f6a7-89c9-77ae-b91e-951dc7f8a15f"}}
+

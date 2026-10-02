@@ -20,6 +20,8 @@ It reads the database and config files of the end-of-life Python backend in
   providers, built-in tools, MCP client, memory pages, PTY terminal, and
   the QuickJS plugin host.
 - `cli`: the `openagentd` binary (`server serve` is the sidecar entry point).
+- `tui`: `openagentd tui`, a terminal client of the HTTP/SSE API (no
+  backend crates; the `cli` crate finds or starts the server for it).
 - `contract/`: data shared with other surfaces. `sse_events.json` lists
   every SSE event type per stream. Rust checks each published event against
   it (`agent/src/events.rs`; debug builds panic), and

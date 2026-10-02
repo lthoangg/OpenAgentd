@@ -1663,7 +1663,7 @@ Desktop is primary. CLI / server is the developer path.
   print the v3 install command plus the step that removes the uv/pipx/pip copy.
   `OPENAGENTD_HIDE_V2_NOTICE=1` hides it; the desktop sidecar never shows it.
 - **Concise native CLI** `[v3.1.0]` — `openagentd --help` lists eight command
-  groups with short examples, errors print as one `error: …` line, and usage
+  groups (nine with `tui` since `[v3.4.0]`) with short examples, errors print as one `error: …` line, and usage
   errors exit 2. Bare `openagentd` prints help instead of starting the server
   (use `openagentd server start`). Since `[v3.4.0]` bare `openagentd` in a
   terminal opens the terminal UI; scripts and pipes still get the help.

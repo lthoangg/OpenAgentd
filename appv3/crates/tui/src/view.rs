@@ -3,7 +3,7 @@
 
 use crate::app::{elapsed, App, Popup};
 use crate::markdown;
-use crate::render::{paragraphs, tool_header};
+use crate::render::{paragraphs, thinking_lines, tool_header};
 use crate::wrap::{truncate, width};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
@@ -35,7 +35,7 @@ pub fn build(app: &App) -> View {
     if !thinking.is_empty() {
         live.push(Line::default());
         live.push(Line::from(Span::styled("✻ Thinking…", th.dim_italic())));
-        live.extend(tail(paragraphs(thinking, w, &[Span::raw("  ")], th.dim_italic()), THINKING_TAIL));
+        live.extend(tail(thinking_lines(thinking, w, th), THINKING_TAIL));
     }
     for t in &app.turn.tools {
         live.push(Line::default());

@@ -88,6 +88,15 @@ reverse proxy in front of it before exposing it outside a trusted network.
 Use `openagentd --help` and `<command> --help` for the current command
 reference.
 
+To chat with the agent in a terminal, run `openagentd` (or `openagentd tui`)
+in your project directory. It starts the background server when needed, and
+the session also shows live in the desktop and web apps:
+
+```bash
+openagentd              # new session in this folder
+openagentd tui -c       # continue this folder's latest session
+```
+
 Run one agent turn directly against the current project directory when you need
 a pipe-friendly terminal response:
 

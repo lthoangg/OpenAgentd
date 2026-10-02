@@ -325,6 +325,8 @@ impl Turn {
             "interaction_mode" => self.mode = Some(s(data, "interaction_mode")),
             "queued_turn_start" => {
                 self.mark_working();
+                self.flush_all(out);
+                self.reply_started = false;
                 let mut ids = vec![];
                 for m in data.get("messages").and_then(Value::as_array).into_iter().flatten() {
                     ids.push(s(m, "id"));

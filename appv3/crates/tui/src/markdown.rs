@@ -148,7 +148,14 @@ impl<'t> Renderer<'t> {
                     self.cur.push(Span::styled(t.to_string(), self.theme.fg(self.theme.code)));
                 }
             }
-            Event::SoftBreak => self.text(" "),
+            // Chat models mean a single newline as a line break.
+            Event::SoftBreak => {
+                if self.code.is_some() || self.table.is_some() {
+                    self.text(" ");
+                } else {
+                    self.flush();
+                }
+            }
             Event::HardBreak => self.flush(),
             Event::Rule => {
                 self.flush();
@@ -371,13 +378,14 @@ mod tests {
 
     #[test]
     fn renders_blocks() {
-        let md = "# Title\n\nSome **bold** text and `code`.\n\n- one\n- two\n  1. nested\n\n```rust\nfn main() {}\n```\n\n| a | b |\n|---|---|\n| 1 | 2 |\n";
+        let md = "# Title\n\nSome **bold**\ntext and `code`.\n\n- one\n- two\n  1. nested\n\n```rust\nfn main() {}\n```\n\n| a | b |\n|---|---|\n| 1 | 2 |\n";
         let theme = Theme::dark();
         let lines = render(md, 40, &theme);
         let text = plain(&lines);
         assert_eq!(text[0], "# Title");
         assert_eq!(text[1], "");
-        assert_eq!(text[2], "Some bold text and code.");
+        assert_eq!(text[2], "Some bold");
+        assert_eq!(text[3], "text and code.");
         assert!(text.contains(&"• one".to_string()), "{text:?}");
         assert!(text.contains(&"  1. nested".to_string()), "{text:?}");
         assert!(text.contains(&"  fn main() {}".to_string()), "{text:?}");

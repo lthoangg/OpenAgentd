@@ -33,7 +33,7 @@ pub fn cell_lines(cell: &Cell, width: usize, th: &Theme) -> Vec<Line<'static>> {
         }
         Cell::Thinking(text) => {
             out.push(Line::from(Span::styled("✻ Thinking", th.dim_italic())));
-            out.extend(paragraphs(text, width, &[Span::raw("  ")], th.dim_italic()));
+            out.extend(thinking_lines(text, width, th));
         }
         Cell::Tool { name, args, result } => {
             out.push(tool_header(name, args, width, Span::styled("● ", th.fg(th.tool)), th));
@@ -49,6 +49,19 @@ pub fn cell_lines(cell: &Cell, width: usize, th: &Theme) -> Vec<Line<'static>> {
         }
     }
     out
+}
+
+/// Thinking text: markdown (models use bold titles), dimmed and indented.
+pub fn thinking_lines(text: &str, width: usize, th: &Theme) -> Vec<Line<'static>> {
+    let dim = th.dim_italic();
+    markdown::render(text, width.saturating_sub(2), th)
+        .into_iter()
+        .map(|l| {
+            let mut spans = vec![Span::raw("  ")];
+            spans.extend(l.spans.into_iter().map(|s| Span::styled(s.content, dim.add_modifier(s.style.add_modifier))));
+            Line::from(spans)
+        })
+        .collect()
 }
 
 /// `Read(notes.txt)`: the tool name and its most telling argument.

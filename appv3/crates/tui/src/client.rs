@@ -29,6 +29,7 @@ pub struct SessionRow {
     pub title: String,
     pub updated_at: String,
     pub running: bool,
+    pub model: Option<String>,
 }
 
 /// What a stream task reports: one event, or the stream ending.
@@ -80,8 +81,11 @@ impl Client {
         self.get("/api/health/ready", &[]).await
     }
 
-    pub async fn chat(&self, workspace: &str, session_id: Option<&str>, message: &str, mentions: &[String]) -> Result<ChatReply> {
+    pub async fn chat(&self, workspace: &str, session_id: Option<&str>, message: &str, mentions: &[String], model: Option<&str>) -> Result<ChatReply> {
         let mut form: Vec<(&str, String)> = vec![("workspace", workspace.into()), ("message", message.into())];
+        if let Some(m) = model {
+            form.push(("model", m.into()));
+        }
         if let Some(s) = session_id {
             form.push(("session_id", s.into()));
         }
@@ -102,11 +106,17 @@ impl Client {
     }
 
     pub async fn latest_session(&self, workspace: &str) -> Result<Option<String>> {
-        Ok(self.sessions(workspace, 1).await?.into_iter().next().map(|s| s.id))
+        Ok(self.sessions(Some(workspace), 1).await?.into_iter().next().map(|s| s.id))
     }
 
-    pub async fn sessions(&self, workspace: &str, limit: usize) -> Result<Vec<SessionRow>> {
-        let v = self.get("/api/agent/sessions", &[("workspace", workspace), ("limit", &limit.to_string())]).await?;
+    /// Newest sessions first, in `workspace` or (with `None`) in every folder.
+    pub async fn sessions(&self, workspace: Option<&str>, limit: usize) -> Result<Vec<SessionRow>> {
+        let limit = limit.to_string();
+        let mut query = vec![("limit", limit.as_str())];
+        if let Some(ws) = workspace {
+            query.push(("workspace", ws));
+        }
+        let v = self.get("/api/agent/sessions", &query).await?;
         let rows = v.get("data").and_then(Value::as_array).cloned().unwrap_or_default();
         Ok(rows
             .iter()
@@ -115,7 +125,20 @@ impl Client {
                 title: str_of(r, "title"),
                 updated_at: str_of(r, "updated_at"),
                 running: r.get("running").and_then(Value::as_bool).unwrap_or(false),
+                model: r.get("model").and_then(Value::as_str).filter(|m| is_model_id(m)).map(String::from),
             })
+            .collect())
+    }
+
+    /// Chat model ids from the registry (the web's model picker list).
+    pub async fn models(&self) -> Result<Vec<String>> {
+        let v = self.get("/api/agents/registry", &[]).await?;
+        Ok(v.get("models")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter(|m| m.get("output_image") != Some(&Value::Bool(true)) && m.get("output_video") != Some(&Value::Bool(true)))
+            .filter_map(|m| m.get("id").and_then(Value::as_str).map(String::from))
             .collect())
     }
 
@@ -172,6 +195,11 @@ impl Client {
         }
         let _ = tx.send(wrap(StreamMsg::Closed { ok, events }));
     }
+}
+
+/// A real `provider:model` id, not the unconfigured placeholder.
+pub fn is_model_id(m: &str) -> bool {
+    m.contains(':') && m != "__PROVIDER_MODEL__"
 }
 
 fn str_of(v: &Value, k: &str) -> String {

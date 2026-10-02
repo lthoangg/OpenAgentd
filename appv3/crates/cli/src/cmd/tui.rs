@@ -58,7 +58,15 @@ pub fn tui(args: &TuiArgs) -> Result<()> {
         (None, true) => appv3_tui::SessionPick::Continue,
         (None, false) => appv3_tui::SessionPick::New,
     };
-    let opts = appv3_tui::Options { base_url, token, workspace, session, theme, history_file: Some(appv3_core::settings().state_dir.join("tui_history.jsonl")) };
+    let opts = appv3_tui::Options {
+        base_url,
+        token,
+        workspace,
+        session,
+        theme,
+        history_file: Some(appv3_core::settings().state_dir.join("tui_history.jsonl")),
+        model: args.model.clone().filter(|m| !m.trim().is_empty()),
+    };
     let rt = tokio::runtime::Builder::new_multi_thread().enable_all().build()?;
     let res = rt.block_on(appv3_tui::run(opts));
     // The input reader and stream tasks never finish on their own.

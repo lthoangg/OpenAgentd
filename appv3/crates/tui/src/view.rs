@@ -157,6 +157,15 @@ pub fn build(app: &App) -> View {
                 below.push(pick_line(c, d, i == *sel, w, app));
             }
         }
+        Popup::Models { items, filter, sel, .. } => {
+            let shown = if filter.is_empty() { "type to filter".to_string() } else { filter.clone() };
+            below.push(Line::from(Span::styled(truncate(&format!("  Model: {shown}  ({} found, Enter picks, Esc closes)", items.len()), w), th.dim())));
+            let first = sel.saturating_sub(9);
+            for (i, m) in items.iter().enumerate().skip(first).take(10) {
+                let current = if app.model.as_deref() == Some(m.as_str()) { "current" } else { "" };
+                below.push(pick_line(m, current, i == *sel, w, app));
+            }
+        }
         Popup::Sessions { rows, sel } => {
             below.push(Line::from(Span::styled("  Sessions in this folder (Enter opens, Esc closes)", th.dim())));
             let first = sel.saturating_sub(9);
@@ -175,6 +184,9 @@ pub fn build(app: &App) -> View {
         None => Span::styled("/help for keys and commands", th.dim()),
     };
     let mut right = format!("{} · {}", app.ws_name, app.title.as_deref().filter(|t| !t.is_empty()).unwrap_or(if app.session_id.is_some() { "untitled" } else { "new session" }));
+    if let Some(m) = &app.model {
+        right.push_str(&format!(" · {m}"));
+    }
     if app.turn.mode.as_deref() == Some("plan") {
         right.push_str(" · plan mode");
     }

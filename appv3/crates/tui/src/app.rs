@@ -1,7 +1,7 @@
 //! The TUI event loop: keyboard input, the session and global streams, and
 //! API calls all arrive as `Msg`s on one channel.
 
-use crate::client::{ChatReply, Client, SessionRow, StreamMsg};
+use crate::client::{is_model_id, ChatReply, Client, SessionRow, StreamMsg};
 use crate::editor::Editor;
 use crate::render::{cell_lines, tool_header};
 use crate::term::Term;
@@ -30,6 +30,8 @@ pub struct Options {
     pub theme: crate::theme::ThemeChoice,
     /// Prompt history file (JSON lines), shared by every workspace.
     pub history_file: Option<PathBuf>,
+    /// `provider:model` for every message; otherwise the session's own model.
+    pub model: Option<String>,
 }
 
 pub enum Msg {
@@ -42,6 +44,7 @@ pub enum Msg {
     Chat { text: String, result: Result<ChatReply> },
     History { sid: String, result: Result<Value> },
     Sessions(Result<Vec<SessionRow>>),
+    Models(Result<Vec<String>>),
     Files(Result<Vec<String>>),
     Plan(Result<Option<String>>),
     Answered(Result<()>),
@@ -61,9 +64,26 @@ pub struct Sub {
 
 pub enum Popup {
     None,
-    Mention { start: usize, items: Vec<String>, sel: usize },
-    Command { items: Vec<(&'static str, &'static str)>, sel: usize },
-    Sessions { rows: Vec<SessionRow>, sel: usize },
+    Mention {
+        start: usize,
+        items: Vec<String>,
+        sel: usize,
+    },
+    Command {
+        items: Vec<(&'static str, &'static str)>,
+        sel: usize,
+    },
+    Sessions {
+        rows: Vec<SessionRow>,
+        sel: usize,
+    },
+    /// The registry's chat models, narrowed by what the user types.
+    Models {
+        all: Vec<String>,
+        items: Vec<String>,
+        filter: String,
+        sel: usize,
+    },
 }
 
 pub struct QuestionState {
@@ -74,8 +94,13 @@ pub struct QuestionState {
     pub answers: Vec<Vec<String>>,
 }
 
-pub const COMMANDS: &[(&str, &str)] =
-    &[("/sessions", "switch to another session in this folder"), ("/new", "start a new session"), ("/help", "show keys and commands"), ("/exit", "quit")];
+pub const COMMANDS: &[(&str, &str)] = &[
+    ("/sessions", "switch to another session in this folder"),
+    ("/new", "start a new session"),
+    ("/model", "choose the model for the next messages"),
+    ("/help", "show keys and commands"),
+    ("/exit", "quit"),
+];
 
 pub struct App {
     pub client: Client,
@@ -105,6 +130,10 @@ pub struct App {
     history_file: Option<PathBuf>,
     pub spinner: usize,
     exit: bool,
+    /// Model sent with each message (`None` lets the session decide).
+    pub model: Option<String>,
+    /// Chosen by flag or `/model`, so a loaded session's model does not replace it.
+    model_chosen: bool,
     resize_seq: u64,
     /// No drawing until a resize settles: the old geometry is wrong.
     resizing: bool,
@@ -169,6 +198,19 @@ pub async fn run(opts: Options) -> Result<()> {
         SessionPick::Id(id) => Some(id.clone()),
         SessionPick::Continue => client.latest_session(&opts.workspace).await?,
     };
+    // A new session needs a model when the lead agent has none: reuse the
+    // newest one picked in this folder, then anywhere (as the apps do).
+    let model = match &opts.model {
+        Some(m) => Some(m.clone()),
+        None => {
+            let here = client.sessions(Some(&opts.workspace), 10).await.unwrap_or_default();
+            let mut found = here.into_iter().find_map(|s| s.model);
+            if found.is_none() {
+                found = client.sessions(None, 10).await.unwrap_or_default().into_iter().find_map(|s| s.model);
+            }
+            found
+        }
+    };
     let theme = Theme::resolve(opts.theme);
     let prev = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
@@ -206,6 +248,8 @@ pub async fn run(opts: Options) -> Result<()> {
         history_file: opts.history_file.clone(),
         spinner: 0,
         exit: false,
+        model,
+        model_chosen: opts.model.is_some(),
         resize_seq: 0,
         resizing: false,
         held: vec![],
@@ -509,6 +553,11 @@ impl App {
                     self.popup = Popup::Sessions { rows, sel: 0 };
                 }
             }
+            Msg::Models(Ok(all)) => {
+                let sel = self.model.as_ref().and_then(|m| all.iter().position(|x| x == m)).unwrap_or(0);
+                self.popup = Popup::Models { items: all.clone(), all, filter: String::new(), sel };
+            }
+            Msg::Models(Err(e)) => self.flash(format!("Could not list models: {e}")),
             Msg::Files(Ok(files)) => {
                 self.files = Some(files);
                 self.files_loading = false;
@@ -587,6 +636,11 @@ impl App {
         }
         self.commit(cells);
         self.turn.mode = Some(s(lead, "interaction_mode")).filter(|m| !m.is_empty());
+        if !self.model_chosen {
+            if let Some(m) = lead.get("model").and_then(Value::as_str).filter(|m| is_model_id(m)) {
+                self.model = Some(m.to_string());
+            }
+        }
         for m in h["members"].as_array().into_iter().flatten() {
             if m["running"] == Value::Bool(true) {
                 let child = s(m, "session_id");
@@ -746,9 +800,26 @@ impl App {
             Popup::Mention { items, .. } => items.len(),
             Popup::Command { items, .. } => items.len(),
             Popup::Sessions { rows, .. } => rows.len(),
+            Popup::Models { items, .. } => items.len(),
         };
+        if let Popup::Models { all, items, filter, sel } = &mut self.popup {
+            // Typing narrows the model list instead of editing the prompt.
+            let edited = match k.code {
+                KeyCode::Char(c) if !k.modifiers.contains(KeyModifiers::CONTROL) => {
+                    filter.push(c);
+                    true
+                }
+                KeyCode::Backspace => filter.pop().is_some(),
+                _ => false,
+            };
+            if edited {
+                *items = fuzzy(filter, all, usize::MAX);
+                *sel = 0;
+                return true;
+            }
+        }
         let sel = match &mut self.popup {
-            Popup::Mention { sel, .. } | Popup::Command { sel, .. } | Popup::Sessions { sel, .. } => sel,
+            Popup::Mention { sel, .. } | Popup::Command { sel, .. } | Popup::Sessions { sel, .. } | Popup::Models { sel, .. } => sel,
             Popup::None => return false,
         };
         match k.code {
@@ -756,7 +827,7 @@ impl App {
             KeyCode::Down => *sel = (*sel + 1) % len.max(1),
             KeyCode::Enter | KeyCode::Tab if len > 0 && !k.modifiers.intersects(KeyModifiers::SHIFT | KeyModifiers::ALT) => self.accept_popup(k.code == KeyCode::Enter),
             _ => {
-                if matches!(self.popup, Popup::Sessions { .. }) {
+                if matches!(self.popup, Popup::Sessions { .. } | Popup::Models { .. }) {
                     self.popup = Popup::None;
                 }
                 return false;
@@ -786,13 +857,19 @@ impl App {
                     self.switch_session(row.id.clone());
                 }
             }
+            Popup::Models { items, sel, .. } => {
+                let m = items[sel].clone();
+                self.commit(vec![Cell::Info(format!("Model: {m}"))]);
+                self.model = Some(m);
+                self.model_chosen = true;
+            }
             Popup::None => {}
         }
     }
 
     /// Open, refresh, or close the `@` and `/` popups for the word at the cursor.
     fn update_popup(&mut self) {
-        if matches!(self.popup, Popup::Sessions { .. }) {
+        if matches!(self.popup, Popup::Sessions { .. } | Popup::Models { .. }) {
             return;
         }
         let (start, token) = self.editor.token();
@@ -903,9 +980,9 @@ impl App {
         self.save_history(&text);
         self.editor.clear();
         let mentions: Vec<String> = std::mem::take(&mut self.mentions).into_iter().filter(|m| text.contains(&format!("@{m}"))).collect();
-        let (client, ws, sid) = (self.client.clone(), self.ws.clone(), self.session_id.clone());
+        let (client, ws, sid, model) = (self.client.clone(), self.ws.clone(), self.session_id.clone(), self.model.clone());
         self.spawn(async move {
-            let result = client.chat(&ws, sid.as_deref(), &text, &mentions).await;
+            let result = client.chat(&ws, sid.as_deref(), &text, &mentions, model.as_deref()).await;
             Msg::Chat { text, result }
         });
     }
@@ -933,9 +1010,13 @@ impl App {
                 self.reset_session();
                 self.commit(vec![Cell::Info("New session".into())]);
             }
+            "/model" => {
+                let client = self.client.clone();
+                self.spawn(async move { Msg::Models(client.models().await) });
+            }
             "/sessions" => {
                 let (client, ws) = (self.client.clone(), self.ws.clone());
-                self.spawn(async move { Msg::Sessions(client.sessions(&ws, 20).await) });
+                self.spawn(async move { Msg::Sessions(client.sessions(Some(&ws), 20).await) });
             }
             _ => {
                 let help = [
@@ -949,7 +1030,7 @@ impl App {
                 ];
                 let mut text: Vec<String> = help.iter().map(|s| s.to_string()).collect();
                 text.extend(COMMANDS.iter().map(|(c, d)| format!("  {c}  {d}")));
-                text.push("Settings, models, and MCP servers are managed in the desktop or web app.".into());
+                text.push("Settings, providers, and MCP servers are managed in the desktop or web app.".into());
                 self.commit(vec![Cell::Info(text.join("\n"))]);
             }
         }

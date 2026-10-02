@@ -150,6 +150,10 @@ pub struct TuiArgs {
     /// Open the session with this ID
     #[arg(long, value_name = "ID")]
     pub session: Option<String>,
+    /// Model for new messages, e.g. openai:gpt-5.5 (default: the session's
+    /// model, else the newest one used in this folder, else anywhere)
+    #[arg(long)]
+    pub model: Option<String>,
     /// Color theme
     #[arg(long, env = "OPENAGENTD_TUI_THEME", default_value = "auto", value_parser = ["auto", "dark", "light"])]
     pub theme: String,

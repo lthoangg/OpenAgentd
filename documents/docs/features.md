@@ -1695,8 +1695,10 @@ Desktop is primary. CLI / server is the developer path.
   (Shift+Enter, Alt+Enter, Ctrl+J, or `\` then Enter), ↑/↓ recalls earlier
   prompts for the folder, `@` completes workspace files as mentions,
   `-c/--continue`, `--session ID`, and `/sessions` reopen sessions with their
-  history, and `--theme dark|light|auto` (default `auto`, from the terminal's
-  background) sets the colors. Settings, models, and MCP servers stay in the
+  history, `--model provider:model` or `/model` (a filterable list of the
+  registry's models) picks the model, defaulting to the session's own model or
+  else the newest one used in this folder or anywhere, and `--theme dark|light|auto` (default `auto`, from the terminal's
+  background) sets the colors. Settings, providers, and MCP servers stay in the
   desktop and web apps.
 - **CLI start --wait** `[v1.73.0, v2.4.0]` — `openagentd server start --wait`
   starts the background server and polls `/api/health/ready` until the database

@@ -24,6 +24,7 @@ fn dispatch(command: Command) -> anyhow::Result<ExitCode> {
             ServerCmd::Logs(a) => done(cmd::server::logs(&a)),
             ServerCmd::Serve(a) => done(cmd::serve::serve(&a)),
         },
+        Command::Tui(a) => done(cmd::tui::tui(&a)),
         Command::Run(a) => done(cmd::run::run(&a)),
         Command::Auth(a) => cmd::auth::auth(&a),
         Command::Doctor => cmd::doctor::doctor(),
@@ -46,7 +47,11 @@ fn main() -> ExitCode {
         std::env::set_var("APP_ENV", "production");
     }
     let result = match Cli::parse().command {
-        // Bare `openagentd` is reserved for a future TUI; print help for now.
+        // Bare `openagentd` opens the TUI in a terminal; scripts get the help.
+        None if std::io::IsTerminal::is_terminal(&std::io::stdin()) && std::io::IsTerminal::is_terminal(&std::io::stdout()) => {
+            // Parse `tui` so its environment defaults apply.
+            dispatch(Cli::parse_from(["openagentd", "tui"]).command.expect("tui parses"))
+        }
         None => Cli::command().print_help().map(|()| ExitCode::SUCCESS).map_err(Into::into),
         Some(command) => dispatch(command),
     };

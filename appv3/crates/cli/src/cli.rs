@@ -1,6 +1,6 @@
 //! The `openagentd` command tree.
 //!
-//! Bare `openagentd` prints help; the name is kept for a future TUI.
+//! Bare `openagentd` opens the TUI in a terminal and prints help otherwise.
 
 use clap::builder::PossibleValuesParser;
 use clap::{Args, Parser, Subcommand, ValueEnum};
@@ -8,6 +8,8 @@ use std::path::PathBuf;
 
 const EXAMPLES: &str = "\
 Examples:
+  openagentd                                     Chat with the agent in this folder (same as `tui`)
+  openagentd tui --continue                      Continue this folder's latest session
   openagentd server start                        Start the background server
   openagentd server start --host 0.0.0.0 --key   Serve phones and other computers on the LAN
   openagentd server status                       Check the background server
@@ -26,6 +28,8 @@ pub enum Command {
     /// Start, stop, and inspect the API server
     #[command(subcommand)]
     Server(ServerCmd),
+    /// Chat with the agent in the terminal (bare `openagentd` does the same)
+    Tui(TuiArgs),
     /// Run one agent turn in a workspace and print the reply
     Run(RunArgs),
     /// Log in to or out of OAuth model providers
@@ -133,6 +137,26 @@ pub struct RunArgs {
     /// Print every stream event as one JSON line instead of the reply text
     #[arg(long)]
     pub json: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct TuiArgs {
+    /// Workspace directory (default: the current directory)
+    #[arg(short = 'C', long = "cd", value_name = "DIR")]
+    pub cd: Option<PathBuf>,
+    /// Continue the workspace's latest session
+    #[arg(short = 'c', long = "continue", conflicts_with = "session")]
+    pub continue_session: bool,
+    /// Open the session with this ID
+    #[arg(long, value_name = "ID")]
+    pub session: Option<String>,
+    /// Color theme
+    #[arg(long, env = "OPENAGENTD_TUI_THEME", default_value = "auto", value_parser = ["auto", "dark", "light"])]
+    pub theme: String,
+    /// Connect to this server instead of the local background server
+    /// (send its access key in OPENAGENTD_ACCESS_KEY)
+    #[arg(long, env = "OPENAGENTD_URL", value_name = "URL")]
+    pub url: Option<String>,
 }
 
 fn oauth_providers() -> PossibleValuesParser {
@@ -375,6 +399,15 @@ mod tests {
         assert!(bare.action.is_none() && bare.provider.is_none());
         assert_eq!(kind(&["auth", "nope"]), ErrorKind::InvalidValue);
         assert_eq!(kind(&["auth", "logout", "nope"]), ErrorKind::InvalidValue);
+    }
+
+    #[test]
+    fn tui_flags_and_conflicts() {
+        let Some(Command::Tui(a)) = parse(&["tui", "-c", "--theme", "light", "-C", "/tmp"]).unwrap() else { panic!("not tui") };
+        assert!(a.continue_session && a.session.is_none());
+        assert_eq!((a.theme.as_str(), a.cd.as_deref()), ("light", Some(std::path::Path::new("/tmp"))));
+        assert_eq!(kind(&["tui", "--continue", "--session", "abc"]), ErrorKind::ArgumentConflict);
+        assert_eq!(kind(&["tui", "--theme", "blue"]), ErrorKind::InvalidValue);
     }
 
     #[test]

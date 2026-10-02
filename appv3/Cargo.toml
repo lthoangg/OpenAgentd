@@ -13,6 +13,7 @@ members = [
     "crates/api",
     "crates/cli",
     "crates/preview",
+    "crates/tui",
 ]
 
 [workspace.package]
@@ -63,6 +64,7 @@ appv3-memory = { path = "crates/memory" }
 appv3-mcp = { path = "crates/mcp" }
 appv3-api = { path = "crates/api" }
 appv3-preview = { path = "crates/preview" }
+appv3-tui = { path = "crates/tui" }
 
 [profile.release]
 lto = "thin"

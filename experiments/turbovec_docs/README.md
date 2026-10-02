@@ -17,22 +17,27 @@ same `build_index.py` / `search.py` interface.
 
 ## Setup
 
-Dependencies are supplied per command with `uv run --with`; nothing is
-installed into a project environment or shipped in a release build.
+Install the dependencies into the repository's local `.venv` (git-ignored);
+nothing ships in a release build:
+
+```bash
+python3 -m venv .venv
+.venv/bin/python -m pip install 'sentence-transformers>=5.6.0' 'turbovec>=0.8.0'
+```
 
 ## Usage
 
 ```bash
 # Chunk + embed + index documents/ (re-run after doc changes)
-uv run --with 'sentence-transformers>=5.6.0' --with 'turbovec>=0.8.0' python experiments/turbovec_docs/build_index.py
+.venv/bin/python experiments/turbovec_docs/build_index.py
 
 # Query
-uv run --with 'sentence-transformers>=5.6.0' --with 'turbovec>=0.8.0' python experiments/turbovec_docs/search.py "how does session summarization work"
-uv run --with 'sentence-transformers>=5.6.0' --with 'turbovec>=0.8.0' python experiments/turbovec_docs/search.py "styling colors" -k 3
+.venv/bin/python experiments/turbovec_docs/search.py "how does session summarization work"
+.venv/bin/python experiments/turbovec_docs/search.py "styling colors" -k 3
 
 # Benchmark search quality against the retained feature catalogue and top-level instructions
-uv run --with 'sentence-transformers>=5.6.0' --with 'turbovec>=0.8.0' python experiments/turbovec_docs/benchmark.py
-uv run --with 'sentence-transformers>=5.6.0' --with 'turbovec>=0.8.0' python experiments/turbovec_docs/benchmark.py -k 3 -v   # print every case
+.venv/bin/python experiments/turbovec_docs/benchmark.py
+.venv/bin/python experiments/turbovec_docs/benchmark.py -k 3 -v   # print every case
 ```
 
 ### Benchmark baseline

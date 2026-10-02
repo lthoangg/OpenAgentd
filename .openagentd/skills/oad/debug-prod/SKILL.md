@@ -32,7 +32,7 @@ OpenAgentd stores state under XDG roots based on `APP_ENV`:
 Use the dedicated log analysis script to parse loguru JSON records, apply time cutoffs, and group distinct error patterns across log files:
 
 ```bash
-uv run python .openagentd/skills/oad/debug-prod/scripts/analyze_logs.py --days 7
+python3 .openagentd/skills/oad/debug-prod/scripts/analyze_logs.py --days 7
 ```
 
 Script location: `.openagentd/skills/oad/debug-prod/scripts/analyze_logs.py`
@@ -44,7 +44,7 @@ Script location: `.openagentd/skills/oad/debug-prod/scripts/analyze_logs.py`
 Use the dedicated OTEL telemetry querying script (powered by DuckDB) to inspect hourly span JSONL files (`read_json`), aggregate metrics, and list error spans:
 
 ```bash
-uv run python .openagentd/skills/oad/debug-prod/scripts/query_otel.py --days 7
+python3 .openagentd/skills/oad/debug-prod/scripts/query_otel.py --days 7
 ```
 
 Script location: `.openagentd/skills/oad/debug-prod/scripts/query_otel.py`
@@ -56,7 +56,7 @@ Script location: `.openagentd/skills/oad/debug-prod/scripts/query_otel.py`
 Answers "is any tool underused, slow, failing, or not earning its context?" by joining spans (volume, latency, result bytes) to loguru records (arguments, result text) per tool-call id:
 
 ```bash
-uv run python .openagentd/skills/oad/debug-prod/scripts/tool_usage.py --days 7
+python3 .openagentd/skills/oad/debug-prod/scripts/tool_usage.py --days 7
 ```
 
 Script location: `.openagentd/skills/oad/debug-prod/scripts/tool_usage.py`

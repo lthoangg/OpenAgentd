@@ -55,9 +55,16 @@ kill-dev-ports: ## Stop processes listening on dev ports (:8000, :5173)
 
 verify: verify-v3 verify-scripts verify-web verify-docs verify-version ## Run the portable pre-merge contract
 
-# The repository has no Python project; each tool declares its own deps.
-verify-scripts: ## Test maintainer scripts, installers, and release/workflow contracts
-	uv run --with pytest --with pyyaml --with pillow python -m pytest scripts/tests -q
+# The repository has no Python project; the tooling tests install their few
+# deps into the local, git-ignored .venv.
+SCRIPTS_VENV := .venv
+
+$(SCRIPTS_VENV)/bin/python:
+	python3 -m venv $(SCRIPTS_VENV)
+
+verify-scripts: $(SCRIPTS_VENV)/bin/python ## Test maintainer scripts, installers, and release/workflow contracts
+	$(SCRIPTS_VENV)/bin/python -m pip install -q --disable-pip-version-check pytest pyyaml pillow
+	$(SCRIPTS_VENV)/bin/python -m pytest scripts/tests -q
 
 verify-web: ## Lint, type-check, and test the web frontend
 	cd web && bun run lint

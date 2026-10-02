@@ -24,7 +24,7 @@ generation, updater helpers, and code-health analysis.
 
 The repository has no Python project. Scripts run with `python3` and the
 standard library (plus Pillow for `generate_icons.py`); `make verify-scripts`
-supplies the test dependencies through `uv run --with`. Keep scripts
+installs the test dependencies into the local, git-ignored `.venv`. Keep scripts
 non-interactive by default, repository-root-relative, and portable across
 supported platforms.
 

@@ -5,8 +5,9 @@ whether any expected path appears in the top-K results. Reports per-case
 pass/fail plus aggregate Hit@1 / Hit@3 / Hit@5 and Mean Reciprocal Rank.
 
 Usage:
-    uv run --with 'sentence-transformers>=5.6.0' --with 'turbovec>=0.8.0' \
-        python experiments/turbovec_docs/benchmark.py [-k 10 -v]
+    .venv/bin/python experiments/turbovec_docs/benchmark.py [-k 10 -v]
+
+See README.md for creating the venv.
 """
 
 from __future__ import annotations

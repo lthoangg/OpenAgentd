@@ -6,12 +6,14 @@ runtime package or release builds.
 
 ## Setup and commands
 
-Run from the repository root; `uv run --with` supplies the dependencies:
+Run from the repository root, with the dependencies in the local `.venv`:
 
 ```bash
-uv run --with 'sentence-transformers>=5.6.0' --with 'turbovec>=0.8.0' python experiments/turbovec_docs/build_index.py
-uv run --with 'sentence-transformers>=5.6.0' --with 'turbovec>=0.8.0' python experiments/turbovec_docs/search.py "query"
-uv run --with 'sentence-transformers>=5.6.0' --with 'turbovec>=0.8.0' python experiments/turbovec_docs/benchmark.py -v
+python3 -m venv .venv
+.venv/bin/python -m pip install 'sentence-transformers>=5.6.0' 'turbovec>=0.8.0'
+.venv/bin/python experiments/turbovec_docs/build_index.py
+.venv/bin/python experiments/turbovec_docs/search.py "query"
+.venv/bin/python experiments/turbovec_docs/benchmark.py -v
 ```
 
 - `chunker.py` owns heading-based Markdown chunking and source metadata.

@@ -6,13 +6,13 @@ Python backend and the TS/React frontend, and detects circular imports.
 Examples
 --------
     # Top god files across the whole repo (text report)
-    uv run python -m scripts.codehealth
+    python3 -m scripts.codehealth
 
     # Backend only, JSON for tooling/baselines
-    uv run python -m scripts.codehealth --lang python --json > health.json
+    python3 -m scripts.codehealth --lang python --json > health.json
 
     # CI gate: fail if any file scores above a budget, or cycles exist
-    uv run python -m scripts.codehealth --max-score 800 --fail-on-cycles
+    python3 -m scripts.codehealth --max-score 800 --fail-on-cycles
 """
 
 from __future__ import annotations

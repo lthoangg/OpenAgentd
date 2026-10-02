@@ -2,7 +2,7 @@
 """Analyze OpenAgentd production loguru JSON log files.
 
 Usage:
-    uv run python .openagentd/skills/oad/debug-prod/scripts/analyze_logs.py [--days N]
+    python3 .openagentd/skills/oad/debug-prod/scripts/analyze_logs.py [--days N]
 """
 
 from __future__ import annotations

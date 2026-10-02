@@ -149,7 +149,7 @@ Use `APP_ENV=production` only when you intentionally want to target the installe
 - Pre-commit hooks enforce formatting automatically — install them once:
 
   ```bash
-  uvx pre-commit install
+  pre-commit install   # install pre-commit first, e.g. `brew install pre-commit` or `pipx install pre-commit`
   ```
 
 ---

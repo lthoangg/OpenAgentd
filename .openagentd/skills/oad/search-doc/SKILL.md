@@ -16,7 +16,11 @@ ls experiments/turbovec_docs/index/docs.tvim 2>/dev/null
 - If missing, or if `documents/` has changed since the last build, rebuild it:
 
 ```bash
-uv run --with 'sentence-transformers>=5.6.0' --with 'turbovec>=0.8.0' python experiments/turbovec_docs/build_index.py
+# One-time setup if .venv/bin/python lacks the dependencies
+python3 -m venv .venv
+.venv/bin/python -m pip install 'sentence-transformers>=5.6.0' 'turbovec>=0.8.0'
+
+.venv/bin/python experiments/turbovec_docs/build_index.py
 ```
 
 The corpus is intentionally small: the feature catalogue and repository instructions. Rebuild whenever it might be stale rather than treating old search results as authoritative.
@@ -24,7 +28,7 @@ The corpus is intentionally small: the feature catalogue and repository instruct
 ## 2. Search
 
 ```bash
-uv run --with 'sentence-transformers>=5.6.0' --with 'turbovec>=0.8.0' python experiments/turbovec_docs/search.py "<query>" -k 5
+.venv/bin/python experiments/turbovec_docs/search.py "<query>" -k 5
 ```
 
 - Use natural-language questions about shipped features or repository documentation policy.
@@ -41,4 +45,4 @@ uv run --with 'sentence-transformers>=5.6.0' --with 'turbovec>=0.8.0' python exp
 
 - This is local and offline after the one-time model download.
 - `experiments/turbovec_docs/README.md` describes the experimental index and its limitations.
-- The `experiment` uv dependency group is dev/local-only; never assume it exists outside this workspace.
+- The experiment's dependencies live only in the local, git-ignored `.venv`; never assume they exist outside this workspace.

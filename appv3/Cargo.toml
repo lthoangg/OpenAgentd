@@ -36,7 +36,7 @@ directories = "6.0"
 sha2 = "0.10"
 # SQLite only (no TLS); migrations are replayed by hand and no query macros
 # are used, so only the `FromRow` derive is needed.
-sqlx = { version = "0.8", default-features = false, features = ["sqlite", "runtime-tokio", "chrono", "uuid", "derive"] }
+sqlx = { version = "0.9", default-features = false, features = ["sqlite", "runtime-tokio", "chrono", "uuid", "derive"] }
 ignore = "0.4"
 dunce = "1"
 gix = { version = "0.87", default-features = false, features = ["status", "attributes", "excludes", "dirwalk", "index", "sha1", "parallel", "max-performance-safe"] }

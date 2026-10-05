@@ -102,7 +102,7 @@ async fn column_names(conn: &mut SqliteConnection, table: &str) -> Result<Vec<St
 }
 
 async fn exec(conn: &mut SqliteConnection, stmt: &str) -> Result<()> {
-    sqlx::raw_sql(stmt).execute(&mut *conn).await.with_context(|| format!("migration statement failed: {}", stmt.lines().next().unwrap_or("")))?;
+    sqlx::raw_sql(sqlx::AssertSqlSafe(stmt)).execute(&mut *conn).await.with_context(|| format!("migration statement failed: {}", stmt.lines().next().unwrap_or("")))?;
     Ok(())
 }
 

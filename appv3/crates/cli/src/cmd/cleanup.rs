@@ -175,7 +175,7 @@ async fn cleanup_generated_artifacts(db: &SqlitePool, db_path: &Path, older_than
     let mut expired_messages = 0;
     if !db_ids.is_empty() {
         let sql = format!("SELECT count(*) FROM session_messages WHERE session_messages.session_id IN ({})", in_list());
-        let mut q = sqlx::query_scalar::<_, i64>(&sql);
+        let mut q = sqlx::query_scalar::<_, i64>(sqlx::AssertSqlSafe(&*sql));
         for id in &db_ids {
             q = q.bind(id);
         }
@@ -188,7 +188,7 @@ async fn cleanup_generated_artifacts(db: &SqlitePool, db_path: &Path, older_than
             for table in ["session_messages", "chat_sessions"] {
                 let col = if table == "session_messages" { "session_id" } else { "id" };
                 let sql = format!("DELETE FROM {table} WHERE {table}.{col} IN ({})", in_list());
-                let mut q = sqlx::query(&sql);
+                let mut q = sqlx::query(sqlx::AssertSqlSafe(&*sql));
                 for id in &db_ids {
                     q = q.bind(id);
                 }

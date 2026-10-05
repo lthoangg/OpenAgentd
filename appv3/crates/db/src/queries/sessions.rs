@@ -82,7 +82,7 @@ pub async fn list_sessions_page(
         binds.push(uuid_db(&id));
     }
     sql.push_str(" ORDER BY created_at DESC, id DESC LIMIT ?");
-    let mut q = sqlx::query_as::<_, ChatSession>(&sql);
+    let mut q = sqlx::query_as::<_, ChatSession>(sqlx::AssertSqlSafe(&*sql));
     for b in &binds {
         q = q.bind(b);
     }
@@ -101,7 +101,7 @@ pub async fn list_child_sessions(pool: &DbPool, parent_ids: &[String]) -> Result
     }
     let placeholders = vec!["?"; parent_ids.len()].join(",");
     let sql = format!("SELECT * FROM chat_sessions WHERE parent_session_id IN ({placeholders}) ORDER BY created_at ASC");
-    let mut q = sqlx::query_as::<_, ChatSession>(&sql);
+    let mut q = sqlx::query_as::<_, ChatSession>(sqlx::AssertSqlSafe(&*sql));
     for id in parent_ids {
         q = q.bind(db_id(id));
     }
@@ -116,7 +116,7 @@ pub async fn get_sessions_by_ids(pool: &DbPool, ids: &[String]) -> Result<Vec<Ch
     }
     let placeholders = vec!["?"; ids.len()].join(",");
     let sql = format!("SELECT * FROM chat_sessions WHERE id IN ({placeholders})");
-    let mut q = sqlx::query_as::<_, ChatSession>(&sql);
+    let mut q = sqlx::query_as::<_, ChatSession>(sqlx::AssertSqlSafe(&*sql));
     for id in ids {
         q = q.bind(db_id(id));
     }
@@ -198,7 +198,7 @@ pub async fn update_session(pool: &DbPool, id: &str, upd: SessionUpdate) -> Resu
     }
     let cols: Vec<String> = sets.iter().map(|(c, _)| format!("{c} = ?")).collect();
     let sql = format!("UPDATE chat_sessions SET {}, updated_at = ? WHERE id = ?", cols.join(", "));
-    let mut q = sqlx::query(&sql);
+    let mut q = sqlx::query(sqlx::AssertSqlSafe(&*sql));
     for (_, v) in sets {
         q = q.bind(v);
     }
@@ -248,7 +248,7 @@ pub async fn delete_session_rows(pool: &DbPool, id: &str) -> Result<Vec<(String,
         format!("DELETE FROM pending_questions WHERE session_id IN ({placeholders})"),
         format!("DELETE FROM chat_sessions WHERE id IN ({placeholders})"),
     ] {
-        let mut q = sqlx::query(&table_sql);
+        let mut q = sqlx::query(sqlx::AssertSqlSafe(&*table_sql));
         for (sid, _) in &tree {
             q = q.bind(sid);
         }

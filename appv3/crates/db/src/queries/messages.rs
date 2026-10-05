@@ -103,9 +103,9 @@ const INSERT_MESSAGE: &str = r#"INSERT INTO session_messages
                    ?, ?)"#;
 
 fn bind_insert<'q, O>(
-    q: sqlx::query::QueryAs<'q, sqlx::Sqlite, O, sqlx::sqlite::SqliteArguments<'q>>,
+    q: sqlx::query::QueryAs<'q, sqlx::Sqlite, O, sqlx::sqlite::SqliteArguments>,
     r: &'q InsertRow,
-) -> sqlx::query::QueryAs<'q, sqlx::Sqlite, O, sqlx::sqlite::SqliteArguments<'q>> {
+) -> sqlx::query::QueryAs<'q, sqlx::Sqlite, O, sqlx::sqlite::SqliteArguments> {
     q.bind(&r.id)
         .bind(&r.sid)
         .bind(&r.msg.role)
@@ -128,7 +128,7 @@ fn bind_insert<'q, O>(
 pub async fn save_message(pool: &DbPool, session_id: &str, msg: NewMessage) -> Result<SessionMessage> {
     let r = insert_row(session_id, msg);
     let sql = format!("{INSERT_MESSAGE} RETURNING *");
-    let row = bind_insert(sqlx::query_as::<_, SessionMessage>(&sql), &r).fetch_one(pool).await?;
+    let row = bind_insert(sqlx::query_as::<_, SessionMessage>(sqlx::AssertSqlSafe(&*sql)), &r).fetch_one(pool).await?;
     if r.kind == kind::SUMMARY {
         bump_history_revision(pool, &r.sid, true).await?;
     }
@@ -141,7 +141,7 @@ pub async fn save_message(pool: &DbPool, session_id: &str, msg: NewMessage) -> R
 pub async fn save_message_id(conn: &mut sqlx::SqliteConnection, session_id: &str, msg: NewMessage) -> Result<String> {
     let r = insert_row(session_id, msg);
     let sql = format!("{INSERT_MESSAGE} RETURNING id");
-    let (id,): (String,) = bind_insert(sqlx::query_as(&sql), &r).fetch_one(&mut *conn).await?;
+    let (id,): (String,) = bind_insert(sqlx::query_as(sqlx::AssertSqlSafe(&*sql)), &r).fetch_one(&mut *conn).await?;
     if r.kind == kind::SUMMARY {
         bump_history_revision(&mut *conn, &r.sid, true).await?;
     }
@@ -196,14 +196,15 @@ pub async fn get_active_summary(pool: &DbPool, session_id: &str, boundary: Optio
 /// chat/note rows at/after it, before the undo boundary, `(seq, id)` order.
 pub async fn llm_window_rows(pool: &DbPool, session_id: &str, exclude_queued: bool) -> Result<Vec<SessionMessage>> {
     let w = LlmWindow::load(pool, session_id, exclude_queued).await?;
-    Ok(w.bind(sqlx::query_as::<_, SessionMessage>(&w.sql("*", ""))).fetch_all(pool).await?)
+    let sql = w.sql("*", "");
+    Ok(w.bind(sqlx::query_as::<_, SessionMessage>(sqlx::AssertSqlSafe(&*sql))).fetch_all(pool).await?)
 }
 
 /// Assistant and tool rows of the LLM window, tool-pairing columns only.
 pub async fn llm_window_tool_pairs(pool: &DbPool, session_id: &str) -> Result<Vec<ToolPairRow>> {
     let w = LlmWindow::load(pool, session_id, false).await?;
     let sql = w.sql("session_id, role, tool_calls, tool_call_id, created_at, seq", " AND (role = 'tool' OR (role = 'assistant' AND tool_calls IS NOT NULL))");
-    Ok(w.bind(sqlx::query_as::<_, ToolPairRow>(&sql)).fetch_all(pool).await?)
+    Ok(w.bind(sqlx::query_as::<_, ToolPairRow>(sqlx::AssertSqlSafe(&*sql))).fetch_all(pool).await?)
 }
 
 /// Which rows the model sees: after the active summary, before the revert
@@ -247,8 +248,8 @@ impl LlmWindow {
 
     fn bind<'q, O>(
         &'q self,
-        mut q: sqlx::query::QueryAs<'q, sqlx::Sqlite, O, sqlx::sqlite::SqliteArguments<'q>>,
-    ) -> sqlx::query::QueryAs<'q, sqlx::Sqlite, O, sqlx::sqlite::SqliteArguments<'q>> {
+        mut q: sqlx::query::QueryAs<'q, sqlx::Sqlite, O, sqlx::sqlite::SqliteArguments>,
+    ) -> sqlx::query::QueryAs<'q, sqlx::Sqlite, O, sqlx::sqlite::SqliteArguments> {
         q = q.bind(&self.sid);
         if let Some(s) = &self.summary {
             q = q.bind(s.seq).bind(&s.id).bind(&s.id);
@@ -292,7 +293,7 @@ pub async fn history_page(pool: &DbPool, session_id: &str, before: Option<(i64, 
         None => {}
     }
     sql.push_str(" ORDER BY seq DESC, id DESC LIMIT ?");
-    let mut q = sqlx::query_as::<_, SessionMessage>(&sql).bind(&sid);
+    let mut q = sqlx::query_as::<_, SessionMessage>(sqlx::AssertSqlSafe(&*sql)).bind(&sid);
     if let Some((seq, id)) = &before {
         q = q.bind(*seq);
         if let Some(id) = id {
@@ -314,7 +315,7 @@ pub async fn history_since(pool: &DbPool, session_id: &str, since_id: &str, limi
         "SELECT * FROM session_messages WHERE session_id = ? AND id > ? AND {USER_VISIBLE} \
          ORDER BY id ASC LIMIT ?"
     );
-    let mut rows = sqlx::query_as::<_, SessionMessage>(&sql).bind(db_id(session_id)).bind(db_id(since_id)).bind(limit + 1).fetch_all(pool).await?;
+    let mut rows = sqlx::query_as::<_, SessionMessage>(sqlx::AssertSqlSafe(&*sql)).bind(db_id(session_id)).bind(db_id(since_id)).bind(limit + 1).fetch_all(pool).await?;
     let truncated = rows.len() as i64 > limit;
     rows.truncate(limit as usize);
     rows.sort_by(|a, b| (a.seq, &a.id).cmp(&(b.seq, &b.id)));
@@ -336,7 +337,7 @@ pub async fn session_usage_totals_many(pool: &DbPool, session_ids: &[&str]) -> R
     let by_db: std::collections::HashMap<String, &str> = session_ids.iter().map(|id| (db_id(id), *id)).collect();
     let marks = vec!["?"; by_db.len()].join(", ");
     let sql = usage_totals_sql(&marks);
-    let mut q = sqlx::query_as::<_, (String, f64, f64)>(&sql);
+    let mut q = sqlx::query_as::<_, (String, f64, f64)>(sqlx::AssertSqlSafe(&*sql));
     for id in by_db.keys() {
         q = q.bind(id);
     }
@@ -374,7 +375,7 @@ pub async fn find_undo_target(pool: &DbPool, session: &ChatSession) -> Result<Op
         sql.push_str(" AND (seq, id) < (?, ?)");
     }
     sql.push_str(" ORDER BY seq DESC, id DESC LIMIT 1");
-    let mut q = sqlx::query_as::<_, SessionMessage>(&sql).bind(&session.id);
+    let mut q = sqlx::query_as::<_, SessionMessage>(sqlx::AssertSqlSafe(&*sql)).bind(&session.id);
     if let Some(a) = &active {
         q = q.bind(a.seq).bind(&a.id);
     }
@@ -391,7 +392,7 @@ pub async fn find_redo_target(pool: &DbPool, session: &ChatSession, boundary: &S
         "SELECT * FROM session_messages WHERE session_id = ? AND {REAL_USER} AND kind = 'chat' \
          AND (seq, id) > (?, ?) ORDER BY seq ASC, id ASC LIMIT 1"
     );
-    Ok(sqlx::query_as::<_, SessionMessage>(&sql).bind(&session.id).bind(boundary.seq).bind(&boundary.id).fetch_optional(pool).await?)
+    Ok(sqlx::query_as::<_, SessionMessage>(sqlx::AssertSqlSafe(&*sql)).bind(&session.id).bind(boundary.seq).bind(&boundary.id).fetch_optional(pool).await?)
 }
 
 /// The `chat_sessions.revert` blob v2 writes for a boundary at `target`.
@@ -446,7 +447,7 @@ pub async fn exclude_messages_before_summary(pool: &DbPool, session_id: &str, su
         cond.push_str(" AND (pinned = 1 OR (seq, id) >= (?, ?))");
     }
     let count_sql = format!("SELECT COUNT(*) FROM session_messages WHERE {cond}");
-    let mut count_q = sqlx::query_scalar::<_, i64>(&count_sql).bind(sid.clone()).bind(summary.seq).bind(summary.id.clone());
+    let mut count_q = sqlx::query_scalar::<_, i64>(sqlx::AssertSqlSafe(&*count_sql)).bind(sid.clone()).bind(summary.seq).bind(summary.id.clone());
     if let Some(p) = &restrict {
         count_q = count_q.bind(p.seq).bind(p.id.clone());
     }
@@ -456,7 +457,7 @@ pub async fn exclude_messages_before_summary(pool: &DbPool, session_id: &str, su
     if keep_last_n > 0 && total_before > 0 {
         let offset = keep_last_n.min(total_before) - 1;
         let kept_sql = format!("SELECT * FROM session_messages WHERE {cond} ORDER BY seq DESC, id DESC LIMIT 1 OFFSET {offset}");
-        let mut kept_q = sqlx::query_as::<_, SessionMessage>(&kept_sql).bind(sid.clone()).bind(summary.seq).bind(summary.id.clone());
+        let mut kept_q = sqlx::query_as::<_, SessionMessage>(sqlx::AssertSqlSafe(&*kept_sql)).bind(sid.clone()).bind(summary.seq).bind(summary.id.clone());
         if let Some(p) = &restrict {
             kept_q = kept_q.bind(p.seq).bind(p.id.clone());
         }
@@ -687,7 +688,7 @@ mod tests {
 
     async fn plan(pool: &DbPool, sql: &str, binds: usize) -> String {
         let explain = format!("EXPLAIN QUERY PLAN {sql}");
-        let mut q = sqlx::query_as::<_, (i64, i64, i64, String)>(&explain);
+        let mut q = sqlx::query_as::<_, (i64, i64, i64, String)>(sqlx::AssertSqlSafe(&*explain));
         for _ in 0..binds {
             q = q.bind("s");
         }

@@ -36,7 +36,7 @@ directories = "6.0"
 sha2 = "0.10"
 # SQLite only (no TLS); migrations are replayed by hand and no query macros
 # are used, so only the `FromRow` derive is needed.
-sqlx = { version = "0.8", default-features = false, features = ["sqlite", "runtime-tokio", "chrono", "uuid", "derive"] }
+sqlx = { version = "0.9", default-features = false, features = ["sqlite", "runtime-tokio", "chrono", "uuid", "derive"] }
 ignore = "0.4"
 dunce = "1"
 gix = { version = "0.87", default-features = false, features = ["status", "attributes", "excludes", "dirwalk", "index", "sha1", "parallel", "max-performance-safe"] }
@@ -53,7 +53,7 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "rus
 axum = { version = "0.8", features = ["ws", "macros", "multipart"] }
 tower = "0.5"
 # gzip is the only encoding the API negotiates (`middleware::gzip_layer`).
-tower-http = { version = "0.6", features = ["cors", "trace", "compression-gzip", "set-header", "limit", "catch-panic"] }
+tower-http = { version = "0.7", features = ["cors", "trace", "compression-gzip", "set-header", "limit", "catch-panic"] }
 clap = { version = "4.5", features = ["derive", "env"] }
 appv3-core = { path = "crates/core" }
 appv3-db = { path = "crates/db" }

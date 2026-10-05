@@ -746,10 +746,7 @@ fn main() {
                 }
             }
             #[cfg(target_os = "macos")]
-            RunEvent::Reopen {
-                has_visible_windows: _,
-                ..
-            } => {
+            RunEvent::Reopen { .. } => {
                 show_target_window(app);
             }
             RunEvent::ExitRequested { .. } => {

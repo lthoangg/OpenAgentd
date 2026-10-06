@@ -34,7 +34,7 @@ globset = "0.4"
 os_pipe = "1"
 # HTML → Markdown for web_fetch. 0.5.3 is the last release on html5ever 0.36,
 # which `trafilatura` and `scraper` share (one HTML parser in the binary).
-htmd = "=0.5.3"
+htmd = "=0.5.5"
 markup5ever_rcdom = "0.36"
 html5ever = "0.36"
 encoding_rs = "0.8"
@@ -49,7 +49,7 @@ unicode-normalization = "0.1"
 anydoc = "=0.2.4"
 # Not used directly: pins anydoc's PDF engine to the version v2's anydoc 0.2.4
 # wheel was built with, so PDF text is byte-identical to v2.
-pdf-inspector = "=1.14.2"
+pdf-inspector = "=1.25.2"
 urlencoding = "2"
 toml = "0.9"
 

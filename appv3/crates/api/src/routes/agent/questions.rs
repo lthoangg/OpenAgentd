@@ -169,15 +169,17 @@ async fn answer(State(st): State<AppState>, AxPath((sid_raw, qid_raw)): AxPath<(
     Ok(json(json!({"status": "ok", "resumed": resumed})))
 }
 
-/// Close a plan review. Approval switches the session to Code mode before
-/// the turn resumes, so the resumed turn implements with full tool access.
+/// Close a plan review. Approval switches a Plan-mode session to Code mode
+/// before the turn resumes, so the resumed turn implements with full tool
+/// access.
 async fn answer_plan_review(pool: &DbPool, sid: &str, qid: &str, row: &db::PendingQuestion, answers: &[Vec<String>]) -> ApiResult<Response> {
     validate_answers(&row.questions(), answers, plan::PLAN_REVIEW_MAX_ANSWER_CHARS)?;
     let decision = plan::review_decision(answers).map_err(ApiError::unprocessable)?;
     let live = manager::find_live_session_serving_session(sid);
-    if decision == ReviewDecision::Approve {
+    if decision == ReviewDecision::Approve && db::get_session(pool, sid).await?.is_some_and(|s| s.interaction_mode == "plan") {
         // A toggle queued during the review would undo the approval's switch
-        // when the resumed turn ends.
+        // when the resumed turn ends. A Code-mode approval switches nothing,
+        // so a queued toggle still applies when that turn ends.
         if let Some(a) = &live {
             a.clear_pending_interaction_mode();
         }
@@ -337,7 +339,7 @@ mod tests {
         assert_eq!(check(&[vec![], vec![]]).unwrap_err().detail, json!("Expected at most 1 answer groups, got 2."));
 
         // Plan-review feedback may be longer than an `ask_user` answer.
-        let review = appv3_agent::tools::plan::review_payload(1, None)["questions"].as_array().unwrap().clone();
+        let review = appv3_agent::tools::plan::review_payload(1, None, true)["questions"].as_array().unwrap().clone();
         let long = vec![vec!["x".repeat(MAX_ANSWER_CHARS + 1)]];
         assert!(validate_answers(&review, &long, MAX_ANSWER_CHARS).is_err());
         assert!(validate_answers(&review, &long, plan::PLAN_REVIEW_MAX_ANSWER_CHARS).is_ok());

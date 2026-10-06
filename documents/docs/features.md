@@ -222,14 +222,14 @@ run from the terminal (the native Rust binary since v3.0.0).
   Open searches
   commands instead of files. The desktop app adds Reload Window, since `⌘R`
   no longer reloads.
-- **Plan and Code interaction modes** `[v2.14.0, updated v2.15.0, v3.0.0, v3.2.0]` — the expanded composer switches an
+- **Plan and Code interaction modes** `[v2.14.0, updated v2.15.0, v3.0.0, v3.2.0, v3.8.0]` — the expanded composer switches an
   existing session between Code (default) and Plan without starting a new
   chat; `Tab` also toggles mode from the composer. Mode transitions are preserved via
   append-only hidden context notes in session history. In Plan mode, the agent explores
   the repository and produces decision-complete implementation plans, while the runtime
   strictly blocks mutating file operations and patches while permitting read-only inspection and testing via shell.
   The agent writes its plan with the `plan` tool and submits it with
-  `submit_plan`, which pauses the turn for review in the **Plan** tab of the
+  `submit_plan` (in either Plan or Code mode), which pauses the turn for review in the **Plan** tab of the
   review dock (full screen on mobile; it opens by itself on desktop). The tab
   shows the rendered plan and its status, and offers **Approve** and
   **Request changes**. Select plan text and choose **Comment** to attach a
@@ -237,9 +237,9 @@ run from the terminal (the native Rust binary since v3.0.0).
   footer lists your comments (click one to jump to its passage, or remove it),
   and an optional box takes overall feedback. **Request changes** sends every
   comment with its quoted passage plus the overall feedback in one answer;
-  unsent comments survive switching tabs. Approving switches the session to
-  Code mode and the same turn carries on implementing the plan; requesting
-  changes keeps it in Plan mode with your feedback. The transcript shows a
+  unsent comments survive switching tabs. Approving carries on implementing
+  the plan (switching the session to Code mode if in Plan mode); requesting
+  changes resumes with your feedback in the current mode. The transcript shows a
   plan review card with the outcome, your comments and a button that opens
   the plan; **Open Plan** in the command palette (⌘K) does the same whenever
   the session has a plan. Replying in chat instead supersedes the review.

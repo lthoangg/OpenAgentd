@@ -71,7 +71,7 @@ export function planReviewFromResult(result: string): PlanReviewState {
     text = end >= 0 ? text.slice(end + '</plan>'.length).trim() : ''
   }
   if (text.startsWith('The user approved')) return { kind: 'approved' }
-  const feedback = text.match(/^The user requested changes to plan revision \d+:\n\n([\s\S]*?)\n\nYou are still in Plan mode\./)
+  const feedback = text.match(/^The user requested changes to plan revision \d+:\n\n([\s\S]*?)\n\n(?:You are still in Plan mode\.\s*)?Address every point/)
   if (feedback) return { kind: 'changes', feedback: feedback[1]?.trim() || null }
   if (text.startsWith('The user requested changes')) return { kind: 'changes', feedback: null }
   if (text.startsWith('Error:')) return { kind: 'failed', message: text.slice('Error:'.length).trim() || null }

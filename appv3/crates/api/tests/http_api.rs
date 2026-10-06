@@ -454,10 +454,10 @@ fn urlencode(s: &str) -> String {
 }
 
 /// Open a plan review as `submit_plan` does: the call, then its pending row.
-async fn open_review(pool: &appv3_db::DbPool, sid: &str, call: &str, revision: u64) -> String {
+async fn open_review(pool: &appv3_db::DbPool, sid: &str, call: &str, revision: u64, in_plan_mode: bool) -> String {
     let tool_calls = json!([{"id": call, "type": "function", "function": {"name": "submit_plan", "arguments": "{}"}}]);
     appv3_db::save_message(pool, sid, appv3_db::NewMessage { tool_calls: Some(tool_calls), ..appv3_db::NewMessage::assistant(None) }).await.unwrap();
-    let payload = appv3_agent::tools::plan::review_payload(revision, None);
+    let payload = appv3_agent::tools::plan::review_payload(revision, None, in_plan_mode);
     let q = appv3_db::create_pending_question_with(pool, sid, call, "submit_plan", &payload).await.unwrap();
     appv3_db::codec::api_uuid(&q.id)
 }
@@ -553,7 +553,7 @@ async fn plan_review_flow(c: &Client, pool: &appv3_db::DbPool, ws: &std::path::P
     assert_eq!(v["plan"]["path"], json!(saved.doc.path.display().to_string()));
 
     // ── a review is open ─────────────────────────────────────────────────
-    let qid = open_review(pool, &psid, "call-plan-1", 1).await;
+    let qid = open_review(pool, &psid, "call-plan-1", 1, true).await;
     let (_, v) = c.json("GET", &format!("/api/agent/{psid}/question"), None).await;
     assert_eq!((v["question"]["kind"].clone(), v["question"]["plan_revision"].clone()), (json!("plan_review"), json!(1)), "{v}");
     let (st, v) = c.json("DELETE", &plan_uri, None).await;
@@ -588,9 +588,19 @@ async fn plan_review_flow(c: &Client, pool: &appv3_db::DbPool, ws: &std::path::P
     let (_, v) = c.json("GET", &plan_uri, None).await;
     assert_eq!(v["plan"]["approved_revision"], 2, "{v}");
 
+    // ── a Code-mode approval keeps a mode switch queued during the review ─
+    let qid = open_review(pool, &psid, "call-plan-code", 2, false).await;
+    let live = appv3_agent::manager::find_live_session_serving_session(&psid).expect("the resumed session is live");
+    live.queue_interaction_mode("plan");
+    let (st, v) = c.json("POST", &format!("/api/agent/{psid}/question/{qid}/answer"), Some(json!({"answers": [["Approve"]]}))).await;
+    assert_eq!(st, StatusCode::OK, "{v}");
+    let result = tool_result(pool, &psid, "call-plan-code").await;
+    assert!(result.starts_with("The user approved plan revision 2. Implement the plan in"), "{result}");
+    wait_idle(&psid).await;
+    assert_eq!(appv3_db::get_session(pool, &psid).await.unwrap().unwrap().interaction_mode, "plan", "the switch queued during the review applies");
+
     // ── a change request keeps Plan mode ─────────────────────────────────
-    appv3_agent::interaction_mode::set_mode(pool, &psid, "plan").await.unwrap();
-    let qid = open_review(pool, &psid, "call-plan-2", 2).await;
+    let qid = open_review(pool, &psid, "call-plan-2", 2, true).await;
     let (st, v) = c.json("POST", &format!("/api/agent/{psid}/question/{qid}/answer"), Some(json!({"answers": [["Split step 2."]]}))).await;
     assert_eq!(st, StatusCode::OK, "{v}");
     assert_eq!(appv3_db::get_session(pool, &psid).await.unwrap().unwrap().interaction_mode, "plan");

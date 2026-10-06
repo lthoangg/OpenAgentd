@@ -203,12 +203,62 @@ async fn change_request_resumes_in_plan_mode_with_feedback() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn code_mode_cannot_submit() {
+async fn submit_needs_a_plan() {
     let h = harness("code", "code", None, vec![MockProvider::tool_call("c1", "submit_plan", "{}"), MockProvider::text("OK.")]).await;
     h.send("Submit.").await;
     assert_eq!(h.session.state(), "idle");
-    assert_eq!(h.last_tool_result(1), "Error: submit_plan is only available in Plan mode.");
+    assert_eq!(h.last_tool_result(1), "Error: There is no plan to submit. Write it with the plan tool first.");
     assert!(appv3_db::get_pending_question(&h.pool, &h.sid).await.unwrap().is_none());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn submit_in_code_mode_pauses_and_approval_resumes_in_code_mode() {
+    let h = harness(
+        "approve_code",
+        "code",
+        None,
+        vec![
+            MockProvider::tool_calls(&[("c1", "plan", &write("# Fix the bug\n1. Patch it")), ("c2", "submit_plan", r#"{"summary": "Ready."}"#)]),
+            MockProvider::text("Implementing step 1."),
+        ],
+    )
+    .await;
+    h.send("Plan the fix.").await;
+
+    assert_eq!(h.session.state(), "waiting_input");
+    let rel = format!(".openagentd/plans/fix-the-bug-{}.md", h.id8());
+    let row = appv3_db::get_pending_question(&h.pool, &h.sid).await.unwrap().unwrap();
+    assert_eq!((row.kind().as_deref(), row.plan_revision()), (Some("plan_review"), Some(1)));
+    assert_eq!(row.questions()[0]["question"], "Review plan revision 1. Ready.");
+
+    h.review(ReviewDecision::Approve, "Approve").await;
+    assert_eq!(h.mode().await, "code");
+    assert_eq!(h.session.state(), "idle");
+    let result = h.last_tool_result(1);
+    assert!(result.starts_with("The user approved plan revision 1. Implement the plan in"), "{result}");
+    assert!(!result.contains("The session is now in Code mode"));
+    assert!(result.contains(&format!("`{rel}`")), "{result}");
+    assert_eq!(plan::sync(&h.data_dir()).unwrap().approved_revision, Some(1));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn change_request_in_code_mode_resumes_in_code_mode_with_feedback() {
+    let h = harness(
+        "changes_code",
+        "code",
+        None,
+        vec![MockProvider::tool_calls(&[("c1", "plan", &write("# Plan\n1. a\n2. b")), ("c2", "submit_plan", "{}")]), MockProvider::text("Revising in code mode.")],
+    )
+    .await;
+    h.send("Plan it.").await;
+    assert_eq!(h.session.state(), "waiting_input");
+
+    h.review(ReviewDecision::Changes(Some("Drop step 2.".into())), "Drop step 2.").await;
+    assert_eq!(h.mode().await, "code");
+    let result = h.last_tool_result(1);
+    assert!(result.starts_with("The user requested changes to plan revision 1:\n\nDrop step 2.\n\nAddress every point,"), "{result}");
+    assert!(!result.contains("You are still in Plan mode."));
+    assert_eq!(plan::sync(&h.data_dir()).unwrap().approved_revision, None);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

@@ -122,11 +122,13 @@ impl Tool for PlanTool {
 }
 
 /// The `pending_questions` payload of a plan review.
-pub fn review_payload(revision: u64, summary: Option<&str>) -> Value {
+pub fn review_payload(revision: u64, summary: Option<&str>, in_plan_mode: bool) -> Value {
     let question = match summary {
         Some(s) => format!("Review plan revision {revision}. {s}"),
         None => format!("Review plan revision {revision}."),
     };
+    let approve_desc = if in_plan_mode { "Switch to Code mode and implement this plan." } else { "Approve and implement this plan." };
+    let changes_desc = if in_plan_mode { "Stay in Plan mode and describe what to change." } else { "Describe what to change in the plan." };
     json!({
         "kind": PLAN_REVIEW_KIND,
         "plan_revision": revision,
@@ -135,8 +137,8 @@ pub fn review_payload(revision: u64, summary: Option<&str>) -> Value {
             "question": question,
             "header": "Plan review",
             "options": [
-                {"label": APPROVE_LABEL, "description": "Switch to Code mode and implement this plan.", "recommended": false},
-                {"label": REQUEST_CHANGES_LABEL, "description": "Stay in Plan mode and describe what to change.", "recommended": false},
+                {"label": APPROVE_LABEL, "description": approve_desc, "recommended": false},
+                {"label": REQUEST_CHANGES_LABEL, "description": changes_desc, "recommended": false},
             ],
             "multiple": false,
             "custom": true,
@@ -154,14 +156,11 @@ fn parse_summary(args: &Value) -> Result<Option<String>, Vec<String>> {
 }
 
 /// The plan a `submit_plan` call would put up for review.
-fn reviewable(dir: &Path, plan_mode: bool) -> Result<plan::PlanDoc, ToolError> {
-    if !plan_mode {
-        return Err(ToolError::Execution("submit_plan is only available in Plan mode.".into()));
-    }
+fn reviewable(dir: &Path) -> Result<plan::PlanDoc, ToolError> {
     plan::sync(dir).ok_or_else(|| ToolError::Execution("There is no plan to submit. Write it with the plan tool first.".into()))
 }
 
-/// Hand the plan to the user for review (Plan mode only).
+/// Hand the plan to the user for review.
 pub struct SubmitPlanTool {
     pub session_id: String,
     pub pool: DbPool,
@@ -175,11 +174,12 @@ impl Tool for SubmitPlanTool {
 
     async fn run(&self, ctx: &ToolContext, args: Value) -> ToolResult {
         let summary = parse_summary(&args).map_err(|e| invalid_args(SUBMIT_PLAN_TOOL, &e))?;
-        let doc = reviewable(&denied::session_artifacts_dir(Some(&self.session_id)), in_plan_mode(ctx))?;
+        let doc = reviewable(&denied::session_artifacts_dir(Some(&self.session_id)))?;
         if ctx.tool_call_id.is_empty() {
             return Ok(ToolOutput::text("The plan could not be submitted (no tool call id). Ask the user to review it in the Plan panel."));
         }
-        let payload = review_payload(doc.revision, summary.as_deref());
+        let in_plan = in_plan_mode(ctx);
+        let payload = review_payload(doc.revision, summary.as_deref(), in_plan);
         let row = appv3_db::create_pending_question_with(&self.pool, &self.session_id, &ctx.tool_call_id, SUBMIT_PLAN_TOOL, &payload).await.map_err(ToolError::exec)?;
         let sid = appv3_db::codec::api_uuid(&appv3_db::codec::db_id(&self.session_id));
         let qid = appv3_db::codec::api_uuid(&row.id);
@@ -223,13 +223,17 @@ mod tests {
 
     #[test]
     fn the_review_payload_offers_approve_and_request_changes() {
-        let p = review_payload(3, Some("Now with tests."));
+        let p = review_payload(3, Some("Now with tests."), true);
         assert_eq!(p["kind"], "plan_review");
         assert_eq!(p["plan_revision"], 3);
         assert_eq!(p["questions"][0]["question"], "Review plan revision 3. Now with tests.");
         let labels: Vec<&str> = p["questions"][0]["options"].as_array().unwrap().iter().map(|o| o["label"].as_str().unwrap()).collect();
         assert_eq!(labels, ["Approve", "Request changes"]);
-        assert_eq!(review_payload(1, None)["summary"], Value::Null);
+        assert_eq!(review_payload(1, None, true)["summary"], Value::Null);
+
+        let code_p = review_payload(1, None, false);
+        assert_eq!(code_p["questions"][0]["options"][0]["description"], "Approve and implement this plan.");
+        assert_eq!(code_p["questions"][0]["options"][1]["description"], "Describe what to change in the plan.");
     }
 
     #[test]
@@ -272,11 +276,10 @@ mod tests {
     }
 
     #[test]
-    fn submit_plan_needs_plan_mode_and_a_plan() {
+    fn submit_plan_needs_a_plan() {
         let d = tempfile::tempdir().unwrap();
-        assert_eq!(reviewable(d.path(), false).unwrap_err().to_string(), "submit_plan is only available in Plan mode.");
-        assert_eq!(reviewable(d.path(), true).unwrap_err().to_string(), "There is no plan to submit. Write it with the plan tool first.");
+        assert_eq!(reviewable(d.path()).unwrap_err().to_string(), "There is no plan to submit. Write it with the plan tool first.");
         save_plan(d.path(), PlanTarget::DataDir, &args(json!({"action": "write", "content": "# P"})), true).unwrap();
-        assert_eq!(reviewable(d.path(), true).unwrap().revision, 1);
+        assert_eq!(reviewable(d.path()).unwrap().revision, 1);
     }
 }

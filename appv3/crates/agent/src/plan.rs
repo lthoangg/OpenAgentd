@@ -503,7 +503,7 @@ pub fn review_decision(answers: &[Vec<String>]) -> Result<ReviewDecision, String
 
 /// The `submit_plan` tool result a review answer writes. `doc` is the plan
 /// now; when the user edited it, the text carries their version.
-pub fn review_result_text(decision: &ReviewDecision, doc: Option<&PlanDoc>, submitted_revision: u64) -> String {
+pub fn review_result_text(decision: &ReviewDecision, doc: Option<&PlanDoc>, submitted_revision: u64, in_plan_mode: bool) -> String {
     let n = doc.map(|d| d.revision).unwrap_or(submitted_revision);
     let path = doc.map(PlanDoc::display_path).unwrap_or_else(|| "the session plan".into());
     let mut text = String::new();
@@ -511,15 +511,19 @@ pub fn review_result_text(decision: &ReviewDecision, doc: Option<&PlanDoc>, subm
         text.push_str(&format!("The user edited the plan during review; this is revision {n}, saved at {path}:\n\n<plan>\n{}\n</plan>\n\n", d.content));
     }
     text.push_str(&match decision {
-        ReviewDecision::Approve => format!(
-            "The user approved plan revision {n}. The session is now in Code mode with full tool access. Implement the plan in `{path}` from its first step and track progress with `todo_manage`."
-        ),
-        ReviewDecision::Changes(Some(feedback)) => format!(
-            "The user requested changes to plan revision {n}:\n\n{feedback}\n\nYou are still in Plan mode. Address every point, update the plan with the `plan` tool, then call `submit_plan` again."
-        ),
-        ReviewDecision::Changes(None) => format!(
-            "The user requested changes to plan revision {n} without saying what to change. Ask them with `ask_user`, then update the plan and call `submit_plan` again."
-        ),
+        ReviewDecision::Approve => {
+            let switched = if in_plan_mode { " The session is now in Code mode with full tool access." } else { "" };
+            format!("The user approved plan revision {n}.{switched} Implement the plan in `{path}` from its first step and track progress with `todo_manage`.")
+        }
+        ReviewDecision::Changes(Some(feedback)) => {
+            let still = if in_plan_mode { "You are still in Plan mode. " } else { "" };
+            format!(
+                "The user requested changes to plan revision {n}:\n\n{feedback}\n\n{still}Address every point, update the plan with the `plan` tool, then call `submit_plan` again."
+            )
+        }
+        ReviewDecision::Changes(None) => {
+            format!("The user requested changes to plan revision {n} without saying what to change. Ask them with `ask_user`, then update the plan and call `submit_plan` again.")
+        }
     });
     text
 }
@@ -536,7 +540,9 @@ pub struct ReviewOutcome {
 pub async fn resolve_review(pool: &DbPool, session_id: &str, question: &PendingQuestion, decision: &ReviewDecision, answers: &Value) -> anyhow::Result<Option<ReviewOutcome>> {
     let dir = denied::session_artifacts_dir(Some(session_id));
     let doc = sync(&dir);
-    let text = review_result_text(decision, doc.as_ref(), question.plan_revision().unwrap_or(0));
+    let session = db::get_session(pool, session_id).await?.ok_or_else(|| anyhow::anyhow!("Session not found."))?;
+    let in_plan = session.interaction_mode == "plan";
+    let text = review_result_text(decision, doc.as_ref(), question.plan_revision().unwrap_or(0), in_plan);
     if db::resolve_pending_question_with(pool, &question.id, "answered", Some(answers), Some(&text)).await?.is_none() {
         return Ok(None);
     }
@@ -750,14 +756,22 @@ mod tests {
         let d = tempfile::tempdir().unwrap();
         save_agent(d.path(), PlanTarget::DataDir, PlanChange::Write("## Plan")).unwrap();
         let doc = sync(d.path()).unwrap();
-        let approved = review_result_text(&ReviewDecision::Approve, Some(&doc), 1);
+        let approved = review_result_text(&ReviewDecision::Approve, Some(&doc), 1, true);
         assert!(approved.starts_with("The user approved plan revision 1. The session is now in Code mode"), "{approved}");
-        let changes = review_result_text(&ReviewDecision::Changes(Some("Split step 2".into())), Some(&doc), 1);
+        let approved_code = review_result_text(&ReviewDecision::Approve, Some(&doc), 1, false);
+        assert!(approved_code.starts_with("The user approved plan revision 1. Implement the plan in"), "{approved_code}");
+        assert!(!approved_code.contains("The session is now in Code mode"));
+
+        let changes = review_result_text(&ReviewDecision::Changes(Some("Split step 2".into())), Some(&doc), 1, true);
         assert!(changes.contains("revision 1:\n\nSplit step 2\n\nYou are still in Plan mode."), "{changes}");
-        assert!(review_result_text(&ReviewDecision::Changes(None), Some(&doc), 1).contains("without saying what to change"));
+        let changes_code = review_result_text(&ReviewDecision::Changes(Some("Split step 2".into())), Some(&doc), 1, false);
+        assert!(changes_code.contains("revision 1:\n\nSplit step 2\n\nAddress every point,"), "{changes_code}");
+        assert!(!changes_code.contains("You are still in Plan mode."));
+
+        assert!(review_result_text(&ReviewDecision::Changes(None), Some(&doc), 1, true).contains("without saying what to change"));
 
         save_user(d.path(), "## Plan\n1. user step", 1).unwrap();
-        let edited = review_result_text(&ReviewDecision::Approve, sync(d.path()).as_ref(), 1);
+        let edited = review_result_text(&ReviewDecision::Approve, sync(d.path()).as_ref(), 1, true);
         assert!(edited.starts_with("The user edited the plan during review; this is revision 2"), "{edited}");
         assert!(edited.contains("<plan>\n## Plan\n1. user step\n</plan>\n\nThe user approved plan revision 2."));
     }

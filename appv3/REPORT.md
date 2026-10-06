@@ -579,7 +579,8 @@ explicitly.
   - **Tools.** The lead gets two session-injected tools, defined in
     `contract/tool_definitions.json`: `plan` (`write`, or `edit` with 1–20
     exact-match replacements; works in both modes) and `submit_plan`
-    (Plan mode only). Agent files cannot claim either name. The
+    (works in both modes; in Code mode its description limits it to when
+    the user asks for a review). Agent files cannot claim either name. The
     `<proposed_plan>` tag is no longer captured, detected or acted on; old
     transcripts still render it as a read-only card.
   - **Where the plan lives.** In a project (`coding`) workspace the first
@@ -610,9 +611,11 @@ explicitly.
     schema change), and `question_asked` plus the pending-question response
     carry both fields. The answer route takes one string of at most 8,000
     characters for these rows (2,000 stays the `ask_user` limit): `Approve`
-    switches the session to Code mode in the runtime, records
-    `approved_revision`, emits `interaction_mode`, and resumes the turn with
-    the approval as the tool result; anything else resumes in Plan mode
+    switches a Plan-mode session to Code mode in the runtime (dropping a
+    mode switch queued during the review) and emits `interaction_mode`; in
+    Code mode a queued switch still applies when the resumed turn ends.
+    Approval records `approved_revision` and resumes the turn with the
+    approval as the tool result; anything else resumes in the active mode
     with the feedback. Edits made during the review are included in that
     result.
   - **Mode notes.** The Plan-mode note is versioned (`version 2`); a session

@@ -196,6 +196,21 @@ describe('planReviewFromResult', () => {
     expect(planReviewFromResult(result)).toEqual({ kind: 'approved' })
   })
 
+  it('reads an approval in code mode', () => {
+    const result =
+      'The user approved plan revision 2. Implement the plan in `.openagentd/plans/ship-it.md` from its first step and track progress with `todo_manage`.'
+    expect(planReviewFromResult(result)).toEqual({ kind: 'approved' })
+  })
+
+  it('reads a change request in code mode', () => {
+    const result =
+      'The user requested changes to plan revision 2:\n\nDrop step 2.\n\nAddress every point, update the plan with the `plan` tool, then call `submit_plan` again.'
+    expect(planReviewFromResult(result)).toEqual({
+      kind: 'changes',
+      feedback: 'Drop step 2.',
+    })
+  })
+
   it('reads a change request without feedback', () => {
     expect(planReviewFromResult('The user requested changes to plan revision 1 without saying what to change.')).toEqual({
       kind: 'changes',

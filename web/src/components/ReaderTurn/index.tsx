@@ -128,7 +128,7 @@ export function WorkSummaryRow({ blocks, live, startedAt, currentStep, forceOpen
           close them from anywhere. The page fill hides what passes beneath;
           z-11 clears in-block controls (code copy buttons are z-10) and stays
           under the composer and the overlaid dock (z-20). */}
-      <div className={cn('flex', open && 'sticky top-0 z-[11] bg-(--bg-page)')}>
+      <div className={cn('flex', open && 'sticky top-0 z-11 bg-(--bg-page)')}>
         <button
           ref={rowRef}
           type="button"

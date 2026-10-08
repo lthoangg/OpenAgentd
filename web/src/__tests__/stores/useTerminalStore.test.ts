@@ -252,7 +252,7 @@ describe('useTerminalStore', () => {
     await flush()
     s.syncTheme('light')
     for (const t of createdTerms) {
-      expect((t.options.theme as { background: string }).background).not.toBe('#1e1c1a')
+      expect((t.options.theme as { background: string }).background).not.toBe('#221c16')
     }
     const lightBg = (createdTerms[0].options.theme as { background: string }).background
     s.syncTheme('dark')

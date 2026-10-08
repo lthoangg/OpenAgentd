@@ -136,7 +136,7 @@ export function MultiSelect({
                 {value.map((v) => (
                   <span
                     key={v}
-                    className="flex items-center gap-1 rounded-xs border border-(--color-border-strong) bg-(--bg-card) py-0.5 pr-0.5 pl-1.5 font-mono text-[11px] text-(--color-text) shadow-[0_1px_0_rgb(26_23_20/0.06)]"
+                    className="flex items-center gap-1 rounded-xs border border-(--color-border-strong) bg-(--bg-card) py-0.5 pr-0.5 pl-1.5 font-mono text-[11px] text-(--color-text)"
                   >
                     {v}
                     <button
@@ -228,7 +228,7 @@ export function MultiSelect({
                       )}
                       aria-hidden="true"
                     >
-                      {isSel && <Check size={10} strokeWidth={3} />}
+                      {isSel && <Check size={11} strokeWidth={3} />}
                     </span>
                     <div className="min-w-0 flex-1">
                       <p className="truncate font-mono text-xs text-(--color-text)">

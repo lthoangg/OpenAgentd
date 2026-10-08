@@ -296,7 +296,7 @@ export function CreateTaskForm({
           {validationSummary && <p role="alert" className="sr-only">Please correct the highlighted fields.</p>}
           {error && (
             <div role="alert" className="flex gap-2.5 rounded-sm border border-(--color-error)/40 bg-(--color-error-subtle) p-2.5">
-              <AlertCircle size={15} className="shrink-0 text-(--color-error)" />
+              <AlertCircle size={14} className="shrink-0 text-(--color-error)" />
               <p className="text-xs text-(--color-error)">{error}</p>
             </div>
           )}

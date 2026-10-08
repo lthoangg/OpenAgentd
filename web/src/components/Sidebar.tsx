@@ -755,7 +755,7 @@ export function Sidebar({
             animate={{ opacity: mobileDragOffset !== null ? Math.max(0, Math.min(1, 1 + mobileDragOffset / 280)) : 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: mobileDragOffset !== null ? 0 : (prefersReducedMotion ? 0.01 : 0.2) }}
-            className="mobile-safe-top fixed inset-x-0 bottom-0 z-30 bg-black/60 md:hidden"
+            className="mobile-safe-top fixed inset-x-0 bottom-0 z-30 bg-(--color-overlay) md:hidden"
             aria-hidden="true"
             onClick={onMobileClose}
           />
@@ -772,7 +772,7 @@ export function Sidebar({
       inert={isMobile ? !mobileOpen && mobileDragOffset === null : desktopCollapsed}
       className={
         isMobile
-          ? 'mobile-safe-top fixed bottom-0 left-0 z-40 flex w-[min(272px,calc(100vw-2rem))] shrink-0 flex-col overflow-hidden border-r border-(--color-border) bg-(--bg-page) shadow-xl dark:bg-(--bg-sidebar)'
+          ? 'mobile-safe-top fixed bottom-0 left-0 z-40 flex w-[min(272px,calc(100vw-2rem))] shrink-0 flex-col overflow-hidden border-r border-(--color-border) bg-(--bg-page) shadow-(--shadow-depth) dark:bg-(--bg-sidebar)'
           : 'relative flex shrink-0 flex-col overflow-hidden border-r border-(--color-border) bg-(--bg-page) dark:bg-(--bg-sidebar)'
       }
     >
@@ -799,7 +799,7 @@ export function Sidebar({
 
       {/* Section header — actions stay reachable however long the list is. */}
       <div className="flex h-8 shrink-0 items-center justify-between gap-2 pl-3 pr-1.5">
-        <span className="truncate text-[11px] font-semibold uppercase leading-none tracking-[0.05em] text-(--color-text-subtle)">
+        <span className="truncate label-caps leading-none text-(--color-text-subtle)">
           Workspaces
         </span>
         <div className="flex shrink-0 items-center gap-0.5">
@@ -979,8 +979,8 @@ export function Sidebar({
                           aria-label={`Checkouts in ${sourceLabel}: ${checkoutLabel}`}
                         >
                           {worktreeIsRemoving
-                            ? <Loader2 size={10} className="shrink-0 animate-spin" aria-hidden="true" />
-                            : <GitBranch size={10} className="shrink-0 text-(--accent-orange-text)" aria-hidden="true" />}
+                            ? <Loader2 size={11} className="shrink-0 animate-spin" aria-hidden="true" />
+                            : <GitBranch size={11} className="shrink-0 text-(--accent-orange-text)" aria-hidden="true" />}
                           <span className="tabular-nums">{worktrees.length}</span>
                         </button>
                       }
@@ -998,7 +998,10 @@ export function Sidebar({
                       <button
                         type="button"
                         onClick={() => { void selectWorkspace(sessionTarget, { create: true }) }}
-                        className={`ml-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-xs border border-(--color-border) text-(--color-text-muted) transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) pointer-coarse:size-9 ${mobileLongPressActions ? 'hidden' : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:opacity-100'}`}
+                        // On touch the actions are always shown, so the outline
+                        // would box every row; the bare glyph matches the
+                        // neighbouring row actions there.
+                        className={`ml-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-xs border border-(--color-border) text-(--color-text-muted) transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) pointer-coarse:size-9 pointer-coarse:border-transparent ${mobileLongPressActions ? 'hidden' : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:opacity-100'}`}
                         aria-label={selectedWorktree ? `New session in worktree ${selectedWorktree.name}` : `New session in ${sourceLabel}`}
                       >
                         <Plus size={11} aria-hidden="true" />
@@ -1007,7 +1010,11 @@ export function Sidebar({
                   />
                   <TooltipContent>{selectedWorktree ? `New session in ${selectedWorktree.name}` : 'New session'}</TooltipContent>
                 </Tooltip>
-                {!sourceIsChat && (
+                {sourceIsChat ? (
+                  // Chat has no actions menu; hold its slot so the + lines up
+                  // with every other workspace row.
+                  !mobileLongPressActions && <span aria-hidden="true" className="mr-1 w-6 shrink-0 pointer-coarse:w-9" />
+                ) : (
                   <Tooltip>
                     <TooltipTrigger
                       render={
@@ -1036,8 +1043,8 @@ export function Sidebar({
                     <div className="flex h-6 items-center gap-1.5 px-1.5 text-[11px] text-(--color-text-subtle) pointer-coarse:h-9">
                       <span className="flex size-3 shrink-0 items-center justify-center" aria-hidden="true">
                         {selectedWorktree
-                          ? <GitBranch size={10} className="text-(--accent-orange-text)" />
-                          : <Folder size={10} className="text-(--color-accent)" />}
+                          ? <GitBranch size={11} className="text-(--accent-orange-text)" />
+                          : <Folder size={11} className="text-(--color-accent)" />}
                       </span>
                       <span className="min-w-0 flex-1 truncate font-mono text-(--color-text-2)">
                         {selectedWorktree?.name ?? 'main worktree'}
@@ -1164,7 +1171,7 @@ export function Sidebar({
               </div>
               <DialogFooter>
                 <Button type="button" variant="default" onClick={() => setTrustWorkspace(null)}>Back</Button>
-                <Button type="button" onClick={confirmTrustedWorkspace}>Trust and open</Button>
+                <Button variant="primary" type="button" onClick={confirmTrustedWorkspace}>Trust and open</Button>
               </DialogFooter>
             </>
           ) : nativeFolderPickerEnabled && !isTauriMobile ? (
@@ -1187,7 +1194,7 @@ export function Sidebar({
               </div>
               <DialogFooter>
                 <Button type="button" variant="default" onClick={() => setDialogOpen(false)}>Cancel</Button>
-                <Button type="button" disabled={loading} onClick={() => { void openWorkspaceDialog() }}>
+                <Button variant="primary" type="button" disabled={loading} onClick={() => { void openWorkspaceDialog() }}>
                   {loading ? 'Opening…' : 'Choose folder…'}
                 </Button>
               </DialogFooter>
@@ -1236,7 +1243,7 @@ export function Sidebar({
               </div>
               <DialogFooter>
                 <Button type="button" variant="default" onClick={() => setDialogOpen(false)}>Cancel</Button>
-                <Button type="button" disabled={!browserPath || loading} onClick={openSelectedFolder}>Open this folder</Button>
+                <Button variant="primary" type="button" disabled={!browserPath || loading} onClick={openSelectedFolder}>Open this folder</Button>
               </DialogFooter>
             </>
           )}
@@ -1331,12 +1338,12 @@ export function Sidebar({
         open={worktreeTarget !== null}
         onOpenChange={(open) => { if (!open) setWorktreeTarget(null) }}
       >
-        <DialogContent showCloseButton={false} className="flex max-h-[min(86dvh,520px)] w-[calc(100vw-1.5rem)] max-w-md flex-col overflow-hidden p-0 sm:w-[min(560px,calc(100vw-2rem))] sm:max-w-none">
+        <DialogContent showCloseButton={false} size="none" padding="none" className="flex max-h-[min(86dvh,520px)] w-[calc(100vw-1.5rem)] max-w-md flex-col overflow-hidden sm:w-[min(560px,calc(100vw-2rem))] sm:max-w-none">
           <form onSubmit={submitWorktree} className="flex h-full min-h-0 flex-col">
             <DialogHeader className="shrink-0 gap-0 border-b border-(--color-border) bg-(--bg-page) px-3 py-2.5 sm:px-4">
               <div className="flex items-start gap-2">
                 <div className="min-w-0 flex-1">
-                  <DialogTitle className="text-sm font-semibold leading-5 text-(--color-text)">Create worktree</DialogTitle>
+                  <DialogTitle>Create worktree</DialogTitle>
                   <DialogDescription className="mt-0.5 text-xs leading-4 text-(--color-text-muted)">
                     Isolated checkout from {worktreeTarget ? workspaceLabel(worktreeTarget) : 'this workspace'}.
                   </DialogDescription>
@@ -1353,7 +1360,7 @@ export function Sidebar({
             </DialogHeader>
             <div className="min-h-0 flex-1 space-y-2.5 overflow-y-auto px-3 py-3 sm:px-4">
               <div className="rounded-sm border border-(--color-border) bg-(--bg-page) px-2.5 py-1.5">
-                <div className="mb-0.5 flex items-center gap-1.5 text-xs md:text-[11px] font-semibold uppercase tracking-[0.12em] text-(--color-text-subtle)">
+                <div className="mb-0.5 flex items-center gap-1.5 label-caps text-(--color-text-subtle)">
                   <Folder size={12} aria-hidden="true" />
                   Source workspace
                 </div>
@@ -1379,7 +1386,7 @@ export function Sidebar({
                     autoCorrect="off"
                     autoCapitalize="off"
                     spellCheck={false}
-                    className="min-h-9 w-full min-w-0 rounded-sm border border-(--color-border) bg-(--bg-page) px-2.5 py-1 font-mono text-sm text-(--color-text) outline-none transition-colors placeholder:text-(--color-text-subtle) focus:outline-none focus-visible:outline-none focus-visible:border-(--focus-ring) focus-visible:ring-2 focus-visible:ring-(--focus-ring)/25 md:min-h-8"
+                    className="min-h-9 w-full min-w-0 rounded-sm border border-(--color-border) bg-(--bg-page) px-2.5 py-1 font-mono text-sm text-(--color-text) outline-none transition-colors placeholder:text-(--color-text-subtle) focus:outline-none focus-visible:outline-none focus-visible:border-(--focus-ring) focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 md:min-h-8"
                     maxLength={80}
                     autoFocus
                   />
@@ -1394,7 +1401,7 @@ export function Sidebar({
                     autoCorrect="off"
                     autoCapitalize="off"
                     spellCheck={false}
-                    className="min-h-9 w-full min-w-0 rounded-sm border border-(--color-border) bg-(--bg-page) px-2.5 py-1 font-mono text-sm text-(--color-text) outline-none transition-colors placeholder:text-(--color-text-subtle) focus:outline-none focus-visible:outline-none focus-visible:border-(--focus-ring) focus-visible:ring-2 focus-visible:ring-(--focus-ring)/25 md:min-h-8"
+                    className="min-h-9 w-full min-w-0 rounded-sm border border-(--color-border) bg-(--bg-page) px-2.5 py-1 font-mono text-sm text-(--color-text) outline-none transition-colors placeholder:text-(--color-text-subtle) focus:outline-none focus-visible:outline-none focus-visible:border-(--focus-ring) focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 md:min-h-8"
                     maxLength={255}
                   />
                   <p className="text-xs md:text-[11px] font-normal text-(--color-text-subtle)">Blank defaults to openagentd/name.</p>
@@ -1452,8 +1459,8 @@ export function Sidebar({
               {error && <p className="mt-2 text-xs text-(--color-error)">{error}</p>}
             </div>
             <DialogFooter className="mx-0 mb-0 shrink-0 flex-row justify-end gap-2 rounded-none border-t border-(--color-border) bg-(--bg-page) px-3 py-2.5 sm:px-4">
-              <Button type="button" size="sm" variant="default" onClick={() => setWorktreeTarget(null)}>Cancel</Button>
-              <Button type="submit" size="sm" disabled={worktreeLoading}>
+              <Button type="button" variant="default" onClick={() => setWorktreeTarget(null)}>Cancel</Button>
+              <Button variant="primary" type="submit" disabled={worktreeLoading}>
                 {worktreeLoading ? 'Creating…' : 'Create and open'}
               </Button>
             </DialogFooter>
@@ -1682,10 +1689,10 @@ export function Sidebar({
         open={worktreeEditTarget !== null}
         onOpenChange={(open) => { if (!open) setWorktreeEditTarget(null) }}
       >
-        <DialogContent className="max-w-xs gap-3 p-3">
+        <DialogContent size="xs" padding="compact" className="gap-3">
           <form onSubmit={submitWorktreeTitle} className="space-y-3">
             <DialogHeader className="gap-1 pr-8">
-              <DialogTitle className="text-sm leading-5">Edit worktree title</DialogTitle>
+              <DialogTitle>Edit worktree title</DialogTitle>
               {worktreeEditTarget?.directory ? (
                 <Tooltip className="min-w-0">
                   <TooltipTrigger
@@ -1706,15 +1713,15 @@ export function Sidebar({
                 autoCorrect="off"
                 autoCapitalize="off"
                 spellCheck={false}
-                className="min-h-9 w-full min-w-0 rounded-sm border border-(--color-border) bg-(--bg-page) px-2.5 py-1 text-sm text-(--color-text) outline-none focus:outline-none focus-visible:outline-none focus-visible:border-(--focus-ring) focus-visible:ring-2 focus-visible:ring-(--focus-ring)/25 md:min-h-8"
+                className="min-h-9 w-full min-w-0 rounded-sm border border-(--color-border) bg-(--bg-page) px-2.5 py-1 text-sm text-(--color-text) outline-none focus:outline-none focus-visible:outline-none focus-visible:border-(--focus-ring) focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 md:min-h-8"
                 aria-label="Worktree title"
                 maxLength={255}
               />
               {error && <p className="mt-2 text-xs text-(--color-error)">{error}</p>}
             </div>
             <DialogFooter className="-mx-3 -mb-3 p-3">
-              <Button type="button" size="sm" variant="default" onClick={() => setWorktreeEditTarget(null)}>Cancel</Button>
-              <Button type="submit" size="sm" disabled={!worktreeEditTitle.trim() || worktreeEditLoading}>
+              <Button type="button" variant="default" onClick={() => setWorktreeEditTarget(null)}>Cancel</Button>
+              <Button variant="primary" type="submit" disabled={!worktreeEditTitle.trim() || worktreeEditLoading}>
                 {worktreeEditLoading ? 'Saving…' : 'Save'}
               </Button>
             </DialogFooter>

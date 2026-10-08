@@ -32,13 +32,20 @@ function SectionCard({ className, ...props }: ComponentPropsWithRef<'div'>) {
 
 // ─── Header strip ─────────────────────────────────────────────────────────────
 
-function SectionCardHeader({ className, ...props }: ComponentPropsWithRef<'div'>) {
+interface SectionCardHeaderProps extends ComponentPropsWithRef<'div'> {
+  /** Drop the strip padding so a full-bleed child (a disclosure button) can
+   *  own it. A `p-0` className cannot do this: `cn` does not merge, and
+   *  `px-3 py-1.5` sort after `p-0` in the stylesheet. */
+  flush?: boolean
+}
+
+function SectionCardHeader({ className, flush = false, ...props }: SectionCardHeaderProps) {
   return (
     <div
       className={cn(
-        'border-b border-(--color-border)/60 bg-(--bg-key)/30',
-        'px-3 py-1.5',
-        'text-[11px] font-semibold uppercase tracking-wider text-(--color-text-muted)',
+        'border-b border-(--color-border-subtle) bg-(--bg-key)/30',
+        !flush && 'px-3 py-1.5',
+        'label-caps text-(--color-text-muted)',
         'select-none',
         className,
       )}

@@ -179,13 +179,9 @@ export function TaskDetailView({
               <Tooltip>
                 <TooltipTrigger
                   render={
-                    <button
-                      onClick={onClose}
-                      className="flex h-7 w-7 items-center justify-center rounded-sm text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)"
-                      aria-label="Close detail"
-                    >
+                    <Button variant="ghost" size="icon-dense" onClick={onClose} aria-label="Close detail">
                       <X size={14} />
-                    </button>
+                    </Button>
                   }
                 />
                 <TooltipContent>Close</TooltipContent>
@@ -222,7 +218,7 @@ export function TaskDetailView({
 
         {/* Configuration Card */}
         <section className="rounded-sm border border-(--color-border) bg-(--bg-card) p-3">
-          <h3 className="mb-2 text-xs md:text-[11px] font-semibold uppercase tracking-wider text-(--color-text-muted)">
+          <h3 className="mb-2 label-caps text-(--color-text-muted)">
             Routing & Target
           </h3>
           <div className="grid gap-2.5 @xl:grid-cols-2">
@@ -277,7 +273,7 @@ export function TaskDetailView({
 
         {/* Schedule Timing Card */}
         <section className="rounded-sm border border-(--color-border) bg-(--bg-card) p-3">
-          <h3 className="mb-2 text-xs md:text-[11px] font-semibold uppercase tracking-wider text-(--color-text-muted)">
+          <h3 className="mb-2 label-caps text-(--color-text-muted)">
             Schedule Details
           </h3>
           <div className="divide-y divide-(--color-border-subtle) rounded-xs border border-(--color-border-subtle) bg-(--bg-page) px-2.5">
@@ -312,7 +308,7 @@ export function TaskDetailView({
         {/* Prompt Card */}
         <section className="rounded-sm border border-(--color-border) bg-(--bg-card) p-3">
           <div className="mb-1.5 flex items-center justify-between">
-            <h3 className="text-xs md:text-[11px] font-semibold uppercase tracking-wider text-(--color-text-muted)">
+            <h3 className="label-caps text-(--color-text-muted)">
               Prompt
             </h3>
             <Tooltip>
@@ -339,7 +335,7 @@ export function TaskDetailView({
 
         {/* Run History Card */}
         <section className="rounded-sm border border-(--color-border) bg-(--bg-card) p-3">
-          <h3 className="mb-2 text-xs md:text-[11px] font-semibold uppercase tracking-wider text-(--color-text-muted)">
+          <h3 className="mb-2 label-caps text-(--color-text-muted)">
             Run History
           </h3>
           <div className="divide-y divide-(--color-border-subtle) rounded-xs border border-(--color-border-subtle) bg-(--bg-page) px-2.5">
@@ -394,7 +390,7 @@ export function TaskDetailView({
               &ldquo;{task.name}&rdquo; will be permanently deleted. This cannot be undone.
             </DialogDescription>
           </DialogHeader>
-          <DialogFooter className="p-3">
+          <DialogFooter>
             <Button type="button" variant="default" onClick={() => setDeleteConfirmationOpen(false)}>
               Cancel
             </Button>

@@ -15,7 +15,7 @@ import { SpanDetailPanel } from './SpanDetailPanel'
 import { Waterfall } from './Waterfall'
 
 const ACTION_CLASS =
-  'inline-flex h-7 shrink-0 items-center gap-1.5 rounded-sm border border-(--color-border) bg-(--bg-card) px-2.5 text-xs text-(--color-text-2) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)'
+  'inline-flex h-7 shrink-0 items-center gap-1.5 rounded-sm border border-(--color-border) bg-(--bg-card) px-2.5 text-xs text-(--color-text-2) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40'
 
 function Fact({ label, children, title }: { label: string; children: ReactNode; title?: string }) {
   return (

@@ -9,8 +9,10 @@
 import { useCallback } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { AnimatePresence, motion } from 'framer-motion'
-import { ArrowLeft, X } from 'lucide-react'
+import { ArrowLeft } from 'lucide-react'
 
+import { OverlayHeader } from '@/components/ui/app-overlay'
+import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useModalFocus } from '@/hooks/useModalFocus'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
@@ -29,9 +31,6 @@ const PANEL_VARIANTS_REDUCED = {
   hidden: { opacity: 0 },
   visible: { opacity: 1 },
 } as const
-
-const HEADER_BUTTON_CLASS =
-  'flex h-9 w-9 shrink-0 items-center justify-center rounded-sm text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) md:h-7 md:w-7'
 
 export function TelemetryOverlay() {
   const open = useUIStore((s) => s.telemetryOpen)
@@ -64,7 +63,7 @@ export function TelemetryOverlay() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: DURATIONS_S.fast }}
-            className="fixed inset-0 z-50 bg-black/40"
+            className="fixed inset-0 z-50 bg-(--color-overlay)"
             onClick={close}
             aria-hidden="true"
             data-swipe-ignore
@@ -82,38 +81,29 @@ export function TelemetryOverlay() {
             transition={{ duration: prefersReducedMotion ? 0 : DURATIONS_S.fast, ease: EASINGS.out }}
             className={cn(
               'settings-modal-shell z-50 flex flex-col overflow-hidden rounded-lg',
-              'border border-(--color-border) bg-(--bg-page) shadow-2xl',
+              'border border-(--color-border) bg-(--bg-page) shadow-(--shadow-depth)',
             )}
           >
-            <div className="flex h-11 shrink-0 items-center justify-between gap-2 border-b border-(--color-border) bg-(--bg-sidebar) px-2 select-none sm:px-4">
-              <div className="flex min-w-0 items-center gap-1.5">
-                {traceId && (
+            <OverlayHeader
+              title={traceId ? 'Turn trace' : 'Telemetry'}
+              onClose={close}
+              closeLabel="Close telemetry"
+              closeTooltip={traceId ? 'Close' : 'Close (Esc)'}
+              leading={
+                traceId && (
                   <Tooltip>
                     <TooltipTrigger
                       render={
-                        <button type="button" onClick={closeTrace} className={cn(HEADER_BUTTON_CLASS, '-ml-1')} aria-label="Back to overview">
+                        <Button type="button" variant="ghost" size="icon-sm" className="md:size-7" onClick={closeTrace} aria-label="Back to overview">
                           <ArrowLeft size={14} aria-hidden="true" />
-                        </button>
+                        </Button>
                       }
                     />
                     <TooltipContent>Back to overview (Esc)</TooltipContent>
                   </Tooltip>
-                )}
-                <h2 className="truncate text-base font-semibold text-(--color-text)">
-                  {traceId ? 'Turn trace' : 'Telemetry'}
-                </h2>
-              </div>
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <button type="button" onClick={close} className={HEADER_BUTTON_CLASS} aria-label="Close telemetry">
-                      <X size={14} aria-hidden="true" />
-                    </button>
-                  }
-                />
-                <TooltipContent>{traceId ? 'Close' : 'Close (Esc)'}</TooltipContent>
-              </Tooltip>
-            </div>
+                )
+              }
+            />
             <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
               <TelemetryView onOpenSession={openSession} />
             </div>

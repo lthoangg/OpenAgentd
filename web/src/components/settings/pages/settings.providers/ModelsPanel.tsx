@@ -119,7 +119,7 @@ export function ModelsPanel({
         aria-expanded={expanded}
         className={cn(
           'flex min-h-9 w-full items-center justify-between gap-2 px-3 py-2 text-left md:min-h-0',
-          'text-xs md:text-[10px] text-(--color-text-muted) transition-colors',
+          'text-xs md:text-[11px] text-(--color-text-muted) transition-colors',
           'hover:bg-(--bg-key)/40 hover:text-(--color-text)',
           'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40',
           expanded && 'border-b border-(--color-border)',
@@ -129,7 +129,7 @@ export function ModelsPanel({
           <span className="block truncate text-[11px] text-(--color-text)">
             {indexed.length} models available
           </span>
-          <span className="block truncate text-xs md:text-[10px] text-(--color-text-muted)">
+          <span className="block truncate text-xs md:text-[11px] text-(--color-text-muted)">
             {allVisible ? 'All visible' : `${visibleCount} visible`}
             {search ? ` · ${visible.length} shown` : ''}
           </span>
@@ -137,7 +137,7 @@ export function ModelsPanel({
         <ChevronDown
           size={12}
           aria-hidden="true"
-          className={cn('shrink-0 transition-transform duration-150', expanded && 'rotate-180')}
+          className={cn('shrink-0 transition-transform duration-(--motion-fast)', expanded && 'rotate-180')}
         />
       </button>
 
@@ -150,14 +150,14 @@ export function ModelsPanel({
             placeholder="Filter models…"
           />
 
-          <p className="text-xs md:text-[10px] leading-relaxed text-(--color-text-muted)">
+          <p className="text-xs md:text-[11px] leading-relaxed text-(--color-text-muted)">
             Use the visibility toggle to choose which models appear in pickers.
             If none are selected, all models are visible.
           </p>
 
           <ul className="-mx-0.5 max-h-[45svh] overflow-y-auto md:max-h-56">
             {visible.length === 0 ? (
-              <li className="px-2 py-3 text-center text-xs md:text-[10px] text-(--color-text-muted)">
+              <li className="px-2 py-3 text-center text-xs md:text-[11px] text-(--color-text-muted)">
                 No matching models.
               </li>
             ) : (
@@ -178,7 +178,7 @@ export function ModelsPanel({
                 <button
                   type="button"
                   onClick={() => setShowAll(true)}
-                  className="w-full rounded-xs px-2 py-1.5 text-center text-xs md:text-[10px] text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40"
+                  className="w-full rounded-xs px-2 py-1.5 text-center text-xs md:text-[11px] text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40"
                 >
                   Show all {visible.length} {search.trim() ? 'matches' : 'models'}
                 </button>
@@ -255,7 +255,7 @@ function ModelRow({
       <Tooltip className="min-w-0 flex-1">
         <TooltipTrigger
           className="min-w-0 flex-1"
-          render={<span className="min-w-0 flex-1 truncate font-mono text-xs md:text-[10px] text-(--color-text)">{qualifiedId}</span>}
+          render={<span className="min-w-0 flex-1 truncate font-mono text-xs md:text-[11px] text-(--color-text)">{qualifiedId}</span>}
         />
         <TooltipContent>{qualifiedId}</TooltipContent>
       </Tooltip>
@@ -268,7 +268,7 @@ function ModelRow({
             render={
               <span
                 className={cn(
-                  'hidden md:inline-flex items-center rounded-xs px-1.5 py-0.5 font-mono text-[9px] tabular-nums select-none',
+                  'hidden md:inline-flex items-center rounded-xs px-1.5 py-0.5 font-mono text-[11px] tabular-nums select-none',
                   priceBadge.isFree
                     ? 'bg-(--color-success-subtle) text-(--color-success) font-medium'
                     : 'bg-(--bg-card) text-(--color-text-muted) border border-(--color-border)/60',
@@ -293,7 +293,7 @@ function ModelRow({
               aria-label={`${selected ? 'Remove' : 'Show'} ${qualifiedId} in model pickers`}
               className={cn(
                 'flex h-8 w-8 shrink-0 items-center justify-center gap-1 rounded-xs md:h-6 md:min-w-[3.5rem] md:w-auto md:px-1.5',
-                'text-xs md:text-[10px] font-medium transition-colors',
+                'text-xs md:text-[11px] font-medium transition-colors',
                 selected
                   ? 'bg-(--color-success-subtle) text-(--color-success)'
                   : 'text-(--color-text-muted) hover:bg-(--bg-card) hover:text-(--color-text)',
@@ -301,9 +301,9 @@ function ModelRow({
               )}
             >
               {savingVisibleModels ? (
-                <Loader2 size={10} className="animate-spin" aria-hidden="true" />
+                <Loader2 size={11} className="animate-spin" aria-hidden="true" />
               ) : selected ? (
-                <Check size={10} aria-hidden="true" />
+                <Check size={11} aria-hidden="true" />
               ) : (
                 <EyeOff size={11} className="md:hidden" aria-hidden="true" />
               )}
@@ -333,7 +333,7 @@ function ModelRow({
 
       {/* Context menu */}
       {actionsPoint && (
-        <ContextMenu at={actionsPoint} label={`Actions for ${qualifiedId}`} onDismiss={() => setActionsPoint(null)} layerClassName="z-[70]">
+        <ContextMenu at={actionsPoint} label={`Actions for ${qualifiedId}`} onDismiss={() => setActionsPoint(null)} layerClassName="z-70">
           <button
             type="button"
             role="menuitem"

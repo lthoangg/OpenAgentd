@@ -19,6 +19,7 @@ import { AnimatePresence } from 'framer-motion'
 import { useNavigate } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
 import { AgentView } from '../AgentView'
+import type { OpenSessionHandler } from '../AgentView/UserBubble'
 import type { FileRefOpener } from '../FileRefLink'
 import { WorkspaceInfoCard } from '../WorkspaceInfoCard'
 import { Sidebar } from '../Sidebar'
@@ -58,7 +59,8 @@ import { type InputComposerHandle } from '../InputComposer'
 import { FloatingInputComposer } from '../FloatingInputComposer'
 import { AppFooter } from '../AppFooter'
 import { WorkspacePanel } from '../WorkspacePanel'
-import { workspaceLabel } from '@/utils/workspace'
+import { saveLastWorkspace, workspaceLabel } from '@/utils/workspace'
+import { OPEN_SESSION_EVENT, isOpenSessionRequest } from '@/utils/workspace-messages'
 import { workspaceRelativePath } from '@/utils/file-refs'
 import type {
   AgentCapabilities as AgentCapabilitiesType,
@@ -88,6 +90,7 @@ const isCenterTooNarrow = (width: number) => dockOverlaysChat(width, false)
 interface ActiveAgentViewProps {
   emptyState?: React.ReactNode
   onMentionFileOpen?: (path: string) => void
+  onOpenSession?: OpenSessionHandler
   fileRefOpener?: FileRefOpener
   onRetry?: () => void
   onSwitchModel?: () => void
@@ -104,6 +107,7 @@ interface ActiveAgentViewProps {
 const ActiveAgentView = memo(function ActiveAgentView({
   emptyState,
   onMentionFileOpen,
+  onOpenSession,
   fileRefOpener,
   onRetry,
   onSwitchModel,
@@ -136,6 +140,7 @@ const ActiveAgentView = memo(function ActiveAgentView({
       isError={activeStatus === 'error'}
       lastError={activeLastError}
       onMentionFileOpen={onMentionFileOpen}
+      onOpenSession={onOpenSession}
       fileRefOpener={fileRefOpener}
       emptyState={emptyState}
       onRetry={onRetry}
@@ -335,6 +340,23 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
     togglePalette,
     toggleQuickOpen,
   })
+
+  // The other end of a workspace message: the sender's session from the
+  // request's chip, the replier's session from a reply report.
+  const handleOpenSession = useCallback((targetSessionId: string, targetWorkspace: string) => {
+    if (targetWorkspace) saveLastWorkspace(targetWorkspace)
+    navigate({ to: '/$sessionId', params: { sessionId: targetSessionId } })
+  }, [navigate])
+  // The ``send_to_workspace`` tool card asks for the same switch by event,
+  // which keeps ToolCall free of the router.
+  useEffect(() => {
+    const onOpen = (event: Event) => {
+      const request = (event as CustomEvent<unknown>).detail
+      if (isOpenSessionRequest(request)) handleOpenSession(request.sessionId, request.workspace)
+    }
+    window.addEventListener(OPEN_SESSION_EVENT, onOpen)
+    return () => window.removeEventListener(OPEN_SESSION_EVENT, onOpen)
+  }, [handleOpenSession])
 
   const leadBlocks = useAgentStore((s) => (
     s.leadName ? s.agentStreams[s.leadName]?.blocks ?? EMPTY_BLOCKS : EMPTY_BLOCKS
@@ -695,6 +717,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
           <div className="flex flex-1 flex-col min-h-0">
             <ActiveAgentView
               onMentionFileOpen={handleMentionFileOpen}
+              onOpenSession={handleOpenSession}
               fileRefOpener={fileRefOpener}
               onRetry={handleRetry}
               onSwitchModel={handleSwitchModel}
@@ -729,9 +752,9 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
 
         {parentSessionId ? (
           <div className="mx-auto w-full max-w-3xl px-4 py-3">
-            <div className="flex items-center justify-between gap-3 rounded-lg border border-(--color-border-subtle) bg-(--bg-card) px-4 py-2 text-xs text-(--color-text-muted)">
+            <div className="flex items-center justify-between gap-3 rounded-sm border border-(--color-border-subtle) bg-(--bg-card) px-4 py-2 text-xs text-(--color-text-muted)">
               <div className="flex items-center gap-2 min-w-0">
-                <span className="shrink-0 rounded bg-(--bg-key)/60 px-1.5 py-0.5 font-mono text-[11px] font-semibold text-(--color-text)">
+                <span className="shrink-0 rounded-xs bg-(--bg-key)/60 px-1.5 py-0.5 font-mono text-[11px] font-semibold text-(--color-text)">
                   {leadName}
                 </span>
                 <span className="truncate">Subagents are orchestrated by the lead agent. Switch to the lead session to send instructions.</span>

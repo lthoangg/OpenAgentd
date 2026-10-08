@@ -13,7 +13,7 @@ export function FloatingNotices() {
   return (
     <div
       data-floating-notices
-      className="mobile-safe-floating pointer-events-none fixed z-[60] flex flex-col items-end gap-2"
+      className="mobile-safe-floating pointer-events-none fixed z-60 flex flex-col items-end gap-2"
     >
       <ToastStack />
       <LspInstallPrompt />

@@ -764,7 +764,7 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
   // disable animation. The transition is transform+color only — both
   // GPU-cheap, no layout.
   const actionBtnClass =
-    'flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-(--color-border) bg-(--bg-card) text-(--color-text-2) transition duration-100 hover:bg-(--bg-key) hover:text-(--color-text) active:scale-90 active:bg-(--bg-key) motion-reduce:transition-none motion-reduce:active:scale-100 disabled:cursor-not-allowed disabled:opacity-50 md:h-7 md:w-7'
+    'flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-(--color-border) bg-(--bg-card) text-(--color-text-2) transition duration-(--motion-instant) hover:bg-(--bg-key) hover:text-(--color-text) active:scale-90 active:bg-(--bg-key) motion-reduce:transition-none motion-reduce:active:scale-100 disabled:cursor-not-allowed disabled:opacity-50 md:h-7 md:w-7'
 
   // Two states share one DOM tree: minimized, and expanded. Expanded always
   // puts the textarea on its own full-width row (the slot's flex-basis:100%)
@@ -813,7 +813,7 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
   // DESIGN.md `button-send`: the one inverted surface, a full pill. Stop takes
   // the same slot and shape while a turn runs — neutral ink, not an error red.
   const sendSlotClass =
-    'flex h-8 w-8 shrink-0 items-center justify-center rounded-full border transition duration-100 active:scale-90 motion-reduce:transition-none motion-reduce:active:scale-100 md:h-7 md:w-7'
+    'flex h-8 w-8 shrink-0 items-center justify-center rounded-full border transition duration-(--motion-instant) active:scale-90 motion-reduce:transition-none motion-reduce:active:scale-100 md:h-7 md:w-7'
   const sendPillClass = 'border-(--bg-send) bg-(--bg-send) text-(--color-text-on-accent) hover:opacity-90'
 
   // Mid-turn, Send splits: the pill steers, the chevron offers the other ways.
@@ -827,7 +827,7 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
       aria-label="Stop generation"
       className={cn(sendSlotClass, sendPillClass)}
     >
-      <Square size={10} fill="currentColor" aria-hidden="true" />
+      <Square size={11} fill="currentColor" aria-hidden="true" />
     </button>
   ) : splitSend ? (
     <div role="group" aria-label="Send" className="flex shrink-0">
@@ -872,7 +872,7 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
   const messageSlot = (
     <div
       aria-hidden={minimized}
-      className={`flex w-full items-center transition-opacity duration-150 ${
+      className={`flex w-full items-center transition-opacity duration-(--motion-fast) ${
         minimized ? 'pointer-events-none opacity-0 h-0 overflow-hidden' : 'opacity-100'
       }`}
     >
@@ -972,10 +972,10 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
     </div>
   )
 
-  const pillClassName = `relative block rounded-lg border bg-(--color-surface) transition-[border-color,box-shadow,background-color] duration-200 ${
+  const pillClassName = `relative block rounded-lg border bg-(--color-surface) transition-[border-color,box-shadow,background-color] duration-(--motion-base) ${
     minimized
       ? 'w-fit border-(--color-border) shadow-sm hover:bg-(--bg-key)'
-      : 'w-full border-(--color-border-strong) shadow-md focus-within:ring-1 focus-within:ring-(--color-accent)'
+      : 'w-full border-(--color-border-strong) shadow-md focus-within:ring-2 focus-within:ring-(--focus-ring)/30'
   }`
 
   const pillInner = (

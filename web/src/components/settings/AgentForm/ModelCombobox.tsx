@@ -4,6 +4,7 @@ import { X } from 'lucide-react'
 import fuzzysort from 'fuzzysort'
 
 import { Input } from '@/components/ui/input'
+import { MENU_ITEM_CLASS, MENU_PANEL_CLASS } from '@/components/ui/menu-styles'
 import { cn } from '@/lib/utils'
 
 export interface ModelOption {
@@ -245,7 +246,7 @@ export function ModelCombobox({
               left: anchorRect.left,
               width: anchorRect.width,
             }}
-            className="z-50 max-h-64 overflow-y-auto overscroll-contain rounded-sm border border-(--color-border) bg-(--bg-card) p-1 shadow-md"
+            className={cn('z-50 max-h-64 overflow-y-auto overscroll-contain', MENU_PANEL_CLASS)}
           >
             {filtered.length === 0 ? (
               <li className="px-3 py-3 text-center text-xs text-(--color-text-muted)">
@@ -267,14 +268,15 @@ export function ModelCombobox({
                       onClick={() => commit(o.id)}
                       onMouseEnter={() => setHighlight(i)}
                       className={cn(
-                        'flex w-full items-center justify-between gap-2 rounded-xs px-2 py-1 text-left font-mono text-xs transition-colors cursor-pointer',
+                        MENU_ITEM_CLASS,
+                        'justify-between font-mono transition-colors',
                         isHi ? 'bg-(--bg-key)' : '',
                         isSel ? 'text-(--color-text)' : 'text-(--color-text-2)',
                       )}
                     >
                       <span className="min-w-0 truncate">{o.id}</span>
                       {o.vision && (
-                        <span className="shrink-0 text-xs md:text-[10px] text-(--color-text-muted)">
+                        <span className="shrink-0 text-xs md:text-[11px] text-(--color-text-muted)">
                           vision
                         </span>
                       )}

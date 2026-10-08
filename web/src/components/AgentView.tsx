@@ -36,7 +36,8 @@ import { useDisplayPrefsStore } from '@/stores/useDisplayPrefsStore'
 import { useTranscriptFollowStore } from '@/stores/useTranscriptFollowStore'
 import { appShortcut, useShortcuts } from '@/lib/keyboard/hooks'
 import type { ContentBlock } from '@/api/types'
-import { UserBubble } from './AgentView/UserBubble'
+import { UserBubble, type OpenSessionHandler } from './AgentView/UserBubble'
+import { replyFrom, sentFrom } from '@/utils/workspace-messages'
 import { ErrorCard } from './AgentView/ErrorCard'
 import { isDirectUserBlock, PROMPT_JUMP_MARGIN, previousPromptTurn, promptElements, promptJumpTarget, turnIndexOfBlock } from './AgentView/prompt-nav'
 import { FileRefContext, type FileRefOpener } from './FileRefLink'
@@ -283,6 +284,8 @@ interface AgentViewProps {
   emptyState?: React.ReactNode
   /** Open a mentioned workspace file in the file viewer. */
   onMentionFileOpen?: (path: string) => void
+  /** Open another session (the other end of a workspace message). */
+  onOpenSession?: OpenSessionHandler
   /** Opens ``path:line`` references in replies and tool output. */
   fileRefOpener?: FileRefOpener
   /** Resend the latest prompt; offered under the latest finished answer. */
@@ -302,7 +305,7 @@ interface AgentViewProps {
   jumpToLatestInComposer?: boolean
 }
 
-const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionId, onEdit, promptModel, promptThinkingLevel, onRetry, onSwitchModel, latestMCPAppBlockIds, onMentionFileOpen }: {
+const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionId, onEdit, promptModel, promptThinkingLevel, onRetry, onSwitchModel, latestMCPAppBlockIds, onMentionFileOpen, onOpenSession }: {
   block: ContentBlock
   isStreaming: boolean
   sessionId?: string
@@ -316,11 +319,12 @@ const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionI
   onSwitchModel?: () => void
   latestMCPAppBlockIds?: Set<string>
   onMentionFileOpen?: (path: string) => void
+  onOpenSession?: OpenSessionHandler
 }) {
   switch (block.type) {
     case 'user': {
       const fromAgent = typeof block.extra?.from_agent === 'string' ? block.extra.from_agent : null
-      return <UserBubble content={block.content} timestamp={block.timestamp} attachments={block.attachments} onEdit={onEdit && !fromAgent ? () => onEdit(block.id) : undefined} modelId={promptModel} thinkingLevel={promptThinkingLevel} onMentionFileOpen={onMentionFileOpen} mentions={block.extra?.mentions as string[] | undefined} fromAgent={fromAgent} />
+      return <UserBubble content={block.content} timestamp={block.timestamp} attachments={block.attachments} onEdit={onEdit && !fromAgent ? () => onEdit(block.id) : undefined} modelId={promptModel} thinkingLevel={promptThinkingLevel} onMentionFileOpen={onMentionFileOpen} mentions={block.extra?.mentions as string[] | undefined} fromAgent={fromAgent} sentFrom={sentFrom(block.extra)} replyFrom={replyFrom(block.extra)} onOpenSession={onOpenSession} />
     }
     case 'thinking':
       return <Thinking content={block.content} isStreaming={isStreaming} />
@@ -443,6 +447,7 @@ export function AgentView({
   lastError,
   emptyState,
   onMentionFileOpen,
+  onOpenSession,
   fileRefOpener,
   onRetry,
   onSwitchModel,
@@ -568,9 +573,10 @@ export function AgentView({
         onSwitchModel={block.id === endingErrorId ? errorSwitchModel : undefined}
         latestMCPAppBlockIds={mcpAppResourceUri(block) ? latestMCPAppBlockIds : undefined}
         onMentionFileOpen={onMentionFileOpen}
+        onOpenSession={onOpenSession}
       />
     </div>
-  ), [endingErrorId, errorRetry, errorSwitchModel, latestMCPAppBlockIds, onMentionFileOpen, sessionId])
+  ), [endingErrorId, errorRetry, errorSwitchModel, latestMCPAppBlockIds, onMentionFileOpen, onOpenSession, sessionId])
   // The live tail follows the finalized blocks, so its newest wait wins; only
   // the (small) tail is rescanned per token.
   const finalizedQuotaWait = useMemo(() => latestQuotaWait(blocks), [blocks])
@@ -971,6 +977,7 @@ export function AgentView({
                          promptThinkingLevel={promptModelById.get(item.block.id)?.thinkingLevel}
                          latestMCPAppBlockIds={mcpAppResourceUri(item.block) ? latestMCPAppBlockIds : undefined}
                          onMentionFileOpen={onMentionFileOpen}
+                         onOpenSession={onOpenSession}
                        />
                      </div>
                    )

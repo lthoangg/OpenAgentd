@@ -16,17 +16,17 @@ import {
 } from 'lucide-react'
 
 import { AppBackendDialog } from '@/components/AppBackendDialog'
+import { ReleaseNotesButton } from '@/components/ReleaseNotesDialog'
 import { THEME_OPTIONS } from '@/components/ThemeToggle'
 import { SettingsSection } from '@/components/settings/SettingsSection'
 import { useVisibleSettingsSections } from '@/components/settings/useVisibleSections'
 import { ICON_SIZE } from '@/components/settings/tokens'
 import { Button } from '@/components/ui/button'
-import { checkForUpdates, downloadUpdate, fetchReleaseNotes, installUpdate, type ReleaseNotes, type UpdateStatus } from '@/lib/updater'
+import { SegmentedControl } from '@/components/ui/segmented-control'
+import { checkForUpdates, downloadUpdate, installUpdate, type UpdateStatus } from '@/lib/updater'
 import { openExternalUrl } from '@/lib/open-external'
-import { MarkdownBlock } from '@/utils/markdown'
 import { useHealthQuery } from '@/queries'
 import { useThemePreference } from '@/hooks/useThemePreference'
-import { cn } from '@/lib/utils'
 import { TRANSCRIPT_STYLES, useDisplayPrefsStore } from '@/stores/useDisplayPrefsStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 
@@ -39,23 +39,16 @@ function SegmentedChoice<T extends string>({ label, options, value, onChange }: 
   onChange: (next: T) => void
 }) {
   return (
-    <div role="group" aria-label={label} className="inline-flex rounded-md border border-(--color-border) bg-(--bg-key) p-0.5">
-      {options.map(({ value: option, label: optionLabel, Icon }) => (
-        <button
-          key={option}
-          type="button"
-          aria-pressed={value === option}
-          onClick={() => onChange(option)}
-          className={cn(
-            'flex h-7 items-center gap-1.5 rounded-sm px-2.5 text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 pointer-coarse:h-11',
-            value === option ? 'bg-(--bg-card) text-(--color-text) shadow-sm' : 'text-(--color-text-muted) hover:text-(--color-text)',
-          )}
-        >
-          {Icon && <Icon size={13} aria-hidden="true" />}
-          {optionLabel}
-        </button>
-      ))}
-    </div>
+    <SegmentedControl
+      label={label}
+      value={value}
+      onChange={onChange}
+      options={options.map(({ value: option, label: optionLabel, Icon }) => ({
+        value: option,
+        label: optionLabel,
+        icon: Icon ? <Icon size={13} aria-hidden="true" /> : undefined,
+      }))}
+    />
   )
 }
 
@@ -89,9 +82,6 @@ function AppearanceSection() {
 function UpdateSettingsCard() {
   const [status, setStatus] = useState<UpdateStatus | null>(null)
   const [pending, setPending] = useState(false)
-  const [notesOpen, setNotesOpen] = useState(false)
-  const [releaseNotes, setReleaseNotes] = useState<ReleaseNotes | null>(null)
-  const [releaseNotesError, setReleaseNotesError] = useState<string | null>(null)
 
   async function onCheck() {
     setPending(true)
@@ -136,35 +126,22 @@ function UpdateSettingsCard() {
     }
   }
 
-  async function openReleaseNotes() {
-    if (!status?.version) return
-    setNotesOpen(true)
-    setReleaseNotesError(null)
-    try {
-      setReleaseNotes(await fetchReleaseNotes(status.version))
-    } catch (error) {
-      setReleaseNotesError(String(error))
-    }
-  }
-
   const title = statusTitle(status)
   const description = statusDescription(status)
 
   return (
     <SettingsSection title="Updates">
       <div className="flex items-start gap-3">
-        <span className="flex h-8.5 w-8.5 shrink-0 items-center justify-center rounded-md bg-(--bg-key) text-(--color-text-muted) border border-(--color-border)" aria-hidden="true">
-          <Download size={15} />
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-sm border border-(--color-border) bg-(--bg-key) text-(--color-text-muted)" aria-hidden="true">
+          <Download size={14} />
         </span>
         <div className="min-w-0 flex-1">
           <p className="text-xs leading-relaxed text-(--color-text-muted)">{description}</p>
           {status?.version && (status.status === 'available' || status.status === 'downloaded') ? (
-            <button className="mt-1.5 text-[11px] font-medium text-(--color-accent) underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)" onClick={() => void openReleaseNotes()}>
-              See release notes
-            </button>
+            <ReleaseNotesButton className="mt-1.5" version={status.version} fallbackNotes={status.notes} />
           ) : null}
         </div>
-        <span className="rounded-xs bg-(--bg-key) px-1.5 py-0.5 text-xs md:text-[10px] font-semibold text-(--color-text-muted) border border-(--color-border) select-none">{title}</span>
+        <span className="rounded-xs bg-(--bg-key) px-1.5 py-0.5 text-xs md:text-[11px] font-semibold text-(--color-text-muted) border border-(--color-border) select-none">{title}</span>
       </div>
 
       <div className="mt-4 flex flex-wrap justify-end gap-2">
@@ -183,22 +160,6 @@ function UpdateSettingsCard() {
         ) : null}
       </div>
 
-      {notesOpen && status?.notes ? (
-        <div className="mobile-safe-overlay fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" role="dialog" aria-modal="true" aria-label="Release notes" onClick={() => setNotesOpen(false)}>
-          <div className="max-h-[min(32rem,calc(100dvh-env(safe-area-inset-top,0px)-env(safe-area-inset-bottom,0px)-2rem))] w-full max-w-lg overflow-hidden rounded-md border border-(--color-border) bg-(--bg-card) text-(--color-text) shadow-2xl" onClick={(event) => event.stopPropagation()}>
-            <div className="flex items-center justify-between gap-3 border-b border-(--color-border) px-4 py-3 select-none">
-              <h3 className="text-sm font-semibold">Release notes</h3>
-              <div className="flex items-center gap-2">
-                {releaseNotes?.url ? <a className="rounded-sm px-2 py-1 text-xs text-(--color-accent) hover:bg-(--bg-page)" href={releaseNotes.url} target="_blank" rel="noopener noreferrer" onClick={(event) => { event.preventDefault(); void openExternalUrl(releaseNotes.url!) }}>View in GitHub</a> : null}
-                <Button size="sm" variant="ghost" onClick={() => setNotesOpen(false)}>Close</Button>
-              </div>
-            </div>
-            <div className="max-h-[24rem] overflow-y-auto px-4 py-3 text-(--color-text)">
-              <MarkdownBlock content={`${releaseNotes?.body ?? status.notes ?? 'Loading release notes...'}${releaseNotesError ? `\n\nCould not load GitHub release notes: ${releaseNotesError}` : ''}`} />
-            </div>
-          </div>
-        </div>
-      ) : null}
     </SettingsSection>
   )
 }
@@ -243,11 +204,11 @@ export function SettingsHubPage() {
             className="flex h-9 w-9 items-center justify-center rounded-md bg-(--bg-key) text-(--color-text-muted) border border-(--color-border)"
             aria-hidden="true"
           >
-            <Info size={15} />
+            <Info size={14} />
           </span>
           <div>
             <h1 className="text-xs font-semibold text-(--color-text)">About OpenAgentd</h1>
-            <p className="text-xs md:text-[10px] font-mono text-(--color-text-subtle)">
+            <p className="text-xs md:text-[11px] font-mono text-(--color-text-subtle)">
               {version
                 ? `On-machine AI assistant · v${version}`
                 : 'On-machine AI assistant'}
@@ -288,7 +249,7 @@ export function SettingsHubPage() {
 
         <SettingsSection title="Backend connection">
           <div className="flex flex-wrap items-start gap-3">
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xs border border-(--color-border) bg-(--bg-key) text-(--color-text-muted)" aria-hidden="true">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-sm border border-(--color-border) bg-(--bg-key) text-(--color-text-muted)" aria-hidden="true">
               <Server size={14} />
             </span>
             <div className="min-w-0 flex-1">
@@ -307,7 +268,7 @@ export function SettingsHubPage() {
             <button
               type="button"
               onClick={() => void openExternalUrl('https://discord.gg/cz6GQHQUMg')}
-              className="flex items-start gap-3 rounded-md border border-(--color-border) bg-(--bg-card) p-3 text-left transition-colors hover:bg-(--bg-key)/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)"
+              className="flex items-start gap-3 rounded-md border border-(--color-border) bg-(--bg-card) p-3 text-left transition-colors hover:bg-(--bg-key)/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40"
             >
               <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-sm bg-[#5865F2]/10 text-[#5865F2]" aria-hidden="true">
                 <MessageSquare size={16} />
@@ -326,7 +287,7 @@ export function SettingsHubPage() {
             <button
               type="button"
               onClick={() => void openExternalUrl('https://www.facebook.com/groups/1256361676707935')}
-              className="flex items-start gap-3 rounded-md border border-(--color-border) bg-(--bg-card) p-3 text-left transition-colors hover:bg-(--bg-key)/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)"
+              className="flex items-start gap-3 rounded-md border border-(--color-border) bg-(--bg-card) p-3 text-left transition-colors hover:bg-(--bg-key)/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40"
             >
               <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-sm bg-[#1877F2]/10 text-[#1877F2]" aria-hidden="true">
                 <Users size={16} />

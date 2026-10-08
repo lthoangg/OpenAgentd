@@ -52,6 +52,7 @@ import { cn } from '@/lib/utils'
 import { DURATIONS_S } from '@/lib/motion'
 import { buttonVariants } from '@/components/ui/button'
 import { useDeferredUnmount } from '@/components/ui/_use-deferred-unmount'
+import { MENU_ITEM_CLASS, MENU_PANEL_CLASS } from '@/components/ui/menu-styles'
 import { useKeyLayer } from '@/lib/keyboard/hooks'
 
 // ─── Context ────────────────────────────────────────────────────────────────
@@ -98,7 +99,8 @@ function DropdownItem({
       tabIndex={-1}
       data-highlighted={highlighted || undefined}
       className={cn(
-        'flex w-full cursor-pointer items-center gap-2 rounded-xs px-2 py-1 text-left text-xs font-medium outline-none',
+        MENU_ITEM_CLASS,
+        'outline-none',
         'transition-colors hover:bg-(--bg-key) focus-visible:bg-(--bg-key)',
         highlighted && 'bg-(--bg-key)',
         active ? 'text-(--color-text)' : 'text-(--color-text-2)',
@@ -357,7 +359,7 @@ function Dropdown({
         <span className="flex min-w-0 flex-1 items-center gap-1.5 truncate">{displayLabel}</span>
         <ChevronDown
           size={11}
-          className={cn('shrink-0 text-(--color-text-muted) transition-transform duration-150', open && 'rotate-180')}
+          className={cn('shrink-0 text-(--color-text-muted) transition-transform duration-(--motion-fast)', open && 'rotate-180')}
           aria-hidden="true"
         />
       </button>
@@ -369,9 +371,9 @@ function Dropdown({
           data-slot="dropdown-panel"
           className={cn(
             'fixed z-50 flex flex-col gap-0.5',
-            'min-w-[var(--dropdown-anchor-width)]',
-            'rounded-sm border border-(--color-border) bg-(--bg-card)',
-            'p-1 shadow-md outline-none',
+            'min-w-(--dropdown-anchor-width) overscroll-contain',
+            MENU_PANEL_CLASS,
+            'outline-none',
             // Only the animation gets a duration: ``duration-*`` also sets
             // ``transition-duration``, and with ``transition-property`` at its
             // ``all`` default the panel slid from where it first mounted to

@@ -714,6 +714,30 @@ explicitly.
   still apply. v2 kept bundled skills in the source tree, where they were
   readable. Tests: `agent/src/skills.rs`, `tools/src/denied.rs`,
   `agent/tests/bundled_skill_references.rs`.
+- **Cross-workspace messages (v3 only):** lead sessions get an injected
+  `send_to_workspace` tool (`agent/src/tools/send_to_workspace.rs`,
+  `agent/src/workspace_messages.rs`). It sends a user prompt to a new or
+  existing top-level session in another visible registered workspace (or
+  Chat), and optionally delivers that session's final answer back. The
+  formats it adds:
+  - The request row in the target stores `extra.sent_from`: `session_id`,
+    `workspace`, `workspace_name`, `session_title`, `reply`, `hops`, and later
+    `replied_at` / `error_notified_at`.
+  - The reply is a queued user row in the sender with `from_agent` (the target
+    workspace name) plus `extra.reply_from`: `session_id`, `workspace`,
+    `workspace_name`, `status`.
+  - `history.rs` adds a model-only header to both kinds of row.
+  - `settings.yaml` gains `workspace_messages: {enabled}` (default `true`,
+    written only when `false`), served by `GET/PUT
+    /api/settings/workspace-messages`.
+  - `UserMessage`/`Dispatch` take an `extra` map for the request row.
+
+  Replies are decided when a top-level turn closes. They wait for working
+  subagents. Failures send one interim notice and keep the request pending.
+  A delivered answer replaces the target's own "Done" notification. Tests:
+  `agent/tests/workspace_messages.rs`, unit tests in the two modules and
+  `history.rs`, `db/src/queries/messages.rs`, `core/src/runtime_settings.rs`,
+  and `api/tests/http_api.rs`. v2 has no equivalent.
 
 ## 4. Layout
 

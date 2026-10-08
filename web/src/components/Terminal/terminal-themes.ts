@@ -10,12 +10,14 @@ import type { ITheme } from '@xterm/xterm'
 export type TerminalResolvedTheme = 'dark' | 'light'
 
 const DARK: ITheme = {
-  background: '#1e1c1a',
-  foreground: '#e8e3db',
-  cursor: '#e8e3db',
-  cursorAccent: '#1e1c1a',
-  selectionBackground: '#5c554b80',
-  black: '#1e1c1a',
+  // Matches the wrapper's --color-surface / --color-text (dark) so the canvas
+  // and its padding read as one surface.
+  background: '#221c16',
+  foreground: '#f5ebd8',
+  cursor: '#f5ebd8',
+  cursorAccent: '#221c16',
+  selectionBackground: '#5c4b3680',
+  black: '#221c16',
   brightBlack: '#6b645a',
   red: '#e06c58',
   brightRed: '#f08b78',
@@ -29,7 +31,7 @@ const DARK: ITheme = {
   brightMagenta: '#d5afd5',
   cyan: '#7fb0a8',
   brightCyan: '#9fd0c8',
-  white: '#e8e3db',
+  white: '#f5ebd8',
   brightWhite: '#faf6ef',
 }
 

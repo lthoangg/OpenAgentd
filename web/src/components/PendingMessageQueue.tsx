@@ -57,7 +57,7 @@ function QueuedMessageContent({ content: raw, attachments }: { content: string; 
                 onClick={() => setExpanded((v) => !v)}
                 aria-expanded={expanded}
                 aria-label={expanded ? 'Collapse' : 'Expand'}
-                className="flex h-6 w-6 shrink-0 items-center justify-center rounded-sm bg-(--bg-key) text-(--color-text-2) transition-all duration-150 hover:text-(--color-text) active:scale-90 md:h-5 md:w-5"
+                className="flex h-6 w-6 shrink-0 items-center justify-center rounded-sm bg-(--bg-key) text-(--color-text-2) transition-all duration-(--motion-fast) hover:text-(--color-text) active:scale-90 md:h-5 md:w-5"
               >
                 {expanded ? <ChevronUp size={14} className="md:h-3 md:w-3" /> : <ChevronDown size={14} className="md:h-3 md:w-3" />}
               </button>
@@ -180,7 +180,7 @@ export const PendingMessageQueue = memo(function PendingMessageQueue() {
           attachments={msg.attachments}
           // The backend hands it to the agent before its next model call, or
           // ahead of the next message once the turn has failed.
-          label={turnFailed ? 'Sends with your next message' : 'Read before the next step'}
+          label={`${msg.sentFromWorkspace ? `From ${msg.sentFromWorkspace} · ` : ''}${turnFailed ? 'Sends with your next message' : 'Read before the next step'}`}
           onEdit={async () => {
             const outcome = await removePendingMessage(msg.id)
             if (outcome === 'cancelled') restoreDraft(msg.content, msg.files)

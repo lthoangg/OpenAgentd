@@ -152,7 +152,7 @@ function QuestionShell({
 }) {
   return (
     <div data-question-waiting={open ? '' : undefined} className="tool-row-enter my-2 overflow-hidden rounded-md border border-(--color-border) bg-(--bg-card)">
-      <div className="flex items-center gap-1.5 border-b border-(--color-border) px-3 py-1.5 text-[11px] font-medium tracking-wide text-(--color-text-muted) uppercase">
+      <div className="flex items-center gap-1.5 border-b border-(--color-border) px-3 py-1.5 label-caps text-(--color-text-muted)">
         <MessageCircleQuestion size={12} aria-hidden />
         {waiting ? 'Needs your input' : 'Your input'}
       </div>

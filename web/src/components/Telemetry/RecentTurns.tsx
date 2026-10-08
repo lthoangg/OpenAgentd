@@ -172,7 +172,7 @@ function TurnRow({
                     open()
                   }}
                   aria-label={`Open turn from ${when}${turn.error ? ', failed' : ''}`}
-                  className="rounded-xs text-left text-(--color-text-2) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)"
+                  className="rounded-xs text-left text-(--color-text-2) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40"
                 >
                   {when}
                 </button>

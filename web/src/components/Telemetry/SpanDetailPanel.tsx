@@ -3,6 +3,7 @@
  * Null attributes are dropped so the panel lists only keys the span set.
  */
 
+import { Button } from '@/components/ui/button'
 import { useMemo, type ReactNode } from 'react'
 import { X } from 'lucide-react'
 import type { SpanDetail } from '@/api/client'
@@ -10,7 +11,7 @@ import { formatInt, formatMs, formatShortId, formatTps, formatUsd } from '@/util
 import { formatFullDateTime } from '@/utils/format'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 
-const SECTION_LABEL_CLASS = 'mb-2 mt-5 text-[11px] font-semibold uppercase tracking-wider text-(--color-text-muted)'
+const SECTION_LABEL_CLASS = 'mb-2 mt-5 label-caps text-(--color-text-muted)'
 
 function Kv({ label, value, mono }: { label: string; value: ReactNode; mono?: boolean }) {
   return (
@@ -52,13 +53,9 @@ export function SpanDetailPanel({
           />
           <TooltipContent>{span.name}</TooltipContent>
         </Tooltip>
-        <button
-          onClick={onClose}
-          className="flex h-9 w-9 items-center justify-center rounded-sm text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-7 md:w-7"
-          aria-label="Close span detail"
-        >
+        <Button variant="ghost" size="icon-dense" onClick={onClose} aria-label="Close span detail">
           <X size={14} />
-        </button>
+        </Button>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto p-3 sm:p-4">
         <dl className="flex flex-col gap-3 text-xs">

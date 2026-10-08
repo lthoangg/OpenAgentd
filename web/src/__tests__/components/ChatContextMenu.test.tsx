@@ -70,7 +70,7 @@ describe('chat right-click menus', () => {
 
   it('offers Copy code on a code block', async () => {
     renderAnswer('```ts\nconst a = 1\n```')
-    fireEvent.contextMenu(screen.getByRole('button', { name: 'Copy code' }).closest('.surface-raised')!.querySelector('pre')!)
+    fireEvent.contextMenu(screen.getByRole('button', { name: 'Copy code' }).closest('[data-slot="code-block"]')!.querySelector('pre')!)
     expect(items()).toEqual(['Copy code'])
     await act(async () => { screen.getByRole('menuitem', { name: 'Copy code' }).click() })
     expect(writeText).toHaveBeenCalledWith('const a = 1')

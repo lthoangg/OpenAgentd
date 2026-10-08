@@ -4,6 +4,7 @@ import react from "@vitejs/plugin-react"
 import svgr from "vite-plugin-svgr"
 import { createLogger, defineConfig } from "vite"
 import { visualizer } from "rollup-plugin-visualizer"
+import { woff2OnlyFonts } from "./scripts/woff2-only-fonts"
 
 // oxc's React Compiler cannot lower dynamic `import()` expressions yet
 // (upstream Todo: BuildHIR::lowerExpression). It safely bails out of each
@@ -40,6 +41,8 @@ logger.warnOnce = (msg, options) => {
 export default defineConfig({
   customLogger: logger,
   plugins: [
+    // Drop never-fetched woff/ttf fallbacks (KaTeX) from the bundle.
+    woff2OnlyFonts(),
     react({
       // React Compiler via the native oxc-transform-react backend:
       // auto-memoizes components/hooks (~400 compiled, landing in the

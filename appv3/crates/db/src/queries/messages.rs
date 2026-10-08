@@ -653,6 +653,38 @@ pub async fn last_assistant_content(pool: &DbPool, session_id: &str) -> Result<O
     Ok(row.and_then(|r| r.0))
 }
 
+// ── Workspace messages (`extra.sent_from`) ───────────────────────────────────
+
+/// Requests from another workspace that asked for a reply and have not had
+/// their final answer yet, in transcript order. Queued, reverted and
+/// summary rows are not pending.
+pub async fn pending_reply_requests(pool: &DbPool, session_id: &str) -> Result<Vec<SessionMessage>> {
+    Ok(sqlx::query_as::<_, SessionMessage>(
+        "SELECT * FROM session_messages WHERE session_id = ? AND role = 'user' AND kind = 'chat' \
+         AND extra LIKE '%\"sent_from\"%' \
+         AND json_extract(extra, '$.sent_from.reply') = 1 \
+         AND json_extract(extra, '$.sent_from.replied_at') IS NULL \
+         ORDER BY seq ASC, id ASC",
+    )
+    .bind(db_id(session_id))
+    .fetch_all(pool)
+    .await?)
+}
+
+/// `extra.sent_from` of the newest user row that came from another
+/// workspace (for hop counting), queued rows included.
+pub async fn latest_sent_from(pool: &DbPool, session_id: &str) -> Result<Option<Value>> {
+    let row: Option<(Option<String>,)> = sqlx::query_as(
+        "SELECT json_extract(extra, '$.sent_from') FROM session_messages WHERE session_id = ? AND role = 'user' \
+         AND kind IN ('chat', 'queued') AND extra LIKE '%\"sent_from\"%' \
+         AND json_extract(extra, '$.sent_from') IS NOT NULL ORDER BY seq DESC, id DESC LIMIT 1",
+    )
+    .bind(db_id(session_id))
+    .fetch_optional(pool)
+    .await?;
+    Ok(row.and_then(|r| r.0).and_then(|s| serde_json::from_str(&s).ok()))
+}
+
 /// Direct `SessionMessage(...)` insert with model defaults (seq 0, kind chat),
 /// as v2 `send_subagent_message` does for the `ask_lead` answer.
 pub async fn insert_raw_tool_message(pool: &DbPool, session_id: &str, content: &str, tool_call_id: &str, name: &str) -> Result<()> {
@@ -727,5 +759,28 @@ mod tests {
         let sql = format!("SELECT * FROM session_messages WHERE session_id = ? AND {USER_VISIBLE} ORDER BY seq DESC, id DESC LIMIT ?");
         let p = plan(&pool, &sql, 2).await;
         assert!(p.contains("ix_session_messages_session_seq_id") && !p.contains("TEMP B-TREE"), "{p}");
+    }
+
+    #[tokio::test]
+    async fn workspace_message_requests() {
+        let dir = tempfile::tempdir().unwrap();
+        let pool = crate::create_pool(dir.path().join("t.db")).await.unwrap();
+        let id = uuid::Uuid::now_v7();
+        let sid = id.to_string();
+        crate::create_session(&pool, crate::NewSession { id: Some(id), workspace: "/w".into(), ..Default::default() }).await.unwrap();
+        let with = |sent: Value| {
+            let mut e = Map::new();
+            e.insert("sent_from".into(), sent);
+            NewMessage { extra: Some(e), ..NewMessage::user("do it") }
+        };
+        assert!(latest_sent_from(&pool, &sid).await.unwrap().is_none());
+        save_message(&pool, &sid, NewMessage::user("plain")).await.unwrap();
+        save_message(&pool, &sid, with(serde_json::json!({"session_id": "a", "reply": false, "hops": 1}))).await.unwrap();
+        let pending = save_message(&pool, &sid, with(serde_json::json!({"session_id": "b", "reply": true, "hops": 2}))).await.unwrap();
+        save_message(&pool, &sid, with(serde_json::json!({"session_id": "c", "reply": true, "replied_at": "x", "hops": 1}))).await.unwrap();
+        save_queued_user_message(&pool, &sid, "later", Some(with(serde_json::json!({"session_id": "d", "reply": true, "hops": 3})).extra.unwrap())).await.unwrap();
+        let rows = pending_reply_requests(&pool, &sid).await.unwrap();
+        assert_eq!(rows.iter().map(|r| r.id.clone()).collect::<Vec<_>>(), vec![pending.id]);
+        assert_eq!(latest_sent_from(&pool, &sid).await.unwrap().unwrap()["session_id"], "d", "queued rows count for hops");
     }
 }

@@ -11,19 +11,20 @@
 import { useEffect, useLayoutEffect, useRef, type KeyboardEvent, type ReactNode } from 'react'
 
 import { cn } from '@/lib/utils'
+import { MENU_ITEM_CLASS, MENU_PANEL_CLASS, MENU_SEPARATOR_CLASS } from '@/components/ui/menu-styles'
 
 /** Gap kept between the menu and the viewport edge. */
 const VIEWPORT_MARGIN = 8
 
-const MENU_CLASS = 'fixed z-50 rounded-sm border border-(--color-border) bg-(--bg-card) p-1 text-xs text-(--color-text) shadow-md'
+const MENU_CLASS = `fixed z-50 text-xs text-(--color-text) ${MENU_PANEL_CLASS}`
 
 export const CONTEXT_MENU_ITEM_CLASS =
-  'flex w-full cursor-pointer items-center gap-2 rounded-xs px-2 py-1.5 text-left text-(--color-text-2) hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:bg-(--bg-key) focus-visible:outline-none disabled:cursor-default disabled:opacity-50'
+  `${MENU_ITEM_CLASS} text-(--color-text-2) hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:bg-(--bg-key) focus-visible:outline-none disabled:cursor-default disabled:opacity-50`
 export const CONTEXT_MENU_ITEM_DANGER_CLASS =
-  'flex w-full cursor-pointer items-center gap-2 rounded-xs px-2 py-1.5 text-left text-(--color-error) hover:bg-(--color-error-subtle) focus-visible:bg-(--color-error-subtle) focus-visible:outline-none disabled:cursor-default disabled:opacity-50'
+  `${MENU_ITEM_CLASS} text-(--color-error) hover:bg-(--color-error-subtle) focus-visible:bg-(--color-error-subtle) focus-visible:outline-none disabled:cursor-default disabled:opacity-50`
 
 export function ContextMenuSeparator() {
-  return <div role="separator" className="my-1 border-t border-(--color-border-subtle)" />
+  return <div role="separator" className={MENU_SEPARATOR_CLASS} />
 }
 
 function enabledItems(menu: HTMLElement | null): HTMLElement[] {

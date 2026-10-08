@@ -31,7 +31,6 @@ function ruleFor(selector: string): string | null {
 describe('11px type floor', () => {
   it('covers every sub-11px text class used in the source, including md: variants', () => {
     const classes = usedSubFloorClasses()
-    expect(classes).toContain('md:text-[10px]')
     const missing = classes.filter((cls) => {
       const selector = `.${cls.replace(/[:[\].]/g, '\\$&')}`
       return !ruleFor(selector)?.includes('font-size: 11px')

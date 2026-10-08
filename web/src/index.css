@@ -110,8 +110,6 @@
     --color-bg-elevated: #221C16;
 
     /* Borders */
-    --border-soft:         #2C231A;
-    --border-card:         #3A2F23;
     --color-border-subtle: #2C231A;
     --color-border:        #3A2F23;
     --color-border-strong: #5C4B36;
@@ -122,9 +120,6 @@
     --color-text-muted:     #9C8A72;
     --color-text-subtle:    #8E7D66; /* AA-compliant on --bg-page (≥4.5:1) */
     --color-text-on-accent: #15110D;
-    --fg-primary:           #F5EBD8;
-    --fg-secondary:         #C5B59A;
-    --fg-muted:             #9C8A72;
 
     /* Accent (UI) */
     --color-accent:  #F5EBD8;
@@ -215,8 +210,6 @@
     --color-bg-elevated: #FFFDF7;
 
     /* Borders */
-    --border-soft:         #E7DCBF;
-    --border-card:         #D9CFA9;
     --color-border-subtle: #E7DCBF;
     --color-border:        #D9CFA9;
     --color-border-strong: #B8A47E;
@@ -227,9 +220,6 @@
     --color-text-muted:     #6E604F;
     --color-text-subtle:    #7A6A54; /* AA-compliant on --bg-page (≥4.5:1) */
     --color-text-on-accent: #FFFDF7;
-    --fg-primary:           #1F1A14;
-    --fg-secondary:         #4B3E32;
-    --fg-muted:             #6E604F;
 
     /* Accent (UI) */
     --color-accent:  #3F3429;
@@ -780,6 +770,16 @@ html[data-mobile-shell][data-vp-anim] .settings-modal-shell {
   }
 }
 
+/* label-caps (DESIGN.md → Typography): section-card headers and group labels,
+ * the only uppercase style. Type only — callers pick the colour
+ * (text-muted on card headers, text-subtle on nav/group labels). */
+@utility label-caps {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
 /* ─────────────────────────────────────────────────────────────
  * Chat transcript scroller
  * ─────────────────────────────────────────────────────────────
@@ -877,16 +877,6 @@ html[data-mobile-shell][data-vp-anim] .settings-modal-shell {
 }
 
 /* ─────────────────────────────────────────────────────────────
- * Raised surface — cards, panels, grouped containers.
- * Both modes use the same shadow+border treatment because the
- * warm dark palette is too compressed for brightness-only depth.
- * Apply to elements that sit one layer above `bg-page`.
- * ───────────────────────────────────────────────────────────── */
-.surface-raised {
-  box-shadow: var(--shadow-depth);
-}
-
-/* ─────────────────────────────────────────────────────────────
  * Font-weight on hover/press — signature interaction.
  * Apply to buttons, nav items, tabs, menu items. Not prose.
  * Not transitioned: animating font-weight re-lays-out the text on every
@@ -975,6 +965,10 @@ html[data-app-hidden="true"] *::after {
   font-size: 0.85em;
   font-family: var(--font-mono);
   color: var(--color-syn-string);
+  /* A span that wraps keeps its border and padding on every line instead of
+   * leaving an open-ended box at the break (narrow panes, long commands). */
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
 }
 .oa-prose pre {
   overflow-x: auto;
@@ -996,7 +990,7 @@ html[data-app-hidden="true"] *::after {
   text-decoration-color: var(--color-border-strong);
   text-decoration-thickness: 1px;
   text-underline-offset: 3px;
-  transition: text-decoration-color 120ms ease, color 120ms ease;
+  transition: text-decoration-color var(--motion-instant) var(--ease-out), color var(--motion-instant) var(--ease-out);
 }
 .oa-prose a:hover {
   color: var(--color-accent);

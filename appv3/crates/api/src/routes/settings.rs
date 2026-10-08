@@ -26,6 +26,7 @@ pub fn router() -> Router<AppState> {
         .route("/lsp/typescript/install", post(install_typescript))
         .route("/summarization", get(get_summarization).put(put_summarization))
         .route("/title-generation", get(get_title).put(put_title))
+        .route("/workspace-messages", get(get_workspace_messages).put(put_workspace_messages))
         .route("/multimodal", get(get_multimodal).put(put_multimodal))
         .route("/providers", get(list_providers))
         .route("/providers/usage-summary", get(usage_summary).put(|b: Bytes| save_provider_named("usage-summary".into(), b)))
@@ -221,6 +222,24 @@ async fn put_title(raw: Bytes) -> ApiResult<Response> {
     cfg.title_generation.wait_timeout_seconds = wait.max(0.0);
     rs::save_runtime_settings(&cfg).map_err(internal)?;
     Ok(json(title_json(&cfg.title_generation)))
+}
+
+// ── workspace messages ──────────────────────────────────────────────────────
+
+async fn get_workspace_messages() -> ApiResult<Response> {
+    let cfg = rs::load_runtime_settings().map_err(internal)?;
+    Ok(json(json!({"enabled": cfg.workspace_messages.enabled})))
+}
+
+async fn put_workspace_messages(raw: Bytes) -> ApiResult<Response> {
+    let v = body_value(&raw)?;
+    let mut b = Body::new(&v)?;
+    let enabled = b.bool("enabled", None);
+    b.finish(&["enabled"])?;
+    let mut cfg = rs::load_runtime_settings().map_err(internal)?;
+    cfg.workspace_messages.enabled = enabled;
+    rs::save_runtime_settings(&cfg).map_err(internal)?;
+    Ok(json(json!({"enabled": enabled})))
 }
 
 // ── multimodal ──────────────────────────────────────────────────────────────

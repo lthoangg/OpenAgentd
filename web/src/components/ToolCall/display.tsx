@@ -723,6 +723,26 @@ function getToolDisplayInternal(name: string, parsed: Record<string, unknown>): 
     }
   }
 
+  // ── send_to_workspace: another workspace's agent session ─────────
+  if (name === 'send_to_workspace') {
+    const workspace = str(parsed, 'workspace')
+    const label = workspace ? trunc(pathBasename(workspace) || workspace) : null
+    if (str(parsed, 'action') === 'list') {
+      return {
+        header: label ? <>Listing sessions in <Arg>{label}</Arg></> : 'Listing workspaces…',
+        headerTitle: label ? `Listing sessions in ${label}` : 'Listing workspaces…',
+        formattedArgs: null,
+      }
+    }
+    const waits = parsed.reply === true ? ' (awaiting reply)' : ''
+    const target = label ?? 'workspace'
+    return {
+      header: <>Message to <Arg>{target}</Arg>{waits}</>,
+      headerTitle: `Message to ${target}${waits}`,
+      formattedArgs: str(parsed, 'message'),
+    }
+  }
+
   if (name === 'team_spawn') {
     const profile = str(parsed, 'profile') || 'subagent'
     const subagentName = str(parsed, 'name')

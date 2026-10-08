@@ -1,7 +1,7 @@
 /**
- * `Dialog` / `Sheet` — mobile edge-swipe exclusion regression.
+ * `Dialog` — mobile edge-swipe exclusion regression.
  *
- * These are the shared zero-dependency overlay primitives used across the
+ * This is the shared zero-dependency overlay primitive used across the
  * app for confirmation dialogs and action-sheets (Sidebar's delete/rename
  * dialogs, Sidebar's workspace dialogs, WorkspacePanel's
  * file/commit action sheets, etc). Many of those are rendered on top of an
@@ -19,7 +19,6 @@ import { describe, it, expect, afterEach } from 'bun:test'
 import { render, cleanup } from '@testing-library/react'
 import '@testing-library/jest-dom'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
-import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
 
 afterEach(cleanup)
 
@@ -39,26 +38,5 @@ describe('Dialog — data-swipe-ignore', () => {
     expect(content).not.toBeNull()
     expect(overlay).toHaveAttribute('data-swipe-ignore')
     expect(content).toHaveAttribute('data-swipe-ignore')
-  })
-})
-
-describe('Sheet — data-swipe-ignore', () => {
-  it('marks both the backdrop and the sliding panel data-swipe-ignore when open', () => {
-    render(
-      <Sheet open>
-        <SheetContent side="left">
-          <SheetTitle>Session sidebar</SheetTitle>
-        </SheetContent>
-      </Sheet>,
-    )
-
-    const content = document.querySelector('[data-slot="sheet-content"]')
-    expect(content).not.toBeNull()
-    expect(content).toHaveAttribute('data-swipe-ignore')
-
-    // Backdrop is the sibling fixed inset-0 div rendered alongside the panel.
-    const backdrop = content?.previousElementSibling
-    expect(backdrop).not.toBeNull()
-    expect(backdrop).toHaveAttribute('data-swipe-ignore')
   })
 })

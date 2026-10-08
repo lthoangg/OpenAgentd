@@ -530,14 +530,14 @@ export const MarkdownTable = memo(function MarkdownTable(
 
   return (
     <div className="oa-table-container group relative">
-      <div className="pointer-events-none absolute top-1 right-1 z-10 opacity-0 transition-opacity duration-150 group-hover:pointer-events-auto group-hover:opacity-100 focus-within:pointer-events-auto focus-within:opacity-100">
+      <div className="pointer-events-none absolute top-1 right-1 z-10 opacity-0 transition-opacity duration-(--motion-fast) group-hover:pointer-events-auto group-hover:opacity-100 focus-within:pointer-events-auto focus-within:opacity-100">
         <Tooltip>
           <TooltipTrigger
             render={
               <button
                 type="button"
                 onClick={handleCopy}
-                className="flex h-5 w-5 items-center justify-center rounded-xs border border-(--color-border) bg-(--bg-card) text-(--color-text-muted) shadow-xs transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)"
+                className="flex h-5 w-5 items-center justify-center rounded-xs border border-(--color-border) bg-(--bg-card) text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)"
                 aria-label={copied ? 'Copied' : 'Copy table'}
               >
                 {copied ? (

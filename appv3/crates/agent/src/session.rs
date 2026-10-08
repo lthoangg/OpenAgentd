@@ -129,8 +129,10 @@ pub struct UserMessage {
     pub thinking_level_provided: bool,
     pub service_tier: Option<String>,
     pub mentions: Option<Vec<String>>,
-    /// `user` | `scheduler` | `agent`
+    /// `user` | `scheduler` | `agent` | `workspace` (another workspace's agent)
     pub origin: String,
+    /// Extra keys stored on the message row (e.g. `sent_from`).
+    pub extra: Option<Map<String, Value>>,
 }
 
 pub struct AgentSession {
@@ -468,7 +470,7 @@ impl AgentSession {
         let (snapshot, prepared) = tokio::join!(crate::snapshot::track(&sid, &ws_dir), prepare);
         prepared?;
 
-        let mut extra = Map::new();
+        let mut extra = m.extra.clone().unwrap_or_default();
         if let Some(a) = m.attachment_metas.as_ref().filter(|a| !a.is_empty()) {
             extra.insert("attachments".into(), Value::Array(a.clone()));
         }
@@ -665,7 +667,11 @@ impl AgentSession {
         store().mark_done(session_id);
         match &self.parent_session_id {
             None => {
-                let label = if notify { self.notification_status(session_id, status) } else { None };
+                // Requests from other workspaces get their answer first; a
+                // final answer wakes the sender, whose turn notifies instead.
+                let last_error = self.last_error();
+                let replied = crate::workspace_messages::on_turn_closed(&self.pool, session_id, status, self.cancel.is_set(), last_error.as_deref()).await;
+                let label = if notify && !replied { self.notification_status(session_id, status) } else { None };
                 if let Some(label) = label {
                     broadcaster::publish("desktop_notification", self.completion_notification(session_id, label).await);
                 }
@@ -699,6 +705,8 @@ impl AgentSession {
         }
         match status {
             "completed" if crate::subagents::has_working_subagents(session_id) => None,
+            // A reply from another workspace will run this lead again.
+            "completed" if crate::workspace_messages::has_outstanding_replies(session_id) => None,
             "completed" => Some("Done"),
             "error" => Some("Failed"),
             _ => None,
@@ -950,6 +958,9 @@ impl AgentSession {
             }
         } else if let Some(lead) = &self.parent_session_id {
             injected.push(Arc::new(crate::tools::team::AskLeadTool { lead_session_id: lead.clone(), member_handle: name.clone() }));
+        }
+        if is_lead && appv3_core::runtime_settings::workspace_messages_enabled() {
+            injected.push(Arc::new(crate::tools::send_to_workspace::SendToWorkspaceTool::new(sid.clone(), self.pool.clone())));
         }
 
         let mut meta = Map::new();

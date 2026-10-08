@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Server } from 'lucide-react'
-import { AppOverlay } from '@/components/ui/app-overlay'
+import { AppOverlay, OverlayHeader } from '@/components/ui/app-overlay'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
@@ -214,13 +214,12 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
 
   return (
     <AppOverlay open={open} onClose={() => onOpenChange(false)} label="Backend connection" maxWidth="480px">
-      {/* Header / Title Bar */}
-      <div className="flex h-11 shrink-0 items-center justify-between border-b border-(--color-border) bg-(--bg-sidebar) px-4 select-none">
-        <div className="flex items-center gap-2">
-          <Server size={14} className="shrink-0 text-(--color-text-muted)" aria-hidden="true" />
-          <h2 className="text-base font-semibold text-(--color-text)">Backend connection</h2>
-        </div>
-      </div>
+      <OverlayHeader
+        title="Backend connection"
+        icon={<Server size={14} />}
+        onClose={() => onOpenChange(false)}
+        closeLabel="Close backend connection"
+      />
 
         <div className="relative min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain touch-pan-y px-5 py-4">
           {/* Connected backend status line */}
@@ -303,7 +302,7 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
                       <ServerStatusDot status={serverHealth[normalizedServerUrl] ?? serverHealth[server.base_url]} />
                       <span className="min-w-0 flex-1">
                         <span className="block truncate font-semibold text-(--color-text)">{server.name || server.base_url}</span>
-                        {server.name ? <span className="block truncate font-mono text-xs md:text-[10px] text-(--color-text-subtle)">{server.base_url}</span> : null}
+                        {server.name ? <span className="block truncate font-mono text-xs md:text-[11px] text-(--color-text-subtle)">{server.base_url}</span> : null}
                       </span>
                     </button>
                     {active ? (
@@ -349,7 +348,7 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
             <SectionCardHeader>Configure Server</SectionCardHeader>
             <div className="p-3.5 space-y-3.5">
               <div className="grid gap-1.5">
-                <label className="text-xs md:text-[10px] font-semibold text-(--color-text-muted)" htmlFor="app-backend-url">
+                <label className="text-xs md:text-[11px] font-semibold text-(--color-text-muted)" htmlFor="app-backend-url">
                   Server URL
                 </label>
                 <Input
@@ -362,7 +361,7 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
               </div>
 
               <div className="grid gap-1.5">
-                <label className="text-xs md:text-[10px] font-semibold text-(--color-text-muted)" htmlFor="app-backend-key">
+                <label className="text-xs md:text-[11px] font-semibold text-(--color-text-muted)" htmlFor="app-backend-key">
                   Access key
                 </label>
                 <div className="flex gap-2">
@@ -381,7 +380,7 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
               </div>
 
               <div className="grid gap-1.5">
-                <label className="text-xs md:text-[10px] font-semibold text-(--color-text-muted)" htmlFor="app-backend-name">
+                <label className="text-xs md:text-[11px] font-semibold text-(--color-text-muted)" htmlFor="app-backend-name">
                   Server name
                 </label>
                 <div className="flex gap-2">
@@ -406,7 +405,7 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
             </div>
           </SectionCard>
 
-          <p className="text-xs md:text-[10px] leading-relaxed text-(--color-text-subtle)">
+          <p className="text-xs md:text-[11px] leading-relaxed text-(--color-text-subtle)">
             Test the server URL and access key before saving. Save & Connect stores new servers or overwrites an edited server configuration, then connects to it. Use builtin returns this app to the bundled sidecar.
           </p>
 

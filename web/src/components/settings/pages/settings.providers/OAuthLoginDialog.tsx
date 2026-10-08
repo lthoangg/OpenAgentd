@@ -110,7 +110,7 @@ export function OAuthLoginDialog({
         onOpenChange(nextOpen)
       }}
     >
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent size="lg">
         <DialogHeader>
           <DialogTitle>Connect {provider.label}</DialogTitle>
           <DialogDescription>Approve the browser prompt. This window will update when the token is saved.</DialogDescription>
@@ -128,7 +128,7 @@ export function OAuthLoginDialog({
           {deviceEvent?.user_code && (
             <div className="overflow-hidden rounded-md border border-(--accent-blue)/25 bg-(--accent-blue-soft)">
               <div className="p-3 text-center sm:p-5">
-                <p className="text-xs font-medium tracking-[0.18em] text-(--color-text-muted) uppercase">Device code</p>
+                <p className="label-caps text-(--color-text-muted)">Device code</p>
                 <div className="mt-2 flex flex-col items-center justify-center gap-3 sm:flex-row">
                   <p className="min-w-0 max-w-full break-all font-mono text-2xl font-semibold tracking-[0.12em] text-(--color-text) sm:text-3xl sm:tracking-[0.18em]">{deviceEvent.user_code}</p>
                   <Tooltip>
@@ -142,7 +142,7 @@ export function OAuthLoginDialog({
                           className="min-h-9 min-w-9 sm:min-h-0 sm:min-w-0"
                           aria-label="Copy device code"
                         >
-                          {codeCopied ? <Check size={15} className="text-(--color-success)" /> : <Copy size={15} />}
+                          {codeCopied ? <Check size={14} className="text-(--color-success)" /> : <Copy size={14} />}
                         </Button>
                       }
                     />

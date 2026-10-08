@@ -3,6 +3,7 @@ import { useScheduledTasksQuery } from '@/queries'
 import { useUIStore } from '@/stores/useUIStore'
 import { APP_EVENTS, dispatchAppEvent } from '@/lib/app-events'
 import { formatCompactUpcoming } from '@/utils/format'
+import { listRowClass } from '@/components/ui/list-row'
 
 const MAX_ROWS = 5
 
@@ -29,7 +30,7 @@ export function ScheduledSection({ onMobileClose }: { onMobileClose?: () => void
         aria-label="Open scheduler"
         className="flex h-8 w-full items-center gap-1.5 pl-3 pr-1.5 text-left text-[11px] leading-none transition-colors hover:text-(--color-text-2)"
       >
-        <span className="font-semibold uppercase tracking-[0.05em] text-(--color-text-subtle)">Scheduled</span>
+        <span className="label-caps text-(--color-text-subtle)">Scheduled</span>
         <span className="tabular-nums text-(--color-text-subtle)">{upcoming.length}</span>
       </button>
       <ul className="space-y-px px-1.5">
@@ -38,7 +39,7 @@ export function ScheduledSection({ onMobileClose }: { onMobileClose?: () => void
             <button
               type="button"
               onClick={() => open(task.id)}
-              className="flex h-(--spacing-list-row) w-full min-w-0 items-center gap-1.5 rounded-sm px-1.5 text-left text-xs text-(--color-text-2) transition-colors hover:bg-(--bg-key)/35 hover:text-(--color-text)"
+              className={listRowClass()}
             >
               <Clock size={12} aria-hidden="true" className="shrink-0 text-(--color-text-subtle)" />
               <span className="min-w-0 flex-1 truncate font-medium">{task.name}</span>

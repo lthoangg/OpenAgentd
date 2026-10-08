@@ -1,6 +1,7 @@
 import type React from 'react'
 import type { SessionResponse } from '@/api/types'
 import { SessionStatusMark, type SessionStatus } from './SessionStatusMark'
+import { LIST_ROW_GEOMETRY, listRowSurface, listRowText } from '@/components/ui/list-row'
 
 /** A session outside the tree (Needs you, search results): status, title, workspace. */
 export function CompactSessionRow({
@@ -21,9 +22,7 @@ export function CompactSessionRow({
       type="button"
       onClick={onSelect}
       aria-current={isCurrent ? 'page' : undefined}
-      className={`flex h-(--spacing-list-row) w-full min-w-0 items-center gap-1.5 rounded-sm px-1.5 text-left text-xs transition-colors ${
-        isCurrent ? 'bg-(--bg-key)/60' : 'hover:bg-(--bg-key)/35'
-      } ${isCurrent || status !== 'idle' ? 'text-(--color-text)' : 'text-(--color-text-2) hover:text-(--color-text)'}`}
+      className={`${LIST_ROW_GEOMETRY} transition-colors ${listRowSurface(isCurrent)} ${listRowText(isCurrent || status !== 'idle')}`}
     >
       <SessionStatusMark status={status} />
       <span className={`min-w-0 flex-1 truncate ${isCurrent ? 'font-semibold' : 'font-medium'}`}>

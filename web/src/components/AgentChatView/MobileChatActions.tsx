@@ -23,6 +23,8 @@ export interface MobileChatActionsProps {
 }
 
 const ROW_CLASS = 'flex min-h-10 w-full items-center gap-2 rounded-md px-2 text-left text-sm transition-colors hover:bg-(--bg-key) active:bg-(--bg-key)/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 disabled:opacity-45'
+// Same group heading as the command palette and the sidebar (label-caps).
+const GROUP_LABEL_CLASS = 'px-2 pb-1 pt-3 label-caps text-(--color-text-subtle) select-none first:pt-1'
 
 export function MobileChatActions({
   open,
@@ -56,7 +58,7 @@ export function MobileChatActions({
               className="mr-1 flex h-9 w-9 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
               aria-label="Open chat actions"
             >
-              <MoreHorizontal size={17} aria-hidden="true" />
+              <MoreHorizontal size={16} aria-hidden="true" />
             </button>
           }
         />
@@ -72,7 +74,7 @@ export function MobileChatActions({
               animate={{ opacity: dragOffset !== null ? Math.max(0, Math.min(1, 1 - dragOffset / 280)) : 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: dragOffset !== null ? 0 : 0.18 }}
-              className="mobile-safe-top fixed inset-x-0 bottom-0 z-30 bg-black/60 md:hidden"
+              className="mobile-safe-top fixed inset-x-0 bottom-0 z-30 bg-(--color-overlay) md:hidden"
               aria-hidden="true"
               onClick={() => onOpenChange(false)}
             />
@@ -86,7 +88,7 @@ export function MobileChatActions({
                   ? { duration: 0 }
                   : { duration: 0.22, ease: EASINGS.inOut }
               }
-              className="mobile-safe-top fixed bottom-0 right-0 z-40 flex w-[min(272px,calc(100vw-2rem))] flex-col overflow-hidden border-l border-(--color-border) bg-(--bg-page) shadow-xl md:hidden"
+              className="mobile-safe-top fixed bottom-0 right-0 z-40 flex w-[min(272px,calc(100vw-2rem))] flex-col overflow-hidden border-l border-(--color-border) bg-(--bg-page) shadow-(--shadow-depth) md:hidden"
               role="dialog"
               aria-modal="true"
               aria-label="Chat actions"
@@ -110,31 +112,31 @@ export function MobileChatActions({
               </div>
 
               <div className="flex-1 overflow-y-auto overscroll-contain touch-pan-y p-2">
-                <div className="px-2 py-2 text-xs font-medium text-(--color-text-muted)">Session</div>
+                <div className={GROUP_LABEL_CLASS}>Session</div>
                 <button
                   type="button"
                   onClick={onFindInTranscript}
                   disabled={!onFindInTranscript}
                   className={ROW_CLASS}
                 >
-                  <Search size={15} aria-hidden="true" />
+                  <Search size={14} aria-hidden="true" />
                   <span className="flex-1">Find in transcript</span>
                 </button>
                 <button type="button" onClick={onPreviousPrompt} disabled={!onPreviousPrompt} className={ROW_CLASS}>
-                  <ChevronUp size={15} aria-hidden="true" />
+                  <ChevronUp size={14} aria-hidden="true" />
                   <span className="flex-1">Previous prompt</span>
                 </button>
                 <button type="button" onClick={onNextPrompt} disabled={!onNextPrompt} className={ROW_CLASS}>
-                  <ChevronDown size={15} aria-hidden="true" />
+                  <ChevronDown size={14} aria-hidden="true" />
                   <span className="flex-1">Next prompt</span>
                 </button>
                 <button type="button" onClick={onScheduler} className={ROW_CLASS}>
-                  <CalendarClock size={15} aria-hidden="true" />
+                  <CalendarClock size={14} aria-hidden="true" />
                   <span className="flex-1">Scheduler</span>
                 </button>
-                <div className="px-2 py-2 text-xs font-medium text-(--color-text-muted)">Workspace</div>
+                <div className={GROUP_LABEL_CLASS}>Workspace</div>
                 <button type="button" onClick={onQuickOpen} disabled={!onQuickOpen} className={ROW_CLASS}>
-                  <FileSearch size={15} aria-hidden="true" />
+                  <FileSearch size={14} aria-hidden="true" />
                   <span className="flex-1">Search files</span>
                 </button>
                 <button
@@ -143,12 +145,12 @@ export function MobileChatActions({
                   disabled={!onOpenTerminal}
                   className={ROW_CLASS}
                 >
-                  <TerminalSquare size={15} aria-hidden="true" />
+                  <TerminalSquare size={14} aria-hidden="true" />
                   <span className="flex-1">Open terminal</span>
                 </button>
-                <div className="px-2 py-2 text-xs font-medium text-(--color-text-muted)">App</div>
+                <div className={GROUP_LABEL_CLASS}>App</div>
                 <button type="button" onClick={onCommandPalette} disabled={!onCommandPalette} className={ROW_CLASS}>
-                  <Command size={15} aria-hidden="true" />
+                  <Command size={14} aria-hidden="true" />
                   <span className="flex-1">Command palette</span>
                 </button>
               </div>

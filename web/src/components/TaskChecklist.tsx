@@ -77,7 +77,7 @@ export function TaskProgressBar({ summary }: { summary: TodoSummary }) {
     >
       <div
         className={cn(
-          'h-full transition-[width] duration-300 ease-out',
+          'h-full transition-[width] duration-(--motion-base) ease-out',
           summary.allDone ? 'bg-(--color-success)' : 'bg-(--color-info)',
         )}
         style={{ width: `${summary.progressPct}%` }}

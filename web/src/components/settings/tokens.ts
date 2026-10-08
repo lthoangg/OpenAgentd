@@ -12,12 +12,12 @@
  *   step 1 (12px / text-xs)  - titles, labels, body copy. The default.
  *   step 2 (11px)            - hints, errors, secondary metadata.
  *
- * Anything below 11px is legible only on a pointer-precision screen, so those
- * sizes are always written as a responsive pair with a mobile floor rather
- * than as a bare arbitrary value:
+ * 11px is the floor on every shell (DESIGN.md); index.css clamps anything
+ * smaller, so never write a sub-11px class. Dense metadata that is a step
+ * larger on phones is written as a responsive pair:
  *
- *   text-xs md:text-[10px]   - dense metadata (12px on phones, 10px on desktop).
- *   text-[11px] md:text-[9px] - micro badges (11px on phones, 9px on desktop).
+ *   text-xs md:text-[11px]   - dense metadata (12px on phones, 11px on desktop).
+ *   text-[11px]              - micro badges.
  *
  * Every size in the app is a whole pixel; there is no 9.5/10.5/11.5 step.
  */

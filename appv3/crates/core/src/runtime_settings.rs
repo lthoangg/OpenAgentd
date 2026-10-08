@@ -34,6 +34,24 @@ pub struct SummarizationSettings {
     pub prompt_token_threshold: Option<i64>,
 }
 
+/// `workspace_messages` — the lead's `send_to_workspace` tool (v3 only).
+/// Written only when it differs from the default, so files stay unchanged.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct WorkspaceMessagesSettings {
+    pub enabled: bool,
+}
+impl Default for WorkspaceMessagesSettings {
+    fn default() -> Self {
+        Self { enabled: true }
+    }
+}
+impl WorkspaceMessagesSettings {
+    fn is_default(&self) -> bool {
+        *self == Self::default()
+    }
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct ProviderUiSettings {
@@ -76,6 +94,8 @@ pub struct RuntimeSettings {
     pub server: Option<LegacyServerBlock>,
     pub providers: IndexMap<String, ProviderUiSettings>,
     pub lsp: IndexMap<String, Vec<String>>,
+    #[serde(skip_serializing_if = "WorkspaceMessagesSettings::is_default")]
+    pub workspace_messages: WorkspaceMessagesSettings,
 }
 
 pub fn load_runtime_settings_from(path: &Path) -> Result<RuntimeSettings> {
@@ -102,6 +122,12 @@ pub fn save_runtime_settings_to(cfg: &RuntimeSettings, path: &Path) -> Result<()
 
 pub fn save_runtime_settings(cfg: &RuntimeSettings) -> Result<()> {
     save_runtime_settings_to(cfg, &settings().runtime_settings_path())
+}
+
+/// Whether lead agents get `send_to_workspace` (default on; unreadable
+/// settings fall back to the default).
+pub fn workspace_messages_enabled() -> bool {
+    load_runtime_settings().map(|c| c.workspace_messages.enabled).unwrap_or(true)
 }
 
 fn cleaned_sorted(models: &[String]) -> Vec<String> {
@@ -349,5 +375,19 @@ mod tests {
         assert_eq!(cfg.title_generation.model.as_deref(), Some("codex:gpt-5.4-mini"));
         assert!(cfg.title_generation.enabled);
         assert_eq!(cfg.server.unwrap().access_key.as_deref(), Some("k"));
+        assert!(cfg.workspace_messages.enabled, "workspace messages default on");
+    }
+
+    #[test]
+    fn workspace_messages_written_only_when_disabled() {
+        let mut cfg = RuntimeSettings::default();
+        assert!(!to_pyyaml(&cfg).unwrap().contains("workspace_messages"));
+        cfg.workspace_messages.enabled = false;
+        let text = to_pyyaml(&cfg).unwrap();
+        assert!(text.ends_with("workspace_messages:\n  enabled: false\n"), "{text}");
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("settings.yaml");
+        std::fs::write(&p, &text).unwrap();
+        assert!(!load_runtime_settings_from(&p).unwrap().workspace_messages.enabled);
     }
 }

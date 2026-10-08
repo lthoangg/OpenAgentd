@@ -81,6 +81,10 @@ export {
   useUpdateTitleGenerationSettingsMutation,
 } from './useTitleGenerationSettingsQuery'
 export {
+  useWorkspaceMessagesSettingsQuery,
+  useUpdateWorkspaceMessagesSettingsMutation,
+} from './useWorkspaceMessagesSettingsQuery'
+export {
   useMultimodalSettingsQuery,
   useUpdateMultimodalSettingsMutation,
 } from './useMultimodalSettingsQuery'

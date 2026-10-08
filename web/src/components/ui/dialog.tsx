@@ -99,7 +99,7 @@ function DialogOverlay({ className, closing, ...props }: ComponentPropsWithRef<'
       // close-gesture for the drawer underneath and yanks it shut.
       data-swipe-ignore
       className={cn(
-        'fixed inset-0 z-50 bg-black/10 supports-backdrop-filter:backdrop-blur-xs',
+        'fixed inset-0 z-50 bg-(--color-overlay)',
         closing
           ? 'animate-out fade-out-0 duration-100'
           : 'animate-in fade-in-0 duration-100',
@@ -114,9 +114,45 @@ function DialogOverlay({ className, closing, ...props }: ComponentPropsWithRef<'
 
 interface DialogContentProps extends ComponentPropsWithRef<'div'> {
   showCloseButton?: boolean
+  /**
+   * Width cap from ``sm`` up. A prop rather than a className override:
+   * ``cn`` does not merge, and the stylesheet orders ``sm:max-w-sm`` after
+   * ``sm:max-w-md``/``-lg``, so a caller's wider class never won.
+   */
+  size?: keyof typeof DIALOG_SIZE
+  /** Panel padding; ``none`` for dialogs that draw their own header strip. */
+  padding?: keyof typeof DIALOG_PADDING
 }
 
-function DialogContent({ className, children, showCloseButton = true, ...props }: DialogContentProps) {
+const DIALOG_SIZE = {
+  xs: 'sm:max-w-xs',
+  sm: 'sm:max-w-sm',
+  md: 'sm:max-w-md',
+  lg: 'sm:max-w-lg',
+  /** Caller sets its own width. */
+  none: '',
+} as const
+
+const DIALOG_PADDING = {
+  default: 'p-4',
+  compact: 'p-3',
+  none: 'p-0',
+} as const
+
+/**
+ * Footer bleed per panel padding: the strip cancels the panel padding to reach
+ * the edges, and keeps the same distance from the body above it. ``none``
+ * panels lay out their own footer.
+ */
+const FOOTER_BLEED = {
+  default: '-mx-4 -mb-4 mt-4 p-4',
+  compact: '-mx-3 -mb-3 mt-3 p-3',
+  none: '',
+} as const
+
+const DialogPaddingContext = createContext<keyof typeof DIALOG_PADDING>('default')
+
+function DialogContent({ className, children, showCloseButton = true, size = 'sm', padding = 'default', ...props }: DialogContentProps) {
   const { open, setOpen, titleId } = useDialog()
   const { mounted, closing } = useDeferredUnmount(open, 100)
   const contentRef = useRef<HTMLDivElement>(null)
@@ -140,10 +176,12 @@ function DialogContent({ className, children, showCloseButton = true, ...props }
         aria-labelledby={titleId}
         className={cn(
           'fixed top-1/2 left-1/2 z-50 -translate-x-1/2 -translate-y-1/2',
-          'w-full max-w-[calc(100%-2rem)] sm:max-w-sm',
+          'w-full max-w-[calc(100%-2rem)]',
+          DIALOG_SIZE[size],
           'max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain',
           'rounded-lg border border-(--color-border) bg-(--bg-card)',
-          'p-4 text-sm text-(--color-text) shadow-md outline-none',
+          DIALOG_PADDING[padding],
+          'text-sm text-(--color-text) shadow-(--shadow-depth) outline-none',
           closing
             ? 'animate-out fade-out-0 zoom-out-95 duration-100'
             : 'animate-in fade-in-0 zoom-in-95 duration-100',
@@ -152,7 +190,9 @@ function DialogContent({ className, children, showCloseButton = true, ...props }
         onClick={(e) => e.stopPropagation()}
         {...props}
       >
-        {children}
+        <DialogPaddingContext.Provider value={padding}>
+          {children}
+        </DialogPaddingContext.Provider>
         {showCloseButton && (
           <Button
             variant="ghost"
@@ -177,10 +217,11 @@ function DialogHeader({ className, ...props }: ComponentPropsWithRef<'div'>) {
 
 function DialogFooter({ className, showCloseButton = false, children, ...props }: ComponentPropsWithRef<'div'> & { showCloseButton?: boolean }) {
   const { setOpen } = useDialog()
+  const padding = useContext(DialogPaddingContext)
   return (
     <div
       data-slot="dialog-footer"
-      className={cn('-mx-4 -mb-4 flex flex-col-reverse gap-2 rounded-b-lg border-t border-(--color-border) bg-(--bg-key)/50 p-4 sm:flex-row sm:justify-end', className)}
+      className={cn('flex flex-col-reverse gap-2 rounded-b-lg border-t border-(--color-border) bg-(--bg-key)/50 sm:flex-row sm:justify-end', FOOTER_BLEED[padding], className)}
       {...props}
     >
       {children}

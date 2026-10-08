@@ -648,6 +648,57 @@
       }
     }
   },
+  "send_to_workspace": {
+    "type": "function",
+    "function": {
+      "name": "send_to_workspace",
+      "description": "Send a message to an agent session in another registered workspace (another repo, a worktree, or Chat). It arrives there as a user prompt and runs in the background. Use it for work owned by that repo's agent; for read-only lookups, read its files by absolute path instead, and point the other agent at files here by path rather than pasting them. With reply=true, its final answer comes back to you as a message; do not poll. Prefer a worktree over a second session in this same repo. action='list' shows the workspaces, or one workspace's recent sessions.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "description": "'send' (default) or 'list'.",
+            "enum": [
+              "send",
+              "list"
+            ],
+            "type": "string",
+            "default": "send"
+          },
+          "workspace": {
+            "type": "string",
+            "default": null,
+            "description": "Target workspace name or absolute path (required for send). With action='list', lists that workspace's recent sessions."
+          },
+          "message": {
+            "type": "string",
+            "default": null,
+            "description": "[send] Self-contained request: the goal, context, constraints, and what to report back."
+          },
+          "session_id": {
+            "type": "string",
+            "default": null,
+            "description": "[send] Continue this existing session in the target workspace (from list); omit to start a new session. A busy session queues the message."
+          },
+          "reply": {
+            "type": "boolean",
+            "default": false,
+            "description": "[send] Deliver the target's final answer back here as a message."
+          },
+          "mode": {
+            "enum": [
+              "code",
+              "plan"
+            ],
+            "type": "string",
+            "default": null,
+            "description": "[send, new session] 'plan' makes the target plan first and wait for the user's approval."
+          }
+        },
+        "required": []
+      }
+    }
+  },
   "ask_lead": {
     "type": "function",
     "function": {

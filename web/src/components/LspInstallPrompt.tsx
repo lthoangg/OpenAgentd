@@ -82,7 +82,7 @@ function LspInstallDialog({ request }: { request: LspInstallRequest }) {
         aria-label="Install TypeScript language tools"
         data-swipe-ignore
         className={cn(
-          'pointer-events-auto border border-(--color-border) bg-(--bg-card) text-sm text-(--color-text) shadow-lg backdrop-blur-xs transition-[width,padding,border-radius] duration-200',
+          'pointer-events-auto border border-(--color-border) bg-(--bg-card) text-sm text-(--color-text) shadow-(--shadow-depth) backdrop-blur-xs transition-[width,padding,border-radius] duration-(--motion-base)',
           minimized
             ? 'w-auto rounded-full px-3 py-1.5'
             : 'w-auto max-w-sm rounded-md p-4 sm:w-full sm:max-w-sm',
@@ -96,14 +96,14 @@ function LspInstallDialog({ request }: { request: LspInstallRequest }) {
               title="Drag to move · Double-click to reset"
               onPointerDown={(e) => dragControls.start(e)}
               onDoubleClick={resetPosition}
-              className="cursor-grab active:cursor-grabbing p-0.5 rounded-xs text-(--color-text-muted) hover:text-(--color-text) hover:bg-(--bg-key)/60 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-(--focus-ring)"
+              className="cursor-grab active:cursor-grabbing p-0.5 rounded-xs text-(--color-text-muted) hover:text-(--color-text) hover:bg-(--bg-key)/60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40"
             >
               <GripVertical className="size-3.5" />
             </button>
 
             <button
               type="button"
-              className="flex items-center gap-1.5 text-xs text-(--color-text) hover:text-(--color-text-2) transition-colors cursor-pointer select-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-(--focus-ring) rounded-xs px-1"
+              className="flex items-center gap-1.5 text-xs text-(--color-text) hover:text-(--color-text-2) transition-colors cursor-pointer select-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 rounded-xs px-1"
               onClick={() => setMinimized(false)}
               title="Click to expand TypeScript tools details"
             >
@@ -161,7 +161,7 @@ function LspInstallDialog({ request }: { request: LspInstallRequest }) {
                   title="Drag to move · Double-click to reset"
                   onPointerDown={(e) => dragControls.start(e)}
                   onDoubleClick={resetPosition}
-                  className="cursor-grab active:cursor-grabbing p-0.5 rounded-xs text-(--color-text-muted) hover:text-(--color-text) hover:bg-(--bg-key)/60 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-(--focus-ring) mt-0.5"
+                  className="cursor-grab active:cursor-grabbing p-0.5 rounded-xs text-(--color-text-muted) hover:text-(--color-text) hover:bg-(--bg-key)/60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 mt-0.5"
                 >
                   <GripVertical className="size-3.5" />
                 </button>

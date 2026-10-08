@@ -14,7 +14,7 @@ function shortWhere(where: string): string {
 
 function PinNumber({ n }: { n: number }) {
   return (
-    <span className="mt-px flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-(--color-accent) px-1 text-[10px] font-semibold text-(--color-text-on-accent)">
+    <span className="mt-px flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-(--color-accent) px-1 text-[11px] font-semibold text-(--color-text-on-accent)">
       {n}
     </span>
   )
@@ -56,7 +56,7 @@ export function DesignFeedbackStrip({ items, onRemove, below = false }: { items:
                   event.stopPropagation()
                   onRemove(index)
                 }}
-                className="absolute -top-2 -right-2 z-10 flex h-7 w-7 items-center justify-center rounded-sm border border-(--color-border) bg-(--bg-card) text-(--color-text-muted) opacity-100 shadow-sm transition-colors hover:border-(--color-border-strong) hover:text-(--color-text) md:-top-1.5 md:-right-1.5 md:h-4 md:w-4 md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100"
+                className="absolute -top-2 -right-2 z-10 flex h-7 w-7 items-center justify-center rounded-sm border border-(--color-border) bg-(--bg-card) text-(--color-text-muted) opacity-100 shadow-(--shadow-depth) transition-colors hover:border-(--color-border-strong) hover:text-(--color-text) md:-top-1.5 md:-right-1.5 md:h-4 md:w-4 md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100"
               >
                 <X size={12} className="md:h-2.5 md:w-2.5" aria-hidden="true" />
               </button>
@@ -100,7 +100,7 @@ export function DesignFeedbackCard({ feedback, onMentionFileOpen }: { feedback: 
                       type="button"
                       data-mention-kind="file"
                       onClick={() => onMentionFileOpen(fileRef)}
-                      className="rounded-sm text-(--accent-blue-text) underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-(--focus-ring) focus-visible:outline-none"
+                      className="rounded-sm text-(--accent-blue-text) underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 focus-visible:outline-none"
                     >
                       {item.source}
                     </button>

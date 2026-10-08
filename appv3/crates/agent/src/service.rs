@@ -410,6 +410,8 @@ pub struct Dispatch {
     pub service_tier: Option<String>,
     pub mentions: Option<Vec<String>>,
     pub origin: String,
+    /// Extra keys stored on the user message row.
+    pub extra: Option<serde_json::Map<String, Value>>,
 }
 
 /// `dispatch_user_message` → `(session_id, n_attachments, message_id)`.
@@ -432,6 +434,7 @@ pub async fn dispatch_user_message(session: &AgentSession, d: Dispatch) -> Resul
             service_tier: d.service_tier,
             mentions: d.mentions,
             origin: if d.origin.is_empty() { "user".into() } else { d.origin },
+            extra: d.extra,
         })
         .await?;
     tracing::info!("agent_service_dispatched session_id={} attachments={}", sid, n);

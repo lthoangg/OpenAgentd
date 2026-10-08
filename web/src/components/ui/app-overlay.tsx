@@ -14,11 +14,11 @@
  *
  * `"palette"` — compact top-aligned card (command palette, quick search)
  *   • Mobile  : edge-to-edge just below header
- *   • Desktop : 480px-wide centred card 1.5rem below header
+ *   • Desktop : 600px-wide centred card 1.5rem below header
  *
  * ## What it handles so callers don't have to
  *   - Framer-motion enter/exit (respects `prefers-reduced-motion`)
- *   - Backdrop with `bg-black/40`; click outside → `onClose`
+ *   - Backdrop with `bg-(--color-overlay)`; click outside → `onClose`
  *   - `Escape` key → `onClose` (via `useModalFocus`)
  *   - Focus trap + focus restore (via `useModalFocus`)
  *   - Safe-area insets on all platforms (via CSS class)
@@ -40,15 +40,105 @@
  * // Command palette:
  * <AppOverlay open={open} onClose={onClose} label="Command palette" variant="palette">
  * ```
+ *
+ * ## Header
+ *
+ * Modal panels open with an ``OverlayHeader``: a 44px ``bg-sidebar`` strip
+ * with the title, optional icon / subtitle / actions, and the close button.
+ * Settings and Telemetry (which use their own shell) share it too.
  */
 
 import { type ReactNode } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { X } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useModalFocus } from '@/hooks/useModalFocus'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { APP_SHORTCUTS, chordOf, type AppShortcutName } from '@/lib/app-shortcuts'
 import { useShortcut } from '@/lib/keyboard/hooks'
 import { DURATIONS_S, EASINGS } from '@/lib/motion'
+import { cn } from '@/lib/utils'
+
+// ─── Header ───────────────────────────────────────────────────────────────────
+
+interface OverlayHeaderProps {
+  title: ReactNode
+  /** 14px glyph shown before the title. */
+  icon?: ReactNode
+  /** One line under the title. */
+  subtitle?: ReactNode
+  /** Controls before the icon/title, e.g. a Back button. */
+  leading?: ReactNode
+  /** Controls before the close button. */
+  actions?: ReactNode
+  /** Renders the close button when set. */
+  onClose?: () => void
+  /** Accessible name of the close button. */
+  closeLabel?: string
+  /** Tooltip of the close button. */
+  closeTooltip?: ReactNode
+  className?: string
+}
+
+/** Icon button sizing shared by header controls: 44px on touch, 28px on desktop. */
+const OVERLAY_HEADER_BUTTON_CLASS = 'md:size-7'
+
+export function OverlayHeader({
+  title,
+  icon,
+  subtitle,
+  leading,
+  actions,
+  onClose,
+  closeLabel = 'Close',
+  closeTooltip = 'Close (Esc)',
+  className,
+}: OverlayHeaderProps) {
+  return (
+    <header
+      data-slot="overlay-header"
+      className={cn(
+        'flex min-h-11 shrink-0 items-center justify-between gap-2 border-b border-(--color-border) bg-(--bg-sidebar) px-2 select-none sm:px-4',
+        subtitle != null && 'py-2',
+        className,
+      )}
+    >
+      <div className="flex min-w-0 flex-1 items-center gap-2">
+        {leading}
+        {icon && <span className="flex shrink-0 text-(--color-text-muted)" aria-hidden="true">{icon}</span>}
+        <div className="min-w-0">
+          <h2 className="truncate text-base font-semibold text-(--color-text)">{title}</h2>
+          {subtitle != null && <div className="mt-0.5 truncate text-xs text-(--color-text-muted)">{subtitle}</div>}
+        </div>
+      </div>
+      {(actions || onClose) && (
+        <div className="flex shrink-0 items-center gap-1">
+          {actions}
+          {onClose && (
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    className={OVERLAY_HEADER_BUTTON_CLASS}
+                    onClick={onClose}
+                    aria-label={closeLabel}
+                  >
+                    <X size={14} aria-hidden="true" />
+                  </Button>
+                }
+              />
+              <TooltipContent>{closeTooltip}</TooltipContent>
+            </Tooltip>
+          )}
+        </div>
+      )}
+    </header>
+  )
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -139,7 +229,7 @@ export function AppOverlay({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: DURATIONS_S.fast }}
-            className="fixed inset-0 z-40 bg-black/40"
+            className="fixed inset-0 z-40 bg-(--color-overlay)"
             onClick={onClose}
             aria-hidden="true"
           />
@@ -164,7 +254,7 @@ export function AppOverlay({
             className={[
               // ── Shared ──────────────────────────────────────────────────────
               'z-50 flex flex-col overflow-hidden',
-              'bg-(--bg-page) shadow-2xl',
+              'bg-(--bg-page) shadow-(--shadow-depth)',
               // ── Variant — no mobile-viewport; overlays track the visual
               //   viewport naturally as position:fixed ──────────────────────
               variant === 'modal'   ? 'app-overlay-modal'   : '',

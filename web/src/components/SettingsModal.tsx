@@ -10,10 +10,10 @@
  * section takes different props.
  */
 import { AnimatePresence, motion } from 'framer-motion'
-import { ArrowLeft, X, type LucideIcon } from 'lucide-react'
+import { ArrowLeft, type LucideIcon } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { OverlayHeader } from '@/components/ui/app-overlay'
 import { cn } from '@/lib/utils'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { useModalFocus } from '@/hooks/useModalFocus'
@@ -93,7 +93,7 @@ function SidebarRow({
       {count !== undefined && count !== null && (
         <span
           className={cn(
-            'shrink-0 font-mono text-xs md:text-[10px] tabular-nums px-1.5 py-0.5 rounded-xs border transition-colors',
+            'shrink-0 font-mono text-xs md:text-[11px] tabular-nums px-1.5 py-0.5 rounded-xs border transition-colors',
             active
               ? 'font-semibold text-(--color-text) bg-(--bg-page) border-(--color-border-strong)'
               : 'text-(--color-text-muted) bg-(--bg-key)/50 border-(--color-border)',
@@ -108,7 +108,7 @@ function SidebarRow({
 
 function GroupLabel({ children }: { children: string }) {
   return (
-    <p className="px-4 pt-3 pb-1 font-mono text-xs md:text-[10px] font-bold tracking-wider text-(--color-text-subtle)/85 uppercase select-none">
+    <p className="px-4 pt-3 pb-1 label-caps text-(--color-text-subtle)/85 select-none">
       {children}
     </p>
   )
@@ -310,7 +310,7 @@ export function SettingsModal() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: DURATIONS_S.fast }}
-            className="fixed inset-0 z-50 bg-black/40"
+            className="fixed inset-0 z-50 bg-(--color-overlay)"
             onClick={closeSettings}
             aria-hidden="true"
             // Full-screen on mobile — must not be readable by the outer
@@ -332,13 +332,16 @@ export function SettingsModal() {
             data-swipe-ignore
             className={cn(
               'settings-modal-shell z-50 flex flex-col overflow-hidden rounded-lg',
-              'border border-(--color-border) bg-(--bg-page) shadow-2xl',
+              'border border-(--color-border) bg-(--bg-page) shadow-(--shadow-depth)',
             )}
           >
             {/* Header / Title Bar */}
-            <div className="flex h-11 shrink-0 items-center justify-between border-b border-(--color-border) bg-(--bg-sidebar) px-2 select-none sm:px-4">
-              <div className="flex min-w-0 items-center gap-2 sm:gap-3">
-                {isDrillDown(section) && (
+            <OverlayHeader
+              title="Settings"
+              onClose={closeSettings}
+              closeLabel="Close settings"
+              leading={
+                isDrillDown(section) && (
                   <Button
                     type="button"
                     size="icon-sm"
@@ -349,30 +352,9 @@ export function SettingsModal() {
                   >
                     <ArrowLeft size={ICON_SIZE_INLINE} aria-hidden="true" />
                   </Button>
-                )}
-                <span className="text-base font-semibold text-(--color-text)">Settings</span>
-              </div>
-
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    // A Button (not a bare <button>) so touch gets the same
-                    // 44px target as Back; desktop keeps the dense 28px.
-                    <Button
-                      type="button"
-                      size="icon-sm"
-                      variant="ghost"
-                      onClick={closeSettings}
-                      className="md:size-7"
-                      aria-label="Close settings"
-                    >
-                      <X size={14} aria-hidden="true" />
-                    </Button>
-                  }
-                />
-                <TooltipContent>Close (Esc)</TooltipContent>
-              </Tooltip>
-            </div>
+                )
+              }
+            />
 
             {/* Body */}
             <div className="flex min-h-0 flex-1 overflow-hidden">

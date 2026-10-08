@@ -141,7 +141,7 @@ export function SkillEditorPage({ name, onBack }: SkillEditorPageProps) {
             <DialogTitle>Delete skill</DialogTitle>
             <DialogDescription>Delete `{name}` from the skills config directory. This cannot be undone.</DialogDescription>
           </DialogHeader>
-          <DialogFooter className="p-3">
+          <DialogFooter>
             <Button type="button" variant="default" onClick={() => setDeleteOpen(false)}>Cancel</Button>
             <Button type="button" variant="danger" onClick={handleDelete} disabled={deleteMut.isPending}>Delete</Button>
           </DialogFooter>

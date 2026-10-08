@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, memo } from 'react'
-import { Check, ChevronDown, ChevronUp, Copy, Pencil } from 'lucide-react'
+import { ArrowUpRight, Check, ChevronDown, ChevronUp, Copy, Pencil } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { MarkdownBlock } from '@/utils/markdown'
 
@@ -14,6 +14,7 @@ import { copyText, useChatMenu } from '../ChatContextMenu'
 import { formatTime, formatFullDateTime, shortModelName } from '@/utils/format'
 import type { MessageAttachment } from '@/api/types'
 import { cn } from '@/lib/utils'
+import { replyLabel, type ReplyFrom, type SentFrom } from '@/utils/workspace-messages'
 
 /** Matches http:// and https:// URLs (greedy, stops at whitespace or common trailing punctuation). */
 const URL_RE = /https?:\/\/[^\s<>"')\]]+/g
@@ -32,7 +33,7 @@ function renderUrlSegments(text: string, keyPrefix: string): React.ReactNode[] {
         key={`${keyPrefix}-${match.index}`}
         href={url}
         onClick={(e) => { e.preventDefault(); void openExternalUrl(url) }}
-        className="text-(--accent-blue-text) font-medium underline [text-decoration-color:var(--color-border-strong)] [text-decoration-thickness:1px] underline-offset-[3px] transition-colors duration-[120ms] hover:text-(--accent-blue) hover:[text-decoration-color:currentColor] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--focus-ring) rounded-sm break-all"
+        className="text-(--accent-blue-text) font-medium underline [text-decoration-color:var(--color-border-strong)] [text-decoration-thickness:1px] underline-offset-[3px] transition-colors duration-(--motion-instant) hover:text-(--accent-blue) hover:[text-decoration-color:currentColor] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--focus-ring) rounded-sm break-all"
         rel="noopener noreferrer"
       >
         {url}
@@ -46,6 +47,40 @@ function renderUrlSegments(text: string, keyPrefix: string): React.ReactNode[] {
 
 const USER_COLLAPSE_LINES = 10
 const USER_COLLAPSE_CHARS = 700
+
+/** Opens a session in any workspace (the sender or the replier of a workspace message). */
+export type OpenSessionHandler = (sessionId: string, workspace: string) => void
+
+const SOURCE_CHIP_CLASS =
+  'inline-flex min-h-6 max-w-full items-center gap-1 rounded-xs px-1.5 text-[11px] text-(--color-text-muted) pointer-coarse:min-h-9'
+
+/** "From <workspace> · <session>" above a prompt another workspace's agent sent. */
+function SentFromChip({ source, onOpenSession }: { source: SentFrom; onOpenSession?: OpenSessionHandler }) {
+  const label = (
+    <>
+      <span className="shrink-0">From</span>
+      <span className="shrink-0 font-mono font-semibold text-(--color-text)">{source.workspaceName}</span>
+      {source.sessionTitle && <span className="min-w-0 truncate">· {source.sessionTitle}</span>}
+    </>
+  )
+  const title = `Sent by the agent in ${source.workspace || source.workspaceName}${source.reply ? '; its final answer goes back there' : ''}`
+  if (!onOpenSession) {
+    return <span className={SOURCE_CHIP_CLASS} title={title} data-sent-from>{label}</span>
+  }
+  return (
+    <button
+      type="button"
+      onClick={() => onOpenSession(source.sessionId, source.workspace)}
+      className={cn(SOURCE_CHIP_CLASS, 'transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40')}
+      title={title}
+      aria-label={`Open the sending session in ${source.workspaceName}`}
+      data-sent-from
+    >
+      {label}
+      <ArrowUpRight size={11} aria-hidden="true" className="shrink-0" />
+    </button>
+  )
+}
 
 /**
  * Render user prose with ``@mention`` tokens syntax-highlighted.
@@ -77,7 +112,7 @@ function renderMentionSegments(content: string, onMentionFileOpen?: (path: strin
         type="button"
         data-mention-kind="file"
         onClick={() => onMentionFileOpen(path)}
-        className="inline rounded-sm text-(--accent-blue-text) underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-(--focus-ring) focus-visible:outline-none"
+        className="inline rounded-sm text-(--accent-blue-text) underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 focus-visible:outline-none"
       >
         {token}
       </button>
@@ -192,7 +227,7 @@ function AttachmentThumb({ item, onOpen }: { item: FileLightboxItem; onOpen: () 
   )
 }
 
-export const UserBubble = memo(function UserBubble({ content, timestamp, attachments, onEdit, modelId, thinkingLevel, onMentionFileOpen, mentions, fromAgent }: {
+export const UserBubble = memo(function UserBubble({ content, timestamp, attachments, onEdit, modelId, thinkingLevel, onMentionFileOpen, mentions, fromAgent, sentFrom, replyFrom, onOpenSession }: {
   content: string
   timestamp?: Date
   attachments?: MessageAttachment[]
@@ -204,6 +239,11 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
   onMentionFileOpen?: (path: string) => void
   mentions?: string[]
   fromAgent?: string | null
+  /** Another workspace's agent sent this prompt. */
+  sentFrom?: SentFrom | null
+  /** This report answers a message sent to another workspace. */
+  replyFrom?: ReplyFrom | null
+  onOpenSession?: OpenSessionHandler
 }) {
   const [showTime, setShowTime] = useState(false)
   const [copied, setCopied] = useState(false)
@@ -239,6 +279,23 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
   const visibleAttachments = attachments?.filter((att) => att.source !== 'mention') ?? []
 
   if (fromAgent) {
+    const reply = replyFrom ?? null
+    const sender = reply && onOpenSession ? (
+      <button
+        type="button"
+        onClick={() => onOpenSession(reply.sessionId, reply.workspace)}
+        className="inline-flex min-h-5 items-center gap-1 rounded-xs bg-(--bg-key)/70 px-1.5 py-0.5 font-mono text-[11px] font-semibold text-(--color-text) transition-colors hover:bg-(--bg-key) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 pointer-coarse:min-h-9"
+        title={reply.workspace}
+        aria-label={`Open the replying session in ${reply.workspaceName}`}
+      >
+        {fromAgent}
+        <ArrowUpRight size={11} aria-hidden="true" />
+      </button>
+    ) : (
+      <span className="rounded-xs bg-(--bg-key)/70 px-1.5 py-0.5 font-mono text-[11px] font-semibold text-(--color-text)">
+        {fromAgent}
+      </span>
+    )
     return (
       <div
         className="group mb-3 flex justify-start"
@@ -250,17 +307,15 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
         {chatMenu.menu}
         <div className="flex max-w-full flex-col items-start gap-1.5 md:max-w-[85%]">
           <div className="flex items-center gap-1.5 px-0.5 text-xs text-(--color-text-muted)">
-            <span className="rounded bg-(--bg-key)/70 px-1.5 py-0.5 font-mono text-[11px] font-semibold text-(--color-text)">
-              {fromAgent}
-            </span>
-            <span className="text-[11px] text-(--color-text-subtle)">Subagent report</span>
+            {sender}
+            <span className="text-[11px] text-(--color-text-subtle)">{reply ? replyLabel(reply) : 'Subagent report'}</span>
             {timestamp && (
               <span className="text-[11px] text-(--color-text-subtle)">· {formatTime(timestamp)}</span>
             )}
             <button
               type="button"
               onClick={handleCopy}
-              className="ml-0.5 flex h-4 w-4 items-center justify-center rounded text-(--color-text-muted) transition-colors hover:text-(--color-text) focus-visible:outline-none"
+              className="ml-0.5 flex h-4 w-4 items-center justify-center rounded-xs text-(--color-text-muted) transition-colors hover:text-(--color-text) focus-visible:outline-none"
               title="Copy report"
               aria-label="Copy report"
             >
@@ -313,6 +368,7 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
     >
       {chatMenu.menu}
       <div className="flex max-w-full flex-col items-end gap-1.5 md:max-w-[78%]">
+         {sentFrom && <SentFromChip source={sentFrom} onOpenSession={onOpenSession} />}
          {/* Attachments */}
          {visibleAttachments.length > 0 && (
            <AttachmentStrip attachments={visibleAttachments} />
@@ -331,7 +387,7 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
                      onClick={() => setExpanded((v) => !v)}
                      aria-expanded={expanded}
                      aria-label={expanded ? 'Collapse' : 'Expand'}
-                     className="flex h-5 w-5 shrink-0 items-center justify-center rounded-sm bg-(--bg-key) text-(--color-text-2) transition-all duration-150 hover:text-(--color-text) active:scale-90"
+                     className="flex h-5 w-5 shrink-0 items-center justify-center rounded-sm bg-(--bg-key) text-(--color-text-2) transition-all duration-(--motion-fast) hover:text-(--color-text) active:scale-90"
                    >
                      {expanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
                    </button>
@@ -360,7 +416,7 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
 
          {/* Actions + timestamp row. Always rendered: Copy and Edit do not
              depend on the metadata, and a pending prompt has neither yet. */}
-            <div className={`flex items-center gap-1.5 transition-opacity duration-150 focus-within:opacity-100 ${showTime ? 'opacity-100' : 'opacity-0'}`}>
+            <div className={`flex items-center gap-1.5 transition-opacity duration-(--motion-fast) focus-within:opacity-100 ${showTime ? 'opacity-100' : 'opacity-0'}`}>
               {modelName && (
                 <span
                   data-prompt-model

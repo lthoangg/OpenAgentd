@@ -205,7 +205,7 @@ const FileLine = memo(function FileLine({
                   event.stopPropagation()
                   comment.onAdd(comment.start, comment.end)
                 }}
-                className="flex h-4 w-4 items-center justify-center rounded-xs border border-(--color-border-strong) bg-(--bg-card) text-(--color-text-muted) shadow hover:bg-(--bg-key) hover:text-(--color-text)"
+                className="flex h-4 w-4 items-center justify-center rounded-xs border border-(--color-border-strong) bg-(--bg-card) text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text)"
                 aria-label={comment.start === comment.end ? `Add comment for line ${comment.start}` : `Add comment for lines ${comment.start}-${comment.end}`}
               >
                 <Plus size={13} aria-hidden="true" />

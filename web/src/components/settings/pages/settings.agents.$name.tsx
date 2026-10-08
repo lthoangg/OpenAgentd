@@ -153,7 +153,7 @@ export function AgentEditorPage({ name = 'code', onBack }: AgentEditorPageProps)
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="ghost" onClick={() => setDeleteOpen(false)}>
+            <Button onClick={() => setDeleteOpen(false)}>
               Cancel
             </Button>
             <Button

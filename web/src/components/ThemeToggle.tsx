@@ -9,6 +9,7 @@
 import { cn } from '@/lib/utils'
 import { Monitor, Moon, Sun } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { SegmentedControl } from '@/components/ui/segmented-control'
 import { useThemePreference } from '@/hooks/useThemePreference'
 import type { ThemePreference } from '@/lib/theme'
 
@@ -68,37 +69,17 @@ export function ThemeToggle({
   }
 
   return (
-    <div
-      role="radiogroup"
-      aria-label="Theme preference"
-      className="inline-flex items-center overflow-hidden rounded-md border border-(--color-border-subtle) p-0.5"
-    >
-      {THEME_OPTIONS.map(({ value, label, Icon }) => {
-        const active = preference === value
-        return (
-          <Tooltip key={value}>
-            <TooltipTrigger
-              render={
-                <button
-                  type="button"
-                  role="radio"
-                  aria-checked={active}
-                  aria-label={label}
-                  onClick={() => setPreference(value)}
-                  className={`interactive-weight inline-flex h-7 w-7 items-center justify-center rounded-md transition-colors ${
-                    active
-                      ? 'bg-(--color-surface-2) text-(--color-text)'
-                      : 'text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text-2)'
-                  }`}
-                >
-                  <Icon size={14} aria-hidden="true" />
-                </button>
-              }
-            />
-            <TooltipContent>{label}</TooltipContent>
-          </Tooltip>
-        )
-      })}
-    </div>
+    <SegmentedControl
+      label="Theme preference"
+      value={preference}
+      onChange={setPreference}
+      className={className}
+      options={THEME_OPTIONS.map(({ value, label, Icon }) => ({
+        value,
+        ariaLabel: label,
+        tooltip: label,
+        icon: <Icon size={14} aria-hidden="true" />,
+      }))}
+    />
   )
 }

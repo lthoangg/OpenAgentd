@@ -6,6 +6,7 @@
  * Schedule tab. Pane headers sit on the overlay's rail tone, but on the page
  * tone in the dock so the active editor tab opens onto its content.
  */
+import { Button } from '@/components/ui/button'
 import { createContext, useContext } from 'react'
 import { ArrowLeft } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
@@ -31,14 +32,9 @@ export function SchedulerBackButton({ onClick, label = 'Back to task list' }: { 
     <Tooltip>
       <TooltipTrigger
         render={
-          <button
-            type="button"
-            onClick={onClick}
-            className="-ml-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-sm text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-7 md:w-7"
-            aria-label={label}
-          >
+          <Button type="button" variant="ghost" size="icon-dense" className="-ml-1" onClick={onClick} aria-label={label}>
             <ArrowLeft size={14} aria-hidden="true" />
-          </button>
+          </Button>
         }
       />
       <TooltipContent>{label}</TooltipContent>

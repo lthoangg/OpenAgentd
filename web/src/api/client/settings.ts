@@ -101,6 +101,29 @@ export async function updateTitleGenerationSettings(
   return res.json()
 }
 
+export type WorkspaceMessagesSettings = {
+  /** Lead agents get the ``send_to_workspace`` tool. */
+  enabled: boolean
+}
+
+export async function getWorkspaceMessagesSettings(): Promise<WorkspaceMessagesSettings> {
+  const res = await fetch(`${apiBaseUrl()}/settings/workspace-messages`)
+  if (!res.ok) await parseDetailOrThrow(res, 'GET /settings/workspace-messages')
+  return res.json()
+}
+
+export async function updateWorkspaceMessagesSettings(
+  body: WorkspaceMessagesSettings,
+): Promise<WorkspaceMessagesSettings> {
+  const res = await fetch(`${apiBaseUrl()}/settings/workspace-messages`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) await parseDetailOrThrow(res, 'PUT /settings/workspace-messages')
+  return res.json()
+}
+
 export type MultimodalSectionSettings = {
   model: string
   [key: string]: string | number | boolean | null

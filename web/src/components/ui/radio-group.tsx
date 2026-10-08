@@ -63,7 +63,7 @@ function RadioGroupItem({ className, value, onChange, name, checked, ...props }:
         checked={isChecked}
         className={cn(
           'peer size-[18px] appearance-none rounded-full border border-(--color-border-strong) bg-(--bg-page) transition-colors outline-none',
-          'checked:border-(--accent-blue) focus-visible:ring-2 focus-visible:ring-(--focus-ring)/25',
+          'checked:border-(--accent-blue) focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40',
           'disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-(--color-error) aria-invalid:ring-2 aria-invalid:ring-(--color-error)/20',
           className,
         )}

@@ -36,9 +36,9 @@ function Switch({ checked = false, onCheckedChange, disabled, className, ...prop
         // Checked: accent-blue fill, border dissolves
         checked && 'border-(--accent-blue) bg-(--accent-blue)',
         // Transitions
-        'transition-colors duration-200',
+        'transition-colors duration-(--motion-base)',
         // Focus ring
-        'focus-visible:ring-2 focus-visible:ring-(--focus-ring)/30 focus-visible:ring-offset-1 outline-none',
+        'focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 focus-visible:ring-offset-1 outline-none',
         // Disabled
         disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer',
         className,
@@ -49,8 +49,8 @@ function Switch({ checked = false, onCheckedChange, disabled, className, ...prop
       <span
         aria-hidden="true"
         className={cn(
-          'block size-4 rounded-full bg-white shadow-sm',
-          'transition-transform duration-200',
+          'block size-4 rounded-full bg-(--color-surface) shadow-(--shadow-depth) dark:bg-(--color-text)',
+          'transition-transform duration-(--motion-base)',
           checked ? 'translate-x-[18px]' : 'translate-x-0',
         )}
       />

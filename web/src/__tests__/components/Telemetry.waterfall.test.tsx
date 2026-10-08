@@ -67,8 +67,7 @@ describe('Waterfall', () => {
 
     const spanHeader = screen.getByText('Span')
     const headerRow = spanHeader.parentElement
-    expect(headerRow?.className).toContain('uppercase')
-    expect(headerRow?.className).toContain('tracking-wider')
+    expect(headerRow?.className).toContain('label-caps')
     expect(screen.getByText('Timeline')).toBeTruthy()
     expect(screen.getByText('Duration')).toBeTruthy()
   })

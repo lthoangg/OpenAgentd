@@ -41,14 +41,15 @@ export function ProviderSetupNotice({
           Open Providers
         </Button>
         {dismissible && (
-          <button
+          <Button
             type="button"
-            className="flex h-9 w-9 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-8 md:w-8"
+            variant="ghost"
+            size="icon-sm"
             onClick={onDismiss}
             aria-label="Dismiss provider setup notice"
           >
             <X size={14} aria-hidden="true" />
-          </button>
+          </Button>
         )}
       </div>
     </div>

@@ -349,6 +349,12 @@ pub async fn send_subagent_message(lead: &str, member_id: &str, message: &str, p
 pub async fn deliver_message_to_lead(lead: &str, handle: &str, content: &str, pool: &DbPool) -> anyhow::Result<()> {
     let mut extra = serde_json::Map::new();
     extra.insert("from_agent".into(), json!(handle));
+    deliver_agent_message(lead, content, extra, pool).await
+}
+
+/// Queue an agent-authored user row (`extra` names the sender) on a lead
+/// session and start its turn when it is idle; a busy turn picks it up.
+pub async fn deliver_agent_message(lead: &str, content: &str, extra: serde_json::Map<String, Value>, pool: &DbPool) -> anyhow::Result<()> {
     db::save_queued_user_message(pool, lead, content, Some(extra)).await?;
     let mut lead_session = crate::manager::find_live_session_serving_session(lead);
     if lead_session.is_none() {

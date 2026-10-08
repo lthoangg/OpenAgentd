@@ -726,6 +726,30 @@ executes tools, manages its task list, and inspects workspace repositories.
   model fallback and interaction mode (including Plan mode read-only invariants `[v2.17.0]`). Clarifying
   questions via `ask_lead` preserve tool call IDs across turn suspensions, ensuring tool response
   messages persist reliably to the child session database upon lead reply `[v2.17.0]`. Deliverables rendered in the lead chat view are minimized by default with expandable preview toggles to keep transcripts compact. Stopping the lead cascades cancellation to all active child sessions.
+- **Cross-workspace messages** `[v3.9.0]` — the lead agent's `send_to_workspace`
+  tool sends a request to an agent session in another workspace you have opened
+  (another repository, a worktree, or Chat), for example from an app repository
+  to its infrastructure repository. The request starts a new session there, or
+  continues one of its top-level sessions (queued when that session is busy). It
+  arrives as an ordinary, editable prompt with a **From <workspace> · <session>**
+  chip that opens the sending session. `mode: "plan"` makes a new session plan
+  first and wait for your approval. The tool card in the sending session has an
+  **Open in <workspace>** button that switches to the session it reached. With
+  `reply: true`, the other session's final answer comes back as a **Workspace
+  reply** report that starts the sender's next turn and links to the replying
+  session:
+  - The answer waits until that session's subagents finish, and until any
+    question or plan review it raises is answered.
+  - A failed or stopped run sends one interim notice, and the answer still
+    follows if it is retried.
+  - You get one completion notification, from the sender, instead of one from
+    each side.
+
+  `action: "list"` shows the workspaces you can message, or one workspace's
+  recent sessions with their state. Limits: a request can pass through at most
+  three workspaces, a turn can make at most ten sends, and a reply is trimmed to
+  32,000 characters. **Settings → Automation → Workspace messages** turns the
+  tool off for every agent; replies already on their way still arrive.
 - **System prompt editor and profile-scoped tools** `[v2.17.0]` — Agent settings
   features a dedicated System prompt card with a monospace textarea bound to the
   Markdown prompt body across all agent profiles (both the lead coding agent and member subagents).
@@ -1358,6 +1382,7 @@ MCP.
 | Scheduling | `schedule_task` (reminders + self-scheduling agentic loops) `[v1.70.0]` |
 | Tasks | `todo_manage` |
 | Team orchestration | `delegate` (lead agent) `[v2.16.0]` |
+| Cross-workspace messages | `send_to_workspace` (lead agent; Settings → Automation can turn it off) `[v3.9.0]` |
 | Subagent communication | `ask_lead` (subagents) `[v2.16.0]` |
 | Ask the user | `ask_user` (coding agent) `[v1.131.0, v2.1.0]` |
 | Web preview | `preview` (coding agent with a workspace) `[v3.3.0]` |

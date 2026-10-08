@@ -18,13 +18,14 @@
 
 import { useEffect, useRef, useState, useMemo, useCallback, memo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { ChevronRight, Copy, Check, Globe } from 'lucide-react'
+import { ArrowUpRight, ChevronRight, Copy, Check, Globe } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { isLocalBackend } from '@/api/preview'
 import { ToolResult } from '../ToolResult'
 import { AskUser } from '../AskUser'
 import { PlanReviewCard } from '../PlanReview/PlanReviewCard'
 import { PREVIEW_TOOL, isPreviewOpenSuccess, previewTargetFromArgs, requestOpenPreview } from '../Preview/preview-events'
+import { parseSendResult, requestOpenSession } from '@/utils/workspace-messages'
 import { DURATIONS_S, EASINGS } from '@/lib/motion'
 import { tokenizeCode } from '@/utils/code-highlight'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
@@ -39,6 +40,7 @@ import type { ToolCallState } from './types'
 const ASK_USER = 'ask_user'
 /** Matches ``appv3_agent::agent::SUBMIT_PLAN``. */
 const SUBMIT_PLAN = 'submit_plan'
+const SEND_TO_WORKSPACE = 'send_to_workspace'
 
 interface ToolCallProps {
   name: string
@@ -251,6 +253,11 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
     () => (name === PREVIEW_TOOL && done && isPreviewOpenSuccess(result) && isLocalBackend() ? previewTargetFromArgs(args) : null),
     [name, done, result, args],
   )
+  // The session a workspace message reached, so the user can switch to it.
+  const sentSession = useMemo(
+    () => (name === SEND_TO_WORKSPACE && done ? parseSendResult(result) : null),
+    [name, done, result],
+  )
   // Pending-state header comes from getToolDisplay's no-args branch
   // (e.g. ``recall`` → "Checking memory…"). Tools without a custom pending header return
   // ``header: null`` from that branch and fall back to the raw tool name
@@ -426,6 +433,17 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
         >
           <Globe size={11} aria-hidden="true" />
           Open preview
+        </button>
+      )}
+      {sentSession && (
+        <button
+          type="button"
+          onClick={() => requestOpenSession({ sessionId: sentSession.sessionId, workspace: sentSession.workspace })}
+          title={`Switch to the session in ${sentSession.workspace}`}
+          className="ml-2 inline-flex max-w-[60%] items-center gap-1 rounded-xs border border-(--color-border) bg-(--bg-card) px-1.5 py-0.5 align-middle text-[11px] text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:outline-2 focus-visible:outline-(--focus-ring)/40 pointer-coarse:py-2"
+        >
+          <ArrowUpRight size={11} aria-hidden="true" className="shrink-0" />
+          <span className="truncate">Open in {sentSession.workspaceName}</span>
         </button>
       )}
 

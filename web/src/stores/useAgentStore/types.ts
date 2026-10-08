@@ -26,6 +26,8 @@ export interface PendingMessage {
   attachments?: MessageAttachment[]
   /** Original File objects, kept so cancelling restores them into the composer. */
   files?: File[]
+  /** Workspace whose agent sent it (``extra.sent_from``), when not the user. */
+  sentFromWorkspace?: string
 }
 
 export type CacheInvalidation =

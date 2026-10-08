@@ -3,6 +3,7 @@ import { agentStatus, sessionHistory, sessionHistorySince, updateSessionInteract
 import { applyOrphanToolResults, isPromptMessage, parseAgentBlocks, sumUsageFromMessages } from '@/utils/messages'
 import type { OrphanToolResult } from '@/utils/messages'
 import { readBlocks } from '@/utils/blocks'
+import { sentFrom } from '@/utils/workspace-messages'
 import { createDefaultAgentStream } from './defaults'
 import { applyRevertBoundary, revokeBlobUrlsFromBlocks } from './helpers'
 import { toPendingQuestion } from './sse-reducer'
@@ -78,6 +79,7 @@ function queuedMessagesFromHistory(sessionId: string, messages: MessageResponse[
       content: msg.content ?? '',
       submittedAt: msg.created_at ? new Date(msg.created_at).getTime() : undefined,
       attachments: msg.attachments ?? undefined,
+      sentFromWorkspace: sentFrom(msg.extra)?.workspaceName,
     }))
 }
 

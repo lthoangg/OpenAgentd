@@ -10,6 +10,9 @@
  * Each group keeps its own resource, query, and draft, so a validation error
  * in one does not block saving another. `combineDrafts` gives all three a
  * single save bar.
+ *
+ * Workspace messages is a switch rather than a model job: it decides whether
+ * lead agents can message sessions in other workspaces.
  */
 import { useMemo } from 'react'
 import { Sparkles } from 'lucide-react'
@@ -22,6 +25,8 @@ import {
   useUpdateMultimodalSettingsMutation,
   useUpdateSummarizationSettingsMutation,
   useUpdateTitleGenerationSettingsMutation,
+  useUpdateWorkspaceMessagesSettingsMutation,
+  useWorkspaceMessagesSettingsQuery,
 } from '@/queries'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
@@ -38,6 +43,7 @@ import type {
   MultimodalSettings,
   SummarizationSettings,
   TitleGenerationSettings,
+  WorkspaceMessagesSettings,
 } from '@/api/client'
 
 // ── Option lists ──────────────────────────────────────────────────────────
@@ -61,6 +67,8 @@ const TITLES_DEFAULT: TitleGenerationSettings = {
 const SUMMARIZATION_DEFAULT: SummarizationSettings = {
   prompt_token_threshold: null,
 }
+
+const WORKSPACE_MESSAGES_DEFAULT: WorkspaceMessagesSettings = { enabled: true }
 
 const MULTIMODAL_DEFAULT: MultimodalSettings = {
   image: {
@@ -143,11 +151,13 @@ export function AutomationSettingsPage() {
   const titlesQ = useTitleGenerationSettingsQuery()
   const summarizationQ = useSummarizationSettingsQuery()
   const multimodalQ = useMultimodalSettingsQuery()
+  const workspaceMessagesQ = useWorkspaceMessagesSettingsQuery()
   const registry = useRegistryQuery()
 
   const updateTitles = useUpdateTitleGenerationSettingsMutation()
   const updateSummarization = useUpdateSummarizationSettingsMutation()
   const updateMultimodal = useUpdateMultimodalSettingsMutation()
+  const updateWorkspaceMessages = useUpdateWorkspaceMessagesSettingsMutation()
 
   // ── Model option lists, split by output modality ──
   const allModels = useMemo(() => registry.data?.models ?? [], [registry.data?.models])
@@ -206,6 +216,14 @@ export function AutomationSettingsPage() {
     validValues: videoModels.map((m) => m.id),
   })
 
+  // ── Workspace messages ──
+  const workspaceMessagesDraft = useSettingsDraft({
+    data: workspaceMessagesQ.data,
+    initial: WORKSPACE_MESSAGES_DEFAULT,
+    onSave: (value) => updateWorkspaceMessages.mutateAsync(value),
+    successTitle: 'Workspace message settings saved',
+  })
+
   // ── Aggregate ──
   // Validation is applied here rather than via the hook's `invalid` option
   // because the errors derive from the draft values computed just above.
@@ -216,6 +234,7 @@ export function AutomationSettingsPage() {
       ...multimodalDraft,
       canSave: multimodalDraft.canSave && !imageModelError && !videoModelError,
     },
+    workspaceMessagesDraft,
   ])
 
   const loading = titlesQ.isLoading || summarizationQ.isLoading || multimodalQ.isLoading
@@ -230,6 +249,28 @@ export function AutomationSettingsPage() {
       error={error}
       intro="Background jobs that run alongside your conversations. Each uses its own model so you can keep the cheap work cheap."
     >
+      <SettingsDisclosure
+        title="Workspace messages"
+        dirty={workspaceMessagesDraft.dirty}
+        summary={workspaceMessagesDraft.value.enabled ? 'On' : 'Off'}
+      >
+        <div className="space-y-3">
+          <label className="flex min-h-9 cursor-pointer items-center gap-3 text-xs select-none md:min-h-0">
+            <Switch
+              checked={workspaceMessagesDraft.value.enabled}
+              onCheckedChange={(checked) => workspaceMessagesDraft.patch({ enabled: checked })}
+            />
+            <span className={TEXT.label}>Let agents message other workspaces</span>
+          </label>
+          <p className={TEXT.hint}>
+            The agent can send a request to a session in another workspace you have
+            opened, such as an infrastructure repo, and get its answer back. Turning
+            this off removes the tool from new turns; replies already on their way
+            still arrive.
+          </p>
+        </div>
+      </SettingsDisclosure>
+
       <SettingsDisclosure
         title="Chat titles"
         dirty={titlesDraft.dirty}

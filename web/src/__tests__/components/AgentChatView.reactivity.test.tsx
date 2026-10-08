@@ -144,7 +144,7 @@ mock.module('@/components/AgentChatView/useDragDrop', () => ({
     handleDrop: () => {},
   }),
 }))
-mock.module('@/utils/workspace', () => ({ workspaceLabel: (workspace: string) => workspace, sameWorkspacePath: (a: string, b: string) => a === b, getChatWorkspaceEntry: () => null, setChatWorkspaceEntry: () => {} }))
+mock.module('@/utils/workspace', () => ({ saveLastWorkspace: () => {}, workspaceLabel: (workspace: string) => workspace, sameWorkspacePath: (a: string, b: string) => a === b, getChatWorkspaceEntry: () => null, setChatWorkspaceEntry: () => {} }))
 
 const initialState = typeof useAgentStore.getInitialState === 'function'
   ? useAgentStore.getInitialState()

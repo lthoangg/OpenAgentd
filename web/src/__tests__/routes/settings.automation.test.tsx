@@ -68,6 +68,7 @@ function baseHandlers(threshold: number | null = null) {
       HttpResponse.json({ prompt_token_threshold: threshold }),
     ),
     http.get('http://localhost/api/settings/multimodal', () => HttpResponse.json(MULTIMODAL)),
+    http.get('http://localhost/api/settings/workspace-messages', () => HttpResponse.json({ enabled: true })),
     http.get('http://localhost/api/agents/registry', () => HttpResponse.json(REGISTRY)),
   ]
 }
@@ -292,5 +293,31 @@ describe('AutomationSettingsPage', () => {
     for (const input of inputs) {
       expect(input.className).toContain('min-h-9')
     }
+  })
+
+  it('turns workspace messages off without touching the other groups', async () => {
+    const bodies: unknown[] = []
+    let titlesPuts = 0
+    server.use(
+      ...baseHandlers(null),
+      http.put('http://localhost/api/settings/workspace-messages', async ({ request }) => {
+        bodies.push(await request.json())
+        return HttpResponse.json({ enabled: false })
+      }),
+      http.put('http://localhost/api/settings/title-generation', () => {
+        titlesPuts += 1
+        return HttpResponse.json(TITLES)
+      }),
+    )
+    renderPage()
+
+    const toggle = await screen.findByRole('switch', { name: /let agents message other workspaces/i })
+    await waitFor(() => expect(toggle.getAttribute('aria-checked')).toBe('true'))
+    expect(toggle.parentElement?.className).toContain('min-h-9')
+    fireEvent.click(toggle)
+    fireEvent.click(await screen.findByRole('button', { name: /^save$/i }))
+
+    await waitFor(() => expect(bodies).toEqual([{ enabled: false }]))
+    expect(titlesPuts).toBe(0)
   })
 })

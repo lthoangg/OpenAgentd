@@ -180,7 +180,7 @@ export const PendingMessageQueue = memo(function PendingMessageQueue() {
           attachments={msg.attachments}
           // The backend hands it to the agent before its next model call, or
           // ahead of the next message once the turn has failed.
-          label={turnFailed ? 'Sends with your next message' : 'Read before the next step'}
+          label={`${msg.sentFromWorkspace ? `From ${msg.sentFromWorkspace} · ` : ''}${turnFailed ? 'Sends with your next message' : 'Read before the next step'}`}
           onEdit={async () => {
             const outcome = await removePendingMessage(msg.id)
             if (outcome === 'cancelled') restoreDraft(msg.content, msg.files)

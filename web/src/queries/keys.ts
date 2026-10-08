@@ -99,6 +99,7 @@ export const queryKeys = {
     sandbox: () => ['settings', 'denied-paths'] as const,
     summarization: () => ['settings', 'summarization'] as const,
     titleGeneration: () => ['settings', 'titleGeneration'] as const,
+    workspaceMessages: () => ['settings', 'workspaceMessages'] as const,
     multimodal: () => ['settings', 'multimodal'] as const,
     providers: () => ['settings', 'providers'] as const,
     providerModels: (providerId: string) => ['settings', 'providers', providerId, 'models'] as const,

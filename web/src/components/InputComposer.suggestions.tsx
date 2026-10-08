@@ -3,6 +3,7 @@ import { File, Folder } from 'lucide-react'
 import type { SlashCommand } from './InputComposer'
 import type { SuggestionMenu, SuggestionRow } from './InputComposer.suggestionEngine'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { MENU_PANEL_CLASS } from '@/components/ui/menu-styles'
 
 /**
  * Render half of the InputComposer suggestion system. The engine
@@ -235,7 +236,7 @@ export function InputComposerSuggestions({
 
   const categoryBadge = (category?: string) =>
     category ? (
-      <span className="shrink-0 rounded-xs border border-(--color-border) bg-(--bg-key) px-1.5 py-0.5 font-mono text-xs md:text-[10px] text-(--color-text-muted)">
+      <span className="shrink-0 rounded-xs border border-(--color-border) bg-(--bg-key) px-1.5 py-0.5 font-mono text-xs md:text-[11px] text-(--color-text-muted)">
         {category}
       </span>
     ) : null
@@ -247,13 +248,13 @@ export function InputComposerSuggestions({
         id={menu.id}
         role="listbox"
         aria-label={menuAriaLabel}
-        className="overflow-y-auto overscroll-contain rounded-sm border border-(--color-border) bg-(--bg-card) p-1 shadow-md"
+        className={`overflow-y-auto overscroll-contain ${MENU_PANEL_CLASS}`}
         style={menuStyle}
       >
         {menu.kind === 'slash' && menu.rows.map((cmd) => {
           if (cmd.isSeparator) {
             return (
-              <div key={cmd.id} className="px-2 pt-2.5 pb-1 text-xs md:text-[10px] font-semibold uppercase tracking-wide text-(--color-text-muted)">{cmd.label}</div>
+              <div key={cmd.id} className="px-2 pt-2.5 pb-1 label-caps text-(--color-text-muted)">{cmd.label}</div>
             )
           }
           const idx = menu.selectable.findIndex((item) => item.id === cmd.id)

@@ -33,7 +33,7 @@ function renderUrlSegments(text: string, keyPrefix: string): React.ReactNode[] {
         key={`${keyPrefix}-${match.index}`}
         href={url}
         onClick={(e) => { e.preventDefault(); void openExternalUrl(url) }}
-        className="text-(--accent-blue-text) font-medium underline [text-decoration-color:var(--color-border-strong)] [text-decoration-thickness:1px] underline-offset-[3px] transition-colors duration-[120ms] hover:text-(--accent-blue) hover:[text-decoration-color:currentColor] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--focus-ring) rounded-sm break-all"
+        className="text-(--accent-blue-text) font-medium underline [text-decoration-color:var(--color-border-strong)] [text-decoration-thickness:1px] underline-offset-[3px] transition-colors duration-(--motion-instant) hover:text-(--accent-blue) hover:[text-decoration-color:currentColor] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--focus-ring) rounded-sm break-all"
         rel="noopener noreferrer"
       >
         {url}
@@ -112,7 +112,7 @@ function renderMentionSegments(content: string, onMentionFileOpen?: (path: strin
         type="button"
         data-mention-kind="file"
         onClick={() => onMentionFileOpen(path)}
-        className="inline rounded-sm text-(--accent-blue-text) underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-(--focus-ring) focus-visible:outline-none"
+        className="inline rounded-sm text-(--accent-blue-text) underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 focus-visible:outline-none"
       >
         {token}
       </button>
@@ -284,7 +284,7 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
       <button
         type="button"
         onClick={() => onOpenSession(reply.sessionId, reply.workspace)}
-        className="inline-flex min-h-5 items-center gap-1 rounded bg-(--bg-key)/70 px-1.5 py-0.5 font-mono text-[11px] font-semibold text-(--color-text) transition-colors hover:bg-(--bg-key) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 pointer-coarse:min-h-9"
+        className="inline-flex min-h-5 items-center gap-1 rounded-xs bg-(--bg-key)/70 px-1.5 py-0.5 font-mono text-[11px] font-semibold text-(--color-text) transition-colors hover:bg-(--bg-key) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 pointer-coarse:min-h-9"
         title={reply.workspace}
         aria-label={`Open the replying session in ${reply.workspaceName}`}
       >
@@ -292,7 +292,7 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
         <ArrowUpRight size={11} aria-hidden="true" />
       </button>
     ) : (
-      <span className="rounded bg-(--bg-key)/70 px-1.5 py-0.5 font-mono text-[11px] font-semibold text-(--color-text)">
+      <span className="rounded-xs bg-(--bg-key)/70 px-1.5 py-0.5 font-mono text-[11px] font-semibold text-(--color-text)">
         {fromAgent}
       </span>
     )
@@ -315,7 +315,7 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
             <button
               type="button"
               onClick={handleCopy}
-              className="ml-0.5 flex h-4 w-4 items-center justify-center rounded text-(--color-text-muted) transition-colors hover:text-(--color-text) focus-visible:outline-none"
+              className="ml-0.5 flex h-4 w-4 items-center justify-center rounded-xs text-(--color-text-muted) transition-colors hover:text-(--color-text) focus-visible:outline-none"
               title="Copy report"
               aria-label="Copy report"
             >
@@ -387,7 +387,7 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
                      onClick={() => setExpanded((v) => !v)}
                      aria-expanded={expanded}
                      aria-label={expanded ? 'Collapse' : 'Expand'}
-                     className="flex h-5 w-5 shrink-0 items-center justify-center rounded-sm bg-(--bg-key) text-(--color-text-2) transition-all duration-150 hover:text-(--color-text) active:scale-90"
+                     className="flex h-5 w-5 shrink-0 items-center justify-center rounded-sm bg-(--bg-key) text-(--color-text-2) transition-all duration-(--motion-fast) hover:text-(--color-text) active:scale-90"
                    >
                      {expanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
                    </button>
@@ -416,7 +416,7 @@ export const UserBubble = memo(function UserBubble({ content, timestamp, attachm
 
          {/* Actions + timestamp row. Always rendered: Copy and Edit do not
              depend on the metadata, and a pending prompt has neither yet. */}
-            <div className={`flex items-center gap-1.5 transition-opacity duration-150 focus-within:opacity-100 ${showTime ? 'opacity-100' : 'opacity-0'}`}>
+            <div className={`flex items-center gap-1.5 transition-opacity duration-(--motion-fast) focus-within:opacity-100 ${showTime ? 'opacity-100' : 'opacity-0'}`}>
               {modelName && (
                 <span
                   data-prompt-model

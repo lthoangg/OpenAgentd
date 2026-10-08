@@ -75,14 +75,14 @@ export function TaskListPane({
         ) : isError ? (
           <div className="flex flex-col items-center justify-center gap-2.5 p-8 text-center">
             <div className="flex h-9 w-9 items-center justify-center rounded-full bg-(--color-error-subtle) text-(--color-error)">
-              <AlertCircle size={18} />
+              <AlertCircle size={16} />
             </div>
             <p className="text-sm font-medium text-(--color-error)">Failed to load tasks</p>
           </div>
         ) : filteredTasks.length === 0 ? (
           <div className="flex flex-col items-center justify-center gap-3 p-8 text-center">
             <div className="flex h-10 w-10 items-center justify-center rounded-full border border-(--color-border) bg-(--bg-card) text-(--color-text-muted)">
-              <Clock size={18} />
+              <Clock size={16} />
             </div>
             <div>
               <p className="text-sm font-medium text-(--color-text)">

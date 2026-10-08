@@ -36,7 +36,7 @@ export function CommentButton({ selection, onComment }: { selection: PlanSelecti
       // Keep the selection: a mousedown on the button would collapse it.
       onMouseDown={(event) => event.preventDefault()}
       onClick={onComment}
-      className="surface-raised absolute z-10 gap-1"
+      className="shadow-(--shadow-depth) absolute z-10 gap-1"
       style={{ top: selection.top + 6, left: overlayLeft(selection, COMMENT_BUTTON_WIDTH) }}
       aria-label="Comment on selection"
     >
@@ -94,7 +94,7 @@ export function CommentComposer({
       ref={ref}
       role="group"
       aria-label="New comment"
-      className="surface-raised absolute z-20 rounded-sm border border-(--color-border) bg-(--bg-card) p-2"
+      className="shadow-(--shadow-depth) absolute z-20 rounded-sm border border-(--color-border) bg-(--bg-card) p-2"
       style={{ top: anchor.top + 6, left: overlayLeft(anchor, width), width }}
     >
       <p className="mb-1.5 line-clamp-2 border-l-2 border-(--color-border-strong) pl-2 text-[11px] leading-relaxed text-(--color-text-subtle)">

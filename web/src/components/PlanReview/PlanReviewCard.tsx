@@ -210,7 +210,7 @@ export function PlanReviewCard({
       data-question-waiting={open ? '' : undefined}
       className="tool-row-enter my-2 overflow-hidden rounded-md border border-(--color-border) bg-(--bg-card)"
     >
-      <div className="flex items-center gap-1.5 border-b border-(--color-border) px-3 py-1.5 text-[11px] font-medium tracking-wide text-(--color-text-muted) uppercase">
+      <div className="flex items-center gap-1.5 border-b border-(--color-border) px-3 py-1.5 label-caps text-(--color-text-muted)">
         <FileText size={12} aria-hidden />
         Plan review
         {revision !== null && <span className="font-mono tracking-normal normal-case tabular-nums">rev {revision}</span>}

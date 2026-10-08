@@ -19,7 +19,7 @@ export function JumpToLatestChip({ below = false }: { below?: boolean }) {
       // Centred by margin against ``inset-x-0`` (DESIGN.md: no transform
       // layout). The gap clears the composer's drag grip.
       className={cn(
-        'pointer-events-auto absolute inset-x-0 z-10 mx-auto flex h-7 w-fit items-center gap-1 rounded-full border border-(--color-border) bg-(--bg-card) px-2 text-xs text-(--color-text-2) shadow-sm transition-colors duration-(--motion-instant) hover:bg-(--bg-key) hover:text-(--color-text) active:scale-95 motion-reduce:active:scale-100',
+        'pointer-events-auto absolute inset-x-0 z-10 mx-auto flex h-7 w-fit items-center gap-1 rounded-full border border-(--color-border) bg-(--bg-card) px-2 text-xs text-(--color-text-2) shadow-(--shadow-depth) transition-colors duration-(--motion-instant) hover:bg-(--bg-key) hover:text-(--color-text) active:scale-95 motion-reduce:active:scale-100',
         below ? 'top-full mt-3' : 'bottom-full mb-3',
       )}
     >

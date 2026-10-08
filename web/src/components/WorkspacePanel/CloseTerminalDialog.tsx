@@ -25,11 +25,11 @@ export function CloseTerminalDialog({ open, title, count = 1, onConfirm, onCance
               : `${title} is still running. Closing it stops the shell and anything running in it.`}
           </DialogDescription>
         </DialogHeader>
-        <DialogFooter className="p-3">
+        <DialogFooter>
           <Button type="button" variant="default" onClick={onCancel}>
             Cancel
           </Button>
-          <Button type="button" variant="danger-subtle" onClick={onConfirm} autoFocus>
+          <Button type="button" variant="danger" onClick={onConfirm} autoFocus>
             {many ? 'Close terminals' : 'Close terminal'}
           </Button>
         </DialogFooter>

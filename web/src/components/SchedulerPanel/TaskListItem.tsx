@@ -247,7 +247,7 @@ export function TaskListItem({
         label={`Actions for ${task.name}`}
         onDismiss={() => setActionsPoint(null)}
         className="min-w-44"
-        layerClassName="z-[70]"
+        layerClassName="z-70"
       >
           <button
             type="button"
@@ -295,7 +295,7 @@ export function TaskListItem({
             &ldquo;{task.name}&rdquo; will be permanently deleted. This cannot be undone.
           </DialogDescription>
         </DialogHeader>
-        <DialogFooter className="p-3">
+        <DialogFooter>
           <Button type="button" variant="default" onClick={() => setDeleteConfirmationOpen(false)}>
             Cancel
           </Button>

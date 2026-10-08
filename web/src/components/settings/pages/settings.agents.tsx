@@ -140,10 +140,11 @@ You are **${cleanName}**, a specialized member agent.
           </div>
         </div>
         <DialogFooter>
-          <Button variant="ghost" onClick={() => setCreateOpen(false)}>
+          <Button onClick={() => setCreateOpen(false)}>
             Cancel
           </Button>
           <Button
+            variant="primary"
             onClick={submitCreate}
             disabled={createMut.isPending || !newProfileName.trim()}
           >

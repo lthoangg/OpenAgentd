@@ -6,7 +6,7 @@
  */
 import { Keyboard } from 'lucide-react'
 
-import { AppOverlay } from '@/components/ui/app-overlay'
+import { AppOverlay, OverlayHeader } from '@/components/ui/app-overlay'
 import { SectionCard, SectionCardHeader, SectionCardRow, SectionCardRows } from '@/components/ui/section-card'
 import { usePlatform } from '@/hooks/use-platform'
 import { shortcutHelp } from '@/lib/keyboard/help'
@@ -19,10 +19,12 @@ export function KeyboardShortcutsSheet() {
 
   return (
     <AppOverlay open={open} onClose={close} label="Keyboard shortcuts" maxWidth="640px">
-      <div className="flex h-11 shrink-0 items-center gap-2 border-b border-(--color-border) bg-(--bg-sidebar) px-4 select-none">
-        <Keyboard size={14} className="shrink-0 text-(--color-text-muted)" aria-hidden="true" />
-        <h2 className="text-base font-semibold text-(--color-text)">Keyboard shortcuts</h2>
-      </div>
+      <OverlayHeader
+        title="Keyboard shortcuts"
+        icon={<Keyboard size={14} />}
+        onClose={close}
+        closeLabel="Close keyboard shortcuts"
+      />
       <div className="relative min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain touch-pan-y px-5 py-4">
         <p className="text-sm text-(--color-text-muted)">
           Escape closes whatever is on top. While a dialog is open, app shortcuts wait; ⌘K, ⌘P and ⌘, can still switch to another overlay.

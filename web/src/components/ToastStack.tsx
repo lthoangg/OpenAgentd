@@ -99,7 +99,7 @@ function ToastItem({ t, dismiss }: ToastItemProps) {
       onFocusCapture={() => setPaused(true)}
       onBlurCapture={() => setPaused(false)}
       data-swipe-ignore
-      className="pointer-events-auto flex cursor-grab items-start gap-3 rounded-sm border border-(--color-border) bg-(--bg-card) p-3 shadow-md select-none"
+      className="pointer-events-auto flex cursor-grab items-start gap-3 rounded-sm border border-(--color-border) bg-(--bg-card) p-3 shadow-(--shadow-depth) select-none"
       // Errors must interrupt assistive tech (WCAG 4.1.3 Status Messages);
       // success/info stay polite so they don't preempt the user.
       role={t.tone === 'error' ? 'alert' : 'status'}
@@ -132,7 +132,7 @@ export function ToastStack() {
   const dismiss = useToastStore(dismissSelector)
 
   return (
-    <div className="mobile-safe-toast pointer-events-none fixed z-[60] flex w-auto flex-col gap-2 sm:left-auto sm:w-full sm:max-w-sm md:static">
+    <div className="mobile-safe-toast pointer-events-none fixed z-60 flex w-auto flex-col gap-2 sm:left-auto sm:w-full sm:max-w-sm md:static">
       <AnimatePresence initial={false}>
         {toasts.map((t) => (
           <ToastItem key={t.id} t={t} dismiss={dismiss} />

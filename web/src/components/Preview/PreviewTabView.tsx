@@ -536,7 +536,7 @@ export function PreviewTabView({ workspace, tabId, target, navKey, onPreviewId, 
           <span className="relative">
             <SquareTerminal size={13} aria-hidden="true" />
             {errorCount > 0 && (
-              <span className="absolute -top-1.5 -right-2 min-w-3.5 rounded-full bg-(--color-error) px-0.5 text-center text-[9px] leading-3.5 font-semibold text-white">
+              <span className="absolute -top-1.5 -right-2 min-w-3.5 rounded-full bg-(--color-error) px-0.5 text-center text-[11px] leading-3.5 font-semibold text-(--color-text-on-accent)">
                 {errorCount > 99 ? '99+' : errorCount}
               </span>
             )}

@@ -47,7 +47,8 @@ export function SettingsDisclosure({
         card. Without this they read as a different component family.
       */}
       <SectionCardHeader
-        className={cn('p-0', !open && 'border-b-0')}
+        flush
+        className={cn(!open && 'border-b-0')}
       >
         <button
           type="button"
@@ -55,7 +56,9 @@ export function SettingsDisclosure({
           aria-expanded={open}
           aria-controls={panelId}
           className={cn(
-            'flex w-full min-h-9 items-center gap-2 px-3 py-2 text-left md:min-h-8',
+            // `uppercase` again: preflight resets text-transform on buttons,
+            // so the header's label-caps would not reach the title.
+            'flex w-full min-h-9 items-center gap-2 px-3 py-2 text-left uppercase md:min-h-8',
             'transition-colors hover:bg-(--bg-key)/40 hover:text-(--color-text)',
             'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-(--focus-ring)/40',
           )}
@@ -64,7 +67,7 @@ export function SettingsDisclosure({
             size={ICON_SIZE_INLINE}
             aria-hidden="true"
             className={cn(
-              'shrink-0 transition-transform duration-150',
+              'shrink-0 transition-transform duration-(--motion-fast)',
               open && 'rotate-90',
             )}
           />
@@ -76,7 +79,7 @@ export function SettingsDisclosure({
           )}
           {dirty && (
             <span
-              className="ml-auto shrink-0 rounded-xs border border-(--color-border) bg-(--bg-page) px-1.5 py-0.5 text-xs md:text-[10px] font-semibold text-(--color-text)"
+              className="ml-auto shrink-0 rounded-xs border border-(--color-border) bg-(--bg-page) px-1.5 py-0.5 text-xs md:text-[11px] font-semibold text-(--color-text)"
               aria-label="This group has unsaved changes"
             >
               edited

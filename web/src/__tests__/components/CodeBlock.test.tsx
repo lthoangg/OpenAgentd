@@ -16,7 +16,7 @@ describe("CodeBlock", () => {
     expect(pre?.querySelector("code")).toBeTruthy()
   })
 
-  it("renders with borders but no roundness on container", () => {
+  it("renders a bordered rounded-sm card (DESIGN code-block)", () => {
     const { container } = render(
       <CodeBlock language="typescript" rawText="const x = 1">
         const x = 1
@@ -25,7 +25,7 @@ describe("CodeBlock", () => {
     const outerDiv = container.firstElementChild as HTMLElement
     expect(outerDiv.className).toContain("border")
     expect(outerDiv.className).toContain("border-(--color-border)")
-    expect(outerDiv.className).not.toContain("rounded")
+    expect(outerDiv.className).toContain("rounded-sm")
 
     const headerDiv = screen.getByText("typescript").closest("div") as HTMLElement
     expect(headerDiv.className).toContain("border-b")

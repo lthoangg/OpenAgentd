@@ -5,12 +5,17 @@
  */
 import { useRef, useState, type KeyboardEvent } from 'react'
 import { SectionCard, SectionCardHeader } from '@/components/ui/section-card'
+import { SegmentedControl, type SegmentedOption } from '@/components/ui/segmented-control'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { cn } from '@/lib/utils'
 import { formatCompact, formatSpend } from '@/utils/telemetryFormat'
 import type { DayPoint } from './model'
 
 type Metric = 'spend' | 'turns'
+
+const METRIC_OPTIONS: readonly SegmentedOption<Metric>[] = [
+  { value: 'spend', label: 'Spend' },
+  { value: 'turns', label: 'Turns' },
+]
 
 const dayFmt = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })
 
@@ -55,25 +60,14 @@ export function ActivityChart({ points, hasCost }: { points: DayPoint[]; hasCost
       <SectionCardHeader className="flex items-center justify-between gap-2 py-1">
         <span>Activity</span>
         {hasCost && (
-          <div role="radiogroup" aria-label="Chart metric" className="flex items-center gap-0.5 normal-case tracking-normal">
-            {(['spend', 'turns'] as const).map((m) => (
-              <button
-                key={m}
-                type="button"
-                role="radio"
-                aria-checked={metric === m}
-                onClick={() => setChosen(m)}
-                className={cn(
-                  'h-6 rounded-xs border px-2 text-[11px] font-medium transition-colors duration-(--motion-instant)',
-                  metric === m
-                    ? 'border-(--color-border-strong) bg-(--bg-card) text-(--color-text)'
-                    : 'border-transparent text-(--color-text-muted) hover:text-(--color-text-2)',
-                )}
-              >
-                {m === 'spend' ? 'Spend' : 'Turns'}
-              </button>
-            ))}
-          </div>
+          <SegmentedControl
+            label="Chart metric"
+            size="sm"
+            value={metric}
+            onChange={setChosen}
+            className="normal-case tracking-normal"
+            options={METRIC_OPTIONS}
+          />
         )}
       </SectionCardHeader>
       <div className="px-3 pt-2 pb-2.5">
@@ -109,7 +103,7 @@ export function ActivityChart({ points, hasCost }: { points: DayPoint[]; hasCost
                       aria-label={barLabel(point)}
                       tabIndex={index === focusIndex ? 0 : -1}
                       onFocus={() => setFocusDay(point.day)}
-                      className="group flex h-full min-w-0 flex-1 items-end rounded-t-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)"
+                      className="group flex h-full min-w-0 flex-1 items-end rounded-t-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40"
                     >
                       <div
                         className="flex w-full flex-col-reverse overflow-hidden rounded-t-xs bg-(--color-text-subtle)/45 transition-colors duration-(--motion-instant) group-hover:bg-(--color-accent)/70 group-focus-visible:bg-(--color-accent)/70"

@@ -15,7 +15,7 @@
  * lead agents can message sessions in other workspaces.
  */
 import { useMemo } from 'react'
-import { Sparkles } from 'lucide-react'
+import { Workflow } from 'lucide-react'
 
 import {
   useMultimodalSettingsQuery,
@@ -243,7 +243,7 @@ export function AutomationSettingsPage() {
   return (
     <SettingsPage
       title="Automation"
-      icon={Sparkles}
+      icon={Workflow}
       draft={draft}
       loading={loading}
       error={error}

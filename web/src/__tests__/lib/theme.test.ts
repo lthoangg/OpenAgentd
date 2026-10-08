@@ -49,13 +49,13 @@ describe('theme', () => {
     applyTheme('dark')
 
     let meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"][data-openagentd-theme]')
-    expect(meta?.content).toBe('#0A0A0B')
+    expect(meta?.content).toBe('#15110D')
     expect(document.documentElement.classList.contains('dark')).toBe(true)
 
     applyTheme('light')
 
     meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"][data-openagentd-theme]')
-    expect(meta?.content).toBe('#FAFAFA')
+    expect(meta?.content).toBe('#FAF6EC')
     expect(document.documentElement.classList.contains('light')).toBe(true)
   })
 

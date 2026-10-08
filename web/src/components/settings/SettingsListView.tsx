@@ -173,7 +173,7 @@ export function SettingsListView({
 function ListCard({ row }: { row: ListViewRow }) {
   if (row.kind === 'group') {
     return (
-      <div className="px-1 pt-3 pb-1 font-mono text-[11px] md:text-[9px] font-bold uppercase tracking-wider text-(--color-text-subtle) select-none">
+      <div className="px-1 pt-3 pb-1 label-caps text-(--color-text-subtle) select-none">
         {row.title}
       </div>
     )
@@ -188,7 +188,7 @@ function ListCard({ row }: { row: ListViewRow }) {
         // Base layout — rounded-sm = 8px, crisp enough for a dense list card
         'group flex min-h-9 w-full items-center gap-3 rounded-sm border px-3 py-2.5 text-left md:min-h-0',
         // Surface & transition
-        'bg-(--bg-card) transition-colors duration-100',
+        'bg-(--bg-card) transition-colors duration-(--motion-instant)',
         // Hover — gentle warm lift, no border jump
         'hover:bg-(--bg-key)/30',
         // Focus ring
@@ -205,7 +205,7 @@ function ListCard({ row }: { row: ListViewRow }) {
           className={cn(
             'flex h-8 w-8 shrink-0 items-center justify-center rounded-xs',
             'border border-(--color-border) bg-(--bg-key)',
-            'text-(--color-text-muted) transition-colors duration-100',
+            'text-(--color-text-muted) transition-colors duration-(--motion-instant)',
             // Warm lift when the card is active
             row.active && 'border-(--color-border-strong) bg-(--bg-key)/70',
           )}
@@ -228,7 +228,7 @@ function ListCard({ row }: { row: ListViewRow }) {
 
           {/* Role / type badge */}
           {row.badge && (
-            <span className="shrink-0 rounded-xs border border-(--color-border) bg-(--bg-key) px-1.5 py-px font-mono text-[11px] md:text-[9px] font-semibold uppercase tracking-wide text-(--color-text-muted) select-none">
+            <span className="shrink-0 rounded-xs border border-(--color-border) bg-(--bg-key) px-1.5 py-px font-mono text-[11px] font-semibold uppercase tracking-wide text-(--color-text-muted) select-none">
               {row.badge}
             </span>
           )}
@@ -257,7 +257,7 @@ function ListCard({ row }: { row: ListViewRow }) {
 
         {/* Meta / path line */}
         {row.meta && (
-          <p className="mt-0.5 truncate font-mono text-[11px] md:text-[9px] text-(--color-text-subtle)">
+          <p className="mt-0.5 truncate font-mono text-[11px] text-(--color-text-subtle)">
             {row.meta}
           </p>
         )}

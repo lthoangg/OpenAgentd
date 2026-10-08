@@ -463,7 +463,18 @@ passages; `body-lg` (16px) for long-form prose only.
 screen never renders differently between desktop and mobile.
 
 `label-caps` (11px, 600, +0.05em, uppercase) marks section-card headers and
-group labels. It is the only uppercase style in the system.
+group labels. It is the only uppercase style in the system, and ships as the
+`label-caps` utility (type only — pair it with `text-(--color-text-muted)` on
+card headers, `text-(--color-text-subtle)` on nav and group labels). Use
+`font-mono` with it only when the label is an identifier (a code language, a
+tool name).
+
+`code-lg` (13px mono, `leading-relaxed`) is the reading step for chat code
+blocks and code-editing textareas, where `code-md` is too dense for long
+passages. Tool output, diffs and file views stay on `code-md` / `code-sm`.
+
+**Icons** (lucide) use a fixed scale: 11, 12, 13, 14, 16px; 20px and up only
+for empty-state illustration. 14px is the default inside buttons.
 
 ## Layout
 
@@ -487,7 +498,8 @@ desktop-first and walk styles back down.
 - `status-bar` (24px) — the desktop status footer.
 - `tab-bar` (36px) — the review dock's editor-tab strip.
 - `toolbar` (32px) — the single view toolbar under a tab bar.
-- `list-row` (28px) — sidebar and dock list rows.
+- `list-row` (28px) — sidebar and dock list rows (`ui/list-row.ts` holds the
+  shared geometry and the hover / current washes).
 - `mac-traffic-inset` (70px) — left inset that clears the macOS traffic-light
   overlay (12px origin + ~58px button group).
 - `content-max` (768px) — reading measure for transcripts and prose.
@@ -551,10 +563,20 @@ Depth is **tonal, not shadowed.** Hierarchy is expressed in this order:
 3. **Text tone** — demote content by stepping down the text ramp.
 4. **Shadow** — last resort.
 
-Only genuinely floating layers (modals, popovers, dropdowns, toasts) use
-`shadow-depth`, and it stays soft: `0 1px 2px rgba(0,0,0,.04), 0 2px 8px
-rgba(0,0,0,.05)` in light, roughly 6× stronger in dark where tonal steps read
-weakly.
+Only genuinely floating layers (modals, popovers, dropdowns, toasts, drawers,
+tooltips) use `shadow-depth` — written `shadow-(--shadow-depth)`, never a
+Tailwind `shadow-sm/md/lg` step — and it stays soft: `0 1px 2px rgba(0,0,0,.04),
+0 2px 8px rgba(0,0,0,.05)` in light, roughly 6× stronger in dark where tonal
+steps read weakly. In-flow cards (code blocks, tool calls, section cards) and
+buttons never cast one, at rest or on hover.
+
+Modal and drawer scrims are `bg-(--color-overlay)` with no blur; popovers do not
+dim the page. The media lightbox is the one darker stage.
+
+**Stacking** uses a short layer scale: 10 in-block controls, 30 drawer scrims,
+40 drawers and overlay scrims, 50 overlays and dialogs, 60 toasts and floating
+notices (and dialogs opened from them), 70 a menu inside a nested dialog, 9999
+tooltips. Write numeric layers as `z-60`, not `z-[60]`.
 
 Keyboard focus uses a solid 2px outline (`#174A73` in light mode, `#9DD0F5`
 in dark mode), with a 2px offset. Translucent `focus-ring` effects remain
@@ -611,8 +633,8 @@ properties. No component framework, no `cva`. The shared language across all of
 them is: **warm paper surface · crisp 1px border · muted text · keycap hover.**
 
 **Buttons** ship seven variants (`default`, `subtle`, `primary`, `ghost`,
-`danger`, `danger-subtle`, `link`) across eight standard sizes (`xs`, `sm`, `default`,
-`lg`, `trigger`, `icon`, `icon-sm`, `icon-xs`). `primary` is a *tonal* emphasis —
+`danger`, `danger-subtle`, `link`) across nine standard sizes (`xs`, `sm`, `default`,
+`lg`, `trigger`, `icon`, `icon-sm`, `icon-dense`, `icon-xs`). `primary` is a *tonal* emphasis —
 `bg-key` with a `border-strong` — not a saturated fill. Hover darkens toward the
 keycap wash; active goes one step further. Every variant keeps its border so
 buttons never shift size between states.
@@ -628,6 +650,7 @@ buttons never shift size between states.
 | `trigger` | **auto** | `px-2 py-1` | 11px | `12px` (`body-sm`) | `rounded-md` (8px) | Dropdown & select trigger |
 | `icon-xs` | **24×24px** | `p-0` | 11px | — | `rounded-xs` (4px) | Inline row utilities (copy, delete) |
 | `icon-sm` | **32×32px** | `p-0` | 13px | — | `rounded-sm` (6px) | Toolbar icon buttons |
+| `icon-dense` | **28×28px** | `p-0` | 14px | — | `rounded-sm` (6px) | Panel-header and detail-pane actions (close, back) |
 | `icon` | **36×36px** | `p-0` | 14px | — | `rounded-md` (8px) | Standard standalone icon actions |
 
 **Mobile Touch Parity Scaling**: On touch devices (`pointer: coarse` / mobile shell), standalone icon actions scale up to a **44×44px touch target** (`h-11 w-11`), while on desktop (`md:`) they collapse to dense **28–32px** (`md:h-7 md:w-7` or `md:h-8 md:w-8`).
@@ -642,7 +665,7 @@ buttons never shift size between states.
 Focus shifts the border to `focus-ring` and adds a 30% ring. Borders never change
 width on hover — that causes a 1px layout jump.
 
-**Floating Menus & Context Menus**:
+**Floating Menus & Context Menus** (`ui/menu-styles.ts` — dropdowns, context menus and hand-built listboxes all import it):
 - **Panel**: `rounded-sm`, 1px `border-(--color-border)`, `bg-(--bg-card)`, `p-1`, `shadow-depth`.
 - **Items**: `rounded-xs`, 28px height (`px-2 py-1.5`), `text-xs`, text `on-surface-2`, hover/focus `bg-(--bg-key)` and `on-surface`.
 - **Destructive Items**: `text-(--color-error)`, hover `bg-(--color-error-subtle)`.
@@ -653,6 +676,7 @@ width on hover — that causes a 1px layout jump.
 - **Active Segment**: `rounded-xs`, `bg-(--bg-card)` (or `bg-page`), no border colour (the fill alone marks it), `text-(--color-text)`, `font-medium`.
 - **Inactive Segment**: `rounded-xs`, 1px `border-transparent`, `text-(--color-text-muted)`, hover `text-(--color-text-2)`.
 - **Sizes**: `TabsList size="sm"` is the 24px variant for dense panel toolbars (12px label, no shadow).
+- **Primitive**: pick-one controls use `SegmentedControl` (`ui/segmented-control.tsx`) — radio semantics with arrow-key roving, `default` (32px, 44px on touch), `sm` (24px) and `composer` (32px, 28px from `md`, never grown on touch, so it matches the attach and send buttons beside it). Controls that need toggle-button semantics reuse its `segmentedTrackClass` / `segmentedItemClass`. `TabsList` stays for real tab panels.
 
 **Editor Tabs** (review dock tab bar):
 - **Strip**: `tab-bar` height on `bg-sidebar`; tabs scroll horizontally, actions stay pinned right.
@@ -673,10 +697,24 @@ lift toward `bg-page` on hover.
 **Agent chips** are `full`-radius pills using the identity triplet — soft
 background, tuned text tone, solid dot.
 
-**Overlays & Dialogs** come in three geometries — `modal` (centered card, capped at
-`overlay-max`), `sheet` (edge drawer), and `palette` (compact 480px search card).
-All three are `position: fixed`, share `rounded-lg` (12px — the panel ceiling) and a 1px border, and go
-edge-to-edge below 768px.
+**Overlays & Dialogs** come in two `AppOverlay` geometries — `modal` (centered card,
+capped at `overlay-max`) and `palette` (compact 600px search card) — plus `Dialog`
+for confirmations. All are `position: fixed`, share `rounded-lg` (12px — the panel
+ceiling) and a 1px border, and go edge-to-edge below 768px. Mobile drawers (the
+session sidebar, chat actions, the dock sheet) slide from an edge over the same
+scrim.
+
+Modal panels open with an `OverlayHeader`: a 44px `bg-sidebar` strip with an
+optional 14px icon, the title (`text-base`, semibold), an optional one-line
+subtitle, actions, and a ghost `icon-sm` close button ("Close (Esc)").
+
+`Dialog` width and padding are props (`size="xs|sm|md|lg|none"`,
+`padding="default|compact|none"`), not className overrides: `cn` does not merge
+classes, so a wider `sm:max-w-*` never beat the default. `DialogFooter` reads the
+panel padding: it bleeds to the panel edges and sits the same distance below
+the body (16px, or 12px when `compact`); `none` panels lay out their own. Dialog footers order
+Cancel (`default`) before the confirm action (`primary`, or `danger` when
+destructive), all at the `default` size.
 
 **App-level overlays** (Settings, Telemetry) share the `settings-modal-shell`
 geometry, mount at the root so any route can open them, and are mutually
@@ -702,12 +740,12 @@ color. Four layers sit in front of the app, and each one must be paper:
 |---|---|---|---|
 | iOS launch screen | `gen/apple/LaunchScreen.storyboard` | `systemBackground` | ✗ pure white, no dark variant |
 | Window background | `tauri.conf.json` → `app.windows[]` | — | ✗ unset, inherits webview default |
-| Browser / OS chrome | `index.html` `theme-color` | `#FAFAFA` / `#0A0A0B` | ✗ cool neutrals, not paper |
+| Browser / OS chrome | `index.html` `theme-color` + `lib/theme.ts` | `#FAF6EC` / `#15110D` | ✓ correct |
 | Pre-paint CSS | `index.html` `<style>` | `#FAF6EC` / `#15110D` | ✓ correct |
 | Theme class | `public/theme-init.js` | sets `.light`/`.dark` on `<html>` | ✓ correct |
 
-The last two links are right; the first three are not. `theme-color` should be
-`#FAF6EC` / `#15110D`, and `backgroundColor` should be set on both window configs.
+The last three links are right; the first two are not. `backgroundColor` should
+be set on both window configs.
 The iOS launch screen is the hardest case — `mobile/src-tauri/gen/` is gitignored
 and regenerated by `tauri ios init`, so it needs a template override or a
 post-generate script rather than a direct edit. Dark mode is the worst offender:

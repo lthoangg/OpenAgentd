@@ -20,7 +20,7 @@ const CODE = 'rounded-xs border border-(--color-border) bg-(--bg-key) px-1 py-0.
 
 function Badge({ children }: { children: string }) {
   return (
-    <span className="shrink-0 rounded-xs border border-(--color-border) bg-(--bg-key)/50 px-1.5 py-0.5 font-mono text-xs md:text-[10px] text-(--color-text-muted)">
+    <span className="shrink-0 rounded-xs border border-(--color-border) bg-(--bg-key)/50 px-1.5 py-0.5 font-mono text-xs md:text-[11px] text-(--color-text-muted)">
       {children}
     </span>
   )
@@ -109,7 +109,7 @@ export function PluginsSettingsPage() {
           <p className="p-6 text-center text-xs text-(--color-text-muted)">No plugins installed.</p>
         ) : (
           <section aria-label="Installed plugins">
-            <p className="px-3 pt-3 pb-1 font-mono text-xs md:text-[10px] font-bold uppercase tracking-wider text-(--color-text-subtle) sm:px-4">
+            <p className="px-3 pt-3 pb-1 label-caps text-(--color-text-subtle) sm:px-4">
               {`Installed (${plugins.length})${failed ? ` · ${failed} failed` : ''}`}
             </p>
             <ul className="divide-y divide-(--color-border)">

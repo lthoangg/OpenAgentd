@@ -630,7 +630,7 @@ export const FloatingInputComposer = memo(
               title="Drag to move · Double-click to reset"
               onPointerDown={(e) => dragControls.start(e)}
               onDoubleClick={handleReset}
-              className="absolute left-1/2 top-0 z-10 flex h-4 w-10 -translate-x-1/2 -translate-y-1/2 cursor-grab items-center justify-center rounded-full border border-(--color-border) bg-(--bg-key) text-(--color-text-muted) shadow-sm transition-colors hover:text-(--color-text) active:cursor-grabbing"
+              className="absolute left-1/2 top-0 z-10 flex h-4 w-10 -translate-x-1/2 -translate-y-1/2 cursor-grab items-center justify-center rounded-full border border-(--color-border) bg-(--bg-key) text-(--color-text-muted) shadow-(--shadow-depth) transition-colors hover:text-(--color-text) active:cursor-grabbing"
             >
               <GripHorizontal size={12} aria-hidden="true" />
             </button>

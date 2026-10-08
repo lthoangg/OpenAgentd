@@ -27,8 +27,8 @@ export function themeStorageKey(): string {
   return windowScopedKey(THEME_STORAGE_KEY)
 }
 const THEME_COLOR: Record<ResolvedTheme, string> = {
-  light: '#FAFAFA',
-  dark: '#0A0A0B',
+  light: '#FAF6EC',
+  dark: '#15110D',
 }
 
 function isTheme(value: unknown): value is ThemePreference {

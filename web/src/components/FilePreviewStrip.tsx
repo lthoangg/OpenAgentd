@@ -95,7 +95,7 @@ function RemoveButton({ onRemove, label = 'Remove file' }: { onRemove: () => voi
           <button
             type="button"
             onClick={(e) => { e.stopPropagation(); onRemove() }}
-            className="flex h-7 w-7 items-center justify-center rounded-md border border-(--color-border) bg-(--bg-card) text-(--color-text-muted) shadow-sm opacity-100 transition-colors hover:border-(--color-border-strong) hover:text-(--color-text) md:h-4 md:w-4 md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100"
+            className="flex h-7 w-7 items-center justify-center rounded-md border border-(--color-border) bg-(--bg-card) text-(--color-text-muted) shadow-(--shadow-depth) opacity-100 transition-colors hover:border-(--color-border-strong) hover:text-(--color-text) md:h-4 md:w-4 md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100"
             aria-label={label}
           >
             <X size={12} className="md:h-2.5 md:w-2.5" />
@@ -280,7 +280,7 @@ function TextCard({ file, onRemove, onOpen }: Omit<CardProps, 'blobUrl'> & { blo
             <TooltipContent>{file.name}</TooltipContent>
           </Tooltip>
         </div>
-        <pre className="h-[68px] overflow-hidden whitespace-pre-wrap break-all px-2 py-1.5 font-mono text-xs md:text-[10px] leading-relaxed text-(--color-text-muted) select-none">
+        <pre className="h-[68px] overflow-hidden whitespace-pre-wrap break-all px-2 py-1.5 font-mono text-xs md:text-[11px] leading-relaxed text-(--color-text-muted) select-none">
           {snippet ?? ''}
         </pre>
       </button>
@@ -412,7 +412,7 @@ export function FilePreviewStrip({ files, blobUrls, onRemove, filesBelow }: File
             aria-hidden="true"
           >
             <div
-              className="h-full rounded-full bg-(--color-text-subtle)/60 transition-[left,width] duration-100"
+              className="h-full rounded-full bg-(--color-text-subtle)/60 transition-[left,width] duration-(--motion-instant)"
               style={{ width: `${metrics.thumbWidthPct}%`, marginLeft: `${metrics.thumbLeftPct}%` }}
             />
           </div>

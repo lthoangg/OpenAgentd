@@ -409,15 +409,15 @@ export function UsagePanel({
 
       {/* Alert Dialog when usage is below 99% */}
       <Dialog open={alertOpen} onOpenChange={setAlertOpen}>
-        <DialogContent className="max-w-sm gap-3 p-4">
+        <DialogContent className="gap-3">
           <DialogHeader className="gap-1.5">
-            <DialogTitle className="text-sm font-semibold">Cannot Redeem Reset Yet</DialogTitle>
+            <DialogTitle>Cannot Redeem Reset Yet</DialogTitle>
             <DialogDescription className="text-xs text-(--color-text-muted)">
               Your current usage is {Math.round(maxUsedPercent)}%. Reset credits can only be redeemed when usage reaches 99%–100% (or when the rate limit is reached) to avoid wasting valuable reset credits.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="justify-end pt-2">
-            <Button variant="primary" size="sm" onClick={() => setAlertOpen(false)}>
+            <Button variant="primary" onClick={() => setAlertOpen(false)}>
               Got it
             </Button>
           </DialogFooter>
@@ -426,18 +426,18 @@ export function UsagePanel({
 
       {/* Confirmation Dialog when usage is 99-100% */}
       <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
-        <DialogContent className="max-w-sm gap-3 p-4">
+        <DialogContent className="gap-3">
           <DialogHeader className="gap-1.5">
-            <DialogTitle className="text-sm font-semibold">Redeem Rate Limit Reset?</DialogTitle>
+            <DialogTitle>Redeem Rate Limit Reset?</DialogTitle>
             <DialogDescription className="text-xs text-(--color-text-muted)">
               This will consume 1 of your {resetCredits} available reset credit{resetCredits === 1 ? '' : 's'} to reset your rate limit window immediately. This action cannot be undone.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="flex-row justify-end gap-2 pt-2">
-            <Button variant="default" size="sm" onClick={() => setConfirmOpen(false)} disabled={resetMutation.isPending}>
+            <Button variant="default" onClick={() => setConfirmOpen(false)} disabled={resetMutation.isPending}>
               Cancel
             </Button>
-            <Button variant="primary" size="sm" onClick={handleConfirmReset} disabled={resetMutation.isPending}>
+            <Button variant="primary" onClick={handleConfirmReset} disabled={resetMutation.isPending}>
               {resetMutation.isPending ? 'Redeeming…' : 'Confirm reset'}
             </Button>
           </DialogFooter>

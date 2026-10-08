@@ -17,7 +17,7 @@ import { Plus, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
-import { cn } from '@/lib/utils'
+import { SegmentedControl } from '@/components/ui/segmented-control'
 import { SettingsField } from './SettingsField'
 import { SettingsSection } from './SettingsSection'
 import type { KeyValuePair, McpServerDraft } from './McpServerDraft'
@@ -251,65 +251,6 @@ export function McpServerForm({
  * codebase, and a styled native checkbox feels out of place next to the
  * Tabs/Card aesthetic — the segmented control matches it.
  */
-// ── Segmented control ───────────────────────────────────────────────────────
-// Shared by EnabledToggle and TransportToggle.
-
-function SegmentedControl({
-  options,
-  value,
-  onChange,
-  disabled,
-  'aria-label': ariaLabel,
-  fullWidth = false,
-}: {
-  options: { value: string; label: string }[]
-  value: string
-  onChange: (next: string) => void
-  disabled?: boolean
-  'aria-label': string
-  fullWidth?: boolean
-}) {
-  return (
-    <div
-      role="radiogroup"
-      aria-label={ariaLabel}
-      className={cn(
-        // Track
-        'inline-flex h-8 items-center gap-0.5 rounded-xs border border-(--color-border) bg-(--bg-key) p-0.5',
-        fullWidth && 'w-full',
-        disabled && 'opacity-50',
-      )}
-    >
-      {options.map((opt) => {
-        const active = opt.value === value
-        return (
-          <button
-            key={opt.value}
-            type="button"
-            role="radio"
-            aria-checked={active}
-            disabled={disabled}
-            onClick={() => onChange(opt.value)}
-            className={cn(
-              // Base
-              'h-full flex-1 rounded-xs px-3 text-xs font-medium',
-              'transition-all duration-150 select-none',
-              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40',
-              // Active segment — lifts off the track
-              active
-                ? 'bg-(--bg-card) text-(--color-text) shadow-sm'
-                : 'bg-transparent text-(--color-text-muted) hover:text-(--color-text)',
-              disabled && 'cursor-not-allowed',
-            )}
-          >
-            {opt.label}
-          </button>
-        )
-      })}
-    </div>
-  )
-}
-
 function EnabledToggle({
   value,
   onChange,
@@ -325,7 +266,7 @@ function EnabledToggle({
 }) {
   return (
     <SegmentedControl
-      aria-label="Server enabled state"
+      label="Server enabled state"
       value={value ? 'enabled' : 'disabled'}
       onChange={(v) => onChange(v === 'enabled')}
       options={[
@@ -348,15 +289,15 @@ function TransportToggle({
 }) {
   return (
     <SegmentedControl
-      aria-label="MCP transport"
+      label="MCP transport"
       value={value}
-      onChange={(v) => onChange(v as 'stdio' | 'http')}
+      onChange={onChange}
       options={[
         { value: 'stdio', label: 'Stdio' },
         { value: 'http', label: 'HTTP' },
       ]}
       disabled={disabled}
-      fullWidth
+      fill
     />
   )
 }

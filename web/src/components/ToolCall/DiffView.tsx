@@ -39,7 +39,7 @@ export function FileDiffBody({ kind, moveTo, lines, oldStart = 1, newStart = 1 }
   if (linesWithNumbers.length === 0) {
     if (kind === 'delete') {
       return (
-        <div className="flex items-center justify-center gap-2 px-3 py-4 font-mono text-xs text-[var(--color-diff-del-text)] bg-[var(--color-diff-del-bg)]/30 italic">
+        <div className="flex items-center justify-center gap-2 px-3 py-4 font-mono text-xs text-(--color-diff-del-text) bg-(--color-diff-del-bg)/30 italic">
           <Trash2 size={13} />
           <span>File deleted</span>
         </div>
@@ -55,7 +55,7 @@ export function FileDiffBody({ kind, moveTo, lines, oldStart = 1, newStart = 1 }
     }
     if (kind === 'add') {
       return (
-        <div className="flex items-center justify-center gap-2 px-3 py-4 font-mono text-xs text-[var(--color-diff-add-text)] bg-[var(--color-diff-add-bg)]/30 italic">
+        <div className="flex items-center justify-center gap-2 px-3 py-4 font-mono text-xs text-(--color-diff-add-text) bg-(--color-diff-add-bg)/30 italic">
           <PlusCircle size={13} />
           <span>Empty file created</span>
         </div>
@@ -75,21 +75,21 @@ export function FileDiffBody({ kind, moveTo, lines, oldStart = 1, newStart = 1 }
         const isRemoved = line.type === 'removed'
 
         const lineBg = isAdded
-          ? 'bg-[var(--color-diff-add-bg)]'
+          ? 'bg-(--color-diff-add-bg)'
           : isRemoved
-            ? 'bg-[var(--color-diff-del-bg)]'
+            ? 'bg-(--color-diff-del-bg)'
             : 'bg-(--bg-input)'
 
         const lineText = isAdded
-          ? 'text-[var(--color-diff-add-text)]'
+          ? 'text-(--color-diff-add-text)'
           : isRemoved
-            ? 'text-[var(--color-diff-del-text)]'
+            ? 'text-(--color-diff-del-text)'
             : 'text-(--color-text)'
 
         return (
           <div key={idx} className={`flex min-w-0 items-stretch ${lineBg} ${lineText}`}>
             {/* Line Numbers */}
-            <div className="sticky left-0 z-[1] flex shrink-0 select-none border-r border-(--color-border)/40 bg-inherit text-right text-xs md:text-[10px] text-(--color-text-subtle)">
+            <div className="sticky left-0 z-1 flex shrink-0 select-none border-r border-(--color-border)/40 bg-inherit text-right text-xs md:text-[11px] text-(--color-text-subtle)">
               <span className="w-9 py-0.5 pr-1.5">{line.num}</span>
             </div>
             {/* Code Line */}
@@ -128,10 +128,10 @@ function SingleFileDiff({ path, kind, moveTo, lines, oldStart = 1, newStart = 1,
   let badgeClass = 'bg-(--bg-key) text-(--color-text-2) border border-(--color-border)/50'
   if (kind === 'add') {
     badgeLabel = 'CREATE'
-    badgeClass = 'bg-[var(--color-diff-add-bg)] text-[var(--color-diff-add-text)] border border-(--color-success)/20'
+    badgeClass = 'bg-(--color-diff-add-bg) text-(--color-diff-add-text) border border-(--color-success)/20'
   } else if (kind === 'delete') {
     badgeLabel = 'DELETE'
-    badgeClass = 'bg-[var(--color-diff-del-bg)] text-[var(--color-diff-del-text)] border border-(--color-error)/20'
+    badgeClass = 'bg-(--color-diff-del-bg) text-(--color-diff-del-text) border border-(--color-error)/20'
   } else if (moveTo) {
     badgeLabel = additions > 0 || deletions > 0 ? 'MOVE & EDIT' : 'MOVE'
     badgeClass = 'bg-(--accent-purple-soft) text-(--accent-purple) border border-(--accent-purple)/20'
@@ -149,7 +149,7 @@ function SingleFileDiff({ path, kind, moveTo, lines, oldStart = 1, newStart = 1,
           }
           setExpanded(!expanded)
         }}
-        className="flex w-full shrink-0 items-center gap-1.5 border-b border-(--color-border) bg-(--bg-sidebar) px-2.5 py-1 text-left font-mono text-[11px] font-semibold text-(--color-text-2) transition-colors hover:text-(--color-text) focus-visible:outline-2 focus-visible:outline-(--focus-ring)/40"
+        className="flex w-full shrink-0 items-center gap-1.5 border-b border-(--color-border) bg-(--bg-key) px-2.5 py-1 text-left font-mono text-[11px] font-semibold text-(--color-text-2) transition-colors hover:text-(--color-text) focus-visible:outline-2 focus-visible:outline-(--focus-ring)/40"
         aria-expanded={expanded}
         aria-label={`${expanded ? 'Collapse' : 'Expand'} diff for ${path}`}
       >
@@ -168,12 +168,12 @@ function SingleFileDiff({ path, kind, moveTo, lines, oldStart = 1, newStart = 1,
           </>
         )}
         {(additions > 0 || deletions > 0) && (
-          <span className="ml-auto inline-flex items-center gap-1 font-mono text-xs md:text-[10px] font-semibold select-none shrink-0">
-            {additions > 0 && <span className="text-[var(--color-diff-add-text)]">+{additions}</span>}
-            {deletions > 0 && <span className="text-[var(--color-diff-del-text)]">-{deletions}</span>}
+          <span className="ml-auto inline-flex items-center gap-1 font-mono text-xs md:text-[11px] font-semibold select-none shrink-0">
+            {additions > 0 && <span className="text-(--color-diff-add-text)">+{additions}</span>}
+            {deletions > 0 && <span className="text-(--color-diff-del-text)">-{deletions}</span>}
           </span>
         )}
-        <span className={`rounded-xs px-1 py-px text-[11px] md:text-[9px] font-semibold tracking-wide uppercase select-none ${badgeClass} ${additions === 0 && deletions === 0 ? 'ml-auto' : ''}`}>
+        <span className={`rounded-xs px-1 py-px text-[11px] font-semibold tracking-wide uppercase select-none ${badgeClass} ${additions === 0 && deletions === 0 ? 'ml-auto' : ''}`}>
           {badgeLabel}
         </span>
         <ChevronRight

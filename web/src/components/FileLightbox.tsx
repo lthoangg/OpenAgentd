@@ -128,7 +128,7 @@ function IconButton({
       </button>
       <span
         role="tooltip"
-        className="pointer-events-none absolute top-full right-0 mt-2 whitespace-nowrap rounded-sm border border-(--color-border) bg-(--bg-key) px-2 py-1 text-xs text-(--color-text) opacity-0 shadow-md transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100"
+        className="pointer-events-none absolute top-full right-0 mt-2 whitespace-nowrap rounded-sm border border-(--color-border) bg-(--bg-key) px-2 py-1 text-xs text-(--color-text) opacity-0 shadow-(--shadow-depth) transition-opacity duration-(--motion-fast) group-hover:opacity-100 group-focus-within:opacity-100"
       >
         {tooltip}
       </span>
@@ -174,7 +174,7 @@ export function FileLightboxImage({ item, imgRef, panZoom }: ImageProps) {
             alt={item.name}
             draggable={false}
             onError={() => setError(true)}
-            className="block h-auto w-auto max-h-full max-w-full rounded-sm object-contain cursor-zoom-in transition-[cursor] duration-100"
+            className="block h-auto w-auto max-h-full max-w-full rounded-sm object-contain cursor-zoom-in transition-[cursor] duration-(--motion-instant)"
             style={{ willChange: 'transform' }}
             onClick={(e) => e.stopPropagation()}
           />
@@ -555,13 +555,13 @@ function OpenFileLightbox({ items, index = 0, isOpen, onClose, labelMode = 'file
       >
         <IconButton
           onClick={() => void triggerDownload(active)}
-          icon={<Download size={18} />}
+          icon={<Download size={16} />}
           label={downloadLabel}
           tooltip="Download"
         />
         <IconButton
           onClick={closeLightbox}
-          icon={<X size={18} />}
+          icon={<X size={16} />}
           label={closeLabel}
           tooltip="Close (Esc)"
         />
@@ -658,7 +658,7 @@ function OpenFileLightbox({ items, index = 0, isOpen, onClose, labelMode = 'file
                     key={i}
                     type="button"
                     onClick={(e) => { e.stopPropagation(); goTo(i) }}
-                    className={`h-1.5 rounded-full transition-all duration-200 ${
+                    className={`h-1.5 rounded-full transition-all duration-(--motion-base) ${
                       i === current
                         ? 'w-4 bg-(--color-text)'
                         : 'w-1.5 bg-(--color-text-muted)/50 hover:bg-(--color-text-muted)'

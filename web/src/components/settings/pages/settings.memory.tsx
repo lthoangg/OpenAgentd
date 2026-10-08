@@ -235,7 +235,7 @@ export function MemorySettingsPage() {
             <button
               type="button"
               onClick={() => setLintFindings(null)}
-              className="cursor-pointer text-xs underline hover:no-underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)"
+              className="cursor-pointer text-xs underline hover:no-underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40"
             >
               Dismiss
             </button>
@@ -261,7 +261,7 @@ export function MemorySettingsPage() {
         {/* Left pane: File list */}
         <div className="flex w-full md:w-60 lg:w-64 shrink-0 flex-col border-b md:border-b-0 md:border-r border-(--color-border) bg-(--bg-sidebar)">
           <div className="flex h-8.5 shrink-0 items-center justify-between border-b border-(--color-border)/60 bg-(--bg-key)/30 px-3 select-none">
-            <span className="font-mono text-xs md:text-[10px] font-bold uppercase tracking-wider text-(--color-text-subtle)">
+            <span className="label-caps text-(--color-text-subtle)">
               Pages ({treeData?.pages.length ?? 0})
             </span>
             <Tooltip>
@@ -345,13 +345,13 @@ export function MemorySettingsPage() {
                   {fileData?.etag && (
                     <span
                       title={`ETag: ${fileData.etag}`}
-                      className="shrink-0 rounded-xs border border-(--color-border) bg-(--bg-key) px-1.5 py-0.5 font-mono text-xs md:text-[10px] text-(--color-text-subtle) select-none"
+                      className="shrink-0 rounded-xs border border-(--color-border) bg-(--bg-key) px-1.5 py-0.5 font-mono text-xs md:text-[11px] text-(--color-text-subtle) select-none"
                     >
                       {fileData.etag.slice(1, 9)}...
                     </span>
                   )}
                   {isDirty && (
-                    <span className="hidden items-center gap-1 font-mono text-xs md:text-[10px] text-(--color-text-muted) sm:inline-flex">
+                    <span className="hidden items-center gap-1 font-mono text-xs md:text-[11px] text-(--color-text-muted) sm:inline-flex">
                       <span
                         className="h-1.5 w-1.5 rounded-full bg-(--color-text) animate-pulse"
                         aria-hidden="true"
@@ -415,7 +415,7 @@ export function MemorySettingsPage() {
 
       {/* Conflict Dialog (412 Precondition Failed) */}
       <Dialog open={conflictOpen} onOpenChange={setConflictOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent size="md">
           <DialogHeader>
             <DialogTitle>Conflict Detected</DialogTitle>
             <DialogDescription>
@@ -424,12 +424,11 @@ export function MemorySettingsPage() {
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="mt-4 flex justify-end gap-2">
-            <Button variant="subtle" size="sm" onClick={() => setConflictOpen(false)}>
+            <Button onClick={() => setConflictOpen(false)}>
               Keep My Draft
             </Button>
             <Button
               variant="primary"
-              size="sm"
               onClick={async () => {
                 const reloaded = await refetchFile()
                 if (reloaded.data) {
@@ -447,7 +446,7 @@ export function MemorySettingsPage() {
 
       {/* Delete Confirmation Dialog */}
       <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent size="md">
           <DialogHeader>
             <DialogTitle>Delete Memory Page</DialogTitle>
             <DialogDescription>
@@ -459,10 +458,10 @@ export function MemorySettingsPage() {
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="mt-4 flex justify-end gap-2">
-            <Button variant="subtle" size="sm" onClick={() => setDeleteOpen(false)}>
+            <Button onClick={() => setDeleteOpen(false)}>
               Cancel
             </Button>
-            <Button variant="danger" size="sm" onClick={handleDelete}>
+            <Button variant="danger" onClick={handleDelete}>
               Delete
             </Button>
           </DialogFooter>
@@ -471,7 +470,7 @@ export function MemorySettingsPage() {
 
       {/* New File Dialog */}
       <Dialog open={newFileOpen} onOpenChange={setNewFileOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent size="md">
           <DialogHeader>
             <DialogTitle>New Memory Page</DialogTitle>
             <DialogDescription>
@@ -492,12 +491,11 @@ export function MemorySettingsPage() {
             />
           </div>
           <DialogFooter className="mt-4 flex justify-end gap-2">
-            <Button variant="subtle" size="sm" onClick={() => setNewFileOpen(false)}>
+            <Button onClick={() => setNewFileOpen(false)}>
               Cancel
             </Button>
             <Button
               variant="primary"
-              size="sm"
               disabled={!newFileName.trim()}
               onClick={handleCreateNew}
             >

@@ -10,6 +10,7 @@ import { InlineTitleInput } from '@/components/ui/inline-title-input'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { isDeleteKey, isMenuKey, isRenameKey, menuPointFor } from '@/lib/focus/item-keys'
 import { SessionStatusMark, sessionStatus } from './SessionStatusMark'
+import { LIST_ROW_GEOMETRY, listRowSurface, listRowText } from '@/components/ui/list-row'
 
 function isModifiedPrimaryClick(event: React.MouseEvent): boolean {
   return event.button === 0 && (event.metaKey || event.ctrlKey)
@@ -128,9 +129,7 @@ function WorkspaceSessionRowView({
     <div className="space-y-px">
       <div
         data-session-row
-        className={`group/row flex h-(--spacing-list-row) items-center rounded-sm pr-1 transition-colors duration-(--motion-instant) ${
-          isCurrent ? 'bg-(--bg-key)/60' : 'hover:bg-(--bg-key)/35'
-        }`}
+        className={`group/row flex h-(--spacing-list-row) items-center rounded-sm pr-1 transition-colors duration-(--motion-instant) ${listRowSurface(isCurrent)}`}
       >
         {/* The title keeps its natural width (basis auto) so, when space
             runs out, the worktree tag beside it gives way first. */}
@@ -175,11 +174,7 @@ function WorkspaceSessionRowView({
                   e.preventDefault()
                   onSessionContextActions(session, e)
                 }}
-                className={`flex h-(--spacing-list-row) w-full items-center gap-1.5 rounded-sm px-1.5 text-left text-xs transition-colors ${
-                  isCurrent
-                    ? 'text-(--color-text)'
-                    : 'text-(--color-text-2) hover:text-(--color-text)'
-                }`}
+                className={`${LIST_ROW_GEOMETRY} transition-colors ${listRowText(isCurrent)}`}
               >
                 <SessionStatusMark status={status} />
                 <span className={`min-w-0 flex-1 truncate ${isCurrent ? 'font-semibold text-(--color-text)' : 'font-medium'} ${status !== 'idle' ? 'text-(--color-text)' : ''}`}>{sessionTitle}</span>
@@ -214,7 +209,7 @@ function WorkspaceSessionRowView({
             )}
             <span>{subagents.length}</span>
             <ChevronRight
-              size={10}
+              size={11}
               className={`shrink-0 transition-transform duration-(--motion-fast) ${isExpanded ? 'rotate-90' : ''}`}
               aria-hidden="true"
             />
@@ -227,7 +222,7 @@ function WorkspaceSessionRowView({
             holding its full width. */}
         {checkoutName && !isEditing && (
           <span className={`ml-1 inline-flex min-w-12 max-w-24 shrink-2 items-center gap-0.5 font-mono text-[11px] text-(--color-text-subtle) ${ageVisibility}`} aria-hidden="true">
-            <GitBranch size={10} className="shrink-0 text-(--accent-orange-text)" aria-hidden="true" />
+            <GitBranch size={11} className="shrink-0 text-(--accent-orange-text)" aria-hidden="true" />
             <span data-checkout-tag className="truncate">{checkoutName}</span>
           </span>
         )}
@@ -328,7 +323,7 @@ function WorkspaceSessionRowView({
                 className={`${ROW_ACTION} h-5 w-5 hover:bg-(--color-error-subtle) hover:text-(--color-error) ${mobileLongPressActions ? 'hidden' : 'hidden group-hover/sub:flex group-focus-within/sub:flex pointer-coarse:flex'}`}
                 aria-label={`Delete subagent session ${sub.member_id}`}
               >
-                <Trash2 size={10} aria-hidden="true" />
+                <Trash2 size={11} aria-hidden="true" />
               </button>
             </div>
             )

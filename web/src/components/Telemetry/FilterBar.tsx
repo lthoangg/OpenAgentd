@@ -10,8 +10,7 @@
  */
 import { Loader2, X } from 'lucide-react'
 import { Dropdown, DropdownItem } from '@/components/ui/dropdown'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { cn } from '@/lib/utils'
+import { SegmentedControl } from '@/components/ui/segmented-control'
 import { TELEMETRY_RANGES, type TelemetryRange } from '@/stores/useTelemetryStore'
 import { modelName, workspaceName } from './model'
 
@@ -66,31 +65,19 @@ export function FilterBar({
 
   return (
     <div className="scrollbar-none flex h-11 shrink-0 items-center gap-2 overflow-x-auto border-b border-(--color-border) px-3 sm:px-4">
-      <div role="radiogroup" aria-label="Time range" className="flex shrink-0 items-center gap-0.5 rounded-sm border border-(--color-border) bg-(--bg-key) p-0.5">
-        {TELEMETRY_RANGES.map((range) => (
-          <Tooltip key={range}>
-            <TooltipTrigger
-              render={
-                <button
-                  type="button"
-                  role="radio"
-                  aria-checked={days === range}
-                  onClick={() => onDaysChange(range)}
-                  className={cn(
-                    'h-6 rounded-xs border px-2 font-mono text-[11px] transition-colors duration-(--motion-instant)',
-                    days === range
-                      ? 'border-(--color-border-strong) bg-(--bg-card) font-medium text-(--color-text)'
-                      : 'border-transparent text-(--color-text-muted) hover:text-(--color-text-2)',
-                  )}
-                >
-                  {RANGE_LABEL[range]}
-                </button>
-              }
-            />
-            <TooltipContent side="bottom">{RANGE_TITLE[range]}</TooltipContent>
-          </Tooltip>
-        ))}
-      </div>
+      <SegmentedControl
+        label="Time range"
+        size="sm"
+        value={String(days)}
+        onChange={(next) => onDaysChange(Number(next) as TelemetryRange)}
+        itemClassName="font-mono"
+        tooltipSide="bottom"
+        options={TELEMETRY_RANGES.map((range) => ({
+          value: String(range),
+          label: RANGE_LABEL[range],
+          tooltip: RANGE_TITLE[range],
+        }))}
+      />
 
       {workspaces.length > 0 && (
         <Dropdown

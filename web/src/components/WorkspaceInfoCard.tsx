@@ -21,6 +21,7 @@ import { formatCompactRelative } from '@/utils/format'
 import { workspaceLabel } from '@/utils/workspace'
 import { applySessionSelection } from './Sidebar.sessions'
 import { SessionStatusMark, sessionStatus } from './Sidebar/SessionStatusMark'
+import { listRowClass } from '@/components/ui/list-row'
 
 interface Props {
   workspace: string
@@ -81,7 +82,7 @@ export function WorkspaceInfoCard({ workspace, chatWorkspace = false, currentSes
 
       {recent.length > 0 && (
         <section aria-label="Recent sessions" className="mt-4">
-          <h3 className="mb-1 px-1.5 text-[11px] font-semibold uppercase tracking-[0.05em] text-(--color-text-subtle)">
+          <h3 className="mb-1 px-1.5 label-caps text-(--color-text-subtle)">
             Recent sessions
           </h3>
           <ul className="space-y-px">
@@ -90,7 +91,7 @@ export function WorkspaceInfoCard({ workspace, chatWorkspace = false, currentSes
                 <button
                   type="button"
                   onClick={() => applySessionSelection({ session, workspacePath: workspace, navigate })}
-                  className="flex h-(--spacing-list-row) w-full min-w-0 items-center gap-1.5 rounded-sm px-1.5 text-left text-xs text-(--color-text-2) transition-colors hover:bg-(--bg-key)/35 hover:text-(--color-text)"
+                  className={listRowClass()}
                 >
                   <SessionStatusMark status={sessionStatus(session, unreadIds.includes(session.id))} />
                   <span className="min-w-0 flex-1 truncate font-medium">{session.title || 'Untitled'}</span>

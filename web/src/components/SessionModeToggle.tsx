@@ -1,10 +1,17 @@
 import type { SessionInteractionMode } from '@/api/types'
+import { segmentedItemClass, segmentedTrackClass } from '@/components/ui/segmented-control'
+import { cn } from '@/lib/utils'
 
 const MODES: Array<{ value: SessionInteractionMode; label: string }> = [
   { value: 'code', label: 'Code' },
   { value: 'plan', label: 'Plan' },
 ]
 
+/**
+ * Code / Plan switch. Looks like a SegmentedControl but keeps toggle-button
+ * semantics: the chosen mode is pressed and disabled, so only the other mode
+ * is actionable.
+ */
 export function SessionModeToggle({
   mode,
   pending = false,
@@ -24,7 +31,7 @@ export function SessionModeToggle({
   return (
     <div
       aria-label="Interaction mode"
-      className="flex shrink-0 overflow-hidden rounded-md border border-(--color-border) bg-(--bg-card)"
+      className={segmentedTrackClass({ size: 'composer' })}
       role="group"
     >
       {MODES.map((item) => {
@@ -39,11 +46,10 @@ export function SessionModeToggle({
             title={queued ? 'Applies when the current turn finishes' : undefined}
             disabled={disabled || active}
             onClick={() => onChange(item.value)}
-            className={`h-8 px-2 text-xs font-medium transition-colors disabled:cursor-default md:h-7 ${
-              active
-                ? `bg-(--bg-key) text-(--color-text) ${queued ? 'italic opacity-70' : ''}`
-                : 'text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text) disabled:opacity-50'
-            }`}
+            className={cn(
+              segmentedItemClass({ active, size: 'composer', dimDisabled: !active }),
+              queued && 'italic opacity-70',
+            )}
           >
             {item.label}
           </button>

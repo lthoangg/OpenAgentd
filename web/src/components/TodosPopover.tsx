@@ -48,7 +48,7 @@ export function TodosPopover({ open, onOpenChange, todos, plan = null, onClearPl
       <button
         type="button"
         className={cn(
-          'absolute inset-x-0 bottom-0 top-[calc(var(--spacing-app-header)+env(safe-area-inset-top,0px))] cursor-default bg-black/15 transition-opacity duration-100 ease-out pointer-events-auto',
+          'absolute inset-x-0 bottom-0 top-[calc(var(--spacing-app-header)+env(safe-area-inset-top,0px))] cursor-default bg-transparent transition-opacity duration-(--motion-instant) ease-out pointer-events-auto',
           closing ? 'opacity-0' : 'opacity-100',
         )}
         aria-label="Close tasks"
@@ -58,10 +58,10 @@ export function TodosPopover({ open, onOpenChange, todos, plan = null, onClearPl
         role="dialog"
         aria-label="Tasks"
         className={cn(
-          'absolute right-2 top-[calc(var(--spacing-app-header)+env(safe-area-inset-top,0px)+0.5rem)] w-[min(calc(100vw-1rem),20rem)] overflow-hidden rounded-lg border border-(--color-border) bg-(--bg-card) p-0 shadow-lg ring-1 ring-black/5 pointer-events-auto',
+          'absolute right-2 top-[calc(var(--spacing-app-header)+env(safe-area-inset-top,0px)+0.5rem)] w-[min(calc(100vw-1rem),20rem)] overflow-hidden rounded-sm border border-(--color-border) bg-(--bg-card) p-0 shadow-(--shadow-depth) pointer-events-auto',
           closing
-            ? 'animate-out fade-out-0 zoom-out-95 duration-100 ease-out'
-            : 'animate-in fade-in-0 duration-100 ease-out',
+            ? 'animate-out fade-out-0 zoom-out-95 duration-(--motion-instant) ease-out'
+            : 'animate-in fade-in-0 duration-(--motion-instant) ease-out',
         )}
       >
         <div className="flex items-center justify-between border-b border-(--color-border-subtle) px-2.5 py-2">

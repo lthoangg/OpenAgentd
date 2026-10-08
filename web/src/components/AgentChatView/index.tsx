@@ -752,9 +752,9 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
 
         {parentSessionId ? (
           <div className="mx-auto w-full max-w-3xl px-4 py-3">
-            <div className="flex items-center justify-between gap-3 rounded-lg border border-(--color-border-subtle) bg-(--bg-card) px-4 py-2 text-xs text-(--color-text-muted)">
+            <div className="flex items-center justify-between gap-3 rounded-sm border border-(--color-border-subtle) bg-(--bg-card) px-4 py-2 text-xs text-(--color-text-muted)">
               <div className="flex items-center gap-2 min-w-0">
-                <span className="shrink-0 rounded bg-(--bg-key)/60 px-1.5 py-0.5 font-mono text-[11px] font-semibold text-(--color-text)">
+                <span className="shrink-0 rounded-xs bg-(--bg-key)/60 px-1.5 py-0.5 font-mono text-[11px] font-semibold text-(--color-text)">
                   {leadName}
                 </span>
                 <span className="truncate">Subagents are orchestrated by the lead agent. Switch to the lead session to send instructions.</span>

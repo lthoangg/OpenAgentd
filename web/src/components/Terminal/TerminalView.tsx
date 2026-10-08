@@ -230,7 +230,7 @@ export function TerminalView({ sessionId }: TerminalViewProps) {
 
   return (
     <div className="flex h-full flex-col" data-swipe-ignore>
-      <div className="relative min-h-0 flex-1 overflow-hidden rounded-lg bg-(--color-surface) p-2">
+      <div className="relative min-h-0 flex-1 overflow-hidden bg-(--color-surface) p-2">
         <div
           ref={containerRef}
           data-testid="terminal-surface"

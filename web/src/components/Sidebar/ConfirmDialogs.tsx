@@ -56,7 +56,7 @@ export function SidebarConfirmDialogs({
               &ldquo;{deleteTarget?.title || 'Untitled'}&rdquo; will be permanently deleted. This cannot be undone.
             </DialogDescription>
           </DialogHeader>
-          <DialogFooter className="p-3">
+          <DialogFooter>
             <Button type="button" variant="default" onClick={() => setDeleteTarget(null)}>Cancel</Button>
             <Button type="button" variant="danger" onClick={onConfirmSessionDelete}>Delete</Button>
           </DialogFooter>
@@ -75,7 +75,7 @@ export function SidebarConfirmDialogs({
               the sidebar. Its sessions stay on disk — reopening this folder later restores the list.
             </DialogDescription>
           </DialogHeader>
-          <DialogFooter className="p-3">
+          <DialogFooter>
             <Button type="button" variant="default" onClick={() => setRemoveWorkspaceTarget(null)}>Cancel</Button>
             <Button type="button" variant="danger" onClick={onConfirmRemoveWorkspace}>Remove from sidebar</Button>
           </DialogFooter>
@@ -94,7 +94,7 @@ export function SidebarConfirmDialogs({
               deleted from disk. Any uncommitted changes in this worktree will be lost. This cannot be undone.
             </DialogDescription>
           </DialogHeader>
-          <DialogFooter className="p-3">
+          <DialogFooter>
             <Button type="button" variant="default" onClick={() => setRemoveWorktreeTarget(null)}>Cancel</Button>
             <Button type="button" variant="danger" onClick={onConfirmRemoveWorktree}>Remove worktree</Button>
           </DialogFooter>

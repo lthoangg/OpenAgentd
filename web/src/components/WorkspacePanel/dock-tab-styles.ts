@@ -31,7 +31,7 @@ export function dockTabButtonClass(closable: boolean): string {
  * A tab picked up by a drag: an opaque raised sheet over the tabs it
  * passes (a true floating layer for the drag, so it may cast the shadow).
  */
-export const DOCK_TAB_LIFTED_CLASS = 'surface-raised bg-(--bg-card) text-(--color-text) cursor-grabbing'
+export const DOCK_TAB_LIFTED_CLASS = 'shadow-(--shadow-depth) bg-(--bg-card) text-(--color-text) cursor-grabbing'
 
 /** Inline close control; always shown on the active tab and on touch. */
 export function dockTabCloseClass(active: boolean): string {

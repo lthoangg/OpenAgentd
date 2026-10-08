@@ -131,7 +131,7 @@ export function CommitTabView({ workspace, commit }: CommitTabViewProps) {
                 type="button"
                 onClick={() => toggle(file.path)}
                 aria-expanded={open}
-                className="sticky top-0 z-[2] flex h-(--spacing-list-row) w-full items-center gap-2 bg-(--bg-card) px-3 text-left text-xs text-(--color-text-2) hover:bg-(--bg-key) hover:text-(--color-text)"
+                className="sticky top-0 z-2 flex h-(--spacing-list-row) w-full items-center gap-2 bg-(--bg-card) px-3 text-left text-xs text-(--color-text-2) hover:bg-(--bg-key) hover:text-(--color-text)"
               >
                 <ChevronRight
                   size={12}

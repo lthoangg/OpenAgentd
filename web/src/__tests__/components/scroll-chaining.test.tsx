@@ -3,7 +3,6 @@ import { readFileSync } from "node:fs"
 import { fileURLToPath } from "node:url"
 import { render, cleanup } from "@testing-library/react"
 import { Dialog, DialogContent } from "@/components/ui/dialog"
-import { Sheet, SheetContent } from "@/components/ui/sheet"
 
 afterEach(cleanup)
 
@@ -46,7 +45,7 @@ describe("scroll chaining — global CSS contract", () => {
 
 // ---------------------------------------------------------------------------
 // Overlay scrollers must TRAP scroll (overscroll-contain) so scrolling a
-// modal/sheet never leaks to the page behind it.
+// modal never leaks to the page behind it.
 // ---------------------------------------------------------------------------
 
 describe("scroll chaining — overlays trap scroll", () => {
@@ -61,18 +60,6 @@ describe("scroll chaining — overlays trap scroll", () => {
     expect(content?.className).toContain("overscroll-contain")
     expect(content?.className).toContain("overflow-y-auto")
   })
-
-  it("SheetContent scroller uses overscroll-contain", () => {
-    render(
-      <Sheet open>
-        <SheetContent>content</SheetContent>
-      </Sheet>
-    )
-    const content = document.querySelector('[data-slot="sheet-content"]')
-    expect(content).not.toBeNull()
-    expect(content?.className).toContain("overscroll-contain")
-    expect(content?.className).toContain("overflow-y-auto")
-  })
 })
 
 // ---------------------------------------------------------------------------
@@ -83,8 +70,7 @@ describe("scroll chaining — overlays trap scroll", () => {
 
 describe("scroll chaining — anchored popovers trap scroll (source)", () => {
   const cases: Array<[string, string]> = [
-    ["dropdown-menu", "src/components/ui/dropdown-menu.tsx"],
-    ["select", "src/components/ui/select.tsx"],
+    ["dropdown", "src/components/ui/dropdown.tsx"],
     ["input-bar suggestions", "src/components/InputComposer.suggestions.tsx"],
     ["command palette", "src/components/CommandPalette.tsx"],
     ["todos popover", "src/components/TodosPopover.tsx"],

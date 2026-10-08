@@ -14,7 +14,7 @@ import { cn } from '@/lib/utils'
 const BASE = [
   'inline-flex shrink-0 items-center justify-center gap-1.5',
   'border font-medium whitespace-nowrap select-none cursor-pointer',
-  'transition-all duration-150 ease-out focus-visible:outline-none',
+  'transition-all duration-(--motion-fast) ease-out focus-visible:outline-none',
   'focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40',
   'disabled:cursor-not-allowed disabled:opacity-50',
   '[&_svg]:pointer-events-none [&_svg]:shrink-0',
@@ -25,7 +25,7 @@ const VARIANT = {
   default: [
     'border-(--color-border) bg-(--bg-card)',
     'text-(--color-text)',
-    'hover:bg-(--bg-key)/60 hover:border-(--color-border-strong) hover:shadow-xs',
+    'hover:bg-(--bg-key)/60 hover:border-(--color-border-strong)',
     'active:bg-(--bg-key)/50',
   ].join(' '),
   subtle: [
@@ -37,7 +37,7 @@ const VARIANT = {
   primary: [
     'border-(--color-border-strong) bg-(--bg-key)',
     'text-(--color-text)',
-    'hover:bg-(--color-surface-2) hover:border-(--color-border-strong) hover:shadow-xs',
+    'hover:bg-(--color-surface-2) hover:border-(--color-border-strong)',
     'active:bg-(--color-surface-2)/80',
   ].join(' '),
   ghost: [
@@ -55,7 +55,7 @@ const VARIANT = {
   'danger-subtle': [
     'border-(--color-border) bg-(--bg-card)',
     'text-(--color-error)',
-    'hover:bg-(--color-error)/10 hover:border-(--color-error)/25 hover:shadow-xs',
+    'hover:bg-(--color-error)/10 hover:border-(--color-error)/25',
     'active:bg-(--color-error)/15',
   ].join(' '),
   link: [
@@ -79,6 +79,9 @@ const SIZE = {
   icon:     'size-9 p-0 rounded-md',
   'icon-xs':'size-6 p-0 rounded-xs',
   'icon-sm':'size-8 p-0 rounded-sm',
+  // 28px desktop-dense icon action (panel headers, detail panes). Touch still
+  // gets the 44px coarse-pointer minimum like every other Button.
+  'icon-dense': 'size-7 p-0 rounded-sm',
 } as const
 
 // ─── buttonVariants helper (kept for external consumers) ─────────────────────

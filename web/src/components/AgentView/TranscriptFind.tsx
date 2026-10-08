@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { Button } from '@/components/ui/button'
 import { ChevronDown, ChevronUp, X } from 'lucide-react'
 
 export interface TranscriptFindProps {
@@ -65,32 +66,35 @@ export function TranscriptFind({
       <span className="shrink-0 font-mono text-[11px] text-(--color-text-muted)" aria-live="polite">
         {status}
       </span>
-      <button
+      <Button
         type="button"
+        variant="ghost"
+        size="icon-xs"
         onClick={onPrev}
         disabled={matchCount === 0}
         aria-label="Previous match"
-        className="flex h-6 w-6 items-center justify-center rounded-xs text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text) disabled:opacity-40"
       >
         <ChevronUp size={13} aria-hidden="true" />
-      </button>
-      <button
+      </Button>
+      <Button
         type="button"
+        variant="ghost"
+        size="icon-xs"
         onClick={onNext}
         disabled={matchCount === 0}
         aria-label="Next match"
-        className="flex h-6 w-6 items-center justify-center rounded-xs text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text) disabled:opacity-40"
       >
         <ChevronDown size={13} aria-hidden="true" />
-      </button>
-      <button
+      </Button>
+      <Button
         type="button"
+        variant="ghost"
+        size="icon-xs"
         onClick={onClose}
         aria-label="Close find"
-        className="flex h-6 w-6 items-center justify-center rounded-xs text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text)"
       >
         <X size={13} aria-hidden="true" />
-      </button>
+      </Button>
     </div>
   )
 }

@@ -1,11 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { motion, useDragControls, type PanInfo } from 'framer-motion'
 import { AlertCircle, Download, GripVertical, Loader2, Maximize2, Minus } from 'lucide-react'
-import { checkForUpdates as invokeCheckForUpdates, downloadUpdate as invokeDownloadUpdate, fetchReleaseNotes, installUpdate as invokeInstallUpdate, type ReleaseNotes, type UpdateStatus } from '@/lib/updater'
-import { openExternalUrl } from '@/lib/open-external'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Button, buttonVariants } from '@/components/ui/button'
-import { MarkdownBlock } from '@/utils/markdown'
+import { checkForUpdates as invokeCheckForUpdates, downloadUpdate as invokeDownloadUpdate, installUpdate as invokeInstallUpdate, type UpdateStatus } from '@/lib/updater'
+import { ReleaseNotesButton } from '@/components/ReleaseNotesDialog'
+import { Button } from '@/components/ui/button'
 import { getPlatform } from '@/hooks/use-platform'
 import { cn } from '@/lib/utils'
 
@@ -211,7 +209,7 @@ export function UpdateCard() {
         transition={{ type: 'spring', stiffness: 380, damping: 32 }}
         style={{ touchAction: 'none' }}
         className={cn(
-          'pointer-events-auto border border-(--color-border) bg-(--bg-card) text-sm text-(--color-text) shadow-lg backdrop-blur-xs transition-[width,padding,border-radius] duration-200',
+          'pointer-events-auto border border-(--color-border) bg-(--bg-card) text-sm text-(--color-text) shadow-(--shadow-depth) backdrop-blur-xs transition-[width,padding,border-radius] duration-(--motion-base)',
           minimized
             ? 'w-auto rounded-full px-3 py-1.5'
             : 'w-auto max-w-sm rounded-md p-4 sm:w-full sm:max-w-sm'
@@ -225,14 +223,14 @@ export function UpdateCard() {
               title="Drag to move · Double-click to reset"
               onPointerDown={(e) => dragControls.start(e)}
               onDoubleClick={resetPosition}
-              className="cursor-grab active:cursor-grabbing p-0.5 rounded-xs text-(--color-text-muted) hover:text-(--color-text) hover:bg-(--bg-key)/60 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-(--focus-ring)"
+              className="cursor-grab active:cursor-grabbing p-0.5 rounded-xs text-(--color-text-muted) hover:text-(--color-text) hover:bg-(--bg-key)/60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40"
             >
               <GripVertical className="size-3.5" />
             </button>
 
             <button
               type="button"
-              className="flex items-center gap-1.5 text-xs text-(--color-text) hover:text-(--color-text-2) transition-colors cursor-pointer select-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-(--focus-ring) rounded-xs px-1"
+              className="flex items-center gap-1.5 text-xs text-(--color-text) hover:text-(--color-text-2) transition-colors cursor-pointer select-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 rounded-xs px-1"
               onClick={() => setMinimized(false)}
               title="Click to expand update details"
             >
@@ -287,7 +285,7 @@ export function UpdateCard() {
                   title="Drag to move · Double-click to reset"
                   onPointerDown={(e) => dragControls.start(e)}
                   onDoubleClick={resetPosition}
-                  className="cursor-grab active:cursor-grabbing p-0.5 rounded-xs text-(--color-text-muted) hover:text-(--color-text) hover:bg-(--bg-key)/60 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-(--focus-ring) mt-0.5"
+                  className="cursor-grab active:cursor-grabbing p-0.5 rounded-xs text-(--color-text-muted) hover:text-(--color-text) hover:bg-(--bg-key)/60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 mt-0.5"
                 >
                   <GripVertical className="size-3.5" />
                 </button>
@@ -359,69 +357,6 @@ export function UpdateCard() {
         )}
       </motion.div>
     </aside>
-  )
-}
-
-function ReleaseNotesButton({ fallbackNotes, version }: { fallbackNotes?: string | null; version: string }) {
-  const [open, setOpen] = useState(false)
-  const [notes, setNotes] = useState<ReleaseNotes | null>(null)
-  const [error, setError] = useState<string | null>(null)
-
-  async function openNotes() {
-    setOpen(true)
-    setError(null)
-    try {
-      setNotes(await fetchReleaseNotes(version))
-    } catch (err) {
-      setError(String(err))
-    }
-  }
-
-  return (
-    <>
-      <button
-        type="button"
-        className="mt-2 text-xs font-medium text-(--color-accent) underline-offset-4 hover:underline hover:text-(--color-accent)/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) transition-colors cursor-pointer"
-        onClick={() => void openNotes()}
-      >
-        See release notes
-      </button>
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent
-          showCloseButton={false}
-          aria-label="Release notes"
-          className="z-60 w-full max-w-lg overflow-hidden rounded-lg border border-(--color-border) bg-(--bg-card) p-0 text-(--color-text) shadow-md"
-        >
-          <DialogHeader className="flex-row items-center justify-between gap-3 border-b border-(--color-border) px-4 py-3">
-            <DialogTitle className="text-sm font-semibold">Release notes</DialogTitle>
-            <div className="flex items-center gap-2">
-              {notes?.url ? (
-                <a
-                  className={buttonVariants({ variant: 'ghost', size: 'xs' })}
-                  href={notes.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={(event) => {
-                    event.preventDefault()
-                    void openExternalUrl(notes.url)
-                  }}
-                >
-                  View in GitHub
-                </a>
-              ) : null}
-              <Button type="button" variant="ghost" size="xs" onClick={() => setOpen(false)}>
-                Close
-              </Button>
-            </div>
-          </DialogHeader>
-          <div className="max-h-[24rem] overflow-y-auto overscroll-contain touch-pan-y px-4 py-3 text-(--color-text)">
-            <MarkdownBlock
-              content={`${notes?.body ?? fallbackNotes ?? 'Loading release notes...'}${error ? `\n\nCould not load GitHub release notes: ${error}` : ''}`}
-            />
-          </div>
-        </DialogContent>
-      </Dialog>
-    </>
   )
 }
 

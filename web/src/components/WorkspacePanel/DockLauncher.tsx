@@ -44,7 +44,8 @@ export function DockLauncher({ os, onOpenGit, onOpenTerminal, onOpenPreview, onO
             {row.icon}
             <span className="flex-1">{row.label}</span>
             {row.shortcut && (
-              <kbd aria-hidden="true" className="font-mono text-[11px] text-(--color-text-subtle)">{row.shortcut}</kbd>
+              // Phones have no keyboard to press it with.
+              <kbd aria-hidden="true" className="hidden font-mono text-[11px] text-(--color-text-subtle) md:inline">{row.shortcut}</kbd>
             )}
           </button>
         ))}

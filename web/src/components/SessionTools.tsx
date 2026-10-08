@@ -53,7 +53,7 @@ function groupTools(tools: AgentInfo['tools'], mcpServers: string[]): ToolGroup[
 
 function CountBadge({ count }: { count: number }) {
   return (
-    <span className="rounded-xs border border-(--color-border) bg-(--bg-key) px-1.5 py-0.5 text-xs md:text-[10px] text-(--color-text-muted)">
+    <span className="rounded-xs border border-(--color-border) bg-(--bg-key) px-1.5 py-0.5 text-xs md:text-[11px] text-(--color-text-muted)">
       {count}
     </span>
   )
@@ -79,7 +79,7 @@ function ToolRow({ name, description }: { name: string; description: string }) {
           <ChevronDown
             size={12}
             aria-hidden
-            className={`shrink-0 text-(--color-text-muted) transition-transform duration-150 ${open ? 'rotate-180' : ''}`}
+            className={`shrink-0 text-(--color-text-muted) transition-transform duration-(--motion-fast) ${open ? 'rotate-180' : ''}`}
           />
         )}
       </button>
@@ -110,7 +110,7 @@ function ToolGroupSection({ server, tools }: ToolGroup) {
         {server !== null && (
           <Plug size={11} className="text-(--color-text-muted)" aria-hidden />
         )}
-        <h4 className="text-xs md:text-[10px] font-semibold uppercase tracking-widest text-(--color-text-muted)">
+        <h4 className="label-caps text-(--color-text-muted)">
           {label}
         </h4>
         <CountBadge count={tools.length} />
@@ -168,14 +168,14 @@ export function SessionTools({
         aria-expanded={open}
         className="flex min-h-9 w-full items-center gap-2 px-3 py-2.5 text-left transition-colors hover:bg-(--bg-key)/20 sm:px-5"
       >
-        <h3 className="text-xs md:text-[10px] font-semibold uppercase tracking-widest text-(--color-text-muted)">
+        <h3 className="label-caps text-(--color-text-muted)">
           Tools
         </h3>
         <CountBadge count={tools.length} />
         <ChevronDown
           size={12}
           aria-hidden
-          className={`ml-auto shrink-0 text-(--color-text-muted) transition-transform duration-150 ${open ? 'rotate-180' : ''}`}
+          className={`ml-auto shrink-0 text-(--color-text-muted) transition-transform duration-(--motion-fast) ${open ? 'rotate-180' : ''}`}
         />
       </button>
 

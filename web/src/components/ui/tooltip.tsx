@@ -328,10 +328,10 @@ function TooltipContent({ className, side = 'top', sideOffset = 8, children, ...
       role="tooltip"
       data-slot="tooltip-content"
       className={cn(
-        'pointer-events-none fixed z-[9999] w-max max-w-xs',
+        'pointer-events-none fixed z-9999 w-max max-w-xs',
         'rounded-sm px-2 py-1 text-[11px]',
         'bg-(--bg-send) text-(--color-text-on-accent)',
-        'shadow-sm',
+        'shadow-(--shadow-depth)',
         // Hide (not unmount) until the first measurement lands, so the box
         // never flashes at (0, 0) before `reposition()` places it.
         !coords && 'invisible',

@@ -152,13 +152,13 @@ describe('SettingsHubPage — appearance', () => {
     const user = userEvent.setup()
     renderHub()
 
-    const theme = screen.getByRole('group', { name: 'Theme' })
-    expect(screen.getByRole('button', { name: 'System' })).toHaveAttribute('aria-pressed', 'true')
+    const theme = screen.getByRole('radiogroup', { name: 'Theme' })
+    expect(screen.getByRole('radio', { name: 'System' })).toHaveAttribute('aria-checked', 'true')
 
-    await user.click(screen.getByRole('button', { name: 'Dark' }))
+    await user.click(screen.getByRole('radio', { name: 'Dark' }))
 
-    expect(theme.contains(screen.getByRole('button', { name: 'Dark' }))).toBe(true)
-    expect(screen.getByRole('button', { name: 'Dark' })).toHaveAttribute('aria-pressed', 'true')
+    expect(theme.contains(screen.getByRole('radio', { name: 'Dark' }))).toBe(true)
+    expect(screen.getByRole('radio', { name: 'Dark' })).toHaveAttribute('aria-checked', 'true')
     expect(localStorage.getItem(THEME_STORAGE_KEY)).toBe('dark')
     expect(document.documentElement.classList.contains('dark')).toBe(true)
   })
@@ -167,14 +167,14 @@ describe('SettingsHubPage — appearance', () => {
     const user = userEvent.setup()
     renderHub()
 
-    const transcript = screen.getByRole('group', { name: 'Transcript' })
-    const reader = screen.getByRole('button', { name: 'Reader' })
+    const transcript = screen.getByRole('radiogroup', { name: 'Transcript' })
+    const reader = screen.getByRole('radio', { name: 'Reader' })
     expect(transcript.contains(reader)).toBe(true)
-    expect(screen.getByRole('button', { name: 'Detailed' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('radio', { name: 'Detailed' })).toHaveAttribute('aria-checked', 'true')
 
     await user.click(reader)
 
-    expect(reader).toHaveAttribute('aria-pressed', 'true')
+    expect(reader).toHaveAttribute('aria-checked', 'true')
     expect(useDisplayPrefsStore.getState().transcriptStyle).toBe('reader')
     useDisplayPrefsStore.setState({ transcriptStyle: 'detailed' })
   })

@@ -21,7 +21,7 @@ export function NeedsYouSection({
   return (
     <section aria-label="Needs you" className="shrink-0 border-b border-(--color-border-subtle) pb-1.5">
       <div className="flex h-8 items-center gap-1.5 pl-3 pr-1.5 text-[11px] leading-none">
-        <span className="font-semibold uppercase tracking-[0.05em] text-(--color-text-subtle)">Needs you</span>
+        <span className="label-caps text-(--color-text-subtle)">Needs you</span>
         <span className="tabular-nums text-(--color-warning)">{sessions.length}</span>
       </div>
       <ul className="max-h-48 space-y-px overflow-y-auto px-1.5">

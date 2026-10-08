@@ -211,7 +211,10 @@ pub fn apply_llm_content_overrides(messages: Vec<ChatMessage>) -> Vec<ChatMessag
                         *parts = Some(attachment_hint_parts(content.as_deref().unwrap_or(""), atts));
                     }
                 }
-                if let Some(from) = extra.get("from_agent").and_then(|v| v.as_str()).filter(|s| !s.is_empty()) {
+                if let Some(header) = workspace_message_header(extra) {
+                    let c = content.clone().unwrap_or_default();
+                    *content = Some(format!("{header}\n{c}"));
+                } else if let Some(from) = extra.get("from_agent").and_then(|v| v.as_str()).filter(|s| !s.is_empty()) {
                     let c = content.clone().unwrap_or_default();
                     if from != "user" && !c.starts_with(&format!("[{from}")) {
                         *content = Some(format!("[{from}]:\n{c}"));
@@ -222,6 +225,30 @@ pub fn apply_llm_content_overrides(messages: Vec<ChatMessage>) -> Vec<ChatMessag
         out.push(msg);
     }
     out
+}
+
+/// The model-only header for a message from another workspace
+/// (`sent_from`) or a reply to one (`reply_from`); the UI shows a chip.
+fn workspace_message_header(extra: &serde_json::Map<String, Value>) -> Option<String> {
+    let s = |o: &serde_json::Map<String, Value>, k: &str| o.get(k).and_then(Value::as_str).unwrap_or("").to_string();
+    if let Some(Value::Object(r)) = extra.get("reply_from") {
+        let status = s(r, "status");
+        let what = if status == "completed" { "Reply" } else { "Status update" };
+        return Some(format!("[{what} from the agent in workspace '{}' ({}), session {}, status {status}]:", s(r, "workspace_name"), s(r, "workspace"), s(r, "session_id")));
+    }
+    let Some(Value::Object(f)) = extra.get("sent_from") else { return None };
+    let reply = f.get("reply").is_some_and(crate::util::truthy);
+    let tail = if reply {
+        "Your final answer is delivered back to it automatically, so end with a self-contained summary; do not call send_to_workspace to reply."
+    } else {
+        "No reply is expected."
+    };
+    Some(format!(
+        "[Message from the agent in workspace '{}' ({}), session {}. Its files are readable by absolute path. {tail}]",
+        s(f, "workspace_name"),
+        s(f, "workspace"),
+        s(f, "session_id")
+    ))
 }
 
 /// `get_messages_for_llm`.
@@ -386,5 +413,31 @@ mod tests {
         assert_eq!(parts.as_deref(), Some(&[ContentBlock::ImageData { data: "QUJD".into(), media_type: "image/png".into() }][..]));
         assert!(meta.extra.as_ref().unwrap().get("parts").is_none(), "{:?}", meta.extra);
         assert_eq!(Value::Object(to_new_message(&msg).extra.unwrap()), extra);
+    }
+
+    fn user_with(extra: Value) -> String {
+        let mut m = ChatMessage::user("do it");
+        if let ChatMessage::User { meta, .. } = &mut m {
+            meta.extra = extra.as_object().cloned();
+        }
+        let out = apply_llm_content_overrides(vec![m]);
+        match &out[0] {
+            ChatMessage::User { content, .. } => content.clone().unwrap_or_default(),
+            other => panic!("user: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn workspace_messages_get_a_model_only_header() {
+        let c = user_with(json!({"sent_from": {"session_id": "s1", "workspace": "/r/app", "workspace_name": "app", "reply": true, "hops": 1}}));
+        assert!(c.starts_with("[Message from the agent in workspace 'app' (/r/app), session s1."), "{c}");
+        assert!(c.contains("delivered back to it automatically") && c.ends_with("]\ndo it"), "{c}");
+        let c = user_with(json!({"sent_from": {"session_id": "s1", "workspace": "/r/app", "workspace_name": "app", "reply": false}}));
+        assert!(c.contains("No reply is expected."), "{c}");
+        let c = user_with(json!({"from_agent": "infra", "reply_from": {"session_id": "s2", "workspace": "/r/infra", "workspace_name": "infra", "status": "completed"}}));
+        assert_eq!(c, "[Reply from the agent in workspace 'infra' (/r/infra), session s2, status completed]:\ndo it");
+        let c = user_with(json!({"from_agent": "infra", "reply_from": {"session_id": "s2", "workspace": "/r/infra", "workspace_name": "infra", "status": "error"}}));
+        assert!(c.starts_with("[Status update from"), "{c}");
+        assert_eq!(user_with(json!({"from_agent": "explorer#1"})), "[explorer#1]:\ndo it");
     }
 }

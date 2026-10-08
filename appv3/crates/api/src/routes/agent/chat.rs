@@ -218,6 +218,7 @@ async fn agent_chat(State(st): State<AppState>, req: Request) -> ApiResult<Respo
         service_tier: fast_mode.then(|| "fast".to_string()),
         mentions,
         origin: "user".into(),
+        extra: None,
     };
     match appv3_agent::service::dispatch_user_message(&agent, d).await {
         Ok((sid, n, mid)) => {

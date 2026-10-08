@@ -31,6 +31,7 @@ pub mod streaming;
 pub mod subagents;
 pub mod tools;
 pub mod util;
+pub mod workspace_messages;
 
 pub use agent::{Agent, RunOptions, RunOutcome};
 pub use errors::{format_agent_error, AgentError};

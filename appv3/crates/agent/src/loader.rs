@@ -432,7 +432,7 @@ pub fn detect_drift(stamp: &ConfigStamp) -> Vec<PathBuf> {
 
 // ── Build ────────────────────────────────────────────────────────────────────
 
-const CONTEXT_INJECTED_TOOLS: &[&str] = &["skill", "todo_manage", "schedule_task", "lsp", "ask_user", "plan", "submit_plan"];
+const CONTEXT_INJECTED_TOOLS: &[&str] = &["skill", "todo_manage", "schedule_task", "lsp", "ask_user", "plan", "submit_plan", "send_to_workspace"];
 
 /// `_default_tool_registry` (built-ins + MCP tools by name).
 pub fn default_tool_registry() -> HashMap<String, ToolRef> {

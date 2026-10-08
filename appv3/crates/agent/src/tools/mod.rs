@@ -3,6 +3,7 @@
 pub mod ask_user;
 pub mod plan;
 pub mod preview;
+pub mod send_to_workspace;
 pub mod team;
 
 use crate::broadcaster;

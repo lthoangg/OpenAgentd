@@ -182,6 +182,18 @@ async fn http_api_end_to_end() {
     assert_eq!(st, StatusCode::OK);
     let (st, _) = c.json("PUT", "/api/settings/title-generation", Some(json!({"enabled": false, "model": "ollama:mock-1", "wait_timeout_seconds": 0}))).await;
     assert_eq!(st, StatusCode::OK);
+
+    // ── workspace messages switch (v3 only) ──────────────────────────────
+    let (st, v) = c.json("GET", "/api/settings/workspace-messages", None).await;
+    assert_eq!((st, v), (StatusCode::OK, json!({"enabled": true})));
+    let (st, v) = c.json("PUT", "/api/settings/workspace-messages", Some(json!({}))).await;
+    assert_eq!(st, StatusCode::UNPROCESSABLE_ENTITY, "{v}");
+    let (st, v) = c.json("PUT", "/api/settings/workspace-messages", Some(json!({"enabled": false}))).await;
+    assert_eq!((st, v), (StatusCode::OK, json!({"enabled": false})));
+    let (_, v) = c.json("GET", "/api/settings/workspace-messages", None).await;
+    assert_eq!(v, json!({"enabled": false}));
+    let (st, _) = c.json("PUT", "/api/settings/workspace-messages", Some(json!({"enabled": true}))).await;
+    assert_eq!(st, StatusCode::OK);
     let ws = root.path().join("proj");
     std::fs::create_dir_all(&ws).unwrap();
     std::fs::write(ws.join("a.txt"), "x").unwrap();

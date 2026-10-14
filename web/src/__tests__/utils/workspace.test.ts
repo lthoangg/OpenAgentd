@@ -67,6 +67,10 @@ describe('coding workspace persistence', () => {
     expect(shouldRestoreLastWorkspace(undefined, '/coding')).toBe(false)
   })
 
+  it('does not restore in a window opened with New Window', () => {
+    expect(shouldRestoreLastWorkspace(undefined, '/', true)).toBe(false)
+  })
+
   it('does not reuse a previous workspace while direct session details are loading', () => {
     expect(workspaceFromSession('sid', undefined)).toBeNull()
   })

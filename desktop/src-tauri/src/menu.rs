@@ -16,7 +16,7 @@ use crate::usage::{
     notification_transitions, UsageRow, UsageSummaryBody,
 };
 use crate::window::{
-    adjust_zoom, create_app_window, emit_frontend_command, set_zoom,
+    adjust_zoom, create_fresh_app_window, emit_frontend_command, set_zoom,
     show_main_window, ZOOM_DEFAULT, ZOOM_STEP,
 };
 use crate::reload_main_window;
@@ -572,7 +572,7 @@ pub fn handle_desktop_menu(app: &AppHandle, id: &str) {
         MENU_NEW_WINDOW => {
             let handle = app.clone();
             tauri::async_runtime::spawn(async move {
-                if let Err(e) = create_app_window(&handle, None, None).await {
+                if let Err(e) = create_fresh_app_window(&handle).await {
                     log::error!("failed to create new window: {e:#}");
                 }
             });

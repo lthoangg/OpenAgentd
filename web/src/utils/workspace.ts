@@ -155,8 +155,9 @@ export function loadLastWorkspace(): WorkspaceEntry | null {
 export function shouldRestoreLastWorkspace(
   sessionId: string | undefined,
   pathname: string,
+  freshWindow = false,
 ): boolean {
-  return !sessionId && pathname === '/'
+  return !freshWindow && !sessionId && pathname === '/'
 }
 
 export function workspaceFromSession(

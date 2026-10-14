@@ -474,6 +474,9 @@ run from the terminal (the native Rust binary since v3.0.0).
   the LLM or the UI `[v1.120.0]`. Foreground output memory is bounded, with
   oversized output streamed incrementally to a session spill file `[v1.120.1]`.
   Foreground commands default to a 120-second timeout instead of 60 `[v1.131.3]`.
+  Foreground commands are capped at 270 seconds (4m30s) so a waiting turn
+  never outlives the ~5-minute provider prompt cache; longer work runs with
+  `background=true` `[v3.11.2]`.
 - **Drag-and-drop files into chat** `[since v1.0, v1.82.0, v1.131.0]` — drag files (images, PDFs, text, etc.) anywhere onto the coding chat area to show a drop overlay and attach them to the composer. Supports multi-file drops, file-type filtering, and cancellation. A drop no longer attaches the same file twice, folders dropped onto the chat are ignored instead of silently swallowed, and a file dropped outside the chat area no longer navigates the app away from the session `[v1.131.0]`.
 - **50 MB attachments with in-composer rejection** `[v1.131.0]` — every attachment
   type shares one 50 MB per-message ceiling instead of the previous mix of

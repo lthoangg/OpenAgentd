@@ -13,6 +13,11 @@ use std::time::Duration;
 use tokio::io::AsyncReadExt;
 
 pub const DEFAULT_TIMEOUT_SECONDS: u64 = 120;
+/// Ceiling for a foreground call (4m30s). Provider prompt caches (Anthropic,
+/// OpenAI/Codex) expire after ~5 minutes idle, so a turn blocked longer than
+/// that re-pays the whole prompt. Anything slower must run with
+/// `background=true`. Applies to every provider.
+pub const MAX_TIMEOUT_SECONDS: u64 = 270;
 const POST_KILL_WAIT: Duration = Duration::from_secs(5);
 #[cfg(unix)]
 const TERM_GRACE: Duration = Duration::from_secs(2);
@@ -479,7 +484,7 @@ impl Tool for ShellTool {
         let command = a.req_str(&["command", "cmd"]);
         let description = a.str_or(&["description"], "");
         let workdir = a.opt_str(&["workdir", "cwd", "dir"]);
-        let timeout_s = a.opt_int(&["timeout_seconds"], Some(1), None).map(|n| n as u64).unwrap_or(DEFAULT_TIMEOUT_SECONDS);
+        let timeout_s = a.opt_int(&["timeout_seconds"], Some(1), None).map(|n| n as u64).unwrap_or(DEFAULT_TIMEOUT_SECONDS).min(MAX_TIMEOUT_SECONDS);
         let background = a.bool_or(&["background"], false);
         a.finish()?;
         if let Some(hit) = ctx.denied.check_command(&command) {
@@ -658,12 +663,25 @@ impl Tool for ShellTool {
             format!("{status_line}\n\n{inline}")
         };
         if aborted {
-            result.push_str(&format!(
-                "\n\n<shell_metadata>\nCommand timed out after {timeout_s}s. If this command legitimately takes longer, retry with a higher timeout_seconds value.\n</shell_metadata>"
-            ));
+            result.push_str(&timeout_hint(timeout_s));
         }
         Ok(ToolOutput::Text(result))
     }
+}
+
+/// Model-facing advice after a foreground timeout: raise the timeout while
+/// under [`MAX_TIMEOUT_SECONDS`], otherwise move the command to the background.
+fn timeout_hint(timeout_s: u64) -> String {
+    let advice = if timeout_s < MAX_TIMEOUT_SECONDS {
+        format!(
+            "If this command legitimately takes longer, retry with a higher timeout_seconds value (at most {MAX_TIMEOUT_SECONDS}), or run it with background=true if it may exceed {MAX_TIMEOUT_SECONDS}s."
+        )
+    } else {
+        format!(
+            "{MAX_TIMEOUT_SECONDS}s is the foreground ceiling. Rerun it with background=true, redirecting output to a log file (e.g. `cmd > /tmp/out.log 2>&1`), then check the log later."
+        )
+    };
+    format!("\n\n<shell_metadata>\nCommand timed out after {timeout_s}s. {advice}\n</shell_metadata>")
 }
 
 #[cfg(unix)]
@@ -758,6 +776,22 @@ mod tests {
         let out = ShellTool.run(&c, serde_json::json!({"command": sleep, "timeout_seconds": 1})).await.unwrap();
         let ToolOutput::Text(t) = out else { panic!() };
         assert!(t.starts_with("[Timed out after 1s]\n\n(No output before timeout)\n\n<shell_metadata>"), "{t}");
+    }
+
+    #[test]
+    fn timeout_hint_points_to_background_at_the_ceiling() {
+        assert!(timeout_hint(1).contains("higher timeout_seconds value (at most 270)"));
+        let at_cap = timeout_hint(MAX_TIMEOUT_SECONDS);
+        assert!(at_cap.contains("background=true") && !at_cap.contains("higher timeout_seconds"), "{at_cap}");
+    }
+
+    #[tokio::test]
+    async fn timeout_is_capped_at_the_ceiling() {
+        let d = tempfile::tempdir().unwrap();
+        let c = ctx(d.path());
+        // A requested 10_000s is clamped; the call still runs and succeeds.
+        let out = ShellTool.run(&c, serde_json::json!({"command": "exit 0", "timeout_seconds": 10_000})).await.unwrap();
+        assert_eq!(out, ToolOutput::text("[Succeeded]"));
     }
 
     /// A call dropped mid-command (the user stopped the turn) hands its

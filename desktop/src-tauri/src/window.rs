@@ -7,7 +7,7 @@ use tauri::{
 };
 
 use crate::AppState;
-use crate::config::{load_window_state, SavedWindowState};
+use crate::config::{load_window_state, window_size, SavedWindowState};
 
 pub const MAIN_WINDOW: &str = "main";
 pub const SECONDARY_WINDOW_PREFIX: &str = "main-";
@@ -292,13 +292,22 @@ pub async fn build_app_window(
     label: String,
     init_script: String,
 ) -> Result<tauri::WebviewWindow> {
+    let saved_size = load_window_state(app).ok().flatten();
+    build_app_window_sized(app, label, init_script, saved_size).await
+}
+
+async fn build_app_window_sized(
+    app: &AppHandle,
+    label: String,
+    init_script: String,
+    saved_size: Option<SavedWindowState>,
+) -> Result<tauri::WebviewWindow> {
     let url = frontend_webview_url(app, &label)?;
     // Re-applied on every document load by the webview, so the frontend keeps
     // its window identity across reloads even when `window.location` no longer
     // carries the `oa-app-id` / `oa-window-id` query params.
     let identity_script = window_identity_init_script(&app.config().identifier, &label);
     let init_script = format!("{identity_script}{init_script}");
-    let saved_size = load_window_state(app).ok().flatten();
     let initial_size = saved_size.unwrap_or(SavedWindowState {
         width: 1280,
         height: 820,
@@ -425,7 +434,12 @@ async fn create_app_window_with(
             .unwrap()
             .insert(window_label.clone(), base);
     }
-    build_app_window(app, window_label, init_script).await
+    // Open at the size of the window you are in, like a browser does; the
+    // size saved on the last close/quit is the fallback when none is open.
+    let size = target_webview_window(app)
+        .and_then(|window| window_size(&window))
+        .or_else(|| load_window_state(app).ok().flatten());
+    build_app_window_sized(app, window_label, init_script, size).await
 }
 
 pub fn target_window_label(app: &AppHandle) -> String {

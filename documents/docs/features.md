@@ -444,7 +444,8 @@ run from the terminal (the native Rust binary since v3.0.0).
   any window destroys its webview and frees memory immediately, while clicking
   the Dock icon or tray reopen action spawns a clean window when none are open.
   New Window opens on an empty new session instead of reopening the last
-  workspace's latest session `[v3.11.2]`.
+  workspace's latest session, at the size of the window you are in (the size
+  saved on the last close or quit when none is open) `[v3.11.2]`.
   - **Hold Command + click session to open in new window** `[v1.62.1, v1.64.1]` — in the desktop app, holding `Cmd` (macOS) or `Ctrl/Cmd` (Linux) and clicking a session in either sidebar opens that session directly in a new independent desktop window; failures now surface an in-app error toast instead of silently doing nothing.
 - **Editable session titles** `[v1.27.0]` — double-click a session card or use its
   edit affordance in the sidebar to rename saved sessions.

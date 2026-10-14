@@ -14,7 +14,7 @@ release that introduced it (where known). When you ship something new, **add it 
 > double-clickable app that runs an agent on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 18 providers. Your keys.
 
-**Latest release:** v3.11.1 · October 14, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.11.1)
+**Latest release:** v3.11.2 · October 14, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.11.2)
 
 ---
 
@@ -443,6 +443,9 @@ run from the terminal (the native Rust binary since v3.0.0).
   Desktop windows now operate as symmetric peer windows `[v2.8.0]`: closing
   any window destroys its webview and frees memory immediately, while clicking
   the Dock icon or tray reopen action spawns a clean window when none are open.
+  New Window opens on an empty new session instead of reopening the last
+  workspace's latest session, at the size of the window you are in (the size
+  saved on the last close or quit when none is open) `[v3.11.2]`.
   - **Hold Command + click session to open in new window** `[v1.62.1, v1.64.1]` — in the desktop app, holding `Cmd` (macOS) or `Ctrl/Cmd` (Linux) and clicking a session in either sidebar opens that session directly in a new independent desktop window; failures now surface an in-app error toast instead of silently doing nothing.
 - **Editable session titles** `[v1.27.0]` — double-click a session card or use its
   edit affordance in the sidebar to rename saved sessions.
@@ -474,6 +477,9 @@ run from the terminal (the native Rust binary since v3.0.0).
   the LLM or the UI `[v1.120.0]`. Foreground output memory is bounded, with
   oversized output streamed incrementally to a session spill file `[v1.120.1]`.
   Foreground commands default to a 120-second timeout instead of 60 `[v1.131.3]`.
+  Foreground commands are capped at 270 seconds (4m30s) so a waiting turn
+  never outlives the ~5-minute provider prompt cache; longer work runs with
+  `background=true` `[v3.11.2]`.
 - **Drag-and-drop files into chat** `[since v1.0, v1.82.0, v1.131.0]` — drag files (images, PDFs, text, etc.) anywhere onto the coding chat area to show a drop overlay and attach them to the composer. Supports multi-file drops, file-type filtering, and cancellation. A drop no longer attaches the same file twice, folders dropped onto the chat are ignored instead of silently swallowed, and a file dropped outside the chat area no longer navigates the app away from the session `[v1.131.0]`.
 - **50 MB attachments with in-composer rejection** `[v1.131.0]` — every attachment
   type shares one 50 MB per-message ceiling instead of the previous mix of

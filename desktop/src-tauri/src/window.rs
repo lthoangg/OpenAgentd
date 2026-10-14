@@ -7,7 +7,7 @@ use tauri::{
 };
 
 use crate::AppState;
-use crate::config::{load_window_state, SavedWindowState};
+use crate::config::{load_window_state, window_size, SavedWindowState};
 
 pub const MAIN_WINDOW: &str = "main";
 pub const SECONDARY_WINDOW_PREFIX: &str = "main-";
@@ -235,6 +235,12 @@ pub fn backend_unavailable_init_script() -> String {
     "Object.defineProperty(window, '__OAD_BACKEND_UNAVAILABLE__', { value: true, writable: true, configurable: true });Object.defineProperty(window, '__OAD_INITIAL_ROUTE__', { value: \"/\", writable: true, configurable: true });".to_string()
 }
 
+/// Marks a window the user opened with New Window. Its first load shows an
+/// empty new session instead of reopening the last workspace's latest
+/// session (`web/src/lib/fresh-window.ts`). Reloads ignore the flag.
+pub const FRESH_WINDOW_INIT_SCRIPT: &str =
+    "Object.defineProperty(window, '__OAD_FRESH_WINDOW__', { value: true, writable: true, configurable: true });";
+
 pub fn new_window_init_script(
     bundled_base_url: Option<&str>,
     desktop_token: Option<&str>,
@@ -286,13 +292,22 @@ pub async fn build_app_window(
     label: String,
     init_script: String,
 ) -> Result<tauri::WebviewWindow> {
+    let saved_size = load_window_state(app).ok().flatten();
+    build_app_window_sized(app, label, init_script, saved_size).await
+}
+
+async fn build_app_window_sized(
+    app: &AppHandle,
+    label: String,
+    init_script: String,
+    saved_size: Option<SavedWindowState>,
+) -> Result<tauri::WebviewWindow> {
     let url = frontend_webview_url(app, &label)?;
     // Re-applied on every document load by the webview, so the frontend keeps
     // its window identity across reloads even when `window.location` no longer
     // carries the `oa-app-id` / `oa-window-id` query params.
     let identity_script = window_identity_init_script(&app.config().identifier, &label);
     let init_script = format!("{identity_script}{init_script}");
-    let saved_size = load_window_state(app).ok().flatten();
     let initial_size = saved_size.unwrap_or(SavedWindowState {
         width: 1280,
         height: 820,
@@ -372,18 +387,35 @@ pub async fn create_app_window(
     label: Option<&str>,
     initial_path: Option<&str>,
 ) -> Result<tauri::WebviewWindow> {
+    create_app_window_with(app, label, initial_path, false).await
+}
+
+/// New Window: a window that opens on an empty new session.
+pub async fn create_fresh_app_window(app: &AppHandle) -> Result<tauri::WebviewWindow> {
+    create_app_window_with(app, None, None, true).await
+}
+
+async fn create_app_window_with(
+    app: &AppHandle,
+    label: Option<&str>,
+    initial_path: Option<&str>,
+    fresh: bool,
+) -> Result<tauri::WebviewWindow> {
     let state: tauri::State<'_, AppState> = app.state();
     let bundled_base_url = state.backend_base_url.lock().await.clone();
     let desktop_token = state.desktop_token.lock().await.clone();
     let external_window_base_urls = state.window_backend_base_urls.lock().unwrap().clone();
     let active_window_label = state.active_window_label.lock().unwrap().clone();
-    let init_script = new_window_init_script(
+    let mut init_script = new_window_init_script(
         bundled_base_url.as_deref(),
         desktop_token.as_deref(),
         &external_window_base_urls,
         &active_window_label,
         initial_path,
     )?;
+    if fresh {
+        init_script.push_str(FRESH_WINDOW_INIT_SCRIPT);
+    }
     let inherited_external =
         inherited_external_base_url(&external_window_base_urls, &active_window_label);
     let window_label = label
@@ -402,7 +434,12 @@ pub async fn create_app_window(
             .unwrap()
             .insert(window_label.clone(), base);
     }
-    build_app_window(app, window_label, init_script).await
+    // Open at the size of the window you are in, like a browser does; the
+    // size saved on the last close/quit is the fallback when none is open.
+    let size = target_webview_window(app)
+        .and_then(|window| window_size(&window))
+        .or_else(|| load_window_state(app).ok().flatten());
+    build_app_window_sized(app, window_label, init_script, size).await
 }
 
 pub fn target_window_label(app: &AppHandle) -> String {
@@ -479,6 +516,12 @@ mod tests {
 
         assert!(script.contains(r#""main\"; alert(1); //""#));
         assert!(!script.contains(r#"value: "main";"#));
+    }
+
+    // The web reads exactly this global (`web/src/lib/fresh-window.ts`).
+    #[test]
+    fn fresh_window_script_defines_the_web_flag() {
+        assert!(FRESH_WINDOW_INIT_SCRIPT.contains("'__OAD_FRESH_WINDOW__', { value: true,"));
     }
 
     // Release windows load the bundled UI (`frontend_webview_url`) and debug

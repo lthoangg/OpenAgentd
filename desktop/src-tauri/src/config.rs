@@ -64,19 +64,36 @@ pub fn load_window_state(app: &AppHandle) -> Result<Option<SavedWindowState>> {
     Ok(Some(state))
 }
 
+/// The size worth remembering for a window in this state: `None` while it is
+/// minimized or maximized, or smaller than the minimum we restore.
+pub fn rememberable_size(
+    width: u32,
+    height: u32,
+    minimized: bool,
+    maximized: bool,
+) -> Option<SavedWindowState> {
+    if minimized || maximized || width < 760 || height < 560 {
+        return None;
+    }
+    Some(SavedWindowState { width, height })
+}
+
+/// The current size of `window`, if it is one worth remembering.
+pub fn window_size(window: &tauri::WebviewWindow) -> Option<SavedWindowState> {
+    let size = window.inner_size().ok()?;
+    rememberable_size(
+        size.width,
+        size.height,
+        window.is_minimized().unwrap_or(false),
+        window.is_maximized().unwrap_or(false),
+    )
+}
+
 pub fn save_window_state(app: &AppHandle, window: &tauri::WebviewWindow) -> Result<()> {
-    if window.is_minimized().unwrap_or(false) || window.is_maximized().unwrap_or(false) {
+    let Some(state) = window_size(window) else {
         return Ok(());
-    }
-    let size = window.inner_size().context("read window inner size")?;
-    if size.width < 760 || size.height < 560 {
-        return Ok(());
-    }
-    let path = window_state_path(app)?;
-    let state = SavedWindowState {
-        width: size.width,
-        height: size.height,
     };
+    let path = window_state_path(app)?;
     let bytes = serde_json::to_vec_pretty(&state).context("serialize window state")?;
     std::fs::write(&path, bytes).with_context(|| format!("write {}", path.display()))
 }
@@ -96,4 +113,23 @@ pub fn save_app_backend_config(
 
 pub fn remove_app_backend_server(app: &AppHandle, base_url: &str) -> Result<()> {
     remove_backend_server_at(&app_backend_config_path(app)?, base_url)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_normal_window_size_is_remembered() {
+        let size = rememberable_size(1600, 1000, false, false).unwrap();
+        assert_eq!((size.width, size.height), (1600, 1000));
+    }
+
+    #[test]
+    fn minimized_maximized_or_tiny_windows_are_not_remembered() {
+        assert!(rememberable_size(1600, 1000, true, false).is_none());
+        assert!(rememberable_size(1600, 1000, false, true).is_none());
+        assert!(rememberable_size(700, 1000, false, false).is_none());
+        assert!(rememberable_size(1600, 500, false, false).is_none());
+    }
 }

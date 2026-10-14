@@ -275,7 +275,7 @@
     "type": "function",
     "function": {
       "name": "shell",
-      "description": "Run a command through the user's POSIX shell; supports &&, ||, pipes, variables, and subshells. Returns stdout and stderr combined. stdin is /dev/null, so use non-interactive flags for commands that may prompt. Use background=true only for long-lived processes. Prefer file tools for file operations: do NOT use shell commands ('cat', 'head', 'sed', 'awk') for file inspection or editing when read and patch apply. Never run interactive pagers or prompts (use --no-pager, -y, -q). Environment: Darwin arm64, shell=zsh.",
+      "description": "Run a command through the user's POSIX shell; supports &&, ||, pipes, variables, and subshells. Returns stdout and stderr combined. stdin is /dev/null, so use non-interactive flags for commands that may prompt. Foreground calls wait at most 270s; use background=true for long-lived processes and anything slower. Prefer file tools for file operations: do NOT use shell commands ('cat', 'head', 'sed', 'awk') for file inspection or editing when read and patch apply. Never run interactive pagers or prompts (use --no-pager, -y, -q). Environment: Darwin arm64, shell=zsh.",
       "parameters": {
         "type": "object",
         "properties": {
@@ -295,13 +295,14 @@
           },
           "timeout_seconds": {
             "minimum": 1,
+            "maximum": 270,
             "type": "integer",
             "default": null,
-            "description": "Timeout in seconds; default 120, with no ceiling. Use a larger foreground timeout for slow commands."
+            "description": "Timeout in seconds; default 120, maximum 270 (4m30s). Larger values are clamped to 270. Run anything that may take longer with background=true."
           },
           "background": {
             "default": false,
-            "description": "Only for long-lived processes; returns the PID. Stay in the foreground when you need the command result.",
+            "description": "For long-lived processes and any command that may exceed 270s; returns the PID and discards output, so redirect output to a log file to read later. Stay in the foreground when you need the result within 270s.",
             "type": "boolean"
           }
         },

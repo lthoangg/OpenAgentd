@@ -11,6 +11,7 @@ import { loadLastWorkspace, removeWorkspace, saveLastWorkspace, shouldRestoreLas
 import { syncDesktopWindowTitle } from '@/lib/window-title'
 import { useNeedsYouBadge } from '@/hooks/use-needs-you-badge'
 import { useChatWorkspace } from '@/queries/useChatWorkspace'
+import { clearFreshDesktopWindow, isFreshDesktopWindow } from '@/lib/fresh-window'
 
 /**
  * The app layout for / (new session) and /<session id>.
@@ -61,6 +62,11 @@ function AgentLayoutBase() {
     if (workspace) saveLastWorkspace(workspace)
   }, [workspace])
 
+  // A New Window stays on its empty new session until it opens one.
+  useEffect(() => {
+    if (sessionId) clearFreshDesktopWindow()
+  }, [sessionId])
+
   useEffect(() => {
     syncDesktopWindowTitle({ workspace, workspaceName, needsYou, sessionTitle: useAgentStore.getState().sessionTitle })
     return useAgentStore.subscribe((state, prev) => {
@@ -74,7 +80,7 @@ function AgentLayoutBase() {
     if (sessionId) return
     let cancelled = false
     const restore = window.setTimeout(() => {
-      if (!shouldRestoreLastWorkspace(sessionId, window.location.pathname)) return
+      if (!shouldRestoreLastWorkspace(sessionId, window.location.pathname, isFreshDesktopWindow())) return
       const lastWorkspace = loadLastWorkspace()
       if (!lastWorkspace) return
       ;(async () => {

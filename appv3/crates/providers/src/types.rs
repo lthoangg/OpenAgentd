@@ -356,6 +356,19 @@ impl ProviderError {
             ProviderError::Network(e.to_string())
         }
     }
+    /// A failed read of a streamed response body. reqwest labels every such
+    /// failure (connection reset, truncated chunk, timeout) "error decoding
+    /// response body", but it is a dropped connection, so it is retryable.
+    pub fn from_body_read(e: reqwest::Error) -> Self {
+        let mut msg = e.to_string();
+        let mut src = std::error::Error::source(&e);
+        while let Some(s) = src {
+            msg.push_str(": ");
+            msg.push_str(&s.to_string());
+            src = s.source();
+        }
+        ProviderError::Network(msg)
+    }
     /// Build an HTTP error matching httpx's message format.
     pub fn http(status: u16, url: &str, body: String, headers: Vec<(String, String)>) -> Self {
         let reason = reqwest::StatusCode::from_u16(status).ok().and_then(|s| s.canonical_reason()).unwrap_or("");

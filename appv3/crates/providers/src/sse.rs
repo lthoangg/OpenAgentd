@@ -76,7 +76,7 @@ pub fn lines_idle(resp: reqwest::Response, idle: Option<Duration>) -> impl Strea
                         yield Ok(line);
                     }
                 }
-                Some(Err(e)) => { yield Err(ProviderError::from_reqwest(e)); return; }
+                Some(Err(e)) => { yield Err(ProviderError::from_body_read(e)); return; }
                 None => {
                     if let Some(line) = buf.finish() {
                         yield Ok(line);
@@ -214,5 +214,32 @@ mod tests {
         let items: Vec<_> = data_json(resp, Some("[DONE]"), true).collect().await;
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].as_ref().unwrap()["t"], "é");
+    }
+
+    #[tokio::test]
+    async fn connection_dropped_mid_stream_is_a_retryable_network_error() {
+        // reqwest reports every body read failure from `bytes_stream` as a
+        // "decode" error; a connection cut mid-reply must still be retried.
+        use tokio::io::AsyncWriteExt;
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            let (mut s, _) = listener.accept().await.unwrap();
+            let mut tmp = [0u8; 1024];
+            let _ = tokio::io::AsyncReadExt::read(&mut s, &mut tmp).await;
+            s.write_all(b"HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\ntransfer-encoding: chunked\r\n\r\n").await.unwrap();
+            let part: &[u8] = b"data: {\"t\":1}\n\n";
+            s.write_all(format!("{:x}\r\n", part.len()).as_bytes()).await.unwrap();
+            s.write_all(part).await.unwrap();
+            s.write_all(b"\r\n").await.unwrap();
+            // Promise a chunk, then drop the connection before sending it.
+            s.write_all(b"40\r\ndata: {\"t\"").await.unwrap();
+            s.flush().await.unwrap();
+        });
+        let resp = reqwest::get(format!("http://{addr}/")).await.unwrap();
+        let items: Vec<_> = data_json(resp, None, false).collect().await;
+        assert_eq!(items[0].as_ref().unwrap()["t"], 1);
+        let err = items.last().unwrap().as_ref().unwrap_err();
+        assert!(matches!(err, ProviderError::Network(_)), "expected a retryable Network error, got {err:?}");
     }
 }

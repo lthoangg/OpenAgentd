@@ -9,6 +9,7 @@ pub mod errors;
 pub mod events;
 pub mod history;
 pub mod hooks;
+pub mod idle_compaction;
 pub mod interaction_mode;
 pub mod loader;
 pub mod manager;

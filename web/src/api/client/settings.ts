@@ -57,6 +57,10 @@ export const updateSandboxSettings = updateDeniedPathsSettings
 export type SummarizationSettings = {
   /** null = use the auto-computed model-aware threshold */
   prompt_token_threshold: number | null
+  /** Compact an idle session before its prompt cache expires (opt-in). */
+  idle_compaction: boolean
+  /** Share (1-100) of the compaction trigger needed for idle compaction; null = 70. */
+  idle_compaction_percent: number | null
 }
 
 export async function getSummarizationSettings(): Promise<SummarizationSettings> {

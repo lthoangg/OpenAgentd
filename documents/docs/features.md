@@ -1236,6 +1236,12 @@ OpenAgentd carries context across sessions via rolling-window summarization.
   summarizer keeps the same cacheable prompt prefix as normal chat turns.
   Changing the trigger in Settings → Automation applies from the next model
   call, including inside a turn that is already running `[v3.3.0]`.
+  Opt-in **idle compaction** in Settings → Automation → Summarization
+  compacts a session in the background when it has been idle for 4½ minutes
+  after a turn and its context has reached a set share of the trigger
+  (default 70%). This uses the provider's prompt cache while it is still
+  warm, so the next message starts from a short context. It sends no
+  notification and skips subagent and scheduled sessions `[v3.12.0]`.
 - **`AGENTS.md` at repo root and subfolders** `[v1.9.0]` — written by `/init`;
   standard repo- and folder-scoped agent context files.
 - **Global `AGENTS.md`** `[v2.10.0]` — a developer-wide instructions file at

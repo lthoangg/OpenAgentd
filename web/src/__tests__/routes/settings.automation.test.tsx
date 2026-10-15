@@ -320,4 +320,90 @@ describe('AutomationSettingsPage', () => {
     await waitFor(() => expect(bodies).toEqual([{ enabled: false }]))
     expect(titlesPuts).toBe(0)
   })
+
+  it('keeps idle compaction off with its percent shown but disabled for an older backend', async () => {
+    // baseHandlers returns only prompt_token_threshold, like an older backend.
+    server.use(...baseHandlers(null))
+    renderPage()
+
+    const toggle = await screen.findByRole('switch', { name: /compact idle sessions/i })
+    expect(toggle.getAttribute('aria-checked')).toBe('false')
+    const percent = screen.getByLabelText('Idle trigger percent') as HTMLInputElement
+    expect(percent.disabled).toBe(true)
+    expect(percent.placeholder).toBe('70 (default)')
+    expect(screen.queryByText('Unsaved changes')).toBeNull()
+
+    fireEvent.click(toggle)
+    await waitFor(() => expect(percent.disabled).toBe(false))
+  })
+
+  it('turns idle compaction on with a custom percent', async () => {
+    const bodies: unknown[] = []
+    server.use(
+      ...baseHandlers(null),
+      http.put('http://localhost/api/settings/summarization', async ({ request }) => {
+        const body = await request.json()
+        bodies.push(body)
+        return HttpResponse.json(body as object)
+      }),
+    )
+    renderPage()
+
+    fireEvent.click(await screen.findByRole('switch', { name: /compact idle sessions/i }))
+    const percent = await screen.findByLabelText('Idle trigger percent')
+    expect((percent as HTMLInputElement).placeholder).toBe('70 (default)')
+    fireEvent.change(percent, { target: { value: '55' } })
+    fireEvent.click(await screen.findByRole('button', { name: /^save$/i }))
+
+    await waitFor(() =>
+      expect(bodies).toEqual([
+        { prompt_token_threshold: null, idle_compaction: true, idle_compaction_percent: 55 },
+      ]),
+    )
+  })
+
+  it('sends null for an empty percent and summarizes the default', async () => {
+    const bodies: unknown[] = []
+    server.use(
+      ...baseHandlers(null),
+      http.put('http://localhost/api/settings/summarization', async ({ request }) => {
+        const body = await request.json()
+        bodies.push(body)
+        return HttpResponse.json(body as object)
+      }),
+    )
+    renderPage()
+
+    fireEvent.click(await screen.findByRole('switch', { name: /compact idle sessions/i }))
+    fireEvent.click(await screen.findByRole('button', { name: /^save$/i }))
+    await waitFor(() =>
+      expect(bodies).toEqual([
+        { prompt_token_threshold: null, idle_compaction: true, idle_compaction_percent: null },
+      ]),
+    )
+
+    await collapseGroup(/summarization/i)
+    expect(await screen.findByText('Auto · idle at 70%')).toBeTruthy()
+  })
+
+  it.each(['0', '101'])('blocks saving an idle percent of %s', async (value) => {
+    let puts = 0
+    server.use(
+      ...baseHandlers(null),
+      http.put('http://localhost/api/settings/summarization', () => {
+        puts += 1
+        return HttpResponse.json({})
+      }),
+    )
+    renderPage()
+
+    fireEvent.click(await screen.findByRole('switch', { name: /compact idle sessions/i }))
+    fireEvent.change(await screen.findByLabelText('Idle trigger percent'), { target: { value } })
+
+    expect(await screen.findByText(/whole number from 1 to 100/i)).toBeTruthy()
+    const save = screen.getByRole('button', { name: /^save$/i }) as HTMLButtonElement
+    expect(save.disabled).toBe(true)
+    fireEvent.click(save)
+    expect(puts).toBe(0)
+  })
 })

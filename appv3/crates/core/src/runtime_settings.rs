@@ -32,6 +32,32 @@ impl Default for TitleGenerationSettings {
 pub struct SummarizationSettings {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub prompt_token_threshold: Option<i64>,
+    /// Compact an idle lead session before its prompt cache expires (v3 only,
+    /// opt-in). Written only when on, so existing files stay unchanged.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub idle_compaction: bool,
+    /// Share of the effective compaction trigger (1-100) a session must reach
+    /// before idle compaction runs; `None` means
+    /// [`DEFAULT_IDLE_COMPACTION_PERCENT`].
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub idle_compaction_percent: Option<i64>,
+}
+
+pub const DEFAULT_IDLE_COMPACTION_PERCENT: i64 = 70;
+
+impl SummarizationSettings {
+    /// The effective idle-compaction percent. A hand-edited value outside
+    /// 1-100 falls back to the default rather than failing settings loads.
+    pub fn idle_compaction_percent(&self) -> i64 {
+        match self.idle_compaction_percent {
+            Some(p) if (1..=100).contains(&p) => p,
+            Some(p) => {
+                tracing::warn!("idle_compaction_percent_out_of_range value={} using={}", p, DEFAULT_IDLE_COMPACTION_PERCENT);
+                DEFAULT_IDLE_COMPACTION_PERCENT
+            }
+            None => DEFAULT_IDLE_COMPACTION_PERCENT,
+        }
+    }
 }
 
 /// `workspace_messages` — the lead's `send_to_workspace` tool (v3 only).
@@ -389,5 +415,31 @@ mod tests {
         let p = dir.path().join("settings.yaml");
         std::fs::write(&p, &text).unwrap();
         assert!(!load_runtime_settings_from(&p).unwrap().workspace_messages.enabled);
+    }
+
+    #[test]
+    fn idle_compaction_keys_written_only_when_set() {
+        let mut cfg = RuntimeSettings::default();
+        assert!(to_pyyaml(&cfg).unwrap().contains("summarization: {}\n"));
+        cfg.summarization.idle_compaction = true;
+        cfg.summarization.idle_compaction_percent = Some(60);
+        let text = to_pyyaml(&cfg).unwrap();
+        assert!(text.contains("summarization:\n  idle_compaction: true\n  idle_compaction_percent: 60\n"), "{text}");
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("settings.yaml");
+        std::fs::write(&p, &text).unwrap();
+        let back = load_runtime_settings_from(&p).unwrap().summarization;
+        assert!(back.idle_compaction);
+        assert_eq!(back.idle_compaction_percent(), 60);
+    }
+
+    #[test]
+    fn idle_compaction_percent_falls_back_to_default() {
+        let with = |p: Option<i64>| SummarizationSettings { idle_compaction_percent: p, ..Default::default() }.idle_compaction_percent();
+        assert_eq!(with(None), DEFAULT_IDLE_COMPACTION_PERCENT);
+        assert_eq!(with(Some(0)), 70);
+        assert_eq!(with(Some(150)), 70);
+        assert_eq!(with(Some(85)), 85);
+        assert_eq!(with(Some(100)), 100);
     }
 }

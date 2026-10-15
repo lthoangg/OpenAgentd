@@ -8,8 +8,10 @@ use crate::events::{self, Envelope};
 use crate::hooks::basic::{CurrentDateHook, MemoryContextHook, QueuedInjectionHook, RuntimeProtocolHook, ToolResultOffloadHook, WorkspaceInstructionsHook};
 use crate::hooks::publisher::StreamPublisherHook;
 use crate::hooks::summarization::build_summarization_hook;
+use crate::hooks::summarization::resolve_prompt_token_threshold;
 use crate::hooks::title::build_title_generation_hook;
 use crate::hooks::HookRef;
+use crate::idle_compaction::{idle_prompt_tokens, should_compact, IDLE_COMPACTION_DELAY};
 use crate::interaction_mode;
 use crate::loader::{self, ProviderFactory};
 use crate::notification;
@@ -24,6 +26,7 @@ use serde_json::{json, Map, Value};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, RwLock, Weak};
+use std::time::Duration;
 
 #[derive(Debug, thiserror::Error)]
 pub enum SessionError {
@@ -108,6 +111,9 @@ fn provider_error_to_agent(e: ProviderError) -> AgentError {
 #[derive(Default, Clone)]
 pub struct TurnOptions {
     pub force_compaction: bool,
+    /// A background compaction started by the idle timer (see
+    /// [`crate::idle_compaction`]); it sends no desktop notification.
+    pub idle_compaction: bool,
     pub question_resume: bool,
     pub runtime_model: Option<String>,
     pub runtime_thinking_level: Option<String>,
@@ -160,6 +166,9 @@ pub struct AgentSession {
     /// system prompt stays byte-identical across turns (prefix caching);
     /// pages saved mid-session show up in the next session.
     memory_snapshot: Mutex<Option<String>>,
+    /// Pending idle-compaction timer; any new turn aborts it.
+    idle_timer: Mutex<Option<tokio::task::JoinHandle<()>>>,
+    idle_compaction_delay: Mutex<Duration>,
     me: Weak<AgentSession>,
 }
 
@@ -194,6 +203,8 @@ impl AgentSession {
             pending_interaction_mode: Mutex::new(None),
             is_scheduler_session: AtomicBool::new(false),
             memory_snapshot: Mutex::new(None),
+            idle_timer: Mutex::new(None),
+            idle_compaction_delay: Mutex::new(IDLE_COMPACTION_DELAY),
             me: me.clone(),
         })
     }
@@ -291,9 +302,101 @@ impl AgentSession {
     }
 
     fn spawn_turn(&self, opts: TurnOptions) {
+        self.cancel_idle_timer();
         let me = self.arc();
         let h = appv3_core::otel::spawn(async move { me.run_turn(opts).await });
         *self.active_task.lock().unwrap() = Some(h);
+    }
+
+    /// Override the idle-compaction delay (tests only).
+    #[doc(hidden)]
+    pub fn set_idle_compaction_delay(&self, delay: Duration) {
+        *self.idle_compaction_delay.lock().unwrap() = delay;
+    }
+
+    fn cancel_idle_timer(&self) {
+        if let Some(h) = self.idle_timer.lock().unwrap().take() {
+            h.abort();
+        }
+    }
+
+    /// Start the idle-compaction timer for the turn that just completed. The
+    /// setting is read when it fires, so enabling it mid-idle still applies.
+    fn arm_idle_compaction(&self) {
+        let generation = *self.turn_generation.borrow();
+        let delay = *self.idle_compaction_delay.lock().unwrap();
+        let me = self.me.clone();
+        let h = tokio::spawn(async move {
+            tokio::time::sleep(delay).await;
+            if let Some(s) = me.upgrade() {
+                s.try_idle_compaction(generation).await;
+            }
+        });
+        if let Some(old) = self.idle_timer.lock().unwrap().replace(h) {
+            old.abort();
+        }
+    }
+
+    /// Run `/compact` in the background when the session has stayed idle
+    /// since the turn that armed the timer and its context reached the
+    /// configured share of the compaction trigger.
+    async fn try_idle_compaction(&self, generation: u64) {
+        if *self.turn_generation.borrow() != generation {
+            return;
+        }
+        // This task is the pending timer; drop its handle so the turn
+        // started below does not abort it.
+        self.idle_timer.lock().unwrap().take();
+        let sid = self.session_id();
+        let skip = |reason: &str| tracing::debug!("idle_compaction_skipped session_id={} reason={}", sid, reason);
+        let Ok(_guard) = self.user_message_lock.try_lock() else {
+            return skip("message_in_flight");
+        };
+        if sid.is_empty() || *self.turn_generation.borrow() != generation || self.is_busy() || self.state() != "idle" || self.cancel.is_set() {
+            return skip("not_idle");
+        }
+        let cfg = match appv3_core::runtime_settings::load_runtime_settings() {
+            Ok(c) => c.summarization,
+            Err(e) => {
+                tracing::warn!("idle_compaction_settings_failed session_id={} error={}", sid, e);
+                return;
+            }
+        };
+        if !cfg.idle_compaction {
+            return skip("disabled");
+        }
+        if crate::subagents::has_working_subagents(&sid) || crate::workspace_messages::has_outstanding_replies(&sid) {
+            return skip("awaiting_work");
+        }
+        if self.has_open_question().await {
+            return skip("question_open");
+        }
+        let history = match crate::history::get_messages_for_llm(&self.pool, &sid).await {
+            Ok(h) => h,
+            Err(e) => {
+                tracing::warn!("idle_compaction_history_failed session_id={} error={}", sid, e);
+                return;
+            }
+        };
+        let Some(tokens) = idle_prompt_tokens(&history) else {
+            return skip("no_usage_or_compacted");
+        };
+        let row_model = match db::get_session(&self.pool, &sid).await {
+            Ok(Some(r)) => r.model.filter(|m| !m.is_empty()),
+            _ => None,
+        };
+        let model = row_model.or_else(|| self.agent().model_id.clone());
+        let threshold = resolve_prompt_token_threshold(model.as_deref(), cfg.prompt_token_threshold);
+        let percent = cfg.idle_compaction_percent();
+        if !should_compact(tokens, threshold, percent) {
+            return skip("below_percent");
+        }
+        tracing::info!("idle_compaction_started session_id={} tokens={} threshold={} percent={}", sid, tokens, threshold, percent);
+        store().init_turn(&sid, true);
+        self.set_state("working");
+        self.clear_cancel();
+        self.set_active_turn(true);
+        self.spawn_turn(TurnOptions { force_compaction: true, idle_compaction: true, ..Default::default() });
     }
 
     // ── lifecycle ──
@@ -302,6 +405,7 @@ impl AgentSession {
     }
 
     pub async fn stop(&self) {
+        self.cancel_idle_timer();
         self.cancel.set();
         self.hard_cancel.set();
         let handle = self.active_task.lock().unwrap().take();
@@ -859,6 +963,9 @@ impl AgentSession {
         }
         let sid = self.session_id();
         let errored = state == "error";
+        // A background compaction was not asked for, so it never notifies.
+        let notify = !opts.idle_compaction;
+        let mut completed = false;
         if let Some(q) = qs.as_ref().filter(|_| !errored) {
             self.set_state("waiting_input");
             let mut e = Map::new();
@@ -877,13 +984,18 @@ impl AgentSession {
             if !activated {
                 self.set_state("idle");
                 self.emit("agent_status", Some("idle"), None);
-                self.close_turn(&sid, "completed", true).await;
+                self.close_turn(&sid, "completed", notify).await;
+                completed = true;
             }
         } else {
-            self.close_turn(&sid, "error", true).await;
+            self.close_turn(&sid, "error", notify).await;
         }
         if !activated {
             self.set_active_turn(false);
+        }
+        let lead = self.parent_session_id.is_none() && !self.is_scheduler_session.load(Ordering::SeqCst);
+        if completed && lead && !opts.force_compaction && !sid.is_empty() && !self.cancel.is_set() {
+            self.arm_idle_compaction();
         }
         self.detect_config_drift();
     }

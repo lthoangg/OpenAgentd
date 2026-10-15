@@ -194,6 +194,25 @@ async fn http_api_end_to_end() {
     assert_eq!(v, json!({"enabled": false}));
     let (st, _) = c.json("PUT", "/api/settings/workspace-messages", Some(json!({"enabled": true}))).await;
     assert_eq!(st, StatusCode::OK);
+
+    // ── idle compaction (v3 only) ────────────────────────────────────────
+    let summ = "/api/settings/summarization";
+    let (st, v) = c.json("GET", summ, None).await;
+    assert_eq!((st, v), (StatusCode::OK, json!({"prompt_token_threshold": null, "idle_compaction": false, "idle_compaction_percent": null})));
+    let (st, v) = c.json("PUT", summ, Some(json!({"prompt_token_threshold": null, "idle_compaction": true, "idle_compaction_percent": 60}))).await;
+    assert_eq!((st, v), (StatusCode::OK, json!({"prompt_token_threshold": null, "idle_compaction": true, "idle_compaction_percent": 60})));
+    // A body without the idle keys (an older client) keeps them.
+    let (st, v) = c.json("PUT", summ, Some(json!({"prompt_token_threshold": 5000}))).await;
+    assert_eq!((st, v), (StatusCode::OK, json!({"prompt_token_threshold": 5000, "idle_compaction": true, "idle_compaction_percent": 60})));
+    for bad in [0, 101] {
+        let (st, v) = c.json("PUT", summ, Some(json!({"idle_compaction_percent": bad}))).await;
+        assert_eq!(st, StatusCode::UNPROCESSABLE_ENTITY, "{v}");
+    }
+    let (_, v) = c.json("GET", summ, None).await;
+    assert_eq!(v["idle_compaction_percent"], 60, "a rejected PUT changed the percent");
+    let (st, v) = c.json("PUT", summ, Some(json!({"prompt_token_threshold": null, "idle_compaction": false, "idle_compaction_percent": null}))).await;
+    assert_eq!((st, v), (StatusCode::OK, json!({"prompt_token_threshold": null, "idle_compaction": false, "idle_compaction_percent": null})));
+
     let ws = root.path().join("proj");
     std::fs::create_dir_all(&ws).unwrap();
     std::fs::write(ws.join("a.txt"), "x").unwrap();

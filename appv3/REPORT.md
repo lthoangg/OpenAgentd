@@ -741,6 +741,26 @@ explicitly.
   `agent/tests/workspace_messages.rs`, unit tests in the two modules and
   `history.rs`, `db/src/queries/messages.rs`, `core/src/runtime_settings.rs`,
   and `api/tests/http_api.rs`. v2 has no equivalent.
+- **Idle compaction (v3 only, opt-in):** when a lead session's turn
+  completes, a timer starts (`agent/src/idle_compaction.rs`,
+  `agent/src/session.rs`). If the session is still idle 270 s later, which is
+  just under the 5-minute prompt-cache TTL some providers use, and its last
+  prompt reached `idle_compaction_percent`% of the effective compaction
+  trigger, it runs the same forced compaction as `/compact`. Any new turn
+  cancels the timer. Subagent and scheduler sessions are skipped, as are
+  sessions with working subagents, outstanding workspace replies, an open
+  question, or a summary newer than their last model call. The compaction
+  turn sends no desktop notification and does not re-arm the timer. Formats:
+  - `settings.yaml` gains `summarization.idle_compaction` (default `false`,
+    written only when `true`) and `summarization.idle_compaction_percent`
+    (1–100, written only when set; absent or out of range means 70).
+  - `GET/PUT /api/settings/summarization` return both keys. PUT accepts both
+    as optional, keeps a key's stored value when the body omits it, and
+    returns 422 for a percent outside 1–100.
+
+  Tests: `agent/tests/idle_compaction.rs`, unit tests in
+  `agent/src/idle_compaction.rs` and `core/src/runtime_settings.rs`, and
+  `api/tests/http_api.rs`. v2 has no equivalent.
 
 ## 4. Layout
 

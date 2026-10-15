@@ -1357,6 +1357,11 @@ agnostic by design.
   refresh rejected) drops its cached model list and saved visible-model selection,
   so pickers stop offering models the provider can no longer serve; connected
   providers keep both — an expired access token is refreshed, not a disconnection.
+- **Reconnect without restarting** `[v3.11.3]` — when an agent's provider
+  can't start (an OAuth login that expired, a missing API key, a network
+  failure at load), each new message tries it again. Logging in again or
+  saving a key in Settings → Providers takes effect on the next message
+  instead of after quitting and reopening the app.
 - **Copilot usage monitor** `[v1.33.0]` — Settings → Providers shows live Copilot
   premium request quota from the saved OAuth token. Token-based / pooled-credit
   seats skip a fake 0% quota window and show used credits as `N/∞` in Settings

@@ -3,7 +3,7 @@
 use crate::agent::Agent;
 use crate::prompts;
 use appv3_core::settings::settings;
-use appv3_providers::factory::{build_provider, UnconfiguredProvider, UNCONFIGURED_TOKEN};
+use appv3_providers::factory::{build_provider, RetryingProvider, UNCONFIGURED_TOKEN};
 use appv3_providers::{Kwargs, LlmProvider, ProviderError};
 use appv3_tools::ToolRef;
 use serde_json::{json, Map, Value};
@@ -556,12 +556,14 @@ pub fn build_agent(mut cfg: AgentConfig, registry: &HashMap<String, ToolRef>, fa
     if let Some(tl) = cfg.thinking_level.as_deref().filter(|s| !s.is_empty()) {
         kw.insert("thinking_level".into(), json!(tl));
     }
-    let provider: Arc<dyn LlmProvider> = match factory(cfg.model.as_deref(), kw) {
+    let provider: Arc<dyn LlmProvider> = match factory(cfg.model.as_deref(), kw.clone()) {
         Ok(p) => p,
         Err(e) => {
             tracing::warn!("agent_provider_unavailable agent={} model={:?} error={}", cfg.name, cfg.model, e);
-            let msg = e.to_string();
-            Arc::new(UnconfiguredProvider::new(if msg.is_empty() { appv3_providers::factory::unconfigured_message(Some(&cfg.name)) } else { msg }))
+            // Retry on each call so a re-login or a new key works without a restart.
+            let (factory, model) = (factory.clone(), cfg.model.clone());
+            let builder = Arc::new(move || factory(model.as_deref(), kw.clone()));
+            Arc::new(RetryingProvider::new(builder, appv3_providers::factory::unconfigured_message(Some(&cfg.name))))
         }
     };
     let mut agent = Agent::new(provider, &cfg.name, &system_prompt, tools, cfg.model.clone());
@@ -652,5 +654,36 @@ mod tests {
         assert_eq!(c.model.as_deref(), Some("__PROVIDER_MODEL__"));
         let members = load_member_profiles(d.path());
         assert_eq!(members.iter().map(|m| m.0.as_str()).collect::<Vec<_>>(), vec!["explorer", "researcher"]);
+    }
+
+    #[tokio::test]
+    async fn provider_that_failed_to_build_recovers_after_login() {
+        use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+        let d = tempfile::tempdir().unwrap();
+        let p = d.path().join("code.md");
+        std::fs::write(&p, "---\nname: code\nmodel: oauth-plugin:some-model\n---\n\nHi\n").unwrap();
+        let logged_in = Arc::new(AtomicBool::new(false));
+        let builds = Arc::new(AtomicUsize::new(0));
+        let factory: ProviderFactory = {
+            let (logged_in, builds) = (logged_in.clone(), builds.clone());
+            Arc::new(move |_, _| {
+                builds.fetch_add(1, Ordering::SeqCst);
+                if logged_in.load(Ordering::SeqCst) {
+                    Ok(Arc::new(appv3_providers::mock::MockProvider::new(vec![])) as Arc<dyn LlmProvider>)
+                } else {
+                    Err(ProviderError::Auth("OAuth token refresh failed 400: invalid_grant".into()))
+                }
+            })
+        };
+        let agent = rebuild_agent_from_disk(&p, &factory).unwrap();
+        let e = agent.provider.stream(&[], None, &Kwargs::new()).await.err().unwrap();
+        assert!(matches!(&e, ProviderError::Unconfigured(m) if m.contains("invalid_grant")), "{e:?}");
+
+        logged_in.store(true, Ordering::SeqCst);
+        assert!(agent.provider.stream(&[], None, &Kwargs::new()).await.is_ok());
+        assert_eq!(agent.provider.model(), "mock");
+        let after_recovery = builds.load(Ordering::SeqCst);
+        assert!(agent.provider.chat(&[], None, &Kwargs::new()).await.is_ok());
+        assert_eq!(builds.load(Ordering::SeqCst), after_recovery, "a recovered provider is reused, not rebuilt per call");
     }
 }

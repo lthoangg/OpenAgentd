@@ -7,7 +7,7 @@ use crate::openai::{CompletionsDialect, OpenAiProvider, API_BASE_URL as OPENAI_B
 use crate::registry::{get_model_cost, get_model_limits, get_model_transport};
 use crate::types::*;
 use serde_json::json;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 pub struct CompatSpec {
     pub provider_id: &'static str,
@@ -275,6 +275,81 @@ impl LlmProvider for UnconfiguredProvider {
     }
     async fn stream(&self, _: &[ChatMessage], _: Option<&[ToolSpec]>, _: &Kwargs) -> ProviderResult<ChunkStream> {
         Err(ProviderError::Unconfigured(self.message.clone()))
+    }
+}
+
+/// Builds the real provider; called again until it succeeds.
+pub type ProviderBuilder = Arc<dyn Fn() -> ProviderResult<Arc<dyn LlmProvider>> + Send + Sync>;
+
+/// Stand-in for a provider that failed to build (expired OAuth login, missing
+/// key, network blip). Each call retries the build, so fixing credentials
+/// takes effect without restarting the app. The first successful build is
+/// kept and every later call goes straight to it.
+pub struct RetryingProvider {
+    builder: ProviderBuilder,
+    /// Shown when a failed build gives no message of its own.
+    fallback_message: String,
+    built: OnceLock<Arc<dyn LlmProvider>>,
+    kw: Kwargs,
+}
+
+impl RetryingProvider {
+    pub fn new(builder: ProviderBuilder, fallback_message: String) -> Self {
+        Self { builder, fallback_message, built: OnceLock::new(), kw: Kwargs::new() }
+    }
+
+    async fn provider(&self) -> ProviderResult<&Arc<dyn LlmProvider>> {
+        if let Some(p) = self.built.get() {
+            return Ok(p);
+        }
+        // Plugin builds block on the JS runtime (an OAuth refresh can take a
+        // network round trip), so keep them off the async workers.
+        let builder = self.builder.clone();
+        let built = tokio::task::spawn_blocking(move || builder()).await.map_err(|e| ProviderError::Other(e.to_string()))?;
+        match built {
+            Ok(p) => {
+                tracing::info!("provider_build_recovered model={}", p.model());
+                Ok(self.built.get_or_init(|| p))
+            }
+            Err(e) => {
+                let msg = e.to_string();
+                Err(ProviderError::Unconfigured(if msg.is_empty() { self.fallback_message.clone() } else { msg }))
+            }
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl LlmProvider for RetryingProvider {
+    fn model(&self) -> &str {
+        self.built.get().map(|p| p.model()).unwrap_or("__unconfigured__")
+    }
+    fn provider_name(&self) -> Option<&str> {
+        self.built.get().and_then(|p| p.provider_name())
+    }
+    fn support_interrupt(&self) -> bool {
+        self.built.get().map(|p| p.support_interrupt()).unwrap_or(true)
+    }
+    fn base_kwargs(&self) -> &Kwargs {
+        self.built.get().map(|p| p.base_kwargs()).unwrap_or(&self.kw)
+    }
+    fn merged_kwargs(&self, call: &Kwargs) -> Kwargs {
+        match self.built.get() {
+            Some(p) => p.merged_kwargs(call),
+            None => call.clone(),
+        }
+    }
+    fn cost_model_id(&self) -> Option<String> {
+        match self.built.get() {
+            Some(p) => p.cost_model_id(),
+            None => Some(self.model().to_string()),
+        }
+    }
+    async fn chat(&self, messages: &[ChatMessage], tools: Option<&[ToolSpec]>, kwargs: &Kwargs) -> ProviderResult<AssistantMessage> {
+        self.provider().await?.chat(messages, tools, kwargs).await
+    }
+    async fn stream(&self, messages: &[ChatMessage], tools: Option<&[ToolSpec]>, kwargs: &Kwargs) -> ProviderResult<ChunkStream> {
+        self.provider().await?.stream(messages, tools, kwargs).await
     }
 }
 

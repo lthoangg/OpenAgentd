@@ -180,23 +180,46 @@ async fn install_typescript() -> ApiResult<Response> {
 
 // ── summarization / title generation ────────────────────────────────────────
 
-async fn get_summarization() -> ApiResult<Response> {
-    let cfg = rs::load_runtime_settings().map_err(internal)?;
-    Ok(json(json!({"prompt_token_threshold": cfg.summarization.prompt_token_threshold})))
+fn summarization_json(s: &rs::SummarizationSettings) -> Value {
+    json!({
+        "prompt_token_threshold": s.prompt_token_threshold,
+        "idle_compaction": s.idle_compaction,
+        "idle_compaction_percent": s.idle_compaction_percent,
+    })
 }
 
+async fn get_summarization() -> ApiResult<Response> {
+    let cfg = rs::load_runtime_settings().map_err(internal)?;
+    Ok(json(summarization_json(&cfg.summarization)))
+}
+
+/// `idle_compaction` and `idle_compaction_percent` (v3 only) keep their
+/// stored values when the body omits them, so older clients that send only
+/// the threshold leave them alone.
 async fn put_summarization(raw: Bytes) -> ApiResult<Response> {
     let v = body_value(&raw)?;
     let mut b = Body::new(&v)?;
     let t = b.opt_int("prompt_token_threshold");
-    b.finish(&["prompt_token_threshold"])?;
+    let has = |k: &str| v.as_object().is_some_and(|o| o.contains_key(k));
+    let idle = if has("idle_compaction") { Some(b.bool("idle_compaction", Some(false))) } else { None };
+    let percent = if has("idle_compaction_percent") { Some(b.opt_int("idle_compaction_percent")) } else { None };
+    b.finish(&["prompt_token_threshold", "idle_compaction", "idle_compaction_percent"])?;
     if matches!(t, Some(x) if x < 1) {
         return Err(ApiError::unprocessable("prompt_token_threshold must be a positive integer or null"));
     }
+    if matches!(percent, Some(Some(p)) if !(1..=100).contains(&p)) {
+        return Err(ApiError::unprocessable("idle_compaction_percent must be an integer from 1 to 100 or null"));
+    }
     let mut cfg = rs::load_runtime_settings().map_err(internal)?;
     cfg.summarization.prompt_token_threshold = t;
+    if let Some(on) = idle {
+        cfg.summarization.idle_compaction = on;
+    }
+    if let Some(p) = percent {
+        cfg.summarization.idle_compaction_percent = p;
+    }
     rs::save_runtime_settings(&cfg).map_err(internal)?;
-    Ok(json(json!({"prompt_token_threshold": t})))
+    Ok(json(summarization_json(&cfg.summarization)))
 }
 
 fn title_json(t: &rs::TitleGenerationSettings) -> Value {

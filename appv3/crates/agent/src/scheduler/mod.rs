@@ -808,9 +808,12 @@ impl Tool for ScheduleTaskTool {
                 String::new()
             }
         };
+        // Blank strings count as unset: strict-schema models send `""` for
+        // every field they do not use.
         let opt_s = |errs: &mut Vec<String>, k: &str, v: Option<&Value>| -> Option<String> {
             match v {
                 None | Some(Value::Null) => None,
+                Some(Value::String(s)) if s.trim().is_empty() => None,
                 Some(Value::String(s)) => Some(s.clone()),
                 Some(_) => {
                     errs.push(format!("{k}: Input should be a valid string"));
@@ -848,7 +851,8 @@ impl Tool for ScheduleTaskTool {
         let max_runs = int_field("max_runs");
         let cron_expression = opt_s(&mut errs, "cron_expression", o.get("cron_expression"));
         let timezone = match o.get("timezone") {
-            None => "UTC".to_string(),
+            None | Some(Value::Null) => "UTC".to_string(),
+            Some(Value::String(s)) if s.trim().is_empty() => "UTC".to_string(),
             Some(Value::String(s)) => s.clone(),
             Some(_) => {
                 errs.push("timezone: Input should be a valid string".into());
@@ -1017,5 +1021,34 @@ mod tests {
         assert_eq!(c.validate().unwrap_err()[0].1, "Value error, every_seconds is required for schedule_type='every'");
         assert!(py_fromisoformat("2026-09-10T15:00:00Z").is_ok());
         assert_eq!(py_fromisoformat("2026-09-10 15:00").unwrap().1, None);
+    }
+
+    /// Strict-schema models fill every field, sending `""` for the unused
+    /// ones; those count as unset, not as a conflicting schedule.
+    #[tokio::test]
+    async fn create_treats_blank_unused_fields_as_unset() {
+        let dir = tempfile::tempdir().unwrap().keep();
+        init(appv3_db::create_pool(dir.join("t.db")).await.unwrap());
+        let ctx = ToolContext {
+            session_id: None,
+            agent_name: "code".into(),
+            tool_call_id: "c1".into(),
+            denied: std::sync::Arc::new(appv3_tools::DeniedPaths::with(&dir, None, Some(vec![]), Some(vec![]))),
+            workspace: Some(dir.to_string_lossy().to_string()),
+            output: None,
+            metadata: Default::default(),
+            messages: None,
+        };
+        let args = serde_json::json!({
+            "action": "create", "name": "check-deploy", "schedule_type": "every",
+            "at_datetime": "", "every_seconds": 90, "cron_expression": "", "timezone": "",
+            "prompt": "x", "session_id": "", "max_runs": 2, "enabled": false, "slug": ""
+        });
+        let out = match ScheduleTaskTool.run(&ctx, args).await {
+            Ok(ToolOutput::Text(t)) => t,
+            other => panic!("unexpected: {other:?}"),
+        };
+        assert!(out.starts_with("Scheduled task created."), "{out}");
+        assert!(out.contains("schedule    : every"), "{out}");
     }
 }

@@ -205,7 +205,10 @@ pub fn handle_image(resolved: &Path, rel: &str) -> Result<ToolOutput, ToolError>
     // Shrink before encoding: one decode, one base64 pass (images::MAX_IMAGE_EDGE).
     let (label, raw, media_type) = match appv3_providers::images::fit_image_bytes(&raw, appv3_providers::images::MAX_IMAGE_EDGE) {
         Some(f) => (format!("[Image: {rel} (resized {}×{} → {}×{})]", f.from.0, f.from.1, f.to.0, f.to.1), f.bytes, f.media_type.to_string()),
-        None => (format!("[Image: {rel}]"), raw, image_mime(resolved)),
+        None => {
+            let mt = appv3_providers::images::sniff_media_type(&raw).map(String::from).unwrap_or_else(|| image_mime(resolved));
+            (format!("[Image: {rel}]"), raw, mt)
+        }
     };
     Ok(ToolOutput::Parts {
         parts: vec![ContentBlock::text(label), ContentBlock::ImageData { data: base64::engine::general_purpose::STANDARD.encode(raw).into(), media_type }],
@@ -399,6 +402,18 @@ mod tests {
         let ToolOutput::Parts { parts, .. } = handle_image(&small, "small.jpg").unwrap() else { panic!("parts") };
         assert_eq!(parts[0], ContentBlock::text("[Image: small.jpg]"));
         assert_eq!(parts[1], ContentBlock::ImageData { data: base64::engine::general_purpose::STANDARD.encode(&small_bytes).into(), media_type: "image/jpeg".into() });
+    }
+
+    #[test]
+    fn image_media_type_comes_from_the_bytes_not_the_extension() {
+        use appv3_providers::images::fixtures;
+        let d = tempfile::tempdir().unwrap();
+        let jpeg_bytes = fixtures::jpeg(64, 48);
+        let p = d.path().join("shot.png");
+        std::fs::write(&p, &jpeg_bytes).unwrap();
+        let ToolOutput::Parts { parts, .. } = handle_image(&p, "shot.png").unwrap() else { panic!("parts") };
+        let ContentBlock::ImageData { media_type, .. } = &parts[1] else { panic!("image") };
+        assert_eq!(media_type, "image/jpeg");
     }
 
     #[test]

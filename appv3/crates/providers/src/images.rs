@@ -73,6 +73,24 @@ fn fits(d: (u32, u32), max_edge: u32) -> bool {
     d.0 <= max_edge && d.1 <= max_edge
 }
 
+/// Media type of image bytes from their magic number, or `None` when the
+/// bytes are not an image format providers accept.
+pub fn sniff_media_type(bytes: &[u8]) -> Option<&'static str> {
+    match image::guess_format(bytes).ok()? {
+        ImageFormat::Png => Some("image/png"),
+        ImageFormat::Jpeg => Some("image/jpeg"),
+        ImageFormat::Gif => Some("image/gif"),
+        ImageFormat::WebP => Some("image/webp"),
+        _ => None,
+    }
+}
+
+/// [`sniff_media_type`] for base64 data, decoding only the first bytes.
+pub fn sniff_media_type_b64(data: &str) -> Option<&'static str> {
+    let prefix = &data.as_bytes()[..data.len().min(64)];
+    sniff_media_type(&B64.decode(prefix).ok()?)
+}
+
 fn target_size((w, h): (u32, u32), max_edge: u32) -> (u32, u32) {
     let scale = max_edge as f64 / w.max(h) as f64;
     let fit = |v: u32| ((v as f64 * scale).round() as u32).clamp(1, max_edge);
@@ -257,9 +275,20 @@ pub async fn fit_tool_parts(parts: &mut [ContentBlock]) -> usize {
     fit_blocks(blocks, false).await
 }
 
-/// Shrink oversized images in an outgoing request (old history included).
-/// Returns the messages, edited in place, and how many images changed.
+/// Shrink oversized images in an outgoing request (old history included),
+/// and relabel images whose bytes are another format than their media type
+/// says (providers reject the mismatch). Returns the messages, edited in
+/// place, and how many images were resized.
 pub async fn fit_request(mut messages: Vec<ChatMessage>) -> (Vec<ChatMessage>, usize) {
+    for b in messages.iter_mut().filter_map(parts_mut).flat_map(|p| p.iter_mut()) {
+        if let ContentBlock::ImageData { data, media_type } = b {
+            if let Some(real) = media_type.starts_with("image/").then(|| sniff_media_type_b64(data)).flatten().filter(|real| media_type != real) {
+                // Debug: a history image is relabelled again on every turn.
+                tracing::debug!("image_media_type_corrected declared={media_type} actual={real}");
+                *media_type = real.to_string();
+            }
+        }
+    }
     let changed = {
         let blocks: Vec<&mut ContentBlock> = messages.iter_mut().filter_map(parts_mut).flat_map(|p| p.iter_mut()).filter(|b| oversized(b, MAX_IMAGE_EDGE)).collect();
         if blocks.is_empty() {
@@ -488,5 +517,36 @@ mod tests {
         assert_eq!(parts[0], ContentBlock::text("[shot]"));
         assert_eq!(decoded_dims(&parts[1]), (2000, 1333));
         assert_eq!(parts[2], small);
+    }
+
+    #[test]
+    fn sniffs_the_media_type_from_the_bytes() {
+        let img = fixtures::screenshot(16, 16);
+        for (f, mt) in [(ImageFormat::Png, "image/png"), (ImageFormat::Jpeg, "image/jpeg"), (ImageFormat::Gif, "image/gif"), (ImageFormat::WebP, "image/webp")] {
+            let bytes = fixtures::encode(&img, f);
+            assert_eq!(sniff_media_type(&bytes), Some(mt), "{f:?}");
+            assert_eq!(sniff_media_type_b64(&b64(&bytes)), Some(mt), "{f:?}");
+        }
+        assert_eq!(sniff_media_type(b"%PDF-1.7"), None);
+        assert_eq!(sniff_media_type_b64("not base64!"), None);
+    }
+
+    /// A `.png` file holding JPEG bytes (e.g. `sips … --out x.png` without
+    /// `-s format png`) is rejected by Anthropic, and stays in the history.
+    #[tokio::test]
+    async fn fit_request_relabels_an_image_whose_bytes_are_another_format() {
+        let jpeg = fixtures::jpeg(120, 80);
+        let pdf = image_part(b"%PDF-1.7", "application/pdf");
+        let messages = vec![ChatMessage::Tool {
+            content: Some("[Image: shot.png]".into()),
+            tool_call_id: "c1".into(),
+            name: Some("read".into()),
+            parts: Some(vec![ContentBlock::text("[Image: shot.png]"), image_part(&jpeg, "image/png"), pdf.clone()]),
+            meta: MessageMeta::default(),
+        }];
+        let (out, _) = fit_request(messages).await;
+        let ChatMessage::Tool { parts: Some(p), .. } = &out[0] else { panic!() };
+        assert_eq!(p[1], image_part(&jpeg, "image/jpeg"));
+        assert_eq!(p[2], pdf);
     }
 }

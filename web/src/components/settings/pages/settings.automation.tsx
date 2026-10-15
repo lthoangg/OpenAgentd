@@ -66,7 +66,12 @@ const TITLES_DEFAULT: TitleGenerationSettings = {
 
 const SUMMARIZATION_DEFAULT: SummarizationSettings = {
   prompt_token_threshold: null,
+  idle_compaction: false,
+  idle_compaction_percent: null,
 }
+
+/** Backend default for `idle_compaction_percent: null`. */
+const DEFAULT_IDLE_COMPACTION_PERCENT = 70
 
 const WORKSPACE_MESSAGES_DEFAULT: WorkspaceMessagesSettings = { enabled: true }
 
@@ -100,6 +105,18 @@ function normalizeSummarization(form: SummarizationSettings): SummarizationSetti
       form.prompt_token_threshold !== null && form.prompt_token_threshold > 0
         ? Math.floor(form.prompt_token_threshold)
         : null,
+    idle_compaction: form.idle_compaction,
+    idle_compaction_percent:
+      form.idle_compaction_percent !== null ? Math.floor(form.idle_compaction_percent) : null,
+  }
+}
+
+/** Older backends omit the idle-compaction keys. */
+function hydrateSummarization(data: SummarizationSettings): SummarizationSettings {
+  return {
+    prompt_token_threshold: data.prompt_token_threshold ?? null,
+    idle_compaction: data.idle_compaction ?? false,
+    idle_compaction_percent: data.idle_compaction_percent ?? null,
   }
 }
 
@@ -185,6 +202,7 @@ export function AutomationSettingsPage() {
     data: summarizationQ.data,
     initial: SUMMARIZATION_DEFAULT,
     normalize: normalizeSummarization,
+    hydrate: hydrateSummarization,
     onSave: (value) => updateSummarization.mutateAsync(value),
     successTitle: 'Summarization settings saved',
   })
@@ -193,6 +211,18 @@ export function AutomationSettingsPage() {
     threshold !== null && threshold < 1
       ? 'Must be a positive integer, or leave empty to use the auto value.'
       : null
+  const idleCompaction = summarizationDraft.value.idle_compaction
+  const idlePercent = summarizationDraft.value.idle_compaction_percent
+  const idlePercentError =
+    idleCompaction && idlePercent !== null && (idlePercent < 1 || idlePercent > 100)
+      ? 'Must be a whole number from 1 to 100, or leave empty for 70.'
+      : null
+  const summarizationSummary = [
+    threshold === null ? 'Auto' : `${threshold.toLocaleString()} tokens`,
+    idleCompaction ? `idle at ${idlePercent ?? DEFAULT_IDLE_COMPACTION_PERCENT}%` : null,
+  ]
+    .filter(Boolean)
+    .join(' · ')
 
   // ── Multimodal ──
   const multimodalDraft = useSettingsDraft({
@@ -229,7 +259,10 @@ export function AutomationSettingsPage() {
   // because the errors derive from the draft values computed just above.
   const draft = combineDrafts([
     { ...titlesDraft, canSave: titlesDraft.canSave && !titlesModelError },
-    { ...summarizationDraft, canSave: summarizationDraft.canSave && !thresholdError },
+    {
+      ...summarizationDraft,
+      canSave: summarizationDraft.canSave && !thresholdError && !idlePercentError,
+    },
     {
       ...multimodalDraft,
       canSave: multimodalDraft.canSave && !imageModelError && !videoModelError,
@@ -328,31 +361,80 @@ export function AutomationSettingsPage() {
       <SettingsDisclosure
         title="Summarization"
         dirty={summarizationDraft.dirty}
-        summary={threshold === null ? 'Auto' : `${threshold.toLocaleString()} tokens`}
+        summary={summarizationSummary}
       >
-        <SettingsField
-          label="Token threshold"
-          error={thresholdError}
-          hint="Leave empty to compact at 90% of the model's context window. A lower number summarizes earlier. Values at or above the auto threshold are treated as auto."
-        >
-          <Input
-            type="number"
-            min={1}
-            step={1000}
-            placeholder="Auto (90% of model context)"
-            aria-label="Token threshold"
-            value={threshold === null ? '' : String(threshold)}
-            onChange={(e) => {
-              const raw = e.target.value
-              const parsed = parseInt(raw, 10)
-              summarizationDraft.patch({
-                prompt_token_threshold:
-                  raw.trim() === '' || Number.isNaN(parsed) ? null : parsed,
-              })
-            }}
-            className="min-h-9 max-w-xs font-mono"
-          />
-        </SettingsField>
+        <div className="space-y-3">
+          <SettingsField
+            label="Token threshold"
+            error={thresholdError}
+            hint="Leave empty to compact at 90% of the model's context window. A lower number summarizes earlier. Values at or above the auto threshold are treated as auto."
+          >
+            <Input
+              type="number"
+              min={1}
+              step={1000}
+              placeholder="Auto (90% of model context)"
+              aria-label="Token threshold"
+              value={threshold === null ? '' : String(threshold)}
+              onChange={(e) => {
+                const raw = e.target.value
+                const parsed = parseInt(raw, 10)
+                summarizationDraft.patch({
+                  prompt_token_threshold:
+                    raw.trim() === '' || Number.isNaN(parsed) ? null : parsed,
+                })
+              }}
+              className="min-h-9 max-w-xs font-mono"
+            />
+          </SettingsField>
+
+          <div className="space-y-3 border-t border-(--color-border) pt-3">
+            <label className="flex min-h-9 cursor-pointer items-center gap-3 text-xs select-none md:min-h-0">
+              <Switch
+                checked={idleCompaction}
+                onCheckedChange={(checked) => summarizationDraft.patch({ idle_compaction: checked })}
+              />
+              <span className={TEXT.label}>Compact idle sessions</span>
+            </label>
+            <p className={TEXT.hint}>
+              When a session has been idle for 4½ minutes and its context has reached the
+              percentage below of the compaction trigger, compact it while the provider's
+              prompt cache is still warm. Your next message then starts from a short
+              context. Costs one summarization call per idle session.
+            </p>
+
+            {/* Always visible so the percent is discoverable; editable once the switch is on. */}
+            <SettingsField
+              label="Idle trigger (% of threshold)"
+              error={idlePercentError}
+              hint={
+                idleCompaction
+                  ? 'Leave empty for 70%. A lower number compacts idle sessions sooner.'
+                  : 'Turn on Compact idle sessions to change this.'
+              }
+            >
+              <Input
+                type="number"
+                min={1}
+                max={100}
+                step={5}
+                disabled={!idleCompaction}
+                placeholder={`${DEFAULT_IDLE_COMPACTION_PERCENT} (default)`}
+                aria-label="Idle trigger percent"
+                value={idlePercent === null ? '' : String(idlePercent)}
+                onChange={(e) => {
+                  const raw = e.target.value
+                  const parsed = parseInt(raw, 10)
+                  summarizationDraft.patch({
+                    idle_compaction_percent:
+                      raw.trim() === '' || Number.isNaN(parsed) ? null : parsed,
+                  })
+                }}
+                className="min-h-9 max-w-xs font-mono"
+              />
+            </SettingsField>
+          </div>
+        </div>
       </SettingsDisclosure>
 
       <SettingsDisclosure

@@ -2,7 +2,7 @@
 title: Features
 description: Canonical, version-cited catalogue of shipped user-visible OpenAgentd features.
 status: stable
-updated: 2026-10-14
+updated: 2026-10-15
 ---
 
 # Features
@@ -14,7 +14,7 @@ release that introduced it (where known). When you ship something new, **add it 
 > double-clickable app that runs an agent on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 18 providers. Your keys.
 
-**Latest release:** v3.11.2 · October 14, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.11.2)
+**Latest release:** v3.12.0 · October 15, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.12.0)
 
 ---
 
@@ -1236,6 +1236,12 @@ OpenAgentd carries context across sessions via rolling-window summarization.
   summarizer keeps the same cacheable prompt prefix as normal chat turns.
   Changing the trigger in Settings → Automation applies from the next model
   call, including inside a turn that is already running `[v3.3.0]`.
+  Opt-in **idle compaction** in Settings → Automation → Summarization
+  compacts a session in the background when it has been idle for 4½ minutes
+  after a turn and its context has reached a set share of the trigger
+  (default 70%). This uses the provider's prompt cache while it is still
+  warm, so the next message starts from a short context. It sends no
+  notification and skips subagent and scheduled sessions `[v3.12.0]`.
 - **`AGENTS.md` at repo root and subfolders** `[v1.9.0]` — written by `/init`;
   standard repo- and folder-scoped agent context files.
 - **Global `AGENTS.md`** `[v2.10.0]` — a developer-wide instructions file at
@@ -1357,6 +1363,11 @@ agnostic by design.
   refresh rejected) drops its cached model list and saved visible-model selection,
   so pickers stop offering models the provider can no longer serve; connected
   providers keep both — an expired access token is refreshed, not a disconnection.
+- **Reconnect without restarting** `[v3.12.0]` — when an agent's provider
+  can't start (an OAuth login that expired, a missing API key, a network
+  failure at load), each new message tries it again. Logging in again or
+  saving a key in Settings → Providers takes effect on the next message
+  instead of after quitting and reopening the app.
 - **Copilot usage monitor** `[v1.33.0]` — Settings → Providers shows live Copilot
   premium request quota from the saved OAuth token. Token-based / pooled-credit
   seats skip a fake 0% quota window and show used credits as `N/∞` in Settings

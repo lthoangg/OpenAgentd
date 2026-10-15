@@ -953,11 +953,23 @@ pub fn sweep_old_partitions(root: &Path, max_age_days: i64, now: Option<f64>) ->
     r
 }
 
+/// Default retention for span and metric partitions, in days.
+const DEFAULT_SPAN_RETENTION_DAYS: i64 = 90;
+const DEFAULT_METRIC_RETENTION_DAYS: i64 = 90;
+
+fn span_retention_days() -> i64 {
+    int_env("OTEL_SPAN_RETENTION_DAYS", DEFAULT_SPAN_RETENTION_DAYS, 1)
+}
+
+fn metric_retention_days() -> i64 {
+    int_env("OTEL_METRIC_RETENTION_DAYS", DEFAULT_METRIC_RETENTION_DAYS, 1)
+}
+
 /// One retention pass over spans and metrics.
 pub fn run_retention_once(otel_dir: Option<&Path>) -> (SweepResult, SweepResult) {
     let base = otel_dir.map(Path::to_path_buf).unwrap_or_else(|| crate::settings().state_dir.join("otel"));
-    let span_days = int_env("OTEL_SPAN_RETENTION_DAYS", 30, 1);
-    let metric_days = int_env("OTEL_METRIC_RETENTION_DAYS", 90, 1);
+    let span_days = span_retention_days();
+    let metric_days = metric_retention_days();
     let s = sweep_old_partitions(&base.join("spans"), span_days, None);
     let m = sweep_old_partitions(&base.join("metrics"), metric_days, None);
     if s.deleted > 0 || m.deleted > 0 {
@@ -1000,12 +1012,7 @@ pub fn start_retention() {
             tokio::time::sleep(Duration::from_secs(hours as u64 * 3600)).await;
         }
     }));
-    tracing::info!(
-        "otel_retention_started span_days={} metric_days={} interval_h={}",
-        int_env("OTEL_SPAN_RETENTION_DAYS", 30, 1),
-        int_env("OTEL_METRIC_RETENTION_DAYS", 90, 1),
-        hours
-    );
+    tracing::info!("otel_retention_started span_days={} metric_days={} interval_h={}", span_retention_days(), metric_retention_days(), hours);
 }
 
 pub fn stop_retention() {

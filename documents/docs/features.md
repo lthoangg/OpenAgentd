@@ -1761,6 +1761,11 @@ Everything stays local. No third-party telemetry SaaS.
   counts the sub-agent sessions it started in its spend, turns, and tokens, and
   says how many. The Sessions card lists each sub-agent under its session (in
   the overview too), and recent turns name the agent that ran them.
+- **90-day telemetry retention** `[v3.12.1]` — local traces and metrics are
+  kept for 90 days by default (traces were previously kept for 30), so the
+  90-day telemetry range shows full trace history. Older data is removed by a
+  daily sweep; `OTEL_SPAN_RETENTION_DAYS` and `OTEL_METRIC_RETENTION_DAYS`
+  override the defaults.
 - **OpenTelemetry spans** `[since v1.0]` — `OpenTelemetryHook` emits spans for
   agent runs, model calls, tool calls. Optional OTLP exporter.
 - **Estimated model-call cost telemetry** `[v1.34.0]` — chat, title-generation,

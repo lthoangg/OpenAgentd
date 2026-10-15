@@ -2,7 +2,7 @@
 title: Features
 description: Canonical, version-cited catalogue of shipped user-visible OpenAgentd features.
 status: stable
-updated: 2026-10-14
+updated: 2026-10-15
 ---
 
 # Features
@@ -14,7 +14,7 @@ release that introduced it (where known). When you ship something new, **add it 
 > double-clickable app that runs an agent on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 18 providers. Your keys.
 
-**Latest release:** v3.11.2 · October 14, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.11.2)
+**Latest release:** v3.12.0 · October 15, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.12.0)
 
 ---
 
@@ -1363,7 +1363,7 @@ agnostic by design.
   refresh rejected) drops its cached model list and saved visible-model selection,
   so pickers stop offering models the provider can no longer serve; connected
   providers keep both — an expired access token is refreshed, not a disconnection.
-- **Reconnect without restarting** `[v3.11.3]` — when an agent's provider
+- **Reconnect without restarting** `[v3.12.0]` — when an agent's provider
   can't start (an OAuth login that expired, a missing API key, a network
   failure at load), each new message tries it again. Logging in again or
   saving a key in Settings → Providers takes effect on the next message

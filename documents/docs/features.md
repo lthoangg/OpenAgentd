@@ -1242,6 +1242,9 @@ OpenAgentd carries context across sessions via rolling-window summarization.
   (default 70%). This uses the provider's prompt cache while it is still
   warm, so the next message starts from a short context. It sends no
   notification and skips subagent and scheduled sessions `[v3.12.0]`.
+  The summary under the "Session compacted" divider starts collapsed; click
+  the divider to read it, including while it is still being written
+  `[v3.12.1]`.
 - **`AGENTS.md` at repo root and subfolders** `[v1.9.0]` — written by `/init`;
   standard repo- and folder-scoped agent context files.
 - **Global `AGENTS.md`** `[v2.10.0]` — a developer-wide instructions file at

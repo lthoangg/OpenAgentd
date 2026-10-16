@@ -343,7 +343,7 @@ describe("AgentView — AssistantFooter", () => {
       })
 
       expect(screen.getByText("what’s on your mind?")).toBeTruthy()
-      expect(screen.getByText("Older context compacted")).toBeTruthy()
+      expect(screen.getByRole("region", { name: "Session compacted" })).toBeTruthy()
     })
 
     it("does not render footer when there is no text content and no timestamp", () => {

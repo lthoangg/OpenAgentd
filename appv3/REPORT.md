@@ -182,6 +182,12 @@ No v2 feature is left unported. Each item below is a deliberate, documented
 deviation. The harnesses in §1 either did not reach it or normalised it
 explicitly.
 
+- **Project folders** (v3.14.0). `.agents/` is the only project folder:
+  v3 no longer reads `<workspace>/.openagentd/{skills,commands,snippets}`,
+  `<workspace>/.opencode/{skills,commands}`, or
+  `~/.config/opencode/{skills,commands}`, all of which v2 read
+  (`agent/src/skills.rs`, `api/src/routes/library.rs`,
+  `api/src/config_watch.rs`). New plans go to `.agents/plans/`.
 - **Performance changes to the wire format** (v3 only; v2 parity is no
   longer a goal):
   - *History pages* (`GET /api/agent/{sid}/history`,
@@ -587,10 +593,12 @@ explicitly.
     `<proposed_plan>` tag is no longer captured, detected or acted on; old
     transcripts still render it as a read-only card.
   - **Where the plan lives.** In a project (`coding`) workspace the first
-    write creates `<workspace>/.openagentd/plans/<slug>-<id8>.md` (slug from
+    write creates `<workspace>/.agents/plans/<slug>-<id8>.md` (v3.14.0; earlier
+    releases used `.openagentd/plans/`, and plans already written there keep
+    loading through the absolute path in `plan.state.json`) (slug from
     the first `# ` heading, `id8` the last 8 hex digits of the session id,
     `-2`, `-3`, … when taken). Creating that folder also writes
-    `.openagentd/plans/.gitignore` containing `*`, so plans stay out of git
+    `.agents/plans/.gitignore` containing `*`, so plans stay out of git
     status, snapshots and commits; the file is never recreated for an
     existing folder. The target is resolved with symlinks followed and must
     stay inside the workspace and outside denied paths. Chat sessions keep

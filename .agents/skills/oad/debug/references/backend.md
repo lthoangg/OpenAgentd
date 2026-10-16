@@ -14,7 +14,7 @@ openagentd server logs                            # installed CLI: readable log 
 sqlite3 .openagentd/dev/data/openagentd.db '.tables'
 ```
 
-Log and telemetry analysis: `reference/production.md`.
+Log and telemetry analysis: `references/production.md`.
 
 ## File map
 

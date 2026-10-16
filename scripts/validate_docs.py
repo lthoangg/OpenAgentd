@@ -60,8 +60,8 @@ def _required_frontmatter(relative_path: str) -> frozenset[str]:
         "app/agent/builtin_skills/"
     ):
         return frozenset({"name", "description"})
-    if relative_path.startswith(".openagentd/commands/") or relative_path.startswith(
-        ".openagentd/snippets/"
+    if relative_path.startswith(".agents/commands/") or relative_path.startswith(
+        ".agents/snippets/"
     ):
         return frozenset({"description"})
     for prefix, fields in FRONTMATTER_REQUIREMENTS:

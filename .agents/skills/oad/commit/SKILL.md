@@ -35,7 +35,7 @@ Pick the smallest durable record for what changed:
 | Non-obvious invariant, security, or architecture rationale | A comment beside the code (why, not what) |
 | Future work, bugs, roadmap | A GitHub issue, never a repository doc |
 | Implementation, API, config, CLI, UI detail | Nothing: source, tests, CLI help, and the UI are authoritative |
-| Repository policy or tooling | The nearest `AGENTS.md` or the matching `.openagentd/skills/oad/*` skill |
+| Repository policy or tooling | The nearest `AGENTS.md` or the matching `.agents/skills/oad/*` skill |
 
 Do not create guides, API references, or troubleshooting pages under `documents/`.
 After any Markdown change run `make verify-docs`: it checks frontmatter, local links,

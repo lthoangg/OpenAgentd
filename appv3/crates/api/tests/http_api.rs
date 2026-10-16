@@ -598,7 +598,7 @@ async fn plan_review_flow(c: &Client, pool: &appv3_db::DbPool, ws: &std::path::P
     assert_eq!(st, StatusCode::OK);
     assert_eq!((v["plan"]["revision"].clone(), v["plan"]["approved_revision"].clone()), (json!(1), Value::Null), "{v}");
     let rel = v["plan"]["workspace_path"].as_str().unwrap_or_default();
-    assert!(rel.starts_with(".openagentd/plans/ship-it-") && rel.ends_with(".md"), "{v}");
+    assert!(rel.starts_with(".agents/plans/ship-it-") && rel.ends_with(".md"), "{v}");
     assert_eq!(v["plan"]["path"], json!(saved.doc.path.display().to_string()));
 
     // ── a review is open ─────────────────────────────────────────────────

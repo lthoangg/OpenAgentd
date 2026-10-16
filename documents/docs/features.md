@@ -249,7 +249,7 @@ run from the terminal (the native Rust binary since v3.0.0).
   any message queued behind it. The toggle shows the queued mode in italics
   until it lands. Use stop if you actually want to interrupt the turn.
   - **Saved session plan** `[v3.0.0, updated v3.2.0]` — in a project
-    workspace the plan is a Markdown file in `.openagentd/plans/`, which
+    workspace the plan is a Markdown file in `.agents/plans/` (`.openagentd/plans/` before v3.14.0), which
     ignores itself in git unless you delete its `.gitignore`; chat sessions
     keep it in the session's data directory. You can edit it in the Plan tab
     (**Edit**) or in any editor, and **Open file** opens it as a normal file
@@ -1117,12 +1117,12 @@ agent against it.
   launcher instead of reopening it.
 - **`@file` / `@folder` auto-attach** `[v1.17.0]` — see [§1](#1-the-desktop-coding-workspace).
 - **Slash commands scoped to coding workspaces** `[v1.17.0]` — project-local
-  commands in `.openagentd/commands/**/*.md`, universal `.agents/commands/**/*.md` `[v2.12.0]`, and `.opencode/commands/**/*.md`
+  commands in `.agents/commands/**/*.md` `[v2.12.0]` (the `.openagentd/` and `.opencode/` folders stopped being read in `[v3.14.0]`)
   load only when a workspace is attached. Local commands win on name conflict.
   Coding chat stays global-only.
 - **Snippet picker** `[v1.31.0]` — in coding workspaces, type `#` anywhere
-  in the composer to pick prompt snippets from `.openagentd/snippets/**/*.md`
-  or `{OPENAGENTD_CONFIG_DIR}/snippets/**/*.md` (plus universal `.agents/snippets/**/*.md` and `~/.agents/snippets/**/*.md` `[v2.12.0]`) and insert the rendered body.
+  in the composer to pick prompt snippets from `.agents/snippets/**/*.md` `[v2.12.0]`,
+  `{OPENAGENTD_CONFIG_DIR}/snippets/**/*.md`, or `~/.agents/snippets/**/*.md` and insert the rendered body.
 - **Git-backed `/undo` and `/redo`** `[v1.11.0]` — restore workspace files
   (created, modified, deleted) to the exact prior state from any prior turn in
   chat history. Different from editor undo: this is tied to chat turns.
@@ -1674,20 +1674,26 @@ Four orthogonal ways to add capability.
 - **MCP `PATH` resolution on desktop** `[v1.17.x]` — desktop auto-resolves the
   shell `PATH` so `npx` / `uvx` stdio servers can find their commands. Restart
   any MCP server in Settings to re-detect.
+- **`.agents/` is the only project folder** `[v3.14.0]` — skills, commands and
+  snippets load from `<project>/.agents/`, the OpenAgentd config dir, and
+  `~/.agents/`. A project's `.openagentd/` and `.opencode/` folders, and
+  `~/.config/opencode/`, are no longer read: move their `skills/`, `commands/`
+  and `snippets/` into `.agents/` (for example `mv .openagentd/skills .agents/skills`).
+  New plans are saved in `.agents/plans/`.
 - **Skills** `[since v1.0]` — markdown `SKILL.md` files, lazy-loaded, hot-reload
-  on mtime change, token substitution. Compatible with the opencode skill spec.
+  on mtime change, token substitution. Compatible with the Agent Skills (agentskills.io) spec.
   One nested namespace level (`parent/sub`) is supported `[v1.27.x]`; Settings
   lists the full runtime-visible catalog and can edit/delete non-bundled skills
   in place `[v1.27.x]`.
   - **Reference files and scripts support** `[v1.87.0, v1.92.0]` — fully compatible with the
     `agentskills.io` specification. Resolves `{SKILL_DIR}` and `${SKILL_DIR}` placeholders
     inside loaded skill instructions. Project-level skill directories resolve to clean relative
-    paths (e.g. `.openagentd/skills/my-skill`), while global/bundled skill directories resolve
+    paths (e.g. `.agents/skills/my-skill`), while global/bundled skill directories resolve
     to absolute paths, allowing the agent to use standard `read` and `shell` tools to access them.
     `load_skill` now always prepends a `Skill directory: <path>` line to its response so the
     agent finds bundled reference files without relying on the author adding `{SKILL_DIR}`
     tokens `[v1.92.0]`. Skill cache invalidation now also watches project-local skill roots
-    (`.openagentd/skills/`, `.agents/skills/` `[v2.12.0]`, `.opencode/skills/`), not just the global config directory, so
+    (`.agents/skills/` `[v2.12.0]`), not just the global config directory, so
     edits are picked up on the next `discover_skills()` call `[v1.92.0]`.
   - **Bundled `self-healing` skill with references** `[v3.3.0]` — one bundled skill covers the
     agent's own setup: its `SKILL.md` is an index linking reference files for agents, MCP servers,

@@ -8,21 +8,25 @@ OpenAgentd discovers skills from these roots, in order. The first skill with a
 given `name` wins (`<workspace>` is the active sandbox workspace root — in
 coding mode, the attached project, which is also the shell cwd):
 
-1. `<workspace>/.openagentd/skills/<name>/SKILL.md`
-2. `<workspace>/.agents/skills/<name>/SKILL.md`
-3. `<workspace>/.opencode/skills/<name>/SKILL.md`
-4. `<SKILLS_DIR>/<name>/SKILL.md` (global)
-5. `~/.agents/skills/<name>/SKILL.md`
-6. `~/.config/opencode/skills/<name>/SKILL.md`
-7. Bundled OpenAgentd skills — read-only fallback.
+1. `<workspace>/.agents/skills/<name>/SKILL.md`
+2. `<SKILLS_DIR>/<name>/SKILL.md` (global)
+3. `~/.agents/skills/<name>/SKILL.md`
+4. Bundled OpenAgentd skills — read-only fallback.
 
-Project roots (1–3) are scanned only in project (coding) sessions. In a chat
+The project root (1) is scanned only in project (coding) sessions. In a chat
 session with no attached project, install globally.
+
+`<workspace>/.openagentd/skills`, `<workspace>/.opencode/skills` and
+`~/.config/opencode/skills` are **not** read. If the user has skills there,
+offer to move them to `.agents/skills/`.
 
 ## Choosing the root
 
 - "project / repo / this workspace / local skill" → project-local:
-  `.openagentd/skills/<name>/SKILL.md`, relative to the workspace cwd.
+  `.agents/skills/<name>/SKILL.md`, relative to the workspace cwd.
+  `.agents/skills/` is also read by other agents (Codex, OpenCode, …); for a
+  skill meant to work there too, use a flat kebab-case `name` that matches its
+  folder — `parent/sub` namespaces are OpenAgentd-only.
 - "for yourself / globally / everywhere / all projects" → `<SKILLS_DIR>`.
 - Default to `<SKILLS_DIR>`. If genuinely ambiguous, ask one short question —
   a project-local skill is invisible from other workspaces.
@@ -49,9 +53,12 @@ Full instructions the agent reads when it calls skill("skill-name").
   nesting is not discovered.
 - Quote `description:`, or use a folded `>-` scalar, if it contains `: ` —
   otherwise Settings flags the YAML as invalid.
-- Supporting files (`references/`, `scripts/`, assets) sit beside `SKILL.md`.
+- Supporting files (`references/`, `scripts/`, `assets/`) sit beside `SKILL.md`.
   Refer to them as `{SKILL_DIR}/references/...` inside `SKILL.md`; OpenAgentd
   substitutes the skill's directory when the skill loads.
+- Optional Agent Skills fields (`license`, `compatibility`, `metadata`,
+  `allowed-tools`) may stay in the frontmatter. OpenAgentd uses only `name`
+  and `description`, so keep the others when installing a skill.
 - Never overwrite an existing skill without reading it first and confirming
   with the user.
 
@@ -68,8 +75,8 @@ Full instructions the agent reads when it calls skill("skill-name").
 5. If it references supporting files, fetch each raw file too — or for a larger
    skill, `git clone --depth 1` the repo into a temporary directory outside the
    workspace and copy the skill directory.
-6. Write the files to the chosen root, read `SKILL.md` back, and confirm the
-   absolute path and skill name.
+6. Write the files to the chosen root (`.agents/skills/` or `<SKILLS_DIR>`),
+   read `SKILL.md` back, and confirm the absolute path and skill name.
 
 ## From scratch
 

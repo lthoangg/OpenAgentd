@@ -79,7 +79,7 @@ fn parse_plan_args(args: &Value) -> Result<PlanArgs, Vec<String>> {
 /// The lead's session plan (both modes).
 pub struct PlanTool {
     pub session_id: String,
-    /// A project workspace: the plan lives in `.openagentd/plans/`.
+    /// A project workspace: the plan lives in `.agents/plans/`.
     pub coding: bool,
 }
 
@@ -243,11 +243,11 @@ mod tests {
         std::fs::create_dir_all(&root).unwrap();
         let ws = || PlanTarget::Workspace { root: &root, session_id: SID, denied: None };
         let wrote = save_plan(&dir, ws(), &args(json!({"action": "write", "content": "# Ship it\n1. a"})), true).unwrap();
-        assert_eq!(wrote, "Plan saved as revision 1 (2 lines) at .openagentd/plans/ship-it-16df61f9.md. Call submit_plan when it is ready for review.");
+        assert_eq!(wrote, "Plan saved as revision 1 (2 lines) at .agents/plans/ship-it-16df61f9.md. Call submit_plan when it is ready for review.");
         let same = save_plan(&dir, ws(), &args(json!({"action": "edit", "edits": [{"old": "1. a", "new": "1. a"}]})), false).unwrap();
         assert_eq!(same, "Plan unchanged (revision 1).");
         let edited = save_plan(&dir, ws(), &args(json!({"action": "edit", "edits": [{"old": "1. a", "new": "1. b"}]})), false).unwrap();
-        assert_eq!(edited, "Plan saved as revision 2 (2 lines) at .openagentd/plans/ship-it-16df61f9.md.");
+        assert_eq!(edited, "Plan saved as revision 2 (2 lines) at .agents/plans/ship-it-16df61f9.md.");
         let missing = save_plan(&dir, ws(), &args(json!({"action": "edit", "edits": [{"old": "zzz", "new": "y"}]})), false).unwrap_err();
         assert_eq!(missing.to_string(), "edits -> 0: old text not found in the plan.");
     }

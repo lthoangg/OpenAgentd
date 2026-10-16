@@ -191,14 +191,14 @@ describe('PlanReviewCard', () => {
 describe('planReviewFromResult', () => {
   it('reads an approval that carries the user edits made during review', () => {
     const result =
-      'The user edited the plan during review; this is revision 4, saved at .openagentd/plans/a.md:\n\n<plan>\n# A\n</plan>\n\n' +
+      'The user edited the plan during review; this is revision 4, saved at .agents/plans/a.md:\n\n<plan>\n# A\n</plan>\n\n' +
       'The user approved plan revision 4. The session is now in Code mode with full tool access.'
     expect(planReviewFromResult(result)).toEqual({ kind: 'approved' })
   })
 
   it('reads an approval in code mode', () => {
     const result =
-      'The user approved plan revision 2. Implement the plan in `.openagentd/plans/ship-it.md` from its first step and track progress with `todo_manage`.'
+      'The user approved plan revision 2. Implement the plan in `.agents/plans/ship-it.md` from its first step and track progress with `todo_manage`.'
     expect(planReviewFromResult(result)).toEqual({ kind: 'approved' })
   })
 

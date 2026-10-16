@@ -156,9 +156,9 @@ async fn submit_pauses_and_approval_resumes_in_code_mode() {
     h.send("Plan the fix.").await;
 
     assert_eq!(h.session.state(), "waiting_input");
-    let rel = format!(".openagentd/plans/fix-the-bug-{}.md", h.id8());
+    let rel = format!(".agents/plans/fix-the-bug-{}.md", h.id8());
     assert_eq!(std::fs::read_to_string(h.ws.join(&rel)).unwrap(), "# Fix the bug\n1. Patch it\n");
-    assert_eq!(std::fs::read_to_string(h.ws.join(".openagentd/plans/.gitignore")).unwrap(), "*\n");
+    assert_eq!(std::fs::read_to_string(h.ws.join(".agents/plans/.gitignore")).unwrap(), "*\n");
     let status = std::process::Command::new("git").args(["status", "--porcelain"]).current_dir(&h.ws).output().unwrap();
     assert_eq!(String::from_utf8_lossy(&status.stdout), "", "the plan stays out of git");
     assert_eq!(h.last_tool_result(1), format!("Plan saved as revision 1 (2 lines) at {rel}. Call submit_plan when it is ready for review."));
@@ -258,7 +258,7 @@ async fn submit_in_code_mode_pauses_and_approval_resumes_in_code_mode() {
     h.send("Plan the fix.").await;
 
     assert_eq!(h.session.state(), "waiting_input");
-    let rel = format!(".openagentd/plans/fix-the-bug-{}.md", h.id8());
+    let rel = format!(".agents/plans/fix-the-bug-{}.md", h.id8());
     let row = appv3_db::get_pending_question(&h.pool, &h.sid).await.unwrap().unwrap();
     assert_eq!((row.kind().as_deref(), row.plan_revision()), (Some("plan_review"), Some(1)));
     assert_eq!(row.questions()[0]["question"], "Review plan revision 1. Ready.");
@@ -348,7 +348,7 @@ async fn outside_edit_is_announced_once() {
     let seen = notes(2);
     assert_eq!(seen.len(), 1, "{seen:?}");
     assert!(
-        seen[0].starts_with(&format!("<plan_updated path=\".openagentd/plans/plan-{}.md\" revision=\"2\">\n# Plan\n1. a\n2. added in my editor\n</plan_updated>", h.id8())),
+        seen[0].starts_with(&format!("<plan_updated path=\".agents/plans/plan-{}.md\" revision=\"2\">\n# Plan\n1. a\n2. added in my editor\n</plan_updated>", h.id8())),
         "{}",
         seen[0]
     );
@@ -372,7 +372,7 @@ async fn write_refuses_once_over_unseen_edits() {
     )
     .await;
     h.send("Plan.").await;
-    let rel = format!(".openagentd/plans/p-{}.md", h.id8());
+    let rel = format!(".agents/plans/p-{}.md", h.id8());
     assert_eq!(
         h.last_tool_result(3),
         format!("Error: The user edited the plan since you last saw it (revision 2). Read {rel} and apply your change with action \"edit\", or call write again to replace their version.")
@@ -388,7 +388,7 @@ async fn chat_workspace_keeps_plan_in_data_dir() {
     h.send("Plan.").await;
     let file = h.data_dir().join(plan::PLAN_FILENAME);
     assert_eq!(std::fs::read_to_string(&file).unwrap(), "# Chat plan\n");
-    assert!(!home.join(".openagentd").exists());
+    assert!(!home.join(".agents").exists());
     let result = h.last_tool_result(1);
     assert!(result.starts_with("Plan saved as revision 1 (1 line) at "), "{result}");
     assert!(result.contains(&h.sid), "{result}");

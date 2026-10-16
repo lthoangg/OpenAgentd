@@ -19,7 +19,7 @@ the path you edit. The main local guides are:
 - Native shells: `desktop/AGENTS.md`, `desktop/src-tauri/AGENTS.md`,
   `mobile/AGENTS.md`, `mobile/src-tauri/AGENTS.md`, and
   `native/shell-core/AGENTS.md`.
-- Maintainer assets: `scripts/AGENTS.md`, `.openagentd/AGENTS.md`,
+- Maintainer assets: `scripts/AGENTS.md`, `.agents/AGENTS.md`,
   `documents/AGENTS.md`, `documents/docs/AGENTS.md`, and
   `experiments/turbovec_docs/AGENTS.md`.
 
@@ -44,8 +44,10 @@ worktrees are not part of the tracked instruction hierarchy.
   `scripts/tests/` holds their pytest checks plus installer and workflow
   contracts.
 - `documents/`: public feature catalogue and referenced assets.
-- `.openagentd/`: tracked repository commands, snippets, and agent skills;
-  runtime state beneath ignored subdirectories is not source.
+- `.agents/`: tracked repository commands, snippets, and agent skills (the
+  only project folder OpenAgentd reads); `.agents/plans/` is ignored.
+- `.openagentd/`: ignored local runtime state (`dev/` and older plans and
+  sessions); not source.
 - `experiments/turbovec_docs/`: isolated semantic-search experiment; it is not
   imported by the product or shipped in release builds.
 
@@ -113,7 +115,7 @@ Use the native subtree Makefiles for desktop/mobile packages
   `shell=True` command construction.
 - Do not edit generated/build state such as `web/dist/`,
   `desktop/sidecar-bundle/`, native `target/` (including `appv3/target/`) or
-  `gen/` trees, or ignored `.openagentd/` runtime state. Change sources and
+  `gen/` trees, ignored `.openagentd/` runtime state, or `.agents/plans/`. Change sources and
   rerun the owning build.
 - Keep release versions synchronized through the repository release scripts;
   `make verify-version` checks the cross-project contract.
@@ -149,7 +151,7 @@ and `tsc` for `web/src`.
 
 ## Agent workflows
 
-Repository workflows live in `.openagentd/skills/oad/`: `oad/testing`
+Repository workflows live in `.agents/skills/oad/`: `oad/testing`
 (test-first and per-surface commands), `oad/debug` (including logs and
 telemetry), `oad/review`, `oad/commit` (including the documentation pass),
 and `oad/release`.

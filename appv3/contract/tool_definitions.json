@@ -552,7 +552,7 @@
     "type": "function",
     "function": {
       "name": "plan",
-      "description": "Write or edit this session's plan: a Markdown file the user reviews in the Plan panel (in project workspaces, under `.openagentd/plans/`). Draft and revise it in Plan mode, then call submit_plan. In Code mode, change it only when the user changes the plan's scope, and call submit_plan only when the user asks to review it. The user may edit it too; you are shown their changes.",
+      "description": "Write or edit this session's plan: a Markdown file the user reviews in the Plan panel (in project workspaces, under `.agents/plans/`). Draft and revise it in Plan mode, then call submit_plan. In Code mode, change it only when the user changes the plan's scope, and call submit_plan only when the user asks to review it. The user may edit it too; you are shown their changes.",
       "parameters": {
         "type": "object",
         "properties": {

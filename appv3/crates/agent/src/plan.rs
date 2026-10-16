@@ -1,7 +1,7 @@
 //! The session plan: a Markdown document the lead writes with the `plan`
 //! tool and the user reviews (and may edit) in the Plan panel.
 //!
-//! In a project workspace the plan is `<workspace>/.openagentd/plans/<slug>-<id8>.md`,
+//! In a project workspace the plan is `<workspace>/.agents/plans/<slug>-<id8>.md`,
 //! ignored by git through the folder's own `.gitignore`; chat sessions keep it
 //! at `<data_dir>/sessions/<sid>/plan.md`. The bookkeeping (which file, its
 //! revision, the revision the agent last saw, the revision the user approved)
@@ -27,7 +27,7 @@ use std::sync::{Mutex, MutexGuard, OnceLock};
 pub const PLAN_FILENAME: &str = "plan.md";
 pub const PLAN_STATE_FILENAME: &str = "plan.state.json";
 /// Where project workspaces keep plans, relative to the workspace root.
-pub const WORKSPACE_PLANS_DIR: &str = ".openagentd/plans";
+pub const WORKSPACE_PLANS_DIR: &str = ".agents/plans";
 /// Written once when the plans folder is created, so plans stay out of git,
 /// snapshots, and discard-all unless the user deletes it to commit them.
 const PLANS_GITIGNORE: &str = "*\n";
@@ -161,7 +161,7 @@ pub enum PlanChange<'a> {
 
 /// Where a first plan is created.
 pub enum PlanTarget<'a> {
-    /// A project workspace: `<root>/.openagentd/plans/`.
+    /// A project workspace: `<root>/.agents/plans/`.
     Workspace { root: &'a Path, session_id: &'a str, denied: Option<&'a DeniedPaths> },
     /// The session's data dir (chat workspaces).
     DataDir,
@@ -314,7 +314,7 @@ fn check_inside(path: &Path, root: &Path, denied: Option<&DeniedPaths>) -> Resul
 fn new_workspace_file(root: &Path, session_id: &str, denied: Option<&DeniedPaths>, body: &str) -> Result<(PathBuf, PathBuf), PlanError> {
     let root = denied::resolve(root);
     let dir = root.join(WORKSPACE_PLANS_DIR);
-    // Checked before creating anything, so a symlinked `.openagentd` cannot
+    // Checked before creating anything, so a symlinked `.agents` cannot
     // make us create folders elsewhere, and again once the folder exists.
     check_inside(&dir, &root, denied)?;
     let created = !dir.exists();
@@ -621,7 +621,7 @@ mod tests {
         let (dir, root) = (d.path().join("sid"), d.path().join("ws"));
         std::fs::create_dir_all(&root).unwrap();
         let out = save_agent(&dir, workspace(&root), PlanChange::Write("# Fix it\n1. a")).unwrap();
-        assert_eq!(out.doc.workspace_path().as_deref(), Some(".openagentd/plans/fix-it-16df61f9.md"));
+        assert_eq!(out.doc.workspace_path().as_deref(), Some(".agents/plans/fix-it-16df61f9.md"));
         assert_eq!(std::fs::read_to_string(&out.doc.path).unwrap(), "# Fix it\n1. a\n");
         let plans = denied::resolve(&root).join(WORKSPACE_PLANS_DIR);
         assert_eq!(std::fs::read_to_string(plans.join(".gitignore")).unwrap(), "*\n");
@@ -653,7 +653,7 @@ mod tests {
         let (root, outside) = (d.path().join("ws"), d.path().join("outside"));
         std::fs::create_dir_all(&root).unwrap();
         std::fs::create_dir_all(&outside).unwrap();
-        std::os::unix::fs::symlink(&outside, root.join(".openagentd")).unwrap();
+        std::os::unix::fs::symlink(&outside, root.join(".agents")).unwrap();
         let err = save_agent(&d.path().join("sid"), workspace(&root), PlanChange::Write("# Plan")).unwrap_err();
         assert_eq!(err, PlanError::Escapes);
         assert!(!outside.join("plans").exists(), "nothing is created through the link");

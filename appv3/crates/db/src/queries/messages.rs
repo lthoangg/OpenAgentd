@@ -644,6 +644,18 @@ pub async fn mark_last_assistant_interrupted(pool: &DbPool, session_id: &str) ->
     Ok(())
 }
 
+/// [`mark_last_assistant_interrupted`], but only when the transcript does
+/// not end on a user row: a turn dropped before saving any reply must not
+/// mark the previous turn's answer.
+pub async fn mark_turn_assistant_interrupted(pool: &DbPool, session_id: &str) -> Result<()> {
+    let last: Option<(String,)> =
+        sqlx::query_as("SELECT role FROM session_messages WHERE session_id = ? ORDER BY seq DESC, id DESC LIMIT 1").bind(db_id(session_id)).fetch_optional(pool).await?;
+    match last {
+        Some((role,)) if role != "user" => mark_last_assistant_interrupted(pool, session_id).await,
+        _ => Ok(()),
+    }
+}
+
 /// Content of the newest assistant row by `(seq, id)` (subagent deliverables).
 pub async fn last_assistant_content(pool: &DbPool, session_id: &str) -> Result<Option<String>> {
     let row: Option<(Option<String>,)> = sqlx::query_as("SELECT content FROM session_messages WHERE session_id = ? AND role = 'assistant' ORDER BY seq DESC, id DESC LIMIT 1")

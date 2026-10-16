@@ -169,8 +169,17 @@ pub struct AgentSession {
     /// Pending idle-compaction timer; any new turn aborts it.
     idle_timer: Mutex<Option<tokio::task::JoinHandle<()>>>,
     idle_compaction_delay: Mutex<Duration>,
+    /// How long a stopped turn may wind down before it is force-ended.
+    stop_grace: Mutex<Duration>,
+    /// Extra hooks for every turn (tests only).
+    test_hooks: Mutex<Vec<HookRef>>,
     me: Weak<AgentSession>,
 }
+
+/// A stopped turn that has not ended this long after Stop is force-ended:
+/// its remaining work (a hook or checkpoint that never returns) is dropped
+/// so the session cannot stay busy forever.
+const STOP_GRACE: Duration = Duration::from_secs(10);
 
 impl AgentSession {
     pub fn new(
@@ -205,6 +214,8 @@ impl AgentSession {
             memory_snapshot: Mutex::new(None),
             idle_timer: Mutex::new(None),
             idle_compaction_delay: Mutex::new(IDLE_COMPACTION_DELAY),
+            stop_grace: Mutex::new(STOP_GRACE),
+            test_hooks: Mutex::new(vec![]),
             me: me.clone(),
         })
     }
@@ -308,6 +319,25 @@ impl AgentSession {
         *self.active_task.lock().unwrap() = Some(h);
     }
 
+    /// Override [`STOP_GRACE`] (tests only).
+    #[doc(hidden)]
+    pub fn set_stop_grace(&self, grace: Duration) {
+        *self.stop_grace.lock().unwrap() = grace;
+    }
+
+    /// Run `hook` in every later turn (tests only).
+    #[doc(hidden)]
+    pub fn push_test_hook(&self, hook: HookRef) {
+        self.test_hooks.lock().unwrap().push(hook);
+    }
+
+    /// Resolves [`STOP_GRACE`] after a hard stop.
+    async fn force_stop_due(&self) {
+        self.hard_cancel.wait().await;
+        let grace = *self.stop_grace.lock().unwrap();
+        tokio::time::sleep(grace).await;
+    }
+
     /// Override the idle-compaction delay (tests only).
     #[doc(hidden)]
     pub fn set_idle_compaction_delay(&self, delay: Duration) {
@@ -409,9 +439,15 @@ impl AgentSession {
         self.cancel.set();
         self.hard_cancel.set();
         let handle = self.active_task.lock().unwrap().take();
-        if let Some(h) = handle {
+        if let Some(mut h) = handle {
             if !h.is_finished() {
-                let _ = tokio::time::timeout(std::time::Duration::from_secs(10), h).await;
+                // The turn force-ends itself after the grace period; abort is
+                // the last resort for one stuck where no await is reached.
+                let limit = *self.stop_grace.lock().unwrap() + Duration::from_secs(5);
+                if tokio::time::timeout(limit, &mut h).await.is_err() {
+                    tracing::warn!("agent_turn_aborted session_id={}", self.session_id());
+                    h.abort();
+                }
             }
         }
         if self.parent_session_id.is_none() {
@@ -924,11 +960,26 @@ impl AgentSession {
         // A panic below (provider parser, tool, hook) must still reach the
         // error path and the `finally` block, or the session stays "working"
         // with no `done` event until the server restarts.
-        let outcome = std::panic::AssertUnwindSafe(self.execute_turn(&opts)).catch_unwind().await.unwrap_or_else(|payload| {
-            let msg = appv3_core::panic_message(payload.as_ref());
-            tracing::error!("agent_turn_panicked name={} session_id={} panic={}", self.name(), sid, msg);
-            Err(AgentError::Other(format!("Internal error: {msg}")))
-        });
+        let execute = std::panic::AssertUnwindSafe(self.execute_turn(&opts)).catch_unwind();
+        let outcome = tokio::select! {
+            r = execute => r.unwrap_or_else(|payload| {
+                let msg = appv3_core::panic_message(payload.as_ref());
+                tracing::error!("agent_turn_panicked name={} session_id={} panic={}", self.name(), sid, msg);
+                Err(AgentError::Other(format!("Internal error: {msg}")))
+            }),
+            // Dropping `execute` drops its tool calls (a shell's process
+            // group is killed, an MCP call is cancelled); the `finally` below
+            // still ends the turn. Orphaned tool rows heal on the next turn.
+            _ = self.force_stop_due() => {
+                tracing::warn!("agent_turn_force_stopped name={} session_id={}", self.name(), sid);
+                if !sid.is_empty() {
+                    if let Err(e) = db::mark_turn_assistant_interrupted(&self.pool, &sid).await {
+                        tracing::warn!("mark_interrupted_failed session_id={} error={}", sid, e);
+                    }
+                }
+                Err(AgentError::Cancelled)
+            }
+        };
         if let Err(e) = outcome {
             if !matches!(e, AgentError::Cancelled) {
                 if e.is_logged_as_warning() {
@@ -1088,6 +1139,7 @@ impl AgentSession {
             }
         }
         hooks.push(Arc::new(WorkspaceInstructionsHook::new(Some(&workspace), agent_mode == "coding")));
+        hooks.extend(self.test_hooks.lock().unwrap().iter().cloned());
         let checkpointer = Checkpointer::new(self.pool.clone(), Some(sid.clone()), Some(name.clone()));
         checkpointer.mark_loaded(&history);
         hooks.push(Arc::new(ToolResultOffloadHook::default()));

@@ -599,8 +599,10 @@ for line in sys.stdin:
     async fn stdio_tool_call_times_out_and_is_cancelled() {
         let d = tempfile::tempdir().unwrap();
         let Some((py, script, log)) = silent_server(d.path()) else { return };
-        let c = McpClient::stdio(&py, &[script.display().to_string(), log.display().to_string()], &[]).unwrap().with_timeout(Some(1));
+        let c = McpClient::stdio(&py, &[script.display().to_string(), log.display().to_string()], &[]).unwrap();
+        // Handshake on the default deadline: Python can take over 1 s to start on Windows.
         c.initialize().await.unwrap();
+        let c = c.with_timeout(Some(1));
         let e = c.call_tool("echo", json!({})).await.unwrap_err();
         assert!(e.to_string().contains("timed out after 1 s"), "{e}");
         assert_eq!(c.pending_len(), 0);

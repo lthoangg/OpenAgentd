@@ -59,10 +59,11 @@ async fn tools_stay_in_the_session_workspace() {
     let pool = appv3_db::create_pool(root.join("oad.db")).await.unwrap();
     let mock = Arc::new(MockProvider::new(vec![
         // 1. a Code-mode continue.
-        MockProvider::tool_calls(&[("c1", "shell", r#"{"command": "pwd -P"}"#), ("g1", "glob", r#"{"pattern": "marker-*.txt", "directory": "."}"#)]),
+        // `ls` runs in sh and PowerShell alike; the marker it lists names the cwd.
+        MockProvider::tool_calls(&[("c1", "shell", r#"{"command": "ls"}"#), ("g1", "glob", r#"{"pattern": "marker-*.txt", "directory": "."}"#)]),
         MockProvider::text("done"),
         // 2. after a Plan → Code switch (what plan approval does).
-        MockProvider::tool_calls(&[("c2", "shell", r#"{"command": "pwd -P"}"#), ("g2", "glob", r#"{"pattern": "marker-*.txt", "directory": "."}"#)]),
+        MockProvider::tool_calls(&[("c2", "shell", r#"{"command": "ls"}"#), ("g2", "glob", r#"{"pattern": "marker-*.txt", "directory": "."}"#)]),
         MockProvider::text("done"),
     ]));
     let provider: Arc<dyn LlmProvider> = mock.clone();
@@ -101,8 +102,8 @@ async fn tools_stay_in_the_session_workspace() {
     // ── 1. continue in Code mode ────────────────────────────────────────
     appv3_db::update_session(&pool, &sid, appv3_db::SessionUpdate { interaction_mode: Some("code".into()), ..Default::default() }).await.unwrap();
     run().await;
-    let pwd = tool_result(&pool, &sid, "c1").await;
-    assert!(pwd.contains(&ws_a), "shell ran outside a: {pwd}");
+    let ls = tool_result(&pool, &sid, "c1").await;
+    assert!(ls.contains("marker-a.txt") && !ls.contains("marker-b.txt"), "shell ran outside a: {ls}");
     let glob = tool_result(&pool, &sid, "g1").await;
     assert!(glob.contains("marker-a.txt") && !glob.contains("marker-b.txt"), "glob searched outside a: {glob}");
 
@@ -112,8 +113,8 @@ async fn tools_stay_in_the_session_workspace() {
     appv3_db::update_session(&pool, &sid, appv3_db::SessionUpdate { interaction_mode: Some("code".into()), ..Default::default() }).await.unwrap();
     run().await;
     assert_only_in(&sid, &ws_a);
-    let pwd = tool_result(&pool, &sid, "c2").await;
-    assert!(pwd.contains(&ws_a), "shell ran outside a after the mode switch: {pwd}");
+    let ls = tool_result(&pool, &sid, "c2").await;
+    assert!(ls.contains("marker-a.txt") && !ls.contains("marker-b.txt"), "shell ran outside a after the mode switch: {ls}");
     let glob = tool_result(&pool, &sid, "g2").await;
     assert!(glob.contains("marker-a.txt") && !glob.contains("marker-b.txt"), "glob searched outside a after the mode switch: {glob}");
 }

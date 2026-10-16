@@ -8,6 +8,7 @@ import { SectionCard, SectionCardHeader, SectionCardRows, SectionCardRow, Sectio
 
 import { apiBaseUrl, setApiBaseUrl } from '@/api/base-url'
 import { queryClient } from '@/lib/query-client'
+import { forgetRouteForBackendSwitch } from '@/lib/route-restore'
 import { queryKeys } from '@/queries/keys'
 import { getStoredAccessKey, installDesktopAuth, primeStoredAccessKey, setStoredAccessKey } from '@/api/auth'
 import {
@@ -99,7 +100,10 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
       const shouldReload = nextBaseUrl !== currentBaseUrl
       await refreshBackendQueries()
       setStatus(next)
-      if (shouldReload) window.location.reload()
+      if (shouldReload) {
+        forgetRouteForBackendSwitch()
+        window.location.reload()
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
@@ -142,6 +146,7 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
     const currentBaseUrl = normalizeServerBaseUrl(status?.base_url || apiBaseUrl().replace(/\/api$/, ''))
     const next = await runConnectionSwitch(() => switchToBundledAppBackend(), true)
     if (next?.base_url && normalizeServerBaseUrl(next.base_url) !== currentBaseUrl) {
+      forgetRouteForBackendSwitch()
       window.location.reload()
     }
   }

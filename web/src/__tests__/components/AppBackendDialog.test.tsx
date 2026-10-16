@@ -223,6 +223,8 @@ describe('AppBackendDialog', () => {
       sidecar_running: true,
       external: true,
     }
+    // A session id from the old server must not be reopened on the new one.
+    window.history.replaceState(null, '', '/old-session')
     render(<AppBackendDialog open onOpenChange={() => {}} />)
 
     await screen.findByText('Builtin sidecar')
@@ -239,6 +241,7 @@ describe('AppBackendDialog', () => {
     })
     await waitFor(() => expect(window.__OAD_API_BASE_URL__).toBe('http://127.0.0.1:49545'))
     expect(reloadMock).toHaveBeenCalledTimes(1)
+    expect(window.location.pathname).toBe('/')
   })
 
   it('lets users recover from an unreachable external backend by choosing builtin when the sidecar is stopped', async () => {

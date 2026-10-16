@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'bun:test'
 import { isRedirect } from '@tanstack/react-router'
-import { closestRestorableRoute, LAST_ROUTE_KEY, lastRouteStorageKey } from '@/lib/route-restore'
+import {
+  closestRestorableRoute,
+  forgetRouteForBackendSwitch,
+  LAST_ROUTE_KEY,
+  lastRouteStorageKey,
+  resolveStartupRoute,
+} from '@/lib/route-restore'
 import { router } from '@/router'
 
 describe('closestRestorableRoute', () => {
@@ -82,6 +88,47 @@ describe('lastRouteStorageKey', () => {
 
     delete window.__OAD_APP_ID__
     delete window.__OAD_WINDOW_ID__
+  })
+})
+
+describe('resolveStartupRoute', () => {
+  const at = (fullPath: string) => ({ pathname: fullPath.replace(/[?#].*$/, ''), fullPath })
+
+  it('keeps the exact session on a reload despite the desktop route hint', () => {
+    expect(resolveStartupRoute({ initialRoute: '/', isReload: true, ...at('/abc'), savedRoute: '/abc' })).toBeNull()
+    expect(resolveStartupRoute({ initialRoute: '/other', isReload: true, ...at('/abc'), savedRoute: null })).toBeNull()
+  })
+
+  it('keeps query and hash on a reload', () => {
+    expect(resolveStartupRoute({ initialRoute: '/', isReload: true, ...at('/abc?tab=files#diff'), savedRoute: null })).toBeNull()
+  })
+
+  it('honours the desktop route hint on a first load', () => {
+    expect(resolveStartupRoute({ initialRoute: '/', isReload: false, ...at('/'), savedRoute: '/abc' })).toBe('/')
+    expect(resolveStartupRoute({ initialRoute: '/abc', isReload: false, ...at('/'), savedRoute: null })).toBe('/abc')
+  })
+
+  it('restores the saved route from the packaged entrypoint', () => {
+    expect(resolveStartupRoute({ initialRoute: '/', isReload: true, ...at('/index.html'), savedRoute: '/abc' })).toBe('/abc')
+    expect(resolveStartupRoute({ initialRoute: undefined, isReload: false, ...at('/index.html?x=1'), savedRoute: null })).toBe('/?x=1')
+  })
+
+  it('restores the saved route at the hub without a hint', () => {
+    expect(resolveStartupRoute({ initialRoute: undefined, isReload: false, ...at('/'), savedRoute: '/abc' })).toBe('/abc')
+    expect(resolveStartupRoute({ initialRoute: undefined, isReload: false, ...at('/'), savedRoute: '/' })).toBeNull()
+    expect(resolveStartupRoute({ initialRoute: undefined, isReload: false, ...at('/abc'), savedRoute: '/def' })).toBeNull()
+  })
+})
+
+describe('forgetRouteForBackendSwitch', () => {
+  it('moves to the hub and drops the saved route', () => {
+    window.history.replaceState(null, '', '/abc')
+    localStorage.setItem(lastRouteStorageKey(), '/abc')
+
+    forgetRouteForBackendSwitch()
+
+    expect(window.location.pathname).toBe('/')
+    expect(localStorage.getItem(lastRouteStorageKey())).toBeNull()
   })
 })
 

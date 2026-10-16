@@ -12,24 +12,17 @@
  * the last workspace as usual.
  */
 
+import { isPageReload } from './page-reload'
+
 declare global {
   interface Window {
     __OAD_FRESH_WINDOW__?: boolean
   }
 }
 
-function isReload(): boolean {
-  try {
-    const [entry] = performance.getEntriesByType('navigation') as PerformanceNavigationTiming[]
-    return entry?.type === 'reload'
-  } catch {
-    return false
-  }
-}
-
 export function isFreshDesktopWindow(): boolean {
   if (typeof window === 'undefined' || window.__OAD_FRESH_WINDOW__ !== true) return false
-  if (isReload()) {
+  if (isPageReload()) {
     clearFreshDesktopWindow()
     return false
   }

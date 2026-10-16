@@ -15,7 +15,8 @@ import { MacTitleBar } from '@/components/MacTitleBar'
 import { useMobileViewportGuards } from '@/hooks/use-mobile-viewport'
 import { useDynamicType } from '@/hooks/use-dynamic-type'
 import { useDesktopCommands } from '@/lib/desktop-commands'
-import { closestRestorableRoute, LAST_ROUTE_KEY, lastRouteStorageKey } from '@/lib/route-restore'
+import { LAST_ROUTE_KEY, lastRouteStorageKey, resolveStartupRoute } from '@/lib/route-restore'
+import { isPageReload } from '@/lib/page-reload'
 import { useAppShortcut } from '@/lib/keyboard/hooks'
 import { useContainerSelectAll } from '@/hooks/useContainerSelectAll'
 import { usePreventBackspaceNavigation } from '@/hooks/usePreventBackspaceNavigation'
@@ -57,28 +58,18 @@ export function Root() {
   useEffect(() => {
     const target = window as Window & { __OAD_INITIAL_ROUTE__?: string }
     const initialRoute = target.__OAD_INITIAL_ROUTE__
-    if (initialRoute) {
-      delete target.__OAD_INITIAL_ROUTE__
-      navigate({ to: closestRestorableRoute(initialRoute), replace: true })
-      return
-    }
+    delete target.__OAD_INITIAL_ROUTE__
 
     const storageKey = lastRouteStorageKey()
     const savedRoute = localStorage.getItem(storageKey) ?? localStorage.getItem(LAST_ROUTE_KEY)
-
-    if (window.location.pathname === '/index.html') {
-      if (savedRoute && savedRoute !== '/' && savedRoute !== '/index.html') {
-        navigate({ to: closestRestorableRoute(savedRoute), replace: true })
-        return
-      }
-      navigate({ to: closestRestorableRoute(window.location.pathname + window.location.search + window.location.hash), replace: true })
-      return
-    }
-    if (window.location.pathname === '/') {
-      if (savedRoute && savedRoute !== '/' && savedRoute !== '/index.html') {
-        navigate({ to: closestRestorableRoute(savedRoute), replace: true })
-      }
-    }
+    const next = resolveStartupRoute({
+      initialRoute,
+      isReload: isPageReload(),
+      pathname: window.location.pathname,
+      fullPath: window.location.pathname + window.location.search + window.location.hash,
+      savedRoute,
+    })
+    if (next !== null) navigate({ to: next, replace: true })
   }, [navigate])
 
   useEffect(() => {

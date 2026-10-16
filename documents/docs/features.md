@@ -1974,7 +1974,9 @@ Desktop is primary. CLI / server is the developer path.
   UI finishes bootstrapping after reload.
 - **Reload preserves the current open page** `[v2.9.0]` — reloading in browser
   or desktop shells (Cmd+R / Ctrl+R) restores the active session, scheduler, or
-  telemetry view instead of returning to the home workspace.
+  telemetry view instead of returning to the home workspace. Desktop Reload
+  (View menu, tray, and palette Reload Window) reopens the exact session: the
+  window's first-load route hint is ignored on a reload `[v3.14.0]`.
 - **Closest restorable route fallback after backend switches** `[v1.68.0]` —
   when reconnecting to a backend that does not have the previous
   coding session, desktop restore now lands on the nearest valid hub page

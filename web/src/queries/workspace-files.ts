@@ -2,10 +2,12 @@
  * Shared query options for the two workspace file-listing endpoints.
  *
  * Both listings are served by the same backend walk: `git ls-files` when the
- * workspace is a git work tree, otherwise `os.walk` + a `.gitignore` match
- * (capped at 5,000 entries and offloaded to a worker thread because it stats
- * every entry). Every consumer must therefore share one cache entry per
- * workspace/session rather than fetching its own copy.
+ * workspace is a git work tree, otherwise a directory walk + a `.gitignore`
+ * match (capped at 5,000 entries and offloaded to a worker thread because it
+ * stats every entry). Visible files come first; gitignored ones follow,
+ * flagged `ignored`, minus noise dirs (`node_modules`, `.venv`, …) and
+ * ignored dirs too big to browse (`target/`). Every consumer must therefore
+ * share one cache entry per workspace/session rather than fetching its own copy.
  *
  * Consumers: `WorkspaceFilesPanel` (artifacts tree), `WorkspacePanel`
  * (file tree), the InputComposer `@`-mention picker (`useFileRefsQuery`), and

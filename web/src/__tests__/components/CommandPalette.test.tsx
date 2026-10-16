@@ -432,6 +432,20 @@ describe("CommandPalette", () => {
     expect(rows[0].textContent).toContain('index.ts')
   })
 
+  it("finds gitignored files but ranks them below comparable visible ones", async () => {
+    const user = userEvent.setup()
+    const files: WorkspaceFileInfo[] = [
+      { path: 'dist/clip.mp4', name: 'clip.mp4', size: 0, mtime: 0, mime: 'video/mp4', ignored: true },
+      { path: 'assets/media/clip.mp4', name: 'clip.mp4', size: 0, mtime: 0, mime: 'video/mp4' },
+    ]
+    render(
+      <CommandPalette commands={[]} workspaceFiles={files} onFileOpen={() => {}} onClose={() => {}} />,
+    )
+    await user.type(screen.getByPlaceholderText("Search files…"), "clip")
+    const rows = screen.getAllByRole('button').filter((b) => b.textContent?.includes('clip.mp4'))
+    expect(rows.map((r) => r.textContent)).toEqual([expect.stringContaining('assets/media/'), expect.stringContaining('dist/')])
+  })
+
   it("calls onFileOpen and onClose when a file row is activated via Enter", async () => {
     const user = userEvent.setup()
     let opened: WorkspaceFileInfo | null = null

@@ -1607,7 +1607,7 @@ MCP.
 - **Tool result offload** `[since v1.0]` — bulky tool outputs (large file
   reads, shell spills) move to `{OPENAGENTD_DATA_DIR}/sessions/{id}/.tool_results/` and the inspector
   links to them.
-- **`.gitignore`-aware file tools** `[v1.20.1, v1.131.3, v2.0.0]` — `glob`, `grep`, and
+- **`.gitignore`-aware file tools** `[v1.20.1, v1.131.3, v2.0.0, v3.14.0]` — `glob`, `grep`, and
   workspace file browsing respect `.gitignore` and skip dependency and cache
   directories. Workspace file listings (file tagging, the command palette, the
   files sidebar) come from git itself in a git work tree, so tracked files no
@@ -1621,6 +1621,12 @@ MCP.
   searched rather than silently pruned, and an anchored pattern walks only its
   own subtree — 2.6x–50x faster, and 35x on a pattern pointing into a
   dependency `[v2.0.0]`.
+  Quick Open and the `@` picker also find gitignored files (a rendered
+  `out/clip.mp4`, downloads), listed after every visible file, ranked lower,
+  and muted; dependency and cache directories, `.env` secrets, OS clutter, and
+  ignored directories over 500 files (`target/`) stay out. A workspace that is
+  a subfolder of a repo now honours the repo's `.gitignore`s, so `app/target/`
+  no longer fills the listing cap `[v3.14.0]`.
 
 ---
 

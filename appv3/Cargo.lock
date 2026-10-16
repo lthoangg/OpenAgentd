@@ -193,6 +193,7 @@ dependencies = [
  "md-5 0.10.6",
  "notify",
  "percent-encoding",
+ "rayon",
  "regex",
  "reqwest",
  "serde",

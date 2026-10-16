@@ -17,6 +17,7 @@ import { AppOverlay } from '@/components/ui/app-overlay'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { isImeComposing } from '@/lib/keyboard/chord'
 import type { WorkspaceFileInfo } from '@/api/types'
+import { IGNORED_FILE_PENALTY } from '@/components/InputComposer.mentions'
 
 /** Nested list a command opens in place of running. */
 export interface CommandPage {
@@ -211,11 +212,15 @@ function PaletteOverlay({ commands, onClose, workspaceFiles = [], filesTruncated
         ? fuzzysort
             .go(fileQ, workspaceFiles, {
               key: 'path',
-              limit: MAX_FILE_ROWS,
+              // Over-fetch so gitignored files can sink below visible ones.
+              limit: MAX_FILE_ROWS * 2,
               // Matches the mention and model pickers.
               threshold: 0.2,
             })
-            .map((r) => r.obj)
+            .map((r) => ({ file: r.obj, score: r.obj.ignored ? r.score - IGNORED_FILE_PENALTY : r.score }))
+            .sort((a, b) => b.score - a.score)
+            .slice(0, MAX_FILE_ROWS)
+            .map((r) => r.file)
         : workspaceFiles.slice(0, MAX_FILE_ROWS)
     }
 
@@ -470,7 +475,7 @@ function FileRow({ file, idx, isActive, onRun, onActivate }: FileRowProps) {
       }`}
     >
       <div className="min-w-0 flex-1 overflow-hidden">
-        <span className="block truncate font-mono text-xs font-medium text-(--color-text)">
+        <span className={`block truncate font-mono text-xs font-medium ${file.ignored ? 'text-(--color-text-muted)' : 'text-(--color-text)'}`}>
           {file.name}
         </span>
         {file.path !== file.name && (

@@ -35,6 +35,7 @@ async-stream.workspace = true
 regex.workspace = true
 reqwest.workspace = true
 bytes = "1"
+rayon = "1"
 http-body-util = "0.1"
 form_urlencoded = "1"
 percent-encoding = "2"

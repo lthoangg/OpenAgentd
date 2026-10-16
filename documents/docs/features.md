@@ -869,6 +869,12 @@ executes tools, manages its task list, and inspects workspace repositories.
   error event and agent notification. Exhausted connection/timeout failures
   likewise become a typed `ProviderConnectionError` naming the transport error
   and pointing at the provider's base URL.
+- **Model refusals are visible** `[v3.14.0]` — when Claude's safety
+  classifier cuts a response off (`stop_reason: "refusal"`), the turn ends on
+  a "Model Declined to Continue" error card with Retry and Switch model,
+  quoting Anthropic's explanation when present. The refused response is not
+  saved, so it does not trigger repeat refusals, and its truncated tool calls
+  do not run. Before, the turn just ended with nothing shown.
 - **Stop cancels the whole active session run** `[v1.101.1]` — Stop directly
   cancels the agent, in-flight model/tool work, direct shell
   commands, and session-owned background shell processes before the request

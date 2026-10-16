@@ -797,6 +797,19 @@ explicitly.
   without yielding is interrupted (`TimeoutError`); loads time out at 30 s,
   blocking calls at 10 s and tool hooks at 60 s. Tests:
   `jsplugin/tests/host.rs`.
+- **Model refusals end the turn with an error (v3 only):** when a response
+  ends with `finish_reason: "refusal"` (Anthropic's streaming safety
+  classifier), the agent loop drops the response. Its tool calls do not run,
+  because they are truncated, and the assistant row is not saved, because
+  Anthropic requires the refused turn to leave the context. Its tokens still
+  count toward the turn total. The turn then ends with an `error` event:
+  code `model_refusal`, category `provider`, title "Model Declined to
+  Continue", and the message carries `stop_details.explanation` when
+  present. The Anthropic adapter forwards `stop_details` on the stream delta
+  (`ChatCompletionDelta::stop_details`, plugin JSON key `stop_details`), and
+  the assembled message keeps it in `extra.stop_details`. v2 treated a
+  refusal as `end_turn`: the turn ended silently and any partial tool call
+  ran. Tests: `agent/tests/refusal.rs`, `providers/src/anthropic.rs`.
 
 ## 4. Layout
 

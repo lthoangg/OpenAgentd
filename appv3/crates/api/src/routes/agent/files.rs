@@ -49,11 +49,12 @@ pub fn router() -> Router<AppState> {
     Router::new()
         .route("/{session_id}/uploads/{filename}", get(get_upload))
         .route("/{session_id}/media/{*file_path}", get(get_media))
-        .route("/{session_id}/files", get(list_session_files))
+        .route("/{session_id}/files", get(|st: State<AppState>, sid: AxPath<String>, h: HeaderMap| async move { etagged(&h, list_session_files(st, sid).await).await }))
         .route("/workspace/files/read", get(read_workspace_file))
-        .route("/workspace/files/list", get(list_workspace_files))
-        .route("/workspace/git-diff/view", get(git_diff))
-        .route("/workspace/status", get(workspace_status))
+        // Polled after every tool call: ETag / 304 (see `with_etag`).
+        .route("/workspace/files/list", get(|h: HeaderMap, q: Qs| async move { etagged(&h, list_workspace_files(q).await).await }))
+        .route("/workspace/git-diff/view", get(|h: HeaderMap, q: Qs| async move { etagged(&h, git_diff(q).await).await }))
+        .route("/workspace/status", get(|h: HeaderMap, q: Qs| async move { etagged(&h, workspace_status(q).await).await }))
         .route("/workspace/git/history", get(git_history))
         .route("/workspace/git/discard", post(git_discard))
         .route("/workspace/git/commit-diff", get(commit_diff))
@@ -1226,5 +1227,22 @@ mod tests {
         // With the visible files at the cap, ignored entries are not expanded.
         let full = Listing { files: (0..MAX_FILES_LISTED).map(|i| json!({"path": format!("v{i}")})).collect(), ignored: vec![d.path().join("i1")], truncated: true };
         assert_eq!(full.finish(d.path()).0.len(), MAX_FILES_LISTED);
+    }
+
+    #[tokio::test]
+    async fn listing_answers_304_while_unchanged() {
+        let d = repo_on_main();
+        let first = with_etag(&HeaderMap::new(), list_workspace_files(ws_query(d.path(), "")).await.unwrap()).await;
+        assert_eq!(first.status(), 200);
+        let tag = first.headers()[axum::http::header::ETAG].clone();
+        let mut h = HeaderMap::new();
+        h.insert(axum::http::header::IF_NONE_MATCH, tag.clone());
+        let again = with_etag(&h, list_workspace_files(ws_query(d.path(), "")).await.unwrap()).await;
+        assert_eq!(again.status(), 304);
+        assert!(axum::body::to_bytes(again.into_body(), usize::MAX).await.unwrap().is_empty());
+        std::fs::write(d.path().join("new.txt"), "n").unwrap();
+        let changed = with_etag(&h, list_workspace_files(ws_query(d.path(), "")).await.unwrap()).await;
+        assert_eq!(changed.status(), 200);
+        assert_ne!(changed.headers()[axum::http::header::ETAG], tag);
     }
 }

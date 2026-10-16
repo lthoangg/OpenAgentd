@@ -82,15 +82,19 @@ fn parse_server_body(v: Option<&Value>, errs: &mut Vec<Value>) -> Option<ServerC
         let args = b.list_str("args");
         let env: IndexMap<String, String> = b.dict_str("env").into_iter().collect();
         let enabled = b.bool("enabled", Some(true));
-        let e = b.into_errs(&["transport", "command", "args", "env", "enabled"]);
+        let timeout = b.opt_int("timeout");
+        let mut e = b.into_errs(&["transport", "command", "args", "env", "enabled", "timeout"]);
+        let timeout = check_timeout(timeout, &prefix, &mut e);
         let ok = e.is_empty();
         errs.extend(e);
-        ok.then_some(ServerConfig::Stdio { command, args, env, enabled })
+        ok.then_some(ServerConfig::Stdio { command, args, env, enabled, timeout })
     } else {
         let url = b.str_min1("url");
         let headers: IndexMap<String, String> = b.dict_str("headers").into_iter().collect();
         let enabled = b.bool("enabled", Some(true));
-        let mut e = b.into_errs(&["transport", "url", "headers", "oauth", "enabled"]);
+        let timeout = b.opt_int("timeout");
+        let mut e = b.into_errs(&["transport", "url", "headers", "oauth", "enabled", "timeout"]);
+        let timeout = check_timeout(timeout, &prefix, &mut e);
         let oauth = match obj.get("oauth") {
             None | Some(Value::Null) => None,
             Some(o) => {
@@ -111,9 +115,26 @@ fn parse_server_body(v: Option<&Value>, errs: &mut Vec<Value>) -> Option<ServerC
         };
         let ok = e.is_empty();
         errs.extend(e);
-        ok.then_some(ServerConfig::Http { url, headers, oauth, enabled })
+        ok.then_some(ServerConfig::Http { url, headers, oauth, enabled, timeout })
     };
     cfg
+}
+
+/// `timeout: int | None = Field(ge=1, le=MAX_TIMEOUT_S)`.
+fn check_timeout(v: Option<i64>, prefix: &[Value], errs: &mut Vec<Value>) -> Option<u64> {
+    let v = v?;
+    let max = appv3_mcp::client::MAX_TIMEOUT_S as i64;
+    let mut loc = prefix.to_vec();
+    loc.push(json!("timeout"));
+    if v < 1 {
+        errs.push(verr_ctx("greater_than_equal", &loc, "Input should be greater than or equal to 1", json!(v), json!({"ge": 1})));
+        return None;
+    }
+    if v > max {
+        errs.push(verr_ctx("less_than_equal", &loc, &format!("Input should be less than or equal to {max}"), json!(v), json!({"le": max})));
+        return None;
+    }
+    Some(v as u64)
 }
 
 // ── OAuth secret storage ────────────────────────────────────────────────────
@@ -163,7 +184,7 @@ fn save_env_values(values: &[(String, String)]) -> std::io::Result<()> {
 
 /// `_store_oauth_secrets`.
 fn store_oauth_secrets(name: &str, cfg: ServerConfig) -> std::io::Result<ServerConfig> {
-    let ServerConfig::Http { url, headers, oauth: Some(o), enabled } = cfg else { return Ok(cfg) };
+    let ServerConfig::Http { url, headers, oauth: Some(o), enabled, timeout } = cfg else { return Ok(cfg) };
     let re = env_ref_re();
     let mut env = vec![];
     let mut client_id = o.client_id.clone();
@@ -179,12 +200,12 @@ fn store_oauth_secrets(name: &str, cfg: ServerConfig) -> std::io::Result<ServerC
         client_secret = Some(format!("${{{key}}}"));
     }
     save_env_values(&env)?;
-    Ok(ServerConfig::Http { url, headers, oauth: Some(OAuthConfig { client_id, client_secret }), enabled })
+    Ok(ServerConfig::Http { url, headers, oauth: Some(OAuthConfig { client_id, client_secret }), enabled, timeout })
 }
 
 /// `_merge_masked_http_headers` + `_merge_masked_oauth`.
 fn merge_masked(new: ServerConfig, existing: Option<&ServerConfig>) -> ServerConfig {
-    let (ServerConfig::Http { url, headers, oauth, enabled }, Some(ServerConfig::Http { headers: old_h, oauth: old_o, .. })) = (new.clone(), existing) else { return new };
+    let (ServerConfig::Http { url, headers, oauth, enabled, timeout }, Some(ServerConfig::Http { headers: old_h, oauth: old_o, .. })) = (new.clone(), existing) else { return new };
     let headers: IndexMap<String, String> = headers.into_iter().map(|(k, v)| if v == MASK && old_h.contains_key(&k) { (k.clone(), old_h[&k].clone()) } else { (k, v) }).collect();
     let oauth = match (oauth, old_o) {
         (Some(n), Some(o)) => Some(OAuthConfig {
@@ -193,7 +214,7 @@ fn merge_masked(new: ServerConfig, existing: Option<&ServerConfig>) -> ServerCon
         }),
         (n, _) => n,
     };
-    ServerConfig::Http { url, headers, oauth, enabled }
+    ServerConfig::Http { url, headers, oauth, enabled, timeout }
 }
 
 // ── routes ──────────────────────────────────────────────────────────────────

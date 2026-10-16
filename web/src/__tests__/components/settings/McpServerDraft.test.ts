@@ -809,3 +809,31 @@ describe('SERVER_NAME_REGEX', () => {
     expect(SERVER_NAME_REGEX.test('')).toBe(false)
   })
 })
+
+describe('tool timeout', () => {
+  const body: ServerBody = { transport: 'stdio', command: 'npx', args: [], env: {}, enabled: true, timeout: 120 }
+
+  it('round-trips through the draft', () => {
+    const draft = draftFromServerBody('fs', body)
+    expect(draft.timeoutText).toBe('120')
+    const out = draftToServerBody(draft)
+    expect(out.ok && out.body.timeout).toBe(120)
+  })
+
+  it('is omitted when empty', () => {
+    const out = draftToServerBody({ ...draftFromServerBody('fs', body), timeoutText: '' })
+    expect(out.ok && 'timeout' in out.body).toBe(false)
+  })
+
+  it('rejects values outside 1–270', () => {
+    for (const bad of ['0', '271', '1.5', 'abc']) {
+      expect(validateDraft({ ...draftFromServerBody('fs', body), timeoutText: bad }, { isNew: false })?.timeout).toBeDefined()
+    }
+    expect(validateDraft({ ...draftFromServerBody('fs', body), timeoutText: '270' }, { isNew: false })).toBeNull()
+  })
+
+  it('counts towards dirty state', () => {
+    const a = draftFromServerBody('fs', body)
+    expect(draftEquals(a, { ...a, timeoutText: '60' })).toBe(false)
+  })
+})

@@ -14,8 +14,8 @@ pub struct OAuthConfig {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ServerConfig {
-    Stdio { command: String, args: Vec<String>, env: IndexMap<String, String>, enabled: bool },
-    Http { url: String, headers: IndexMap<String, String>, oauth: Option<OAuthConfig>, enabled: bool },
+    Stdio { command: String, args: Vec<String>, env: IndexMap<String, String>, enabled: bool, timeout: Option<u64> },
+    Http { url: String, headers: IndexMap<String, String>, oauth: Option<OAuthConfig>, enabled: bool, timeout: Option<u64> },
 }
 
 impl ServerConfig {
@@ -30,11 +30,24 @@ impl ServerConfig {
             ServerConfig::Stdio { enabled, .. } | ServerConfig::Http { enabled, .. } => *enabled,
         }
     }
-    /// `model_dump(mode="json")` in field order.
-    pub fn dump(&self) -> Value {
+    /// Tool-call deadline in seconds (`None`: the client default).
+    pub fn timeout(&self) -> Option<u64> {
         match self {
-            ServerConfig::Stdio { command, args, env, enabled } => json!({"transport": "stdio", "command": command, "args": args, "env": env, "enabled": enabled}),
-            ServerConfig::Http { url, headers, oauth, enabled } => json!({
+            ServerConfig::Stdio { timeout, .. } | ServerConfig::Http { timeout, .. } => *timeout,
+        }
+    }
+    /// `model_dump(mode="json")` in field order; `timeout` only when set.
+    pub fn dump(&self) -> Value {
+        let mut v = self.dump_fields();
+        if let Some(t) = self.timeout() {
+            v["timeout"] = json!(t);
+        }
+        v
+    }
+    fn dump_fields(&self) -> Value {
+        match self {
+            ServerConfig::Stdio { command, args, env, enabled, .. } => json!({"transport": "stdio", "command": command, "args": args, "env": env, "enabled": enabled}),
+            ServerConfig::Http { url, headers, oauth, enabled, .. } => json!({
                 "transport": "http", "url": url, "headers": headers,
                 "oauth": oauth.as_ref().map(|o| json!({"client_id": o.client_id, "client_secret": o.client_secret})),
                 "enabled": enabled,
@@ -199,6 +212,33 @@ fn opt_s(m: &Map<String, Value>, k: &str, loc: &str, e: &mut Errs) -> Option<Str
     }
 }
 
+/// Optional `timeout` in whole seconds, `1..=MAX_TIMEOUT_S`.
+fn timeout_field(m: &Map<String, Value>, loc: &str, e: &mut Errs) -> Option<u64> {
+    let max = crate::client::MAX_TIMEOUT_S;
+    match m.get("timeout") {
+        None | Some(Value::Null) => None,
+        Some(Value::Number(n)) => match n.as_i64() {
+            Some(i) if i < 1 => {
+                e.push(format!("{loc}.timeout"), "Input should be greater than or equal to 1");
+                None
+            }
+            Some(i) if i as u64 > max => {
+                e.push(format!("{loc}.timeout"), &format!("Input should be less than or equal to {max}"));
+                None
+            }
+            Some(i) => Some(i as u64),
+            None => {
+                e.push(format!("{loc}.timeout"), "Input should be a valid integer");
+                None
+            }
+        },
+        Some(_) => {
+            e.push(format!("{loc}.timeout"), "Input should be a valid integer");
+            None
+        }
+    }
+}
+
 /// Validate one server entry (discriminated by `transport`, default stdio
 /// when absent — pydantic's smart-union picks whichever variant validates).
 fn parse_server(v: &Value, loc: &str, e: &mut Errs) -> Option<ServerConfig> {
@@ -225,8 +265,9 @@ fn parse_server(v: &Value, loc: &str, e: &mut Errs) -> Option<ServerConfig> {
             let args = list_field(m, "args", &l, e);
             let env = dict_field(m, "env", &l, e);
             let enabled = b_field(m, "enabled", &l, e);
-            extra(m, &["transport", "command", "args", "env", "enabled"], &l, e);
-            ServerConfig::Stdio { command, args, env, enabled }
+            let timeout = timeout_field(m, &l, e);
+            extra(m, &["transport", "command", "args", "env", "enabled", "timeout"], &l, e);
+            ServerConfig::Stdio { command, args, env, enabled, timeout }
         }
         "http" => {
             let l = format!("{loc}.HttpServerConfig");
@@ -246,8 +287,9 @@ fn parse_server(v: &Value, loc: &str, e: &mut Errs) -> Option<ServerConfig> {
                 }
             };
             let enabled = b_field(m, "enabled", &l, e);
-            extra(m, &["transport", "url", "headers", "oauth", "enabled"], &l, e);
-            ServerConfig::Http { url, headers, oauth, enabled }
+            let timeout = timeout_field(m, &l, e);
+            extra(m, &["transport", "url", "headers", "oauth", "enabled", "timeout"], &l, e);
+            ServerConfig::Http { url, headers, oauth, enabled, timeout }
         }
         _ => {
             e.push(format!("{loc}.StdioServerConfig.transport"), "Input should be 'stdio'");

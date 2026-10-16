@@ -20,7 +20,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { SegmentedControl } from '@/components/ui/segmented-control'
 import { SettingsField } from './SettingsField'
 import { SettingsSection } from './SettingsSection'
-import type { KeyValuePair, McpServerDraft } from './McpServerDraft'
+import { MAX_MCP_TIMEOUT_S, type KeyValuePair, type McpServerDraft } from './McpServerDraft'
 
 interface McpServerFormProps {
   value: McpServerDraft
@@ -89,6 +89,25 @@ export function McpServerForm({
               value={value.enabled}
               onChange={(enabled) => set({ enabled })}
               disabled={disabled}
+            />
+          </SettingsField>
+
+          <SettingsField
+            label="Tool timeout"
+            error={errors?.timeout}
+            errorId="mcp-timeout-error"
+            hint={`Seconds a tool call may take before it is cancelled (1–${MAX_MCP_TIMEOUT_S}). Empty uses 210.`}
+          >
+            <Input
+              value={value.timeoutText}
+              onChange={(e) => set({ timeoutText: e.target.value })}
+              disabled={disabled}
+              inputMode="numeric"
+              placeholder="210"
+              aria-label="Tool timeout in seconds"
+              aria-invalid={!!errors?.timeout || undefined}
+              aria-describedby={errors?.timeout ? 'mcp-timeout-error' : undefined}
+              className="min-h-9 font-mono"
             />
           </SettingsField>
         </div>

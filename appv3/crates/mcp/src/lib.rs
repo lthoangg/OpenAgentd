@@ -228,7 +228,7 @@ async fn connect(name: &str, cfg: &ServerConfig) -> Result<McpClient, RunError> 
                 launch_env.retain(|(n, _)| *n != k);
                 launch_env.push((k, v));
             }
-            Ok(McpClient::stdio(resolved.as_deref().unwrap_or(command), args, &launch_env)?)
+            Ok(McpClient::stdio(resolved.as_deref().unwrap_or(command), args, &launch_env)?.with_timeout(cfg.timeout()))
         }
         ServerConfig::Http { url, headers, oauth, .. } => {
             let host = url::Url::parse(url).ok().and_then(|u| u.host_str().map(String::from)).unwrap_or_default();
@@ -243,7 +243,7 @@ async fn connect(name: &str, cfg: &ServerConfig) -> Result<McpClient, RunError> 
             }
             let hdrs: Vec<(String, String)> = config::resolve_env_dict(headers).into_iter().collect();
             let auth = oauth::build_oauth_provider(name, url, oauth.as_ref())?;
-            Ok(McpClient::http(url, &hdrs, auth)?)
+            Ok(McpClient::http(url, &hdrs, auth)?.with_timeout(cfg.timeout()))
         }
     }
 }
@@ -507,15 +507,22 @@ pub fn masked_config_body(cfg: Option<&ServerConfig>) -> Value {
     const MASK: &str = "********";
     match cfg {
         None => Value::Null,
-        Some(ServerConfig::Stdio { command, args, env, enabled }) => json!({"transport": "stdio", "command": command, "args": args, "env": env, "enabled": enabled}),
-        Some(ServerConfig::Http { url, headers, oauth, enabled }) => {
+        Some(c @ ServerConfig::Stdio { command, args, env, enabled, .. }) => with_timeout(json!({"transport": "stdio", "command": command, "args": args, "env": env, "enabled": enabled}), c),
+        Some(c @ ServerConfig::Http { url, headers, oauth, enabled, .. }) => {
             let oauth = oauth.as_ref().map(|o| {
                 json!({"client_id": o.client_id.as_ref().filter(|s| !s.is_empty()).map(|_| MASK), "client_secret": o.client_secret.as_ref().filter(|s| !s.is_empty()).map(|_| MASK)})
             });
             let hdrs: serde_json::Map<String, Value> = headers.keys().map(|k| (k.clone(), json!(MASK))).collect();
-            json!({"transport": "http", "url": url, "headers": hdrs, "oauth": oauth, "enabled": enabled})
+            with_timeout(json!({"transport": "http", "url": url, "headers": hdrs, "oauth": oauth, "enabled": enabled}), c)
         }
     }
+}
+
+fn with_timeout(mut v: Value, cfg: &ServerConfig) -> Value {
+    if let Some(t) = cfg.timeout() {
+        v["timeout"] = json!(t);
+    }
+    v
 }
 
 #[cfg(test)]
@@ -554,5 +561,75 @@ for line in sys.stdin:
         assert_eq!(tool::extract_text(r.get("content")), "got hi");
         c.close().await;
         assert!(c.list_tools().await.is_err());
+    }
+
+    /// A server that answers the handshake but never `tools/call`, logging
+    /// every method it receives (with the cancelled request's id).
+    fn silent_server(d: &std::path::Path) -> Option<(String, std::path::PathBuf, std::path::PathBuf)> {
+        let script = d.join("silent.py");
+        let log = d.join("methods.log");
+        let src = r#"import sys, json
+log = open(sys.argv[1], "a")
+for line in sys.stdin:
+    m = json.loads(line)
+    log.write(m.get("method", "") + " " + json.dumps((m.get("params") or {}).get("requestId")) + "\n"); log.flush()
+    if "id" not in m or m["method"] == "tools/call": continue
+    r = {"protocolVersion": "2025-06-18", "capabilities": {}, "serverInfo": {"name": "t", "version": "1"}} if m["method"] == "initialize" else {}
+    print(json.dumps({"jsonrpc": "2.0", "id": m["id"], "result": r}), flush=True)
+"#;
+        std::fs::write(&script, src).unwrap();
+        let py = which_in("python3", &std::env::var("PATH").unwrap_or_default())?;
+        Some((py, script, log))
+    }
+
+    async fn logged_cancel(log: &std::path::Path) -> String {
+        for _ in 0..50 {
+            let text = std::fs::read_to_string(log).unwrap_or_default();
+            if text.contains("notifications/cancelled") {
+                return text;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+        std::fs::read_to_string(log).unwrap_or_default()
+    }
+
+    #[tokio::test]
+    async fn stdio_tool_call_times_out_and_is_cancelled() {
+        let d = tempfile::tempdir().unwrap();
+        let Some((py, script, log)) = silent_server(d.path()) else { return };
+        let c = McpClient::stdio(&py, &[script.display().to_string(), log.display().to_string()], &[]).unwrap().with_timeout(Some(1));
+        c.initialize().await.unwrap();
+        let e = c.call_tool("echo", json!({})).await.unwrap_err();
+        assert!(e.to_string().contains("timed out after 1 s"), "{e}");
+        assert_eq!(c.pending_len(), 0);
+        // `tools/call` was request 2 (after `initialize`).
+        let text = logged_cancel(&log).await;
+        assert!(text.contains("notifications/cancelled 2"), "{text}");
+        c.close().await;
+    }
+
+    #[tokio::test]
+    async fn dropping_a_stdio_call_cancels_it() {
+        let d = tempfile::tempdir().unwrap();
+        let Some((py, script, log)) = silent_server(d.path()) else { return };
+        let c = McpClient::stdio(&py, &[script.display().to_string(), log.display().to_string()], &[]).unwrap();
+        c.initialize().await.unwrap();
+        assert!(tokio::time::timeout(std::time::Duration::from_millis(300), c.call_tool("echo", json!({}))).await.is_err());
+        assert_eq!(c.pending_len(), 0);
+        let text = logged_cancel(&log).await;
+        assert!(text.contains("notifications/cancelled 2"), "{text}");
+        c.close().await;
+    }
+
+    #[test]
+    fn server_timeout_is_validated_and_round_trips() {
+        let ok = config::parse_config(&json!({"servers": {"a": {"command": "x", "timeout": 120}}})).unwrap();
+        assert_eq!(ok.servers["a"].timeout(), Some(120));
+        assert_eq!(ok.servers["a"].dump()["timeout"], 120);
+        let none = config::parse_config(&json!({"servers": {"a": {"command": "x"}}})).unwrap();
+        assert!(none.servers["a"].dump().get("timeout").is_none());
+        for bad in [json!(0), json!(271), json!("x")] {
+            assert!(config::parse_config(&json!({"servers": {"a": {"command": "x", "timeout": bad}}})).is_err(), "{bad}");
+        }
     }
 }

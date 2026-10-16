@@ -165,13 +165,13 @@ impl Stdio {
         Ok(Stdio { stdin, child: tokio::sync::Mutex::new(child), tree, pending })
     }
 
+    /// Write one message. The write runs in its own task, so a caller that is
+    /// dropped mid-write (a stopped turn, a timeout) never leaves half a line
+    /// on the pipe to corrupt every later message.
     async fn write(&self, msg: &Value) -> Result<(), McpError> {
-        let mut g = self.stdin.lock().await;
-        let Some(w) = g.as_mut() else { return Err(McpError::Rpc("Connection closed".into())) };
         let mut line = serde_json::to_string(msg).unwrap_or_default();
         line.push('\n');
-        w.write_all(line.as_bytes()).await.map_err(|e| McpError::Transport("BrokenResourceError", e.to_string()))?;
-        w.flush().await.map_err(|e| McpError::Transport("BrokenResourceError", e.to_string()))
+        tokio::spawn(write_line(self.stdin.clone(), line)).await.unwrap_or_else(|e| Err(McpError::Transport("BrokenResourceError", e.to_string())))
     }
 
     async fn close(&self) {
@@ -182,6 +182,13 @@ impl Stdio {
             self.tree.terminate(&mut child, std::time::Duration::from_secs(2)).await;
         }
     }
+}
+
+async fn write_line(stdin: Arc<tokio::sync::Mutex<Option<tokio::process::ChildStdin>>>, line: String) -> Result<(), McpError> {
+    let mut g = stdin.lock().await;
+    let Some(w) = g.as_mut() else { return Err(McpError::Rpc("Connection closed".into())) };
+    w.write_all(line.as_bytes()).await.map_err(|e| McpError::Transport("BrokenResourceError", e.to_string()))?;
+    w.flush().await.map_err(|e| McpError::Transport("BrokenResourceError", e.to_string()))
 }
 
 // ── Streamable HTTP ─────────────────────────────────────────────────────────
@@ -611,15 +618,102 @@ enum Transport {
 pub struct McpClient {
     transport: Transport,
     next_id: AtomicI64,
+    tool_timeout: std::time::Duration,
+}
+
+/// Default deadline for `tools/call`; a server's `timeout` overrides it.
+pub const DEFAULT_TOOL_TIMEOUT_S: u64 = 210;
+/// Default deadline for every other request (`initialize`, `tools/list`, …).
+pub const DEFAULT_REQUEST_TIMEOUT_S: u64 = 30;
+/// Upper bound for a configured `timeout`.
+pub const MAX_TIMEOUT_S: u64 = 270;
+
+/// Cancels a request whose caller gave up (dropped or timed out) before the
+/// reply: forgets its pending slot and sends `notifications/cancelled`, so
+/// the server can stop the work. Disarmed once a reply (or a transport
+/// error) settles the request.
+struct CancelGuard<'a> {
+    client: &'a McpClient,
+    id: i64,
+    method: &'a str,
+    reason: &'static str,
+    armed: bool,
+}
+
+impl Drop for CancelGuard<'_> {
+    fn drop(&mut self) {
+        if self.armed {
+            self.client.cancel_request(self.id, self.method, self.reason);
+        }
+    }
 }
 
 impl McpClient {
     pub fn stdio(command: &str, args: &[String], env: &[(String, String)]) -> Result<Self, McpError> {
-        Ok(McpClient { transport: Transport::Stdio(Box::new(Stdio::spawn(command, args, env)?)), next_id: AtomicI64::new(1) })
+        Ok(McpClient::with_transport(Transport::Stdio(Box::new(Stdio::spawn(command, args, env)?))))
     }
 
     pub fn http(url: &str, headers: &[(String, String)], auth: Option<crate::oauth::OAuthProvider>) -> Result<Self, McpError> {
-        Ok(McpClient { transport: Transport::Http(Arc::new(Http::new(url, headers, auth)?)), next_id: AtomicI64::new(1) })
+        Ok(McpClient::with_transport(Transport::Http(Arc::new(Http::new(url, headers, auth)?))))
+    }
+
+    fn with_transport(transport: Transport) -> Self {
+        McpClient { transport, next_id: AtomicI64::new(1), tool_timeout: std::time::Duration::from_secs(DEFAULT_TOOL_TIMEOUT_S) }
+    }
+
+    /// Use the server's configured `timeout` (seconds, clamped to
+    /// [`MAX_TIMEOUT_S`]) for tool calls; `None` keeps the default.
+    pub fn with_timeout(mut self, secs: Option<u64>) -> Self {
+        if let Some(s) = secs {
+            self.tool_timeout = std::time::Duration::from_secs(s.clamp(1, MAX_TIMEOUT_S));
+        }
+        self
+    }
+
+    /// Requests still waiting for a stdio reply (tests only).
+    #[cfg(test)]
+    pub(crate) fn pending_len(&self) -> usize {
+        match &self.transport {
+            Transport::Stdio(s) => s.pending.lock().unwrap().map.len(),
+            Transport::Http(_) => 0,
+        }
+    }
+
+    fn deadline(&self, method: &str) -> std::time::Duration {
+        if method == "tools/call" {
+            self.tool_timeout
+        } else {
+            self.tool_timeout.min(std::time::Duration::from_secs(DEFAULT_REQUEST_TIMEOUT_S))
+        }
+    }
+
+    /// See [`CancelGuard`]. `initialize` is never cancelled (MCP spec).
+    fn cancel_request(&self, id: i64, method: &str, reason: &'static str) {
+        let msg = json!({"jsonrpc": "2.0", "method": "notifications/cancelled", "params": {"requestId": id, "reason": reason}});
+        let send = method != "initialize";
+        let Ok(rt) = tokio::runtime::Handle::try_current() else { return };
+        match &self.transport {
+            Transport::Stdio(s) => {
+                let closed = {
+                    let mut g = s.pending.lock().unwrap();
+                    g.map.remove(&id);
+                    g.closed
+                };
+                if send && !closed {
+                    let mut line = msg.to_string();
+                    line.push('\n');
+                    rt.spawn(write_line(s.stdin.clone(), line));
+                }
+            }
+            Transport::Http(h) => {
+                if send {
+                    let h = h.clone();
+                    rt.spawn(async move {
+                        let _ = h.post(&msg, None).await;
+                    });
+                }
+            }
+        }
     }
 
     pub async fn request(&self, method: &str, params: Option<Value>) -> Result<Value, McpError> {
@@ -643,7 +737,19 @@ impl McpClient {
         let sp = span.0.as_ref().expect("span");
         meta.insert("traceparent".into(), json!(sp.ctx().traceparent()));
         out_params.insert("_meta".into(), Value::Object(meta));
-        let res = otel::scope(Some(sp.ctx()), self.request_inner(id, method, Value::Object(out_params))).await;
+        let deadline = self.deadline(method);
+        let mut guard = CancelGuard { client: self, id, method, reason: "The request was cancelled by the client.", armed: true };
+        let res = match tokio::time::timeout(deadline, otel::scope(Some(sp.ctx()), self.request_inner(id, method, Value::Object(out_params)))).await {
+            Ok(r) => {
+                guard.armed = false;
+                r
+            }
+            Err(_) => {
+                guard.reason = "The request timed out.";
+                Err(McpError::Rpc(format!("MCP request '{method}' timed out after {} s", deadline.as_secs())))
+            }
+        };
+        drop(guard);
         span.finish();
         res
     }

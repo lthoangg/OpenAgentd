@@ -13,6 +13,7 @@ import { cn } from '@/lib/utils'
 import { useFileRevealStore } from '@/stores/useFileRevealStore'
 import { formatBytes } from '@/utils/format'
 import { highlightLines } from '@/utils/code-highlight'
+import { highlightLinesAsync, plainLines, SYNC_HIGHLIGHT_BYTES } from '@/utils/highlight-async'
 import { TEXT_FILE_EXTENSIONS as TEXT_EXTENSIONS } from '@/utils/file-extensions'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { isVideoSrc } from '@/utils/workspace'
@@ -358,13 +359,30 @@ function TextPreview({
     }
   }, [workspace, file.path, tooLarge, deleted])
 
-  // Highlight the full content, split into per-line HTML strings.
+  // Highlight the full content, split into per-line HTML strings. Small files
+  // highlight synchronously; large ones show plain lines at once and swap in
+  // the highlighted ones from a worker (see ``highlight-async.ts``). Both have
+  // the same line count, so selections and reveals are unaffected.
   // Must be above early returns to satisfy Rules of Hooks.
   const ext = extOf(file.name)
-  const highlightedLines = useMemo(
-    () => content !== null ? highlightLines(content, EXT_TO_LANG[ext]) : [],
-    [content, ext],
+  const lang = EXT_TO_LANG[ext]
+  const large = content !== null && content.length > SYNC_HIGHLIGHT_BYTES
+  const syncLines = useMemo(
+    () => (content === null ? [] : large ? plainLines(content) : highlightLines(content, lang)),
+    [content, lang, large],
   )
+  const [asyncLines, setAsyncLines] = useState<{ content: string; lines: string[] } | null>(null)
+  useEffect(() => {
+    if (content === null || !large) return
+    let stale = false
+    void highlightLinesAsync(content, lang).then((lines) => {
+      if (!stale) setAsyncLines({ content, lines })
+    })
+    return () => {
+      stale = true
+    }
+  }, [content, lang, large])
+  const highlightedLines = asyncLines && asyncLines.content === content ? asyncLines.lines : syncLines
 
   // A clicked ``path:line`` or ``path:start-end`` selects those lines and
   // centres them, once loaded.

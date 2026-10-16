@@ -10,7 +10,6 @@ pub mod glob;
 pub mod grep;
 pub mod lsp;
 pub mod multimodal;
-pub mod outline;
 pub mod patch;
 pub mod read;
 pub mod shell;

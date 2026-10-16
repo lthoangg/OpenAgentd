@@ -96,7 +96,7 @@
     "type": "function",
     "function": {
       "name": "read",
-      "description": "Read a file, or list a directory's immediate children. Text comes back verbatim (including HTML), PNG/JPG/GIF/WebP images as vision input, and PDF/DOCX as extracted text. Directories list immediate children only (use glob for recursive searches). For large or unfamiliar source files (>500 lines), set outline=True first to inspect symbol declarations and line numbers before reading targeted slices. Content is byte-exact, so a line can be copied straight into a patch hunk. Call this in parallel when you already know several files you need.",
+      "description": "Read a file, or list a directory's immediate children. Text comes back verbatim (including HTML), PNG/JPG/GIF/WebP images as vision input, and PDF/DOCX as extracted text. Directories list immediate children only (use glob for recursive searches). Content is byte-exact, so a line can be copied straight into a patch hunk. Call this in parallel when you already know several files you need.",
       "parameters": {
         "type": "object",
         "properties": {
@@ -115,11 +115,6 @@
             "type": "integer",
             "default": null,
             "description": "Maximum lines to return from offset; omit or pass null for all remaining lines. Ignored when path is a directory."
-          },
-          "outline": {
-            "default": false,
-            "description": "When true, returns a high-level symbol outline (classes, functions, methods, interfaces, headings) with exact line numbers instead of full content. Highly recommended for exploring large files (>500 lines) before targeted reading.",
-            "type": "boolean"
           }
         },
         "required": [

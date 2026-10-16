@@ -678,9 +678,10 @@ run from the terminal (the native Rust binary since v3.0.0).
   files such as `package.json`, lockfiles, `Cargo.toml`, `README` and
   `AGENTS.md` `[v3.14.0]`. Click to preview or
   download; desktop downloads use a native save dialog instead of navigating
-  away from the app `[v1.52.0]`. Image and video previews in the coding
-  workspace panel now open in the shared full-screen lightbox on click
-  `[v1.93.1]`.
+  away from the app `[v1.52.0]`. Image previews in the coding
+  workspace panel open in the shared full-screen lightbox on click
+  `[v1.93.1]`; videos play inline in the panel with native controls
+  (including fullscreen) instead of opening the lightbox `[v3.14.0]`.
 - **Header context meter** `[v1.53.0, v2.0.0]` — desktop and mobile chat headers show an
   icon-sized input-token progress ring against the backend's model-aware
   summarization trigger; hover, focus, or tap/click reveals input/output/cache

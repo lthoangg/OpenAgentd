@@ -471,32 +471,25 @@ function ImagePreview({ workspace, file }: { workspace: string; file: WorkspaceF
   )
 }
 
+/**
+ * Inline player for video files. No lightbox: the native controls already
+ * handle play/seek/fullscreen, and a click-to-open wrapper would hijack them.
+ * ``key`` resets playback when the tab switches to another file.
+ */
 function VideoPreview({ workspace, file }: { workspace: string; file: WorkspaceFileInfo }) {
-  const [open, setOpen] = useState(false)
   if (file.deleted) return <DeletedFilePreview />
   const url = codingWorkspaceFileUrl(workspace, file.path)
   return (
-    <>
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="flex h-full min-h-0 w-full items-center justify-center overflow-auto overscroll-contain touch-pan-y bg-(--bg-page) p-4"
-        aria-label={`Open ${file.name} preview in lightbox`}
-      >
-        <video
-          src={url}
-          controls
-          preload="metadata"
-          playsInline
-          className="block max-h-full max-w-full rounded-sm border border-(--color-border) bg-black object-contain"
-        />
-      </button>
-      <FileLightbox
-        items={[{ type: 'video', src: url, name: file.name }]}
-        isOpen={open}
-        onClose={() => setOpen(false)}
+    <div className="flex h-full min-h-0 w-full items-center justify-center overflow-auto overscroll-contain touch-pan-y bg-(--bg-page) p-4">
+      <video
+        key={url}
+        src={url}
+        controls
+        preload="metadata"
+        playsInline
+        className="block max-h-full max-w-full rounded-sm border border-(--color-border) bg-black object-contain"
       />
-    </>
+    </div>
   )
 }
 
@@ -532,7 +525,7 @@ function PdfPreview({ workspace, file }: { workspace: string; file: WorkspaceFil
 }
 
 /**
- * Inline player for audio files. Unlike image/video there is no lightbox:
+ * Inline player for audio files. Like video (and unlike image) there is no lightbox:
  * the native controls already are the full viewer, and wrapping them in a
  * click-to-open button would swallow play/seek clicks. ``key`` resets
  * playback when the tab switches to another file.

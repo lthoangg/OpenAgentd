@@ -347,15 +347,18 @@ describe('Coding workspace two-layer file preview', () => {
     await waitFor(() => expect(screen.getAllByText('section', { selector: 'span' })).toHaveLength(2))
   })
 
-  it('opens video previews in a lightbox from the file tab', async () => {
+  it('plays videos inline without opening a lightbox', async () => {
     const user = userEvent.setup()
     const video: WorkspaceFileInfo = { path: 'assets/clip.mp4', name: 'clip.mp4', size: 1000, mtime: 1, mime: 'video/mp4' }
     await renderViewer(video)
 
-    await user.click(screen.getByRole('button', { name: 'Open clip.mp4 preview in lightbox' }))
+    const videoEl = document.querySelector('video')
+    expect(videoEl?.controls).toBe(true)
+    expect(screen.queryByRole('button', { name: 'Open clip.mp4 preview in lightbox' })).toBeNull()
 
-    expect(document.body.querySelector("[role='dialog']")).toBeTruthy()
-    expect(screen.getByLabelText('Close preview')).toBeTruthy()
+    await user.click(videoEl!)
+
+    expect(document.body.querySelector("[role='dialog']")).toBeNull()
   })
 
   it('plays audio files inline in the file tab', async () => {

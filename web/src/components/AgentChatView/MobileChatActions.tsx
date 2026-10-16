@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'framer-motion'
-import { CalendarClock, ChevronDown, ChevronUp, Command, FileSearch, MoreHorizontal, Search, TerminalSquare, X } from 'lucide-react'
+import { CalendarClock, ChevronDown, ChevronUp, Command, FileSearch, MoreHorizontal, TerminalSquare, X } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { workspaceLabel } from '@/utils/workspace'
@@ -12,7 +12,6 @@ export interface MobileChatActionsProps {
   dragOffset?: number | null
   workspace: string | null
   onScheduler: () => void
-  onFindInTranscript?: () => void
   onOpenTerminal?: () => void
   /** Touch stand-ins for ⌥⌘↑ / ⌥⌘↓; disabled when omitted. */
   onPreviousPrompt?: () => void
@@ -32,7 +31,6 @@ export function MobileChatActions({
   dragOffset = null,
   workspace,
   onScheduler,
-  onFindInTranscript,
   onOpenTerminal,
   onPreviousPrompt,
   onNextPrompt,
@@ -113,15 +111,6 @@ export function MobileChatActions({
 
               <div className="flex-1 overflow-y-auto overscroll-contain touch-pan-y p-2">
                 <div className={GROUP_LABEL_CLASS}>Session</div>
-                <button
-                  type="button"
-                  onClick={onFindInTranscript}
-                  disabled={!onFindInTranscript}
-                  className={ROW_CLASS}
-                >
-                  <Search size={14} aria-hidden="true" />
-                  <span className="flex-1">Find in transcript</span>
-                </button>
                 <button type="button" onClick={onPreviousPrompt} disabled={!onPreviousPrompt} className={ROW_CLASS}>
                   <ChevronUp size={14} aria-hidden="true" />
                   <span className="flex-1">Previous prompt</span>

@@ -115,7 +115,6 @@ describe('useDesktopCommands', () => {
   it.each([
     ['new_session', 'n'],
     ['toggle_sidebar', 'b'],
-    ['find', 'f'],
   ])('routes %s through its in-app shortcut', async (command, key) => {
     const events = await captureKeys(async () => {
       await renderBridge()

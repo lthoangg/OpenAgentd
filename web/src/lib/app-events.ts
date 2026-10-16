@@ -13,7 +13,7 @@ export const APP_EVENTS = {
   // The terminal key is matched on the physical Backquote code, which a
   // synthetic key press does not carry.
   openTerminal: 'oa:open-terminal',
-  // ⌘F while focus is in the sidebar (see ``routeFindShortcut``).
+  // Opens the sidebar's session search.
   searchSessions: 'oa:search-sessions',
   // A transcript plan-review card asks for the session plan.
   openPlan: 'oa:open-plan',

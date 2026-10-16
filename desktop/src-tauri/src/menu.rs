@@ -27,7 +27,6 @@ pub const MENU_SHOW: &str = "show";
 pub const MENU_NEW_WINDOW: &str = "new_window";
 pub const MENU_NEW_SESSION: &str = "new_session";
 pub const MENU_OPEN_WORKSPACE: &str = "open_workspace";
-pub const MENU_FIND: &str = "find";
 pub const MENU_TOGGLE_SIDEBAR: &str = "toggle_sidebar";
 pub const MENU_TERMINAL: &str = "terminal";
 pub const MENU_QUICK_OPEN: &str = "quick_open";
@@ -146,13 +145,6 @@ pub fn install_desktop_menus(app: &tauri::App) -> Result<()> {
         "Open Workspace…",
         true,
         Some("CmdOrCtrl+O"),
-    )?;
-    let edit_find = MenuItem::with_id(
-        app,
-        MENU_FIND,
-        "Find in Transcript…",
-        true,
-        Some("CmdOrCtrl+F"),
     )?;
     let view_quick_open = MenuItem::with_id(
         app,
@@ -298,8 +290,6 @@ pub fn install_desktop_menus(app: &tauri::App) -> Result<()> {
         .item(&edit_copy)
         .item(&edit_paste)
         .item(&edit_select_all)
-        .separator()
-        .item(&edit_find)
         .build()?;
     let view_menu = SubmenuBuilder::new(app, "View")
         .item(&view_command_palette)
@@ -579,7 +569,6 @@ pub fn handle_desktop_menu(app: &AppHandle, id: &str) {
         }
         MENU_NEW_SESSION => emit_frontend_command(app, "new_session"),
         MENU_OPEN_WORKSPACE => emit_frontend_command(app, "open_workspace"),
-        MENU_FIND => emit_frontend_command(app, "find"),
         MENU_TOGGLE_SIDEBAR => emit_frontend_command(app, "toggle_sidebar"),
         MENU_TERMINAL => emit_frontend_command(app, "terminal"),
         MENU_QUICK_OPEN => emit_frontend_command(app, "quick_open"),
@@ -966,8 +955,8 @@ pub async fn run_usage_poll_loop(app: AppHandle) {
 #[cfg(test)]
 mod tests {
     use super::{
-        external_usage_access_key, macos_tray_icon, MENU_FIND, MENU_NEW_SESSION,
-        MENU_NEW_WINDOW, MENU_OPEN_WORKSPACE, MENU_TERMINAL, MENU_TOGGLE_SIDEBAR,
+        external_usage_access_key, macos_tray_icon, MENU_NEW_SESSION, MENU_NEW_WINDOW,
+        MENU_OPEN_WORKSPACE, MENU_TERMINAL, MENU_TOGGLE_SIDEBAR,
     };
 
     #[test]
@@ -977,7 +966,6 @@ mod tests {
         assert_eq!(MENU_NEW_SESSION, "new_session");
         assert_eq!(MENU_NEW_WINDOW, "new_window");
         assert_eq!(MENU_OPEN_WORKSPACE, "open_workspace");
-        assert_eq!(MENU_FIND, "find");
         assert_eq!(MENU_TOGGLE_SIDEBAR, "toggle_sidebar");
         assert_eq!(MENU_TERMINAL, "terminal");
     }

@@ -1134,22 +1134,9 @@ html[data-app-hidden="true"] *::after {
   }
 }
 
-/* Transcript find: the matched substrings, and the one jumped to (CSS Custom
- * Highlight API; see AgentView/transcript-find-highlight.ts). Highlights take
- * no box styles, so the active match is told apart by an underline. */
-::highlight(transcript-find) {
-  background-color: var(--accent-orange-soft);
-}
-::highlight(transcript-find-active) {
-  background-color: color-mix(in srgb, var(--accent-orange) 42%, var(--accent-orange-soft));
-  text-decoration: underline;
-  text-decoration-color: color-mix(in srgb, var(--accent-orange-text) 60%, transparent);
-  text-decoration-thickness: 2px;
-}
-
 /* Plan review: passages with a comment, and the one just jumped to
- * (CSS Custom Highlight API; see PlanReview/PlanComments.tsx). Same wash as
- * transcript find. */
+ * (CSS Custom Highlight API; see PlanReview/PlanComments.tsx). A soft orange
+ * wash, deeper on the active one. */
 ::highlight(plan-comment) {
   background-color: var(--accent-orange-soft);
 }

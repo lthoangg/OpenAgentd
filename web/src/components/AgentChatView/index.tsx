@@ -94,12 +94,6 @@ interface ActiveAgentViewProps {
   fileRefOpener?: FileRefOpener
   onRetry?: () => void
   onSwitchModel?: () => void
-  findOpen?: boolean
-  findQuery?: string
-  findActiveIndex?: number
-  onFindQueryChange?: (query: string) => void
-  onFindClose?: () => void
-  onFindActiveIndexChange?: (index: number) => void
   /** The floating composer is up and carries the jump-to-latest chip. */
   jumpToLatestInComposer?: boolean
 }
@@ -111,12 +105,6 @@ const ActiveAgentView = memo(function ActiveAgentView({
   fileRefOpener,
   onRetry,
   onSwitchModel,
-  findOpen,
-  findQuery,
-  findActiveIndex,
-  onFindQueryChange,
-  onFindClose,
-  onFindActiveIndexChange,
   jumpToLatestInComposer,
 }: ActiveAgentViewProps) {
   const activeStream = useAgentStore((s) => {
@@ -145,12 +133,6 @@ const ActiveAgentView = memo(function ActiveAgentView({
       emptyState={emptyState}
       onRetry={onRetry}
       onSwitchModel={onSwitchModel}
-      findOpen={findOpen}
-      findQuery={findQuery}
-      findActiveIndex={findActiveIndex}
-      onFindQueryChange={onFindQueryChange}
-      onFindClose={onFindClose}
-      onFindActiveIndexChange={onFindActiveIndexChange}
       jumpToLatestInComposer={jumpToLatestInComposer}
     />
   )
@@ -191,9 +173,6 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
 
   const [fileRefsEnabled, setFileRefsEnabled] = useState(false)
   const [isSwitchingInteractionMode, setIsSwitchingInteractionMode] = useState(false)
-  const [findOpen, setFindOpen] = useState(false)
-  const [findQuery, setFindQuery] = useState('')
-  const [findActiveIndex, setFindActiveIndex] = useState(0)
 
   const { isDraggingFile, handleDragEnter, handleDragLeave, handleDragOver, handleDrop } = useDragDrop(inputRef)
 
@@ -508,13 +487,6 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
   useReleaseHeldMessages({ workspace, sessionId: sessionIdState, composerRef: inputRef })
   useMarkSessionRead(sessionIdState)
 
-  const handleFindInTranscript = useCallback(() => {
-    // Find searches the chat, which a maximized dock covers.
-    useLayoutStore.getState().setDockMaximized(false)
-    setFindOpen(true)
-    setFindActiveIndex(0)
-  }, [])
-
   const {
     paletteCommands,
     quickOpenWorkspaceFiles,
@@ -535,7 +507,6 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
     handleToggleQuickOpen,
     handleToggleScheduler,
     handleOpenTerminal,
-    handleFindInTranscript,
     handleOpenPlan: plan || planAwaitingReview ? handleOpenPlan : undefined,
     planAwaitingReview,
     handleOpenPreview: workspace && isLocalBackend() ? handleOpenNewPreview : undefined,
@@ -621,7 +592,6 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
         setShowMobileActions={handleSetShowMobileActions}
         mobileActionsDragOffset={actionsDragOffset}
         onToggleScheduler={handleToggleScheduler}
-        onFindInTranscript={handleFindInTranscript}
         onOpenTerminal={workspace && !isChatWorkspace ? handleOpenTerminal : undefined}
         onCloseMobileActionsMenu={closeMobileActionsMenu}
         onOpenPalette={handleTogglePalette}
@@ -721,19 +691,6 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
               fileRefOpener={fileRefOpener}
               onRetry={handleRetry}
               onSwitchModel={handleSwitchModel}
-              findOpen={findOpen}
-              findQuery={findQuery}
-              findActiveIndex={findActiveIndex}
-              onFindQueryChange={(query) => {
-                setFindQuery(query)
-                setFindActiveIndex(0)
-              }}
-              onFindClose={() => {
-                setFindOpen(false)
-                setFindQuery('')
-                setFindActiveIndex(0)
-              }}
-              onFindActiveIndexChange={setFindActiveIndex}
               jumpToLatestInComposer={!parentSessionId && Boolean(workspace)}
               emptyState={
                 effectiveWorkspace ? (

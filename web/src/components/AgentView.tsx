@@ -15,7 +15,7 @@
  * `AgentPane` for split/unified modes.
  */
 
-import { useState, useRef, useEffect, useLayoutEffect, useCallback, useDeferredValue, useMemo, memo } from 'react'
+import { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo, memo } from 'react'
 import OctobotMascot from '@/assets/brand/octobot-agentd-source.png'
 
 import { MarkdownBlock } from '@/utils/markdown'
@@ -44,9 +44,6 @@ import { FileRefContext, type FileRefOpener } from './FileRefLink'
 import { copyText, useChatMenu } from './ChatContextMenu'
 import { EmptyState } from '@/components/ui/empty-state'
 import { useAutoFollowScroll } from '@/hooks/useAutoFollowScroll'
-import { TranscriptFind } from './AgentView/TranscriptFind'
-import { collectTranscriptFindMatches, isTranscriptFindableBlock } from './AgentView/transcript-find'
-import { clearTranscriptFind, paintTranscriptFind } from './AgentView/transcript-find-highlight'
 
 const INITIAL_RENDERED_TURNS = 80
 const TURN_RENDER_STEP = 80
@@ -200,19 +197,6 @@ function latestActiveQuotaWait(
   return null
 }
 
-/**
- * Bring a find match to the middle of the transcript. A range has no
- * ``scrollIntoView``: its element is brought into view first, so a match in a
- * horizontally scrolled code block is revealed, then the match itself is
- * centred (the element can be far taller than the viewport).
- */
-function scrollRangeToCenter(root: HTMLElement, range: Range) {
-  range.startContainer.parentElement?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
-  const rect = range.getBoundingClientRect()
-  const rootRect = root.getBoundingClientRect()
-  root.scrollTop += rect.top + rect.height / 2 - (rootRect.top + root.clientHeight / 2)
-}
-
 function formatQuotaCountdown(resetsAt: number, now = Date.now()): string {
   const remainingSeconds = resetsAt - now / 1000
   if (remainingSeconds <= 0) return 'Resetting now'
@@ -299,12 +283,6 @@ interface AgentViewProps {
   onRetry?: () => void
   /** Pick another model; offered with Retry on the error a turn ended with. */
   onSwitchModel?: () => void
-  findOpen?: boolean
-  findQuery?: string
-  findActiveIndex?: number
-  onFindQueryChange?: (query: string) => void
-  onFindClose?: () => void
-  onFindActiveIndexChange?: (index: number) => void
   /**
    * The floating composer carries the jump-to-latest chip, so the transcript
    * publishes its follow state instead of drawing its own button.
@@ -460,12 +438,6 @@ export function AgentView({
   fileRefOpener,
   onRetry,
   onSwitchModel,
-  findOpen = false,
-  findQuery = '',
-  findActiveIndex = 0,
-  onFindQueryChange,
-  onFindClose,
-  onFindActiveIndexChange,
   jumpToLatestInComposer = false,
 }: AgentViewProps) {
   const [renderedTurnCount, setRenderedTurnCount] = useState(INITIAL_RENDERED_TURNS)
@@ -487,22 +459,7 @@ export function AgentView({
   // `[...blocks, ...liveTail]` copy is never needed here — nothing reads full
   // merged content, only counts and the last block).
   const liveTail = useMemo(() => liveBlockTail(blocks, currentBlocks), [blocks, currentBlocks])
-  // Matching walks the whole transcript, so it trails the keystroke that asked
-  // for it: the find field updates at once, the matches when React has time.
-  const deferredFindQuery = useDeferredValue(findQuery)
-  // Merged only while find is open: the copy costs a whole-transcript walk
-  // on every streamed token.
-  const findMatches = useMemo(
-    () => (findOpen ? collectTranscriptFindMatches([...blocks, ...liveTail], deferredFindQuery) : []),
-    [blocks, deferredFindQuery, findOpen, liveTail],
-  )
-  const clampedFindIndex = findMatches.length === 0
-    ? 0
-    : ((findActiveIndex % findMatches.length) + findMatches.length) % findMatches.length
-  const findHitBlockIds = useMemo(() => new Set(findMatches.map((match) => match.blockId)), [findMatches])
   const readerTranscript = useDisplayPrefsStore((s) => s.transcriptStyle === 'reader')
-  const findBlockIds = useMemo(() => [...findHitBlockIds], [findHitBlockIds])
-  const activeFindBlockId = findMatches[clampedFindIndex]?.blockId ?? null
   const totalLen = blocks.length + liveTail.length
   // Reader mode folds a subagent's report into the turn it arrived in.
   const finalizedTurnItems = useMemo(() => partitionTurns(blocks, { foldAgentReports: readerTranscript }), [blocks, readerTranscript])
@@ -589,7 +546,6 @@ export function AgentView({
   const renderTurnBlock = useCallback<AssistantTurnProps['renderBlock']>(({ block, isStreaming }) => (
     <div
       data-block-id={block.id}
-      data-find-block={isTranscriptFindableBlock(block.type) ? block.id : undefined}
     >
       <BlockRenderer
         block={block}
@@ -878,60 +834,9 @@ export function AgentView({
     appShortcut('nextPrompt', () => { jumpToPrompt(1) }),
   ])
 
-  const cycleFind = useCallback((delta: number) => {
-    if (findMatches.length === 0) return
-    const next = ((clampedFindIndex + delta) % findMatches.length + findMatches.length) % findMatches.length
-    onFindActiveIndexChange?.(next)
-  }, [clampedFindIndex, findMatches.length, onFindActiveIndexChange])
-
-  useEffect(() => {
-    const root = scrollRef.current
-    if (!root) return
-    if (!findOpen) {
-      clearTranscriptFind()
-      return
-    }
-    const paint = (scrollActive: boolean) => {
-      const active = paintTranscriptFind(root, deferredFindQuery, clampedFindIndex)
-      if (scrollActive && active) {
-        attachedRef.current = false
-        scrollRangeToCenter(root, active)
-      }
-    }
-    // Painting never touches the DOM, so this only sees React's own updates
-    // (a streamed token, a fold opening). Those move text under the painted
-    // ranges; repaint once per frame, however many arrived.
-    let frame: number | null = null
-    const observer = new MutationObserver(() => {
-      if (frame !== null) return
-      frame = requestAnimationFrame(() => {
-        frame = null
-        paint(false)
-      })
-    })
-    observer.observe(root, { subtree: true, childList: true, characterData: true })
-    paint(true)
-    return () => {
-      observer.disconnect()
-      if (frame !== null) cancelAnimationFrame(frame)
-      clearTranscriptFind()
-    }
-  }, [attachedRef, clampedFindIndex, deferredFindQuery, findOpen, scrollRef])
-
   return (
     <FileRefContext.Provider value={fileRefOpener ?? null}>
     <div className="relative flex min-h-0 flex-1 flex-col">
-    {findOpen && (
-      <TranscriptFind
-        query={findQuery}
-        matchCount={findMatches.length}
-        activeIndex={clampedFindIndex}
-        onQueryChange={(next) => onFindQueryChange?.(next)}
-        onNext={() => cycleFind(1)}
-        onPrev={() => cycleFind(-1)}
-        onClose={() => onFindClose?.()}
-      />
-    )}
     <div className="group/transcript relative flex min-h-0 flex-1 flex-col">
     {/* Vertical only: ``overflow-y: auto`` alone turns ``overflow-x`` to auto, and
         one over-wide row then let the whole transcript pan sideways on touch.
@@ -981,7 +886,6 @@ export function AgentView({
                      <div
                        key={item.block.id}
                        data-block-id={item.block.id}
-                       data-find-block={isTranscriptFindableBlock(item.block.type) ? item.block.id : undefined}
                       data-prompt-id={isDirectUserBlock(item.block) ? item.block.id : undefined}
                      >
                        <BlockRenderer
@@ -1020,7 +924,6 @@ export function AgentView({
                       size="roomy"
                      reader={readerTranscript}
                      startedAt={turnStartedAt}
-                     findHitBlockIds={readerTranscript ? findHitBlockIds : undefined}
                       renderBlock={renderTurnBlock}
                    />
                  )
@@ -1063,8 +966,6 @@ export function AgentView({
     <TimelineScrubber
       scrollRef={scrollRef}
       contentRef={contentRef}
-      findBlockIds={findBlockIds}
-      activeFindBlockId={activeFindBlockId}
     />
     </div>
     {showScrollBtn && !jumpToLatestInComposer && (

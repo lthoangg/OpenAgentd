@@ -9,8 +9,7 @@ import { MobileChatActions } from '@/components/AgentChatView/MobileChatActions'
 afterEach(cleanup)
 
 describe('MobileChatActions', () => {
-  it('exposes transcript find and terminal actions to touch users', () => {
-    const onFindInTranscript = mock(() => {})
+  it('exposes the terminal action to touch users', () => {
     const onOpenTerminal = mock(() => {})
 
     render(
@@ -19,15 +18,12 @@ describe('MobileChatActions', () => {
         onOpenChange={() => {}}
         workspace="/repo/app"
         onScheduler={() => {}}
-        onFindInTranscript={onFindInTranscript}
         onOpenTerminal={onOpenTerminal}
       />,
     )
 
-    fireEvent.click(screen.getByRole('button', { name: 'Find in transcript' }))
     fireEvent.click(screen.getByRole('button', { name: 'Open terminal' }))
 
-    expect(onFindInTranscript).toHaveBeenCalledTimes(1)
     expect(onOpenTerminal).toHaveBeenCalledTimes(1)
   })
 
@@ -38,7 +34,6 @@ describe('MobileChatActions', () => {
         onOpenChange={() => {}}
         workspace="/Users/name"
         onScheduler={() => {}}
-        onFindInTranscript={() => {}}
       />,
     )
 

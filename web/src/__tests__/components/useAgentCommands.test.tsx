@@ -41,7 +41,6 @@ function makeArgs(overrides: Partial<Parameters<typeof useAgentCommands>[0]> = {
     handleSidebarToggle: noop,
     handleOpenTerminal: noop,
     handleNewSession: noop,
-    handleFindInTranscript: noop,
     ...overrides,
   }
 }
@@ -67,8 +66,6 @@ describe("useAgentCommands — shortcut labels", () => {
     expect(byId(result.current, "collapse-sidebar").shortcut).toBe("Ctrl+B")
     expect(byId(result.current, "go-settings").shortcut).toBe("Ctrl+,")
     expect(byId(result.current, "new-chat").label).toBe("New Session")
-    expect(byId(result.current, "find-transcript").shortcut).toBe("Ctrl+F")
-    expect(byId(result.current, "find-transcript").label).toBe("Find in Transcript")
     expect(result.current.find((c) => c.id === "go-home")).toBeUndefined()
   })
 

@@ -78,7 +78,7 @@ function scrollContainer(el: HTMLElement): HTMLElement | null {
 /** Both of the fold's controls; each adds its own text tone. */
 const ROW_CLASS = 'group inline-flex max-w-full items-center gap-1.5 py-1 text-left font-mono text-xs transition-colors duration-(--motion-instant) pointer-coarse:min-h-9 hover:text-(--color-text) focus-visible:outline-2 focus-visible:outline-(--focus-ring)/40'
 
-export function WorkSummaryRow({ blocks, live, startedAt, currentStep, forceOpen = false, children }: {
+export function WorkSummaryRow({ blocks, live, startedAt, currentStep, children }: {
   /** The folded blocks. */
   blocks: readonly ContentBlock[]
   /** The agent is working on this turn right now. */
@@ -87,17 +87,14 @@ export function WorkSummaryRow({ blocks, live, startedAt, currentStep, forceOpen
   startedAt?: number
   /** The step taking output right now, if the turn ends on one. */
   currentStep?: ContentBlock | null
-  /** Show the steps whatever the toggle says, e.g. transcript find matched in them. */
-  forceOpen?: boolean
   children: ReactNode
 }) {
-  const [manualOpen, setManualOpen] = useState(false)
+  const [open, setOpen] = useState(false)
   const bodyId = useId()
   const rowRef = useRef<HTMLButtonElement>(null)
   // Where the row should sit in the view once the fold closes: where the
   // control the reader pressed was, so closing never scrolls them elsewhere.
   const closeAtRef = useRef<number | null>(null)
-  const open = forceOpen || manualOpen
   const summary = useMemo(() => summarizeWork(blocks), [blocks])
   const detail = workSummaryDetail(summary)
   const now = useLiveNow(live)
@@ -106,8 +103,8 @@ export function WorkSummaryRow({ blocks, live, startedAt, currentStep, forceOpen
   const doing = useMemo(() => (currentStep ? stepLabel(currentStep) : detail), [currentStep, detail])
 
   const close = (control: HTMLElement) => {
-    if (!forceOpen) closeAtRef.current = control.getBoundingClientRect().top
-    setManualOpen(false)
+    closeAtRef.current = control.getBoundingClientRect().top
+    setOpen(false)
   }
 
   // Closing drops everything the steps took up, so the reader would land far
@@ -132,7 +129,7 @@ export function WorkSummaryRow({ blocks, live, startedAt, currentStep, forceOpen
         <button
           ref={rowRef}
           type="button"
-          onClick={(event) => (open ? close(event.currentTarget) : setManualOpen(true))}
+          onClick={(event) => (open ? close(event.currentTarget) : setOpen(true))}
           aria-expanded={open}
           aria-controls={bodyId}
           className={cn(ROW_CLASS, 'text-(--color-text-2)')}

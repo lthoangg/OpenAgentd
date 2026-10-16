@@ -176,8 +176,6 @@ export interface AssistantTurnProps {
    * Reader mode's work row shows how long the agent has been working.
    */
   startedAt?: number
-  /** Blocks transcript find matched; a fold holding one opens. */
-  findHitBlockIds?: ReadonlySet<string>
 }
 
 export const AssistantTurn = memo(function AssistantTurn({
@@ -192,7 +190,6 @@ export const AssistantTurn = memo(function AssistantTurn({
   size = 'compact',
   reader = false,
   startedAt,
-  findHitBlockIds,
 }: AssistantTurnProps) {
   // The footer reports on a *finished* turn, so it waits for the turn to close
   // rather than merely for the stream to stop.
@@ -250,7 +247,6 @@ export const AssistantTurn = memo(function AssistantTurn({
                 live={live}
                 startedAt={startedAt}
                 currentStep={live && lastIndex === blocks.length - 1 ? blocks[lastIndex] : null}
-                forceOpen={work.some((block) => findHitBlockIds?.has(block.id) ?? false)}
               >
                 {segment.indices.map(renderAt)}
               </WorkSummaryRow>

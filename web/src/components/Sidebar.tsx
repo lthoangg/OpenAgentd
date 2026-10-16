@@ -61,7 +61,6 @@ import {
   X,
 } from 'lucide-react'
 import { APP_EVENTS } from '@/lib/app-events'
-import { SIDEBAR_FIND_SCOPE } from '@/lib/find-shortcut'
 import { useDeleteSessionMutation, useSessionsQuery, useUpdateSessionTitleMutation } from '@/queries/useSessionsQuery'
 import { isChatWorkspacePath, useChatWorkspace } from '@/queries/useChatWorkspace'
 import { queryKeys } from '@/queries/keys'
@@ -763,7 +762,6 @@ export function Sidebar({
       </AnimatePresence>
 
     <ResizableAside
-      {...SIDEBAR_FIND_SCOPE}
       initial={false}
       resize={sidebarResize}
       getMotion={sidebarMotion}
@@ -820,7 +818,7 @@ export function Sidebar({
                 </button>
               }
             />
-            <TooltipContent>{`Search sessions (${shortcutLabel(APP_SHORTCUTS.findInTranscript, os)} in the sidebar)`}</TooltipContent>
+            <TooltipContent>Search sessions</TooltipContent>
           </Tooltip>
           <Tooltip>
             <TooltipTrigger

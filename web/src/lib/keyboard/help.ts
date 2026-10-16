@@ -65,7 +65,6 @@ export function shortcutHelp(os: OS, { desktopApp = false }: ShortcutHelpOptions
         keys('Switch Plan and Code mode', { key: 'Tab' }),
         keys('Earlier and later sent messages', { key: 'ArrowUp' }, { key: 'ArrowDown' }),
         keys('Minimize the input', { key: 'Escape' }),
-        app('findInTranscript', 'Find in transcript'),
         app('previousPrompt', 'Previous prompt'),
         app('nextPrompt', 'Next prompt'),
         app('tasks', 'Task list'),

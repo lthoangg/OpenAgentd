@@ -40,7 +40,6 @@ interface UseAgentCommandsArgs {
 
   /** Attached workspace only — opens the terminal tab. */
   handleOpenTerminal: () => void
-  handleFindInTranscript: () => void
   /** Opens the review dock if needed and toggles it over the chat column. */
   handleToggleDockMaximized?: () => void
   /** Only while the session has a plan: opens it (dock Plan tab, or the task popover without a workspace). */
@@ -60,7 +59,6 @@ export function useAgentCommands({
   handleSidebarToggle,
   handleNewSession,
   handleOpenTerminal,
-  handleFindInTranscript,
   handleToggleDockMaximized,
   handleOpenPlan,
   planAwaitingReview = false,
@@ -85,7 +83,6 @@ export function useAgentCommands({
           action: handleOpenPlan,
         }]
       : []),
-    { id: 'find-transcript',  group: 'View',       label: 'Find in Transcript', description: 'Search user and assistant text in this session', shortcut: shortcutLabel(KEYS.findInTranscript, os), action: handleFindInTranscript },
     { id: 'workspace-files',  group: 'View',       label: 'Toggle Review Dock', description: 'Show or hide the dock with its open tabs', keywords: 'changed files dock panel', shortcut: shortcutLabel(KEYS.workspaceFiles, os), action: handleWorkspaceFiles },
     ...(handleOpenGit
       ? [{ id: 'open-git', group: 'View' as const, label: 'Open Git', description: 'Changed files and commit history in the review dock', keywords: 'changes diff history commits review', shortcut: shortcutLabel(KEYS.openGit, os), action: handleOpenGit }]
@@ -127,5 +124,5 @@ export function useAgentCommands({
     ...(isTauri
       ? [{ id: 'reload-window', group: 'View', label: 'Reload Window', description: 'Reload the app UI (the server and running turns are unaffected)', action: () => window.location.reload() }]
       : []),
-  ], [os, isTauri, toggleAgentCapabilities, toggleTasks, toggleScheduler, handleFindInTranscript, handleWorkspaceFiles, handleOpenGit, handleToggleDockMaximized, handleOpenPlan, planAwaitingReview, handleOpenPreview, handleSidebarToggle, handleNewSession, handleOpenTerminal, openSettings, setTheme, readerMode, toggleReaderMode])
+  ], [os, isTauri, toggleAgentCapabilities, toggleTasks, toggleScheduler, handleWorkspaceFiles, handleOpenGit, handleToggleDockMaximized, handleOpenPlan, planAwaitingReview, handleOpenPreview, handleSidebarToggle, handleNewSession, handleOpenTerminal, openSettings, setTheme, readerMode, toggleReaderMode])
 }

@@ -2,7 +2,7 @@
 title: Features
 description: Canonical, version-cited catalogue of shipped user-visible OpenAgentd features.
 status: stable
-updated: 2026-10-15
+updated: 2026-10-16
 ---
 
 # Features
@@ -14,7 +14,7 @@ release that introduced it (where known). When you ship something new, **add it 
 > double-clickable app that runs an agent on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 18 providers. Your keys.
 
-**Latest release:** v3.12.0 · October 15, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.12.0)
+**Latest release:** v3.13.0 · October 16, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.13.0)
 
 ---
 
@@ -1082,6 +1082,7 @@ agent against it.
 - **Two-layer workspace file viewer** `[v1.29.0]` — clicking a file in the coding
   workspace side drawer opens a read-only viewer beside it with line numbers,
   lightweight syntax highlighting, image previews, inline HTML5 video previews `[v1.90.0]`,
+  inline audio playback with seek controls `[v3.13.0]`,
   extensionless text files, and binary download fallback. Copy and download
   buttons sit in the file tab header for one-click copy of the full content or
   download of the file `[v1.92.0]`.
@@ -1242,6 +1243,9 @@ OpenAgentd carries context across sessions via rolling-window summarization.
   (default 70%). This uses the provider's prompt cache while it is still
   warm, so the next message starts from a short context. It sends no
   notification and skips subagent and scheduled sessions `[v3.12.0]`.
+  The summary under the "Session compacted" divider starts collapsed; click
+  the divider to read it, including while it is still being written
+  `[v3.13.0]`.
 - **`AGENTS.md` at repo root and subfolders** `[v1.9.0]` — written by `/init`;
   standard repo- and folder-scoped agent context files.
 - **Global `AGENTS.md`** `[v2.10.0]` — a developer-wide instructions file at
@@ -1761,6 +1765,11 @@ Everything stays local. No third-party telemetry SaaS.
   counts the sub-agent sessions it started in its spend, turns, and tokens, and
   says how many. The Sessions card lists each sub-agent under its session (in
   the overview too), and recent turns name the agent that ran them.
+- **90-day telemetry retention** `[v3.13.0]` — local traces and metrics are
+  kept for 90 days by default (traces were previously kept for 30), so the
+  90-day telemetry range shows full trace history. Older data is removed by a
+  daily sweep; `OTEL_SPAN_RETENTION_DAYS` and `OTEL_METRIC_RETENTION_DAYS`
+  override the defaults.
 - **OpenTelemetry spans** `[since v1.0]` — `OpenTelemetryHook` emits spans for
   agent runs, model calls, tool calls. Optional OTLP exporter.
 - **Estimated model-call cost telemetry** `[v1.34.0]` — chat, title-generation,

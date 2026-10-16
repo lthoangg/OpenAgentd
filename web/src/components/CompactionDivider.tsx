@@ -10,12 +10,17 @@
  *      the divider — when ``summary`` is non-empty. The body is the
  *      authoritative artefact of what got compacted into; surfacing it
  *      lets the user audit what the LLM will see going forward.
+ *      It is collapsed by default: the label becomes a toggle so a long
+ *      summary does not fill the transcript.
  *
  * While ``state === 'compacting'`` the body streams in via SSE
  * ``summarization_content`` deltas (see useAgentStore reducer). The
- * divider re-renders on every delta, so the user sees the summary
- * being written in real time.
+ * divider re-renders on every delta, so once expanded the user sees the
+ * summary being written in real time.
  */
+import { useId, useState } from 'react'
+import { ChevronRight } from 'lucide-react'
+import { cn } from '@/lib/utils'
 import { MarkdownBlock } from '@/utils/markdown'
 
 interface CompactionDividerProps {
@@ -35,6 +40,8 @@ interface CompactionDividerProps {
 }
 
 export function CompactionDivider({ state, error, summary, sessionId, isStreaming }: CompactionDividerProps) {
+  const [open, setOpen] = useState(false)
+  const bodyId = useId()
   // Default: streaming is active whenever the block is still in the compacting state.
   const effectiveIsStreaming = isStreaming ?? state === 'compacting'
   const label = error
@@ -53,24 +60,48 @@ export function CompactionDivider({ state, error, summary, sessionId, isStreamin
   const showBody = trimmed.length > 0 && !error
   const content = effectiveIsStreaming ? (summary ?? '') : trimmed
 
+  const labelContent = (
+    <>
+      {label}
+      {state === 'compacting' && !error && (
+        <span className="ml-1 inline-block animate-pulse">…</span>
+      )}
+    </>
+  )
+
   return (
     <div role="region" aria-label={label} className="my-4 space-y-3">
       <div className="flex items-center gap-3">
         <span className="h-px flex-1 bg-(--color-border)" aria-hidden />
-        <span className={`font-mono text-xs ${tone}`}>
-          {label}
-          {state === 'compacting' && !error && (
-            <span className="ml-1 inline-block animate-pulse">…</span>
-          )}
-        </span>
+        {showBody ? (
+          <button
+            type="button"
+            onClick={() => setOpen((value) => !value)}
+            aria-expanded={open}
+            aria-controls={bodyId}
+            className={cn(
+              'inline-flex items-center gap-1 rounded-xs px-1 font-mono text-xs transition-colors duration-(--motion-instant) pointer-coarse:min-h-9 hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40',
+              tone,
+            )}
+          >
+            <span>{labelContent}</span>
+            <ChevronRight
+              size={12}
+              aria-hidden
+              className={cn('shrink-0 text-(--color-text-subtle) transition-transform duration-(--motion-fast) ease-(--ease-out)', open && 'rotate-90')}
+            />
+          </button>
+        ) : (
+          <span className={`font-mono text-xs ${tone}`}>{labelContent}</span>
+        )}
         <span className="h-px flex-1 bg-(--color-border)" aria-hidden />
       </div>
 
-      {showBody && (
+      {showBody && open && (
         // Rendered as plain assistant-style prose (no card chrome): same look
         // as a regular assistant text block, just dimmed via --color-text-2
         // to signal it is a derived/system artefact rather than a fresh reply.
-        <div className="text-sm text-(--color-text-2)">
+        <div id={bodyId} className="text-sm text-(--color-text-2)">
           <MarkdownBlock content={content} sessionId={sessionId} isStreaming={effectiveIsStreaming} />
         </div>
       )}

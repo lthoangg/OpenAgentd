@@ -4,7 +4,8 @@
  * Covers:
  *  - Label text for each state (compacting / compacted / error)
  *  - Animated ellipsis present only while compacting
- *  - Summary body rendered when non-empty and state != error
+ *  - Summary body collapsed by default; the label toggles it
+ *  - Summary body rendered (once expanded) when non-empty and state != error
  *  - Summary body hidden when empty, whitespace-only, or error
  *  - ``isStreaming`` forwarded to ``MarkdownBlock`` so that streaming
  *    content actually displays during the compacting phase (regression for
@@ -12,10 +13,13 @@
  */
 
 import { describe, it, expect, afterEach, mock } from 'bun:test'
-import { render, screen, cleanup } from '@testing-library/react'
+import { render, screen, cleanup, fireEvent } from '@testing-library/react'
 import { CompactionDivider } from '@/components/CompactionDivider'
 
 afterEach(cleanup)
+
+/** Open the collapsed summary body. */
+const expand = () => fireEvent.click(screen.getByRole('button', { expanded: false }))
 
 // ---------------------------------------------------------------------------
 // Mock MarkdownBlock so we can:
@@ -79,15 +83,62 @@ describe('CompactionDivider — animated ellipsis', () => {
 
 // ---------------------------------------------------------------------------
 
+describe('CompactionDivider — collapse', () => {
+  it('collapses the summary body by default', () => {
+    render(<CompactionDivider state="compacted" summary="Hidden summary" />)
+    expect(screen.queryByTestId('markdown')).toBeNull()
+    expect(screen.getByRole('button', { name: /Session compacted/ }).getAttribute('aria-expanded')).toBe('false')
+  })
+
+  it('toggles the summary body from the label', () => {
+    render(<CompactionDivider state="compacted" summary="Toggled summary" />)
+    const toggle = screen.getByRole('button', { name: /Session compacted/ })
+    fireEvent.click(toggle)
+    expect(toggle.getAttribute('aria-expanded')).toBe('true')
+    expect(screen.getByText('Toggled summary')).toBeTruthy()
+    expect(toggle.getAttribute('aria-controls')).toBe(screen.getByTestId('markdown').parentElement?.id ?? null)
+    fireEvent.click(toggle)
+    expect(toggle.getAttribute('aria-expanded')).toBe('false')
+    expect(screen.queryByTestId('markdown')).toBeNull()
+  })
+
+  it('collapses while compacting too, and can be opened to watch the stream', () => {
+    render(<CompactionDivider state="compacting" summary="Streaming…" />)
+    expect(screen.queryByTestId('markdown')).toBeNull()
+    expand()
+    expect(screen.getByText('Streaming…')).toBeTruthy()
+  })
+
+  it('stays open when compacting finishes', () => {
+    const { rerender } = render(<CompactionDivider state="compacting" summary="Partial" />)
+    expand()
+    rerender(<CompactionDivider state="compacted" summary="Final" />)
+    expect(screen.getByText('Final')).toBeTruthy()
+    expect(screen.getByRole('button', { name: /Session compacted/ }).getAttribute('aria-expanded')).toBe('true')
+  })
+
+  it('has no toggle without a body', () => {
+    for (const props of [{ summary: '' }, { summary: '   ' }, {}, { error: true, summary: 'x' }]) {
+      const { unmount } = render(<CompactionDivider state="compacted" {...props} />)
+      expect(screen.queryByRole('button')).toBeNull()
+      unmount()
+    }
+  })
+})
+
+// ---------------------------------------------------------------------------
+
 describe('CompactionDivider — summary body', () => {
   it('renders the summary body when non-empty and state is compacted', () => {
     render(<CompactionDivider state="compacted" summary="Context was summarised here." />)
+    expand()
     expect(screen.getByTestId('markdown')).toBeTruthy()
     expect(screen.getByText('Context was summarised here.')).toBeTruthy()
   })
 
   it('renders the summary body while compacting (streaming phase)', () => {
     render(<CompactionDivider state="compacting" summary="Partial summary so far…" />)
+    expand()
     expect(screen.getByTestId('markdown')).toBeTruthy()
     expect(screen.getByText('Partial summary so far…')).toBeTruthy()
   })
@@ -114,6 +165,7 @@ describe('CompactionDivider — summary body', () => {
 
   it('trims leading/trailing whitespace from summary before rendering', () => {
     render(<CompactionDivider state="compacted" summary="  trimmed content  " />)
+    expand()
     // The mock renders props.content — it must receive the trimmed value
     expect(screen.getByTestId('markdown').textContent).toBe('trimmed content')
   })
@@ -133,6 +185,7 @@ describe('CompactionDivider — isStreaming forwarding (regression)', () => {
     // is absent.
     lastMarkdownProps = {}
     render(<CompactionDivider state="compacting" summary="Streaming text" />)
+    expand()
     expect(screen.getByTestId('markdown')).toBeTruthy()
     expect(lastMarkdownProps.isStreaming).toBe(true)
   })
@@ -140,6 +193,7 @@ describe('CompactionDivider — isStreaming forwarding (regression)', () => {
   it('defaults isStreaming=false when state is compacted and isStreaming prop is omitted', () => {
     lastMarkdownProps = {}
     render(<CompactionDivider state="compacted" summary="Final summary" />)
+    expand()
     expect(screen.getByTestId('markdown')).toBeTruthy()
     expect(lastMarkdownProps.isStreaming).toBe(false)
   })
@@ -148,12 +202,14 @@ describe('CompactionDivider — isStreaming forwarding (regression)', () => {
     // Cold-replay scenario: content already complete but block still shows as compacting.
     lastMarkdownProps = {}
     render(<CompactionDivider state="compacting" summary="Already done" isStreaming={false} />)
+    expand()
     expect(lastMarkdownProps.isStreaming).toBe(false)
   })
 
   it('respects an explicit isStreaming=true override even when state is compacted', () => {
     lastMarkdownProps = {}
     render(<CompactionDivider state="compacted" summary="Still streaming" isStreaming={true} />)
+    expand()
     expect(lastMarkdownProps.isStreaming).toBe(true)
   })
 
@@ -168,12 +224,14 @@ describe('CompactionDivider — isStreaming forwarding (regression)', () => {
   it('forwards the sessionId to MarkdownBlock', () => {
     lastMarkdownProps = {}
     render(<CompactionDivider state="compacted" summary="Some text" sessionId="sess-abc" />)
+    expand()
     expect(lastMarkdownProps.sessionId).toBe('sess-abc')
   })
 
   it('passes untrimmed summary to MarkdownBlock during active streaming to preserve smooth typewriter animation', () => {
     lastMarkdownProps = {}
     render(<CompactionDivider state="compacting" summary="Streaming text with trailing space " isStreaming={true} />)
+    expand()
     expect(lastMarkdownProps.content).toBe('Streaming text with trailing space ')
     expect(lastMarkdownProps.isStreaming).toBe(true)
   })

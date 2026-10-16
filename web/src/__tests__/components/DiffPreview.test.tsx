@@ -17,7 +17,7 @@ import { cleanup, render } from '@testing-library/react'
 const Icon = () => null
 mock.module('lucide-react', () => ({
   Check: Icon, ChevronDown: Icon, ChevronLeft: Icon, ChevronRight: Icon,
-  Copy: Icon, Download: Icon, ExternalLink: Icon, File: Icon, FileText: Icon,
+  Copy: Icon, Download: Icon, ExternalLink: Icon, File: Icon, FileHeadphone: Icon, FileText: Icon,
   Folder: Icon, FolderOpen: Icon, GitCompare: Icon, Loader2: Icon, Plus: Icon,
   Pencil: Icon, RefreshCw: Icon, RotateCcw: Icon, Search: Icon,
   TerminalSquare: Icon, Eraser: Icon, Undo2: Icon, X: Icon,

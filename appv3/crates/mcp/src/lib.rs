@@ -507,7 +507,9 @@ pub fn masked_config_body(cfg: Option<&ServerConfig>) -> Value {
     const MASK: &str = "********";
     match cfg {
         None => Value::Null,
-        Some(c @ ServerConfig::Stdio { command, args, env, enabled, .. }) => with_timeout(json!({"transport": "stdio", "command": command, "args": args, "env": env, "enabled": enabled}), c),
+        Some(c @ ServerConfig::Stdio { command, args, env, enabled, .. }) => {
+            with_timeout(json!({"transport": "stdio", "command": command, "args": args, "env": env, "enabled": enabled}), c)
+        }
         Some(c @ ServerConfig::Http { url, headers, oauth, enabled, .. }) => {
             let oauth = oauth.as_ref().map(|o| {
                 json!({"client_id": o.client_id.as_ref().filter(|s| !s.is_empty()).map(|_| MASK), "client_secret": o.client_secret.as_ref().filter(|s| !s.is_empty()).map(|_| MASK)})

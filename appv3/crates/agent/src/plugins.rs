@@ -75,7 +75,10 @@ const EVENT_AFTER: &str = "tool.after";
 const HOOK_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
 
 /// A hook call that fails like a thrown error once [`HOOK_TIMEOUT`] passes.
-async fn hook_call(event: &str, call: impl std::future::Future<Output = Result<appv3_jsplugin::CallResult, appv3_jsplugin::JsError>>) -> Result<appv3_jsplugin::CallResult, String> {
+async fn hook_call(
+    event: &str,
+    call: impl std::future::Future<Output = Result<appv3_jsplugin::CallResult, appv3_jsplugin::JsError>>,
+) -> Result<appv3_jsplugin::CallResult, String> {
     match tokio::time::timeout(HOOK_TIMEOUT, call).await {
         Ok(r) => r.map_err(|e| e.message),
         Err(_) => Err(format!("plugin hook '{event}' timed out after {} s", HOOK_TIMEOUT.as_secs())),

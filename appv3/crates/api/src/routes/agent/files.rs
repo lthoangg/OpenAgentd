@@ -1183,7 +1183,18 @@ mod tests {
     /// Ignored media, a nested noise dir, OS clutter and an oversized build dir.
     fn ignored_tree(root: &Path) {
         std::fs::write(root.join(".gitignore"), "out/\nbuild/\n*.log\n.DS_Store\nnode_modules/\n.env\n").unwrap();
-        for f in ["out/clip.mp4", "out/nested/frame.png", "out/node_modules/p.js", "out/.DS_Store", "web/node_modules/q.js", "debug.log", ".DS_Store", "keep.txt", ".env", "out/.env.local"] {
+        for f in [
+            "out/clip.mp4",
+            "out/nested/frame.png",
+            "out/node_modules/p.js",
+            "out/.DS_Store",
+            "web/node_modules/q.js",
+            "debug.log",
+            ".DS_Store",
+            "keep.txt",
+            ".env",
+            "out/.env.local",
+        ] {
             let p = root.join(f);
             std::fs::create_dir_all(p.parent().unwrap()).unwrap();
             std::fs::write(p, "x").unwrap();

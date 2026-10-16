@@ -14,6 +14,7 @@
 //! ([`announce_user_edits`]). Compaction restates the plan through
 //! [`carry_note`], because the messages that wrote it do not survive it.
 
+use appv3_core::secret_files::write_atomic;
 use appv3_db::{self as db, DbPool, NewMessage, PendingQuestion};
 use appv3_tools::{denied, todo, DeniedPaths};
 use chrono::{DateTime, SecondsFormat, Utc};
@@ -181,14 +182,6 @@ fn sha(text: &str) -> String {
 
 fn read_state(dir: &Path) -> Option<PlanState> {
     serde_json::from_str(&std::fs::read_to_string(state_path(dir)).ok()?).ok()
-}
-
-fn write_atomic(path: &Path, text: &str) -> std::io::Result<()> {
-    let mut tmp = path.as_os_str().to_owned();
-    tmp.push(".tmp");
-    let tmp = PathBuf::from(tmp);
-    std::fs::write(&tmp, text)?;
-    std::fs::rename(tmp, path)
 }
 
 fn write_state(dir: &Path, st: &PlanState) -> std::io::Result<()> {

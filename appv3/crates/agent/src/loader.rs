@@ -242,21 +242,13 @@ pub fn validate_canonical_code_profile(path: &Path) -> Result<AgentConfig, Strin
     Ok(cfg)
 }
 
-fn atomic_write_text(path: &Path, content: &str) -> std::io::Result<()> {
-    let dir = path.parent().unwrap_or(Path::new("."));
-    std::fs::create_dir_all(dir)?;
-    let tmp = dir.join(format!(".tmp{}", uuid::Uuid::new_v4().simple()));
-    std::fs::write(&tmp, content)?;
-    std::fs::rename(&tmp, path)
-}
-
 /// `ensure_builtin_code_agent` — restore `code.md` only when missing.
 pub fn ensure_builtin_code_agent(agents_dir: &Path) -> std::io::Result<bool> {
     let target = agents_dir.join("code.md");
     if target.exists() {
         return Ok(false);
     }
-    atomic_write_text(&target, prompts::s("code_md"))?;
+    appv3_core::secret_files::write_atomic(&target, prompts::s("code_md"))?;
     tracing::info!("builtin_code_agent_materialized mode=coding path={}", target.display());
     Ok(true)
 }
@@ -272,7 +264,7 @@ pub fn ensure_builtin_member_agents(agents_dir: &Path) -> std::io::Result<Vec<St
                 continue;
             }
             if let Some(text) = md.get(name).and_then(|v| v.as_str()) {
-                atomic_write_text(&target, text)?;
+                appv3_core::secret_files::write_atomic(&target, text)?;
                 written.push(format!("{name}.md"));
                 tracing::info!("builtin_member_agent_materialized name={} path={}", name, target.display());
             }
@@ -489,7 +481,7 @@ pub fn prune_unknown_tools_from_file(path: &Path, unknown: &[String]) {
         } else {
             items[idx].1 = Py::List(kept);
         }
-        atomic_write_text(path, &format!("---\n{}---\n\n{body}", safe_dump_py(&Py::Dict(items)))).map_err(|e| e.to_string())
+        appv3_core::secret_files::write_atomic(path, &format!("---\n{}---\n\n{body}", safe_dump_py(&Py::Dict(items)))).map_err(|e| e.to_string())
     };
     if let Err(e) = run() {
         tracing::warn!("agent_tools_prune_failed file={} error={}", path.display(), e);

@@ -1,12 +1,12 @@
 /**
  * Workspace file preview renderers for the review dock: text (with line
- * comments), image, video, PDF, binary and deleted-file previews, plus the
+ * comments), image, video, audio, PDF, binary and deleted-file previews, plus the
  * shared ``DiffPreview``. The dock's file tab (``FilePreviewSubPanel``) owns
  * the surrounding toolbar.
  */
 import { useEffect, useMemo, useRef, useState, memo } from 'react'
 import { FileLightbox } from './FileLightbox'
-import { Check, Copy, Download, ExternalLink, FileText, Loader2, Plus } from 'lucide-react'
+import { Check, Copy, Download, ExternalLink, FileHeadphone, FileText, Loader2, Plus } from 'lucide-react'
 import { codingWorkspaceFileUrl } from '@/api/client'
 import { downloadWorkspaceFile } from '@/lib/workspace-download'
 import { cn } from '@/lib/utils'
@@ -37,7 +37,7 @@ function extOf(name: string): string {
   return i >= 0 ? name.slice(i + 1).toLowerCase() : ''
 }
 
-type FileKind = 'image' | 'video' | 'pdf' | 'text' | 'binary'
+type FileKind = 'image' | 'video' | 'audio' | 'pdf' | 'text' | 'binary'
 
 function kindOf(file: WorkspaceFileInfo): FileKind {
   const ext = extOf(file.name)
@@ -47,7 +47,7 @@ function kindOf(file: WorkspaceFileInfo): FileKind {
   // otherwise routes TypeScript files into the <video> branch below.
   if (TEXT_EXTENSIONS.has(ext)) return 'text'
   if (file.mime.startsWith('video/') || isVideoSrc(file.name)) return 'video'
-  if (file.mime.startsWith('audio/')) return 'binary'
+  if (file.mime.startsWith('audio/')) return 'audio'
   // Must be checked before the generic small-file text fallback below —
   // otherwise any PDF under MAX_TEXT_PREVIEW_BYTES falls through to the
   // text branch and TextPreview renders its raw (binary) bytes as text.
@@ -536,6 +536,27 @@ function PdfPreview({ workspace, file }: { workspace: string; file: WorkspaceFil
   )
 }
 
+/**
+ * Inline player for audio files. Unlike image/video there is no lightbox:
+ * the native controls already are the full viewer, and wrapping them in a
+ * click-to-open button would swallow play/seek clicks. ``key`` resets
+ * playback when the tab switches to another file.
+ */
+function AudioPreview({ workspace, file }: { workspace: string; file: WorkspaceFileInfo }) {
+  if (file.deleted) return <DeletedFilePreview />
+  const url = codingWorkspaceFileUrl(workspace, file.path)
+  return (
+    <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
+      <FileHeadphone size={28} className="text-(--color-text-subtle)" />
+      <div className="min-w-0 max-w-full">
+        <p className="truncate text-sm text-(--color-text-2)">{file.name}</p>
+        <p className="mt-0.5 text-xs text-(--color-text-subtle)">{file.mime} · {formatBytes(file.size)}</p>
+      </div>
+      <audio key={url} src={url} controls preload="metadata" className="w-full max-w-md" />
+    </div>
+  )
+}
+
 function BinaryPreview({ workspace, file }: { workspace: string; file: WorkspaceFileInfo }) {
   if (file.deleted) return <DeletedFilePreview />
   const url = codingWorkspaceFileUrl(workspace, file.path)
@@ -771,6 +792,7 @@ export function FilePreviewContent({
 
   return kind === 'image' ? <ImagePreview workspace={workspace} file={file} />
     : kind === 'video' ? <VideoPreview workspace={workspace} file={file} />
+    : kind === 'audio' ? <AudioPreview workspace={workspace} file={file} />
     : kind === 'pdf' ? <PdfPreview workspace={workspace} file={file} />
     : kind === 'text' ? <TextPreview key={file.path} workspace={workspace} file={file} onAddComment={onAddComment} />
       : <BinaryPreview workspace={workspace} file={file} />

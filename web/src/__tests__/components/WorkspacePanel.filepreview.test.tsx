@@ -37,6 +37,7 @@ mock.module('lucide-react', () => ({
   ExternalLink: Icon,
   File: Icon,
   FileDiff: Icon,
+  FileHeadphone: Icon,
   FileText: Icon,
   Folder: Icon,
   FolderOpen: Icon,
@@ -345,6 +346,25 @@ describe('Coding workspace two-layer file preview', () => {
 
     expect(document.body.querySelector("[role='dialog']")).toBeTruthy()
     expect(screen.getByLabelText('Close preview')).toBeTruthy()
+  })
+
+  it('plays audio files inline in the file tab', async () => {
+    const audio: WorkspaceFileInfo = { path: 'assets/voice.mp3', name: 'voice.mp3', size: 4096, mtime: 1, mime: 'audio/mpeg' }
+    await renderViewer(audio)
+    const audioEl = document.querySelector('audio')
+    expect(audioEl).toBeTruthy()
+    expect(audioEl?.controls).toBe(true)
+    expect(audioEl?.src).toContain('workspace/files/read')
+    expect(audioEl?.src).toContain('voice.mp3')
+    expect(screen.getByText('voice.mp3')).toBeTruthy()
+    expect(screen.queryByText('No inline preview for this file type')).toBeNull()
+    expect(screen.queryByRole('button', { name: /copy file contents/i })).toBeNull()
+  })
+
+  it('shows the deleted notice instead of a player for a deleted audio file', async () => {
+    await renderViewer({ path: 'old.wav', name: 'old.wav', size: 0, mtime: 0, mime: 'audio/x-wav', deleted: true })
+    expect(document.querySelector('audio')).toBeNull()
+    expect(screen.getByText('File deleted from workspace')).toBeTruthy()
   })
 
   it('previews a small PDF via pdf.js instead of raw binary text', async () => {

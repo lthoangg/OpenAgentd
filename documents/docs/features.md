@@ -1082,6 +1082,7 @@ agent against it.
 - **Two-layer workspace file viewer** `[v1.29.0]` — clicking a file in the coding
   workspace side drawer opens a read-only viewer beside it with line numbers,
   lightweight syntax highlighting, image previews, inline HTML5 video previews `[v1.90.0]`,
+  inline audio playback with seek controls `[v3.13.0]`,
   extensionless text files, and binary download fallback. Copy and download
   buttons sit in the file tab header for one-click copy of the full content or
   download of the file `[v1.92.0]`.

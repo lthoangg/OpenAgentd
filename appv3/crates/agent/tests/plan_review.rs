@@ -211,6 +211,38 @@ async fn submit_needs_a_plan() {
     assert!(appv3_db::get_pending_question(&h.pool, &h.sid).await.unwrap().is_none());
 }
 
+/// gatherplay: in Plan mode with a plan under review, the user switched to
+/// Code mode (queued, since the turn was paused on the review) and then sent
+/// a new message instead of answering. That turn still ran in Plan mode and
+/// its edits were refused; the switch only landed after it ended.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_mode_switch_during_review_applies_to_the_next_message() {
+    let edit = json!({"content": "# Plan\n1. a (edited)"}).to_string();
+    let h = harness(
+        "switch_during_review",
+        "plan",
+        None,
+        vec![
+            MockProvider::tool_calls(&[("c1", "plan", &write("# Plan\n1. a")), ("c2", "submit_plan", "{}")]),
+            MockProvider::tool_call("c3", "user_edit", &edit),
+            MockProvider::text("Done."),
+        ],
+    )
+    .await;
+    h.send("Plan it.").await;
+    assert_eq!(h.session.state(), "waiting_input");
+    assert!(h.session.is_busy(), "the mode switch route queues while a review is open");
+    h.session.queue_interaction_mode("code");
+
+    h.send("Never mind the review, just do it.").await;
+    assert_eq!(h.mode().await, "code");
+    assert_eq!(h.stored_result("c3").await, "edited", "the new turn runs in Code mode");
+    let sent = h.request(1);
+    let code_note = sent.iter().position(|m| m.content().is_some_and(|c| c.contains("## Code mode"))).expect("the Code-mode note reaches the model");
+    let message = sent.iter().position(|m| m.content().is_some_and(|c| c.contains("Never mind the review"))).unwrap();
+    assert!(code_note <= message, "the note comes before the new message");
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn submit_in_code_mode_pauses_and_approval_resumes_in_code_mode() {
     let h = harness(

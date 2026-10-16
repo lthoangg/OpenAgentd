@@ -579,6 +579,12 @@ impl AgentSession {
         let ws_dir = session_workspace_dir(&sid, Some(&ws));
         let prepare = async {
             crate::history::heal_orphaned_tool_calls(&self.pool, &sid).await?;
+            // A switch queued while the last turn was paused on a question
+            // (the review this message just superseded) applies to this turn,
+            // not after it. A turn still winding down applies its own.
+            if self.active_task_done() {
+                self.apply_pending_interaction_mode().await;
+            }
             if let Some(row) = db::get_session(&self.pool, &sid).await? {
                 let mode = interaction_mode::follow_lead(&self.pool, &sid, &row).await?;
                 if mode == "plan" {

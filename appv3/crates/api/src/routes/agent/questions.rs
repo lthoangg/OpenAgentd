@@ -110,15 +110,23 @@ fn end_turn(sid: &str) {
 }
 
 async fn resume_agent(pool: &DbPool, sid: &str) -> bool {
-    let agent = match manager::find_live_session_serving_session(sid) {
+    // Resume only a live session in the row's workspace; another one bound
+    // to this id would run the resumed turn's tools in the wrong directory.
+    let row = db::get_session(pool, sid).await.ok().flatten();
+    let persisted = row.as_ref().filter(|r| !r.workspace.is_empty()).map(|r| manager::validate_workspace(&r.workspace, false).unwrap_or_else(|_| r.workspace.clone()));
+    let live = manager::find_live_session_serving_session(sid).filter(|a| match &persisted {
+        Some(ws) if a.workspace() != *ws => {
+            tracing::warn!("question_resume_workspace_mismatch session_id={} live={} persisted={}", sid, a.workspace(), ws);
+            false
+        }
+        _ => true,
+    });
+    let agent = match live {
         Some(a) => a,
         None => {
-            let row = match db::get_session(pool, sid).await {
-                Ok(Some(r)) => r,
-                _ => {
-                    tracing::warn!("question_resume_session_not_resumable session_id={}", sid);
-                    return false;
-                }
+            let Some(row) = row else {
+                tracing::warn!("question_resume_session_not_resumable session_id={}", sid);
+                return false;
             };
             if row.workspace.is_empty() {
                 tracing::warn!("question_resume_session_not_resumable session_id={} workspace=None", sid);

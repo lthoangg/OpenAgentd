@@ -249,7 +249,13 @@ export interface AgentStoreActions {
    * finished-looking turn until the first token of the restarted run.
    */
   markTurnResuming: () => void
-  loadAgentStatus: (workspace?: string | null, expectedGeneration?: number) => Promise<void>
+  /**
+   * `sessionId` names the session the status is for; when omitted the
+   * store's current session is used. Pass it while switching sessions: the
+   * store still holds the previous session's id, and pairing that id with
+   * the new workspace once started the old session in the wrong workspace.
+   */
+  loadAgentStatus: (workspace?: string | null, expectedGeneration?: number, sessionId?: string | null) => Promise<void>
   loadSession: (sessionId: string, workspace?: string | null) => Promise<void>
   /**
    * Cheap post-turn reconciliation: adopt canonical rows for just the tail the

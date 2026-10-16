@@ -17,9 +17,10 @@ pub fn validate_workspace_or_422(ws: &str, require_exists: bool) -> ApiResult<St
     manager::validate_workspace(ws, require_exists).map_err(ApiError::unprocessable)
 }
 
-fn manager_err(e: manager::ManagerError) -> ApiError {
+pub fn manager_err(e: manager::ManagerError) -> ApiError {
     match e {
         manager::ManagerError::InvalidWorkspace(m) | manager::ManagerError::Profile(m) => ApiError::unprocessable(m),
+        manager::ManagerError::WorkspaceMismatch(m) => ApiError::conflict(m),
         manager::ManagerError::Other(e) => ApiError::internal(e),
     }
 }

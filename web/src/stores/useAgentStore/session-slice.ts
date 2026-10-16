@@ -793,7 +793,7 @@ async function loadSessionImpl(
     })
 
     if (liveNames === null && get()._sessionGeneration === gen) {
-      void get().loadAgentStatus(workspace, gen)
+      void get().loadAgentStatus(workspace, gen, sessionId)
     }
   } catch (err) {
     if (get()._sessionGeneration !== gen) return
@@ -945,9 +945,9 @@ export const createSessionSlice: StateCreator<
     }
   },
 
-  loadAgentStatus: async (workspace?: string | null, expectedGeneration?: number) => {
+  loadAgentStatus: async (workspace?: string | null, expectedGeneration?: number, sessionId?: string | null) => {
     try {
-      const currentSessionId = get().sessionId
+      const currentSessionId = sessionId === undefined ? get().sessionId : sessionId
       const status = await agentStatus(workspace, currentSessionId)
       if (expectedGeneration !== undefined && get()._sessionGeneration !== expectedGeneration) return
       if (status) {

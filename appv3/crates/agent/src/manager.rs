@@ -134,7 +134,16 @@ pub fn find_live_session(workspace: &str, session_id: Option<&str>) -> Option<Ar
 pub fn find_live_session_serving_session(session_id: &str) -> Option<Arc<AgentSession>> {
     let m = MANAGER.get()?;
     let sessions = m.sessions.lock().unwrap();
-    sessions.iter().find(|((_, sid), s)| sid == session_id || s.session_id() == session_id).map(|(_, s)| s.clone())
+    // Prefer the session started for this id over one later bound to it, so
+    // the pick never depends on map order.
+    let exact: Vec<&Arc<AgentSession>> = sessions.iter().filter(|((_, sid), _)| sid == session_id).map(|(_, s)| s).collect();
+    let bound: Vec<&Arc<AgentSession>> = sessions.iter().filter(|((_, sid), s)| sid != session_id && s.session_id() == session_id).map(|(_, s)| s).collect();
+    let first = exact.first().or(bound.first()).map(|s| (*s).clone())?;
+    let ws = first.workspace();
+    if exact.iter().chain(bound.iter()).any(|s| s.workspace() != ws) {
+        tracing::warn!("live_sessions_disagree_on_workspace session_id={} chosen={}", session_id, ws);
+    }
+    Some(first)
 }
 
 pub fn current_agent_session() -> Option<Arc<AgentSession>> {
@@ -149,6 +158,9 @@ pub fn all_sessions() -> Vec<Arc<AgentSession>> {
 pub enum ManagerError {
     #[error("{0}")]
     InvalidWorkspace(String),
+    /// The session id belongs to another workspace.
+    #[error("{0}")]
+    WorkspaceMismatch(String),
     #[error("{0}")]
     Profile(String),
     #[error("{0}")]
@@ -174,6 +186,9 @@ pub async fn get_or_start_agent_session(workspace: &str, session_id: Option<&str
     let Some(agent) = loader::load_code_agent(&resolve_agents_dir(), &m.factory).map_err(ManagerError::Profile)? else {
         return Ok(None);
     };
+    if let Some(sid) = session_id.filter(|s| appv3_db::codec::parse_uuid(s).is_some()) {
+        check_session_workspace(&m.pool, sid, &resolved).await?;
+    }
     let session = AgentSession::new(agent, None, Some(resolved), m.pool.clone(), m.factory.clone(), None);
     if let Some(sid) = session_id.filter(|s| !s.is_empty()) {
         session.attach_to_session(sid, None).await?;
@@ -182,6 +197,21 @@ pub async fn get_or_start_agent_session(workspace: &str, session_id: Option<&str
     m.sessions.lock().unwrap().insert(key.clone(), session.clone());
     m.last_used.lock().unwrap().insert(key, now);
     Ok(Some(session))
+}
+
+/// A saved session runs only in the workspace on its row: an AgentSession
+/// started elsewhere would run its tools in the wrong directory.
+async fn check_session_workspace(pool: &DbPool, session_id: &str, resolved: &str) -> Result<(), ManagerError> {
+    let Some(row) = appv3_db::get_session(pool, session_id).await? else { return Ok(()) };
+    if row.workspace.is_empty() {
+        return Ok(());
+    }
+    let persisted = validate_workspace(&row.workspace, false).unwrap_or_else(|_| row.workspace.clone());
+    if persisted != resolved {
+        tracing::warn!("agent_session_workspace_mismatch session_id={} requested={} persisted={}", session_id, resolved, persisted);
+        return Err(ManagerError::WorkspaceMismatch(format!("Session {session_id} belongs to workspace {persisted}.")));
+    }
+    Ok(())
 }
 
 pub async fn evict_sessions(ids: &std::collections::HashSet<String>) {

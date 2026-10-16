@@ -416,14 +416,25 @@ pub fn serialize_agent(agent: &appv3_agent::Agent, workspace: Option<&str>, cust
 async fn get_agent_registry(q: Qs) -> ApiResult<Response> {
     let workspace = q.opt("workspace").filter(|w| !w.is_empty());
     let session_id = q.opt("session_id");
+    // The UI can pair a session id with the workspace it is switching to.
+    // Serve that workspace's registry, never start the session there.
+    async fn start(ws: &str, sid: Option<&str>, fallback: Option<&str>) -> ApiResult<Option<std::sync::Arc<appv3_agent::session::AgentSession>>> {
+        match manager::get_or_start_agent_session(ws, sid).await {
+            Err(manager::ManagerError::WorkspaceMismatch(m)) => {
+                tracing::debug!("agent_registry_session_elsewhere workspace={} detail={}", ws, m);
+                get_or_start(ws, fallback).await
+            }
+            r => r.map_err(manager_err),
+        }
+    }
     let agent = match workspace.as_deref() {
         Some(ws) => match manager::find_live_session(ws, session_id.as_deref()) {
             Some(a) => Some(a),
-            None => get_or_start(ws, Some(session_id.as_deref().filter(|s| !s.is_empty()).unwrap_or("__agents__"))).await?,
+            None => start(ws, Some(session_id.as_deref().filter(|s| !s.is_empty()).unwrap_or("__agents__")), Some("__agents__")).await?,
         },
         None => {
             let cwd = std::env::current_dir().unwrap_or_default().display().to_string();
-            get_or_start(&cwd, session_id.as_deref()).await?
+            start(&cwd, session_id.as_deref(), None).await?
         }
     };
     let Some(agent) = agent else { return Err(ApiError::not_found("No agent configured")) };

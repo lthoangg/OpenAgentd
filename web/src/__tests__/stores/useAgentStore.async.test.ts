@@ -1981,6 +1981,19 @@ describe("loadAgentStatus", () => {
     expect(useAgentStore.getState().agentNames).toHaveLength(0)
     expect(useAgentStore.getState().leadName).toBeNull()
   })
+
+  it("asks for the session it is given, not the store's previous one", async () => {
+    // Switching chats: the store still holds the old session while the new
+    // workspace loads. Pairing them once started the old session there.
+    useAgentStore.setState({ sessionId: "old-sid" })
+    mockAgentStatus.mockClear()
+    await useAgentStore.getState().loadAgentStatus("/ws-b", undefined, "new-sid")
+    expect(mockAgentStatus).toHaveBeenLastCalledWith("/ws-b", "new-sid")
+    await useAgentStore.getState().loadAgentStatus("/ws-b", undefined, null)
+    expect(mockAgentStatus).toHaveBeenLastCalledWith("/ws-b", null)
+    await useAgentStore.getState().loadAgentStatus("/ws-a")
+    expect(mockAgentStatus).toHaveBeenLastCalledWith("/ws-a", "old-sid")
+  })
 })
 
 // ── loadSession ───────────────────────────────────────────────────────────────

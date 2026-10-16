@@ -64,7 +64,7 @@ export interface UseSessionBootstrapArgs {
   navigate: ReturnType<typeof useNavigate>
   queryClient: QueryClient
   connectStream: () => AbortController
-  loadAgentStatus: (workspace?: string | null) => Promise<void>
+  loadAgentStatus: (workspace?: string | null, expectedGeneration?: number, sessionId?: string | null) => Promise<void>
   loadSession: (sessionId: string, workspace?: string | null) => Promise<void>
   beginResolvedSession: (sessionId: string | null, options: { workspace: string; model?: string | null; thinkingLevel?: string | null; fastMode?: boolean; skipInitialRestore?: boolean }) => void
   consumeResolvedSessionReady: (sessionId: string, workspace?: string | null) => boolean
@@ -105,7 +105,9 @@ export function useSessionBootstrap({
   // ── Init / reconnect ───────────────────────────────────────────────────────
 
   useEffect(() => {
-    if (hasWorkspace) loadAgentStatus(agentWorkspace)
+    // The route's session, not the store's: the store still holds the
+    // previous chat until `beginResolvedSession` below runs.
+    if (hasWorkspace) loadAgentStatus(agentWorkspace, undefined, sessionId ?? null)
     if (isSessionLoading) return
     if (!sessionId) return
     const store = useAgentStore.getState()

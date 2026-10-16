@@ -14,6 +14,8 @@ export interface FileRef {
   path: string
   name: string
   type: 'file' | 'directory'
+  /** Gitignored (a directory: everything listed under it is). Ranked lower. */
+  ignored?: boolean
 }
 
 /**
@@ -286,6 +288,13 @@ export function findCommittedMentions(
 const DIR_BONUS_EXACT = 0.03
 const DIR_BONUS_PREFIX = 0.015
 const DIR_BONUS_ANY = 0.005
+/**
+ * Score penalty for gitignored paths (build output, downloads, media the repo
+ * does not track). Big enough that a comparable visible match always wins,
+ * small enough that typing an ignored file's name still finds it near the top.
+ * Shared with Quick Open.
+ */
+export const IGNORED_FILE_PENALTY = 0.1
 
 export function rankFileRefs(
   refs: readonly FileRef[],
@@ -300,7 +309,7 @@ export function rankFileRefs(
     const topDirs: FileRef[] = []
     const rest: FileRef[] = []
     for (const ref of refs) {
-      if (ref.type === 'directory' && !ref.path.includes('/')) topDirs.push(ref)
+      if (ref.type === 'directory' && !ref.path.includes('/') && !ref.ignored) topDirs.push(ref)
       else rest.push(ref)
     }
     topDirs.sort((a, b) => a.name.localeCompare(b.name))
@@ -331,6 +340,7 @@ export function rankFileRefs(
   const adjusted = results.map((r) => {
     const ref = r.obj
     let score = r.score
+    if (ref.ignored) score -= IGNORED_FILE_PENALTY
     if (ref.type === 'directory') {
       const lowerName = ref.name.toLowerCase()
       if (lowerName === lowerQuery) score += DIR_BONUS_EXACT

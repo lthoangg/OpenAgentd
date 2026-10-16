@@ -50,7 +50,7 @@ impl Layout {
         let home = appv3_core::home::home_dir();
         Layout {
             agents: s.agents_dir.clone(),
-            skills: vec![s.skills_dir.clone(), home.join(".agents/skills"), home.join(".config/opencode/skills")],
+            skills: vec![s.skills_dir.clone(), home.join(".agents/skills")],
             commands: s.commands_dir(),
             snippets: s.snippets_dir(),
             mcp: s.mcp_config_path(),

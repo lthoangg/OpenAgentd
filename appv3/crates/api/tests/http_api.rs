@@ -355,6 +355,7 @@ async fn http_api_end_to_end() {
 
     history_paging_flow(&c, &pool, &ws).await;
     plan_review_flow(&c, &pool, &ws).await;
+    workspace_isolation_flow(&c, &pool, &ws, &root.path().join("other-ws")).await;
 
     let (st, _) = c.json("DELETE", &format!("/api/agent/sessions/{sid}"), None).await;
     assert_eq!(st, StatusCode::NO_CONTENT);
@@ -586,6 +587,38 @@ async fn wait_idle(sid: &str) {
     }
 }
 
+/// The UI can ask for a session's agents while showing another workspace
+/// (it sent the previous chat's id). That must not start the session there,
+/// or a later plan approval resumes that copy and runs tools in the wrong repo.
+async fn workspace_isolation_flow(c: &Client, pool: &appv3_db::DbPool, ws: &std::path::Path, other: &std::path::Path) {
+    use appv3_agent::manager;
+    use appv3_agent::plan::{self, PlanChange, PlanTarget};
+    std::fs::create_dir_all(other).unwrap();
+    let ws_a = manager::validate_workspace(&ws.display().to_string(), true).unwrap();
+    let ws_b = manager::validate_workspace(&other.display().to_string(), true).unwrap();
+    let new = appv3_db::NewSession { workspace: ws_a.clone(), interaction_mode: Some("plan".into()), ..Default::default() };
+    let sid = appv3_db::codec::api_uuid(&appv3_db::create_session(pool, new).await.unwrap().id);
+    let serving = || manager::all_sessions().iter().filter(|s| s.session_id() == sid).map(|s| s.workspace()).collect::<Vec<_>>();
+
+    let (st, v) = c.json("GET", &format!("/api/agent/agents?workspace={}&session_id={sid}", urlencode(&ws_a)), None).await;
+    assert_eq!((st, v["workspace"].as_str()), (StatusCode::OK, Some(ws_a.as_str())), "{v}");
+    let (st, v) = c.json("GET", &format!("/api/agent/agents?workspace={}&session_id={sid}", urlencode(&ws_b)), None).await;
+    assert_eq!((st, v["workspace"].as_str()), (StatusCode::OK, Some(ws_b.as_str())), "the registry still answers for b: {v}");
+    assert_eq!(serving(), vec![ws_a.clone()], "no session for {sid} may start in b");
+
+    let dir = appv3_tools::denied::session_artifacts_dir(Some(&sid));
+    plan::save_agent(&dir, PlanTarget::Workspace { root: ws, session_id: &sid, denied: None }, PlanChange::Write("# Isolate")).unwrap();
+    let qid = open_review(pool, &sid, "call-iso-1", 1, true).await;
+    let (st, v) = c.json("POST", &format!("/api/agent/{sid}/question/{qid}/answer"), Some(json!({"answers": [["Approve"]]}))).await;
+    assert_eq!((st, v["resumed"].clone()), (StatusCode::OK, json!(true)), "{v}");
+    wait_idle(&sid).await;
+    assert_eq!(appv3_db::get_session(pool, &sid).await.unwrap().unwrap().interaction_mode, "code");
+    assert_eq!(manager::find_live_session_serving_session(&sid).expect("live").workspace(), ws_a, "plan approval resumed outside a");
+    assert_eq!(serving(), vec![ws_a], "exactly one session serves {sid}");
+    let (st, _) = c.json("DELETE", &format!("/api/agent/sessions/{sid}"), None).await;
+    assert_eq!(st, StatusCode::NO_CONTENT);
+}
+
 /// Plan routes and plan-review answers on a Plan-mode session in `ws`.
 async fn plan_review_flow(c: &Client, pool: &appv3_db::DbPool, ws: &std::path::Path) {
     use appv3_agent::plan::{self, PlanChange, PlanTarget};
@@ -598,7 +631,7 @@ async fn plan_review_flow(c: &Client, pool: &appv3_db::DbPool, ws: &std::path::P
     assert_eq!(st, StatusCode::OK);
     assert_eq!((v["plan"]["revision"].clone(), v["plan"]["approved_revision"].clone()), (json!(1), Value::Null), "{v}");
     let rel = v["plan"]["workspace_path"].as_str().unwrap_or_default();
-    assert!(rel.starts_with(".openagentd/plans/ship-it-") && rel.ends_with(".md"), "{v}");
+    assert!(rel.starts_with(".agents/plans/ship-it-") && rel.ends_with(".md"), "{v}");
     assert_eq!(v["plan"]["path"], json!(saved.doc.path.display().to_string()));
 
     // ── a review is open ─────────────────────────────────────────────────

@@ -28,7 +28,6 @@ function renderHeader(overrides: Partial<ComponentProps<typeof AgentChatHeader>>
     setShowMobileActions: () => undefined,
     mobileActionsDragOffset: null,
     onToggleScheduler: () => undefined,
-    onFindInTranscript: () => undefined,
     onOpenTerminal: () => undefined,
     onCloseMobileActionsMenu: () => undefined,
     ...overrides,
@@ -104,24 +103,20 @@ describe('AgentChatHeader', () => {
     expect(screen.queryByRole('button', { name: /Input:/i })).not.toBeInTheDocument()
   })
 
-  it('runs mobile transcript and terminal actions before closing the drawer', async () => {
+  it('runs the mobile terminal action before closing the drawer', async () => {
     const user = userEvent.setup()
-    const onFindInTranscript = mock(() => {})
     const onOpenTerminal = mock(() => {})
     const onCloseMobileActionsMenu = mock(() => {})
     renderHeader({
       showMobileActions: true,
-      onFindInTranscript,
       onOpenTerminal,
       onCloseMobileActionsMenu,
     })
 
-    await user.click(screen.getByRole('button', { name: 'Find in transcript' }))
     await user.click(screen.getByRole('button', { name: 'Open terminal' }))
 
-    expect(onFindInTranscript).toHaveBeenCalledTimes(1)
     expect(onOpenTerminal).toHaveBeenCalledTimes(1)
-    expect(onCloseMobileActionsMenu).toHaveBeenCalledTimes(2)
+    expect(onCloseMobileActionsMenu).toHaveBeenCalledTimes(1)
   })
 
   it('steps prompts, searches files, and opens the palette from the mobile drawer, then closes it', async () => {
@@ -236,7 +231,6 @@ describe('AgentChatHeader', () => {
         showMobileActions={false}
         setShowMobileActions={() => undefined}
         onToggleScheduler={() => undefined}
-        onFindInTranscript={() => undefined}
         onCloseMobileActionsMenu={() => undefined}
       />,
     )

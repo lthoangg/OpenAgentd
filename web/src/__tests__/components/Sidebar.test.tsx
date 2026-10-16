@@ -1453,11 +1453,9 @@ describe('Sidebar workspace trust flow', () => {
     expect(screen.getByLabelText('Collapse repository project')).toBeTruthy()
   })
 
-  it('opens session search when ⌘F is pressed inside the sidebar and closes it on Escape', async () => {
+  it('opens session search on the searchSessions event and closes it on Escape', async () => {
     const user = userEvent.setup()
-    const view = await renderSidebarForSessions(undefined)
-    const searchButton = screen.getByRole('button', { name: 'Search sessions' })
-    expect(view?.container.querySelector('[data-find-scope="sidebar"]')?.contains(searchButton)).toBe(true)
+    await renderSidebarForSessions(undefined)
 
     act(() => { window.dispatchEvent(new Event(APP_EVENTS.searchSessions)) })
     const input = await screen.findByRole('searchbox', { name: 'Search sessions' })
@@ -1510,7 +1508,7 @@ describe('Sidebar workspace trust flow', () => {
 
   it('keeps the sidebar on the page tone in light mode and the rail in dark', async () => {
     const view = await renderSidebarForSessions(undefined)
-    const aside = view?.container.querySelector('[data-find-scope="sidebar"]') as HTMLElement
+    const aside = view?.container.querySelector('aside') as HTMLElement
     expect(aside.className).toContain('bg-(--bg-page)')
     expect(aside.className).toContain('dark:bg-(--bg-sidebar)')
     expect(aside.className.split(' ')).not.toContain('bg-(--bg-sidebar)')

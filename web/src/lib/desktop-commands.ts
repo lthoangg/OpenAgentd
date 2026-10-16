@@ -29,9 +29,6 @@ function runDesktopCommand(command: unknown): void {
     case 'open_workspace':
       dispatchAppEvent(APP_EVENTS.openWorkspace)
       break
-    case 'find':
-      dispatchAppShortcut(APP_SHORTCUTS.findInTranscript, getPlatform().os)
-      break
     case 'toggle_sidebar':
       dispatchAppShortcut(APP_SHORTCUTS.sidebar, getPlatform().os)
       break

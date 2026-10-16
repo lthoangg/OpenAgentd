@@ -7,7 +7,7 @@ import { apiAuthHeaders, withTokenParam } from '../auth'
 import { readSSE } from '../sse'
 import type { SSECallbacks } from '../sse'
 import { sharedAgentStream } from '../stream-hub'
-import { parseDetailOrThrow } from './_shared'
+import { fetchJsonWithEtag, parseDetailOrThrow } from './_shared'
 import type {
   SessionDetailResponse,
   SessionResolveResponse,
@@ -247,9 +247,7 @@ export async function listCodingWorkspaceFiles(
   signal?: AbortSignal,
 ): Promise<CodingWorkspaceFilesResponse> {
   const params = new URLSearchParams({ workspace })
-  const res = await fetch(`${apiBaseUrl()}/agent/workspace/files/list?${params}`, { signal })
-  if (!res.ok) await parseDetailOrThrow(res, 'listCodingWorkspaceFiles')
-  return res.json()
+  return fetchJsonWithEtag(`${apiBaseUrl()}/agent/workspace/files/list?${params}`, 'listCodingWorkspaceFiles', signal)
 }
 
 export async function getCodingWorkspaceGitDiff(
@@ -265,9 +263,7 @@ export async function getCodingWorkspaceGitDiff(
   if (paths && paths.length > 0) {
     for (const p of paths) params.append('paths', p)
   }
-  const res = await fetch(`${apiBaseUrl()}/agent/workspace/git-diff/view?${params}`, { signal })
-  if (!res.ok) await parseDetailOrThrow(res, 'getCodingWorkspaceGitDiff')
-  return res.json()
+  return fetchJsonWithEtag(`${apiBaseUrl()}/agent/workspace/git-diff/view?${params}`, 'getCodingWorkspaceGitDiff', signal)
 }
 
 export async function getCodingWorkspaceStatus(
@@ -275,9 +271,7 @@ export async function getCodingWorkspaceStatus(
   signal?: AbortSignal,
 ): Promise<WorkspaceStatusResponse> {
   const params = new URLSearchParams({ workspace })
-  const res = await fetch(`${apiBaseUrl()}/agent/workspace/status?${params}`, { signal })
-  if (!res.ok) await parseDetailOrThrow(res, 'getCodingWorkspaceStatus')
-  return res.json()
+  return fetchJsonWithEtag(`${apiBaseUrl()}/agent/workspace/status?${params}`, 'getCodingWorkspaceStatus', signal)
 }
 
 export async function getCodingWorkspaceGitHistory(
@@ -555,9 +549,7 @@ export async function listWorkspaceFiles(
   sessionId: string,
   signal?: AbortSignal,
 ): Promise<WorkspaceFilesResponse> {
-  const res = await fetch(`${apiBaseUrl()}/agent/${encodeURIComponent(sessionId)}/files`, { signal })
-  if (!res.ok) await parseDetailOrThrow(res, 'listWorkspaceFiles')
-  return res.json()
+  return fetchJsonWithEtag(`${apiBaseUrl()}/agent/${encodeURIComponent(sessionId)}/files`, 'listWorkspaceFiles', signal)
 }
 
 /** Build the ``/media/{path}`` URL for a workspace file.

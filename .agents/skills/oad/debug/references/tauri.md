@@ -53,7 +53,7 @@ desktop/src-tauri/
 
 | Symptom | Where to look |
 |---|---|
-| Sidecar won't start or exits | `sidecar.rs`: args, env, port; then the backend log (`reference/production.md`) |
+| Sidecar won't start or exits | `sidecar.rs`: args, env, port; then the backend log (`references/production.md`) |
 | Token missing or rejected | `sidecar.rs` handshake → `appv3/crates/api/src/middleware.rs` (`desktop_token`) |
 | Window missing or wrong size | `window.rs` builders and all three config variants |
 | IPC command not found | `#[tauri::command]`, `invoke_handler` registration, and a `capabilities/` entry |

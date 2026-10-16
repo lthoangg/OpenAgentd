@@ -26,6 +26,38 @@ pub fn json_code(code: u16, v: Value) -> Response {
     json_status(StatusCode::from_u16(code).unwrap_or(StatusCode::OK), &v)
 }
 
+/// Give a `200` response an `ETag` (a hash of its body) and answer `304 Not
+/// Modified`, without the body, when the request's `If-None-Match` already
+/// names it. For polled reads (file listings, git status) whose result
+/// usually has not changed: the server still computes it, but the client
+/// skips the transfer, the JSON parse and the re-render.
+pub async fn with_etag(req: &axum::http::HeaderMap, resp: Response) -> Response {
+    use std::hash::Hasher;
+    if resp.status() != StatusCode::OK {
+        return resp;
+    }
+    let (mut parts, body) = resp.into_parts();
+    let Ok(bytes) = axum::body::to_bytes(body, usize::MAX).await else {
+        return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+    };
+    let mut h = std::hash::DefaultHasher::new();
+    h.write(&bytes);
+    let tag = format!("\"{:016x}\"", h.finish());
+    let tag_value = HeaderValue::from_str(&tag).expect("hex etag is a valid header");
+    parts.headers.insert(header::ETAG, tag_value.clone());
+    parts.headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-cache"));
+    let matches = req.get(header::IF_NONE_MATCH).and_then(|v| v.to_str().ok()).is_some_and(|v| v.split(',').any(|t| t.trim() == tag || t.trim() == "*"));
+    if matches {
+        return (StatusCode::NOT_MODIFIED, [(header::ETAG, tag_value), (header::CACHE_CONTROL, HeaderValue::from_static("no-cache"))]).into_response();
+    }
+    Response::from_parts(parts, axum::body::Body::from(bytes))
+}
+
+/// [`with_etag`] for a handler result.
+pub async fn etagged(req: &axum::http::HeaderMap, r: ApiResult<Response>) -> ApiResult<Response> {
+    Ok(with_etag(req, r?).await)
+}
+
 pub fn no_content() -> Response {
     StatusCode::NO_CONTENT.into_response()
 }

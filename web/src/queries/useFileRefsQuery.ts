@@ -4,9 +4,11 @@
  * Hits the workspace files endpoint:
  *   GET /api/agent/workspace/files/list?workspace=...
  *
- * Both return a flat list of files (max 5,000, gitignore-aware). Folder entries
- * are derived client-side from the path prefixes so the user can also reference
- * directories with `@some/dir/`.
+ * Both return a flat list of files (max 5,000): visible files first, then
+ * gitignored ones flagged ``ignored`` (noise dirs such as ``node_modules`` are
+ * never listed). Folder entries are derived client-side from the path prefixes
+ * so the user can also reference directories with `@some/dir/`; a folder is
+ * ``ignored`` when every file listed under it is.
  *
  * The query shares its cache entry with the workspace file tree
  * (see ``queries/workspace-files.ts``) — the listing is an expensive recursive
@@ -40,18 +42,22 @@ interface UseFileRefsQueryArgs {
   enabled?: boolean
 }
 
-/** Derive folder entries from a flat file list by walking each path's prefixes. */
-function deriveDirs(files: readonly { path: string }[]): string[] {
-  const dirs = new Set<string>()
+/**
+ * Derive folder entries from a flat file list by walking each path's prefixes.
+ * Maps each folder to whether it holds only ignored files.
+ */
+function deriveDirs(files: readonly { path: string; ignored?: boolean }[]): Map<string, boolean> {
+  const dirs = new Map<string, boolean>()
   for (const f of files) {
     const parts = f.path.split('/')
     // Last segment is the file basename — skip it. Every earlier segment
     // forms a directory path when joined cumulatively.
     for (let i = 1; i < parts.length; i++) {
-      dirs.add(parts.slice(0, i).join('/'))
+      const dir = parts.slice(0, i).join('/')
+      dirs.set(dir, (dirs.get(dir) ?? true) && f.ignored === true)
     }
   }
-  return [...dirs].sort()
+  return new Map([...dirs].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)))
 }
 
 function basename(p: string): string {
@@ -84,11 +90,13 @@ export function useFileRefsQuery({
       path: f.path,
       name: f.name,
       type: 'file',
+      ...(f.ignored ? { ignored: true } : {}),
     }))
-    const dirRefs: FileRef[] = deriveDirs(files).map((p) => ({
+    const dirRefs: FileRef[] = [...deriveDirs(files)].map(([p, ignored]) => ({
       path: p,
       name: basename(p),
       type: 'directory',
+      ...(ignored ? { ignored: true } : {}),
     }))
     return [...fileRefs, ...dirRefs]
   }, [query.data])

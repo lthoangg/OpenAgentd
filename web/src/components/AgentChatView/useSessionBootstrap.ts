@@ -32,12 +32,19 @@ import { attachmentToFile } from './helpers'
 import { backgroundSuspendsSockets } from '@/hooks/use-platform'
 import { isDirectUserBlock } from '@/stores/useAgentStore/helpers'
 import { topBlockingLayer } from '@/lib/keyboard/layers'
+import { createPersistedDraftMap } from '@/lib/persisted-drafts'
 import type { InputComposerHandle } from '../InputComposer'
 import type { MessageAttachment } from '@/api/types'
 
 interface SessionDraft {
   value: string
 }
+
+/**
+ * Composer text per session. Persisted so a reload or a renderer crash does
+ * not lose a half-written prompt (attachments are not: they are `File`s).
+ */
+const composerDrafts = createPersistedDraftMap<SessionDraft>({ storageKey: 'oa.drafts.composer.v1', max: 50 })
 
 export interface UseSessionBootstrapArgs {
   sessionId?: string
@@ -57,7 +64,7 @@ export interface UseSessionBootstrapArgs {
   navigate: ReturnType<typeof useNavigate>
   queryClient: QueryClient
   connectStream: () => AbortController
-  loadAgentStatus: (workspace?: string | null) => Promise<void>
+  loadAgentStatus: (workspace?: string | null, expectedGeneration?: number, sessionId?: string | null) => Promise<void>
   loadSession: (sessionId: string, workspace?: string | null) => Promise<void>
   beginResolvedSession: (sessionId: string | null, options: { workspace: string; model?: string | null; thinkingLevel?: string | null; fastMode?: boolean; skipInitialRestore?: boolean }) => void
   consumeResolvedSessionReady: (sessionId: string, workspace?: string | null) => boolean
@@ -92,14 +99,15 @@ export function useSessionBootstrap({
   beginResolvedSession,
   consumeResolvedSessionReady,
 }: UseSessionBootstrapArgs): UseSessionBootstrapResult {
-  const draftBySessionRef = useRef<Record<string, SessionDraft>>({})
   const abortRef = useRef<AbortController | null>(null)
   const resumeInFlightRef = useRef(false)
 
   // ── Init / reconnect ───────────────────────────────────────────────────────
 
   useEffect(() => {
-    if (hasWorkspace) loadAgentStatus(agentWorkspace)
+    // The route's session, not the store's: the store still holds the
+    // previous chat until `beginResolvedSession` below runs.
+    if (hasWorkspace) loadAgentStatus(agentWorkspace, undefined, sessionId ?? null)
     if (isSessionLoading) return
     if (!sessionId) return
     const store = useAgentStore.getState()
@@ -132,7 +140,7 @@ export function useSessionBootstrap({
       useAgentStore.setState({ sessionId })
     }
 
-    const draft = draftBySessionRef.current[sessionId]
+    const draft = composerDrafts.get(sessionId)
     inputRef.current?.setValue(draft?.value ?? '')
     inputRef.current?.setFiles([])
 
@@ -156,7 +164,7 @@ export function useSessionBootstrap({
       if (cancelled) return
       const store = useAgentStore.getState()
       const leadStream = store.leadName ? store.agentStreams[store.leadName] : undefined
-      const hasDraft = Boolean(draftBySessionRef.current[sessionId]?.value?.trim())
+      const hasDraft = Boolean(composerDrafts.get(sessionId)?.value?.trim())
       if (
         leadStream &&
         (leadStream.revertedCount ?? 0) > 0 &&
@@ -287,7 +295,7 @@ export function useSessionBootstrap({
     // handleDraftValueChange the session id is already gone and the delete
     // never happens — leaving the old '/new' text to reappear on switch-back.
     const departingSessionId = useAgentStore.getState().sessionId
-    if (departingSessionId) delete draftBySessionRef.current[departingSessionId]
+    if (departingSessionId) composerDrafts.delete(departingSessionId)
     inputRef.current?.setValue('')
     inputRef.current?.setFiles([])
     ;(async () => {
@@ -335,10 +343,10 @@ export function useSessionBootstrap({
     const currentSessionId = useAgentStore.getState().sessionId
     if (!currentSessionId) return
     if (value) {
-      draftBySessionRef.current[currentSessionId] = { value }
+      composerDrafts.set(currentSessionId, { value })
       return
     }
-    delete draftBySessionRef.current[currentSessionId]
+    composerDrafts.delete(currentSessionId)
   }, [])
 
   const focusInput = useCallback(() => {

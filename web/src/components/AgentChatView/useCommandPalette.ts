@@ -16,7 +16,6 @@ import {
   workspaceFileListQueryOptions,
 } from '@/queries/workspace-files'
 import { useIsMobile } from '@/hooks/use-mobile'
-import { routeFindShortcut } from '@/lib/find-shortcut'
 import { appShortcut, useShortcuts } from '@/lib/keyboard/hooks'
 import { useFileRevealStore } from '@/stores/useFileRevealStore'
 import { useLayoutStore } from '@/stores/useLayoutStore'
@@ -44,7 +43,6 @@ export interface UseCommandPaletteArgs {
   handleToggleQuickOpen: () => void
   handleToggleScheduler: () => void
   handleOpenTerminal: () => void
-  handleFindInTranscript: () => void
   /** Only while the session has a plan; lists Open Plan. */
   handleOpenPlan?: () => void
   planAwaitingReview?: boolean
@@ -80,7 +78,6 @@ export function useCommandPalette({
   handleToggleQuickOpen,
   handleToggleScheduler,
   handleOpenTerminal,
-  handleFindInTranscript,
   handleOpenPlan,
   planAwaitingReview,
   handleOpenPreview,
@@ -112,7 +109,6 @@ export function useCommandPalette({
     handleSidebarToggle,
     handleNewSession,
     handleOpenTerminal,
-    handleFindInTranscript,
     handleToggleDockMaximized: workspace && !isMobile ? handleToggleDockMaximized : undefined,
     handleOpenPlan,
     planAwaitingReview,
@@ -156,7 +152,6 @@ export function useCommandPalette({
   useShortcuts([
     appShortcut('newSession', () => { handleNewSession() }),
     appShortcut('sessionSettings', () => { handleToggleAgentCapabilities() }),
-    appShortcut('findInTranscript', () => { routeFindShortcut(handleFindInTranscript) }),
     appShortcut('workspaceFiles', () => { handleWorkspaceFiles() }),
     appShortcut('maximizeDock', () => { handleToggleDockMaximized() }, { enabled: !isMobile && Boolean(workspace) }),
     appShortcut('tasks', () => { handleToggleTasks() }, { enabled: Boolean(sessionIdState) }),

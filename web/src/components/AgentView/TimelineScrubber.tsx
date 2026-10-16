@@ -1,11 +1,11 @@
 /**
  * TimelineScrubber — an overview rail at the transcript's right edge that
  * stands in for its scrollbar from ``md`` up. The view is a thumb; marks
- * show where prompts, find matches, and a question waiting on the user sit.
+ * show where prompts and a question waiting on the user sit.
  * Press or drag anywhere on it to scrub.
  *
- * Pointer-only and hidden from assistive tech: prompt navigation and find
- * cover the same ground from the keyboard.
+ * Pointer-only and hidden from assistive tech: prompt navigation covers the
+ * same ground from the keyboard.
  */
 import {
   useCallback,
@@ -20,7 +20,7 @@ import {
 import { cn } from '@/lib/utils'
 import { promptElements } from './prompt-nav'
 
-type MarkKind = 'prompt' | 'find' | 'find-active' | 'question'
+type MarkKind = 'prompt' | 'question'
 
 interface Mark {
   key: string
@@ -30,21 +30,18 @@ interface Mark {
 }
 
 /** Later kinds paint over earlier ones where marks meet. */
-const MARK_ORDER: Record<MarkKind, number> = { prompt: 0, find: 1, 'find-active': 2, question: 3 }
+const MARK_ORDER: Record<MarkKind, number> = { prompt: 0, question: 1 }
 
 const MARK_CLASS: Record<MarkKind, string> = {
   prompt: 'h-0.5 w-1.5 bg-(--color-text-subtle)',
-  find: 'h-0.5 w-1.5 bg-(--accent-orange)',
-  'find-active': 'h-1 w-2 bg-(--accent-orange-text)',
   question: 'h-1 w-2 bg-(--color-accent)',
 }
 
-const ID_SEPARATOR = '\u0000'
 /**
  * Marks are re-measured at most this often while the transcript only grows
  * (a streaming answer resizes it every frame). Each measure reads layout for
  * every rendered prompt and re-renders the rail; a mark that trails by a few
- * frames is invisible at this scale. Find and question changes measure at once.
+ * frames is invisible at this scale.
  */
 const MARK_REMEASURE_MS = 200
 
@@ -61,12 +58,9 @@ function sameMarks(a: readonly Mark[], b: readonly Mark[]): boolean {
   return a.length === b.length && a.every((mark, i) => mark.key === b[i].key && mark.kind === b[i].kind && sameFraction(mark.at, b[i].at))
 }
 
-export function TimelineScrubber({ scrollRef, contentRef, findBlockIds, activeFindBlockId }: {
+export function TimelineScrubber({ scrollRef, contentRef }: {
   scrollRef: RefObject<HTMLElement | null>
   contentRef: RefObject<HTMLElement | null>
-  /** Blocks holding a find match. */
-  findBlockIds: readonly string[]
-  activeFindBlockId: string | null
 }) {
   const railRef = useRef<HTMLDivElement>(null)
   const thumbRef = useRef<HTMLDivElement>(null)
@@ -78,8 +72,6 @@ export function TimelineScrubber({ scrollRef, contentRef, findBlockIds, activeFi
   const remeasureTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   /** Where on the thumb the pointer holds it, in px; null when not dragging. */
   const grab = useRef<number | null>(null)
-  // A string, so a new array with the same ids does not re-measure.
-  const findKey = findBlockIds.join(ID_SEPARATOR)
 
   const measureMarks = useCallback((root: HTMLElement) => {
     const height = root.scrollHeight
@@ -91,18 +83,10 @@ export function TimelineScrubber({ scrollRef, contentRef, findBlockIds, activeFi
     const origin = root.getBoundingClientRect().top - root.scrollTop
     const at = (el: Element) => Math.min(1, Math.max(0, (el.getBoundingClientRect().top - origin) / height))
     const next: Mark[] = promptElements(root).map((el) => ({ key: `prompt:${el.dataset.promptId}`, kind: 'prompt', at: at(el) }))
-    if (findKey) {
-      const wanted = new Set(findKey.split(ID_SEPARATOR))
-      for (const el of root.querySelectorAll<HTMLElement>('[data-find-block]')) {
-        const id = el.dataset.findBlock
-        if (!id || !wanted.has(id)) continue
-        next.push({ key: `find:${id}`, kind: id === activeFindBlockId ? 'find-active' : 'find', at: at(el) })
-      }
-    }
     const question = root.querySelector('[data-question-waiting]')
     if (question) next.push({ key: 'question', kind: 'question', at: at(question) })
     setMarks((current) => (sameMarks(current, next) ? current : next))
-  }, [activeFindBlockId, findKey])
+  }, [])
   const measureMarksRef = useRef(measureMarks)
   measureMarksRef.current = measureMarks
 

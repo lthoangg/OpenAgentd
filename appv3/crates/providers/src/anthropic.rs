@@ -314,6 +314,12 @@ fn finish_reason(stop: Option<&str>) -> Option<String> {
     stop.map(|s| if s == "tool_use" { "tool_calls".to_string() } else { s.to_string() })
 }
 
+/// `stop_details` of a `message_delta` (sent with `stop_reason: "refusal"`):
+/// on the delta, or top-level on older shapes.
+fn stop_details(event: &Value) -> Option<Value> {
+    event.pointer("/delta/stop_details").or_else(|| event.get("stop_details")).filter(|v| v.is_object()).cloned()
+}
+
 fn prompt_usage(raw: &Value) -> (i64, Option<i64>, Option<i64>) {
     let g = |k: &str| raw.get(k).and_then(|v| v.as_i64()).unwrap_or(0);
     let (nc, cr, cw) = (g("input_tokens"), g("cache_read_input_tokens"), g("cache_creation_input_tokens"));
@@ -609,7 +615,8 @@ impl LlmProvider for AnthropicProvider {
                             usage.completion_tokens = u.get("output_tokens").and_then(|v| v.as_i64()).unwrap_or(0);
                             usage.total_tokens = usage.prompt_tokens + usage.completion_tokens;
                         }
-                        yield Ok(mk(ChatCompletionDelta::default(), Some(usage.clone()), finish_reason(stop)));
+                        let delta = ChatCompletionDelta { stop_details: stop_details(&event), ..Default::default() };
+                        yield Ok(mk(delta, Some(usage.clone()), finish_reason(stop)));
                     }
                     _ => {
                         let Some(delta) = event.get("delta").filter(|d| d.is_object()) else { continue };
@@ -705,5 +712,18 @@ mod tests {
         let p = AnthropicProvider::new("k", "claude-sonnet-4-5", "http://127.0.0.1:9", Kwargs::new()).unwrap();
         let msg = p.parse_response(&json!({"content": [{"type": "tool_use", "id": "t1", "name": "patch", "input": {"note": "Cài đặt ✓", "n": 1}}]}));
         assert_eq!(msg.tool_calls.unwrap()[0].function.arguments, r#"{"note":"Cài đặt ✓","n":1}"#);
+    }
+
+    #[test]
+    fn refusal_message_delta_carries_stop_details() {
+        let details = json!({"type": "refusal", "category": "cyber", "explanation": "Declined."});
+        let on_delta = json!({"type": "message_delta", "delta": {"stop_reason": "refusal", "stop_details": details}});
+        assert_eq!(stop_details(&on_delta), Some(details.clone()));
+        let top_level = json!({"type": "message_delta", "delta": {"stop_reason": "refusal"}, "stop_details": details});
+        assert_eq!(stop_details(&top_level), Some(details));
+        // Category and explanation may be null; the object still comes through.
+        let nulls = json!({"delta": {"stop_details": {"type": "refusal", "category": null, "explanation": null}}});
+        assert_eq!(stop_details(&nulls).unwrap()["type"], "refusal");
+        assert_eq!(stop_details(&json!({"delta": {"stop_reason": "end_turn", "stop_details": null}})), None);
     }
 }

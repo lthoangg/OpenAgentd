@@ -1,7 +1,7 @@
 //! `read` — port of `filesystem/read.py` + `handlers.py`.
 
 use crate::args::Args;
-use crate::{outline, Tool, ToolContext, ToolError, ToolOutput, ToolResult};
+use crate::{Tool, ToolContext, ToolError, ToolOutput, ToolResult};
 use appv3_providers::ContentBlock;
 use async_trait::async_trait;
 use base64::Engine;
@@ -302,7 +302,6 @@ impl Tool for ReadTool {
             }
             Some(_) => a.opt_int(&["limit"], Some(1), None),
         };
-        let outline_flag = a.bool_or(&["outline"], false);
         a.finish()?;
 
         let denied = ctx.denied.clone();
@@ -317,9 +316,6 @@ impl Tool for ReadTool {
             }
             if !resolved.is_file() {
                 return Err(ToolError::Execution(format!("Path is not a regular file: {rel}")));
-            }
-            if outline_flag {
-                return Ok(ToolOutput::Text(outline::generate_file_outline(&resolved, &rel)?));
             }
             match classify_file(&resolved) {
                 "image" => handle_image(&resolved, &rel),

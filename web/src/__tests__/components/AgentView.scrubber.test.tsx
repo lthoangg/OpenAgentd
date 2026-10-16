@@ -51,12 +51,4 @@ describe('AgentView — timeline scrubber', () => {
     // The rail is its own chunk, so it arrives just after the transcript.
     await waitFor(() => expect(markKinds(container)).toEqual(['prompt', 'prompt']))
   })
-
-  it('marks the find matches, the current one set apart', async () => {
-    const { container } = render(
-      <AgentView blocks={BLOCKS} currentBlocks={[]} isWorking={false} findOpen findQuery="answer" findActiveIndex={1} />,
-    )
-
-    await waitFor(() => expect(markKinds(container)).toEqual(['prompt', 'prompt', 'find', 'find-active']))
-  })
 })

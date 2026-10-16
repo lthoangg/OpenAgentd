@@ -23,6 +23,18 @@ use std::sync::LazyLock;
 use std::time::Duration;
 
 const MAX_FILES_LISTED: usize = 5_000;
+/// A gitignored directory holding more files than this is build output or a
+/// cache (`target/`, `dist/`), not something to browse, so it is left out
+/// whole rather than letting it crowd out other ignored files.
+const MAX_IGNORED_DIR_FILES: usize = 500;
+const JUNK_FILE_NAMES: &[&str] = &[".DS_Store", "Thumbs.db", "desktop.ini"];
+
+/// Ignored files never listed: OS clutter, and `.env` / `.env.*` secrets,
+/// which stay out of Quick Open and the `@` picker as they did before ignored
+/// files were listed (a tracked `.env.example` is visible, not ignored).
+fn is_unlisted_ignored_name(name: &str) -> bool {
+    JUNK_FILE_NAMES.contains(&name) || name == ".env" || name.starts_with(".env.")
+}
 const MAX_GIT_DIFF_CHARS: usize = 512 * 1024;
 const MAX_UNTRACKED_DIFF_BYTES: u64 = 256 * 1024;
 /// Global flags for the panels' read-only git calls, which run after every
@@ -37,11 +49,12 @@ pub fn router() -> Router<AppState> {
     Router::new()
         .route("/{session_id}/uploads/{filename}", get(get_upload))
         .route("/{session_id}/media/{*file_path}", get(get_media))
-        .route("/{session_id}/files", get(list_session_files))
+        .route("/{session_id}/files", get(|st: State<AppState>, sid: AxPath<String>, h: HeaderMap| async move { etagged(&h, list_session_files(st, sid).await).await }))
         .route("/workspace/files/read", get(read_workspace_file))
-        .route("/workspace/files/list", get(list_workspace_files))
-        .route("/workspace/git-diff/view", get(git_diff))
-        .route("/workspace/status", get(workspace_status))
+        // Polled after every tool call: ETag / 304 (see `with_etag`).
+        .route("/workspace/files/list", get(|h: HeaderMap, q: Qs| async move { etagged(&h, list_workspace_files(q).await).await }))
+        .route("/workspace/git-diff/view", get(|h: HeaderMap, q: Qs| async move { etagged(&h, git_diff(q).await).await }))
+        .route("/workspace/status", get(|h: HeaderMap, q: Qs| async move { etagged(&h, workspace_status(q).await).await }))
         .route("/workspace/git/history", get(git_history))
         .route("/workspace/git/discard", post(git_discard))
         .route("/workspace/git/commit-diff", get(commit_diff))
@@ -130,19 +143,27 @@ fn git_stdout(cwd: &Path, args: &[&str]) -> Option<String> {
     out.status.success().then(|| String::from_utf8_lossy(&out.stdout).to_string())
 }
 
-fn git_listed_paths(base: &Path) -> Option<Vec<String>> {
+/// Tracked + untracked paths, then gitignored ones. Ignored directories come
+/// back as `dir/` (git does not descend into them); noise directories and OS
+/// clutter are dropped here.
+///
+/// `base` may be a subdirectory of the work tree: git then lists paths
+/// relative to it and still applies every `.gitignore` above it, which the
+/// root-only fallback walk cannot (a workspace at `repo/app` would otherwise
+/// list `app/target/` because only `repo/.gitignore` names it). `None` outside
+/// a work tree, or when `base` itself is ignored (git would only report `./`).
+fn git_listed_paths(base: &Path) -> Option<(Vec<String>, Vec<String>)> {
     // Three independent git spawns (~10 ms each): run them side by side.
-    let (top, tracked, untracked) = std::thread::scope(|s| {
+    let (tracked, untracked, ignored) = std::thread::scope(|s| {
         let tracked = s.spawn(|| git_stdout(base, &["ls-files", "-z", "--cached"]));
         let untracked = s.spawn(|| git_stdout(base, &["ls-files", "-z", "--others", "--exclude-standard"]));
-        let top = git_stdout(base, &["rev-parse", "--show-toplevel"]);
-        (top, tracked.join().ok().flatten(), untracked.join().ok().flatten())
+        let ignored = git_stdout(base, &["ls-files", "-z", "--others", "--ignored", "--exclude-standard", "--directory"]);
+        (tracked.join().ok().flatten(), untracked.join().ok().flatten(), ignored)
     });
-    let top = top?;
-    if resolve(Path::new(top.trim())) != resolve(base) {
+    let (tracked, untracked, ignored) = (tracked?, untracked?, ignored?);
+    if ignored.split('\0').any(|r| r == "./") {
         return None;
     }
-    let (tracked, untracked) = (tracked?, untracked?);
     let mut paths: BTreeSet<String> = tracked.split('\0').filter(|r| !r.is_empty()).map(String::from).collect();
     for rel in untracked.split('\0').filter(|r| !r.is_empty()) {
         let parts: Vec<&str> = rel.trim_end_matches('/').split('/').collect();
@@ -150,10 +171,20 @@ fn git_listed_paths(base: &Path) -> Option<Vec<String>> {
             paths.insert(rel.to_string());
         }
     }
-    Some(paths.into_iter().collect())
+    let ignored = ignored.split('\0').filter(|r| !r.is_empty() && !is_noise_path(r)).map(String::from).collect();
+    Some((paths.into_iter().collect(), ignored))
 }
 
-fn file_info(entry: &Path, root: &Path, root_resolved: &Path, meta: std::fs::Metadata) -> Option<Value> {
+/// A path inside a noise directory (`node_modules`, `.venv`, …), or an
+/// ignored file that is never listed (see [`is_unlisted_ignored_name`]).
+fn is_noise_path(rel: &str) -> bool {
+    let mut parts = rel.trim_end_matches('/').split('/');
+    let name = parts.next_back().unwrap_or_default();
+    let is_dir = rel.ends_with('/');
+    parts.any(|p| NOISE_DIR_NAMES.contains(&p)) || (if is_dir { NOISE_DIR_NAMES.contains(&name) } else { is_unlisted_ignored_name(name) })
+}
+
+fn file_info(entry: &Path, root: &Path, root_resolved: &Path, meta: std::fs::Metadata, ignored: bool) -> Option<Value> {
     let meta = if meta.file_type().is_symlink() {
         let r = resolve(entry);
         if !r.starts_with(root_resolved) || !r.is_file() {
@@ -167,36 +198,127 @@ fn file_info(entry: &Path, root: &Path, root_resolved: &Path, meta: std::fs::Met
     };
     let rel = entry.strip_prefix(root).ok()?.to_string_lossy().replace('\\', "/");
     let mtime = meta.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_secs() as f64 + d.subsec_nanos() as f64 * 1e-9).unwrap_or(0.0);
-    Some(json!({"path": rel, "name": name_of(entry), "size": meta.len(), "mtime": mtime, "mime": guess_mime(entry)}))
+    let mut info = json!({"path": rel, "name": name_of(entry), "size": meta.len(), "mtime": mtime, "mime": guess_mime(entry)});
+    if ignored {
+        info["ignored"] = Value::Bool(true);
+    }
+    Some(info)
 }
 
-fn collect_files(root: &Path, base: &Path, out: &mut Vec<Value>) -> bool {
+/// The listing being built: visible files in walk order, then gitignored ones
+/// (flagged `ignored`) once every visible file has a place under the cap.
+/// Ignored entries (files and `dir/`s) are only collected during the walk and
+/// expanded in [`Listing::finish`], in parallel and only if there is room.
+#[derive(Default)]
+struct Listing {
+    files: Vec<Value>,
+    ignored: Vec<PathBuf>,
+    truncated: bool,
+}
+
+impl Listing {
+    fn full(&self) -> bool {
+        self.files.len() >= MAX_FILES_LISTED
+    }
+
+    fn finish(mut self, root: &Path) -> (Vec<Value>, bool) {
+        use rayon::prelude::*;
+        let room = MAX_FILES_LISTED.saturating_sub(self.files.len());
+        if room == 0 {
+            self.truncated |= !self.ignored.is_empty();
+            return (self.files, self.truncated);
+        }
+        let rr = resolve(root);
+        // An ignored file, or every file of an ignored directory unless it is
+        // too big to be anything but build output.
+        let found: Vec<Vec<Value>> = self
+            .ignored
+            .par_iter()
+            .map(|entry| match std::fs::symlink_metadata(entry) {
+                Ok(meta) if meta.is_dir() => walk_ignored_dir(root, &rr, entry).unwrap_or_default(),
+                Ok(meta) => file_info(entry, root, &rr, meta, true).into_iter().collect(),
+                Err(_) => vec![],
+            })
+            .collect();
+        let mut seen = HashSet::new();
+        for info in found.into_iter().flatten() {
+            if !seen.insert(info["path"].as_str().unwrap_or_default().to_string()) {
+                continue;
+            }
+            if self.files.len() >= MAX_FILES_LISTED {
+                self.truncated = true;
+                break;
+            }
+            self.files.push(info);
+        }
+        (self.files, self.truncated)
+    }
+}
+
+/// Every file under the gitignored directory `dir`, skipping noise
+/// directories and OS clutter. `None` once it holds more than
+/// [`MAX_IGNORED_DIR_FILES`]: names are counted with `readdir` alone, so an
+/// oversized `target/` is rejected before a single file is stat'ed.
+/// Symlinked directories are not followed.
+fn walk_ignored_dir(root: &Path, rr: &Path, dir: &Path) -> Option<Vec<Value>> {
+    let mut paths = vec![];
+    let mut stack = vec![dir.to_path_buf()];
+    while let Some(current) = stack.pop() {
+        let Ok(rd) = std::fs::read_dir(&current) else { continue };
+        let (mut dirs, mut files) = (vec![], vec![]);
+        for e in rd.flatten() {
+            let n = e.file_name().to_string_lossy().to_string();
+            match e.file_type() {
+                Ok(t) if t.is_dir() => {
+                    if !NOISE_DIR_NAMES.contains(&n.as_str()) {
+                        dirs.push(n);
+                    }
+                }
+                Ok(_) if !is_unlisted_ignored_name(&n) => files.push(n),
+                _ => {}
+            }
+        }
+        if paths.len() + files.len() > MAX_IGNORED_DIR_FILES {
+            return None;
+        }
+        files.sort();
+        dirs.sort();
+        paths.extend(files.iter().map(|f| current.join(f)));
+        stack.extend(dirs.into_iter().rev().map(|d| current.join(d)));
+    }
+    Some(paths.into_iter().filter_map(|p| file_info(&p, root, rr, std::fs::symlink_metadata(&p).ok()?, true)).collect())
+}
+
+/// Fills `out`; returns once the visible files reach the cap.
+fn collect_files(root: &Path, base: &Path, out: &mut Listing) {
     match git_listed_paths(base) {
         None => walk_files(root, base, out),
-        Some(listed) => {
+        Some((listed, ignored)) => {
             let rr = resolve(root);
             for rel in listed {
-                if out.len() >= MAX_FILES_LISTED {
-                    return true;
+                if out.full() {
+                    out.truncated = true;
+                    return;
                 }
                 let entry = base.join(rel.trim_end_matches('/'));
                 let Ok(meta) = std::fs::symlink_metadata(&entry) else { continue };
                 if meta.is_dir() {
-                    if collect_files(root, &entry, out) {
-                        return true;
+                    collect_files(root, &entry, out);
+                    if out.truncated {
+                        return;
                     }
                     continue;
                 }
-                if let Some(info) = file_info(&entry, root, &rr, meta) {
-                    out.push(info);
+                if let Some(info) = file_info(&entry, root, &rr, meta, false) {
+                    out.files.push(info);
                 }
             }
-            false
+            out.ignored.extend(ignored.iter().map(|rel| base.join(rel.trim_end_matches('/'))));
         }
     }
 }
 
-fn walk_files(root: &Path, base: &Path, out: &mut Vec<Value>) -> bool {
+fn walk_files(root: &Path, base: &Path, out: &mut Listing) {
     let rr = resolve(root);
     let gi = load_gitignore(base);
     let rel_of = |p: &Path| p.strip_prefix(base).map(|r| r.to_string_lossy().replace('\\', "/")).unwrap_or_default();
@@ -218,36 +340,42 @@ fn walk_files(root: &Path, base: &Path, out: &mut Vec<Value>) -> bool {
                 files.push(n);
             }
         }
-        dirs.retain(|d| !NOISE_DIR_NAMES.contains(&d.as_str()) && !is_gitignored(&gi, &rel_of(&current.join(d)), true));
+        dirs.retain(|d| !NOISE_DIR_NAMES.contains(&d.as_str()));
+        let (ignored_dirs, visible_dirs): (Vec<String>, Vec<String>) = dirs.into_iter().partition(|d| is_gitignored(&gi, &rel_of(&current.join(d)), true));
+        let mut dirs = visible_dirs;
         dirs.sort();
         files.sort();
         for f in files {
-            if out.len() >= MAX_FILES_LISTED {
-                return true;
+            if out.full() {
+                out.truncated = true;
+                return;
             }
             let entry = current.join(&f);
             if is_gitignored(&gi, &rel_of(&entry), false) {
+                if !is_unlisted_ignored_name(&f) {
+                    out.ignored.push(entry);
+                }
                 continue;
             }
             let Ok(meta) = std::fs::symlink_metadata(&entry) else { continue };
-            if let Some(info) = file_info(&entry, root, &rr, meta) {
-                out.push(info);
+            if let Some(info) = file_info(&entry, root, &rr, meta, false) {
+                out.files.push(info);
             }
         }
+        out.ignored.extend(ignored_dirs.into_iter().map(|d| current.join(d)));
         for d in dirs.into_iter().rev() {
             stack.push(current.join(d));
         }
     }
-    false
 }
 
 fn list_files(root: &Path) -> (Vec<Value>, bool) {
     if !root.is_dir() {
         return (vec![], false);
     }
-    let mut out = vec![];
-    let t = collect_files(root, root, &mut out);
-    (out, t)
+    let mut out = Listing::default();
+    collect_files(root, root, &mut out);
+    out.finish(root)
 }
 
 async fn list_session_files(State(st): State<AppState>, AxPath(sid): AxPath<String>) -> ApiResult<Response> {
@@ -1021,9 +1149,111 @@ mod tests {
         std::fs::write(d.path().join("b.txt"), "b").unwrap();
         std::fs::write(d.path().join("skip.log"), "l").unwrap();
         std::fs::write(d.path().join("node_modules/x/i.js"), "i").unwrap();
-        assert_eq!(listed(d.path()), [".gitignore", "a.txt", "b.txt", "src/deep/t.rs"]);
-        // A subdirectory is not the repo top level: walked, not git-listed.
+        // Gitignored files come last; untracked noise directories never.
+        assert_eq!(listed(d.path()), [".gitignore", "a.txt", "b.txt", "src/deep/t.rs", "skip.log"]);
+        // A subdirectory is git-listed too, so the root's ignore rules apply.
         std::fs::write(d.path().join("src/u.rs"), "u").unwrap();
-        assert_eq!(listed(&d.path().join("src")), ["u.rs", "deep/t.rs"]);
+        assert_eq!(listed(&d.path().join("src")), ["deep/t.rs", "u.rs"]);
+    }
+
+    #[test]
+    fn a_subdirectory_workspace_honours_the_repo_root_gitignore() {
+        let d = repo_on_main();
+        std::fs::write(d.path().join(".gitignore"), "app/target/\nout/\n").unwrap();
+        for f in ["app/src/m.rs", "app/target/debug/a.o", "out/clip.mp4"] {
+            let p = d.path().join(f);
+            std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+            std::fs::write(p, "x").unwrap();
+        }
+        for i in 0..=MAX_IGNORED_DIR_FILES {
+            std::fs::write(d.path().join(format!("app/target/debug/{i}.o")), "o").unwrap();
+        }
+        // Only the root `.gitignore` names `app/target/`: the old root-only
+        // walk of `app/` listed every build artefact as a visible file.
+        assert_eq!(listed(&d.path().join("app")), ["src/m.rs"]);
+        // A workspace that is itself ignored is walked as before.
+        assert_eq!(listed(&d.path().join("out")), ["clip.mp4"]);
+    }
+
+    /// Paths flagged `ignored` in a listing.
+    fn ignored_of(root: &Path) -> Vec<String> {
+        list_files(root).0.iter().filter(|f| f["ignored"] == true).map(|f| f["path"].as_str().unwrap().to_string()).collect()
+    }
+
+    /// Ignored media, a nested noise dir, OS clutter and an oversized build dir.
+    fn ignored_tree(root: &Path) {
+        std::fs::write(root.join(".gitignore"), "out/\nbuild/\n*.log\n.DS_Store\nnode_modules/\n.env\n").unwrap();
+        for f in [
+            "out/clip.mp4",
+            "out/nested/frame.png",
+            "out/node_modules/p.js",
+            "out/.DS_Store",
+            "web/node_modules/q.js",
+            "debug.log",
+            ".DS_Store",
+            "keep.txt",
+            ".env",
+            "out/.env.local",
+        ] {
+            let p = root.join(f);
+            std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+            std::fs::write(p, "x").unwrap();
+        }
+        std::fs::create_dir_all(root.join("build")).unwrap();
+        for i in 0..=MAX_IGNORED_DIR_FILES {
+            std::fs::write(root.join(format!("build/{i}.o")), "o").unwrap();
+        }
+    }
+
+    #[test]
+    fn list_files_appends_gitignored_files_after_visible_ones() {
+        let d = repo_on_main();
+        ignored_tree(d.path());
+        let all = listed(d.path());
+        assert_eq!(all, [".gitignore", "a.txt", "keep.txt", "debug.log", "out/clip.mp4", "out/nested/frame.png"]);
+        assert_eq!(ignored_of(d.path()), ["debug.log", "out/clip.mp4", "out/nested/frame.png"]);
+    }
+
+    #[test]
+    fn walked_listing_appends_gitignored_files_after_visible_ones() {
+        let d = tempfile::tempdir().unwrap();
+        ignored_tree(d.path());
+        assert_eq!(listed(d.path()), [".gitignore", "keep.txt", "debug.log", "out/clip.mp4", "out/nested/frame.png"]);
+        assert_eq!(ignored_of(d.path()), ["debug.log", "out/clip.mp4", "out/nested/frame.png"]);
+    }
+
+    #[test]
+    fn ignored_files_never_displace_visible_ones() {
+        let d = tempfile::tempdir().unwrap();
+        for f in ["i1", "i2"] {
+            std::fs::write(d.path().join(f), "x").unwrap();
+        }
+        let mut l = Listing { files: (0..MAX_FILES_LISTED - 1).map(|i| json!({"path": format!("v{i}")})).collect(), ..Default::default() };
+        l.ignored = vec![d.path().join("i1"), d.path().join("i1"), d.path().join("i2")];
+        let (files, truncated) = l.finish(d.path());
+        assert_eq!(files.len(), MAX_FILES_LISTED);
+        assert_eq!(files.last().unwrap()["path"], "i1");
+        assert_eq!(files.last().unwrap()["ignored"], true);
+        assert!(truncated);
+        // With the visible files at the cap, ignored entries are not expanded.
+        let full = Listing { files: (0..MAX_FILES_LISTED).map(|i| json!({"path": format!("v{i}")})).collect(), ignored: vec![d.path().join("i1")], truncated: true };
+        assert_eq!(full.finish(d.path()).0.len(), MAX_FILES_LISTED);
+    }
+
+    #[tokio::test]
+    async fn listing_answers_304_while_unchanged() {
+        let d = repo_on_main();
+        let first = with_etag(&HeaderMap::new(), list_workspace_files(ws_query(d.path(), "")).await.unwrap()).await;
+        assert_eq!(first.status(), 200);
+        let tag = first.headers()[axum::http::header::ETAG].clone();
+        let mut h = HeaderMap::new();
+        h.insert(axum::http::header::IF_NONE_MATCH, tag.clone());
+        let again = with_etag(&h, list_workspace_files(ws_query(d.path(), "")).await.unwrap()).await;
+        assert_eq!(again.status(), 304);
+        assert!(axum::body::to_bytes(again.into_body(), usize::MAX).await.unwrap().is_empty());
+        std::fs::write(d.path().join("new.txt"), "n").unwrap();
+        let changed = with_etag(&h, list_workspace_files(ws_query(d.path(), "")).await.unwrap()).await;
+        assert_eq!(changed.status(), 200);
+        assert_ne!(changed.headers()[axum::http::header::ETAG], tag);
     }
 }

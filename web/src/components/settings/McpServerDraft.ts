@@ -19,6 +19,8 @@ export interface McpServerDraft {
   name: string
   transport: 'stdio' | 'http'
   enabled: boolean
+  /** Tool-call timeout in seconds as typed; empty = server default. */
+  timeoutText: string
   // stdio
   command: string
   argsText: string
@@ -39,6 +41,7 @@ export function emptyDraft(): McpServerDraft {
     name: '',
     transport: 'stdio',
     enabled: true,
+    timeoutText: '',
     command: '',
     argsText: '',
     envPairs: [],
@@ -57,6 +60,7 @@ export function draftFromServerBody(name: string, body: ServerBody): McpServerDr
       name,
       transport: 'stdio',
       enabled: body.enabled,
+      timeoutText: body.timeout != null ? String(body.timeout) : '',
       command: body.command,
       argsText: body.args.join('\n'),
       envPairs: Object.entries(body.env).map(([key, value]) => ({ key, value })),
@@ -71,6 +75,7 @@ export function draftFromServerBody(name: string, body: ServerBody): McpServerDr
     name,
     transport: 'http',
     enabled: body.enabled,
+    timeoutText: body.timeout != null ? String(body.timeout) : '',
     command: '',
     argsText: '',
     envPairs: [],
@@ -106,6 +111,7 @@ export function draftToServerBody(
           .filter(Boolean),
         env: pairsToRecord(draft.envPairs),
         enabled: draft.enabled,
+        ...timeoutField(draft),
       },
     }
   }
@@ -125,8 +131,17 @@ export function draftToServerBody(
           }
         : null,
       enabled: draft.enabled,
+      ...timeoutField(draft),
     },
   }
+}
+
+/** Largest tool-call timeout the backend accepts, in seconds. */
+export const MAX_MCP_TIMEOUT_S = 270
+
+function timeoutField(draft: McpServerDraft): { timeout?: number } {
+  const t = draft.timeoutText.trim()
+  return t ? { timeout: Number(t) } : {}
 }
 
 function pairsToRecord(pairs: KeyValuePair[]): Record<string, string> {
@@ -160,6 +175,11 @@ export function validateDraft(
     errors.url = 'URL is required.'
   }
 
+  const t = draft.timeoutText.trim()
+  if (t && (!/^\d+$/.test(t) || Number(t) < 1 || Number(t) > MAX_MCP_TIMEOUT_S)) {
+    errors.timeout = `Timeout must be a whole number of seconds from 1 to ${MAX_MCP_TIMEOUT_S}.`
+  }
+
   // Reject duplicate keys — they would be silently collapsed by
   // Object.fromEntries during serialisation.
   const dupEnv = findDuplicateKey(draft.envPairs)
@@ -183,7 +203,7 @@ function findDuplicateKey(pairs: KeyValuePair[]): string | null {
 
 /** Structural draft equality — the route uses this to compute `dirty`. */
 export function draftEquals(a: McpServerDraft, b: McpServerDraft): boolean {
-  if (a.name !== b.name || a.transport !== b.transport || a.enabled !== b.enabled) {
+  if (a.name !== b.name || a.transport !== b.transport || a.enabled !== b.enabled || a.timeoutText !== b.timeoutText) {
     return false
   }
   if (a.transport === 'stdio') {

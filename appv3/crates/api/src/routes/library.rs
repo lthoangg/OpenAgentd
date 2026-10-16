@@ -89,24 +89,19 @@ fn workspace_path(ws: Option<&str>) -> ApiResult<Option<PathBuf>> {
     }
 }
 
-fn library_roots(kind: &str, workspace: Option<&Path>, opencode: bool) -> Vec<(PathBuf, &'static str)> {
+/// Command/snippet roots in precedence order. `.agents/` is the only project
+/// folder read; `.openagentd/` and OpenCode folders are not.
+fn library_roots(kind: &str, workspace: Option<&Path>) -> Vec<(PathBuf, &'static str)> {
     let h = home();
     let cfg = &settings().config_dir;
     let mut roots = vec![];
     if let Some(ws) = workspace {
         if !settings().is_chat_workspace(Some(ws)) {
-            roots.push((ws.join(".openagentd").join(kind), "project-openagentd"));
             roots.push((ws.join(".agents").join(kind), "project-agents"));
-            if opencode {
-                roots.push((ws.join(".opencode").join(kind), "project-opencode"));
-            }
         }
     }
     roots.push((cfg.join(kind), "global-openagentd"));
     roots.push((h.join(".agents").join(kind), "global-agents"));
-    if opencode {
-        roots.push((h.join(".config/opencode").join(kind), "global-opencode"));
-    }
     roots
 }
 
@@ -117,9 +112,9 @@ pub struct MdItem {
     pub source: String,
 }
 
-fn discover(kind: &str, workspace: Option<&Path>, opencode: bool) -> Result<Vec<MdItem>, ApiError> {
+fn discover(kind: &str, workspace: Option<&Path>) -> Result<Vec<MdItem>, ApiError> {
     let mut out: Vec<MdItem> = vec![];
-    for (root, source) in library_roots(kind, workspace, opencode) {
+    for (root, source) in library_roots(kind, workspace) {
         for (path, name) in iter_md(&root) {
             if out.iter().any(|i| i.name == name) {
                 continue;
@@ -144,7 +139,7 @@ fn summaries(mut items: Vec<MdItem>) -> Vec<Value> {
 
 async fn list_commands(q: Qs) -> ApiResult<Response> {
     let ws = workspace_path(q.get("workspace"))?;
-    let items = blocking(move || discover("commands", ws.as_deref(), true)).await?;
+    let items = blocking(move || discover("commands", ws.as_deref())).await?;
     Ok(json(json!({"commands": summaries(items)})))
 }
 
@@ -248,7 +243,7 @@ async fn render_command_route(AxPath(rest): AxPath<String>, q: Qs, body: Bytes) 
     let ws = workspace_path(q.get("workspace"))?;
     let found = {
         let (ws, name) = (ws.clone(), name.clone());
-        blocking(move || discover("commands", ws.as_deref(), true).map(|v| v.into_iter().find(|c| c.name == name))).await?
+        blocking(move || discover("commands", ws.as_deref()).map(|v| v.into_iter().find(|c| c.name == name))).await?
     };
     let (cmd_body, builtin) = match found {
         Some(c) => (c.body, false),
@@ -273,7 +268,7 @@ fn snippet_ws(ws: Option<&str>) -> ApiResult<PathBuf> {
 
 async fn list_snippets(q: Qs) -> ApiResult<Response> {
     let ws = snippet_ws(q.get("workspace"))?;
-    let items = blocking(move || discover("snippets", Some(&ws), false)).await?;
+    let items = blocking(move || discover("snippets", Some(&ws))).await?;
     Ok(json(json!({"snippets": summaries(items)})))
 }
 
@@ -281,7 +276,7 @@ async fn render_snippet_route(AxPath(rest): AxPath<String>, q: Qs) -> ApiResult<
     let Some(name) = strip_render(&rest).map(String::from) else { return Err(ApiError::not_found("Not Found")) };
     let ws = snippet_ws(q.get("workspace"))?;
     let n2 = name.clone();
-    let found = blocking(move || discover("snippets", Some(&ws), false).map(|v| v.into_iter().find(|s| s.name == n2))).await?;
+    let found = blocking(move || discover("snippets", Some(&ws)).map(|v| v.into_iter().find(|s| s.name == n2))).await?;
     match found {
         Some(s) => Ok(json(json!({"name": s.name, "content": s.body}))),
         None => Err(ApiError::not_found(format!("Snippet '{name}' not found."))),
@@ -315,18 +310,15 @@ fn rel_to(path: &Path, root: &Path) -> bool {
 }
 
 /// Resolved `(root, label)` pairs checked by `_skill_source`, in order.
-/// Resolved once per request so listing N skills costs N+8 realpaths, not 16N.
+/// Resolved once per request so listing N skills costs N+5 realpaths, not 10N.
 fn source_roots() -> Vec<(PathBuf, &'static str)> {
     let s = settings();
     let pr = default_project_root();
     let h = home();
     [
-        (pr.join(".openagentd/skills"), "project-openagentd"),
         (pr.join(".agents/skills"), "project-agents"),
-        (pr.join(".opencode/skills"), "project-opencode"),
         (s.skills_dir.clone(), "global-openagentd"),
         (h.join(".agents/skills"), "global-agents"),
-        (h.join(".config/opencode/skills"), "global-opencode"),
         (skills::builtin_skills_dir(), "builtin"),
         (s.config_dir.clone(), "global-openagentd"),
     ]
@@ -339,8 +331,9 @@ fn source_roots() -> Vec<(PathBuf, &'static str)> {
 fn classify(path: &Path, roots: &[(PathBuf, &'static str)]) -> (&'static str, bool) {
     let rp = resolve(path);
     let source = roots.iter().find(|(r, _)| rp.starts_with(r)).map(|(_, l)| *l).unwrap_or("unknown");
-    // `editable` = not under the builtin root (index 6).
-    (source, !rp.starts_with(&roots[6].0))
+    // `editable` = not under the builtin root.
+    let builtin = roots.iter().any(|(r, l)| *l == "builtin" && rp.starts_with(r));
+    (source, !builtin)
 }
 
 fn skill_source(path: &Path) -> &'static str {
@@ -534,12 +527,9 @@ async fn delete_skill(AxPath(name): AxPath<String>) -> ApiResult<Response> {
         let source = skill_source(&parent);
         let pr = default_project_root();
         let root = match source {
-            "project-openagentd" => Some(pr.join(".openagentd/skills")),
             "project-agents" => Some(pr.join(".agents/skills")),
-            "project-opencode" => Some(pr.join(".opencode/skills")),
             "global-openagentd" => Some(settings().skills_dir.clone()),
             "global-agents" => Some(home().join(".agents/skills")),
-            "global-opencode" => Some(home().join(".config/opencode/skills")),
             _ => None,
         };
         if let (Some(root), Some(g)) = (root, grand) {
@@ -549,4 +539,30 @@ async fn delete_skill(AxPath(name): AxPath<String>) -> ApiResult<Response> {
         }
     }
     Ok(json(json!({"name": name})))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn library_roots_only_agents_and_config() {
+        let d = tempfile::tempdir().unwrap();
+        for kind in ["commands", "snippets"] {
+            let roots = library_roots(kind, Some(d.path()));
+            let labels: Vec<&str> = roots.iter().map(|(_, l)| *l).collect();
+            assert_eq!(labels, ["project-agents", "global-openagentd", "global-agents"], "{kind}");
+            assert_eq!(roots[0].0, d.path().join(".agents").join(kind));
+            assert!(roots.iter().all(|(p, _)| !p.to_string_lossy().contains("opencode") && !p.ends_with(Path::new(".openagentd").join(kind))), "{roots:?}");
+        }
+    }
+
+    #[test]
+    fn classify_finds_builtin_by_label() {
+        let roots = source_roots();
+        let builtin = skills::builtin_skills_dir().join("self-healing/SKILL.md");
+        assert_eq!(classify(&builtin, &roots), ("builtin", false));
+        let global = settings().skills_dir.join("mine/SKILL.md");
+        assert_eq!(classify(&global, &roots), ("global-openagentd", true));
+    }
 }

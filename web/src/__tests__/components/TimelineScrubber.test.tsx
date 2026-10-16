@@ -6,7 +6,7 @@ import { TimelineScrubber } from '@/components/AgentView/TimelineScrubber'
 
 // happy-dom has no layout: the scroller is 250px tall over 1000px of content,
 // the rail 500px tall, and each marked element sits at a fixed content offset.
-const TOPS: Record<string, number> = { p1: 0, p2: 300, t1: 400, t2: 600, question: 900 }
+const TOPS: Record<string, number> = { p1: 0, p2: 300, question: 900 }
 let scrollHeight = 1000
 let thumbBox = { top: 250, height: 125 }
 
@@ -26,7 +26,7 @@ beforeEach(() => {
   HTMLElement.prototype.getBoundingClientRect = function (this: HTMLElement) {
     if (this.hasAttribute('data-transcript-scrubber')) return box(0, 500)
     if (this.hasAttribute('data-scrubber-thumb')) return box(thumbBox.top, thumbBox.height)
-    const key = this.dataset.promptId ?? this.dataset.findBlock ?? (this.hasAttribute('data-question-waiting') ? 'question' : undefined)
+    const key = this.dataset.promptId ?? (this.hasAttribute('data-question-waiting') ? 'question' : undefined)
     const scroller = this.closest<HTMLElement>('[data-testid="scroller"]')
     const offset = key === undefined ? 0 : TOPS[key]
     return box(offset - (scroller?.scrollTop ?? 0), 10)
@@ -48,9 +48,7 @@ afterEach(() => {
   if (original.clientHeight) Object.defineProperty(HTMLElement.prototype, 'clientHeight', original.clientHeight)
 })
 
-function Harness({ findBlockIds = [], activeFindBlockId = null, question = false, scrollTop = 0 }: {
-  findBlockIds?: string[]
-  activeFindBlockId?: string | null
+function Harness({ question = false, scrollTop = 0 }: {
   question?: boolean
   scrollTop?: number
 }) {
@@ -68,17 +66,10 @@ function Harness({ findBlockIds = [], activeFindBlockId = null, question = false
         <div ref={contentRef}>
           <div data-prompt-id="p1" />
           <div data-prompt-id="p2" />
-          <div data-find-block="t1" />
-          <div data-find-block="t2" />
           {question && <div data-question-waiting="" />}
         </div>
       </div>
-      <TimelineScrubber
-        scrollRef={scrollRef}
-        contentRef={contentRef}
-        findBlockIds={findBlockIds}
-        activeFindBlockId={activeFindBlockId}
-      />
+      <TimelineScrubber scrollRef={scrollRef} contentRef={contentRef} />
     </div>
   )
 }
@@ -116,14 +107,12 @@ describe('TimelineScrubber', () => {
     expect(thumb.className).not.toContain('inset-x-')
   })
 
-  it('marks prompts, find matches, the active match and a waiting question where they sit', () => {
-    const { container } = render(<Harness findBlockIds={['t1', 't2']} activeFindBlockId="t2" question />)
+  it('marks prompts and a waiting question where they sit', () => {
+    const { container } = render(<Harness question />)
 
     expect(marks(container)).toEqual([
       'prompt@calc(min(0%, 100% - 0.25rem))',
       'prompt@calc(min(30%, 100% - 0.25rem))',
-      'find@calc(min(40%, 100% - 0.25rem))',
-      'find-active@calc(min(60%, 100% - 0.25rem))',
       'question@calc(min(90%, 100% - 0.25rem))',
     ])
   })

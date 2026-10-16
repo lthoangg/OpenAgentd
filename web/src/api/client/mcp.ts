@@ -11,6 +11,8 @@ export type StdioServerBody = {
   args: string[]
   env: Record<string, string>
   enabled: boolean
+  /** Tool-call deadline in seconds (1–270); omitted = server default (210 s). */
+  timeout?: number | null
 }
 
 export type HttpServerBody = {
@@ -22,6 +24,8 @@ export type HttpServerBody = {
     client_secret?: string | null
   } | null
   enabled: boolean
+  /** Tool-call deadline in seconds (1–270); omitted = server default (210 s). */
+  timeout?: number | null
 }
 
 export type ServerBody = StdioServerBody | HttpServerBody

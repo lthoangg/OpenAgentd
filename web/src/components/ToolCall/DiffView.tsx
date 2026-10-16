@@ -16,8 +16,15 @@ interface SingleFileDiffProps {
   onCollapse?: () => void
 }
 
+/**
+ * Rows an inline diff renders before "Show N more lines". The box already
+ * scrolls, but a 5,000-line write still built 5,000 rows in the transcript.
+ */
+export const INLINE_DIFF_LINE_CAP = 400
+
 /** One file diff's numbered lines, or what the edit did when it has none. */
 export function FileDiffBody({ kind, moveTo, lines, oldStart = 1, newStart = 1 }: Omit<SingleFileDiffProps, 'path' | 'onCollapse'>) {
+  const [showAll, setShowAll] = useState(false)
   const linesWithNumbers = useMemo(() => {
     let oldLineNum = oldStart
     let newLineNum = newStart
@@ -68,9 +75,12 @@ export function FileDiffBody({ kind, moveTo, lines, oldStart = 1, newStart = 1 }
     )
   }
 
+  const shown = showAll ? linesWithNumbers : linesWithNumbers.slice(0, INLINE_DIFF_LINE_CAP)
+  const hidden = linesWithNumbers.length - shown.length
+
   return (
     <div className="min-w-0">
-      {linesWithNumbers.map((line, idx) => {
+      {shown.map((line, idx) => {
         const isAdded = line.type === 'added'
         const isRemoved = line.type === 'removed'
 
@@ -97,6 +107,15 @@ export function FileDiffBody({ kind, moveTo, lines, oldStart = 1, newStart = 1 }
           </div>
         )
       })}
+      {hidden > 0 && (
+        <button
+          type="button"
+          onClick={() => setShowAll(true)}
+          className="w-full border-t border-(--color-border) bg-(--bg-key) px-3 py-1.5 text-left font-mono text-xs text-(--color-text-muted) transition-colors hover:text-(--color-text) focus-visible:outline-2 focus-visible:outline-(--focus-ring)/40"
+        >
+          Show {hidden.toLocaleString()} more {hidden === 1 ? 'line' : 'lines'}
+        </button>
+      )}
     </div>
   )
 }

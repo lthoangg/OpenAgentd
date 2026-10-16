@@ -18,10 +18,10 @@ The skill directory is given when this skill loads; read what applies:
 
 | Surface | Reference |
 |---|---|
-| API, persistence, SSE, agent loop, tools, providers (`appv3/`) | `reference/backend.md` |
-| Web UI (`web/`) | `reference/frontend.md` |
-| Desktop or mobile shell, sidecar, IPC, CSP | `reference/tauri.md` |
-| Logs, OTEL spans, tool usage, production installs | `reference/production.md` |
+| API, persistence, SSE, agent loop, tools, providers (`appv3/`) | `references/backend.md` |
+| Web UI (`web/`) | `references/frontend.md` |
+| Desktop or mobile shell, sidecar, IPC, CSP | `references/tauri.md` |
+| Logs, OTEL spans, tool usage, production installs | `references/production.md` |
 
 ## 3. Reproduce narrowly
 

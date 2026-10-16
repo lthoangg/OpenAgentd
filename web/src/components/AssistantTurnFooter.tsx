@@ -176,9 +176,15 @@ export interface AssistantTurnProps {
    * Reader mode's work row shows how long the agent has been working.
    */
   startedAt?: number
-  /** Blocks transcript find matched; a fold holding one opens. */
-  findHitBlockIds?: ReadonlySet<string>
 }
+
+/**
+ * Steps a turn renders before "Show N earlier steps". Whole turns are
+ * windowed by the transcript; this bounds a single turn with hundreds of tool
+ * calls, which otherwise rendered every one. The window stays anchored to the
+ * newest steps while the turn streams.
+ */
+export const TURN_BLOCK_WINDOW = 100
 
 export const AssistantTurn = memo(function AssistantTurn({
   blocks,
@@ -192,7 +198,6 @@ export const AssistantTurn = memo(function AssistantTurn({
   size = 'compact',
   reader = false,
   startedAt,
-  findHitBlockIds,
 }: AssistantTurnProps) {
   // The footer reports on a *finished* turn, so it waits for the turn to close
   // rather than merely for the stream to stop.
@@ -209,6 +214,9 @@ export const AssistantTurn = memo(function AssistantTurn({
     for (let i = blocks.length - 1; i >= 0; i--) if (blocks[i].type === 'compaction') return i
     return -1
   }, [reader, blocks])
+  // Extra windows the user revealed; the hidden count follows new steps.
+  const [revealed, setRevealed] = useState(0)
+  const hiddenBefore = Math.max(0, blocks.length - TURN_BLOCK_WINDOW * (1 + revealed))
 
   const renderAt = (j: number) => {
     const block = blocks[j]
@@ -236,9 +244,21 @@ export const AssistantTurn = memo(function AssistantTurn({
 
   return (
     <div className="space-y-2">
+      {hiddenBefore > 0 && (
+        <button
+          type="button"
+          onClick={() => setRevealed((r) => r + 1)}
+          className="w-full rounded-sm border border-(--color-border) px-3 py-1.5 text-left text-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-card) hover:text-(--color-text) focus-visible:outline-2 focus-visible:outline-(--focus-ring)/40"
+        >
+          Show {formatInt(hiddenBefore)} earlier {hiddenBefore === 1 ? 'step' : 'steps'}
+        </button>
+      )}
       {segments
         ? segments.map((segment) => {
-            if (segment.kind === 'block') return renderAt(segment.index)
+            if (segment.kind === 'block') return segment.index < hiddenBefore ? null : renderAt(segment.index)
+            const shownIndices = segment.indices.filter((j) => j >= hiddenBefore)
+            if (shownIndices.length === 0) return null
+            // The summary still counts the fold's hidden steps.
             const work = segment.indices.map((j) => blocks[j])
             const lastIndex = segment.indices[segment.indices.length - 1]
             const live = turnIsWorking && segment.indices[0] > lastCompaction
@@ -250,13 +270,12 @@ export const AssistantTurn = memo(function AssistantTurn({
                 live={live}
                 startedAt={startedAt}
                 currentStep={live && lastIndex === blocks.length - 1 ? blocks[lastIndex] : null}
-                forceOpen={work.some((block) => findHitBlockIds?.has(block.id) ?? false)}
               >
-                {segment.indices.map(renderAt)}
+                {shownIndices.map(renderAt)}
               </WorkSummaryRow>
             )
           })
-        : blocks.map((_, j) => renderAt(j))}
+        : blocks.map((_, j) => (j < hiddenBefore ? null : renderAt(j)))}
       {changedFiles.length > 0 && <TurnChangedFiles files={changedFiles} />}
       {!turnIsOpen && <AssistantTurnFooter turnBlocks={blocks} size={size} />}
     </div>

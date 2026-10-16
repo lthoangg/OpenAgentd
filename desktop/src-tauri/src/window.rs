@@ -490,11 +490,11 @@ mod tests {
 
     #[test]
     fn frontend_commands_carry_a_fresh_id() {
-        let first = frontend_command("find");
-        let second = frontend_command("find");
+        let first = frontend_command("terminal");
+        let second = frontend_command("terminal");
         assert!(second.id > first.id);
         let json = serde_json::to_value(&first).unwrap();
-        assert_eq!(json["command"], "find");
+        assert_eq!(json["command"], "terminal");
         assert_eq!(json["id"], first.id);
     }
 

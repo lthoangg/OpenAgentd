@@ -21,6 +21,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { X } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { TEXT_FILE_EXTENSIONS } from '@/utils/file-extensions'
 import { FileCard } from './FileCard'
 import { FileTypeIcon } from './FileTypeIcon'
 import { FileLightbox, type FileLightboxItem, type FileLightboxItemType } from './FileLightbox'
@@ -57,13 +58,6 @@ function computeMetrics(el: HTMLElement): ScrollMetrics {
 
 // ─── File-type detection ───────────────────────────────────────────────────────
 
-const TEXT_EXTENSIONS = new Set([
-  'py','go','rs','rb','java','kt','swift','c','cpp','h','hpp','cs','php',
-  'sh','bash','zsh','fish','sql','graphql','proto','tf','tfvars',
-  'ts','tsx','js','jsx','mjs','cjs','css','scss','html','xml','svg',
-  'md','mdx','txt','csv','tsv','json','yaml','yml','toml','ini','conf','env',
-])
-
 function extOf(name: string): string {
   const lower = name.toLowerCase()
   const i = lower.lastIndexOf('.')
@@ -80,7 +74,7 @@ function itemTypeOf(file: File): FileLightboxItemType {
     file.type === 'application/json' ||
     file.type === 'application/x-yaml' ||
     file.type === 'application/toml' ||
-    TEXT_EXTENSIONS.has(extOf(file.name))
+    TEXT_FILE_EXTENSIONS.has(extOf(file.name))
   ) return 'text'
   return 'file'
 }

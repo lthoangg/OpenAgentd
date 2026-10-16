@@ -53,4 +53,18 @@ describe('FilePreviewContent — long files', () => {
     const ratios = commits.map(([actual, base]) => actual / base).sort((a, b) => a - b)
     expect(ratios[Math.floor(ratios.length / 2)]).toBeLessThan(0.25)
   })
+
+  it('shows a large file as plain lines first, then highlighted', async () => {
+    // Over SYNC_HIGHLIGHT_BYTES: highlighted off the render path (the test
+    // runtime has no Worker, so the deferred main-thread fallback runs).
+    const lines = 4000
+    const text = Array.from({ length: lines }, (_, i) => `const value${i} = ${i}`).join('\n')
+    expect(text.length).toBeGreaterThan(64 * 1024)
+    globalThis.fetch = mock(async () => new Response(text)) as unknown as typeof fetch
+    const file: WorkspaceFileInfo = { path: 'src/huge.ts', name: 'huge.ts', size: text.length, mtime: 1, mime: 'text/plain' }
+    const { container } = render(<FilePreviewContent workspace="/w" file={file} />)
+    await waitFor(() => expect(container.querySelector(`[data-line="${lines}"]`)).not.toBeNull())
+    await waitFor(() => expect(container.querySelector('[data-line="1"] span[class]')).not.toBeNull())
+    expect(container.querySelectorAll('[data-line]').length).toBe(lines)
+  })
 })

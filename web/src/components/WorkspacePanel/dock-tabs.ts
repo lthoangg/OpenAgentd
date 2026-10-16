@@ -45,7 +45,8 @@ export type DockView = 'review' | 'tasks' | 'schedule' | 'plan'
  * with, which goes stale when the agent or a discard changes the file; prefer
  * the current entry for the same path, and mark the file deleted once the
  * working diff says so. A path merely missing from the listing is not treated
- * as deleted: the listing skips ignored files that can still be previewed.
+ * as deleted: the listing skips noise directories and oversized ignored ones,
+ * whose files can still be previewed.
  */
 export function resolveFileTabInfo(
   snapshot: WorkspaceFileInfo,

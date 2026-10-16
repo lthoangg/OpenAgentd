@@ -23,7 +23,7 @@ implementation, fix the root cause, then run the surface's full suite.
 | Backend `appv3/` | `cargo test --manifest-path appv3/Cargo.toml -p <crate> [name_filter]` | `make verify-v3` (fmt check, clippy `-D warnings`, all tests) |
 | Web `web/` | `cd web && bun test --parallel src/__tests__/<path>.test.tsx` | `make verify-web` (oxlint, `tsc -b` incl. tests, full suite) |
 | Shared native crate | `cd native/shell-core && cargo test <filter>` | `make verify-shell-core` |
-| Desktop shell | see `reference/native.md` | `make verify-desktop` |
+| Desktop shell | see `references/native.md` | `make verify-desktop` |
 | Mobile shell | — | `make verify-mobile` (check only) |
 | Scripts, installers, workflows | `.venv/bin/python -m pytest scripts/tests/<file> -q` | `make verify-scripts` |
 
@@ -49,7 +49,7 @@ API or SSE changes need both backend and web checks, and event types must match
   `HOME`/XDG roots; never point a test at real user data.
 - Use `#[tokio::test(start_paused = true)]` for timing, not real sleeps.
 
-**Web** — details and boilerplate in `reference/frontend.md`.
+**Web** — details and boilerplate in `references/frontend.md`.
 - Always pass `--parallel`: `mock.module()` patches Bun's global module registry,
   `mock.restore()` does not undo it, and `--parallel` gives each file its own worker.
 - Call `mock.module()` before importing the code that uses it; `afterEach(cleanup)` in component tests.

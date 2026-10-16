@@ -12,6 +12,9 @@ pub enum AgentError {
     Auth { message: String, status: Option<u16>, provider: Option<String> },
     #[error("{message}")]
     Request { message: String, status: Option<u16>, provider: Option<String> },
+    /// The model's safety classifier declined (`stop_reason: "refusal"`).
+    #[error("{message}")]
+    Refusal { message: String, provider: Option<String> },
     #[error("{0}")]
     Unconfigured(String),
     /// Plain `RuntimeError` / generic exception text.
@@ -29,6 +32,7 @@ pub fn python_exception_names(e: &AgentError) -> (&'static str, String) {
         AgentError::Connection { .. } => ("ProviderConnectionError", "app.agent.errors"),
         AgentError::Auth { .. } => ("ProviderAuthenticationError", "app.agent.errors"),
         AgentError::Request { .. } => ("ProviderRequestError", "app.agent.errors"),
+        AgentError::Refusal { .. } => ("ModelRefusalError", "app.agent.errors"),
         AgentError::Unconfigured(_) => ("UnconfiguredProviderError", "app.agent.providers.unconfigured"),
         AgentError::Other(_) => ("RuntimeError", "builtins"),
         AgentError::Cancelled => ("CancelledError", "asyncio.exceptions"),
@@ -56,6 +60,7 @@ pub fn format_agent_error(e: &AgentError, agent: Option<&str>) -> Value {
             "network",
         ),
         AgentError::Request { .. } => ("Provider Request Error".to_string(), "provider_request_failed", "provider"),
+        AgentError::Refusal { .. } => ("Model Declined to Continue".to_string(), "model_refusal", "provider"),
         AgentError::Unconfigured(_) => ("Agent Not Configured".to_string(), "agent_not_configured", "provider"),
         AgentError::Other(_) | AgentError::Cancelled => ("Agent Execution Error".to_string(), "agent_execution_failed", "system"),
     };

@@ -86,6 +86,9 @@ describe("InputComposer — pure logic helpers", () => {
     expect(accept).toContain("image/*")
     expect(accept).toContain("audio/*")
     expect(accept).toContain("video/*")
+    for (const ext of [".jsonl", ".astro", ".svelte", ".vue", ".lua", ".prisma"]) {
+      expect(accept.split(",")).toContain(ext)
+    }
   })
 
 })

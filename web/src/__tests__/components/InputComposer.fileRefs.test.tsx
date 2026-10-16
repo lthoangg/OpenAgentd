@@ -132,6 +132,18 @@ describe("rankFileRefs", () => {
     expect(out).toHaveLength(2)
   })
 
+  it("ranks a gitignored match below a comparable visible one but still finds it", () => {
+    const refs: FileRef[] = [
+      { path: "dist/clip.mp4", name: "clip.mp4", type: "file", ignored: true },
+      { path: "assets/media/clip.mp4", name: "clip.mp4", type: "file" },
+      { path: "out", name: "out", type: "directory", ignored: true },
+      { path: "web", name: "web", type: "directory" },
+    ]
+    expect(rankFileRefs(refs, "clip", 20).map((r) => r.path)).toEqual(["assets/media/clip.mp4", "dist/clip.mp4"])
+    // Ignored top-level folders are not promoted on an empty query.
+    expect(rankFileRefs(refs, "", 20)[0].path).toBe("web")
+  })
+
   it("prefers shorter paths within the same score band", () => {
     const refs: FileRef[] = [
       { path: "a/b/c/foo.ts", name: "foo.ts", type: "file" },

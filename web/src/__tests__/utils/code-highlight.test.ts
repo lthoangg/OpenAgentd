@@ -369,3 +369,12 @@ describe("tokenizeCode — php", () => {
     expect(out).toContain("comment:# hash");
   });
 });
+
+describe('plainLines', () => {
+  it('escapes markup and matches highlightLines line for line', async () => {
+    const { plainLines } = await import('@/utils/highlight-async')
+    const code = 'a <b> & "c"\n\'d\'\n'
+    expect(plainLines(code)).toEqual(['a &lt;b&gt; &amp; &quot;c&quot;', '&#39;d&#39;', ''])
+    expect(plainLines(code).length).toBe(highlightLines(code, 'typescript').length)
+  })
+})

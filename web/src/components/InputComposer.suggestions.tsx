@@ -307,7 +307,7 @@ export function InputComposerSuggestions({
               )}
               <span className="min-w-0 flex-1 truncate font-mono text-xs">
                 {parent && <span className="text-(--color-text-subtle)">{parent}</span>}
-                <span className="text-(--color-text)">{basename}</span>
+                <span className={ref.ignored ? 'text-(--color-text-muted)' : 'text-(--color-text)'}>{basename}</span>
                 {isDir && <span className="text-(--color-text-subtle)">/</span>}
               </span>
             </button>

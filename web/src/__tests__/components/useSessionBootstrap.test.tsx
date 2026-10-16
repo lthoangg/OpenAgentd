@@ -27,6 +27,7 @@ function Harness({
   inputRef,
   isMobile = true,
   onResult,
+  loadAgentStatus = mock(async () => {}),
 }: {
   loadSession: (sessionId: string, workspace?: string | null) => Promise<void>
   connectStream: () => AbortController
@@ -35,6 +36,7 @@ function Harness({
   beginResolvedSession?: UseSessionBootstrapArgs['beginResolvedSession']
   inputRef?: RefObject<InputComposerHandle | null>
   onResult?: (result: ReturnType<typeof useSessionBootstrap>) => void
+  loadAgentStatus?: UseSessionBootstrapArgs['loadAgentStatus']
 }) {
   const result = useSessionBootstrap({
     sessionId,
@@ -52,7 +54,7 @@ function Harness({
     navigate: mock(() => {}) as never,
     queryClient: new QueryClient(),
     connectStream,
-    loadAgentStatus: mock(async () => {}),
+    loadAgentStatus,
     loadSession,
     beginResolvedSession,
     consumeResolvedSessionReady: mock(() => false),
@@ -207,6 +209,22 @@ describe('useSessionBootstrap session switch', () => {
     expect(state.agentStreams.lead.currentBlocks).toHaveLength(0)
     expect(state.agentStreams.lead.currentText).toBe('')
     expect(state.agentStreams.lead.status).toBe('idle')
+  })
+
+  it('asks for the agent status of the session it switches to', async () => {
+    // The store still holds session-1 here. Sending that id with this
+    // workspace once started session-1 in the wrong workspace on the server.
+    const loadAgentStatus = mock(async () => {})
+    render(
+      <Harness
+        sessionId="session-2"
+        loadSession={mock(async () => {})}
+        connectStream={mock(() => new AbortController())}
+        beginResolvedSession={useAgentStore.getState().beginResolvedSession}
+        loadAgentStatus={loadAgentStatus}
+      />,
+    )
+    await waitFor(() => expect(loadAgentStatus).toHaveBeenCalledWith('/repo/app', undefined, 'session-2'))
   })
 })
 

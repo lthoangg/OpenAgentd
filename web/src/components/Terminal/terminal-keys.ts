@@ -4,8 +4,8 @@
  * App shortcuts listen on ``window`` and skip keys a focused widget handled.
  * xterm handles (and stops) every key it sends to the shell, but it ignores
  * ⌘ chords, so on macOS every app shortcut already works from a terminal:
- * ⌘K opens the palette and ⌘F the find bar. Clearing the scrollback is in
- * the terminal tab's menu instead.
+ * ⌘K opens the palette. Clearing the scrollback is in the terminal tab's
+ * menu instead.
  *
  * Elsewhere the app's primary modifier is Ctrl, which is also the shell's.
  * Ctrl chords stay with the shell (Ctrl+C, Ctrl+D, Ctrl+W, Ctrl+R…), except

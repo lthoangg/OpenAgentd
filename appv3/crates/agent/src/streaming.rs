@@ -453,6 +453,7 @@ pub async fn stream_and_assemble(a: StreamArgs<'_>) -> Result<(AssistantMessage,
     let mut buf: BTreeMap<i64, TcBuf> = BTreeMap::new();
     let mut last_usage: Option<Usage> = None;
     let mut finish: Option<String> = None;
+    let mut stop_details: Option<Value> = None;
     // (request issued, first output chunk) and the last output chunk.
     let mut first_output: Option<(Instant, Instant)> = None;
     let mut last_output: Option<Instant> = None;
@@ -495,6 +496,7 @@ pub async fn stream_and_assemble(a: StreamArgs<'_>) -> Result<(AssistantMessage,
                 items.clear();
                 buf.clear();
                 finish = None;
+                stop_details = None;
                 first_output = None;
                 last_output = None;
                 continue;
@@ -525,6 +527,9 @@ pub async fn stream_and_assemble(a: StreamArgs<'_>) -> Result<(AssistantMessage,
             finish = Some(f);
         }
         let d = choice.delta;
+        if let Some(sd) = d.stop_details {
+            stop_details = Some(sd);
+        }
         if let Some(r) = d.reasoning_content {
             reasoning.push_str(&r);
         }
@@ -615,6 +620,9 @@ pub async fn stream_and_assemble(a: StreamArgs<'_>) -> Result<(AssistantMessage,
     }
     if let Some(f) = &finish {
         extra.get_or_insert_with(Map::new).insert("finish_reason".into(), json!(f));
+    }
+    if let Some(sd) = stop_details {
+        extra.get_or_insert_with(Map::new).insert("stop_details".into(), sd);
     }
     if !dropped.is_empty() {
         extra.get_or_insert_with(Map::new).insert("dropped_tool_calls".into(), Value::Array(dropped));

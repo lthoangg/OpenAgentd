@@ -26,8 +26,8 @@ const PLAN: SessionPlan = {
   updated_at: '2026-01-01T00:00:00Z',
   revision: 2,
   approved_revision: null,
-  path: '/repo/project/.openagentd/plans/ship-it-0000abcd.md',
-  workspace_path: '.openagentd/plans/ship-it-0000abcd.md',
+  path: '/repo/project/.agents/plans/ship-it-0000abcd.md',
+  workspace_path: '.agents/plans/ship-it-0000abcd.md',
 }
 
 const REVIEW: PendingQuestion = {
@@ -328,7 +328,7 @@ describe('PlanTabView', () => {
     const onOpenFile = mock(() => {})
     const view = renderTab({ onOpenFile })
     fireEvent.click(screen.getByRole('button', { name: 'Open file' }))
-    expect(onOpenFile).toHaveBeenCalledWith('.openagentd/plans/ship-it-0000abcd.md')
+    expect(onOpenFile).toHaveBeenCalledWith('.agents/plans/ship-it-0000abcd.md')
     view.unmount()
 
     renderTab({ onOpenFile, plan: { ...PLAN, workspace_path: null, path: '/data/sessions/s-1/plan.md' } })

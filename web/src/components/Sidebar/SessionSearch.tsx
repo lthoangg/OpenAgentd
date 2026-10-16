@@ -17,7 +17,7 @@ export function SessionSearch({
   onClose,
 }: {
   currentSessionId?: string
-  /** Bump to move focus back into the field (⌘F while already open). */
+  /** Bump to move focus back into the field (a search request while already open). */
   focusKey: number
   workspaceName: (path: string) => string
   onSessionSelect: (session: SessionResponse, workspacePath: string, event?: React.MouseEvent) => void

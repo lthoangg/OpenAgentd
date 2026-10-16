@@ -2,7 +2,7 @@
 """Query OpenAgentd OpenTelemetry (OTEL) span telemetry.
 
 Usage:
-    python3 .openagentd/skills/oad/debug/scripts/query_otel.py [--days N]
+    python3 .agents/skills/oad/debug/scripts/query_otel.py [--days N]
 """
 
 from __future__ import annotations

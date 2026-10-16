@@ -562,6 +562,7 @@ export interface WorkspaceFileInfo {
   size: number   // Bytes
   mtime: number  // Seconds since epoch
   mime: string   // MIME type (guessed)
+  ignored?: boolean // Gitignored; listed after every visible file
   deleted?: boolean // Synthetic client-side marker for git-deleted files
 }
 

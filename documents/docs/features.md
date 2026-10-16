@@ -14,7 +14,7 @@ release that introduced it (where known). When you ship something new, **add it 
 > double-clickable app that runs an agent on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 18 providers. Your keys.
 
-**Latest release:** v3.13.0 · October 16, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.13.0)
+**Latest release:** v3.14.0 · October 16, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.14.0)
 
 ---
 
@@ -81,6 +81,12 @@ run from the terminal (the native Rust binary since v3.0.0).
   functions, options, PATH) once and reuses them, instead of sourcing
   `.zshrc`/`.bashrc` on every call (about 130 ms saved per call; rebuilt when
   an rc file changes; `OPENAGENTD_SHELL_SNAPSHOT=false` restores v2 behaviour).
+- **Plugins cannot hang the server** `[v3.14.0]` — a JS plugin that runs
+  JavaScript for more than 5 s without yielding (for example `while (true) {}`)
+  is interrupted with a `TimeoutError` and keeps working for later calls. A
+  plugin that takes over 30 s to load fails to load, synchronous plugin checks
+  give up after 10 s, and a `before`/`after` tool hook that does not finish in
+  60 s is treated like a hook that threw.
 - **Faster reopen, streaming and desktop launch** `[v3.4.0]`:
   - Reopening a long session with member agents loads 3 history pages
     instead of 11 (1.7 MB instead of 13.3 MB), and member rows are no longer
@@ -202,13 +208,13 @@ run from the terminal (the native Rust binary since v3.0.0).
   visible warning when a capped workspace listing omits files.
   A Quick Open query ending in `:line` or `:start-end` (`Button.tsx:42-58`)
   opens the pick with those lines selected `[v3.0.0]`.
-  `⌘F`/`Ctrl+F` finds user, assistant, and thinking text in the current transcript
-  and highlights each match in place;
+  `⌘F`/`Ctrl+F` transcript find *(deprecated; removed in v3.14.0, along with
+  every `⌘F` binding)*;
   `⌘D`/`Ctrl+D` toggles the files and git dock. `⌘N`/`Ctrl+N` starts a new
   session and is a no-op on an already empty idle session. The desktop status
   footer and mobile sidebar name the connected backend (`builtin` or the saved
   server name/host) instead of a hardcoded local label. Mobile chat actions
-  expose transcript find and terminal access without a hardware keyboard.
+  expose terminal access without a hardware keyboard.
   Empty coding sessions no longer show the Ask about this repo, Generate
   AGENTS.md, and Open terminal starter chips *(deprecated)*; the composer,
   palette, and chat actions drawer cover them. Press and hold the
@@ -249,7 +255,7 @@ run from the terminal (the native Rust binary since v3.0.0).
   any message queued behind it. The toggle shows the queued mode in italics
   until it lands. Use stop if you actually want to interrupt the turn.
   - **Saved session plan** `[v3.0.0, updated v3.2.0]` — in a project
-    workspace the plan is a Markdown file in `.openagentd/plans/`, which
+    workspace the plan is a Markdown file in `.agents/plans/` (`.openagentd/plans/` before v3.14.0), which
     ignores itself in git unless you delete its `.gitignore`; chat sessions
     keep it in the session's data directory. You can edit it in the Plan tab
     (**Edit**) or in any editor, and **Open file** opens it as a normal file
@@ -357,7 +363,7 @@ run from the terminal (the native Rust binary since v3.0.0).
   platform-aware shortcuts `[v1.93.1]`.
   - **Platform-standard menus** `[v3.0.0]` — File has New Session (`⌘N`), New
     Window (`⌘⇧N`), Open Workspace… (`⌘O`), and Close Window (`⌘W`, which
-    closes an open dock tab first). Edit adds Find in Transcript (`⌘F`); View
+    closes an open dock tab first). Edit added Find in Transcript (`⌘F`) *(deprecated; removed in v3.14.0)*; View
     adds Toggle Sidebar (`⌘B`) and Open Terminal (`⌘⇧` + backtick). A new Help menu
     links GitHub, release notes, and issue reporting, and holds the config
     folder and log shortcuts. The macOS app menu gains Services and
@@ -493,6 +499,10 @@ run from the terminal (the native Rust binary since v3.0.0).
   submissions; sub-agent reports are left out. The transcript scrolls to each
   recalled prompt, and back to the latest message when you walk out to an
   empty draft.
+- **Drafts survive a reload** `[v3.14.0]` — text typed in the composer,
+  unsent answers to an agent's question, and plan-review comments are kept in
+  local storage per session, so a reload, crash or app restart no longer loses
+  them. Attachments are not kept.
 - **Clickable URLs in user message bubbles** `[v1.77.0]` — plain-text URLs typed
   or pasted into a user message are rendered as tappable links; style matches
   agent response links.
@@ -568,9 +578,13 @@ run from the terminal (the native Rust binary since v3.0.0).
   - Clicking an `@path#L42-L58` mention or a design feedback source opens the
     file with that range selected too, not just the file `[v3.6.0]`.
   - On desktop a timeline scrubber replaces the transcript's scrollbar and
-    marks prompts, find matches, and a question waiting for you.
+    marks prompts and a question waiting for you.
   - Reply footers add the turn's output tokens, or its cost when the model
     has a price.
+  - Inline diffs in tool cards show the first 400 lines with a "Show N more
+    lines" button, and a turn with more than 100 steps shows the latest 100
+    with "Show N earlier steps", so huge patches and long agent runs stay
+    responsive `[v3.14.0]`.
 - **Reader transcript** `[v3.0.0]` — an opt-in transcript style (Settings →
   About → Appearance → Transcript, or Toggle Reader Mode in the command
   palette, which also finds it as "compact" or "transcript"). Each turn reads
@@ -579,7 +593,7 @@ run from the terminal (the native Rust binary since v3.0.0).
     one row such as "6 reads, 3 searches, 4 commands, 2 edits", with failures
     counted; while the turn runs it names the current step ("Working ·
     Shell: Run web tests"). Opening it shows the steps as in the detailed
-    transcript, and transcript find opens it when it matches inside.
+    transcript.
     Since `[v3.1.0]` the running row also says how long the turn has run,
     counted from its prompt ("Working · 1m 12s · Shell: Run web tests"),
     leaves failures for the finished row to count, and a turn waiting on
@@ -672,11 +686,16 @@ run from the terminal (the native Rust binary since v3.0.0).
 - **Workspace files panel** `[since v1.0, v1.92.0, v1.93.1]` — every file the agent reads,
   writes, or generates appears in the left drawer as a recursive, VSCode-style
   collapsible file tree with folder chevrons, depth indentation, and
-  material-icon-theme file/folder icons `[v1.92.0]`. Click to preview or
+  material-icon-theme file/folder icons `[v1.92.0]`, covering ~150 popular
+  extensions (jsonl, astro, svelte, vue, mdx, csv, most languages, media and
+  archives) and well-known
+  files such as `package.json`, lockfiles, `Cargo.toml`, `README` and
+  `AGENTS.md` `[v3.14.0]`. Click to preview or
   download; desktop downloads use a native save dialog instead of navigating
-  away from the app `[v1.52.0]`. Image and video previews in the coding
-  workspace panel now open in the shared full-screen lightbox on click
-  `[v1.93.1]`.
+  away from the app `[v1.52.0]`. Image previews in the coding
+  workspace panel open in the shared full-screen lightbox on click
+  `[v1.93.1]`; videos play inline in the panel with native controls
+  (including fullscreen) instead of opening the lightbox `[v3.14.0]`.
 - **Header context meter** `[v1.53.0, v2.0.0]` — desktop and mobile chat headers show an
   icon-sized input-token progress ring against the backend's model-aware
   summarization trigger; hover, focus, or tap/click reveals input/output/cache
@@ -850,6 +869,12 @@ executes tools, manages its task list, and inspects workspace repositories.
   error event and agent notification. Exhausted connection/timeout failures
   likewise become a typed `ProviderConnectionError` naming the transport error
   and pointing at the provider's base URL.
+- **Model refusals are visible** `[v3.14.0]` — when Claude's safety
+  classifier cuts a response off (`stop_reason: "refusal"`), the turn ends on
+  a "Model Declined to Continue" error card with Retry and Switch model,
+  quoting Anthropic's explanation when present. The refused response is not
+  saved, so it does not trigger repeat refusals, and its truncated tool calls
+  do not run. Before, the turn just ended with nothing shown.
 - **Stop cancels the whole active session run** `[v1.101.1]` — Stop directly
   cancels the agent, in-flight model/tool work, direct shell
   commands, and session-owned background shell processes before the request
@@ -857,6 +882,9 @@ executes tools, manages its task list, and inspects workspace repositories.
   A tool that was still running keeps the output it had streamed, followed by
   "Cancelled by user after N seconds.", both in its card and in what the
   agent sees next turn `[v3.0.0]`.
+  If the turn still has not ended 10 s after Stop (for example a plugin hook
+  that never returns), it is ended forcibly, its reply is marked interrupted,
+  and the session goes back to idle `[v3.14.0]`.
 - **Stop pauses queued follow-ups instead of dropping them** `[v1.17.0]` — Stop
   releases queued hidden user messages into visible history so you can
   `/undo`, edit, or append before resuming.
@@ -1045,11 +1073,10 @@ agent against it.
   sidebar row, **Edit title** in its menu, or a click on the session title in
   the desktop header turns the title into a text field. Enter or clicking away
   saves, Escape cancels, and the header and sidebar show the new title at once.
-- **Session search** `[v3.0.0]` — the search button in the Workspaces header,
-  or `⌘F` / `Ctrl+F` while focus is in the sidebar, swaps the tree for a search
-  field that matches session titles across every workspace, however old. Enter
-  opens the first match and Escape returns to the tree. `⌘F` anywhere else
-  still finds text in the transcript.
+- **Session search** `[v3.0.0]` — the search button in the Workspaces header
+  swaps the tree for a search field that matches session titles across every
+  workspace, however old. Enter opens the first match and Escape returns to
+  the tree. Its `⌘F` / `Ctrl+F` shortcut is *(deprecated; removed in v3.14.0)*.
 - **Session status and unread marks in the sidebar** `[v3.0.0]` — each session
   row has one status slot: `!` while it waits for your answer, a spinner while
   it runs, and an accent dot when a turn ended while you were in another
@@ -1086,6 +1113,12 @@ agent against it.
   extensionless text files, and binary download fallback. Copy and download
   buttons sit in the file tab header for one-click copy of the full content or
   download of the file `[v1.92.0]`.
+  The viewer, attachment previews and the composer's file picker share one
+  text-file list, so `.jsonl`, `.astro`, `.svelte`, `.vue`, `.mdx` and other
+  common source/config files open as text everywhere; component files
+  highlight as markup `[v3.14.0]`.
+  Files over 64 KB open as plain text at once and gain colours when
+  highlighting, which now runs off the main thread, finishes `[v3.14.0]`.
   Select lines and click **Add comment** to insert an `@path#Lx-Ly` composer
   reference; the backend auto-attaches only the selected file lines.
 - **Open file from git changes on mobile and desktop** `[v1.92.0]` — right-click
@@ -1108,12 +1141,12 @@ agent against it.
   launcher instead of reopening it.
 - **`@file` / `@folder` auto-attach** `[v1.17.0]` — see [§1](#1-the-desktop-coding-workspace).
 - **Slash commands scoped to coding workspaces** `[v1.17.0]` — project-local
-  commands in `.openagentd/commands/**/*.md`, universal `.agents/commands/**/*.md` `[v2.12.0]`, and `.opencode/commands/**/*.md`
+  commands in `.agents/commands/**/*.md` `[v2.12.0]` (the `.openagentd/` and `.opencode/` folders stopped being read in `[v3.14.0]`)
   load only when a workspace is attached. Local commands win on name conflict.
   Coding chat stays global-only.
 - **Snippet picker** `[v1.31.0]` — in coding workspaces, type `#` anywhere
-  in the composer to pick prompt snippets from `.openagentd/snippets/**/*.md`
-  or `{OPENAGENTD_CONFIG_DIR}/snippets/**/*.md` (plus universal `.agents/snippets/**/*.md` and `~/.agents/snippets/**/*.md` `[v2.12.0]`) and insert the rendered body.
+  in the composer to pick prompt snippets from `.agents/snippets/**/*.md` `[v2.12.0]`,
+  `{OPENAGENTD_CONFIG_DIR}/snippets/**/*.md`, or `~/.agents/snippets/**/*.md` and insert the rendered body.
 - **Git-backed `/undo` and `/redo`** `[v1.11.0]` — restore workspace files
   (created, modified, deleted) to the exact prior state from any prior turn in
   chat history. Different from editor undo: this is tied to chat turns.
@@ -1186,7 +1219,7 @@ agent against it.
   Terminal font defaults to a best-guess Nerd Font stack
   (MesloLGS NF and similar) for correct Powerlevel10k/Starship glyph rendering.
   App shortcuts work from a focused terminal: on macOS every `⌘` shortcut,
-  including `⌘K` for the palette and `⌘F` for transcript find, and on
+  including `⌘K` for the palette, and on
   Windows/Linux `Ctrl+K` and `Ctrl+P` skip the shell to open the palette and
   quick open. **Clear** in the terminal tab's menu clears the scrollback
   `[v3.5.0]`.
@@ -1489,7 +1522,8 @@ MCP.
   footers and inline data-URI images are left out. Articles convert as before.
 - **50k character read limit** `[v2.0.0]` — expanded `read` tool context limit to
   50,000 characters for reviewing larger source files in a single pass.
-- **Symbol outline mode for `read` tool** `[v2.4.0]` — `read` supports `outline=True`
+- **Symbol outline mode for `read` tool** `[v2.4.0]` *(deprecated; removed in v3.14.0:
+  agents read targeted slices or use the LSP tool's document symbols)* — `read` supported `outline=True`
   to return high-level symbol outlines (classes, methods, functions, interfaces, types,
   and markdown headers) with exact 1-based line numbers across Python, TypeScript/JavaScript,
   Rust, Go, and Markdown files, enabling rapid codebase exploration before targeted pagination.
@@ -1598,7 +1632,7 @@ MCP.
 - **Tool result offload** `[since v1.0]` — bulky tool outputs (large file
   reads, shell spills) move to `{OPENAGENTD_DATA_DIR}/sessions/{id}/.tool_results/` and the inspector
   links to them.
-- **`.gitignore`-aware file tools** `[v1.20.1, v1.131.3, v2.0.0]` — `glob`, `grep`, and
+- **`.gitignore`-aware file tools** `[v1.20.1, v1.131.3, v2.0.0, v3.14.0]` — `glob`, `grep`, and
   workspace file browsing respect `.gitignore` and skip dependency and cache
   directories. Workspace file listings (file tagging, the command palette, the
   files sidebar) come from git itself in a git work tree, so tracked files no
@@ -1612,6 +1646,12 @@ MCP.
   searched rather than silently pruned, and an anchored pattern walks only its
   own subtree — 2.6x–50x faster, and 35x on a pattern pointing into a
   dependency `[v2.0.0]`.
+  Quick Open and the `@` picker also find gitignored files (a rendered
+  `out/clip.mp4`, downloads), listed after every visible file, ranked lower,
+  and muted; dependency and cache directories, `.env` secrets, OS clutter, and
+  ignored directories over 500 files (`target/`) stay out. A workspace that is
+  a subfolder of a repo now honours the repo's `.gitignore`s, so `app/target/`
+  no longer fills the listing cap `[v3.14.0]`.
 
 ---
 
@@ -1665,20 +1705,32 @@ Four orthogonal ways to add capability.
 - **MCP `PATH` resolution on desktop** `[v1.17.x]` — desktop auto-resolves the
   shell `PATH` so `npx` / `uvx` stdio servers can find their commands. Restart
   any MCP server in Settings to re-detect.
+- **MCP timeouts and cancellation** `[v3.14.0]` — an MCP tool call that does
+  not answer in 210 s (other MCP requests: 30 s) fails with a "timed out"
+  error instead of hanging the turn, and the server is sent
+  `notifications/cancelled` when a call times out or is stopped. Set
+  **Tool timeout** (1–270 s) per server in Settings → MCP, or `"timeout"` in
+  `mcp.json`.
+- **`.agents/` is the only project folder** `[v3.14.0]` — skills, commands and
+  snippets load from `<project>/.agents/`, the OpenAgentd config dir, and
+  `~/.agents/`. A project's `.openagentd/` and `.opencode/` folders, and
+  `~/.config/opencode/`, are no longer read: move their `skills/`, `commands/`
+  and `snippets/` into `.agents/` (for example `mv .openagentd/skills .agents/skills`).
+  New plans are saved in `.agents/plans/`.
 - **Skills** `[since v1.0]` — markdown `SKILL.md` files, lazy-loaded, hot-reload
-  on mtime change, token substitution. Compatible with the opencode skill spec.
+  on mtime change, token substitution. Compatible with the Agent Skills (agentskills.io) spec.
   One nested namespace level (`parent/sub`) is supported `[v1.27.x]`; Settings
   lists the full runtime-visible catalog and can edit/delete non-bundled skills
   in place `[v1.27.x]`.
   - **Reference files and scripts support** `[v1.87.0, v1.92.0]` — fully compatible with the
     `agentskills.io` specification. Resolves `{SKILL_DIR}` and `${SKILL_DIR}` placeholders
     inside loaded skill instructions. Project-level skill directories resolve to clean relative
-    paths (e.g. `.openagentd/skills/my-skill`), while global/bundled skill directories resolve
+    paths (e.g. `.agents/skills/my-skill`), while global/bundled skill directories resolve
     to absolute paths, allowing the agent to use standard `read` and `shell` tools to access them.
     `load_skill` now always prepends a `Skill directory: <path>` line to its response so the
     agent finds bundled reference files without relying on the author adding `{SKILL_DIR}`
     tokens `[v1.92.0]`. Skill cache invalidation now also watches project-local skill roots
-    (`.openagentd/skills/`, `.agents/skills/` `[v2.12.0]`, `.opencode/skills/`), not just the global config directory, so
+    (`.agents/skills/` `[v2.12.0]`), not just the global config directory, so
     edits are picked up on the next `discover_skills()` call `[v1.92.0]`.
   - **Bundled `self-healing` skill with references** `[v3.3.0]` — one bundled skill covers the
     agent's own setup: its `SKILL.md` is an index linking reference files for agents, MCP servers,
@@ -1928,7 +1980,9 @@ Desktop is primary. CLI / server is the developer path.
   UI finishes bootstrapping after reload.
 - **Reload preserves the current open page** `[v2.9.0]` — reloading in browser
   or desktop shells (Cmd+R / Ctrl+R) restores the active session, scheduler, or
-  telemetry view instead of returning to the home workspace.
+  telemetry view instead of returning to the home workspace. Desktop Reload
+  (View menu, tray, and palette Reload Window) reopens the exact session: the
+  window's first-load route hint is ignored on a reload `[v3.14.0]`.
 - **Closest restorable route fallback after backend switches** `[v1.68.0]` —
   when reconnecting to a backend that does not have the previous
   coding session, desktop restore now lands on the nearest valid hub page

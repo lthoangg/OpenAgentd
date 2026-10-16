@@ -495,6 +495,32 @@ impl Agent {
                 usage.as_ref().map(|u| u.completion_tokens).unwrap_or(0)
             );
             let extra = assistant.meta.extra.clone().unwrap_or_default();
+            // A safety classifier cut the response off. Anthropic requires the
+            // refused turn to leave the context (replaying it is refused
+            // again), and any tool call in it is truncated: drop it, keep the
+            // usage, and end the turn on an error the user can act on.
+            if extra.get("finish_reason").and_then(|v| v.as_str()) == Some("refusal") {
+                let details = extra.get("stop_details");
+                let field = |k: &str| details.and_then(|d| d.get(k)).and_then(|v| v.as_str()).map(str::trim).filter(|s| !s.is_empty());
+                tracing::warn!("agent_model_refusal agent={} iteration={} category={:?} dropped_tool_calls={}", self.name, iteration, field("category"), tc_list.len());
+                if let Some(u) = &usage {
+                    total_tokens += u.total_tokens;
+                    state.usage.total_tokens = total_tokens;
+                    state.meta_set("total_tokens", json!(total_tokens));
+                }
+                Self::sync(opts.checkpointer, &ctx, &mut state).await;
+                let who = effective.clone().or_else(|| active_model.clone()).unwrap_or_else(|| "The model".into());
+                let reason = match field("explanation") {
+                    Some(e) => format!(": {}", e.trim_end_matches('.')),
+                    None => String::new(),
+                };
+                return Err(AgentError::Refusal {
+                    message: format!(
+                        "{who} declined to continue{reason}. Sending the same request again usually gets declined too: rephrase the request or switch to another model."
+                    ),
+                    provider: active_model.clone(),
+                });
+            }
             let dropped = extra.get("dropped_tool_calls").map(crate::util::truthy).unwrap_or(false);
             if !has_payload(&assistant) && !dropped {
                 let aborted = !extra.get("finish_reason").map(crate::util::truthy).unwrap_or(false);

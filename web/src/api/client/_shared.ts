@@ -45,3 +45,47 @@ export async function parseDetailOrThrow(res: Response, label: string): Promise<
 }
 
 // ── /agents ──────────────────────────────────────────────────────────────────
+
+/** Last `{etag, data}` per URL for {@link fetchJsonWithEtag}; least recent first. */
+const etagCache = new Map<string, { etag: string; data: unknown }>()
+const MAX_ETAG_ENTRIES = 64
+
+/**
+ * GET JSON with `If-None-Match` revalidation. The server answers `304` with
+ * no body while the result is unchanged, and this returns the **same object**
+ * it returned last time, so TanStack Query's structural sharing keeps every
+ * consumer's reference and nothing re-renders. Used for the listings and git
+ * reads that are refetched after every agent tool call.
+ */
+export async function fetchJsonWithEtag<T>(url: string, label: string, signal?: AbortSignal): Promise<T> {
+  const cached = etagCache.get(url)
+  const res = await fetch(url, {
+    signal,
+    // The page owns revalidation; keep the HTTP cache out of the way.
+    cache: 'no-store',
+    ...(cached ? { headers: { 'If-None-Match': cached.etag } } : {}),
+  })
+  if (res.status === 304 && cached) {
+    etagCache.delete(url)
+    etagCache.set(url, cached)
+    return cached.data as T
+  }
+  if (!res.ok) await parseDetailOrThrow(res, label)
+  const data = (await res.json()) as T
+  const etag = res.headers?.get?.('ETag')
+  etagCache.delete(url)
+  if (etag) {
+    etagCache.set(url, { etag, data })
+    while (etagCache.size > MAX_ETAG_ENTRIES) {
+      const oldest = etagCache.keys().next()
+      if (oldest.done) break
+      etagCache.delete(oldest.value)
+    }
+  }
+  return data
+}
+
+/** Test seam. */
+export function clearEtagCache(): void {
+  etagCache.clear()
+}

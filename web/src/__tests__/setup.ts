@@ -1,21 +1,22 @@
 // Global test setup — registers Happy DOM so React components can render.
 import React from "react";
 import { mock, afterEach } from "bun:test";
+import { readFileSync } from "node:fs";
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
 
 // Stub every material-icon-theme SVG `?url` import so Bun's module loader
 // doesn't crash on them (Bun doesn't run Vite transforms). Each stub returns a
 // predictable string that encodes the icon name — FileTypeIcon.test.tsx asserts
 // on these strings, and all other tests just need a non-null value.
-const SVG_ICONS = [
-  'file', 'console', 'css', 'database', 'docker', 'git', 'go', 'html',
-  'image', 'javascript', 'json', 'makefile', 'markdown', 'pdf', 'python',
-  'react', 'react_ts', 'rust', 'sass', 'settings', 'toml', 'typescript',
-  'xml', 'yaml', 'folder', 'folder-open',
-]
-for (const name of SVG_ICONS) {
-  mock.module(`material-icon-theme/icons/${name}.svg?url`, () => ({
-    default: `stub:${name}.svg`,
+// The names are read from the icon map itself, so adding an icon there needs
+// no change here.
+const ICON_SOURCE = readFileSync(new URL("../utils/file-type-icon.ts", import.meta.url), "utf8");
+const SVG_ICONS = new Set(
+  Array.from(ICON_SOURCE.matchAll(/material-icon-theme\/icons\/([\w-]+)\.svg(\?[\w&-]+)/g), (m) => `${m[1]}.svg${m[2]}`),
+);
+for (const file of SVG_ICONS) {
+  mock.module(`material-icon-theme/icons/${file}`, () => ({
+    default: `stub:${file.split("?")[0]}`,
   }))
 }
 

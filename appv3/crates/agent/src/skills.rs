@@ -90,8 +90,10 @@ fn resolve(p: &Path) -> PathBuf {
     appv3_tools::denied::resolve(p)
 }
 
-fn project_roots(workspace: &Path) -> [PathBuf; 3] {
-    [workspace.join(".openagentd/skills"), workspace.join(".agents/skills"), workspace.join(".opencode/skills")]
+/// The project skill root. `.agents/` is the only project folder read;
+/// `.openagentd/skills` and `.opencode/skills` are not.
+fn project_roots(workspace: &Path) -> [PathBuf; 1] {
+    [workspace.join(".agents/skills")]
 }
 
 /// `_iter_skill_roots` in precedence order.
@@ -104,7 +106,6 @@ pub fn skill_roots(workspace: Option<&Path>) -> Vec<PathBuf> {
     }
     roots.push(settings().skills_dir.clone());
     roots.push(home().join(".agents/skills"));
-    roots.push(home().join(".config/opencode/skills"));
     roots.push(builtin_skills_dir());
     roots
 }
@@ -539,6 +540,20 @@ pub(crate) mod tests {
         let a = appv3_providers::AssistantMessage { tool_calls: Some(vec![appv3_providers::ToolCall::new("c1", "skill", r#"{"skill_name":"foo"}"#)]), ..Default::default() };
         let msgs = vec![ChatMessage::Assistant(a), ChatMessage::tool("c1", Some("skill".into()), "BODY")];
         assert_eq!(loaded_from_messages(&msgs).get("foo").map(String::as_str), Some("BODY"));
+    }
+
+    #[test]
+    fn project_skills_only_from_agents_dir() {
+        let d = tempfile::tempdir().unwrap();
+        let ws = d.path();
+        for (dir, name) in [(".openagentd/skills", "a"), (".opencode/skills", "b"), (".agents/skills", "c")] {
+            let p = ws.join(dir).join(name);
+            std::fs::create_dir_all(&p).unwrap();
+            std::fs::write(p.join("SKILL.md"), format!("---\nname: {name}\ndescription: d\n---\nbody\n")).unwrap();
+        }
+        let names: Vec<String> = discover_in(&project_roots(ws), Some(ws)).into_iter().map(|s| s.name).collect();
+        assert_eq!(names, vec!["c".to_string()]);
+        assert!(skill_roots(None).iter().all(|r| !r.to_string_lossy().contains("opencode")));
     }
 
     #[test]

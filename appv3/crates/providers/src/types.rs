@@ -271,6 +271,9 @@ pub struct ChatCompletionDelta {
     pub anthropic_raw_blocks: Option<Vec<Value>>,
     pub reasoning_item: Option<EncryptedReasoningItem>,
     pub tool_calls: Option<Vec<ToolCallDelta>>,
+    /// Anthropic `stop_details` (`{type, category, explanation}`), sent with
+    /// `stop_reason: "refusal"`.
+    pub stop_details: Option<Value>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]

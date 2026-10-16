@@ -148,6 +148,7 @@ pub fn delta_to_json(d: &ChatCompletionDelta) -> Value {
     put(&mut o, "anthropic_raw_blocks", &d.anthropic_raw_blocks);
     put(&mut o, "reasoning_item", &d.reasoning_item);
     put(&mut o, "tool_calls", &d.tool_calls);
+    put(&mut o, "stop_details", &d.stop_details);
     Value::Object(o)
 }
 
@@ -167,6 +168,7 @@ pub fn delta_from_json(v: &Value) -> Result<ChatCompletionDelta, String> {
         anthropic_raw_blocks: opt_de(o, "anthropic_raw_blocks")?,
         reasoning_item: opt_de(o, "reasoning_item")?,
         tool_calls: opt_de(o, "tool_calls")?,
+        stop_details: o.get("stop_details").filter(|x| !x.is_null()).cloned(),
     })
 }
 

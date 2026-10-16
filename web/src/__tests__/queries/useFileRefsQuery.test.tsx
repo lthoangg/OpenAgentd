@@ -88,4 +88,32 @@ describe('useFileRefsQuery', () => {
       { path: 'src/lib', name: 'lib', type: 'directory' },
     ])
   })
+
+  it('marks a directory ignored only when every file listed under it is', async () => {
+    globalThis.fetch = mock(async () =>
+      new Response(JSON.stringify({
+        workspace: '/work/project',
+        files: [
+          { path: 'src/a.ts', name: 'a.ts', size: 1, mtime: 0, mime: 'text/plain' },
+          { path: 'src/gen/b.ts', name: 'b.ts', size: 1, mtime: 0, mime: 'text/plain', ignored: true },
+          { path: 'out/clip.mp4', name: 'clip.mp4', size: 1, mtime: 0, mime: 'video/mp4', ignored: true },
+        ],
+        truncated: false,
+      })),
+    ) as typeof fetch
+    const client = makeClient()
+
+    const { result } = renderHook(
+      () => useFileRefsQuery({ workspace: '/work/project' }),
+      { wrapper: wrapper(client) },
+    )
+
+    await waitFor(() => expect(result.current.refs.length).toBeGreaterThan(0))
+    expect(result.current.refs.filter((r) => r.type === 'directory')).toEqual([
+      { path: 'out', name: 'out', type: 'directory', ignored: true },
+      { path: 'src', name: 'src', type: 'directory' },
+      { path: 'src/gen', name: 'gen', type: 'directory', ignored: true },
+    ])
+    expect(result.current.refs.find((r) => r.path === 'out/clip.mp4')?.ignored).toBe(true)
+  })
 })

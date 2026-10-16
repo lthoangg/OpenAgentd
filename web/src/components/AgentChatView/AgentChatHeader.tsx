@@ -40,7 +40,6 @@ interface AgentChatHeaderProps {
   setShowMobileActions: Dispatch<SetStateAction<boolean>>
   mobileActionsDragOffset?: number | null
   onToggleScheduler: () => void
-  onFindInTranscript: () => void
   onOpenTerminal?: () => void
   onCloseMobileActionsMenu: () => void
   /** Desktop command center and the mobile drawer's palette row; hidden or disabled when omitted. */
@@ -72,7 +71,6 @@ export const AgentChatHeader = memo(function AgentChatHeader({
   setShowMobileActions,
   mobileActionsDragOffset = null,
   onToggleScheduler,
-  onFindInTranscript,
   onOpenTerminal,
   onCloseMobileActionsMenu,
   onOpenPalette,
@@ -235,7 +233,6 @@ export const AgentChatHeader = memo(function AgentChatHeader({
               dragOffset={mobileActionsDragOffset}
               workspace={workspace}
               onScheduler={() => { onToggleScheduler(); onCloseMobileActionsMenu() }}
-              onFindInTranscript={() => { onFindInTranscript(); onCloseMobileActionsMenu() }}
               onOpenTerminal={onOpenTerminal ? () => { onOpenTerminal(); onCloseMobileActionsMenu() } : undefined}
               onPreviousPrompt={jumpToPrompt ? () => { jumpToPrompt(-1); onCloseMobileActionsMenu() } : undefined}
               onNextPrompt={jumpToPrompt ? () => { jumpToPrompt(1); onCloseMobileActionsMenu() } : undefined}

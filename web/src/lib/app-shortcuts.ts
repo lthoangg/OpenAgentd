@@ -25,7 +25,6 @@ export const APP_SHORTCUTS = {
   newSession: { key: 'N' },
   // Shift dodges bare ⌘A (Select All).
   sessionSettings: { key: 'A', shift: true },
-  findInTranscript: { key: 'F' },
   workspaceFiles: { key: 'D' },
   maximizeDock: { key: 'D', shift: true },
   tasks: { key: 'T' },

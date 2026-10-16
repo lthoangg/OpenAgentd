@@ -30,7 +30,6 @@ function renderTurn(blocks: ContentBlock[], props: {
   isWorking?: boolean
   isTurnOpen?: boolean
   startedAt?: number
-  findHitBlockIds?: Set<string>
   opener?: FileRefOpener
 } = {}) {
   const turn = (
@@ -44,7 +43,6 @@ function renderTurn(blocks: ContentBlock[], props: {
       isTrailingTurn
       totalBlocks={blocks.length}
       reader
-      findHitBlockIds={props.findHitBlockIds}
       renderBlock={({ block }) => <p data-testid={`block-${block.id}`}>{block.content || block.id}</p>}
     />
   )
@@ -98,12 +96,6 @@ describe('AssistantTurn — reader mode', () => {
 
     expect(row.getAttribute('aria-expanded')).toBe('true')
     for (const id of ['think', 'read', 'narrate', 'edit']) expect(rendered(id)).not.toBeNull()
-  })
-
-  it('opens the fold while transcript find matches inside it', () => {
-    renderTurn(finished, { findHitBlockIds: new Set(['narrate']) })
-
-    expect(rendered('narrate')).not.toBeNull()
   })
 
   it('lists the files the turn edited behind a closed row, and opens its diff from the list', () => {

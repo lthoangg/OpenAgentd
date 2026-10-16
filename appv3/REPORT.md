@@ -182,6 +182,12 @@ No v2 feature is left unported. Each item below is a deliberate, documented
 deviation. The harnesses in §1 either did not reach it or normalised it
 explicitly.
 
+- **Project folders** (v3.14.0). `.agents/` is the only project folder:
+  v3 no longer reads `<workspace>/.openagentd/{skills,commands,snippets}`,
+  `<workspace>/.opencode/{skills,commands}`, or
+  `~/.config/opencode/{skills,commands}`, all of which v2 read
+  (`agent/src/skills.rs`, `api/src/routes/library.rs`,
+  `api/src/config_watch.rs`). New plans go to `.agents/plans/`.
 - **Performance changes to the wire format** (v3 only; v2 parity is no
   longer a goal):
   - *History pages* (`GET /api/agent/{sid}/history`,
@@ -587,10 +593,12 @@ explicitly.
     `<proposed_plan>` tag is no longer captured, detected or acted on; old
     transcripts still render it as a read-only card.
   - **Where the plan lives.** In a project (`coding`) workspace the first
-    write creates `<workspace>/.openagentd/plans/<slug>-<id8>.md` (slug from
+    write creates `<workspace>/.agents/plans/<slug>-<id8>.md` (v3.14.0; earlier
+    releases used `.openagentd/plans/`, and plans already written there keep
+    loading through the absolute path in `plan.state.json`) (slug from
     the first `# ` heading, `id8` the last 8 hex digits of the session id,
     `-2`, `-3`, … when taken). Creating that folder also writes
-    `.openagentd/plans/.gitignore` containing `*`, so plans stay out of git
+    `.agents/plans/.gitignore` containing `*`, so plans stay out of git
     status, snapshots and commits; the file is never recreated for an
     existing folder. The target is resolved with symlinks followed and must
     stay inside the workspace and outside denied paths. Chat sessions keep
@@ -761,6 +769,47 @@ explicitly.
   Tests: `agent/tests/idle_compaction.rs`, unit tests in
   `agent/src/idle_compaction.rs` and `core/src/runtime_settings.rs`, and
   `api/tests/http_api.rs`. v2 has no equivalent.
+- **MCP request deadlines (v3 only):** `mcp.json` server entries (stdio and
+  http) accept an optional integer `timeout` in seconds, 1–270, written only
+  when set; the MCP settings API returns 422 outside that range. `tools/call`
+  waits `timeout` (default 210 s) and other requests wait
+  `min(30 s, timeout)`. When a request times out or its future is dropped, the
+  client removes the pending entry and sends `notifications/cancelled`
+  (never for `initialize`). Stdio writes run in a spawned task, so a
+  cancelled caller cannot leave a half-written line on stdin. Tests:
+  `mcp/src/lib.rs`. v2 waits without a deadline.
+- **ETag on workspace listings (v3 only):** `GET /api/agent/{sid}/files`,
+  `/api/agent/workspace/files/list`, `/api/agent/workspace/status` and
+  `/api/agent/workspace/git-diff/view` send an `ETag` (64-bit hash of the
+  JSON body) with `Cache-Control: no-cache`, and answer `304` with an empty
+  body when `If-None-Match` matches. The body is still computed on every
+  request. Test: `api/src/routes/agent/files.rs`. v2 always returns 200.
+- **`read` tool `outline` removed (v3.14.0):** the `outline` argument and
+  `crates/tools/src/outline.rs` are gone and `contract/tool_definitions.json`
+  no longer lists it, so a call passing `outline` fails as an unknown
+  argument. v2 still offers it.
+- **Stop force-ends a stuck turn (v3 only):** if a turn has not finished
+  10 s after Stop, `run_turn` drops it, marks that turn's assistant row
+  interrupted (`db::mark_turn_assistant_interrupted`) and runs the normal
+  end-of-turn path. Orphaned tool rows are healed on the next load. Test:
+  `agent/tests/force_stop.rs`.
+- **Plugin watchdog (v3 only):** a plugin thread running JS for more than 5 s
+  without yielding is interrupted (`TimeoutError`); loads time out at 30 s,
+  blocking calls at 10 s and tool hooks at 60 s. Tests:
+  `jsplugin/tests/host.rs`.
+- **Model refusals end the turn with an error (v3 only):** when a response
+  ends with `finish_reason: "refusal"` (Anthropic's streaming safety
+  classifier), the agent loop drops the response. Its tool calls do not run,
+  because they are truncated, and the assistant row is not saved, because
+  Anthropic requires the refused turn to leave the context. Its tokens still
+  count toward the turn total. The turn then ends with an `error` event:
+  code `model_refusal`, category `provider`, title "Model Declined to
+  Continue", and the message carries `stop_details.explanation` when
+  present. The Anthropic adapter forwards `stop_details` on the stream delta
+  (`ChatCompletionDelta::stop_details`, plugin JSON key `stop_details`), and
+  the assembled message keeps it in `extra.stop_details`. v2 treated a
+  refusal as `end_turn`: the turn ended silently and any partial tool call
+  ran. Tests: `agent/tests/refusal.rs`, `providers/src/anthropic.rs`.
 
 ## 4. Layout
 

@@ -162,8 +162,8 @@ describe('Review dock Plan tab', () => {
     updated_at: '2026-01-01T00:00:00Z',
     revision: 1,
     approved_revision: null,
-    path: `${WORKSPACE}/.openagentd/plans/ship-it-0000abcd.md`,
-    workspace_path: '.openagentd/plans/ship-it-0000abcd.md',
+    path: `${WORKSPACE}/.agents/plans/ship-it-0000abcd.md`,
+    workspace_path: '.agents/plans/ship-it-0000abcd.md',
   }
 
   it('opens and focuses the Plan tab for a plan request and reports the active view', async () => {

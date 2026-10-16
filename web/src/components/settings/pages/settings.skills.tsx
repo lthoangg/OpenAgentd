@@ -58,7 +58,7 @@ export function SkillsListPage({ selectedName, onSelect, onNew }: SkillsListPage
   return (
     <SettingsListView
       title="Skills"
-      description="Reusable instruction packs available to any agent. Supports flat skills and one-level sub-skills (shown as parent:sub). Live in .openagentd/skills/."
+      description="Reusable instruction packs available to any agent. Supports flat skills and one-level sub-skills (shown as parent:sub). Project skills live in .agents/skills/; global ones in the config dir's skills/."
       newLabel="New skill"
       onNew={onNew}
       filterPlaceholder="Filter skills…"

@@ -2,7 +2,7 @@
 """Audit which tools earn their keep: volume, latency, outcome quality, waste.
 
 Usage:
-    python3 .openagentd/skills/oad/debug/scripts/tool_usage.py [--days N]
+    python3 .agents/skills/oad/debug/scripts/tool_usage.py [--days N]
 
 Answers "is any tool underused, slow, or not useful?" by combining two sources:
 

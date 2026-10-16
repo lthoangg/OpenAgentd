@@ -13,7 +13,7 @@ mod runtime;
 pub mod transpile;
 
 pub use host::{parse_iso_ts, parse_qs, register_native, url_query, which, Callback, CallbackFn, NativeFn};
-pub use runtime::{CallResult, JsError, JsPlugin, Mode, Target};
+pub use runtime::{CallResult, JsError, JsPlugin, Mode, Target, BLOCKING_CALL_TIMEOUT, BUSY_LIMIT, LOAD_TIMEOUT};
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};

@@ -769,6 +769,34 @@ explicitly.
   Tests: `agent/tests/idle_compaction.rs`, unit tests in
   `agent/src/idle_compaction.rs` and `core/src/runtime_settings.rs`, and
   `api/tests/http_api.rs`. v2 has no equivalent.
+- **MCP request deadlines (v3 only):** `mcp.json` server entries (stdio and
+  http) accept an optional integer `timeout` in seconds, 1–270, written only
+  when set; the MCP settings API returns 422 outside that range. `tools/call`
+  waits `timeout` (default 210 s) and other requests wait
+  `min(30 s, timeout)`. When a request times out or its future is dropped, the
+  client removes the pending entry and sends `notifications/cancelled`
+  (never for `initialize`). Stdio writes run in a spawned task, so a
+  cancelled caller cannot leave a half-written line on stdin. Tests:
+  `mcp/src/lib.rs`. v2 waits without a deadline.
+- **ETag on workspace listings (v3 only):** `GET /api/agent/{sid}/files`,
+  `/api/agent/workspace/files/list`, `/api/agent/workspace/status` and
+  `/api/agent/workspace/git-diff/view` send an `ETag` (64-bit hash of the
+  JSON body) with `Cache-Control: no-cache`, and answer `304` with an empty
+  body when `If-None-Match` matches. The body is still computed on every
+  request. Test: `api/src/routes/agent/files.rs`. v2 always returns 200.
+- **`read` tool `outline` removed (v3.14.0):** the `outline` argument and
+  `crates/tools/src/outline.rs` are gone and `contract/tool_definitions.json`
+  no longer lists it, so a call passing `outline` fails as an unknown
+  argument. v2 still offers it.
+- **Stop force-ends a stuck turn (v3 only):** if a turn has not finished
+  10 s after Stop, `run_turn` drops it, marks that turn's assistant row
+  interrupted (`db::mark_turn_assistant_interrupted`) and runs the normal
+  end-of-turn path. Orphaned tool rows are healed on the next load. Test:
+  `agent/tests/force_stop.rs`.
+- **Plugin watchdog (v3 only):** a plugin thread running JS for more than 5 s
+  without yielding is interrupted (`TimeoutError`); loads time out at 30 s,
+  blocking calls at 10 s and tool hooks at 60 s. Tests:
+  `jsplugin/tests/host.rs`.
 
 ## 4. Layout
 

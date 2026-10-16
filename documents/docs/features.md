@@ -81,6 +81,12 @@ run from the terminal (the native Rust binary since v3.0.0).
   functions, options, PATH) once and reuses them, instead of sourcing
   `.zshrc`/`.bashrc` on every call (about 130 ms saved per call; rebuilt when
   an rc file changes; `OPENAGENTD_SHELL_SNAPSHOT=false` restores v2 behaviour).
+- **Plugins cannot hang the server** `[v3.14.0]` — a JS plugin that runs
+  JavaScript for more than 5 s without yielding (for example `while (true) {}`)
+  is interrupted with a `TimeoutError` and keeps working for later calls. A
+  plugin that takes over 30 s to load fails to load, synchronous plugin checks
+  give up after 10 s, and a `before`/`after` tool hook that does not finish in
+  60 s is treated like a hook that threw.
 - **Faster reopen, streaming and desktop launch** `[v3.4.0]`:
   - Reopening a long session with member agents loads 3 history pages
     instead of 11 (1.7 MB instead of 13.3 MB), and member rows are no longer
@@ -202,13 +208,13 @@ run from the terminal (the native Rust binary since v3.0.0).
   visible warning when a capped workspace listing omits files.
   A Quick Open query ending in `:line` or `:start-end` (`Button.tsx:42-58`)
   opens the pick with those lines selected `[v3.0.0]`.
-  `⌘F`/`Ctrl+F` finds user, assistant, and thinking text in the current transcript
-  and highlights each match in place;
+  `⌘F`/`Ctrl+F` transcript find *(deprecated; removed in v3.14.0, along with
+  every `⌘F` binding)*;
   `⌘D`/`Ctrl+D` toggles the files and git dock. `⌘N`/`Ctrl+N` starts a new
   session and is a no-op on an already empty idle session. The desktop status
   footer and mobile sidebar name the connected backend (`builtin` or the saved
   server name/host) instead of a hardcoded local label. Mobile chat actions
-  expose transcript find and terminal access without a hardware keyboard.
+  expose terminal access without a hardware keyboard.
   Empty coding sessions no longer show the Ask about this repo, Generate
   AGENTS.md, and Open terminal starter chips *(deprecated)*; the composer,
   palette, and chat actions drawer cover them. Press and hold the
@@ -357,7 +363,7 @@ run from the terminal (the native Rust binary since v3.0.0).
   platform-aware shortcuts `[v1.93.1]`.
   - **Platform-standard menus** `[v3.0.0]` — File has New Session (`⌘N`), New
     Window (`⌘⇧N`), Open Workspace… (`⌘O`), and Close Window (`⌘W`, which
-    closes an open dock tab first). Edit adds Find in Transcript (`⌘F`); View
+    closes an open dock tab first). Edit added Find in Transcript (`⌘F`) *(deprecated; removed in v3.14.0)*; View
     adds Toggle Sidebar (`⌘B`) and Open Terminal (`⌘⇧` + backtick). A new Help menu
     links GitHub, release notes, and issue reporting, and holds the config
     folder and log shortcuts. The macOS app menu gains Services and
@@ -493,6 +499,10 @@ run from the terminal (the native Rust binary since v3.0.0).
   submissions; sub-agent reports are left out. The transcript scrolls to each
   recalled prompt, and back to the latest message when you walk out to an
   empty draft.
+- **Drafts survive a reload** `[v3.14.0]` — text typed in the composer,
+  unsent answers to an agent's question, and plan-review comments are kept in
+  local storage per session, so a reload, crash or app restart no longer loses
+  them. Attachments are not kept.
 - **Clickable URLs in user message bubbles** `[v1.77.0]` — plain-text URLs typed
   or pasted into a user message are rendered as tappable links; style matches
   agent response links.
@@ -568,9 +578,13 @@ run from the terminal (the native Rust binary since v3.0.0).
   - Clicking an `@path#L42-L58` mention or a design feedback source opens the
     file with that range selected too, not just the file `[v3.6.0]`.
   - On desktop a timeline scrubber replaces the transcript's scrollbar and
-    marks prompts, find matches, and a question waiting for you.
+    marks prompts and a question waiting for you.
   - Reply footers add the turn's output tokens, or its cost when the model
     has a price.
+  - Inline diffs in tool cards show the first 400 lines with a "Show N more
+    lines" button, and a turn with more than 100 steps shows the latest 100
+    with "Show N earlier steps", so huge patches and long agent runs stay
+    responsive `[v3.14.0]`.
 - **Reader transcript** `[v3.0.0]` — an opt-in transcript style (Settings →
   About → Appearance → Transcript, or Toggle Reader Mode in the command
   palette, which also finds it as "compact" or "transcript"). Each turn reads
@@ -579,7 +593,7 @@ run from the terminal (the native Rust binary since v3.0.0).
     one row such as "6 reads, 3 searches, 4 commands, 2 edits", with failures
     counted; while the turn runs it names the current step ("Working ·
     Shell: Run web tests"). Opening it shows the steps as in the detailed
-    transcript, and transcript find opens it when it matches inside.
+    transcript.
     Since `[v3.1.0]` the running row also says how long the turn has run,
     counted from its prompt ("Working · 1m 12s · Shell: Run web tests"),
     leaves failures for the finished row to count, and a turn waiting on
@@ -862,6 +876,9 @@ executes tools, manages its task list, and inspects workspace repositories.
   A tool that was still running keeps the output it had streamed, followed by
   "Cancelled by user after N seconds.", both in its card and in what the
   agent sees next turn `[v3.0.0]`.
+  If the turn still has not ended 10 s after Stop (for example a plugin hook
+  that never returns), it is ended forcibly, its reply is marked interrupted,
+  and the session goes back to idle `[v3.14.0]`.
 - **Stop pauses queued follow-ups instead of dropping them** `[v1.17.0]` — Stop
   releases queued hidden user messages into visible history so you can
   `/undo`, edit, or append before resuming.
@@ -1050,11 +1067,10 @@ agent against it.
   sidebar row, **Edit title** in its menu, or a click on the session title in
   the desktop header turns the title into a text field. Enter or clicking away
   saves, Escape cancels, and the header and sidebar show the new title at once.
-- **Session search** `[v3.0.0]` — the search button in the Workspaces header,
-  or `⌘F` / `Ctrl+F` while focus is in the sidebar, swaps the tree for a search
-  field that matches session titles across every workspace, however old. Enter
-  opens the first match and Escape returns to the tree. `⌘F` anywhere else
-  still finds text in the transcript.
+- **Session search** `[v3.0.0]` — the search button in the Workspaces header
+  swaps the tree for a search field that matches session titles across every
+  workspace, however old. Enter opens the first match and Escape returns to
+  the tree. Its `⌘F` / `Ctrl+F` shortcut is *(deprecated; removed in v3.14.0)*.
 - **Session status and unread marks in the sidebar** `[v3.0.0]` — each session
   row has one status slot: `!` while it waits for your answer, a spinner while
   it runs, and an accent dot when a turn ended while you were in another
@@ -1095,6 +1111,8 @@ agent against it.
   text-file list, so `.jsonl`, `.astro`, `.svelte`, `.vue`, `.mdx` and other
   common source/config files open as text everywhere; component files
   highlight as markup `[v3.14.0]`.
+  Files over 64 KB open as plain text at once and gain colours when
+  highlighting, which now runs off the main thread, finishes `[v3.14.0]`.
   Select lines and click **Add comment** to insert an `@path#Lx-Ly` composer
   reference; the backend auto-attaches only the selected file lines.
 - **Open file from git changes on mobile and desktop** `[v1.92.0]` — right-click
@@ -1195,7 +1213,7 @@ agent against it.
   Terminal font defaults to a best-guess Nerd Font stack
   (MesloLGS NF and similar) for correct Powerlevel10k/Starship glyph rendering.
   App shortcuts work from a focused terminal: on macOS every `⌘` shortcut,
-  including `⌘K` for the palette and `⌘F` for transcript find, and on
+  including `⌘K` for the palette, and on
   Windows/Linux `Ctrl+K` and `Ctrl+P` skip the shell to open the palette and
   quick open. **Clear** in the terminal tab's menu clears the scrollback
   `[v3.5.0]`.
@@ -1498,7 +1516,8 @@ MCP.
   footers and inline data-URI images are left out. Articles convert as before.
 - **50k character read limit** `[v2.0.0]` — expanded `read` tool context limit to
   50,000 characters for reviewing larger source files in a single pass.
-- **Symbol outline mode for `read` tool** `[v2.4.0]` — `read` supports `outline=True`
+- **Symbol outline mode for `read` tool** `[v2.4.0]` *(deprecated; removed in v3.14.0:
+  agents read targeted slices or use the LSP tool's document symbols)* — `read` supported `outline=True`
   to return high-level symbol outlines (classes, methods, functions, interfaces, types,
   and markdown headers) with exact 1-based line numbers across Python, TypeScript/JavaScript,
   Rust, Go, and Markdown files, enabling rapid codebase exploration before targeted pagination.
@@ -1680,6 +1699,12 @@ Four orthogonal ways to add capability.
 - **MCP `PATH` resolution on desktop** `[v1.17.x]` — desktop auto-resolves the
   shell `PATH` so `npx` / `uvx` stdio servers can find their commands. Restart
   any MCP server in Settings to re-detect.
+- **MCP timeouts and cancellation** `[v3.14.0]` — an MCP tool call that does
+  not answer in 210 s (other MCP requests: 30 s) fails with a "timed out"
+  error instead of hanging the turn, and the server is sent
+  `notifications/cancelled` when a call times out or is stopped. Set
+  **Tool timeout** (1–270 s) per server in Settings → MCP, or `"timeout"` in
+  `mcp.json`.
 - **`.agents/` is the only project folder** `[v3.14.0]` — skills, commands and
   snippets load from `<project>/.agents/`, the OpenAgentd config dir, and
   `~/.agents/`. A project's `.openagentd/` and `.opencode/` folders, and

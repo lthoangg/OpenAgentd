@@ -299,4 +299,21 @@ describe("DiffView — LSP Diagnostics integration", () => {
     expect(screen.getByText("1:9")).toBeTruthy()
     expect(screen.getByText("unexpected EOF while parsing")).toBeTruthy()
   })
+
+  it("caps a long inline diff and expands on request", () => {
+    const body = Array.from({ length: 1000 }, (_, i) => `+line ${i}`)
+    const patchText = ["*** Begin Patch", "*** Add File: big.txt", ...body, "*** End Patch"].join("\n")
+    render(<DiffView toolName="patch" args={JSON.stringify({ patch_text: patchText })} />)
+    expect(screen.getByText("line 399")).toBeTruthy()
+    expect(screen.queryByText("line 400")).toBeNull()
+    fireEvent.click(screen.getByRole("button", { name: "Show 600 more lines" }))
+    expect(screen.getByText("line 999")).toBeTruthy()
+    expect(screen.queryByRole("button", { name: /more lines/ })).toBeNull()
+  })
+
+  it("shows no expander for a short diff", () => {
+    const patchText = ["*** Begin Patch", "*** Add File: small.txt", "+a", "+b", "*** End Patch"].join("\n")
+    render(<DiffView toolName="patch" args={JSON.stringify({ patch_text: patchText })} />)
+    expect(screen.queryByRole("button", { name: /more line/ })).toBeNull()
+  })
 })

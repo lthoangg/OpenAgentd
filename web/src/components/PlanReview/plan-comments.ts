@@ -18,6 +18,7 @@
  * comments rather than a flattened quote.
  */
 import { useCallback, useEffect, useState, type RefObject } from 'react'
+import { createPersistedDraftMap } from '@/lib/persisted-drafts'
 
 export interface PlanComment {
   id: string
@@ -195,24 +196,21 @@ export interface PlanReviewDraft {
 
 /**
  * Review drafts by question id, so comments survive the Plan tab unmounting
- * (switching dock tabs, closing the mobile sheet). Not kept across reloads.
+ * (switching dock tabs, closing the mobile sheet) and a reload or crash.
  */
-const drafts = new Map<string, PlanReviewDraft>()
 const MAX_DRAFTS = 20
+const drafts = createPersistedDraftMap<PlanReviewDraft>({ storageKey: 'oa.drafts.planReview.v1', max: MAX_DRAFTS })
 
 export function readPlanReviewDraft(questionId: string | null): PlanReviewDraft {
   return (questionId && drafts.get(questionId)) || { comments: [], overall: '' }
 }
 
 export function writePlanReviewDraft(questionId: string, draft: PlanReviewDraft): void {
-  drafts.delete(questionId)
-  if (draft.comments.length === 0 && !draft.overall) return
-  drafts.set(questionId, draft)
-  while (drafts.size > MAX_DRAFTS) {
-    const oldest = drafts.keys().next()
-    if (oldest.done) break
-    drafts.delete(oldest.value)
+  if (draft.comments.length === 0 && !draft.overall) {
+    drafts.delete(questionId)
+    return
   }
+  drafts.set(questionId, draft)
 }
 
 export function forgetPlanReviewDraft(questionId: string): void {

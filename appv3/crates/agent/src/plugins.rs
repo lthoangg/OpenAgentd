@@ -69,6 +69,18 @@ pub struct JsToolPlugin {
 
 const EVENT_BEFORE: &str = "tool.before";
 const EVENT_AFTER: &str = "tool.after";
+/// Longest a `tool.before` / `tool.after` hook may take. The plugin watchdog
+/// stops busy JavaScript; this bounds a hook awaiting something that never
+/// settles (an unbounded `fetch`), which would otherwise stall the tool call.
+const HOOK_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
+
+/// A hook call that fails like a thrown error once [`HOOK_TIMEOUT`] passes.
+async fn hook_call(event: &str, call: impl std::future::Future<Output = Result<appv3_jsplugin::CallResult, appv3_jsplugin::JsError>>) -> Result<appv3_jsplugin::CallResult, String> {
+    match tokio::time::timeout(HOOK_TIMEOUT, call).await {
+        Ok(r) => r.map_err(|e| e.message),
+        Err(_) => Err(format!("plugin hook '{event}' timed out after {} s", HOOK_TIMEOUT.as_secs())),
+    }
+}
 
 impl JsToolPlugin {
     fn load(js: &Arc<JsPlugin>) -> Result<Option<Self>, String> {
@@ -150,7 +162,7 @@ impl ToolPlugin for JsToolPlugin {
     }
     async fn before(&self, ctx: &PluginCtx<'_>, args: &mut Value) -> Result<(), String> {
         let output = json!({"args": args.clone()});
-        let r = self.js.call(&Target::Handle(self.hooks), EVENT_BEFORE, &[Value::Object(Self::input(ctx)), output], Mode::Args).await.map_err(|e| e.message)?;
+        let r = hook_call(EVENT_BEFORE, self.js.call(&Target::Handle(self.hooks), EVENT_BEFORE, &[Value::Object(Self::input(ctx)), output], Mode::Args)).await?;
         if let Some(new) = r.args.as_ref().and_then(|a| a.get(1)).and_then(|o| o.get("args")) {
             *args = new.clone();
         }
@@ -159,7 +171,7 @@ impl ToolPlugin for JsToolPlugin {
     async fn after(&self, ctx: &PluginCtx<'_>, args: &Value, output: &mut String) -> Result<(), String> {
         let mut input = Self::input(ctx);
         input.insert("args".into(), args.clone());
-        let r = self.js.call(&Target::Handle(self.hooks), EVENT_AFTER, &[Value::Object(input), json!({"output": output.clone()})], Mode::Args).await.map_err(|e| e.message)?;
+        let r = hook_call(EVENT_AFTER, self.js.call(&Target::Handle(self.hooks), EVENT_AFTER, &[Value::Object(input), json!({"output": output.clone()})], Mode::Args)).await?;
         match r.args.as_ref().and_then(|a| a.get(1)).and_then(|o| o.get("output")) {
             Some(Value::String(s)) => *output = s.clone(),
             Some(other) => *output = crate::pystr::py_str(other),

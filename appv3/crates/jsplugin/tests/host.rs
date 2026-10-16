@@ -262,3 +262,40 @@ fn native_regex_module() {
     assert_eq!(v["pem"], json!(["a [KEY] b", 1]));
     assert_eq!(v["err"], json!("SyntaxError"));
 }
+
+const SPIN: &str = r#"
+export function spin() { while (true) {} }
+export async function spinLater() { await Promise.resolve(); while (true) {} }
+export function ok() { return 1; }
+export function never() { return new Promise(() => {}); }
+"#;
+
+#[tokio::test(flavor = "multi_thread")]
+async fn busy_loop_in_a_call_is_interrupted() {
+    let d = tempfile::tempdir().unwrap();
+    let p = JsPlugin::load(&write(d.path(), "spin.ts", SPIN)).unwrap();
+    for method in ["spin", "spinLater"] {
+        let t = std::time::Instant::now();
+        let e = p.call(&Target::export(""), method, &[], Mode::Value).await.unwrap_err();
+        assert_eq!(e.name, "TimeoutError", "{method}: {e:?}");
+        assert!(t.elapsed() < appv3_jsplugin::BUSY_LIMIT * 2, "{method} took {:?}", t.elapsed());
+        // The plugin's thread is usable again.
+        assert_eq!(p.call(&Target::export(""), "ok", &[], Mode::Value).await.unwrap().value, json!(1));
+    }
+}
+
+#[test]
+fn busy_loop_at_top_level_fails_the_load() {
+    let d = tempfile::tempdir().unwrap();
+    let e = JsPlugin::load(&write(d.path(), "top.ts", "while (true) {}\nexport const x = 1;\n")).unwrap_err();
+    assert!(e.contains("without yielding") || e.contains("to load"), "{e}");
+}
+
+#[test]
+fn blocking_call_times_out_on_a_promise_that_never_settles() {
+    let d = tempfile::tempdir().unwrap();
+    let p = JsPlugin::load(&write(d.path(), "never.ts", SPIN)).unwrap();
+    let e = p.call_blocking(&Target::export(""), "never", &[], Mode::Value).unwrap_err();
+    assert_eq!(e.name, "TimeoutError");
+    assert!(e.message.contains("'never' timed out"), "{}", e.message);
+}

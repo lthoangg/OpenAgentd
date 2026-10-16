@@ -2,14 +2,24 @@
 //! its own single-threaded tokio runtime. Callers talk to it via a channel;
 //! every call runs as its own local task, so a call that is awaiting I/O
 //! (an OAuth callback, a token refresh) never blocks the plugin's other calls.
+//!
+//! A watchdog keeps a plugin from hanging the server: a ticker task on the
+//! plugin's own thread refreshes a timestamp every [`TICK`], so it only
+//! falls behind while JavaScript runs without yielding. QuickJS's interrupt
+//! handler aborts the running code once that lasts [`BUSY_LIMIT`]. Waits on
+//! host natives (an unbounded `fetch`) are not JavaScript; blocking callers
+//! are bounded by [`BLOCKING_CALL_TIMEOUT`] instead, async ones by dropping.
 
 use crate::host::{self, HostState};
 use crate::transpile;
 use rquickjs::loader::{ImportAttributes, Loader, Resolver};
 use rquickjs::{AsyncContext, AsyncRuntime, Ctx, Function, Module, Object, Promise};
 use serde_json::{Map, Value};
+use std::cell::Cell;
 use std::path::{Component, Path, PathBuf};
+use std::rc::Rc;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
 
 const PRELUDE: &str = include_str!("prelude.js");
@@ -18,6 +28,24 @@ const MODULE: &str = include_str!("module.js");
 const MEMORY_LIMIT: usize = 512 << 20;
 const THREAD_STACK: usize = 16 << 20;
 const JS_STACK: usize = 8 << 20;
+/// Longest JavaScript may run on a plugin thread without yielding.
+pub const BUSY_LIMIT: Duration = Duration::from_secs(5);
+const TICK: Duration = Duration::from_millis(250);
+/// Longest [`JsPlugin::load`] waits for the module to evaluate.
+pub const LOAD_TIMEOUT: Duration = Duration::from_secs(30);
+/// Longest [`JsPlugin::call_blocking`] waits for a reply.
+pub const BLOCKING_CALL_TIMEOUT: Duration = Duration::from_secs(10);
+
+thread_local! {
+    /// Set by the interrupt handler when it aborts running code, so the
+    /// resulting exception is reported as a timeout (the handler and the
+    /// code it interrupts run on the same plugin thread).
+    static INTERRUPTED: Cell<bool> = const { Cell::new(false) };
+}
+
+fn interrupted_error() -> JsError {
+    JsError { name: "TimeoutError".into(), message: format!("plugin ran JavaScript for more than {} s without yielding; interrupted", BUSY_LIMIT.as_secs()), ..Default::default() }
+}
 
 /// What a call is made on.
 #[derive(Debug, Clone)]
@@ -133,7 +161,11 @@ impl JsPlugin {
         let p = path.clone();
         let label = stem.clone();
         std::thread::Builder::new().name(format!("plugin-{stem}")).stack_size(THREAD_STACK).spawn(move || thread_main(p, label, rx, init_tx)).map_err(|e| e.to_string())?;
-        let describe = init_rx.recv().map_err(|_| "plugin runtime thread exited during load".to_string())??;
+        let describe = match init_rx.recv_timeout(LOAD_TIMEOUT) {
+            Ok(r) => r?,
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => return Err(format!("plugin took longer than {} s to load", LOAD_TIMEOUT.as_secs())),
+            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => return Err("plugin runtime thread exited during load".to_string()),
+        };
         Ok(Arc::new(JsPlugin { path, file_name, stem, describe, tx }))
     }
 
@@ -161,7 +193,8 @@ impl JsPlugin {
         rx.await.unwrap_or_else(|_| Err(JsError::new("plugin runtime has stopped")))
     }
 
-    /// Blocking variant of [`call`] for synchronous callers.
+    /// Blocking variant of [`call`] for synchronous callers, bounded by
+    /// [`BLOCKING_CALL_TIMEOUT`] (it can run on an async worker thread).
     #[allow(clippy::result_large_err)] // see `call`
     pub fn call_blocking(&self, target: &Target, method: &str, args: &[Value], mode: Mode) -> Result<CallResult, JsError> {
         let (tx, rx) = std::sync::mpsc::channel();
@@ -174,7 +207,13 @@ impl JsPlugin {
                 let _ = tx.send(r);
             }),
         );
-        rx.recv().unwrap_or_else(|_| Err(JsError::new("plugin runtime has stopped")))
+        match rx.recv_timeout(BLOCKING_CALL_TIMEOUT) {
+            Ok(r) => r,
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                Err(JsError { name: "TimeoutError".into(), message: format!("plugin call '{method}' timed out after {} s", BLOCKING_CALL_TIMEOUT.as_secs()), ..Default::default() })
+            }
+            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => Err(JsError::new("plugin runtime has stopped")),
+        }
     }
 
     /// Release an object kept by a `Mode::Keep` call.
@@ -193,7 +232,17 @@ fn thread_main(path: PathBuf, label: String, rx: mpsc::UnboundedReceiver<Msg>, i
     };
     let local = tokio::task::LocalSet::new();
     local.block_on(&rt, async move {
-        let (qrt, ctx, describe) = match init(&path, &label).await {
+        // The watchdog's heartbeat (see the module docs). Started before the
+        // module evaluates so a busy top level is interrupted too.
+        let last_tick = Rc::new(Cell::new(Instant::now()));
+        let beat = last_tick.clone();
+        tokio::task::spawn_local(async move {
+            loop {
+                tokio::time::sleep(TICK).await;
+                beat.set(Instant::now());
+            }
+        });
+        let (qrt, ctx, describe) = match init(&path, &label, last_tick).await {
             Ok(v) => v,
             Err(e) => {
                 let _ = init_tx.send(Err(e));
@@ -228,6 +277,11 @@ fn thread_main(path: PathBuf, label: String, rx: mpsc::UnboundedReceiver<Msg>, i
 
 /// Turn a caught QuickJS error into a [`JsError`].
 fn js_error(ctx: &Ctx<'_>, e: rquickjs::Error) -> JsError {
+    if INTERRUPTED.with(|f| f.replace(false)) {
+        // Clear the pending exception, or the next call on this context fails with it.
+        let _ = ctx.catch();
+        return interrupted_error();
+    }
     if !matches!(e, rquickjs::Error::Exception) {
         return JsError::new(e.to_string());
     }
@@ -266,10 +320,21 @@ async fn invoke(ctx: &AsyncContext, target: String, method: String, args: String
     })
 }
 
-async fn init(path: &Path, label: &str) -> Result<(AsyncRuntime, AsyncContext, Value), String> {
+async fn init(path: &Path, label: &str, last_tick: Rc<Cell<Instant>>) -> Result<(AsyncRuntime, AsyncContext, Value), String> {
     let rt = AsyncRuntime::new().map_err(|e| e.to_string())?;
     rt.set_memory_limit(MEMORY_LIMIT).await;
     rt.set_max_stack_size(JS_STACK).await;
+    rt.set_interrupt_handler(Some(Box::new(move || {
+        if last_tick.get().elapsed() <= BUSY_LIMIT {
+            return false;
+        }
+        // A fresh budget for whatever runs next on this thread (the error
+        // formatting below, the plugin's other calls).
+        last_tick.set(Instant::now());
+        INTERRUPTED.with(|f| f.set(true));
+        true
+    })))
+    .await;
     rt.set_loader(PluginResolver, PluginLoader).await;
     let who = label.to_string();
     rt.set_host_promise_rejection_tracker(Some(Box::new(move |ctx, _promise, reason, is_handled| {

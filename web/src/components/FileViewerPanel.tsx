@@ -13,21 +13,12 @@ import { cn } from '@/lib/utils'
 import { useFileRevealStore } from '@/stores/useFileRevealStore'
 import { formatBytes } from '@/utils/format'
 import { highlightLines } from '@/utils/code-highlight'
+import { TEXT_FILE_EXTENSIONS as TEXT_EXTENSIONS } from '@/utils/file-extensions'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { isVideoSrc } from '@/utils/workspace'
 import { PdfThumbnail } from './PdfThumbnail'
 import type { WorkspaceFileInfo } from '@/api/types'
 
-const TEXT_EXTENSIONS = new Set([
-  'txt', 'md', 'markdown', 'rst',
-  'json', 'jsonl', 'yaml', 'yml', 'toml', 'ini', 'env', 'gitignore',
-  'csv', 'tsv', 'log',
-  'py', 'ts', 'tsx', 'js', 'jsx', 'mjs', 'cjs',
-  'html', 'css', 'scss', 'sass',
-  'sh', 'bash', 'zsh', 'fish',
-  'rs', 'go', 'java', 'kt', 'c', 'cpp', 'h', 'hpp', 'rb', 'php', 'swift',
-  'sql', 'xml', 'svg',
-])
 const IMAGE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp'])
 const MAX_TEXT_PREVIEW_BYTES = 512 * 1024
 const GUTTER_WIDTH_CH = 4
@@ -118,28 +109,32 @@ function LineGutter({ value }: { value: number }) {
 /**
  * Map file extensions to the grammar names in ``utils/code-highlight``.
  *
- * Covers every ext in TEXT_EXTENSIONS plus a few extras. Unknown extensions
- * fall back to plaintext — the highlighter escapes and returns the source
- * unstyled rather than throwing.
+ * Covers the TEXT_EXTENSIONS that have a grammar, plus a few extras. Anything
+ * else falls back to plaintext — the highlighter escapes and returns the
+ * source unstyled rather than throwing.
  */
 const EXT_TO_LANG: Record<string, string> = {
   // Web
-  ts: 'ts', tsx: 'tsx', js: 'js', jsx: 'jsx',
+  ts: 'ts', tsx: 'tsx', mts: 'ts', cts: 'ts', js: 'js', jsx: 'jsx',
   mjs: 'js', cjs: 'js',
-  html: 'html', css: 'css', scss: 'scss', sass: 'scss',
+  html: 'html', htm: 'html', css: 'css', scss: 'scss', sass: 'scss', less: 'scss',
+  // Component files are markup with embedded script/style; the HTML grammar
+  // is the closest fit without a dedicated one.
+  astro: 'html', svelte: 'html', vue: 'html',
   // Data / config
-  json: 'json', jsonl: 'json', yaml: 'yaml', yml: 'yaml',
-  toml: 'toml', ini: 'ini', env: 'env',
-  xml: 'html', svg: 'html',
+  json: 'json', jsonc: 'json', json5: 'json', jsonl: 'json', ndjson: 'json', ipynb: 'json',
+  yaml: 'yaml', yml: 'yaml',
+  toml: 'toml', ini: 'ini', cfg: 'ini', conf: 'ini', properties: 'ini', env: 'env',
+  xml: 'html', xsd: 'html', plist: 'html', svg: 'html',
   // Markup / docs
-  md: 'markdown', markdown: 'markdown', rst: 'plaintext',
+  md: 'markdown', markdown: 'markdown', mdx: 'markdown', rst: 'plaintext',
   // Shell
   sh: 'shell', bash: 'shell', zsh: 'shell', fish: 'shell',
   // Systems / compiled
-  rs: 'rust', go: 'go', c: 'c', cpp: 'cpp', h: 'cpp', hpp: 'cpp',
-  java: 'java', kt: 'kotlin', swift: 'swift',
+  rs: 'rust', go: 'go', c: 'c', cpp: 'cpp', cc: 'cpp', cxx: 'cpp', h: 'cpp', hpp: 'cpp',
+  java: 'java', kt: 'kotlin', kts: 'kotlin', swift: 'swift',
   // Scripting
-  py: 'python', rb: 'ruby', php: 'php',
+  py: 'python', pyi: 'python', rb: 'ruby', php: 'php',
   // Query
   sql: 'sql', graphql: 'graphql', gql: 'graphql',
   // Build / infra — newly highlightable now that chat and the viewer share

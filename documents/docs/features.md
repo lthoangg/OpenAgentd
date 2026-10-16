@@ -672,7 +672,11 @@ run from the terminal (the native Rust binary since v3.0.0).
 - **Workspace files panel** `[since v1.0, v1.92.0, v1.93.1]` — every file the agent reads,
   writes, or generates appears in the left drawer as a recursive, VSCode-style
   collapsible file tree with folder chevrons, depth indentation, and
-  material-icon-theme file/folder icons `[v1.92.0]`. Click to preview or
+  material-icon-theme file/folder icons `[v1.92.0]`, covering ~150 popular
+  extensions (jsonl, astro, svelte, vue, mdx, csv, most languages, media and
+  archives) and well-known
+  files such as `package.json`, lockfiles, `Cargo.toml`, `README` and
+  `AGENTS.md` `[v3.14.0]`. Click to preview or
   download; desktop downloads use a native save dialog instead of navigating
   away from the app `[v1.52.0]`. Image and video previews in the coding
   workspace panel now open in the shared full-screen lightbox on click
@@ -1086,6 +1090,10 @@ agent against it.
   extensionless text files, and binary download fallback. Copy and download
   buttons sit in the file tab header for one-click copy of the full content or
   download of the file `[v1.92.0]`.
+  The viewer, attachment previews and the composer's file picker share one
+  text-file list, so `.jsonl`, `.astro`, `.svelte`, `.vue`, `.mdx` and other
+  common source/config files open as text everywhere; component files
+  highlight as markup `[v3.14.0]`.
   Select lines and click **Add comment** to insert an `@path#Lx-Ly` composer
   reference; the backend auto-attaches only the selected file lines.
 - **Open file from git changes on mobile and desktop** `[v1.92.0]` — right-click

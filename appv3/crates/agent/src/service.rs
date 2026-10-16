@@ -90,6 +90,8 @@ pub const EXT_CATEGORY: &[(&str, &str)] = &[
     (".md", "text"),
     (".markdown", "text"),
     (".json", "text"),
+    (".jsonc", "text"),
+    (".json5", "text"),
     (".ndjson", "text"),
     (".jsonl", "text"),
     (".py", "text"),
@@ -100,6 +102,11 @@ pub const EXT_CATEGORY: &[(&str, &str)] = &[
     (".jsx", "text"),
     (".ts", "text"),
     (".tsx", "text"),
+    (".mts", "text"),
+    (".cts", "text"),
+    (".astro", "text"),
+    (".svelte", "text"),
+    (".vue", "text"),
     (".go", "text"),
     (".rs", "text"),
     (".rb", "text"),
@@ -504,6 +511,7 @@ mod tests {
         assert_eq!(sanitize_upload_filename("", "image"), "upload.jpg");
         assert_eq!(sanitize_upload_filename("main.py#L10-20", "text"), "main.py");
         assert_eq!(categorize("x.PNG", None), Some("image"));
+        assert_eq!(categorize("index.astro", None), Some("text"));
         assert_eq!(categorize("x.bin", Some("image/png; q=1")), Some("image"));
         assert!(!validate_magic(b"nope", "image/png"));
         assert_eq!(html_escape("<a'>"), "&lt;a&#x27;&gt;");

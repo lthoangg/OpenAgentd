@@ -1,4 +1,5 @@
 import type { AgentCapabilities } from '@/api/types'
+import { TEXT_FILE_EXTENSIONS } from '@/utils/file-extensions'
 
 /**
  * The `accept` attribute for the hidden file input. This guides the OS file
@@ -12,15 +13,10 @@ export function buildAcceptString(_capabilities?: AgentCapabilities): string {
     // Plain text / markup / config
     'text/plain', 'text/csv', 'text/tab-separated-values', 'text/markdown',
     'text/html', 'text/css', 'text/javascript', 'text/typescript',
-    '.txt', '.csv', '.tsv', '.md', '.mdx', '.html', '.css', '.js', '.mjs',
-    '.cjs', '.ts', '.tsx', '.jsx',
-    // Data / config
     'application/json', 'application/x-yaml', 'application/toml',
-    '.json', '.yaml', '.yml', '.toml', '.env', '.ini', '.conf',
-    // Source code (no standard MIME — extension only)
-    '.py', '.go', '.rs', '.rb', '.java', '.kt', '.swift', '.c', '.cpp',
-    '.h', '.hpp', '.cs', '.php', '.sh', '.bash', '.zsh', '.fish',
-    '.sql', '.graphql', '.proto', '.xml', '.tf', '.tfvars',
+    'application/x-ndjson',
+    // Source code and config — most have no standard MIME, so list by extension
+    ...Array.from(TEXT_FILE_EXTENSIONS, (ext) => `.${ext}`),
     // Documents
     'application/pdf',
     'application/vnd.openxmlformats-officedocument.wordprocessingml.document',

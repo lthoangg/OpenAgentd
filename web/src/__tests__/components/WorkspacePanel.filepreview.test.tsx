@@ -337,6 +337,16 @@ describe('Coding workspace two-layer file preview', () => {
     await waitFor(() => expect(screen.getByText('const')).toBeTruthy())
   })
 
+  it('highlights an .astro component as markup', async () => {
+    // No stdlib MIME knows `.astro`; it must still preview as highlighted text.
+    globalThis.fetch = mock(async () => new Response('<section class="hero">hi</section>\n')) as typeof fetch
+    const astro: WorkspaceFileInfo = { path: 'src/pages/index.astro', name: 'index.astro', size: 36, mtime: 1, mime: 'application/octet-stream' }
+    await renderViewer(astro)
+
+    // Opening and closing tags each become their own token.
+    await waitFor(() => expect(screen.getAllByText('section', { selector: 'span' })).toHaveLength(2))
+  })
+
   it('opens video previews in a lightbox from the file tab', async () => {
     const user = userEvent.setup()
     const video: WorkspaceFileInfo = { path: 'assets/clip.mp4', name: 'clip.mp4', size: 1000, mtime: 1, mime: 'video/mp4' }

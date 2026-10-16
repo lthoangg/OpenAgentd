@@ -19,10 +19,11 @@ export interface FileRef {
 
 /** Extensions that make a bare name (no folder) a file. */
 const KNOWN_EXTENSIONS = new Set([
-  'astro', 'bash', 'c', 'cc', 'cfg', 'cjs', 'clj', 'cmake', 'conf', 'cpp', 'cs', 'css', 'csv', 'dart',
+  'astro', 'bash', 'c', 'cc', 'cfg', 'cjs', 'clj', 'cmake', 'conf', 'cpp', 'cs', 'css', 'csv', 'cts', 'dart',
   'dockerfile', 'env', 'erl', 'ex', 'exs', 'fish', 'gql', 'go', 'gradle', 'graphql', 'h', 'hcl', 'hpp',
-  'hs', 'htm', 'html', 'ini', 'java', 'jl', 'js', 'json', 'jsonc', 'jsx', 'kt', 'kts', 'less', 'lock',
-  'log', 'lua', 'md', 'mdx', 'mjs', 'mk', 'ml', 'nim', 'nix', 'php', 'plist', 'proto', 'ps1', 'py', 'pyi',
+  'hs', 'htm', 'html', 'ini', 'java', 'jl', 'js', 'json', 'json5', 'jsonc', 'jsonl', 'jsx', 'kt', 'kts',
+  'less', 'lock', 'log', 'lua', 'md', 'mdx', 'mjs', 'mk', 'ml', 'mts', 'ndjson', 'nim', 'nix',
+  'php', 'plist', 'prisma', 'proto', 'ps1', 'py', 'pyi',
   'rb', 'rs', 'sass', 'scala', 'scss', 'sh', 'sql', 'svelte', 'svg', 'swift', 'tf', 'toml', 'ts', 'tsv',
   'tsx', 'txt', 'vue', 'xml', 'yaml', 'yml', 'zig', 'zsh',
 ])

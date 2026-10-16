@@ -32,13 +32,13 @@ describe('resolveFileIcon — extension mapping', () => {
     ['utils.js',     'javascript'],
     ['Widget.jsx',   'react'],
     ['data.json',    'json'],
-    ['readme.md',    'markdown'],
+    ['notes.md',     'markdown'],
     ['notes.markdown', 'markdown'],
     ['styles.css',   'css'],
     ['layout.html',  'html'],
     ['config.yml',   'yaml'],
     ['config.yaml',  'yaml'],
-    ['Cargo.toml',   'toml'],
+    ['config.toml',  'toml'],
     ['main.rs',      'rust'],
     ['main.go',      'go'],
     ['query.sql',    'database'],
@@ -55,6 +55,37 @@ describe('resolveFileIcon — extension mapping', () => {
     ['run.zsh',      'console'],
     ['vars.env',     'settings'],
     ['styles.scss',  'sass'],
+    ['events.jsonl', 'json'],
+    ['events.ndjson', 'json'],
+    ['tsconfig.base.jsonc', 'json'],
+    ['Page.astro',   'astro'],
+    ['App.svelte',   'svelte'],
+    ['App.vue',      'vue'],
+    ['post.mdx',     'mdx'],
+    ['data.csv',     'table'],
+    ['notes.txt',    'document'],
+    ['server.log',   'log'],
+    ['Main.java',    'java'],
+    ['Main.kt',      'kotlin'],
+    ['main.swift',   'swift'],
+    ['main.c',       'c'],
+    ['main.cpp',     'cpp'],
+    ['Program.cs',   'csharp'],
+    ['index.php',    'php'],
+    ['app.rb',       'ruby'],
+    ['init.lua',     'lua'],
+    ['main.dart',    'dart'],
+    ['schema.prisma', 'prisma'],
+    ['schema.graphql', 'graphql'],
+    ['main.tf',      'terraform'],
+    ['run.ps1',      'powershell'],
+    ['styles.less',  'less'],
+    ['mod.mts',      'typescript'],
+    ['fix.diff',     'diff'],
+    ['song.mp3',     'audio'],
+    ['clip.mp4',     'video'],
+    ['font.woff2',   'font'],
+    ['bundle.zip',   'zip'],
   ]
 
   for (const [filename, fragment] of cases) {
@@ -91,11 +122,53 @@ describe('resolveFileIcon — filename overrides', () => {
     expect(icon('.env.example')).toContain('settings')
   })
 
+  it('.env.local → settings icon', () => {
+    expect(icon('.env.local')).toContain('settings')
+  })
+
+  const named: Array<[string, string]> = [
+    ['package.json',       'nodejs'],
+    ['tsconfig.json',      'tsconfig'],
+    ['bun.lock',           'bun'],
+    ['pnpm-lock.yaml',     'pnpm'],
+    ['Cargo.toml',         'rust'],
+    ['go.mod',             'go-mod'],
+    ['docker-compose.yml', 'docker'],
+    ['README.md',          'readme'],
+    ['LICENSE',            'license'],
+    ['AGENTS.md',          'agent'],
+    ['vite.config.ts',     'vite'],
+    ['astro.config.mjs',   'astro-config'],
+  ]
+  for (const [filename, fragment] of named) {
+    it(`${filename} → URL containing "${fragment}"`, () => {
+      expect(icon(filename)).toContain(fragment)
+    })
+  }
+
   // Filename override wins: resolves to makefile stub, not the generic file stub
   it('Makefile filename override wins — not treated as no-extension fallback', () => {
     const result = icon('Makefile')
     expect(result).toContain('makefile')
     expect(result).not.toBe(icon('UNKNOWN_NO_EXT')) // generic fallback value
+  })
+})
+
+// ── Compound extensions ───────────────────────────────────────────────────────
+
+describe('resolveFileIcon — compound extensions', () => {
+  it('longest known suffix wins', () => {
+    expect(icon('types.d.ts')).toContain('typescript-def')
+    expect(icon('app.test.ts')).toContain('test-ts')
+    expect(icon('app.spec.js')).toContain('test-js')
+  })
+
+  it('an unknown middle part falls through to the last extension', () => {
+    expect(icon('app.module.ts')).toBe(icon('app.ts'))
+  })
+
+  it('a leading dot is not an extension separator', () => {
+    expect(icon('.bashrc')).toContain('file')
   })
 })
 
@@ -110,9 +183,8 @@ describe('resolveFileIcon — fallback', () => {
   })
 
   it('no extension → generic file icon', () => {
-    expect(icon('LICENSE')).toContain('file')
-    expect(icon('LICENCE')).toContain('file')
-    expect(icon('README')).toContain('file')
+    expect(icon('NOTES')).toContain('file')
+    expect(icon('Procfile_x')).toContain('file')
   })
 
   it('empty string → generic file icon (no crash)', () => {

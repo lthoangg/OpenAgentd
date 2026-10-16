@@ -2,7 +2,7 @@
 title: Features
 description: Canonical, version-cited catalogue of shipped user-visible OpenAgentd features.
 status: stable
-updated: 2026-10-15
+updated: 2026-10-16
 ---
 
 # Features
@@ -14,7 +14,7 @@ release that introduced it (where known). When you ship something new, **add it 
 > double-clickable app that runs an agent on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 18 providers. Your keys.
 
-**Latest release:** v3.12.0 · October 15, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.12.0)
+**Latest release:** v3.13.0 · October 16, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.13.0)
 
 ---
 
@@ -1245,7 +1245,7 @@ OpenAgentd carries context across sessions via rolling-window summarization.
   notification and skips subagent and scheduled sessions `[v3.12.0]`.
   The summary under the "Session compacted" divider starts collapsed; click
   the divider to read it, including while it is still being written
-  `[v3.12.1]`.
+  `[v3.13.0]`.
 - **`AGENTS.md` at repo root and subfolders** `[v1.9.0]` — written by `/init`;
   standard repo- and folder-scoped agent context files.
 - **Global `AGENTS.md`** `[v2.10.0]` — a developer-wide instructions file at
@@ -1765,7 +1765,7 @@ Everything stays local. No third-party telemetry SaaS.
   counts the sub-agent sessions it started in its spend, turns, and tokens, and
   says how many. The Sessions card lists each sub-agent under its session (in
   the overview too), and recent turns name the agent that ran them.
-- **90-day telemetry retention** `[v3.12.1]` — local traces and metrics are
+- **90-day telemetry retention** `[v3.13.0]` — local traces and metrics are
   kept for 90 days by default (traces were previously kept for 30), so the
   90-day telemetry range shows full trace history. Older data is removed by a
   daily sweep; `OTEL_SPAN_RETENTION_DAYS` and `OTEL_METRIC_RETENTION_DAYS`

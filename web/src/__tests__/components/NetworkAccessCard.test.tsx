@@ -42,7 +42,16 @@ const invokeMock = mock(async (...args: unknown[]) => {
 
 mock.module('@tauri-apps/api/core', () => ({ invoke: invokeMock }))
 
+const encoded: string[] = []
+mock.module('uqr', () => ({
+  encode: (value: string) => {
+    encoded.push(value)
+    return { data: [[true, false], [false, true]] }
+  },
+}))
+
 const { NetworkAccessCard, firewallHint } = await import('@/components/NetworkAccessCard')
+const { parseConnectLink } = await import('@/lib/connect-link')
 
 describe('firewallHint', () => {
   it('points Windows users at the Private network profile', () => {
@@ -63,6 +72,7 @@ describe('firewallHint', () => {
 describe('NetworkAccessCard', () => {
   beforeEach(() => {
     calls.length = 0
+    encoded.length = 0
     status = base()
     failSet = null
   })
@@ -119,5 +129,44 @@ describe('NetworkAccessCard', () => {
     render(<NetworkAccessCard />)
     expect(await screen.findByText('Start the builtin backend first.')).toBeTruthy()
     expect((screen.getByRole('switch') as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it('shows a QR with every address and the key only on request', async () => {
+    status = listening({ lan_urls: ['http://192.168.1.20:4082', 'http://10.0.0.5:4082'] })
+    render(<NetworkAccessCard />)
+    await userEvent.click(await screen.findByRole('button', { name: 'show QR' }))
+
+    expect(await screen.findByRole('img', { name: 'Connection QR code' })).toBeTruthy()
+    expect(calls.some((c) => c.command === 'app_network_access_key')).toBe(true)
+    expect(parseConnectLink(encoded.at(-1) ?? '')).toEqual({
+      urls: ['http://192.168.1.20:4082', 'http://10.0.0.5:4082'],
+      key: 'generated-key-0123456789abcdef',
+    })
+
+    await userEvent.click(screen.getByRole('button', { name: 'hide QR' }))
+    expect(screen.queryByRole('img', { name: 'Connection QR code' })).toBeNull()
+  })
+
+  it('does not fetch the key or show a QR by default', async () => {
+    status = listening()
+    render(<NetworkAccessCard />)
+    await screen.findByRole('button', { name: 'show QR' })
+    expect(screen.queryByRole('img', { name: 'Connection QR code' })).toBeNull()
+    expect(calls.some((c) => c.command === 'app_network_access_key')).toBe(false)
+  })
+
+  it('hides the QR when the key is regenerated', async () => {
+    status = listening()
+    render(<NetworkAccessCard />)
+    await userEvent.click(await screen.findByRole('button', { name: 'show QR' }))
+    await screen.findByRole('img', { name: 'Connection QR code' })
+    await userEvent.click(screen.getByRole('button', { name: 'regenerate' }))
+    await waitFor(() => expect(screen.queryByRole('img', { name: 'Connection QR code' })).toBeNull())
+  })
+
+  it('disables the QR without a LAN address', async () => {
+    status = listening({ lan_urls: [] })
+    render(<NetworkAccessCard />)
+    expect((await screen.findByRole('button', { name: 'show QR' }) as HTMLButtonElement).disabled).toBe(true)
   })
 })

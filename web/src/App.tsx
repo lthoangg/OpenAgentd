@@ -1,8 +1,9 @@
 import { Suspense, useState } from 'react'
 import { RouterProvider } from '@tanstack/react-router'
 import { OPENAGENTD_APP_ICON } from '@/lib/brand-assets'
-import { AppBackendDialog } from '@/components/AppBackendDialog'
+import { AppBackendDialog, type AppBackendPrefill } from '@/components/AppBackendDialog'
 import { Button } from '@/components/ui/button'
+import { useConnectLink } from '@/hooks/useConnectLink'
 import { getBundledBackendLogPath } from '@/lib/app-backend'
 import { useAppBackendBootstrap } from './hooks/use-app-backend-bootstrap'
 import { router } from './router'
@@ -10,17 +11,27 @@ import { router } from './router'
 function App() {
   const { ready, unavailable, failed, retrying, retry } = useAppBackendBootstrap()
   const [backendDialogOpen, setBackendDialogOpen] = useState(false)
+  // A scanned `openagentd://connect` link opens the dialog prefilled, in
+  // the loading screen (no server yet) and in the running app alike.
+  const { request: connectRequest, clear: clearConnectRequest } = useConnectLink()
+  const onBackendDialogOpenChange = (open: boolean) => {
+    setBackendDialogOpen(open)
+    if (!open) clearConnectRequest()
+  }
 
-  if (!ready) return <AppLoadingScreen unavailable={unavailable} failed={failed} retrying={retrying} onRetry={retry} onChooseServer={() => setBackendDialogOpen(true)} backendDialogOpen={backendDialogOpen} onBackendDialogOpenChange={setBackendDialogOpen} />
+  if (!ready) return <AppLoadingScreen unavailable={unavailable} failed={failed} retrying={retrying} onRetry={retry} onChooseServer={() => setBackendDialogOpen(true)} backendDialogOpen={backendDialogOpen || connectRequest !== null} onBackendDialogOpenChange={onBackendDialogOpenChange} backendPrefill={connectRequest} />
 
   return (
-    <Suspense fallback={<AppLoadingScreen unavailable={false} failed={false} retrying={false} onRetry={() => {}} onChooseServer={() => {}} backendDialogOpen={false} onBackendDialogOpenChange={() => {}} />}>
-      <RouterProvider router={router} />
-    </Suspense>
+    <>
+      <Suspense fallback={<AppLoadingScreen unavailable={false} failed={false} retrying={false} onRetry={() => {}} onChooseServer={() => {}} backendDialogOpen={false} onBackendDialogOpenChange={() => {}} />}>
+        <RouterProvider router={router} />
+      </Suspense>
+      <AppBackendDialog open={connectRequest !== null} onOpenChange={onBackendDialogOpenChange} prefill={connectRequest} />
+    </>
   )
 }
 
-function AppLoadingScreen({ unavailable, failed, retrying, onRetry, onChooseServer, backendDialogOpen, onBackendDialogOpenChange }: {
+function AppLoadingScreen({ unavailable, failed, retrying, onRetry, onChooseServer, backendDialogOpen, onBackendDialogOpenChange, backendPrefill = null }: {
   unavailable: boolean
   failed: boolean
   retrying: boolean
@@ -28,6 +39,7 @@ function AppLoadingScreen({ unavailable, failed, retrying, onRetry, onChooseServ
   onChooseServer: () => void
   backendDialogOpen: boolean
   onBackendDialogOpenChange: (open: boolean) => void
+  backendPrefill?: AppBackendPrefill | null
 }) {
   const [logCopyState, setLogCopyState] = useState<'idle' | 'copied' | 'failed'>('idle')
   const [backendLogPath, setBackendLogPath] = useState<string | null>(null)
@@ -72,7 +84,7 @@ function AppLoadingScreen({ unavailable, failed, retrying, onRetry, onChooseServ
           </>
         )}
       </div>
-      <AppBackendDialog open={backendDialogOpen} onOpenChange={onBackendDialogOpenChange} />
+      <AppBackendDialog open={backendDialogOpen} onOpenChange={onBackendDialogOpenChange} prefill={backendPrefill} />
     </div>
   )
 }

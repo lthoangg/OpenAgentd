@@ -417,4 +417,33 @@ describe('AppBackendDialog', () => {
 
     expect(onOpenChangeMock).not.toHaveBeenCalled()
   })
+
+  it('fills and tests a scanned server but connects only on Save & Connect', async () => {
+    const user = userEvent.setup()
+    const prefill = { baseUrl: 'http://127.0.0.1:4082', accessKey: 'scanned-key' }
+    render(<AppBackendDialog open onOpenChange={() => {}} prefill={prefill} />)
+
+    expect(await screen.findByText(/Scanned from another device/)).toBeTruthy()
+    await waitFor(() => expect(screen.getByText('Connection successful.')).toBeTruthy())
+    expect((screen.getByLabelText(/server url/i) as HTMLInputElement).value).toBe('http://127.0.0.1:4082')
+    expect((screen.getByLabelText(/access key/i) as HTMLInputElement).value).toBe('scanned-key')
+    expect((screen.getByLabelText(/server name/i) as HTMLInputElement).value).toBe('127.0.0.1')
+    const authCheck = fetchCalls.find((call) => call.url === 'http://127.0.0.1:4082/api/auth/check')
+    expect(new Headers(authCheck?.init?.headers).get('Authorization')).toBe('Bearer scanned-key')
+    expect(invokeCalls.some((call) => call.command === 'app_use_external_backend')).toBe(false)
+
+    await user.click(screen.getByRole('button', { name: 'Save & Connect' }))
+    await waitFor(() => expect(invokeCalls).toContainEqual({
+      command: 'app_use_external_backend',
+      args: { baseUrl: 'http://127.0.0.1:4082', name: '127.0.0.1', persist: true },
+    }))
+  })
+
+  it('reports a scanned server that does not answer', async () => {
+    const prefill = { baseUrl: 'http://127.0.0.1:4999', accessKey: 'scanned-key' }
+    render(<AppBackendDialog open onOpenChange={() => {}} prefill={prefill} />)
+
+    expect(await screen.findByText(/Server did not respond/)).toBeTruthy()
+    expect(invokeCalls.some((call) => call.command === 'app_use_external_backend')).toBe(false)
+  })
 })

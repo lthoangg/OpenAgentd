@@ -6,6 +6,7 @@
 import { useEffect, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
+import { ConnectQrCode } from '@/components/ConnectQrCode'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import { SectionCard, SectionCardHeader } from '@/components/ui/section-card'
@@ -18,6 +19,7 @@ import {
   setNetworkAccessKey,
   type NetworkAccessStatus,
 } from '@/lib/app-network-access'
+import { buildConnectLink } from '@/lib/connect-link'
 
 function message(err: unknown): string {
   if (err instanceof Error) return err.message
@@ -54,6 +56,7 @@ export function NetworkAccessCard() {
   const [port, setPort] = useState(String(DEFAULT_NETWORK_ACCESS_PORT))
   const [key, setKey] = useState<string | null>(null)
   const [revealed, setRevealed] = useState(false)
+  const [qrLink, setQrLink] = useState<string | null>(null)
   const [customKey, setCustomKey] = useState('')
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -95,6 +98,7 @@ export function NetworkAccessCard() {
     }
     setKey(null)
     setRevealed(false)
+    setQrLink(null)
     void run(() => setNetworkAccess(enabled, parsed))
   }
 
@@ -123,9 +127,21 @@ export function NetworkAccessCard() {
     if (value) await copy(value)
   }
 
+  async function toggleQr() {
+    if (qrLink) {
+      setQrLink(null)
+      return
+    }
+    const urls = status?.lan_urls ?? []
+    if (!urls.length) return
+    const value = await loadKey()
+    if (value) setQrLink(buildConnectLink({ urls, key: value }))
+  }
+
   function replaceKey(next: string | null) {
     setKey(null)
     setRevealed(false)
+    setQrLink(null)
     void run(() => setNetworkAccessKey(next)).then(() => setCustomKey(''))
   }
 
@@ -198,6 +214,25 @@ export function NetworkAccessCard() {
                   Listening on port {status?.port}. No LAN address was found; use this computer&apos;s IP address.
                 </p>
               )}
+              <div>
+                <Button
+                  type="button"
+                  variant="subtle"
+                  size="xs"
+                  onClick={() => void toggleQr()}
+                  disabled={pending || !status?.lan_urls.length}
+                >
+                  {qrLink ? 'hide QR' : 'show QR'}
+                </Button>
+              </div>
+              {qrLink ? (
+                <div className="flex flex-col items-center gap-2 rounded-xs border border-(--color-border) bg-(--bg-card) p-3">
+                  <ConnectQrCode value={qrLink} />
+                  <p className="text-center text-xs md:text-[11px] leading-relaxed text-(--color-text-muted)">
+                    Scan with your phone&apos;s camera to open OpenAgentd and connect. The code contains the access key.
+                  </p>
+                </div>
+              ) : null}
             </div>
 
             <div className="grid gap-1.5">

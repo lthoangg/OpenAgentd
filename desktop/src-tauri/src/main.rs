@@ -10,6 +10,7 @@ mod sidecar;
 mod usage;
 mod tray_popup;
 mod watchdog;
+mod network_access;
 
 use anyhow::{Context, Result};
 use serde::Serialize;
@@ -342,6 +343,7 @@ async fn restart_sidecar_and_reload_window(app: &AppHandle) -> Result<()> {
     *state.backend_mode.lock().await = BackendMode::Bundled;
     let _ = state.sidecar.lock().await.replace(sidecar);
     state.backend_failed.store(false, Ordering::SeqCst);
+    crate::network_access::reapply(app);
     // Only notify windows that are actually on the bundled backend. A plain
     // `app.emit(...)` broadcasts to every window's JS listener, which would
     // live-redirect windows connected to an external server back onto this
@@ -533,6 +535,7 @@ async fn publish_backend(app: &AppHandle, started: StartedBackend) -> Result<()>
             let _ = state.backend_base_url.lock().await.replace(base.clone());
             *state.backend_mode.lock().await = BackendMode::Bundled;
             guard.complete();
+            crate::network_access::reapply(app);
 
             if let Some(window) = app.get_webview_window(MAIN_WINDOW) {
                 window
@@ -642,6 +645,10 @@ fn main() {
             commands::app_use_bundled_backend,
             commands::app_stop_bundled_backend,
             commands::app_new_window,
+            commands::app_network_access_status,
+            commands::app_set_network_access,
+            commands::app_network_access_key,
+            commands::app_set_network_access_key,
             menu::set_tray_session,
             tray_popup::get_tray_usage_summary,
             tray_popup::tray_action,

@@ -97,7 +97,13 @@
       "digestAlgorithm": "sha256",
       "timestampUrl": "http://timestamp.digicert.com",
       "wix": {
-        "language": "en-US"
+        "language": "en-US",
+        "fragmentPaths": [
+          "windows/firewall.wxs"
+        ],
+        "componentGroupRefs": [
+          "SidecarFirewall"
+        ]
       }
     },
     "linux": {

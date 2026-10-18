@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-app-network-access-status"
+description = "Enables the app_network_access_status command without any pre-configured scope."
+commands.allow = ["app_network_access_status"]
+
+[[permission]]
+identifier = "deny-app-network-access-status"
+description = "Denies the app_network_access_status command without any pre-configured scope."
+commands.deny = ["app_network_access_status"]

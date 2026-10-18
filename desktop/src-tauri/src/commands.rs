@@ -551,6 +551,7 @@ pub async fn start_bundled_sidecar(app: &AppHandle) -> Result<BackendReady, Stri
     let _ = state.backend_base_url.lock().await.replace(base.clone());
     update_tray_status(app, "Status: Running");
     start_guard.complete();
+    crate::network_access::reapply(app);
 
     Ok(BackendReady {
         port: handshake.port,
@@ -565,6 +566,39 @@ pub async fn start_bundled_sidecar(app: &AppHandle) -> Result<BackendReady, Stri
 pub async fn app_stop_bundled_backend(app: AppHandle) -> Result<(), String> {
     shutdown_sidecar_now(&app).await;
     Ok(())
+}
+
+// "Network access" for the builtin sidecar; logic in `network_access`.
+
+#[tauri::command]
+pub async fn app_network_access_status(
+    app: AppHandle,
+) -> Result<crate::network_access::NetworkAccessStatus, String> {
+    crate::network_access::status(&app).await
+}
+
+#[tauri::command]
+pub async fn app_set_network_access(
+    app: AppHandle,
+    enabled: bool,
+    port: u16,
+) -> Result<crate::network_access::NetworkAccessStatus, String> {
+    crate::network_access::set(&app, enabled, port).await
+}
+
+/// The LAN access key, for Show/Copy. `None` until network access was first enabled.
+#[tauri::command]
+pub async fn app_network_access_key() -> Result<Option<String>, String> {
+    crate::network_access::load_key().await
+}
+
+/// Store a custom key, or generate a new one when `key` is `None`.
+#[tauri::command]
+pub async fn app_set_network_access_key(
+    app: AppHandle,
+    key: Option<String>,
+) -> Result<crate::network_access::NetworkAccessStatus, String> {
+    crate::network_access::set_key(&app, key).await
 }
 
 #[tauri::command]

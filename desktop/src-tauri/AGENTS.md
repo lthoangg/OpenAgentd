@@ -19,6 +19,10 @@ native backend sidecar (`sidecar-bundle/bin/openagentd`, built from `appv3/`).
 - `src/menu.rs`: tray/menu construction, polling, and event routing.
 - `src/usage.rs`: usage formatting and shared HTTP client.
 - `src/updater.rs`: update checks, download/install preconditions, and install.
+- `src/network_access.rs`: the "Network access" switch: saved on/off and
+  preferred port, the LAN access key in the OS credential store, and
+  re-applying it to the sidecar (`/api/desktop/network-access`) after every
+  sidecar start.
 - `capabilities/`, `permissions/`, Tauri configs, and entitlements: native
   access and packaging contracts.
 

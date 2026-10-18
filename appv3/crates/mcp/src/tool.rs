@@ -309,6 +309,17 @@ impl McpTool {
         let definition = json!({"type": "function", "function": {"name": name, "description": description, "parameters": sanitize_tool_schema(def.get("inputSchema"))}});
         McpTool { server_name: server_name.into(), name, remote_name: remote, description, def, definition, session }
     }
+
+    /// The sanitized input schema the model is given for this tool.
+    pub fn input_schema(&self) -> Value {
+        self.definition["function"]["parameters"].clone()
+    }
+
+    /// The server marks the tool `annotations.readOnlyHint: true` (a hint
+    /// the server sets; nothing verifies it).
+    pub fn read_only(&self) -> bool {
+        self.def.pointer("/annotations/readOnlyHint") == Some(&Value::Bool(true))
+    }
 }
 
 #[async_trait]

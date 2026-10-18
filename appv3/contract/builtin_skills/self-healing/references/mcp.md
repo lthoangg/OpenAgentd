@@ -1,8 +1,12 @@
 # MCP servers
 
-MCP servers are global: every enabled, ready server's tools are attached to the
-lead agent automatically as `<server>_<tool>`. Members get no MCP tools. Don't
-add `mcp:` (legacy, ignored) or MCP tool names to an agent's `tools:`.
+MCP servers are global: whenever a server is configured, the lead agent gets
+one `mcp` tool for all of them. `action='search'` finds a server's tools and
+returns their input schemas; `action='call'` runs one by `server`, `tool` and
+`arguments`. Its description lists each server with its tool names or state.
+In Plan mode only tools the server marks `readOnlyHint: true` can be called.
+Members get no MCP tools. Don't add `mcp:` (legacy, ignored) or MCP tool names
+to an agent's `tools:`.
 
 ## Adding a server
 
@@ -36,9 +40,9 @@ names match `^[a-zA-Z][a-zA-Z0-9_-]*$`.
 
 | Change | Takes effect |
 |--------|-------------|
-| Added / edited in Settings → MCP | Immediately; tools appear on the next turn. |
+| Added / edited in Settings → MCP | Immediately; `mcp` finds its tools once it is ready. |
 | Hand edit of `mcp.json` | After OpenAgentd restarts — tell the user. |
-| Server disabled or removed | Its tools disappear on the next turn after it stops. |
+| Server disabled or removed | `mcp` stops finding its tools once it stops. |
 
 Don't try to check server status with `curl`: the API may require an access
 key the agent does not have. Ask the user to look at Settings → MCP.

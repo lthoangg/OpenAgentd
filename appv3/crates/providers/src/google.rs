@@ -16,9 +16,23 @@ const UNSUPPORTED_SCHEMA_KEYS: &[&str] =
     &["discriminator", "const", "exclusiveMinimum", "exclusiveMaximum", "additionalProperties", "$schema", "$id", "$ref", "contentEncoding", "contentMediaType"];
 
 pub fn sanitize_schema(v: &Value) -> Value {
+    sanitize_node(v, false)
+}
+
+/// Gemini rejects a nested `object` schema without properties ("should be
+/// non-empty for OBJECT type"), so a free-form object (e.g. the `mcp` tool's
+/// `arguments`) is declared as a JSON-encoded string instead.
+fn sanitize_node(v: &Value, nested: bool) -> Value {
     match v {
-        Value::Object(m) => Value::Object(m.iter().filter(|(k, _)| !UNSUPPORTED_SCHEMA_KEYS.contains(&k.as_str())).map(|(k, v)| (k.clone(), sanitize_schema(v))).collect()),
-        Value::Array(a) => Value::Array(a.iter().map(sanitize_schema).collect()),
+        Value::Object(m) => {
+            let open_object = m.get("type") == Some(&json!("object")) && m.get("properties").and_then(Value::as_object).is_none_or(|p| p.is_empty());
+            if nested && open_object {
+                let desc = m.get("description").and_then(Value::as_str).map(|d| format!("{d} ")).unwrap_or_default();
+                return json!({"type": "string", "description": format!("{desc}Pass a JSON object encoded as a string.")});
+            }
+            Value::Object(m.iter().filter(|(k, _)| !UNSUPPORTED_SCHEMA_KEYS.contains(&k.as_str())).map(|(k, v)| (k.clone(), sanitize_node(v, true))).collect())
+        }
+        Value::Array(a) => Value::Array(a.iter().map(|x| sanitize_node(x, true)).collect()),
         o => o.clone(),
     }
 }
@@ -455,6 +469,25 @@ mod tests {
     fn function_call_args_are_compact_utf8() {
         assert_eq!(function_call_args(&json!({"name": "search", "args": {"q": "Tiếng Việt", "k": [1, 2]}})), r#"{"q":"Tiếng Việt","k":[1,2]}"#);
         assert_eq!(function_call_args(&json!({"name": "search"})), "{}");
+    }
+
+    #[test]
+    fn nested_free_form_objects_become_json_strings() {
+        let s = json!({"type": "object", "additionalProperties": false, "properties": {
+            "arguments": {"type": "object", "default": null, "description": "Tool arguments."},
+            "opts": {"type": "object", "properties": {"x": {"type": "string"}}},
+            "list": {"type": "array", "items": {"type": "object"}},
+        }});
+        assert_eq!(
+            sanitize_schema(&s),
+            json!({"type": "object", "properties": {
+                "arguments": {"type": "string", "description": "Tool arguments. Pass a JSON object encoded as a string."},
+                "opts": {"type": "object", "properties": {"x": {"type": "string"}}},
+                "list": {"type": "array", "items": {"type": "string", "description": "Pass a JSON object encoded as a string."}},
+            }})
+        );
+        // The root object keeps its (empty) shape.
+        assert_eq!(sanitize_schema(&json!({"type": "object", "properties": {}})), json!({"type": "object", "properties": {}}));
     }
 
     #[test]

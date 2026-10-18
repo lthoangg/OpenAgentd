@@ -7,6 +7,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { SectionCard, SectionCardHeader, SectionCardRows, SectionCardRow, SectionCardBadge } from '@/components/ui/section-card'
 import { NetworkAccessCard } from '@/components/NetworkAccessCard'
 import { isDesktopShell } from '@/lib/desktop-shell'
+import { checkServerAuth, pingServer } from '@/lib/server-probe'
 
 import { apiBaseUrl, setApiBaseUrl } from '@/api/base-url'
 import { queryClient } from '@/lib/query-client'
@@ -25,14 +26,22 @@ import {
 
 const DEFAULT_SERVERS: SavedAppServer[] = [{ base_url: 'http://127.0.0.1:4082', name: 'Local CLI server' }]
 
+/** Server details from a scanned `openagentd://connect` link. */
+export interface AppBackendPrefill {
+  baseUrl: string
+  accessKey: string
+}
+
 interface AppBackendDialogProps {
   /** Whether the connection dialog is visible. */
   open: boolean
   /** Called when the dialog should open or close. */
   onOpenChange: (open: boolean) => void
+  /** Fill the form and test it; the user still confirms with Save & Connect. */
+  prefill?: AppBackendPrefill | null
 }
 
-export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) {
+export function AppBackendDialog({ open, onOpenChange, prefill = null }: AppBackendDialogProps) {
   const [status, setStatus] = useState<AppBackendStatus | null>(null)
   const [baseUrl, setBaseUrl] = useState('')
   const [serverName, setServerName] = useState('')
@@ -41,6 +50,7 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
   const [serverHealth, setServerHealth] = useState<Record<string, 'checking' | 'online' | 'offline'>>({})
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [scanned, setScanned] = useState(false)
 
   useEffect(() => {
     if (!open) return
@@ -48,9 +58,10 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
     void getAppBackendStatus().then((next) => {
       if (cancelled) return
       setStatus(next)
-      setBaseUrl('')
-      setServerName('')
-      setAccessKeyInput('')
+      setBaseUrl(prefill?.baseUrl ?? '')
+      setServerName(prefill ? hostnameOf(prefill.baseUrl) : '')
+      setAccessKeyInput(prefill?.accessKey ?? '')
+      setScanned(Boolean(prefill))
       setTestedBaseUrl(null)
       const servers = next?.servers ?? DEFAULT_SERVERS
       setServerHealth(Object.fromEntries(servers.map((server) => [normalizeServerBaseUrl(server.base_url), 'checking'])))
@@ -61,9 +72,10 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
           setServerHealth((prev) => ({ ...prev, [normalized]: online ? 'online' : 'offline' }))
         })
       }
+      if (prefill) void testConnection(prefill.baseUrl, prefill.accessKey)
     })
     return () => { cancelled = true }
-  }, [open])
+  }, [open, prefill])
 
 
 
@@ -113,8 +125,8 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
     }
   }
 
-  async function testConnection() {
-    const target = normalizeServerBaseUrl(baseUrl)
+  async function testConnection(rawBaseUrl: string = baseUrl, rawAccessKey: string = accessKey) {
+    const target = normalizeServerBaseUrl(rawBaseUrl)
     const validationError = validateServerUrl(target)
     if (validationError) {
       setError(validationError)
@@ -129,13 +141,13 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
         setError(connectionFailureMessage(target))
         return
       }
-      const keyForTest = accessKey.trim() || await getStoredAccessKey(target) || ''
+      const keyForTest = rawAccessKey.trim() || await getStoredAccessKey(target) || ''
       const authorized = await checkServerAuth(target, keyForTest)
       if (!authorized) {
         setError('Server is reachable, but the access key is invalid or missing.')
         return
       }
-      if (accessKey.trim()) await setStoredAccessKey(accessKey, target)
+      if (rawAccessKey.trim()) await setStoredAccessKey(rawAccessKey, target)
       setTestedBaseUrl(target)
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
@@ -238,6 +250,12 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
               {status?.mode === 'external' || status?.external ? 'saved server' : 'builtin sidecar'}
             </SectionCardBadge>
           </div>
+
+          {scanned ? (
+            <p className="rounded-sm border border-(--color-border) bg-(--bg-card) px-3.5 py-2.5 text-xs text-(--color-text-muted)" role="status">
+              Scanned from another device. Check the server, then Save &amp; Connect.
+            </p>
+          ) : null}
 
           {/* Connection options list */}
           <SectionCard>
@@ -478,32 +496,11 @@ function connectionFailureMessage(baseUrl: string): string {
   return 'Server did not respond to /api/health/live. Check that OpenAgentd is running with --host 0.0.0.0, this device is on the same network, and the URL uses the backend machine LAN IP.'
 }
 
-async function checkServerAuth(baseUrl: string, accessKey: string): Promise<boolean> {
-  const base = baseUrl.replace(/\/+$/, '')
-  const controller = new AbortController()
-  const timeout = window.setTimeout(() => controller.abort(), 1500)
+function hostnameOf(baseUrl: string): string {
   try {
-    const headers = accessKey ? { Authorization: `Bearer ${accessKey}` } : undefined
-    const res = await fetch(`${base}/api/auth/check`, { cache: 'no-store', headers, signal: controller.signal })
-    return res.ok || res.status === 404
+    return new URL(baseUrl).hostname
   } catch {
-    return false
-  } finally {
-    window.clearTimeout(timeout)
-  }
-}
-
-async function pingServer(baseUrl: string): Promise<boolean> {
-  const base = baseUrl.replace(/\/+$/, '')
-  const controller = new AbortController()
-  const timeout = window.setTimeout(() => controller.abort(), 1500)
-  try {
-    const res = await fetch(`${base}/api/health/live`, { cache: 'no-store', signal: controller.signal })
-    return res.ok
-  } catch {
-    return false
-  } finally {
-    window.clearTimeout(timeout)
+    return ''
   }
 }
 

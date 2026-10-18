@@ -188,6 +188,19 @@ explicitly.
   `~/.config/opencode/{skills,commands}`, all of which v2 read
   (`agent/src/skills.rs`, `api/src/routes/library.rs`,
   `api/src/config_watch.rs`). New plans go to `.agents/plans/`.
+- **One `mcp` tool instead of `<server>_<tool>` tools** (v3.16.0). v2 gave
+  the lead one model-facing tool per MCP server tool. v3 gives it a single
+  `mcp` tool (`search` / `call`, `mcp/src/hub.rs`), attached by
+  `loader::build_agent` whenever a server is configured. MCP tools are no
+  longer in `default_tool_registry`, so `<server>_<tool>` names in an
+  agent's `tools:` are pruned as unknown. Old transcripts keep their
+  `<server>_<tool>` tool calls; `mcp` `call` also accepts that prefixed
+  name. Tool rows store `name: "mcp"` with `server`/`tool` in the
+  arguments; `extra.mcp_app` keeps `server`/`tool`, so MCP Apps and
+  `/api/mcp/app-tools/call` are unchanged. `mcp` is allowed in Plan mode
+  and refuses calls to tools without `readOnlyHint: true`. For Gemini,
+  nested object schemas without properties are sent as JSON-string params
+  (`providers/src/google.rs`).
 - **Performance changes to the wire format** (v3 only; v2 parity is no
   longer a goal):
   - *History pages* (`GET /api/agent/{sid}/history`,

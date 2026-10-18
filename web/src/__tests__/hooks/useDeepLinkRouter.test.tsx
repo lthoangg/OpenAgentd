@@ -2,6 +2,10 @@ import { describe, expect, it } from 'bun:test'
 import { parseDeepLinkUrl } from '@/hooks/useDeepLinkRouter'
 
 describe('parseDeepLinkUrl', () => {
+  it('leaves connect links to useConnectLink', () => {
+    expect(parseDeepLinkUrl('openagentd://connect?url=http%3A%2F%2F192.168.1.20%3A4082&key=abc')).toEqual({ kind: 'unknown' })
+  })
+
   it('parses the exact auth callback path with a provider and code', () => {
     const res = parseDeepLinkUrl('openagentd://auth/callback?provider=codex&code=abc123code')
     expect(res).toEqual({

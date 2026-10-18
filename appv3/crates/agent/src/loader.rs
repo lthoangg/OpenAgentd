@@ -26,6 +26,8 @@ pub fn default_provider_factory() -> ProviderFactory {
 pub trait McpSource: Send + Sync {
     fn server_names(&self) -> Vec<String>;
     fn tools_for_server(&self, name: &str) -> Vec<ToolRef>;
+    /// The `mcp` tool the lead uses to search and call every server's tools.
+    fn hub_tool(&self) -> ToolRef;
 }
 
 fn mcp_slot() -> &'static RwLock<Option<Arc<dyn McpSource>>> {
@@ -424,9 +426,10 @@ pub fn detect_drift(stamp: &ConfigStamp) -> Vec<PathBuf> {
 
 // ── Build ────────────────────────────────────────────────────────────────────
 
-const CONTEXT_INJECTED_TOOLS: &[&str] = &["skill", "todo_manage", "schedule_task", "lsp", "ask_user", "plan", "submit_plan", "send_to_workspace"];
+const CONTEXT_INJECTED_TOOLS: &[&str] = &["skill", "todo_manage", "schedule_task", "lsp", "ask_user", "plan", "submit_plan", "send_to_workspace", "mcp"];
 
-/// `_default_tool_registry` (built-ins + MCP tools by name).
+/// `_default_tool_registry` (built-ins by name). MCP tools are reached
+/// through the `mcp` tool, which `build_agent` adds.
 pub fn default_tool_registry() -> HashMap<String, ToolRef> {
     let mut reg: HashMap<String, ToolRef> = HashMap::new();
     for n in ["web_search", "web_fetch", "read", "grep", "glob", "patch", "shell", "todo_manage"] {
@@ -439,13 +442,6 @@ pub fn default_tool_registry() -> HashMap<String, ToolRef> {
     for n in ["generate_image", "generate_video"] {
         if let Some(t) = appv3_tools::builtin_tool(n) {
             reg.insert(n.into(), t);
-        }
-    }
-    if let Some(mcp) = mcp_source() {
-        for s in mcp.server_names() {
-            for t in mcp.tools_for_server(&s) {
-                reg.insert(t.name().to_string(), t);
-            }
         }
     }
     reg
@@ -535,11 +531,12 @@ pub fn build_agent(mut cfg: AgentConfig, registry: &HashMap<String, ToolRef>, fa
                 mcp_names.push(s);
             }
         }
-        for s in &mcp_names {
-            for t in mcp.tools_for_server(s) {
-                if seen.insert(t.name().to_string()) {
-                    tools.push(t);
-                }
+        // One `mcp` tool for every server: it resolves the live servers on
+        // each call, so a server still starting now is usable once ready.
+        if !mcp_names.is_empty() {
+            let hub = mcp.hub_tool();
+            if seen.insert(hub.name().to_string()) {
+                tools.push(hub);
             }
         }
     }

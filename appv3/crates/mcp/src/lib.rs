@@ -4,6 +4,7 @@
 
 pub mod client;
 pub mod config;
+pub mod hub;
 pub mod oauth;
 pub mod tool;
 
@@ -49,7 +50,7 @@ pub struct ServerStatus {
 
 struct Runner {
     status: Mutex<ServerStatus>,
-    tools: Mutex<Vec<ToolRef>>,
+    tools: Mutex<Vec<Arc<McpTool>>>,
     client: Mutex<Option<Arc<McpClient>>>,
     ready: watch::Sender<bool>,
     shutdown: watch::Sender<bool>,
@@ -273,8 +274,8 @@ async fn run_server(name: String, cfg: ServerConfig, runner: Arc<Runner>) {
             }
         };
         let weak: std::sync::Weak<dyn SessionProvider> = Arc::downgrade(&(runner.clone() as Arc<dyn SessionProvider>));
-        let tools: Vec<ToolRef> = defs.into_iter().map(|d| Arc::new(McpTool::new(&name, d, weak.clone())) as ToolRef).collect();
-        let names: Vec<String> = tools.iter().map(|t| t.name().to_string()).collect();
+        let tools: Vec<Arc<McpTool>> = defs.into_iter().map(|d| Arc::new(McpTool::new(&name, d, weak.clone()))).collect();
+        let names: Vec<String> = tools.iter().map(|t| t.name.clone()).collect();
         *runner.client.lock().unwrap() = Some(client.clone());
         *runner.tools.lock().unwrap() = tools;
         {
@@ -453,8 +454,15 @@ impl McpManager {
         if r.state() != "ready" {
             return Some(vec![]);
         }
-        let t = r.tools.lock().unwrap().clone();
+        let t = r.tools.lock().unwrap().iter().map(|t| t.clone() as ToolRef).collect();
         Some(t)
+    }
+
+    /// Tools of the ready servers (just `server`'s when given), in config
+    /// order: what the `mcp` tool searches and calls.
+    pub fn ready_tools(&self, server: Option<&str>) -> Vec<Arc<McpTool>> {
+        let runners: Vec<Arc<Runner>> = self.runners.read().unwrap().iter().filter(|(n, _)| server.is_none_or(|s| s == n.as_str())).map(|(_, r)| r.clone()).collect();
+        runners.iter().filter(|r| r.state() == "ready").flat_map(|r| r.tools.lock().unwrap().clone()).collect()
     }
 
     /// `call_app_tool` errors: `KeyError` → NotFound, `RuntimeError` → NotConnected,
@@ -465,8 +473,7 @@ impl McpManager {
         let Some(client) = client.filter(|_| r.state() == "ready") else {
             return Err(AppToolError::NotConnected(format!("MCP server '{server}' is not connected.")));
         };
-        let prefix = format!("{server}_");
-        let advertised = r.tools.lock().unwrap().iter().any(|t| t.name().strip_prefix(&prefix).unwrap_or(t.name()) == tool);
+        let advertised = r.tools.lock().unwrap().iter().any(|t| t.remote_name == tool);
         if !advertised {
             return Err(AppToolError::Forbidden(format!("MCP tool '{tool}' is not available.")));
         }
@@ -488,6 +495,9 @@ impl appv3_agent::loader::McpSource for McpManager {
     }
     fn tools_for_server(&self, name: &str) -> Vec<ToolRef> {
         McpManager::tools_for_server(self, name).unwrap_or_default()
+    }
+    fn hub_tool(&self) -> ToolRef {
+        Arc::new(hub::McpHubTool::new(mcp_manager()))
     }
 }
 
@@ -563,6 +573,63 @@ for line in sys.stdin:
         assert_eq!(tool::extract_text(r.get("content")), "got hi");
         c.close().await;
         assert!(c.list_tools().await.is_err());
+    }
+
+    /// The `mcp` tool searches and calls a live stdio server end to end.
+    #[tokio::test]
+    async fn hub_searches_and_calls_a_live_server() {
+        let d = tempfile::tempdir().unwrap();
+        let script = d.path().join("srv.py");
+        std::fs::write(
+            &script,
+            r#"import sys, json
+for line in sys.stdin:
+    m = json.loads(line)
+    if "id" not in m: continue
+    if m["method"] == "initialize":
+        r = {"protocolVersion": "2025-06-18", "capabilities": {}, "serverInfo": {"name": "t", "version": "1"}}
+    elif m["method"] == "tools/list":
+        r = {"tools": [{"name": "echo", "description": "Echo text back", "annotations": {"readOnlyHint": True}, "inputSchema": {"type": "object", "properties": {"x": {"type": "string"}}, "required": ["x"]}}]}
+    elif m["method"] == "tools/call":
+        r = {"content": [{"type": "text", "text": "got " + m["params"]["arguments"].get("x", "")}]}
+    else:
+        r = {}
+    print(json.dumps({"jsonrpc": "2.0", "id": m["id"], "result": r}), flush=True)
+"#,
+        )
+        .unwrap();
+        let path = std::env::var("PATH").unwrap_or_default();
+        let Some(py) = which_in("python3", &path) else { return };
+        let cfg = config::parse_config(&json!({"servers": {"echoes": {"command": py, "args": [script.display().to_string()], "env": {"PATH": path}}}})).unwrap();
+        let m = Arc::new(McpManager::default());
+        m.spawn_runner("echoes", &cfg.servers["echoes"]);
+        m.wait_until_ready(Duration::from_secs(20)).await;
+        assert_eq!(m.get_status("echoes").unwrap().state, "ready");
+
+        let hub = hub::McpHubTool::new(m.clone());
+        let text = |r: appv3_tools::ToolResult| match r {
+            Ok(appv3_tools::ToolOutput::Text(t)) => t,
+            other => panic!("{other:?}"),
+        };
+        let mut meta = serde_json::Map::new();
+        meta.insert("interaction_mode".into(), json!("plan"));
+        let ctx = appv3_tools::ToolContext {
+            session_id: None,
+            agent_name: "t".into(),
+            tool_call_id: "c".into(),
+            denied: Arc::new(appv3_tools::DeniedPaths::new(d.path(), None)),
+            workspace: None,
+            output: None,
+            metadata: Arc::new(Mutex::new(meta)),
+            messages: None,
+        };
+        use appv3_tools::Tool;
+        let found = text(hub.run(&ctx, json!({"action": "search", "query": "echo"})).await);
+        assert!(found.contains(r#""server":"echoes","tool":"echo","read_only":true"#), "{found}");
+        // Read-only, so Plan mode may call it.
+        let got = text(hub.run(&ctx, json!({"action": "call", "server": "echoes", "tool": "echo", "arguments": {"x": "hi"}})).await);
+        assert_eq!(got, "got hi");
+        m.stop_all().await;
     }
 
     /// A server that answers the handshake but never `tools/call`, logging

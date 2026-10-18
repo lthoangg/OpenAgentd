@@ -53,6 +53,8 @@ const RULES: Rule[] = [
       'components/PdfDocumentViewer.tsx': 1,
       'components/FileViewerPanel.tsx': 1,
       'components/Preview/PreviewTabView.tsx': 2,
+      // QR code: scanners need a white quiet zone in both themes.
+      'components/ConnectQrCode.tsx': 1,
     },
   },
   {

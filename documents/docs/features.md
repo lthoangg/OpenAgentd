@@ -14,7 +14,7 @@ release that introduced it (where known). When you ship something new, **add it 
 > double-clickable app that runs an agent on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 18 providers. Your keys.
 
-**Latest release:** v3.15.0 · October 18, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.15.0)
+**Latest release:** v3.16.0 · October 18, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.16.0)
 
 ---
 
@@ -740,7 +740,7 @@ run from the terminal (the native Rust binary since v3.0.0).
   stores the CLI server's bind address, port, and bearer key in `server.yaml`, separate from the desktop builtin sidecar's ephemeral token while agents, providers, sessions, and other settings remain shared. Restart and upgrade preserve that key without exposing it in process arguments. OpenAgentd-managed launchers refuse non-loopback binds without a configured key `[v1.101.0]`.
 - **Desktop server connection manager** `[v1.43.4, v1.99.8, v1.104.0]` — the desktop **Server connection** dialog switches the current window between the builtin sidecar and saved external servers, normalizes pasted `/api` URLs, and preserves other open windows' backend choices. Typed servers now require a successful health and access-key test before they can be named, saved, and connected. Saved LAN access keys are scoped per backend origin and stored in the native OS credential store on installed desktop/mobile shells; browser development keeps the per-origin localStorage fallback. Remembered external servers reconnect on app launch with sidecar fallback, while the desktop window opens immediately as backend startup continues asynchronously `[v1.57.1]`.
   - **Reload after switching backend servers** `[v1.98.1]` — after connecting a desktop window to a different saved or typed external server, the webview reloads so stale frontend state is discarded and the window comes back against the newly selected backend cleanly. Reconnecting to the already active backend does not reload.
-- **Desktop network access** `[v3.15.0]` — a **Network access** switch in the desktop **Backend connection** dialog lets phones and other computers on the LAN connect to the builtin backend without installing the CLI. When it is on, the builtin sidecar also listens on `0.0.0.0:4082`. If 4082 is taken, it uses the next free port and the dialog says so. The port goes back to 4082 once it is free again. Every client needs the access key except `/api/health/*`. The desktop generates the key, keeps it in the OS credential store, and can show, copy, regenerate, or replace it with your own (16+ characters). The listener turns on and off live, with no backend restart and without stopping running turns. Turning it off or changing the key immediately disconnects devices using the old key, including open event streams and terminals. The setting is re-applied whenever the builtin backend restarts, and network access ends when the app quits. Traffic is plain HTTP. The Windows installer adds a firewall rule for the builtin backend on Private networks only, so there is no admin prompt; on a network marked Public the port stays closed. When devices cannot connect, the dialog shows a per-platform firewall hint: the Private network profile on Windows, a `ufw`/`firewall-cmd` command on Linux, and the firewall setting on macOS. On Linux the key needs a Secret Service keychain (GNOME Keyring, KWallet, or KeePassXC); without one, the error says what to install.
+- **Desktop network access** `[v3.15.0]` — a **Network access** switch in the desktop **Backend connection** dialog lets phones and other computers on the LAN connect to the builtin backend without installing the CLI. When it is on, the builtin sidecar also listens on `0.0.0.0:4082`. If 4082 is taken, it uses the next free port and the dialog says so. The port goes back to 4082 once it is free again. Every client needs the access key except `/api/health/*`. The desktop generates the key, keeps it in the OS credential store, and can show, copy, regenerate, or replace it with your own (16+ characters). The listener turns on and off live, with no backend restart and without stopping running turns. Turning it off or changing the key immediately disconnects devices using the old key, including open event streams and terminals. The setting is re-applied whenever the builtin backend restarts, and network access ends when the app quits. Traffic is plain HTTP. The Windows installer adds a firewall rule for the builtin backend on Private networks only, so there is no admin prompt; on a network marked Public the port stays closed. When devices cannot connect, the dialog shows a per-platform firewall hint: the Private network profile on Windows, a `ufw`/`firewall-cmd` command on Linux, and the firewall setting on macOS. On Linux the key needs a Secret Service keychain (GNOME Keyring, KWallet, or KeePassXC); without one, the error says what to install. `[v3.16.0]` While network access is on, **show QR** displays a code with the LAN addresses and the access key. Scanning it with a phone camera opens the OpenAgentd mobile app's **Backend connection** dialog with the first reachable address and the key filled in, and tests the connection; the phone connects only after you tap **Save & Connect**. The code hides when the key changes or network access turns off.
 
 ---
 
@@ -1676,6 +1676,16 @@ Four orthogonal ways to add capability.
   OAuth setup permits empty client ID and secret fields so servers that support
   dynamic client registration can complete setup without app credentials; issuer
   discovery also tolerates a sole trailing-slash difference at the origin root `[v1.124.0]`.
+  - **One `mcp` tool for every server** `[v3.16.0]` — the agent no longer gets
+    every server's tools (named `<server>_<tool>`) with their full schemas on
+    each turn. It gets a single `mcp` tool: `search` finds tools by keywords and
+    returns their input schemas, and `call` runs one by server, tool and
+    arguments. Its description lists each server with its tool names (counts
+    only once there are many) or its state. Adding servers no longer grows every
+    request, server tools can't clash with built-in tool names, and a server
+    that finishes starting or reconnects is usable at once. In Plan mode the
+    agent can search, and call tools the server marks read-only
+    (`readOnlyHint`); the server sets that hint, so it is trusted as given.
   - **`$VAR` / `${VAR}` expansion in stdio server env** `[v1.122.0]` — stdio MCP
     server `env` entries in `mcp.json` now resolve environment/`.env`-style
     references the same way header values already did, so secrets can be

@@ -1,6 +1,6 @@
 [package]
 name = "openagentd-mobile"
-version = "3.14.0"
+version = "3.15.0"
 description = "OpenAgentd mobile shell"
 authors = ["openagentd contributors"]
 license = "Apache-2.0"
@@ -10,7 +10,9 @@ rust-version = "1.77.2"
 
 [lib]
 name = "openagentd_mobile_lib"
-crate-type = ["staticlib", "rlib"]
+# staticlib: iOS links it into the Xcode app. cdylib: Android loads it as
+# libopenagentd_mobile_lib.so from the APK.
+crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
@@ -38,6 +40,12 @@ objc2-ui-kit = { version = "0.3", features = ["UIActivityViewController", "UIApp
 objc2-core-foundation = { version = "0.3", features = ["CFCGTypes"] }
 dispatch2 = "0.3"
 
+# Keystore credential store, FileProvider sharing, and the cleartext LAN
+# network policy. Android-only: it must be a direct dependency so
+# tauri-build adds its Kotlin library to the generated Gradle project.
+[target.'cfg(target_os = "android")'.dependencies]
+tauri-plugin-openagentd-android = { path = "../android-plugin" }
+
 [dev-dependencies]
 tempfile = "3"
 tokio = { version = "1", features = ["macros", "rt"] }
@@ -52,6 +60,3 @@ custom-protocol = ["tauri/custom-protocol"]
 lto = "thin"
 codegen-units = 16
 strip = true
-
-[patch.crates-io]
-tao = { git = "https://github.com/tauri-apps/tao", rev = "c84a010d546c7fdf716bb6be97cc2038bdc62070" }

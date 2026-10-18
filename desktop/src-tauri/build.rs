@@ -28,6 +28,10 @@ fn main() {
                 "secure_get_access_key",
                 "secure_set_access_key",
                 "secure_delete_access_key",
+                "app_network_access_status",
+                "app_set_network_access",
+                "app_network_access_key",
+                "app_set_network_access_key",
             ]),
         ),
     )

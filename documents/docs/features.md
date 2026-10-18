@@ -2,7 +2,7 @@
 title: Features
 description: Canonical, version-cited catalogue of shipped user-visible OpenAgentd features.
 status: stable
-updated: 2026-10-16
+updated: 2026-10-18
 ---
 
 # Features
@@ -14,7 +14,7 @@ release that introduced it (where known). When you ship something new, **add it 
 > double-clickable app that runs an agent on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 18 providers. Your keys.
 
-**Latest release:** v3.14.0 · October 16, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.14.0)
+**Latest release:** v3.15.0 · October 18, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.15.0)
 
 ---
 
@@ -731,10 +731,16 @@ run from the terminal (the native Rust binary since v3.0.0).
   `OpenAgentd_<version>_iOS.ipa` with a checksum. A SideStore/AltStore source at
   `releases/download/latest-ios/source.json` installs the app and offers new
   versions as updates. See [Install the iOS app](../../mobile/INSTALL-IOS.md).
+- **Android app (APK)** `[v3.15.0]` — releases include a sideloadable
+  `OpenAgentd_<version>_Android.apk` with a checksum. Access keys are
+  encrypted with an Android Keystore key, downloads open the system share
+  sheet, and `http://` LAN servers are allowed (the server has no built-in
+  TLS). See [Install the Android app](../../mobile/INSTALL-ANDROID.md).
 - **LAN access key for external clients** `[v1.43.0, v1.103.0, v2.4.0]` — `openagentd server start --host 0.0.0.0 --key`
   stores the CLI server's bind address, port, and bearer key in `server.yaml`, separate from the desktop builtin sidecar's ephemeral token while agents, providers, sessions, and other settings remain shared. Restart and upgrade preserve that key without exposing it in process arguments. OpenAgentd-managed launchers refuse non-loopback binds without a configured key `[v1.101.0]`.
 - **Desktop server connection manager** `[v1.43.4, v1.99.8, v1.104.0]` — the desktop **Server connection** dialog switches the current window between the builtin sidecar and saved external servers, normalizes pasted `/api` URLs, and preserves other open windows' backend choices. Typed servers now require a successful health and access-key test before they can be named, saved, and connected. Saved LAN access keys are scoped per backend origin and stored in the native OS credential store on installed desktop/mobile shells; browser development keeps the per-origin localStorage fallback. Remembered external servers reconnect on app launch with sidecar fallback, while the desktop window opens immediately as backend startup continues asynchronously `[v1.57.1]`.
   - **Reload after switching backend servers** `[v1.98.1]` — after connecting a desktop window to a different saved or typed external server, the webview reloads so stale frontend state is discarded and the window comes back against the newly selected backend cleanly. Reconnecting to the already active backend does not reload.
+- **Desktop network access** `[v3.15.0]` — a **Network access** switch in the desktop **Backend connection** dialog lets phones and other computers on the LAN connect to the builtin backend without installing the CLI. When it is on, the builtin sidecar also listens on `0.0.0.0:4082`. If 4082 is taken, it uses the next free port and the dialog says so. The port goes back to 4082 once it is free again. Every client needs the access key except `/api/health/*`. The desktop generates the key, keeps it in the OS credential store, and can show, copy, regenerate, or replace it with your own (16+ characters). The listener turns on and off live, with no backend restart and without stopping running turns. Turning it off or changing the key immediately disconnects devices using the old key, including open event streams and terminals. The setting is re-applied whenever the builtin backend restarts, and network access ends when the app quits. Traffic is plain HTTP. The Windows installer adds a firewall rule for the builtin backend on Private networks only, so there is no admin prompt; on a network marked Public the port stays closed. When devices cannot connect, the dialog shows a per-platform firewall hint: the Private network profile on Windows, a `ufw`/`firewall-cmd` command on Linux, and the firewall setting on macOS. On Linux the key needs a Secret Service keychain (GNOME Keyring, KWallet, or KeePassXC); without one, the error says what to install.
 
 ---
 

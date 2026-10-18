@@ -1,0 +1,24 @@
+[package]
+name = "tauri-plugin-openagentd-android"
+version = "0.0.0"
+description = "Android-only native bridge for the OpenAgentd mobile shell (credential store, file sharing, cleartext LAN policy)"
+authors = ["openagentd contributors"]
+license = "Apache-2.0"
+repository = "https://github.com/lthoangg/openagentd"
+edition = "2021"
+rust-version = "1.77.2"
+publish = false
+# Required by tauri-plugin: tauri-build reads DEP_<links>_ANDROID_LIBRARY_PATH
+# to add the Kotlin library under `android/` to the generated Gradle project.
+links = "tauri-plugin-openagentd-android"
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+base64 = "0.23"
+# Same major as `openagentd-shell-core`; Cargo unifies them, so the store
+# registered here is the one shell-core's `keyring::Entry::new` resolves.
+keyring = { version = "3.6.3", default-features = false }
+
+[build-dependencies]
+tauri-plugin = { version = "2", features = ["build"] }

@@ -2509,7 +2509,7 @@ dependencies = [
 
 [[package]]
 name = "openagentd-mobile"
-version = "3.14.0"
+version = "3.15.0"
 dependencies = [
  "anyhow",
  "base64 0.23.1",
@@ -2528,6 +2528,7 @@ dependencies = [
  "tauri-plugin-deep-link",
  "tauri-plugin-haptics",
  "tauri-plugin-notification",
+ "tauri-plugin-openagentd-android",
  "tauri-plugin-opener",
  "tempfile",
  "time",
@@ -4027,6 +4028,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "tauri-plugin-openagentd-android"
+version = "0.0.0"
+dependencies = [
+ "base64 0.23.1",
+ "keyring",
+ "serde",
+ "tauri",
+ "tauri-plugin",
+]
+
+[[package]]
 name = "tauri-plugin-opener"
 version = "2.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5518,8 +5530,3 @@ dependencies = [
  "syn 3.0.9",
  "winnow 1.0.4",
 ]
-
-[[patch.unused]]
-name = "tao"
-version = "0.35.3"
-source = "git+https://github.com/tauri-apps/tao?rev=c84a010d546c7fdf716bb6be97cc2038bdc62070#c84a010d546c7fdf716bb6be97cc2038bdc62070"

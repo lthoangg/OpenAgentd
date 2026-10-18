@@ -1,0 +1,4 @@
+# Written by tauri-plugin's build script on every build.
+/permissions/
+/android/.tauri/
+/android/build/

@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Windows Firewall rule for the builtin backend, added by the MSI.
+
+  "Network access" makes the bundled sidecar (sidecar\bin\openagentd.exe)
+  listen on 0.0.0.0. Without a rule, Windows asks on first use; allowing
+  needs an administrator, and Cancel saves a block rule. The MSI already
+  runs elevated (perMachine), so it adds the allow rule once and removes it
+  on uninstall. Private networks only: on a network marked Public the port
+  stays closed. The listener itself still requires the access key.
+
+  Tauri's bundler sees the FirewallExtension namespace below and passes
+  WixFirewallExtension.dll to candle and light.
+-->
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi"
+     xmlns:fire="http://schemas.microsoft.com/wix/FirewallExtension">
+  <Fragment>
+    <ComponentGroup Id="SidecarFirewall">
+      <Component Id="SidecarFirewallRule" Directory="INSTALLDIR" Guid="4E8499BA-1662-492E-A944-E31EE06B2BBE" Win64="$(var.Win64)">
+        <RegistryValue Root="HKLM" Key="Software\OpenAgentd\Installer" Name="SidecarFirewallRule" Type="integer" Value="1" KeyPath="yes" />
+        <fire:FirewallException
+          Id="SidecarPrivateNetworks"
+          Name="OpenAgentd Network access"
+          Program="[INSTALLDIR]sidecar\bin\openagentd.exe"
+          Protocol="tcp"
+          Profile="private"
+          Scope="any"
+          IgnoreFailure="yes" />
+      </Component>
+    </ComponentGroup>
+  </Fragment>
+</Wix>

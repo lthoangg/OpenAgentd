@@ -1,4 +1,4 @@
-.PHONY: dev ios-init ios-icons ios-icons-force ios-web ios-dev ios-dev-device ios-install-device ios-install-device-fast ios-ipa ios-release ios-build ios-clean build clean
+.PHONY: dev ios-init ios-icons ios-icons-force ios-web ios-dev ios-dev-device ios-install-device ios-install-device-fast ios-ipa ios-release ios-build ios-clean android-init android-icons android-dev android-apk android-release android-install android-clean build clean
 
 IOS_DEVICE ?= $(word 2,$(MAKECMDGOALS))
 IOS_DEV_IDENTIFIER ?= com.dev.openagentd.mobile
@@ -9,6 +9,17 @@ IOS_ICON_STAMP = $(IOS_APPICONSET)/.openagentd-icons.stamp
 WEB_DIR = ../web
 WEB_DIST_INDEX = $(WEB_DIR)/dist/index.html
 WEB_BUILD_INPUTS = $(WEB_DIR)/index.html $(WEB_DIR)/package.json $(WEB_DIR)/bun.lock $(WEB_DIR)/tsconfig.json $(WEB_DIR)/tsconfig.app.json $(WEB_DIR)/tsconfig.node.json $(WEB_DIR)/vite.config.ts
+
+# Android: Tauri needs JAVA_HOME (JDK 17+), ANDROID_HOME, and NDK_HOME. The
+# SDK/NDK default to Android Studio's location and the newest installed NDK.
+ANDROID_HOME ?= $(HOME)/Library/Android/sdk
+NDK_HOME ?= $(lastword $(sort $(wildcard $(ANDROID_HOME)/ndk/*)))
+export ANDROID_HOME NDK_HOME
+# Rust ABIs in the release APK (aarch64 armv7 i686 x86_64). arm64 covers
+# current phones and Apple-silicon emulators; add more for older devices.
+ANDROID_TARGETS ?= aarch64
+ANDROID_DEVICE ?= $(word 2,$(MAKECMDGOALS))
+ANDROID_RES = src-tauri/gen/android/app/src/main/res
 
 dev: ## Run the mobile shell against the web Vite dev server
 	cd src-tauri && cargo tauri dev
@@ -107,8 +118,44 @@ ios-build: ## Build the iOS app
 	./scripts/patch-xcode-project.sh
 	cd src-tauri && cargo tauri ios build
 
-ios-clean: ## Remove generated iOS/Xcode state
-	rm -rf src-tauri/gen ~/Library/Developer/Xcode/DerivedData/openagentd-mobile-*
+ios-clean: ## Remove generated iOS/Xcode state (keeps gen/android)
+	rm -rf src-tauri/gen/apple ~/Library/Developer/Xcode/DerivedData/openagentd-mobile-*
+
+android-init: ## Initialize Tauri Android (Gradle) project files
+	cd src-tauri && cargo tauri android init --skip-targets-install
+	$(MAKE) android-icons
+
+# Generated into target/ rather than icons/android: the shared icon script
+# runs `cargo tauri icon --ios-color transparent`, which also writes an
+# invalid `transparent` adaptive-icon background color for Android.
+android-icons: ## Generate OpenAgentd launcher icons into the Android project
+	@[ -d $(ANDROID_RES) ] || { echo "Run 'make android-init' first"; exit 2; }
+	rm -rf src-tauri/target/android-icons
+	cd src-tauri && cargo tauri icon icons/icon.png --ios-color '#FAF6EC' -o target/android-icons
+	cp -R src-tauri/target/android-icons/android/. $(ANDROID_RES)/
+
+android-dev: ## Run on a connected Android device/emulator against Vite (`make android-dev [device]`)
+	cd src-tauri && cargo tauri android dev $(ANDROID_DEVICE) --host
+
+android-apk: ## Build the release APK and sign it into dist/ (see scripts/package-apk.sh)
+	@[ -d src-tauri/gen/android ] || $(MAKE) android-init
+	$(MAKE) android-icons
+	cd src-tauri && cargo tauri android build --apk $(foreach t,$(ANDROID_TARGETS),--target $(t))
+	./scripts/package-apk.sh
+
+android-release: ## Build the release-signed APK and upload it to the GitHub release (DRY_RUN=1 to preview)
+	@if [ "$(DRY_RUN)" != "1" ] && [ -z "$$ANDROID_KEYSTORE" ]; then \
+		echo "android-release needs the release keystore: set ANDROID_KEYSTORE, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS"; \
+		exit 2; \
+	fi
+	$(MAKE) android-apk
+	./scripts/publish-apk.sh
+
+android-install: ## Install dist/OpenAgentd_<version>_Android.apk on the connected device via adb
+	adb install -r "dist/OpenAgentd_$$(../scripts/release_version.sh)_Android.apk"
+
+android-clean: ## Remove generated Android/Gradle state
+	rm -rf src-tauri/gen/android
 
 build: ## Build the mobile Tauri app bundle
 	cd src-tauri && cargo tauri build

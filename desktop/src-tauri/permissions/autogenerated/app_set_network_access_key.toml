@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-app-set-network-access-key"
+description = "Enables the app_set_network_access_key command without any pre-configured scope."
+commands.allow = ["app_set_network_access_key"]
+
+[[permission]]
+identifier = "deny-app-set-network-access-key"
+description = "Denies the app_set_network_access_key command without any pre-configured scope."
+commands.deny = ["app_set_network_access_key"]

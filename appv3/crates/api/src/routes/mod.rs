@@ -2,6 +2,7 @@
 
 pub mod agent;
 pub mod agents;
+pub mod desktop;
 pub mod events;
 pub mod health;
 pub mod library;
@@ -36,6 +37,7 @@ pub fn router() -> Router<AppState> {
         .nest("/api/observability", misc::observability_router())
         .nest("/api/terminal", terminal::router())
         .nest("/api/preview", preview::router())
+        .nest("/api/desktop", desktop::router())
         .fallback(|| async { json_code(404, json!({"detail": "Not Found"})) })
         .method_not_allowed_fallback(|| async { json_code(405, json!({"detail": "Method Not Allowed"})) })
 }

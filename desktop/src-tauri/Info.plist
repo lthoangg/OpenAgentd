@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
     <key>NSLocalNetworkUsageDescription</key>
-    <string>OpenAgentd connects to CLI servers running on your local network.</string>
+    <string>OpenAgentd connects to CLI servers on your local network, and lets your other devices connect when Network access is on.</string>
     <key>NSDocumentsFolderUsageDescription</key>
     <string>OpenAgentd needs access to your Documents folder to read and edit project workspace files.</string>
     <key>NSDownloadsFolderUsageDescription</key>

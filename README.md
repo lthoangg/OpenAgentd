@@ -79,6 +79,14 @@ See [Install the iOS app](mobile/INSTALL-IOS.md) for SideStore setup, other
 sideloading tools, free Apple Account limits, connecting to your server, and
 troubleshooting.
 
+### Android app
+
+The Android app connects to an OpenAgentd server running on your computer, the
+same way as the iOS app. It isn't on Google Play. Each release includes an
+`OpenAgentd_<version>_Android.apk` you install directly on the phone (Android
+7.0+, 64-bit ARM). See [Install the Android app](mobile/INSTALL-ANDROID.md) for
+installing, updating, connecting to your server, and troubleshooting.
+
 ### CLI server
 
 Install the backend when you want to run it from a terminal, use a browser client, or connect another device:
@@ -97,7 +105,9 @@ openagentd server start
 The server creates its default agents and configuration on first start. It
 serves the API only: connect to the printed `Server:` address from the desktop
 app's server connection dialog or the mobile app, then add a provider in
-Settings. For a phone or another computer on your network:
+Settings. To share the desktop app's builtin backend instead, turn on
+**Network access** in its Backend connection dialog; no CLI is needed. For a
+phone or another computer on your network:
 
 ```bash
 openagentd server start --host 0.0.0.0 --key

@@ -266,7 +266,21 @@ async fn save_workspace_file(
         rx.recv().map_err(|_| "Main thread dispatch failed".to_string())??;
     }
 
-    #[cfg(not(target_os = "ios"))]
+    #[cfg(target_os = "android")]
+    {
+        // tauri-plugin-opener cannot open a local path on Android; share it
+        // through a FileProvider and the system chooser instead (the
+        // counterpart of the iOS share sheet). The JNI call blocks until the
+        // chooser is up, so keep it off the async workers.
+        use tauri_plugin_openagentd_android::AndroidShellExt;
+        let path_str = path.to_string_lossy().into_owned();
+        let app = app.clone();
+        tauri::async_runtime::spawn_blocking(move || app.android_shell().share_file(&path_str))
+            .await
+            .map_err(|e| format!("Share task failed: {e}"))??;
+    }
+
+    #[cfg(not(any(target_os = "ios", target_os = "android")))]
     {
         use tauri_plugin_opener::OpenerExt;
         app.opener()
@@ -353,7 +367,12 @@ fn share_file_ios(path: &str) -> Result<(), String> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default();
+    // Registered first: it installs the Keystore-backed keyring store that
+    // the access-key commands rely on (keyring has no Android backend).
+    #[cfg(target_os = "android")]
+    let builder = builder.plugin(tauri_plugin_openagentd_android::init());
+    builder
         .manage(MobileBackendState::default())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())

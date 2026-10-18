@@ -28,6 +28,14 @@ def test_the_msi_includes_the_firewall_fragment() -> None:
         assert (TAURI / path).is_file(), path
 
 
+def test_the_fragment_uses_no_main_wxs_preprocessor_variables() -> None:
+    # candle compiles fragments separately from Tauri's main.wxs, so its
+    # <?define?> variables (Win64, ...) are undefined here and fail the MSI
+    # build with CNDL0150 (broke the v3.15.0 Windows release).
+    text = FRAGMENT.read_text()
+    assert "$(var." not in text.split("-->", 1)[1]
+
+
 def test_the_rule_targets_the_bundled_sidecar_on_private_networks_only() -> None:
     text = FRAGMENT.read_text()
     # Tauri's bundler enables a WiX extension only when its namespace appears.

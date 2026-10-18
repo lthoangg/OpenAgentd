@@ -11,12 +11,16 @@
 
   Tauri's bundler sees the FirewallExtension namespace below and passes
   WixFirewallExtension.dll to candle and light.
+
+  Candle compiles each fragment on its own, so variables that Tauri's
+  main.wxs defines (such as $(var.Win64)) are undefined here. The bundler
+  runs candle with -arch x64, which already makes this component 64-bit.
 -->
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi"
      xmlns:fire="http://schemas.microsoft.com/wix/FirewallExtension">
   <Fragment>
     <ComponentGroup Id="SidecarFirewall">
-      <Component Id="SidecarFirewallRule" Directory="INSTALLDIR" Guid="4E8499BA-1662-492E-A944-E31EE06B2BBE" Win64="$(var.Win64)">
+      <Component Id="SidecarFirewallRule" Directory="INSTALLDIR" Guid="4E8499BA-1662-492E-A944-E31EE06B2BBE">
         <RegistryValue Root="HKLM" Key="Software\OpenAgentd\Installer" Name="SidecarFirewallRule" Type="integer" Value="1" KeyPath="yes" />
         <fire:FirewallException
           Id="SidecarPrivateNetworks"

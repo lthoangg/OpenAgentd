@@ -5,6 +5,8 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { SectionCard, SectionCardHeader, SectionCardRows, SectionCardRow, SectionCardBadge } from '@/components/ui/section-card'
+import { NetworkAccessCard } from '@/components/NetworkAccessCard'
+import { isDesktopShell } from '@/lib/desktop-shell'
 
 import { apiBaseUrl, setApiBaseUrl } from '@/api/base-url'
 import { queryClient } from '@/lib/query-client'
@@ -347,6 +349,8 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
               })}
             </SectionCardRows>
           </SectionCard>
+
+          {isDesktopShell() && status?.supports_bundled !== false ? <NetworkAccessCard /> : null}
 
           {/* Form Configuration panel */}
           <SectionCard>

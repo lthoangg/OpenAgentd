@@ -97,7 +97,9 @@ openagentd server start
 The server creates its default agents and configuration on first start. It
 serves the API only: connect to the printed `Server:` address from the desktop
 app's server connection dialog or the mobile app, then add a provider in
-Settings. For a phone or another computer on your network:
+Settings. To share the desktop app's builtin backend instead, turn on
+**Network access** in its Backend connection dialog; no CLI is needed. For a
+phone or another computer on your network:
 
 ```bash
 openagentd server start --host 0.0.0.0 --key

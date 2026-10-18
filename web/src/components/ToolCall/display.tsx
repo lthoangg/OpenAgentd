@@ -39,6 +39,24 @@ function trunc(s: string, maxLen = 60): string {
 }
 
 /**
+ * The `mcp` call's `arguments`, pretty-printed. Gemini sends them as a
+ * JSON-encoded string; an empty object hides the args section.
+ */
+function mcpArguments(value: unknown): string | null {
+  let v = value
+  if (typeof v === 'string') {
+    if (!v.trim()) return null
+    try {
+      v = JSON.parse(v)
+    } catch {
+      return v as string
+    }
+  }
+  if (v && typeof v === 'object' && Object.keys(v).length > 0) return JSON.stringify(v, null, 2)
+  return null
+}
+
+/**
  * Render a URL as `host/path?query#hash` — scheme, `www.` and a bare trailing
  * slash dropped, everything else kept so the header identifies the exact page
  * rather than just the site. Unparseable input is returned as-is.
@@ -740,6 +758,27 @@ function getToolDisplayInternal(name: string, parsed: Record<string, unknown>): 
       header: <>Message to <Arg>{target}</Arg>{waits}</>,
       headerTitle: `Message to ${target}${waits}`,
       formattedArgs: str(parsed, 'message'),
+    }
+  }
+
+  // ── mcp: one tool for every MCP server — search, or call server · tool ──
+  if (name === 'mcp') {
+    const server = str(parsed, 'server')
+    if (str(parsed, 'action') === 'search') {
+      const query = str(parsed, 'query')
+      const q = query ? trunc(query) : null
+      const title = q ? `Search MCP tools "${q}"${server ? ` in ${server}` : ''}` : server ? `List ${server} tools` : 'List MCP tools'
+      const header = q
+        ? <>Search MCP tools <Arg>"{q}"</Arg>{server ? <> in <Arg>{server}</Arg></> : null}</>
+        : server ? <>List <Arg>{server}</Arg> tools</> : 'List MCP tools'
+      return { header, headerTitle: title, formattedArgs: null }
+    }
+    const tool = str(parsed, 'tool')
+    const label = server && tool ? `${server} · ${tool}` : tool ?? server
+    return {
+      header: label ? <>MCP <Arg>{label}</Arg></> : 'MCP call',
+      headerTitle: label ? `MCP ${label}` : 'MCP call',
+      formattedArgs: mcpArguments(parsed.arguments),
     }
   }
 

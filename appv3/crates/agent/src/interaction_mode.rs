@@ -5,7 +5,8 @@ use anyhow::{anyhow, Result};
 use appv3_db::{self as db, DbPool, NewMessage};
 use serde_json::{json, Map, Value};
 
-pub const PLAN_MODE_ALLOWED_TOOLS: [&str; 11] = ["ask_user", "delegate", "glob", "grep", "plan", "read", "shell", "skill", "submit_plan", "web_fetch", "web_search"];
+/// `mcp` checks each call itself: search, and calls to read-only tools.
+pub const PLAN_MODE_ALLOWED_TOOLS: [&str; 12] = ["ask_user", "delegate", "glob", "grep", "mcp", "plan", "read", "shell", "skill", "submit_plan", "web_fetch", "web_search"];
 
 /// `extra.interaction_mode_prompt_version` of the notes written now. Notes
 /// without it are version 1 (the `<proposed_plan>` instructions).

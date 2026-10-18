@@ -1676,6 +1676,16 @@ Four orthogonal ways to add capability.
   OAuth setup permits empty client ID and secret fields so servers that support
   dynamic client registration can complete setup without app credentials; issuer
   discovery also tolerates a sole trailing-slash difference at the origin root `[v1.124.0]`.
+  - **One `mcp` tool for every server** `[v3.16.0]` — the agent no longer gets
+    every server's tools (named `<server>_<tool>`) with their full schemas on
+    each turn. It gets a single `mcp` tool: `search` finds tools by keywords and
+    returns their input schemas, and `call` runs one by server, tool and
+    arguments. Its description lists each server with its tool names (counts
+    only once there are many) or its state. Adding servers no longer grows every
+    request, server tools can't clash with built-in tool names, and a server
+    that finishes starting or reconnects is usable at once. In Plan mode the
+    agent can search, and call tools the server marks read-only
+    (`readOnlyHint`); the server sets that hint, so it is trusted as given.
   - **`$VAR` / `${VAR}` expansion in stdio server env** `[v1.122.0]` — stdio MCP
     server `env` entries in `mcp.json` now resolve environment/`.env`-style
     references the same way header values already did, so secrets can be

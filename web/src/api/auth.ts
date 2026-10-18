@@ -116,9 +116,15 @@ export async function getStoredAccessKey(baseUrl?: string): Promise<string | und
   }
 }
 
-/** Load the active shell credential before application requests begin. */
+/** Load the active shell credential before application requests begin.
+ *
+ * Installs the request interceptor afterwards, too: a read that resolved
+ * before the backend URL was applied (the cold-launch prime of the
+ * remembered server) found no token for the then-default origin, and the
+ * cached result returned here would otherwise never install it. */
 export async function primeStoredAccessKey(baseUrl: string = apiBaseUrl()): Promise<void> {
   await getStoredAccessKey(baseUrl)
+  installDesktopAuth()
 }
 
 export async function setStoredAccessKey(key: string, baseUrl?: string): Promise<void> {

@@ -159,6 +159,27 @@ describe("access key storage", () => {
     expect(window.localStorage.getItem('openagentd.accessKey')).toBeNull()
   })
 
+  it("installs request auth when the native key resolves before the backend URL is applied", async () => {
+    // Cold mobile launch: the shell primes the remembered server's key while
+    // the API base URL is still the default. A fast credential store (the
+    // Android Keystore answers in ~10 ms) resolves before setApiBaseUrl, so
+    // the first install attempt finds no token for the default origin. The
+    // later prime hits the cache and must still install the interceptor, or
+    // every request goes out without the key and the server answers 401.
+    invoke.mockImplementation(async (...args: unknown[]) =>
+      String(args[0]) === 'secure_get_access_key' ? 'native-key' : undefined)
+    const { calls } = spyFetch()
+    const auth = await freshAuth()
+
+    await auth.primeStoredAccessKey('http://192.168.1.50:4082')
+    window.__OAD_API_BASE_URL__ = 'http://192.168.1.50:4082'
+    await auth.primeStoredAccessKey()
+
+    await window.fetch('http://192.168.1.50:4082/api/agent/workspace/browse')
+    expect(new Headers(calls[0].init?.headers).get('Authorization')).toBe('Bearer native-key')
+    delete window.__OAD_API_BASE_URL__
+  })
+
   it("stores and retrieves access keys per backend origin", async () => {
     const auth = await freshAuth()
 

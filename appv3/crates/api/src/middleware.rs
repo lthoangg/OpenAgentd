@@ -87,6 +87,16 @@ pub struct Policy {
     pub token: Arc<String>,
     pub allow_insecure_lan: bool,
     pub max_bytes: u64,
+    /// Access key of the desktop's LAN listener (`network_access`), accepted
+    /// alongside `token` only while that listener is open.
+    pub network_key: Arc<std::sync::RwLock<Option<String>>>,
+}
+
+/// Which secret authenticated a request; set by [`desktop_token`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AuthenticatedBy {
+    DesktopToken,
+    NetworkKey,
 }
 
 impl Policy {
@@ -95,7 +105,21 @@ impl Policy {
         if !token.is_empty() {
             tracing::info!("desktop_token_auth_enabled token_len={}", token.len());
         }
-        Policy { token: Arc::new(token), allow_insecure_lan: appv3_core::settings().api_allow_insecure_lan, max_bytes: DEFAULT_MAX_BYTES }
+        Policy { token: Arc::new(token), allow_insecure_lan: appv3_core::settings().api_allow_insecure_lan, max_bytes: DEFAULT_MAX_BYTES, network_key: Arc::default() }
+    }
+
+    /// Install or clear the LAN listener's access key.
+    pub fn set_network_key(&self, key: Option<String>) {
+        *self.network_key.write().unwrap_or_else(|e| e.into_inner()) = key;
+    }
+
+    /// Which configured secret `presented` matches, compared in constant time.
+    pub fn authenticate(&self, presented: &str) -> Option<AuthenticatedBy> {
+        if !self.token.is_empty() && constant_time_eq(presented, &self.token) {
+            return Some(AuthenticatedBy::DesktopToken);
+        }
+        let key = self.network_key.read().unwrap_or_else(|e| e.into_inner());
+        key.as_deref().filter(|k| !k.is_empty() && constant_time_eq(presented, k)).map(|_| AuthenticatedBy::NetworkKey)
     }
 
     /// No access key and no `API_ALLOW_INSECURE_LAN` opt-out: only loopback
@@ -205,10 +229,13 @@ pub async fn desktop_token(policy: axum::extract::State<Policy>, mut req: Reques
         if !path_is_api(&path) {
             return ws_reject();
         }
-        match extract_token(&req) {
-            Some(t) if constant_time_eq(&t, &policy.token) => {}
-            other => {
-                tracing::warn!("desktop_token_rejected_ws path={} has_token={}", path, other.is_some());
+        let presented = extract_token(&req);
+        match presented.as_deref().and_then(|t| policy.authenticate(t)) {
+            Some(by) => {
+                req.extensions_mut().insert(by);
+            }
+            None => {
+                tracing::warn!("desktop_token_rejected_ws path={} has_token={}", path, presented.is_some());
                 return ws_reject();
             }
         }
@@ -218,10 +245,13 @@ pub async fn desktop_token(policy: axum::extract::State<Policy>, mut req: Reques
     if path_is_exempt(&path) {
         return next.run(req).await;
     }
-    match extract_token(&req) {
-        Some(t) if constant_time_eq(&t, &policy.token) => {}
-        other => {
-            tracing::warn!("desktop_token_rejected path={} has_token={}", path, other.is_some());
+    let presented = extract_token(&req);
+    match presented.as_deref().and_then(|t| policy.authenticate(t)) {
+        Some(by) => {
+            req.extensions_mut().insert(by);
+        }
+        None => {
+            tracing::warn!("desktop_token_rejected path={} has_token={}", path, presented.is_some());
             return detail(StatusCode::UNAUTHORIZED, "Unauthorized — OpenAgentd access key required.");
         }
     }
@@ -535,7 +565,27 @@ mod tests {
     }
 
     fn policy(token: &str, insecure_lan: bool) -> Policy {
-        Policy { token: Arc::new(token.into()), allow_insecure_lan: insecure_lan, max_bytes: DEFAULT_MAX_BYTES }
+        Policy { token: Arc::new(token.into()), allow_insecure_lan: insecure_lan, max_bytes: DEFAULT_MAX_BYTES, network_key: Arc::default() }
+    }
+
+    #[test]
+    fn the_network_key_is_accepted_only_while_installed() {
+        let p = policy("desk", false);
+        assert_eq!(p.authenticate("desk"), Some(AuthenticatedBy::DesktopToken));
+        assert_eq!(p.authenticate("lan-key-0123456789"), None);
+        p.set_network_key(Some("lan-key-0123456789".into()));
+        assert_eq!(p.authenticate("lan-key-0123456789"), Some(AuthenticatedBy::NetworkKey));
+        assert_eq!(p.authenticate("desk"), Some(AuthenticatedBy::DesktopToken));
+        assert_eq!(p.authenticate("lan-key-012345678"), None);
+        p.set_network_key(None);
+        assert_eq!(p.authenticate("lan-key-0123456789"), None);
+    }
+
+    #[test]
+    fn an_empty_token_or_key_never_authenticates() {
+        let p = policy("", false);
+        p.set_network_key(Some(String::new()));
+        assert_eq!(p.authenticate(""), None);
     }
 
     #[test]

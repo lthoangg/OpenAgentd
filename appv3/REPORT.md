@@ -810,6 +810,18 @@ explicitly.
   the assembled message keeps it in `extra.stop_details`. v2 treated a
   refusal as `end_turn`: the turn ended silently and any partial tool call
   ran. Tests: `agent/tests/refusal.rs`, `providers/src/anthropic.rs`.
+- **Desktop network access (v3 only):** `GET`/`PUT /api/desktop/network-access`
+  (`api/src/routes/desktop.rs`, `api/src/network_access.rs`) lets the desktop
+  shell open and close a second listener on `0.0.0.0:<port>`. The listener
+  serves the same router, prefers 4082, and falls back to `4083..=4099` and
+  then to a port the OS picks. Its access key is accepted alongside the
+  desktop token only while the listener is open (`Policy::network_key`).
+  Closing the listener revokes the key and cancels every accepted socket,
+  upgraded WebSockets and SSE included. The route exists only in desktop
+  sessions (`server serve` with a desktop token) and answers 404 unless the
+  request carries the desktop token and comes from a loopback peer on the
+  private listener. v2 had no equivalent. Tests: `api/src/network_access.rs`,
+  `cli/tests/serve_shutdown.rs`.
 
 ## 4. Layout
 

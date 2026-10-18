@@ -125,12 +125,16 @@ pub fn serve(args: &ServeArgs) -> anyhow::Result<()> {
         let pool = appv3_db::pool::create_pool(&s.database_path).await?;
         appv3_api::startup::startup(&pool).await?;
 
-        let app = create_app(AppState { pool: pool.clone() }, policy);
+        let app = create_app(AppState { pool: pool.clone() }, policy.clone());
         let listener = tokio::net::TcpListener::bind((host.as_str(), port)).await?;
         let port = listener.local_addr()?.port();
         tracing::info!("server_listening host={} port={}", host, port);
         // A preview must never proxy back to this API from loopback.
         appv3_preview::block_port(port);
+        // The desktop shell can open a LAN listener on demand ("Network access").
+        if token.is_some() {
+            appv3_api::network_access::install(app.clone(), policy, port);
+        }
         if handshake {
             emit_handshake(port, token.as_deref(), handshake_file.as_deref());
         }
@@ -141,6 +145,7 @@ pub fn serve(args: &ServeArgs) -> anyhow::Result<()> {
         let server = axum::serve(NoDelayTcpListener(listener), app.into_make_service_with_connect_info::<ConnInfo>()).with_graceful_shutdown(async move {
             shutdown_signal().await;
             tracing::info!("server_shutdown_requested");
+            appv3_api::network_access::shutdown().await;
             appv3_api::startup::close_event_streams();
             let _ = tx.send(true);
         });

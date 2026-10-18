@@ -79,6 +79,14 @@ See [Install the iOS app](mobile/INSTALL-IOS.md) for SideStore setup, other
 sideloading tools, free Apple Account limits, connecting to your server, and
 troubleshooting.
 
+### Android app
+
+The Android app connects to an OpenAgentd server running on your computer, the
+same way as the iOS app. It isn't on Google Play. Each release includes an
+`OpenAgentd_<version>_Android.apk` you install directly on the phone (Android
+7.0+, 64-bit ARM). See [Install the Android app](mobile/INSTALL-ANDROID.md) for
+installing, updating, connecting to your server, and troubleshooting.
+
 ### CLI server
 
 Install the backend when you want to run it from a terminal, use a browser client, or connect another device:

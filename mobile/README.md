@@ -120,3 +120,55 @@ If iOS blocks the first launch, trust the developer profile on the phone in **Se
 Use **Backend connection** in the app to save/check a remote server. Simulator builds can usually reach the Mac with `http://localhost:8000`; physical devices normally need a LAN IP or HTTPS endpoint. The server has no built-in TLS: for access beyond a trusted LAN, put an HTTPS reverse proxy in front of it and connect to the proxy's URL.
 
 For local developer builds, set a unique iOS bundle identifier in `src-tauri/tauri.conf.json` if `com.openagentd.mobile` is already registered to another Apple developer team.
+
+## Android
+
+Prerequisites: JDK 17+, the Android SDK (`platform-tools`, `platforms;android-36`,
+`build-tools`) and an NDK, plus the Rust Android targets:
+
+```bash
+brew install openjdk@17 && brew install --cask android-commandlinetools
+export JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home
+export ANDROID_HOME=$HOME/Library/Android/sdk
+sdkmanager --sdk_root=$ANDROID_HOME "platform-tools" "platforms;android-36" "build-tools;36.1.0" "ndk;28.2.13676358"
+rustup target add aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android
+```
+
+Android Studio's SDK and bundled JDK work too. The Makefile defaults
+`ANDROID_HOME` to `~/Library/Android/sdk` and `NDK_HOME` to the newest NDK in it.
+
+```bash
+make android-init            # generate src-tauri/gen/android and copy launcher icons
+make android-dev [device]    # run on a device/emulator against Vite (bun dev --host 0.0.0.0)
+make android-apk             # release APK -> dist/OpenAgentd_<version>_Android.apk + .sha256
+make android-release         # android-apk + upload APK to v<version> (release keystore; DRY_RUN=1 to preview)
+make android-install         # adb install -r the APK from dist/
+make android-clean           # remove the generated Gradle project
+```
+
+`android-apk` builds arm64 only by default; build more ABIs with
+`make android-apk ANDROID_TARGETS="aarch64 armv7 x86_64"`. It then signs the
+APK with `scripts/package-apk.sh`. Set `ANDROID_KEYSTORE`,
+`ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS` (and optionally
+`ANDROID_KEY_PASSWORD`) to sign with a release key. Without them the APK is
+signed with `~/.android/debug.keystore`, which is fine for your own phone
+but not for distribution: Android only installs updates signed with the
+same key.
+
+`android-release` refuses to run without `ANDROID_KEYSTORE`, and
+`scripts/publish-apk.sh` refuses a debug-signed APK. It needs a clean tree
+with HEAD at the `v<version>` tag and an existing GitHub release. The user
+guide is [INSTALL-ANDROID.md](INSTALL-ANDROID.md).
+
+Android-specific native pieces live in the `android-plugin/` Tauri plugin
+(included only in Android builds):
+
+- Access keys go to a Keystore-backed `keyring` store. The `keyring` crate has
+  no Android backend, and without this plugin it falls back to an in-memory mock.
+- Downloads open the system share sheet through a `FileProvider`, like the iOS
+  share sheet.
+- A network security config allows `http://` servers. Release builds block
+  cleartext otherwise. Android can't scope this to private IP ranges, so use
+  an HTTPS reverse proxy for anything beyond a trusted LAN.
+
+From the emulator, the host machine is `http://10.0.2.2:8000`.

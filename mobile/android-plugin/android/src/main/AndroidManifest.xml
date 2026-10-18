@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Merged into the generated app manifest, so these survive
+  `make android-init` regenerating `src-tauri/gen/android/`.
+
+  networkSecurityConfig: the OpenAgentd server has no built-in TLS and a phone
+  usually reaches it over `http://<LAN-IP>:8000`. Release builds otherwise
+  block cleartext in the WebView. Android cannot scope this to private IP
+  ranges, so it permits cleartext generally (the iOS shell's ATS exemption
+  covers IP addresses and local names the same way). Use an HTTPS reverse
+  proxy for anything beyond a trusted LAN.
+
+  The provider is a FileProvider subclass: the Tauri app template already
+  declares androidx.core.content.FileProvider, and the manifest merger keys
+  providers by class name.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application android:networkSecurityConfig="@xml/openagentd_network_security_config">
+        <provider
+            android:name="app.openagentd.shell.ShellFileProvider"
+            android:authorities="${applicationId}.openagentd.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/openagentd_file_paths" />
+        </provider>
+    </application>
+</manifest>

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Only the cache directory, where `save_workspace_file` writes downloads. -->
+<paths>
+    <cache-path name="downloads" path="." />
+</paths>

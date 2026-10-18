@@ -124,6 +124,28 @@ Afterwards, confirm the notes survived and the IPA is attached
 (`gh release view v<version> --repo lthoangg/openagentd`), and that
 `gh release view latest-ios --repo lthoangg/openagentd` lists `source.json`.
 
+Build and upload the Android APK locally the same way. CI does not build
+Android. You need JDK 17+, the Android SDK and NDK (see `mobile/README.md`),
+and the **release keystore**. Android only installs updates signed with the
+key that signed the installed app, so always use the same keystore and never
+lose it:
+
+```bash
+git fetch --tags && git checkout v<version>   # HEAD must be the tagged commit
+export ANDROID_KEYSTORE=/path/to/openagentd-release.jks ANDROID_KEY_ALIAS=openagentd
+export ANDROID_KEYSTORE_PASSWORD=...          # ANDROID_KEY_PASSWORD if it differs
+DRY_RUN=1 make -C mobile android-release      # optional preview: build + checks, no upload
+make -C mobile android-release                # build, sign, upload APK + .sha256
+git checkout main
+```
+
+- `android-release` uploads `OpenAgentd_<version>_Android.apk` and its
+  `.sha256` to `v<version>`. It refuses to start without `ANDROID_KEYSTORE`.
+  `publish-apk.sh` refuses a debug-signed APK, a dirty tree, a HEAD other than
+  the tag, or a missing release. Re-running is safe (`--clobber`).
+- If the Android build cannot run, say so in the release report; the rest of
+  the release does not depend on it.
+
 ## 5. Release notes
 
 ```bash

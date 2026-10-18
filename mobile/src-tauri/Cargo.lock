@@ -2528,6 +2528,7 @@ dependencies = [
  "tauri-plugin-deep-link",
  "tauri-plugin-haptics",
  "tauri-plugin-notification",
+ "tauri-plugin-openagentd-android",
  "tauri-plugin-opener",
  "tempfile",
  "time",
@@ -4024,6 +4025,17 @@ dependencies = [
  "time",
  "url",
  "zbus",
+]
+
+[[package]]
+name = "tauri-plugin-openagentd-android"
+version = "0.0.0"
+dependencies = [
+ "base64 0.23.1",
+ "keyring",
+ "serde",
+ "tauri",
+ "tauri-plugin",
 ]
 
 [[package]]

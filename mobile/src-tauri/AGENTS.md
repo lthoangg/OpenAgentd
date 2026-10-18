@@ -15,6 +15,10 @@ integration for the mobile shell.
   links, and packaged icons.
 - `capabilities/default.json`: frontend-to-native permissions.
 - `Info.ios.plist` and `PrivacyInfo.xcprivacy`: iOS platform declarations.
+- `../android-plugin/`: Android-only Tauri plugin (Rust + Kotlin). It holds the
+  Keystore-backed `keyring` credential store, FileProvider file sharing, and
+  the cleartext network security config. It's registered first in `run()` on
+  Android.
 
 ## Boundaries
 

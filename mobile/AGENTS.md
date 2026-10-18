@@ -17,6 +17,11 @@ make ios-dev-device <name>       # named physical device
 make ios-build                   # production iOS build
 make ios-ipa                     # release archive -> sideloadable dist/*.ipa
 make ios-release                 # ios-ipa + upload IPA and SideStore source (DRY_RUN=1 to preview)
+make android-init                # generate the local Gradle project
+make android-dev [device]        # device/emulator development against Vite
+make android-apk                 # release APK -> signed dist/*.apk (ANDROID_KEYSTORE* env)
+make android-release             # android-apk + upload to v<version> (DRY_RUN=1 to preview)
+make android-install             # adb install the dist APK
 make build                       # generic Tauri bundle
 ```
 
@@ -30,12 +35,19 @@ production archive/install.
 packaging. Frontend changes still follow `web/AGENTS.md` and require web
 validation.
 
+Android needs `JAVA_HOME` (JDK 17+), `ANDROID_HOME`, and an NDK (`NDK_HOME`
+defaults to the newest under `$ANDROID_HOME/ndk`). Android-only native code
+(Keystore credential store, FileProvider sharing, cleartext network policy)
+lives in the `android-plugin/` Tauri plugin. Its Kotlin library manifest is
+merged into the generated app, so don't patch `src-tauri/gen/android/`.
+
 ## Constraints
 
 - Keep remote-server connection behavior distinct from desktop's bundled
   sidecar flow.
 - Treat remote-origin validation, access-key storage, Tauri capabilities/CSP,
-  deep links, and iOS plist/privacy changes as security-sensitive.
+  deep links, iOS plist/privacy changes, and the Android plugin's manifest,
+  network security config, and Keystore code as security-sensitive.
 - `src-tauri/gen/`, `src-tauri/target/`, and generated icon variants are
   local/generated state. Regenerate them with Make targets instead of editing
   or committing them.
@@ -48,6 +60,7 @@ validation.
 make verify-mobile  # from repository root; locked cargo check used by CI
 ```
 
-iOS builds and device behavior are not covered by CI. Run the smallest
-relevant simulator/device flow for native iOS changes and report when the
-required Apple tooling is unavailable.
+iOS and Android builds and device behavior are not covered by CI. Run the
+smallest relevant simulator/emulator/device flow for native changes (for
+Android at least `make android-apk`), and report when the required Apple or
+Android tooling is unavailable.

@@ -464,13 +464,15 @@ run from the terminal (the native Rust binary since v3.0.0).
   filtered by active session state `[v2.0.0]`.
   - **`/redo` and `/redo-all` slash commands** `[v2.0.0]` — restore undone chat turns
     step-by-step or fast-forward completely back to the latest turn.
-  - **`/btw` side questions** `[v3.17.0]` — `/btw <question>` asks a quick question
+  - **`/btw` side questions** `[v3.17.0, v3.18.0]` — `/btw <question>` asks a quick question
     about the session, even while the agent is working, without interrupting the turn
     or adding anything to the chat. The model answers from the conversation so far,
-    with no tools, and the answer streams into a panel above the composer. Side
-    questions are saved with the session. Step back through earlier ones, copy an
-    answer, stop it, or clear the thread. Close only hides the panel. Reopen it with
-    a bare `/btw`, **Cmd+K → Side Questions**, or the **BTW** chip.
+    with no tools. Side questions are saved with the session; copy an answer, stop it,
+    or clear the thread. On desktop with a workspace they open in the review dock's
+    **BTW** tab, which lists every question and answer `[v3.18.0]`; on phones and
+    without a workspace they open in a panel above the composer, where you step back
+    through earlier ones and Close only hides the panel. Show them again with a bare
+    `/btw`, **Cmd+K → Side Questions**, or the **BTW** chip.
   - **`/init` AGENTS.md analysis & generation** `[v1.9.0, v2.0.0]` — analyzes codebase
     structure and generates standard `AGENTS.md` context files at repository root and
     subdirectories with a guided analysis protocol.
@@ -589,9 +591,9 @@ run from the terminal (the native Rust binary since v3.0.0).
   - Reply footers add the turn's output tokens, or its cost when the model
     has a price.
   - Inline diffs in tool cards show the first 400 lines with a "Show N more
-    lines" button, and a turn with more than 100 steps shows the latest 100
+    lines" button, and a turn with more than 300 steps shows the latest 300
     with "Show N earlier steps", so huge patches and long agent runs stay
-    responsive `[v3.14.0]`.
+    responsive `[v3.14.0, v3.18.0]`.
 - **Reader transcript** `[v3.0.0]` — an opt-in transcript style (Settings →
   About → Appearance → Transcript, or Toggle Reader Mode in the command
   palette, which also finds it as "compact" or "transcript"). Each turn reads

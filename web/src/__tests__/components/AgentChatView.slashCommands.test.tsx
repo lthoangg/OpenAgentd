@@ -185,6 +185,15 @@ describe('useSlashCommands', () => {
     expect(useBtwStore.getState().sessions['session-1']?.open).toBe(true)
   })
 
+  it('a bare /btw shows side questions through onOpenSideQuestions when given', async () => {
+    useBtwStore.setState({ sessions: {} })
+    const onOpenSideQuestions = mock((..._args: unknown[]) => {})
+    const { result } = renderHook(() => useSlashCommands({ agentWorkspace: '/tmp/project', inputRef, handleNewSession, onOpenSideQuestions }))
+    await act(async () => { result.current.handleSlashCommand('btw') })
+    expect(onOpenSideQuestions).toHaveBeenCalledWith('session-1')
+    expect(useBtwStore.getState().sessions['session-1']).toBeUndefined()
+  })
+
   it('/stop hands messages held for the turn back to the composer', async () => {
     useHeldMessagesStore.setState({ messages: [] })
     useHeldMessagesStore.getState().hold({ sessionId: 'session-1', content: 'after that, run the tests' })

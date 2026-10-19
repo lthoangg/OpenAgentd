@@ -69,6 +69,16 @@ beforeEach(() => {
     if (url.includes('/workspace/git-diff')) return new Response(JSON.stringify({ workspace: WORKSPACE, is_git_repo: false, diff: '' }))
     if (url.includes('/workspace/status')) return new Response(JSON.stringify({ workspace: WORKSPACE }))
     if (url.includes('/scheduler/tasks')) return new Response(JSON.stringify({ tasks: [TASK] }))
+    if (url.endsWith('/btw/count')) return new Response(JSON.stringify({ total: 1 }))
+    if (url.includes('/btw')) {
+      return new Response(JSON.stringify({
+        items: [{
+          id: 'q1', session_id: 'session-1', question: 'Which file holds the router?', answer: 'It is in `src/router.ts`.',
+          status: 'done', error: null, model: null, usage: null, created_at: '', updated_at: '',
+        }],
+        total: 1,
+      }))
+    }
     return new Response(JSON.stringify({}), { status: 404 })
   }) as typeof fetch
 })
@@ -179,6 +189,18 @@ describe('Review dock Plan tab', () => {
   it('shows the empty state before the agent writes a plan', async () => {
     await renderPanel({ request: { view: 'plan', key: 1 } })
     expect(await screen.findByText('No plan yet')).toBeTruthy()
+  })
+})
+
+describe('Review dock BTW tab', () => {
+  it('opens and focuses the side questions tab for a btw request and reports the active view', async () => {
+    const reported: (DockView | null)[] = []
+    await renderPanel({ request: { view: 'btw', key: 1 }, onActiveViewChange: (v) => reported.push(v) })
+
+    const tab = await screen.findByRole('button', { name: 'BTW side questions' })
+    expect(tab.getAttribute('aria-current')).toBe('true')
+    expect(await screen.findByText('Which file holds the router?')).toBeTruthy()
+    expect(reported.at(-1)).toBe('btw')
   })
 })
 

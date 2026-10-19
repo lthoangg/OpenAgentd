@@ -19,7 +19,6 @@ import { useIsMobile } from '@/hooks/use-mobile'
 import { appShortcut, useShortcuts } from '@/lib/keyboard/hooks'
 import { useFileRevealStore } from '@/stores/useFileRevealStore'
 import { useLayoutStore } from '@/stores/useLayoutStore'
-import { useBtwStore } from '@/stores/useBtwStore'
 import type { WorkspaceFileInfo } from '@/api/types'
 import type { Command } from '../CommandPalette'
 import { useAgentCommands } from './useAgentCommands'
@@ -49,6 +48,8 @@ export interface UseCommandPaletteArgs {
   planAwaitingReview?: boolean
   /** Workspace with a local backend only: opens a web preview tab. */
   handleOpenPreview?: () => void
+  /** Shows the session's ``/btw`` side questions (dock tab or composer panel). */
+  handleOpenSideQuestions: (sessionId: string) => void
 
   setFileViewer: Dispatch<SetStateAction<WorkspaceFileInfo | null>>
   setFileOpenKey: Dispatch<SetStateAction<number>>
@@ -82,6 +83,7 @@ export function useCommandPalette({
   handleOpenPlan,
   planAwaitingReview,
   handleOpenPreview,
+  handleOpenSideQuestions: openSideQuestions,
   setFileViewer,
   setFileOpenKey,
   setWorkspacePanel,
@@ -102,8 +104,8 @@ export function useCommandPalette({
   }, [workspacePanelOpen, isMobile, setWorkspacePanel, workspace])
 
   const handleOpenSideQuestions = useMemo(
-    () => (sessionIdState ? () => useBtwStore.getState().reopen(sessionIdState) : undefined),
-    [sessionIdState],
+    () => (sessionIdState ? () => openSideQuestions(sessionIdState) : undefined),
+    [sessionIdState, openSideQuestions],
   )
 
   const agentCommands = useAgentCommands({

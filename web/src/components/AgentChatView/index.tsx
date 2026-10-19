@@ -308,6 +308,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
     handleSetShowTodos,
     handleToggleTasks,
     handleOpenPlan,
+    handleOpenSideQuestions,
     handleOpenTerminal,
     edgeSwipeHandlers,
     sidebarDragOffset,
@@ -485,13 +486,16 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
     isAgentWorking,
     revertedCount: leadRevertedCount,
     hasVisibleMessages: leadHasVisibleBlocks,
+    onOpenSideQuestions: handleOpenSideQuestions,
   })
 
   useReleaseHeldMessages({ workspace, sessionId: sessionIdState, composerRef: inputRef })
   useMarkSessionRead(sessionIdState)
 
   // ``/btw <question>``: a side question, never sent to the chat; a bare
-  // ``/btw`` reopens the panel. Returns false when ``content`` is not one.
+  // ``/btw`` shows them again. Either shows the dock's BTW tab on desktop
+  // with a workspace, else the panel above the composer. Returns false when
+  // ``content`` is not one.
   // The composer clears itself right after submit, so a refused draft is
   // put back on the next task.
   const handleBtwSubmit = useCallback((content: string, files?: File[]): boolean => {
@@ -512,14 +516,16 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
         giveBack()
         break
       case 'reopen':
-        if (sessionIdState) useBtwStore.getState().reopen(sessionIdState)
+        if (sessionIdState) handleOpenSideQuestions(sessionIdState)
         break
       case 'ask':
-        if (sessionIdState) void useBtwStore.getState().ask(sessionIdState, action.question)
+        if (!sessionIdState) break
+        void useBtwStore.getState().ask(sessionIdState, action.question)
+        handleOpenSideQuestions(sessionIdState)
         break
     }
     return true
-  }, [sessionIdState, pushToast])
+  }, [sessionIdState, pushToast, handleOpenSideQuestions])
 
   const {
     paletteCommands,
@@ -544,6 +550,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
     handleOpenPlan: plan || planAwaitingReview ? handleOpenPlan : undefined,
     planAwaitingReview,
     handleOpenPreview: workspace && isLocalBackend() ? handleOpenNewPreview : undefined,
+    handleOpenSideQuestions,
     setFileViewer,
     setFileOpenKey,
     setWorkspacePanel,
@@ -815,8 +822,18 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
             revertedMessages={leadRevertedMessages}
             onRedo={() => { void handleSlashCommand('redo') }}
             onRedoAll={() => { void handleSlashCommand('redo-all') }}
-            aboveComposer={<BtwPanel sessionId={sessionIdState || null} countEnabled={leadHasVisibleBlocks} />}
-            aboveComposerOpen={btwOpen}
+            // Desktop with a workspace: the dock's BTW tab shows side
+            // questions, and here only the chip reopens it while that tab is
+            // not on screen.
+            aboveComposer={dockViewsEnabled && workspacePanel !== null && dockActiveView === 'btw' ? null : (
+              <BtwPanel
+                sessionId={sessionIdState || null}
+                countEnabled={leadHasVisibleBlocks}
+                chipOnly={dockViewsEnabled}
+                onReopen={dockViewsEnabled && sessionIdState ? () => handleOpenSideQuestions(sessionIdState) : undefined}
+              />
+            )}
+            aboveComposerOpen={btwOpen && !dockViewsEnabled}
           />
         ) : null}
         </main>

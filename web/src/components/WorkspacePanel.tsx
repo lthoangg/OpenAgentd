@@ -2,8 +2,8 @@
  * WorkspacePanel — the review dock.
  *
  * Editor-style tab strip (Git review, file previews, full-height diffs,
- * commits, web previews, terminals, and on desktop the agent Tasks and
- * Schedule views)
+ * commits, web previews, terminals, and on desktop the agent Tasks, Plan,
+ * `/btw` side questions, and Schedule views)
  * over one content area. Desktop geometry is a ratio of the shell's center
  * region (measured here from ``centerRef``) in ``side`` mode, or the whole
  * center in ``overlay`` mode (maximized, or a window too narrow for a
@@ -69,6 +69,7 @@ import { DiffTabView } from './WorkspacePanel/DiffTabView'
 import { CommitTabView } from './WorkspacePanel/CommitTabView'
 import { TasksTabView } from './WorkspacePanel/TasksTabView'
 import { PlanTabView } from './WorkspacePanel/PlanTabView'
+import { SideQuestionsTabView } from './WorkspacePanel/SideQuestionsTabView'
 import { PreviewTabView } from './Preview/PreviewTabView'
 import type { DesignFeedback } from '@/lib/design-feedback'
 import { SchedulerDockView } from './SchedulerPanel/SchedulerDockView'
@@ -677,6 +678,8 @@ export function WorkspacePanel({
             <TasksTabView todos={todos} sessionId={sessionId} plan={plan} onClearPlan={onClearPlan} onOpenPlan={() => openTab(PLAN_TAB)} />
           ) : activeTab?.type === 'plan' ? (
             <PlanTabView plan={plan} sessionId={sessionId} onClearPlan={onClearPlan} onOpenFile={openChangedFile} />
+          ) : activeTab?.type === 'btw' ? (
+            <SideQuestionsTabView sessionId={sessionId} active={open} />
           ) : activeTab?.type === 'schedule' ? (
             <SchedulerDockView contextWorkspace={chatWorkspace ? null : workspace} />
           ) : activeTab?.type === 'preview' ? (

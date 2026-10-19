@@ -3,8 +3,9 @@
  * the answer streaming in this tab (``useBtwStore``) merged in.
  *
  * Nothing here loads with a session: the list is fetched only while the
- * panel is open, and the count (for the reopen chip) only when the caller
- * enables it.
+ * side questions are on screen (the panel above the composer is open, or the
+ * caller says so: the dock tab), and the count (for the reopen chip) only
+ * when the caller enables it.
  */
 import { useEffect, useMemo, useRef } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -68,16 +69,20 @@ function useRefetchOnRevision(sessionId: string | null | undefined, revision: nu
   }, [client, sessionId, revision])
 }
 
-export function useSideQuestions(sessionId: string | null | undefined, { countEnabled }: { countEnabled: boolean }) {
+export function useSideQuestions(
+  sessionId: string | null | undefined,
+  { countEnabled, listEnabled }: { countEnabled: boolean; /** Defaults to the panel's ``open``. */ listEnabled?: boolean },
+) {
   const state = useBtwStore(selectBtw(sessionId))
   const sid = sessionId ?? ''
   const liveId = state.live?.status === 'streaming' ? state.live.id : null
+  const listOn = listEnabled ?? state.open
   useRefetchOnRevision(sessionId, state.revision)
 
   const list = useQuery({
     queryKey: queryKeys.sideQuestions.list(sid),
     queryFn: () => listSideQuestions(sid),
-    enabled: !!sessionId && state.open,
+    enabled: !!sessionId && listOn,
     staleTime: 30_000,
     refetchInterval: (query) =>
       query.state.data?.items.some((it) => it.status === 'streaming' && it.id !== liveId)
@@ -96,7 +101,7 @@ export function useSideQuestions(sessionId: string | null | undefined, { countEn
   return {
     ...state,
     exchanges,
-    isLoading: state.open && list.isLoading && !state.live,
+    isLoading: listOn && list.isLoading && !state.live,
     error: list.error,
     /** Stored side questions (for the reopen chip), when the count is enabled. */
     total: Math.max(count.data?.total ?? 0, list.data?.total ?? 0),

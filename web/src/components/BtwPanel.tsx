@@ -3,6 +3,10 @@
  * answer streaming in, and the earlier ones to step back through. Side
  * questions are kept beside the session, never in its chat.
  *
+ * On desktop with a workspace the review dock's BTW tab shows them instead
+ * (``SideQuestionsTabView``); this is then only the reopen chip
+ * (``chipOnly``), which opens that tab through ``onReopen``.
+ *
  * Closing only hides the panel; Clear deletes. While it is closed and the
  * session has side questions, a small chip reopens it (so does a bare
  * `/btw` or Cmd+K → Side Questions).
@@ -23,12 +27,17 @@ interface BtwPanelProps {
   sessionId: string | null
   /** Fetch the stored count for the reopen chip (the session has messages). */
   countEnabled: boolean
+  /** Never show the panel, only the chip (the dock shows side questions). */
+  chipOnly?: boolean
+  /** What the chip does; defaults to reopening this panel. */
+  onReopen?: () => void
 }
 
-export function BtwPanel({ sessionId, countEnabled }: BtwPanelProps) {
-  const btw = useSideQuestions(sessionId, { countEnabled })
+export function BtwPanel({ sessionId, countEnabled, chipOnly = false, onReopen }: BtwPanelProps) {
+  const btw = useSideQuestions(sessionId, { countEnabled, listEnabled: chipOnly ? false : undefined })
   const [confirmClear, setConfirmClear] = useState(false)
-  const { open, exchanges, view } = btw
+  const { exchanges, view } = btw
+  const open = btw.open && !chipOnly
 
   useEffect(() => {
     if (!confirmClear) return
@@ -44,7 +53,7 @@ export function BtwPanel({ sessionId, countEnabled }: BtwPanelProps) {
     return (
       <button
         type="button"
-        onClick={() => store.reopen(sessionId)}
+        onClick={() => (onReopen ? onReopen() : store.reopen(sessionId))}
         aria-label={`Show side questions (${btw.total})`}
         title="Side questions (/btw)"
         // Floats over the transcript like the jump-to-latest chip, so the
@@ -157,7 +166,8 @@ export function BtwPanel({ sessionId, countEnabled }: BtwPanelProps) {
   )
 }
 
-function ExchangeView({ exchange, sessionId }: { exchange: BtwExchange; sessionId: string }) {
+/** One side question and its answer (also the dock tab's rows). */
+export function ExchangeView({ exchange, sessionId }: { exchange: BtwExchange; sessionId: string }) {
   const streaming = exchange.status === 'streaming'
   return (
     <div className="flex flex-col gap-1.5">

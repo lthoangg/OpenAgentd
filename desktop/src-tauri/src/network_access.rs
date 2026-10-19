@@ -133,7 +133,7 @@ pub fn validate_key(key: &str) -> Result<(), String> {
 pub fn generate_key() -> Result<String, String> {
     use base64::Engine;
     let mut bytes = [0u8; 32];
-    getrandom::getrandom(&mut bytes).map_err(|e| format!("generate access key: {e}"))?;
+    getrandom::fill(&mut bytes).map_err(|e| format!("generate access key: {e}"))?;
     Ok(base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(bytes))
 }
 

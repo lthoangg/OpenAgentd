@@ -62,7 +62,9 @@ if (import.meta.main) {
   // Sidebar sections (View options, Pinned, the flat Status / Date / None
   // views) and the new-session screen with its folder picker added 40 kB /
   // 12 kB gzip: 2.45 MB / 739 kB, with a 1.80 MB index chunk.
-  const limits = { eagerBytes: 2_460_000, eagerGzipBytes: 742_000, largestChunkBytes: 1_810_000 }
+  // framer-motion 14.3 (hardware-accelerated independent transforms) added
+  // 9 kB / 3 kB gzip: 2.46 MB / 742 kB, with a 1.80 MB index chunk.
+  const limits = { eagerBytes: 2_470_000, eagerGzipBytes: 745_000, largestChunkBytes: 1_810_000 }
   console.log('Production JavaScript budget:', sizes)
   const failures = budgetFailures(sizes, limits)
   if (failures.length) {

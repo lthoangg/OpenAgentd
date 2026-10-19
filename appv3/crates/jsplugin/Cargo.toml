@@ -15,18 +15,18 @@ sha2.workspace = true
 uuid.workspace = true
 chrono.workspace = true
 regex.workspace = true
-fancy-regex = "0.14"
+fancy-regex = "0.19"
 base64 = "0.23"
 hex = "0.4"
 rand = "0.10"
 rquickjs = { version = "0.14", features = ["futures", "loader"] }
-oxc_allocator = "0.151"
-oxc_codegen = "0.151"
-oxc_diagnostics = "0.151"
-oxc_parser = "0.151"
-oxc_semantic = "0.151"
-oxc_span = "0.151"
-oxc_transformer = "0.151"
+oxc_allocator = "0.154"
+oxc_codegen = "0.154"
+oxc_diagnostics = "0.154"
+oxc_parser = "0.154"
+oxc_semantic = "0.154"
+oxc_span = "0.154"
+oxc_transformer = "0.154"
 
 [dev-dependencies]
 tempfile = "3"

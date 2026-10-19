@@ -28,23 +28,23 @@ async-trait.workspace = true
 sha2.workspace = true
 base64 = "0.23"
 zip = { version = "8", default-features = false, features = ["deflate"] }
-fancy-regex = "0.14"
+fancy-regex = "0.19"
 memchr = "2"
 globset = "0.4"
 os_pipe = "1"
 # HTML → Markdown for web_fetch. htmd is on html5ever 0.38 while `trafilatura`
-# and `scraper` are still on 0.36, so the binary carries both parsers (+35 kB
-# stripped) until trafilatura moves. markup5ever_rcdom must match htmd's (its
-# `Element.node`).
+# and `scraper` are on 0.39, so the binary carries both parsers (+35 kB
+# stripped) until htmd moves. markup5ever_rcdom must match htmd's (its
+# `Element.node`); html5ever must match scraper's (`HtmlTreeSink`).
 htmd = "=0.5.6"
 markup5ever_rcdom = "0.38"
-html5ever = "0.36"
+html5ever = "0.39"
 encoding_rs = "0.8"
-scraper = "0.25"
+scraper = "0.27"
 # Main-content extraction for web_fetch (port of go-trafilatura, the Go port
 # of the Python library v2 uses). No default features: its Markdown converter
 # is replaced by htmd + our code-block handlers.
-trafilatura = { version = "=0.3.0", default-features = false }
+trafilatura = { version = "=0.4.1", default-features = false }
 unicode-normalization = "0.1"
 # PDF/DOCX → Markdown for `read` and `web_fetch`: the same Rust crate v2's
 # `firecrawl-anydoc` wheel wraps.

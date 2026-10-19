@@ -25,6 +25,7 @@ beforeEach(() => {
   latest = null
   currentWindowLabel = 'main'
   online = new Set()
+  window.sessionStorage.clear()
   getCurrent.mockReset()
   getCurrent.mockImplementation(() => Promise.resolve([]))
   onOpenUrl.mockReset()
@@ -45,7 +46,7 @@ describe('useConnectLink', () => {
     await waitFor(() => expect(latest?.request).toEqual({ baseUrl: 'http://192.168.1.20:4082', accessKey: KEY }))
   })
 
-  it('picks the first reachable address from a warm link, once', async () => {
+  it('picks the first reachable address from a warm link', async () => {
     online.add('http://10.0.0.5:4082')
     let openUrls: ((urls: string[]) => void) | undefined
     onOpenUrl.mockImplementation(async (handler) => {
@@ -58,10 +59,41 @@ describe('useConnectLink', () => {
     const link = buildConnectLink({ urls: ['http://192.168.1.20:4082', 'http://10.0.0.5:4082'], key: KEY })
     await act(async () => openUrls?.([link]))
     await waitFor(() => expect(latest?.request?.baseUrl).toBe('http://10.0.0.5:4082'))
+  })
 
+  it('opens the dialog again when the same QR code is scanned again', async () => {
+    online.add('http://192.168.1.20:4082')
+    let openUrls: ((urls: string[]) => void) | undefined
+    onOpenUrl.mockImplementation(async (handler) => {
+      openUrls = handler as (urls: string[]) => void
+      return () => {}
+    })
+    render(<Probe />)
+    await waitFor(() => expect(openUrls).toBeDefined())
+
+    const link = buildConnectLink({ urls: ['http://192.168.1.20:4082'], key: KEY })
+    await act(async () => openUrls?.([link]))
+    await waitFor(() => expect(latest?.request).not.toBeNull())
     act(() => latest?.clear())
     expect(latest?.request).toBeNull()
+
     await act(async () => openUrls?.([link]))
+    await waitFor(() => expect(latest?.request).toEqual({ baseUrl: 'http://192.168.1.20:4082', accessKey: KEY }))
+  })
+
+  it('does not replay a handled link after the page reloads', async () => {
+    // The deep-link plugin keeps reporting the last opened URL from
+    // getCurrent() for the life of the app, including after Save & Connect
+    // reloads the page.
+    online.add('http://192.168.1.20:4082')
+    getCurrent.mockImplementation(() => Promise.resolve([buildConnectLink({ urls: ['http://192.168.1.20:4082'], key: KEY })]))
+    render(<Probe />)
+    await waitFor(() => expect(latest?.request).not.toBeNull())
+    cleanup()
+
+    getCurrent.mockClear()
+    render(<Probe />)
+    await waitFor(() => expect(getCurrent).toHaveBeenCalled())
     await new Promise((resolve) => setTimeout(resolve, 20))
     expect(latest?.request).toBeNull()
   })

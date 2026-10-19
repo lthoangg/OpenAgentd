@@ -789,6 +789,7 @@ export function Sidebar({
     onSessionContextActions: (session: SessionResponse, event: { clientX: number; clientY: number }) => {
       setDesktopSessionActions({ session, workspacePath: session.workspace ?? '', x: event.clientX, y: event.clientY })
     },
+    onSessionPinToggle: toggleSessionPinned,
   }
 
   const confirmSessionDelete = () => {

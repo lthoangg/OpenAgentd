@@ -1082,8 +1082,9 @@ agent against it.
   The choice is kept per device. Outside Project mode the list is one flat list
   across workspaces, each row naming its workspace, and the header gains a
   **New session** button; on phones that button is there in every mode.
-- **Pinned sessions** `[v3.18.0]` — **Pin** (first in a session's context menu
-  or long-press sheet) moves a top-level session into a **Pinned** section at
+- **Pinned sessions** `[v3.18.0]` — **Pin** (a row action left of Edit on
+  desktop `[v3.19.0]`, first in a session's context menu, or in the long-press
+  sheet on mobile) moves a top-level session into a **Pinned** section at
   the top of the sidebar, from any workspace, with its workspace name. Pins are
   stored on the server, so they follow you to other windows, the browser and
   the mobile app, and pinning does not change a session's place in Recent

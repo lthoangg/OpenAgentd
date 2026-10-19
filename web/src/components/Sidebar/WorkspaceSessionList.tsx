@@ -27,6 +27,7 @@ export function WorkspaceSessionList({
   onSessionRenameCancel = noop,
   onSessionLongPress,
   onSessionContextActions,
+  onSessionPinToggle,
 }: {
   path: string
   /**
@@ -55,6 +56,7 @@ export function WorkspaceSessionList({
   onSessionRenameCancel?: () => void
   onSessionLongPress: (session: SessionResponse) => void
   onSessionContextActions: (session: SessionResponse, at: MenuPoint) => void
+  onSessionPinToggle?: (session: SessionResponse) => void
 }) {
   const multiCheckout = paths !== undefined && paths.length > 1
   const sessions = useWorkspaceSessionsQuery(multiCheckout ? paths : path, !collapsed, { sort })
@@ -67,7 +69,7 @@ export function WorkspaceSessionList({
     ? (runningSessions ?? []).filter((session) => !session.pinned_at)
     : (sessions.data?.pages.flatMap((page) => page.data).filter(listed) ?? [])
 
-  const handlers = useStableSessionHandlers({ onSessionSelect, onSessionDelete, onSessionEdit, onSessionRename, onSessionRenameCancel, onSessionLongPress, onSessionContextActions })
+  const handlers = useStableSessionHandlers({ onSessionSelect, onSessionDelete, onSessionEdit, onSessionRename, onSessionRenameCancel, onSessionLongPress, onSessionContextActions, onSessionPinToggle })
 
   return (
     <div className={className}>

@@ -132,7 +132,7 @@ checksum = "330a5ed07fa54e4702c9d6c4174f74427fc0ef6e214bbd677ae50a5099946470"
 
 [[package]]
 name = "appv3-agent"
-version = "3.17.0"
+version = "3.18.0"
 dependencies = [
  "anyhow",
  "appv3-core",
@@ -165,7 +165,7 @@ dependencies = [
 
 [[package]]
 name = "appv3-api"
-version = "3.17.0"
+version = "3.18.0"
 dependencies = [
  "anyhow",
  "appv3-agent",
@@ -214,7 +214,7 @@ dependencies = [
 
 [[package]]
 name = "appv3-cli"
-version = "3.17.0"
+version = "3.18.0"
 dependencies = [
  "anyhow",
  "appv3-agent",
@@ -231,6 +231,7 @@ dependencies = [
  "flate2",
  "libc",
  "nix 0.29.0",
+ "qrcode",
  "regex",
  "reqwest",
  "serde_json",
@@ -247,7 +248,7 @@ dependencies = [
 
 [[package]]
 name = "appv3-core"
-version = "3.17.0"
+version = "3.18.0"
 dependencies = [
  "anyhow",
  "base64 0.23.1",
@@ -271,7 +272,7 @@ dependencies = [
 
 [[package]]
 name = "appv3-db"
-version = "3.17.0"
+version = "3.18.0"
 dependencies = [
  "anyhow",
  "appv3-core",
@@ -290,7 +291,7 @@ dependencies = [
 
 [[package]]
 name = "appv3-jsplugin"
-version = "3.17.0"
+version = "3.18.0"
 dependencies = [
  "appv3-core",
  "base64 0.23.1",
@@ -319,7 +320,7 @@ dependencies = [
 
 [[package]]
 name = "appv3-mcp"
-version = "3.17.0"
+version = "3.18.0"
 dependencies = [
  "anyhow",
  "appv3-agent",
@@ -344,7 +345,7 @@ dependencies = [
 
 [[package]]
 name = "appv3-memory"
-version = "3.17.0"
+version = "3.18.0"
 dependencies = [
  "anyhow",
  "appv3-core",
@@ -362,7 +363,7 @@ dependencies = [
 
 [[package]]
 name = "appv3-preview"
-version = "3.17.0"
+version = "3.18.0"
 dependencies = [
  "appv3-core",
  "appv3-tools",
@@ -384,7 +385,7 @@ dependencies = [
 
 [[package]]
 name = "appv3-providers"
-version = "3.17.0"
+version = "3.18.0"
 dependencies = [
  "anyhow",
  "appv3-core",
@@ -413,7 +414,7 @@ dependencies = [
 
 [[package]]
 name = "appv3-terminal"
-version = "3.17.0"
+version = "3.18.0"
 dependencies = [
  "appv3-core",
  "appv3-tools",
@@ -426,7 +427,7 @@ dependencies = [
 
 [[package]]
 name = "appv3-tools"
-version = "3.17.0"
+version = "3.18.0"
 dependencies = [
  "anydoc",
  "anyhow",
@@ -4362,6 +4363,12 @@ name = "pxfm"
 version = "0.1.30"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d55d956fa96f5ec02be2e13af0e20391a5aa83d6a074e3ad368959d0fab299ea"
+
+[[package]]
+name = "qrcode"
+version = "0.14.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d68782463e408eb1e668cf6152704bd856c78c5b6417adaee3203d8f4c1fc9ec"
 
 [[package]]
 name = "quick-error"

@@ -26,6 +26,9 @@ import { type InputComposerHandle, type SlashCommand, type SnippetCommand } from
 import { filterBaseSlashCommands, attachmentToFile } from './helpers'
 import { stopTurn } from './heldMessages'
 
+/** Commands that act on an existing session's history. */
+const SESSION_COMMANDS = new Set(['compact', 'undo', 'redo', 'redo-all'])
+
 export interface UseSlashCommandsArgs {
   /** Workspace path, or `null` while no workspace is attached. */
   agentWorkspace: string | null
@@ -34,6 +37,8 @@ export interface UseSlashCommandsArgs {
   isAgentWorking?: boolean
   revertedCount?: number
   hasVisibleMessages?: boolean
+  /** Shows the session's side questions (a bare ``/btw``); defaults to the panel above the composer. */
+  onOpenSideQuestions?: (sessionId: string) => void
 }
 
 export interface UseSlashCommandsResult {
@@ -55,6 +60,7 @@ export function useSlashCommands({
   isAgentWorking = false,
   revertedCount = 0,
   hasVisibleMessages = false,
+  onOpenSideQuestions,
 }: UseSlashCommandsArgs): UseSlashCommandsResult {
   const pushToast = useToastStore((s) => s.push)
 
@@ -118,6 +124,11 @@ export function useSlashCommands({
   }, [agentWorkspace, pushToast])
 
   const handleSlashCommand = useCallback((id: string) => {
+    // A new-session draft has no session yet: say so instead of failing.
+    if (SESSION_COMMANDS.has(id) && !useAgentStore.getState().sessionId) {
+      pushToast({ tone: 'info', title: 'Start a conversation first', description: `/${id} works on a session, and this one starts with your first message.` })
+      return
+    }
     switch (id) {
       case 'stop':
         void stopTurn(inputRef.current)
@@ -126,7 +137,9 @@ export function useSlashCommands({
         // A bare ``/btw`` reopens the side questions; one with a question is
         // sent from the composer's submit.
         const sessionId = useAgentStore.getState().sessionId
-        if (sessionId) useBtwStore.getState().reopen(sessionId)
+        if (!sessionId) break
+        if (onOpenSideQuestions) onOpenSideQuestions(sessionId)
+        else useBtwStore.getState().reopen(sessionId)
         break
       }
       case 'compact':
@@ -181,7 +194,7 @@ export function useSlashCommands({
           )
         break
     }
-  }, [handleNewSession, inputRef, agentWorkspace, pushToast])
+  }, [handleNewSession, inputRef, agentWorkspace, pushToast, onOpenSideQuestions])
 
   /** If *content* starts with a known user-defined command, render server-side
    *  and return the expanded body; otherwise return *content* unchanged. */

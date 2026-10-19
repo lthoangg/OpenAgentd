@@ -1,4 +1,4 @@
-//! `openagentd transfer export|import`.
+//! `agentd transfer export|import`.
 
 use crate::cli::{ExportArgs, ImportArgs};
 use crate::ui::{bold, cyan, dim, green, yellow};
@@ -152,7 +152,7 @@ pub fn export(a: &ExportArgs) -> Result<()> {
     }
     println!();
     println!("  {}", bold("To import on the target server:"));
-    println!("    openagentd transfer import {}", output.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default());
+    println!("    agentd transfer import {}", output.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default());
     println!();
     Ok(())
 }
@@ -249,7 +249,7 @@ pub fn import(a: &ImportArgs) -> Result<()> {
     }
     println!();
     println!("  {} start the server:", bold("Next:"));
-    println!("    openagentd server start");
+    println!("    agentd server start");
     println!();
     Ok(())
 }

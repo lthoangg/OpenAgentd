@@ -41,7 +41,7 @@ mock.module('@/stores/cache-invalidation-bridge', () => ({ prependSession: () =>
 mock.module('@/utils/workspace', () => ({ saveLastWorkspace: () => {}, workspaceLabel: (w: string) => w, sameWorkspacePath: (a: string, b: string) => a === b, getChatWorkspaceEntry: () => null, setChatWorkspaceEntry: () => {} }))
 mock.module('@/lib/tray', () => ({ setTraySession: () => {} }))
 mock.module('@/components/AgentView', () => ({ AgentView: () => null }))
-mock.module('@/components/WorkspaceInfoCard', () => ({ WorkspaceInfoCard: () => null }))
+mock.module('@/components/WorkspaceInfoCard', () => ({ WorkspaceInfoCard: () => null, RecentSessionsList: () => null }))
 mock.module('@/components/Sidebar', () => ({ Sidebar: () => null }))
 mock.module('@/components/WorkspacePanel', () => ({ WorkspacePanel: () => null }))
 mock.module('@/components/AgentChatView/AgentChatPanels', () => ({ AgentChatPanels: () => null }))

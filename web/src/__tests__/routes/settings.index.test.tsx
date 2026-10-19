@@ -178,4 +178,19 @@ describe('SettingsHubPage — appearance', () => {
     expect(useDisplayPrefsStore.getState().transcriptStyle).toBe('reader')
     useDisplayPrefsStore.setState({ transcriptStyle: 'detailed' })
   })
+
+  it('picks where the new-session composer sits from the Appearance section', async () => {
+    const user = userEvent.setup()
+    renderHub()
+
+    const group = screen.getByRole('radiogroup', { name: 'New session composer' })
+    const floating = screen.getByRole('radio', { name: 'Floating' })
+    expect(group.contains(floating)).toBe(true)
+    expect(screen.getByRole('radio', { name: 'Centered' })).toHaveAttribute('aria-checked', 'true')
+
+    await user.click(floating)
+
+    expect(useDisplayPrefsStore.getState().newSessionComposer).toBe('floating')
+    useDisplayPrefsStore.setState({ newSessionComposer: 'centered' })
+  })
 })

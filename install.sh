@@ -8,9 +8,10 @@
 #
 # Default: installs the macOS Apple Silicon app into /Applications or the
 # Linux x86_64 .deb package through apt.
-# --cli: installs the `openagentd` command-line binary (macOS arm64/x86_64,
+# --cli: installs the `agentd` command-line binary (macOS arm64/x86_64,
 # Linux x86_64/arm64) into ~/.local/bin, verified against its .sha256, and
-# removes an OpenAgentd v2 (Python) install made with uv or pipx.
+# removes an OpenAgentd v2 (Python) install made with uv or pipx. Releases
+# also ship `openagentd`, the binary's former name, as an alias.
 #
 # Release artefacts are downloaded from GitHub. OPENAGENTD_RELEASES_URL
 # overrides the releases base URL (used by tests against a local server).
@@ -31,7 +32,7 @@ Usage:
     install.sh [--cli [--dir DIR]] [--version VERSION]
 
 Options:
-    --cli              Install the `openagentd` command-line tool instead of
+    --cli              Install the `agentd` command-line tool instead of
                        the desktop app.
     --dir DIR          Where --cli puts the binary (default: ~/.local/bin,
                        or $OPENAGENTD_INSTALL_DIR).
@@ -234,7 +235,7 @@ install_cli() {
     url="${RELEASES_URL}/download/v${VERSION}/${asset}"
     archive="$tmpdir/$asset"
 
-    step "Downloading ${BOLD}openagentd ${VERSION}${RESET} (${TARGET})"
+    step "Downloading ${BOLD}agentd ${VERSION}${RESET} (${TARGET})"
     note "    Source: $url"
     curl -LsSf --retry 3 -o "$archive" "$url" || fail "failed to download $asset"
     curl -LsSf --retry 3 -o "$archive.sha256" "$url.sha256" || fail "failed to download $asset.sha256"
@@ -247,8 +248,11 @@ install_cli() {
     stage="$tmpdir/stage"
     mkdir -p "$stage"
     tar -xzf "$archive" -C "$stage"
-    [ -x "$stage/openagentd" ] || fail "the archive does not contain the openagentd binary"
-    "$stage/openagentd" --version >/dev/null 2>&1 \
+    # Releases before the rename (pinned with --version) only have `openagentd`.
+    BIN_NAME="agentd"
+    [ -x "$stage/$BIN_NAME" ] || BIN_NAME="openagentd"
+    [ -x "$stage/$BIN_NAME" ] || fail "the archive does not contain the agentd binary"
+    "$stage/$BIN_NAME" --version >/dev/null 2>&1 \
         || fail "the downloaded binary does not run on this machine"
 
     remove_v2
@@ -264,7 +268,7 @@ install_cli() {
         chmod 755 "$INSTALL_DIR/.$name.tmp.$$"
         mv -f "$INSTALL_DIR/.$name.tmp.$$" "$INSTALL_DIR/$name"
     done
-    note "    $("$INSTALL_DIR/openagentd" --version)"
+    note "    $("$INSTALL_DIR/$BIN_NAME" --version)"
 }
 
 cli_path_hints() {
@@ -276,11 +280,16 @@ cli_path_hints() {
             return
             ;;
     esac
-    found="$(command -v openagentd 2>/dev/null || true)"
-    if [ -n "$found" ] && [ "$found" != "$INSTALL_DIR/openagentd" ]; then
-        say "Warning: ${BOLD}${found}${RESET} comes first on your PATH."
-        say "    If it is OpenAgentd v2 installed with pip, remove it with: python3 -m pip uninstall openagentd"
-    fi
+    for name in "$BIN_NAME" openagentd; do
+        found="$(command -v "$name" 2>/dev/null || true)"
+        if [ -n "$found" ] && [ "$found" != "$INSTALL_DIR/$name" ]; then
+            say "Warning: ${BOLD}${found}${RESET} comes first on your PATH."
+            if [ "$name" = openagentd ]; then
+                say "    If it is OpenAgentd v2 installed with pip, remove it with: python3 -m pip uninstall openagentd"
+            fi
+            break
+        fi
+    done
 }
 
 resolve_version
@@ -291,9 +300,9 @@ trap 'rm -rf "$tmpdir"' EXIT HUP INT TERM
 if [ "$MODE" = "cli" ]; then
     install_cli
     say ""
-    step "${BOLD}Installed openagentd ${VERSION}!${RESET}"
+    step "${BOLD}Installed ${BIN_NAME} ${VERSION}!${RESET}"
     cli_path_hints
-    say "Next: run ${BOLD}openagentd --help${RESET}, or ${BOLD}openagentd server start --wait${RESET}."
+    say "Next: run ${BOLD}${BIN_NAME} --help${RESET}, or ${BOLD}${BIN_NAME} server start --wait${RESET}."
     note "      It uses the same config and data as OpenAgentd v2 and the desktop app."
     say ""
     exit 0

@@ -106,7 +106,7 @@
     "env_var": "",
     "supports_prompt_cache_key": true,
     "metadata_source_provider": "xai",
-    "oauth_command": "openagentd auth grok",
+    "oauth_command": "agentd auth grok",
     "docs_url": "https://docs.x.ai/build/overview"
   },
   {
@@ -149,7 +149,7 @@
     "kind": "oauth",
     "env_var": "",
     "models_dev_provider_id": "github-copilot",
-    "oauth_command": "openagentd auth copilot",
+    "oauth_command": "agentd auth copilot",
     "docs_url": "https://github.com/features/copilot"
   },
   {
@@ -161,7 +161,7 @@
     "supports_fast_mode": true,
     "supports_prompt_cache_key": true,
     "metadata_source_provider": "openai",
-    "oauth_command": "openagentd auth codex",
+    "oauth_command": "agentd auth codex",
     "docs_url": "https://platform.openai.com/docs/codex"
   },
   {

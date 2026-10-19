@@ -2,7 +2,8 @@
  * ContextMenu — a pointer-anchored menu for right-click actions.
  *
  * Items stay caller-owned ``<button role="menuitem">`` (or
- * ``role="menuitemradio"`` for a pick-one list) elements; the menu
+ * ``role="menuitemradio"`` for a pick-one list, ``role="menuitemcheckbox"``
+ * for a toggle) elements; the menu
  * adds what every hand-rolled copy was missing: it focuses the first item,
  * moves with ArrowUp/ArrowDown/Home/End (skipping disabled items), closes on
  * Escape, Tab, a backdrop click or another right-click, returns focus to
@@ -29,7 +30,7 @@ export function ContextMenuSeparator() {
 
 function enabledItems(menu: HTMLElement | null): HTMLElement[] {
   if (!menu) return []
-  return Array.from(menu.querySelectorAll<HTMLElement>('[role="menuitem"], [role="menuitemradio"]')).filter(
+  return Array.from(menu.querySelectorAll<HTMLElement>('[role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox"]')).filter(
     (item) => !item.hasAttribute('disabled') && item.getAttribute('aria-disabled') !== 'true',
   )
 }

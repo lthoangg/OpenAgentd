@@ -1,8 +1,8 @@
 name: Release
 
-# Builds the native `openagentd` CLI (appv3) for every supported target and
+# Builds the native `agentd` CLI (appv3) for every supported target and
 # attaches the archives to the shared `v<X.Y.Z>` GitHub release. The
-# installers (`install.sh --cli`, `install.ps1 -Cli`), `openagentd upgrade`
+# installers (`install.sh --cli`, `install.ps1 -Cli`), `agentd upgrade`
 # and the Homebrew formula (publish-homebrew.yml, triggered by this
 # workflow) all download these archives, so their names are a contract:
 #
@@ -13,6 +13,9 @@ name: Release
 # Each archive holds the executable(s) at its root plus LICENSE and NOTICE.
 # Consumers install every executable they find there, so a future second
 # binary (for example a separate TUI) ships without installer changes.
+# The executables are `agentd` and `openagentd`, a small alias that forwards
+# to `agentd`. Releases before the rename only update from an archive that
+# contains `openagentd`, and the archive names keep the old prefix for them.
 #
 # v2 (Python) is no longer published from main. The final v2 release
 # (2.27.0, PyPI only) is dispatched from the commit that added the v2
@@ -109,16 +112,19 @@ jobs:
           name="openagentd-${VERSION}-${TARGET}"
           stage="$RUNNER_TEMP/$name"
           mkdir -p "$stage" _release
-          cp "appv3/target/${TARGET}/dist/openagentd${exe}" "$stage/"
+          cp "appv3/target/${TARGET}/dist/agentd${exe}" "appv3/target/${TARGET}/dist/openagentd${exe}" "$stage/"
           cp LICENSE NOTICE "$stage/"
           # The dist profile keeps symbols; strip the shipped copy (not on
           # Windows, where the PDB is separate and GNU strip corrupts PEs).
-          if [ -z "$exe" ]; then strip "$stage/openagentd"; fi
+          if [ -z "$exe" ]; then strip "$stage/agentd" "$stage/openagentd"; fi
 
-          # The binary must report the release version before it ships.
-          reported=$("$stage/openagentd${exe}" --version | tr -d '\r')
-          echo "$reported"
-          [ "$reported" = "openagentd v${VERSION}" ] || { echo "version mismatch: $reported"; exit 1; }
+          # The binary must report the release version before it ships, and
+          # the alias must forward to it.
+          for bin in agentd openagentd; do
+            reported=$("$stage/${bin}${exe}" --version | tr -d '\r')
+            echo "$bin: $reported"
+            [ "$reported" = "agentd v${VERSION}" ] || { echo "version mismatch ($bin): $reported"; exit 1; }
+          done
 
           if [ "$RUNNER_OS" = "Windows" ]; then
             archive="${name}.zip"
@@ -138,7 +144,7 @@ jobs:
           OPENAGENTD_MODEL_REGISTRY_REFRESH: "false"
         run: |
           set -euo pipefail
-          bin="appv3/target/${{ matrix.target }}/dist/openagentd"
+          bin="appv3/target/${{ matrix.target }}/dist/agentd"
           [ "$RUNNER_OS" = "Windows" ] && bin="$bin.exe"
           sb="$RUNNER_TEMP/oad-smoke"
           mkdir -p "$sb"

@@ -14,7 +14,7 @@ release that introduced it (where known). When you ship something new, **add it 
 > double-clickable app that runs an agent on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 18 providers. Your keys.
 
-**Latest release:** v3.17.0 · October 19, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.17.0)
+**Latest release:** v3.18.0 · October 19, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.18.0)
 
 ---
 
@@ -464,13 +464,15 @@ run from the terminal (the native Rust binary since v3.0.0).
   filtered by active session state `[v2.0.0]`.
   - **`/redo` and `/redo-all` slash commands** `[v2.0.0]` — restore undone chat turns
     step-by-step or fast-forward completely back to the latest turn.
-  - **`/btw` side questions** `[v3.17.0]` — `/btw <question>` asks a quick question
+  - **`/btw` side questions** `[v3.17.0, v3.18.0]` — `/btw <question>` asks a quick question
     about the session, even while the agent is working, without interrupting the turn
     or adding anything to the chat. The model answers from the conversation so far,
-    with no tools, and the answer streams into a panel above the composer. Side
-    questions are saved with the session. Step back through earlier ones, copy an
-    answer, stop it, or clear the thread. Close only hides the panel. Reopen it with
-    a bare `/btw`, **Cmd+K → Side Questions**, or the **BTW** chip.
+    with no tools. Side questions are saved with the session; copy an answer, stop it,
+    or clear the thread. On desktop with a workspace they open in the review dock's
+    **BTW** tab, which lists every question and answer `[v3.18.0]`; on phones and
+    without a workspace they open in a panel above the composer, where you step back
+    through earlier ones and Close only hides the panel. Show them again with a bare
+    `/btw`, **Cmd+K → Side Questions**, or the **BTW** chip.
   - **`/init` AGENTS.md analysis & generation** `[v1.9.0, v2.0.0]` — analyzes codebase
     structure and generates standard `AGENTS.md` context files at repository root and
     subdirectories with a guided analysis protocol.
@@ -589,9 +591,9 @@ run from the terminal (the native Rust binary since v3.0.0).
   - Reply footers add the turn's output tokens, or its cost when the model
     has a price.
   - Inline diffs in tool cards show the first 400 lines with a "Show N more
-    lines" button, and a turn with more than 100 steps shows the latest 100
+    lines" button, and a turn with more than 300 steps shows the latest 300
     with "Show N earlier steps", so huge patches and long agent runs stay
-    responsive `[v3.14.0]`.
+    responsive `[v3.14.0, v3.18.0]`.
 - **Reader transcript** `[v3.0.0]` — an opt-in transcript style (Settings →
   About → Appearance → Transcript, or Toggle Reader Mode in the command
   palette, which also finds it as "compact" or "transcript"). Each turn reads
@@ -743,7 +745,7 @@ run from the terminal (the native Rust binary since v3.0.0).
   encrypted with an Android Keystore key, downloads open the system share
   sheet, and `http://` LAN servers are allowed (the server has no built-in
   TLS). See [Install the Android app](../../mobile/INSTALL-ANDROID.md).
-- **LAN access key for external clients** `[v1.43.0, v1.103.0, v2.4.0]` — `openagentd server start --host 0.0.0.0 --key`
+- **LAN access key for external clients** `[v1.43.0, v1.103.0, v2.4.0]` — `agentd server start --host 0.0.0.0 --key`
   stores the CLI server's bind address, port, and bearer key in `server.yaml`, separate from the desktop builtin sidecar's ephemeral token while agents, providers, sessions, and other settings remain shared. Restart and upgrade preserve that key without exposing it in process arguments. OpenAgentd-managed launchers refuse non-loopback binds without a configured key `[v1.101.0]`.
 - **Desktop server connection manager** `[v1.43.4, v1.99.8, v1.104.0]` — the desktop **Server connection** dialog switches the current window between the builtin sidecar and saved external servers, normalizes pasted `/api` URLs, and preserves other open windows' backend choices. Typed servers now require a successful health and access-key test before they can be named, saved, and connected. Saved LAN access keys are scoped per backend origin and stored in the native OS credential store on installed desktop/mobile shells; browser development keeps the per-origin localStorage fallback. Remembered external servers reconnect on app launch with sidecar fallback, while the desktop window opens immediately as backend startup continues asynchronously `[v1.57.1]`.
   - **Reload after switching backend servers** `[v1.98.1]` — after connecting a desktop window to a different saved or typed external server, the webview reloads so stale frontend state is discarded and the window comes back against the newly selected backend cleanly. Reconnecting to the already active backend does not reload.
@@ -1072,6 +1074,36 @@ agent against it.
   narrows the list, **+** then starts sessions in that checkout, and a row
   above the sessions names the filter with a **Show all** button. Opening a
   session the filter hides shows every checkout again.
+  Since `[v3.18.0]` the header's **View options** menu groups sessions by
+  **Project** (the folder tree, the default), **Status** (Needs you · Working ·
+  Recent), **Date** (Today · Yesterday · Previous 7 days · Previous 30 days ·
+  Older) or **None**, sorts them by **Recent activity** (the default) or
+  **Created**, and can hide row details (age, worktree tag, workspace name).
+  The choice is kept per device. Outside Project mode the list is one flat list
+  across workspaces, each row naming its workspace, and the header gains a
+  **New session** button; on phones that button is there in every mode.
+- **Pinned sessions** `[v3.18.0]` — **Pin** (first in a session's context menu
+  or long-press sheet) moves a top-level session into a **Pinned** section at
+  the top of the sidebar, from any workspace, with its workspace name. Pins are
+  stored on the server, so they follow you to other windows, the browser and
+  the mobile app, and pinning does not change a session's place in Recent
+  activity. **Unpin** puts it back in its list. The section folds and hides
+  when nothing is pinned.
+- **New-session screen** `[v3.18.0]` — **New session** (the folder's **+**,
+  `⌘N` / `Ctrl+N`, the palette, `/new`) opens a draft at `/?workspace=<path>`
+  instead of creating an empty session: nothing is saved until the first
+  message, which creates the session and swaps the URL for its id, so an
+  abandoned New session leaves no "Untitled" row behind. The screen asks
+  *What should we build in {folder}?* (*Ask anything* in Chat), shows the
+  branch, and has a folder chip that switches folder (filterable, with
+  worktrees and **Open folder…**), a row of recent folders, and the folder's
+  recent sessions. Text typed in a draft is kept per folder across reloads and
+  carried along when the folder changes. **Settings → General → New session
+  composer** puts the composer in the middle of the screen (**Centered**, the
+  default) or keeps the collapsible bar at the bottom (**Floating**); on phones
+  it always sits at the bottom. Opening a folder registers it in the sidebar
+  right away, and a session that the first message creates in a new folder
+  adds that folder to the tree.
 - **Nested subagent sessions in the coding sidebar** `[v2.16.0, updated v2.17.0]` — lead sessions with
   delegated subagents render an expandable accordion of child sessions that defaults to
   expanded while a child is running, waiting on the lead, or selected, and collapses to a
@@ -1346,12 +1378,12 @@ agnostic by design.
 | OpenRouter | `openrouter:qwen/qwen3.6-plus:free` | `OPENROUTER_API_KEY` |
 | ZAI / GLM | `zai:glm-5-turbo` | `ZAI_API_KEY` |
 | xAI Grok | `xai:grok-4.20` | `XAI_API_KEY` |
-| Grok Build | `grok:grok-4.5` | `openagentd auth grok` `[v1.112.0]` |
+| Grok Build | `grok:grok-4.5` | `agentd auth grok` `[v1.112.0]` |
 | DeepSeek | `deepseek:deepseek-v4-flash` | `DEEPSEEK_API_KEY` |
 | AWS Bedrock | `bedrock:anthropic.claude-sonnet-4-6` | Bedrock Mantle bearer token (`AWS_BEARER_TOKEN_BEDROCK`) or AWS profile/default credential chain `[v1.110.0]` |
 | NVIDIA NIM | `nvidia:stepfun-ai/step-3.5-flash` | `NVIDIA_API_KEY` |
-| GitHub Copilot (OAuth) | `copilot:gpt-4.1` | `openagentd auth copilot` |
-| OpenAI Codex (OAuth) | `codex:gpt-5.5` | `openagentd auth codex` |
+| GitHub Copilot (OAuth) | `copilot:gpt-4.1` | `agentd auth copilot` |
+| OpenAI Codex (OAuth) | `codex:gpt-5.5` | `agentd auth codex` |
 | Router9 (local) | `router9:cc/claude-sonnet-4-5` | `ROUTER9_API_KEY` (optional) |
 | CLIProxyAPI (local) | `cliproxy:gemini-2.5-pro` | `CLIPROXY_API_KEY` (optional) |
 | Ollama (local + cloud) | `ollama:llama3.2` · `ollama:kimi-k2.6-cloud` | none (cloud: `ollama signin`) |
@@ -1574,7 +1606,7 @@ MCP.
   being available and on normal LSP scope rules (e.g. TypeScript honours `tsconfig.json`).
   Pinned `ty` + `ruff` now ship with the Python runtime, while TypeScript is a
   consented, on-demand backend component with a verified Bun download, locked
-  npm packages, a cross-surface install prompt (styled as a floating, non-blocking, draggable and minimizable notification card `[v2.12.0]`), and `openagentd lsp` status/install
+  npm packages, a cross-surface install prompt (styled as a floating, non-blocking, draggable and minimizable notification card `[v2.12.0]`), and `agentd lsp` status/install
   commands. Managed tools live under the regeneratable cache and do not modify
   the user's project.
 - **Semantic LSP navigation** `[v1.133.0]` — coding agents can find definitions,
@@ -1940,18 +1972,36 @@ Desktop is primary. CLI / server is the developer path.
   CLI commands and `openagentd upgrade` say that v2 gets no further updates and
   print the v3 install command plus the step that removes the uv/pipx/pip copy.
   `OPENAGENTD_HIDE_V2_NOTICE=1` hides it; the desktop sidecar never shows it.
-- **Concise native CLI** `[v3.1.0]` — `openagentd --help` lists eight command
+- **CLI renamed to `agentd`** `[v3.18.0]` — the command is now `agentd`
+  (`agentd server start`, `agentd auth codex`, …), and the desktop app's
+  bundled backend is `agentd` too. Releases still ship `openagentd`
+  *(deprecated)* as a small alias that forwards to `agentd` and, on a terminal,
+  says the old name will be removed. Existing installs keep working and
+  `openagentd upgrade` from older releases updates to both. Release archive
+  names, the Homebrew formula, config and data directories, and
+  `OPENAGENTD_*` variables are unchanged.
+- **Concise native CLI** `[v3.1.0]` — `agentd --help` lists eight command
   groups with short examples, errors print as one `error: …` line, and usage
-  errors exit 2. Bare `openagentd` prints help instead of starting the server
-  (use `openagentd server start`); the name is kept for a future terminal UI.
-- **CLI server control** `[v1.41.0, v2.4.0, v3.1.0]` — `openagentd server start|stop|restart`,
-  `openagentd server status`, `openagentd server logs`, and `openagentd server
+  errors exit 2. Bare `agentd` prints help instead of starting the server
+  (use `agentd server start`); the name is kept for a future terminal UI.
+- **CLI server control** `[v1.41.0, v2.4.0, v3.1.0]` — `agentd server start|stop|restart`,
+  `agentd server status`, `agentd server logs`, and `agentd server
   start --host 0.0.0.0 --key` make the CLI the control plane for desktop/mobile backends.
   Since v3.1.0 `server status` also runs the port, live, ready, and LAN checks
   (the former `server health`, still accepted) and exits 1 when the server is
   stopped or unhealthy, and `server logs` shows readable log lines instead of
   raw JSON records.
-- **Foreground CLI agent execution** `[v2.4.0]` — `openagentd run --prompt "..."`
+- **CLI LAN mode and connect QR code** `[v3.18.0]` — `agentd server start
+  --public` is shorthand for `--host 0.0.0.0` (it still needs an access key,
+  e.g. `--key`). `--qr` on `server start`, `server restart`, and
+  `server status` prints a QR code in the terminal with the LAN addresses and
+  the access key: the same `openagentd://connect` link as the desktop
+  **show QR**, so scanning it with a phone opens the mobile app's **Backend
+  connection** dialog with the address and key filled in. With `--wait` the code
+  appears once the server is ready. It is skipped with a warning when the
+  server is loopback-only, no LAN address is found, or the access key is
+  unknown in that shell.
+- **Foreground CLI agent execution** `[v2.4.0]` — `agentd run --prompt "..."`
   validates the current directory as a coding workspace, starts one persisted
   agent session, and streams only the agent's response text to standard
   output. `--model provider:model` and `--thinking` apply per-turn overrides;
@@ -1960,25 +2010,25 @@ Desktop is primary. CLI / server is the developer path.
   Since `[v3.1.0]`, `-C/--cd DIR` picks another workspace, `-c/--continue`
   continues the workspace's latest session, `--session ID` continues a given
   session, and `--json` prints every stream event as one JSON line.
-- **CLI start --wait** `[v1.73.0, v2.4.0]` — `openagentd server start --wait`
+- **CLI start --wait** `[v1.73.0, v2.4.0]` — `agentd server start --wait`
   starts the background server and polls `/api/health/ready` until the database
   connection and the agent session are fully ready; since v3.1.0 it exits 1 when
   the server dies or is not ready within 30 seconds.
-- **CLI upgrade** `[v1.41.0, self-update v3.0.0]` — `openagentd upgrade` in v3 stops the
+- **CLI upgrade** `[v1.41.0, self-update v3.0.0]` — `agentd upgrade` in v3 stops the
   background server, downloads the latest prebuilt release archive from GitHub, verifies
   its SHA-256 checksum, swaps the binaries in place, and restarts the server if it was
   running. Homebrew installations delegate to `brew upgrade`. In v2.27.0, `openagentd upgrade`
-  migrates existing uv/pipx/pip installations to the v3 native binary. `openagentd update`
+  migrates existing uv/pipx/pip installations to the v3 native binary. `agentd update`
   is an alias `[v3.1.0]`.
-- **CLI OAuth login status** `[v3.1.0]` — `openagentd auth list` shows which
+- **CLI OAuth login status** `[v3.1.0]` — `agentd auth list` shows which
   OAuth providers (Codex, GitHub Copilot, Grok) are logged in, and
-  `openagentd auth logout <provider>` deletes the saved login.
-  `openagentd auth <provider>` still logs in.
-- **CLI doctor** `[since v0.1.0, v3.1.0]` — `openagentd doctor` checks provider credentials
+  `agentd auth logout <provider>` deletes the saved login.
+  `agentd auth <provider>` still logs in.
+- **CLI doctor** `[since v0.1.0, v3.1.0]` — `agentd doctor` checks provider credentials
   (including keys saved in Settings → Providers and the lead agent's OAuth
   login), the database, the configured server port, and the agents directory,
   and exits 1 when a check fails.
-- **CLI artifact cleanup** `[v2.18.0]` — `openagentd cleanup` previews a dry run
+- **CLI artifact cleanup** `[v2.18.0]` — `agentd cleanup` previews a dry run
   and, with `--apply`, deletes sessions older than `--older-than-days`
   (default 14) together with their messages, session artifacts, undo/redo
   snapshot repos, and app-managed telemetry, logging, and worktree state that
@@ -1995,9 +2045,9 @@ Desktop is primary. CLI / server is the developer path.
   agent. Removed from the CLI along with `MIGRATION.md` for lack of demand; this
   is an explicit user-approved hard removal, so it did not follow the normal
   feature deprecation period. Revisit if users ask for it.
-- **Server migration export/import** `[v1.97.0, v2.4.0]` — `openagentd transfer export` packs
+- **Server migration export/import** `[v1.97.0, v2.4.0]` — `agentd transfer export` packs
   agents, skills, commands, plugins, and config files into a timestamped
-  `.tar.gz` archive. `openagentd transfer import <archive>` unpacks it on the target
+  `.tar.gz` archive. `agentd transfer import <archive>` unpacks it on the target
   machine with fill-in-gaps merge (or `--force` to overwrite). API keys in
   `.env` are redacted by default; `--include-secrets` opts in for trusted
   channels. Imports resolve every destination inside the config root and reject

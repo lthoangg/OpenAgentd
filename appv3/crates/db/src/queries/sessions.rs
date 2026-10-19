@@ -48,23 +48,41 @@ pub async fn get_session(pool: &DbPool, id: &str) -> Result<Option<ChatSession>>
     Ok(sqlx::query_as::<_, ChatSession>("SELECT * FROM chat_sessions WHERE id = ?").bind(db_id(id)).fetch_optional(pool).await?)
 }
 
-/// Cursor page of top-level sessions, newest first (v2 `list_sessions_page`).
-///
-/// `before` is the `"<iso created_at>|<uuid>"` cursor this returns.
-/// `workspaces` keeps sessions in any of the listed paths; empty lists every
-/// workspace. (v2 takes a single workspace; the list is a v3 addition.)
-/// `title_query` (a v3 addition) keeps titles containing it, ignoring ASCII
-/// case, with `%` and `_` matched literally.
-/// Returns `(rows, next_cursor, has_more)`; errors on a malformed cursor.
-pub async fn list_sessions_page(
-    pool: &DbPool,
-    before: Option<&str>,
-    limit: i64,
-    workspaces: &[String],
-    title_query: Option<&str>,
-) -> Result<(Vec<ChatSession>, Option<String>, bool)> {
-    let mut sql = String::from("SELECT * FROM chat_sessions WHERE parent_session_id IS NULL");
-    let mut binds: Vec<String> = Vec::new();
+/// Order of [`list_sessions_page`].
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub enum SessionSort {
+    /// Newest created first (v2's only order).
+    #[default]
+    Created,
+    /// Most recently touched first (`updated_at`).
+    Activity,
+}
+
+impl SessionSort {
+    fn column(self) -> &'static str {
+        match self {
+            SessionSort::Created => "created_at",
+            SessionSort::Activity => "updated_at",
+        }
+    }
+}
+
+/// Filters for [`list_sessions_page`]. The default lists every top-level
+/// session, newest created first.
+#[derive(Debug, Default, Clone)]
+pub struct SessionListFilter<'a> {
+    /// Keep sessions in any of these paths; empty lists every workspace.
+    /// (v2 takes a single workspace; the list is a v3 addition.)
+    pub workspaces: &'a [String],
+    /// Keep titles containing this, ignoring ASCII case, with `%` and `_`
+    /// matched literally (v3 addition).
+    pub title_query: Option<&'a str>,
+    pub sort: SessionSort,
+    /// `Some(true)` keeps only pinned sessions, `Some(false)` only unpinned.
+    pub pinned: Option<bool>,
+}
+
+fn push_session_filters(sql: &mut String, binds: &mut Vec<String>, workspaces: &[String], title_query: Option<&str>, pinned: Option<bool>) {
     if !workspaces.is_empty() {
         sql.push_str(&format!(" AND workspace IN ({})", vec!["?"; workspaces.len()].join(",")));
         binds.extend(workspaces.iter().cloned());
@@ -73,15 +91,32 @@ pub async fn list_sessions_page(
         sql.push_str(" AND title LIKE ? ESCAPE '\\'");
         binds.push(format!("%{}%", q.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_")));
     }
+    match pinned {
+        Some(true) => sql.push_str(" AND pinned_at IS NOT NULL"),
+        Some(false) => sql.push_str(" AND pinned_at IS NULL"),
+        None => {}
+    }
+}
+
+/// Cursor page of top-level sessions, newest first (v2 `list_sessions_page`).
+///
+/// `before` is the `"<iso sort key>|<uuid>"` cursor this returns; the key is
+/// `created_at` or `updated_at` per `filter.sort`.
+/// Returns `(rows, next_cursor, has_more)`; errors on a malformed cursor.
+pub async fn list_sessions_page(pool: &DbPool, before: Option<&str>, limit: i64, filter: &SessionListFilter<'_>) -> Result<(Vec<ChatSession>, Option<String>, bool)> {
+    let col = filter.sort.column();
+    let mut sql = String::from("SELECT * FROM chat_sessions WHERE parent_session_id IS NULL");
+    let mut binds: Vec<String> = Vec::new();
+    push_session_filters(&mut sql, &mut binds, filter.workspaces, filter.title_query, filter.pinned);
     if let Some(cursor) = before.filter(|c| !c.is_empty()) {
         let (raw_dt, raw_id) = cursor.split_once('|').ok_or_else(|| anyhow!("invalid before cursor"))?;
         let dt = parse_dt(raw_dt).ok_or_else(|| anyhow!("invalid before cursor"))?;
         let id = parse_uuid(raw_id).ok_or_else(|| anyhow!("invalid before cursor"))?;
-        sql.push_str(" AND (created_at, id) < (?, ?)");
+        sql.push_str(&format!(" AND ({col}, id) < (?, ?)"));
         binds.push(dt_db(&dt));
         binds.push(uuid_db(&id));
     }
-    sql.push_str(" ORDER BY created_at DESC, id DESC LIMIT ?");
+    sql.push_str(&format!(" ORDER BY {col} DESC, id DESC LIMIT ?"));
     let mut q = sqlx::query_as::<_, ChatSession>(sqlx::AssertSqlSafe(&*sql));
     for b in &binds {
         q = q.bind(b);
@@ -89,9 +124,45 @@ pub async fn list_sessions_page(
     let mut rows = q.bind(limit + 1).fetch_all(pool).await?;
     let has_more = rows.len() as i64 > limit;
     rows.truncate(limit.max(0) as usize);
-    let next_cursor =
-        if has_more { rows.last().and_then(|last| parse_dt(&last.created_at).map(|dt| format!("{}|{}", api_dt_from(&dt), crate::codec::api_uuid(&last.id)))) } else { None };
+    let next_cursor = if has_more {
+        rows.last().and_then(|last| {
+            let key = match filter.sort {
+                SessionSort::Created => &last.created_at,
+                SessionSort::Activity => &last.updated_at,
+            };
+            parse_dt(key).map(|dt| format!("{}|{}", api_dt_from(&dt), crate::codec::api_uuid(&last.id)))
+        })
+    } else {
+        None
+    };
     Ok((rows, next_cursor, has_more))
+}
+
+/// Every pinned top-level session, most recently pinned first. `workspaces`
+/// filters like [`SessionListFilter::workspaces`]. Pins are few, so no paging.
+pub async fn list_pinned_sessions(pool: &DbPool, workspaces: &[String]) -> Result<Vec<ChatSession>> {
+    let mut sql = String::from("SELECT * FROM chat_sessions WHERE parent_session_id IS NULL");
+    let mut binds: Vec<String> = Vec::new();
+    push_session_filters(&mut sql, &mut binds, workspaces, None, Some(true));
+    sql.push_str(" ORDER BY pinned_at DESC, id DESC");
+    let mut q = sqlx::query_as::<_, ChatSession>(sqlx::AssertSqlSafe(&*sql));
+    for b in &binds {
+        q = q.bind(b);
+    }
+    Ok(q.fetch_all(pool).await?)
+}
+
+/// Pin (`pinned_at = now`) or unpin (`NULL`) a session. Leaves `updated_at`
+/// alone so pinning does not reorder the activity sort; pinning an already
+/// pinned session keeps its original time. `None` when the session is gone.
+pub async fn set_session_pinned(pool: &DbPool, id: &str, pinned: bool) -> Result<Option<ChatSession>> {
+    let sid = db_id(id);
+    if pinned {
+        sqlx::query("UPDATE chat_sessions SET pinned_at = ? WHERE id = ? AND pinned_at IS NULL").bind(now_db()).bind(&sid).execute(pool).await?;
+    } else {
+        sqlx::query("UPDATE chat_sessions SET pinned_at = NULL WHERE id = ?").bind(&sid).execute(pool).await?;
+    }
+    get_session(pool, &sid).await
 }
 
 /// Direct children of the given sessions, oldest first.

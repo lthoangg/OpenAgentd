@@ -1,4 +1,4 @@
-//! `openagentd` commands against the real binary in throw-away `HOME`/XDG
+//! `agentd` commands against the real binary in throw-away `HOME`/XDG
 //! roots. Nothing here touches real user data.
 
 use std::path::PathBuf;
@@ -27,7 +27,11 @@ impl Sandbox {
     }
 
     fn run(&self, args: &[&str]) -> Output {
-        let mut cmd = Command::new(env!("CARGO_BIN_EXE_openagentd"));
+        self.run_bin(env!("CARGO_BIN_EXE_agentd"), args)
+    }
+
+    fn run_bin(&self, bin: &str, args: &[&str]) -> Output {
+        let mut cmd = Command::new(bin);
         cmd.args(args).current_dir(self.root.path()).stdin(Stdio::null());
         for (k, d) in [
             ("OPENAGENTD_DATA_DIR", "data"),
@@ -54,7 +58,7 @@ impl Sandbox {
         ] {
             cmd.env_remove(k);
         }
-        cmd.output().expect("run openagentd")
+        cmd.output().expect("run agentd")
     }
 }
 
@@ -74,16 +78,27 @@ fn code(o: &Output) -> i32 {
 fn version_prints_the_release_string() {
     let o = Sandbox::new().run(&["--version"]);
     assert_eq!(code(&o), 0);
-    assert_eq!(stdout(&o), format!("openagentd v{}\n", env!("CARGO_PKG_VERSION")));
+    assert_eq!(stdout(&o), format!("agentd v{}\n", env!("CARGO_PKG_VERSION")));
 }
 
 #[test]
-fn bare_openagentd_prints_help_without_starting_a_server() {
+fn openagentd_alias_forwards_to_agentd() {
+    let sb = Sandbox::new();
+    let o = sb.run_bin(env!("CARGO_BIN_EXE_openagentd"), &["--version"]);
+    assert_eq!(code(&o), 0, "{}", stderr(&o));
+    assert_eq!(stdout(&o), format!("agentd v{}\n", env!("CARGO_PKG_VERSION")));
+    assert_eq!(stderr(&o), "", "no deprecation note off a terminal");
+    let o = sb.run_bin(env!("CARGO_BIN_EXE_openagentd"), &["bogus"]);
+    assert_eq!(code(&o), 2, "exit codes are forwarded");
+}
+
+#[test]
+fn bare_agentd_prints_help_without_starting_a_server() {
     let sb = Sandbox::new();
     let o = sb.run(&[]);
     assert_eq!(code(&o), 0, "{}", stderr(&o));
     let out = stdout(&o);
-    assert!(out.contains("Usage: openagentd") && out.contains("server"), "{out}");
+    assert!(out.contains("Usage: agentd") && out.contains("server"), "{out}");
     assert!(!sb.path("state/openagentd.pid").exists(), "no daemon may start");
 }
 
@@ -105,6 +120,21 @@ fn status_of_a_stopped_server_fails_and_health_is_the_same_command() {
     let o = sb.run(&["server", "logs"]);
     assert_eq!(code(&o), 1);
     assert!(stderr(&o).contains("no server log"), "{}", stderr(&o));
+    let o = sb.run(&["server", "status", "--qr"]);
+    assert_eq!(code(&o), 1);
+    assert!(stdout(&o).contains("stopped") && !stdout(&o).contains('█'), "{}", stdout(&o));
+}
+
+#[test]
+fn public_needs_an_access_key_and_conflicts_with_host() {
+    let sb = Sandbox::new();
+    let o = sb.run(&["server", "start", "--public", "--qr"]);
+    assert_eq!(code(&o), 1);
+    assert!(stderr(&o).contains("refusing to listen on 0.0.0.0"), "{}", stderr(&o));
+    assert!(!sb.path("state/openagentd.pid").exists(), "no daemon may start");
+    let o = sb.run(&["server", "start", "--public", "--host", "1.2.3.4"]);
+    assert_eq!(code(&o), 2);
+    assert!(stderr(&o).contains("cannot be used with"), "{}", stderr(&o));
 }
 
 fn provider_line(out: &str, id: &str) -> String {
@@ -147,7 +177,7 @@ fn doctor_fails_an_oauth_lead_provider_without_a_login() {
     sb.write("config/agents/code.md", "---\nname: code\nmodel: codex:gpt-5.5\n---\n");
     let o = sb.run(&["doctor"]);
     assert_eq!(code(&o), 1);
-    assert!(stdout(&o).contains("run `openagentd auth codex`"), "{}", stdout(&o));
+    assert!(stdout(&o).contains("run `agentd auth codex`"), "{}", stdout(&o));
     sb.write("cache/codex_oauth.json", "{}");
     let o = sb.run(&["doctor"]);
     assert_eq!(code(&o), 0, "{}", stdout(&o));

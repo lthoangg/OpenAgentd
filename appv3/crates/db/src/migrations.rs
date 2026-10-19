@@ -29,7 +29,7 @@ use sqlx::{Connection, SqliteConnection, SqlitePool};
 use std::path::Path;
 
 /// Alembic head revision this build is schema-compatible with.
-pub const ALEMBIC_HEAD: &str = "00000023";
+pub const ALEMBIC_HEAD: &str = "00000024";
 
 /// `(revision, statements)` in upgrade order.
 ///
@@ -43,7 +43,10 @@ pub const ALEMBIC_HEAD: &str = "00000023";
 ///   `(session_id, id)` with UUIDv7 ids: a session's side questions are one
 ///   time-ordered B-tree range, so list, count, recent-N and per-session
 ///   delete are range scans with no secondary index to maintain.
-pub const MIGRATIONS: [(&str, &str); 23] = [
+/// - 00000024: `chat_sessions.pinned_at` (sidebar pins; NULL = unpinned) and
+///   the `(parent_session_id[, workspace], updated_at, id)` indexes that keep
+///   the "recent activity" session list on an index.
+pub const MIGRATIONS: [(&str, &str); 24] = [
     ("00000001", include_str!("../resources/migrations/00000001.sql")),
     ("00000002", include_str!("../resources/migrations/00000002.sql")),
     ("00000003", include_str!("../resources/migrations/00000003.sql")),
@@ -67,6 +70,7 @@ pub const MIGRATIONS: [(&str, &str); 23] = [
     ("00000021", include_str!("../resources/migrations/00000021.sql")),
     ("00000022", include_str!("../resources/migrations/00000022.sql")),
     ("00000023", include_str!("../resources/migrations/00000023.sql")),
+    ("00000024", include_str!("../resources/migrations/00000024.sql")),
 ];
 
 /// Split a captured revision file into statements.
@@ -339,7 +343,7 @@ CREATE TABLE "chat_sessions" (
 	model VARCHAR(255), 
 	thinking_level VARCHAR(50), 
 	history_revision INTEGER DEFAULT '0' NOT NULL, 
-	history_structure_revision INTEGER DEFAULT '0' NOT NULL, interaction_mode VARCHAR(16) DEFAULT 'code' NOT NULL, 
+	history_structure_revision INTEGER DEFAULT '0' NOT NULL, interaction_mode VARCHAR(16) DEFAULT 'code' NOT NULL, pinned_at DATETIME, 
 	PRIMARY KEY (id), 
 	FOREIGN KEY(parent_session_id) REFERENCES chat_sessions (id) ON DELETE CASCADE
 );
@@ -418,6 +422,8 @@ CREATE INDEX ix_chat_sessions_parent_agent_created ON chat_sessions (parent_sess
 CREATE INDEX ix_chat_sessions_parent_created ON chat_sessions (parent_session_id, created_at, id);
 CREATE INDEX ix_chat_sessions_top_created ON chat_sessions (parent_session_id, created_at, id);
 CREATE INDEX ix_chat_sessions_top_workspace_created ON chat_sessions (parent_session_id, workspace, created_at, id);
+CREATE INDEX ix_chat_sessions_top_updated ON chat_sessions (parent_session_id, updated_at, id);
+CREATE INDEX ix_chat_sessions_top_workspace_updated ON chat_sessions (parent_session_id, workspace, updated_at, id);
 CREATE UNIQUE INDEX ix_scheduled_task_slug ON scheduled_task (slug);
 CREATE UNIQUE INDEX ix_scheduled_task_name ON scheduled_task (name);
 CREATE INDEX ix_session_messages_usage ON session_messages (session_id, kind, json_extract(extra, '$.usage.cost.estimated_usd'), json_extract(extra, '$.usage.output'));

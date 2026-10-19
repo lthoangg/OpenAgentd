@@ -60,6 +60,9 @@ export function applyCacheInvalidations(
           invalidate(queryKeys.session.sessions.all())
         }
         break
+      case 'sessions':
+        invalidate(queryKeys.session.sessions.all())
+        break
     }
   }
   for (const queryKey of keys.values()) queryClient.invalidateQueries({ queryKey })
@@ -317,8 +320,9 @@ export function prependWorkspaceSession(
   workspace: string,
   session: SessionResponse,
 ): void {
-  queryClient.setQueryData<InfiniteData<SessionPageResponse>>(
-    queryKeys.session.sessions.workspace(workspace),
+  // Prefix match: one cache per sort order of the same workspace.
+  queryClient.setQueriesData<InfiniteData<SessionPageResponse>>(
+    { queryKey: queryKeys.session.sessions.workspace(workspace) },
     (old) => prependSessionToInfiniteData(old, session),
   )
   // A repository's sidebar list also spans its worktrees.

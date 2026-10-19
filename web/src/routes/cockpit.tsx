@@ -1,13 +1,15 @@
 import { useRef, useEffect, useLayoutEffect } from 'react'
-import { Outlet, useParams, useNavigate } from '@tanstack/react-router'
+import { Outlet, useParams, useNavigate, useSearch } from '@tanstack/react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { AgentChatView } from '@/components/AgentChatView'
-import { getSession, resolveSession } from '@/api/client'
+import { getSession, validateWorkspace } from '@/api/client'
+import { latestTopLevelSession } from '@/components/Sidebar.workspace'
 import { useAgentStore } from '@/stores/useAgentStore'
 import { applyCacheInvalidations, patchSessionTitle } from '@/stores/cache-invalidation-bridge'
 import { initBroadcastSync, broadcastMessage } from '@/lib/broadcast-sync'
 import { queryKeys } from '@/queries'
 import { loadLastWorkspace, removeWorkspace, saveLastWorkspace, shouldRestoreLastWorkspace, workspaceFromSession, workspaceLabel } from '@/utils/workspace'
+import { startNewSession } from '@/lib/new-session'
 import { syncDesktopWindowTitle } from '@/lib/window-title'
 import { useNeedsYouBadge } from '@/hooks/use-needs-you-badge'
 import { useChatWorkspace } from '@/queries/useChatWorkspace'
@@ -21,6 +23,9 @@ import { clearFreshDesktopWindow, isFreshDesktopWindow } from '@/lib/fresh-windo
 function AgentLayoutBase() {
   const params = useParams({ strict: false }) as Record<string, string>
   const sessionId = params.sessionId as string | undefined
+  const search = useSearch({ strict: false }) as { workspace?: string }
+  // `/?workspace=<path>`: a new-session draft there (nothing saved yet).
+  const draftWorkspace = sessionId ? null : (search.workspace ?? null)
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const cachedSessionPages = queryClient.getQueryData<{
@@ -44,7 +49,9 @@ function AgentLayoutBase() {
     enabled: Boolean(sessionId) && !cachedSession?.workspace,
     staleTime: 30_000,
   })
-  const workspace = workspaceFromSession(sessionId, cachedSession?.workspace ?? sessionQuery.data?.workspace)
+  const workspace = sessionId
+    ? workspaceFromSession(sessionId, cachedSession?.workspace ?? sessionQuery.data?.workspace)
+    : draftWorkspace
   const chatWorkspace = useChatWorkspace()
   const workspaceName = workspace ? workspaceLabel(workspace, chatWorkspace) : null
   const needsYou = useNeedsYouBadge()
@@ -76,37 +83,47 @@ function AgentLayoutBase() {
     })
   }, [workspace, workspaceName, needsYou])
 
+  // The bare route picks where to go: the last workspace's latest session,
+  // else a new-session draft there, else a Chat draft. A New Window starts
+  // on a draft. Drafts (`?workspace=`) and sessions stay put.
+  const chatPath = chatWorkspace?.path ?? null
   useEffect(() => {
-    if (sessionId) return
+    if (sessionId || draftWorkspace) return
     let cancelled = false
+    const openDraft = (path: string) => {
+      startNewSession({ navigate: navigateRef.current, workspace: path, replace: true })
+    }
     const restore = window.setTimeout(() => {
-      if (!shouldRestoreLastWorkspace(sessionId, window.location.pathname, isFreshDesktopWindow())) return
+      const fresh = isFreshDesktopWindow()
       const lastWorkspace = loadLastWorkspace()
-      if (!lastWorkspace) return
+      if (!shouldRestoreLastWorkspace(sessionId, window.location.pathname, fresh, draftWorkspace) || !lastWorkspace) {
+        if (window.location.pathname !== '/' && window.location.pathname !== '/index.html') return
+        const target = lastWorkspace?.path ?? chatPath
+        // Without a last workspace, wait for the tree to name Chat.
+        if (target) openDraft(target)
+        return
+      }
       ;(async () => {
-        const current = useAgentStore.getState()
         try {
-          const session = await resolveSession({
-            workspace: lastWorkspace.path,
-            model: current.sessionModel,
-            thinkingLevel: current.sessionThinkingLevel,
-          })
+          const latest = await latestTopLevelSession(lastWorkspace.path)
           if (cancelled || sessionIdRef.current) return
-          // Re-read live state: the user may have changed the session model
-          // or thinking level (via Session Settings) while this request was
-          // in flight. Falling back to the pre-request snapshot (`current`)
-          // here would silently clobber that choice the moment it resolves.
-          const latest = useAgentStore.getState()
-          latest.beginResolvedSession(session.id, {
-            workspace: session.workspace ?? lastWorkspace.path,
-            interactionMode: session.interaction_mode,
-            model: session.model ?? latest.sessionModel,
-            thinkingLevel: session.thinking_level ?? latest.sessionThinkingLevel,
+          if (!latest) {
+            // Reject a folder that is gone before offering a draft there.
+            await validateWorkspace(lastWorkspace.path)
+            if (cancelled || sessionIdRef.current) return
+            openDraft(lastWorkspace.path)
+            return
+          }
+          const current = useAgentStore.getState()
+          current.beginResolvedSession(latest.id, {
+            workspace: latest.workspace ?? lastWorkspace.path,
+            interactionMode: latest.interaction_mode,
+            model: latest.model ?? current.sessionModel,
+            thinkingLevel: latest.thinking_level ?? current.sessionThinkingLevel,
           })
-          void queryClient.invalidateQueries({ queryKey: queryKeys.session.sessions.all() })
           navigate({
             to: '/$sessionId',
-            params: { sessionId: session.id },
+            params: { sessionId: latest.id },
             replace: true,
           })
         } catch {
@@ -115,6 +132,7 @@ function AgentLayoutBase() {
           useAgentStore.setState((state) => {
             state.error = null
           })
+          if (chatPath) openDraft(chatPath)
         }
       })()
     }, 0)
@@ -122,7 +140,22 @@ function AgentLayoutBase() {
       cancelled = true
       window.clearTimeout(restore)
     }
-  }, [navigate, queryClient, sessionId])
+  }, [navigate, sessionId, draftWorkspace, chatPath])
+
+  // Leaving a session for a draft by history (Back) skips
+  // `startNewSession`, so the store still holds that session: reset it, or
+  // the draft would show and send to the session just left.
+  const previousRouteSessionRef = useRef(sessionId)
+  useLayoutEffect(() => {
+    const previous = previousRouteSessionRef.current
+    previousRouteSessionRef.current = sessionId
+    if (sessionId || !draftWorkspace || !previous) return
+    const state = useAgentStore.getState()
+    if (state.sessionId !== previous) return
+    const { sessionModel, sessionThinkingLevel } = state
+    state.newSession()
+    useAgentStore.getState().beginResolvedSession(null, { workspace: draftWorkspace, model: sessionModel, thinkingLevel: sessionThinkingLevel })
+  }, [sessionId, draftWorkspace])
 
   // Keep ``useAgentStore._workspace`` in sync with the URL-derived
   // workspace path the moment we render the layout. The SSE reducer
@@ -138,51 +171,6 @@ function AgentLayoutBase() {
       state._workspace = workspace ?? null
     })
   }, [workspace])
-
-  useEffect(() => {
-    if (sessionId) return
-    if (!workspace) return
-    let cancelled = false
-    ;(async () => {
-      const current = useAgentStore.getState()
-      const model = current.sessionModel
-      const thinkingLevel = current.sessionThinkingLevel
-      try {
-        const session = await resolveSession({
-          workspace,
-          model,
-          thinkingLevel,
-        })
-        if (cancelled || sessionIdRef.current) return
-        // Re-read live state: the resolve request above may have been in
-        // flight while the user changed the session model or thinking level
-        // via Session Settings. Using the pre-request snapshot here would
-        // overwrite that choice the instant the resolve completes.
-        const latest = useAgentStore.getState()
-        latest.beginResolvedSession(session.id, {
-          workspace: session.workspace ?? workspace,
-          interactionMode: session.interaction_mode,
-          model: session.model ?? latest.sessionModel,
-          thinkingLevel: session.thinking_level ?? latest.sessionThinkingLevel,
-        })
-        void queryClient.invalidateQueries({ queryKey: queryKeys.session.sessions.all() })
-        if (workspace) saveLastWorkspace(workspace)
-        navigate({
-          to: '/$sessionId',
-          params: { sessionId: session.id },
-          replace: true,
-        })
-      } catch (err) {
-        if (cancelled) return
-        useAgentStore.setState((state) => {
-          state.error = err instanceof Error ? err.message : 'Failed to resolve session'
-        })
-      }
-    })()
-    return () => {
-      cancelled = true
-    }
-  }, [navigate, queryClient, sessionId, workspace])
 
   // When agent store gets a new sessionId, navigate to the matching session route.
   useEffect(() => initBroadcastSync(queryClient), [queryClient])

@@ -16,7 +16,7 @@
  * focused tab, or Move Left / Move Right in the tab menu.
  */
 import { useRef, useState, type ReactNode } from 'react'
-import { CalendarClock, Copy, FileDiff, FileText, GitCommitHorizontal, GitCompare, Globe, ListTodo, Maximize2, Minimize2, RefreshCw, TerminalSquare, X } from 'lucide-react'
+import { CalendarClock, Copy, FileDiff, FileText, GitCommitHorizontal, GitCompare, Globe, ListTodo, Maximize2, MessageCircleQuestion, Minimize2, RefreshCw, TerminalSquare, X } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { CONTEXT_MENU_ITEM_CLASS, ContextMenu } from '@/components/ui/context-menu'
 import { FileTypeIcon } from '../FileTypeIcon'
@@ -71,6 +71,8 @@ function TabIcon({ tab }: { tab: DockTab }) {
       return <CalendarClock size={12} className="shrink-0" aria-hidden="true" />
     case 'plan':
       return <FileText size={12} className="shrink-0" aria-hidden="true" />
+    case 'btw':
+      return <MessageCircleQuestion size={12} className="shrink-0" aria-hidden="true" />
     case 'file':
       return <FileTypeIcon name={tab.file.name || tab.file.path} size={13} />
     case 'diff':

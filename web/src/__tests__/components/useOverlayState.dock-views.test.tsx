@@ -14,6 +14,7 @@ import { act, cleanup, renderHook } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useOverlayState, type UseOverlayStateArgs } from '@/components/AgentChatView/useOverlayState'
 import { useAgentStore } from '@/stores/useAgentStore'
+import { useBtwStore } from '@/stores/useBtwStore'
 import { useUIStore } from '@/stores/useUIStore'
 import type { PendingQuestion } from '@/api/types'
 
@@ -37,6 +38,7 @@ function renderOverlay(overrides: Partial<UseOverlayStateArgs> = {}) {
 beforeEach(() => {
   useUIStore.setState({ schedulerOpen: false, agentCapabilitiesOpen: false, paletteOpen: false, quickOpenOpen: false })
   useAgentStore.setState({ pendingQuestion: null })
+  useBtwStore.setState({ sessions: {} })
 })
 afterEach(() => {
   cleanup()
@@ -202,4 +204,42 @@ describe('useOverlayState Plan view', () => {
 
     expect(result.current.dockViewRequest).toBeNull()
   })
+})
+
+describe('useOverlayState side questions', () => {
+  it('opens the dock on its BTW tab on desktop with a workspace', () => {
+    const { result } = renderOverlay()
+
+    act(() => result.current.handleOpenSideQuestions('s-1'))
+
+    expect(result.current.workspacePanel).toBe('changed')
+    expect(result.current.dockViewRequest).toEqual({ view: 'btw', key: 1 })
+    // The panel above the composer stays closed: the dock shows them.
+    expect(useBtwStore.getState().sessions['s-1']?.open ?? false).toBe(false)
+  })
+
+  it('never closes the dock on a second call while the tab is focused', () => {
+    const { result } = renderOverlay()
+    act(() => result.current.handleOpenSideQuestions('s-1'))
+    act(() => result.current.setDockActiveView('btw'))
+
+    act(() => result.current.handleOpenSideQuestions('s-1'))
+    expect(result.current.workspacePanel).toBe('changed')
+    expect(result.current.dockViewRequest).toEqual({ view: 'btw', key: 2 })
+  })
+
+  for (const [name, overrides] of [
+    ['on mobile', { isMobile: true }],
+    ['without a workspace', { workspace: null }],
+  ] as const) {
+    it(`opens the panel above the composer ${name}`, () => {
+      const { result } = renderOverlay(overrides)
+
+      act(() => result.current.handleOpenSideQuestions('s-1'))
+
+      expect(useBtwStore.getState().sessions['s-1']?.open).toBe(true)
+      expect(result.current.dockViewRequest).toBeNull()
+      expect(result.current.workspacePanel).toBeNull()
+    })
+  }
 })

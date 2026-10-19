@@ -29,6 +29,7 @@ import {
   commitTabId,
   diffTabId,
   fileTabId,
+  isViewTab,
   previewTabId,
   previewTabTitle,
   terminalIdFromTabId,
@@ -284,9 +285,7 @@ export function useDockTabs({
   }, [previewRequest, openPreviewTab, handledPreviewRequestKeyRef])
 
   const activeView: DockView | null =
-    activeTab?.type === 'review' || activeTab?.type === 'tasks' || activeTab?.type === 'schedule' || activeTab?.type === 'plan'
-      ? activeTab.type
-      : null
+    activeTab && isViewTab(activeTab) ? activeTab.type : null
   const onActiveViewChangeRef = useRef(onActiveViewChange)
   useEffect(() => {
     onActiveViewChangeRef.current = onActiveViewChange

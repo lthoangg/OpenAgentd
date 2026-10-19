@@ -44,7 +44,6 @@ import {
   Activity,
   Check,
   ChevronRight,
-  ChevronsDownUp,
   Copy,
   Folder,
   FolderPlus,
@@ -54,18 +53,26 @@ import {
   MessageCircle,
   MoreHorizontal,
   Pencil,
+  Pin,
+  PinOff,
   Plus,
-  Search,
   Settings,
   Trash2,
   X,
 } from 'lucide-react'
 import { APP_EVENTS } from '@/lib/app-events'
-import { useDeleteSessionMutation, useSessionsQuery, useUpdateSessionTitleMutation } from '@/queries/useSessionsQuery'
+import {
+  useDeleteSessionMutation,
+  useSessionsQuery,
+  useSetSessionPinnedMutation,
+  useUpdateSessionTitleMutation,
+} from '@/queries/useSessionsQuery'
 import { isChatWorkspacePath, useChatWorkspace } from '@/queries/useChatWorkspace'
 import { queryKeys } from '@/queries/keys'
 import { getCodingWorkspaceTree, listWorktrees } from '@/api/client'
-import { WORKSPACES_KEY, workspaceLabel } from '@/utils/workspace'
+import { WORKSPACES_KEY, loadLastWorkspace, workspaceLabel } from '@/utils/workspace'
+import { startNewSession } from '@/lib/new-session'
+import { useSidebarViewStore } from '@/stores/useSidebarViewStore'
 import { ThemeToggle } from './ThemeToggle'
 import { HealthDot } from './HealthDot'
 import { Button } from '@/components/ui/button'
@@ -93,6 +100,9 @@ import { WorkspaceSessionList } from './Sidebar/WorkspaceSessionList'
 import { NeedsYouSection } from './Sidebar/NeedsYouSection'
 import { ScheduledSection } from './Sidebar/ScheduledSection'
 import { SidebarConfirmDialogs } from './Sidebar/ConfirmDialogs'
+import { SidebarSectionHeader } from './Sidebar/SidebarSectionHeader'
+import { PinnedSection } from './Sidebar/PinnedSection'
+import { FlatSessionGroups } from './Sidebar/FlatSessionGroups'
 import {
   addExpandedPaths,
   buildWorktreeSourceByDirectory,
@@ -118,7 +128,7 @@ import {
 } from './Sidebar.sessions'
 import {
   confirmWorkspaceRemoval,
-  openWorkspaceSession,
+  openWorkspaceDraft,
 } from './Sidebar.workspace'
 import {
   consumeTrustedWorkspace,
@@ -143,6 +153,11 @@ const NO_REPOSITORIES: CodingWorkspaceTreeRepository[] = []
 interface SidebarProps {
   currentSessionId?: string
   workspace?: string | null
+  /**
+   * The workspace of the new-session draft on screen (nothing saved yet),
+   * shown as a "New session" row atop its list.
+   */
+  draftWorkspace?: string | null
   onCollapse?: () => void
   /** Bump this counter to programmatically open the workspace dialog
    *  (e.g. from a "no workspace attached" CTA). */
@@ -190,6 +205,7 @@ function CheckoutMenuItem({ checked, onSelect, children }: { checked: boolean; o
 export function Sidebar({
   currentSessionId,
   workspace,
+  draftWorkspace = null,
   onCollapse,
   openWorkspaceDialogKey = 0,
   onCommandPalette,
@@ -215,6 +231,10 @@ export function Sidebar({
   const sessions = useSessionsQuery()
   const deleteSession = useDeleteSessionMutation()
   const updateSessionTitle = useUpdateSessionTitleMutation()
+  const setSessionPinned = useSetSessionPinnedMutation()
+  const groupBy = useSidebarViewStore((s) => s.groupBy)
+  const sortBy = useSidebarViewStore((s) => s.sortBy)
+  const showDetails = useSidebarViewStore((s) => s.showDetails)
 
   const workspaceSessions = useMemo(
     () => (sessions.data?.pages.flatMap((page) => page.data) ?? []).filter((session) => session.workspace),
@@ -420,26 +440,51 @@ export function Sidebar({
     return () => window.removeEventListener(APP_EVENTS.searchSessions, openSessionSearch)
   }, [openSessionSearch])
 
-  const selectWorkspace = async (path: string, opts: { create?: boolean } = {}) => {
-    const requestedCreate = opts.create === true
+  // A new session is a draft until its first message: nothing is created
+  // here, the draft screen opens for ``path``.
+  const newSessionIn = (path: string) => {
+    startNewSession({
+      navigate,
+      workspace: path,
+      current: { sessionId: currentSessionId, workspace },
+    })
+    onMobileClose?.()
+  }
+
+  // The header's New session: where the user is, else where they last were.
+  const newSessionHere = () => {
+    const target = activeWorkspace ?? loadLastWorkspace()?.path ?? chatWorkspace?.path ?? null
+    if (target) newSessionIn(target)
+    else void openWorkspaceDialog()
+  }
+
+  // A folder from Open folder…: register it (so it has a row) and open a
+  // draft there.
+  const openFolderDraft = async (path: string) => {
     setPendingWorkspace(path)
     try {
-      const result = await openWorkspaceSession({
+      await openWorkspaceDraft({
         path,
-        requestedCreate,
+        listed: isChatPath(path) || workspaceByPath.has(path),
         currentSessionId,
         currentWorkspace: workspace,
-        queryClient,
         refreshWorkspaceTree,
         navigate,
       })
-      if (result.skipped) {
-        setPendingWorkspace(null)
-      }
+      onMobileClose?.()
     } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to open workspace')
+    } finally {
       setPendingWorkspace(null)
-      setError(err instanceof Error ? err.message : 'Unable to create session')
     }
+  }
+
+  const toggleSessionPinned = (session: SessionResponse) => {
+    const pinned = !session.pinned_at
+    setSessionPinned.mutate(
+      { id: session.id, pinned },
+      { onError: () => pushToast({ tone: 'error', title: pinned ? 'Could not pin session' : 'Could not unpin session' }) },
+    )
   }
 
   // Remove a workspace (and its worktrees) from the sidebar. Sessions stay in
@@ -663,7 +708,7 @@ export function Sidebar({
     if (!nextState.workspaceToOpen) return
     setTrustWorkspace(nextState.nextTrustWorkspace)
     setDialogOpen(nextState.nextDialogOpen)
-    void selectWorkspace(nextState.workspaceToOpen)
+    void openFolderDraft(nextState.workspaceToOpen)
   }
 
   const handleSessionSelect = (session: SessionResponse, workspacePath: string, event?: React.MouseEvent) => {
@@ -731,6 +776,21 @@ export function Sidebar({
     }
   }
 
+  const workspaceDisplayName = (path: string) => (isChatPath(path) ? (chatWorkspace?.name ?? path) : workspaceLabel(path))
+
+  // Row callbacks shared by every session list (tree, flat views, Pinned).
+  const sessionRowHandlers = {
+    onSessionSelect: handleSessionSelect,
+    onSessionDelete: handleSessionDelete,
+    onSessionEdit: handleSessionEdit,
+    onSessionRename: handleSessionRename,
+    onSessionRenameCancel: () => setEditingSessionId(null),
+    onSessionLongPress: (session: SessionResponse) => setMobileSessionActions({ session, workspacePath: session.workspace ?? '' }),
+    onSessionContextActions: (session: SessionResponse, event: { clientX: number; clientY: number }) => {
+      setDesktopSessionActions({ session, workspacePath: session.workspace ?? '', x: event.clientX, y: event.clientY })
+    },
+  }
+
   const confirmSessionDelete = () => {
     if (!deleteTarget) return
     applySessionDelete({
@@ -789,81 +849,65 @@ export function Sidebar({
           header.focus()
         }}
       >
-      <NeedsYouSection
+      <PinnedSection
         currentSessionId={currentSessionId}
-        workspaceName={(path) => (isChatPath(path) ? (chatWorkspace?.name ?? path) : workspaceLabel(path))}
-        onSessionSelect={handleSessionSelect}
+        workspaceName={workspaceDisplayName}
+        editingSessionId={editingSessionId}
+        showDetails={showDetails}
+        mobileLongPressActions={mobileLongPressActions}
+        {...sessionRowHandlers}
       />
 
+      {/* Status grouping lists the waiting sessions itself. */}
+      {groupBy !== 'status' && (
+        <NeedsYouSection
+          currentSessionId={currentSessionId}
+          workspaceName={workspaceDisplayName}
+          onSessionSelect={handleSessionSelect}
+        />
+      )}
+
       {/* Section header — actions stay reachable however long the list is. */}
-      <div className="flex h-8 shrink-0 items-center justify-between gap-2 pl-3 pr-1.5">
-        <span className="truncate label-caps leading-none text-(--color-text-subtle)">
-          Workspaces
-        </span>
-        <div className="flex shrink-0 items-center gap-0.5">
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <button
-                  ref={searchButtonRef}
-                  type="button"
-                  onClick={() => { if (searchOpen) closeSessionSearch(); else openSessionSearch() }}
-                  className={`flex h-8 w-8 items-center justify-center rounded-xs transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-6 md:w-6 ${
-                    searchOpen ? 'bg-(--bg-key) text-(--color-text)' : 'text-(--color-text-muted)'
-                  }`}
-                  aria-label="Search sessions"
-                  aria-pressed={searchOpen}
-                >
-                  <Search size={13} aria-hidden="true" />
-                </button>
-              }
-            />
-            <TooltipContent>Search sessions</TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <button
-                  type="button"
-                  onClick={collapseAllWorkspaces}
-                  className="flex h-8 w-8 items-center justify-center rounded-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-6 md:w-6"
-                  aria-label="Collapse all workspaces"
-                >
-                  <ChevronsDownUp size={13} aria-hidden="true" />
-                </button>
-              }
-            />
-            <TooltipContent>Collapse all</TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <button
-                  type="button"
-                  onClick={() => { void openWorkspaceDialog() }}
-                  className="flex h-8 w-8 items-center justify-center rounded-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-6 md:w-6"
-                  aria-label="Open folder"
-                >
-                  <FolderPlus size={13} aria-hidden="true" />
-                </button>
-              }
-            />
-            <TooltipContent>Open folder…</TooltipContent>
-          </Tooltip>
-        </div>
-      </div>
+      <SidebarSectionHeader
+        groupBy={groupBy}
+        // The tree has a "+" per folder and desktop has ⌘N; the flat views
+        // and phones need a way in of their own.
+        showNewSession={groupBy !== 'project' || isMobile}
+        newSessionShortcut={isMobile ? undefined : shortcutLabel(APP_SHORTCUTS.newSession, os)}
+        searchOpen={searchOpen}
+        searchButtonRef={searchButtonRef}
+        onNewSession={newSessionHere}
+        onToggleSearch={() => { if (searchOpen) closeSessionSearch(); else openSessionSearch() }}
+        onCollapseAll={collapseAllWorkspaces}
+        onOpenFolder={() => { void openWorkspaceDialog() }}
+      />
 
       {searchOpen ? (
         <SessionSearch
           currentSessionId={currentSessionId}
           focusKey={searchFocusKey}
-          workspaceName={(path) => (isChatPath(path) ? (chatWorkspace?.name ?? path) : workspaceLabel(path))}
+          workspaceName={workspaceDisplayName}
           onSessionSelect={(session, workspacePath, event) => {
             setSearchOpen(false)
             handleSessionSelect(session, workspacePath, event)
           }}
           onClose={closeSessionSearch}
         />
+      ) : groupBy !== 'project' ? (
+      /* Every session in one list, grouped by status or date (or not). */
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden pb-2">
+        <FlatSessionGroups
+          groupBy={groupBy}
+          sortBy={sortBy}
+          currentSessionId={currentSessionId}
+          workspaceName={workspaceDisplayName}
+          draftWorkspace={draftWorkspace}
+          editingSessionId={editingSessionId}
+          showDetails={showDetails}
+          mobileLongPressActions={mobileLongPressActions}
+          {...sessionRowHandlers}
+        />
+      </div>
       ) : (
       /* Workspace + sessions tree */
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden pb-2">
@@ -995,7 +1039,7 @@ export function Sidebar({
                     render={
                       <button
                         type="button"
-                        onClick={() => { void selectWorkspace(sessionTarget, { create: true }) }}
+                        onClick={() => newSessionIn(sessionTarget)}
                         // On touch the actions are always shown, so the outline
                         // would box every row; the bare glyph matches the
                         // neighbouring row actions there.
@@ -1065,13 +1109,12 @@ export function Sidebar({
                     currentSessionId={currentSessionId}
                     runningSessions={sourceRunningSessions}
                     collapsed={!sourceIsExpanded}
+                    sort={sortBy}
+                    showDetails={showDetails}
+                    draftActive={draftWorkspace !== null && checkouts.listPaths.includes(draftWorkspace)}
                     mobileLongPressActions={mobileLongPressActions}
-                    onSessionSelect={handleSessionSelect}
-                    onSessionDelete={handleSessionDelete}
-                    onSessionEdit={handleSessionEdit}
                     editingSessionId={editingSessionId}
-                    onSessionRename={handleSessionRename}
-                    onSessionRenameCancel={() => setEditingSessionId(null)}
+                    {...sessionRowHandlers}
                     onSessionLongPress={(session) => setMobileSessionActions({ session, workspacePath: session.workspace || path })}
                     onSessionContextActions={(session, event) => {
                       setDesktopSessionActions({ session, workspacePath: session.workspace || path, x: event.clientX, y: event.clientY })
@@ -1275,7 +1318,7 @@ export function Sidebar({
               onClick={() => {
                 const action = mobileWorkspaceActions
                 setMobileWorkspaceActions(null)
-                if (action) void selectWorkspace(action.sessionPath, { create: true })
+                if (action) newSessionIn(action.sessionPath)
               }}
             >
               <Plus size={14} aria-hidden="true" />
@@ -1480,7 +1523,7 @@ export function Sidebar({
               onClick={() => {
                 const action = desktopWorkspaceActions
                 setDesktopWorkspaceActions(null)
-                void selectWorkspace(action.sessionPath, { create: true })
+                newSessionIn(action.sessionPath)
               }}
             >
               <Plus size={12} aria-hidden="true" />
@@ -1614,6 +1657,22 @@ export function Sidebar({
           onDismiss={() => setDesktopSessionActions(null)}
           className="min-w-44"
         >
+            {/* Only top-level sessions can be pinned. */}
+            {!desktopSessionActions.session.parent_session_id && (
+              <button
+                type="button"
+                role="menuitem"
+                className={CONTEXT_MENU_ITEM_CLASS}
+                onClick={() => {
+                  const { session } = desktopSessionActions
+                  setDesktopSessionActions(null)
+                  toggleSessionPinned(session)
+                }}
+              >
+                {desktopSessionActions.session.pinned_at ? <PinOff size={12} aria-hidden="true" /> : <Pin size={12} aria-hidden="true" />}
+                {desktopSessionActions.session.pinned_at ? 'Unpin' : 'Pin'}
+              </button>
+            )}
             <button
               type="button"
               role="menuitem"
@@ -1653,6 +1712,21 @@ export function Sidebar({
             <DialogDescription>Choose a session action.</DialogDescription>
           </DialogHeader>
           <DialogFooter className="flex-col items-stretch gap-2 p-3 sm:flex-col">
+            {mobileSessionActions && !mobileSessionActions.session.parent_session_id && (
+              <Button
+                type="button"
+                variant="ghost"
+                className="justify-start"
+                onClick={() => {
+                  const action = mobileSessionActions
+                  setMobileSessionActions(null)
+                  if (action?.session) toggleSessionPinned(action.session)
+                }}
+              >
+                {mobileSessionActions.session.pinned_at ? <PinOff size={14} aria-hidden="true" /> : <Pin size={14} aria-hidden="true" />}
+                {mobileSessionActions.session.pinned_at ? 'Unpin' : 'Pin'}
+              </Button>
+            )}
             <Button
               type="button"
               variant="ghost"

@@ -8,7 +8,8 @@
 # Default: downloads the official x64 MSI from GitHub Releases, verifies that
 # it is an MSI compound document, then asks Windows Installer to install it
 # elevated.
-# -Cli: installs the `openagentd` command-line binary into
+# -Cli: installs the `agentd` command-line binary (plus `openagentd`, its
+# former name, kept as an alias) into
 # %LOCALAPPDATA%\OpenAgentd\bin (verified against its .sha256), adds that
 # folder to the user PATH, and removes an OpenAgentd v2 (Python) install
 # made with uv or pipx.
@@ -25,6 +26,9 @@ param(
 $ErrorActionPreference = "Stop"
 
 $repo = "lthoangg/openagentd"
+# The CLI binary; Install-Cli falls back to `openagentd` for releases from
+# before the rename.
+$script:BinName = "agentd"
 $releasesUrl = if ($env:OPENAGENTD_RELEASES_URL) { $env:OPENAGENTD_RELEASES_URL.TrimEnd("/") } else { "https://github.com/$repo/releases" }
 
 function Fail([string]$Message) {
@@ -110,7 +114,7 @@ function Install-Cli([string]$ResolvedVersion) {
     New-Item -ItemType Directory -Path $work | Out-Null
     try {
         $archive = Join-Path $work $asset
-        Write-Host "==> Downloading openagentd $ResolvedVersion ($target)"
+        Write-Host "==> Downloading agentd $ResolvedVersion ($target)"
         Write-Host "    Source: $url"
         Invoke-WebRequest -UseBasicParsing -Uri $url -OutFile $archive
         Invoke-WebRequest -UseBasicParsing -Uri "$url.sha256" -OutFile "$archive.sha256"
@@ -122,8 +126,12 @@ function Install-Cli([string]$ResolvedVersion) {
 
         $stage = Join-Path $work "stage"
         Expand-Archive -LiteralPath $archive -DestinationPath $stage
-        $exe = Join-Path $stage "openagentd.exe"
-        if (-not (Test-Path -LiteralPath $exe)) { Fail "the archive does not contain openagentd.exe" }
+        $exe = Join-Path $stage "agentd.exe"
+        if (-not (Test-Path -LiteralPath $exe)) {
+            $script:BinName = "openagentd"
+            $exe = Join-Path $stage "openagentd.exe"
+        }
+        if (-not (Test-Path -LiteralPath $exe)) { Fail "the archive does not contain agentd.exe" }
         & $exe --version | Out-Null
         if ($LASTEXITCODE -ne 0) { Fail "the downloaded binary does not run on this machine" }
 
@@ -133,7 +141,7 @@ function Install-Cli([string]$ResolvedVersion) {
         New-Item -ItemType Directory -Force -Path $dir | Out-Null
         foreach ($file in Get-ChildItem -LiteralPath $stage -Filter "*.exe" -File) {
             $dest = Join-Path $dir $file.Name
-            # A running openagentd.exe cannot be overwritten but can be
+            # A running agentd.exe cannot be overwritten but can be
             # renamed; the old copy is deleted on the next upgrade.
             if (Test-Path -LiteralPath $dest) {
                 $old = "$dest.old"
@@ -143,7 +151,7 @@ function Install-Cli([string]$ResolvedVersion) {
             Copy-Item -LiteralPath $file.FullName -Destination $dest
             Unblock-File -LiteralPath $dest
         }
-        Write-Host "    $(& (Join-Path $dir 'openagentd.exe') --version)"
+        Write-Host "    $(& (Join-Path $dir "$($script:BinName).exe") --version)"
     }
     finally {
         Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue
@@ -160,17 +168,24 @@ function Install-Cli([string]$ResolvedVersion) {
     # New terminals search the machine PATH before the user PATH, so a v2
     # install on the machine PATH (e.g. an all-users Python's Scripts) wins.
     $machine = @([Environment]::GetEnvironmentVariable("Path", "Machine") -split ";" | Where-Object { $_ })
-    $found = $null
-    foreach ($entry in ($machine + $entries)) {
-        foreach ($name in @("openagentd.exe", "openagentd.cmd", "openagentd.bat")) {
-            $candidate = Join-Path ([Environment]::ExpandEnvironmentVariables($entry)) $name
-            if (Test-Path -LiteralPath $candidate -ErrorAction SilentlyContinue) { $found = $candidate; break }
+    # The new name, then the old one (the alias here, or a v2 pip install).
+    $commands = @(@("$($script:BinName).exe"), @("openagentd.exe", "openagentd.cmd", "openagentd.bat"))
+    foreach ($names in $commands) {
+        $found = $null
+        foreach ($entry in ($machine + $entries)) {
+            foreach ($name in $names) {
+                $candidate = Join-Path ([Environment]::ExpandEnvironmentVariables($entry)) $name
+                if (Test-Path -LiteralPath $candidate -ErrorAction SilentlyContinue) { $found = $candidate; break }
+            }
+            if ($found) { break }
         }
-        if ($found) { break }
-    }
-    if ($found -and ($found -ne (Join-Path $dir "openagentd.exe"))) {
-        Write-Host "Warning: $found comes first on your PATH."
-        Write-Host "    If it is OpenAgentd v2 installed with pip, remove it with: python -m pip uninstall openagentd"
+        if ($found -and ($found -ne (Join-Path $dir $names[0]))) {
+            Write-Host "Warning: $found comes first on your PATH."
+            if ($names[0] -eq "openagentd.exe") {
+                Write-Host "    If it is OpenAgentd v2 installed with pip, remove it with: python -m pip uninstall openagentd"
+            }
+            break
+        }
     }
 }
 
@@ -179,8 +194,8 @@ $resolvedVersion = Resolve-Version
 if ($Cli) {
     Install-Cli $resolvedVersion
     Write-Host ""
-    Write-Host "==> Installed openagentd $resolvedVersion!"
-    Write-Host "Next: run 'openagentd --help', or 'openagentd server start --wait'."
+    Write-Host "==> Installed $($script:BinName) $resolvedVersion!"
+    Write-Host "Next: run '$($script:BinName) --help', or '$($script:BinName) server start --wait'."
     Write-Host "      It uses the same config and data as OpenAgentd v2 and the desktop app."
     return
 }

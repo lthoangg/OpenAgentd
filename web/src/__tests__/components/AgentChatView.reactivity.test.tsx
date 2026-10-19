@@ -4,6 +4,7 @@ import { forwardRef, useImperativeHandle } from 'react'
 import { useAgentStore } from '@/stores/useAgentStore'
 import { useTranscriptFollowStore } from '@/stores/useTranscriptFollowStore'
 import type { ContentBlock } from '@/api/types'
+import { queryKeys } from '@/queries/keys'
 
 // lucide-react is deliberately NOT mocked here. Bun validates every static
 // named import in the tree against the mock's own keys, so an explicit icon map
@@ -14,6 +15,8 @@ mock.module('@tanstack/react-router', () => ({ useNavigate: () => () => Promise.
 mock.module('@tanstack/react-query', () => ({
   useQueryClient: () => ({}),
   useQuery: () => ({ data: undefined, isLoading: false }),
+  useInfiniteQuery: () => ({ data: undefined, isLoading: false }),
+  useMutation: () => ({ mutate: () => {} }),
   QueryClientProvider: ({ children }: { children: unknown }) => children,
 }))
 mock.module('@/queries/useTodosQuery', () => ({ useTodosQuery: () => ({ data: { todos: [] } }) }))
@@ -21,7 +24,7 @@ mock.module('@/queries/useSessionPlanQuery', () => ({
   useSessionPlanQuery: () => ({ data: { plan: null } }),
   useClearSessionPlanMutation: () => ({ mutate: () => {} }),
 }))
-mock.module('@/queries', () => ({ useProvidersQuery: () => ({ data: { providers: [] } }) }))
+mock.module('@/queries', () => ({ queryKeys, useProvidersQuery: () => ({ data: { providers: [] } }) }))
 mock.module('@/queries/useAgentsQuery', () => ({
   useAgentsQuery: () => ({ data: { agents: [{ name: 'code' }] }, isLoading: false }),
 }))
@@ -45,7 +48,7 @@ mock.module('@/stores/useUIStore', () => ({
 }))
 mock.module('@/stores/useSettingsStore', () => ({ useSettingsStore: () => () => {} }))
 mock.module('@/components/AgentView', () => ({ AgentView: () => null }))
-mock.module('@/components/WorkspaceInfoCard', () => ({ WorkspaceInfoCard: () => null }))
+mock.module('@/components/WorkspaceInfoCard', () => ({ WorkspaceInfoCard: () => null, RecentSessionsList: () => null }))
 mock.module('@/components/Sidebar', () => ({ Sidebar: () => null }))
 mock.module('@/components/WorkspacePanel', () => ({ WorkspacePanel: () => null }))
 mock.module('@/components/AppFooter', () => ({ AppFooter: () => null }))
@@ -144,7 +147,7 @@ mock.module('@/components/AgentChatView/useDragDrop', () => ({
     handleDrop: () => {},
   }),
 }))
-mock.module('@/utils/workspace', () => ({ saveLastWorkspace: () => {}, workspaceLabel: (workspace: string) => workspace, sameWorkspacePath: (a: string, b: string) => a === b, getChatWorkspaceEntry: () => null, setChatWorkspaceEntry: () => {}, isVideoSrc: () => false }))
+mock.module('@/utils/workspace', () => ({ saveLastWorkspace: () => {}, workspaceLabel: (workspace: string) => workspace, sameWorkspacePath: (a: string, b: string) => a === b, pathBasename: (path: string) => path.split('/').pop() ?? path, getChatWorkspaceEntry: () => null, setChatWorkspaceEntry: () => {}, isVideoSrc: () => false }))
 
 const initialState = typeof useAgentStore.getInitialState === 'function'
   ? useAgentStore.getInitialState()

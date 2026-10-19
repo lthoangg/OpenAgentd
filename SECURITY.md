@@ -11,7 +11,7 @@ Do **not** open a public issue for security vulnerabilities.
 
 Please include:
 
-- the OpenAgentd version (`openagentd --version`, or **Settings** in the app)
+- the OpenAgentd version (`agentd --version`, or **Settings** in the app)
   and how you run it (desktop app, CLI server, iOS app, or from source)
 - the affected endpoint, tool, or file, and the conditions required, such as
   an access key being set or the server listening beyond loopback

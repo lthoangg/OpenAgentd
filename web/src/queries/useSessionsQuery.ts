@@ -1,13 +1,25 @@
-import { useInfiniteQuery, useMutation, useQueryClient, useQuery } from '@tanstack/react-query'
-import { listSessions, deleteSession, updateSessionTitle, listSubagents } from '@/api/client'
-import type { SessionPageResponse } from '@/api/types'
+import { useInfiniteQuery, useMutation, useQueryClient, useQuery, type InfiniteData } from '@tanstack/react-query'
+import { listSessions, deleteSession, updateSessionTitle, listSubagents, setSessionPinned } from '@/api/client'
+import type { SessionPageResponse, SessionResponse, SessionSort } from '@/api/types'
 import { queryKeys } from './keys'
 import { applySessionRename } from './session-rename'
 import { removeSubagent } from '@/stores/cache-invalidation-bridge'
+import { broadcastMessage } from '@/lib/broadcast-channel'
 
 const PAGE_SIZE = 20
 const CODING_WORKSPACE_PAGE_SIZE = 5
 const CODING_WORKSPACE_SMOOTHING_MS = 5000
+
+type SessionPages = InfiniteData<SessionPageResponse, string | null>
+
+function keepRows(data: SessionPages, keep: (session: SessionResponse) => boolean): SessionPages {
+  return { ...data, pages: data.pages.map((page) => ({ ...page, data: page.data.filter(keep) })) }
+}
+
+// Module-level so TanStack memoizes the projection per cache update. An older
+// server ignores ``pinned``, so the client enforces the filter too.
+const withoutPinned = (data: SessionPages) => keepRows(data, (session) => !session.pinned_at)
+const onlyPinned = (data: SessionPages) => keepRows(data, (session) => Boolean(session.pinned_at))
 
 export function useSessionsQuery() {
   return useInfiniteQuery({
@@ -25,24 +37,33 @@ export function useSessionsQuery() {
  * and its worktrees). A single path keeps the per-workspace key and filter;
  * several use the v3 ``workspaces`` filter, which an older server ignores, so
  * callers filter the rows they show.
+ *
+ * Pinned sessions live in the sidebar's Pinned section, so they are left out
+ * here (server-side on v3, and by ``select`` for an older server).
  */
-export function useWorkspaceSessionsQuery(workspace: string | readonly string[], enabled = true) {
+export function useWorkspaceSessionsQuery(
+  workspace: string | readonly string[],
+  enabled = true,
+  options: { sort?: SessionSort } = {},
+) {
+  const sort = options.sort ?? 'created'
   const paths = typeof workspace === 'string' ? [workspace] : workspace
   const single = paths.length === 1 ? paths[0] : null
   return useInfiniteQuery({
     queryKey: single !== null
-      ? queryKeys.session.sessions.workspace(single)
-      : queryKeys.session.sessions.checkouts(paths),
+      ? queryKeys.session.sessions.workspace(single, sort)
+      : queryKeys.session.sessions.checkouts(paths, sort),
     queryFn: ({ pageParam, signal }) =>
       listSessions(
         pageParam,
         CODING_WORKSPACE_PAGE_SIZE,
-        single !== null ? { workspace: single } : { workspaces: paths },
+        single !== null ? { workspace: single, sort, pinned: false } : { workspaces: paths, sort, pinned: false },
         signal,
       ),
     initialPageParam: null as string | null,
     getNextPageParam: (lastPage: SessionPageResponse) =>
       lastPage.has_more ? lastPage.next_cursor : undefined,
+    select: withoutPinned,
     enabled: enabled && paths.length > 0,
     staleTime: CODING_WORKSPACE_SMOOTHING_MS,
     // The global event stream patches these rows in place and resyncs after
@@ -50,6 +71,98 @@ export function useWorkspaceSessionsQuery(workspace: string | readonly string[],
     // in the sidebar, one request per page, on each alt-tab.
     refetchOnWindowFocus: false,
   })
+}
+
+/**
+ * Every unpinned top-level session across workspaces, in ``sort`` order: the
+ * sidebar's Status / Date / None views. Only fetched while one is shown.
+ */
+export function useAllSessionsQuery(sort: SessionSort, enabled = true) {
+  return useInfiniteQuery({
+    queryKey: queryKeys.session.sessions.everywhere(sort),
+    queryFn: ({ pageParam, signal }) => listSessions(pageParam, PAGE_SIZE, { sort, pinned: false }, signal),
+    initialPageParam: null as string | null,
+    getNextPageParam: (lastPage: SessionPageResponse) =>
+      lastPage.has_more ? lastPage.next_cursor : undefined,
+    select: withoutPinned,
+    enabled,
+    staleTime: CODING_WORKSPACE_SMOOTHING_MS,
+    refetchOnWindowFocus: false,
+  })
+}
+
+/**
+ * Every pinned session, most recently pinned first (one page). Kept in the
+ * infinite-list shape so in-place row patches (turn state, titles) reach it.
+ */
+export function usePinnedSessionsQuery() {
+  return useInfiniteQuery({
+    queryKey: queryKeys.session.sessions.pinned(),
+    queryFn: ({ signal }) => listSessions(null, 100, { pinned: true }, signal),
+    initialPageParam: null as string | null,
+    getNextPageParam: () => undefined,
+    select: onlyPinned,
+  })
+}
+
+/**
+ * Pin or unpin a session. Patches ``pinned_at`` in every cached list first so
+ * the row moves at once, then refetches the lists (here and, via the
+ * broadcast channel, in other windows) to settle order and membership.
+ */
+export function useSetSessionPinnedMutation() {
+  const queryClient = useQueryClient()
+  const patch = (id: string, pinnedAt: string | null) => {
+    queryClient.setQueriesData<SessionPages>({ queryKey: queryKeys.session.sessions.all() }, (old) => {
+      if (!old || !Array.isArray(old.pages)) return old
+      return {
+        ...old,
+        pages: old.pages.map((page) => ({
+          ...page,
+          data: page.data.map((session) => (session.id === id ? { ...session, pinned_at: pinnedAt } : session)),
+        })),
+      }
+    })
+  }
+  return useMutation({
+    mutationFn: ({ id, pinned }: { id: string; pinned: boolean }) => setSessionPinned(id, pinned),
+    onMutate: async ({ id, pinned }) => {
+      await queryClient.cancelQueries({ queryKey: queryKeys.session.sessions.pinned() })
+      const row = findCachedSession(queryClient, id)
+      const previous = row?.pinned_at ?? null
+      const pinnedAt = pinned ? new Date().toISOString() : null
+      patch(id, pinnedAt)
+      if (pinned && row) {
+        // Show it in Pinned straight away, even when that list has not
+        // loaded it yet.
+        queryClient.setQueryData<SessionPages>(queryKeys.session.sessions.pinned(), (old) => {
+          if (!old || old.pages.some((page) => page.data.some((session) => session.id === id))) return old
+          const [first, ...rest] = old.pages
+          const pinnedRow = { ...row, pinned_at: pinnedAt }
+          return { ...old, pages: [{ ...(first ?? { data: [], next_cursor: null, has_more: false }), data: [pinnedRow, ...(first?.data ?? [])] }, ...rest] }
+        })
+      }
+      return { previous }
+    },
+    onError: (_err, { id }, context) => {
+      patch(id, context?.previous ?? null)
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.session.sessions.all() })
+      broadcastMessage({ type: 'cache_invalidated', events: [{ kind: 'sessions' }] })
+    },
+  })
+}
+
+function findCachedSession(queryClient: ReturnType<typeof useQueryClient>, id: string): SessionResponse | null {
+  for (const [, data] of queryClient.getQueriesData<SessionPages>({ queryKey: queryKeys.session.sessions.all() })) {
+    if (!data || !Array.isArray(data.pages)) continue
+    for (const page of data.pages) {
+      const row = page.data.find((session) => session.id === id)
+      if (row) return row
+    }
+  }
+  return null
 }
 
 /**

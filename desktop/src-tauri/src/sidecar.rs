@@ -1,13 +1,13 @@
-//! Backend sidecar supervisor for the native `openagentd` binary.
+//! Backend sidecar supervisor for the native `agentd` binary.
 //!
 //! Spawns `<runtime> server serve --handshake --generate-token
-//! --parent-pid <us>`, where `<runtime>` is the bundled `openagentd`. It
+//! --parent-pid <us>`, where `<runtime>` is the bundled `agentd`. It
 //! parses the first JSON handshake line from stdout and exposes the child
 //! for graceful shutdown.
 //!
 //! Layout expectations (paths relative to the bundled resources dir):
 //!
-//! - `sidecar/bin/openagentd` (`openagentd.exe` on Windows): the backend.
+//! - `sidecar/bin/agentd` (`agentd.exe` on Windows): the backend.
 //!   The web UI is Tauri's `frontendDist`, not part of the sidecar.
 //!
 //! Windows uses a Job Object with kill-on-close semantics so the sidecar cannot
@@ -148,7 +148,7 @@ impl Sidecar {
         }
 
         // ``APP_ENV`` defaults to ``production`` (XDG dirs shared with a
-        // terminal ``openagentd`` install). Dev-bundled runs can set
+        // terminal ``agentd`` install). Dev-bundled runs can set
         // ``OPENAGENTD_APP_ENV=development`` and explicit ``OPENAGENTD_*_DIR``
         // roots so local desktop testing does not share production state.
         let app_env = std::env::var("OPENAGENTD_APP_ENV")
@@ -195,7 +195,7 @@ impl Sidecar {
         // the CLI uses, with $OPENAGENTD_*_DIR env-var overrides for
         // anyone who wants different paths. Setting Tauri's per-app
         // app_data_dir / app_config_dir here would silently bifurcate
-        // the desktop from a terminal ``openagentd`` install — same
+        // the desktop from a terminal ``agentd`` install — same
         // product, different data, different agents, different DB.
         // Keep them unified.
 
@@ -467,17 +467,17 @@ impl Sidecar {
     }
 }
 
-/// Locate the bundled ``openagentd`` backend binary.
+/// Locate the bundled ``agentd`` backend binary.
 fn resolve_backend_bin(sidecar_root: &Path) -> Result<PathBuf> {
     #[cfg(target_os = "windows")]
     let candidates = [
-        sidecar_root.join("bin").join("openagentd.exe"),
-        sidecar_root.join("openagentd.exe"),
+        sidecar_root.join("bin").join("agentd.exe"),
+        sidecar_root.join("agentd.exe"),
     ];
     #[cfg(not(target_os = "windows"))]
     let candidates = [
-        sidecar_root.join("bin").join("openagentd"),
-        sidecar_root.join("openagentd"),
+        sidecar_root.join("bin").join("agentd"),
+        sidecar_root.join("agentd"),
     ];
     for c in candidates.iter() {
         if c.is_file() {
@@ -485,7 +485,7 @@ fn resolve_backend_bin(sidecar_root: &Path) -> Result<PathBuf> {
         }
     }
     Err(anyhow!(
-        "no openagentd backend binary found in bundle (looked in: {:?})",
+        "no agentd backend binary found in bundle (looked in: {:?})",
         candidates.iter().map(|p| p.display().to_string()).collect::<Vec<_>>()
     ))
 }

@@ -5,7 +5,7 @@ CSP, updater, and plugins.
 
 | Shell | Path | Role |
 |---|---|---|
-| Desktop | `desktop/src-tauri/` | supervises the bundled `openagentd` sidecar (built from `appv3/`), tray, windows, updater |
+| Desktop | `desktop/src-tauri/` | supervises the bundled `agentd` sidecar (built from `appv3/`), tray, windows, updater |
 | Mobile | `mobile/src-tauri/` | remote-only: connects to an existing API, no sidecar |
 | Shared | `native/shell-core/` | Tauri-free: server config, URL normalization, keyring access keys, download limits |
 

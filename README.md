@@ -94,7 +94,7 @@ Install the backend when you want to run it from a terminal, use a browser clien
 ```bash
 # macOS / Linux
 curl -fsSL https://openagentd.dev/install.sh | sh -s -- --cli
-openagentd server start
+agentd server start
 ```
 
 ```powershell
@@ -110,22 +110,25 @@ Settings. To share the desktop app's builtin backend instead, turn on
 phone or another computer on your network:
 
 ```bash
-openagentd server start --host 0.0.0.0 --key
-openagentd server status
+agentd server start --public --key --qr
+agentd server status
 ```
 
-`--key` sets the access key every client must send; the server refuses to
-listen beyond loopback without one. It has no built-in TLS, so put an HTTPS
+`--public` listens on every interface (`--host 0.0.0.0`), and `--key` sets the
+access key every client must send; the server refuses to listen beyond loopback
+without one. `--qr` prints a QR code that the mobile app scans to fill in the
+address and key (`agentd server status --qr` shows it again). The old
+`openagentd` command still works as an alias of `agentd`. It has no built-in TLS, so put an HTTPS
 reverse proxy in front of it before exposing it outside a trusted network.
-Use `openagentd --help` and `<command> --help` for the current command
+Use `agentd --help` and `<command> --help` for the current command
 reference.
 
 Run one agent turn directly against the current project directory when you need
 a pipe-friendly terminal response:
 
 ```bash
-openagentd run --model openai:gpt-5.5 --thinking high --prompt "Summarize this project"
-openagentd run --continue --prompt "Now add tests for it"
+agentd run --model openai:gpt-5.5 --thinking high --prompt "Summarize this project"
+agentd run --continue --prompt "Now add tests for it"
 ```
 
 The command validates the current directory as a coding workspace, persists a

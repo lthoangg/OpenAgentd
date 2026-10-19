@@ -1,4 +1,4 @@
-//! `openagentd upgrade`: stop the server, update, restart it. Homebrew
+//! `agentd upgrade`: stop the server, update, restart it. Homebrew
 //! installs run `brew upgrade`; every other install updates itself from the
 //! GitHub release archives (`self_update`).
 
@@ -75,10 +75,10 @@ fn release_upgrade(exe: &std::path::Path) -> i32 {
 }
 
 fn restart_command() -> Vec<String> {
-    let exe = which("openagentd")
+    let exe = which("agentd")
         .map(|p| p.to_string_lossy().into_owned())
         .or_else(|| std::env::args().next().filter(|a| std::path::Path::new(a).is_file()))
-        .unwrap_or_else(|| "openagentd".into());
+        .unwrap_or_else(|| "agentd".into());
     vec![exe, "server".into(), "start".into()]
 }
 
@@ -95,24 +95,24 @@ fn exit_code(code: i32) -> ExitCode {
 pub fn upgrade() -> Result<ExitCode> {
     let exe = std::env::current_exe().ok().and_then(|p| dunce::canonicalize(p).ok()).unwrap_or_default();
     if self_update::is_desktop_bundled(&exe) {
-        println!("  This openagentd is bundled with the desktop app, which updates it (Settings → About).");
+        println!("  This agentd is bundled with the desktop app, which updates it (Settings → About).");
         return Ok(ExitCode::SUCCESS);
     }
     let was_running = !find_pids().is_empty();
     if was_running {
-        println!("  {} before upgrade ...", bold("Stopping openagentd"));
+        println!("  {} before upgrade ...", bold("Stopping agentd"));
         crate::cmd::server::stop()?;
     }
     let manager = if is_brew_managed() { "brew" } else { "GitHub releases" };
-    println!("  {} via {} ...", bold("Upgrading openagentd"), cyan(manager));
+    println!("  {} via {} ...", bold("Upgrading agentd"), cyan(manager));
     let code = if manager == "brew" { brew_upgrade()? } else { release_upgrade(&exe) };
     let mut restart_code = 0;
     if was_running {
         let restart = restart_command();
         if code == 0 {
-            println!("  {} ...", bold("Restarting openagentd"));
+            println!("  {} ...", bold("Restarting agentd"));
         } else {
-            println!("  {} after failed upgrade ...", bold("Restarting openagentd"));
+            println!("  {} after failed upgrade ...", bold("Restarting agentd"));
         }
         println!("  {}", dim(&restart.join(" ")));
         restart_code = run(&restart)?;

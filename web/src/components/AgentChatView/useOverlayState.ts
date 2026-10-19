@@ -39,6 +39,9 @@
  * Changes / Files / Terminal tabs. Tasks stay in the popover there, the one
  * surface that leaves the chat visible while the agent works.
  *
+ * `/btw` side questions follow Tasks: a dock tab on desktop with a
+ * workspace, otherwise the panel above the composer.
+ *
  * The session plan opens as a Plan tab on every platform with a workspace
  * (the dock sheet on phones). Desktop brings it forward by itself once per
  * plan review, so the plan the agent submitted is on screen to review.
@@ -49,6 +52,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { listCodingWorkspaceFiles } from '@/api/client'
 import { queryKeys } from '@/queries'
 import { useAgentStore } from '@/stores/useAgentStore'
+import { useBtwStore } from '@/stores/useBtwStore'
 import { useUIStore } from '@/stores/useUIStore'
 import { useLayoutStore } from '@/stores/useLayoutStore'
 import { useFileRevealStore } from '@/stores/useFileRevealStore'
@@ -141,6 +145,11 @@ export interface UseOverlayStateResult {
    * Tasks popover, whose plan row opens it as a document.
    */
   handleOpenPlan: () => void
+  /**
+   * Show the session's `/btw` side questions: the dock's BTW tab on desktop
+   * with a workspace, else the panel above the composer. Never hides them.
+   */
+  handleOpenSideQuestions: (sessionId: string) => void
   handleToggleFilesPanel: () => void
   handleOpenTerminal: () => void
   closeAllDrawers: () => void
@@ -460,6 +469,15 @@ export function useOverlayState({
     setDockViewRequest((prev) => ({ view: 'plan', key: (prev?.key ?? 0) + 1 }))
   }, [closeOtherMobileOverlays, handleSetShowTodos, isMobile, workspace])
 
+  const handleOpenSideQuestions = useCallback((sessionId: string) => {
+    if (!dockViewsEnabled) {
+      useBtwStore.getState().reopen(sessionId)
+      return
+    }
+    setWorkspacePanel((value) => value ?? 'changed')
+    setDockViewRequest((prev) => ({ view: 'btw', key: (prev?.key ?? 0) + 1 }))
+  }, [dockViewsEnabled])
+
   // A new plan review brings the plan forward on desktop, once per review.
   // Phones leave the chat on screen; the transcript card opens the plan.
   const planReviewId = useAgentStore((s) => (s.pendingQuestion?.kind === 'plan_review' ? s.pendingQuestion.id : null))
@@ -608,6 +626,7 @@ export function useOverlayState({
     handleSetShowTodos,
     handleToggleTasks,
     handleOpenPlan,
+    handleOpenSideQuestions,
     handleToggleFilesPanel,
     handleOpenTerminal,
     closeAllDrawers,

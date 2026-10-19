@@ -1,7 +1,7 @@
 //! `server start|stop|restart|status|logs`. `start` runs this binary's
 //! `server serve` as a background daemon.
 
-use crate::cli::{AddrArgs, LogsArgs, StartArgs};
+use crate::cli::{LogsArgs, StartArgs, StatusArgs};
 use crate::net::{display_host, http_get, is_port_reachable, require_loopback_or_auth, resolve_addr, server_addresses, server_settings};
 use crate::paths::{clear_pids, find_pids, pid_alive, server_log, write_pids};
 use crate::ui::{bold, cyan, dim, field, green, print_banner, red, yellow, Checks};
@@ -47,7 +47,7 @@ fn prompt_access_key() -> Result<String> {
 }
 
 fn exe() -> std::path::PathBuf {
-    std::env::current_exe().unwrap_or_else(|_| "openagentd".into())
+    std::env::current_exe().unwrap_or_else(|_| "agentd".into())
 }
 
 pub fn start(args: &StartArgs) -> Result<ExitCode> {
@@ -57,11 +57,14 @@ pub fn start(args: &StartArgs) -> Result<ExitCode> {
 /// `Ok(false)` when `--wait` saw the server die or time out.
 fn start_daemon(args: &StartArgs) -> Result<bool> {
     if !find_pids().is_empty() {
-        println!("  {}  (run {} first)", yellow("already running"), bold("openagentd server stop"));
+        println!("  {}  (run {} first)", yellow("already running"), bold("agentd server stop"));
+        if args.qr {
+            println!("  {}  run {}", dim("QR code:"), bold("agentd server status --qr"));
+        }
         return Ok(true);
     }
     let mut cfg = server_settings()?;
-    let host_arg = args.addr.host.as_deref().filter(|h| !h.is_empty());
+    let host_arg = if args.public { Some("0.0.0.0") } else { args.addr.host.as_deref().filter(|h| !h.is_empty()) };
     if let Some(h) = host_arg {
         cfg.host = h.into();
     }
@@ -118,12 +121,51 @@ fn start_daemon(args: &StartArgs) -> Result<bool> {
     if all_interfaces(&host) {
         if let Some(lan) = server_addresses(&host, port).lan.first() {
             field("LAN:", &bold(lan));
-            field("Mobile:", "use the LAN address in the mobile app");
+            field("Mobile:", MOBILE_HINT);
         }
     }
-    field("Stop:", &bold("openagentd server stop"));
+    field("Stop:", &bold("agentd server stop"));
     println!();
-    Ok(!args.wait || wait_ready(&mut child, &host, port))
+    let ready = !args.wait || wait_ready(&mut child, &host, port);
+    if args.qr && ready {
+        show_connect_qr(&host, port);
+    }
+    Ok(ready)
+}
+
+const MOBILE_HINT: &str = "scan with --qr, or enter the LAN address in the mobile app";
+
+fn warn(msg: &str) {
+    println!("  {}: {msg}", bold(&yellow("warning")));
+    println!();
+}
+
+/// The `openagentd://connect` QR code for the server on `bind_host:port`.
+/// Problems are warnings: the server itself is fine either way.
+fn show_connect_qr(bind_host: &str, port: u16) {
+    if !all_interfaces(bind_host) {
+        return warn(&format!("--qr needs a LAN host; start the server with {}", bold("--public")));
+    }
+    let lan = server_addresses(bind_host, port).lan;
+    if lan.is_empty() {
+        return warn("no LAN address found; QR code skipped");
+    }
+    // What the server enforces: desktop token > access-key env > server.yaml.
+    let key = appv3_core::auth::configured_access_token();
+    if key.is_empty() {
+        return warn("the access key is unknown in this shell (set OPENAGENTD_ACCESS_KEY or start with --key); QR code skipped");
+    }
+    match crate::qr::render(&crate::qr::connect_link(&lan, &key), crate::ui::color()) {
+        Ok(code) => {
+            for line in code.lines() {
+                println!("  {line}");
+            }
+            println!();
+            println!("  {}", dim("Scan with your phone's camera to open OpenAgentd and connect. The code contains the access key."));
+            println!();
+        }
+        Err(e) => warn(&format!("{e:#}")),
+    }
 }
 
 fn wait_ready(child: &mut Child, host: &str, port: u16) -> bool {
@@ -132,7 +174,7 @@ fn wait_ready(child: &mut Child, host: &str, port: u16) -> bool {
     let started = Instant::now();
     let ready = loop {
         if matches!(child.try_wait(), Ok(Some(_))) {
-            println!("  {}: the server process exited; see {}", bold(&red("error")), bold("openagentd server logs"));
+            println!("  {}: the server process exited; see {}", bold(&red("error")), bold("agentd server logs"));
             break false;
         }
         if matches!(http_get(&poll_host, port, "/api/health/ready", Duration::from_secs(1)), Some((200, _))) {
@@ -140,7 +182,7 @@ fn wait_ready(child: &mut Child, host: &str, port: u16) -> bool {
             break true;
         }
         if started.elapsed() >= READY_TIMEOUT {
-            println!("  {}: the server was not ready within {}s; see {}", bold(&yellow("warning")), READY_TIMEOUT.as_secs(), bold("openagentd server logs"));
+            println!("  {}: the server was not ready within {}s; see {}", bold(&yellow("warning")), READY_TIMEOUT.as_secs(), bold("agentd server logs"));
             break false;
         }
         std::thread::sleep(Duration::from_millis(500));
@@ -234,8 +276,10 @@ fn fetch_json(host: &str, port: u16, path: &str) -> (u16, Option<Value>) {
 }
 
 /// Process, addresses, and (when running) port / live / ready / LAN checks.
-/// Exits 1 when the server is stopped or a check fails.
-pub fn status(addr: &AddrArgs) -> Result<ExitCode> {
+/// Exits 1 when the server is stopped or a check fails. `--qr` adds the
+/// connect QR code at the end.
+pub fn status(args: &StatusArgs) -> Result<ExitCode> {
+    let addr = &args.addr;
     let cfg = server_settings()?;
     let (bind_host, port) = resolve_addr(addr.host.as_deref(), addr.port, &cfg);
     let host = display_host(&bind_host);
@@ -245,7 +289,7 @@ pub fn status(addr: &AddrArgs) -> Result<ExitCode> {
     println!();
     if alive.is_empty() {
         field("Status:", &yellow("stopped"));
-        field("Start:", &format!("{}  or  {}", bold("openagentd server start"), bold("openagentd server start --host 0.0.0.0 --key")));
+        field("Start:", &format!("{}  or  {}", bold("agentd server start"), bold("agentd server start --public --key --qr")));
         println!();
         return Ok(ExitCode::FAILURE);
     }
@@ -258,7 +302,7 @@ pub fn status(addr: &AddrArgs) -> Result<ExitCode> {
             field(if i == 0 { "LAN:" } else { "" }, &green(url));
         }
         if !addresses.lan.is_empty() {
-            field("Mobile:", "use the LAN address in the mobile app");
+            field("Mobile:", MOBILE_HINT);
         }
     }
     field("Logs:", &server_log().display().to_string());
@@ -293,13 +337,16 @@ pub fn status(addr: &AddrArgs) -> Result<ExitCode> {
     println!();
     println!("  {}", checks.summary());
     println!();
+    if args.qr {
+        show_connect_qr(&bind_host, port);
+    }
     Ok(code(checks.failures == 0))
 }
 
 pub fn logs(args: &LogsArgs) -> Result<()> {
     let log = server_log();
     if !log.is_file() {
-        bail!("no server log at {}; start the server with `openagentd server start`", log.display());
+        bail!("no server log at {}; start the server with `agentd server start`", log.display());
     }
     match follow_log(&log, args.lines) {
         Err(e) if e.kind() == std::io::ErrorKind::BrokenPipe => Ok(()),

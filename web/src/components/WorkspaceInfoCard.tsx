@@ -22,6 +22,7 @@ import { workspaceLabel } from '@/utils/workspace'
 import { applySessionSelection } from './Sidebar.sessions'
 import { SessionStatusMark, sessionStatus } from './Sidebar/SessionStatusMark'
 import { listRowClass } from '@/components/ui/list-row'
+import type { SessionResponse } from '@/api/types'
 
 interface Props {
   workspace: string
@@ -32,8 +33,6 @@ interface Props {
 }
 
 export function WorkspaceInfoCard({ workspace, chatWorkspace = false, currentSessionId = null }: Props) {
-  const navigate = useNavigate()
-  const unreadIds = useUnreadStore((state) => state.ids)
   // Same key as the sidebar's workspace list, so this adds no request there.
   const { data } = useWorkspaceSessionsQuery(workspace, !chatWorkspace)
 
@@ -57,7 +56,6 @@ export function WorkspaceInfoCard({ workspace, chatWorkspace = false, currentSes
   const recent = (data?.pages.flatMap((page) => page.data) ?? [])
     .filter((session) => session.id !== currentSessionId && !session.parent_session_id)
     .sort((a, b) => (b.updated_at ?? '').localeCompare(a.updated_at ?? ''))
-  const now = new Date()
 
   return (
     <div className="mx-auto w-full max-w-md px-4 py-4">
@@ -81,29 +79,54 @@ export function WorkspaceInfoCard({ workspace, chatWorkspace = false, currentSes
       </Tooltip>
 
       {recent.length > 0 && (
-        <section aria-label="Recent sessions" className="mt-4">
-          <h3 className="mb-1 px-1.5 label-caps text-(--color-text-subtle)">
-            Recent sessions
-          </h3>
-          <ul className="space-y-px">
-            {recent.map((session) => (
-              <li key={session.id}>
-                <button
-                  type="button"
-                  onClick={() => applySessionSelection({ session, workspacePath: workspace, navigate })}
-                  className={listRowClass()}
-                >
-                  <SessionStatusMark status={sessionStatus(session, unreadIds.includes(session.id))} />
-                  <span className="min-w-0 flex-1 truncate font-medium">{session.title || 'Untitled'}</span>
-                  <span className="shrink-0 font-mono text-[11px] text-(--color-text-subtle)">
-                    {formatCompactRelative(session.updated_at, now)}
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        </section>
+        <RecentSessionsList className="mt-4" sessions={recent} workspace={workspace} label="Recent sessions" />
       )}
     </div>
+  )
+}
+
+/**
+ * A workspace's recent sessions as list rows (status, title, age): the empty
+ * session card and the new-session screen. Picking one opens it.
+ */
+export function RecentSessionsList({
+  sessions,
+  workspace,
+  label,
+  className = '',
+  headingLevel = 3,
+}: {
+  sessions: readonly SessionResponse[]
+  workspace: string
+  label: string
+  className?: string
+  /** ``2`` where the list is a top-level section (the new-session screen). */
+  headingLevel?: 2 | 3
+}) {
+  const navigate = useNavigate()
+  const unreadIds = useUnreadStore((state) => state.ids)
+  const now = new Date()
+  const Heading = headingLevel === 2 ? 'h2' : 'h3'
+  return (
+    <section aria-label={label} className={className}>
+      <Heading className="mb-1 px-1.5 label-caps text-(--color-text-subtle)">{label}</Heading>
+      <ul className="space-y-px">
+        {sessions.map((session) => (
+          <li key={session.id}>
+            <button
+              type="button"
+              onClick={() => applySessionSelection({ session, workspacePath: session.workspace ?? workspace, navigate })}
+              className={listRowClass()}
+            >
+              <SessionStatusMark status={sessionStatus(session, unreadIds.includes(session.id))} />
+              <span className="min-w-0 flex-1 truncate font-medium">{session.title || 'Untitled'}</span>
+              <span className="shrink-0 font-mono text-[11px] text-(--color-text-subtle)">
+                {formatCompactRelative(session.updated_at ?? session.created_at, now)}
+              </span>
+            </button>
+          </li>
+        ))}
+      </ul>
+    </section>
   )
 }

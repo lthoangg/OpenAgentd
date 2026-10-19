@@ -93,12 +93,16 @@ limit.
 On the computer that runs OpenAgentd, start a server the phone can reach:
 
 ```bash
-openagentd server start --host 0.0.0.0 --key
-openagentd server status
+agentd server start --public --key --qr
+agentd server status
 ```
 
-`--key` prompts you to choose the access key every client must send. The server
-refuses to listen on the network without one. If OpenAgentd is not installed yet, see
+`--public` listens on every network interface, and `--key` prompts you to choose
+the access key every client must send; the server refuses to listen on the
+network without one. `--qr` prints a QR code: scan it with the phone's camera to
+open the app's **Backend connection** dialog with the address and key filled in,
+then test and save the connection. `agentd server status --qr` shows it again.
+If OpenAgentd is not installed yet, see
 [CLI server](../README.md#cli-server).
 
 In the app:
@@ -122,7 +126,7 @@ connect to that address instead.
 | SideStore cannot install or refresh | Connect LocalDevVPN and use Wi-Fi. For pairing-file errors, follow SideStore's [pairing file guide](https://docs.sidestore.io/docs/advanced/pairing-file). |
 | SideStore says the app's permissions do not match | Remove the source, add it again, and retry. If it still fails, [open an issue](https://github.com/lthoangg/openagentd/issues). |
 | The app cannot reach the server | Check that the phone and the computer are on the same network and the server was started with `--host 0.0.0.0 --key`. Make sure **Settings → Privacy & Security → Local Network → OpenAgentd** is on. |
-| "Unauthorized" when connecting | The access key does not match. Re-enter the key you chose, or set a new one with `openagentd server start --host 0.0.0.0 --key`. |
+| "Unauthorized" when connecting | The access key does not match. Re-enter the key you chose, or set a new one with `agentd server restart --public --key`. |
 
 For SideStore-specific problems, see the
 [SideStore documentation](https://docs.sidestore.io) and its community channels.

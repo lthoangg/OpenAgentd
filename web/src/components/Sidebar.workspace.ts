@@ -1,73 +1,67 @@
 import type { QueryClient } from '@tanstack/react-query'
-import type { SessionResolveResponse } from '@/api/types'
-import { resolveSession, setCodingWorkspaceVisibility } from '@/api/client'
+import type { SessionResponse } from '@/api/types'
+import { listSessions, setCodingWorkspaceVisibility } from '@/api/client'
 import { queryKeys } from '@/queries'
-import { prependSession, prependWorkspaceSession } from '@/stores/cache-invalidation-bridge'
-import { useAgentStore } from '@/stores/useAgentStore'
-import { removeWorkspace, saveLastWorkspace } from '@/utils/workspace'
+import { removeWorkspace, sameWorkspacePath, saveLastWorkspace } from '@/utils/workspace'
+import { startNewSession, type NewSessionNavigate } from '@/lib/new-session'
 
-export async function openWorkspaceSession(options: {
+/**
+ * Open a folder on a new-session draft. A folder the sidebar does not list
+ * yet is registered first (un-hidden), so its row is there before the first
+ * message creates a session in it.
+ */
+export async function openWorkspaceDraft(options: {
   path: string
-  requestedCreate: boolean
+  /** Already a row in the sidebar tree (or the Chat workspace). */
+  listed: boolean
   currentSessionId?: string
   currentWorkspace?: string | null
-  queryClient: QueryClient
   refreshWorkspaceTree: () => Promise<void>
-  navigate: (args: { to: string; params: { sessionId: string } }) => void
-  resolveSessionFn?: typeof resolveSession
-}): Promise<{ skipped: boolean }> {
-  const state = useAgentStore.getState()
-  const create = options.requestedCreate && !(
-    state.isEmptyIdleSession() &&
-    state.sessionId === options.currentSessionId &&
-    options.currentWorkspace === options.path
-  )
-  if (options.requestedCreate && !create) return { skipped: true }
-
-  saveLastWorkspace(options.path)
-  state.beginResolvedSession(null, {
-    workspace: options.path,
-    model: state.sessionModel,
-    thinkingLevel: state.sessionThinkingLevel,
-  })
-  const session = await (options.resolveSessionFn ?? resolveSession)({
-    workspace: options.path,
-    model: state.sessionModel,
-    thinkingLevel: state.sessionThinkingLevel,
-    create,
-  })
-  await applyResolvedWorkspaceSession({
-    session,
-    path: options.path,
-    queryClient: options.queryClient,
-    refreshWorkspaceTree: options.refreshWorkspaceTree,
+  navigate: NewSessionNavigate
+  setCodingWorkspaceVisibilityFn?: typeof setCodingWorkspaceVisibility
+}): Promise<void> {
+  if (!options.listed) {
+    await (options.setCodingWorkspaceVisibilityFn ?? setCodingWorkspaceVisibility)(options.path, false)
+    await options.refreshWorkspaceTree()
+  }
+  startNewSession({
     navigate: options.navigate,
-    create,
+    workspace: options.path,
+    current: { sessionId: options.currentSessionId, workspace: options.currentWorkspace },
   })
-  return { skipped: false }
 }
 
-export async function applyResolvedWorkspaceSession(options: {
-  session: SessionResolveResponse
+/** The newest top-level session in ``workspace``, or null (created order). */
+export async function latestTopLevelSession(
+  workspace: string,
+  listSessionsFn: typeof listSessions = listSessions,
+): Promise<SessionResponse | null> {
+  const page = await listSessionsFn(null, 1, { workspace })
+  return page.data.find((session) => !session.parent_session_id && sameWorkspacePath(session.workspace, workspace)) ?? null
+}
+
+/**
+ * Switch to a workspace: its latest session, or a new-session draft when it
+ * has none yet (nothing is created until the first message).
+ */
+export async function openWorkspaceLatest(options: {
   path: string
-  queryClient: QueryClient
-  refreshWorkspaceTree: () => Promise<void>
-  navigate: (args: { to: string; params: { sessionId: string } }) => void
-  create: boolean
+  currentSessionId?: string | null
+  currentWorkspace?: string | null
+  navigate: (args: { to: '/$sessionId'; params: { sessionId: string } } | { to: '/'; search: { workspace: string }; replace?: boolean }) => unknown
+  listSessionsFn?: typeof listSessions
 }): Promise<void> {
-  const state = useAgentStore.getState()
-  state.beginResolvedSession(options.session.id, {
-    workspace: options.session.workspace ?? options.path,
-    model: options.session.model ?? state.sessionModel,
-    thinkingLevel: options.session.thinking_level ?? state.sessionThinkingLevel,
-    skipInitialRestore: options.create && options.session.created,
-  })
-  if (options.create && options.session.created) {
-    prependSession(options.queryClient, options.session)
-    prependWorkspaceSession(options.queryClient, options.path, options.session)
+  const latest = await latestTopLevelSession(options.path, options.listSessionsFn)
+  if (!latest) {
+    startNewSession({
+      navigate: options.navigate,
+      workspace: options.path,
+      current: { sessionId: options.currentSessionId, workspace: options.currentWorkspace },
+    })
+    return
   }
-  await options.refreshWorkspaceTree()
-  options.navigate({ to: '/$sessionId', params: { sessionId: options.session.id } })
+  saveLastWorkspace(options.path)
+  options.navigate({ to: '/$sessionId', params: { sessionId: latest.id } })
 }
 
 /**

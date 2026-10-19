@@ -223,11 +223,16 @@ export interface SessionResponse {
    * that is busy working.
    */
   needs_input?: boolean
+  /** When the session was pinned in the sidebar (v3); absent when unpinned. */
+  pinned_at?: string | null
 }
 
 export interface SessionDetailResponse extends SessionResponse {
   messages: MessageResponse[]
 }
+
+/** Session list order: newest created (v2) or most recently touched (v3). */
+export type SessionSort = 'created' | 'activity'
 
 export interface SessionResolveResponse extends SessionResponse {
   created: boolean

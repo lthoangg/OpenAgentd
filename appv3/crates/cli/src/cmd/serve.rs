@@ -1,4 +1,4 @@
-//! `openagentd server serve`: the foreground server. The desktop sidecar,
+//! `agentd server serve`: the foreground server. The desktop sidecar,
 //! `make run`, and the `server start` daemon all run this.
 
 use crate::cli::ServeArgs;
@@ -89,7 +89,7 @@ pub fn serve(args: &ServeArgs) -> anyhow::Result<()> {
     // marks the sidecar start there. The `server start` daemon skips it.
     let daemon = std::env::var_os(DAEMON_ENV).is_some();
     if !daemon {
-        eprintln!("openagentd: sidecar bootstrap");
+        eprintln!("agentd: sidecar bootstrap");
     }
     std::env::remove_var(DAEMON_ENV);
     let host = args.host.clone();

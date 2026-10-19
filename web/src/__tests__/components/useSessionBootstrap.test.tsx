@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { createRef } from 'react'
 import type { RefObject } from 'react'
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
-import { QueryClient } from '@tanstack/react-query'
 
 // Whether the OS drops background sockets (iOS/Android) decides if a resume
 // must reconnect. Toggled per test; defaults to the mobile behaviour.
@@ -23,6 +22,8 @@ function Harness({
   loadSession,
   connectStream,
   sessionId = 'session-1',
+  workspace = '/repo/app',
+  navigate = mock(() => {}),
   beginResolvedSession = mock(() => {}),
   inputRef,
   isMobile = true,
@@ -31,7 +32,10 @@ function Harness({
 }: {
   loadSession: (sessionId: string, workspace?: string | null) => Promise<void>
   connectStream: () => AbortController
-  sessionId?: string
+  /** ``null`` is a new-session draft (no session yet). */
+  sessionId?: string | null
+  workspace?: string
+  navigate?: (...args: unknown[]) => unknown
   isMobile?: boolean
   beginResolvedSession?: UseSessionBootstrapArgs['beginResolvedSession']
   inputRef?: RefObject<InputComposerHandle | null>
@@ -39,20 +43,17 @@ function Harness({
   loadAgentStatus?: UseSessionBootstrapArgs['loadAgentStatus']
 }) {
   const result = useSessionBootstrap({
-    sessionId,
-    workspace: '/repo/app',
-    agentWorkspace: '/repo/app',
+    sessionId: sessionId ?? undefined,
+    workspace,
+    agentWorkspace: workspace,
     hasWorkspace: true,
     isSessionLoading: false,
     isMobile,
     paletteOpen: false,
-    sessionModel: null,
-    sessionThinkingLevel: null,
     sessionTitle: null,
     isAgentWorking: true,
     inputRef: inputRef ?? createRef<InputComposerHandle>(),
-    navigate: mock(() => {}) as never,
-    queryClient: new QueryClient(),
+    navigate: navigate as never,
     connectStream,
     loadAgentStatus,
     loadSession,
@@ -413,5 +414,123 @@ describe('useSessionBootstrap remount on screen switch', () => {
     expect(loadSession).not.toHaveBeenCalled()
     expect(connectStream).not.toHaveBeenCalled()
     expect(liveController.signal.aborted).toBe(false)
+  })
+})
+
+describe('useSessionBootstrap new-session draft', () => {
+  const resolveCalls: unknown[] = []
+  const originalFetch = globalThis.fetch
+
+  function composerRef(setValue: (value: string) => void = () => {}): RefObject<InputComposerHandle | null> {
+    const inputRef = createRef<InputComposerHandle>()
+    inputRef.current = {
+      focus: () => {},
+      setValue,
+      appendValue: () => {},
+      insertText: () => {},
+      setFiles: () => {},
+      addFiles: () => {},
+      restoreLastSubmission: () => {},
+      addDesignFeedback: () => {},
+    }
+    return inputRef
+  }
+
+  beforeEach(() => {
+    resolveCalls.length = 0
+    globalThis.fetch = mock(async (input: unknown) => {
+      resolveCalls.push(input)
+      return new Response('{}')
+    }) as unknown as typeof fetch
+    localStorage.removeItem('oa.drafts.composer.v1')
+  })
+  afterEach(() => {
+    globalThis.fetch = originalFetch
+  })
+
+  it('opens a draft for the workspace without creating a session', () => {
+    useAgentStore.setState({ sessionId: 'session-1', isAgentWorking: false, isConnected: false })
+    const navigate = mock((..._args: unknown[]) => {})
+    let result: ReturnType<typeof useSessionBootstrap> | null = null
+    render(
+      <Harness
+        loadSession={mock(async () => {
+          useAgentStore.setState({
+            leadName: 'lead',
+            agentNames: ['lead'],
+            agentStreams: { lead: { ...createDefaultAgentStream(), blocks: [{ id: 'u1', type: 'user', content: 'hi' }] } },
+          })
+        })}
+        connectStream={mock(() => new AbortController())}
+        navigate={navigate}
+        inputRef={composerRef()}
+        onResult={(r) => { result = r }}
+      />,
+    )
+    act(() => { result!.handleNewSession() })
+    expect(navigate).toHaveBeenCalledWith({ to: '/', search: { workspace: '/repo/app' }, replace: false })
+    expect(useAgentStore.getState().sessionId).toBeNull()
+    expect(useAgentStore.getState()._workspace).toBe('/repo/app')
+    // No session is resolved or created up front.
+    expect(resolveCalls.some((call) => String(call).includes('/sessions/resolve'))).toBe(false)
+  })
+
+  it('does nothing on an empty draft of the same workspace', () => {
+    useAgentStore.setState({ sessionId: null, isAgentWorking: false })
+    const navigate = mock((..._args: unknown[]) => {})
+    let result: ReturnType<typeof useSessionBootstrap> | null = null
+    render(
+      <Harness
+        sessionId={null}
+        loadSession={mock(async () => {})}
+        connectStream={mock(() => new AbortController())}
+        navigate={navigate}
+        inputRef={composerRef()}
+        onResult={(r) => { result = r }}
+      />,
+    )
+    act(() => { result!.handleNewSession() })
+    expect(navigate).not.toHaveBeenCalled()
+  })
+
+  it('keeps unsent draft text per folder and hands it to the session the first message creates', () => {
+    useAgentStore.setState({ sessionId: null, isAgentWorking: false })
+    const setValue = mock((..._args: unknown[]) => {})
+    let result: ReturnType<typeof useSessionBootstrap> | null = null
+    const { rerender } = render(
+      <Harness
+        sessionId={null}
+        loadSession={mock(async () => {})}
+        connectStream={mock(() => new AbortController())}
+        inputRef={composerRef(setValue)}
+        onResult={(r) => { result = r }}
+      />,
+    )
+    // Writes are debounced; a page hide flushes them.
+    const stored = () => {
+      window.dispatchEvent(new Event('pagehide'))
+      return JSON.parse(localStorage.getItem('oa.drafts.composer.v1') ?? '[]') as Array<[string, { value: string }]>
+    }
+    act(() => { result!.handleDraftValueChange('half a thought') })
+    expect(stored()).toContainEqual(['draft:/repo/app', { value: 'half a thought' }])
+
+    // Another folder: the typed text comes along.
+    rerender(
+      <Harness
+        sessionId={null}
+        workspace="/repo/other"
+        loadSession={mock(async () => {})}
+        connectStream={mock(() => new AbortController())}
+        inputRef={composerRef(setValue)}
+        onResult={(r) => { result = r }}
+      />,
+    )
+    expect(stored()).toContainEqual(['draft:/repo/other', { value: 'half a thought' }])
+    expect(stored().some(([key]) => key === 'draft:/repo/app')).toBe(false)
+
+    // The first message creates the session: the draft moves to its id.
+    act(() => { useAgentStore.setState({ sessionId: 'new-session' }) })
+    expect(stored()).toContainEqual(['new-session', { value: 'half a thought' }])
+    expect(stored().some(([key]) => key === 'draft:/repo/other')).toBe(false)
   })
 })

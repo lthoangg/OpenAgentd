@@ -1,4 +1,4 @@
-//! Self-update from GitHub release archives (`openagentd upgrade` when the
+//! Self-update from GitHub release archives (`agentd upgrade` when the
 //! binary was not installed by Homebrew).
 //!
 //! v3 is not published to PyPI, so v2's uv/pipx/pip paths would install
@@ -6,7 +6,8 @@
 //! `openagentd-<version>-<target>.<tar.gz|zip>` plus its `.sha256` (the
 //! contract written by `.github/workflows/release.yml`), verifies it, and
 //! swaps every executable in the archive into the running binary's
-//! directory by rename.
+//! directory by rename. The archive name keeps the project name; inside are
+//! `agentd` and the `openagentd` compatibility alias.
 
 use anyhow::{anyhow, bail, Context, Result};
 use sha2::{Digest, Sha256};
@@ -93,8 +94,8 @@ pub fn extract(archive: &Path, dest: &Path) -> Result<Vec<PathBuf>> {
         }
     }
     out.sort();
-    if !out.iter().any(|p| p.file_stem().is_some_and(|s| s == "openagentd")) {
-        bail!("the archive does not contain the openagentd binary");
+    if !out.iter().any(|p| p.file_stem().is_some_and(|s| s == "agentd")) {
+        bail!("the archive does not contain the agentd binary");
     }
     Ok(out)
 }
@@ -174,7 +175,7 @@ async fn fetch(client: &reqwest::Client, url: &str) -> Result<Vec<u8>> {
 pub async fn update(base: &str, current: &str, install_dir: &Path) -> Result<Outcome> {
     let target = target_triple();
     if target == "unsupported" {
-        bail!("no prebuilt openagentd release for this platform");
+        bail!("no prebuilt agentd release for this platform");
     }
     let client = reqwest::Client::builder().user_agent(format!("openagentd/{current}")).build()?;
     let latest = latest_version(&client, base).await?;
@@ -235,8 +236,8 @@ mod tests {
 
     #[test]
     fn desktop_sidecar_is_detected() {
-        assert!(is_desktop_bundled(Path::new("/Applications/OpenAgentd.app/Contents/Resources/sidecar/bin/openagentd")));
-        assert!(!is_desktop_bundled(Path::new("/home/u/.local/bin/openagentd")));
+        assert!(is_desktop_bundled(Path::new("/Applications/OpenAgentd.app/Contents/Resources/sidecar/bin/agentd")));
+        assert!(!is_desktop_bundled(Path::new("/home/u/.local/bin/agentd")));
     }
 
     #[test]
@@ -254,7 +255,7 @@ mod tests {
         let mut builder = tar::Builder::new(flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast()));
         let executables = names.iter().map(|n| (*n, 0o755, format!("#!/bin/sh\necho {body}\n")));
         // Plus an AppleDouble entry, as macOS tar writes for files with xattrs.
-        let extras = [("LICENSE", 0o644, "license".to_string()), ("._openagentd", 0o755, "appledouble".to_string())];
+        let extras = [("LICENSE", 0o644, "license".to_string()), ("._agentd", 0o755, "appledouble".to_string())];
         for (name, mode, data) in executables.chain(extras) {
             let mut h = tar::Header::new_gnu();
             h.set_size(data.len() as u64);
@@ -298,18 +299,18 @@ mod tests {
     #[cfg(unix)]
     #[tokio::test]
     async fn update_replaces_every_binary_from_a_verified_archive() {
-        let archive = fake_archive(&["openagentd", "openagentd-extra"], "new");
+        let archive = fake_archive(&["agentd", "openagentd"], "new");
         let sha = format!("{:x}  x\n", Sha256::digest(&archive));
         let base = fake_releases("3.1.0", archive, sha).await;
         let dir = tempfile::tempdir().unwrap();
-        std::fs::write(dir.path().join("openagentd"), "old").unwrap();
+        std::fs::write(dir.path().join("agentd"), "old").unwrap();
 
         let outcome = update(&base, "3.0.0", dir.path()).await.unwrap();
         assert!(matches!(outcome, Outcome::Updated { ref to, .. } if to == "3.1.0"));
-        assert!(std::fs::read_to_string(dir.path().join("openagentd")).unwrap().contains("echo new"));
-        assert!(dir.path().join("openagentd-extra").is_file(), "companion binaries are installed too");
+        assert!(std::fs::read_to_string(dir.path().join("agentd")).unwrap().contains("echo new"));
+        assert!(dir.path().join("openagentd").is_file(), "the compatibility alias is installed too");
         assert!(!dir.path().join("LICENSE").exists(), "only executables are installed");
-        assert!(!dir.path().join("._openagentd").exists(), "AppleDouble entries are skipped");
+        assert!(!dir.path().join("._agentd").exists(), "AppleDouble entries are skipped");
         let leftovers: Vec<_> = std::fs::read_dir(dir.path()).unwrap().flatten().filter(|e| e.file_name().to_string_lossy().starts_with('.')).collect();
         assert!(leftovers.is_empty(), "no scratch files left behind");
 
@@ -319,13 +320,23 @@ mod tests {
     #[cfg(unix)]
     #[tokio::test]
     async fn update_refuses_a_tampered_archive() {
-        let archive = fake_archive(&["openagentd"], "evil");
+        let archive = fake_archive(&["agentd"], "evil");
         let base = fake_releases("3.1.0", archive, format!("{:x}  x\n", Sha256::digest(b"something else"))).await;
         let dir = tempfile::tempdir().unwrap();
-        std::fs::write(dir.path().join("openagentd"), "old").unwrap();
+        std::fs::write(dir.path().join("agentd"), "old").unwrap();
 
         let err = update(&base, "3.0.0", dir.path()).await.err().expect("must fail");
         assert!(format!("{err:#}").contains("checksum mismatch"), "{err:#}");
-        assert_eq!(std::fs::read_to_string(dir.path().join("openagentd")).unwrap(), "old");
+        assert_eq!(std::fs::read_to_string(dir.path().join("agentd")).unwrap(), "old");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn extract_requires_agentd() {
+        let dir = tempfile::tempdir().unwrap();
+        let archive = dir.path().join("a.tar.gz");
+        std::fs::write(&archive, fake_archive(&["openagentd"], "old name only")).unwrap();
+        let err = extract(&archive, &dir.path().join("x")).expect_err("must fail");
+        assert!(err.to_string().contains("agentd binary"), "{err:#}");
     }
 }

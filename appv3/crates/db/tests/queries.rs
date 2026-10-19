@@ -136,16 +136,66 @@ async fn session_pages_follow_their_cursor() {
     for i in 0..3 {
         ids.push(create_session(&pool, NewSession { workspace: "/tmp/ws".into(), title: Some(format!("s{i}")), ..Default::default() }).await.unwrap().id);
     }
-    let (first, cursor, more) = list_sessions_page(&pool, None, 2, &[], None).await.unwrap();
+    let all = SessionListFilter::default();
+    let (first, cursor, more) = list_sessions_page(&pool, None, 2, &all).await.unwrap();
     assert!(more);
     assert_eq!(first.iter().map(|s| s.id.clone()).collect::<Vec<_>>(), [ids[2].clone(), ids[1].clone()]);
     let cursor = cursor.expect("next cursor");
-    let (rest, _, more) = list_sessions_page(&pool, Some(&cursor), 2, &[], None).await.unwrap();
+    let (rest, _, more) = list_sessions_page(&pool, Some(&cursor), 2, &all).await.unwrap();
     assert!(!more);
     assert_eq!(rest.iter().map(|s| s.id.clone()).collect::<Vec<_>>(), [ids[0].clone()]);
     // Only the `<created_at>|<uuid>` form the server hands out is accepted.
     let bare = cursor.split('|').next().unwrap();
-    assert!(list_sessions_page(&pool, Some(bare), 2, &[], None).await.is_err());
+    assert!(list_sessions_page(&pool, Some(bare), 2, &all).await.is_err());
+}
+
+#[tokio::test]
+async fn activity_sort_pages_by_updated_at() {
+    let (_d, pool) = fresh().await;
+    let mut ids = vec![];
+    for i in 0..3 {
+        ids.push(create_session(&pool, NewSession { workspace: "/tmp/ws".into(), title: Some(format!("s{i}")), ..Default::default() }).await.unwrap().id);
+    }
+    // Touch the oldest: it becomes the most recently active.
+    update_session(&pool, &ids[0], SessionUpdate::title("renamed")).await.unwrap().unwrap();
+    let filter = SessionListFilter { sort: SessionSort::Activity, ..Default::default() };
+    let (first, cursor, more) = list_sessions_page(&pool, None, 2, &filter).await.unwrap();
+    assert!(more);
+    assert_eq!(first.iter().map(|s| s.id.clone()).collect::<Vec<_>>(), [ids[0].clone(), ids[2].clone()]);
+    let cursor = cursor.expect("next cursor");
+    let (rest, _, more) = list_sessions_page(&pool, Some(&cursor), 2, &filter).await.unwrap();
+    assert!(!more);
+    assert_eq!(rest.iter().map(|s| s.id.clone()).collect::<Vec<_>>(), [ids[1].clone()]);
+    assert!(list_sessions_page(&pool, Some("not-a-cursor"), 2, &filter).await.is_err());
+}
+
+#[tokio::test]
+async fn pinning_filters_lists_and_keeps_updated_at() {
+    let (_d, pool) = fresh().await;
+    let a = create_session(&pool, NewSession { workspace: "/w".into(), ..Default::default() }).await.unwrap();
+    let b = create_session(&pool, NewSession { workspace: "/w".into(), ..Default::default() }).await.unwrap();
+    let pinned = set_session_pinned(&pool, &api_uuid(&a.id), true).await.unwrap().unwrap();
+    assert!(pinned.pinned_at.is_some());
+    assert_eq!(pinned.updated_at, a.updated_at, "pinning must not bump updated_at");
+    // Re-pinning keeps the original pin time.
+    let again = set_session_pinned(&pool, &a.id, true).await.unwrap().unwrap();
+    assert_eq!(again.pinned_at, pinned.pinned_at);
+    assert!(api::session_response(&pinned, &Default::default())["pinned_at"].as_str().unwrap().ends_with('Z'));
+    assert!(api::session_response(&b, &Default::default()).get("pinned_at").is_none());
+
+    let ids = |rows: Vec<appv3_db::ChatSession>| rows.into_iter().map(|s| s.id).collect::<Vec<_>>();
+    let only = SessionListFilter { pinned: Some(true), ..Default::default() };
+    assert_eq!(ids(list_sessions_page(&pool, None, 10, &only).await.unwrap().0), vec![a.id.clone()]);
+    let unpinned = SessionListFilter { pinned: Some(false), ..Default::default() };
+    assert_eq!(ids(list_sessions_page(&pool, None, 10, &unpinned).await.unwrap().0), vec![b.id.clone()]);
+    assert_eq!(ids(list_pinned_sessions(&pool, &[]).await.unwrap()), vec![a.id.clone()]);
+    assert!(list_pinned_sessions(&pool, &["/elsewhere".to_string()]).await.unwrap().is_empty());
+
+    let cleared = set_session_pinned(&pool, &a.id, false).await.unwrap().unwrap();
+    assert!(cleared.pinned_at.is_none());
+    assert_eq!(cleared.updated_at, a.updated_at);
+    assert!(list_pinned_sessions(&pool, &[]).await.unwrap().is_empty());
+    assert!(set_session_pinned(&pool, "0190a1b2-0000-7000-8000-000000000000", true).await.unwrap().is_none());
 }
 
 #[tokio::test]
@@ -298,7 +348,7 @@ async fn real_v2_db_reads_existing_history() {
     std::fs::copy(&src, &copy).unwrap();
     let pool = create_pool(&copy).await.unwrap();
 
-    let (page, _cursor, _more) = list_sessions_page(&pool, None, 5, &[], None).await.unwrap();
+    let (page, _cursor, _more) = list_sessions_page(&pool, None, 5, &SessionListFilter::default()).await.unwrap();
     assert!(!page.is_empty(), "expected sessions in the v2 database");
     for s in &page {
         let hy = api_uuid(&s.id);

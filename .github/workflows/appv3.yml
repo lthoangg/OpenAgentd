@@ -82,7 +82,7 @@ jobs:
           OPENAGENTD_MODEL_REGISTRY_REFRESH: "false"
         run: |
           set -euo pipefail
-          bin=target/debug/openagentd
+          bin=target/debug/agentd
           [ "$RUNNER_OS" = "Windows" ] && bin="$bin.exe"
           "$bin" --version
           sb="$RUNNER_TEMP/oad-smoke"
@@ -97,11 +97,11 @@ jobs:
           curl -fsS "http://127.0.0.1:$port/api/health/ready"; echo
           kill "$pid" || true
 
-      # install.sh --cli / install.ps1 -Cli and `openagentd upgrade` against a
+      # install.sh --cli / install.ps1 -Cli and `agentd upgrade` against a
       # local fake release server (checksum, tamper refusal, self-update).
       - name: Installer + self-update e2e
         working-directory: .
         run: |
-          bin=appv3/target/debug/openagentd
+          bin=appv3/target/debug/agentd
           [ "$RUNNER_OS" = "Windows" ] && bin="$bin.exe"
           scripts/e2e_cli_install.sh "$bin"

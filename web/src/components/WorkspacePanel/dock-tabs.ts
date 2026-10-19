@@ -3,10 +3,10 @@
  *
  * The dock is an editor-style strip of file previews, full-height diffs,
  * commit views, web previews, and terminals. It starts empty, on a launcher.
- * Git, the agent task list, the scheduler, and the session plan are
- * singleton tabs opened on demand: Git from the status-bar branch or ⌘⇧G,
- * Tasks with ⌘T, Schedule from its command, the plan from the Tasks view,
- * a plan review, or the transcript.
+ * Git, the agent task list, the scheduler, the session plan, and `/btw` side
+ * questions are singleton tabs opened on demand: Git from the status-bar
+ * branch or ⌘⇧G, Tasks with ⌘T, Schedule from its command, the plan from the
+ * Tasks view, a plan review, or the transcript, side questions from `/btw`.
  * Tab ids are stable per target so re-opening a file, diff, or commit
  * focuses the existing tab instead of stacking duplicates.
  */
@@ -18,12 +18,14 @@ export const REVIEW_TAB_ID = 'review'
 export const TASKS_TAB_ID = 'tasks'
 export const SCHEDULE_TAB_ID = 'schedule'
 export const PLAN_TAB_ID = 'plan'
+export const BTW_TAB_ID = 'btw'
 
 export type DockTab =
   | { id: typeof REVIEW_TAB_ID; type: 'review'; title: 'Git' }
   | { id: typeof TASKS_TAB_ID; type: 'tasks'; title: 'Tasks' }
   | { id: typeof SCHEDULE_TAB_ID; type: 'schedule'; title: 'Schedule' }
   | { id: typeof PLAN_TAB_ID; type: 'plan'; title: 'Plan' }
+  | { id: typeof BTW_TAB_ID; type: 'btw'; title: 'BTW' }
   | { id: string; type: 'file'; title: string; file: WorkspaceFileInfo }
   | { id: string; type: 'diff'; title: string; path: string; status: ChangedFileStatus }
   | { id: string; type: 'commit'; title: string; commit: GitCommit }
@@ -37,8 +39,8 @@ export type DockTab =
 
 export type DockTabOf<T extends DockTab['type']> = Extract<DockTab, { type: T }>
 
-/** Singleton view tabs the shell can ask the dock to open (Git / Tasks / Scheduled Tasks / Plan). */
-export type DockView = 'review' | 'tasks' | 'schedule' | 'plan'
+/** Singleton view tabs the shell can ask the dock to open (Git / Tasks / Scheduled Tasks / Plan / BTW). */
+export type DockView = 'review' | 'tasks' | 'schedule' | 'plan' | 'btw'
 
 /**
  * A file tab's info at render time. Tabs keep the listing entry they opened
@@ -83,8 +85,9 @@ export const REVIEW_TAB: DockTabOf<'review'> = { id: REVIEW_TAB_ID, type: 'revie
 export const TASKS_TAB: DockTabOf<'tasks'> = { id: TASKS_TAB_ID, type: 'tasks', title: 'Tasks' }
 export const SCHEDULE_TAB: DockTabOf<'schedule'> = { id: SCHEDULE_TAB_ID, type: 'schedule', title: 'Schedule' }
 export const PLAN_TAB: DockTabOf<'plan'> = { id: PLAN_TAB_ID, type: 'plan', title: 'Plan' }
+export const BTW_TAB: DockTabOf<'btw'> = { id: BTW_TAB_ID, type: 'btw', title: 'BTW' }
 
-const VIEW_TABS: Record<DockView, DockTab> = { review: REVIEW_TAB, tasks: TASKS_TAB, schedule: SCHEDULE_TAB, plan: PLAN_TAB }
+const VIEW_TABS: Record<DockView, DockTab> = { review: REVIEW_TAB, tasks: TASKS_TAB, schedule: SCHEDULE_TAB, plan: PLAN_TAB, btw: BTW_TAB }
 
 /** The singleton tab a view request opens. */
 export function viewTab(view: DockView): DockTab {
@@ -92,8 +95,8 @@ export function viewTab(view: DockView): DockTab {
 }
 
 /** Tabs whose title is a plain label rather than a path or sha. */
-export function isViewTab(tab: DockTab): boolean {
-  return tab.type === 'review' || tab.type === 'tasks' || tab.type === 'schedule' || tab.type === 'plan'
+export function isViewTab(tab: DockTab): tab is DockTabOf<DockView> {
+  return Object.hasOwn(VIEW_TABS, tab.type)
 }
 
 export const fileTabId = (path: string) => `file:${path}`
@@ -137,6 +140,8 @@ export function dockTabLabel(tab: DockTab): string {
       return 'Scheduled tasks'
     case 'plan':
       return 'Session plan'
+    case 'btw':
+      return 'BTW side questions'
     case 'preview':
       return `Preview ${tab.title}`
     default:

@@ -66,7 +66,7 @@ body:
     attributes:
       label: OpenAgentd version
       description: |
-        In the app, open **Settings**; the version is next to "About OpenAgentd". In a terminal, run `openagentd --version`. From source, run `git rev-parse --short HEAD`. If you're not on the [latest release](https://github.com/lthoangg/OpenAgentd/releases/latest), please update and check whether the bug still happens.
+        In the app, open **Settings**; the version is next to "About OpenAgentd". In a terminal, run `agentd --version`. From source, run `git rev-parse --short HEAD`. If you're not on the [latest release](https://github.com/lthoangg/OpenAgentd/releases/latest), please update and check whether the bug still happens.
       placeholder: v3.10.0
     validations:
       required: true
@@ -84,7 +84,7 @@ body:
       label: How do you run OpenAgentd?
       options:
         - Desktop app
-        - CLI server (openagentd server) with the desktop app, a browser, or another client
+        - CLI server (agentd server) with the desktop app, a browser, or another client
         - iOS app connected to a server
         - From source (make dev or make run)
         - Other (describe below)
@@ -131,4 +131,4 @@ body:
     id: context
     attributes:
       label: Screenshots and other details
-      description: Screenshots or recordings, any workaround you found, and for install or setup problems the output of `openagentd doctor`.
+      description: Screenshots or recordings, any workaround you found, and for install or setup problems the output of `agentd doctor`.

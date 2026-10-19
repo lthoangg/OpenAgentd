@@ -88,21 +88,21 @@ jobs:
             end
 
             def install
-              # Every executable at the archive root (openagentd, plus any
-              # future companion binary).
+              # Every executable at the archive root (agentd, the openagentd
+              # alias, plus any future companion binary).
               Dir["*"].each { |f| bin.install f if File.file?(f) && File.executable?(f) }
             end
 
             def caveats
               <<~EOS
-                Run \`openagentd --help\` to get started, or see
+                Run \`agentd --help\` to get started, or see
                 https://github.com/lthoangg/openagentd for documentation.
-                Upgrade with \`brew upgrade openagentd\` (\`openagentd upgrade\` does this too).
+                Upgrade with \`brew upgrade openagentd\` (\`agentd upgrade\` does this too).
               EOS
             end
 
             test do
-              assert_match "openagentd v#{version}", shell_output("#{bin}/openagentd --version")
+              assert_match "agentd v#{version}", shell_output("#{bin}/agentd --version")
             end
           end
           FORMULA

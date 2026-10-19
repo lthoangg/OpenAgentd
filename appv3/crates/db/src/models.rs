@@ -34,6 +34,8 @@ pub struct ChatSession {
     pub history_revision: i64,
     pub history_structure_revision: i64,
     pub interaction_mode: String,
+    /// When the user pinned the session in the sidebar; `None` = unpinned.
+    pub pinned_at: Option<String>,
 }
 
 impl ChatSession {

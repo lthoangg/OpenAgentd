@@ -35,11 +35,11 @@ function installFetch() {
   }) as unknown as typeof fetch
 }
 
-function renderPanel(countEnabled = true) {
+function renderPanel(countEnabled = true, extra: { chipOnly?: boolean; onReopen?: () => void } = {}) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
     <QueryClientProvider client={client}>
-      <BtwPanel sessionId={S} countEnabled={countEnabled} />
+      <BtwPanel sessionId={S} countEnabled={countEnabled} {...extra} />
     </QueryClientProvider>,
   )
 }
@@ -77,6 +77,17 @@ describe('BtwPanel', () => {
     const { container } = renderPanel(false)
     expect(container.innerHTML).toBe('')
     expect(calls).toHaveLength(0)
+  })
+
+  it('chip-only (the dock shows them): never opens the panel, and the chip calls onReopen', async () => {
+    const onReopen = mock(() => {})
+    // ``ask`` marks the panel open; with the dock in charge it must not show.
+    act(() => useBtwStore.getState().reopen(S))
+    renderPanel(true, { chipOnly: true, onReopen })
+    const chip = await screen.findByRole('button', { name: 'Show side questions (2)' })
+    expect(screen.queryByRole('region', { name: 'Side question' })).toBeNull()
+    fireEvent.click(chip)
+    expect(onReopen).toHaveBeenCalledTimes(1)
   })
 
   it('opens on the newest exchange and steps back through earlier ones', async () => {

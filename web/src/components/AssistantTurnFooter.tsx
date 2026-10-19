@@ -184,7 +184,7 @@ export interface AssistantTurnProps {
  * calls, which otherwise rendered every one. The window stays anchored to the
  * newest steps while the turn streams.
  */
-export const TURN_BLOCK_WINDOW = 100
+export const TURN_BLOCK_WINDOW = 300
 
 export const AssistantTurn = memo(function AssistantTurn({
   blocks,

@@ -7,10 +7,10 @@
  *     replayed mid-turn state — see the comment inside the init effect).
  *   - Reconnect-on-visibility (tab refocus / ``pageshow``) so a
  *     backgrounded tab picks the stream back up.
- *   - Per-session composer drafts (kept in a ref keyed by session id so
- *     switching sessions restores the right unsent text).
- *   - ``handleNewSession`` — creates (or reuses) a session and navigates
- *     to it.
+ *   - Per-session composer drafts (keyed by session id, or ``draft:<path>``
+ *     on a new-session draft, so switching restores the right unsent text).
+ *   - ``handleNewSession`` — opens a new-session draft for the workspace
+ *     (``lib/new-session``); the first message creates the session.
  *   - The desktop tray label (a no-op outside Tauri).
  *   - Composer-focus plumbing: the ``focus-chat-input`` custom event, the
  *     bare-character-starts-typing shortcut, and the ``queue:restore-draft``
@@ -20,11 +20,9 @@
 import { useCallback, useEffect, useRef } from 'react'
 import type { RefObject } from 'react'
 import type { useNavigate } from '@tanstack/react-router'
-import type { QueryClient } from '@tanstack/react-query'
-import { resolveSession } from '@/api/client'
 import { useAgentStore } from '@/stores/useAgentStore'
-import { prependSession, prependWorkspaceSession } from '@/stores/cache-invalidation-bridge'
-import { saveLastWorkspace, workspaceLabel } from '@/utils/workspace'
+import { workspaceLabel } from '@/utils/workspace'
+import { draftComposerKey, startNewSession } from '@/lib/new-session'
 import { isChatWorkspacePath } from '@/queries/useChatWorkspace'
 import { setTraySession } from '@/lib/tray'
 import { isEditableTarget } from '@/lib/is-editable-target'
@@ -56,13 +54,10 @@ export interface UseSessionBootstrapArgs {
   isSessionLoading: boolean
   isMobile: boolean
   paletteOpen: boolean
-  sessionModel: string | null
-  sessionThinkingLevel: string | null
   sessionTitle: string | null
   isAgentWorking: boolean
   inputRef: RefObject<InputComposerHandle | null>
   navigate: ReturnType<typeof useNavigate>
-  queryClient: QueryClient
   connectStream: () => AbortController
   loadAgentStatus: (workspace?: string | null, expectedGeneration?: number, sessionId?: string | null) => Promise<void>
   loadSession: (sessionId: string, workspace?: string | null) => Promise<void>
@@ -86,13 +81,10 @@ export function useSessionBootstrap({
   isSessionLoading,
   isMobile,
   paletteOpen,
-  sessionModel,
-  sessionThinkingLevel,
   sessionTitle,
   isAgentWorking,
   inputRef,
   navigate,
-  queryClient,
   connectStream,
   loadAgentStatus,
   loadSession,
@@ -285,69 +277,66 @@ export function useSessionBootstrap({
 
   const handleNewSession = useCallback(() => {
     if (!workspace) return
+    const store = useAgentStore.getState()
+    // Already on an empty draft here, or on a saved session with nothing in
+    // it yet: there is nothing new to start.
+    if (!sessionId && !store.sessionId && !store.isAgentWorking) return
     if (isEmptyIdleSession()) return
     abortRef.current?.abort()
-    useAgentStore.getState()._abortController?.abort()
     abortRef.current = null
-    // Eagerly delete the current session's draft before beginResolvedSession
-    // resets store.sessionId to null. The InputComposer's onValueChange('') effect
-    // fires asynchronously after setValue(''), so by the time it calls
-    // handleDraftValueChange the session id is already gone and the delete
-    // never happens — leaving the old '/new' text to reappear on switch-back.
-    const departingSessionId = useAgentStore.getState().sessionId
+    // Eagerly delete the current session's draft before the store forgets
+    // its id. The InputComposer's onValueChange('') fires asynchronously
+    // after setValue(''), so by then the id is gone and the delete never
+    // happens — leaving the old '/new' text to reappear on switch-back.
+    const departingSessionId = store.sessionId
     if (departingSessionId) composerDrafts.delete(departingSessionId)
     inputRef.current?.setValue('')
     inputRef.current?.setFiles([])
-    ;(async () => {
-      try {
-        const sessionOptions = {
-          workspace,
-          model: sessionModel,
-          thinkingLevel: sessionThinkingLevel,
-        }
-        beginResolvedSession(null, sessionOptions)
-        const session = await resolveSession({
-          ...sessionOptions,
-          create: true,
-        })
-        // Re-read live state: the user may have changed the session model or
-        // thinking level (via Session Settings) while this request was in
-        // flight. Falling back to the props captured when "New session" was
-        // clicked would silently discard that choice.
-        const latest = useAgentStore.getState()
-        beginResolvedSession(session.id, {
-          workspace: session.workspace ?? workspace,
-          model: session.model ?? latest.sessionModel,
-          thinkingLevel: session.thinking_level ?? latest.sessionThinkingLevel,
-          skipInitialRestore: session.created,
-        })
-        if (session.created) {
-          prependSession(queryClient, session)
-        }
-        if (session.created) prependWorkspaceSession(queryClient, workspace, session)
-        saveLastWorkspace(workspace)
-        navigate({ to: '/$sessionId', params: { sessionId: session.id } })
-      } catch (err) {
-        useAgentStore.setState((state) => {
-          state.error = err instanceof Error ? err.message : 'Failed to create session'
-        })
-      }
-    })()
-  }, [beginResolvedSession, inputRef, isEmptyIdleSession, navigate, queryClient, sessionModel, sessionThinkingLevel, workspace])
+    startNewSession({ navigate, workspace, current: { sessionId, workspace } })
+  }, [inputRef, isEmptyIdleSession, navigate, sessionId, workspace])
 
   // Focus the chat input. Callable directly (shortcut / Command Palette)
   // or indirectly via `window.dispatchEvent(new CustomEvent('focus-chat-input'))`
   // — the latter decouples future callers (buttons elsewhere, other views)
   // from this component's ref.
   const handleDraftValueChange = useCallback((value: string) => {
-    const currentSessionId = useAgentStore.getState().sessionId
-    if (!currentSessionId) return
+    const key = useAgentStore.getState().sessionId ?? (!sessionId && workspace ? draftComposerKey(workspace) : null)
+    if (!key) return
     if (value) {
-      composerDrafts.set(currentSessionId, { value })
+      composerDrafts.set(key, { value })
       return
     }
-    composerDrafts.delete(currentSessionId)
-  }, [])
+    composerDrafts.delete(key)
+  }, [sessionId, workspace])
+
+  // A new-session draft keeps its unsent text per folder. Switching the
+  // draft to another folder carries what is typed along; an empty composer
+  // picks up that folder's saved text instead. When the first message
+  // creates the session, text typed meanwhile moves to the session's key.
+  const draftWorkspace = sessionId ? null : workspace
+  const previousDraftWorkspaceRef = useRef<string | null>(null)
+  useEffect(() => {
+    const previous = previousDraftWorkspaceRef.current
+    previousDraftWorkspaceRef.current = draftWorkspace
+    if (!draftWorkspace || previous === draftWorkspace) return
+    const typed = previous ? composerDrafts.get(draftComposerKey(previous))?.value : undefined
+    if (previous && typed) {
+      composerDrafts.delete(draftComposerKey(previous))
+      composerDrafts.set(draftComposerKey(draftWorkspace), { value: typed })
+      return
+    }
+    inputRef.current?.setValue(composerDrafts.get(draftComposerKey(draftWorkspace))?.value ?? '')
+  }, [draftWorkspace, inputRef])
+  useEffect(() => {
+    if (!draftWorkspace) return
+    return useAgentStore.subscribe((state, prev) => {
+      if (!state.sessionId || prev.sessionId) return
+      const key = draftComposerKey(draftWorkspace)
+      const pending = composerDrafts.get(key)
+      composerDrafts.delete(key)
+      if (pending?.value) composerDrafts.set(state.sessionId, pending)
+    })
+  }, [draftWorkspace])
 
   const focusInput = useCallback(() => {
     inputRef.current?.focus()

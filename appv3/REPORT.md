@@ -58,7 +58,7 @@ full suite was not re-run; the other rows cover code this change did not touch.
 | document / HTML conversion vs v2 (one-off, corpus in `/tmp/oad-eval`) | `read`/`web_fetch` documents (3 real PDFs + 17 anydoc fixtures); `web_fetch` on 34 real pages (docs, articles, blogs, listings, forums, error pages) | documents 20/20 byte-identical; `format="text"` 34/34 byte-identical; `format="markdown"` median word-F1 0.993 vs v2, 29/34 pages ≥ 0.9, code-block and heading counts match on 28 and 30 pages |
 
 I also checked the desktop sidecar contract by hand earlier.
-`openagentd server serve --host 127.0.0.1 --port 0 --handshake --parent-pid <pid>`
+`agentd server serve --host 127.0.0.1 --port 0 --handshake --parent-pid <pid>`
 with `OPENAGENTD_DESKTOP_TOKEN` printed the same handshake as v2, returned 401
 without the token and 200 with it, and shut down cleanly when the parent died.
 
@@ -354,7 +354,7 @@ explicitly.
   (from 3.0.0 on; `scripts/bump_version.sh` sets it and
   `scripts/check_version_consistency.sh` holds every other release-facing
   file to it). It shows in
-  `openagentd --version`, the sidecar handshake, `/api/health/live` and
+  `agentd --version`, the sidecar handshake, `/api/health/live` and
   `/api/health/ready`, the provider client headers (codex, copilot, grok),
   OTEL `telemetry.sdk.version`, and the JS plugin host's `version`.
 - **Diagnostics fields:** `runtime.python="n/a"` and
@@ -462,7 +462,7 @@ explicitly.
   captures settings at startup).
 - **LSP:** full port (`crates/tools/src/lsp/`: client, manager, managed
   Bun/TypeScript + PyPI ruff/ty installs, `lsp_install_required` event,
-  `LspHook`, `/api/settings/lsp*`, `openagentd lsp status|install`).
+  `LspHook`, `/api/settings/lsp*`, `agentd lsp status|install`).
   `diff_lsp.py` (fake stdio servers + mock PyPI/Bun host): 218/218
   identical. Deviations: "packaged" ruff/ty are looked up beside the v3
   executable (and `../bin`) instead of beside the Python interpreter; musl
@@ -774,6 +774,30 @@ explicitly.
   `db/src/queries/sessions.rs`, tested in `api/tests/http_api.rs`). The
   sidebar uses it to list a repository and its worktrees as one list. v2
   ignores `workspaces`, and the web client then filters the page it gets.
+- **Session list sort:** `GET /api/agent/sessions?sort=activity` orders by
+  `updated_at` (most recently touched first) and pages with a
+  `"<updated_at>|<uuid>"` cursor; `sort=created`, the default, keeps v2's
+  order, and any other value is a 422 `Invalid 'sort'.`. Migration 00000024
+  adds the `(parent_session_id[, workspace], updated_at, id)` indexes behind
+  it (`db/src/queries/sessions.rs`, tested in `db/tests/queries.rs` and
+  `api/tests/http_api.rs`). The sidebar's default "Recent activity" sort
+  uses it. v2 ignores `sort` and returns created order.
+- **Pinned sessions:** `chat_sessions.pinned_at` (migration 00000024) backs
+  the sidebar's **Pinned** section. `PATCH /api/agent/sessions/{id}` accepts
+  `{"pinned": true|false}`, alone or with `title`/`interaction_mode`; pinning
+  does not move `updated_at`, and a child session is not found, as for other
+  updates. `SessionResponse` gains `pinned_at`, omitted when unpinned.
+  `GET /api/agent/sessions?pinned=true` returns every pinned session as one
+  page (most recently pinned first); `pinned=false` leaves pinned sessions
+  out of a normal page. `active=true` ignores both. v2 has no pins: it
+  ignores the filter and the PATCH field, so a pin-only PATCH fails there as
+  an empty update.
+- **Chat-created sessions register their folder:** `POST /api/agent/chat`
+  without a `session_id` starts a session, and v3 now records its folder as a
+  sidebar workspace the same way `/sessions/resolve` does (a managed worktree
+  under its source repository; never the Chat workspace). The web's lazy
+  new-session draft relies on it so a first message in a new folder lands in
+  the tree. v2 does not register the folder here.
 - **Bundled skills:** v3 bundles one skill, `self-healing`
   (`contract/builtin_skills/self-healing`). Its `SKILL.md` is an index of
   `references/*.md` files, plus the plugin typings (`jsplugin/openagentd.d.ts`).

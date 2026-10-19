@@ -2,7 +2,7 @@
 <!--
   Windows Firewall rule for the builtin backend, added by the MSI.
 
-  "Network access" makes the bundled sidecar (sidecar\bin\openagentd.exe)
+  "Network access" makes the bundled sidecar (sidecar\bin\agentd.exe)
   listen on 0.0.0.0. Without a rule, Windows asks on first use; allowing
   needs an administrator, and Cancel saves a block rule. The MSI already
   runs elevated (perMachine), so it adds the allow rule once and removes it
@@ -25,7 +25,7 @@
         <fire:FirewallException
           Id="SidecarPrivateNetworks"
           Name="OpenAgentd Network access"
-          Program="[INSTALLDIR]sidecar\bin\openagentd.exe"
+          Program="[INSTALLDIR]sidecar\bin\agentd.exe"
           Protocol="tcp"
           Profile="private"
           Scope="any"

@@ -350,6 +350,53 @@ async fn http_api_end_to_end() {
     assert_eq!(ids(&v), vec![sid.clone()], "{v}");
     let (_, v) = c.json("GET", &format!("/api/agent/sessions?active=true&workspaces={}", enc(tree)), None).await;
     assert_eq!(v["data"], json!([]), "{v}");
+
+    // A first chat with no session id registers its folder as a sidebar
+    // workspace (the web's lazy new-session draft).
+    let (st, v) = c.json("GET", "/api/agent/workspace/tree", None).await;
+    assert_eq!(st, StatusCode::OK, "{v}");
+    assert!(v["repositories"].as_array().unwrap().iter().any(|r| r["path"] == json!(sid_ws)), "{v}");
+
+    // `sort` (v3 addition): `activity` orders by last touch, `created` (the
+    // default) by creation; anything else is rejected.
+    let (st, v) = c.json("GET", "/api/agent/sessions?sort=bogus", None).await;
+    assert_eq!((st, v), (StatusCode::UNPROCESSABLE_ENTITY, json!({"detail": "Invalid 'sort'."})));
+    let (st, v) = c.json("PATCH", &format!("/api/agent/sessions/{sid}"), Some(json!({"title": "Touched"}))).await;
+    assert_eq!(st, StatusCode::OK, "{v}");
+    let both = format!("workspaces={}&workspaces={}", enc(&sid_ws), enc(tree));
+    let (_, v) = c.json("GET", &format!("/api/agent/sessions?{both}&sort=activity"), None).await;
+    assert_eq!(ids(&v), vec![sid.clone(), other_id.clone()], "{v}");
+    let (_, v) = c.json("GET", &format!("/api/agent/sessions?{both}&sort=created"), None).await;
+    assert_eq!(ids(&v), vec![other_id.clone(), sid.clone()], "{v}");
+
+    // `pinned` (v3 addition): PATCH pins without touching `updated_at`; the
+    // list filter keeps only pinned or only unpinned sessions.
+    let other_uri = format!("/api/agent/sessions/{other_id}");
+    let (_, before) = c.json("GET", &other_uri, None).await;
+    assert!(before.get("pinned_at").is_none(), "{before}");
+    let (st, v) = c.json("PATCH", &other_uri, Some(json!({"pinned": "yes"}))).await;
+    assert_eq!(st, StatusCode::UNPROCESSABLE_ENTITY, "{v}");
+    assert_eq!(v["detail"][0]["type"], "bool_type", "{v}");
+    let (st, v) = c.json("PATCH", &other_uri, Some(json!({}))).await;
+    assert_eq!(st, StatusCode::UNPROCESSABLE_ENTITY, "{v}");
+    let (st, v) = c.json("PATCH", &other_uri, Some(json!({"pinned": true}))).await;
+    assert_eq!(st, StatusCode::OK, "{v}");
+    assert!(v["pinned_at"].is_string(), "{v}");
+    assert_eq!(v["updated_at"], before["updated_at"], "pinning bumped updated_at");
+    let (_, v) = c.json("GET", &format!("/api/agent/sessions?{both}&pinned=true"), None).await;
+    assert_eq!((ids(&v), v["has_more"].clone()), (vec![other_id.clone()], json!(false)), "{v}");
+    let (_, v) = c.json("GET", &format!("/api/agent/sessions?{both}&pinned=false"), None).await;
+    assert_eq!(ids(&v), vec![sid.clone()], "{v}");
+    let (_, v) = c.json("GET", &format!("/api/agent/sessions?{both}"), None).await;
+    assert_eq!(ids(&v).len(), 2, "no pinned filter lists both: {v}");
+    // Only top-level sessions can be pinned: a child is not found here.
+    let child = appv3_db::create_session(&pool, appv3_db::NewSession { workspace: tree.into(), parent_session_id: Some(other.id.clone()), ..Default::default() }).await.unwrap();
+    let (st, _) = c.json("PATCH", &format!("/api/agent/sessions/{}", appv3_db::codec::api_uuid(&child.id)), Some(json!({"pinned": true}))).await;
+    assert_eq!(st, StatusCode::NOT_FOUND);
+    let (st, v) = c.json("PATCH", &other_uri, Some(json!({"pinned": false}))).await;
+    assert_eq!(st, StatusCode::OK, "{v}");
+    assert!(v.get("pinned_at").is_none(), "{v}");
+
     let (st, _) = c.json("DELETE", &format!("/api/agent/sessions/{other_id}"), None).await;
     assert_eq!(st, StatusCode::NO_CONTENT);
 

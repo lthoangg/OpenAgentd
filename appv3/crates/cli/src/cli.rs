@@ -1,6 +1,6 @@
-//! The `openagentd` command tree.
+//! The `agentd` command tree.
 //!
-//! Bare `openagentd` prints help; the name is kept for a future TUI.
+//! Bare `agentd` prints help; the name is kept for a future TUI.
 
 use clap::builder::PossibleValuesParser;
 use clap::{Args, Parser, Subcommand, ValueEnum};
@@ -8,14 +8,14 @@ use std::path::PathBuf;
 
 const EXAMPLES: &str = "\
 Examples:
-  openagentd server start                        Start the background server
-  openagentd server start --host 0.0.0.0 --key   Serve phones and other computers on the LAN
-  openagentd server status                       Check the background server
-  openagentd run --prompt 'Summarize this repo'  Run one agent turn in this folder
-  openagentd auth copilot                        Log in to an OAuth provider";
+  agentd server start                          Start the background server
+  agentd server start --public --key --qr      Serve phones on the LAN and show a QR code to scan
+  agentd server status                         Check the background server
+  agentd run --prompt 'Summarize this repo'    Run one agent turn in this folder
+  agentd auth copilot                          Log in to an OAuth provider";
 
 #[derive(Debug, Parser)]
-#[command(name = "openagentd", version = concat!("v", env!("CARGO_PKG_VERSION")), about = "OpenAgentd — local-first coding agent", after_help = EXAMPLES)]
+#[command(name = "agentd", version = concat!("v", env!("CARGO_PKG_VERSION")), about = "OpenAgentd — local-first coding agent", after_help = EXAMPLES)]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Option<Command>,
@@ -40,7 +40,7 @@ pub enum Command {
     /// Inspect or install managed language servers
     #[command(subcommand)]
     Lsp(LspCmd),
-    /// Update openagentd to the latest release
+    /// Update agentd to the latest release
     #[command(visible_alias = "update")]
     Upgrade,
 }
@@ -55,7 +55,7 @@ pub enum ServerCmd {
     Restart(StartArgs),
     /// Show whether the server is running and healthy
     #[command(alias = "health")]
-    Status(AddrArgs),
+    Status(StatusArgs),
     /// Follow the server log
     Logs(LogsArgs),
     /// Run the server in the foreground (desktop sidecar, `make run`)
@@ -76,12 +76,29 @@ pub struct AddrArgs {
 pub struct StartArgs {
     #[command(flatten)]
     pub addr: AddrArgs,
+    /// Listen on every interface (0.0.0.0) so phones and other computers can
+    /// connect; needs an access key
+    #[arg(long, conflicts_with = "host")]
+    pub public: bool,
     /// Prompt for the access key clients must send (required beyond loopback)
     #[arg(long)]
     pub key: bool,
     /// Wait until the server is ready (up to 30 s); exit 1 if it is not
     #[arg(long)]
     pub wait: bool,
+    /// Print a QR code the OpenAgentd mobile app can scan to connect (needs a
+    /// LAN host and an access key)
+    #[arg(long)]
+    pub qr: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct StatusArgs {
+    #[command(flatten)]
+    pub addr: AddrArgs,
+    /// Print a QR code the OpenAgentd mobile app can scan to connect
+    #[arg(long)]
+    pub qr: bool,
 }
 
 #[derive(Debug, Args)]
@@ -211,7 +228,7 @@ pub struct ExportArgs {
 
 #[derive(Debug, Args)]
 pub struct ImportArgs {
-    /// Archive made by `openagentd transfer export`
+    /// Archive made by `agentd transfer export`
     pub archive: PathBuf,
     /// Overwrite files that already exist
     #[arg(long)]
@@ -271,7 +288,7 @@ mod tests {
     use clap::CommandFactory;
 
     fn parse(args: &[&str]) -> Result<Option<Command>, clap::Error> {
-        Cli::try_parse_from(std::iter::once("openagentd").chain(args.iter().copied())).map(|c| c.command)
+        Cli::try_parse_from(std::iter::once("agentd").chain(args.iter().copied())).map(|c| c.command)
     }
 
     fn kind(args: &[&str]) -> ErrorKind {
@@ -285,11 +302,11 @@ mod tests {
 
     #[test]
     fn version_matches_the_release_contract() {
-        assert_eq!(Cli::command().render_version(), format!("openagentd v{}\n", appv3_core::VERSION));
+        assert_eq!(Cli::command().render_version(), format!("agentd v{}\n", appv3_core::VERSION));
     }
 
     #[test]
-    fn bare_openagentd_has_no_command() {
+    fn bare_agentd_has_no_command() {
         assert!(parse(&[]).unwrap().is_none());
     }
 
@@ -308,12 +325,27 @@ mod tests {
             panic!("not start")
         };
         assert_eq!((a.addr.host.as_deref(), a.addr.port, a.key, a.wait), (Some("0.0.0.0"), Some(9000), true, true));
+        assert!(!a.public && !a.qr);
         assert_eq!(kind(&["server", "start", "--port", "0"]), ErrorKind::ValueValidation);
     }
 
     #[test]
+    fn public_and_qr_flags() {
+        let Some(Command::Server(ServerCmd::Start(a))) = parse(&["server", "start", "--public", "--port", "4082", "--key", "--qr"]).unwrap() else { panic!("not start") };
+        assert_eq!((a.public, a.qr, a.addr.host.as_deref(), a.addr.port), (true, true, None, Some(4082)));
+        let Some(Command::Server(ServerCmd::Restart(r))) = parse(&["server", "restart", "--public", "--qr"]).unwrap() else { panic!("not restart") };
+        assert!(r.public && r.qr);
+        assert_eq!(kind(&["server", "start", "--public", "--host", "1.2.3.4"]), ErrorKind::ArgumentConflict);
+        let Some(Command::Server(ServerCmd::Status(s))) = parse(&["server", "status", "--qr"]).unwrap() else { panic!("not status") };
+        assert!(s.qr);
+    }
+
+    #[test]
     fn health_is_a_hidden_alias_of_status() {
-        assert!(matches!(parse(&["server", "health", "--port", "5000"]).unwrap(), Some(Command::Server(ServerCmd::Status(AddrArgs { port: Some(5000), .. })))));
+        assert!(matches!(
+            parse(&["server", "health", "--port", "5000"]).unwrap(),
+            Some(Command::Server(ServerCmd::Status(StatusArgs { addr: AddrArgs { port: Some(5000), .. }, qr: false })))
+        ));
         let mut server = Cli::command().find_subcommand("server").unwrap().clone();
         assert!(!server.render_help().to_string().lines().any(|l| l.trim_start().starts_with("health")));
     }

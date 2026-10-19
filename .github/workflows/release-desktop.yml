@@ -6,7 +6,7 @@ name: Release Desktop
 #   - Windows x64 (.msi)
 #   - Linux x64  (.AppImage, .deb)
 #
-# Each app bundles, as its backend sidecar (sidecar-bundle/bin/openagentd),
+# Each app bundles, as its backend sidecar (sidecar-bundle/bin/agentd),
 # the CLI archive that ``release.yml`` published for the same version, so
 # users get one binary whether they install the CLI or the desktop app.
 # Outputs are attached to the GitHub Release matching the appv3/Cargo.toml
@@ -131,9 +131,9 @@ jobs:
           else tar -xzf "$dl/$archive" -C "$dl/x"; fi
           rm -rf desktop/sidecar-bundle
           mkdir -p desktop/sidecar-bundle/bin
-          cp "$dl/x/openagentd$exe" "desktop/sidecar-bundle/bin/openagentd$exe"
-          reported=$("desktop/sidecar-bundle/bin/openagentd$exe" --version | tr -d '\r')
-          [ "$reported" = "openagentd v$VERSION" ] || { echo "sidecar version mismatch: $reported"; exit 1; }
+          cp "$dl/x/agentd$exe" "desktop/sidecar-bundle/bin/agentd$exe"
+          reported=$("desktop/sidecar-bundle/bin/agentd$exe" --version | tr -d '\r')
+          [ "$reported" = "agentd v$VERSION" ] || { echo "sidecar version mismatch: $reported"; exit 1; }
           du -sh desktop/sidecar-bundle
 
       - name: Install Linux WebKitGTK + AppImage deps

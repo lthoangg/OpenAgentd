@@ -71,6 +71,10 @@ describe('coding workspace persistence', () => {
     expect(shouldRestoreLastWorkspace(undefined, '/', true)).toBe(false)
   })
 
+  it('does not restore over a new-session draft', () => {
+    expect(shouldRestoreLastWorkspace(undefined, '/', false, '/repo/project')).toBe(false)
+  })
+
   it('does not reuse a previous workspace while direct session details are loading', () => {
     expect(workspaceFromSession('sid', undefined)).toBeNull()
   })

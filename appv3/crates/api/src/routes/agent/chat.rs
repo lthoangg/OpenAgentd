@@ -173,6 +173,14 @@ async fn agent_chat(State(st): State<AppState>, req: Request) -> ApiResult<Respo
         appv3_agent::service::interrupt_agent(&agent, Some(&sid)).await;
         return Ok(json_code(202, json!({"status": "interrupted", "session_id": sid, "message_id": null})));
     }
+    // A first message with no session id starts a session (the web's lazy
+    // new-session draft): make its folder a sidebar workspace like
+    // `/sessions/resolve` does, so the new session has a tree row to sit in.
+    if resolved.existed_id.is_none() {
+        if let Some(w) = ws.as_deref() {
+            register_session_workspace(&st.pool, w).await?;
+        }
+    }
     let message = message.unwrap_or_default();
     let attachments = form.files;
     // A message sent right after Stop (Stop & send, or another client) would
@@ -633,6 +641,19 @@ async fn list_sessions(State(st): State<AppState>, q: Qs) -> ApiResult<Response>
     workspaces.extend(q.get_all("workspaces"));
     let running = running_set();
     let awaiting = db::sessions_awaiting_input(&st.pool).await?;
+    // `sort` and `pinned` are v3 additions (the sidebar's view options); v2
+    // ignores them. `sort=activity` orders by `updated_at`; `pinned=true` is
+    // every pinned session in one page, `pinned=false` leaves them out.
+    let sort = match q.opt("sort").as_deref() {
+        None | Some("") | Some("created") => db::SessionSort::Created,
+        Some("activity") => db::SessionSort::Activity,
+        Some(_) => return Err(ApiError::unprocessable("Invalid 'sort'.")),
+    };
+    let pinned = match q.opt("pinned").as_deref() {
+        Some("true") => Some(true),
+        Some("false") => Some(false),
+        _ => None,
+    };
     // v3 addition: every session running or waiting on the user, in one page,
     // however old — the sidebar's "Needs you" list and the badge counts. v2
     // ignores the parameter and returns a normal page.
@@ -642,12 +663,13 @@ async fn list_sessions(State(st): State<AppState>, q: Qs) -> ApiResult<Response>
         rows.retain(|s| s.parent_session_id.is_none() && (workspaces.is_empty() || workspaces.contains(&s.workspace)));
         rows.sort_by(|a, b| (&b.created_at, &b.id).cmp(&(&a.created_at, &a.id)));
         (rows, None, false)
+    } else if pinned == Some(true) {
+        (db::list_pinned_sessions(&st.pool, &workspaces).await?, None, false)
     } else {
         // `q` is a v3 addition too (sidebar search); v2 ignores it.
         let title_query = q.opt("q");
-        db::list_sessions_page(&st.pool, before.as_deref(), limit, &workspaces, title_query.as_deref().map(str::trim))
-            .await
-            .map_err(|_| ApiError::unprocessable("Invalid 'before' cursor."))?
+        let filter = db::SessionListFilter { workspaces: &workspaces, title_query: title_query.as_deref().map(str::trim), sort, pinned };
+        db::list_sessions_page(&st.pool, before.as_deref(), limit, &filter).await.map_err(|_| ApiError::unprocessable("Invalid 'before' cursor."))?
     };
     let ids: Vec<String> = sessions.iter().map(|s| s.id.clone()).collect();
     let children = db::list_child_sessions(&st.pool, &ids).await?;
@@ -667,6 +689,24 @@ async fn list_sessions(State(st): State<AppState>, q: Qs) -> ApiResult<Response>
         })
         .collect();
     Ok(json(json!({"data": data, "next_cursor": next_cursor, "has_more": has_more})))
+}
+
+/// Record a session's folder as a sidebar workspace (a managed worktree
+/// under its source repository). The Chat workspace is never listed.
+async fn register_session_workspace(pool: &DbPool, workspace: &str) -> ApiResult<()> {
+    if workspace.is_empty() || settings().is_chat_workspace(Some(Path::new(workspace))) {
+        return Ok(());
+    }
+    match worktrees::find_managed_worktree_source(Path::new(workspace)).await {
+        Some(source) => {
+            db::upsert_coding_workspace(pool, &source, "repo", None, None, false, false).await?;
+            db::upsert_coding_workspace(pool, workspace, "worktree", Some(&source), None, true, false).await?;
+        }
+        None => {
+            db::upsert_coding_workspace(pool, workspace, "repo", None, None, false, false).await?;
+        }
+    }
+    Ok(())
 }
 
 async fn resolve_session(State(st): State<AppState>, raw: Bytes) -> ApiResult<Response> {
@@ -718,17 +758,7 @@ async fn resolve_session(State(st): State<AppState>, raw: Bytes) -> ApiResult<Re
                 .await?
         }
     };
-    if !workspace.is_empty() && !settings().is_chat_workspace(Some(Path::new(&workspace))) {
-        match worktrees::find_managed_worktree_source(Path::new(&workspace)).await {
-            Some(source) => {
-                db::upsert_coding_workspace(&st.pool, &source, "repo", None, None, false, false).await?;
-                db::upsert_coding_workspace(&st.pool, &workspace, "worktree", Some(&source), None, true, false).await?;
-            }
-            None => {
-                db::upsert_coding_workspace(&st.pool, &workspace, "repo", None, None, false, false).await?;
-            }
-        }
-    }
+    register_session_workspace(&st.pool, &workspace).await?;
     let mut m = session_response(&session, &SessionOverlay::default());
     m.insert("created".into(), json!(created));
     Ok(json(Value::Object(m)))
@@ -774,11 +804,20 @@ async fn update_session(State(st): State<AppState>, AxPath(raw): AxPath<String>,
             None
         }
     };
+    // v3 addition: pin or unpin the session in the sidebar.
+    let pinned = match b.get("pinned") {
+        None | Some(Value::Null) => None,
+        Some(Value::Bool(p)) => Some(*p),
+        Some(o) => {
+            errs.push(verr("bool_type", &loc(&["body", "pinned"]), "Input should be a valid boolean", o.clone()));
+            None
+        }
+    };
     if !errs.is_empty() {
         return Err(ApiError::validation(errs));
     }
-    if title.is_none() && mode.is_none() {
-        return Err(value_error("Provide a title or interaction_mode.", b));
+    if title.is_none() && mode.is_none() && pinned.is_none() {
+        return Err(value_error("Provide a title, interaction_mode or pinned.", b));
     }
     let clean_title = |t: &Option<String>| -> ApiResult<Option<String>> {
         match t {
@@ -794,6 +833,12 @@ async fn update_session(State(st): State<AppState>, AxPath(raw): AxPath<String>,
     };
     let live = mode.as_ref().and_then(|_| manager::find_live_session_serving_session(&sid));
     let row = db::get_session(&st.pool, &sid).await?.filter(|s| s.parent_session_id.is_none()).ok_or_else(|| ApiError::not_found("Session not found."))?;
+    // Pinning never touches `updated_at`, so it runs first and the other
+    // updates below return the row with the new pin.
+    let row = match pinned {
+        Some(p) => db::set_session_pinned(&st.pool, &sid, p).await?.unwrap_or(row),
+        None => row,
+    };
     if let Some(live) = live.filter(|l| l.is_busy()) {
         let m = mode.clone().unwrap();
         live.queue_interaction_mode(&m);

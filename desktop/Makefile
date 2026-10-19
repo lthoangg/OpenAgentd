@@ -1,4 +1,4 @@
-# Build the desktop app and its backend sidecar: the native ``openagentd``
+# Build the desktop app and its backend sidecar: the native ``agentd``
 # binary from ``appv3/``, copied to ``sidecar-bundle/bin/``.
 #
 # Targets:
@@ -42,10 +42,10 @@ sidecar:
 	cargo build --locked --profile $(PROFILE) --manifest-path ../appv3/Cargo.toml -p appv3-cli $(if $(TARGET),--target $(TARGET),)
 	@rm -rf "$(BUNDLE)"
 	@mkdir -p "$(BUNDLE)/bin"
-	@cp -f "$(BIN_DIR)/openagentd$(EXE)" "$(BUNDLE)/bin/openagentd$(EXE)"
+	@cp -f "$(BIN_DIR)/agentd$(EXE)" "$(BUNDLE)/bin/agentd$(EXE)"
 	@# GNU strip (e.g. from Git Bash) can corrupt MSVC executables; skip it there.
-	@if [ -z "$(EXE)" ] && command -v strip >/dev/null 2>&1; then strip "$(BUNDLE)/bin/openagentd$(EXE)"; fi
-	@"$(BUNDLE)/bin/openagentd$(EXE)" --version
+	@if [ -z "$(EXE)" ] && command -v strip >/dev/null 2>&1; then strip "$(BUNDLE)/bin/agentd$(EXE)"; fi
+	@"$(BUNDLE)/bin/agentd$(EXE)" --version
 	@du -sh "$(BUNDLE)"
 
 open:

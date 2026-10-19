@@ -1,7 +1,7 @@
 # Rust Backend (v3) Guide
 
-`appv3/` is the native `openagentd` backend. It ships as the CLI release
-binary and as the desktop sidecar (`desktop/sidecar-bundle/bin/openagentd`).
+`appv3/` is the native `agentd` backend. It ships as the CLI release
+binary and as the desktop sidecar (`desktop/sidecar-bundle/bin/agentd`).
 It reads the database and config files of the end-of-life Python backend in
 `app/`. Its HTTP/SSE/WebSocket API started as v2's and now differs where
 `REPORT.md` says.
@@ -19,7 +19,7 @@ It reads the database and config files of the end-of-life Python backend in
 - `providers`, `tools`, `mcp`, `memory`, `terminal`, `jsplugin`: the model
   providers, built-in tools, MCP client, memory pages, PTY terminal, and
   the QuickJS plugin host.
-- `cli`: the `openagentd` binary (`server serve` is the sidecar entry point).
+- `cli`: the `agentd` binary (`server serve` is the sidecar entry point).
 - `contract/`: data shared with other surfaces. `sse_events.json` lists
   every SSE event type per stream. Rust checks each published event against
   it (`agent/src/events.rs`; debug builds panic), and

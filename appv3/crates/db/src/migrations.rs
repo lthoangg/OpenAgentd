@@ -1,14 +1,18 @@
 //! Schema management — a replay of v2's Alembic chain
-//! (`app/migrations/versions/00000001` … `00000022`).
+//! (`app/migrations/versions/00000001` … `00000022`), then v3's own
+//! revisions (00000023 on).
 //!
 //! `resources/migrations/000000NN.sql` hold the exact statements v2's Alembic
 //! executes for each revision on SQLite (captured once from `alembic upgrade`
 //! with a `before_cursor_execute` hook, one revision at a time; reflection
 //! PRAGMAs and SELECTs dropped, statements separated by `-- ;;`): the same
 //! DDL, batch-mode table copies, backfill SQL and `alembic_version` stamps.
-//! A new v2 revision must be captured the same way. Replaying them gives
-//! a fresh or older database the same `sqlite_master` and data v2 would
-//! leave behind, so both versions can keep sharing the file.
+//! Replaying them gives a fresh or older database the same `sqlite_master`
+//! and data v2 left behind, so a v2 install upgrades in place.
+//!
+//! From 00000023 the revisions are v3's: hand-written SQL in the same file
+//! format, each ending with its `alembic_version` stamp. A database stamped
+//! past 00000022 no longer opens in v2, which is end-of-life.
 //!
 //! The data-dependent or introspecting parts of v2's migrations are done in
 //! code: 00000013 slugifies each scheduled task's name in Python, 00000013
@@ -25,27 +29,21 @@ use sqlx::{Connection, SqliteConnection, SqlitePool};
 use std::path::Path;
 
 /// Alembic head revision this build is schema-compatible with.
-pub const ALEMBIC_HEAD: &str = "00000022";
-
-/// Indexes v3 adds on top of v2's head schema, outside the Alembic chain:
-/// no revision stamp moves, so a v2 build still opens the file, and v2 only
-/// ever sees extra indexes. Created idempotently on every open.
-pub const V3_INDEXES: [&str; 2] = [
-    // History loads sum usage per session: the indexed `json_extract` values
-    // spare parsing every row's `extra` (whole tool results and image
-    // parts). SQLite ≥ 3.47 also reads the sum from the index alone; the
-    // bundled 3.46 still visits each row.
-    "CREATE INDEX IF NOT EXISTS ix_session_messages_usage ON session_messages \
-     (session_id, kind, json_extract(extra, '$.usage.cost.estimated_usd'), json_extract(extra, '$.usage.output'))",
-    // Queued rows in transcript order. Every model call asks whether any
-    // exist, and listing or promoting them sorts by `seq`, which otherwise
-    // walks the whole session on `(session_id, seq, id)`. Holding only queued
-    // rows, it costs ordinary inserts nothing.
-    "CREATE INDEX IF NOT EXISTS ix_session_messages_queued ON session_messages (session_id, seq, id) WHERE kind = 'queued'",
-];
+pub const ALEMBIC_HEAD: &str = "00000023";
 
 /// `(revision, statements)` in upgrade order.
-pub const MIGRATIONS: [(&str, &str); 22] = [
+///
+/// v3 revisions:
+/// - 00000023: the two `session_messages` indexes earlier v3 builds created
+///   on every open (`IF NOT EXISTS`, so those databases keep theirs):
+///   `ix_session_messages_usage` lets history loads sum usage without
+///   parsing every row's `extra`; the partial `ix_session_messages_queued`
+///   answers the per-model-call queued probe without walking the session.
+///   Plus `side_questions` (`/btw`), clustered `WITHOUT ROWID` on
+///   `(session_id, id)` with UUIDv7 ids: a session's side questions are one
+///   time-ordered B-tree range, so list, count, recent-N and per-session
+///   delete are range scans with no secondary index to maintain.
+pub const MIGRATIONS: [(&str, &str); 23] = [
     ("00000001", include_str!("../resources/migrations/00000001.sql")),
     ("00000002", include_str!("../resources/migrations/00000002.sql")),
     ("00000003", include_str!("../resources/migrations/00000003.sql")),
@@ -68,6 +66,7 @@ pub const MIGRATIONS: [(&str, &str); 22] = [
     ("00000020", include_str!("../resources/migrations/00000020.sql")),
     ("00000021", include_str!("../resources/migrations/00000021.sql")),
     ("00000022", include_str!("../resources/migrations/00000022.sql")),
+    ("00000023", include_str!("../resources/migrations/00000023.sql")),
 ];
 
 /// Split a captured revision file into statements.
@@ -258,16 +257,8 @@ pub async fn upgrade(conn: &mut SqliteConnection) -> Result<SchemaState> {
     })
 }
 
-async fn ensure_v3_indexes(conn: &mut SqliteConnection) -> Result<()> {
-    for stmt in V3_INDEXES {
-        exec(conn, stmt).await?;
-    }
-    Ok(())
-}
-
 /// `run_migrations()`: upgrade to head with `foreign_keys=OFF` on one pooled
-/// connection, serialised by the sibling `.migrate.lock` file, then add
-/// [`V3_INDEXES`].
+/// connection, serialised by the sibling `.migrate.lock` file.
 pub async fn run_migrations(pool: &SqlitePool) -> Result<SchemaState> {
     let db_file: Option<std::path::PathBuf> = {
         let rows: Vec<(i64, String, String)> = sqlx::query_as("PRAGMA database_list").fetch_all(pool).await?;
@@ -285,7 +276,6 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<SchemaState> {
     if state != SchemaState::Current {
         tracing::info!("auto_migrate_complete");
     }
-    ensure_v3_indexes(&mut conn).await?;
     if db_file.is_some() {
         // `_optimize_sqlite` (best-effort).
         if state == SchemaState::Current {
@@ -329,7 +319,8 @@ fn migration_lock(db: &Path) -> Result<std::fs::File> {
 mod tests {
     use super::*;
 
-    /// DDL of a v2 database at head (`sqlite3 openagentd.db .schema`).
+    /// DDL of a v2 database at 00000022 (`sqlite3 openagentd.db .schema`),
+    /// then v3's revisions from 00000023.
     const SCHEMA_SQL: &str = r#"
 CREATE TABLE alembic_version (
 	version_num VARCHAR(32) NOT NULL, 
@@ -429,6 +420,21 @@ CREATE INDEX ix_chat_sessions_top_created ON chat_sessions (parent_session_id, c
 CREATE INDEX ix_chat_sessions_top_workspace_created ON chat_sessions (parent_session_id, workspace, created_at, id);
 CREATE UNIQUE INDEX ix_scheduled_task_slug ON scheduled_task (slug);
 CREATE UNIQUE INDEX ix_scheduled_task_name ON scheduled_task (name);
+CREATE INDEX ix_session_messages_usage ON session_messages (session_id, kind, json_extract(extra, '$.usage.cost.estimated_usd'), json_extract(extra, '$.usage.output'));
+CREATE INDEX ix_session_messages_queued ON session_messages (session_id, seq, id) WHERE kind = 'queued';
+CREATE TABLE side_questions (
+	session_id CHAR(32) NOT NULL,
+	id CHAR(32) NOT NULL,
+	question TEXT NOT NULL,
+	answer TEXT DEFAULT '' NOT NULL,
+	status VARCHAR(16) NOT NULL,
+	error TEXT,
+	model VARCHAR(200),
+	usage JSON,
+	created_at DATETIME NOT NULL,
+	updated_at DATETIME NOT NULL,
+	PRIMARY KEY (session_id, id)
+) WITHOUT ROWID;
 "#;
 
     async fn master(conn: &mut SqliteConnection) -> Vec<(String, String, String, Option<String>)> {
@@ -436,7 +442,7 @@ CREATE UNIQUE INDEX ix_scheduled_task_name ON scheduled_task (name);
     }
 
     #[tokio::test]
-    async fn replay_matches_v2_head_schema() {
+    async fn replay_matches_head_schema() {
         let mut a = SqliteConnection::connect("sqlite::memory:").await.unwrap();
         assert_eq!(upgrade(&mut a).await.unwrap(), SchemaState::Created);
         let v: String = sqlx::query_scalar("SELECT version_num FROM alembic_version").fetch_one(&mut a).await.unwrap();
@@ -451,6 +457,30 @@ CREATE UNIQUE INDEX ix_scheduled_task_name ON scheduled_task (name);
             v
         };
         assert_eq!(norm(ma), norm(mb));
+    }
+
+    /// A database at v2's head upgrades to v3's: with the session-message
+    /// indexes earlier v3 builds created on open (kept) or without them
+    /// (a v2 install, created here), and gains `side_questions`.
+    #[tokio::test]
+    async fn v2_head_upgrades_to_v3_head() {
+        for had_indexes in [false, true] {
+            let mut conn = SqliteConnection::connect("sqlite::memory:").await.unwrap();
+            for (rev, sql) in MIGRATIONS.iter().take_while(|(r, _)| *r <= "00000022") {
+                apply(&mut conn, rev, sql).await.unwrap();
+            }
+            if had_indexes {
+                exec(&mut conn, "CREATE INDEX ix_session_messages_queued ON session_messages (session_id, seq, id) WHERE kind = 'queued'").await.unwrap();
+            }
+            assert_eq!(upgrade(&mut conn).await.unwrap(), SchemaState::Upgraded("00000022".into()));
+            for (kind, name) in [("index", "ix_session_messages_usage"), ("index", "ix_session_messages_queued"), ("table", "side_questions")] {
+                let found: Option<i64> =
+                    sqlx::query_scalar("SELECT 1 FROM sqlite_master WHERE type = ? AND name = ?").bind(kind).bind(name).fetch_optional(&mut conn).await.unwrap();
+                assert!(found.is_some(), "{name} missing (had_indexes={had_indexes})");
+            }
+            let v: String = sqlx::query_scalar("SELECT version_num FROM alembic_version").fetch_one(&mut conn).await.unwrap();
+            assert_eq!(v, ALEMBIC_HEAD);
+        }
     }
 
     /// Windows checkouts with `core.autocrlf` embed the revision files with

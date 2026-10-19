@@ -246,6 +246,7 @@ pub async fn delete_session_rows(pool: &DbPool, id: &str) -> Result<Vec<(String,
     for table_sql in [
         format!("DELETE FROM session_messages WHERE session_id IN ({placeholders})"),
         format!("DELETE FROM pending_questions WHERE session_id IN ({placeholders})"),
+        format!("DELETE FROM side_questions WHERE session_id IN ({placeholders})"),
         format!("DELETE FROM chat_sessions WHERE id IN ({placeholders})"),
     ] {
         let mut q = sqlx::query(sqlx::AssertSqlSafe(&*table_sql));

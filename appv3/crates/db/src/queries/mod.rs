@@ -4,11 +4,13 @@
 pub mod messages;
 pub mod questions;
 pub mod sessions;
+pub mod side_questions;
 pub mod tasks;
 pub mod workspaces;
 
 pub use messages::*;
 pub use questions::*;
 pub use sessions::*;
+pub use side_questions::*;
 pub use tasks::*;
 pub use workspaces::*;

@@ -1330,6 +1330,9 @@ OpenAgentd carries context across sessions via rolling-window summarization.
   The summary under the "Session compacted" divider starts collapsed; click
   the divider to read it, including while it is still being written
   `[v3.13.0]`.
+  Compaction no longer fails on a nearly full context: the summary's output
+  budget (at most 16k tokens) shrinks to the room the context has left, and
+  for models whose context size is unknown the provider picks it `[v3.19.0]`.
 - **`AGENTS.md` at repo root and subfolders** `[v1.9.0]` — written by `/init`;
   standard repo- and folder-scoped agent context files.
 - **Global `AGENTS.md`** `[v2.10.0]` — a developer-wide instructions file at

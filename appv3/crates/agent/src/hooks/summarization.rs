@@ -6,7 +6,7 @@ use crate::plan;
 use crate::prompts;
 use crate::stream_store::store;
 use crate::streaming::{merge_consecutive_user_messages, RetryItem, RetryStream};
-use appv3_providers::{registry::get_model_limits, usage::usage_to_dict, ChatMessage, Kwargs, LlmProvider, MessageMeta};
+use appv3_providers::{registry::get_model_limits, usage::usage_to_dict, ChatMessage, ContentBlock, Kwargs, LlmProvider, MessageMeta};
 use async_trait::async_trait;
 use serde_json::{json, Map, Value};
 use std::collections::{HashMap, HashSet};
@@ -29,8 +29,79 @@ pub const DEFAULT_PROMPT_TOKEN_THRESHOLD: i64 = 250_000;
 pub const CONTEXT_RATIO: f64 = 0.9;
 pub const DEFAULT_KEEP_LAST_ASSISTANTS: usize = 3;
 pub const CODING_KEEP_LAST_ASSISTANTS: usize = 0;
-pub const DEFAULT_MAX_TOKEN_LENGTH: i64 = 30_000;
+pub const DEFAULT_MAX_TOKEN_LENGTH: i64 = 16_000;
+/// Smallest summary budget worth asking for when the context is nearly full.
+pub const MIN_SUMMARY_TOKENS: i64 = 1_024;
 pub const DEFAULT_MIN_MESSAGES_SINCE_LAST_SUMMARY: usize = 4;
+/// Chars per token assumed for text no reported usage covers. Low on
+/// purpose: over-counting the prompt only makes the summary budget smaller.
+const FALLBACK_CHARS_PER_TOKEN: usize = 3;
+/// Chars an image counts as; its base64 size says nothing about its token
+/// cost (~1-2k tokens on current providers).
+const IMAGE_CHARS: usize = 6_000;
+
+fn blocks_chars(parts: Option<&[ContentBlock]>) -> usize {
+    parts
+        .unwrap_or_default()
+        .iter()
+        .map(|p| match p {
+            ContentBlock::Text { text } => text.len(),
+            _ => IMAGE_CHARS,
+        })
+        .sum()
+}
+
+/// Prompt text a message contributes, for proportional token estimates.
+fn message_chars(m: &ChatMessage) -> usize {
+    let len = |s: &Option<String>| s.as_deref().map_or(0, str::len);
+    match m {
+        ChatMessage::System { content, .. } => len(content),
+        ChatMessage::User { content, parts, .. } => len(content) + blocks_chars(parts.as_deref()),
+        ChatMessage::Tool { content, parts, name, .. } => len(content) + len(name) + blocks_chars(parts.as_deref()),
+        ChatMessage::Assistant(a) => {
+            len(&a.content) + len(&a.reasoning_content) + a.tool_calls.iter().flatten().map(|tc| tc.function.name.len() + tc.function.arguments.len()).sum::<usize>()
+        }
+    }
+}
+
+/// Prompt tokens the provider reported for the call that produced `m`.
+fn reported_prompt_tokens(m: &ChatMessage) -> Option<i64> {
+    let ChatMessage::Assistant(a) = m else { return None };
+    a.meta.extra.as_ref()?.get("usage")?.get("input")?.as_i64().filter(|n| *n > 0)
+}
+
+/// Estimated prompt tokens of the summariser `request`.
+///
+/// The newest reply with reported usage gives the token count of everything
+/// visible before it; messages after it are estimated from their length.
+/// The request is a subset of that context (minus the keep window, plus the
+/// summary instructions), so it scales by its share of the context's text.
+fn estimate_request_tokens(visible: &[ChatMessage], system_prompt: &str, tools_chars: usize, request: &[ChatMessage]) -> i64 {
+    let request_chars = request.iter().map(message_chars).sum::<usize>() + tools_chars;
+    let fallback = |chars: usize| chars.div_ceil(FALLBACK_CHARS_PER_TOKEN) as i64;
+    let Some((anchor, reported)) = visible.iter().enumerate().rev().find_map(|(i, m)| reported_prompt_tokens(m).map(|t| (i, t))) else {
+        return fallback(request_chars);
+    };
+    let seen_chars = system_prompt.len() + tools_chars + visible[..anchor].iter().map(message_chars).sum::<usize>();
+    let tail_chars: usize = visible[anchor..].iter().map(message_chars).sum();
+    let context_tokens = reported + fallback(tail_chars);
+    let context_chars = (seen_chars + tail_chars).max(1);
+    (context_tokens as f64 * request_chars as f64 / context_chars as f64).ceil() as i64
+}
+
+/// Output budget for a summary whose request is `prompt_tokens` long: `cap`,
+/// shrunk to what the context window leaves (minus a margin for estimate
+/// error), but never below [`MIN_SUMMARY_TOKENS`]. `None` sends no limit:
+/// with an unknown context window a fixed cap may not fit, while the
+/// provider's default does.
+fn summary_max_tokens(cap: i64, context_window: Option<i64>, prompt_tokens: i64) -> Option<i64> {
+    if cap <= 0 {
+        return None;
+    }
+    let window = context_window?;
+    let margin = (prompt_tokens / 50).max(512);
+    Some((window - prompt_tokens - margin).clamp(MIN_SUMMARY_TOKENS.min(cap), cap))
+}
 
 pub fn prompt_token_threshold_for_model(model_id: Option<&str>) -> i64 {
     let l = get_model_limits(model_id);
@@ -95,7 +166,10 @@ pub struct SummarizationHook {
     custom_threshold: CustomThreshold,
     keep_last: usize,
     summary_prompt: String,
+    /// Upper bound on the summary's `max_tokens`; 0 sends none.
     max_token_length: i64,
+    /// Model context window (prompt + output), when the registry knows it.
+    context_window: Option<i64>,
     min_since_last: usize,
     support_interrupt: bool,
     at_last_summary: Mutex<usize>,
@@ -124,6 +198,7 @@ pub fn build_summarization_hook(provider: Arc<dyn LlmProvider>, mode: &str, mode
         keep_last: if coding { CODING_KEEP_LAST_ASSISTANTS } else { DEFAULT_KEEP_LAST_ASSISTANTS },
         summary_prompt: prompts::s(if coding { "summary_coding" } else { "summary_chat" }).to_string(),
         max_token_length: max_len,
+        context_window: limits.context_length,
         min_since_last: DEFAULT_MIN_MESSAGES_SINCE_LAST_SUMMARY,
         support_interrupt,
         at_last_summary: Mutex::new(0),
@@ -306,7 +381,7 @@ impl SummarizationHook {
     }
 
     /// `_call_llm` inside the `summarization_llm_call` CLIENT span.
-    async fn call_llm(&self, ctx: &RunContext, messages: Vec<ChatMessage>, tools: Option<&[Value]>) -> Result<(String, Option<Value>), LlmFailure> {
+    async fn call_llm(&self, ctx: &RunContext, messages: Vec<ChatMessage>, tools: Option<&[Value]>, max_tokens: Option<i64>) -> Result<(String, Option<Value>), LlmFailure> {
         let span = Span::start("summarization_llm_call", SpanKind::Client, vec![]);
         let t0 = std::time::Instant::now();
         let model_id = self.model_id.clone().or_else(|| self.provider.cost_model_id()).filter(|m| !m.is_empty());
@@ -330,7 +405,10 @@ impl SummarizationHook {
                 span.set_attr("gen_ai.provider.name", p.as_str());
             }
         }
-        let res = otel::scope(Some(span.ctx()), self.call_llm_inner(ctx, messages, tools, model_id.clone(), provider_name.as_deref() == Some("codex"))).await;
+        if let Some(m) = max_tokens {
+            span.set_attr("gen_ai.request.max_tokens", m);
+        }
+        let res = otel::scope(Some(span.ctx()), self.call_llm_inner(ctx, messages, tools, max_tokens, model_id.clone(), provider_name.as_deref() == Some("codex"))).await;
         match res {
             Err(f) => {
                 if f.cancelled {
@@ -368,12 +446,13 @@ impl SummarizationHook {
         ctx: &RunContext,
         messages: Vec<ChatMessage>,
         tools: Option<&[Value]>,
+        max_tokens: Option<i64>,
         model_id: Option<String>,
         is_codex: bool,
     ) -> Result<(String, Option<appv3_providers::Usage>), LlmFailure> {
         let mut kw = Kwargs::new();
-        if self.max_token_length > 0 {
-            kw.insert("max_tokens".into(), json!(self.max_token_length));
+        if let Some(m) = max_tokens {
+            kw.insert("max_tokens".into(), json!(m));
         }
         kw.insert("tool_choice".into(), json!("none"));
         if is_codex {
@@ -500,7 +579,11 @@ impl SummarizationHook {
             store().push_event(sid, &events::summarization_start(&ctx.agent_name), false);
         }
         let tools = if state.tool_defs.is_empty() { None } else { Some(state.tool_defs.as_slice()) };
-        let (text, usage) = match self.call_llm(ctx, msgs, tools).await {
+        let tools_chars = tools.map_or(0, |t| serde_json::to_string(t).map_or(0, |s| s.len()));
+        let estimated_prompt = estimate_request_tokens(&state.messages_for_llm(), system_prompt, tools_chars, &msgs);
+        let max_tokens = summary_max_tokens(self.max_token_length, self.context_window, estimated_prompt);
+        span.set_attr("summarization.estimated_prompt_tokens", estimated_prompt);
+        let (text, usage) = match self.call_llm(ctx, msgs, tools, max_tokens).await {
             Ok(r) => r,
             Err(e) if e.cancelled => return (false, true),
             Err(e) => {
@@ -673,6 +756,7 @@ mod tests {
             keep_last,
             summary_prompt: "test summary prompt".into(),
             max_token_length: 0,
+            context_window: None,
             min_since_last: 0,
             support_interrupt: true,
             at_last_summary: Mutex::new(0),
@@ -898,5 +982,55 @@ mod tests {
         let notes = plan_notes(&state);
         assert_eq!(notes.len(), 1, "the kept note is not restated again");
         assert!(!notes[0].1.meta().exclude_from_context);
+    }
+
+    /// An assistant reply carrying the usage its model call reported.
+    fn reply_with_usage(content: &str, prompt_tokens: i64) -> ChatMessage {
+        let mut m = ChatMessage::assistant(content);
+        let mut extra = Map::new();
+        extra.insert("usage".into(), json!({"input": prompt_tokens, "output": 100}));
+        m.meta_mut().extra = Some(extra);
+        m
+    }
+
+    fn sent_max_tokens(provider: &MockProvider, call: usize) -> Option<i64> {
+        provider.calls.lock().unwrap()[call].2.get("max_tokens").and_then(|v| v.as_i64())
+    }
+
+    /// Issue #425: a 262k-context model compacting a 246k-token history was
+    /// asked for a summary larger than the 15.4k tokens left in its context.
+    #[tokio::test]
+    async fn summary_budget_shrinks_to_the_room_left_in_the_context() {
+        let provider = Arc::new(MockProvider::new(vec![MockProvider::text("Summary.")]));
+        let mut hook = hook_with(provider.clone(), 0);
+        hook.max_token_length = DEFAULT_MAX_TOKEN_LENGTH;
+        hook.context_window = Some(262_144);
+        let history = "x".repeat(700_000);
+        compact_with(&hook, vec![ChatMessage::user(history), reply_with_usage("Done.", 246_735)]).await;
+
+        let sent = sent_max_tokens(&provider, 0).expect("max_tokens sent");
+        assert!(sent <= 262_144 - 246_735, "max_tokens {sent} does not fit the context");
+        assert!(sent >= MIN_SUMMARY_TOKENS, "max_tokens {sent} leaves no room for a summary");
+    }
+
+    #[tokio::test]
+    async fn summary_budget_keeps_the_cap_when_the_context_has_room() {
+        let provider = Arc::new(MockProvider::new(vec![MockProvider::text("Summary.")]));
+        let mut hook = hook_with(provider.clone(), 0);
+        hook.max_token_length = DEFAULT_MAX_TOKEN_LENGTH;
+        hook.context_window = Some(262_144);
+        compact_with(&hook, vec![ChatMessage::user("x".repeat(40_000)), reply_with_usage("Done.", 12_000)]).await;
+        assert_eq!(sent_max_tokens(&provider, 0), Some(DEFAULT_MAX_TOKEN_LENGTH));
+    }
+
+    /// The reporter's model is not in the registry: a fixed cap could not be
+    /// checked against the room left, so the provider picks the budget.
+    #[tokio::test]
+    async fn unknown_context_window_sends_no_max_tokens() {
+        let provider = Arc::new(MockProvider::new(vec![MockProvider::text("Summary.")]));
+        let mut hook = hook_with(provider.clone(), 0);
+        hook.max_token_length = DEFAULT_MAX_TOKEN_LENGTH;
+        compact_with(&hook, vec![ChatMessage::user("Hi."), reply_with_usage("Hello.", 246_735)]).await;
+        assert_eq!(sent_max_tokens(&provider, 0), None);
     }
 }

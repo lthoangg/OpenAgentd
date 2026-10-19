@@ -1,6 +1,6 @@
-//! `openagentd transfer migrate|export|import`.
+//! `openagentd transfer export|import`.
 
-use crate::cli::{ExportArgs, ImportArgs, MigrateArgs, MigrateSource};
+use crate::cli::{ExportArgs, ImportArgs};
 use crate::ui::{bold, cyan, dim, green, yellow};
 use anyhow::{anyhow, bail, Context, Result};
 use appv3_core::pyyaml::{safe_dump_py, safe_load_py, Py};
@@ -30,63 +30,6 @@ fn config_dir(arg: Option<&Path>) -> PathBuf {
 
 fn read_text(p: &Path) -> Result<String> {
     Ok(std::fs::read_to_string(p).with_context(|| format!("read {}", p.display()))?.replace("\r\n", "\n"))
-}
-
-// ── migrate ─────────────────────────────────────────────────────────────────
-
-const OPENCLAW_PROMPT_FILES: &[&str] = &["AGENTS.md", "SOUL.md", "SOULS.md", "TOOLS.md"];
-const HERMES_CONTEXT_FILES: &[&str] = &["SOUL.md", ".hermes.md", "HERMES.md", "AGENTS.md", "CLAUDE.md", ".cursorrules"];
-
-/// The file's Markdown without a leading `---` frontmatter block.
-fn read_markdown_body(path: &Path) -> Result<String> {
-    let text = read_text(path)?.trim().to_string();
-    let Some(rest) = text.strip_prefix("---\n") else { return Ok(text) };
-    Ok(match rest.split_once("\n---") {
-        Some((_, body)) => body.trim().to_string(),
-        None => text,
-    })
-}
-
-pub fn migrate(a: &MigrateArgs) -> Result<()> {
-    let cfg = config_dir(a.config_dir.as_deref());
-    let (default_dir, files, label, missing, description) = match a.source {
-        MigrateSource::Openclaw => {
-            ("~/.openclaw/workspace", OPENCLAW_PROMPT_FILES, "OpenClaw workspace", "OpenClaw prompt files", "Migrated from OpenClaw/Hermes workspace prompt files.")
-        }
-        MigrateSource::Hermes => ("~/.hermes", HERMES_CONTEXT_FILES, "Hermes home or project directory", "Hermes context files", "Migrated from Hermes identity/context files."),
-    };
-    let source_dir = resolve(&expanduser(a.from.as_deref().unwrap_or(Path::new(default_dir))));
-    if !source_dir.is_dir() {
-        bail!("{label} does not exist: {}", source_dir.display());
-    }
-    let mut sections = vec![];
-    let mut imported = vec![];
-    for f in files {
-        let p = source_dir.join(f);
-        if !p.is_file() {
-            continue;
-        }
-        let body = read_markdown_body(&p)?;
-        if !body.is_empty() {
-            sections.push(format!("# Imported from {f}\n\n{body}"));
-            imported.push(*f);
-        }
-    }
-    if sections.is_empty() {
-        bail!("no {missing} found in {}: {}", source_dir.display(), files.join(", "));
-    }
-    let agents_dir = cfg.join("agents");
-    let target = agents_dir.join("code.md");
-    if target.exists() && !a.force {
-        bail!("agent already exists: {}; pass --force to replace it", target.display());
-    }
-    let s = |v: &str| Py::Str(v.into());
-    let fm = Py::Dict(vec![(s("name"), s("code")), (s("role"), s("lead")), (s("description"), s(description)), (s("model"), s(&a.model))]);
-    let content = format!("---\n{}\n---\n\n{}\n", safe_dump_py(&fm).trim(), sections.join("\n\n---\n\n"));
-    std::fs::create_dir_all(&agents_dir).with_context(|| format!("create {}", agents_dir.display()))?;
-    std::fs::write(&target, content).with_context(|| format!("write {}", target.display()))?;
-    println!("Imported {} into {}", imported.join(", "), target.display());
-    Ok(())
 }
 
 // ── export ──────────────────────────────────────────────────────────────────

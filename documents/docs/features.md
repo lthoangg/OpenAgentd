@@ -1983,8 +1983,11 @@ Desktop is primary. CLI / server is the developer path.
   `docker-compose.yaml`, and the `ghcr.io/lthoangg/openagentd` image are
   no longer maintained. Use the CLI install paths above; revisit if there
   is concrete self-hoster demand.
-- **Migration imports** `[since v1.0, v2.4.0]` — `openagentd transfer migrate openclaw`,
-  `openagentd transfer migrate hermes`. Imports identity + context Markdown into one agent.
+- **Migration imports** `[since v1.0, v2.4.0]` *(removed in v3.17.0)* — `openagentd
+  transfer migrate openclaw|hermes` imported identity + context Markdown into one
+  agent. Removed from the CLI along with `MIGRATION.md` for lack of demand; this
+  is an explicit user-approved hard removal, so it did not follow the normal
+  feature deprecation period. Revisit if users ask for it.
 - **Server migration export/import** `[v1.97.0, v2.4.0]` — `openagentd transfer export` packs
   agents, skills, commands, plugins, and config files into a timestamped
   `.tar.gz` archive. `openagentd transfer import <archive>` unpacks it on the target

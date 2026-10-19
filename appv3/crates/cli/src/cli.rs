@@ -34,7 +34,7 @@ pub enum Command {
     Doctor,
     /// Remove old sessions and generated files (dry run by default)
     Cleanup(CleanupArgs),
-    /// Import, export, or migrate agent configuration
+    /// Import or export agent configuration
     #[command(subcommand)]
     Transfer(TransferCmd),
     /// Inspect or install managed language servers
@@ -185,8 +185,6 @@ pub struct CleanupArgs {
 
 #[derive(Debug, Subcommand)]
 pub enum TransferCmd {
-    /// Import agent instructions from OpenClaw or Hermes
-    Migrate(MigrateArgs),
     /// Pack agents, skills, commands, plugins, and config into a .tar.gz
     ///
     /// API keys in .env and the server access key are redacted unless
@@ -196,30 +194,6 @@ pub enum TransferCmd {
     ///
     /// Existing files are kept unless --force is given.
     Import(ImportArgs),
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, ValueEnum)]
-pub enum MigrateSource {
-    Openclaw,
-    Hermes,
-}
-
-#[derive(Debug, Args)]
-pub struct MigrateArgs {
-    /// Tool to import from
-    pub source: MigrateSource,
-    /// Source directory (default: ~/.openclaw/workspace or ~/.hermes)
-    #[arg(long, value_name = "DIR")]
-    pub from: Option<PathBuf>,
-    /// Model for the imported agent, e.g. openai:gpt-5.5
-    #[arg(long)]
-    pub model: String,
-    /// Config directory to write to (default: the active one)
-    #[arg(long, value_name = "DIR")]
-    pub config_dir: Option<PathBuf>,
-    /// Replace an existing agents/code.md
-    #[arg(long)]
-    pub force: bool,
 }
 
 #[derive(Debug, Args)]
@@ -403,9 +377,7 @@ mod tests {
     fn transfer_parses() {
         let Some(Command::Transfer(TransferCmd::Export(e))) = parse(&["transfer", "export", "-o", "x.tar.gz", "--include-secrets"]).unwrap() else { panic!("not export") };
         assert_eq!((e.output.as_deref(), e.include_secrets), (Some(std::path::Path::new("x.tar.gz")), true));
-        let Some(Command::Transfer(TransferCmd::Migrate(m))) = parse(&["transfer", "migrate", "hermes", "--model", "openai:gpt-5.5"]).unwrap() else { panic!("not migrate") };
-        assert_eq!((m.source, m.model.as_str(), m.from.is_none()), (MigrateSource::Hermes, "openai:gpt-5.5", true));
-        assert_eq!(kind(&["transfer", "migrate", "openclaw"]), ErrorKind::MissingRequiredArgument);
+        assert_eq!(kind(&["transfer", "migrate", "openclaw"]), ErrorKind::InvalidSubcommand);
         assert_eq!(kind(&["transfer", "import"]), ErrorKind::MissingRequiredArgument);
     }
 

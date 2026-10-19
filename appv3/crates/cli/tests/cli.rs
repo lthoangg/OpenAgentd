@@ -1,7 +1,7 @@
 //! `openagentd` commands against the real binary in throw-away `HOME`/XDG
 //! roots. Nothing here touches real user data.
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::{Command, Output, Stdio};
 
 struct Sandbox {
@@ -186,23 +186,6 @@ fn transfer_round_trip_redacts_secrets() {
     let o = sb.run(&["transfer", "import", bad.to_str().unwrap(), "--config-dir", other.to_str().unwrap()]);
     assert_eq!(code(&o), 1);
     assert!(stderr(&o).contains("not a valid tar.gz archive"), "{}", stderr(&o));
-}
-
-#[test]
-fn migrate_imports_openclaw_prompts_once() {
-    let sb = Sandbox::new();
-    sb.write("claw/AGENTS.md", "Be helpful.\n");
-    let target: &Path = &sb.path("m");
-    let args =
-        ["transfer", "migrate", "openclaw", "--from", sb.path("claw").to_str().unwrap(), "--model", "openai:gpt-5.5", "--config-dir", target.to_str().unwrap()].map(String::from);
-    let args: Vec<&str> = args.iter().map(String::as_str).collect();
-    let o = sb.run(&args);
-    assert_eq!(code(&o), 0, "{}", stderr(&o));
-    let agent = std::fs::read_to_string(target.join("agents/code.md")).unwrap();
-    assert!(agent.contains("model: openai:gpt-5.5") && agent.contains("# Imported from AGENTS.md\n\nBe helpful."), "{agent}");
-    let o = sb.run(&args);
-    assert_eq!(code(&o), 1);
-    assert!(stderr(&o).contains("--force"), "{}", stderr(&o));
 }
 
 #[test]

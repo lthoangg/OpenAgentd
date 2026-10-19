@@ -19,24 +19,30 @@ pub enum Stream {
     Session,
     /// `/api/events/stream` (the broadcaster).
     Global,
+    /// The response of `POST /api/agent/sessions/{sid}/btw`.
+    SideQuestion,
 }
 
-fn contract() -> &'static (Vec<String>, Vec<String>) {
-    static C: OnceLock<(Vec<String>, Vec<String>)> = OnceLock::new();
+type ContractLists = (Vec<String>, Vec<String>, Vec<String>);
+
+fn contract() -> &'static ContractLists {
+    static C: OnceLock<ContractLists> = OnceLock::new();
     C.get_or_init(|| {
         let v: Value = serde_json::from_str(CONTRACT_JSON).expect("sse_events.json");
         let names = |k: &str| v[k].as_array().expect(k).iter().map(|n| n.as_str().expect("event name").to_string()).collect::<Vec<_>>();
-        (names("session_stream"), names("global_stream"))
+        (names("session_stream"), names("global_stream"), names("side_question_stream"))
     })
 }
 
 /// Whether `appv3/contract/sse_events.json` lists `name` for `stream`.
 pub fn in_contract(stream: Stream, name: &str) -> bool {
-    let (session, global) = contract();
-    match stream {
-        Stream::Session => session.iter().any(|n| n == name),
-        Stream::Global => global.iter().any(|n| n == name),
-    }
+    let (session, global, side) = contract();
+    let list = match stream {
+        Stream::Session => session,
+        Stream::Global => global,
+        Stream::SideQuestion => side,
+    };
+    list.iter().any(|n| n == name)
 }
 
 /// Every emitted name must be in the shared contract so the web client can
@@ -296,6 +302,32 @@ pub fn summarization_end(agent: &str, summary: &str, metadata: Option<Value>) ->
     Envelope::typed(json!({"type": "summarization_end", "agent": agent, "summary": summary, "metadata": meta(metadata)}))
 }
 
+// ── `/btw` side-question stream ──────────────────────────────────────────────
+
+fn side(data: Value) -> Envelope {
+    let e = Envelope::typed(data);
+    check_contract(Stream::SideQuestion, &e.event);
+    e
+}
+
+pub fn btw_start(id: &str, question: &str) -> Envelope {
+    side(json!({"type": "btw_start", "id": id, "question": question}))
+}
+
+pub fn btw_delta(id: &str, text: &str) -> Envelope {
+    side(json!({"type": "btw_delta", "id": id, "text": text}))
+}
+
+pub fn btw_done(id: &str, answer: &str, model: Option<&str>, usage: Option<&Value>) -> Envelope {
+    side(json!({"type": "btw_done", "id": id, "answer": answer, "model": model, "usage": usage}))
+}
+
+/// The answer ended without completing: `status` is `error` or `stopped`,
+/// and `answer` holds what was written before.
+pub fn btw_error(id: &str, status: &str, message: &str, answer: &str) -> Envelope {
+    side(json!({"type": "btw_error", "id": id, "status": status, "message": message, "answer": answer}))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -329,12 +361,15 @@ mod tests {
         for e in builders {
             assert!(in_contract(Stream::Session, &e.event), "{}", e.event);
         }
+        for e in [btw_start("i", "q"), btw_delta("i", "t"), btw_done("i", "a", None, None), btw_error("i", "error", "m", "")] {
+            assert!(in_contract(Stream::SideQuestion, &e.event), "{}", e.event);
+        }
     }
 
     #[test]
     fn contract_lists_are_unique() {
-        let (session, global) = contract();
-        for list in [session, global] {
+        let (session, global, side) = contract();
+        for list in [session, global, side] {
             let mut sorted = list.clone();
             sorted.sort();
             sorted.dedup();

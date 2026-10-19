@@ -40,5 +40,11 @@
     "lsp_install_required",
     "session_event",
     "session_stream_end"
+  ],
+  "side_question_stream": [
+    "btw_start",
+    "btw_delta",
+    "btw_done",
+    "btw_error"
   ]
 }

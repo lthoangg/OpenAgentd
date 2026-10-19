@@ -26,10 +26,23 @@ fn root() -> &'static Path {
             std::env::set_var(k, root.path().join(d));
         }
         std::env::set_var("HOME", root.path().join("home"));
+        // Windows resolves `~` from USERPROFILE and ignores HOME.
+        std::env::set_var("USERPROFILE", root.path().join("home"));
         appv3_core::settings::install(appv3_core::settings::Settings::from_env());
         let mem = root.path().join("config").join("memory");
         std::fs::create_dir_all(&mem).unwrap();
         std::fs::write(mem.join("preferences.md"), "# User Preferences\n\n- Use Bun, not npm.\n").unwrap();
+        std::fs::write(mem.join("user.md"), "# About the user\n\n- Name: Hoang\n- Maintains OpenAgentd.\n").unwrap();
+        // Global instructions (`~/.agents/AGENTS.md`) and a legacy copy in
+        // the config dir that the home file must win over.
+        let home_agents = root.path().join("home").join(".agents");
+        std::fs::create_dir_all(&home_agents).unwrap();
+        std::fs::write(home_agents.join("AGENTS.md"), "Global rule: write plain prose.\n").unwrap();
+        std::fs::create_dir_all(root.path().join("config")).unwrap();
+        std::fs::write(root.path().join("config").join("AGENTS.md"), "Legacy config-dir rule.\n").unwrap();
+        let ws = root.path().join("project");
+        std::fs::create_dir_all(&ws).unwrap();
+        std::fs::write(ws.join("AGENTS.md"), "Workspace rule: run make verify.\n").unwrap();
         root
     })
     .path()
@@ -83,7 +96,20 @@ async fn custom_lead_agent_gets_the_runtime_and_memory_protocols() {
     let memory = at(&prompt, "<openagentd_memory>");
     assert!(persona < protocol && protocol < memory_rules && memory_rules < memory, "order: {persona} {protocol} {memory_rules} {memory}");
     assert!(prompt.contains("- Use Bun, not npm."), "preferences are pinned");
+    assert!(prompt.contains("  <user_profile>\n# About the user\n\n- Name: Hoang\n- Maintains OpenAgentd.\n  </user_profile>"), "the user profile is pinned:\n{prompt}");
     assert!(!prompt.contains(prompts::memory_protocol(false)));
+}
+
+/// `~/.agents/AGENTS.md` applies to every workspace and `{workspace}/AGENTS.md`
+/// to its own; both reach the prompt, global first.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn global_and_workspace_agents_md_are_both_loaded() {
+    let prompt = system_prompt("instructed", "You are a lead.", false).await;
+    let global = at(&prompt, "## Global Instructions");
+    at(&prompt, "Global rule: write plain prose.");
+    let workspace = at(&prompt, "## Workspace Instructions\n\nWorkspace rule: run make verify.");
+    assert!(global < workspace, "global instructions come first");
+    assert!(!prompt.contains("Legacy config-dir rule."), "`~/.agents/AGENTS.md` wins over the config-dir file:\n{prompt}");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

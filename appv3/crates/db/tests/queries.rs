@@ -15,23 +15,20 @@ async fn fresh() -> (tempfile::TempDir, appv3_db::DbPool) {
     (dir, pool)
 }
 
-/// v3's own indexes go on without a revision: a v2 build must still find
-/// the file at the head it knows.
+/// Deleting a session tree takes its `/btw` side questions with it.
 #[tokio::test]
-async fn v2_head_database_gains_v3_indexes_without_a_new_revision() {
-    use sqlx::Connection;
-    let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().join("v2.db");
-    {
-        let mut conn = sqlx::SqliteConnection::connect(&format!("sqlite://{}?mode=rwc", path.display())).await.unwrap();
-        appv3_db::migrations::upgrade(&mut conn).await.unwrap();
+async fn deleting_a_session_removes_its_side_questions() {
+    let (_d, pool) = fresh().await;
+    let lead = create_session(&pool, NewSession { workspace: "/tmp/ws".into(), ..Default::default() }).await.unwrap();
+    let child = create_session(&pool, NewSession { workspace: "/tmp/ws".into(), parent_session_id: Some(lead.id.clone()), ..Default::default() }).await.unwrap();
+    let other = create_session(&pool, NewSession { workspace: "/tmp/ws".into(), ..Default::default() }).await.unwrap();
+    for s in [&lead, &child, &other] {
+        insert_side_question(&pool, &s.id, "why?").await.unwrap();
     }
-    let pool = create_pool(&path).await.unwrap();
-    let index: Option<String> =
-        sqlx::query_scalar("SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'ix_session_messages_usage'").fetch_optional(&pool).await.unwrap();
-    assert_eq!(index.as_deref(), Some("ix_session_messages_usage"));
-    let head: String = sqlx::query_scalar("SELECT version_num FROM alembic_version").fetch_one(&pool).await.unwrap();
-    assert_eq!(head, ALEMBIC_HEAD);
+    delete_session_rows(&pool, &lead.id).await.unwrap();
+    assert_eq!(count_side_questions(&pool, &lead.id).await.unwrap(), 0);
+    assert_eq!(count_side_questions(&pool, &child.id).await.unwrap(), 0);
+    assert_eq!(count_side_questions(&pool, &other.id).await.unwrap(), 1);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]

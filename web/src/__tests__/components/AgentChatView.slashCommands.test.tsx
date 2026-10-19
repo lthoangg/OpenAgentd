@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { act, cleanup, renderHook } from '@testing-library/react'
 import type { AgentCommandResponse } from '@/api/types'
-import { BASE_SLASH_COMMANDS, filterBaseSlashCommands, parseBuiltInSlashCommand } from '@/components/AgentChatView/helpers'
+import { BASE_SLASH_COMMANDS, btwSubmit, filterBaseSlashCommands, parseBtwCommand, parseBuiltInSlashCommand } from '@/components/AgentChatView/helpers'
 import { useSlashCommands } from '@/components/AgentChatView/useSlashCommands'
+import { useBtwStore } from '@/stores/useBtwStore'
 import { useHeldMessagesStore } from '@/stores/useHeldMessagesStore'
 
 const redo = mock(async (): Promise<AgentCommandResponse | undefined> => undefined)
@@ -22,6 +23,9 @@ mock.module('@/api/client', () => ({
   renderCommand: async () => ({ content: '' }),
   renderSnippet: async () => ({ content: '' }),
   resolveApiUrl: () => null,
+  askSideQuestion: async () => {},
+  clearSideQuestions: async () => {},
+  stopSideQuestion: async () => true,
 }))
 
 afterEach(cleanup)
@@ -39,6 +43,11 @@ describe('BASE_SLASH_COMMANDS', () => {
     expect(redoAll?.label).toBe('Redo All')
     expect(redoAll?.description).toBe('Restore all undone messages back to the live tip')
   })
+
+  it('inserts /btw for a question instead of running it', () => {
+    const btw = BASE_SLASH_COMMANDS.find((c) => c.id === 'btw')
+    expect(btw).toMatchObject({ keepInputOpen: true, insertText: 'btw' })
+  })
 })
 
 describe('filterBaseSlashCommands', () => {
@@ -52,14 +61,14 @@ describe('filterBaseSlashCommands', () => {
     expect(commands.map((c) => c.id)).toEqual(['new'])
   })
 
-  it('shows /compact, /undo, /new on a session with messages', () => {
+  it('shows /btw, /compact, /undo, /new on a session with messages', () => {
     const commands = filterBaseSlashCommands({
       isAgentWorking: false,
       revertedCount: 0,
       hasVisibleMessages: true,
       hasWorkspace: false,
     })
-    expect(commands.map((c) => c.id)).toEqual(['compact', 'undo', 'new'])
+    expect(commands.map((c) => c.id)).toEqual(['btw', 'compact', 'undo', 'new'])
   })
 
   it('shows /redo and /redo-all when revertedCount > 0', () => {
@@ -70,6 +79,7 @@ describe('filterBaseSlashCommands', () => {
       hasWorkspace: false,
     })
     expect(commands.map((c) => c.id)).toEqual([
+      'btw',
       'compact',
       'undo',
       'redo',
@@ -78,14 +88,14 @@ describe('filterBaseSlashCommands', () => {
     ])
   })
 
-  it('shows /stop and /new when team is actively working', () => {
+  it('shows /stop, /btw and /new when team is actively working', () => {
     const commands = filterBaseSlashCommands({
       isAgentWorking: true,
       revertedCount: 2,
       hasVisibleMessages: true,
       hasWorkspace: false,
     })
-    expect(commands.map((c) => c.id)).toEqual(['stop', 'new'])
+    expect(commands.map((c) => c.id)).toEqual(['stop', 'btw', 'new'])
   })
 
   it('shows /init in coding mode with a workspace attached', () => {
@@ -95,7 +105,7 @@ describe('filterBaseSlashCommands', () => {
       hasVisibleMessages: true,
       hasWorkspace: true,
     })
-    expect(commands.map((c) => c.id)).toEqual(['compact', 'undo', 'new', 'init'])
+    expect(commands.map((c) => c.id)).toEqual(['btw', 'compact', 'undo', 'new', 'init'])
   })
 
   it('does not show /init in coding mode without a workspace', () => {
@@ -105,7 +115,7 @@ describe('filterBaseSlashCommands', () => {
       hasVisibleMessages: true,
       hasWorkspace: false,
     })
-    expect(commands.map((c) => c.id)).toEqual(['compact', 'undo', 'new'])
+    expect(commands.map((c) => c.id)).toEqual(['btw', 'compact', 'undo', 'new'])
   })
 })
 
@@ -165,7 +175,14 @@ describe('useSlashCommands', () => {
     )
 
     const ids = result.current.slashCommands.map((c) => c.id)
-    expect(ids).toEqual(['compact', 'undo', 'redo', 'redo-all', 'new', 'init'])
+    expect(ids).toEqual(['btw', 'compact', 'undo', 'redo', 'redo-all', 'new', 'init'])
+  })
+
+  it('a bare /btw reopens the session side questions', async () => {
+    useBtwStore.setState({ sessions: {} })
+    const { result } = renderHook(() => useSlashCommands({ agentWorkspace: '/tmp/project', inputRef, handleNewSession }))
+    await act(async () => { result.current.handleSlashCommand('btw') })
+    expect(useBtwStore.getState().sessions['session-1']?.open).toBe(true)
   })
 
   it('/stop hands messages held for the turn back to the composer', async () => {
@@ -198,5 +215,32 @@ describe('parseBuiltInSlashCommand', () => {
     expect(parseBuiltInSlashCommand('hello world')).toBeNull()
     expect(parseBuiltInSlashCommand('/custom-command')).toBeNull()
     expect(parseBuiltInSlashCommand('')).toBeNull()
+  })
+})
+
+describe('parseBtwCommand', () => {
+  it('returns the question, or an empty one for a bare /btw', () => {
+    expect(parseBtwCommand('/btw')).toBe('')
+    expect(parseBtwCommand('  /btw   ')).toBe('')
+    expect(parseBtwCommand('/btw which file?')).toBe('which file?')
+    expect(parseBtwCommand('/BTW Which file?')).toBe('Which file?')
+    expect(parseBtwCommand('/btw first line\nsecond line')).toBe('first line\nsecond line')
+  })
+
+  it('ignores other text and look-alike commands', () => {
+    expect(parseBtwCommand('/btwx q')).toBeNull()
+    expect(parseBtwCommand('btw q')).toBeNull()
+    expect(parseBtwCommand('please /btw q')).toBeNull()
+  })
+})
+
+describe('btwSubmit', () => {
+  const file = new File(['x'], 'a.txt')
+  it('asks, reopens, or refuses', () => {
+    expect(btwSubmit('hello', undefined, 's')).toEqual({ kind: 'not-btw' })
+    expect(btwSubmit('/btw why?', undefined, 's')).toEqual({ kind: 'ask', question: 'why?' })
+    expect(btwSubmit('/btw', [], 's')).toEqual({ kind: 'reopen' })
+    expect(btwSubmit('/btw why?', [file], 's')).toEqual({ kind: 'attachments' })
+    expect(btwSubmit('/btw why?', undefined, null)).toEqual({ kind: 'no-session' })
   })
 })

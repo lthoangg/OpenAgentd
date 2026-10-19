@@ -30,18 +30,17 @@ impl Hook for CurrentDateHook {
 
 pub const MAX_AGENTS_MD_BYTES: u64 = 128 * 1024;
 
+/// The global instructions file: `~/.agents/AGENTS.md`, shared by every
+/// workspace. `{config dir}/AGENTS.md` is the older location, read only
+/// when the home file does not exist.
 pub fn global_instructions_path() -> PathBuf {
-    let p = appv3_core::settings().config_dir.join("AGENTS.md");
-    if p.is_file() {
-        return p;
-    }
     if let Some(home) = appv3_core::home::home_dir_opt() {
         let u = home.join(".agents").join("AGENTS.md");
         if u.is_file() {
             return u;
         }
     }
-    p
+    appv3_core::settings().config_dir.join("AGENTS.md")
 }
 
 /// Modification stamp used to invalidate a cached instructions file.
@@ -117,7 +116,12 @@ impl Hook for WorkspaceInstructionsHook {
         if self.include_workspace {
             if let Some(ws) = &self.workspace {
                 for f in ["AGENTS.md", ".agents/AGENTS.md"] {
-                    let t = self.read_file(&ws.join(f));
+                    let path = ws.join(f);
+                    // A workspace at `~` would otherwise repeat the global file.
+                    if same_file(&path, &self.global) {
+                        continue;
+                    }
+                    let t = self.read_file(&path);
                     if !t.is_empty() {
                         blocks.push(format!("## Workspace Instructions\n\n{t}"));
                         break;
@@ -145,6 +149,13 @@ fn append_block(prompt: &mut String, block: &str) {
         prompt.push_str("\n\n");
     }
     prompt.push_str(block);
+}
+
+fn same_file(a: &Path, b: &Path) -> bool {
+    match (std::fs::canonicalize(a), std::fs::canonicalize(b)) {
+        (Ok(a), Ok(b)) => a == b,
+        _ => a == b,
+    }
 }
 
 // ── RuntimeProtocolHook ──────────────────────────────────────────────────────
@@ -321,5 +332,23 @@ mod tests {
         assert!(prompt.contains("path from this root"), "{prompt}");
         assert!(prompt.contains("`:line` or `:start-end`"), "{prompt}");
         assert!(prompt.contains("`web/src/app.ts:42-58`"), "{prompt}");
+    }
+
+    /// With the workspace at `~`, `~/.agents/AGENTS.md` is the global file
+    /// and must not come back a second time as workspace instructions.
+    #[tokio::test]
+    async fn home_workspace_does_not_repeat_the_global_file() {
+        let home = tempfile::tempdir().unwrap();
+        let global = home.path().join(".agents").join("AGENTS.md");
+        std::fs::create_dir_all(global.parent().unwrap()).unwrap();
+        std::fs::write(&global, "Global rule.").unwrap();
+        let hook = WorkspaceInstructionsHook { workspace: Some(home.path().to_path_buf()), include_workspace: true, global, cache: Mutex::new(HashMap::new()) };
+        let ctx = RunContext { session_id: None, run_id: "run".into(), agent_name: "test".into(), workspace: None };
+        let state = AgentState::new(Vec::new(), String::new());
+
+        let prompt = hook.wrap_system_prompt(&ctx, &state, String::new()).await;
+
+        assert_eq!(prompt.matches("Global rule.").count(), 1, "{prompt}");
+        assert!(!prompt.contains("## Workspace Instructions"), "{prompt}");
     }
 }

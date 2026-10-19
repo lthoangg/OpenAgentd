@@ -2,7 +2,7 @@
 title: Features
 description: Canonical, version-cited catalogue of shipped user-visible OpenAgentd features.
 status: stable
-updated: 2026-10-18
+updated: 2026-10-19
 ---
 
 # Features
@@ -14,7 +14,7 @@ release that introduced it (where known). When you ship something new, **add it 
 > double-clickable app that runs an agent on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 18 providers. Your keys.
 
-**Latest release:** v3.16.0 · October 18, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.16.0)
+**Latest release:** v3.17.0 · October 19, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.17.0)
 
 ---
 
@@ -464,6 +464,13 @@ run from the terminal (the native Rust binary since v3.0.0).
   filtered by active session state `[v2.0.0]`.
   - **`/redo` and `/redo-all` slash commands** `[v2.0.0]` — restore undone chat turns
     step-by-step or fast-forward completely back to the latest turn.
+  - **`/btw` side questions** `[v3.17.0]` — `/btw <question>` asks a quick question
+    about the session, even while the agent is working, without interrupting the turn
+    or adding anything to the chat. The model answers from the conversation so far,
+    with no tools, and the answer streams into a panel above the composer. Side
+    questions are saved with the session. Step back through earlier ones, copy an
+    answer, stop it, or clear the thread. Close only hides the panel. Reopen it with
+    a bare `/btw`, **Cmd+K → Side Questions**, or the **BTW** chip.
   - **`/init` AGENTS.md analysis & generation** `[v1.9.0, v2.0.0]` — analyzes codebase
     structure and generates standard `AGENTS.md` context files at repository root and
     subdirectories with a guided analysis protocol.
@@ -1251,12 +1258,16 @@ OpenAgentd carries context across sessions via rolling-window summarization.
 - **Persistent Markdown memory subsystem** `[v2.22.0]` — file-backed persistent knowledge
   in global (`{OPENAGENTD_CONFIG_DIR}/memory/`) storing authoritative human-editable `.md` pages.
   Dynamically compiles a bounded
-  XML catalog (`<openagentd_memory>`) capped at 3,000 rendered characters (up from 1,500 `[v3.3.0]`) into
+  XML catalog (`<openagentd_memory>`) capped at 4,000 rendered characters (up from 1,500 `[v3.3.0]`
+  and 3,000 `[v3.17.0]`) into
   `state.system_prompt` during `before_agent` (0 filesystem I/O across model turns),
   pins `preferences.md` directives (<= 1,500 chars, up from 400 `[v3.3.0]`), synchronizes concurrent edits with reference-counted
   path locks and quoted strong SHA-256 ETags (HTTP 412/428), provides `/memory` slash
   commands, and exposes a Settings viewer/editor with conflict resolution and deterministic
   wikilink linting.
+- **User profile always loaded** `[v3.17.0]` — `user.md` is included in full (up to 1,000
+  characters) in every session's memory block instead of as a one-line catalog entry, so
+  the agent knows who the user is from the first turn without reading files.
 - **Proactive memory about the user** `[v3.3.0]` — the lead agent saves stated
   preferences, corrections, and durable facts about the user (to `preferences.md`,
   `user.md`, or topic pages) in the same turn without asking, and says what it saved.
@@ -1288,8 +1299,9 @@ OpenAgentd carries context across sessions via rolling-window summarization.
 - **`AGENTS.md` at repo root and subfolders** `[v1.9.0]` — written by `/init`;
   standard repo- and folder-scoped agent context files.
 - **Global `AGENTS.md`** `[v2.10.0]` — a developer-wide instructions file at
-  `{config dir}/AGENTS.md` (`~/.config/openagentd/AGENTS.md` in production) is
-  injected into every coding turn ahead of the workspace file, so cross-project
+  `~/.agents/AGENTS.md` `[v3.17.0]` (before: `{config dir}/AGENTS.md`, now read only
+  when the home file is missing) is injected into every turn ahead of the
+  workspace's `AGENTS.md`, so cross-project
   preferences live in one place. Matches how pi, OpenCode, and Codex order
   global → project guidance.
 - **Host environment in the shell tool** `[v2.10.0]` — the shell tool schema
@@ -1978,8 +1990,11 @@ Desktop is primary. CLI / server is the developer path.
   `docker-compose.yaml`, and the `ghcr.io/lthoangg/openagentd` image are
   no longer maintained. Use the CLI install paths above; revisit if there
   is concrete self-hoster demand.
-- **Migration imports** `[since v1.0, v2.4.0]` — `openagentd transfer migrate openclaw`,
-  `openagentd transfer migrate hermes`. Imports identity + context Markdown into one agent.
+- **Migration imports** `[since v1.0, v2.4.0]` *(removed in v3.17.0)* — `openagentd
+  transfer migrate openclaw|hermes` imported identity + context Markdown into one
+  agent. Removed from the CLI along with `MIGRATION.md` for lack of demand; this
+  is an explicit user-approved hard removal, so it did not follow the normal
+  feature deprecation period. Revisit if users ask for it.
 - **Server migration export/import** `[v1.97.0, v2.4.0]` — `openagentd transfer export` packs
   agents, skills, commands, plugins, and config files into a timestamped
   `.tar.gz` archive. `openagentd transfer import <archive>` unpacks it on the target

@@ -10,10 +10,17 @@ use std::path::{Component, Path, PathBuf};
 use std::sync::OnceLock;
 
 pub const MAX_MEMORY_PAGE_BYTES: u64 = 256 * 1024;
-pub const MAX_TOTAL_CATALOG_CHARS: usize = 3000;
+pub const MAX_TOTAL_CATALOG_CHARS: usize = 4000;
 pub const MAX_PREFERENCES_CHARS: usize = 1500;
+/// `user.md` is pinned in full up to this length, so the agent knows who
+/// the user is without reading a page first.
+pub const MAX_USER_PROFILE_CHARS: usize = 1000;
 pub const MAX_COMPONENT_CATALOG_CHARS: usize = 2600;
 pub const MAX_CATALOG_ENTRY_CHARS: usize = 200;
+
+/// Pages pinned in full rather than listed in the catalog.
+const PREFERENCES_PAGE: &str = "preferences.md";
+const USER_PROFILE_PAGE: &str = "user.md";
 
 /// Body of a fresh `preferences.md`, written at startup.
 pub const PREFERENCES_TEMPLATE: &str = "# User Preferences\n\nStanding directives and preferences across all workspaces.\n";
@@ -264,23 +271,30 @@ fn page_summary(p: &Path, meta: &std::fs::Metadata) -> Option<(String, String)> 
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct GlobalSnapshot {
     pub preferences_content: String,
+    pub user_profile: String,
     pub knowledge_catalog: String,
+}
+
+/// The body of a pinned page, without frontmatter, cut to `max` chars.
+fn pinned_page(root: &Path, rel: &str, max: usize) -> String {
+    let p = root.join(rel);
+    if !p.is_file() {
+        return String::new();
+    }
+    let Ok(raw) = read_lossy(&p) else { return String::new() };
+    let (_, body) = parse_frontmatter(&raw);
+    let n = normalize_text(&body).trim().to_string();
+    if chars_len(&n) > max {
+        format!("{}...", truncate_chars(&n, max - 3))
+    } else {
+        n
+    }
 }
 
 /// `compile_global_snapshot`.
 pub fn compile_global_snapshot(root: &Path) -> GlobalSnapshot {
-    let mut pref = String::new();
-    let pf = root.join("preferences.md");
-    if pf.is_file() {
-        if let Ok(raw) = read_lossy(&pf) {
-            let (_, body) = parse_frontmatter(&raw);
-            let mut n = normalize_text(&body).trim().to_string();
-            if chars_len(&n) > MAX_PREFERENCES_CHARS {
-                n = format!("{}...", truncate_chars(&n, MAX_PREFERENCES_CHARS - 3));
-            }
-            pref = n;
-        }
-    }
+    let pref = pinned_page(root, PREFERENCES_PAGE, MAX_PREFERENCES_CHARS);
+    let user_profile = pinned_page(root, USER_PROFILE_PAGE, MAX_USER_PROFILE_CHARS);
     let mut entries = Vec::new();
     let mut total = 0usize;
     let files = markdown_files(root);
@@ -290,7 +304,7 @@ pub fn compile_global_snapshot(root: &Path) -> GlobalSnapshot {
     }
     for (p, meta) in &files {
         let rel = rel_posix(root, p);
-        if rel == "preferences.md" {
+        if rel == PREFERENCES_PAGE || rel == USER_PROFILE_PAGE {
             continue;
         }
         let Some((title, summary)) = page_summary(p, meta) else { continue };
@@ -307,7 +321,7 @@ pub fn compile_global_snapshot(root: &Path) -> GlobalSnapshot {
         total += chars_len(&esc) + 1;
         entries.push(esc);
     }
-    GlobalSnapshot { preferences_content: pref, knowledge_catalog: entries.join("\n") }
+    GlobalSnapshot { preferences_content: pref, user_profile, knowledge_catalog: entries.join("\n") }
 }
 
 /// `compose_memory_context`.
@@ -319,7 +333,8 @@ pub fn compose_memory_context(snap: &GlobalSnapshot, global_root: &Path) -> Stri
     let overhead = chars_len(&prefix) + chars_len(suffix);
     let pref_xml =
         if snap.preferences_content.is_empty() { String::new() } else { format!("  <global_preferences>\n{}\n  </global_preferences>\n", xml_escape(&snap.preferences_content)) };
-    let avail = MAX_TOTAL_CATALOG_CHARS as i64 - overhead as i64 - chars_len(&pref_xml) as i64;
+    let user_xml = if snap.user_profile.is_empty() { String::new() } else { format!("  <user_profile>\n{}\n  </user_profile>\n", xml_escape(&snap.user_profile)) };
+    let avail = MAX_TOTAL_CATALOG_CHARS as i64 - overhead as i64 - chars_len(&pref_xml) as i64 - chars_len(&user_xml) as i64;
     let avail = avail.max(0);
     let g_budget = avail - chars_len("  <global_knowledge>\n\n  </global_knowledge>\n") as i64;
     const MORE: &str = "    ... [more global pages via /memory search]";
@@ -343,7 +358,7 @@ pub fn compose_memory_context(snap: &GlobalSnapshot, global_root: &Path) -> Stri
     }
     let lines: Vec<String> = packed.into_iter().map(|(s, _)| s).collect();
     let g_xml = if lines.is_empty() { String::new() } else { format!("  <global_knowledge>\n{}\n  </global_knowledge>\n", lines.join("\n")) };
-    format!("{prefix}{pref_xml}{g_xml}{suffix}")
+    format!("{prefix}{pref_xml}{user_xml}{g_xml}{suffix}")
 }
 
 /// The `<openagentd_memory>` block for the current disk state.
@@ -660,18 +675,49 @@ mod tests {
         assert!(pref.ends_with("..."));
     }
 
+    /// `user.md` is who the user is: the agent should know it from the first
+    /// turn, not find a one-line catalog entry and have to go read the page.
     #[test]
-    fn memory_block_fits_3000_chars_with_a_full_catalog() {
+    fn user_profile_is_pinned_in_full_and_left_out_of_the_catalog() {
+        let d = tempfile::tempdir().unwrap();
+        let root = d.path();
+        std::fs::write(root.join("user.md"), "---\ntitle: About the user\n---\n# About the user\n\n- Name: Hoang\n- Role: maintains <OpenAgentd>\n- Time zone: Asia/Ho_Chi_Minh\n")
+            .unwrap();
+        std::fs::write(root.join("db.md"), "# Database\n\nPostgres notes").unwrap();
+        let snap = compile_global_snapshot(root);
+        assert_eq!(snap.user_profile, "# About the user\n\n- Name: Hoang\n- Role: maintains <OpenAgentd>\n- Time zone: Asia/Ho_Chi_Minh");
+        assert_eq!(snap.knowledge_catalog, "- [[global:db]]: Database — Postgres notes");
+        let s = compose_memory_context(&snap, root);
+        assert!(s.contains("  <user_profile>\n# About the user\n\n- Name: Hoang\n- Role: maintains &lt;OpenAgentd&gt;\n- Time zone: Asia/Ho_Chi_Minh\n  </user_profile>\n"), "{s}");
+        assert!(!s.contains("[[global:user]]"), "{s}");
+    }
+
+    #[test]
+    fn user_profile_is_pinned_up_to_1000_chars() {
+        let d = tempfile::tempdir().unwrap();
+        let root = d.path();
+        std::fs::write(root.join("user.md"), "u".repeat(1000)).unwrap();
+        assert_eq!(compile_global_snapshot(root).user_profile, "u".repeat(1000));
+        std::fs::write(root.join("user.md"), "v".repeat(1200)).unwrap();
+        let profile = compile_global_snapshot(root).user_profile;
+        assert_eq!(profile.chars().count(), 1000);
+        assert!(profile.ends_with("..."));
+    }
+
+    #[test]
+    fn memory_block_fits_its_budget_with_a_full_profile_and_catalog() {
         let d = tempfile::tempdir().unwrap();
         let root = d.path();
         std::fs::write(root.join("preferences.md"), "r".repeat(1400)).unwrap();
+        std::fs::write(root.join("user.md"), "s".repeat(1000)).unwrap();
         for i in 0..40 {
             std::fs::write(root.join(format!("topic{i:02}.md")), format!("# Topic {i}\n\nNotes about topic number {i} and its details.")).unwrap();
         }
         let s = compose_memory_context(&compile_global_snapshot(root), root);
-        assert!(s.chars().count() <= 3000, "block is {} chars", s.chars().count());
+        assert!(s.chars().count() <= 4000, "block is {} chars", s.chars().count());
         assert!(s.contains(&"r".repeat(1400)), "preferences were truncated");
-        // The old 1,500 budget left no room for a catalog next to long preferences.
+        assert!(s.contains(&"s".repeat(1000)), "the user profile was truncated");
+        // Pinned pages must still leave room for the catalog.
         assert!(s.contains("[[global:topic00]]"));
         assert!(s.contains("more global pages via /memory search"));
     }

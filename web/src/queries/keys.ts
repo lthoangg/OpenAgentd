@@ -89,6 +89,12 @@ export const queryKeys = {
   },
   todos: (sessionId: string) => ['todos', sessionId] as const,
   plan: (sessionId: string) => ['plan', sessionId] as const,
+  /** `/btw` side questions of a session (list and count share the prefix). */
+  sideQuestions: {
+    all: (sessionId: string) => ['side-questions', sessionId] as const,
+    list: (sessionId: string) => ['side-questions', sessionId, 'list'] as const,
+    count: (sessionId: string) => ['side-questions', sessionId, 'count'] as const,
+  },
   mcp: {
     all: () => ['mcp'] as const,
     list: () => ['mcp', 'list'] as const,

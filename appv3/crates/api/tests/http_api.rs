@@ -356,9 +356,11 @@ async fn http_api_end_to_end() {
     history_paging_flow(&c, &pool, &ws).await;
     plan_review_flow(&c, &pool, &ws).await;
     workspace_isolation_flow(&c, &pool, &ws, &root.path().join("other-ws")).await;
+    side_question_flow(&c, &pool, &sid).await;
 
     let (st, _) = c.json("DELETE", &format!("/api/agent/sessions/{sid}"), None).await;
     assert_eq!(st, StatusCode::NO_CONTENT);
+    assert_eq!(appv3_db::count_side_questions(&pool, &sid).await.unwrap(), 0, "side questions outlived their session");
     assert!(!appv3_agent::snapshot::snapshot_dir(&sid).exists());
     let (st, _) = c.json("GET", &format!("/api/agent/sessions/{sid}"), None).await;
     assert_eq!(st, StatusCode::NOT_FOUND);
@@ -700,4 +702,57 @@ async fn plan_review_flow(c: &Client, pool: &appv3_db::DbPool, ws: &std::path::P
     assert_eq!(st, StatusCode::NOT_FOUND);
     let (st, _) = c.json("DELETE", &format!("/api/agent/sessions/{psid}"), None).await;
     assert_eq!(st, StatusCode::NO_CONTENT);
+}
+
+/// `/btw` side questions: streamed, listed beside the session, never in its
+/// history. Leaves one behind so deleting the session must remove it.
+async fn side_question_flow(c: &Client, pool: &appv3_db::DbPool, sid: &str) {
+    wait_idle(sid).await;
+    let uri = format!("/api/agent/sessions/{sid}/btw");
+    let messages =
+        || async { sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM session_messages WHERE session_id = ?").bind(appv3_db::codec::db_id(sid)).fetch_one(pool).await.unwrap() };
+    let before = messages().await;
+
+    let (st, v) = c.json("POST", &uri, Some(json!({"question": "   "}))).await;
+    assert_eq!(st, StatusCode::UNPROCESSABLE_ENTITY, "{v}");
+    let (st, v) = c.json("POST", &uri, Some(json!({}))).await;
+    assert_eq!(st, StatusCode::UNPROCESSABLE_ENTITY, "{v}");
+    let missing = uuid::Uuid::now_v7();
+    let (st, _) = c.json("POST", &format!("/api/agent/sessions/{missing}/btw"), Some(json!({"question": "q"}))).await;
+    assert_eq!(st, StatusCode::NOT_FOUND);
+    let (st, _) = c.json("GET", &format!("/api/agent/sessions/{missing}/btw/count"), None).await;
+    assert_eq!(st, StatusCode::NOT_FOUND);
+
+    let ask = |q: &str| Request::post(&uri).header("content-type", "application/json").body(Body::from(json!({"question": q}).to_string())).unwrap();
+    let (st, h, raw) = tokio::time::timeout(std::time::Duration::from_secs(20), c.send(ask("what did you say?"))).await.expect("side question ends");
+    assert_eq!(st, StatusCode::OK, "{}", String::from_utf8_lossy(&raw));
+    assert!(h.get("content-type").unwrap().to_str().unwrap().starts_with("text/event-stream"));
+    let events = sse_events(&raw);
+    let names: Vec<&str> = events.iter().map(|(e, _)| e.as_str()).collect();
+    assert_eq!((names.first(), names.last()), (Some(&"btw_start"), Some(&"btw_done")), "{names:?}");
+    assert!(names.contains(&"btw_delta"), "{names:?}");
+    let (_, done) = events.last().unwrap();
+    assert_eq!(done["answer"], "Hello from mock.");
+    let id = done["id"].as_str().unwrap().to_string();
+
+    let (st, v) = c.json("GET", &uri, None).await;
+    assert_eq!(st, StatusCode::OK, "{v}");
+    assert_eq!(v["total"], 1);
+    let item = &v["items"][0];
+    assert_eq!((item["id"].as_str(), item["question"].as_str(), item["status"].as_str()), (Some(id.as_str()), Some("what did you say?"), Some("done")), "{v}");
+    assert_eq!(item["answer"], "Hello from mock.");
+    let (_, v) = c.json("GET", &format!("{uri}/count"), None).await;
+    assert_eq!(v, json!({"total": 1}));
+    let (st, _) = c.json("POST", &format!("{uri}/{id}/stop"), None).await;
+    assert_eq!(st, StatusCode::NOT_FOUND, "a finished side question is not running");
+    assert_eq!(messages().await, before, "side question entered the history");
+
+    let (st, _) = c.json("DELETE", &uri, None).await;
+    assert_eq!(st, StatusCode::NO_CONTENT);
+    let (_, v) = c.json("GET", &format!("{uri}/count"), None).await;
+    assert_eq!(v, json!({"total": 0}));
+
+    let (st, _, _) = tokio::time::timeout(std::time::Duration::from_secs(20), c.send(ask("again?"))).await.expect("side question ends");
+    assert_eq!(st, StatusCode::OK);
+    assert_eq!(appv3_db::count_side_questions(pool, sid).await.unwrap(), 1);
 }

@@ -29,7 +29,6 @@ fn dispatch(command: Command) -> anyhow::Result<ExitCode> {
         Command::Doctor => cmd::doctor::doctor(),
         Command::Cleanup(a) => done(cmd::cleanup::cleanup(&a)),
         Command::Transfer(t) => done(match t {
-            TransferCmd::Migrate(a) => cmd::transfer::migrate(&a),
             TransferCmd::Export(a) => cmd::transfer::export(&a),
             TransferCmd::Import(a) => cmd::transfer::import(&a),
         }),

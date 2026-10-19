@@ -6,7 +6,7 @@
  *   - Fetching user-defined commands + snippets (workspace-scoped queries).
  *   - Assembling the ``SlashCommand[]`` / ``SnippetCommand[]`` lists the
  *     ``InputComposer`` renders in its picker (built-ins + backend-discovered).
- *   - Dispatching a picked slash command (``stop`` / ``continue`` /
+ *   - Dispatching a picked slash command (``stop`` / ``btw`` / ``continue`` /
  *     ``compact`` / ``undo`` / ``redo`` / ``redo-all`` / ``new`` / ``init`` — agent lifecycle
  *     actions read straight off ``useAgentStore.getState()`` since they're
  *     one-shot imperative calls, not part of the render subscription).
@@ -20,6 +20,7 @@ import { useCommandsQuery } from '@/queries/useCommandsQuery'
 import { useSnippetsQuery } from '@/queries/useSnippetsQuery'
 import { renderCommand, renderSnippet } from '@/api/client'
 import { useAgentStore } from '@/stores/useAgentStore'
+import { useBtwStore } from '@/stores/useBtwStore'
 import { useToastStore } from '@/stores/useToastStore'
 import { type InputComposerHandle, type SlashCommand, type SnippetCommand } from '../InputComposer'
 import { filterBaseSlashCommands, attachmentToFile } from './helpers'
@@ -121,6 +122,13 @@ export function useSlashCommands({
       case 'stop':
         void stopTurn(inputRef.current)
         break
+      case 'btw': {
+        // A bare ``/btw`` reopens the side questions; one with a question is
+        // sent from the composer's submit.
+        const sessionId = useAgentStore.getState().sessionId
+        if (sessionId) useBtwStore.getState().reopen(sessionId)
+        break
+      }
       case 'compact':
         useAgentStore.getState().compactAgent()
         break

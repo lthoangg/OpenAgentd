@@ -774,6 +774,30 @@ explicitly.
   `db/src/queries/sessions.rs`, tested in `api/tests/http_api.rs`). The
   sidebar uses it to list a repository and its worktrees as one list. v2
   ignores `workspaces`, and the web client then filters the page it gets.
+- **Session list sort:** `GET /api/agent/sessions?sort=activity` orders by
+  `updated_at` (most recently touched first) and pages with a
+  `"<updated_at>|<uuid>"` cursor; `sort=created`, the default, keeps v2's
+  order, and any other value is a 422 `Invalid 'sort'.`. Migration 00000024
+  adds the `(parent_session_id[, workspace], updated_at, id)` indexes behind
+  it (`db/src/queries/sessions.rs`, tested in `db/tests/queries.rs` and
+  `api/tests/http_api.rs`). The sidebar's default "Recent activity" sort
+  uses it. v2 ignores `sort` and returns created order.
+- **Pinned sessions:** `chat_sessions.pinned_at` (migration 00000024) backs
+  the sidebar's **Pinned** section. `PATCH /api/agent/sessions/{id}` accepts
+  `{"pinned": true|false}`, alone or with `title`/`interaction_mode`; pinning
+  does not move `updated_at`, and a child session is not found, as for other
+  updates. `SessionResponse` gains `pinned_at`, omitted when unpinned.
+  `GET /api/agent/sessions?pinned=true` returns every pinned session as one
+  page (most recently pinned first); `pinned=false` leaves pinned sessions
+  out of a normal page. `active=true` ignores both. v2 has no pins: it
+  ignores the filter and the PATCH field, so a pin-only PATCH fails there as
+  an empty update.
+- **Chat-created sessions register their folder:** `POST /api/agent/chat`
+  without a `session_id` starts a session, and v3 now records its folder as a
+  sidebar workspace the same way `/sessions/resolve` does (a managed worktree
+  under its source repository; never the Chat workspace). The web's lazy
+  new-session draft relies on it so a first message in a new folder lands in
+  the tree. v2 does not register the folder here.
 - **Bundled skills:** v3 bundles one skill, `self-healing`
   (`contract/builtin_skills/self-healing`). Its `SKILL.md` is an index of
   `references/*.md` files, plus the plugin typings (`jsplugin/openagentd.d.ts`).

@@ -307,7 +307,8 @@ pub async fn list(pool: &DbPool, current_workspace: &str, workspace: Option<&str
     };
     let target = resolve_in(&targets, q)?;
     let ws = manager::validate_workspace(&target.path, false)?;
-    let (rows, _, more) = db::list_sessions_page(pool, None, LIST_SESSIONS_MAX, std::slice::from_ref(&ws), None).await.map_err(err)?;
+    let filter = db::SessionListFilter { workspaces: std::slice::from_ref(&ws), ..Default::default() };
+    let (rows, _, more) = db::list_sessions_page(pool, None, LIST_SESSIONS_MAX, &filter).await.map_err(err)?;
     if rows.is_empty() {
         return Ok(format!("No sessions yet in '{}' ({ws}). Omit session_id to start one.", target.name));
     }

@@ -26,6 +26,8 @@ fn root() -> &'static Path {
             std::env::set_var(k, root.path().join(d));
         }
         std::env::set_var("HOME", root.path().join("home"));
+        // Windows resolves `~` from USERPROFILE and ignores HOME.
+        std::env::set_var("USERPROFILE", root.path().join("home"));
         appv3_core::settings::install(appv3_core::settings::Settings::from_env());
         let mem = root.path().join("config").join("memory");
         std::fs::create_dir_all(&mem).unwrap();

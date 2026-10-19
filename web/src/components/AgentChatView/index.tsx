@@ -45,6 +45,7 @@ import { useReturnedFeedbackStore } from '@/stores/useReturnedFeedbackStore'
 import { previewTargetForFeedback } from '../Preview/preview-comments'
 import { usePreviewToolAutoOpen } from './usePreviewToolAutoOpen'
 import { useToastStore } from '@/stores/useToastStore'
+import { selectBtw, useBtwStore } from '@/stores/useBtwStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { useAgentsQuery } from '@/queries/useAgentsQuery'
 import { useRegistryQuery } from '@/queries/useAgentSettingsQueries'
@@ -57,6 +58,7 @@ import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
 import { type InputComposerHandle } from '../InputComposer'
 import { FloatingInputComposer } from '../FloatingInputComposer'
+import { BtwPanel } from '../BtwPanel'
 import { AppFooter } from '../AppFooter'
 import { WorkspacePanel } from '../WorkspacePanel'
 import { saveLastWorkspace, workspaceLabel } from '@/utils/workspace'
@@ -76,7 +78,7 @@ import { useOverlayState } from './useOverlayState'
 import { useSessionBootstrap } from './useSessionBootstrap'
 import { useSlashCommands } from './useSlashCommands'
 import { useCommandPalette } from './useCommandPalette'
-import { composerHistoryPrompts, newestUserBlockId, parseBuiltInSlashCommand } from './helpers'
+import { btwSubmit, composerHistoryPrompts, newestUserBlockId, parseBuiltInSlashCommand } from './helpers'
 import { deliverFromComposer, stopTurn, useReleaseHeldMessages } from './heldMessages'
 
 type RevertedMessage = { role: string; content: string; attachments?: MessageAttachment[] }
@@ -356,6 +358,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
   }, [])
 
   const { data: todosData } = useTodosQuery(sessionIdState)
+  const btwOpen = useBtwStore((s) => selectBtw(sessionIdState)(s).open)
   const todos = todosData?.todos ?? []
   const { data: planData } = useSessionPlanQuery(sessionIdState)
   const plan = planData?.plan ?? null
@@ -486,6 +489,37 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
 
   useReleaseHeldMessages({ workspace, sessionId: sessionIdState, composerRef: inputRef })
   useMarkSessionRead(sessionIdState)
+
+  // ``/btw <question>``: a side question, never sent to the chat; a bare
+  // ``/btw`` reopens the panel. Returns false when ``content`` is not one.
+  // The composer clears itself right after submit, so a refused draft is
+  // put back on the next task.
+  const handleBtwSubmit = useCallback((content: string, files?: File[]): boolean => {
+    const action = btwSubmit(content, files, sessionIdState)
+    const giveBack = () => setTimeout(() => {
+      inputRef.current?.setValue(content)
+      if (files?.length) inputRef.current?.setFiles(files)
+    }, 0)
+    switch (action.kind) {
+      case 'not-btw':
+        return false
+      case 'no-session':
+        pushToast({ tone: 'info', title: 'Start a conversation first', description: 'Side questions answer from what the session already holds.' })
+        giveBack()
+        break
+      case 'attachments':
+        pushToast({ tone: 'error', title: 'Side questions can’t include attachments', description: 'Remove the files, or send them as a normal message.' })
+        giveBack()
+        break
+      case 'reopen':
+        if (sessionIdState) useBtwStore.getState().reopen(sessionIdState)
+        break
+      case 'ask':
+        if (sessionIdState) void useBtwStore.getState().ask(sessionIdState, action.question)
+        break
+    }
+    return true
+  }, [sessionIdState, pushToast])
 
   const {
     paletteCommands,
@@ -736,6 +770,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
             boundsRef={mainColumnRef}
             onSubmit={async (content, files, mentions, delivery) => {
               if (!workspace) return
+              if (handleBtwSubmit(content, files)) return
               if (!files || files.length === 0) {
                 const builtInCmd = parseBuiltInSlashCommand(content)
                 if (builtInCmd) {
@@ -780,6 +815,8 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
             revertedMessages={leadRevertedMessages}
             onRedo={() => { void handleSlashCommand('redo') }}
             onRedoAll={() => { void handleSlashCommand('redo-all') }}
+            aboveComposer={<BtwPanel sessionId={sessionIdState || null} countEnabled={leadHasVisibleBlocks} />}
+            aboveComposerOpen={btwOpen}
           />
         ) : null}
         </main>

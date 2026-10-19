@@ -19,6 +19,7 @@ import { useIsMobile } from '@/hooks/use-mobile'
 import { appShortcut, useShortcuts } from '@/lib/keyboard/hooks'
 import { useFileRevealStore } from '@/stores/useFileRevealStore'
 import { useLayoutStore } from '@/stores/useLayoutStore'
+import { useBtwStore } from '@/stores/useBtwStore'
 import type { WorkspaceFileInfo } from '@/api/types'
 import type { Command } from '../CommandPalette'
 import { useAgentCommands } from './useAgentCommands'
@@ -100,6 +101,11 @@ export function useCommandPalette({
     layout.toggleDockMaximized()
   }, [workspacePanelOpen, isMobile, setWorkspacePanel, workspace])
 
+  const handleOpenSideQuestions = useMemo(
+    () => (sessionIdState ? () => useBtwStore.getState().reopen(sessionIdState) : undefined),
+    [sessionIdState],
+  )
+
   const agentCommands = useAgentCommands({
     toggleAgentCapabilities: handleToggleAgentCapabilities,
     toggleTasks: handleToggleTasks,
@@ -113,6 +119,7 @@ export function useCommandPalette({
     handleOpenPlan,
     planAwaitingReview,
     handleOpenPreview,
+    handleOpenSideQuestions,
   })
   const switchCommands = usePaletteSwitchCommands({ workspace, sessionId: sessionIdState })
   const paletteCommands = useMemo(() => [...agentCommands, ...switchCommands], [agentCommands, switchCommands])

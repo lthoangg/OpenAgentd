@@ -141,6 +141,10 @@ interface FloatingInputComposerProps {
   onDesignFeedbackRemoved?: (feedback: DesignFeedback) => void
   value?: string
   onValueChange?: (value: string) => void
+  /** Rendered above the composer (the `/btw` side-question panel or its chip). */
+  aboveComposer?: React.ReactNode
+  /** Keep the bar expanded while ``aboveComposer`` shows a panel. */
+  aboveComposerOpen?: boolean
 }
 
 /**
@@ -155,7 +159,7 @@ interface FloatingInputComposerProps {
  */
 export const FloatingInputComposer = memo(
   forwardRef<InputComposerHandle, FloatingInputComposerProps>(
-    function FloatingInputComposer({ boundsRef, ...inputProps }, ref) {
+    function FloatingInputComposer({ boundsRef, aboveComposer, aboveComposerOpen = false, ...inputProps }, ref) {
     const isMobile = useIsMobile()
     const dragControls = useDragControls()
     const panelRef = useRef<HTMLDivElement>(null)
@@ -386,6 +390,7 @@ export const FloatingInputComposer = memo(
     const forceExpanded =
       inputProps.disabled === true ||
       (inputProps.revertedCount ?? 0) > 0 ||
+      aboveComposerOpen ||
       hasContent
 
     const handleHasContentChange = useCallback((next: boolean) => {
@@ -545,6 +550,7 @@ export const FloatingInputComposer = memo(
           className="pointer-events-auto relative border-t border-(--color-border) bg-(--bg-page) px-3 pb-safe pt-2"
         >
           <JumpToLatestChip />
+          {aboveComposer}
           <RevertNotice count={inputProps.revertedCount ?? 0} messages={inputProps.revertedMessages ?? []} onRedo={inputProps.onRedo} onRedoAll={inputProps.onRedoAll} />
           <InputComposer
             ref={setInputRefs}
@@ -607,6 +613,7 @@ export const FloatingInputComposer = memo(
           style={{ touchAction: 'none' }}
         >
         <JumpToLatestChip below={jumpChipBelow} />
+        {aboveComposer && <div className={effectiveMinimized ? '' : 'px-3'}>{aboveComposer}</div>}
         <RevertNotice count={inputProps.revertedCount ?? 0} messages={inputProps.revertedMessages ?? []} onRedo={inputProps.onRedo} onRedoAll={inputProps.onRedoAll} />
         <div className={effectiveMinimized ? '' : 'px-3'}>
           <InputComposer

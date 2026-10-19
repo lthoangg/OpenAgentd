@@ -57,7 +57,9 @@ if (import.meta.main) {
   // Later features (the shared event stream, window titles, UI primitives)
   // and framer-motion 14 raised it to 2.39 MB / 721 kB, with a 1.75 MB
   // index chunk.
-  const limits = { eagerBytes: 2_410_000, eagerGzipBytes: 725_000, largestChunkBytes: 1_755_000 }
+  // `/btw` side questions (panel, store, client) added 12 kB / 4 kB gzip:
+  // 2.41 MB / 726 kB, with a 1.76 MB index chunk.
+  const limits = { eagerBytes: 2_420_000, eagerGzipBytes: 729_000, largestChunkBytes: 1_765_000 }
   console.log('Production JavaScript budget:', sizes)
   const failures = budgetFailures(sizes, limits)
   if (failures.length) {

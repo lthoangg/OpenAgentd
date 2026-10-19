@@ -357,6 +357,64 @@ export interface SSEEvent {
   [key: string]: unknown
 }
 
+// ── /btw side questions ───────────────────────────────────────────────────
+
+/**
+ * Events of a `POST /agent/sessions/{sid}/btw` response. Must match
+ * `side_question_stream` in `appv3/contract/sse_events.json` (enforced by
+ * `sse-contract.test.ts`).
+ */
+export const SIDE_QUESTION_EVENT_TYPES = ['btw_start', 'btw_delta', 'btw_done', 'btw_error'] as const
+
+export type SideQuestionEventType = (typeof SIDE_QUESTION_EVENT_TYPES)[number]
+
+export type SideQuestionStatus = 'streaming' | 'done' | 'error' | 'stopped'
+
+/** A stored side question: kept beside its session, never in its history. */
+export interface SideQuestion {
+  id: string
+  session_id: string
+  question: string
+  answer: string
+  status: SideQuestionStatus
+  error: string | null
+  model: string | null
+  usage: Record<string, unknown> | null
+  created_at: string
+  updated_at: string
+}
+
+export interface SideQuestionListResponse {
+  /** Newest side questions of the session, oldest first. */
+  items: SideQuestion[]
+  total: number
+}
+
+/** `btw_start` (also sent again when a retry restarts the answer). */
+export interface SideQuestionStartEvent { type: 'btw_start'; id: string; question: string }
+export interface SideQuestionDeltaEvent { type: 'btw_delta'; id: string; text: string }
+export interface SideQuestionDoneEvent {
+  type: 'btw_done'
+  id: string
+  answer: string
+  model: string | null
+  usage: Record<string, unknown> | null
+}
+/** Error or stop; `answer` holds what was written before it ended. */
+export interface SideQuestionErrorEvent {
+  type: 'btw_error'
+  id: string
+  status: 'error' | 'stopped'
+  message: string
+  answer: string
+}
+
+export type SideQuestionEvent =
+  | SideQuestionStartEvent
+  | SideQuestionDeltaEvent
+  | SideQuestionDoneEvent
+  | SideQuestionErrorEvent
+
 // Content Block Types
 export interface ContentBlock {
   id: string

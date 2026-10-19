@@ -464,6 +464,13 @@ run from the terminal (the native Rust binary since v3.0.0).
   filtered by active session state `[v2.0.0]`.
   - **`/redo` and `/redo-all` slash commands** `[v2.0.0]` — restore undone chat turns
     step-by-step or fast-forward completely back to the latest turn.
+  - **`/btw` side questions** `[v3.17.0]` — `/btw <question>` asks a quick question
+    about the session, even while the agent is working, without interrupting the turn
+    or adding anything to the chat. The model answers from the conversation so far,
+    with no tools, and the answer streams into a panel above the composer. Side
+    questions are saved with the session. Step back through earlier ones, copy an
+    answer, stop it, or clear the thread. Close only hides the panel. Reopen it with
+    a bare `/btw`, **Cmd+K → Side Questions**, or the **BTW** chip.
   - **`/init` AGENTS.md analysis & generation** `[v1.9.0, v2.0.0]` — analyzes codebase
     structure and generates standard `AGENTS.md` context files at repository root and
     subdirectories with a guided analysis protocol.

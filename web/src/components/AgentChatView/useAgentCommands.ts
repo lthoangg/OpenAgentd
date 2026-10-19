@@ -48,6 +48,8 @@ interface UseAgentCommandsArgs {
   planAwaitingReview?: boolean
   /** Opens a web preview tab in the review dock (workspace + local backend). */
   handleOpenPreview?: () => void
+  /** Once the session exists: reopens its ``/btw`` side questions. */
+  handleOpenSideQuestions?: () => void
 }
 
 export function useAgentCommands({
@@ -63,6 +65,7 @@ export function useAgentCommands({
   handleOpenPlan,
   planAwaitingReview = false,
   handleOpenPreview,
+  handleOpenSideQuestions,
 }: UseAgentCommandsArgs): Command[] {
   const openSettings = useSettingsStore((s) => s.openSettings)
   const { setPreference: setTheme } = useThemePreference()
@@ -84,6 +87,16 @@ export function useAgentCommands({
         }]
       : []),
     { id: 'workspace-files',  group: 'View',       label: 'Toggle Review Dock', description: 'Show or hide the dock with its open tabs', keywords: 'changed files dock panel', shortcut: shortcutLabel(KEYS.workspaceFiles, os), action: handleWorkspaceFiles },
+    ...(handleOpenSideQuestions
+      ? [{
+          id: 'side-questions',
+          group: 'View' as const,
+          label: 'Side Questions',
+          description: 'Reopen this session\'s /btw questions and answers',
+          keywords: 'btw by the way aside side question answer',
+          action: handleOpenSideQuestions,
+        }]
+      : []),
     ...(handleOpenGit
       ? [{ id: 'open-git', group: 'View' as const, label: 'Open Git', description: 'Changed files and commit history in the review dock', keywords: 'changes diff history commits review', shortcut: shortcutLabel(KEYS.openGit, os), action: handleOpenGit }]
       : []),
@@ -124,5 +137,5 @@ export function useAgentCommands({
     ...(isTauri
       ? [{ id: 'reload-window', group: 'View', label: 'Reload Window', description: 'Reload the app UI (the server and running turns are unaffected)', action: () => window.location.reload() }]
       : []),
-  ], [os, isTauri, toggleAgentCapabilities, toggleTasks, toggleScheduler, handleWorkspaceFiles, handleOpenGit, handleToggleDockMaximized, handleOpenPlan, planAwaitingReview, handleOpenPreview, handleSidebarToggle, handleNewSession, handleOpenTerminal, openSettings, setTheme, readerMode, toggleReaderMode])
+  ], [os, isTauri, toggleAgentCapabilities, toggleTasks, toggleScheduler, handleWorkspaceFiles, handleOpenGit, handleToggleDockMaximized, handleOpenPlan, planAwaitingReview, handleOpenPreview, handleOpenSideQuestions, handleSidebarToggle, handleNewSession, handleOpenTerminal, openSettings, setTheme, readerMode, toggleReaderMode])
 }

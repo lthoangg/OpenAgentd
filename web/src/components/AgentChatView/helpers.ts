@@ -14,6 +14,13 @@ import { patchFileStats } from '../ToolCall/diffUtils'
 /** Built-in slash commands always available, ahead of any user-defined ones. */
 export const BASE_SLASH_COMMANDS: SlashCommand[] = [
   { id: 'stop', label: 'Stop', description: 'Stop all working agents' },
+  {
+    id: 'btw',
+    label: 'BTW',
+    description: 'Ask a side question without adding it to the chat',
+    keepInputOpen: true,
+    insertText: 'btw',
+  },
   { id: 'compact', label: 'Compact', description: 'Summarize and compact this session' },
   { id: 'undo', label: 'Undo', description: 'Undo the previous message' },
   { id: 'redo', label: 'Redo', description: 'Redo the next undone message' },
@@ -33,6 +40,32 @@ export function parseBuiltInSlashCommand(content: string): string | null {
   const command = trimmed.slice(1).trim().toLowerCase()
   if (command === 'redo_all') return 'redo-all'
   return BUILT_IN_SLASH_COMMAND_IDS.has(command) ? command : null
+}
+
+/**
+ * The question of a ``/btw`` side question: ``''`` for a bare ``/btw``
+ * (reopen the panel), ``null`` when ``content`` is not one.
+ */
+export function parseBtwCommand(content: string): string | null {
+  const match = /^\s*\/btw(?:\s+([\s\S]*))?$/i.exec(content)
+  return match ? (match[1] ?? '').trim() : null
+}
+
+export type BtwSubmit =
+  | { kind: 'not-btw' }
+  /** Refused: the draft goes back to the composer. */
+  | { kind: 'no-session' }
+  | { kind: 'attachments' }
+  | { kind: 'reopen' }
+  | { kind: 'ask'; question: string }
+
+/** What submitting ``content`` from the composer means for ``/btw``. */
+export function btwSubmit(content: string, files: readonly File[] | undefined, sessionId: string | null): BtwSubmit {
+  const question = parseBtwCommand(content)
+  if (question === null) return { kind: 'not-btw' }
+  if (!sessionId) return { kind: 'no-session' }
+  if (files && files.length > 0) return { kind: 'attachments' }
+  return question ? { kind: 'ask', question } : { kind: 'reopen' }
 }
 
 /**
@@ -118,6 +151,9 @@ export function filterBaseSlashCommands(ctx: FilterSlashCommandsContext): SlashC
     switch (cmd.id) {
       case 'stop':
         return isWorking
+      case 'btw':
+        // Answers from the session's context, so it needs some; works mid-turn.
+        return hasVisible
       case 'undo':
       case 'compact':
         return hasVisible && !isWorking

@@ -40,6 +40,8 @@ import type {
   SessionInteractionMode,
   MemberProfile,
   SubagentsResponse,
+  SideQuestionEvent,
+  SideQuestionListResponse,
 } from '../types'
 
 export async function postAgentChat(
@@ -135,6 +137,68 @@ export function agentStream(sessionId: string, callbacks: SSECallbacks, signal?:
       readSSE(res, callbacks)
     })
     .catch((err) => { if (err.name !== 'AbortError') callbacks.onError?.(err) })
+}
+
+// ── /btw side questions ─────────────────────────────────────────────────────
+
+function sideQuestionsUrl(sessionId: string): string {
+  return `${apiBaseUrl()}/agent/sessions/${encodeURIComponent(sessionId)}/btw`
+}
+
+/**
+ * Ask a side question and stream its answer. Resolves once the response
+ * ends; rejects when the server refuses the request (unknown session,
+ * provider not configured). The answer keeps going on the server, and is
+ * stored, if `signal` aborts.
+ */
+export async function askSideQuestion(
+  sessionId: string,
+  question: string,
+  onEvent: (event: SideQuestionEvent) => void,
+  signal?: AbortSignal,
+): Promise<void> {
+  const url = sideQuestionsUrl(sessionId)
+  const res = await fetch(url, {
+    method: 'POST',
+    signal,
+    headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream', ...apiAuthHeaders(url) },
+    body: JSON.stringify({ question }),
+  })
+  if (!res.ok) await parseDetailOrThrow(res, 'POST /agent/sessions/{id}/btw')
+  await new Promise<void>((resolve, reject) => {
+    readSSE(res, {
+      onEvent: (_type, data) => onEvent(data as SideQuestionEvent),
+      onError: reject,
+      onDone: resolve,
+    })
+    // readSSE swallows an abort without calling back.
+    signal?.addEventListener('abort', () => resolve(), { once: true })
+  })
+}
+
+export async function listSideQuestions(sessionId: string, limit = 50): Promise<SideQuestionListResponse> {
+  const res = await fetch(`${sideQuestionsUrl(sessionId)}?limit=${limit}`)
+  if (!res.ok) await parseDetailOrThrow(res, 'GET /agent/sessions/{id}/btw')
+  return res.json()
+}
+
+export async function countSideQuestions(sessionId: string): Promise<{ total: number }> {
+  const res = await fetch(`${sideQuestionsUrl(sessionId)}/count`)
+  if (!res.ok) await parseDetailOrThrow(res, 'GET /agent/sessions/{id}/btw/count')
+  return res.json()
+}
+
+/** Stop a running side question. False when it already ended. */
+export async function stopSideQuestion(sessionId: string, id: string): Promise<boolean> {
+  const res = await fetch(`${sideQuestionsUrl(sessionId)}/${encodeURIComponent(id)}/stop`, { method: 'POST' })
+  if (res.status === 404) return false
+  if (!res.ok) await parseDetailOrThrow(res, 'POST /agent/sessions/{id}/btw/{sq}/stop')
+  return true
+}
+
+export async function clearSideQuestions(sessionId: string): Promise<void> {
+  const res = await fetch(sideQuestionsUrl(sessionId), { method: 'DELETE' })
+  if (!res.ok) await parseDetailOrThrow(res, 'DELETE /agent/sessions/{id}/btw')
 }
 
 async function fetchAgents(workspace: string, sessionId?: string | null): Promise<AgentRegistryResponse> {

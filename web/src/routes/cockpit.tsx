@@ -1,4 +1,4 @@
-import { useRef, useEffect, useLayoutEffect } from 'react'
+import { useRef, useEffect, useLayoutEffect, useState } from 'react'
 import { Outlet, useParams, useNavigate, useSearch } from '@tanstack/react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { AgentChatView } from '@/components/AgentChatView'
@@ -49,8 +49,14 @@ function AgentLayoutBase() {
     enabled: Boolean(sessionId) && !cachedSession?.workspace,
     staleTime: 30_000,
   })
+  // The session a draft's first message just created. The router lands on
+  // its id before the session list refetch or `getSession` knows it, and a
+  // `null` workspace in that gap unmounts the chat, the composer and the
+  // dock behind an "Opening session…" spinner.
+  const [adopted, setAdopted] = useState<{ id: string; workspace: string } | null>(null)
+  const adoptedWorkspace = sessionId && adopted?.id === sessionId ? adopted.workspace : null
   const workspace = sessionId
-    ? workspaceFromSession(sessionId, cachedSession?.workspace ?? sessionQuery.data?.workspace)
+    ? workspaceFromSession(sessionId, cachedSession?.workspace ?? sessionQuery.data?.workspace ?? adoptedWorkspace)
     : draftWorkspace
   const chatWorkspace = useChatWorkspace()
   const workspaceName = workspace ? workspaceLabel(workspace, chatWorkspace) : null
@@ -181,7 +187,10 @@ function AgentLayoutBase() {
         // a separate refetchQueries would only cancel and resend it.
         void queryClient.invalidateQueries({ queryKey: queryKeys.session.sessions.all() })
         const workspace = workspaceRef.current
-        if (workspace) saveLastWorkspace(workspace)
+        if (workspace) {
+          saveLastWorkspace(workspace)
+          setAdopted({ id: state.sessionId, workspace })
+        }
         navigateRef.current({
           to: '/$sessionId',
           params: { sessionId: state.sessionId },

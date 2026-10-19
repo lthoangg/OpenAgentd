@@ -27,7 +27,7 @@ import { checkForUpdates, downloadUpdate, installUpdate, type UpdateStatus } fro
 import { openExternalUrl } from '@/lib/open-external'
 import { useHealthQuery } from '@/queries'
 import { useThemePreference } from '@/hooks/useThemePreference'
-import { TRANSCRIPT_STYLES, useDisplayPrefsStore } from '@/stores/useDisplayPrefsStore'
+import { NEW_SESSION_COMPOSERS, TRANSCRIPT_STYLES, useDisplayPrefsStore } from '@/stores/useDisplayPrefsStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 
 // ── Appearance ────────────────────────────────────────────────────────────
@@ -56,6 +56,8 @@ function AppearanceSection() {
   const { preference, setPreference } = useThemePreference()
   const transcriptStyle = useDisplayPrefsStore((s) => s.transcriptStyle)
   const setTranscriptStyle = useDisplayPrefsStore((s) => s.setTranscriptStyle)
+  const newSessionComposer = useDisplayPrefsStore((s) => s.newSessionComposer)
+  const setNewSessionComposer = useDisplayPrefsStore((s) => s.setNewSessionComposer)
   return (
     <SettingsSection title="Appearance">
       <div className="space-y-3">
@@ -71,6 +73,15 @@ function AppearanceSection() {
             </p>
           </div>
           <SegmentedChoice label="Transcript" options={TRANSCRIPT_STYLES} value={transcriptStyle} onChange={setTranscriptStyle} />
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <p className="text-xs text-(--color-text-muted)">New session composer</p>
+            <p className="mt-0.5 text-[11px] text-(--color-text-subtle)">
+              Floating keeps the collapsible bar at the bottom. On phones the composer always sits at the bottom.
+            </p>
+          </div>
+          <SegmentedChoice label="New session composer" options={NEW_SESSION_COMPOSERS} value={newSessionComposer} onChange={setNewSessionComposer} />
         </div>
       </div>
     </SettingsSection>

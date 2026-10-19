@@ -68,6 +68,7 @@ function Harness(props: {
   exposeFocus?: boolean
   isStreaming?: boolean
   slashCommands?: Array<{ id: string; label: string; description: string }>
+  placement?: 'floating' | 'inline'
 }) {
   const boundsRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<InputComposerHandle>(null)
@@ -91,10 +92,35 @@ function Harness(props: {
         isStreaming={props.isStreaming}
         placeholder={props.placeholder ?? 'Message…'}
         slashCommands={props.slashCommands}
+        placement={props.placement}
       />
     </div>
   )
 }
+
+describe('FloatingInputComposer inline placement', () => {
+  it('sits in the page flow, expanded, with no drag handle and no stored position', async () => {
+    render(<Harness placement="inline" />)
+    expect(screen.getByTestId('inline-inputbar-container')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /drag input bar/i })).toBeNull()
+    const textarea = screen.getByRole('textbox', { name: 'Message input' })
+    expect(textarea.getAttribute('disabled')).toBeNull()
+    await userEvent.click(textarea)
+    await userEvent.click(screen.getByRole('button', { name: 'Outside' }))
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 250)) })
+    // Still a full composer after losing focus.
+    expect(screen.getByRole('textbox', { name: 'Message input' }).getAttribute('disabled')).toBeNull()
+    act(() => { window.dispatchEvent(new Event('resize')) })
+    expect(localStorage.getItem(STORAGE_KEY)).toBeNull()
+  })
+
+  it('docks on phones whatever the placement', () => {
+    mockIsMobile = true
+    render(<Harness placement="inline" />)
+    expect(screen.getByTestId('mobile-inputbar-container')).toBeTruthy()
+    expect(screen.queryByTestId('inline-inputbar-container')).toBeNull()
+  })
+})
 
 describe('FloatingInputComposer', () => {
   it('keeps the inner InputComposer textarea mounted but hidden from AT while minimized', () => {

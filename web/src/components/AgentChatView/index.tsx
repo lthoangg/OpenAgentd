@@ -22,6 +22,9 @@ import { AgentView } from '../AgentView'
 import type { OpenSessionHandler } from '../AgentView/UserBubble'
 import type { FileRefOpener } from '../FileRefLink'
 import { WorkspaceInfoCard } from '../WorkspaceInfoCard'
+import { NewSessionScreen, newSessionComposerSlot } from '../NewSession/NewSessionScreen'
+import { useDisplayPrefsStore } from '@/stores/useDisplayPrefsStore'
+import { startNewSession } from '@/lib/new-session'
 import { Sidebar } from '../Sidebar'
 import { useTodosQuery } from '@/queries/useTodosQuery'
 import { useClearSessionPlanMutation, useSessionPlanQuery } from '@/queries/useSessionPlanQuery'
@@ -205,6 +208,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
         leadRevertedCount: leadStream?.revertedCount ?? 0,
         leadRevertedMessages: leadStream?.revertedMessages ?? EMPTY_REVERTED_MESSAGES,
         leadHasVisibleBlocks: (leadStream?.blocks.length ?? 0) > 0,
+        leadHasLiveBlocks: (leadStream?.currentBlocks.length ?? 0) > 0,
 
         leadPromptTokens: leadStream?.usage.promptTokens ?? 0,
         leadCompletionTokens: leadStream?.usage.completionTokens ?? 0,
@@ -241,6 +245,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
     leadRevertedCount,
     leadRevertedMessages,
     leadHasVisibleBlocks,
+    leadHasLiveBlocks,
     leadPromptTokens,
     leadCompletionTokens,
     leadCachedTokens,
@@ -426,19 +431,26 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
     isSessionLoading,
     isMobile,
     paletteOpen,
-    sessionModel,
-    sessionThinkingLevel,
     sessionTitle,
     isAgentWorking,
     inputRef,
     navigate,
-    queryClient,
     connectStream,
     loadAgentStatus,
     loadSession,
     beginResolvedSession,
     consumeResolvedSessionReady,
   })
+
+  // A new-session draft (`/?workspace=`): nothing saved yet, so the
+  // new-session screen shows until the first message starts the turn.
+  const newSessionComposer = useDisplayPrefsStore((s) => s.newSessionComposer)
+  const isDraft = !sessionId && Boolean(workspace) && !sessionIdState && !isAgentWorking && !leadHasVisibleBlocks && !leadHasLiveBlocks
+  const draftComposerSlot = newSessionComposerSlot(isMobile, newSessionComposer)
+  const composerInline = isDraft && draftComposerSlot === 'inline'
+  const handleSelectDraftWorkspace = useCallback((path: string) => {
+    startNewSession({ navigate, workspace: path, current: { sessionId, workspace }, replace: true })
+  }, [navigate, sessionId, workspace])
 
   // ── Commands / shortcuts ───────────────────────────────────────────────────
 
@@ -600,6 +612,75 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
       }
     : undefined), [handleDiffOpen, handleFileRefOpen, workspace])
 
+  // One composer element: inside the new-session screen while that is
+  // centered, else docked/floating at the bottom of the chat column.
+  const composerElement = workspace ? (
+    <FloatingInputComposer
+      ref={inputRef}
+      boundsRef={mainColumnRef}
+      placement={composerInline ? 'inline' : 'floating'}
+      onSubmit={async (content, files, mentions, delivery) => {
+        if (!workspace) return
+        if (handleBtwSubmit(content, files)) return
+        if (!files || files.length === 0) {
+          const builtInCmd = parseBuiltInSlashCommand(content)
+          if (builtInCmd) {
+            handleSlashCommand(builtInCmd)
+            return
+          }
+        }
+        const expanded = await expandUserCommand(content)
+        await deliverFromComposer(workspace, inputRef.current, { content: expanded, files, mentions }, delivery)
+      }}
+      onStop={() => { void stopTurn(inputRef.current) }}
+      onSlashCommand={handleSlashCommand}
+      onSnippetCommand={handleSnippetCommand}
+      slashCommands={slashCommands}
+      snippetCommands={snippetCommands}
+      historyPrompts={historyPrompts}
+      onHistoryRecall={handleHistoryRecall}
+      onDesignFeedbackRemoved={handleDesignFeedbackRemoved}
+      onValueChange={handleDraftValueChange}
+      fileRefs={fileRefs}
+      onFileRefsNeeded={() => setFileRefsEnabled(true)}
+      isStreaming={isAgentWorking}
+      disabled={isSessionLoading}
+      placeholder={
+        // While a turn runs the composer shows its own queue/stop hint.
+        isChatWorkspace ? 'Ask anything…' : `Ask anything in ${workspaceName}…`
+      }
+      capabilities={leadCapabilities}
+      // A switch requested mid-turn is queued server-side, so the toggle
+      // shows what the user picked while the turn finishes under the old
+      // mode.
+      interactionMode={sessionPendingInteractionMode ?? sessionInteractionMode}
+      interactionModePending={sessionPendingInteractionMode !== null}
+      onInteractionModeChange={(mode) => {
+        setIsSwitchingInteractionMode(true)
+        void useAgentStore.getState().setSessionInteractionMode(mode).finally(() => {
+          setIsSwitchingInteractionMode(false)
+        })
+      }}
+      interactionModeDisabled={isSwitchingInteractionMode || !sessionIdState}
+      revertedCount={leadRevertedCount}
+      revertedMessages={leadRevertedMessages}
+      onRedo={() => { void handleSlashCommand('redo') }}
+      onRedoAll={() => { void handleSlashCommand('redo-all') }}
+      // Desktop with a workspace: the dock's BTW tab shows side
+      // questions, and here only the chip reopens it while that tab is
+      // not on screen.
+      aboveComposer={dockViewsEnabled && workspacePanel !== null && dockActiveView === 'btw' ? null : (
+        <BtwPanel
+          sessionId={sessionIdState || null}
+          countEnabled={leadHasVisibleBlocks}
+          chipOnly={dockViewsEnabled}
+          onReopen={dockViewsEnabled && sessionIdState ? () => handleOpenSideQuestions(sessionIdState) : undefined}
+        />
+      )}
+      aboveComposerOpen={btwOpen && !dockViewsEnabled}
+    />
+  ) : null
+
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
@@ -647,6 +728,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
         <Sidebar
             currentSessionId={sessionIdState || undefined}
             workspace={workspace}
+            draftWorkspace={sessionId ? null : workspace}
             onCollapse={() => setSidebarCollapsed(true)}
             openWorkspaceDialogKey={openWorkspaceDialogKey}
             onCommandPalette={handleTogglePalette}
@@ -724,6 +806,18 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
               </Button>
             }
           />
+        ) : isDraft && workspace ? (
+          <NewSessionScreen
+            workspace={workspace}
+            workspaceName={workspaceName}
+            isChat={isChatWorkspace}
+            chatWorkspace={chatWorkspace}
+            composer={composerInline ? composerElement : null}
+            composerSlot={draftComposerSlot}
+            isMobile={isMobile}
+            onSelectWorkspace={handleSelectDraftWorkspace}
+            onOpenFolder={handleOpenWorkspaceDialog}
+          />
         ) : (
           <div className="flex flex-1 flex-col min-h-0">
             <ActiveAgentView
@@ -771,71 +865,7 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
               </Button>
             </div>
           </div>
-        ) : workspace ? (
-          <FloatingInputComposer
-            ref={inputRef}
-            boundsRef={mainColumnRef}
-            onSubmit={async (content, files, mentions, delivery) => {
-              if (!workspace) return
-              if (handleBtwSubmit(content, files)) return
-              if (!files || files.length === 0) {
-                const builtInCmd = parseBuiltInSlashCommand(content)
-                if (builtInCmd) {
-                  handleSlashCommand(builtInCmd)
-                  return
-                }
-              }
-              const expanded = await expandUserCommand(content)
-              await deliverFromComposer(workspace, inputRef.current, { content: expanded, files, mentions }, delivery)
-            }}
-            onStop={() => { void stopTurn(inputRef.current) }}
-            onSlashCommand={handleSlashCommand}
-            onSnippetCommand={handleSnippetCommand}
-            slashCommands={slashCommands}
-            snippetCommands={snippetCommands}
-            historyPrompts={historyPrompts}
-            onHistoryRecall={handleHistoryRecall}
-            onDesignFeedbackRemoved={handleDesignFeedbackRemoved}
-            onValueChange={handleDraftValueChange}
-            fileRefs={fileRefs}
-            onFileRefsNeeded={() => setFileRefsEnabled(true)}
-            isStreaming={isAgentWorking}
-            disabled={isSessionLoading}
-            placeholder={
-              // While a turn runs the composer shows its own queue/stop hint.
-              isChatWorkspace ? 'Ask anything…' : `Ask anything in ${workspaceName}…`
-            }
-            capabilities={leadCapabilities}
-            // A switch requested mid-turn is queued server-side, so the toggle
-            // shows what the user picked while the turn finishes under the old
-            // mode.
-            interactionMode={sessionPendingInteractionMode ?? sessionInteractionMode}
-            interactionModePending={sessionPendingInteractionMode !== null}
-            onInteractionModeChange={(mode) => {
-              setIsSwitchingInteractionMode(true)
-              void useAgentStore.getState().setSessionInteractionMode(mode).finally(() => {
-                setIsSwitchingInteractionMode(false)
-              })
-            }}
-            interactionModeDisabled={isSwitchingInteractionMode || !sessionIdState}
-            revertedCount={leadRevertedCount}
-            revertedMessages={leadRevertedMessages}
-            onRedo={() => { void handleSlashCommand('redo') }}
-            onRedoAll={() => { void handleSlashCommand('redo-all') }}
-            // Desktop with a workspace: the dock's BTW tab shows side
-            // questions, and here only the chip reopens it while that tab is
-            // not on screen.
-            aboveComposer={dockViewsEnabled && workspacePanel !== null && dockActiveView === 'btw' ? null : (
-              <BtwPanel
-                sessionId={sessionIdState || null}
-                countEnabled={leadHasVisibleBlocks}
-                chipOnly={dockViewsEnabled}
-                onReopen={dockViewsEnabled && sessionIdState ? () => handleOpenSideQuestions(sessionIdState) : undefined}
-              />
-            )}
-            aboveComposerOpen={btwOpen && !dockViewsEnabled}
-          />
-        ) : null}
+        ) : composerInline ? null : composerElement}
         </main>
         {/* Review dock — only with a workspace attached.
             Desktop: in-flow sibling sized as a ratio of this center region,

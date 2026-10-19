@@ -59,7 +59,7 @@ mock.module('@/api/client', () => ({
 mock.module('@/utils/workspace', () => ({ saveLastWorkspace: () => {}, workspaceLabel: (workspace: string) => workspace, sameWorkspacePath: (a: string, b: string) => a === b, getChatWorkspaceEntry: () => null, setChatWorkspaceEntry: () => {} }))
 mock.module('@/lib/tray', () => ({ setTraySession: () => {} }))
 mock.module('@/components/AgentView', () => ({ AgentView: () => null }))
-mock.module('@/components/WorkspaceInfoCard', () => ({ WorkspaceInfoCard: () => null }))
+mock.module('@/components/WorkspaceInfoCard', () => ({ WorkspaceInfoCard: () => null, RecentSessionsList: () => null }))
 mock.module('@/components/Sidebar', () => ({ Sidebar: () => null }))
 mock.module('@/components/WorkspacePanel', () => ({ WorkspacePanel: () => null }))
 mock.module('@/components/AgentChatView/AgentChatHeader', () => ({ AgentChatHeader: () => null }))
@@ -88,12 +88,14 @@ mock.module('@/components/FloatingInputComposer', () => ({
 }))
 
 mock.module('@/stores/useAgentStore', () => {
+  const listeners = new Set<(next: typeof state, prev: typeof state) => void>()
   const state = {
     connectStream: () => null,
     loadAgentStatus: async () => {},
     loadSession: async () => {},
     sendMessage: async () => {},
     beginResolvedSession: (sessionId: string | null) => { state.sessionId = sessionId },
+    newSession: () => { state.sessionId = null },
     isEmptyIdleSession: () => false,
     consumeResolvedSessionReady: () => false,
     setActiveAgent: () => {},
@@ -118,11 +120,21 @@ mock.module('@/stores/useAgentStore', () => {
       (selector: (draft: typeof state) => unknown) => selector(state),
       {
         getState: () => state,
-        setState: (partial: Partial<typeof state>) => Object.assign(state, partial),
+        setState: (partial: Partial<typeof state>) => {
+          const prev = { ...state }
+          Object.assign(state, partial)
+          for (const listener of listeners) listener(state, prev)
+        },
+        subscribe: (listener: (next: typeof state, prev: typeof state) => void) => {
+          listeners.add(listener)
+          return () => listeners.delete(listener)
+        },
       },
     ),
   }
 })
+
+const { useAgentStore } = await import('@/stores/useAgentStore')
 
 afterEach(cleanup)
 
@@ -131,34 +143,60 @@ beforeEach(() => {
   setFilesMock.mockClear()
   latestOnValueChange = undefined
   latestOnSlashCommand = undefined
+  useAgentStore.setState({ sessionId: null })
 })
 
 describe('AgentChatView session drafts', () => {
   it('clears the draft of a session after /new so it does not reappear on switch-back', () => {
-    // Regression: handleNewSession called beginResolvedSession(null) which set
-    // store.sessionId=null before the onValueChange('') effect could fire.
-    // handleDraftValueChange bailed early on !currentSessionId, leaving the
-    // '/new' draft stored for the originating session. Switching back restored it.
+    // Regression: /new forgets the store's session id before the composer's
+    // onValueChange('') fires, so the '/new' text was left stored for the
+    // originating session and came back on switch-back.
+    useAgentStore.setState({ sessionId: 'session-a' })
     const { rerender } = render(<AgentChatView sessionId="session-a" workspace="/repo/project" />)
 
     // User types '/new' — draft is saved for session-a
     latestOnValueChange?.('/new')
 
-    // User executes the /new slash command. InputComposer calls executeSlashCommand
-    // which: 1) calls setValue('') (InputComposer local), 2) calls onSlashCommand('new').
-    // handleNewSession immediately calls beginResolvedSession(null) → sessionId=null.
-    // The onValueChange('') from setValue('') fires AFTER this (useEffect timing).
+    // User executes the /new slash command. InputComposer calls setValue('')
+    // and then onSlashCommand('new'); handleNewSession resets the store
+    // (sessionId=null) and opens the draft. The onValueChange('') from
+    // setValue('') fires after this (useEffect timing).
     latestOnSlashCommand?.('new')
 
     // Now simulate the deferred onValueChange('') that InputComposer fires via useEffect.
-    // By this point store.sessionId is null because beginResolvedSession ran first.
     latestOnValueChange?.('')
 
-    // Navigate to new session (what handleNewSession does after resolveSession)
+    // A session created later from the draft.
     rerender(<AgentChatView sessionId="new-session" workspace="/repo/project" />)
 
     // Switch back to session-a — draft must be gone, not '/new'
     rerender(<AgentChatView sessionId="session-a" workspace="/repo/project" />)
+    expect(setValueMock).toHaveBeenLastCalledWith('')
+  })
+
+  it('keeps a new-session draft per folder across a reload', () => {
+    const first = render(<AgentChatView workspace="/repo/draft-reload" />)
+    latestOnValueChange?.('half-typed idea')
+    first.unmount()
+
+    setValueMock.mockClear()
+    render(<AgentChatView workspace="/repo/draft-reload" />)
+    expect(setValueMock).toHaveBeenLastCalledWith('half-typed idea')
+  })
+
+  it('moves the draft text to the session its first message creates', () => {
+    const { rerender } = render(<AgentChatView workspace="/repo/draft-move" />)
+    latestOnValueChange?.('follow-up typed while sending')
+
+    // The first POST /agent/chat returns the new id.
+    useAgentStore.setState({ sessionId: 'created-from-draft' })
+    rerender(<AgentChatView sessionId="created-from-draft" workspace="/repo/draft-move" />)
+    expect(setValueMock).toHaveBeenLastCalledWith('follow-up typed while sending')
+
+    // The folder's draft is empty again for the next new session.
+    useAgentStore.setState({ sessionId: null })
+    setValueMock.mockClear()
+    rerender(<AgentChatView workspace="/repo/draft-move" />)
     expect(setValueMock).toHaveBeenLastCalledWith('')
   })
 

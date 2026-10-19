@@ -26,6 +26,9 @@ import { type InputComposerHandle, type SlashCommand, type SnippetCommand } from
 import { filterBaseSlashCommands, attachmentToFile } from './helpers'
 import { stopTurn } from './heldMessages'
 
+/** Commands that act on an existing session's history. */
+const SESSION_COMMANDS = new Set(['compact', 'undo', 'redo', 'redo-all'])
+
 export interface UseSlashCommandsArgs {
   /** Workspace path, or `null` while no workspace is attached. */
   agentWorkspace: string | null
@@ -121,6 +124,11 @@ export function useSlashCommands({
   }, [agentWorkspace, pushToast])
 
   const handleSlashCommand = useCallback((id: string) => {
+    // A new-session draft has no session yet: say so instead of failing.
+    if (SESSION_COMMANDS.has(id) && !useAgentStore.getState().sessionId) {
+      pushToast({ tone: 'info', title: 'Start a conversation first', description: `/${id} works on a session, and this one starts with your first message.` })
+      return
+    }
     switch (id) {
       case 'stop':
         void stopTurn(inputRef.current)

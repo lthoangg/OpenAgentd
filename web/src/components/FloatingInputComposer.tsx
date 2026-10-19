@@ -145,10 +145,17 @@ interface FloatingInputComposerProps {
   aboveComposer?: React.ReactNode
   /** Keep the bar expanded while ``aboveComposer`` shows a panel. */
   aboveComposerOpen?: boolean
+  /**
+   * ``inline`` sits in the page flow at full width (max 640px): the
+   * new-session screen's centered composer. No drag, no collapse, no stored
+   * position. Phones dock the bar either way.
+   */
+  placement?: 'floating' | 'inline'
 }
 
 /**
- * Floating input bar — two modes:
+ * Floating input bar — two modes (plus ``placement="inline"``, an in-flow
+ * desktop variant for the new-session screen):
  *
  * Mobile: a static docked bar pinned to the bottom of the viewport with
  * `safe-area-inset-bottom` clearance. No drag, no position memory.
@@ -159,7 +166,7 @@ interface FloatingInputComposerProps {
  */
 export const FloatingInputComposer = memo(
   forwardRef<InputComposerHandle, FloatingInputComposerProps>(
-    function FloatingInputComposer({ boundsRef, aboveComposer, aboveComposerOpen = false, ...inputProps }, ref) {
+    function FloatingInputComposer({ boundsRef, aboveComposer, aboveComposerOpen = false, placement = 'floating', ...inputProps }, ref) {
     const isMobile = useIsMobile()
     const dragControls = useDragControls()
     const panelRef = useRef<HTMLDivElement>(null)
@@ -561,6 +568,30 @@ export const FloatingInputComposer = memo(
             onValueChange={inputProps.onValueChange}
             onSuggestionsMenuChange={setSuggestionsOpen}
             onSubmit={handleSubmit}
+            onFocus={handleFocus}
+            onBlur={handleBlur}
+            onHasContentChange={handleHasContentChange}
+          />
+        </div>
+      )
+    }
+
+    // ── Desktop, inline: in the page flow (new-session screen) ───────────────
+    // ``panelRef`` stays unattached, so the drag, clamp and Escape-to-collapse
+    // effects above all stand down and the stored position is left alone.
+    if (placement === 'inline') {
+      return (
+        <div data-testid="inline-inputbar-container" className="relative mx-auto w-full max-w-[640px]">
+          {aboveComposer}
+          <InputComposer
+            ref={setInputRefs}
+            floating
+            filesBelow
+            suggestionsBelow
+            {...inputProps}
+            onValueChange={inputProps.onValueChange}
+            onSuggestionsMenuChange={setSuggestionsOpen}
+            onSubmit={inputProps.onSubmit}
             onFocus={handleFocus}
             onBlur={handleBlur}
             onHasContentChange={handleHasContentChange}

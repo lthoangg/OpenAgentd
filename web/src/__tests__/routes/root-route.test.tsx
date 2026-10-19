@@ -143,6 +143,15 @@ describe('root route', () => {
     expect(leaf('/telemetry')?.fullPath).toBe('/telemetry')
   })
 
+  it('takes a draft folder from ?workspace= and ignores a malformed one', () => {
+    const validate = leaf('/')?.options.validateSearch as ((search: Record<string, unknown>) => { workspace?: string }) | undefined
+    expect(validate).toBeDefined()
+    expect(validate!({ workspace: '/repo/project' })).toEqual({ workspace: '/repo/project' })
+    expect(validate!({}).workspace).toBeUndefined()
+    expect(validate!({ workspace: 42 }).workspace).toBeUndefined()
+    expect(validate!({ workspace: '' }).workspace).toBeUndefined()
+  })
+
   it('redirects old /coding links without a page of their own', () => {
     const redirectOf = (path: string, params: Record<string, string>) => {
       try {

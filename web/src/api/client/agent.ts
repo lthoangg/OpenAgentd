@@ -38,6 +38,7 @@ import type {
   GitUndoResponse,
   GitRevertResponse,
   SessionInteractionMode,
+  SessionSort,
   MemberProfile,
   SubagentsResponse,
   SideQuestionEvent,
@@ -413,6 +414,10 @@ export async function listSessions(
     workspaces?: readonly string[]
     active?: boolean
     query?: string
+    /** `activity` orders by last touch (v3); v2 ignores it and returns created order. */
+    sort?: SessionSort
+    /** Only pinned (`true`) or only unpinned (`false`) sessions (v3; v2 ignores it). */
+    pinned?: boolean
   },
   signal?: AbortSignal,
 ): Promise<SessionPageResponse> {
@@ -423,6 +428,8 @@ export async function listSessions(
   for (const path of filters?.workspaces ?? []) params.append('workspaces', path)
   if (filters?.active) params.set('active', 'true')
   if (filters?.query) params.set('q', filters.query)
+  if (filters?.sort && filters.sort !== 'created') params.set('sort', filters.sort)
+  if (filters?.pinned !== undefined) params.set('pinned', filters.pinned ? 'true' : 'false')
   const res = await fetch(`${apiBaseUrl()}/agent/sessions?${params}`, { signal })
   if (!res.ok) await parseDetailOrThrow(res, 'listSessions')
   return res.json()
@@ -495,6 +502,17 @@ export async function updateSessionInteractionMode(
 export async function deleteSession(id: string): Promise<void> {
   const res = await fetch(`${apiBaseUrl()}/agent/sessions/${id}`, { method: 'DELETE' })
   if (!res.ok) await parseDetailOrThrow(res, 'deleteSession')
+}
+
+/** Pin or unpin a session in the sidebar (v3). Pinning keeps its `updated_at`. */
+export async function setSessionPinned(id: string, pinned: boolean): Promise<SessionResponse> {
+  const res = await fetch(`${apiBaseUrl()}/agent/sessions/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ pinned }),
+  })
+  if (!res.ok) await parseDetailOrThrow(res, 'setSessionPinned')
+  return res.json()
 }
 
 /**

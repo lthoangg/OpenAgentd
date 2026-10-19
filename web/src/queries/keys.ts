@@ -1,3 +1,5 @@
+import type { SessionSort } from '@/api/types'
+
 export const queryKeys = {
   health: () => ['health'] as const,
   backendStatus: () => ['app-backend-status'] as const,
@@ -15,10 +17,24 @@ export const queryKeys = {
       /** Running or waiting sessions across every workspace (one page). */
       active: () => ['session', 'sessions', 'active'] as const,
       search: (query: string) => ['session', 'sessions', 'search', query] as const,
-      workspace: (workspace: string) => ['session', 'sessions', 'workspace', workspace] as const,
+      /**
+       * One workspace's list. The sort joins the key only when it is not the
+       * default, so a prefix match on the bare key reaches every order.
+       */
+      workspace: (workspace: string, sort: SessionSort = 'created') =>
+        sort === 'created'
+          ? ['session', 'sessions', 'workspace', workspace] as const
+          : ['session', 'sessions', 'workspace', workspace, sort] as const,
       /** One list across several checkouts: a repository and its worktrees. */
-      checkouts: (paths: readonly string[]) => ['session', 'sessions', 'checkouts', paths] as const,
+      checkouts: (paths: readonly string[], sort: SessionSort = 'created') =>
+        sort === 'created'
+          ? ['session', 'sessions', 'checkouts', paths] as const
+          : ['session', 'sessions', 'checkouts', paths, sort] as const,
       checkoutsAll: () => ['session', 'sessions', 'checkouts'] as const,
+      /** Every unpinned session across workspaces (the flat sidebar views). */
+      everywhere: (sort: SessionSort) => ['session', 'sessions', 'everywhere', sort] as const,
+      /** Every pinned session (one page). */
+      pinned: () => ['session', 'sessions', 'pinned'] as const,
       list: (offset: number, limit: number) =>
         ['session', 'sessions', 'list', offset, limit] as const,
       detail: (id: string) => ['session', 'sessions', id] as const,

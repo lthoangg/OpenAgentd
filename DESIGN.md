@@ -694,6 +694,26 @@ width on hover — that causes a 1px layout jump.
 container, a `bg-key` header strip in `label-caps`, then `divide-y` rows that
 lift toward `bg-page` on hover.
 
+**Sidebar sections** stack Pinned, Needs you, the session list and Scheduled
+in one scroller. Each section header is a `label-caps` label with a count; a
+header (32px) or group header (24px) folds its list. The list's header row
+holds the icon actions (`md:` 24px, 36px on touch): New session (only where
+there is no per-folder **+**, i.e. the flat views, and always on phones),
+Search, **View options**, Collapse all (folder tree only) and Open folder.
+View options is a context menu of `menuitemradio` groups (Group by, Sort by)
+and a `menuitemcheckbox` (Show details); it stays open while choices apply.
+Rows in flat views and Pinned name their workspace in mono 11px subtle text,
+which gives way first when the row is narrow.
+
+**New-session hero** (the draft screen): a `text-lg` semibold question with
+the folder in mono, a 24px `rounded-full` folder chip opening a filterable
+listbox (the only `shadow-depth` here), then, on desktop with the Centered
+setting, the full composer inline at ≤ 640px, sitting a little above the
+optical middle. Recent folders are 24px `rounded-full` chips; recent sessions
+reuse the list rows. A one-line `meta` hint row lists `/`, `@`, ⌘K and ⌘N on
+desktop only. Phones keep the composer docked at the bottom and never
+collapse it. No starter prompts: the composer is the call to action.
+
 **Agent chips** are `full`-radius pills using the identity triplet — soft
 background, tuned text tone, solid dot.
 

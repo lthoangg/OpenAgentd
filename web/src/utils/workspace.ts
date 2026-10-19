@@ -152,12 +152,17 @@ export function loadLastWorkspace(): WorkspaceEntry | null {
   }
 }
 
+/**
+ * Whether the bare route should reopen the last workspace's latest session:
+ * not in a New Window, not on a session, and not on a new-session draft.
+ */
 export function shouldRestoreLastWorkspace(
   sessionId: string | undefined,
   pathname: string,
   freshWindow = false,
+  draftWorkspace: string | null = null,
 ): boolean {
-  return !freshWindow && !sessionId && pathname === '/'
+  return !freshWindow && !sessionId && !draftWorkspace && pathname === '/'
 }
 
 export function workspaceFromSession(

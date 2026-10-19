@@ -5,14 +5,14 @@
  * share their keys with the sidebar, so this adds no requests on desktop.
  */
 import { useMemo } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { getCodingWorkspaceTree } from '@/api/client'
 import { queryKeys } from '@/queries'
 import { useSessionsQuery } from '@/queries/useSessionsQuery'
 import { useToastStore } from '@/stores/useToastStore'
 import { applySessionSelection } from '../Sidebar.sessions'
-import { openWorkspaceSession } from '../Sidebar.workspace'
+import { openWorkspaceLatest } from '../Sidebar.workspace'
 import type { Command } from '../CommandPalette'
 import { buildSwitchCommands } from './paletteSwitchCommands'
 
@@ -26,7 +26,6 @@ export function usePaletteSwitchCommands({
   sessionId: string | null
 }): Command[] {
   const navigate = useNavigate()
-  const queryClient = useQueryClient()
   const { data: sessionPages } = useSessionsQuery()
   const { data: tree = null } = useQuery({
     queryKey: queryKeys.coding.tree(),
@@ -44,13 +43,10 @@ export function usePaletteSwitchCommands({
     {
       openSession: (session) => applySessionSelection({ session, workspacePath: session.workspace ?? '', navigate }),
       openWorkspace: (path) => {
-        openWorkspaceSession({
+        openWorkspaceLatest({
           path,
-          requestedCreate: false,
-          currentSessionId: sessionId ?? undefined,
+          currentSessionId: sessionId,
           currentWorkspace: workspace,
-          queryClient,
-          refreshWorkspaceTree: () => queryClient.invalidateQueries({ queryKey: queryKeys.coding.tree() }),
           navigate,
         }).catch((err: unknown) => {
           useToastStore.getState().push({
@@ -61,5 +57,5 @@ export function usePaletteSwitchCommands({
         })
       },
     },
-  ), [navigate, queryClient, sessionId, sessionPages, tree, workspace])
+  ), [navigate, sessionId, sessionPages, tree, workspace])
 }

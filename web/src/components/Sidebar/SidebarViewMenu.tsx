@@ -1,0 +1,102 @@
+import type { ReactNode } from 'react'
+import { Check } from 'lucide-react'
+import { CONTEXT_MENU_ITEM_CLASS, ContextMenu, ContextMenuSeparator } from '@/components/ui/context-menu'
+import {
+  SIDEBAR_GROUP_BY,
+  SIDEBAR_SORT_BY,
+  useSidebarViewStore,
+} from '@/stores/useSidebarViewStore'
+
+function MenuGroup({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div role="group" aria-label={label}>
+      <div aria-hidden="true" className="px-2 pb-0.5 pt-1.5 label-caps text-(--color-text-subtle)">{label}</div>
+      {children}
+    </div>
+  )
+}
+
+function CheckItem({
+  role,
+  checked,
+  onSelect,
+  children,
+}: {
+  role: 'menuitemradio' | 'menuitemcheckbox'
+  checked: boolean
+  onSelect: () => void
+  children: ReactNode
+}) {
+  return (
+    <button
+      type="button"
+      role={role}
+      aria-checked={checked}
+      className={`${CONTEXT_MENU_ITEM_CLASS} ${checked ? 'text-(--color-text)' : ''}`}
+      onClick={(event) => {
+        // The menu stays open after a choice. WebKit does not focus a
+        // clicked button, so keep focus here for the arrows and Escape.
+        event.currentTarget.focus({ preventScroll: true })
+        onSelect()
+      }}
+    >
+      <span className="flex size-3 shrink-0 items-center justify-center" aria-hidden="true">
+        {checked && <Check size={12} />}
+      </span>
+      {children}
+    </button>
+  )
+}
+
+/**
+ * The sidebar's View options: how sessions group and sort, and whether rows
+ * show their age and place. Choices apply at once and the menu stays open,
+ * so several can be changed in one visit; Escape or a click outside closes
+ * it and focus returns to the trigger.
+ */
+export function SidebarViewMenu({ at, onDismiss }: { at: { x: number; y: number }; onDismiss: () => void }) {
+  const groupBy = useSidebarViewStore((s) => s.groupBy)
+  const sortBy = useSidebarViewStore((s) => s.sortBy)
+  const showDetails = useSidebarViewStore((s) => s.showDetails)
+  const setGroupBy = useSidebarViewStore((s) => s.setGroupBy)
+  const setSortBy = useSidebarViewStore((s) => s.setSortBy)
+  const setShowDetails = useSidebarViewStore((s) => s.setShowDetails)
+  const reset = useSidebarViewStore((s) => s.reset)
+
+  return (
+    <ContextMenu at={at} label="View options" onDismiss={onDismiss} className="min-w-48">
+      <MenuGroup label="Group by">
+        {SIDEBAR_GROUP_BY.map((option) => (
+          <CheckItem key={option.value} role="menuitemradio" checked={groupBy === option.value} onSelect={() => setGroupBy(option.value)}>
+            {option.label}
+          </CheckItem>
+        ))}
+      </MenuGroup>
+      <ContextMenuSeparator />
+      <MenuGroup label="Sort by">
+        {SIDEBAR_SORT_BY.map((option) => (
+          <CheckItem key={option.value} role="menuitemradio" checked={sortBy === option.value} onSelect={() => setSortBy(option.value)}>
+            {option.label}
+          </CheckItem>
+        ))}
+      </MenuGroup>
+      <ContextMenuSeparator />
+      <CheckItem role="menuitemcheckbox" checked={showDetails} onSelect={() => setShowDetails(!showDetails)}>
+        Show details
+      </CheckItem>
+      <ContextMenuSeparator />
+      <button
+        type="button"
+        role="menuitem"
+        className={CONTEXT_MENU_ITEM_CLASS}
+        onClick={() => {
+          reset()
+          onDismiss()
+        }}
+      >
+        <span className="size-3 shrink-0" aria-hidden="true" />
+        Reset to defaults
+      </button>
+    </ContextMenu>
+  )
+}

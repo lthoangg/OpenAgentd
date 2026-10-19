@@ -1074,6 +1074,36 @@ agent against it.
   narrows the list, **+** then starts sessions in that checkout, and a row
   above the sessions names the filter with a **Show all** button. Opening a
   session the filter hides shows every checkout again.
+  Since `[v3.18.0]` the header's **View options** menu groups sessions by
+  **Project** (the folder tree, the default), **Status** (Needs you · Working ·
+  Recent), **Date** (Today · Yesterday · Previous 7 days · Previous 30 days ·
+  Older) or **None**, sorts them by **Recent activity** (the default) or
+  **Created**, and can hide row details (age, worktree tag, workspace name).
+  The choice is kept per device. Outside Project mode the list is one flat list
+  across workspaces, each row naming its workspace, and the header gains a
+  **New session** button; on phones that button is there in every mode.
+- **Pinned sessions** `[v3.18.0]` — **Pin** (first in a session's context menu
+  or long-press sheet) moves a top-level session into a **Pinned** section at
+  the top of the sidebar, from any workspace, with its workspace name. Pins are
+  stored on the server, so they follow you to other windows, the browser and
+  the mobile app, and pinning does not change a session's place in Recent
+  activity. **Unpin** puts it back in its list. The section folds and hides
+  when nothing is pinned.
+- **New-session screen** `[v3.18.0]` — **New session** (the folder's **+**,
+  `⌘N` / `Ctrl+N`, the palette, `/new`) opens a draft at `/?workspace=<path>`
+  instead of creating an empty session: nothing is saved until the first
+  message, which creates the session and swaps the URL for its id, so an
+  abandoned New session leaves no "Untitled" row behind. The screen asks
+  *What should we build in {folder}?* (*Ask anything* in Chat), shows the
+  branch, and has a folder chip that switches folder (filterable, with
+  worktrees and **Open folder…**), a row of recent folders, and the folder's
+  recent sessions. Text typed in a draft is kept per folder across reloads and
+  carried along when the folder changes. **Settings → General → New session
+  composer** puts the composer in the middle of the screen (**Centered**, the
+  default) or keeps the collapsible bar at the bottom (**Floating**); on phones
+  it always sits at the bottom. Opening a folder registers it in the sidebar
+  right away, and a session that the first message creates in a new folder
+  adds that folder to the tree.
 - **Nested subagent sessions in the coding sidebar** `[v2.16.0, updated v2.17.0]` — lead sessions with
   delegated subagents render an expandable accordion of child sessions that defaults to
   expanded while a child is running, waiting on the lead, or selected, and collapses to a

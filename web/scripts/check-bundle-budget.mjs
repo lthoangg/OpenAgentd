@@ -59,7 +59,10 @@ if (import.meta.main) {
   // index chunk.
   // `/btw` side questions (panel, store, client) added 12 kB / 4 kB gzip:
   // 2.41 MB / 726 kB, with a 1.76 MB index chunk.
-  const limits = { eagerBytes: 2_420_000, eagerGzipBytes: 729_000, largestChunkBytes: 1_765_000 }
+  // Sidebar sections (View options, Pinned, the flat Status / Date / None
+  // views) and the new-session screen with its folder picker added 40 kB /
+  // 12 kB gzip: 2.45 MB / 739 kB, with a 1.80 MB index chunk.
+  const limits = { eagerBytes: 2_460_000, eagerGzipBytes: 742_000, largestChunkBytes: 1_810_000 }
   console.log('Production JavaScript budget:', sizes)
   const failures = budgetFailures(sizes, limits)
   if (failures.length) {

@@ -20,15 +20,21 @@ const packagedIndexRoute = createRoute({
 })
 
 // The one screen: / is a new session, /<id> a session. A pathless layout so
-// switching sessions keeps the chat view mounted.
+// switching sessions keeps the chat view mounted. `/?workspace=<path>` is a
+// new-session draft in that folder; nothing is saved until its first message.
 const appLayoutRoute = createRoute({
   getParentRoute: () => rootRoute,
   id: 'app',
   component: AppLayout,
 })
+const newSessionSearchSchema = z.object({
+  // A path that parses as JSON (a bare number) is not a folder: drop it.
+  workspace: z.string().min(1).optional().catch(undefined),
+})
 const newSessionRoute = createRoute({
   getParentRoute: () => appLayoutRoute,
   path: '/',
+  validateSearch: (search) => newSessionSearchSchema.parse(search),
   component: () => null,
 })
 const sessionRoute = createRoute({

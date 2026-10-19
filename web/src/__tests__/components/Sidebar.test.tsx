@@ -32,7 +32,8 @@ import {
 } from '@/components/Sidebar.sessions'
 import {
   confirmWorkspaceRemoval,
-  openWorkspaceSession,
+  openWorkspaceDraft,
+  openWorkspaceLatest,
 } from '@/components/Sidebar.workspace'
 import {
   consumeTrustedWorkspace,
@@ -87,12 +88,17 @@ type TestSession = {
   workspace?: string | null
   running?: boolean
   needs_input?: boolean
+  pinned_at?: string | null
 }
 
 let sessionsData: TestSession[] = []
 let workspaceSessionsData: TestSession[] = []
 let activeSessionsData: TestSession[] = []
 let searchResultsData: TestSession[] = []
+let pinnedSessionsData: TestSession[] = []
+let allSessionsData: TestSession[] = []
+let allSessionsQueryArgs: string[] = []
+const setSessionPinnedMutate = mock(() => {})
 let searchQueries: string[] = []
 let workspaceHasNextPage = false
 let workspaceIsFetchingNextPage = false
@@ -104,8 +110,6 @@ let chatWorkspaceEntry: { path: string; name: string } | null = null
 let hiddenWorkspacePaths = new Set<string>()
 /** Worktrees the backend lists under each repository. */
 let worktreesByRepo: Record<string, Array<{ path: string; name: string; managed: boolean }>> = {}
-/** Holds the resolve response, as a server still busy with the request would. */
-let resolveDelayMs = 0
 const workspaceTreeResponse = () => ({
   repositories: Array.from(new Set(sessionsData.filter((session) => session.mode === 'coding' && session.workspace).map((session) => session.workspace as string)))
     .map((path) => ({
@@ -198,11 +202,15 @@ mock.module('lucide-react', () => ({
   Globe: Icon,
   HelpCircle: Icon,
   Home: Icon,
+  ListFilter: Icon,
   Loader2: Icon,
   MessageCircle: Icon,
   MoreHorizontal: Icon,
+  Pin: Icon,
+  PinOff: Icon,
   Plus: Icon,
   Search: Icon,
+  SquarePen: Icon,
   Settings: Icon,
   Pencil: Icon,
   Trash2: Icon,
@@ -263,6 +271,20 @@ mock.module('@/queries/useSessionsQuery', () => ({
   useActiveSessionsQuery: () => ({
     data: { pages: [{ data: activeSessionsData }] },
   }),
+  usePinnedSessionsQuery: () => ({
+    data: { pages: [{ data: pinnedSessionsData }] },
+  }),
+  useAllSessionsQuery: (sort: string) => {
+    allSessionsQueryArgs.push(sort)
+    return {
+      data: { pages: [{ data: allSessionsData }] },
+      isLoading: false,
+      hasNextPage: false,
+      isFetchingNextPage: false,
+      fetchNextPage: mock(() => {}),
+    }
+  },
+  useSetSessionPinnedMutation: () => ({ mutate: setSessionPinnedMutate }),
   useSessionSearchQuery: (query: string) => {
     searchQueries.push(query)
     return { data: query ? { pages: [{ data: searchResultsData, has_more: false }] } : undefined, isFetching: false }
@@ -503,50 +525,53 @@ describe('Sidebar helpers', () => {
 
   it('exports workspace helpers used by the component', async () => {
     const selectionNavigate = mock(() => {})
-    const queryClient = new QueryClient()
-    let refreshCount = 0
-    const selected = await openWorkspaceSession({
+    // A workspace with sessions opens its latest one.
+    await openWorkspaceLatest({
       path: '/repo/project',
-      requestedCreate: false,
-      currentSessionId: undefined,
-      currentWorkspace: null,
-      queryClient,
-      refreshWorkspaceTree: async () => { refreshCount += 1 },
       navigate: selectionNavigate,
-      resolveSessionFn: async () => ({
-        id: 'resolved-session',
-        title: null,
-        agent_name: null,
-        mode: 'coding',
-        workspace: '/repo/project',
-        created_at: null,
-        updated_at: null,
-        created: true,
+      listSessionsFn: async () => ({
+        data: [{ id: 'latest-session', title: null, agent_name: null, workspace: '/repo/project', created_at: null, updated_at: null }],
+        next_cursor: null,
+        has_more: false,
       }),
     })
-    expect(selected).toEqual({ skipped: false })
     expect(selectionNavigate).toHaveBeenCalledWith({
       to: '/$sessionId',
-      params: { sessionId: 'resolved-session' },
+      params: { sessionId: 'latest-session' },
     })
-    expect(refreshCount).toBe(1)
 
-    useAgentStore.setState({
-      sessionId: 'session-1',
-      isAgentWorking: false,
-      agentNames: ['lead'],
-      agentStreams: { lead: createDefaultAgentStream() },
+    // One without sessions opens a draft; nothing is created.
+    const draftNavigate = mock((..._args: unknown[]) => {})
+    await openWorkspaceLatest({
+      path: '/repo/empty',
+      navigate: draftNavigate,
+      listSessionsFn: async () => ({ data: [], next_cursor: null, has_more: false }),
     })
-    const skipped = await openWorkspaceSession({
-      path: '/repo/project',
-      requestedCreate: true,
-      currentSessionId: 'session-1',
-      currentWorkspace: '/repo/project',
-      queryClient: new QueryClient(),
-      refreshWorkspaceTree: async () => undefined,
-      navigate: mock(() => {}),
+    expect(draftNavigate).toHaveBeenCalledWith({ to: '/', search: { workspace: '/repo/empty' }, replace: false })
+
+    // Open folder on a folder the sidebar does not list registers it first.
+    const setVisibility = mock(async (..._args: unknown[]) => ({ workspace: '/repo/new', hidden: false, updated: 0 }))
+    let refreshCount = 0
+    const folderNavigate = mock((..._args: unknown[]) => {})
+    await openWorkspaceDraft({
+      path: '/repo/new',
+      listed: false,
+      refreshWorkspaceTree: async () => { refreshCount += 1 },
+      navigate: folderNavigate,
+      setCodingWorkspaceVisibilityFn: setVisibility as never,
     })
-    expect(skipped).toEqual({ skipped: true })
+    expect(setVisibility).toHaveBeenCalledWith('/repo/new', false)
+    expect(refreshCount).toBe(1)
+    expect(folderNavigate).toHaveBeenCalledWith({ to: '/', search: { workspace: '/repo/new' }, replace: false })
+    await openWorkspaceDraft({
+      path: '/repo/listed',
+      listed: true,
+      refreshWorkspaceTree: async () => { refreshCount += 1 },
+      navigate: folderNavigate,
+      setCodingWorkspaceVisibilityFn: setVisibility as never,
+    })
+    expect(setVisibility).toHaveBeenCalledTimes(1)
+    expect(refreshCount).toBe(1)
 
     const removeNavigate = mock(() => {})
     const nextExpanded = await confirmWorkspaceRemoval({
@@ -688,11 +713,14 @@ describe('Sidebar workspace trust flow', () => {
     workspaceSessionsData = []
     activeSessionsData = []
     searchResultsData = []
+    pinnedSessionsData = []
+    allSessionsData = []
+    allSessionsQueryArgs = []
+    setSessionPinnedMutate.mockClear()
     searchQueries = []
     chatWorkspaceEntry = null
     hiddenWorkspacePaths = new Set()
     worktreesByRepo = {}
-    resolveDelayMs = 0
     workspaceHasNextPage = false
     workspaceIsFetchingNextPage = false
     workspaceQueryArgs = []
@@ -740,7 +768,6 @@ describe('Sidebar workspace trust flow', () => {
         return new Response(JSON.stringify(workspaceTreeResponse()))
       }
       if (url.endsWith('/api/agent/sessions/resolve')) {
-        if (resolveDelayMs > 0) await new Promise((resolve) => setTimeout(resolve, resolveDelayMs))
         // Resolving a session in a workspace un-hides it.
         hiddenWorkspacePaths.delete('/repo/project')
         return new Response(JSON.stringify({
@@ -865,11 +892,16 @@ describe('Sidebar workspace trust flow', () => {
 
   it('does not navigate or save the last workspace until the user trusts the validated directory', async () => {
     const user = userEvent.setup()
-    let resolveBody: unknown
+    let visibilityBody: unknown
+    let resolveCalled = false
     globalThis.fetch = mock(async (input: unknown, init: unknown) => {
       const url = String(input)
       if (url.includes('/api/agent/workspace/browse')) {
         return new Response(JSON.stringify(browseResponse))
+      }
+      if (url.endsWith('/api/agent/workspace/visibility')) {
+        visibilityBody = JSON.parse(String((init as RequestInit | undefined)?.body))
+        return new Response(JSON.stringify({ ...(visibilityBody as object), updated: 0 }))
       }
       if (url.includes('/api/agent/workspace/validate')) {
         return new Response(JSON.stringify({ workspace: '/repo/project' }))
@@ -881,17 +913,8 @@ describe('Sidebar workspace trust flow', () => {
         return new Response(JSON.stringify(workspaceTreeResponse()))
       }
       if (url.endsWith('/api/agent/sessions/resolve')) {
-        resolveBody = JSON.parse(String((init as RequestInit | undefined)?.body))
-        return new Response(JSON.stringify({
-          id: 'resolved-session',
-          title: null,
-          agent_name: null,
-          mode: 'coding',
-          workspace: '/repo/project',
-          created_at: null,
-          updated_at: null,
-          created: true,
-        }))
+        resolveCalled = true
+        return new Response(null, { status: 500 })
       }
       return new Response(null, { status: 404 })
     }) as typeof fetch
@@ -910,18 +933,17 @@ describe('Sidebar workspace trust flow', () => {
 
     await user.click(screen.getByRole('button', { name: /trust and open/i }))
 
+    // A new folder is registered so it has a row, then opens as a draft:
+    // no session is created until the first message.
     await waitFor(() => {
       expect(navigate).toHaveBeenCalledWith({
-        to: '/$sessionId',
-        params: { sessionId: 'resolved-session' },
+        to: '/',
+        search: { workspace: '/repo/project' },
+        replace: false,
       })
     })
-    expect(resolveBody).toEqual({
-      workspace: '/repo/project',
-      model: null,
-      thinking_level: null,
-      create: false,
-    })
+    expect(visibilityBody).toEqual({ workspace: '/repo/project', hidden: false })
+    expect(resolveCalled).toBe(false)
     expect(loadLastWorkspace()?.path).toBe('/repo/project')
   })
 
@@ -1256,14 +1278,13 @@ describe('Sidebar workspace trust flow', () => {
       sessionsData = [session('session-1', '/repo/project')]
       workspaceSessionsData = sessionsData
       hiddenWorkspacePaths = new Set(['/repo/project'])
-      // The tree refresh fired on open races the resolve that un-hides it.
-      resolveDelayMs = 20
 
       await renderSidebar()
       expect(screen.queryByLabelText('Actions for project')).toBeNull()
       await user.click(screen.getByRole('button', { name: /trust and open/i }))
 
-      await waitFor(() => expect(navigate).toHaveBeenCalledWith({ to: '/$sessionId', params: { sessionId: 'resolved-session' } }))
+      // Opening a folder the sidebar does not list un-hides it first.
+      await waitFor(() => expect(navigate).toHaveBeenCalledWith({ to: '/', search: { workspace: '/repo/project' }, replace: false }))
       await waitFor(() => expect(screen.getByLabelText('Actions for project')).toBeTruthy())
     })
 
@@ -1294,7 +1315,7 @@ describe('Sidebar workspace trust flow', () => {
     })
   })
 
-  it('does not create a new session when the current coding session is empty and idle', async () => {
+  it('opens a draft from the workspace menu without creating a session', async () => {
     const user = userEvent.setup()
     sessionsData = [
       {
@@ -1332,7 +1353,8 @@ describe('Sidebar workspace trust flow', () => {
     await user.click(screen.getByRole('menuitem', { name: /new session/i }))
 
     expect(fetchSpy).not.toHaveBeenCalledWith('/api/agent/sessions/resolve', expect.anything())
-    expect(navigate).not.toHaveBeenCalled()
+    expect(navigate).toHaveBeenCalledWith({ to: '/', search: { workspace: '/repo/project' }, replace: false })
+    expect(useAgentStore.getState().sessionId).toBeNull()
   })
 
   it('does not show a running indicator for idle coding sessions', async () => {
@@ -1713,7 +1735,7 @@ describe('Sidebar workspace trust flow', () => {
       },
     ]
     workspaceSessionsData = sessionsData
-    let resolveBody: unknown
+    let resolveCalled = false
     globalThis.fetch = mock(async (input: unknown, init: unknown) => {
       const url = String(input)
       if (url.includes('/api/agent/workspace/tree')) {
@@ -1721,17 +1743,9 @@ describe('Sidebar workspace trust flow', () => {
       }
       if (url.startsWith('/api/agent/workspace/worktrees')) return new Response(JSON.stringify([]))
       if (url.endsWith('/api/agent/sessions/resolve')) {
-        resolveBody = JSON.parse(String((init as RequestInit | undefined)?.body))
-        return new Response(JSON.stringify({
-          id: 'resolved-worktree-session',
-          title: null,
-          agent_name: null,
-          mode: 'coding',
-          workspace: '/data/worktrees/project/task-a',
-          created_at: null,
-          updated_at: null,
-          created: true,
-        }))
+        void init
+        resolveCalled = true
+        return new Response(null, { status: 500 })
       }
       return new Response(JSON.stringify({ workspace: '/repo/project' }))
     }) as typeof fetch
@@ -1768,19 +1782,15 @@ describe('Sidebar workspace trust flow', () => {
 
     await user.click(newSession)
 
-    await waitFor(() => {
-      expect(resolveBody).toEqual({
-        workspace: '/data/worktrees/project/task-a',
-        model: null,
-        thinking_level: null,
-        create: true,
-      })
+    // The worktree's "+" opens a draft there; nothing is created yet.
+    expect(navigate).toHaveBeenCalledWith({
+      to: '/',
+      search: { workspace: '/data/worktrees/project/task-a' },
+      replace: false,
     })
     expect(useAgentStore.getState()._workspace).toBe('/data/worktrees/project/task-a')
-    expect(navigate).toHaveBeenCalledWith({
-      to: '/$sessionId',
-      params: { sessionId: 'resolved-worktree-session' },
-    })
+    expect(useAgentStore.getState().sessionId).toBeNull()
+    expect(resolveCalled).toBe(false)
 
     // The list names its filter and clears it in one step.
     await user.click(screen.getByRole('button', { name: 'Show all checkouts in project' }))
@@ -2280,11 +2290,11 @@ describe('Sidebar workspace trust flow', () => {
 
     fireEvent.click(newSession)
 
-    await waitFor(() => {
-      expect(navigate).toHaveBeenCalledWith({
-        to: '/$sessionId',
-        params: { sessionId: 'resolved-session' },
-      })
+    // A session is on screen, so the Chat draft opens; nothing is created.
+    expect(navigate).toHaveBeenCalledWith({
+      to: '/',
+      search: { workspace: '/home/user' },
+      replace: false,
     })
   })
 
@@ -2307,5 +2317,97 @@ describe('Sidebar workspace trust flow', () => {
 
     expect(screen.getByText('project')).toBeTruthy()
     expect(screen.getByLabelText('Actions for project')).toBeTruthy()
+  })
+
+  describe('sections and view options', () => {
+    const projectSession = (id: string, title: string, extra: Partial<TestSession> = {}): TestSession => ({
+      id,
+      title,
+      agent_name: 'lead',
+      created_at: '2026-05-13T00:00:00Z',
+      updated_at: '2026-05-13T00:00:00Z',
+      mode: 'coding',
+      workspace: '/repo/project',
+      ...extra,
+    })
+
+    beforeEach(async () => {
+      const { useSidebarViewStore } = await import('@/stores/useSidebarViewStore')
+      useSidebarViewStore.setState({ groupBy: 'project', sortBy: 'activity', showDetails: true, pinnedCollapsed: false, collapsedGroups: [] })
+    })
+
+    it('keeps New session off the desktop header in Project mode', async () => {
+      sessionsData = [projectSession('session-1', 'Feature')]
+      workspaceSessionsData = sessionsData
+      await renderSidebarForSessions('session-1')
+
+      expect(screen.queryByRole('button', { name: 'New session' })).toBeNull()
+      expect(screen.getByRole('button', { name: 'Collapse all workspaces' })).toBeTruthy()
+      expect(screen.getByRole('button', { name: 'View options' })).toBeTruthy()
+      expect(allSessionsQueryArgs).toEqual([])
+    })
+
+    it('switches to a flat list with a header New session in Status mode', async () => {
+      const { useSidebarViewStore } = await import('@/stores/useSidebarViewStore')
+      useSidebarViewStore.setState({ groupBy: 'status' })
+      sessionsData = [projectSession('session-1', 'Feature')]
+      workspaceSessionsData = sessionsData
+      allSessionsData = [projectSession('session-2', 'Flat row')]
+
+      await renderSidebarForSessions('session-1')
+
+      expect(screen.getByText('Flat row')).toBeTruthy()
+      expect(allSessionsQueryArgs.at(-1)).toBe('activity')
+      // The tree's controls belong to Project mode.
+      expect(screen.queryByRole('button', { name: 'Collapse all workspaces' })).toBeNull()
+
+      fireEvent.click(screen.getByRole('button', { name: 'New session' }))
+      expect(navigate).toHaveBeenCalledWith({ to: '/', search: { workspace: '/repo/project' }, replace: false })
+    })
+
+    it('shows the header New session in Project mode on mobile', async () => {
+      isMobile = true
+      platformOs = 'ios'
+      sessionsData = [projectSession('session-1', 'Feature')]
+      workspaceSessionsData = sessionsData
+
+      await renderSidebarWithProps({ currentSessionId: 'session-1', workspace: '/repo/project', mobileOpen: true })
+
+      expect(screen.getByRole('button', { name: 'New session' })).toBeTruthy()
+    })
+
+    it('lists pinned sessions above the tree and unpins from the row menu', async () => {
+      pinnedSessionsData = [projectSession('pinned-1', 'Pinned review', { pinned_at: '2026-10-18T00:00:00Z' })]
+      sessionsData = [projectSession('session-1', 'Feature')]
+      workspaceSessionsData = sessionsData
+
+      await renderSidebarForSessions('session-1')
+
+      // The row names its workspace and that it is pinned.
+      const pinnedRow = screen.getByRole('button', { name: /^Pinned review.*pinned$/ })
+      fireEvent.contextMenu(pinnedRow)
+      fireEvent.click(await screen.findByRole('menuitem', { name: 'Unpin' }))
+      expect(setSessionPinnedMutate).toHaveBeenCalledWith(
+        { id: 'pinned-1', pinned: false },
+        expect.anything(),
+      )
+    })
+
+    it('pins a session from its context menu', async () => {
+      sessionsData = [projectSession('session-1', 'Feature')]
+      workspaceSessionsData = sessionsData
+
+      await renderSidebarForSessions('session-1')
+
+      fireEvent.contextMenu(screen.getByRole('button', { name: /^Feature/ }))
+      const items = within(await screen.findByRole('menu')).getAllByRole('menuitem')
+      // Pin leads the menu.
+      expect(items[0].textContent).toContain('Pin')
+      fireEvent.click(items[0])
+      expect(setSessionPinnedMutate).toHaveBeenCalledWith(
+        { id: 'session-1', pinned: true },
+        expect.anything(),
+      )
+    })
   })
 })

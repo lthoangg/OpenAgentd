@@ -45,6 +45,8 @@ export type CacheInvalidation =
    * sequentially-refetched) session list. See ``patchSessionRunning``.
    */
   | { kind: 'session_running'; sessionId: string; running: boolean }
+  /** Session list membership changed outside a turn (a pin): refetch the lists. */
+  | { kind: 'sessions' }
 
 /** How a question ended, with enough context to render it without the wire text. */
 export interface ResolvedQuestion {

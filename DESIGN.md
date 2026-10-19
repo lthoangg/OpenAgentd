@@ -707,12 +707,15 @@ which gives way first when the row is narrow.
 
 **New-session hero** (the draft screen): a `text-lg` semibold question with
 the folder in mono, a 24px `rounded-full` folder chip opening a filterable
-listbox (the only `shadow-depth` here), then, on desktop with the Centered
-setting, the full composer inline at ≤ 640px, sitting a little above the
+listbox (the only `shadow-depth` here), then, on desktop, the full composer
+inline at ≤ 640px, sitting a little above the
 optical middle. Recent folders are 24px `rounded-full` chips; recent sessions
 reuse the list rows. A one-line `meta` hint row lists `/`, `@`, ⌘K and ⌘N on
 desktop only. Phones keep the composer docked at the bottom and never
-collapse it. No starter prompts: the composer is the call to action.
+collapse it. No starter prompts: the composer is the call to action. The
+first message hands off to the chat in one motion: the composer box glides
+to its docked slot (`slow`, a translate and a width tween, never a scale),
+the hero fades out (`fast`) and the transcript fades in (`base`).
 
 **Agent chips** are `full`-radius pills using the identity triplet — soft
 background, tuned text tone, solid dot.

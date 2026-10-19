@@ -95,7 +95,9 @@ mock.module("@/components/Terminal/xterm-instance", () => ({
 // test that calls ``new URL("/api/x", window.location.origin)``,
 // constructs a ``Request`` from a relative URL, or asserts on
 // same-origin behaviour (e.g. auth interceptor, image lightbox).
-GlobalRegistrator.register({ url: "http://localhost:5173/" });
+// happy-dom 21 stopped loading iframe pages by default; the preview tests
+// mount the inspector in a real iframe, so turn it back on.
+GlobalRegistrator.register({ url: "http://localhost:5173/", settings: { enableIframePageLoading: true } });
 
 // Clean up DOM after each test to prevent test interference
 afterEach(() => {

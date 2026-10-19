@@ -1,6 +1,6 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import type React from 'react'
-import { ChevronRight, GitBranch, Loader2, Pencil, Pin, SquarePen, Trash2 } from 'lucide-react'
+import { ChevronRight, GitBranch, Loader2, Pencil, Pin, PinOff, SquarePen, Trash2 } from 'lucide-react'
 import { useSessionSubagentsQuery } from '@/queries/useSessionsQuery'
 import type { SessionResponse } from '@/api/types'
 import { useUnreadStore } from '@/stores/useUnreadStore'
@@ -40,6 +40,7 @@ function SessionRowView({
   onSessionRenameCancel,
   onSessionLongPress,
   onSessionContextActions,
+  onSessionPinToggle,
 }: {
   session: SessionResponse
   isCurrent: boolean
@@ -60,6 +61,8 @@ function SessionRowView({
   onSessionRenameCancel: () => void
   onSessionLongPress: (session: SessionResponse) => void
   onSessionContextActions: (session: SessionResponse, at: MenuPoint) => void
+  /** Pin or unpin; omit to leave the row without a pin action. */
+  onSessionPinToggle?: (session: SessionResponse) => void
 }) {
   const unread = useUnreadStore((state) => state.ids.includes(session.id))
   const status = sessionStatus(session, unread)
@@ -67,6 +70,9 @@ function SessionRowView({
   const sessionDate = formatRelativeDate(session.created_at)
   const sessionAge = formatCompactRelative(session.updated_at ?? session.created_at)
   const pinned = Boolean(session.pinned_at)
+  // Only top-level sessions can be pinned.
+  const canPin = Boolean(onSessionPinToggle) && !session.parent_session_id
+  const pinLabel = `${pinned ? 'Unpin' : 'Pin'} session ${sessionTitle}`
   // Touch without long-press sheets has no hover: keep actions visible there.
   const actionsVisibility = mobileLongPressActions
     ? 'hidden'
@@ -257,6 +263,20 @@ function SessionRowView({
           </span>
         )}
         <div className={`shrink-0 items-center ${isEditing ? 'hidden' : actionsVisibility}`}>
+          {canPin && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                onSessionPinToggle?.(session)
+              }}
+              className={ROW_ACTION}
+              aria-label={pinLabel}
+              title={pinned ? 'Unpin' : 'Pin'}
+            >
+              {pinned ? <PinOff size={11} aria-hidden="true" /> : <Pin size={11} aria-hidden="true" />}
+            </button>
+          )}
           <button
             type="button"
             onClick={(e) => {
@@ -365,7 +385,7 @@ export const SessionRow = memo(SessionRowView)
 export type SessionHandlers = Pick<
   React.ComponentProps<typeof SessionRowView>,
   | 'onSessionSelect' | 'onSessionDelete' | 'onSessionEdit' | 'onSessionRename' | 'onSessionRenameCancel'
-  | 'onSessionLongPress' | 'onSessionContextActions'
+  | 'onSessionLongPress' | 'onSessionContextActions' | 'onSessionPinToggle'
 >
 
 /**
@@ -377,6 +397,8 @@ export function useStableSessionHandlers(latest: SessionHandlers): SessionHandle
   useEffect(() => {
     handlersRef.current = latest
   })
+  // Rows show a pin action only when the caller handles pins.
+  const handlesPins = Boolean(latest.onSessionPinToggle)
   return useMemo<SessionHandlers>(() => ({
     onSessionSelect: (session, workspacePath, event) => handlersRef.current.onSessionSelect(session, workspacePath, event),
     onSessionDelete: (event, session) => handlersRef.current.onSessionDelete(event, session),
@@ -385,7 +407,10 @@ export function useStableSessionHandlers(latest: SessionHandlers): SessionHandle
     onSessionRenameCancel: () => handlersRef.current.onSessionRenameCancel(),
     onSessionLongPress: (session) => handlersRef.current.onSessionLongPress(session),
     onSessionContextActions: (session, event) => handlersRef.current.onSessionContextActions(session, event),
-  }), [])
+    ...(handlesPins
+      ? { onSessionPinToggle: (session: SessionResponse) => handlersRef.current.onSessionPinToggle?.(session) }
+      : {}),
+  }), [handlesPins])
 }
 
 /**

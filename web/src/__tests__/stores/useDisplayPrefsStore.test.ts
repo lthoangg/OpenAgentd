@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from 'bun:test'
 import { DISPLAY_PREFS_STORAGE_KEY, useDisplayPrefsStore } from '@/stores/useDisplayPrefsStore'
 
 afterEach(() => {
-  useDisplayPrefsStore.setState({ transcriptStyle: 'detailed', newSessionComposer: 'centered' })
+  useDisplayPrefsStore.setState({ transcriptStyle: 'detailed' })
   localStorage.removeItem(DISPLAY_PREFS_STORAGE_KEY)
 })
 
@@ -14,7 +14,7 @@ describe('useDisplayPrefsStore — transcript style', () => {
     useDisplayPrefsStore.getState().setTranscriptStyle('reader')
 
     expect(useDisplayPrefsStore.getState().transcriptStyle).toBe('reader')
-    expect(JSON.parse(localStorage.getItem(DISPLAY_PREFS_STORAGE_KEY) ?? '{}').state).toEqual({ transcriptStyle: 'reader', newSessionComposer: 'centered' })
+    expect(JSON.parse(localStorage.getItem(DISPLAY_PREFS_STORAGE_KEY) ?? '{}').state).toEqual({ transcriptStyle: 'reader' })
   })
 
   it('falls back to detailed for a stored style it does not know', async () => {
@@ -26,22 +26,16 @@ describe('useDisplayPrefsStore — transcript style', () => {
   })
 })
 
-describe('useDisplayPrefsStore — new session composer', () => {
-  it('starts centered and remembers a switch to floating', () => {
-    expect(useDisplayPrefsStore.getState().newSessionComposer).toBe('centered')
-
-    useDisplayPrefsStore.getState().setNewSessionComposer('floating')
-
-    expect(useDisplayPrefsStore.getState().newSessionComposer).toBe('floating')
-    expect(JSON.parse(localStorage.getItem(DISPLAY_PREFS_STORAGE_KEY) ?? '{}').state.newSessionComposer).toBe('floating')
-  })
-
-  it('falls back to centered for a stored value it does not know, keeping the transcript style', async () => {
-    localStorage.setItem(DISPLAY_PREFS_STORAGE_KEY, JSON.stringify({ state: { transcriptStyle: 'reader', newSessionComposer: 'sideways' }, version: 0 }))
+describe('useDisplayPrefsStore — removed new session composer setting', () => {
+  it('drops a v3.18.0 newSessionComposer value on load and never writes it back', async () => {
+    localStorage.setItem(DISPLAY_PREFS_STORAGE_KEY, JSON.stringify({ state: { transcriptStyle: 'reader', newSessionComposer: 'floating' }, version: 0 }))
 
     await useDisplayPrefsStore.persist.rehydrate()
 
-    expect(useDisplayPrefsStore.getState().newSessionComposer).toBe('centered')
+    expect('newSessionComposer' in useDisplayPrefsStore.getState()).toBe(false)
     expect(useDisplayPrefsStore.getState().transcriptStyle).toBe('reader')
+
+    useDisplayPrefsStore.getState().setTranscriptStyle('detailed')
+    expect(JSON.parse(localStorage.getItem(DISPLAY_PREFS_STORAGE_KEY) ?? '{}').state).toEqual({ transcriptStyle: 'detailed' })
   })
 })

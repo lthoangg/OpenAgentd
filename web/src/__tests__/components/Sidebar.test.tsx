@@ -2037,6 +2037,7 @@ describe('Sidebar workspace trust flow', () => {
         row('First'),
         row('Second'),
         screen.getByLabelText('Collapse repository project'),
+        screen.getByLabelText('Pin session First'),
         screen.getByLabelText('Edit session First'),
         screen.getByLabelText('Delete session First'),
         screen.getByLabelText('Actions for project'),
@@ -2408,6 +2409,50 @@ describe('Sidebar workspace trust flow', () => {
         { id: 'session-1', pinned: true },
         expect.anything(),
       )
+    })
+
+    it('pins from the row action left of Edit', async () => {
+      sessionsData = [projectSession('session-1', 'Feature')]
+      workspaceSessionsData = sessionsData
+
+      await renderSidebarForSessions('session-1')
+
+      const pin = screen.getByRole('button', { name: 'Pin session Feature' })
+      const edit = screen.getByRole('button', { name: 'Edit session Feature' })
+      expect(pin.compareDocumentPosition(edit) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+      fireEvent.click(pin)
+      expect(setSessionPinnedMutate).toHaveBeenCalledWith(
+        { id: 'session-1', pinned: true },
+        expect.anything(),
+      )
+    })
+
+    it('unpins a pinned session from its row action', async () => {
+      pinnedSessionsData = [projectSession('pinned-1', 'Pinned review', { pinned_at: '2026-10-18T00:00:00Z' })]
+      sessionsData = [projectSession('session-1', 'Feature')]
+      workspaceSessionsData = sessionsData
+
+      await renderSidebarForSessions('session-1')
+
+      fireEvent.click(screen.getByRole('button', { name: 'Unpin session Pinned review' }))
+      expect(setSessionPinnedMutate).toHaveBeenCalledWith(
+        { id: 'pinned-1', pinned: false },
+        expect.anything(),
+      )
+    })
+
+    it('keeps pinning behind long-press on mobile', async () => {
+      isMobile = true
+      platformOs = 'ios'
+      sessionsData = [projectSession('session-1', 'Feature')]
+      workspaceSessionsData = sessionsData
+
+      await renderSidebarWithProps({ currentSessionId: 'session-1', workspace: '/repo/project', mobileOpen: true })
+
+      // The inline actions never show; long-press opens the action sheet.
+      const actions = screen.getByLabelText('Pin session Feature').parentElement!
+      expect(actions.className.split(' ')).toContain('hidden')
+      expect(actions.className).not.toContain('group-hover/row:flex')
     })
   })
 })

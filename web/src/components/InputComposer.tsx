@@ -524,10 +524,12 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
       // Minimizing disables the textarea, and the browser drops its focus
       // onto <body> without an event (after a send, or Esc). Keep focus in
       // the composer on the pill instead, so the next Tab, Enter or typed
-      // key starts here rather than at the top of the page.
+      // key starts here rather than at the top of the page. Quietly: the
+      // user did not steer focus here, and WebKit would ring the pill.
       const active = document.activeElement
-      if (active === textareaRef.current || active === document.body || active === null) {
-        expandButtonRef.current?.focus({ preventScroll: true })
+      const pill = expandButtonRef.current
+      if (pill && (active === textareaRef.current || active === document.body || active === null)) {
+        focusQuietly(pill)
       }
       return
     }

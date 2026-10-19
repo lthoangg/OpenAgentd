@@ -3,9 +3,14 @@
  *
  * Nothing is saved until the first message: this screen names the folder
  * the session will run in (a chip that switches it), hosts the composer on
- * desktop when it is centered, and offers the way back to earlier work —
+ * desktop (phones dock it at the bottom), and offers the way back to earlier work —
  * recent folders and this folder's recent sessions. No starter prompts:
  * the composer is the call to action.
+ *
+ * ``leaving``: the first message was just sent. AgentChatView renders an
+ * inert copy over the incoming chat that fades away while the composer
+ * glides to the bottom; ``composerPlaceholderHeight`` holds the composer's
+ * place so the copy does not reflow as it fades.
  */
 import { useMemo, type ReactNode } from 'react'
 import { motion } from 'framer-motion'
@@ -25,18 +30,6 @@ import { WorkspacePicker } from './WorkspacePicker'
 const RECENT_FOLDERS = 5
 const RECENT_SESSIONS = 5
 const NO_REPOSITORIES: CodingWorkspaceTreeRepository[] = []
-
-/** Where the composer is on this screen. */
-export type NewSessionComposerSlot = 'inline' | 'floating' | 'docked'
-
-/**
- * Phones always dock the full composer at the bottom (no collapsed bar);
- * desktop and tablet follow the "New session composer" setting.
- */
-export function newSessionComposerSlot(isMobile: boolean, preference: 'centered' | 'floating'): NewSessionComposerSlot {
-  if (isMobile) return 'docked'
-  return preference === 'centered' ? 'inline' : 'floating'
-}
 
 /**
  * Up to ``limit`` folders to switch to: the workspaces of the most recently
@@ -82,8 +75,9 @@ export function NewSessionScreen({
   isChat,
   chatWorkspace,
   composer = null,
-  composerSlot,
   isMobile,
+  leaving = false,
+  composerPlaceholderHeight,
   onSelectWorkspace,
   onOpenFolder,
 }: {
@@ -91,10 +85,13 @@ export function NewSessionScreen({
   workspaceName: string
   isChat: boolean
   chatWorkspace: CodingWorkspaceTreeChat | null
-  /** The composer, when it sits in this screen (centered, desktop). */
+  /** The composer, when it sits in this screen (desktop). */
   composer?: ReactNode
-  composerSlot: NewSessionComposerSlot
   isMobile: boolean
+  /** Fade out as an inert copy (the hand-off into the chat). */
+  leaving?: boolean
+  /** While leaving: the height the composer had, kept as empty space. */
+  composerPlaceholderHeight?: number
   /** Switch the draft to another folder. */
   onSelectWorkspace: (path: string) => void
   onOpenFolder: () => void
@@ -143,11 +140,15 @@ export function NewSessionScreen({
 
   return (
     <motion.div
-      data-testid="new-session-screen"
-      initial={reducedMotion ? false : { opacity: 0, y: 6 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.15, ease: 'easeOut' }}
-      className="flex min-h-0 flex-1 flex-col overflow-y-auto"
+      data-testid={leaving ? 'new-session-screen-leaving' : 'new-session-screen'}
+      // Leaving starts from fully shown: ``initial={false}`` would start it
+      // at the ``animate`` target and skip the fade.
+      initial={leaving ? { opacity: 1, y: 0 } : reducedMotion ? false : { opacity: 0, y: 6 }}
+      animate={leaving ? { opacity: 0, y: -8 } : { opacity: 1, y: 0 }}
+      transition={leaving ? { duration: 0.15, ease: [0.4, 0, 0.2, 1] } : { duration: 0.15, ease: 'easeOut' }}
+      inert={leaving || undefined}
+      aria-hidden={leaving || undefined}
+      className={`flex min-h-0 flex-1 flex-col overflow-y-auto ${leaving ? 'pointer-events-none absolute inset-0' : ''}`}
     >
       {/* Desktop: the hero sits a little above center (the spacer above is
           the shorter one) so the composer lands near the optical middle. */}
@@ -176,11 +177,11 @@ export function NewSessionScreen({
               </span>
             )}
           </div>
-          {composerSlot === 'inline' && composer && <div className="mt-2 w-full">{composer}</div>}
-          {composerSlot === 'floating' && (
-            <p className="text-xs text-(--color-text-muted)">
-              Start typing, or click the bar below. <kbd className="ml-1 rounded-xs border border-(--color-border) bg-(--bg-key) px-1 font-mono text-[11px]">esc</kbd> tucks it away.
-            </p>
+          {/* ``text-left``: the hero is centered, and the composer's
+              textarea, chips and menus must not inherit it. */}
+          {composer && <div className="mt-2 w-full text-left">{composer}</div>}
+          {leaving && composerPlaceholderHeight !== undefined && (
+            <div data-composer-placeholder aria-hidden="true" className="mt-2 w-full" style={{ height: composerPlaceholderHeight }} />
           )}
           {!isMobile && (
             <p className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-[11px] text-(--color-text-subtle)" aria-label="Shortcuts">

@@ -10,9 +10,7 @@ mock.module('@tanstack/react-router', () => ({ useNavigate: () => navigate }))
 
 import {
   NewSessionScreen,
-  newSessionComposerSlot,
   recentFolders,
-  type NewSessionComposerSlot,
 } from '@/components/NewSession/NewSessionScreen'
 
 const realFetch = globalThis.fetch
@@ -39,14 +37,16 @@ function renderScreen({
   workspace = REPO,
   isChat = false,
   isMobile = false,
-  composerSlot = 'inline',
+  leaving = false,
+  composerPlaceholderHeight,
   here = [],
   everywhere = [],
 }: {
   workspace?: string
   isChat?: boolean
   isMobile?: boolean
-  composerSlot?: NewSessionComposerSlot
+  leaving?: boolean
+  composerPlaceholderHeight?: number
   here?: SessionResponse[]
   everywhere?: SessionResponse[]
 } = {}) {
@@ -64,9 +64,11 @@ function renderScreen({
         workspaceName={isChat ? 'Chat' : workspace.split('/').pop()!}
         isChat={isChat}
         chatWorkspace={CHAT}
-        composer={<textarea aria-label="Composer" />}
-        composerSlot={composerSlot}
+        // As AgentChatView does: the composer sits here on desktop only.
+        composer={isMobile || leaving ? null : <textarea aria-label="Composer" />}
         isMobile={isMobile}
+        leaving={leaving}
+        composerPlaceholderHeight={composerPlaceholderHeight}
         onSelectWorkspace={onSelectWorkspace}
         onOpenFolder={onOpenFolder}
       />
@@ -140,33 +142,37 @@ describe('NewSessionScreen', () => {
   })
 
   it('hosts the composer when centered and shows the shortcut hints on desktop', () => {
-    renderScreen({ composerSlot: 'inline' })
+    renderScreen()
     expect(screen.getByRole('textbox', { name: 'Composer' })).toBeTruthy()
     expect(screen.getByLabelText('Shortcuts').textContent).toContain('commands')
     expect(screen.queryByText(/Start typing/)).toBeNull()
   })
 
-  it('points at the floating bar when the composer floats', () => {
-    renderScreen({ composerSlot: 'floating' })
-    expect(screen.queryByRole('textbox', { name: 'Composer' })).toBeNull()
-    expect(screen.getByText(/Start typing, or click the bar below/)).toBeTruthy()
+  it('left-aligns the centered composer so typed text starts at the caret', () => {
+    // The hero is `text-center`; the composer must not inherit it, or typed
+    // text centers while the caret sits at the left edge of an empty line.
+    renderScreen()
+    const slot = screen.getByRole('textbox', { name: 'Composer' }).parentElement
+    expect(slot?.className).toContain('text-left')
   })
 
   it('leaves the composer docked and drops the hints on mobile', () => {
-    renderScreen({ composerSlot: 'docked', isMobile: true, here: [session('s-1', 'Sidebar redesign', REPO)] })
+    renderScreen({ isMobile: true, here: [session('s-1', 'Sidebar redesign', REPO)] })
     expect(screen.queryByRole('textbox', { name: 'Composer' })).toBeNull()
     expect(screen.queryByText(/Start typing/)).toBeNull()
     expect(screen.queryByLabelText('Shortcuts')).toBeNull()
     expect(screen.getByRole('region', { name: 'Recent sessions' })).toBeTruthy()
   })
-})
 
-describe('newSessionComposerSlot', () => {
-  it('follows the setting on desktop and always docks on phones', () => {
-    expect(newSessionComposerSlot(false, 'centered')).toBe('inline')
-    expect(newSessionComposerSlot(false, 'floating')).toBe('floating')
-    expect(newSessionComposerSlot(true, 'centered')).toBe('docked')
-    expect(newSessionComposerSlot(true, 'floating')).toBe('docked')
+  it('fades out as an inert copy that holds the composer’s place while leaving', () => {
+    renderScreen({ leaving: true, composerPlaceholderHeight: 96 })
+    const leaving = screen.getByTestId('new-session-screen-leaving')
+    expect(leaving.getAttribute('aria-hidden')).toBe('true')
+    expect(leaving.hasAttribute('inert')).toBe(true)
+    expect(screen.queryByTestId('new-session-screen')).toBeNull()
+    expect(screen.queryByRole('textbox', { name: 'Composer' })).toBeNull()
+    const placeholder = leaving.querySelector('[data-composer-placeholder]') as HTMLElement | null
+    expect(placeholder?.style.height).toBe('96px')
   })
 })
 

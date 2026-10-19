@@ -54,16 +54,30 @@ fn inline_flags(flags: &str) -> Result<String, String> {
 /// Relax `e` into an expression matching a superset of its strings, or
 /// `None` when a construct has no safe relaxation. `changed` reports whether
 /// anything slow was removed (otherwise no prefilter is worth having).
+///
+/// Leaves are allow-listed: anything not named here returns `None`, because
+/// `Expr::to_str` panics on constructs the `regex` crate cannot express.
 fn relax(e: fancy_regex::Expr, changed: &mut bool) -> Option<fancy_regex::Expr> {
     use fancy_regex::{Assertion as A, Expr as E};
     Some(match e {
-        E::Assertion(A::WordBoundary | A::NotWordBoundary | A::LeftWordBoundary | A::RightWordBoundary) | E::LookAround(..) | E::KeepOut | E::ContinueFromPreviousMatchEnd => {
+        E::Assertion(
+            A::WordBoundary
+            | A::NotWordBoundary
+            | A::LeftWordBoundary
+            | A::RightWordBoundary
+            | A::LeftWordHalfBoundary
+            | A::RightWordHalfBoundary
+            | A::EndTextIgnoreTrailingNewlines { .. },
+        )
+        | E::LookAround(..)
+        | E::KeepOut
+        | E::ContinueFromPreviousMatchEnd => {
             *changed = true;
             E::Empty
         }
-        E::Backref(_) => {
+        E::Backref { .. } | E::BackrefWithRelativeRecursionLevel { .. } => {
             *changed = true;
-            E::Repeat { child: Box::new(E::Any { newline: true }), lo: 0, hi: usize::MAX, greedy: false }
+            E::Repeat { child: Box::new(E::Any { newline: true, crlf: false }), lo: 0, hi: usize::MAX, greedy: false }
         }
         E::AtomicGroup(inner) => {
             *changed = true;
@@ -71,10 +85,12 @@ fn relax(e: fancy_regex::Expr, changed: &mut bool) -> Option<fancy_regex::Expr> 
         }
         E::Concat(v) => E::Concat(v.into_iter().map(|x| relax(x, changed)).collect::<Option<_>>()?),
         E::Alt(v) => E::Alt(v.into_iter().map(|x| relax(x, changed)).collect::<Option<_>>()?),
-        E::Group(inner) => E::Group(Box::new(relax(*inner, changed)?)),
+        E::Group(inner) => E::Group(std::sync::Arc::new(relax(std::sync::Arc::unwrap_or_clone(inner), changed)?)),
         E::Repeat { child, lo, hi, greedy } => E::Repeat { child: Box::new(relax(*child, changed)?), lo, hi, greedy },
-        E::BackrefExistsCondition(_) | E::Conditional { .. } => return None,
-        other => other,
+        // `DefineGroup` matches nothing and formats as empty.
+        leaf @ (E::Empty | E::Any { .. } | E::Literal { .. } | E::Delegate { .. } | E::DefineGroup { .. }) => leaf,
+        leaf @ E::Assertion(A::StartText | A::EndText | A::StartLine { .. } | A::StartLineOniguruma { .. } | A::EndLine { .. }) => leaf,
+        _ => return None,
     })
 }
 
@@ -263,5 +279,17 @@ mod tests {
             let id = r.compile(p, f).unwrap()["id"].as_u64().unwrap();
             assert!(r.compiled[id as usize].prefilter.is_none(), "{p}");
         }
+    }
+
+    /// Constructs `Expr::to_str` cannot format must skip the prefilter, not panic.
+    #[test]
+    fn unformattable_constructs_skip_prefilter() {
+        let mut r = Regexes::default();
+        for p in [r"\R\bx", r"(?<a>x)\g<a>\b", r"(?<a>x)?(?(a)y|z)\b"] {
+            let Ok(c) = r.compile(p, "") else { continue };
+            let id = c["id"].as_u64().unwrap() as usize;
+            assert!(r.compiled[id].prefilter.is_none(), "{p}");
+        }
+        assert_eq!(run(r"x\Z", "", "ax\n"), json!([[1, 2]]));
     }
 }

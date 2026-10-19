@@ -8,6 +8,7 @@ pub mod args;
 pub mod denied;
 pub mod glob;
 pub mod grep;
+pub mod ignores;
 pub mod lsp;
 pub mod multimodal;
 pub mod patch;

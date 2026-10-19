@@ -22,8 +22,7 @@
 //!   layout on notify's poll backend. `OPENAGENTD_FS_WATCH=off` disables it.
 
 use appv3_agent::broadcaster;
-use appv3_tools::grep::{is_gitignored, is_searchable_ignored_dir, load_gitignore, NOISE_DIR_NAMES};
-use ignore::gitignore::Gitignore;
+use appv3_tools::grep::{is_gitignored, is_searchable_ignored_dir, load_gitignore, Ignores, NOISE_DIR_NAMES};
 use notify::{Config, Event, EventKind, PollWatcher, RecommendedWatcher, RecursiveMode, Watcher};
 use serde_json::json;
 use std::collections::{BTreeSet, HashMap};
@@ -131,7 +130,7 @@ enum Class {
 
 /// The outermost gitignored directory holding `rel` (or `rel` itself when it
 /// is an ignored directory); `None` for an ignored file outside one.
-fn outermost_ignored_dir(rel: &str, is_dir: bool, gi: &Gitignore) -> Option<String> {
+fn outermost_ignored_dir(rel: &str, is_dir: bool, gi: &Ignores) -> Option<String> {
     let parts: Vec<&str> = rel.split('/').collect();
     let dirs = if is_dir { parts.len() } else { parts.len() - 1 };
     (1..=dirs).map(|n| parts[..n].join("/")).find(|d| is_gitignored(gi, d, true))
@@ -145,7 +144,7 @@ fn outermost_ignored_dir(rel: &str, is_dir: bool, gi: &Gitignore) -> Option<Stri
 /// except inside an ignored directory `is_big` reports as too big to list
 /// (`target/`): the listing leaves it out, so its churn during a build would
 /// only refresh the panel for nothing.
-fn classify(rel: &str, is_dir: bool, gi: &Gitignore, is_big: &dyn Fn(&str) -> bool) -> Class {
+fn classify(rel: &str, is_dir: bool, gi: &Ignores, is_big: &dyn Fn(&str) -> bool) -> Class {
     if rel.is_empty() {
         return Class::Ignore;
     }
@@ -171,7 +170,7 @@ fn rel_of(root: &Path, path: &Path) -> Option<String> {
 struct Ctx {
     root: PathBuf,
     backend: Backend,
-    gitignore: RwLock<Gitignore>,
+    gitignore: RwLock<Ignores>,
     /// Gitignored directories (relative) and whether they are too big to list,
     /// with when that was checked.
     big_dirs: Mutex<HashMap<String, (bool, Instant)>>,
@@ -194,7 +193,7 @@ impl Ctx {
         big
     }
 
-    fn classify(&self, rel: &str, is_dir: bool, gi: &Gitignore) -> Class {
+    fn classify(&self, rel: &str, is_dir: bool, gi: &Ignores) -> Class {
         classify(rel, is_dir, gi, &|d| self.is_big_ignored_dir(d))
     }
 }
@@ -343,8 +342,10 @@ fn run(rx: Receiver<Msg>, ctx: Arc<Ctx>, watcher: Weak<Mutex<Box<dyn Watcher + S
             match m {
                 Msg::Changed { rel, git: g, new_dir } => {
                     git |= g;
-                    if rel == ".gitignore" {
+                    // Any `.gitignore` (nested ones count too) changes the rules.
+                    if rel == ".gitignore" || rel.ends_with("/.gitignore") {
                         *ctx.gitignore.write().unwrap() = load_gitignore(&ctx.root);
+                        ctx.big_dirs.lock().unwrap().clear();
                     }
                     if !g {
                         paths.insert(rel);
@@ -482,7 +483,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join(".gitignore"), "build/\ntarget/\n*.log\n").unwrap();
         let gi = load_gitignore(dir.path());
-        let classify = |rel: &str, is_dir: bool, gi: &Gitignore| classify(rel, is_dir, gi, &|d| d == "target");
+        let classify = |rel: &str, is_dir: bool, gi: &Ignores| classify(rel, is_dir, gi, &|d| d == "target");
         assert_eq!(classify("src/main.rs", false, &gi), Class::File);
         assert_eq!(classify("", true, &gi), Class::Ignore);
         assert_eq!(classify("node_modules/x/index.js", false, &gi), Class::Ignore);

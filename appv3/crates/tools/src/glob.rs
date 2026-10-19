@@ -1,7 +1,7 @@
 //! `glob` — port of `filesystem/glob.py`.
 
 use crate::args::Args;
-use crate::grep::{is_gitignored, is_searchable_ignored_dir, load_gitignore, skipped_ignored_note, NOISE_DIR_NAMES};
+use crate::grep::{is_gitignored, is_searchable_ignored_dir, load_gitignore, skipped_ignored_note, Ignores, NOISE_DIR_NAMES};
 use crate::{Tool, ToolContext, ToolError, ToolOutput, ToolResult};
 use async_trait::async_trait;
 use globset::{GlobBuilder, GlobMatcher};
@@ -145,7 +145,7 @@ struct Walk<'a> {
 /// inside an ignored directory) everything is flagged and walked. Directories
 /// are read in parallel: the walk is mostly `readdir` syscalls, and results
 /// are ranked and sorted afterwards anyway. Stops descending once `expired`.
-fn walk_files(root: &Path, base: &Path, gi: Option<&ignore::gitignore::Gitignore>, allowed_noise: &BTreeSet<String>, expired: &(dyn Fn() -> bool + Sync)) -> Walked {
+fn walk_files(root: &Path, base: &Path, gi: Option<&Ignores>, allowed_noise: &BTreeSet<String>, expired: &(dyn Fn() -> bool + Sync)) -> Walked {
     let w = Walk { base, allowed_noise, expired, timed_out: AtomicBool::new(false), skipped: Mutex::default() };
     let files = walk_dir(&w, root, gi, gi.is_none());
     let mut skipped = w.skipped.into_inner().unwrap_or_default();
@@ -154,7 +154,7 @@ fn walk_files(root: &Path, base: &Path, gi: Option<&ignore::gitignore::Gitignore
 }
 
 /// `gi` is `None` inside an ignored directory, where `ignored` is set.
-fn walk_dir(w: &Walk, dir: &Path, gi: Option<&ignore::gitignore::Gitignore>, ignored: bool) -> Vec<Cand> {
+fn walk_dir(w: &Walk, dir: &Path, gi: Option<&Ignores>, ignored: bool) -> Vec<Cand> {
     use rayon::prelude::*;
     if (w.expired)() {
         w.timed_out.store(true, Ordering::Relaxed);
@@ -186,14 +186,14 @@ fn walk_dir(w: &Walk, dir: &Path, gi: Option<&ignore::gitignore::Gitignore>, ign
         .into_iter()
         .map(|f| {
             let rel = join(&f);
-            let ignored = ignored || gi.is_some_and(|gi| is_gitignored(gi, &rel, false));
+            let ignored = ignored || gi.is_some_and(|gi| gi.matched(&rel, false));
             Cand { rel, path: dir.join(&f), ignored }
         })
         .collect();
     let mut kept: Vec<(String, bool)> = vec![];
     for d in dirs.into_iter().filter(|d| !NOISE_DIR_NAMES.contains(&d.as_str()) || w.allowed_noise.contains(d)) {
         let rel = join(&d);
-        if !gi.is_some_and(|gi| is_gitignored(gi, &rel, true)) {
+        if !gi.is_some_and(|gi| gi.matched(&rel, true)) {
             kept.push((d, false));
         } else if is_searchable_ignored_dir(&dir.join(&d)) {
             kept.push((d, true));
@@ -419,6 +419,14 @@ mod tests {
         let miss = glob(d.path(), serde_json::json!({"pattern": "**/*.o"})).await;
         assert!(miss[0].contains("skipped large gitignored directories: target/"), "{miss:?}");
         assert_eq!(glob(d.path(), serde_json::json!({"pattern": "target/debug/f1.o"})).await, ["target/debug/f1.o"]);
+    }
+
+    #[tokio::test]
+    async fn a_nested_gitignore_ranks_its_files_as_ignored() {
+        let d = glob_tree();
+        std::fs::write(d.path().join("sub/.gitignore"), "d.txt\n").unwrap();
+        let all = glob(d.path(), serde_json::json!({"pattern": "**/*.txt"})).await;
+        assert_eq!(all, ["a.txt", "b.txt", "sub/deep/e.txt", ".hidden/c.txt", "ignored.txt", "sub/d.txt"]);
     }
 
     #[test]

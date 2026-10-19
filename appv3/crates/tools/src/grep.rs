@@ -3,9 +3,9 @@
 use crate::args::Args;
 use crate::denied::fnmatch_translate;
 use crate::denied::DeniedPaths;
+pub use crate::ignores::Ignores;
 use crate::{Tool, ToolContext, ToolError, ToolOutput, ToolResult};
 use async_trait::async_trait;
-use ignore::gitignore::{Gitignore, GitignoreBuilder};
 use serde_json::Value;
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -42,18 +42,17 @@ const SCAN_CHUNK_BYTES: usize = 1 << 20;
 /// ignored files are searched, after the visible tree.
 pub const MAX_IGNORED_DIR_FILES: usize = 500;
 
-/// Root `.gitignore` only (v2 limitation preserved).
-pub fn load_gitignore(root: &Path) -> Gitignore {
-    let mut b = GitignoreBuilder::new(root);
-    let gi = root.join(".gitignore");
-    if gi.is_file() {
-        let _ = b.add(gi);
-    }
-    b.build().unwrap_or_else(|_| Gitignore::empty())
+/// Git's ignore rules for a search rooted at `root`: nested `.gitignore`s,
+/// the ones above it up to the repository root, `.git/info/exclude` and the
+/// global excludes file (see [`Ignores`]).
+pub fn load_gitignore(root: &Path) -> Ignores {
+    Ignores::load(root)
 }
 
-pub fn is_gitignored(gi: &Gitignore, rel: &str, is_dir: bool) -> bool {
-    gi.matched_path_or_any_parents(rel, is_dir).is_ignore()
+/// Whether `rel` (relative to the search root) or a directory above it is
+/// gitignored.
+pub fn is_gitignored(gi: &Ignores, rel: &str, is_dir: bool) -> bool {
+    gi.matched_or_any_parent(rel, is_dir)
 }
 
 /// Whether the gitignored directory `dir` is small enough to search: at most
@@ -330,7 +329,7 @@ impl Scan<'_> {
     /// subdirectories, depth first, names sorted). With `gi`, gitignored
     /// files and directories go to `ignored` (`true` for a directory) in
     /// walk order instead of being searched now.
-    fn walk(&mut self, start: &Path, gi: Option<&Gitignore>, ignored: &mut Vec<(PathBuf, bool)>) -> Result<(), Stop> {
+    fn walk(&mut self, start: &Path, gi: Option<&Ignores>, ignored: &mut Vec<(PathBuf, bool)>) -> Result<(), Stop> {
         let mut stack = vec![start.to_path_buf()];
         while let Some(dir) = stack.pop() {
             if (self.expired)() {
@@ -359,7 +358,7 @@ impl Scan<'_> {
                 if !self.include.is_match(&f) {
                     continue;
                 }
-                if gi.is_some_and(|gi| is_gitignored(gi, &join(&f), false)) {
+                if gi.is_some_and(|gi| gi.matched(&join(&f), false)) {
                     ignored.push((dir.join(&f), false));
                 } else {
                     self.queue(dir.join(&f));
@@ -368,7 +367,7 @@ impl Scan<'_> {
             self.flush_if_ready()?;
             let mut kept = vec![];
             for d in dirs.into_iter().filter(|d| !NOISE_DIR_NAMES.contains(&d.as_str())) {
-                if gi.is_some_and(|gi| is_gitignored(gi, &join(&d), true)) {
+                if gi.is_some_and(|gi| gi.matched(&join(&d), true)) {
                     ignored.push((dir.join(&d), true));
                 } else {
                     kept.push(d);
@@ -382,7 +381,7 @@ impl Scan<'_> {
 
     /// The visible tree first, then what it ignores: ignored files, and
     /// ignored directories small enough to be more than build output.
-    fn run(&mut self, gi: &Gitignore) -> Result<(), Stop> {
+    fn run(&mut self, gi: &Ignores) -> Result<(), Stop> {
         let mut ignored = vec![];
         self.walk(self.root, Some(gi), &mut ignored)?;
         for (p, is_dir) in ignored {
@@ -413,7 +412,7 @@ struct TreeHits {
 /// `batch`es as the walk finds them, so a search with early hits stops
 /// without walking the rest.
 #[allow(clippy::too_many_arguments)]
-fn search_tree(root: &Path, include: &regex::Regex, gi: &Gitignore, denied: &DeniedPaths, m: &Matcher, max: usize, batch: usize, expired: &dyn Fn() -> bool) -> TreeHits {
+fn search_tree(root: &Path, include: &regex::Regex, gi: &Ignores, denied: &DeniedPaths, m: &Matcher, max: usize, batch: usize, expired: &dyn Fn() -> bool) -> TreeHits {
     let mut s = Scan { root, include, denied, m, max, batch, expired, hits: vec![], pending: vec![], skipped: vec![] };
     let timed_out = match s.run(gi) {
         Ok(()) => {
@@ -651,6 +650,21 @@ mod tests {
         // Named explicitly, a big ignored directory is searched in full.
         let out = grep(d.path(), serde_json::json!({"pattern": "needle", "directory": "target", "max_results": 1000})).await;
         assert_eq!(out.lines().count(), MAX_IGNORED_DIR_FILES + 1, "{out}");
+    }
+
+    #[tokio::test]
+    async fn a_subfolder_search_honours_the_repository_gitignore() {
+        let d = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(d.path().join(".git")).unwrap();
+        std::fs::write(d.path().join(".gitignore"), "app/out/\n").unwrap();
+        for f in ["app/out/a.txt", "app/src/b.txt"] {
+            let p = d.path().join(f);
+            std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+            std::fs::write(p, "hit\n").unwrap();
+        }
+        // Only the root `.gitignore` names `app/out/`: it still ranks last.
+        let out = grep(d.path(), serde_json::json!({"pattern": "hit", "directory": "app"})).await;
+        assert_eq!(lines_of(&out), vec!["b.txt:1: hit", "a.txt:1: hit"], "{out}");
     }
 
     fn hit_tree() -> tempfile::TempDir {

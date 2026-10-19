@@ -9,7 +9,7 @@ use crate::AppState;
 use appv3_agent::manager;
 use appv3_agent::session::session_workspace_dir;
 use appv3_db as db;
-use appv3_tools::grep::{is_gitignored, load_gitignore, MAX_IGNORED_DIR_FILES, NOISE_DIR_NAMES};
+use appv3_tools::grep::{load_gitignore, MAX_IGNORED_DIR_FILES, NOISE_DIR_NAMES};
 use axum::extract::{Path as AxPath, State};
 use axum::http::HeaderMap;
 use axum::response::Response;
@@ -341,7 +341,7 @@ fn walk_files(root: &Path, base: &Path, out: &mut Listing) {
             }
         }
         dirs.retain(|d| !NOISE_DIR_NAMES.contains(&d.as_str()));
-        let (ignored_dirs, visible_dirs): (Vec<String>, Vec<String>) = dirs.into_iter().partition(|d| is_gitignored(&gi, &rel_of(&current.join(d)), true));
+        let (ignored_dirs, visible_dirs): (Vec<String>, Vec<String>) = dirs.into_iter().partition(|d| gi.matched(&rel_of(&current.join(d)), true));
         let mut dirs = visible_dirs;
         dirs.sort();
         files.sort();
@@ -351,7 +351,7 @@ fn walk_files(root: &Path, base: &Path, out: &mut Listing) {
                 return;
             }
             let entry = current.join(&f);
-            if is_gitignored(&gi, &rel_of(&entry), false) {
+            if gi.matched(&rel_of(&entry), false) {
                 if !is_unlisted_ignored_name(&f) {
                     out.ignored.push(entry);
                 }

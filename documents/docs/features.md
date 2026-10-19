@@ -1712,7 +1712,9 @@ MCP.
   The agent's `grep` and `glob` search gitignored files too, after every
   visible match, and skip the same ignored directories over 500 files unless
   the search names one (`directory="target"`, `target/doc/**`); a search that
-  finds nothing says which it skipped. Files that an editor, terminal or build
+  finds nothing says which it skipped. They apply git's rules as git does:
+  nested `.gitignore`s, the ones above a subfolder search up to the repository
+  root, `.git/info/exclude` and the global excludes file. Files that an editor, terminal or build
   writes into a gitignored folder now refresh Quick Open and open file tabs
   live `[v3.20.0]`.
 

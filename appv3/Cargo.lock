@@ -2725,9 +2725,9 @@ checksum = "7ed9b23855291da44e7e84616e19dc0d969c3580e14ffa6b759f28775e26afc1"
 
 [[package]]
 name = "htmd"
-version = "0.5.5"
+version = "0.5.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a5a1c7113c831fec68cbd79cd8bf281a84e5b6943f51473dc266b0b88a6a017e"
+checksum = "efd66117e0b1eac329399e316f30b9530afcb7cfbd0df59a007023b6673a6c37"
 dependencies = [
  "html5ever 0.38.0",
  "markup5ever_rcdom",
@@ -5592,9 +5592,9 @@ checksum = "fd3ca314f692efd6c868f8408f53fe444634a845f96c028b97d35f6a1f79f0ee"
 
 [[package]]
 name = "tokio"
-version = "1.53.2"
+version = "1.53.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e95f91fcc7a621e8b030f6aa23c71fe9838ae2fb4d8118b75602a328f5144044"
+checksum = "ce3335fa71841cda333a58d7615b03901380ecf09d59b3296d21f8bbac0dde4e"
 dependencies = [
  "bytes",
  "libc",

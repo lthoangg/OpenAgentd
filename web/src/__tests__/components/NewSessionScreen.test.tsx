@@ -146,6 +146,14 @@ describe('NewSessionScreen', () => {
     expect(screen.queryByText(/Start typing/)).toBeNull()
   })
 
+  it('left-aligns the centered composer so typed text starts at the caret', () => {
+    // The hero is `text-center`; the composer must not inherit it, or typed
+    // text centers while the caret sits at the left edge of an empty line.
+    renderScreen({ composerSlot: 'inline' })
+    const slot = screen.getByRole('textbox', { name: 'Composer' }).parentElement
+    expect(slot?.className).toContain('text-left')
+  })
+
   it('points at the floating bar when the composer floats', () => {
     renderScreen({ composerSlot: 'floating' })
     expect(screen.queryByRole('textbox', { name: 'Composer' })).toBeNull()

@@ -176,7 +176,9 @@ export function NewSessionScreen({
               </span>
             )}
           </div>
-          {composerSlot === 'inline' && composer && <div className="mt-2 w-full">{composer}</div>}
+          {/* ``text-left``: the hero is centered, and the composer's
+              textarea, chips and menus must not inherit it. */}
+          {composerSlot === 'inline' && composer && <div className="mt-2 w-full text-left">{composer}</div>}
           {composerSlot === 'floating' && (
             <p className="text-xs text-(--color-text-muted)">
               Start typing, or click the bar below. <kbd className="ml-1 rounded-xs border border-(--color-border) bg-(--bg-key) px-1 font-mono text-[11px]">esc</kbd> tucks it away.

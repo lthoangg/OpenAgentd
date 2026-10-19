@@ -40,6 +40,9 @@ pub fn router() -> Router<AppState> {
         .route("/sessions/{session_id}", get(session_detail).patch(update_session).delete(delete_session_route))
         .route("/sessions/{session_id}/subagents", get(session_subagents))
         .route("/{session_id}/history", get(agent_history))
+        .route("/sessions/{session_id}/btw", post(ask_side_question).get(list_side_questions).delete(clear_side_questions))
+        .route("/sessions/{session_id}/btw/count", get(count_side_questions))
+        .route("/sessions/{session_id}/btw/{side_id}/stop", post(stop_side_question))
 }
 
 fn running_set() -> HashSet<String> {
@@ -319,6 +322,64 @@ async fn agent_command(State(st): State<AppState>, raw: Bytes) -> ApiResult<Resp
             Ok(resp("redo-all", &session_id, Value::Null, changed_paths(&shift)))
         }
     }
+}
+
+// ── /sessions/{sid}/btw — side questions ───────────────────────────────────
+
+/// The session must exist; side questions never start an agent.
+async fn existing_session_id(pool: &DbPool, raw: &str) -> ApiResult<String> {
+    let sid = path_uuid("session_id", raw)?;
+    if db::get_session(pool, &sid).await?.is_none() {
+        return Err(ApiError::not_found("Session not found."));
+    }
+    Ok(sid)
+}
+
+async fn ask_side_question(State(st): State<AppState>, AxPath(raw): AxPath<String>, body: Bytes) -> ApiResult<Response> {
+    let sid = path_uuid("session_id", &raw)?;
+    let body = body_value(&body)?;
+    let question = match body.get("question") {
+        Some(Value::String(q)) => q.trim().to_string(),
+        Some(other) => return Err(ApiError::validation(vec![verr("string_type", &loc(&["body", "question"]), "Input should be a valid string", other.clone())])),
+        None => return Err(ApiError::validation(vec![verr("missing", &loc(&["body", "question"]), "Field required", body.clone())])),
+    };
+    let len = question.chars().count();
+    if len == 0 || len > appv3_agent::side_question::MAX_QUESTION_CHARS {
+        return Err(ApiError::unprocessable(format!("question must be 1 to {} characters.", appv3_agent::side_question::MAX_QUESTION_CHARS)));
+    }
+    let agent = resolve_agent_for_existing_session(&st.pool, &sid).await?;
+    let ask = agent.ask_side_question(&sid, &question).await.map_err(session_err)?;
+    tracing::info!("side_question_started session_id={} id={}", sid, ask.id);
+    let events = futures::StreamExt::map(tokio_stream::wrappers::UnboundedReceiverStream::new(ask.events), |e| e.to_wire());
+    Ok(sse_response(events))
+}
+
+async fn list_side_questions(State(st): State<AppState>, AxPath(raw): AxPath<String>, q: Qs) -> ApiResult<Response> {
+    let sid = existing_session_id(&st.pool, &raw).await?;
+    let limit = q.int("limit", 50, Some(1), Some(appv3_agent::side_question::KEEP_PER_SESSION))?;
+    let rows = appv3_agent::side_question::list(&st.pool, &sid, limit).await?;
+    let total = db::count_side_questions(&st.pool, &sid).await?;
+    Ok(json(json!({"items": rows.iter().map(db::SideQuestion::to_api).collect::<Vec<_>>(), "total": total})))
+}
+
+async fn count_side_questions(State(st): State<AppState>, AxPath(raw): AxPath<String>) -> ApiResult<Response> {
+    let sid = existing_session_id(&st.pool, &raw).await?;
+    Ok(json(json!({"total": db::count_side_questions(&st.pool, &sid).await?})))
+}
+
+async fn stop_side_question(AxPath((raw, side)): AxPath<(String, String)>) -> ApiResult<Response> {
+    let sid = path_uuid("session_id", &raw)?;
+    let id = path_uuid("side_id", &side)?;
+    if !appv3_agent::side_question::stop(&sid, &id) {
+        return Err(ApiError::not_found("Side question is not running."));
+    }
+    Ok(no_content())
+}
+
+async fn clear_side_questions(State(st): State<AppState>, AxPath(raw): AxPath<String>) -> ApiResult<Response> {
+    let sid = existing_session_id(&st.pool, &raw).await?;
+    appv3_agent::side_question::clear(&st.pool, &sid).await?;
+    Ok(no_content())
 }
 
 // ── GET /{sid}/stream ───────────────────────────────────────────────────────
@@ -765,6 +826,7 @@ pub async fn delete_session(pool: &DbPool, session_id: &str) -> ApiResult<bool> 
         appv3_agent::subagents::stop_all_subagents(sid).await;
         appv3_agent::subagents::remove_subagent(sid);
         appv3_agent::subagents::cleanup_lead_session(sid);
+        appv3_agent::side_question::stop_session(sid);
     }
     db::delete_session_rows(pool, session_id).await?;
     let s = settings();

@@ -201,6 +201,35 @@ explicitly.
   and refuses calls to tools without `readOnlyHint: true`. For Gemini,
   nested object schemas without properties are sent as JSON-string params
   (`providers/src/google.rs`).
+- **`/btw` side questions** (v3.17.0, v3 only). A quick question about
+  the session, answered from its persisted context with no tools and never
+  added to the transcript (`agent/src/side_question.rs`).
+  - Endpoints (`api/src/routes/agent/chat.rs`):
+    - `POST /api/agent/sessions/{sid}/btw {question}` streams
+      `btw_start`, `btw_delta`, `btw_done` and `btw_error` (new
+      `side_question_stream` in `contract/sse_events.json`; `btw_error`
+      carries `status: error|stopped` and the partial answer).
+    - `GET …/btw?limit=` lists the thread oldest first, `GET …/btw/count`
+      feeds the web chip, `POST …/btw/{id}/stop` (204, or 404 when not
+      running), and `DELETE …/btw` stops and deletes.
+    - Before streaming: 404 for an unknown session, 400 for a subagent
+      session or an unconfigured provider, 422 for a question that is
+      empty or longer than 20,000 chars.
+  - Rows live in `side_questions` (revision 00000023, below), written once
+    at start and once at the end, never per delta. Each ask replays the
+    newest 20 finished exchanges and keeps at most 100 per session.
+    Deleting a session deletes them.
+  - The request reuses the system prompt and tool definitions of the
+    session's last model call (recorded in memory by `RequestFrameHook`),
+    so it hits the turn's prompt cache. After a restart they are rebuilt
+    the same way a turn builds them. `tool_choice` is left unset because
+    changing it invalidates Anthropic's cached messages: the `btw_prompt`
+    forbids tools, and a tool call made anyway is dropped with a note.
+  - Generation runs in a detached task, so a closed connection does not
+    cancel it. Stop, clear and session delete do. A row left `streaming`
+    by a restart is stored as `stopped` the next time the thread is listed.
+  - Each ask records a `side_question` client span with the session id
+    and usage (lengths only, no text).
 - **Performance changes to the wire format** (v3 only; v2 parity is no
   longer a goal):
   - *History pages* (`GET /api/agent/{sid}/history`,
@@ -499,15 +528,26 @@ explicitly.
   - The `sqlite_master` row order of indexes that Alembic batch copies
     recreate can differ. v2 recreates them in Python set (object-id) order,
     so its own order is not stable either. The index set is the same.
-  - After the replay, v3 adds `ix_session_messages_usage` on
-    `session_messages (session_id, kind, json_extract(extra,
-    '$.usage.cost.estimated_usd'), json_extract(extra, '$.usage.output'))`
-    (`migrations::V3_INDEXES`, `CREATE INDEX IF NOT EXISTS` on every open).
-    It is outside the Alembic chain: the stamp stays at `00000022`, so a v2
-    build still opens the file and only sees an extra index. History loads
-    sum usage from it instead of parsing every row's `extra` (249 → 19 ms on
-    a 16,000-row session), and the per-model-call queued-message probe seeks
-    on `(session_id, kind)` instead of scanning the session (1.8 ms → 15 µs).
+  - v3's own revision **00000023** (v3.17.0) follows the chain, so a
+    database upgraded past 00000022 no longer opens in v2 (end-of-life).
+    It replaces the indexes v3 used to create on every open outside the
+    chain (`V3_INDEXES`, removed), with `IF NOT EXISTS` so databases that
+    already have them upgrade cleanly:
+    - `ix_session_messages_usage` on `session_messages (session_id, kind,
+      json_extract(extra, '$.usage.cost.estimated_usd'),
+      json_extract(extra, '$.usage.output'))`. History loads sum usage from
+      it instead of parsing every row's `extra` (249 → 19 ms on a
+      16,000-row session), and the per-model-call queued-message probe
+      seeks on `(session_id, kind)` instead of scanning the session
+      (1.8 ms → 15 µs).
+    - `ix_session_messages_queued` on `session_messages (session_id, seq,
+      id) WHERE kind = 'queued'`.
+    - The `side_questions` table for `/btw` (above): `WITHOUT ROWID`,
+      clustered on `(session_id, id)` with uuid7 ids, so every query is a
+      primary-key range scan with no secondary index. No foreign key;
+      session delete removes the rows in its transaction.
+    `migrations.rs` tests check that the replay matches the head schema
+    and that a v2 database at 00000022 upgrades to 00000023.
   - On an open that changes no schema, `PRAGMA optimize` and the WAL
     checkpoint run in the background instead of before the server binds, so
     a WAL left by a crash no longer delays the handshake (213 MB WAL:

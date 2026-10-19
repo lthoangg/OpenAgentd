@@ -141,6 +141,23 @@ pub struct UserMessage {
     pub extra: Option<Map<String, Value>>,
 }
 
+/// The provider a turn of this session calls (see
+/// [`AgentSession::resolve_runtime_provider`]).
+pub struct RuntimeProvider {
+    /// The session's model, else the agent's.
+    pub effective_model: Option<String>,
+    /// Built for the session's model/thinking override; `None` uses the
+    /// agent's own provider.
+    pub runtime: Option<Arc<dyn LlmProvider>>,
+    pub thinking_level: Option<String>,
+}
+
+impl RuntimeProvider {
+    pub fn provider(&self, agent: &Agent) -> Arc<dyn LlmProvider> {
+        self.runtime.clone().unwrap_or_else(|| agent.provider.clone())
+    }
+}
+
 pub struct AgentSession {
     agent: RwLock<Arc<Agent>>,
     session_id: Mutex<String>,
@@ -173,6 +190,9 @@ pub struct AgentSession {
     stop_grace: Mutex<Duration>,
     /// Extra hooks for every turn (tests only).
     test_hooks: Mutex<Vec<HookRef>>,
+    /// System prompt and tools of the lead's last model call, which `/btw`
+    /// side questions reuse so they hit the same prompt cache.
+    request_frame: crate::side_question::FrameSlot,
     me: Weak<AgentSession>,
 }
 
@@ -216,6 +236,7 @@ impl AgentSession {
             idle_compaction_delay: Mutex::new(IDLE_COMPACTION_DELAY),
             stop_grace: Mutex::new(STOP_GRACE),
             test_hooks: Mutex::new(vec![]),
+            request_frame: Default::default(),
             me: me.clone(),
         })
     }
@@ -224,6 +245,75 @@ impl AgentSession {
     pub fn agent(&self) -> Arc<Agent> {
         self.agent.read().unwrap().clone()
     }
+
+    /// The provider for the session's `model` / `thinking_level` overrides
+    /// (from its row), or the agent's own when neither changes anything.
+    pub fn resolve_runtime_provider(&self, agent: &Agent, runtime_model: Option<&str>, runtime_thinking: Option<&str>) -> Result<RuntimeProvider, ProviderError> {
+        let runtime_model = runtime_model.filter(|m| !m.is_empty());
+        let runtime_thinking = runtime_thinking.map(String::from);
+        let effective_model = runtime_model.map(String::from).or_else(|| agent.model_id.clone());
+        let overridden = runtime_model.is_some_and(|m| Some(m) != agent.model_id.as_deref()) || runtime_thinking.is_some();
+        let mut runtime = None;
+        if overridden {
+            if let Some(em) = effective_model.as_deref().filter(|m| !m.is_empty()) {
+                let mut kw = Kwargs::new();
+                if let Some(t) = &runtime_thinking {
+                    kw.insert("thinking_level".into(), json!(t));
+                }
+                runtime = Some((self.provider_factory)(Some(em), kw)?);
+            }
+        }
+        // A runtime provider carries only the session's level; the agent's
+        // own level applies only to the agent's own provider.
+        let thinking_level = if runtime.is_some() { runtime_thinking } else { agent.thinking_level.clone() };
+        Ok(RuntimeProvider { effective_model, runtime, thinking_level })
+    }
+
+    /// `<openagentd_memory>` as of the session's first turn (frozen so the
+    /// system prompt stays byte-identical across turns).
+    pub(crate) async fn memory_context(&self) -> String {
+        let frozen = self.memory_snapshot.lock().unwrap().clone();
+        match frozen {
+            Some(m) => m,
+            None => {
+                // Reads every memory page; keep that disk walk off the async worker.
+                let m = tokio::task::spawn_blocking(appv3_memory::memory_context).await.unwrap_or_default();
+                *self.memory_snapshot.lock().unwrap() = Some(m.clone());
+                m
+            }
+        }
+    }
+
+    /// Tools a turn of this session gets beside the agent's own.
+    pub(crate) fn injected_tools(&self, sid: &str, name: &str, workspace: &str, agent_mode: &str) -> Vec<ToolRef> {
+        let is_lead = self.parent_session_id.is_none();
+        let mut injected: Vec<ToolRef> = vec![];
+        if !self.is_scheduler_session.load(Ordering::SeqCst) && is_lead {
+            injected.push(Arc::new(crate::tools::ask_user::AskUserTool { session_id: sid.to_string(), pool: self.pool.clone(), agent_name: name.to_string() }));
+            injected.push(Arc::new(crate::tools::team::DelegateTool {
+                lead_session_id: sid.to_string(),
+                pool: self.pool.clone(),
+                provider_factory: self.provider_factory.clone(),
+            }));
+            // Sessions without a user workspace keep the plan in the data dir.
+            injected.push(Arc::new(crate::tools::plan::PlanTool { session_id: sid.to_string(), coding: agent_mode == "coding" && !workspace.is_empty() }));
+            injected.push(Arc::new(crate::tools::plan::SubmitPlanTool { session_id: sid.to_string(), pool: self.pool.clone() }));
+            if agent_mode == "coding" && !workspace.is_empty() {
+                injected.push(Arc::new(crate::tools::preview::PreviewTool));
+            }
+        } else if let Some(lead) = &self.parent_session_id {
+            injected.push(Arc::new(crate::tools::team::AskLeadTool { lead_session_id: lead.clone(), member_handle: name.to_string() }));
+        }
+        if is_lead && appv3_core::runtime_settings::workspace_messages_enabled() {
+            injected.push(Arc::new(crate::tools::send_to_workspace::SendToWorkspaceTool::new(sid.to_string(), self.pool.clone())));
+        }
+        injected
+    }
+
+    pub(crate) fn request_frame(&self) -> &crate::side_question::FrameSlot {
+        &self.request_frame
+    }
+
     pub fn name(&self) -> String {
         self.agent().name.clone()
     }
@@ -1089,36 +1179,14 @@ impl AgentSession {
         }
         let history = crate::history::get_messages_for_llm(&self.pool, &sid).await.map_err(dberr)?;
 
-        let effective_model = runtime_model.clone().filter(|m| !m.is_empty()).or_else(|| agent.model_id.clone());
-        let overridden = runtime_model.as_deref().map(|m| !m.is_empty() && Some(m) != agent.model_id.as_deref()).unwrap_or(false) || runtime_thinking.is_some();
-        let mut runtime_provider: Option<Arc<dyn LlmProvider>> = None;
-        if overridden {
-            if let Some(em) = effective_model.as_deref().filter(|m| !m.is_empty()) {
-                let mut kw = Kwargs::new();
-                if let Some(t) = &runtime_thinking {
-                    kw.insert("thinking_level".into(), json!(t));
-                }
-                runtime_provider = Some((self.provider_factory)(Some(em), kw).map_err(provider_error_to_agent)?);
-            }
-        }
-        // A runtime provider carries only the session's level; the agent's
-        // own level applies only to the agent's own provider.
-        let thinking_level = if runtime_provider.is_some() { runtime_thinking.clone() } else { agent.thinking_level.clone() };
+        let RuntimeProvider { effective_model, runtime: runtime_provider, thinking_level } =
+            self.resolve_runtime_provider(&agent, runtime_model.as_deref(), runtime_thinking.as_deref()).map_err(provider_error_to_agent)?;
         let provider_for_hooks = runtime_provider.clone().unwrap_or_else(|| agent.provider.clone());
         let is_lead = self.parent_session_id.is_none();
 
         let ws_path = session_workspace_dir(&sid, Some(&workspace));
         let denied = Arc::new(DeniedPaths::new(&ws_path, Some(sid.clone())));
-        let frozen = self.memory_snapshot.lock().unwrap().clone();
-        let memory = match frozen {
-            Some(m) => m,
-            None => {
-                // Reads every memory page; keep that disk walk off the async worker.
-                let m = tokio::task::spawn_blocking(appv3_memory::memory_context).await.unwrap_or_default();
-                *self.memory_snapshot.lock().unwrap() = Some(m.clone());
-                m
-            }
-        };
+        let memory = self.memory_context().await;
         let mut hooks: Vec<HookRef> = vec![
             Arc::new(CurrentDateHook),
             Arc::new(StreamPublisherHook::new(&sid, &name, true)),
@@ -1148,24 +1216,10 @@ impl AgentSession {
             if let Some(h) = build_summarization_hook(provider_for_hooks.clone(), agent_mode, effective_model.as_deref(), provider_for_hooks.support_interrupt()) {
                 hooks.push(Arc::new(h.with_plan_dir(plan_dir)));
             }
+            hooks.push(Arc::new(crate::side_question::RequestFrameHook::new(self.request_frame.clone())));
         }
 
-        let mut injected: Vec<ToolRef> = vec![];
-        if !self.is_scheduler_session.load(Ordering::SeqCst) && is_lead {
-            injected.push(Arc::new(crate::tools::ask_user::AskUserTool { session_id: sid.clone(), pool: self.pool.clone(), agent_name: name.clone() }));
-            injected.push(Arc::new(crate::tools::team::DelegateTool { lead_session_id: sid.clone(), pool: self.pool.clone(), provider_factory: self.provider_factory.clone() }));
-            // Sessions without a user workspace keep the plan in the data dir.
-            injected.push(Arc::new(crate::tools::plan::PlanTool { session_id: sid.clone(), coding: agent_mode == "coding" && !workspace.is_empty() }));
-            injected.push(Arc::new(crate::tools::plan::SubmitPlanTool { session_id: sid.clone(), pool: self.pool.clone() }));
-            if agent_mode == "coding" && !workspace.is_empty() {
-                injected.push(Arc::new(crate::tools::preview::PreviewTool));
-            }
-        } else if let Some(lead) = &self.parent_session_id {
-            injected.push(Arc::new(crate::tools::team::AskLeadTool { lead_session_id: lead.clone(), member_handle: name.clone() }));
-        }
-        if is_lead && appv3_core::runtime_settings::workspace_messages_enabled() {
-            injected.push(Arc::new(crate::tools::send_to_workspace::SendToWorkspaceTool::new(sid.clone(), self.pool.clone())));
-        }
+        let injected = self.injected_tools(&sid, &name, &workspace, agent_mode);
 
         let mut meta = Map::new();
         meta.insert("session_id".into(), json!(sid));

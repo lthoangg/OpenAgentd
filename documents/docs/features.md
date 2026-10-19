@@ -1090,7 +1090,7 @@ agent against it.
   the mobile app, and pinning does not change a session's place in Recent
   activity. **Unpin** puts it back in its list. The section folds and hides
   when nothing is pinned.
-- **New-session screen** `[v3.18.0]` — **New session** (the folder's **+**,
+- **New-session screen** `[v3.18.0, updated v3.19.0]` — **New session** (the folder's **+**,
   `⌘N` / `Ctrl+N`, the palette, `/new`) opens a draft at `/?workspace=<path>`
   instead of creating an empty session: nothing is saved until the first
   message, which creates the session and swaps the URL for its id, so an
@@ -1099,10 +1099,11 @@ agent against it.
   branch, and has a folder chip that switches folder (filterable, with
   worktrees and **Open folder…**), a row of recent folders, and the folder's
   recent sessions. Text typed in a draft is kept per folder across reloads and
-  carried along when the folder changes. **Settings → General → New session
-  composer** puts the composer in the middle of the screen (**Centered**, the
-  default) or keeps the collapsible bar at the bottom (**Floating**); on phones
-  it always sits at the bottom. Opening a folder registers it in the sidebar
+  carried along when the folder changes. On desktop the composer sits in the
+  middle of the screen; on phones it sits at the bottom. *(The v3.18.0 New
+  session composer setting was removed in v3.19.0.)* Sending the first message
+  carries the screen into the chat: the centered composer glides to the bottom
+  while the transcript fades in (instant with reduced motion). Opening a folder registers it in the sidebar
   right away, and a session that the first message creates in a new folder
   adds that folder to the tree.
 - **Nested subagent sessions in the coding sidebar** `[v2.16.0, updated v2.17.0]` — lead sessions with

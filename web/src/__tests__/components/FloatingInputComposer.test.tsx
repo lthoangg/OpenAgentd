@@ -1,13 +1,14 @@
 import { describe, it, expect, afterEach, beforeEach, mock } from 'bun:test'
-import { createRef, useRef } from 'react'
+import { createRef, useLayoutEffect, useRef, useState } from 'react'
 import { render, screen, cleanup, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { FloatingInputComposer } from '@/components/FloatingInputComposer'
+import { FloatingInputComposer, type ComposerHandoff } from '@/components/FloatingInputComposer'
 import { useAgentStore } from '@/stores/useAgentStore'
 import { useTranscriptFollowStore } from '@/stores/useTranscriptFollowStore'
 import type { InputComposerHandle } from '@/components/InputComposer'
 
 let mockIsMobile = false
+let mockReducedMotion = false
 
 mock.module('@/hooks/use-mobile', () => ({
   useIsMobile: () => mockIsMobile,
@@ -28,6 +29,7 @@ mock.module('framer-motion', () => ({
       dragMomentum: _dragMomentum,
       dragElastic: _dragElastic,
       onDragEnd: _onDragEnd,
+      onAnimationComplete: _onAnimationComplete,
       ...props
     }: Record<string, unknown>) => {
       const mergedStyle = { ...(style as Record<string, unknown> | undefined) }
@@ -44,6 +46,7 @@ mock.module('framer-motion', () => ({
   },
   AnimatePresence: ({ children }: { children: unknown }) => children as React.ReactNode,
   useDragControls: () => ({ start: () => {} }),
+  useReducedMotion: () => mockReducedMotion,
 }))
 
 const STORAGE_KEY = 'oa-input-position'
@@ -54,6 +57,7 @@ beforeEach(() => {
   useAgentStore.setState({ _pendingMessages: [] })
   useTranscriptFollowStore.setState({ unseen: null, jumpToLatest: null })
   mockIsMobile = false
+  mockReducedMotion = false
 })
 
 function nextFrame(): Promise<void> {
@@ -69,9 +73,15 @@ function Harness(props: {
   isStreaming?: boolean
   slashCommands?: Array<{ id: string; label: string; description: string }>
   placement?: 'floating' | 'inline'
+  onHandoffCapture?: (snapshot: ComposerHandoff) => void
+  enterFrom?: ComposerHandoff | null
+  /** Mount the composer after the bounds, as the chat column outlives it. */
+  composerAfterBounds?: boolean
 }) {
   const boundsRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<InputComposerHandle>(null)
+  const [showComposer, setShowComposer] = useState(!props.composerAfterBounds)
+  useLayoutEffect(() => { setShowComposer(true) }, [])
   return (
     <div
       ref={boundsRef}
@@ -84,7 +94,7 @@ function Harness(props: {
         </button>
       )}
       <button type="button">Outside</button>
-      <FloatingInputComposer
+      {showComposer && <FloatingInputComposer
         ref={inputRef}
         boundsRef={boundsRef}
         onSubmit={props.onSubmit ?? (() => {})}
@@ -93,7 +103,9 @@ function Harness(props: {
         placeholder={props.placeholder ?? 'Message…'}
         slashCommands={props.slashCommands}
         placement={props.placement}
-      />
+        onHandoffCapture={props.onHandoffCapture}
+        enterFrom={props.enterFrom}
+      />}
     </div>
   )
 }
@@ -119,6 +131,64 @@ describe('FloatingInputComposer inline placement', () => {
     render(<Harness placement="inline" />)
     expect(screen.getByTestId('mobile-inputbar-container')).toBeTruthy()
     expect(screen.queryByTestId('inline-inputbar-container')).toBeNull()
+  })
+
+  it('reports where it sat, and that it had focus, before handing the message on', async () => {
+    const user = userEvent.setup()
+    const order: string[] = []
+    const snapshots: ComposerHandoff[] = []
+    render(
+      <Harness
+        placement="inline"
+        onHandoffCapture={(snapshot) => { order.push('capture'); snapshots.push(snapshot) }}
+        onSubmit={() => { order.push('submit') }}
+      />,
+    )
+    await user.type(screen.getByRole('textbox', { name: 'Message input' }), 'build it{Enter}')
+
+    expect(order).toEqual(['capture', 'submit'])
+    expect(snapshots[0].focused).toBe(true)
+    expect(Object.keys(snapshots[0].rect).sort()).toEqual(['height', 'left', 'top', 'width'])
+  })
+})
+
+describe('FloatingInputComposer — hand-off glide from the new-session screen', () => {
+  const originalRect = HTMLElement.prototype.getBoundingClientRect
+  const from: ComposerHandoff = { rect: { left: 280, top: 300, width: 640, height: 96 }, focused: true }
+
+  beforeEach(() => {
+    // Happy DOM has no layout: give the bounds (the chat column) a size.
+    HTMLElement.prototype.getBoundingClientRect = function (this: HTMLElement) {
+      const sized = this.dataset.testid === 'bounds'
+      const width = sized ? 1200 : 0
+      const height = sized ? 800 : 0
+      return { x: 0, y: 0, top: 0, left: 0, right: width, bottom: height, width, height, toJSON: () => ({}) } as DOMRect
+    }
+  })
+  afterEach(() => {
+    HTMLElement.prototype.getBoundingClientRect = originalRect
+  })
+
+  it('lands expanded and focused, gliding from where the centered composer was', () => {
+    render(<Harness enterFrom={from} composerAfterBounds />)
+    const textarea = screen.getByRole('textbox', { name: 'Message input' })
+    expect(textarea.getAttribute('disabled')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Expand input bar' })).toBeNull()
+    expect(document.activeElement).toBe(textarea)
+    expect(textarea.closest('[data-handoff="gliding"]')).not.toBeNull()
+  })
+
+  it('does not glide with reduced motion: the bar starts collapsed as usual', () => {
+    mockReducedMotion = true
+    render(<Harness enterFrom={from} composerAfterBounds />)
+    expect(document.querySelector('[data-handoff]')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Expand input bar' })).toBeTruthy()
+  })
+
+  it('does not glide without a hand-off', () => {
+    render(<Harness />)
+    expect(document.querySelector('[data-handoff]')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Expand input bar' })).toBeTruthy()
   })
 })
 

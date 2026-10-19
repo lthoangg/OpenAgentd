@@ -12,6 +12,7 @@ import {
 import { JumpToLatestChip } from './JumpToLatestChip'
 import { RevertNotice } from './RevertNotice'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { useShortcut } from '@/lib/keyboard/hooks'
 import type { AgentCapabilities, SessionInteractionMode } from '@/api/types'
 import type { DesignFeedback } from '@/lib/design-feedback'
@@ -111,6 +112,49 @@ function isInUpperHalf(panelHeight: number, offsetY: number, boundsHeight: numbe
   return COMPOSER_BOTTOM_GAP + panelHeight - offsetY + DRAG_HANDLE_OVERHANG > boundsHeight / 2
 }
 
+// ── Hand-off glide (new-session screen → chat) ───────────────────────────────
+
+/** Where the centered composer sat when the first message was sent. */
+export interface ComposerHandoff {
+  rect: { left: number; top: number; width: number; height: number }
+  /** Its textarea had focus: the landed bar takes it back. */
+  focused: boolean
+}
+
+interface HandoffGlide {
+  /** Start offset of the wrapper from its docked spot. */
+  x: number
+  y: number
+  startWidth: number
+  endWidth: number
+}
+
+const PANEL_GUTTER = 24 // the expanded panel's ``px-3`` on both sides
+const MAX_W_MD_REM = 28 // the wrapper's ``max-w-md``
+// DESIGN.md ``slow`` (route changes) with the entrance ease-out.
+const HANDOFF_GLIDE_TRANSITION = { duration: 0.4, ease: [0.16, 1, 0.3, 1] } as const
+
+/**
+ * Start geometry for the glide, from layout known before the first paint
+ * (the chat column and the stored drag offset) so no frame shows the bar
+ * at its destination first. ``null`` when the column has no size yet.
+ */
+function handoffGlide(from: ComposerHandoff, bounds: HTMLElement | null, offset: StoredOffset): HandoffGlide | null {
+  if (!bounds || typeof window === 'undefined') return null
+  const b = bounds.getBoundingClientRect()
+  if (b.width <= 0 || b.height <= 0) return null
+  const rem = Number.parseFloat(window.getComputedStyle(document.documentElement).fontSize) || 16
+  const endWidth = Math.min(b.width, MAX_W_MD_REM * rem)
+  const endCenterX = b.left + b.width / 2 + offset.x
+  const endBottom = b.bottom - COMPOSER_BOTTOM_GAP + offset.y
+  return {
+    x: Math.round(from.rect.left + from.rect.width / 2 - endCenterX),
+    y: Math.round(from.rect.top + from.rect.height - endBottom),
+    startWidth: from.rect.width + PANEL_GUTTER,
+    endWidth,
+  }
+}
+
 // ── Component ────────────────────────────────────────────────────────────────
 
 interface FloatingInputComposerProps {
@@ -151,6 +195,13 @@ interface FloatingInputComposerProps {
    * position. Phones dock the bar either way.
    */
   placement?: 'floating' | 'inline'
+  /** Inline only: reports where the composer sat, just before each submit. */
+  onHandoffCapture?: (snapshot: ComposerHandoff) => void
+  /**
+   * Desktop floating only, read once at mount: glide in from where the
+   * new-session screen's composer was (skipped with reduced motion).
+   */
+  enterFrom?: ComposerHandoff | null
 }
 
 /**
@@ -166,11 +217,22 @@ interface FloatingInputComposerProps {
  */
 export const FloatingInputComposer = memo(
   forwardRef<InputComposerHandle, FloatingInputComposerProps>(
-    function FloatingInputComposer({ boundsRef, aboveComposer, aboveComposerOpen = false, placement = 'floating', ...inputProps }, ref) {
+    function FloatingInputComposer({ boundsRef, aboveComposer, aboveComposerOpen = false, placement = 'floating', onHandoffCapture, enterFrom = null, ...inputProps }, ref) {
     const isMobile = useIsMobile()
+    const reducedMotion = useReducedMotion()
     const dragControls = useDragControls()
     const panelRef = useRef<HTMLDivElement>(null)
+    const inlineRef = useRef<HTMLDivElement>(null)
     const [offset, setOffset] = useState<StoredOffset>(() => loadOffset())
+    // Computed once: a later ``enterFrom`` never moves a bar already on screen.
+    const [glide] = useState<HandoffGlide | null>(() => (
+      enterFrom && !isMobile && placement === 'floating' && !reducedMotion
+        ? handoffGlide(enterFrom, boundsRef.current, offset)
+        : null
+    ))
+    // Expanded while gliding, so the bar keeps the composer's shape on the way.
+    const [gliding, setGliding] = useState(glide !== null)
+    const focusOnLandRef = useRef(glide !== null && enterFrom?.focused === true)
     const [renderSuggestionsBelow, setRenderSuggestionsBelow] = useState(false)
     const [suggestionsOpen, setSuggestionsOpen] = useState(false)
     // A bar dragged into the upper half keeps the jump chip below it.
@@ -190,7 +252,7 @@ export const FloatingInputComposer = memo(
     // click, focus, Ctrl/⌘+I, or by attaching a file. This matches
     // the minimal-chrome aesthetic of the design and prevents an
     // empty composer from dominating the chat surface on load.
-    const [minimized, setMinimized] = useState(true)
+    const [minimized, setMinimized] = useState(glide === null)
     const [hasContent, setHasContent] = useState(false)
     const blurTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -295,6 +357,22 @@ export const FloatingInputComposer = memo(
 
     const onSubmitRef = useRef(inputProps.onSubmit)
     useEffect(() => { onSubmitRef.current = inputProps.onSubmit })
+    const onHandoffCaptureRef = useRef(onHandoffCapture)
+    useEffect(() => { onHandoffCaptureRef.current = onHandoffCapture })
+    // Inline: measure before the message goes out, because the send ends
+    // the draft and unmounts this composer in the same render.
+    const handleInlineSubmit = useCallback((message: string, files?: File[], mentions?: string[], delivery?: SendDelivery) => {
+      const node = inlineRef.current
+      const capture = onHandoffCaptureRef.current
+      if (node && capture) {
+        const r = node.getBoundingClientRect()
+        capture({
+          rect: { left: r.left, top: r.top, width: r.width, height: r.height },
+          focused: document.activeElement instanceof Node && node.contains(document.activeElement),
+        })
+      }
+      onSubmitRef.current(message, files, mentions, delivery)
+    }, [])
     const handleSubmit = useCallback((message: string, files?: File[], mentions?: string[], delivery?: SendDelivery) => {
       onSubmitRef.current(message, files, mentions, delivery)
       // Only collapse on desktop — on mobile the bar is always fully visible
@@ -306,6 +384,13 @@ export const FloatingInputComposer = memo(
 
     useEffect(() => () => {
       if (blurTimerRef.current) clearTimeout(blurTimerRef.current)
+    }, [])
+
+    // A hand-off from a focused composer keeps the caret in the bar.
+    useLayoutEffect(() => {
+      if (!focusOnLandRef.current) return
+      focusOnLandRef.current = false
+      innerRef.current?.focus({ expand: false })
     }, [])
 
     // ── Escape inside the composer collapses it ───────────────────────
@@ -398,7 +483,8 @@ export const FloatingInputComposer = memo(
       inputProps.disabled === true ||
       (inputProps.revertedCount ?? 0) > 0 ||
       aboveComposerOpen ||
-      hasContent
+      hasContent ||
+      gliding
 
     const handleHasContentChange = useCallback((next: boolean) => {
       setHasContent(next)
@@ -581,7 +667,7 @@ export const FloatingInputComposer = memo(
     // effects above all stand down and the stored position is left alone.
     if (placement === 'inline') {
       return (
-        <div data-testid="inline-inputbar-container" className="relative mx-auto w-full max-w-[640px]">
+        <div ref={inlineRef} data-testid="inline-inputbar-container" className="relative mx-auto w-full max-w-[640px]">
           {aboveComposer}
           <InputComposer
             ref={setInputRefs}
@@ -591,7 +677,7 @@ export const FloatingInputComposer = memo(
             {...inputProps}
             onValueChange={inputProps.onValueChange}
             onSuggestionsMenuChange={setSuggestionsOpen}
-            onSubmit={inputProps.onSubmit}
+            onSubmit={handleInlineSubmit}
             onFocus={handleFocus}
             onBlur={handleBlur}
             onHasContentChange={handleHasContentChange}
@@ -619,7 +705,16 @@ export const FloatingInputComposer = memo(
       // boxes still take hits, so it silently swallowed every click on the
       // chat content underneath. Hit-testing therefore lives on the panel that
       // actually carries the transform.
-      <div
+      //
+      // The wrapper itself moves once: the hand-off glide from the
+      // new-session screen, a translate plus a max-width tween (never a
+      // scale, so the text does not stretch). Framer owns that transform too.
+      <motion.div
+        data-handoff={gliding ? 'gliding' : undefined}
+        initial={glide ? { x: glide.x, y: glide.y, maxWidth: glide.startWidth } : false}
+        animate={glide ? { x: 0, y: 0, maxWidth: glide.endWidth } : undefined}
+        transition={HANDOFF_GLIDE_TRANSITION}
+        onAnimationComplete={glide ? () => setGliding(false) : undefined}
         className={`pointer-events-none absolute inset-x-0 bottom-4 z-20 mx-auto ${
           effectiveMinimized ? 'w-fit' : 'w-full max-w-md'
         }`}
@@ -678,7 +773,7 @@ export const FloatingInputComposer = memo(
           />
         </div>
         </motion.div>
-      </div>
+      </motion.div>
     )
   },
 ))

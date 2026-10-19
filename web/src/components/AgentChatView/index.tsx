@@ -15,15 +15,15 @@
  * that returning a freshly-built object on every render would trigger.
  */
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { AnimatePresence } from 'framer-motion'
+import { AnimatePresence, motion } from 'framer-motion'
+import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { useNavigate } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
 import { AgentView } from '../AgentView'
 import type { OpenSessionHandler } from '../AgentView/UserBubble'
 import type { FileRefOpener } from '../FileRefLink'
 import { WorkspaceInfoCard } from '../WorkspaceInfoCard'
-import { NewSessionScreen, newSessionComposerSlot } from '../NewSession/NewSessionScreen'
-import { useDisplayPrefsStore } from '@/stores/useDisplayPrefsStore'
+import { NewSessionScreen } from '../NewSession/NewSessionScreen'
 import { startNewSession } from '@/lib/new-session'
 import { Sidebar } from '../Sidebar'
 import { useTodosQuery } from '@/queries/useTodosQuery'
@@ -79,6 +79,7 @@ import { retryLatestPrompt } from './retryPrompt'
 import { useDragDrop } from './useDragDrop'
 import { useOverlayState } from './useOverlayState'
 import { useSessionBootstrap } from './useSessionBootstrap'
+import { useDraftHandoff } from './useDraftHandoff'
 import { useSlashCommands } from './useSlashCommands'
 import { useCommandPalette } from './useCommandPalette'
 import { btwSubmit, composerHistoryPrompts, newestUserBlockId, parseBuiltInSlashCommand } from './helpers'
@@ -444,10 +445,12 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
 
   // A new-session draft (`/?workspace=`): nothing saved yet, so the
   // new-session screen shows until the first message starts the turn.
-  const newSessionComposer = useDisplayPrefsStore((s) => s.newSessionComposer)
   const isDraft = !sessionId && Boolean(workspace) && !sessionIdState && !isAgentWorking && !leadHasVisibleBlocks && !leadHasLiveBlocks
-  const draftComposerSlot = newSessionComposerSlot(isMobile, newSessionComposer)
-  const composerInline = isDraft && draftComposerSlot === 'inline'
+  // Desktop centers the composer in the draft screen; phones keep it docked.
+  const composerInline = isDraft && !isMobile
+  // The first message carries the draft into its chat as one motion.
+  const reducedMotion = useReducedMotion() ?? false
+  const draftHandoff = useDraftHandoff({ isDraft, sessionId, reducedMotion })
   const handleSelectDraftWorkspace = useCallback((path: string) => {
     startNewSession({ navigate, workspace: path, current: { sessionId, workspace }, replace: true })
   }, [navigate, sessionId, workspace])
@@ -619,6 +622,8 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
       ref={inputRef}
       boundsRef={mainColumnRef}
       placement={composerInline ? 'inline' : 'floating'}
+      onHandoffCapture={draftHandoff.capture}
+      enterFrom={draftHandoff.active ? draftHandoff.snapshot : null}
       onSubmit={async (content, files, mentions, delivery) => {
         if (!workspace) return
         if (handleBtwSubmit(content, files)) return
@@ -813,13 +818,33 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
             isChat={isChatWorkspace}
             chatWorkspace={chatWorkspace}
             composer={composerInline ? composerElement : null}
-            composerSlot={draftComposerSlot}
             isMobile={isMobile}
             onSelectWorkspace={handleSelectDraftWorkspace}
             onOpenFolder={handleOpenWorkspaceDialog}
           />
         ) : (
-          <div className="flex flex-1 flex-col min-h-0">
+          <>
+          {/* Hand-off: an inert copy of the draft screen fades out over the
+              incoming chat while the composer glides to the bottom. */}
+          {draftHandoff.active && workspace && (
+            <NewSessionScreen
+              leaving
+              workspace={workspace}
+              workspaceName={workspaceName}
+              isChat={isChatWorkspace}
+              chatWorkspace={chatWorkspace}
+              composerPlaceholderHeight={draftHandoff.snapshot?.rect.height}
+              isMobile={isMobile}
+              onSelectWorkspace={handleSelectDraftWorkspace}
+              onOpenFolder={handleOpenWorkspaceDialog}
+            />
+          )}
+          <motion.div
+            className="flex flex-1 flex-col min-h-0"
+            initial={draftHandoff.active ? { opacity: 0, y: 8 } : false}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.24, delay: 0.06, ease: [0.16, 1, 0.3, 1] }}
+          >
             <ActiveAgentView
               onMentionFileOpen={handleMentionFileOpen}
               onOpenSession={handleOpenSession}
@@ -839,7 +864,8 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
                 ) : undefined
               }
             />
-          </div>
+          </motion.div>
+          </>
         )}
 
         {parentSessionId ? (

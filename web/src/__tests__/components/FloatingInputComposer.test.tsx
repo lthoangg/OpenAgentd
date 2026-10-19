@@ -470,6 +470,20 @@ describe('FloatingInputComposer', () => {
     expect(screen.getByRole('button', { name: 'Expand input bar' })).toBeTruthy()
   })
 
+  it('keeps focus on the collapsed bar without a focus ring after a send', async () => {
+    // WebKit (the desktop app) draws the keyboard ring for any script
+    // focus(); the collapse hands focus to the pill, which nobody steered.
+    const user = userEvent.setup()
+    render(<Harness />)
+
+    await user.click(screen.getByRole('button', { name: 'Expand input bar' }))
+    await user.type(screen.getByRole('textbox', { name: 'Message input' }), 'hello{Enter}')
+
+    const pill = screen.getByRole('button', { name: 'Expand input bar' })
+    expect(document.activeElement).toBe(pill)
+    expect(pill.hasAttribute('data-quiet-focus')).toBe(true)
+  })
+
   it('passes how a mid-turn message should be delivered on to its owner', async () => {
     const user = userEvent.setup()
     const onSubmit = mock((..._args: unknown[]) => {})

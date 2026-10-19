@@ -1689,7 +1689,7 @@ MCP.
 - **Tool result offload** `[since v1.0]` — bulky tool outputs (large file
   reads, shell spills) move to `{OPENAGENTD_DATA_DIR}/sessions/{id}/.tool_results/` and the inspector
   links to them.
-- **`.gitignore`-aware file tools** `[v1.20.1, v1.131.3, v2.0.0, v3.14.0]` — `glob`, `grep`, and
+- **`.gitignore`-aware file tools** `[v1.20.1, v1.131.3, v2.0.0, v3.14.0, updated v3.20.0]` — `glob`, `grep`, and
   workspace file browsing respect `.gitignore` and skip dependency and cache
   directories. Workspace file listings (file tagging, the command palette, the
   files sidebar) come from git itself in a git work tree, so tracked files no
@@ -1709,6 +1709,12 @@ MCP.
   ignored directories over 500 files (`target/`) stay out. A workspace that is
   a subfolder of a repo now honours the repo's `.gitignore`s, so `app/target/`
   no longer fills the listing cap `[v3.14.0]`.
+  The agent's `grep` and `glob` search gitignored files too, after every
+  visible match, and skip the same ignored directories over 500 files unless
+  the search names one (`directory="target"`, `target/doc/**`); a search that
+  finds nothing says which it skipped. Files that an editor, terminal or build
+  writes into a gitignored folder now refresh Quick Open and open file tabs
+  live `[v3.20.0]`.
 
 ---
 

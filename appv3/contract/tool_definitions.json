@@ -3,7 +3,7 @@
     "type": "function",
     "function": {
       "name": "glob",
-      "description": "Find files and directories by glob pattern across the workspace. Does not search file contents (use grep for contents). Use match='path' for full paths or match='name' for filenames only. Automatically filters out ignored and noisy directories.",
+      "description": "Find files and directories by glob pattern across the workspace. Does not search file contents (use grep for contents). Use match='path' for full paths or match='name' for filenames only. Skips dependency and cache directories (node_modules, .venv, …); gitignored files are included, ranked after the rest, except large gitignored build directories (name one in the pattern or directory to search it).",
       "parameters": {
         "type": "object",
         "properties": {
@@ -42,7 +42,7 @@
     "type": "function",
     "function": {
       "name": "grep",
-      "description": "Search file contents across the workspace by regex. Returns matches formatted as 'file:line: content'. Automatically skips binary files.",
+      "description": "Search file contents across the workspace by regex. Returns matches formatted as 'file:line: content'. Automatically skips binary files and dependency and cache directories (node_modules, .venv, …); gitignored files are searched after the rest, except large gitignored build directories (pass one as directory to search it).",
       "parameters": {
         "type": "object",
         "properties": {

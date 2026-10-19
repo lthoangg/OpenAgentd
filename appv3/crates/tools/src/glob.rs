@@ -1,13 +1,15 @@
 //! `glob` — port of `filesystem/glob.py`.
 
 use crate::args::Args;
-use crate::grep::{is_gitignored, load_gitignore, NOISE_DIR_NAMES};
+use crate::grep::{is_gitignored, is_searchable_ignored_dir, load_gitignore, skipped_ignored_note, NOISE_DIR_NAMES};
 use crate::{Tool, ToolContext, ToolError, ToolOutput, ToolResult};
 use async_trait::async_trait;
 use globset::{GlobBuilder, GlobMatcher};
 use serde_json::Value;
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Mutex;
 
 const MAX_BRACE_VARIANTS: usize = 64;
 const GLOB_TIMEOUT_S: u64 = 10;
@@ -74,8 +76,9 @@ fn matcher(p: &str) -> Option<GlobMatcher> {
     GlobBuilder::new(p).literal_separator(true).backslash_escape(true).build().ok().map(|g| g.compile_matcher())
 }
 
-fn rank(rel: &str) -> (u8, String) {
-    (if rel.split('/').any(|p| p.starts_with('.')) { 1 } else { 0 }, rel.to_string())
+/// Visible paths first, then dot paths, then gitignored ones.
+fn rank(c: &Cand) -> (bool, bool, String) {
+    (c.ignored, c.rel.split('/').any(|p| p.starts_with('.')), c.rel.clone())
 }
 
 fn has_wildcard(s: &str) -> bool {
@@ -109,39 +112,58 @@ fn shared_prefix(prefixes: &[Vec<String>]) -> Vec<String> {
     out
 }
 
-/// Every visible file under `root` as `(path relative to base, path)`, in
-/// depth-first order. Directories are read in parallel: the walk is mostly
-/// `readdir` syscalls, and results are ranked and sorted afterwards anyway.
-/// Stops descending once `expired`; returns `(files, timed_out)`.
-fn visible_files(
-    root: &Path,
-    base: &Path,
-    gi: &ignore::gitignore::Gitignore,
-    allowed_noise: &BTreeSet<String>,
-    expired: &(dyn Fn() -> bool + Sync),
-) -> (Vec<(String, PathBuf)>, bool) {
-    let timed_out = std::sync::atomic::AtomicBool::new(false);
-    let found = walk_dir(root, base, gi, allowed_noise, expired, &timed_out);
-    (found, timed_out.into_inner())
+/// A candidate file: its path relative to the search directory, its path,
+/// and whether it is gitignored.
+#[derive(Clone, Debug, PartialEq)]
+struct Cand {
+    rel: String,
+    path: PathBuf,
+    ignored: bool,
 }
 
-fn walk_dir(
-    dir: &Path,
-    base: &Path,
-    gi: &ignore::gitignore::Gitignore,
-    allowed_noise: &BTreeSet<String>,
-    expired: &(dyn Fn() -> bool + Sync),
-    timed_out: &std::sync::atomic::AtomicBool,
-) -> Vec<(String, PathBuf)> {
+/// What a walk found.
+struct Walked {
+    files: Vec<Cand>,
+    timed_out: bool,
+    /// Big gitignored directories left out, relative to the search directory.
+    skipped: Vec<String>,
+}
+
+/// Shared state of one parallel walk.
+struct Walk<'a> {
+    base: &'a Path,
+    allowed_noise: &'a BTreeSet<String>,
+    expired: &'a (dyn Fn() -> bool + Sync),
+    timed_out: AtomicBool,
+    skipped: Mutex<Vec<String>>,
+}
+
+/// Every file under `root` (noise directories aside), in depth-first order.
+/// With `gi`, gitignored files are flagged `ignored`, and gitignored
+/// directories are walked only when small enough to be more than build
+/// output (see [`is_searchable_ignored_dir`]); without it (a walk that starts
+/// inside an ignored directory) everything is flagged and walked. Directories
+/// are read in parallel: the walk is mostly `readdir` syscalls, and results
+/// are ranked and sorted afterwards anyway. Stops descending once `expired`.
+fn walk_files(root: &Path, base: &Path, gi: Option<&ignore::gitignore::Gitignore>, allowed_noise: &BTreeSet<String>, expired: &(dyn Fn() -> bool + Sync)) -> Walked {
+    let w = Walk { base, allowed_noise, expired, timed_out: AtomicBool::new(false), skipped: Mutex::default() };
+    let files = walk_dir(&w, root, gi, gi.is_none());
+    let mut skipped = w.skipped.into_inner().unwrap_or_default();
+    skipped.sort();
+    Walked { files, timed_out: w.timed_out.into_inner(), skipped }
+}
+
+/// `gi` is `None` inside an ignored directory, where `ignored` is set.
+fn walk_dir(w: &Walk, dir: &Path, gi: Option<&ignore::gitignore::Gitignore>, ignored: bool) -> Vec<Cand> {
     use rayon::prelude::*;
-    if expired() {
-        timed_out.store(true, std::sync::atomic::Ordering::Relaxed);
+    if (w.expired)() {
+        w.timed_out.store(true, Ordering::Relaxed);
         return vec![];
     }
     let Ok(rd) = std::fs::read_dir(dir) else {
         return vec![];
     };
-    let rel_dir = dir.strip_prefix(base).map(|p| p.to_string_lossy().replace('\\', "/")).unwrap_or_default();
+    let rel_dir = dir.strip_prefix(w.base).map(|p| p.to_string_lossy().replace('\\', "/")).unwrap_or_default();
     let join = |n: &str| {
         if rel_dir.is_empty() {
             n.to_string()
@@ -160,16 +182,28 @@ fn walk_dir(
         }
     }
     files.sort();
-    let mut found: Vec<(String, PathBuf)> = files
+    let mut found: Vec<Cand> = files
         .into_iter()
-        .filter_map(|f| {
+        .map(|f| {
             let rel = join(&f);
-            (!is_gitignored(gi, &rel, false)).then(|| (rel, dir.join(&f)))
+            let ignored = ignored || gi.is_some_and(|gi| is_gitignored(gi, &rel, false));
+            Cand { rel, path: dir.join(&f), ignored }
         })
         .collect();
-    let mut kept: Vec<String> = dirs.into_iter().filter(|d| (!NOISE_DIR_NAMES.contains(&d.as_str()) || allowed_noise.contains(d)) && !is_gitignored(gi, &join(d), true)).collect();
-    kept.sort_by(|a, b| (a.starts_with('.'), a).cmp(&(b.starts_with('.'), b)));
-    let subs: Vec<Vec<(String, PathBuf)>> = kept.par_iter().map(|d| walk_dir(&dir.join(d), base, gi, allowed_noise, expired, timed_out)).collect();
+    let mut kept: Vec<(String, bool)> = vec![];
+    for d in dirs.into_iter().filter(|d| !NOISE_DIR_NAMES.contains(&d.as_str()) || w.allowed_noise.contains(d)) {
+        let rel = join(&d);
+        if !gi.is_some_and(|gi| is_gitignored(gi, &rel, true)) {
+            kept.push((d, false));
+        } else if is_searchable_ignored_dir(&dir.join(&d)) {
+            kept.push((d, true));
+        } else {
+            w.skipped.lock().unwrap().push(rel);
+        }
+    }
+    kept.sort_by(|(a, _), (b, _)| (a.starts_with('.'), a).cmp(&(b.starts_with('.'), b)));
+    let subs: Vec<Vec<Cand>> =
+        kept.par_iter().map(|(d, now_ignored)| if *now_ignored { walk_dir(w, &dir.join(d), None, true) } else { walk_dir(w, &dir.join(d), gi, ignored) }).collect();
     found.extend(subs.into_iter().flatten());
     found
 }
@@ -213,7 +247,7 @@ impl Tool for GlobTool {
             }
         }
         let pat = pattern.clone();
-        let (hits, dir_hints, timed_out) = tokio::task::spawn_blocking(move || {
+        let (hits, dir_hints, timed_out, skipped) = tokio::task::spawn_blocking(move || {
             let deadline = std::time::Instant::now() + std::time::Duration::from_secs(GLOB_TIMEOUT_S);
             let gi = load_gitignore(&resolved);
             let variants = expand_braces(&pat);
@@ -221,30 +255,35 @@ impl Tool for GlobTool {
                 variants.iter().flat_map(|v| v.split('/').map(String::from).collect::<Vec<_>>()).filter(|s| NOISE_DIR_NAMES.contains(&s.as_str()) && s != ".git").collect();
             let prefix = if mode == "path" { shared_prefix(&variants.iter().map(|v| literal_prefix(v)).collect::<Vec<_>>()) } else { vec![] };
             let walk_root = prefix.iter().fold(resolved.clone(), |p, s| p.join(s));
+            // A pattern that names a path inside a gitignored directory
+            // (`target/doc/**`) searches it whatever its size.
+            let mut in_ignored = false;
             if !prefix.is_empty() {
                 let mut rel = String::new();
                 for seg in &prefix {
                     rel = if rel.is_empty() { seg.clone() } else { format!("{rel}/{seg}") };
-                    if (NOISE_DIR_NAMES.contains(&seg.as_str()) && !allowed_noise.contains(seg)) || is_gitignored(&gi, &rel, true) {
-                        return (vec![], vec![], false);
+                    if NOISE_DIR_NAMES.contains(&seg.as_str()) && !allowed_noise.contains(seg) {
+                        return (vec![], vec![], false, vec![]);
                     }
+                    in_ignored |= is_gitignored(&gi, &rel, true);
                 }
             }
             if !walk_root.is_dir() {
-                return (vec![], vec![], false);
+                return (vec![], vec![], false, vec![]);
             }
-            let (cands, timed_out) = visible_files(&walk_root, &resolved, &gi, &allowed_noise, &|| std::time::Instant::now() > deadline);
-            let select = |pats: &[String]| -> Vec<(String, PathBuf)> {
-                let mut hit: Vec<(String, PathBuf)> = if mode == "name" {
+            let Walked { files: cands, timed_out, skipped } =
+                walk_files(&walk_root, &resolved, (!in_ignored).then_some(&gi), &allowed_noise, &|| std::time::Instant::now() > deadline);
+            let select = |pats: &[String]| -> Vec<Cand> {
+                let mut hit: Vec<Cand> = if mode == "name" {
                     let rxs: Vec<regex::Regex> = pats.iter().filter_map(|p| regex::Regex::new(&crate::denied::fnmatch_translate(p)).ok()).collect();
-                    cands.iter().filter(|(_, p)| rxs.iter().any(|r| r.is_match(&p.file_name().unwrap_or_default().to_string_lossy()))).cloned().collect()
+                    cands.iter().filter(|c| rxs.iter().any(|r| r.is_match(&c.path.file_name().unwrap_or_default().to_string_lossy()))).cloned().collect()
                 } else if pats.iter().any(|p| p.ends_with('/')) {
                     vec![]
                 } else {
                     let ms: Vec<GlobMatcher> = pats.iter().filter_map(|p| matcher(p)).collect();
-                    cands.iter().filter(|(r, _)| ms.iter().any(|m| m.is_match(r))).cloned().collect()
+                    cands.iter().filter(|c| ms.iter().any(|m| m.is_match(&c.rel))).cloned().collect()
                 };
-                hit.sort_by_cached_key(|(r, _)| rank(r));
+                hit.sort_by_cached_key(rank);
                 hit
             };
             let mut matched = select(&variants);
@@ -255,7 +294,7 @@ impl Tool for GlobTool {
                 }
             }
             let mut hits = vec![];
-            for (_, p) in matched {
+            for Cand { path: p, .. } in matched {
                 if !p.is_file() || denied.is_denied_read_path(&p) {
                     continue;
                 }
@@ -265,22 +304,22 @@ impl Tool for GlobTool {
                 }
             }
             if !hits.is_empty() || mode == "name" {
-                return (hits, vec![], timed_out);
+                return (hits, vec![], timed_out, skipped);
             }
             let mut dirs: BTreeSet<String> = BTreeSet::new();
-            for (rel, _) in &cands {
-                let parts: Vec<&str> = rel.split('/').collect();
+            for c in &cands {
+                let parts: Vec<&str> = c.rel.split('/').collect();
                 for i in 1..parts.len() {
                     dirs.insert(parts[..i].join("/"));
                 }
             }
             let ms: Vec<GlobMatcher> = variants.iter().filter_map(|p| matcher(p)).collect();
-            (hits, dirs.into_iter().filter(|d| ms.iter().any(|m| m.is_match(d))).collect(), timed_out)
+            (hits, dirs.into_iter().filter(|d| ms.iter().any(|m| m.is_match(d))).collect(), timed_out, skipped)
         })
         .await
         .map_err(ToolError::exec)?;
         if hits.is_empty() {
-            let miss = format!("No files matching '{pattern}' in {}", ctx.denied.display_path(&ctx.denied.validate_read_path(&directory)?));
+            let miss = format!("No files matching '{pattern}' in {}{}", ctx.denied.display_path(&ctx.denied.validate_read_path(&directory)?), skipped_ignored_note(&skipped));
             if !dir_hints.is_empty() {
                 let named = dir_hints.iter().take(3).cloned().collect::<Vec<_>>().join(", ");
                 return Ok(ToolOutput::Text(partial_note(format!("{miss}; it matches directories ({named}) — use '{}/**' to list files inside", dir_hints[0]), timed_out)));
@@ -343,7 +382,7 @@ mod tests {
     async fn ranks_visible_paths_first_and_honours_max() {
         let d = glob_tree();
         let all = glob(d.path(), serde_json::json!({"pattern": "**/*.txt"})).await;
-        assert_eq!(all, ["a.txt", "b.txt", "sub/d.txt", "sub/deep/e.txt", ".hidden/c.txt"]);
+        assert_eq!(all, ["a.txt", "b.txt", "sub/d.txt", "sub/deep/e.txt", ".hidden/c.txt", "ignored.txt"]);
         assert_eq!(glob(d.path(), serde_json::json!({"pattern": "**/*.txt", "max_results": 2})).await, ["a.txt", "b.txt"]);
         assert_eq!(glob(d.path(), serde_json::json!({"pattern": "src/*.{rs,txt}"})).await, ["src/m.rs", "src/n.rs"]);
     }
@@ -359,21 +398,40 @@ mod tests {
     #[tokio::test]
     async fn misses_name_matching_directories() {
         let d = glob_tree();
-        let miss = glob(d.path(), serde_json::json!({"pattern": "ignored.txt"})).await;
-        assert!(miss[0].starts_with("No files matching 'ignored.txt'"), "{miss:?}");
+        let miss = glob(d.path(), serde_json::json!({"pattern": "missing.txt"})).await;
+        assert!(miss[0].starts_with("No files matching 'missing.txt'"), "{miss:?}");
         let dirs = glob(d.path(), serde_json::json!({"pattern": "s*"})).await;
         assert!(dirs[0].contains("it matches directories (src, sub)") && dirs[0].contains("use 'src/**'"), "{dirs:?}");
+    }
+
+    #[tokio::test]
+    async fn finds_gitignored_files_but_skips_big_ignored_dirs_unless_named() {
+        let d = glob_tree();
+        std::fs::write(d.path().join(".gitignore"), "ignored.txt\nout/\ntarget/\n").unwrap();
+        std::fs::create_dir_all(d.path().join("out")).unwrap();
+        std::fs::write(d.path().join("out/clip.mp4"), "x").unwrap();
+        std::fs::create_dir_all(d.path().join("target/debug")).unwrap();
+        for i in 0..=crate::grep::MAX_IGNORED_DIR_FILES {
+            std::fs::write(d.path().join(format!("target/debug/f{i}.o")), "x").unwrap();
+        }
+        assert_eq!(glob(d.path(), serde_json::json!({"pattern": "ignored.txt"})).await, ["ignored.txt"]);
+        assert_eq!(glob(d.path(), serde_json::json!({"pattern": "**/*.mp4"})).await, ["out/clip.mp4"]);
+        let miss = glob(d.path(), serde_json::json!({"pattern": "**/*.o"})).await;
+        assert!(miss[0].contains("skipped large gitignored directories: target/"), "{miss:?}");
+        assert_eq!(glob(d.path(), serde_json::json!({"pattern": "target/debug/f1.o"})).await, ["target/debug/f1.o"]);
     }
 
     #[test]
     fn a_timed_out_walk_keeps_what_it_found() {
         let d = glob_tree();
         let gi = load_gitignore(d.path());
-        let (all, timed_out) = visible_files(d.path(), d.path(), &gi, &BTreeSet::new(), &|| false);
+        let Walked { files: all, timed_out, .. } = walk_files(d.path(), d.path(), Some(&gi), &BTreeSet::new(), &|| false);
         assert!(!timed_out);
-        assert_eq!(all.len(), 8, "{all:?}");
+        assert_eq!(all.len(), 9, "{all:?}");
+        assert_eq!(all.iter().filter(|c| c.ignored).map(|c| c.rel.as_str()).collect::<Vec<_>>(), ["ignored.txt"]);
         let calls = std::sync::atomic::AtomicUsize::new(0);
-        let (partial, timed_out) = visible_files(d.path(), d.path(), &gi, &BTreeSet::new(), &|| calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst) >= 2);
+        let Walked { files: partial, timed_out, .. } =
+            walk_files(d.path(), d.path(), Some(&gi), &BTreeSet::new(), &|| calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst) >= 2);
         assert!(timed_out);
         assert!(!partial.is_empty() && partial.len() < all.len(), "{partial:?}");
         assert!(partial.iter().all(|p| all.contains(p)));

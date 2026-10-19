@@ -9,7 +9,7 @@ use crate::AppState;
 use appv3_agent::manager;
 use appv3_agent::session::session_workspace_dir;
 use appv3_db as db;
-use appv3_tools::grep::{is_gitignored, load_gitignore, NOISE_DIR_NAMES};
+use appv3_tools::grep::{is_gitignored, load_gitignore, MAX_IGNORED_DIR_FILES, NOISE_DIR_NAMES};
 use axum::extract::{Path as AxPath, State};
 use axum::http::HeaderMap;
 use axum::response::Response;
@@ -23,10 +23,10 @@ use std::sync::LazyLock;
 use std::time::Duration;
 
 const MAX_FILES_LISTED: usize = 5_000;
-/// A gitignored directory holding more files than this is build output or a
-/// cache (`target/`, `dist/`), not something to browse, so it is left out
-/// whole rather than letting it crowd out other ignored files.
-const MAX_IGNORED_DIR_FILES: usize = 500;
+// A gitignored directory holding more than `MAX_IGNORED_DIR_FILES` is build
+// output or a cache (`target/`, `dist/`), not something to browse, so it is
+// left out whole rather than crowding out other ignored files. The agent's
+// `grep` / `glob` and the file watcher use the same cap.
 const JUNK_FILE_NAMES: &[&str] = &[".DS_Store", "Thumbs.db", "desktop.ini"];
 
 /// Ignored files never listed: OS clutter, and `.env` / `.env.*` secrets,

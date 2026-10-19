@@ -1251,12 +1251,16 @@ OpenAgentd carries context across sessions via rolling-window summarization.
 - **Persistent Markdown memory subsystem** `[v2.22.0]` — file-backed persistent knowledge
   in global (`{OPENAGENTD_CONFIG_DIR}/memory/`) storing authoritative human-editable `.md` pages.
   Dynamically compiles a bounded
-  XML catalog (`<openagentd_memory>`) capped at 3,000 rendered characters (up from 1,500 `[v3.3.0]`) into
+  XML catalog (`<openagentd_memory>`) capped at 4,000 rendered characters (up from 1,500 `[v3.3.0]`
+  and 3,000 `[v3.17.0]`) into
   `state.system_prompt` during `before_agent` (0 filesystem I/O across model turns),
   pins `preferences.md` directives (<= 1,500 chars, up from 400 `[v3.3.0]`), synchronizes concurrent edits with reference-counted
   path locks and quoted strong SHA-256 ETags (HTTP 412/428), provides `/memory` slash
   commands, and exposes a Settings viewer/editor with conflict resolution and deterministic
   wikilink linting.
+- **User profile always loaded** `[v3.17.0]` — `user.md` is included in full (up to 1,000
+  characters) in every session's memory block instead of as a one-line catalog entry, so
+  the agent knows who the user is from the first turn without reading files.
 - **Proactive memory about the user** `[v3.3.0]` — the lead agent saves stated
   preferences, corrections, and durable facts about the user (to `preferences.md`,
   `user.md`, or topic pages) in the same turn without asking, and says what it saved.
@@ -1288,8 +1292,9 @@ OpenAgentd carries context across sessions via rolling-window summarization.
 - **`AGENTS.md` at repo root and subfolders** `[v1.9.0]` — written by `/init`;
   standard repo- and folder-scoped agent context files.
 - **Global `AGENTS.md`** `[v2.10.0]` — a developer-wide instructions file at
-  `{config dir}/AGENTS.md` (`~/.config/openagentd/AGENTS.md` in production) is
-  injected into every coding turn ahead of the workspace file, so cross-project
+  `~/.agents/AGENTS.md` `[v3.17.0]` (before: `{config dir}/AGENTS.md`, now read only
+  when the home file is missing) is injected into every turn ahead of the
+  workspace's `AGENTS.md`, so cross-project
   preferences live in one place. Matches how pi, OpenCode, and Codex order
   global → project guidance.
 - **Host environment in the shell tool** `[v2.10.0]` — the shell tool schema

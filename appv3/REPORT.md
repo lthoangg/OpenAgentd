@@ -670,8 +670,16 @@ explicitly.
     using its normal file tools; no extra model call is made. v2 allows
     `preferences.md` edits only on explicit request.
   - **Limits.** `preferences.md` is pinned up to 1,500 characters (v2: 400)
-    and the memory block up to 3,000 (v2: 1,500). The "more pages" marker now
+    and the memory block up to 4,000 (v2: 1,500). The "more pages" marker now
     counts against the budget, which v2 overshoots by its length.
+  - **User profile.** `user.md` is pinned in full up to 1,000 characters as
+    `<user_profile>` after `<global_preferences>` and left out of
+    `<global_knowledge>`; v2 lists it as a catalog line like any other page.
+    Both memory protocol texts name the new element.
+- **Global instructions file** (`agent/src/hooks/basic.rs`): `~/.agents/AGENTS.md`
+  is the global file and `{config dir}/AGENTS.md` is read only when it is
+  missing; v2 prefers the config-dir file and falls back to the home one. A workspace at `~` does not
+  repeat the global file as workspace instructions.
 - **Transport retries** (`agent/src/retry.rs`, `agent/src/streaming.rs`):
   a dropped connection, DNS failure or timeout retries on a flat, jittered
   3–5 s interval. The turn's model call retries without limit until the

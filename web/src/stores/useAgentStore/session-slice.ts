@@ -922,7 +922,16 @@ export const createSessionSlice: StateCreator<
 
   setSessionInteractionMode: async (mode) => {
     const sessionId = get().sessionId
-    if (!sessionId) return false
+    if (!sessionId) {
+      // New-session draft: nothing to PATCH yet. Keep the pick locally; the
+      // first message sends it and the session starts in that mode.
+      if (get().isAgentWorking) return false
+      set((draft) => {
+        draft.sessionInteractionMode = mode
+        draft.sessionPendingInteractionMode = null
+      })
+      return true
+    }
     const effective = get().sessionPendingInteractionMode ?? get().sessionInteractionMode
     if (mode === effective) return true
     try {

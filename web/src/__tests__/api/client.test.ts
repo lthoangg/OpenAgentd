@@ -78,6 +78,19 @@ describe('postAgentChat', () => {
     expect(body).toBeInstanceOf(FormData)
     const form = body as FormData
     expect(form.get('workspace')).toBe('/repo/app')
+    expect(form.has('interaction_mode')).toBe(false)
+  })
+
+  it('sends the interaction mode a new session starts in', async () => {
+    let body: BodyInit | null | undefined
+    globalThis.fetch = mock((_url, init) => {
+      body = (init as RequestInit | undefined)?.body
+      return Promise.resolve(new Response(JSON.stringify({ status: 'accepted', session_id: 'sid' })))
+    }) as typeof fetch
+
+    await postAgentChat('hello', null, false, '/repo/app', undefined, undefined, undefined, false, undefined, 'plan')
+
+    expect((body as FormData).get('interaction_mode')).toBe('plan')
   })
 
   it('omits model settings when they are undefined', async () => {

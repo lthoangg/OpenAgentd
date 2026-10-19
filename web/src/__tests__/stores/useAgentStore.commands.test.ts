@@ -109,6 +109,34 @@ describe('setSessionInteractionMode', () => {
     expect(useAgentStore.getState().sessionInteractionMode).toBe('plan')
     expect(useAgentStore.getState().error).toBe('Network error')
   })
+
+  it('keeps the pick locally on the new-session draft, before a session exists', async () => {
+    useAgentStore.setState({ sessionId: null, sessionInteractionMode: 'code' })
+
+    const result = await useAgentStore.getState().setSessionInteractionMode('plan')
+
+    expect(result).toBe(true)
+    expect(updateSessionInteractionMode).not.toHaveBeenCalled()
+    expect(useAgentStore.getState().sessionInteractionMode).toBe('plan')
+  })
+
+  it('refuses a session-less switch while the first message is in flight', async () => {
+    useAgentStore.setState({ sessionId: null, sessionInteractionMode: 'code', isAgentWorking: true })
+
+    expect(await useAgentStore.getState().setSessionInteractionMode('plan')).toBe(false)
+    expect(useAgentStore.getState().sessionInteractionMode).toBe('code')
+  })
+
+  it('sends the draft mode with the message that creates the session, not with later ones', async () => {
+    useAgentStore.setState({ sessionId: null, sessionInteractionMode: 'plan' })
+    await useAgentStore.getState().sendMessage('plan it', undefined, { workspace: '/repo' })
+    expect((postAgentChat.mock.calls[0] as unknown[])[9]).toBe('plan')
+
+    postAgentChat.mockClear()
+    useAgentStore.setState({ sessionId: 'session-1', isAgentWorking: false })
+    await useAgentStore.getState().sendMessage('next', undefined, { workspace: '/repo' })
+    expect((postAgentChat.mock.calls[0] as unknown[])[9]).toBeUndefined()
+  })
 })
 
 describe('compactAgent', () => {

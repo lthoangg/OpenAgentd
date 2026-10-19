@@ -4,7 +4,15 @@ import { applyQuestionResolution, revokeBlobUrlsFromBlocks } from './helpers'
 import { createDefaultAgentStream } from './defaults'
 import { clearReconnectTimer } from './stream-slice'
 import type { PendingMessage, AgentStore } from './types'
-import type { MessageAttachment } from '@/api/types'
+import type { MessageAttachment, SessionInteractionMode } from '@/api/types'
+
+/**
+ * The mode picked on the new-session screen rides on the message that
+ * creates the session; an existing session switches through PATCH instead.
+ */
+function newSessionInteractionMode(state: AgentStore): SessionInteractionMode | undefined {
+  return state.sessionId ? undefined : state.sessionInteractionMode
+}
 
 interface SendOptions {
   workspace: string
@@ -149,6 +157,7 @@ export const createPendingSlice: StateCreator<
           options?.thinkingLevel ?? get().sessionThinkingLevel,
           options?.fastMode ?? get().sessionFastMode,
           options?.mentions,
+          newSessionInteractionMode(get()),
         )
         if (result.status !== 'queued') {
           // The lead had already gone idle by the time the POST landed, so
@@ -252,6 +261,7 @@ export const createPendingSlice: StateCreator<
         options?.thinkingLevel ?? get().sessionThinkingLevel,
         options?.fastMode ?? get().sessionFastMode,
         options?.mentions,
+        newSessionInteractionMode(get()),
       )
       set((draft) => {
         draft.sessionId = result.session_id

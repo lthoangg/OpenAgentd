@@ -55,6 +55,8 @@ export async function postAgentChat(
   thinkingLevel?: string | null,
   fastMode = false,
   mentions?: string[],
+  /** Mode a session started by this message begins in; ignored by an existing session. */
+  interactionMode?: SessionInteractionMode,
 ): Promise<AgentChatResponse> {
   const formData = new FormData()
   if (message) {
@@ -78,6 +80,9 @@ export async function postAgentChat(
   }
   if (mentions && mentions.length > 0) {
     formData.append('mentions', JSON.stringify(mentions))
+  }
+  if (interactionMode) {
+    formData.append('interaction_mode', interactionMode)
   }
   if (files && files.length > 0) {
     for (const file of files) {

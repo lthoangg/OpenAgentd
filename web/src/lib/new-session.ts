@@ -36,6 +36,9 @@ export function startNewSession({ navigate, workspace, current, replace = false 
     && !state.isAgentWorking
   if (onSameDraft) return false
   const { sessionModel, sessionThinkingLevel } = state
+  // Switching a draft's folder keeps the Code / Plan pick; a new draft from a
+  // session starts in Code.
+  const draftInteractionMode = !state.sessionId && !state.isAgentWorking ? state.sessionInteractionMode : undefined
   // A full reset first: a draft whose first message is still in flight is
   // also session-less, and ``beginResolvedSession(null)`` alone would keep
   // that turn on the new screen.
@@ -44,6 +47,7 @@ export function startNewSession({ navigate, workspace, current, replace = false 
     workspace,
     model: sessionModel,
     thinkingLevel: sessionThinkingLevel,
+    interactionMode: draftInteractionMode,
   })
   saveLastWorkspace(workspace)
   navigate({ to: '/', search: { workspace }, replace })

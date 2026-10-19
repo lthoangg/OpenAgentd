@@ -120,6 +120,16 @@ async fn agent_chat(State(st): State<AppState>, req: Request) -> ApiResult<Respo
     if workspace.is_none() {
         errs.insert(0, verr("missing", &loc(&["body", "workspace"]), "Field required", Value::Null));
     }
+    // v3 addition: the mode a session started by this message begins in (the
+    // new-session screen's Code / Plan toggle, picked before a session exists).
+    let interaction_mode = match form.opt("interaction_mode") {
+        None => None,
+        Some(m) if m == "code" || m == "plan" => Some(m),
+        Some(m) => {
+            errs.push(verr_ctx("literal_error", &loc(&["body", "interaction_mode"]), "Input should be 'code' or 'plan'", json!(m), json!({"expected": "'code' or 'plan'"})));
+            None
+        }
+    };
     if !errs.is_empty() {
         return Err(ApiError::validation(errs));
     }
@@ -164,6 +174,17 @@ async fn agent_chat(State(st): State<AppState>, req: Request) -> ApiResult<Respo
     let thinking_provided = form.has("thinking_level");
     let (model, thinking_level) = validate_model_settings(model_raw.as_deref(), thinking_raw.as_deref())?;
 
+    // Only a session this message creates takes `interaction_mode`; an
+    // existing one switches through `PATCH /sessions/{id}`. Checked before
+    // `resolve_chat_agent`, which already makes the row.
+    let starts_in_plan = interaction_mode.as_deref() == Some("plan")
+        && match session_id.as_deref() {
+            None => true,
+            Some(raw) => match py_uuid(raw) {
+                Some(canon) => db::get_session(&st.pool, &canon).await?.is_none(),
+                None => false,
+            },
+        };
     let resolved = resolve_chat_agent(&st.pool, session_id, workspace).await?;
     let agent = resolved.agent.clone();
     let sid = resolved.session_id.clone();
@@ -180,6 +201,25 @@ async fn agent_chat(State(st): State<AppState>, req: Request) -> ApiResult<Respo
         if let Some(w) = ws.as_deref() {
             register_session_workspace(&st.pool, w).await?;
         }
+    }
+    // The new session has no messages yet, so no transition note: the turn
+    // adds Plan's instructions itself (`ensure_prompt`) and runs with its tools.
+    if starts_in_plan {
+        if db::get_session(&st.pool, &sid).await?.is_none() {
+            let id = db::codec::parse_uuid(&sid).ok_or_else(|| ApiError::unprocessable("Invalid session id."))?;
+            db::create_session(
+                &st.pool,
+                db::NewSession {
+                    id: Some(id),
+                    agent_name: Some(agent.name()),
+                    workspace: ws.clone().unwrap_or_default(),
+                    model: agent.agent().model_id.clone(),
+                    ..Default::default()
+                },
+            )
+            .await?;
+        }
+        db::update_session(&st.pool, &sid, db::SessionUpdate { interaction_mode: Some("plan".into()), ..Default::default() }).await?;
     }
     let message = message.unwrap_or_default();
     let attachments = form.files;

@@ -14,7 +14,7 @@ release that introduced it (where known). When you ship something new, **add it 
 > double-clickable app that runs an agent on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 18 providers. Your keys.
 
-**Latest release:** v3.19.0 · October 19, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.19.0)
+**Latest release:** v3.20.0 · October 19, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.20.0)
 
 ---
 
@@ -1090,7 +1090,7 @@ agent against it.
   the mobile app, and pinning does not change a session's place in Recent
   activity. **Unpin** puts it back in its list. The section folds and hides
   when nothing is pinned.
-- **New-session screen** `[v3.18.0, updated v3.19.0]` — **New session** (the folder's **+**,
+- **New-session screen** `[v3.18.0, updated v3.20.0]` — **New session** (the folder's **+**,
   `⌘N` / `Ctrl+N`, the palette, `/new`) opens a draft at `/?workspace=<path>`
   instead of creating an empty session: nothing is saved until the first
   message, which creates the session and swaps the URL for its id, so an
@@ -1105,7 +1105,9 @@ agent against it.
   carries the screen into the chat: the centered composer glides to the bottom
   while the transcript fades in (instant with reduced motion). Opening a folder registers it in the sidebar
   right away, and a session that the first message creates in a new folder
-  adds that folder to the tree.
+  adds that folder to the tree. The Code / Plan toggle works before the
+  session exists: the first message starts the session in the picked mode, and
+  switching the draft's folder keeps it `[v3.20.0]`.
 - **Nested subagent sessions in the coding sidebar** `[v2.16.0, updated v2.17.0]` — lead sessions with
   delegated subagents render an expandable accordion of child sessions that defaults to
   expanded while a child is running, waiting on the lead, or selected, and collapses to a
@@ -1687,7 +1689,7 @@ MCP.
 - **Tool result offload** `[since v1.0]` — bulky tool outputs (large file
   reads, shell spills) move to `{OPENAGENTD_DATA_DIR}/sessions/{id}/.tool_results/` and the inspector
   links to them.
-- **`.gitignore`-aware file tools** `[v1.20.1, v1.131.3, v2.0.0, v3.14.0]` — `glob`, `grep`, and
+- **`.gitignore`-aware file tools** `[v1.20.1, v1.131.3, v2.0.0, v3.14.0, updated v3.20.0]` — `glob`, `grep`, and
   workspace file browsing respect `.gitignore` and skip dependency and cache
   directories. Workspace file listings (file tagging, the command palette, the
   files sidebar) come from git itself in a git work tree, so tracked files no
@@ -1707,6 +1709,14 @@ MCP.
   ignored directories over 500 files (`target/`) stay out. A workspace that is
   a subfolder of a repo now honours the repo's `.gitignore`s, so `app/target/`
   no longer fills the listing cap `[v3.14.0]`.
+  The agent's `grep` and `glob` search gitignored files too, after every
+  visible match, and skip the same ignored directories over 500 files unless
+  the search names one (`directory="target"`, `target/doc/**`); a search that
+  finds nothing says which it skipped. They apply git's rules as git does:
+  nested `.gitignore`s, the ones above a subfolder search up to the repository
+  root, `.git/info/exclude` and the global excludes file. Files that an editor, terminal or build
+  writes into a gitignored folder now refresh Quick Open and open file tabs
+  live `[v3.20.0]`.
 
 ---
 

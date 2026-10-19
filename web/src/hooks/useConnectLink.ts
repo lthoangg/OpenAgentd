@@ -10,11 +10,16 @@
  * Every live `onOpenUrl` event is a fresh scan, so it always opens the
  * dialog, even for a QR code this phone already used. Only the `getCurrent()`
  * replay is deduplicated: the plugin keeps reporting the last opened URL for
- * the life of the app, including after Save & Connect reloads the page.
+ * the life of the app, including after Save & Connect reloads the page and
+ * after iOS kills a backgrounded WebContent process and Tauri reloads it.
+ * That second reload can lose sessionStorage, so a replay is also dropped
+ * when it points at the server and access key the app already uses.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { getStoredAccessKey } from '@/api/auth'
 import type { AppBackendPrefill } from '@/components/AppBackendDialog'
-import { parseConnectLink } from '@/lib/connect-link'
+import { getAppBackendStatus } from '@/lib/app-backend'
+import { type ConnectLink, parseConnectLink } from '@/lib/connect-link'
 import { pingServer } from '@/lib/server-probe'
 
 const DELIVERED_STORAGE_KEY = 'openagentd.connectLink.delivered'
@@ -47,6 +52,20 @@ export async function pickReachableUrl(urls: string[]): Promise<string> {
   return urls[0]
 }
 
+/** True when the link would only reconnect to the active server with its saved key. */
+async function isActiveConnection(link: ConnectLink): Promise<boolean> {
+  const status = await getAppBackendStatus()
+  if (!status?.external || !status.base_url) return false
+  let active: string
+  try {
+    active = new URL(status.base_url).origin
+  } catch {
+    return false
+  }
+  if (!link.urls.includes(active)) return false
+  return (await getStoredAccessKey(active)) === link.key
+}
+
 async function listenForLinks(onUrls: (urls: string[], replayed: boolean) => void): Promise<(() => void) | undefined> {
   const { getCurrentWindow } = await import('@tauri-apps/api/window')
   if (getCurrentWindow().label !== 'main') return undefined
@@ -70,6 +89,10 @@ export function useConnectLink(): { request: AppBackendPrefill | null; clear: ()
     const handle = async (raw: string, replayed: boolean) => {
       const link = parseConnectLink(raw)
       if (!link || (replayed && seen.has(raw))) return
+      if (replayed && await isActiveConnection(link).catch(() => false)) {
+        rememberDelivered(seen, raw)
+        return
+      }
       const baseUrl = await pickReachableUrl(link.urls)
       // Marked only once delivered: a disposed listener (StrictMode remount)
       // leaves the link to the next one.

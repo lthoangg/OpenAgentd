@@ -223,6 +223,8 @@ async fn http_api_end_to_end() {
     assert_eq!(st, StatusCode::ACCEPTED, "{v}");
     assert_eq!(v["status"], "accepted");
     let sid = v["session_id"].as_str().unwrap().to_string();
+    let (_, v) = c.json("GET", &format!("/api/agent/sessions/{sid}"), None).await;
+    assert_eq!(v["interaction_mode"], "code", "{v}");
 
     // ── session plan (v3 only) ───────────────────────────────────────────
     let plan_uri = format!("/api/agent/sessions/{sid}/plan");
@@ -499,8 +501,26 @@ async fn http_api_end_to_end() {
     assert_eq!(st, StatusCode::UNAUTHORIZED);
 
     preview_routes(&c, root.path()).await;
+    first_chat_mode_flow(&c, root.path()).await;
 
     appv3_api::startup::shutdown().await;
+}
+
+/// A first message can start its session in Plan mode (the new-session
+/// screen's Code / Plan toggle, picked before any session exists).
+async fn first_chat_mode_flow(c: &Client, root: &std::path::Path) {
+    let ws = root.join("first-chat-mode-ws");
+    std::fs::create_dir_all(&ws).unwrap();
+    let wss = ws.display().to_string();
+    let (st, v) = c.form("/api/agent/chat", &[("message", "hi"), ("workspace", &wss), ("interaction_mode", "build")]).await;
+    assert_eq!(st, StatusCode::UNPROCESSABLE_ENTITY, "{v}");
+    assert_eq!(v["detail"][0]["loc"], json!(["body", "interaction_mode"]), "{v}");
+    let (st, v) = c.form("/api/agent/chat", &[("message", "plan it"), ("workspace", &wss), ("interaction_mode", "plan")]).await;
+    assert_eq!(st, StatusCode::ACCEPTED, "{v}");
+    let sid = v["session_id"].as_str().unwrap().to_string();
+    let (_, v) = c.json("GET", &format!("/api/agent/sessions/{sid}"), None).await;
+    assert_eq!(v["interaction_mode"], "plan", "{v}");
+    wait_idle(&sid).await;
 }
 
 async fn preview_routes(c: &Client, root: &std::path::Path) {

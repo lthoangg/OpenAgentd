@@ -7,10 +7,18 @@ const getCurrent = mock(() => Promise.resolve([] as string[] | null))
 const onOpenUrl = mock((_handler: unknown) => Promise.resolve(() => {}))
 let currentWindowLabel = 'main'
 let online = new Set<string>()
+/** Server the shell reports as connected (`app_backend_status`); null = none. */
+let activeBaseUrl: string | null = null
 
 mock.module('@tauri-apps/plugin-deep-link', () => ({ getCurrent, onOpenUrl }))
 mock.module('@tauri-apps/api/window', () => ({
   getCurrentWindow: () => ({ label: currentWindowLabel }),
+}))
+mock.module('@tauri-apps/api/core', () => ({
+  invoke: async (command: string) => {
+    if (command !== 'app_backend_status') throw new Error(`unexpected command ${command}`)
+    return { base_url: activeBaseUrl ?? '', external: true, sidecar_running: false, supports_bundled: false, servers: [] }
+  },
 }))
 
 const KEY = 'generated-key-0123456789abcdef'
@@ -25,7 +33,9 @@ beforeEach(() => {
   latest = null
   currentWindowLabel = 'main'
   online = new Set()
+  activeBaseUrl = null
   window.sessionStorage.clear()
+  window.localStorage.clear()
   getCurrent.mockReset()
   getCurrent.mockImplementation(() => Promise.resolve([]))
   onOpenUrl.mockReset()
@@ -96,6 +106,45 @@ describe('useConnectLink', () => {
     await waitFor(() => expect(getCurrent).toHaveBeenCalled())
     await new Promise((resolve) => setTimeout(resolve, 20))
     expect(latest?.request).toBeNull()
+  })
+
+  it('does not reopen the dialog when iOS reloads the page of a server it is already connected to', async () => {
+    // iOS kills the backgrounded WebContent process and Tauri reloads the
+    // page. getCurrent() still reports the scanned link, and the
+    // sessionStorage record of having shown it may be gone with the process.
+    online.add('http://192.168.1.20:4082')
+    activeBaseUrl = 'http://192.168.1.20:4082'
+    window.localStorage.setItem('openagentd.accessKey:http://192.168.1.20:4082', KEY)
+    getCurrent.mockImplementation(() => Promise.resolve([buildConnectLink({ urls: ['http://10.0.0.5:4082', 'http://192.168.1.20:4082'], key: KEY })]))
+    render(<Probe />)
+    await waitFor(() => expect(getCurrent).toHaveBeenCalled())
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    expect(latest?.request).toBeNull()
+  })
+
+  it('still offers a replayed link whose access key differs from the saved one', async () => {
+    online.add('http://192.168.1.20:4082')
+    activeBaseUrl = 'http://192.168.1.20:4082'
+    window.localStorage.setItem('openagentd.accessKey:http://192.168.1.20:4082', 'old-key')
+    getCurrent.mockImplementation(() => Promise.resolve([buildConnectLink({ urls: ['http://192.168.1.20:4082'], key: KEY })]))
+    render(<Probe />)
+    await waitFor(() => expect(latest?.request).toEqual({ baseUrl: 'http://192.168.1.20:4082', accessKey: KEY }))
+  })
+
+  it('opens the dialog for a fresh scan of the server already connected', async () => {
+    online.add('http://192.168.1.20:4082')
+    activeBaseUrl = 'http://192.168.1.20:4082'
+    window.localStorage.setItem('openagentd.accessKey:http://192.168.1.20:4082', KEY)
+    let openUrls: ((urls: string[]) => void) | undefined
+    onOpenUrl.mockImplementation(async (handler) => {
+      openUrls = handler as (urls: string[]) => void
+      return () => {}
+    })
+    render(<Probe />)
+    await waitFor(() => expect(openUrls).toBeDefined())
+
+    await act(async () => openUrls?.([buildConnectLink({ urls: ['http://192.168.1.20:4082'], key: KEY })]))
+    await waitFor(() => expect(latest?.request).toEqual({ baseUrl: 'http://192.168.1.20:4082', accessKey: KEY }))
   })
 
   it('falls back to the first address when none answer', async () => {

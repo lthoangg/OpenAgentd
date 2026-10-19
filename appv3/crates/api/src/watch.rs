@@ -22,8 +22,7 @@
 //!   layout on notify's poll backend. `OPENAGENTD_FS_WATCH=off` disables it.
 
 use appv3_agent::broadcaster;
-use appv3_tools::grep::{is_gitignored, load_gitignore, NOISE_DIR_NAMES};
-use ignore::gitignore::Gitignore;
+use appv3_tools::grep::{is_gitignored, is_searchable_ignored_dir, load_gitignore, Ignores, NOISE_DIR_NAMES};
 use notify::{Config, Event, EventKind, PollWatcher, RecommendedWatcher, RecursiveMode, Watcher};
 use serde_json::json;
 use std::collections::{BTreeSet, HashMap};
@@ -45,6 +44,8 @@ const MAX_ALIASES: usize = 32;
 const IDLE_NO_CLIENTS: Duration = Duration::from_secs(120);
 const IDLE_MAX: Duration = Duration::from_secs(30 * 60);
 const SWEEP_EVERY: Duration = Duration::from_secs(30);
+/// How long a gitignored directory's "too big to list" verdict is trusted.
+const BIG_DIR_TTL: Duration = Duration::from_secs(30);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Backend {
@@ -127,17 +128,33 @@ enum Class {
     File,
 }
 
+/// The outermost gitignored directory holding `rel` (or `rel` itself when it
+/// is an ignored directory); `None` for an ignored file outside one.
+fn outermost_ignored_dir(rel: &str, is_dir: bool, gi: &Ignores) -> Option<String> {
+    let parts: Vec<&str> = rel.split('/').collect();
+    let dirs = if is_dir { parts.len() } else { parts.len() - 1 };
+    (1..=dirs).map(|n| parts[..n].join("/")).find(|d| is_gitignored(gi, d, true))
+}
+
 /// Classify a workspace-relative `/`-separated path. `.git/index` is ignored on
 /// purpose: `git status` (run by our own status endpoint) rewrites it, which
 /// would otherwise feed back into another refresh.
-fn classify(rel: &str, is_dir: bool, gi: &Gitignore) -> Class {
+///
+/// Gitignored paths count like any other file — the panel lists them —
+/// except inside an ignored directory `is_big` reports as too big to list
+/// (`target/`): the listing leaves it out, so its churn during a build would
+/// only refresh the panel for nothing.
+fn classify(rel: &str, is_dir: bool, gi: &Ignores, is_big: &dyn Fn(&str) -> bool) -> Class {
     if rel.is_empty() {
         return Class::Ignore;
     }
     if let Some(rest) = rel.strip_prefix(".git/") {
         return if rest == "HEAD" || rest == "packed-refs" || (rest.starts_with("refs/") && !rest.ends_with(".lock")) { Class::Git } else { Class::Ignore };
     }
-    if rel.split('/').any(|c| NOISE_DIR_NAMES.contains(&c)) || is_gitignored(gi, rel, is_dir) {
+    if rel.split('/').any(|c| NOISE_DIR_NAMES.contains(&c)) {
+        return Class::Ignore;
+    }
+    if is_gitignored(gi, rel, is_dir) && outermost_ignored_dir(rel, is_dir, gi).is_some_and(|d| is_big(&d)) {
         return Class::Ignore;
     }
     Class::File
@@ -153,10 +170,32 @@ fn rel_of(root: &Path, path: &Path) -> Option<String> {
 struct Ctx {
     root: PathBuf,
     backend: Backend,
-    gitignore: RwLock<Gitignore>,
+    gitignore: RwLock<Ignores>,
+    /// Gitignored directories (relative) and whether they are too big to list,
+    /// with when that was checked.
+    big_dirs: Mutex<HashMap<String, (bool, Instant)>>,
     aliases: Mutex<BTreeSet<String>>,
     sessions: Mutex<BTreeSet<String>>,
     limit_warned: std::sync::atomic::AtomicBool,
+}
+
+impl Ctx {
+    /// Whether the gitignored directory `rel` is too big to list, counted at
+    /// most once per [`BIG_DIR_TTL`] so a build's event flood stays cheap.
+    fn is_big_ignored_dir(&self, rel: &str) -> bool {
+        if let Some((big, at)) = self.big_dirs.lock().unwrap().get(rel) {
+            if at.elapsed() < BIG_DIR_TTL {
+                return *big;
+            }
+        }
+        let big = !is_searchable_ignored_dir(&self.root.join(rel));
+        self.big_dirs.lock().unwrap().insert(rel.to_string(), (big, Instant::now()));
+        big
+    }
+
+    fn classify(&self, rel: &str, is_dir: bool, gi: &Ignores) -> Class {
+        classify(rel, is_dir, gi, &|d| self.is_big_ignored_dir(d))
+    }
 }
 
 enum Msg {
@@ -190,7 +229,7 @@ fn handle(ctx: &Ctx, tx: &Sender<Msg>, res: notify::Result<Event>) {
     for path in &ev.paths {
         let Some(rel) = rel_of(&ctx.root, path) else { continue };
         let is_dir = std::fs::symlink_metadata(path).map(|m| m.is_dir()).unwrap_or(false);
-        let class = classify(&rel, is_dir, &ctx.gitignore.read().unwrap());
+        let class = ctx.classify(&rel, is_dir, &ctx.gitignore.read().unwrap());
         if class == Class::Ignore {
             continue;
         }
@@ -201,7 +240,8 @@ fn handle(ctx: &Ctx, tx: &Sender<Msg>, res: notify::Result<Event>) {
     }
 }
 
-/// Non-recursive watches on `dir` and every non-ignored directory below it.
+/// Non-recursive watches on `dir` and every directory below it that
+/// [`classify`] keeps (noise and big gitignored directories are skipped).
 /// Returns `Err(())` once the OS watch limit (or our cap) is hit.
 fn watch_tree(ctx: &Ctx, watcher: &mut dyn Watcher, dir: &Path, count: &mut usize) -> Result<(), ()> {
     let cap = if matches!(ctx.backend, Backend::Poll(_)) { MAX_DIRS_POLL } else { MAX_DIRS_NATIVE };
@@ -224,7 +264,7 @@ fn watch_tree(ctx: &Ctx, watcher: &mut dyn Watcher, dir: &Path, count: &mut usiz
             }
             let p = e.path();
             let Some(rel) = rel_of(&ctx.root, &p) else { continue };
-            if classify(&rel, true, &gi) == Class::File {
+            if ctx.classify(&rel, true, &gi) == Class::File {
                 stack.push(p);
             }
         }
@@ -244,8 +284,15 @@ fn warn_limit(ctx: &Ctx, dirs: usize) {
 }
 
 fn start(root: PathBuf, backend: Backend) -> notify::Result<(Arc<Ctx>, SharedWatcher)> {
-    let ctx =
-        Arc::new(Ctx { gitignore: RwLock::new(load_gitignore(&root)), root, backend, aliases: Mutex::default(), sessions: Mutex::default(), limit_warned: Default::default() });
+    let ctx = Arc::new(Ctx {
+        gitignore: RwLock::new(load_gitignore(&root)),
+        big_dirs: Mutex::default(),
+        root,
+        backend,
+        aliases: Mutex::default(),
+        sessions: Mutex::default(),
+        limit_warned: Default::default(),
+    });
     let (tx, rx) = channel::<Msg>();
     let (hctx, htx) = (ctx.clone(), tx);
     let handler = move |res: notify::Result<Event>| handle(&hctx, &htx, res);
@@ -295,8 +342,10 @@ fn run(rx: Receiver<Msg>, ctx: Arc<Ctx>, watcher: Weak<Mutex<Box<dyn Watcher + S
             match m {
                 Msg::Changed { rel, git: g, new_dir } => {
                     git |= g;
-                    if rel == ".gitignore" {
+                    // Any `.gitignore` (nested ones count too) changes the rules.
+                    if rel == ".gitignore" || rel.ends_with("/.gitignore") {
                         *ctx.gitignore.write().unwrap() = load_gitignore(&ctx.root);
+                        ctx.big_dirs.lock().unwrap().clear();
                     }
                     if !g {
                         paths.insert(rel);
@@ -432,14 +481,20 @@ mod tests {
     #[test]
     fn classify_filters_noise_gitignore_and_git_internals() {
         let dir = tempfile::tempdir().unwrap();
-        std::fs::write(dir.path().join(".gitignore"), "build/\n*.log\n").unwrap();
+        std::fs::write(dir.path().join(".gitignore"), "build/\ntarget/\n*.log\n").unwrap();
         let gi = load_gitignore(dir.path());
+        let classify = |rel: &str, is_dir: bool, gi: &Ignores| classify(rel, is_dir, gi, &|d| d == "target");
         assert_eq!(classify("src/main.rs", false, &gi), Class::File);
         assert_eq!(classify("", true, &gi), Class::Ignore);
         assert_eq!(classify("node_modules/x/index.js", false, &gi), Class::Ignore);
         assert_eq!(classify("a/.venv/lib.py", false, &gi), Class::Ignore);
-        assert_eq!(classify("build/out.o", false, &gi), Class::Ignore);
-        assert_eq!(classify("debug.log", false, &gi), Class::Ignore);
+        // Gitignored paths are listed, so they count, unless under a big
+        // ignored directory the listing leaves out.
+        assert_eq!(classify("build/out.o", false, &gi), Class::File);
+        assert_eq!(classify("build", true, &gi), Class::File);
+        assert_eq!(classify("debug.log", false, &gi), Class::File);
+        assert_eq!(classify("target/debug/out.o", false, &gi), Class::Ignore);
+        assert_eq!(classify("target", true, &gi), Class::Ignore);
         assert_eq!(classify(".git/HEAD", false, &gi), Class::Git);
         assert_eq!(classify(".git/refs/heads/main", false, &gi), Class::Git);
         assert_eq!(classify(".git/refs/heads/main.lock", false, &gi), Class::Ignore);
@@ -479,20 +534,28 @@ mod tests {
     async fn exercise(backend: Backend) {
         let dir = tempfile::tempdir().unwrap();
         let root = dunce::canonicalize(dir.path()).unwrap();
-        std::fs::write(root.join(".gitignore"), "build/\n").unwrap();
+        std::fs::write(root.join(".gitignore"), "build/\ntarget/\n").unwrap();
         std::fs::create_dir_all(root.join("src")).unwrap();
         std::fs::create_dir_all(root.join("build")).unwrap();
         std::fs::create_dir_all(root.join("node_modules")).unwrap();
+        // Too big to list: changes inside are not reported.
+        std::fs::create_dir_all(root.join("target")).unwrap();
+        for i in 0..=appv3_tools::grep::MAX_IGNORED_DIR_FILES {
+            std::fs::write(root.join(format!("target/f{i}.o")), "x").unwrap();
+        }
         let mut sub = broadcaster::broadcaster().attach();
         let (ctx, _watcher) = start(root.clone(), backend).unwrap();
         remember(&ctx.aliases, Some("~/alias"));
         tokio::time::sleep(Duration::from_millis(300)).await;
 
         std::fs::write(root.join("node_modules/pkg.js"), "x").unwrap();
-        std::fs::write(root.join("build/out.o"), "x").unwrap();
+        std::fs::write(root.join("target/new.o"), "x").unwrap();
         std::fs::write(root.join("top.txt"), "x").unwrap();
         let mut seen = vec![];
         assert!(wait_for(&mut sub, &root, &mut seen, |s| reported(s, "top.txt")).await, "{backend:?}: no event for top.txt: {seen:?}");
+        // A small gitignored directory is listed, so its changes are reported.
+        std::fs::write(root.join("build/out.o"), "x").unwrap();
+        assert!(wait_for(&mut sub, &root, &mut seen, |s| reported(s, "build/out.o")).await, "{backend:?}: no event for ignored build/out.o: {seen:?}");
         std::fs::write(root.join("src/lib.rs"), "fn main() {}").unwrap();
         assert!(wait_for(&mut sub, &root, &mut seen, |s| reported(s, "src/lib.rs")).await, "{backend:?}: no event for nested src/lib.rs: {seen:?}");
         assert_eq!(seen[0]["aliases"], serde_json::json!(["~/alias"]));
@@ -508,7 +571,7 @@ mod tests {
         for v in &seen {
             for p in v["paths"].as_array().unwrap() {
                 let p = p.as_str().unwrap();
-                assert!(!p.starts_with("node_modules") && !p.starts_with("build"), "{backend:?}: ignored path reported: {p}");
+                assert!(!p.starts_with("node_modules") && !p.starts_with("target"), "{backend:?}: noise or big ignored path reported: {p}");
             }
         }
     }

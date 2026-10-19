@@ -401,10 +401,10 @@ pub async fn on_subagent_turn_completed(lead: &str, child: &str, status: &str, w
         }
     }
     let output = if status == "completed" {
-        let mut out = inst.as_ref().and_then(|i| i.last_result.clone()).filter(|s| !s.is_empty());
-        if out.is_none() {
-            out = db::last_assistant_content(pool, child).await.ok().flatten().filter(|s| !s.is_empty());
-        }
+        // Read this turn's answer from the newest assistant row. `last_result`
+        // holds what an earlier turn reported, so a follow-up from the lead must
+        // never fall back to it and re-send a stale report.
+        let out = db::last_assistant_content(pool, child).await.ok().flatten();
         let out = out.filter(|o| !o.trim().is_empty()).unwrap_or_else(|| format!("Subagent '{effective_handle}' completed task with no text output."));
         find_by_session(lead, child, |i| {
             i.last_result = Some(out.clone());
@@ -594,5 +594,49 @@ mod tests {
         add("explorer#3", "working", "working");
         assert!(has_working_subagents(lead));
         assert!(!has_working_subagents("another-lead"));
+    }
+
+    #[tokio::test]
+    async fn a_follow_up_turn_reports_its_own_answer() {
+        let root = tempfile::tempdir().unwrap();
+        let pool = db::create_pool(root.path().join("oad.db")).await.unwrap();
+        let provider: Arc<dyn appv3_providers::LlmProvider> = Arc::new(appv3_providers::mock::MockProvider::new(vec![]));
+        let p2 = provider.clone();
+        let factory: ProviderFactory = Arc::new(move |_, _| Ok(p2.clone()));
+        let lead = "lead-follow-up-report";
+        let child = db::create_session(&pool, db::NewSession { title: Some("explorer#1".into()), workspace: "/tmp".into(), ..Default::default() }).await.unwrap();
+        let child_sid = db::codec::api_uuid(&child.id);
+        let agent = Agent::new(provider.clone(), "explorer#1", "", vec![], None);
+        let session = AgentSession::new(agent, Some(child_sid.clone()), None, pool.clone(), factory, Some(lead.into()));
+        let inst = SubagentInstance {
+            handle: "explorer#1".into(),
+            profile_name: "explorer".into(),
+            lead_session_id: lead.into(),
+            session_id: child_sid.clone(),
+            session,
+            status: "working".into(),
+            last_result: None,
+            pending_lead_question: None,
+            last_error: None,
+            question_delivered: false,
+            result_delivered: false,
+            pending_tool_call_id: None,
+        };
+        reg().lock().unwrap().live.entry(lead.into()).or_default().insert("explorer#1".into(), inst);
+        let reported = || find_by_session(lead, &child_sid, |i| i.last_result.clone()).flatten();
+
+        db::save_message(&pool, &child_sid, db::NewMessage::assistant(Some("first report".into()))).await.unwrap();
+        on_subagent_turn_completed(lead, &child_sid, "completed", "/tmp", "explorer#1", &pool, false).await;
+        assert_eq!(reported().as_deref(), Some("first report"));
+
+        // The lead sends a follow-up and the subagent answers it in a new turn.
+        db::save_message(&pool, &child_sid, db::NewMessage::assistant(Some("second report".into()))).await.unwrap();
+        on_subagent_turn_completed(lead, &child_sid, "completed", "/tmp", "explorer#1", &pool, false).await;
+        assert_eq!(reported().as_deref(), Some("second report"));
+
+        // A turn that ends without text says so instead of re-sending an old report.
+        db::save_message(&pool, &child_sid, db::NewMessage::assistant(None)).await.unwrap();
+        on_subagent_turn_completed(lead, &child_sid, "completed", "/tmp", "explorer#1", &pool, false).await;
+        assert_eq!(reported().as_deref(), Some("Subagent 'explorer#1' completed task with no text output."));
     }
 }

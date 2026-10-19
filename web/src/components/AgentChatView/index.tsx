@@ -666,7 +666,8 @@ export function AgentChatView({ sessionId, workspace = null, sessionLoading = fa
           setIsSwitchingInteractionMode(false)
         })
       }}
-      interactionModeDisabled={isSwitchingInteractionMode || !sessionIdState}
+      // The new-session draft picks a mode locally; the first message carries it.
+      interactionModeDisabled={isSwitchingInteractionMode || (!sessionIdState && !isDraft)}
       revertedCount={leadRevertedCount}
       revertedMessages={leadRevertedMessages}
       onRedo={() => { void handleSlashCommand('redo') }}

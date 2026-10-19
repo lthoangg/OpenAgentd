@@ -22,6 +22,14 @@ generation, updater helpers, and code-health analysis.
   `appv3/Cargo.toml` is the release version.
 - `e2e_cli_install.sh` and `fake_release_server.py`: CLI install and
   self-update end-to-end check used by the appv3 workflow.
+- `readme-shots/`: regenerates the README screenshots and banner from a
+  throwaway instance. `run.sh up` starts an isolated backend and web UI (HOME
+  and every data directory under `/tmp/oad-demo`, invented demo repos from
+  `demo-repos.sh`), `run.sh stage` runs real agent sessions (`stage.py`, a few
+  cents of model calls using keys from `.env`), `run.sh capture [scene…]` takes
+  light and dark shots into `documents/assets/readme/` (`capture.mjs`), and
+  `banner.mjs` renders `documents/assets/brand/banner/banner.html`. Never point
+  it at a real data directory: screenshots must not show user sessions or paths.
 - `tests/`: pytest checks for these scripts and for installer, native-shell
   config, and release-workflow contracts; run them with `make verify-scripts`.
 

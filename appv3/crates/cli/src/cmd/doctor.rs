@@ -1,4 +1,4 @@
-//! `openagentd doctor`: credentials, database, port, and agents checks.
+//! `agentd doctor`: credentials, database, port, and agents checks.
 
 use crate::paths::find_pids;
 use crate::ui::{bold, cyan, dim, tilde, Checks};
@@ -58,7 +58,7 @@ pub fn doctor() -> Result<ExitCode> {
     appv3_core::env::load_config_env(&s.config_dir);
 
     println!();
-    println!("  {}  {}", bold(&cyan("openagentd doctor")), dim(&format!("v{}", appv3_core::VERSION)));
+    println!("  {}  {}", bold(&cyan("agentd doctor")), dim(&format!("v{}", appv3_core::VERSION)));
     println!();
     let mut checks = Checks::default();
 
@@ -84,7 +84,7 @@ pub fn doctor() -> Result<ExitCode> {
         if oauth_logged_in(p, &token_file) {
             checks.ok(&format!("Lead agent provider '{p}' is logged in"));
         } else {
-            checks.fail(&format!("Lead agent provider '{p}' is not logged in — run `openagentd auth {p}`"));
+            checks.fail(&format!("Lead agent provider '{p}' is not logged in — run `agentd auth {p}`"));
         }
     } else if let Some(p) = lead.as_deref() {
         if lead_keyless {

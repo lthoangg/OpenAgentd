@@ -37,7 +37,7 @@ describe('ProviderCard — OAuth disconnect and reconnect', () => {
     saved_credentials: {},
     env_var: '',
     env_vars: [],
-    oauth_command: 'openagentd auth copilot',
+    oauth_command: 'agentd auth copilot',
     docs_url: '',
     is_configured: true,
     is_saved: true,

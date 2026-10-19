@@ -1,4 +1,4 @@
-//! `openagentd server serve` lifecycle against the real binary, the way the
+//! `agentd server serve` lifecycle against the real binary, the way the
 //! desktop app drives it (handshake on stdout, SIGTERM on quit).
 #![cfg(unix)]
 
@@ -8,7 +8,7 @@ use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
 fn spawn_server(root: &std::path::Path, desktop_token: Option<&str>) -> (Child, BufReader<std::process::ChildStdout>, u16) {
-    let mut cmd = Command::new(env!("CARGO_BIN_EXE_openagentd"));
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_agentd"));
     cmd.args(["server", "serve", "--host", "127.0.0.1", "--port", "0", "--handshake"]).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
     for (k, d) in [
         ("OPENAGENTD_DATA_DIR", "data"),

@@ -45,12 +45,16 @@ same key; Android refuses an update signed with a different one.
 On the computer that runs OpenAgentd, start a server the phone can reach:
 
 ```bash
-openagentd server start --host 0.0.0.0 --key
-openagentd server status
+agentd server start --public --key --qr
+agentd server status
 ```
 
-`--key` prompts you to choose the access key every client must send. The server
-refuses to listen on the network without one. If OpenAgentd isn't installed yet, see
+`--public` listens on every network interface, and `--key` prompts you to choose
+the access key every client must send; the server refuses to listen on the
+network without one. `--qr` prints a QR code: scan it with the phone's camera to
+open the app's **Backend connection** dialog with the address and key filled in,
+then test and save the connection. `agentd server status --qr` shows it again.
+If OpenAgentd isn't installed yet, see
 [CLI server](../README.md#cli-server).
 
 In the app:
@@ -72,6 +76,6 @@ connect to that address instead.
 | "App not installed" on a fresh install | The phone runs a 32-bit system, which this APK doesn't support, or the download is incomplete. Check the `.sha256`. |
 | "App not installed" when updating | The installed copy was signed with a different key, such as a local developer build. Uninstall it, then install the release APK. You'll need to add your servers again. |
 | The app can't reach the server | Check that the phone and the computer are on the same network and the server was started with `--host 0.0.0.0 --key`. Turn off mobile data to rule out the phone leaving Wi-Fi. |
-| "Unauthorized" when connecting | The access key doesn't match. Re-enter the key you chose, or set a new one with `openagentd server start --host 0.0.0.0 --key`. |
+| "Unauthorized" when connecting | The access key doesn't match. Re-enter the key you chose, or set a new one with `agentd server restart --public --key`. |
 | The app asks for the access key again after restoring a backup or moving to a new phone | Expected. The encryption key stays on the original device, so re-enter the access key. |
 | The screen is blank or looks broken | Update **Android System WebView** and **Chrome** in Google Play. |

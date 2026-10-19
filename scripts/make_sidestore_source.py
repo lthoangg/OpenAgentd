@@ -102,7 +102,7 @@ def build_source(
         "subtitle": "OpenAgentd mobile shell for remote API servers.",
         "localizedDescription": (
             "OpenAgentd mobile embeds the shared Web UI and connects to a remote "
-            "OpenAgentd API server. Run `openagentd server start --host 0.0.0.0 --key` "
+            "OpenAgentd API server. Run `agentd server start --public --key --qr` "
             "on your computer, then enter its address and key in Backend connection."
         ),
         "iconURL": ICON_URL,

@@ -5,10 +5,13 @@
 #   1. install.sh --cli (or install.ps1 -Cli on Windows) installs BINARY as
 #      release 3.0.0 after verifying its checksum;
 #   2. a tampered checksum is refused and installs nothing;
-#   3. `openagentd upgrade` self-updates to a newer release (the same binary
+#   3. `agentd upgrade` self-updates to a newer release (the same binary
 #      repackaged as 99.0.0).
 #
-# Usage: scripts/e2e_cli_install.sh <path to openagentd binary> [target triple]
+# Releases ship `agentd` plus the `openagentd` alias, which is expected
+# beside BINARY (cargo builds both into the same directory).
+#
+# Usage: scripts/e2e_cli_install.sh <path to agentd binary> [target triple]
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
@@ -46,12 +49,16 @@ mkdir -p "$HOME" "$LOCALAPPDATA"
 
 sha256() { if command -v sha256sum >/dev/null; then sha256sum "$1"; else shasum -a 256 "$1"; fi | cut -d' ' -f1; }
 
+EXE=""; [ "$WINDOWS" = 1 ] && EXE=".exe"
+ALIAS="$(dirname "$BIN")/openagentd$EXE"
+[ -x "$ALIAS" ] || { echo "FAIL: no openagentd alias beside $BIN" >&2; exit 2; }
+
 pack() { # version outdir
-  local st="$SB/stage-$1" exe="" name="openagentd-$1-$TARGET" archive
-  [ "$WINDOWS" = 1 ] && exe=".exe"
+  local st="$SB/stage-$1" name="openagentd-$1-$TARGET" archive
   mkdir -p "$st" "$2"
-  cp "$BIN" "$st/openagentd$exe"
-  chmod 755 "$st/openagentd$exe"
+  cp "$BIN" "$st/agentd$EXE"
+  cp "$ALIAS" "$st/openagentd$EXE"
+  chmod 755 "$st/agentd$EXE" "$st/openagentd$EXE"
   cp "$ROOT/LICENSE" "$st/"
   if [ "$WINDOWS" = 1 ]; then
     archive="$name.zip"
@@ -84,15 +91,15 @@ install_cli() {
   fi
 }
 
-EXE=""; [ "$WINDOWS" = 1 ] && EXE=".exe"
-INSTALLED="$OPENAGENTD_INSTALL_DIR/openagentd$EXE"
-VERSION=$("$BIN" --version | tr -d '\r' | sed 's/^openagentd v//')
+INSTALLED="$OPENAGENTD_INSTALL_DIR/agentd$EXE"
+VERSION=$("$BIN" --version | tr -d '\r' | sed 's/^agentd v//')
 
 echo "=== install $VERSION ==="
 pack "$VERSION" "$SB/rel-current"
 serve "$VERSION" "$SB/rel-current"
 install_cli
-[ "$("$INSTALLED" --version | tr -d '\r')" = "openagentd v$VERSION" ] || { echo "FAIL: installed version"; exit 1; }
+[ "$("$INSTALLED" --version | tr -d '\r')" = "agentd v$VERSION" ] || { echo "FAIL: installed version"; exit 1; }
+[ "$("$OPENAGENTD_INSTALL_DIR/openagentd$EXE" --version | tr -d '\r')" = "agentd v$VERSION" ] || { echo "FAIL: openagentd alias"; exit 1; }
 [ ! -e "$OPENAGENTD_INSTALL_DIR/LICENSE" ] || { echo "FAIL: non-executable installed"; exit 1; }
 echo "PASS: install"
 
@@ -102,7 +109,7 @@ cp "$sums" "$SB/sha.bak"
 echo "0000000000000000000000000000000000000000000000000000000000000000  x" > "$sums"
 if OPENAGENTD_INSTALL_DIR="$SB/other" install_cli > "$SB/tamper.log" 2>&1; then echo "FAIL: tampered archive installed"; exit 1; fi
 grep -qi "checksum mismatch" "$SB/tamper.log" || { cat "$SB/tamper.log"; echo "FAIL: wrong error"; exit 1; }
-[ ! -e "$SB/other/openagentd$EXE" ] || { echo "FAIL: files placed"; exit 1; }
+[ ! -e "$SB/other/agentd$EXE" ] || { echo "FAIL: files placed"; exit 1; }
 cp "$SB/sha.bak" "$sums"
 echo "PASS: tampered checksum refused"
 

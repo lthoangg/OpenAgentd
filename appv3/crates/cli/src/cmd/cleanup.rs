@@ -1,4 +1,4 @@
-//! `openagentd cleanup`: expired sessions and generated artifacts (session
+//! `agentd cleanup`: expired sessions and generated artifacts (session
 //! files, snapshots, telemetry, managed worktrees). Dry run unless `--apply`.
 
 use crate::cli::CleanupArgs;

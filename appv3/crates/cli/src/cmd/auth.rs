@@ -1,4 +1,4 @@
-//! `openagentd auth <provider>`, `auth list`, `auth logout <provider>`.
+//! `agentd auth <provider>`, `auth list`, `auth logout <provider>`.
 
 use crate::cli::{AuthArgs, AuthCmd};
 use crate::ui::{bold, dim, green};
@@ -32,8 +32,8 @@ fn list() {
         println!("  {}  {state}  {}", bold(&format!("{id:<8}")), dim(desc));
     }
     println!();
-    println!("  {}  openagentd auth <provider>", dim("Log in: "));
-    println!("  {}  openagentd auth logout <provider>", dim("Log out:"));
+    println!("  {}  agentd auth <provider>", dim("Log in: "));
+    println!("  {}  agentd auth logout <provider>", dim("Log out:"));
     println!();
 }
 

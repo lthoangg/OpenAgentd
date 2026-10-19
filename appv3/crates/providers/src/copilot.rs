@@ -244,7 +244,7 @@ fn py_bool(v: &Value) -> bool {
 /// `CopilotProvider(model, model_kwargs)`.
 pub fn build(model: &str, model_kwargs: Kwargs) -> ProviderResult<Arc<dyn LlmProvider>> {
     let Some((token, base)) = resolve_github_token() else {
-        return Err(ProviderError::Invalid("GitHub token not found.  Run:\n  openagentd auth copilot\nOr set COPILOT_GITHUB_TOKEN env var.".into()));
+        return Err(ProviderError::Invalid("GitHub token not found.  Run:\n  agentd auth copilot\nOr set COPILOT_GITHUB_TOKEN env var.".into()));
     };
     // Only a cache miss needs the network (and the async helper).
     let cat = fresh_cached_catalog(&token, &base).unwrap_or_else(|| block_on_thread(model_catalog()));

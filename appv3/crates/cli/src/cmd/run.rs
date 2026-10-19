@@ -1,4 +1,4 @@
-//! `openagentd run`: one agent turn in a workspace, streamed to stdout.
+//! `agentd run`: one agent turn in a workspace, streamed to stdout.
 //!
 //! Text mode prints the lead agent's reply. `--json` prints one
 //! `{"event": …, "data": …}` line per stream event, starting with the

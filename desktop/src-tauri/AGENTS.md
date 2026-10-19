@@ -1,7 +1,7 @@
 # Desktop Rust/Tauri Guide
 
 This directory owns the desktop-native shell and its bridge to the bundled
-native backend sidecar (`sidecar-bundle/bin/openagentd`, built from `appv3/`).
+native backend sidecar (`sidecar-bundle/bin/agentd`, built from `appv3/`).
 
 ## Module map
 

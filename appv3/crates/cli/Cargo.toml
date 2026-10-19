@@ -3,10 +3,18 @@ name = "appv3-cli"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+# Two binaries (`agentd` and the `openagentd` alias), so `cargo run` needs a default.
+default-run = "agentd"
 
 [[bin]]
-name = "openagentd"
+name = "agentd"
 path = "src/main.rs"
+
+# The pre-rename name, kept as a forwarding alias so existing installs,
+# scripts, and `openagentd upgrade` from older releases keep working.
+[[bin]]
+name = "openagentd"
+path = "src/bin/openagentd.rs"
 
 [dependencies]
 dunce.workspace = true
@@ -33,6 +41,7 @@ flate2 = "1"
 libc = "0.2"
 reqwest.workspace = true
 sha2.workspace = true
+qrcode = { version = "0.14", default-features = false }
 
 [target.'cfg(unix)'.dependencies]
 nix = { version = "0.29", features = ["signal", "process"] }

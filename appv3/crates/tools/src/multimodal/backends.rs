@@ -213,13 +213,13 @@ async fn codex_auth() -> Result<(String, Option<String>), String> {
     use appv3_providers::codex::{oauth_path, CodexAuth};
     let path = oauth_path();
     let Some(mut auth) = CodexAuth::load(&path) else {
-        return Err("Error: Codex OAuth credentials not found. Run `openagentd auth codex` to authenticate with your ChatGPT account.".into());
+        return Err("Error: Codex OAuth credentials not found. Run `agentd auth codex` to authenticate with your ChatGPT account.".into());
     };
     if auth.is_expired() {
         tracing::info!("codex_image_token_expired refreshing");
         auth = auth.refresh(&path).await.map_err(|e| {
             tracing::warn!("codex_image_token_refresh_failed err={}", e);
-            format!("Error: Codex token refresh failed: {e}. Run `openagentd auth codex` to re-authenticate.")
+            format!("Error: Codex token refresh failed: {e}. Run `agentd auth codex` to re-authenticate.")
         })?;
     }
     Ok((auth.access_token, auth.account_id))

@@ -2,7 +2,7 @@
 
 ``/latest`` redirects to ``/tag/v$LATEST``, and ``/download/v$LATEST/<file>``
 serves files from ``$DIR``, matching what install.sh, install.ps1 and
-``openagentd upgrade`` read from ``OPENAGENTD_RELEASES_URL``. The bound port
+``agentd upgrade`` read from ``OPENAGENTD_RELEASES_URL``. The bound port
 is printed on the first stdout line.
 """
 

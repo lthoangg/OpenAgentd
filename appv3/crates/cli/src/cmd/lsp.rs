@@ -1,4 +1,4 @@
-//! `openagentd lsp status|install`.
+//! `agentd lsp status|install`.
 
 use crate::cli::{LspCmd, LspComponent};
 use anyhow::{anyhow, Result};

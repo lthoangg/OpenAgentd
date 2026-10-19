@@ -9,8 +9,8 @@ data formats v3 must keep reading.
 ```bash
 make run                                          # API only on :8000 with APP_ENV=development
 curl -fsS http://127.0.0.1:8000/api/health/ready  # readiness
-openagentd server status                          # installed CLI: port, live, ready, LAN
-openagentd server logs                            # installed CLI: readable log lines
+agentd server status                          # installed CLI: port, live, ready, LAN
+agentd server logs                            # installed CLI: readable log lines
 sqlite3 .openagentd/dev/data/openagentd.db '.tables'
 ```
 
@@ -28,7 +28,7 @@ appv3/crates/
   core/       settings and XDG paths (src/settings.rs), auth policy (src/auth.rs), path safety
   jsplugin/   QuickJS runtime for .ts/.js plugins
   mcp/ memory/ preview/ terminal/   MCP client, memory, Preview tab proxy, PTY terminals
-  cli/        the `openagentd` binary; `server serve` is the sidecar entry; loguru-format logging (src/logging.rs)
+  cli/        the `agentd` binary; `server serve` is the sidecar entry; loguru-format logging (src/logging.rs)
 appv3/contract/sse_events.json   SSE event contract shared with web
 appv3/REPORT.md                  every deliberate wire or on-disk difference from v2
 ```

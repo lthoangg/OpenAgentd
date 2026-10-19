@@ -35,7 +35,7 @@ worktrees are not part of the tracked instruction hierarchy.
 - `app/`: v2 Python API, agent runtime, CLI, scheduler, SQLModel tables,
   migrations, and application services (end-of-life, source only).
 - `web/`: shared React UI used by browser, desktop, and mobile clients.
-- `desktop/`: Tauri shell that supervises the bundled native `openagentd`
+- `desktop/`: Tauri shell that supervises the bundled native `agentd`
   sidecar built from `appv3/`.
 - `mobile/`: remote-backend-only Tauri shell; it does not bundle a backend.
 - `native/shell-core/`: Tauri-free Rust crate shared by both shells (server

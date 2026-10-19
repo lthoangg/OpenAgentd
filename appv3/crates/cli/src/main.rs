@@ -1,4 +1,4 @@
-//! `openagentd` (v3): the Rust backend binary and its command-line interface.
+//! `agentd` (v3): the Rust backend binary and its command-line interface.
 //! `server serve` is the foreground server the desktop sidecar runs, and
 //! `server start` runs it as a background daemon.
 
@@ -7,6 +7,7 @@ mod cmd;
 mod logging;
 mod net;
 mod paths;
+mod qr;
 mod ui;
 
 use clap::{CommandFactory, Parser};
@@ -45,7 +46,7 @@ fn main() -> ExitCode {
         std::env::set_var("APP_ENV", "production");
     }
     let result = match Cli::parse().command {
-        // Bare `openagentd` is reserved for a future TUI; print help for now.
+        // Bare `agentd` is reserved for a future TUI; print help for now.
         None => Cli::command().print_help().map(|()| ExitCode::SUCCESS).map_err(Into::into),
         Some(command) => dispatch(command),
     };

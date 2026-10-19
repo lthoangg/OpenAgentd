@@ -58,7 +58,7 @@ full suite was not re-run; the other rows cover code this change did not touch.
 | document / HTML conversion vs v2 (one-off, corpus in `/tmp/oad-eval`) | `read`/`web_fetch` documents (3 real PDFs + 17 anydoc fixtures); `web_fetch` on 34 real pages (docs, articles, blogs, listings, forums, error pages) | documents 20/20 byte-identical; `format="text"` 34/34 byte-identical; `format="markdown"` median word-F1 0.993 vs v2, 29/34 pages ≥ 0.9, code-block and heading counts match on 28 and 30 pages |
 
 I also checked the desktop sidecar contract by hand earlier.
-`openagentd server serve --host 127.0.0.1 --port 0 --handshake --parent-pid <pid>`
+`agentd server serve --host 127.0.0.1 --port 0 --handshake --parent-pid <pid>`
 with `OPENAGENTD_DESKTOP_TOKEN` printed the same handshake as v2, returned 401
 without the token and 200 with it, and shut down cleanly when the parent died.
 
@@ -354,7 +354,7 @@ explicitly.
   (from 3.0.0 on; `scripts/bump_version.sh` sets it and
   `scripts/check_version_consistency.sh` holds every other release-facing
   file to it). It shows in
-  `openagentd --version`, the sidecar handshake, `/api/health/live` and
+  `agentd --version`, the sidecar handshake, `/api/health/live` and
   `/api/health/ready`, the provider client headers (codex, copilot, grok),
   OTEL `telemetry.sdk.version`, and the JS plugin host's `version`.
 - **Diagnostics fields:** `runtime.python="n/a"` and
@@ -462,7 +462,7 @@ explicitly.
   captures settings at startup).
 - **LSP:** full port (`crates/tools/src/lsp/`: client, manager, managed
   Bun/TypeScript + PyPI ruff/ty installs, `lsp_install_required` event,
-  `LspHook`, `/api/settings/lsp*`, `openagentd lsp status|install`).
+  `LspHook`, `/api/settings/lsp*`, `agentd lsp status|install`).
   `diff_lsp.py` (fake stdio servers + mock PyPI/Bun host): 218/218
   identical. Deviations: "packaged" ruff/ty are looked up beside the v3
   executable (and `../bin`) instead of beside the Python interpreter; musl

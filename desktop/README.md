@@ -1,6 +1,6 @@
 # OpenAgentd Desktop (Tauri v2)
 
-Native desktop shell for OpenAgentd. Embeds the React Web UI, can spawn the native `openagentd` backend (built from `appv3/`) as a sidecar or connect to an external server, and ships an auto-update + signing pipeline.
+Native desktop shell for OpenAgentd. Embeds the React Web UI, can spawn the native `agentd` backend (built from `appv3/`) as a sidecar or connect to an external server, and ships an auto-update + signing pipeline.
 
 ## Architecture
 
@@ -9,15 +9,15 @@ Native desktop shell for OpenAgentd. Embeds the React Web UI, can spawn the nati
 │  OpenAgentd.app  (Tauri Rust)                           │
 │  ┌────────────────────────┐  ┌──────────────────────┐   │
 │  │  WebView (system)      │  │  Sidecar supervisor  │   │
-│  │  bundled web/dist      │  │  openagentd server   │   │
+│  │  bundled web/dist      │  │  agentd server       │   │
 │  │  injects API base URL  │──┤  serve --handshake   │   │
 │  └────────────────────────┘  │  --generate-token    │   │
 │                              │  --parent-pid <pid>  │   │
 │                              └──────────┬───────────┘   │
 └─────────────────────────────────────────┼───────────────┘
                                           │
-                              ┌───────────▼─────────────┐
-                              │  sidecar/bin/openagentd  │
+                              ┌───────────▼──────────────┐
+                              │  sidecar/bin/agentd      │
                               │  one native binary       │
                               │  API server only         │
                               └──────────────────────────┘
@@ -36,8 +36,8 @@ The Tauri shell:
 1. Opens the main WebView immediately with a loading/unreachable backend state.
 2. Checks the remembered external backend from `desktop-backend.json`; if it is healthy, updates the WebView to use that server.
 3. If the remembered external backend is unreachable, continues startup with the bundled sidecar so the app remains usable.
-4. Otherwise locates the bundled backend: `sidecar/bin/openagentd`
-   (`openagentd.exe` on Windows).
+4. Otherwise locates the bundled backend: `sidecar/bin/agentd`
+   (`agentd.exe` on Windows).
 5. Spawns the sidecar with `--handshake --generate-token --parent-pid <our pid>`.
 6. Reads stdout until the handshake line; extracts `{port, token}`.
 7. Polls `http://127.0.0.1:<port>/api/health/live` until it returns 200.

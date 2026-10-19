@@ -68,7 +68,7 @@ cd .. && OPENAGENTD_ACCESS_KEY=<choose-a-key> APP_ENV=development \
 
 The server refuses to listen on the LAN without an access key; enter the same
 key in the app's **Backend connection**. An installed CLI does the same with
-`openagentd server start --host 0.0.0.0 --key`.
+`agentd server start --public --key`.
 
 Then run the iOS dev app:
 

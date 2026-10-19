@@ -1,7 +1,7 @@
 # Desktop Shell Guide
 
 The Tauri desktop shell embeds the shared web UI, can supervise a bundled
-native `openagentd` backend sidecar (built from `appv3/`) or use a saved
+native `agentd` backend sidecar (built from `appv3/`) or use a saved
 external server, and owns native packaging,
 updates, tray/window behavior, and desktop credentials.
 

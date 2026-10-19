@@ -184,10 +184,10 @@ pub fn make_inner(model: &str, token: &str, kw: &Kwargs) -> Arc<OpenAiProvider> 
 async fn load_access_token() -> Result<String, String> {
     let path = oauth_path();
     let Some(mut auth) = GrokAuth::load(&path) else {
-        return Err("Grok Build OAuth credentials not found. Run:\n  openagentd auth grok\nto authenticate with your Grok subscription.".into());
+        return Err("Grok Build OAuth credentials not found. Run:\n  agentd auth grok\nto authenticate with your Grok subscription.".into());
     };
     if auth.is_expired() {
-        auth = auth.refresh(&path).await.map_err(|_| "Grok Build token refresh failed. Run: openagentd auth grok".to_string())?;
+        auth = auth.refresh(&path).await.map_err(|_| "Grok Build token refresh failed. Run: agentd auth grok".to_string())?;
     }
     Ok(auth.access_token)
 }
@@ -208,10 +208,10 @@ impl GrokProvider {
     async fn current(&self) -> ProviderResult<Arc<OpenAiProvider>> {
         let path = oauth_path();
         let Some(mut auth) = GrokAuth::load(&path) else {
-            return Err(ProviderError::Invalid("Grok Build OAuth credentials not found. Run: openagentd auth grok".into()));
+            return Err(ProviderError::Invalid("Grok Build OAuth credentials not found. Run: agentd auth grok".into()));
         };
         if auth.is_expired() {
-            auth = auth.refresh(&path).await.map_err(|_| ProviderError::Invalid("Grok Build token refresh failed. Run: openagentd auth grok".into()))?;
+            auth = auth.refresh(&path).await.map_err(|_| ProviderError::Invalid("Grok Build token refresh failed. Run: agentd auth grok".into()))?;
         }
         {
             let g = self.inner.read().unwrap();

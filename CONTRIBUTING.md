@@ -55,7 +55,7 @@ cd web && bun dev
 `make dev` runs steps 3 and 4 together. The end-of-life v2 Python backend in
 `app/` is kept as source-only reference; it has no build, run, or test tooling.
 
-Use Settings to configure providers and `openagentd --help` for the current CLI surface.
+Use Settings to configure providers and `agentd --help` for the current CLI surface.
 
 ---
 

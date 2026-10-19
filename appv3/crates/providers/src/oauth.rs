@@ -3,7 +3,7 @@
 use crate::plugin::OAuthSink;
 use std::path::PathBuf;
 
-/// `(provider, description)` — `openagentd auth` listing order is sorted.
+/// `(provider, description)` — `agentd auth` listing order is sorted.
 pub const PROVIDERS: [(&str, &str); 3] = [
     ("copilot", "GitHub Copilot — device-flow OAuth"),
     ("codex", "OpenAI Codex — PKCE OAuth (ChatGPT subscription)"),

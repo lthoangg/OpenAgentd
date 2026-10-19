@@ -1,6 +1,6 @@
 """The Windows MSI adds a private-network firewall rule for the sidecar.
 
-Desktop "Network access" makes the bundled ``openagentd.exe`` listen on all
+Desktop "Network access" makes the bundled ``agentd.exe`` listen on all
 interfaces; without this rule Windows asks for an administrator on first use.
 """
 
@@ -48,7 +48,7 @@ def test_the_rule_targets_the_bundled_sidecar_on_private_networks_only() -> None
     assert program is not None
     # Resources map ../sidecar-bundle/ to sidecar/ and the sidecar lives in bin/
     # (desktop/Makefile, release-desktop.yml, sidecar.rs resolve_backend_bin).
-    assert program.group(1) == r"[INSTALLDIR]sidecar\bin\openagentd.exe"
+    assert program.group(1) == r"[INSTALLDIR]sidecar\bin\agentd.exe"
     resources = json.loads((TAURI / "tauri.conf.json").read_text())["bundle"]["resources"]
     assert resources["../sidecar-bundle/"] == "sidecar/"
-    assert 'join("bin").join("openagentd.exe")' in (TAURI / "src" / "sidecar.rs").read_text()
+    assert 'join("bin").join("agentd.exe")' in (TAURI / "src" / "sidecar.rs").read_text()

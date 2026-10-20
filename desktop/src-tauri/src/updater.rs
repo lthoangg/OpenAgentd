@@ -139,252 +139,6 @@ pub fn validate_install_preconditions(
     Ok(())
 }
 
-/// Local code-signing identity for unsigned release bundles.
-///
-/// It lives in a keychain of its own rather than the login keychain: with a
-/// key in the login keychain, codesign showed "codesign wants to access key
-/// …" for every signature (several per update with ``--deep``) unless the
-/// user picked Always Allow. We hold this keychain's password, so it can be
-/// unlocked and given a partition list that lets codesign in silently.
-#[cfg(target_os = "macos")]
-const LOCAL_SIGNER: &str = "OpenAgentd Local Signer";
-
-/// Not a secret. The certificate is trusted nowhere and the designated
-/// requirement is identifier-only, so the key grants nothing an ad-hoc
-/// signature could not; the password only lets us unlock without a prompt.
-/// ``desktop/scripts/install.sh`` and the Homebrew cask use the same values.
-#[cfg(target_os = "macos")]
-const SIGNING_KEYCHAIN_PASSWORD: &str = "openagentd-local-signing";
-
-#[cfg(target_os = "macos")]
-fn signing_keychain_path() -> Option<PathBuf> {
-    let home = std::env::var_os("HOME")?;
-    Some(PathBuf::from(home).join("Library/Keychains/openagentd-signing.keychain-db"))
-}
-
-/// Who signs a bundle that needs a stable signature.
-#[cfg(target_os = "macos")]
-enum MacSigner {
-    /// An identity already in the login keychain (Apple Development).
-    Login(String),
-    /// [`LOCAL_SIGNER`] from its own keychain.
-    Local(PathBuf),
-    AdHoc,
-}
-
-/// An Apple Development identity when there is one (as before; its key was
-/// made by Xcode and its Team ID scopes the app's keychain items), else the
-/// local identity, else ad hoc.
-#[cfg(target_os = "macos")]
-fn resolve_macos_signer() -> MacSigner {
-    if let Some(out) = security(&["find-identity", "-v", "-p", "codesigning"]) {
-        if let Some(name) = apple_development_identity(&String::from_utf8_lossy(&out.stdout)) {
-            return MacSigner::Login(name.to_string());
-        }
-    }
-    signing_keychain_path().map_or(MacSigner::AdHoc, |keychain| local_signer(&keychain))
-}
-
-/// The first Apple Development identity in ``security find-identity`` output.
-#[cfg(target_os = "macos")]
-fn apple_development_identity(find_identity: &str) -> Option<&str> {
-    find_identity
-        .lines()
-        .filter(|line| line.contains("\"Apple Development:"))
-        .find_map(|line| line.split('"').nth(1))
-}
-
-#[cfg(target_os = "macos")]
-fn local_signer(keychain: &Path) -> MacSigner {
-    if ensure_local_signer(keychain) {
-        MacSigner::Local(keychain.to_path_buf())
-    } else {
-        MacSigner::AdHoc
-    }
-}
-
-#[cfg(target_os = "macos")]
-fn security(args: &[&str]) -> Option<std::process::Output> {
-    std::process::Command::new("/usr/bin/security")
-        .args(args)
-        .output()
-        .ok()
-        .filter(|output| output.status.success())
-}
-
-/// Unlock ``keychain`` (creating it and the identity on first use). True when
-/// codesign can sign with [`LOCAL_SIGNER`] from it without any prompt.
-#[cfg(target_os = "macos")]
-fn ensure_local_signer(keychain: &Path) -> bool {
-    let Some(kc) = keychain.to_str() else { return false };
-    if !keychain.exists() {
-        if security(&["create-keychain", "-p", SIGNING_KEYCHAIN_PASSWORD, kc]).is_none() {
-            return false;
-        }
-        // No auto-lock timeout; it is unlocked again before every use anyway.
-        let _ = security(&["set-keychain-settings", kc]);
-    }
-    if security(&["unlock-keychain", "-p", SIGNING_KEYCHAIN_PASSWORD, kc]).is_none() {
-        return false;
-    }
-    let listed = security(&["find-identity", "-p", "codesigning", kc])
-        .is_some_and(|out| String::from_utf8_lossy(&out.stdout).contains(&format!("\"{LOCAL_SIGNER}\"")));
-    listed || create_local_signer(kc).is_some()
-}
-
-#[cfg(target_os = "macos")]
-fn create_local_signer(keychain: &str) -> Option<()> {
-    let dir = tempfile::tempdir().ok()?;
-    let path = |name: &str| dir.path().join(name).to_str().map(str::to_owned);
-    let (cnf, key, crt, p12) = (path("cert.cnf")?, path("key.pem")?, path("cert.pem")?, path("openagentd-signing.p12")?);
-    std::fs::write(
-        &cnf,
-        "[req]\ndistinguished_name = dn\nprompt = no\n\n[dn]\nCN = OpenAgentd Local Signer\nO = OpenAgentd Local\n\n[v3_req]\nbasicConstraints = CA:FALSE\nkeyUsage = digitalSignature\nextendedKeyUsage = codeSigning\n",
-    )
-    .ok()?;
-    // The system LibreSSL by absolute path: its default PKCS#12 encryption is
-    // the one ``security import`` reads. (OpenSSL 3 from PATH needs
-    // ``-legacy``, which LibreSSL rejects.)
-    let openssl = |args: &[&str]| {
-        std::process::Command::new("/usr/bin/openssl")
-            .args(args)
-            .output()
-            .ok()
-            .filter(|output| output.status.success())
-    };
-    openssl(&[
-        "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "3650",
-        "-config", &cnf, "-extensions", "v3_req", "-keyout", &key, "-out", &crt,
-    ])?;
-    openssl(&["pkcs12", "-export", "-inkey", &key, "-in", &crt, "-name", LOCAL_SIGNER, "-out", &p12, "-passout", "pass:openagentd"])?;
-    security(&["import", &p12, "-k", keychain, "-P", "openagentd", "-T", "/usr/bin/codesign"])?;
-    // Without the partition list codesign still prompts, despite ``-T``.
-    security(&["set-key-partition-list", "-S", "apple-tool:,apple:,codesign:", "-s", "-k", SIGNING_KEYCHAIN_PASSWORD, keychain])?;
-    Some(())
-}
-
-#[cfg(target_os = "macos")]
-fn prepare_macos_update_archive(
-    bytes: Vec<u8>,
-    bundle_id: &str,
-    signer: impl FnOnce() -> MacSigner,
-) -> Result<Vec<u8>, String> {
-    use flate2::{read::GzDecoder, write::GzEncoder, Compression};
-    use std::ffi::OsStr;
-
-    let temp_dir = tempfile::tempdir().map_err(|e| format!("Create update staging dir: {e}"))?;
-    let mut archive = tar::Archive::new(GzDecoder::new(bytes.as_slice()));
-    archive
-        .unpack(temp_dir.path())
-        .map_err(|e| format!("Extract macOS update: {e}"))?;
-
-    let app_bundles = std::fs::read_dir(temp_dir.path())
-        .map_err(|e| format!("Read macOS update contents: {e}"))?
-        .filter_map(|entry| entry.ok())
-        .map(|entry| entry.path())
-        .filter(|path| path.extension() == Some(OsStr::new("app")))
-        .collect::<Vec<_>>();
-    let [app_bundle] = app_bundles.as_slice() else {
-        return Err(format!(
-            "Expected one .app bundle in macOS update, found {}",
-            app_bundles.len()
-        ));
-    };
-
-    let entitlements = app_bundle.join("Contents/Resources/entitlements.plist");
-    if !entitlements.is_file() {
-        return Err("macOS update is missing entitlements.plist".to_string());
-    }
-
-    let signature = std::process::Command::new("codesign")
-        .args(["-d", "-r", "-"])
-        .arg(app_bundle)
-        .output()
-        .map_err(|e| format!("Inspect macOS update signature: {e}"))?;
-    if !signature.status.success() {
-        return Err(format!(
-            "Inspect macOS update signature: {}",
-            String::from_utf8_lossy(&signature.stderr).trim()
-        ));
-    }
-    let signature_info = format!(
-        "{}\n{}",
-        String::from_utf8_lossy(&signature.stdout),
-        String::from_utf8_lossy(&signature.stderr)
-    );
-    let stable_requirement = format!("designated => identifier \"{bundle_id}\"");
-    let designated = signature_info
-        .lines()
-        .find(|line| line.trim_start().starts_with("designated =>"))
-        .map(str::trim)
-        .unwrap_or("");
-    // Leave the signature untouched only when its designated requirement is
-    // already stable across updates: an Apple-anchored chain (Developer ID)
-    // or the exact identifier-only requirement we apply below. Anything else
-    // — ad-hoc ``cdhash H"…"`` or a local-cert ``certificate root = H"…"`` —
-    // changes between builds or cert regenerations, which invalidates the
-    // keychain "Always Allow" ACL and re-prompts the user after every update.
-    let required_identifier = format!("identifier \"{bundle_id}\"");
-    if designated == stable_requirement
-        || (designated.contains(&required_identifier) && designated.contains("anchor apple"))
-    {
-        return Ok(bytes);
-    }
-
-    // Pass the explicit identifier-only requirement for every signer (Apple
-    // Development, the local identity, ad hoc). Without ``-r=`` codesign derives a
-    // default requirement that pins the signing certificate, and self-signed
-    // local certs are not stable across machines or regenerations.
-    let codesign = |signer: &MacSigner| -> Result<(), String> {
-        let mut command = std::process::Command::new("codesign");
-        command.args(["--force", "--deep", "--options", "runtime"]);
-        match signer {
-            MacSigner::Login(identity) => command.args(["--sign", identity]),
-            MacSigner::Local(keychain) => command.arg("--keychain").arg(keychain).args(["--sign", LOCAL_SIGNER]),
-            MacSigner::AdHoc => command.args(["--sign", "-"]),
-        };
-        let output = command
-            .arg(format!("-r={stable_requirement}"))
-            .arg("--entitlements")
-            .arg(&entitlements)
-            .arg(app_bundle)
-            .output()
-            .map_err(|e| format!("Run codesign for macOS update: {e}"))?;
-        if output.status.success() {
-            Ok(())
-        } else {
-            Err(format!("Sign macOS update: {}", String::from_utf8_lossy(&output.stderr).trim()))
-        }
-    };
-    // A stable identity codesign cannot use ("OpenAgentd Local Signer: no
-    // identity found" in v3.5.0) must not strand the user on the old version:
-    // sign ad hoc instead. The identifier-only requirement keeps TCC and
-    // keychain grants matching either way; only an ad-hoc failure is fatal.
-    let signer = signer();
-    if let Err(error) = codesign(&signer) {
-        if matches!(signer, MacSigner::AdHoc) {
-            return Err(error);
-        }
-        log::warn!("updater signing with the stable identity failed, signing ad hoc: {error}");
-        codesign(&MacSigner::AdHoc)?;
-    }
-
-    let encoder = GzEncoder::new(Vec::new(), Compression::default());
-    let mut rebuilt = tar::Builder::new(encoder);
-    let app_name = app_bundle
-        .file_name()
-        .ok_or_else(|| "macOS update bundle has no filename".to_string())?;
-    rebuilt
-        .append_dir_all(app_name, app_bundle)
-        .map_err(|e| format!("Rebuild macOS update: {e}"))?;
-    let encoder = rebuilt
-        .into_inner()
-        .map_err(|e| format!("Finalize macOS update archive: {e}"))?;
-    encoder
-        .finish()
-        .map_err(|e| format!("Compress macOS update archive: {e}"))
-}
-
 /// Manual "Check for Updates…" flow triggered from the menu bar.
 ///
 /// The React shell owns updater UI. Rust keeps the menu working by focusing
@@ -410,7 +164,11 @@ pub async fn updater_download(app: AppHandle) -> Result<UpdateStatus, String> {
 
 #[tauri::command]
 pub async fn updater_install(app: AppHandle) -> Result<(), String> {
-    run_update_install(app).await
+    // The error otherwise only reaches the UI: v3.19 → v3.20 install
+    // failures left no trace in desktop.log.
+    run_update_install(app)
+        .await
+        .inspect_err(|e| log::error!("updater install failed: {e}"))
 }
 
 #[tauri::command]
@@ -611,18 +369,14 @@ pub async fn run_update_install(app: AppHandle) -> Result<(), String> {
     let bytes =
         std::fs::read(&cached.bytes_path).map_err(|e| format!("Read cached update: {e}"))?;
 
-    // Give ad-hoc update bundles a stable identity before the updater swaps
-    // them into place. TCC sees the new signature on first launch, while an
-    // existing Developer ID or already-stable signature is left untouched.
-    #[cfg(target_os = "macos")]
-    let bytes = {
-        let bundle_id = app.config().identifier.clone();
-        tokio::task::spawn_blocking(move || {
-            prepare_macos_update_archive(bytes, &bundle_id, resolve_macos_signer)
-        })
-            .await
-            .map_err(|e| format!("Prepare macOS update task panicked: {e}"))??
-    };
+    // `install()` checks the bytes against the published signature
+    // (tauri-plugin-updater >= 2.14.0), so they go in exactly as downloaded:
+    // CI already signs the macOS bundle with the stable identifier-only
+    // requirement. Check them now, while the backend still runs, so a bad
+    // download fails without taking the app down.
+    update
+        .verify(&bytes)
+        .map_err(|e| format!("The downloaded update failed verification ({e}). Download it again."))?;
 
     // Flip the quit guard BEFORE the relaunch sequence so the window
     // `CloseRequested` handler stops calling `prevent_close()`. If it did not,
@@ -633,76 +387,61 @@ pub async fn run_update_install(app: AppHandle) -> Result<(), String> {
 
     // Shut the backend sidecar down *before* the bundle swap so the child
     // receives SIGTERM while we still own a clean process tree. Doing it after
-    // `install()` races the updater's relaunch.
+    // `install()` races the relaunch.
+    let had_sidecar = state.sidecar.lock().await.is_some();
     shutdown_sidecar_now(&app).await;
 
     update_tray_status(&app, "Status: Installing update…");
     log::info!("updater install applying version={}", update.version);
 
-    // `tauri_plugin_updater`'s `install()` on macOS performs the bundle swap
-    // and then *itself* relaunches the app (via NSTask / execve inside the
-    // plugin). It does NOT return to this callsite — the process is replaced.
-    // Calling `app.restart()` afterwards (as the old code did) therefore
-    // queued a second restart that raced the plugin's own relaunch: whichever
-    // relaunch won caused the new binary to start, and the loser restarted the
-    // *old* binary on top of it — producing the "restarted at old version"
-    // symptom visible in the logs.
-    //
-    // The correct sequence on macOS is: call `install()` directly on a
-    // blocking thread and let the plugin handle the relaunch. On other
-    // platforms `install()` does NOT relaunch by itself, so we issue an
-    // explicit `app.restart()` via `run_on_main_thread` after it returns.
-    //
-    // Off-load to `spawn_blocking` in both cases so the tokio runtime remains
-    // responsive during the heavy FS work (decompression, codesign).
-    #[cfg(target_os = "macos")]
-    {
-        // On macOS, install() replaces the process — this line never returns
-        // on success. Spawn on a blocking thread so the async executor stays
-        // alive long enough for the plugin to complete the bundle swap.
-        let install_result = tokio::task::spawn_blocking(move || update.install(bytes))
-            .await
-            .map_err(|e| format!("Install task panicked: {e}"))?;
-        // Only reached on install failure (success = process replaced).
-        install_result.map_err(|e| {
-            update_tray_status(&app, "Status: Running");
-            format!("Failed to install update: {e}")
-        })?;
-        // If install() returned Ok without replacing the process (shouldn't
-        // happen on macOS but be defensive), fall through to an explicit restart.
-        update_tray_status(&app, "Status: Restarting…");
-        log::info!("updater install complete (macOS fallback restart)");
-        let handle = app.clone();
-        let _ = app.run_on_main_thread(move || {
-            handle.restart();
-        });
+    // On macOS and Linux `install()` swaps the bundle and returns; on Windows
+    // it launches the installer and exits. So restart exactly once, after it
+    // returns: a second restart re-opened the old version on top of the new
+    // one. Off-load to `spawn_blocking` so the runtime stays responsive
+    // during decompression.
+    let install_result = tokio::task::spawn_blocking(move || update.install(bytes))
+        .await
+        .map_err(|e| format!("Install task panicked: {e}"))
+        .and_then(|result| result.map_err(|e| format!("Failed to install update: {e}")));
+    if let Err(error) = install_result {
+        recover_from_failed_install(&app, had_sidecar).await;
+        return Err(error);
     }
 
-    #[cfg(not(target_os = "macos"))]
-    {
-        // On Windows/Linux, install() swaps the bundle but does NOT relaunch.
-        // We must call restart() ourselves after it returns.
-        let install_result = tokio::task::spawn_blocking(move || update.install(bytes))
-            .await
-            .map_err(|e| format!("Install task panicked: {e}"))?;
-        install_result.map_err(|e| {
-            update_tray_status(&app, "Status: Running");
-            format!("Failed to install update: {e}")
-        })?;
-
-        update_tray_status(&app, "Status: Restarting…");
-        log::info!("updater install complete; dispatching app restart");
-        let handle = app.clone();
-        let _ = app.run_on_main_thread(move || {
-            log::info!("updater restart executing on main thread");
-            handle.restart();
-        });
-    }
+    update_tray_status(&app, "Status: Restarting…");
+    log::info!("updater install complete; dispatching app restart");
+    let handle = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        log::info!("updater restart executing on main thread");
+        handle.restart();
+    });
 
     // Keep the command pending while restart is in flight so the frontend
     // stays on "Installing / Restarting…" rather than resolving prematurely.
     loop {
         tokio::time::sleep(Duration::from_secs(60)).await;
+    }
+}
+
+/// Undo the teardown after `install()` failed: the old version is still in
+/// place, so keep running it. Before this, the app stayed up with its
+/// backend stopped and the quit guard set until the user reloaded it.
+async fn recover_from_failed_install(app: &AppHandle, had_sidecar: bool) {
+    let state: tauri::State<'_, AppState> = app.state();
+    state.quitting.store(false, Ordering::SeqCst);
+    update_tray_status(app, "Status: Running");
+    if !had_sidecar {
+        return;
+    }
+    match crate::commands::start_bundled_sidecar(app).await {
+        Ok(ready) => {
+            log::info!("bundled backend restarted after a failed update on port {}", ready.port);
+            crate::watchdog::notify_bundled_windows(app, ready);
+        }
+        Err(e) => {
+            log::error!("bundled backend restart after a failed update failed: {e}");
+            update_tray_status(app, "Status: Error");
+        }
     }
 }
 
@@ -838,136 +577,6 @@ pub fn format_download_progress(downloaded_mb: usize, total_bytes: Option<u64>) 
             format!("Status: Downloading {downloaded_mb}/{total_mb} MB")
         }
         _ => format!("Status: Downloading {downloaded_mb} MB"),
-    }
-}
-
-#[cfg(all(test, target_os = "macos"))]
-mod macos_tests {
-    use super::{apple_development_identity, local_signer, prepare_macos_update_archive, MacSigner};
-    use flate2::{read::GzDecoder, write::GzEncoder, Compression};
-
-    /// A minimal unsigned-for-us update: ``OpenAgentd.app`` with entitlements.
-    fn test_update_archive(dir: &std::path::Path) -> Vec<u8> {
-        let app = dir.join("OpenAgentd.app");
-        let macos = app.join("Contents/MacOS");
-        let resources = app.join("Contents/Resources");
-        std::fs::create_dir_all(&macos).expect("create MacOS dir");
-        std::fs::create_dir_all(&resources).expect("create Resources dir");
-        std::fs::copy("/usr/bin/true", macos.join("OpenAgentd")).expect("copy test executable");
-        std::fs::write(
-            app.join("Contents/Info.plist"),
-            br#"<?xml version="1.0" encoding="UTF-8"?>
-<plist version="1.0"><dict>
-<key>CFBundleExecutable</key><string>OpenAgentd</string>
-<key>CFBundleIdentifier</key><string>com.openagentd.desktop</string>
-<key>CFBundlePackageType</key><string>APPL</string>
-</dict></plist>"#,
-        )
-        .expect("write Info.plist");
-        std::fs::write(
-            resources.join("entitlements.plist"),
-            br#"<?xml version="1.0" encoding="UTF-8"?>
-<plist version="1.0"><dict></dict></plist>"#,
-        )
-        .expect("write entitlements");
-
-        let encoder = GzEncoder::new(Vec::new(), Compression::default());
-        let mut archive = tar::Builder::new(encoder);
-        archive
-            .append_dir_all("OpenAgentd.app", &app)
-            .expect("archive test app");
-        archive
-            .into_inner()
-            .expect("finalize input tar")
-            .finish()
-            .expect("compress input tar")
-    }
-
-    /// The designated requirement of the one app in a prepared archive.
-    fn designated_requirement(archive: &[u8]) -> String {
-        let extracted = tempfile::tempdir().expect("create extraction dir");
-        tar::Archive::new(GzDecoder::new(archive))
-            .unpack(extracted.path())
-            .expect("extract prepared update");
-        let output = std::process::Command::new("codesign")
-            .args(["-d", "-r", "-"])
-            .arg(extracted.path().join("OpenAgentd.app"))
-            .output()
-            .expect("inspect prepared signature");
-        let info = format!("{}\n{}", String::from_utf8_lossy(&output.stdout), String::from_utf8_lossy(&output.stderr));
-        info.lines()
-            .find(|line| line.trim_start().starts_with("designated =>"))
-            .unwrap_or("")
-            .trim()
-            .to_string()
-    }
-
-    #[test]
-    fn an_unusable_signing_identity_falls_back_to_ad_hoc() {
-        // v3.5.0 failed every macOS update with "Sign macOS update: OpenAgentd
-        // Local Signer: no identity found" when codesign could not use the
-        // local identity it was handed. A keychain codesign cannot read gives
-        // that exact error; the update must still install, signed ad hoc with
-        // the same stable requirement.
-        let source = tempfile::tempdir().expect("create source dir");
-        let input = test_update_archive(source.path());
-        let unusable = source.path().join("missing.keychain-db");
-        let prepared = prepare_macos_update_archive(input, "com.openagentd.desktop", || MacSigner::Local(unusable))
-            .expect("an unusable identity must not fail the update");
-        assert_eq!(designated_requirement(&prepared), "designated => identifier \"com.openagentd.desktop\"");
-    }
-
-    #[test]
-    fn picks_the_first_apple_development_identity() {
-        let listing = "  1) 1A2B \"OpenAgentd Local Signer\"\n  2) 3C4D \"Apple Development: dev@example.com (T32MD9LA8Y)\"\n  3) 5E6F \"Apple Development: other\"\n     3 valid identities found\n";
-        assert_eq!(apple_development_identity(listing), Some("Apple Development: dev@example.com (T32MD9LA8Y)"));
-        assert_eq!(apple_development_identity("     0 valid identities found\n"), None);
-    }
-
-    #[test]
-    fn prepared_update_uses_a_stable_designated_requirement() {
-        let source = tempfile::tempdir().expect("create source dir");
-        let input = test_update_archive(source.path());
-
-        // A throwaway signing keychain and no login-keychain lookup: the test
-        // must not touch the keychains (or Apple identities) of whoever runs it.
-        let keychain = source.path().join("signing.keychain-db");
-        let prepared = prepare_macos_update_archive(input, "com.openagentd.desktop", || local_signer(&keychain))
-            .expect("prepare update archive");
-        let prepared_again =
-            prepare_macos_update_archive(prepared.clone(), "com.openagentd.desktop", || local_signer(&keychain))
-                .expect("recheck prepared update archive");
-        assert_eq!(
-            prepared_again, prepared,
-            "an update with a stable requirement must not be re-signed"
-        );
-        // The requirement must be *exactly* identifier-only. Any extra
-        // clause (``cdhash H"…"``, ``certificate root = H"…"``) pins the
-        // binary or the local signing certificate — both change across
-        // updates, invalidating the keychain "Always Allow" ACL and
-        // re-prompting the user after every update.
-        assert_eq!(
-            designated_requirement(&prepared_again),
-            "designated => identifier \"com.openagentd.desktop\"",
-            "designated requirement must be identifier-only and stable"
-        );
-        // Signed by the local identity from its own keychain. Signing with a
-        // key in the login keychain prompted "codesign wants to access key"
-        // for every signature.
-        let extracted = tempfile::tempdir().expect("create extraction dir");
-        tar::Archive::new(GzDecoder::new(prepared_again.as_slice()))
-            .unpack(extracted.path())
-            .expect("extract prepared update");
-        let details = std::process::Command::new("codesign")
-            .args(["-d", "-vv"])
-            .arg(extracted.path().join("OpenAgentd.app"))
-            .output()
-            .expect("inspect prepared signer");
-        let details = String::from_utf8_lossy(&details.stderr);
-        assert!(
-            details.lines().any(|line| line == "Authority=OpenAgentd Local Signer"),
-            "expected the local signing identity: {details}"
-        );
     }
 }
 

@@ -10,27 +10,21 @@
 # ──────────────────────────────────────────────────────────────────────────────
 # macOS branch
 # ──────────────────────────────────────────────────────────────────────────────
-# We don't ship a paid Apple Developer ID, so the bundle that comes
-# out of CI is unsigned. macOS Gatekeeper rejects unsigned (or
-# improperly re-signed) apps with:
+# We don't ship a paid Apple Developer ID, so CI signs the app ad hoc
+# (with a designated requirement that stays the same across releases,
+# so macOS keeps folder-access grants on update). Gatekeeper rejects such
+# an app when it was downloaded, i.e. carries the quarantine flag:
 #
 #     "OpenAgentd.app" is damaged and can't be opened. You should
 #      move it to the Trash.
 #
-# This is a lie — the bundle is fine, it's just unsigned. The fix
-# is to sign it locally using your own machine as the signer.
-# That's exactly what every open-source macOS app you compile from
-# source already does; we're just doing it for you here.
+# The bundle is fine; removing the flag is enough. The app is not
+# re-signed here: it is installed exactly as CI signed it.
 #
 # Steps:
 #   1. Strip ``com.apple.quarantine`` xattr (set by the browser).
-#   2. Strip any pre-existing invalid signature.
-#   3. Sign recursively with your Apple Development identity, else a
-#      local one kept in its own keychain (no password prompts), else
-#      ad hoc (``-s -``), with the hardened runtime and the bundle's
-#      ``entitlements.plist``.
-#   4. Verify the result.
-#   5. (Optional, with ``--install``) copy to /Applications.
+#   2. Verify the signature (a modified bundle fails here).
+#   3. (Optional, with ``--install``) copy to /Applications.
 #
 # ──────────────────────────────────────────────────────────────────────────────
 # Linux branch
@@ -61,14 +55,10 @@
 #     # Linux → ~/.local/bin + .desktop entry):
 #     ./install.sh --install
 #
-#     # macOS only: skip the install copy but force resigning even if
-#     # an existing signature is detected.
-#     ./install.sh --force
-#
 # Exit codes:
 #   0  success
 #   1  cannot locate bundle / unsupported platform
-#   2  signing failed (macOS) / chmod failed (Linux)
+#   2  chmod failed (Linux)
 #   3  verification failed (macOS)
 #   4  install copy failed
 # ──────────────────────────────────────────────────────────────────────────────
@@ -94,7 +84,6 @@ fail() { printf '%s[oad]%s %s\n' "$RED"    "$RESET" "$*" >&2; }
 
 # ── Argument parsing ──────────────────────────────────────────────────────────
 DO_INSTALL=0
-FORCE_RESIGN=0
 TARGET=""
 for arg in "$@"; do
   case "$arg" in
@@ -102,10 +91,12 @@ for arg in "$@"; do
       DO_INSTALL=1
       ;;
     --force)
-      FORCE_RESIGN=1
+      # Re-signed the app before v3.22.0; nothing re-signs it now.
+      warn "--force is no longer needed; ignoring it."
       ;;
     -h|--help)
-      sed -n '2,74p' "$0" | sed 's/^# \{0,1\}//'
+      # The comment block at the top of this file.
+      awk 'NR > 1 && /^#/ { sub(/^# ?/, ""); print; next } NR > 1 { exit }' "$0"
       exit 0
       ;;
     --*)
@@ -175,180 +166,16 @@ if [ "$PLATFORM" = "macos" ]; then
   fi
   xattr -cr "$BUNDLE" 2>/dev/null || true
 
-  # ── 2. Refuse to overwrite a real signature ─────────────────────────────────
-  existing_authority="$(codesign -dv --verbose=2 "$BUNDLE" 2>&1 \
-    | awk -F= '/Authority=/ {print $2; exit}')" || true
-  if [ "$FORCE_RESIGN" = "0" ] \
-      && [ -n "${existing_authority:-}" ] \
-      && [ "$existing_authority" != "(unknown)" ] \
-      && [ "$existing_authority" != "-" ]; then
-    warn "Bundle is already signed by: $existing_authority"
-    warn "Refusing to overwrite. Re-run with ${BOLD}--force${RESET} to clobber it."
-    exit 0
-  fi
-
-  # ── 3. Pick entitlements ────────────────────────────────────────────────────
-  entitlements_file=""
-  for candidate in \
-    "$BUNDLE/Contents/Resources/entitlements.plist" \
-    "$script_dir/entitlements.plist" \
-    "$script_dir/../src-tauri/entitlements.plist"; do
-    if [ -f "$candidate" ]; then
-      entitlements_file="$candidate"
-      break
-    fi
-  done
-
-  if [ -z "$entitlements_file" ]; then
-    warn "No entitlements.plist found; writing a minimal one to /tmp."
-    entitlements_file="$(mktemp -t oad-ents).plist"
-    cat > "$entitlements_file" <<'PLIST'
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>com.apple.security.network.client</key>
-    <true/>
-    <key>com.apple.security.network.server</key>
-    <true/>
-    <key>com.apple.security.files.user-selected.read-write</key>
-    <true/>
-</dict>
-</plist>
-PLIST
-  fi
-  info "Entitlements: ${entitlements_file}"
-
-  bundle_id="com.openagentd.desktop"
-  info "Bundle Identifier: ${bundle_id}"
-
-  # ── 4. Sign the bundle with the local identity ──────────────────────────────
-  # A persistent identity ("OpenAgentd Local Signer") keeps macOS TCC (Desktop
-  # folder) and Keychain permissions across updates. It lives in a keychain of
-  # its own, not the login keychain: with a login-keychain key, codesign showed
-  # "codesign wants to access key …" for every signature unless the user picked
-  # Always Allow. We hold this keychain's password, so it unlocks and lets
-  # codesign in without a prompt. The password is not a secret: the cert is
-  # trusted nowhere and the designated requirement below does not pin it, so
-  # the key grants nothing an ad-hoc signature could not. The desktop updater
-  # (src-tauri/src/updater.rs) and the Homebrew cask use the same values.
-  local_cert_name="OpenAgentd Local Signer"
-  signing_keychain="$HOME/Library/Keychains/openagentd-signing.keychain-db"
-  signing_keychain_password="openagentd-local-signing"
-
-  # Unlock the signing keychain, creating it and the identity on first use.
-  ensure_local_signer() {
-    if [ ! -f "$signing_keychain" ]; then
-      security create-keychain -p "$signing_keychain_password" "$signing_keychain" >/dev/null 2>&1 || return 1
-      # No auto-lock timeout; it is unlocked again before every use anyway.
-      security set-keychain-settings "$signing_keychain" >/dev/null 2>&1 || true
-    fi
-    security unlock-keychain -p "$signing_keychain_password" "$signing_keychain" >/dev/null 2>&1 || return 1
-    # Captured, not piped into ``grep -q``: under pipefail an early grep exit
-    # can fail the pipe and mint a duplicate identity.
-    local identities
-    identities="$(security find-identity -p codesigning "$signing_keychain" 2>/dev/null || true)"
-    case "$identities" in *"\"$local_cert_name\""*) return 0 ;; esac
-
-    info "Creating the local signing identity…"
-    local dir status=1
-    dir="$(mktemp -d)"
-    cat > "$dir/cert.cnf" <<'EOF'
-[req]
-distinguished_name = dn
-prompt = no
-
-[dn]
-CN = OpenAgentd Local Signer
-O = OpenAgentd Local
-
-[v3_req]
-basicConstraints = CA:FALSE
-keyUsage = digitalSignature
-extendedKeyUsage = codeSigning
-EOF
-    # The system LibreSSL by absolute path: its default PKCS#12 encryption is
-    # the one ``security import`` reads (OpenSSL 3 needs ``-legacy``, which
-    # LibreSSL rejects). Without the partition list codesign still prompts.
-    if /usr/bin/openssl req -x509 -newkey rsa:2048 -nodes -days 3650 \
-        -config "$dir/cert.cnf" -extensions v3_req \
-        -keyout "$dir/key.pem" -out "$dir/cert.pem" &>/dev/null \
-      && /usr/bin/openssl pkcs12 -export -inkey "$dir/key.pem" -in "$dir/cert.pem" \
-        -name "$local_cert_name" -out "$dir/openagentd-signing.p12" -passout pass:openagentd &>/dev/null \
-      && security import "$dir/openagentd-signing.p12" -k "$signing_keychain" -P openagentd -T /usr/bin/codesign &>/dev/null \
-      && security set-key-partition-list -S apple-tool:,apple:,codesign: -s \
-        -k "$signing_keychain_password" "$signing_keychain" &>/dev/null; then
-      status=0
-    fi
-    rm -rf "$dir"
-    return "$status"
-  }
-
-  # The explicit identifier-only designated requirement (-r=) is applied on
-  # every signing path. Without it codesign derives a default requirement
-  # that pins the signing certificate; local self-signed certs are not
-  # stable across regenerations, so macOS keychain "Always Allow" and TCC
-  # grants would be invalidated on the next update.
-  sign_bundle() {
-    local args=(--force --deep --options runtime
-      "-r=designated => identifier \"$bundle_id\""
-      --entitlements "$entitlements_file")
-    if [ "$signing_identity" = "-" ]; then
-      codesign "${args[@]}" --sign - --timestamp=none "$1"
-    elif [ "$signing_identity" = "$local_cert_name" ]; then
-      codesign "${args[@]}" --keychain "$signing_keychain" --sign "$signing_identity" "$1"
-    else
-      codesign "${args[@]}" --sign "$signing_identity" "$1"
-    fi
-  }
-
-  # An Apple Development identity wins when there is one, as before: Xcode
-  # made its key, and its Team ID scopes the app's own keychain items.
-  signing_identity="-"
-  login_identities="$(security find-identity -v -p codesigning 2>/dev/null || true)"
-  apple_dev="$(printf '%s\n' "$login_identities" | awk -F'"' '/"Apple Development:/ && !n { print $2; n = 1 }')"
-  if [ -n "$apple_dev" ]; then
-    signing_identity="$apple_dev"
-  elif ensure_local_signer; then
-    signing_identity="$local_cert_name"
-  else
-    warn "Could not set up the local signing identity; signing ad hoc."
-  fi
-
-  info "Signing identity: ${signing_identity}"
-  info "Signing the bundle (this can take a few seconds)…"
-  if ! sign_bundle "$BUNDLE" 2>&1 | sed 's/^/  /'; then
-    # An identity codesign cannot use ("no identity found") must not block the
-    # install: sign ad hoc, with the same identifier-only requirement.
-    if [ "$signing_identity" = "-" ]; then
-      fail "codesign failed."
-      exit 2
-    fi
-    warn "Signing with ${signing_identity} failed; signing ad hoc."
-    signing_identity="-"
-    if ! sign_bundle "$BUNDLE" 2>&1 | sed 's/^/  /'; then
-      fail "codesign failed."
-      exit 2
-    fi
-  fi
-  ok "Signature applied"
-
-  # ── 5. Verify ───────────────────────────────────────────────────────────────
+  # ── 2. Verify ───────────────────────────────────────────────────────────────
+  # CI signed the bundle; a failure means it was modified or is incomplete.
   info "Verifying signature…"
-  if ! codesign --verify --verbose=1 "$BUNDLE" 2>&1 | sed 's/^/  /'; then
-    fail "Verification failed."
+  if ! codesign --verify --deep --strict --verbose=1 "$BUNDLE" 2>&1 | sed 's/^/  /'; then
+    fail "Verification failed. Download OpenAgentd again."
     exit 3
   fi
   ok "Signature verified"
 
-  if spctl --assess --verbose=4 "$BUNDLE" &>/dev/null; then
-    ok "Gatekeeper accepts the bundle"
-  else
-    warn "Gatekeeper still flags the bundle — this is expected without an Apple Developer ID."
-    warn "${BOLD}Right-click the app → ${RESET}${BOLD}${YELLOW}Open${RESET}${BOLD} on first launch.${RESET}"
-  fi
-
-  # ── 6. Optional: install to /Applications ───────────────────────────────────
+  # ── 3. Optional: install to /Applications ───────────────────────────────────
   if [ "$DO_INSTALL" = "1" ]; then
     bundle_name="$(basename "$BUNDLE")"
     dest="/Applications/$bundle_name"
@@ -361,10 +188,6 @@ EOF
       fail "Copy failed."
       exit 4
     fi
-    # ``ditto`` preserves signatures across volumes, but a different
-    # filesystem can perturb xattrs — re-sign at destination to be
-    # safe. Failure here is non-fatal.
-    sign_bundle "$dest" >/dev/null 2>&1 || true
     ok "Installed to $dest"
   fi
 

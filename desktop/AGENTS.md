@@ -30,12 +30,12 @@ artifacts.
 ## Ownership and constraints
 
 - `src-tauri/` owns Rust commands, sidecar/process lifecycle, auth handshakes,
-  window/tray/menu behavior, persisted server selection, keyring access, and
+  window/tray/menu behavior, persisted server selection, access-key files, and
   updater behavior.
 - The sidecar bundle is API-only; the UI comes from `web/dist`.
 - Keep every dev/production Tauri config variant aligned when changing shared
   bundle, plugin, window, or permission behavior.
-- Treat sidecar spawning/token exchange, keyring data, CSP/capabilities,
+- Treat sidecar spawning/token exchange, stored access keys, CSP/capabilities,
   entitlements, updater endpoints/signatures, and release scripts as
   security-sensitive.
 - Preserve macOS, Windows, and Linux process lifecycle differences. Do not

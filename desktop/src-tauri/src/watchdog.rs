@@ -118,7 +118,7 @@ fn target_label(target: &tauri::EventTarget) -> Option<&str> {
 
 /// Windows connected to an external server keep their backend; only the
 /// bundled ones move to the restarted sidecar (same rule as a manual restart).
-fn notify_bundled_windows(app: &AppHandle, ready: BackendReady) {
+pub(crate) fn notify_bundled_windows(app: &AppHandle, ready: BackendReady) {
     let external = app
         .state::<AppState>()
         .window_backend_base_urls

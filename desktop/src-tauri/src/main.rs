@@ -665,6 +665,10 @@ fn main() {
                 std::process::id(),
                 std::env::consts::OS
             );
+            match crate::config::app_config_file(app.handle(), "access-keys.json") {
+                Ok(path) => openagentd_shell_core::use_file_store(path),
+                Err(e) => log::error!("access key store unavailable: {e:#}"),
+            }
             // The backend and the HTTP client's TLS roots (~190 ms on macOS)
             // are the slowest parts of a launch, so they start before the
             // menus. Nothing is published to the tray or a window before

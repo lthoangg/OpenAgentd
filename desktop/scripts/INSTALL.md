@@ -1,45 +1,38 @@
 # Installing OpenAgentd
 
-OpenAgentd ships as an **unsigned** desktop application. There's no
-malware here — we just haven't paid Apple for code-signing
-certificates yet — but the operating systems we currently ship for
-still treat unsigned software with suspicion. This document explains
-the one-time steps required on each supported platform.
+OpenAgentd is not signed with a paid Apple Developer ID or Windows
+certificate yet. There's no malware here, but the operating systems
+we ship for still treat such software with suspicion. This document
+explains the one-time steps required on each supported platform.
 
 ## macOS (arm64)
 
-1. Open the downloaded **`OpenAgentd-x.y.z.dmg`** by double-clicking it.
-2. Open **`Terminal`** from the DMG (or your own Terminal app) and
-   run:
+The quickest way is the one-command installer, which downloads the
+app and does the steps below for you:
+
+```bash
+curl -LsSf https://raw.githubusercontent.com/lthoangg/openagentd/main/install.sh | sh
+```
+
+From the DMG instead:
+
+1. Open the downloaded **`OpenAgentd_x.y.z_aarch64.dmg`** and drag
+   **OpenAgentd** into **Applications**.
+2. In Terminal, run the installer bundled inside the app:
 
    ```bash
-   /Volumes/OpenAgentd/install.sh --install
+   /Applications/OpenAgentd.app/Contents/Resources/install.sh /Applications/OpenAgentd.app
    ```
 
-   The script will:
-   - Strip the `com.apple.quarantine` xattr that the browser added.
-   - Codesign the bundle locally (no Apple ID required). It uses your
-     Apple Development identity if you have one, otherwise an
-     "OpenAgentd Local Signer" identity kept in its own keychain,
-     `~/Library/Keychains/openagentd-signing.keychain-db`, so signing
-     never asks for your password.
-   - Verify the signature.
-   - Copy `OpenAgentd.app` into `/Applications/`.
+   It removes the `com.apple.quarantine` flag the browser added and
+   verifies the app's signature. It does not re-sign the app.
 
-3. Launch **OpenAgentd** from Launchpad / Spotlight. The first time
-   you run it, **right-click → Open** and confirm the prompt.
-   macOS will remember the consent.
+3. Launch **OpenAgentd** from Launchpad / Spotlight.
 
 **Why is this necessary?** Without a paid Apple Developer ID, the
-DMG comes through unsigned. Gatekeeper then reports
-*"OpenAgentd.app is damaged and can't be opened"* — which is a lie,
-but the only way to clear it is to either pay Apple $99/year or
-ad-hoc sign the bundle on your own machine. We chose option B for
-v1; option A may come later.
-
-**Already have an Apple Developer ID and want to re-sign with it?**
-The script refuses to overwrite an existing signature; pass
-`--force` to clobber.
+release is signed ad hoc. Gatekeeper reports a downloaded ad hoc app
+as *"OpenAgentd.app is damaged and can't be opened"*, which is not
+true; removing the quarantine flag clears it.
 
 ## Linux (x86_64, arm64)
 
@@ -116,10 +109,10 @@ and try again.
 
 ### macOS: app launches but immediately quits
 
-Most likely a native dependency failed JIT initialization because the
-`com.apple.security.cs.allow-unsigned-executable-memory` entitlement got
-stripped. Re-run `install.sh` — it re-applies the correct entitlements every
-time.
+The app was probably modified after download (for example re-signed
+without its entitlements). Run the bundled `install.sh` on it: if the
+signature no longer verifies it says so, and downloading OpenAgentd
+again fixes it.
 
 ### Linux: "openagentd: command not found" after install
 

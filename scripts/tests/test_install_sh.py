@@ -5,8 +5,8 @@ silent regression (e.g. wrong exit code, wrong platform branch,
 broken option parser) would show up as "Open the app → nothing
 happens" for end users.
 
-We can't actually exercise the codesign / dpkg / ~/.local/bin paths
-inside CI without root, network, or the real bundle. But we can
+We can't actually exercise the /Applications / dpkg / ~/.local/bin
+paths inside CI without root, network, or the real bundle. But we can
 exercise the **gates** in front of them:
 
   - bash syntax is valid (``bash -n``).
@@ -22,10 +22,9 @@ exercise the **gates** in front of them:
     with the expected ``[Desktop Entry]`` keys (we use a fake
     binary + override XDG dirs).
 
-The macOS-specific codesign branch is gated by ``uname -s`` so the
-test cannot exercise it from a Linux runner — we test that the
-script *recognises* the platform via the diagnostic ``Platform:``
-banner instead.
+The macOS branch is gated by ``uname -s``; its tests skip elsewhere.
+It only strips quarantine and verifies CI's signature: it must never
+re-sign the app (see ``desktop/scripts/sign-macos-release.sh``).
 """
 
 from __future__ import annotations
@@ -115,11 +114,6 @@ class TestHelpFlag:
         out = proc.stdout + proc.stderr
         assert "--install" in out
 
-    def test_help_documents_force_flag(self):
-        proc = _run(["--help"])
-        out = proc.stdout + proc.stderr
-        assert "--force" in out
-
     def test_help_documents_exit_codes(self):
         proc = _run(["--help"])
         out = proc.stdout + proc.stderr
@@ -145,6 +139,14 @@ class TestArgParsing:
         # bucket — we just verify the script doesn't *crash* on it.
         proc = _run(["--bogus"])
         assert proc.returncode == 1
+
+    def test_the_retired_force_flag_is_still_accepted(self, tmp_path: Path):
+        # ``--force`` re-signed the app before v3.22.0; old instructions
+        # must not break with "Unknown option".
+        proc = _run(["--force"], cwd=tmp_path)
+        out = proc.stdout + proc.stderr
+        assert "Unknown option" not in out
+        assert "no longer needed" in out
 
 
 class TestPlatformDispatch:
@@ -309,70 +311,71 @@ class TestLinuxBranch:
 
 
 class TestMacosBranch:
-    """Behavioural checks for the macOS branch (codesign requires real bundle)."""
+    """The macOS branch installs CI's signature unchanged."""
 
-    @pytest.fixture
-    def fake_bundle(self, tmp_path: Path) -> Path:
-        """Build a minimal directory that *looks* like a .app bundle.
-
-        We don't put a real Mach-O executable inside — codesign will
-        fail later, which is fine because we only verify the early
-        gates (xattr strip + existence check).
-        """
+    @staticmethod
+    def _bundle(tmp_path: Path, *, signed: bool) -> Path:
         bundle = tmp_path / "OpenAgentd.app"
         (bundle / "Contents" / "MacOS").mkdir(parents=True)
         (bundle / "Contents" / "Info.plist").write_text(
-            '<?xml version="1.0"?><plist><dict/></plist>'
+            '<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict>'
+            "<key>CFBundleExecutable</key><string>OpenAgentd</string>"
+            "<key>CFBundleIdentifier</key><string>com.openagentd.desktop</string>"
+            "</dict></plist>"
         )
-        # An empty file as the "main" binary — won't sign cleanly but
-        # gets us past the path resolution gate.
         binary = bundle / "Contents" / "MacOS" / "OpenAgentd"
-        binary.write_text("")
-        binary.chmod(0o755)
+        if signed:
+            shutil.copy("/usr/bin/true", binary)
+            subprocess.run(
+                [
+                    "codesign", "--force", "--sign", "-",
+                    '-r=designated => identifier "com.openagentd.desktop"',
+                    str(bundle),
+                ],
+                check=True,
+                capture_output=True,
+            )
+        else:
+            binary.write_text("")
+            binary.chmod(0o755)
         return bundle
 
-    def test_macos_accepts_explicit_bundle_path(
-        self, fake_bundle: Path, tmp_path: Path
-    ):
+    @staticmethod
+    def _cdhash(bundle: Path) -> str:
+        out = subprocess.run(
+            ["codesign", "-dvvv", str(bundle)], capture_output=True, text=True
+        ).stderr
+        return out.split("CDHash=")[1].split()[0]
+
+    def test_a_signed_bundle_is_verified_and_not_re_signed(self, tmp_path: Path):
         if platform.system() != "Darwin":
             pytest.skip("macOS-specific branch")
-        # We expect codesign to fail (we passed an empty binary) but
-        # the script must reach the codesign step — i.e. it must not
-        # exit 1 with "Cannot find" before then.
-        proc = _run([str(fake_bundle)])
+        bundle = self._bundle(tmp_path, signed=True)
+        before = self._cdhash(bundle)
+        proc = _run([str(bundle)])
         out = proc.stdout + proc.stderr
-        # The "Bundle:" line is logged before signing starts. If we
-        # see it, the path discovery succeeded.
-        assert "Bundle:" in out
-        # The script should have printed the bundle path in absolute form.
-        assert str(fake_bundle) in out
+        assert proc.returncode == 0, out
+        assert f"Bundle: {bundle}" in out.replace("\x1b[1m", "").replace("\x1b[0m", "")
+        assert "Signature verified" in out
+        assert self._cdhash(bundle) == before, "install.sh must not re-sign the app"
 
-    def test_macos_signature_step_announced(self, fake_bundle: Path):
+    def test_a_bundle_that_fails_verification_exits_three(self, tmp_path: Path):
         if platform.system() != "Darwin":
             pytest.skip("macOS-specific branch")
-        proc = _run([str(fake_bundle)])
-        out = proc.stdout + proc.stderr
-        # Even if codesign fails, the "Signing the bundle" log
-        # line must appear (it's logged before the codesign call).
-        assert "Signing the bundle" in out
+        bundle = self._bundle(tmp_path, signed=False)
+        proc = _run([str(bundle)])
+        assert proc.returncode == 3
+        assert "Download OpenAgentd again" in (proc.stdout + proc.stderr)
 
-
-class TestNoSignatureClobberGuard:
-    """If a bundle is *already* properly signed, we must NOT overwrite by default."""
-
-    def test_force_flag_is_recognised(self):
-        # We can't trivially fake a signed bundle (codesign verifies
-        # the Mach-O signature, not just the directory layout), so
-        # this is a docs-pin: verify the script knows about --force.
+    def test_the_installer_never_signs(self):
         text = SCRIPT.read_text()
-        assert "FORCE_RESIGN=1" in text
-        assert "--force" in text
-        # And there's a guard branch that uses it.
-        assert 'FORCE_RESIGN" = "0"' in text
+        assert "codesign --force" not in text
+        assert "--sign" not in text
+        assert "keychain" not in text.lower()
 
 
-class TestEntitlementsFallback:
-    """The script should ship a fallback entitlements plist if none is found."""
+class TestReleaseEntitlements:
+    """The release entitlements stay free of hardened-runtime exceptions."""
 
     HARDENED_RUNTIME_EXCEPTIONS = (
         "com.apple.security.cs.allow-unsigned-executable-memory",
@@ -385,22 +388,11 @@ class TestEntitlementsFallback:
     def _keys(plist: str) -> set[str]:
         return set(re.findall(r"<key>([^<]+)</key>", plist))
 
-    def test_falls_back_to_inline_plist(self):
-        text = SCRIPT.read_text()
-        # Inline plist heredoc is keyed against ``PLIST`` (terminator)
-        assert "<<'PLIST'" in text
-
-    def test_fallback_matches_the_release_entitlements(self):
-        # A locally re-signed app must not get broader entitlements than the
-        # release build, and the native sidecar needs no hardened-runtime
-        # exceptions (the v2 Python runtime did).
-        text = SCRIPT.read_text()
-        fallback = text.split("<<'PLIST'\n", 1)[1].split("\nPLIST\n", 1)[0]
+    def test_no_hardened_runtime_exceptions(self):
+        # The native sidecar needs none (the v2 Python runtime did).
         release = (
             REPO_ROOT / "desktop" / "src-tauri" / "entitlements.plist"
         ).read_text()
-
-        assert self._keys(fallback) == self._keys(release)
         for key in self.HARDENED_RUNTIME_EXCEPTIONS:
             assert key not in self._keys(release)
 
@@ -410,8 +402,7 @@ class TestDocsConsistency:
 
     def test_every_documented_flag_is_in_the_parser(self):
         text = SCRIPT.read_text()
-        # The help block enumerates --install and --force.
-        for flag in ("--install", "--force"):
+        for flag in ("--install",):
             assert flag in text
             # And the case statement handles each.
             assert f"{flag})" in text or f' "{flag}")' in text or f'"{flag}")' in text

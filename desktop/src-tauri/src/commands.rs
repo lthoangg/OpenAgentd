@@ -167,13 +167,10 @@ pub fn show_desktop_notification(
     Ok(true)
 }
 
-// Access keys live in the OS credential store, keyed by canonical origin;
-// the logic is shared with the mobile shell in `openagentd-shell-core`.
-//
-// A sync command runs on the main thread, and a keychain call blocks for as
-// long as the store takes: ~1.5 ms to read, ~12 ms to write, and until the
-// user answers if macOS asks for the keychain password. So the commands run
-// the call on the blocking pool and the UI keeps drawing.
+// Access keys live in `access-keys.json`, a user-only file in the app config
+// dir, keyed by canonical origin (see `openagentd_shell_core::access_key` for
+// why not the macOS keychain). The commands still run the file I/O on the
+// blocking pool, off the main thread.
 
 async fn off_main_thread<T: Send + 'static>(
     call: impl FnOnce() -> Result<T, String> + Send + 'static,
@@ -588,8 +585,8 @@ pub async fn app_set_network_access(
 
 /// The LAN access key, for Show/Copy. `None` until network access was first enabled.
 #[tauri::command]
-pub async fn app_network_access_key() -> Result<Option<String>, String> {
-    crate::network_access::load_key().await
+pub async fn app_network_access_key(app: AppHandle) -> Result<Option<String>, String> {
+    off_main_thread(move || crate::network_access::load_key(&app)).await
 }
 
 /// Store a custom key, or generate a new one when `key` is `None`.
@@ -676,8 +673,8 @@ mod health_tests {
         assert_eq!(hits.load(Ordering::SeqCst), 1);
     }
 
-    // Inputs here fail before the credential store is reached, so the test
-    // never touches the real keychain.
+    // Inputs here fail before the store is reached, so the test never
+    // touches a real access-key file.
     #[tokio::test]
     async fn access_key_commands_are_awaited_and_keep_shell_core_errors() {
         let invalid = Err("invalid backend origin".to_string());

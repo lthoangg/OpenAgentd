@@ -39,7 +39,7 @@ worktrees are not part of the tracked instruction hierarchy.
   sidecar built from `appv3/`.
 - `mobile/`: remote-backend-only Tauri shell; it does not bundle a backend.
 - `native/shell-core/`: Tauri-free Rust crate shared by both shells (server
-  config, URL normalization, keyring, download limits).
+  config, URL normalization, access keys, download limits).
 - `scripts/`: packaging, release, docs validation, and code-health utilities;
   `scripts/tests/` holds their pytest checks plus installer and workflow
   contracts.
@@ -110,7 +110,7 @@ Use the native subtree Makefiles for desktop/mobile packages
   access key) and the child-environment secret scrub in `appv3/crates/core/`
   and `appv3/crates/api/` intact; see `appv3/AGENTS.md`.
 - Treat auth, shell/file tools, MCP launch configuration, Tauri CSP/
-  capabilities, keyring storage, and updater/signing code as
+  capabilities, secret storage (desktop key files, mobile keyring), and updater/signing code as
   security-sensitive. Use argument-list subprocess APIs; do not introduce
   `shell=True` command construction.
 - Do not edit generated/build state such as `web/dist/`,

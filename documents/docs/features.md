@@ -15,7 +15,7 @@ For a guided tour of these features, see [openagentd.dev/features](https://opena
 > double-clickable app that runs an agent on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 19+ providers. Your keys.
 
-**Latest release:** v3.21.0 · October 20, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.21.0)
+**Latest release:** v3.22.0 · October 20, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.22.0)
 
 ---
 
@@ -278,7 +278,7 @@ run from the terminal (the native Rust binary since v3.0.0).
   nothing is typed `[v3.21.0]`. → opens the highlighted list and ← on an
   empty query, Backspace, or Escape steps back one level, landing on the
   row that opened it `[v3.21.0]`.
-- **Plan and Code interaction modes** `[v2.14.0, updated v2.15.0, v3.0.0, v3.2.0, v3.8.0, v3.21.1]` — the expanded composer switches an
+- **Plan and Code interaction modes** `[v2.14.0, updated v2.15.0, v3.0.0, v3.2.0, v3.8.0, v3.22.0]` — the expanded composer switches an
   existing session between Code (default) and Plan without starting a new
   chat; `Tab` also toggles mode from the composer. Mode transitions are preserved via
   append-only hidden context notes in session history. In Plan mode, the agent explores
@@ -301,8 +301,8 @@ run from the terminal (the native Rust binary since v3.0.0).
   the session has a plan. Replying in chat instead supersedes the review.
   Older `<proposed_plan>` answers still render as read-only cards.
   A saved `plan` call in the transcript has **View plan**, which opens the
-  Plan tab `[v3.21.1]`. The tab shows the plan once it is saved; v3.21.0
-  streamed it in as it was written, which `[v3.21.1]` removes.
+  Plan tab `[v3.22.0]`. The tab shows the plan once it is saved; v3.21.0
+  streamed it in as it was written, which `[v3.22.0]` removes.
   Switching mode while a turn is running no longer stops it: the switch is
   queued and applied when that turn closes, so it binds from the next turn and
   any message queued behind it. The toggle shows the queued mode in italics
@@ -1200,7 +1200,7 @@ agent against it.
   **Project** (the folder tree, the default), **Status** (Needs you · Working ·
   Recent), **Date** (Today · Yesterday · Previous 7 days · Previous 30 days ·
   Older) or **None**, and can hide row details (age, worktree tag, workspace
-  name). Since `[v3.21.1]` every list is in **recent activity** order (the
+  name). Since `[v3.22.0]` every list is in **recent activity** order (the
   **Sort by → Created** choice is gone) and Date groups by last activity.
   The choice is kept per device. Outside Project mode the list is one flat list
   across workspaces, each row naming its workspace, and the header gains a
@@ -1212,7 +1212,7 @@ agent against it.
   a rename or a model switch: a session moves to the top when a turn starts or
   finishes, sliding into place rather than jumping, and the row's age keeps
   counting while the app is open.
-  Since `[v3.21.1]` Project mode orders repositories too: Chat, then those in
+  Since `[v3.22.0]` Project mode orders repositories too: Chat, then those in
   a workspace group (clustered by group, in the groups' order), then the rest,
   each part most recently active first.
 - **Pinned sessions** `[v3.18.0]` — **Pin** (a row action left of Edit on

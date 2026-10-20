@@ -775,10 +775,11 @@ executes tools, manages its task list, and inspects workspace repositories.
   model fallback and interaction mode (including Plan mode read-only invariants `[v2.17.0]`). Clarifying
   questions via `ask_lead` preserve tool call IDs across turn suspensions, ensuring tool response
   messages persist reliably to the child session database upon lead reply `[v2.17.0]`. Deliverables rendered in the lead chat view are minimized by default with expandable preview toggles to keep transcripts compact. Stopping the lead cascades cancellation to all active child sessions.
-- **Cross-workspace messages** `[v3.9.0]` — the lead agent's `send_to_workspace`
+- **Cross-workspace messages** `[v3.9.0, updated v3.21.0]` — the lead agent's `send_to_workspace`
   tool sends a request to an agent session in another workspace you have opened
-  (another repository, a worktree, or Chat), for example from an app repository
-  to its infrastructure repository. The request starts a new session there, or
+  that shares a workspace group (see **Workspace groups** below) with its own (a related
+  repository, a worktree of its repository, or Chat), for example from an app
+  repository to its infrastructure repository. The request starts a new session there, or
   continues one of its top-level sessions (queued when that session is busy). It
   arrives as an ordinary, editable prompt with a **From <workspace> · <session>**
   chip that opens the sending session. `mode: "plan"` makes a new session plan
@@ -794,11 +795,30 @@ executes tools, manages its task list, and inspects workspace repositories.
   - You get one completion notification, from the sender, instead of one from
     each side.
 
-  `action: "list"` shows the workspaces you can message, or one workspace's
-  recent sessions with their state. Limits: a request can pass through at most
+  `action: "list"` shows the workspaces you can message under their groups,
+  each with its brief, or one workspace's recent sessions with their state.
+  Sending to a workspace outside its groups is refused with a message asking
+  you to group them. Limits: a request can pass through at most
   three workspaces, a turn can make at most ten sends, and a reply is trimmed to
   32,000 characters. **Settings → Automation → Workspace messages** turns the
   tool off for every agent; replies already on their way still arrive.
+- **Workspace groups** `[v3.21.0]` — named tags on
+  repositories that say which workspaces belong together. **Groups…** in a
+  repository's actions menu (right-click, **…**, or long-press on phones)
+  tags it, creates a group, or edits a group's name and **brief**: a short
+  note such as "web = Next.js frontend, api = Rust backend" that agents see
+  in `send_to_workspace` listings. A repository can be in several groups.
+  Its sidebar row shows a coloured dot per group, and **View options →
+  Workspace group** narrows the Project view to one group, with a **Show
+  all** row to go back. Groups decide who can message whom:
+  - Two workspaces can message each other only when their repositories share
+    a group. Worktrees use their repository's groups, and a repository and
+    its worktrees can always message each other.
+  - Chat can message every workspace, and every workspace can message Chat.
+  - A repository in no group can message only Chat and its own worktrees,
+    so after upgrading, group related repositories to let them talk again.
+  - Replies are never blocked: a request that was allowed when it was sent
+    still gets its answer back.
 - **System prompt editor and profile-scoped tools** `[v2.17.0]` — Agent settings
   features a dedicated System prompt card with a monospace textarea bound to the
   Markdown prompt body across all agent profiles (both the lead coding agent and member subagents).
@@ -1085,6 +1105,9 @@ agent against it.
   The choice is kept per device. Outside Project mode the list is one flat list
   across workspaces, each row naming its workspace, and the header gains a
   **New session** button; on phones that button is there in every mode.
+  Since `[v3.21.0]` repository rows show a coloured dot per workspace group,
+  and in Project mode **View options → Workspace group** shows one group's
+  repositories (Chat stays), named in a row above the list with **Show all**.
 - **Pinned sessions** `[v3.18.0]` — **Pin** (a row action left of Edit on
   desktop `[v3.19.0]`, first in a session's context menu, or in the long-press
   sheet on mobile) moves a top-level session into a **Pinned** section at

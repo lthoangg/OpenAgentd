@@ -4,6 +4,8 @@
  * ``groupBy`` picks the shape of the session list: the workspace tree
  * (``project``) or one flat list across workspaces grouped by status, by
  * date, or not at all. ``sortBy`` orders sessions within each group.
+ * ``groupFilter`` narrows the Project view to one workspace group's
+ * repositories (Chat always stays).
  */
 import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
@@ -33,6 +35,8 @@ interface SidebarViewPrefs {
   pinnedCollapsed: boolean
   /** Folded groups of the flat views, by group id. */
   collapsedGroups: readonly string[]
+  /** Workspace group id the Project view shows, or null for every workspace. */
+  groupFilter: string | null
 }
 
 interface SidebarViewState extends SidebarViewPrefs {
@@ -41,14 +45,16 @@ interface SidebarViewState extends SidebarViewPrefs {
   setShowDetails: (showDetails: boolean) => void
   setPinnedCollapsed: (collapsed: boolean) => void
   toggleGroupCollapsed: (group: string) => void
+  setGroupFilter: (groupId: string | null) => void
   /** Back to the default view (folding state is kept). */
   reset: () => void
 }
 
-export const SIDEBAR_VIEW_DEFAULTS: Pick<SidebarViewPrefs, 'groupBy' | 'sortBy' | 'showDetails'> = {
+export const SIDEBAR_VIEW_DEFAULTS: Pick<SidebarViewPrefs, 'groupBy' | 'sortBy' | 'showDetails' | 'groupFilter'> = {
   groupBy: 'project',
   sortBy: 'activity',
   showDetails: true,
+  groupFilter: null,
 }
 
 function isGroupBy(value: unknown): value is SidebarGroupBy {
@@ -75,17 +81,19 @@ export const useSidebarViewStore = create<SidebarViewState>()(
             ? state.collapsedGroups.filter((g) => g !== group)
             : [...state.collapsedGroups, group],
         })),
+      setGroupFilter: (groupFilter) => set({ groupFilter }),
       reset: () => set({ ...SIDEBAR_VIEW_DEFAULTS }),
     }),
     {
       name: SIDEBAR_VIEW_STORAGE_KEY,
       storage: createJSONStorage(() => localStorage),
-      partialize: ({ groupBy, sortBy, showDetails, pinnedCollapsed, collapsedGroups }) => ({
+      partialize: ({ groupBy, sortBy, showDetails, pinnedCollapsed, collapsedGroups, groupFilter }) => ({
         groupBy,
         sortBy,
         showDetails,
         pinnedCollapsed,
         collapsedGroups,
+        groupFilter,
       }),
       // Stored without a schema: a value from another build reads as the
       // default rather than as a sidebar that renders nothing.
@@ -98,6 +106,7 @@ export const useSidebarViewStore = create<SidebarViewState>()(
           showDetails: typeof p.showDetails === 'boolean' ? p.showDetails : SIDEBAR_VIEW_DEFAULTS.showDetails,
           pinnedCollapsed: typeof p.pinnedCollapsed === 'boolean' ? p.pinnedCollapsed : false,
           collapsedGroups: Array.isArray(p.collapsedGroups) ? p.collapsedGroups.filter((g): g is string => typeof g === 'string') : [],
+          groupFilter: typeof p.groupFilter === 'string' && p.groupFilter ? p.groupFilter : null,
         }
       },
     },

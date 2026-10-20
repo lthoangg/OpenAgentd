@@ -1,6 +1,7 @@
 import { useState, type MouseEvent, type ReactNode, type Ref } from 'react'
 import { ChevronsDownUp, FolderPlus, ListFilter, Search, SquarePen } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import type { WorkspaceGroup } from '@/api/types'
 import type { SidebarGroupBy } from '@/stores/useSidebarViewStore'
 import { SidebarViewMenu } from './SidebarViewMenu'
 
@@ -57,6 +58,7 @@ function HeaderAction({
  */
 export function SidebarSectionHeader({
   groupBy,
+  workspaceGroups,
   showNewSession,
   newSessionShortcut,
   searchOpen,
@@ -67,6 +69,8 @@ export function SidebarSectionHeader({
   onOpenFolder,
 }: {
   groupBy: SidebarGroupBy
+  /** Workspace groups for the View options filter (Project view). */
+  workspaceGroups?: readonly WorkspaceGroup[]
   showNewSession: boolean
   /** Shortcut hint for the New session tooltip, e.g. "⌘N". */
   newSessionShortcut?: string
@@ -124,7 +128,7 @@ export function SidebarSectionHeader({
           <FolderPlus size={13} aria-hidden="true" />
         </HeaderAction>
       </div>
-      {viewMenuAt && <SidebarViewMenu at={viewMenuAt} onDismiss={() => setViewMenuAt(null)} />}
+      {viewMenuAt && <SidebarViewMenu at={viewMenuAt} workspaceGroups={workspaceGroups} onDismiss={() => setViewMenuAt(null)} />}
     </div>
   )
 }

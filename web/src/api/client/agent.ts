@@ -21,6 +21,8 @@ import type {
   WorktreeCreateResponse,
   WorktreeInfo,
   CodingWorkspaceTreeResponse,
+  WorkspaceGroup,
+  WorkspaceGroupWithMembers,
   WorkspaceBrowseResponse,
   WorkspaceGitDiffResponse,
   WorkspaceStatusResponse,
@@ -261,6 +263,44 @@ export async function browseWorkspaces(path?: string | null): Promise<WorkspaceB
 export async function getCodingWorkspaceTree(): Promise<CodingWorkspaceTreeResponse> {
   const res = await fetch(`${apiBaseUrl()}/agent/workspace/tree`)
   if (!res.ok) await parseDetailOrThrow(res, 'getCodingWorkspaceTree')
+  return res.json()
+}
+
+export async function createWorkspaceGroup(body: { name: string; brief?: string | null }): Promise<WorkspaceGroupWithMembers> {
+  const res = await fetch(`${apiBaseUrl()}/agent/workspace/groups`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) await parseDetailOrThrow(res, 'createWorkspaceGroup')
+  return res.json()
+}
+
+/** Rename a group and/or set its brief (``brief: null`` clears it). */
+export async function updateWorkspaceGroup(id: string, body: { name?: string; brief?: string | null }): Promise<WorkspaceGroup> {
+  const res = await fetch(`${apiBaseUrl()}/agent/workspace/groups/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) await parseDetailOrThrow(res, 'updateWorkspaceGroup')
+  return res.json()
+}
+
+export async function deleteWorkspaceGroup(id: string): Promise<{ deleted: boolean }> {
+  const res = await fetch(`${apiBaseUrl()}/agent/workspace/groups/${encodeURIComponent(id)}`, { method: 'DELETE' })
+  if (!res.ok) await parseDetailOrThrow(res, 'deleteWorkspaceGroup')
+  return res.json()
+}
+
+/** Replace a repository's groups. A worktree path tags its repository. */
+export async function setWorkspaceGroups(workspace: string, groupIds: string[]): Promise<{ workspace: string; group_ids: string[] }> {
+  const res = await fetch(`${apiBaseUrl()}/agent/workspace/groups/members`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ workspace, group_ids: groupIds }),
+  })
+  if (!res.ok) await parseDetailOrThrow(res, 'setWorkspaceGroups')
   return res.json()
 }
 

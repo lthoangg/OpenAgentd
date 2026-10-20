@@ -11,11 +11,12 @@ beforeEach(() => {
   useSidebarViewStore.setState({ ...SIDEBAR_VIEW_DEFAULTS })
 })
 
-function renderHeader(groupBy: SidebarGroupBy = 'project', showNewSession = false) {
+function renderHeader(groupBy: SidebarGroupBy = 'project', showNewSession = false, workspaceGroups: Array<{ id: string; name: string; brief: string | null }> = []) {
   const onNewSession = mock(() => {})
   render(
     <SidebarSectionHeader
       groupBy={groupBy}
+      workspaceGroups={workspaceGroups}
       showNewSession={showNewSession}
       newSessionShortcut="⌘N"
       searchOpen={false}
@@ -47,6 +48,25 @@ describe('SidebarSectionHeader', () => {
 })
 
 describe('SidebarViewMenu', () => {
+  it('narrows the Project view to one workspace group', async () => {
+    const user = userEvent.setup()
+    renderHeader('project', false, [{ id: 'g-acme', name: 'acme', brief: null }])
+    await user.click(screen.getByRole('button', { name: 'View options' }))
+    const filter = within(screen.getByRole('menu', { name: 'View options' })).getByRole('group', { name: 'Workspace group' })
+    expect(within(filter).getAllByRole('menuitemradio').map((item) => item.textContent)).toEqual(['All workspaces', 'acme'])
+    await user.click(within(filter).getByRole('menuitemradio', { name: 'acme' }))
+    expect(useSidebarViewStore.getState().groupFilter).toBe('g-acme')
+    expect(within(filter).getByRole('menuitemradio', { name: 'acme' }).getAttribute('aria-checked')).toBe('true')
+  })
+
+  it('offers no group filter without groups or outside Project view', async () => {
+    const user = userEvent.setup()
+    useSidebarViewStore.setState({ groupBy: 'date' })
+    renderHeader('date', false, [{ id: 'g-acme', name: 'acme', brief: null }])
+    await user.click(screen.getByRole('button', { name: 'View options' }))
+    expect(within(screen.getByRole('menu', { name: 'View options' })).queryByRole('group', { name: 'Workspace group' })).toBeNull()
+  })
+
   it('shows the current view as checked radio and checkbox items', async () => {
     const user = userEvent.setup()
     renderHeader()

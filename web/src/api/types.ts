@@ -67,6 +67,24 @@ export interface CodingWorkspaceTreeRepository {
   path: string
   name: string
   worktrees: CodingWorkspaceTreeWorktree[]
+  /** Ids of the workspace groups this repository is in (its worktrees share them). */
+  group_ids?: string[]
+}
+
+/**
+ * A workspace group: a named tag on repositories. Workspaces whose
+ * repositories share a group may message each other (`send_to_workspace`);
+ * the brief tells their agents what each repository is for.
+ */
+export interface WorkspaceGroup {
+  id: string
+  name: string
+  brief: string | null
+}
+
+export interface WorkspaceGroupWithMembers extends WorkspaceGroup {
+  /** Visible repository paths tagged with the group. */
+  members: string[]
 }
 
 /**
@@ -82,6 +100,7 @@ export interface CodingWorkspaceTreeChat {
 export interface CodingWorkspaceTreeResponse {
   repositories: CodingWorkspaceTreeRepository[]
   chat?: CodingWorkspaceTreeChat | null
+  groups?: WorkspaceGroup[]
 }
 
 export interface WorkspaceBrowseResponse {

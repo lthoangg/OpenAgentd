@@ -301,6 +301,11 @@ export function AutomationSettingsPage() {
             this off removes the tool from new turns; replies already on their way
             still arrive.
           </p>
+          <p className={TEXT.hint}>
+            Workspaces can message each other only when they share a group: right-click
+            a workspace in the sidebar and choose Groups… to tag it. Worktrees use
+            their repository&apos;s groups, and Chat can message every workspace.
+          </p>
         </div>
       </SettingsDisclosure>
 

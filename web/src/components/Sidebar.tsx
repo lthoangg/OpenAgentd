@@ -57,7 +57,6 @@ import {
   PinOff,
   Plus,
   Settings,
-  Tags,
   Trash2,
   X,
 } from 'lucide-react'
@@ -105,7 +104,7 @@ import { SidebarSectionHeader } from './Sidebar/SidebarSectionHeader'
 import { PinnedSection } from './Sidebar/PinnedSection'
 import { FlatSessionGroups } from './Sidebar/FlatSessionGroups'
 import { WorkspaceGroupDots, workspaceGroupsLabel } from './Sidebar/WorkspaceGroupDots'
-import { WorkspaceGroupsDialog } from './Sidebar/WorkspaceGroupsDialog'
+import { WorkspaceGroupToggles } from './Sidebar/WorkspaceGroupToggles'
 import { groupColor } from './Sidebar/groupColor'
 import {
   addExpandedPaths,
@@ -271,7 +270,6 @@ export function Sidebar({
   }
   // A filter for a group that no longer exists shows everything.
   const activeGroupFilter = workspaceGroups.find((g) => g.id === groupFilter) ?? null
-  const [groupsDialogTarget, setGroupsDialogTarget] = useState<string | null>(null)
   // The chat workspace is a pinned, non-repository row: the backend never
   // stores it in ``coding_workspaces``, so it is prepended here.
   const chatWorkspace = useChatWorkspace()
@@ -944,7 +942,7 @@ export function Sidebar({
         {activeGroupFilter && (
           // The group filter, named above the list, with a one-step way back.
           <div className="mx-1.5 flex h-6 items-center gap-1.5 px-1.5 text-[11px] text-(--color-text-subtle) pointer-coarse:h-9" data-sidebar-group-filter="">
-            <span className="size-2 shrink-0 rounded-full" style={{ backgroundColor: groupColor(activeGroupFilter.id) }} aria-hidden="true" />
+            <span className="size-2 shrink-0 rounded-full" style={{ backgroundColor: groupColor(activeGroupFilter) }} aria-hidden="true" />
             <span className="min-w-0 flex-1 truncate">
               Group: <span className="font-mono text-(--color-text-2)">{activeGroupFilter.name}</span>
             </span>
@@ -1399,19 +1397,14 @@ export function Sidebar({
                   <GitBranch size={14} aria-hidden="true" />
                   Create worktree
                 </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  className="justify-start"
-                  onClick={() => {
-                    const action = mobileWorkspaceActions
+                <WorkspaceGroupToggles
+                  workspace={mobileWorkspaceActions.path}
+                  variant="sheet"
+                  onManage={() => {
                     setMobileWorkspaceActions(null)
-                    if (action) setGroupsDialogTarget(action.path)
+                    openSettings('automation')
                   }}
-                >
-                  <Tags size={14} aria-hidden="true" />
-                  Groups…
-                </Button>
+                />
                 <Button
                   type="button"
                   variant="danger-subtle"
@@ -1611,19 +1604,14 @@ export function Sidebar({
               <GitBranch size={12} aria-hidden="true" />
               Create worktree
             </button>
-            <button
-              type="button"
-              role="menuitem"
-              className={CONTEXT_MENU_ITEM_CLASS}
-              onClick={() => {
-                const action = desktopWorkspaceActions
+            <WorkspaceGroupToggles
+              workspace={desktopWorkspaceActions.path}
+              variant="menu"
+              onManage={() => {
                 setDesktopWorkspaceActions(null)
-                setGroupsDialogTarget(action.path)
+                openSettings('automation')
               }}
-            >
-              <Tags size={12} aria-hidden="true" />
-              Groups…
-            </button>
+            />
             <button
               type="button"
               role="menuitem"
@@ -1869,12 +1857,6 @@ export function Sidebar({
           </form>
         </DialogContent>
       </Dialog>
-
-      <WorkspaceGroupsDialog
-        workspace={groupsDialogTarget}
-        label={groupsDialogTarget ? workspaceLabel(groupsDialogTarget) : ''}
-        onClose={() => setGroupsDialogTarget(null)}
-      />
 
       <SidebarConfirmDialogs
         deleteTarget={deleteTarget}

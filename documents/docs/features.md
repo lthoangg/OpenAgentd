@@ -809,14 +809,18 @@ executes tools, manages its task list, and inspects workspace repositories.
   32,000 characters. **Settings → Automation → Workspace messages** turns the
   tool off for every agent; replies already on their way still arrive.
 - **Workspace groups** `[v3.21.0]` — named tags on
-  repositories that say which workspaces belong together. **Groups…** in a
-  repository's actions menu (right-click, **…**, or long-press on phones)
-  tags it, creates a group, or edits a group's name and **brief**: a short
-  note such as "web = Next.js frontend, api = Rust backend" that agents see
-  in `send_to_workspace` listings. A repository can be in several groups.
-  Its sidebar row shows a coloured dot per group, and **View options →
-  Workspace group** narrows the Project view to one group, with a **Show
-  all** row to go back. Groups decide who can message whom:
+  repositories that say which workspaces belong together. Set them up in
+  **Settings → Automation → Workspace groups**: create a group, give it a
+  name, any colour (from the colour picker, or typed or pasted as a hex code
+  such as `#3b82f6`), and a **brief** (a short note such as "web = Next.js
+  frontend, api = Rust backend" that agents see in `send_to_workspace`
+  listings), and add or remove its repositories, all on one screen. A
+  repository can be in several groups. Its actions menu in the sidebar
+  (right-click, **…**, or long-press on phones) has a checkbox per group for
+  quick tagging and **Manage groups…** to open the settings. Each sidebar
+  row shows a dot in each of its groups' colours, and **View options →
+  Workspace group** narrows the Project view to one group, with **Show all
+  workspaces** to go back. Groups decide who can message whom:
   - Two workspaces can message each other only when their repositories share
     a group. Worktrees use their repository's groups, and a repository and
     its worktrees can always message each other.

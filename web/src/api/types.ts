@@ -80,6 +80,8 @@ export interface WorkspaceGroup {
   id: string
   name: string
   brief: string | null
+  /** Picked colour as `#rrggbb`; null (or absent on older servers) derives one from the id. */
+  color?: string | null
 }
 
 export interface WorkspaceGroupWithMembers extends WorkspaceGroup {

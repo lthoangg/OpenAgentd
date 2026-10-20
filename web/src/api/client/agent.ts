@@ -266,7 +266,7 @@ export async function getCodingWorkspaceTree(): Promise<CodingWorkspaceTreeRespo
   return res.json()
 }
 
-export async function createWorkspaceGroup(body: { name: string; brief?: string | null }): Promise<WorkspaceGroupWithMembers> {
+export async function createWorkspaceGroup(body: { name: string; brief?: string | null; color?: string | null }): Promise<WorkspaceGroupWithMembers> {
   const res = await fetch(`${apiBaseUrl()}/agent/workspace/groups`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -276,8 +276,8 @@ export async function createWorkspaceGroup(body: { name: string; brief?: string 
   return res.json()
 }
 
-/** Rename a group and/or set its brief (``brief: null`` clears it). */
-export async function updateWorkspaceGroup(id: string, body: { name?: string; brief?: string | null }): Promise<WorkspaceGroup> {
+/** Rename a group and/or set its brief or colour (``null`` clears either). */
+export async function updateWorkspaceGroup(id: string, body: { name?: string; brief?: string | null; color?: string | null }): Promise<WorkspaceGroup> {
   const res = await fetch(`${apiBaseUrl()}/agent/workspace/groups/${encodeURIComponent(id)}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },

@@ -12,7 +12,9 @@
  * single save bar.
  *
  * Workspace messages is a switch rather than a model job: it decides whether
- * lead agents can message sessions in other workspaces.
+ * lead agents can message sessions in other workspaces. Workspace groups,
+ * beside it, decide which workspaces may message each other; they save at
+ * once rather than through the draft save bar.
  */
 import { useMemo } from 'react'
 import { Workflow } from 'lucide-react'
@@ -34,11 +36,13 @@ import { Dropdown, DropdownItem } from '@/components/ui/dropdown'
 import { SettingsPage } from '@/components/settings/SettingsPage'
 import { SettingsDisclosure } from '@/components/settings/SettingsDisclosure'
 import { SettingsField } from '@/components/settings/SettingsField'
+import { WorkspaceGroupsSettings } from '@/components/settings/WorkspaceGroupsSettings'
 import { ModelCombobox, type ModelOption } from '@/components/settings/AgentForm'
 import { validateModel } from '@/components/settings/schema'
 import { combineDrafts, useSettingsDraft } from '@/components/settings/useSettingsDraft'
 import { TEXT } from '@/components/settings/tokens'
 import { cn } from '@/lib/utils'
+import { useWorkspaceGroups } from '@/queries/useWorkspaceGroups'
 import type {
   MultimodalSettings,
   SummarizationSettings,
@@ -170,6 +174,7 @@ export function AutomationSettingsPage() {
   const multimodalQ = useMultimodalSettingsQuery()
   const workspaceMessagesQ = useWorkspaceMessagesSettingsQuery()
   const registry = useRegistryQuery()
+  const { groups: workspaceGroups } = useWorkspaceGroups()
 
   const updateTitles = useUpdateTitleGenerationSettingsMutation()
   const updateSummarization = useUpdateSummarizationSettingsMutation()
@@ -302,11 +307,17 @@ export function AutomationSettingsPage() {
             still arrive.
           </p>
           <p className={TEXT.hint}>
-            Workspaces can message each other only when they share a group: right-click
-            a workspace in the sidebar and choose Groups… to tag it. Worktrees use
-            their repository&apos;s groups, and Chat can message every workspace.
+            Workspaces can message each other only when they share a group; set groups
+            up below.
           </p>
         </div>
+      </SettingsDisclosure>
+
+      <SettingsDisclosure
+        title="Workspace groups"
+        summary={workspaceGroups.length === 1 ? '1 group' : `${workspaceGroups.length} groups`}
+      >
+        <WorkspaceGroupsSettings />
       </SettingsDisclosure>
 
       <SettingsDisclosure

@@ -104,7 +104,7 @@ export function SidebarViewMenu({
             </CheckItem>
             {groups.map((group) => (
               <CheckItem key={group.id} role="menuitemradio" checked={activeFilter === group.id} onSelect={() => setGroupFilter(group.id)}>
-                <span className="size-2 shrink-0 rounded-full" style={{ backgroundColor: groupColor(group.id) }} aria-hidden="true" />
+                <span className="size-2 shrink-0 rounded-full" style={{ backgroundColor: groupColor(group) }} aria-hidden="true" />
                 <span className="truncate">{group.name}</span>
               </CheckItem>
             ))}

@@ -22,14 +22,17 @@ export interface WorkspaceGroupsView {
   groups: WorkspaceGroup[]
   /** Repository path → ids of its groups. */
   groupIdsByRepo: ReadonlyMap<string, readonly string[]>
+  /** Repositories that can be grouped (worktrees use their repository's groups). */
+  repositories: ReadonlyArray<{ path: string; name: string }>
 }
 
-const EMPTY: WorkspaceGroupsView = { groups: [], groupIdsByRepo: new Map() }
+const EMPTY: WorkspaceGroupsView = { groups: [], groupIdsByRepo: new Map(), repositories: [] }
 
 export function selectWorkspaceGroups(tree: CodingWorkspaceTreeResponse): WorkspaceGroupsView {
   return {
     groups: tree.groups ?? [],
     groupIdsByRepo: new Map(tree.repositories.map((repo) => [repo.path, repo.group_ids ?? []])),
+    repositories: tree.repositories.map(({ path, name }) => ({ path, name })),
   }
 }
 
@@ -51,7 +54,7 @@ function useRefreshTree() {
 export function useCreateWorkspaceGroupMutation() {
   const onSuccess = useRefreshTree()
   return useMutation({
-    mutationFn: (body: { name: string; brief?: string | null }) => createWorkspaceGroup(body),
+    mutationFn: (body: { name: string; brief?: string | null; color?: string | null }) => createWorkspaceGroup(body),
     onSuccess,
   })
 }
@@ -59,7 +62,7 @@ export function useCreateWorkspaceGroupMutation() {
 export function useUpdateWorkspaceGroupMutation() {
   const onSuccess = useRefreshTree()
   return useMutation({
-    mutationFn: ({ id, ...body }: { id: string; name?: string; brief?: string | null }) => updateWorkspaceGroup(id, body),
+    mutationFn: ({ id, ...body }: { id: string; name?: string; brief?: string | null; color?: string | null }) => updateWorkspaceGroup(id, body),
     onSuccess,
   })
 }

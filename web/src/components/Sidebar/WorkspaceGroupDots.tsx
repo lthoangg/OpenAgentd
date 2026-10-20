@@ -20,7 +20,7 @@ export function WorkspaceGroupDots({ groups }: { groups: readonly WorkspaceGroup
   return (
     <span className="inline-flex shrink-0 items-center gap-0.5" role="img" aria-label={workspaceGroupsLabel(groups)} data-workspace-group-dots="">
       {groups.slice(0, MAX_DOTS).map((g) => (
-        <span key={g.id} className="size-1.5 rounded-full" style={{ backgroundColor: groupColor(g.id) }} />
+        <span key={g.id} className="size-1.5 rounded-full" style={{ backgroundColor: groupColor(g) }} />
       ))}
       {extra > 0 && <span className="font-mono text-[11px] leading-none text-(--color-text-subtle)">+{extra}</span>}
     </span>

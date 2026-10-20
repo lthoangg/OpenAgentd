@@ -69,6 +69,13 @@ function baseHandlers(threshold: number | null = null) {
     ),
     http.get('http://localhost/api/settings/multimodal', () => HttpResponse.json(MULTIMODAL)),
     http.get('http://localhost/api/settings/workspace-messages', () => HttpResponse.json({ enabled: true })),
+    http.get('http://localhost/api/agent/workspace/tree', () =>
+      HttpResponse.json({
+        repositories: [{ path: '/repo/web', name: 'web', worktrees: [], group_ids: ['g-acme'] }],
+        chat: null,
+        groups: [{ id: 'g-acme', name: 'acme', brief: 'web = frontend', color: '#3b82f6' }],
+      }),
+    ),
     http.get('http://localhost/api/agents/registry', () => HttpResponse.json(REGISTRY)),
   ]
 }
@@ -123,6 +130,17 @@ describe('AutomationSettingsPage', () => {
     expect(await screen.findByRole('button', { name: /chat titles/i })).toBeTruthy()
     expect(screen.getByRole('button', { name: /summarization/i })).toBeTruthy()
     expect(screen.getByRole('button', { name: /image and video/i })).toBeTruthy()
+  })
+
+  it('sets up workspace groups next to the workspace messages switch', async () => {
+    server.use(...baseHandlers())
+    renderPage()
+
+    expect(await screen.findByRole('list', { name: 'Members of acme' })).toBeTruthy()
+    expect(screen.getByText('web = frontend')).toBeTruthy()
+    await collapseGroup(/workspace groups/i)
+    expect(await screen.findByText('1 group')).toBeTruthy()
+    expect(screen.queryByText('Unsaved changes')).toBeNull()
   })
 
   it('shows no save bar until something is edited', async () => {

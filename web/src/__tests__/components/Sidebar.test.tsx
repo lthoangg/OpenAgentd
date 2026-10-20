@@ -11,6 +11,7 @@ import { createDefaultAgentStream } from '@/stores/useAgentStore/defaults'
 import { useUnreadStore } from '@/stores/useUnreadStore'
 import { useUIStore } from '@/stores/useUIStore'
 import { useSidebarViewStore } from '@/stores/useSidebarViewStore'
+import { useSettingsStore } from '@/stores/useSettingsStore'
 import { APP_EVENTS } from '@/lib/app-events'
 import {
   addExpandedPaths,
@@ -219,8 +220,8 @@ mock.module('lucide-react', () => ({
   Search: Icon,
   SquarePen: Icon,
   Settings: Icon,
+  Settings2: Icon,
   Pencil: Icon,
-  Tags: Icon,
   Trash2: Icon,
   X: Icon,
 }))
@@ -2273,30 +2274,39 @@ describe('Sidebar workspace trust flow', () => {
     expect(screen.getByLabelText(/repository other/)).toBeTruthy()
   })
 
-  it('creates a group from the workspace actions menu and tags the repository', async () => {
+  it('toggles a repository\'s groups from its actions menu and links to group settings', async () => {
     const user = userEvent.setup()
     sessionsData = [
       { id: 'session-1', title: 'Feature', agent_name: 'lead', created_at: '2026-05-13T00:00:00Z', updated_at: '2026-05-13T00:00:00Z', mode: 'coding', workspace: '/repo/project' },
     ]
     workspaceSessionsData = sessionsData
+    workspaceGroupsData = [
+      { id: 'g-acme', name: 'acme', brief: null },
+      { id: 'g-shared', name: 'shared', brief: null },
+    ]
+    groupIdsByRepo = { '/repo/project': ['g-acme'] }
+    const realOpenSettings = useSettingsStore.getState().openSettings
+    const openSettings = mock(() => {})
+    useSettingsStore.setState({ openSettings })
 
     await renderSidebarForSessions('session-1')
 
     await user.click(screen.getByLabelText('Actions for project'))
-    await user.click(screen.getByRole('menuitem', { name: /groups/i }))
-    await screen.findByRole('heading', { name: 'Groups for project' })
-    expect(screen.getByText(/No groups yet/)).toBeTruthy()
+    const toggle = (name: string) => screen.getByRole('menuitemcheckbox', { name })
+    expect(toggle('acme').getAttribute('aria-checked')).toBe('true')
+    expect(toggle('shared').getAttribute('aria-checked')).toBe('false')
 
-    await user.click(screen.getByRole('button', { name: /new group/i }))
-    await user.type(screen.getByLabelText('Group name'), 'acme')
-    await user.type(screen.getByLabelText('Group brief'), 'project = app')
-    await user.click(screen.getByRole('button', { name: 'Create and add' }))
+    // A toggle saves at once and keeps the menu open for the next one.
+    await user.click(toggle('shared'))
+    await waitFor(() => expect(setGroupsRequests).toEqual([{ workspace: '/repo/project', group_ids: ['g-acme', 'g-shared'] }]))
+    await waitFor(() => expect(toggle('shared').getAttribute('aria-checked')).toBe('true'))
+    await user.click(toggle('acme'))
+    await waitFor(() => expect(setGroupsRequests.at(-1)).toEqual({ workspace: '/repo/project', group_ids: ['g-shared'] }))
 
-    await waitFor(() => expect(setGroupsRequests).toEqual([{ workspace: '/repo/project', group_ids: ['g-acme'] }]))
-    await waitFor(() => expect((screen.getByLabelText('In group acme') as HTMLInputElement).checked).toBe(true))
-
-    await user.click(screen.getByLabelText('In group acme'))
-    await waitFor(() => expect(setGroupsRequests.at(-1)).toEqual({ workspace: '/repo/project', group_ids: [] }))
+    await user.click(screen.getByRole('menuitem', { name: 'Manage groups…' }))
+    expect(openSettings).toHaveBeenCalledWith('automation')
+    expect(screen.queryByRole('menu')).toBeNull()
+    useSettingsStore.setState({ openSettings: realOpenSettings })
   })
 
   it('pins the chat workspace and keeps repository actions off it', async () => {

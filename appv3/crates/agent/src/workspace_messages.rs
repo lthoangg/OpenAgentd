@@ -89,10 +89,7 @@ pub fn can_reach(targets: &[Target], from: &str, to: &Target) -> bool {
 }
 
 fn out_of_scope(t: &Target) -> String {
-    format!(
-        "'{}' does not share a group with this workspace, so you cannot message it. Ask the user to add both workspaces to a group (Settings → Workspaces → Groups).",
-        t.name
-    )
+    format!("'{}' does not share a group with this workspace, so you cannot message it. Ask the user to add both workspaces to a group (Settings → Workspaces → Groups).", t.name)
 }
 
 fn looks_like_path(q: &str) -> bool {
@@ -419,10 +416,7 @@ pub fn render_workspace_list(targets: &[Target], groups: &[db::WorkspaceGroup], 
         lines.push(format!("… and {} more; pass a path to reach them.", total - shown));
     }
     if !in_chat && src.is_none_or(|s| s.groups.is_empty()) {
-        lines.push(
-            "This workspace is in no group, so it can message only Chat and its own worktrees. Ask the user to add it to a group (Settings → Workspaces → Groups)."
-                .into(),
-        );
+        lines.push("This workspace is in no group, so it can message only Chat and its own worktrees. Ask the user to add it to a group (Settings → Workspaces → Groups).".into());
     }
     lines.join("\n")
 }

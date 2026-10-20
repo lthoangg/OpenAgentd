@@ -29,7 +29,7 @@ use sqlx::{Connection, SqliteConnection, SqlitePool};
 use std::path::Path;
 
 /// Alembic head revision this build is schema-compatible with.
-pub const ALEMBIC_HEAD: &str = "00000024";
+pub const ALEMBIC_HEAD: &str = "00000025";
 
 /// `(revision, statements)` in upgrade order.
 ///
@@ -46,7 +46,11 @@ pub const ALEMBIC_HEAD: &str = "00000024";
 /// - 00000024: `chat_sessions.pinned_at` (sidebar pins; NULL = unpinned) and
 ///   the `(parent_session_id[, workspace], updated_at, id)` indexes that keep
 ///   the "recent activity" session list on an index.
-pub const MIGRATIONS: [(&str, &str); 24] = [
+/// - 00000025: `workspace_groups` (named tags with an optional brief, unique
+///   by case-insensitive name) and `workspace_group_members` (group ↔
+///   repository path). Groups scope `send_to_workspace`: workspaces may
+///   message each other only when their repositories share a group.
+pub const MIGRATIONS: [(&str, &str); 25] = [
     ("00000001", include_str!("../resources/migrations/00000001.sql")),
     ("00000002", include_str!("../resources/migrations/00000002.sql")),
     ("00000003", include_str!("../resources/migrations/00000003.sql")),
@@ -71,6 +75,7 @@ pub const MIGRATIONS: [(&str, &str); 24] = [
     ("00000022", include_str!("../resources/migrations/00000022.sql")),
     ("00000023", include_str!("../resources/migrations/00000023.sql")),
     ("00000024", include_str!("../resources/migrations/00000024.sql")),
+    ("00000025", include_str!("../resources/migrations/00000025.sql")),
 ];
 
 /// Split a captured revision file into statements.
@@ -441,6 +446,22 @@ CREATE TABLE side_questions (
 	updated_at DATETIME NOT NULL,
 	PRIMARY KEY (session_id, id)
 ) WITHOUT ROWID;
+CREATE TABLE workspace_groups (
+	id CHAR(32) NOT NULL,
+	name VARCHAR(80) NOT NULL,
+	brief TEXT,
+	created_at DATETIME NOT NULL,
+	updated_at DATETIME NOT NULL,
+	PRIMARY KEY (id)
+);
+CREATE UNIQUE INDEX uq_workspace_groups_name ON workspace_groups (name COLLATE NOCASE);
+CREATE TABLE workspace_group_members (
+	group_id CHAR(32) NOT NULL REFERENCES workspace_groups (id) ON DELETE CASCADE,
+	path VARCHAR NOT NULL,
+	created_at DATETIME NOT NULL,
+	PRIMARY KEY (group_id, path)
+);
+CREATE INDEX ix_workspace_group_members_path ON workspace_group_members (path);
 "#;
 
     async fn master(conn: &mut SqliteConnection) -> Vec<(String, String, String, Option<String>)> {

@@ -637,6 +637,15 @@ async fn workspace_tree(State(st): State<AppState>) -> ApiResult<Response> {
     let s = settings();
     let chat_path = s.chat_workspace_root().display().to_string();
     let rows = db::list_visible_coding_workspaces(&st.pool).await?;
+    // Workspace groups: each repository's tags plus the groups themselves.
+    let memberships = db::list_group_memberships(&st.pool).await.map_err(ApiError::internal)?;
+    let group_ids = |path: &str| -> Vec<String> { memberships.iter().filter(|(_, p)| p == path).map(|(g, _)| db::codec::api_uuid(g)).collect() };
+    let groups: Vec<Value> = db::list_workspace_groups(&st.pool)
+        .await
+        .map_err(ApiError::internal)?
+        .iter()
+        .map(|g| json!({"id": db::codec::api_uuid(&g.id), "name": g.name, "brief": g.brief}))
+        .collect();
     let mut repos: Vec<(String, Map<String, Value>)> = vec![];
     let mut pending = vec![];
     for row in rows {
@@ -648,7 +657,7 @@ async fn workspace_tree(State(st): State<AppState>) -> ApiResult<Response> {
             continue;
         }
         let name = row.name.clone().filter(|n| !n.is_empty()).unwrap_or_else(|| basename(&row.path));
-        let entry = json!({"path": row.path, "name": name, "worktrees": []});
+        let entry = json!({"path": row.path, "name": name, "worktrees": [], "group_ids": group_ids(&row.path)});
         match repos.iter_mut().find(|(p, _)| *p == row.path) {
             Some(slot) => slot.1 = entry.as_object().unwrap().clone(),
             None => repos.push((row.path.clone(), entry.as_object().unwrap().clone())),
@@ -657,7 +666,7 @@ async fn workspace_tree(State(st): State<AppState>) -> ApiResult<Response> {
     for row in pending {
         let Some(source) = row.source_path.clone().filter(|p| !p.is_empty()) else { continue };
         if !repos.iter().any(|(p, _)| *p == source) {
-            repos.push((source.clone(), json!({"path": source, "name": basename(&source), "worktrees": []}).as_object().unwrap().clone()));
+            repos.push((source.clone(), json!({"path": source, "name": basename(&source), "worktrees": [], "group_ids": group_ids(&source)}).as_object().unwrap().clone()));
         }
         let name = row.name.clone().filter(|n| !n.is_empty()).unwrap_or_else(|| basename(&row.path));
         let slot = repos.iter_mut().find(|(p, _)| *p == source).unwrap();
@@ -666,6 +675,7 @@ async fn workspace_tree(State(st): State<AppState>) -> ApiResult<Response> {
     Ok(json(json!({
         "repositories": repos.into_iter().map(|(_, m)| Value::Object(m)).collect::<Vec<_>>(),
         "chat": {"path": chat_path, "name": "Chat"},
+        "groups": groups,
     })))
 }
 

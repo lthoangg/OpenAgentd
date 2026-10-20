@@ -272,7 +272,7 @@ run from the terminal (the native Rust binary since v3.0.0).
   nothing is typed `[v3.21.0]`. → opens the highlighted list and ← on an
   empty query, Backspace, or Escape steps back one level, landing on the
   row that opened it `[v3.21.0]`.
-- **Plan and Code interaction modes** `[v2.14.0, updated v2.15.0, v3.0.0, v3.2.0, v3.8.0]` — the expanded composer switches an
+- **Plan and Code interaction modes** `[v2.14.0, updated v2.15.0, v3.0.0, v3.2.0, v3.8.0, v3.21.0]` — the expanded composer switches an
   existing session between Code (default) and Plan without starting a new
   chat; `Tab` also toggles mode from the composer. Mode transitions are preserved via
   append-only hidden context notes in session history. In Plan mode, the agent explores
@@ -294,6 +294,12 @@ run from the terminal (the native Rust binary since v3.0.0).
   the plan; **Open Plan** in the command palette (⌘K) does the same whenever
   the session has a plan. Replying in chat instead supersedes the review.
   Older `<proposed_plan>` answers still render as read-only cards.
+  The Plan tab shows the plan being written in place `[v3.21.0]`: a rewrite
+  streams in (following the bottom unless you scroll up) and an edit changes
+  the plan where it applies, under a **Writing…** or **Editing…** chip, with
+  **Edit** and **Clear** held until the plan is saved. In Plan mode the tab
+  opens by itself on desktop when the agent starts writing; the transcript's
+  `plan` row has **Watch plan** (**View plan** once saved) to open it.
   Switching mode while a turn is running no longer stops it: the switch is
   queued and applied when that turn closes, so it binds from the next turn and
   any message queued behind it. The toggle shows the queued mode in italics

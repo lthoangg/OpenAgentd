@@ -16,7 +16,7 @@ import { useOverlayState, type UseOverlayStateArgs } from '@/components/AgentCha
 import { useAgentStore } from '@/stores/useAgentStore'
 import { useBtwStore } from '@/stores/useBtwStore'
 import { useUIStore } from '@/stores/useUIStore'
-import type { PendingQuestion } from '@/api/types'
+import type { ContentBlock, PendingQuestion } from '@/api/types'
 
 function wrapper({ children }: { children: React.ReactNode }) {
   return <QueryClientProvider client={new QueryClient()}>{children}</QueryClientProvider>
@@ -37,12 +37,12 @@ function renderOverlay(overrides: Partial<UseOverlayStateArgs> = {}) {
 
 beforeEach(() => {
   useUIStore.setState({ schedulerOpen: false, agentCapabilitiesOpen: false, paletteOpen: false, quickOpenOpen: false })
-  useAgentStore.setState({ pendingQuestion: null })
+  useAgentStore.setState({ pendingQuestion: null, sessionId: 's-1', leadName: null, agentStreams: {}, sessionInteractionMode: 'code' })
   useBtwStore.setState({ sessions: {} })
 })
 afterEach(() => {
   cleanup()
-  useAgentStore.setState({ pendingQuestion: null })
+  useAgentStore.setState({ pendingQuestion: null, leadName: null, agentStreams: {}, sessionInteractionMode: 'code' })
 })
 
 const planReview = (id: string): PendingQuestion => ({
@@ -53,6 +53,12 @@ const planReview = (id: string): PendingQuestion => ({
   planRevision: 1,
   questions: [{ question: 'Review plan revision 1.', header: 'Plan review', multiple: false, options: [] }],
 })
+
+/** The lead's turn holding one ``plan`` call. */
+function setPlanCall(id: string, done = false) {
+  const block: ContentBlock = { id, type: 'tool', content: '', toolName: 'plan', toolCallId: id, toolArgs: '{"action":"write"', toolDone: done }
+  useAgentStore.setState({ leadName: 'lead', agentStreams: { lead: { currentBlocks: [block] } } as never })
+}
 
 describe('useOverlayState dock views', () => {
   it('opens the dock with a tasks request on desktop instead of the popover', () => {
@@ -203,6 +209,33 @@ describe('useOverlayState Plan view', () => {
     act(() => useAgentStore.setState({ pendingQuestion: { ...planReview('q-1'), kind: undefined } }))
 
     expect(result.current.dockViewRequest).toBeNull()
+  })
+
+  it('brings the plan forward once per plan call in Plan mode on desktop, to watch it being written', () => {
+    useAgentStore.setState({ sessionInteractionMode: 'plan' })
+    const { result } = renderOverlay()
+
+    act(() => setPlanCall('call-1'))
+    expect(result.current.dockViewRequest).toEqual({ view: 'plan', key: 1 })
+
+    act(() => result.current.setWorkspacePanel(null))
+    act(() => setPlanCall('call-1', true))
+    expect(result.current.workspacePanel).toBeNull()
+
+    act(() => setPlanCall('call-2'))
+    expect(result.current.dockViewRequest).toEqual({ view: 'plan', key: 2 })
+  })
+
+  it('leaves the dock alone for a plan call in Code mode, or on mobile', () => {
+    const desktop = renderOverlay()
+    act(() => setPlanCall('call-1'))
+    expect(desktop.result.current.dockViewRequest).toBeNull()
+    desktop.unmount()
+
+    useAgentStore.setState({ sessionInteractionMode: 'plan', agentStreams: {} })
+    const mobile = renderOverlay({ isMobile: true })
+    act(() => setPlanCall('call-2'))
+    expect(mobile.result.current.dockViewRequest).toBeNull()
   })
 })
 

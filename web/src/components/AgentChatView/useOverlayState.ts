@@ -44,7 +44,8 @@
  *
  * The session plan opens as a Plan tab on every platform with a workspace
  * (the dock sheet on phones). Desktop brings it forward by itself once per
- * plan review, so the plan the agent submitted is on screen to review.
+ * plan review, so the plan the agent submitted is on screen to review, and
+ * once per ``plan`` call in Plan mode, so the plan is watched being written.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
@@ -52,6 +53,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { listCodingWorkspaceFiles } from '@/api/client'
 import { queryKeys } from '@/queries'
 import { useAgentStore } from '@/stores/useAgentStore'
+import { selectRunningPlanCallId } from '@/components/PlanReview/live-plan'
 import { useBtwStore } from '@/stores/useBtwStore'
 import { useUIStore } from '@/stores/useUIStore'
 import { useLayoutStore } from '@/stores/useLayoutStore'
@@ -487,6 +489,16 @@ export function useOverlayState({
     autoOpenedReviewRef.current = planReviewId
     handleOpenPlan()
   }, [dockViewsEnabled, handleOpenPlan, planReviewId])
+
+  // In Plan mode a new plan call does the same, so it is watched being
+  // written. Code mode leaves the user's tabs alone for scope edits.
+  const planCallId = useAgentStore((s) => (s.sessionInteractionMode === 'plan' ? selectRunningPlanCallId(s) : null))
+  const autoOpenedPlanCallRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (!dockViewsEnabled || !planCallId || autoOpenedPlanCallRef.current === planCallId) return
+    autoOpenedPlanCallRef.current = planCallId
+    handleOpenPlan()
+  }, [dockViewsEnabled, handleOpenPlan, planCallId])
 
   const handleToggleFilesPanel = handleWorkspaceFiles
 

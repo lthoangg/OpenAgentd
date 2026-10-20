@@ -9,8 +9,11 @@
  * Request changes sends them all, with any overall feedback, as one answer.
  * The user can also edit the plan here (or in any editor): the server notices
  * the change by content and tells the agent once.
+ *
+ * While the lead's ``plan`` call streams, the tab shows the plan being written
+ * in place (see ``useLivePlan``) and holds Edit and Clear until it lands.
  */
-import { useEffect, useId, useRef, useState } from 'react'
+import { useDeferredValue, useEffect, useId, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Check, Copy, ExternalLink, FileText, Pencil, Unlink } from 'lucide-react'
 import type { SessionPlan } from '@/api/types'
@@ -27,6 +30,7 @@ import { useToastStore } from '@/stores/useToastStore'
 import { formatCompactRelative, formatRelativeDate } from '@/utils/format'
 import { MarkdownBlock } from '@/utils/markdown'
 import { useQuestionResolver } from '../AskUser/useQuestionResolver'
+import { useLivePlan } from '../PlanReview/live-plan'
 import { CommentButton, CommentComposer, CommentList, showPassage, useCommentHighlights } from '../PlanReview/PlanComments'
 import {
   forgetPlanReviewDraft,
@@ -61,6 +65,11 @@ const STATUS_CHIP: Record<PlanStatus, { label: string; className: string }> = {
   changed: { label: 'Changed since approval', className: 'bg-(--bg-key) text-(--color-text-muted)' },
   draft: { label: 'Draft', className: 'bg-(--bg-key) text-(--color-text-muted)' },
 }
+
+const WRITING_CHIP_CLASS = 'bg-(--bg-key) text-(--color-marker-orange) motion-safe:animate-pulse'
+
+/** How close to the bottom still counts as following the plan being written. */
+const FOLLOW_SLACK_PX = 32
 
 function isConflict(cause: unknown): boolean {
   return typeof cause === 'object' && cause !== null && (cause as { status?: unknown }).status === 409
@@ -111,6 +120,8 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile }: PlanTa
   const update = useUpdateSessionPlanMutation()
   const reducedMotion = useReducedMotion() ?? false
   const commentIdPrefix = useId()
+  const live = useLivePlan(plan, sessionId)
+  const writing = Boolean(live?.writing)
 
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState('')
@@ -145,6 +156,25 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile }: PlanTa
   const { selection, clear: clearSelection } = usePlanSelection(bodyRef, Boolean(review) && !editing && !composer)
   useCommentHighlights(bodyRef, editing ? [] : [...reviewDraft.comments.map((c) => c.quote), ...(composer ? [composer.quote] : [])])
 
+  // A write grows at the bottom: keep it in view unless the user scrolled up.
+  const followRef = useRef(true)
+  const following = writing && live?.action === 'write'
+  useEffect(() => {
+    const scroller = scrollRef.current
+    const body = bodyRef.current
+    if (!following || !scroller || !body || typeof ResizeObserver === 'undefined') return
+    followRef.current = true
+    const observer = new ResizeObserver(() => {
+      if (followRef.current) scroller.scrollTop = scroller.scrollHeight
+    })
+    observer.observe(body)
+    return () => observer.disconnect()
+  }, [following])
+  const trackFollow = (event: React.UIEvent<HTMLDivElement>) => {
+    const el = event.currentTarget
+    followRef.current = el.scrollHeight - el.scrollTop - el.clientHeight <= FOLLOW_SLACK_PX
+  }
+
   const [copied, setCopied] = useState(false)
   useEffect(() => {
     if (!copied) return
@@ -152,21 +182,28 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile }: PlanTa
     return () => clearTimeout(timer)
   }, [copied])
 
-  if (!plan) {
+  const content = live?.content ?? plan?.content ?? null
+  // An edit rewrites the middle of the plan, so each chunk re-renders all
+  // that follows; deferring lets that work yield to scrolling and typing.
+  const renderedContent = useDeferredValue(content ?? '')
+  if (content === null) {
     return (
       <EmptyState
         icon={FileText}
-        title="No plan yet"
-        body="In Plan mode the agent writes its plan here for you to review."
+        title={writing ? 'Writing the plan…' : 'No plan yet'}
+        body={writing ? 'It appears here as the agent writes it.' : 'In Plan mode the agent writes its plan here for you to review.'}
       />
     )
   }
 
-  const status = planStatus(plan, Boolean(review))
-  const chip = STATUS_CHIP[status]
+  const chip = writing
+    ? { label: live?.action === 'edit' ? 'Editing…' : 'Writing…', className: WRITING_CHIP_CLASS }
+    : plan
+      ? STATUS_CHIP[planStatus(plan, Boolean(review))]
+      : STATUS_CHIP.draft
   // A server without plan revisions (v2) has no edit route.
-  const canEdit = plan.revision !== undefined && Boolean(sessionId)
-  const unsavedEdits = editing && draft !== plan.content
+  const canEdit = !live && plan?.revision !== undefined && Boolean(sessionId)
+  const unsavedEdits = editing && draft !== plan?.content
   const { comments, overall } = reviewDraft
   const pendingComment = composer?.text.trim() ? [{ quote: composer.quote, text: composer.text }] : []
   const answerText = formatPlanReview([...comments, ...pendingComment], overall)
@@ -181,6 +218,7 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile }: PlanTa
   const footerHint = tooLong ? 'Too long to send — shorten your comments' : approveHint
 
   const startEditing = () => {
+    if (!plan) return
     setDraft(plan.content)
     setBaseRevision(plan.revision ?? 0)
     setSaveError(null)
@@ -230,7 +268,7 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile }: PlanTa
   }
 
   const copy = () => {
-    void navigator.clipboard?.writeText(plan.content).then(() => setCopied(true), () => {})
+    void navigator.clipboard?.writeText(content).then(() => setCopied(true), () => {})
   }
 
   return (
@@ -240,22 +278,24 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile }: PlanTa
         <span className={cn('inline-flex h-5 shrink-0 items-center rounded-full px-2 text-[11px] font-medium', chip.className)}>
           {chip.label}
         </span>
-        {plan.revision !== undefined && (
+        {plan?.revision !== undefined && (
           <span className="shrink-0 font-mono text-[11px] tabular-nums text-(--color-text-subtle)">rev {plan.revision}</span>
         )}
-        <span
-          className="hidden shrink-0 font-mono text-[11px] tabular-nums text-(--color-text-subtle) sm:inline"
-          title={`Updated ${formatRelativeDate(plan.updated_at)}`}
-        >
-          {formatCompactRelative(plan.updated_at)}
-        </span>
+        {plan && (
+          <span
+            className="hidden shrink-0 font-mono text-[11px] tabular-nums text-(--color-text-subtle) sm:inline"
+            title={`Updated ${formatRelativeDate(plan.updated_at)}`}
+          >
+            {formatCompactRelative(plan.updated_at)}
+          </span>
+        )}
         <span className="min-w-0 flex-1" aria-hidden="true" />
         {canEdit && !editing && (
           <ToolbarAction label="Edit plan" onClick={startEditing}>
             <Pencil size={12} aria-hidden="true" />
           </ToolbarAction>
         )}
-        {plan.workspace_path && onOpenFile && (
+        {plan?.workspace_path && onOpenFile && (
           <ToolbarAction label="Open file" tooltip={plan.workspace_path} onClick={() => onOpenFile(plan.workspace_path as string)}>
             <ExternalLink size={12} aria-hidden="true" />
           </ToolbarAction>
@@ -266,9 +306,15 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile }: PlanTa
         {onClearPlan && (
           <ToolbarAction
             label="Clear plan"
-            tooltip={review ? 'The plan is awaiting review.' : 'Stops using this plan in the session; the file stays.'}
+            tooltip={
+              review
+                ? 'The plan is awaiting review.'
+                : live
+                  ? 'The agent is writing the plan.'
+                  : 'Stops using this plan in the session; the file stays.'
+            }
             onClick={onClearPlan}
-            disabled={Boolean(review)}
+            disabled={Boolean(review) || Boolean(live) || !plan}
           >
             <Unlink size={12} aria-hidden="true" />
           </ToolbarAction>
@@ -298,9 +344,9 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile }: PlanTa
           </div>
         </div>
       ) : (
-        <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain touch-pan-y">
+        <div ref={scrollRef} onScroll={trackFollow} className="min-h-0 flex-1 overflow-y-auto overscroll-contain touch-pan-y">
           <div ref={bodyRef} className="relative mx-auto max-w-3xl px-4 py-3">
-            <MarkdownBlock content={plan.content} sessionId={sessionId ?? undefined} />
+            <MarkdownBlock content={renderedContent} sessionId={sessionId ?? undefined} isStreaming={writing} />
             {selection && review && !composer && <CommentButton selection={selection} onComment={startComment} />}
             {composer && review && (
               <CommentComposer

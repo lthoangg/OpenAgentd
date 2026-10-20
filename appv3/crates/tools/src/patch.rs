@@ -790,7 +790,9 @@ mod tests {
         let escape = run_patch(&plan, "*** Add File: .agents/plans/p-1/../../../x.txt\n+x").await.unwrap_err();
         assert!(escape.contains("is outside it"), "{escape}");
         let moved = run_patch(&plan, "*** Update File: .agents/plans/p-1/mockup.html\n*** Move to: docs/mockup.html\n@@\n-<p>hello</p>\n+<p>moved</p>").await.unwrap_err();
-        assert!(moved.contains("'docs/mockup.html'"), "{moved}");
+        // The refusal shows the path in the platform's form (`docs\mockup.html` on Windows).
+        let shown = std::path::Path::new("docs").join("mockup.html").display().to_string();
+        assert!(moved.contains(&format!("'{shown}'")), "{moved}");
         assert_eq!(std::fs::read_to_string(ws.join("src.txt")).unwrap(), "a\n", "nothing outside was written");
         assert!(!ws.join("docs").exists());
 

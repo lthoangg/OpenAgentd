@@ -354,6 +354,99 @@ describe('PlanTabView', () => {
   })
 })
 
+const VISUAL_PLAN: SessionPlan = {
+  ...PLAN,
+  content: [
+    '# Ship it',
+    '',
+    'See the [mockup](.agents/plans/ship-it-0000abcd/mockup.html), the [notes](docs/notes.md),',
+    'the [absolute mockup](/repo/project/.agents/plans/ship-it-0000abcd/b.html) and [the site](https://example.com).',
+    '',
+    '![Request flow](.agents/plans/ship-it-0000abcd/flow.svg)',
+    '',
+    '```md',
+    '## Appendix (inside a fence, not the real one)',
+    '```',
+    '',
+    '## Appendix',
+    '',
+    '### A. Files',
+    '',
+    '- Touch the migration file',
+    '',
+    '### B. Tests',
+    '',
+    '- Add a reversal test',
+  ].join('\n'),
+}
+
+describe('PlanTabView — links, images and the Appendix', () => {
+  beforeEach(() => localStorage.clear())
+
+  it('opens HTML attachments in Preview and other workspace files as file tabs', () => {
+    const onOpenFile = mock((..._args: unknown[]) => {})
+    const onOpenPreview = mock((..._args: unknown[]) => {})
+    renderTab({ plan: VISUAL_PLAN, onOpenFile, onOpenPreview, workspace: '/repo/project' })
+
+    fireEvent.click(screen.getByRole('link', { name: 'mockup' }))
+    fireEvent.click(screen.getByRole('link', { name: 'absolute mockup' }))
+    fireEvent.click(screen.getByRole('link', { name: 'notes' }))
+    expect(onOpenPreview.mock.calls.map(([path]) => path)).toEqual(['.agents/plans/ship-it-0000abcd/mockup.html', '.agents/plans/ship-it-0000abcd/b.html'])
+    expect(onOpenFile.mock.calls.map(([path]) => path)).toEqual(['docs/notes.md'])
+    expect(screen.getByRole('link', { name: 'the site' }).getAttribute('target')).toBe('_blank')
+  })
+
+  it('opens an HTML attachment as a file when previews are unavailable', () => {
+    const onOpenFile = mock((..._args: unknown[]) => {})
+    renderTab({ plan: VISUAL_PLAN, onOpenFile, workspace: '/repo/project' })
+    fireEvent.click(screen.getByRole('link', { name: 'mockup' }))
+    expect(onOpenFile.mock.calls.map(([path]) => path)).toEqual(['.agents/plans/ship-it-0000abcd/mockup.html'])
+  })
+
+  it('shows an SVG diagram inline through the media route', () => {
+    renderTab({ plan: VISUAL_PLAN })
+    const img = screen.getByRole('img', { name: 'Request flow' }) as HTMLImageElement
+    expect(img.getAttribute('src')).toContain('/agent/s-1/media/.agents/plans/ship-it-0000abcd/flow.svg')
+  })
+
+  it('collapses the Appendix under the body and remembers when it is opened', () => {
+    const { unmount } = renderTab({ plan: VISUAL_PLAN })
+    const toggle = screen.getByRole('button', { name: /^Appendix/ })
+    expect(toggle.getAttribute('aria-expanded')).toBe('false')
+    expect(toggle.textContent).toContain('2 sections')
+    const section = document.getElementById(toggle.getAttribute('aria-controls')!)!
+    expect(section.hidden).toBe(true)
+    expect(section.textContent).toContain('Touch the migration file')
+    // The fenced heading stays in the body as code.
+    expect(section.textContent).not.toContain('inside a fence')
+
+    fireEvent.click(toggle)
+    expect(toggle.getAttribute('aria-expanded')).toBe('true')
+    expect(section.hidden).toBe(false)
+
+    unmount()
+    renderTab({ plan: VISUAL_PLAN })
+    expect(screen.getByRole('button', { name: /^Appendix/ }).getAttribute('aria-expanded')).toBe('true')
+  })
+
+  it('takes comments on Appendix text and opens the Appendix to show one', async () => {
+    useAgentStore.setState({ pendingQuestion: REVIEW })
+    const { container } = renderTab({ plan: VISUAL_PLAN })
+    const toggle = screen.getByRole('button', { name: /^Appendix/ })
+    fireEvent.click(toggle)
+    comment(container, 'Add a reversal test', 'Cover the down migration.')
+    fireEvent.click(toggle)
+    expect(toggle.getAttribute('aria-expanded')).toBe('false')
+
+    fireEvent.click(screen.getByTitle('Show in the plan'))
+    expect(toggle.getAttribute('aria-expanded')).toBe('true')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Request changes (1)' }))
+    await waitFor(() => expect(answerCalls()).toHaveLength(1))
+    expect(JSON.stringify(answerCalls()[0].body)).toContain('Add a reversal test')
+  })
+})
+
 describe('PlanTabView — the plan being written', () => {
   it('replaces the plan in place as a write streams, with no way to edit or clear it meanwhile', () => {
     setPlanCall('{"action":"write","content":"# Rewrite\\n\\n1. Start ov')

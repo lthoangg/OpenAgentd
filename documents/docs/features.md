@@ -276,8 +276,8 @@ run from the terminal (the native Rust binary since v3.0.0).
   existing session between Code (default) and Plan without starting a new
   chat; `Tab` also toggles mode from the composer. Mode transitions are preserved via
   append-only hidden context notes in session history. In Plan mode, the agent explores
-  the repository and produces decision-complete implementation plans, while the runtime
-  strictly blocks mutating file operations and patches while permitting read-only inspection and testing via shell.
+  the repository and writes a plan for you to review, while the runtime
+  blocks changes to project files and permits read-only inspection and testing via shell.
   The agent writes its plan with the `plan` tool and submits it with
   `submit_plan` (in either Plan or Code mode), which pauses the turn for review in the **Plan** tab of the
   review dock (full screen on mobile; it opens by itself on desktop). The tab
@@ -316,6 +316,23 @@ run from the terminal (the native Rust binary since v3.0.0).
     file is kept). The Tasks tab and popover show a Plan row with its
     revision, **Open** and **Clear**, which stops using the plan in the
     session and leaves the file in place.
+  - **Plans written for the reviewer** `[v3.21.0]` — a plan opens with
+    what you get (**Outcome**) and the choices to confirm (**Decisions**,
+    each with a recommendation), shows the change (**Preview**), and lists
+    a few milestones with checkpoints, then **Scope**, **Risks** and
+    **Done when**. Implementation detail goes in an **Appendix** at the end,
+    which the Plan tab shows collapsed: click it to open (remembered per
+    session); you can select and comment on its text like the rest of the
+    plan, and clicking such a comment opens it. Sessions already in Plan
+    mode get the new instructions on their next turn.
+  - **Mockups and diagrams in plans** `[v3.21.0]` — while planning, the
+    agent can write attachments next to the plan, in
+    `.agents/plans/<plan-name>/` (the only place `patch` writes in Plan
+    mode), and check them with a look-only `preview` (open, logs, snapshot,
+    inspect, scroll, navigate, wait; no click, fill or press). In the Plan
+    tab, a link to an HTML mockup opens it in a Preview tab (a file tab when
+    previews are unavailable), other workspace links open as file tabs, SVG
+    images render inline, and `mermaid` fences render as diagrams.
 - **Fullscreen view mode and traffic-light space reclamation** `[v2.0.0]` — automatically
   detects macOS fullscreen mode and reclaims the window traffic-light header padding to
   maximise message and diff reading area.

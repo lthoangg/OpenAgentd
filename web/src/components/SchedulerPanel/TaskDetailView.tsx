@@ -13,12 +13,14 @@ import { SchedulerBackButton, useSchedulerPaneHeaderClass } from './chrome'
 import { Callout } from '@/components/ui/callout'
 import { PanelSection } from '@/components/ui/panel-section'
 import { COMPACT_ROW, ICON_SIZE, ICON_SIZE_INLINE, TEXT } from '@/components/ui/panel-tokens'
+import { useIsMobile } from '@/hooks/use-mobile'
 import { cn } from '@/lib/utils'
 
 export function TaskDetailView({
   task,
   onClose,
   closeMode = 'close',
+  hostTitled = false,
 }: {
   task: ScheduledTaskResponse
   onClose: () => void
@@ -27,12 +29,19 @@ export function TaskDetailView({
    * stacked hosts (the dock) where the detail replaces the list.
    */
   closeMode?: 'close' | 'back'
+  /**
+   * The host header already shows the task name and the way back (the phone
+   * overlay), so the pane drops its own title and close button.
+   */
+  hostTitled?: boolean
 }) {
   const [editing, setEditing] = useState(false)
   const [copiedPrompt, setCopiedPrompt] = useState(false)
   const [deleteConfirmationOpen, setDeleteConfirmationOpen] = useState(false)
   const currentSessionId = useAgentStore((state) => state.sessionId)
   const headerClass = useSchedulerPaneHeaderClass()
+  // Phones move Run now / Pause into a bottom bar, within thumb reach.
+  const isMobile = useIsMobile()
 
   const deleteMutation = useDeleteScheduledTaskMutation()
   const pauseMutation = usePauseScheduledTaskMutation()
@@ -97,6 +106,17 @@ export function TaskDetailView({
         ? 'This chat session'
         : null
 
+  const pausePending = pauseMutation.isPending || resumeMutation.isPending
+  const runIcon = triggerMutation.isPending ? <Loader2 size={ICON_SIZE} className="animate-spin" /> : <Zap size={ICON_SIZE} />
+  const pauseIcon = pausePending ? (
+    <Loader2 size={ICON_SIZE} className="animate-spin" />
+  ) : task.status === 'paused' ? (
+    <Play size={ICON_SIZE} />
+  ) : (
+    <Pause size={ICON_SIZE} />
+  )
+  const pauseLabel = task.status === 'paused' ? 'Resume' : 'Pause'
+
   return (
     <div className="flex flex-1 flex-col overflow-hidden bg-(--bg-page)">
       {/* Header */}
@@ -105,7 +125,9 @@ export function TaskDetailView({
           {closeMode === 'back' && <SchedulerBackButton onClick={onClose} />}
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
-              <h2 className="truncate text-base font-semibold tracking-tight text-(--color-text)">{task.name}</h2>
+              {!hostTitled && (
+                <h2 className="truncate text-base font-semibold tracking-tight text-(--color-text)">{task.name}</h2>
+              )}
               <span className="rounded-xs border border-(--color-border-subtle) bg-(--bg-key)/60 px-1.5 py-0.5 font-mono text-xs md:text-[11px] text-(--color-text-subtle)">
                 slug: <span className="text-(--color-text-2)">{slugify(task.name)}</span>
               </span>
@@ -116,26 +138,12 @@ export function TaskDetailView({
             </div>
           </div>
           <div className="-mr-1.5 flex shrink-0 items-center gap-0.5">
-            <HeaderAction
-              label="Trigger now"
-              onClick={triggerTask}
-              disabled={triggerMutation.isPending}
-              icon={triggerMutation.isPending ? <Loader2 size={ICON_SIZE} className="animate-spin" /> : <Zap size={ICON_SIZE} />}
-            />
-            <HeaderAction
-              label={task.status === 'paused' ? 'Resume' : 'Pause'}
-              onClick={togglePaused}
-              disabled={pauseMutation.isPending || resumeMutation.isPending}
-              icon={
-                pauseMutation.isPending || resumeMutation.isPending ? (
-                  <Loader2 size={ICON_SIZE} className="animate-spin" />
-                ) : task.status === 'paused' ? (
-                  <Play size={ICON_SIZE} />
-                ) : (
-                  <Pause size={ICON_SIZE} />
-                )
-              }
-            />
+            {!isMobile && (
+              <>
+                <HeaderAction label="Trigger now" onClick={triggerTask} disabled={triggerMutation.isPending} icon={runIcon} />
+                <HeaderAction label={pauseLabel} onClick={togglePaused} disabled={pausePending} icon={pauseIcon} />
+              </>
+            )}
             <HeaderAction label="Edit task" onClick={() => setEditing(true)} icon={<Pencil size={ICON_SIZE} />} />
             <HeaderAction
               label="Delete task"
@@ -144,7 +152,7 @@ export function TaskDetailView({
               disabled={deleteMutation.isPending}
               icon={<Trash2 size={ICON_SIZE} />}
             />
-            {closeMode === 'close' && (
+            {closeMode === 'close' && !hostTitled && (
               <HeaderAction label="Close detail" tooltip="Close" onClick={onClose} icon={<X size={ICON_SIZE} />} />
             )}
           </div>
@@ -168,18 +176,23 @@ export function TaskDetailView({
         </section>
 
         <PanelSection title="Delivery" flush>
-          <DetailRow label="Agent">
+          <DetailRow label="Agent" long>
             {task.workspace ? (
-              <span className="inline-flex min-w-0 items-center gap-1.5">
+              <span className="inline-flex min-w-0 max-w-full items-center gap-1.5">
                 <FolderOpen size={12} className="shrink-0 text-(--color-accent)" aria-hidden="true" />
                 <span className="shrink-0">Coding agent</span>
-                <Tooltip className="min-w-0 max-w-[220px]">
-                  <TooltipTrigger
-                    className="min-w-0 max-w-[220px]"
-                    render={<span className="truncate font-mono text-(--color-text-muted)">· {task.workspace}</span>}
-                  />
-                  <TooltipContent>{task.workspace}</TooltipContent>
-                </Tooltip>
+                {isMobile ? (
+                  // No hover on touch: show the whole path instead of a tooltip.
+                  <span className="min-w-0 break-all font-mono text-(--color-text-muted)">· {task.workspace}</span>
+                ) : (
+                  <Tooltip className="min-w-0 max-w-[220px]">
+                    <TooltipTrigger
+                      className="min-w-0 max-w-[220px]"
+                      render={<span className="truncate font-mono text-(--color-text-muted)">· {task.workspace}</span>}
+                    />
+                    <TooltipContent>{task.workspace}</TooltipContent>
+                  </Tooltip>
+                )}
               </span>
             ) : (
               <span className="inline-flex items-center gap-1.5">
@@ -188,7 +201,7 @@ export function TaskDetailView({
               </span>
             )}
           </DetailRow>
-          <DetailRow label="Session">
+          <DetailRow label="Session" long>
             {sessionLabel ?? (
               <span className="break-all font-mono text-(--color-text-2)">{task.session_id}</span>
             )}
@@ -254,6 +267,19 @@ export function TaskDetailView({
         </section>
       </div>
 
+      {isMobile && (
+        <div className="flex shrink-0 gap-2 border-t border-(--color-border) bg-(--bg-sidebar) px-4 py-3">
+          <Button type="button" className="flex-1" onClick={triggerTask} disabled={triggerMutation.isPending} aria-label="Trigger now">
+            {runIcon}
+            Run now
+          </Button>
+          <Button type="button" className="flex-1" onClick={togglePaused} disabled={pausePending} aria-label={pauseLabel}>
+            {pauseIcon}
+            {pauseLabel}
+          </Button>
+        </div>
+      )}
+
       <Dialog open={deleteConfirmationOpen} onOpenChange={setDeleteConfirmationOpen}>
         <DialogContent showCloseButton={false}>
           <DialogHeader>
@@ -283,11 +309,19 @@ export function TaskDetailView({
   )
 }
 
-function DetailRow({ label, children }: { label: string; children: ReactNode }) {
+/** `long` values (paths, ids) stack under the label on phones instead of truncating. */
+function DetailRow({ label, long = false, children }: { label: string; long?: boolean; children: ReactNode }) {
   return (
-    <div className={cn(COMPACT_ROW, 'justify-between')}>
+    <div
+      className={
+        long
+          ? // COMPACT_ROW geometry, stacked below md (`cn` does not merge, so not layered on it).
+            'flex min-h-11 flex-col gap-1 px-4 py-2.5 md:flex-row md:items-center md:justify-between md:gap-3'
+          : cn(COMPACT_ROW, 'justify-between')
+      }
+    >
       <span className={cn('shrink-0', TEXT.hint)}>{label}</span>
-      <span className={cn('min-w-0 text-right', TEXT.label)}>{children}</span>
+      <span className={cn('min-w-0', long ? 'max-w-full md:text-right' : 'text-right', TEXT.label)}>{children}</span>
     </div>
   )
 }

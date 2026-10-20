@@ -199,6 +199,11 @@ run from the terminal (the native Rust binary since v3.0.0).
   save from a footer bar. The task list shows one row per task. Session
   settings groups Model, MCP servers (with **Manage**) and the collapsible
   Tools list. The same layout applies in the review dock's Schedule tab.
+  On phones the scheduler shows a single header, puts **Run now** and
+  **Pause** in a bottom bar, uses full-width save buttons and a number pad
+  for intervals and run limits, and shows long workspace paths and session
+  IDs in full. Task rows drop their inline buttons on touch screens; tap a
+  task for every action, or long-press it in the app.
 - **In-app crash recovery** `[v1.113.0]` — an unexpected UI render failure opens
   a recovery screen with Reload and copyable error details instead of leaving a
   dead webview that must be force-quit.

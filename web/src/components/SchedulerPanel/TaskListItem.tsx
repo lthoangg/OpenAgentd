@@ -165,8 +165,10 @@ export function TaskListItem({
           )}
         </div>
 
-        {/* Action buttons */}
-        <div className="-mr-1.5 flex shrink-0 items-center gap-0.5">
+        {/* Action buttons. Hidden on touch, where they squeezed the name: a tap
+            opens the detail (which has every action) and a long press opens
+            the same menu. */}
+        <div className="-mr-1.5 flex shrink-0 items-center gap-0.5 pointer-coarse:hidden">
           <Tooltip>
             <TooltipTrigger
               render={
@@ -179,7 +181,7 @@ export function TaskListItem({
                   }}
                   disabled={triggerMutation.isPending}
                   aria-label="Trigger now"
-                  className="text-(--color-text-muted) hover:text-(--color-text) pointer-coarse:size-9"
+                  className="text-(--color-text-muted) hover:text-(--color-text)"
                 >
                   {triggerMutation.isPending ? (
                     <Loader2 size={12} className="animate-spin" />
@@ -203,7 +205,7 @@ export function TaskListItem({
                   }}
                   disabled={pauseMutation.isPending || resumeMutation.isPending}
                   aria-label={task.status === 'paused' ? 'Resume' : 'Pause'}
-                  className="text-(--color-text-muted) hover:text-(--color-text) pointer-coarse:size-9"
+                  className="text-(--color-text-muted) hover:text-(--color-text)"
                 >
                   {pauseMutation.isPending || resumeMutation.isPending ? (
                     <Loader2 size={12} className="animate-spin" />
@@ -229,7 +231,7 @@ export function TaskListItem({
                   }}
                   disabled={deleteMutation.isPending}
                   aria-label="Delete"
-                  className="text-(--color-text-muted) hover:bg-(--color-error-subtle) hover:text-(--color-error) pointer-coarse:size-9"
+                  className="text-(--color-text-muted) hover:bg-(--color-error-subtle) hover:text-(--color-error)"
                 >
                   {deleteMutation.isPending ? (
                     <Loader2 size={12} className="animate-spin" />

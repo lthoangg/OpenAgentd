@@ -836,6 +836,14 @@ the viewport, so the narrow dock stays usable. The task list is full-bleed
 `divide-y` rows on the rail tone; a task's detail reads Status tiles, then
 Delivery, Schedule, Prompt and Runs sections.
 
+On phones (`useIsMobile`) the overlay header carries the title and Back, so
+the detail and create panes drop their own title and close button. Run now
+and Pause move to a bottom bar of labelled buttons, form footer buttons go
+full width, and long detail values (workspace path, session ID) stack under
+their label instead of truncating behind a hover tooltip. Task rows hide
+their inline actions on coarse pointers, because the detail and the
+long-press menu already offer them.
+
 ## Platform Shell
 
 Three targets, one UI. The desktop app (macOS/Windows/Linux) and mobile app (iOS)

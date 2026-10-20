@@ -126,6 +126,7 @@ export function EditTaskForm({
                     id="edit-task-every-seconds"
                     className={`h-9 w-full ${FIELD_CLASS}`}
                     type="number"
+                    inputMode="numeric"
                     min="1"
                     value={values.every_seconds ?? 3600}
                     onChange={(e) =>
@@ -273,6 +274,7 @@ export function EditTaskForm({
                 <Input
                   id="edit-task-max-runs"
                   type="number"
+                  inputMode="numeric"
                   min="1"
                   className={`h-9 w-full ${FIELD_CLASS}`}
                   value={values.max_runs ?? ''}
@@ -301,6 +303,7 @@ export function EditTaskForm({
             variant="default"
             onClick={onCancel}
             disabled={updateMutation.isPending}
+            className="flex-1 md:flex-none"
           >
             Cancel
           </Button>
@@ -308,7 +311,7 @@ export function EditTaskForm({
             type="submit"
             variant="primary"
             disabled={updateMutation.isPending}
-            className="min-w-28"
+            className="flex-1 md:min-w-28 md:flex-none"
           >
             {updateMutation.isPending ? (
               <>

@@ -20,11 +20,14 @@ export function CreateTaskForm({
   contextWorkspace,
   onSuccess,
   onBack,
+  hostTitled = false,
 }: {
   contextWorkspace: string | null
   onSuccess: () => void
   /** Stacked hosts (the dock) get a leading back arrow to the task list. */
   onBack?: () => void
+  /** The host header already says "New task" (the phone overlay): skip the pane header. */
+  hostTitled?: boolean
 }) {
   const localTz = Intl.DateTimeFormat().resolvedOptions().timeZone
   const defaults = createTaskDefaults(contextWorkspace, localTz)
@@ -77,15 +80,17 @@ export function CreateTaskForm({
   return (
     <div className="flex flex-1 flex-col overflow-hidden bg-(--bg-page)">
       {/* Header */}
-      <div className={headerClass}>
-        <div className="flex items-center gap-2">
-          {onBack && <SchedulerBackButton onClick={onBack} />}
-          <div className="flex h-6 w-6 items-center justify-center rounded-sm border border-(--color-accent)/30 bg-(--color-accent)/10 text-(--color-accent)">
-            <Plus size={13} />
+      {!hostTitled && (
+        <div className={headerClass}>
+          <div className="flex items-center gap-2">
+            {onBack && <SchedulerBackButton onClick={onBack} />}
+            <div className="flex h-6 w-6 items-center justify-center rounded-sm border border-(--color-accent)/30 bg-(--color-accent)/10 text-(--color-accent)">
+              <Plus size={13} />
+            </div>
+            <h2 className="text-base font-semibold tracking-tight text-(--color-text)">Create task</h2>
           </div>
-          <h2 className="text-base font-semibold tracking-tight text-(--color-text)">Create task</h2>
         </div>
-      </div>
+      )}
 
       {/* Form */}
       <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
@@ -141,6 +146,7 @@ export function CreateTaskForm({
                     id="task-every-seconds"
                     className={`h-9 w-full ${FIELD_CLASS}`}
                     type="number"
+                    inputMode="numeric"
                     min="1"
                     value={values.every_seconds ?? 3600}
                     onChange={(e) =>
@@ -288,6 +294,7 @@ export function CreateTaskForm({
                 <Input
                   id="task-max-runs"
                   type="number"
+                  inputMode="numeric"
                   min="1"
                   className={`h-9 w-full ${FIELD_CLASS}`}
                   value={values.max_runs ?? ''}
@@ -315,7 +322,7 @@ export function CreateTaskForm({
             type="submit"
             variant="primary"
             disabled={createMutation.isPending}
-            className="min-w-28"
+            className="w-full md:w-auto md:min-w-28"
           >
             {createMutation.isPending ? (
               <>

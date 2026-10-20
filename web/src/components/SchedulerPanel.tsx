@@ -168,12 +168,14 @@ export function SchedulerPanel({
               <TaskDetailView
                 task={selectedTask}
                 onClose={handleCloseDetail}
+                hostTitled={isMobile}
               />
             ) : (
               <CreateTaskForm
                 key={`create-${contextWorkspace ?? ''}`}
                 contextWorkspace={contextWorkspace}
                 onSuccess={handleCloseDetail}
+                hostTitled={isMobile}
               />
             )}
           </div>

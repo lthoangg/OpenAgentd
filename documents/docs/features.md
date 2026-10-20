@@ -186,9 +186,19 @@ run from the terminal (the native Rust binary since v3.0.0).
   sessions) and **Media generation**. Desktop gets its own **Network access**
   page in the **App** group, and a **Privacy & safety** group holds **Memory**
   and **Denied paths**. Notices on every page (failed MCP servers, plugin
-  warnings, lint results, security caveats) share one callout style, and page
-  copy is shorter. A saved link to the old Automation section opens
-  Workspaces.
+  warnings, lint results, security caveats) share one callout style, used
+  app-wide, and page copy is shorter. A saved link to the old Automation
+  section opens Workspaces.
+- **Roomier Scheduled tasks, Session settings and Keyboard shortcuts**
+  `[v3.21.0]` — these panels now use the same layout as Settings: titled
+  sections above their cards, label-left / control-right rows, more space
+  between fields, one notice style, and sentence-case labels. A scheduled
+  task's detail reads Status, then **Delivery**, **Schedule**, **Prompt** and
+  **Runs** (a failed last run shows as a notice under Runs). The create and
+  edit forms group their fields into Task, Schedule, Prompt and Delivery, and
+  save from a footer bar. The task list shows one row per task. Session
+  settings groups Model, MCP servers (with **Manage**) and the collapsible
+  Tools list. The same layout applies in the review dock's Schedule tab.
 - **In-app crash recovery** `[v1.113.0]` — an unexpected UI render failure opens
   a recovery screen with Reload and copyable error details instead of leaving a
   dead webview that must be force-quit.

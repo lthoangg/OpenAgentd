@@ -57,9 +57,9 @@ describe('scheduler TanStack Form mutations', () => {
   it('links a missing coding workspace error to its selector', () => {
     renderWithQuery(<CreateTaskForm contextWorkspace={null} onSuccess={() => {}} />)
 
-    fireEvent.change(screen.getByLabelText('Task Title'), { target: { value: 'Coding task' } })
+    fireEvent.change(screen.getByLabelText('Task title'), { target: { value: 'Coding task' } })
     fireEvent.change(screen.getByLabelText('Prompt'), { target: { value: 'Run in a workspace' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Create Task' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Create task' }))
 
     const workspace = screen.getByRole('button', { name: 'Select workspace' })
     expect(workspace.getAttribute('aria-invalid')).toBe('true')
@@ -71,10 +71,10 @@ describe('scheduler TanStack Form mutations', () => {
   it('creates an every task with an exact exclusive payload', () => {
     renderWithQuery(<CreateTaskForm contextWorkspace="/repo/app" onSuccess={() => {}} />)
 
-    fireEvent.change(screen.getByLabelText('Task Title'), { target: { value: 'Repeating task' } })
+    fireEvent.change(screen.getByLabelText('Task title'), { target: { value: 'Repeating task' } })
     fireEvent.change(screen.getByLabelText('Prompt'), { target: { value: 'Run repeatedly' } })
     fireEvent.change(screen.getByLabelText('Interval (seconds)'), { target: { value: '120' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Create Task' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Create task' }))
 
     expect(createMutate).toHaveBeenCalledTimes(1)
     const payload = createMutate.mock.calls[0][0] as Record<string, unknown>
@@ -93,7 +93,7 @@ describe('scheduler TanStack Form mutations', () => {
     fireEvent.change(screen.getByLabelText('Interval (seconds)'), { target: { value: '120' } })
     fireEvent.change(screen.getByLabelText('Prompt'), { target: { value: 'Updated prompt' } })
     await chooseDropdown(/Session Target/i, /Persistent Task Session/i)
-    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
 
     expect(updateMutate).toHaveBeenCalledTimes(1)
     expect(updateMutate.mock.calls[0][0]).toEqual({
@@ -111,7 +111,7 @@ describe('scheduler TanStack Form mutations', () => {
 
     const prompt = screen.getByLabelText('Prompt')
     fireEvent.change(prompt, { target: { value: '' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
 
     expect(updateMutate).not.toHaveBeenCalled()
     expect(prompt).toHaveAttribute('aria-invalid', 'true')
@@ -129,7 +129,7 @@ describe('scheduler TanStack Form mutations', () => {
 
     const prompt = screen.getByLabelText('Prompt')
     fireEvent.change(prompt, { target: { value: 'Retry this draft' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
 
     await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Update failed'))
     expect(prompt).toHaveValue('Retry this draft')

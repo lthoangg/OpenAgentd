@@ -88,10 +88,10 @@ export function SchedulerPanel({
           <span className="flex min-w-0 items-center gap-2">
             <span className="truncate">
               {isMobile && mobilePane === 'create'
-                ? 'Create Task'
+                ? 'Create task'
                 : isMobile && mobilePane === 'detail'
                   ? (selectedTask?.name ?? 'Task')
-                  : 'Scheduled Tasks'}
+                  : 'Scheduled tasks'}
             </span>
             {tasks.length > 0 && (!isMobile || mobilePane === 'list') && (
               <span className="shrink-0 rounded-full bg-(--bg-key) px-1.5 py-0.5 font-mono text-[11px] font-normal text-(--color-text-subtle)">
@@ -123,7 +123,7 @@ export function SchedulerPanel({
             {selectedTaskId !== null && !isMobile && (
               <Button size="sm" className="md:h-7" onClick={handleOpenCreate}>
                 <Plus size={12} aria-hidden="true" />
-                New Task
+                New task
               </Button>
             )}
             {isMobile && mobilePane === 'list' && (

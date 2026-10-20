@@ -227,7 +227,7 @@ describe('Review dock Schedule tab', () => {
     await renderPanel({ request: { view: 'schedule', key: 1 } })
 
     await user.click(await screen.findByRole('button', { name: 'New task' }))
-    expect(await screen.findByLabelText('Task Title')).toBeTruthy()
+    expect(await screen.findByLabelText('Task title')).toBeTruthy()
     await user.click(screen.getByRole('button', { name: 'Back to task list' }))
     expect(await screen.findByRole('button', { name: 'New task' })).toBeTruthy()
   })
@@ -237,7 +237,7 @@ describe('Review dock Schedule tab', () => {
     const { container } = await renderPanel({ request: { view: 'schedule', key: 1 } })
 
     await user.click(await screen.findByRole('button', { name: 'New task' }))
-    await screen.findByLabelText('Task Title')
+    await screen.findByLabelText('Task title')
     expect(container.querySelector('.\\@container')).not.toBeNull()
     expect(container.innerHTML).not.toMatch(/\bsm:grid-cols/)
   })

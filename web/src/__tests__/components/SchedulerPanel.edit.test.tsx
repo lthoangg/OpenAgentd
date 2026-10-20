@@ -79,7 +79,7 @@ describe('SchedulerPanel — Edit Task Form', () => {
     renderSchedulerPanel()
 
     // Panel should be visible
-    expect(screen.getByText('Scheduled Tasks')).toBeInTheDocument()
+    expect(screen.getByText('Scheduled tasks')).toBeInTheDocument()
   })
 
   it('renders the error fallback when the tasks query rejects', async () => {
@@ -124,20 +124,20 @@ describe('SchedulerPanel — Edit Task Form', () => {
 
     // Wait for panel to load
     await waitFor(() => {
-      expect(screen.getByText('Scheduled Tasks')).toBeInTheDocument()
+      expect(screen.getByText('Scheduled tasks')).toBeInTheDocument()
     })
 
     // Create button should be visible (on desktop)
     const createButton = screen.queryByRole('button', { name: /Create new task/i })
     // May not be visible on all screen sizes, but the button should exist in the component
-    expect(createButton || screen.getByText('Scheduled Tasks')).toBeInTheDocument()
+    expect(createButton || screen.getByText('Scheduled tasks')).toBeInTheDocument()
   })
 
   it('has a close button in the header', async () => {
     renderSchedulerPanel()
 
     await waitFor(() => {
-      expect(screen.getByText('Scheduled Tasks')).toBeInTheDocument()
+      expect(screen.getByText('Scheduled tasks')).toBeInTheDocument()
     })
 
     // Close button should be visible
@@ -149,7 +149,7 @@ describe('SchedulerPanel — Edit Task Form', () => {
     renderSchedulerPanel()
 
     await waitFor(() => {
-      expect(screen.getByText('Scheduled Tasks')).toBeInTheDocument()
+      expect(screen.getByText('Scheduled tasks')).toBeInTheDocument()
     })
 
     // Search input should be visible
@@ -162,7 +162,7 @@ describe('SchedulerPanel — Edit Task Form', () => {
     renderSchedulerPanel()
 
     await waitFor(() => {
-      expect(screen.getByText('Scheduled Tasks')).toBeInTheDocument()
+      expect(screen.getByText('Scheduled tasks')).toBeInTheDocument()
     })
 
     const searchInput = screen.getByPlaceholderText(/Search tasks/i)
@@ -176,7 +176,7 @@ describe('SchedulerPanel — Edit Task Form', () => {
     renderSchedulerPanel()
 
     await waitFor(() => {
-      expect(screen.getByText('Scheduled Tasks')).toBeInTheDocument()
+      expect(screen.getByText('Scheduled tasks')).toBeInTheDocument()
     })
 
     const searchInput = screen.getByPlaceholderText(/Search tasks/i) as HTMLInputElement
@@ -191,7 +191,7 @@ describe('SchedulerPanel — Edit Task Form', () => {
     renderSchedulerPanel()
 
     await waitFor(() => {
-      expect(screen.getByText('Scheduled Tasks')).toBeInTheDocument()
+      expect(screen.getByText('Scheduled tasks')).toBeInTheDocument()
     })
 
     const searchInput = screen.getByPlaceholderText(/Search tasks/i) as HTMLInputElement
@@ -206,11 +206,11 @@ describe('SchedulerPanel — Edit Task Form', () => {
     renderSchedulerPanel()
 
     await waitFor(() => {
-      expect(screen.getByText('Scheduled Tasks')).toBeInTheDocument()
+      expect(screen.getByText('Scheduled tasks')).toBeInTheDocument()
     })
 
     // Header should be present
-    const header = screen.getByRole('heading', { name: /Scheduled Tasks/i })
+    const header = screen.getByRole('heading', { name: /^Scheduled tasks/ })
     expect(header).toBeInTheDocument()
 
     // Search input should be present
@@ -222,7 +222,7 @@ describe('SchedulerPanel — Edit Task Form', () => {
     renderSchedulerPanel()
 
     await waitFor(() => {
-      expect(screen.getByText('Scheduled Tasks')).toBeInTheDocument()
+      expect(screen.getByText('Scheduled tasks')).toBeInTheDocument()
     })
 
     const closeButton = screen.getByRole('button', { name: /Close scheduler panel/i })
@@ -233,7 +233,7 @@ describe('SchedulerPanel — Edit Task Form', () => {
     renderSchedulerPanel()
 
     await waitFor(() => {
-      expect(screen.getByText('Scheduled Tasks')).toBeInTheDocument()
+      expect(screen.getByText('Scheduled tasks')).toBeInTheDocument()
     })
 
     const searchInput = screen.getByPlaceholderText(/Search tasks/i)
@@ -255,7 +255,7 @@ describe('SchedulerPanel — Edit Task Form', () => {
     renderSchedulerPanel()
 
     await waitFor(() => {
-      expect(screen.getByText('Scheduled Tasks')).toBeInTheDocument()
+      expect(screen.getByText('Scheduled tasks')).toBeInTheDocument()
     })
 
     // The calendar icon should be rendered (lucide-react CalendarClock)
@@ -269,7 +269,7 @@ describe('SchedulerPanel — Edit Task Form', () => {
     renderSchedulerPanel()
 
     await waitFor(() => {
-      expect(screen.getByText('Scheduled Tasks')).toBeInTheDocument()
+      expect(screen.getByText('Scheduled tasks')).toBeInTheDocument()
     })
 
     const searchInput = screen.getByPlaceholderText(/Search tasks/i) as HTMLInputElement
@@ -286,7 +286,7 @@ describe('SchedulerPanel — Edit Task Form', () => {
     renderSchedulerPanel()
 
     await waitFor(() => {
-      expect(screen.getByText('Scheduled Tasks')).toBeInTheDocument()
+      expect(screen.getByText('Scheduled tasks')).toBeInTheDocument()
     })
 
     const searchInput = screen.getByPlaceholderText(/Search tasks/i) as HTMLInputElement
@@ -356,7 +356,7 @@ describe('SchedulerPanel — Edit Task Form', () => {
     renderSchedulerPanel()
 
     await waitFor(() => {
-      expect(screen.getByText('Scheduled Tasks')).toBeInTheDocument()
+      expect(screen.getByText('Scheduled tasks')).toBeInTheDocument()
     })
 
     // The backdrop should have z-40 and the panel should have z-50
@@ -371,7 +371,7 @@ describe('SchedulerPanel — Edit Task Form', () => {
     renderSchedulerPanel()
 
     await waitFor(() => {
-      expect(screen.getByText('Scheduled Tasks')).toBeInTheDocument()
+      expect(screen.getByText('Scheduled tasks')).toBeInTheDocument()
     })
 
     const panel = screen.getByRole('dialog', { name: /scheduled tasks/i })

@@ -22,8 +22,8 @@ export function useSchedulerChrome(): SchedulerChrome {
 /** Class for a detail / form pane header in the current host. */
 export function useSchedulerPaneHeaderClass(): string {
   return useSchedulerChrome() === 'dock'
-    ? 'border-b border-(--color-border-subtle) bg-(--bg-page) px-3 py-2'
-    : 'border-b border-(--color-border) bg-(--bg-sidebar) px-4 py-2.5 @xl:px-5'
+    ? 'border-b border-(--color-border-subtle) bg-(--bg-page) px-4 py-2.5'
+    : 'border-b border-(--color-border) bg-(--bg-sidebar) px-4 py-3 @xl:px-6'
 }
 
 /** Leading back control for stacked (list → detail) hosts. */

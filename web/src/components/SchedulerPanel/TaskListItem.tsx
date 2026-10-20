@@ -10,6 +10,9 @@ import { formatRelativeDate } from '@/utils/format'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { usePlatform } from '@/hooks/use-platform'
 import { mediumHapticFeedback } from '@/lib/haptics'
+import { cn } from '@/lib/utils'
+import { listRowSurface } from '@/components/ui/list-row'
+import { TEXT } from '@/components/ui/panel-tokens'
 import { formatScheduleLabel, slugify, TASK_LONG_PRESS_MOVE_TOLERANCE, TASK_LONG_PRESS_MS } from './utils'
 import { WorkspaceBadge } from './ModeBadge'
 
@@ -119,64 +122,64 @@ export function TaskListItem({
       onPointerUp={clearLongPress}
       onPointerCancel={clearLongPress}
       onPointerLeave={clearLongPress}
-      className={`group relative w-full rounded-sm border p-2.5 text-left transition-colors ${
-        isSelected
-          ? 'border-(--color-border-strong) bg-(--bg-key)/50 ring-1 ring-(--color-accent)/30'
-          : 'border-(--color-border) bg-(--bg-card) hover:border-(--color-border-strong) hover:bg-(--color-surface)'
-      }`}
+      aria-current={isSelected || undefined}
+      className={cn(
+        'group relative min-h-16 w-full px-4 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-(--focus-ring)/40',
+        listRowSurface(isSelected),
+      )}
     >
-      <div className="flex items-start justify-between gap-2.5">
+      <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-1.5">
-            <p className="truncate text-sm font-semibold text-(--color-text)">{task.name}</p>
+            <p className={cn('truncate', TEXT.label, isSelected && 'font-semibold')}>{task.name}</p>
             <span className="rounded-xs border border-(--color-border-subtle) bg-(--bg-key)/70 px-1.5 py-0.5 font-mono text-xs md:text-[11px] text-(--color-text-subtle) break-all">
               {slugify(task.name)}
             </span>
           </div>
 
-          <div className="mt-1 flex items-center gap-1.5 text-xs text-(--color-text-muted)">
-            <CalendarClock size={12} className="shrink-0 text-(--color-text-muted)" />
+          <div className={cn('mt-1 flex items-center gap-1.5', TEXT.hint)}>
+            <CalendarClock size={12} className="shrink-0" aria-hidden="true" />
             <span className="truncate">{formatScheduleLabel(task)}</span>
           </div>
 
-          <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+          <div className="mt-2 flex flex-wrap items-center gap-1.5">
             <WorkspaceBadge task={task} />
-            <span className={`inline-flex items-center gap-1 rounded-xs border px-1.5 py-0.5 text-xs md:text-[11px] font-medium capitalize ${statusBadgeStyle}`}>
+            <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium capitalize ${statusBadgeStyle}`}>
               <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${statusDotColor}`} aria-hidden="true" />
               <span className={statusColor}>{task.status}</span>
             </span>
           </div>
 
           {task.last_error && (
-            <div className="mt-1.5 flex items-center gap-1 rounded-xs bg-(--color-error-subtle) px-1.5 py-0.5 text-[11px] text-(--color-error)">
-              <AlertCircle size={11} className="shrink-0" />
+            <div className="mt-1.5 flex items-center gap-1 text-[11px] text-(--color-error)">
+              <AlertCircle size={11} className="shrink-0" aria-hidden="true" />
               <p className="truncate">{task.last_error}</p>
             </div>
           )}
 
           {task.next_fire_at && (
-            <div className="mt-1.5 flex items-center gap-1 text-[11px] text-(--color-text-muted)">
-              <Clock size={11} className="shrink-0 text-(--color-text-muted)" />
+            <div className={cn('mt-1.5 flex items-center gap-1', TEXT.hint)}>
+              <Clock size={11} className="shrink-0" aria-hidden="true" />
               <span>Next: {formatRelativeDate(task.next_fire_at)}</span>
             </div>
           )}
         </div>
 
         {/* Action buttons */}
-        <div className="flex shrink-0 items-center gap-0.5">
+        <div className="-mr-1.5 flex shrink-0 items-center gap-0.5">
           <Tooltip>
             <TooltipTrigger
               render={
                 <Button
                   variant="ghost"
-                  size="icon-xs"
+                  size="icon-sm"
                   onClick={(e) => {
                     e.stopPropagation()
                     triggerTask()
                   }}
                   disabled={triggerMutation.isPending}
                   aria-label="Trigger now"
-                  className="h-7 w-7 rounded-sm text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text)"
+                  className="text-(--color-text-muted) hover:text-(--color-text) pointer-coarse:size-9"
                 >
                   {triggerMutation.isPending ? (
                     <Loader2 size={12} className="animate-spin" />
@@ -193,14 +196,14 @@ export function TaskListItem({
               render={
                 <Button
                   variant="ghost"
-                  size="icon-xs"
+                  size="icon-sm"
                   onClick={(e) => {
                     e.stopPropagation()
                     togglePaused()
                   }}
                   disabled={pauseMutation.isPending || resumeMutation.isPending}
                   aria-label={task.status === 'paused' ? 'Resume' : 'Pause'}
-                  className="h-7 w-7 rounded-sm text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text)"
+                  className="text-(--color-text-muted) hover:text-(--color-text) pointer-coarse:size-9"
                 >
                   {pauseMutation.isPending || resumeMutation.isPending ? (
                     <Loader2 size={12} className="animate-spin" />
@@ -219,14 +222,14 @@ export function TaskListItem({
               render={
                 <Button
                   variant="ghost"
-                  size="icon-xs"
+                  size="icon-sm"
                   onClick={(e) => {
                     e.stopPropagation()
                     setDeleteConfirmationOpen(true)
                   }}
                   disabled={deleteMutation.isPending}
                   aria-label="Delete"
-                  className="h-7 w-7 rounded-sm text-(--color-text-muted) hover:bg-(--color-error-subtle) hover:text-(--color-error)"
+                  className="text-(--color-text-muted) hover:bg-(--color-error-subtle) hover:text-(--color-error) pointer-coarse:size-9"
                 >
                   {deleteMutation.isPending ? (
                     <Loader2 size={12} className="animate-spin" />

@@ -37,6 +37,7 @@ export interface UseSlashCommandsArgs {
   isAgentWorking?: boolean
   revertedCount?: number
   hasVisibleMessages?: boolean
+  hasLiveMessages?: boolean
   /** Shows the session's side questions (a bare ``/btw``); defaults to the panel above the composer. */
   onOpenSideQuestions?: (sessionId: string) => void
 }
@@ -60,6 +61,7 @@ export function useSlashCommands({
   isAgentWorking = false,
   revertedCount = 0,
   hasVisibleMessages = false,
+  hasLiveMessages = false,
   onOpenSideQuestions,
 }: UseSlashCommandsArgs): UseSlashCommandsResult {
   const pushToast = useToastStore((s) => s.push)
@@ -80,9 +82,10 @@ export function useSlashCommands({
         isAgentWorking,
         revertedCount,
         hasVisibleMessages,
+        hasLiveMessages,
         hasWorkspace: Boolean(agentWorkspace),
       }),
-    [isAgentWorking, revertedCount, hasVisibleMessages, agentWorkspace],
+    [isAgentWorking, revertedCount, hasVisibleMessages, hasLiveMessages, agentWorkspace],
   )
 
   const slashCommands: SlashCommand[] = useMemo(() => [

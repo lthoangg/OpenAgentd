@@ -6,7 +6,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/lthoangg/openagentd/releases/latest"><img src="https://img.shields.io/github/v/release/lthoangg/openagentd?label=release&color=F59E3B" alt="Latest release"></a>
+  <a href="https://github.com/lthoangg/openagentd/releases/latest"><img src="https://img.shields.io/github/v/release/lthoangg/openagentd?label=release&color=5AA8E2" alt="Latest release"></a>
   <a href="https://github.com/lthoangg/openagentd/releases"><img src="https://img.shields.io/github/downloads/lthoangg/openagentd/total?color=3F3429" alt="Downloads"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-3F3429" alt="Apache 2.0"></a>
   <a href="https://discord.gg/cz6GQHQUMg"><img src="https://img.shields.io/badge/Discord-join-5865F2?logo=discord&logoColor=white" alt="Discord"></a>

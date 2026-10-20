@@ -162,14 +162,14 @@ async fn session_pages_follow_their_cursor() {
 }
 
 #[tokio::test]
-async fn activity_sort_pages_by_updated_at() {
+async fn activity_sort_pages_by_last_message() {
     let (_d, pool) = fresh().await;
     let mut ids = vec![];
     for i in 0..3 {
         ids.push(create_session(&pool, NewSession { workspace: "/tmp/ws".into(), title: Some(format!("s{i}")), ..Default::default() }).await.unwrap().id);
     }
-    // Touch the oldest: it becomes the most recently active.
-    update_session(&pool, &ids[0], SessionUpdate::title("renamed")).await.unwrap().unwrap();
+    // A message in the oldest makes it the most recently active.
+    save_message(&pool, &ids[0], NewMessage::user("hi")).await.unwrap();
     let filter = SessionListFilter { sort: SessionSort::Activity, ..Default::default() };
     let (first, cursor, more) = list_sessions_page(&pool, None, 2, &filter).await.unwrap();
     assert!(more);
@@ -179,6 +179,47 @@ async fn activity_sort_pages_by_updated_at() {
     assert!(!more);
     assert_eq!(rest.iter().map(|s| s.id.clone()).collect::<Vec<_>>(), [ids[1].clone()]);
     assert!(list_sessions_page(&pool, Some("not-a-cursor"), 2, &filter).await.is_err());
+}
+
+// "Recent activity" follows messages, not edits: it used to sort on
+// updated_at, which messages never moved and renames or model switches did.
+#[tokio::test]
+async fn saving_a_message_bumps_session_activity() {
+    let (_d, pool) = fresh().await;
+    let old = create_session(&pool, NewSession { workspace: "/tmp/ws".into(), ..Default::default() }).await.unwrap();
+    let new = create_session(&pool, NewSession { workspace: "/tmp/ws".into(), ..Default::default() }).await.unwrap();
+    assert_eq!(new.last_message_at.as_deref(), Some(new.created_at.as_str()), "an empty session is active from creation");
+
+    save_message(&pool, &old.id, NewMessage::user("one more question")).await.unwrap();
+
+    let touched = get_session(&pool, &old.id).await.unwrap().unwrap();
+    assert!(touched.last_message_at > new.last_message_at, "a saved message must move last_message_at forward");
+    assert_eq!(touched.updated_at, old.updated_at, "a message is not an edit to the session row");
+    let filter = SessionListFilter { sort: SessionSort::Activity, ..Default::default() };
+    let (first, _, _) = list_sessions_page(&pool, None, 2, &filter).await.unwrap();
+    assert_eq!(first[0].id, old.id);
+
+    // Edits to the row (a rename, a model switch) do not count as activity.
+    update_session(&pool, &new.id, SessionUpdate { model: Some(Some("other".into())), ..SessionUpdate::title("renamed") }).await.unwrap().unwrap();
+    let (first, _, _) = list_sessions_page(&pool, None, 2, &filter).await.unwrap();
+    assert_eq!(first[0].id, old.id, "a rename must not reorder recent activity");
+
+    // The batch path (one connection) and the raw tool insert count too.
+    let mut conn = pool.acquire().await.unwrap();
+    save_message_id(&mut conn, &new.id, NewMessage::assistant(Some("reply".into()))).await.unwrap();
+    drop(conn);
+    let (first, _, _) = list_sessions_page(&pool, None, 2, &filter).await.unwrap();
+    assert_eq!(first[0].id, new.id);
+    insert_raw_tool_message(&pool, &old.id, "answer", "call-1", "ask_lead").await.unwrap();
+    let (first, _, _) = list_sessions_page(&pool, None, 2, &filter).await.unwrap();
+    assert_eq!(first[0].id, old.id);
+
+    // A back-dated row (an import) never moves it backwards.
+    let before = get_session(&pool, &old.id).await.unwrap().unwrap().last_message_at;
+    let dated = NewMessage { created_at: Some("2020-01-01T00:00:00Z".into()), ..NewMessage::user("imported") };
+    save_message(&pool, &old.id, dated).await.unwrap();
+    assert_eq!(get_session(&pool, &old.id).await.unwrap().unwrap().last_message_at, before);
+    assert!(api::session_response(&touched, &Default::default())["last_message_at"].as_str().unwrap().ends_with('Z'));
 }
 
 #[tokio::test]

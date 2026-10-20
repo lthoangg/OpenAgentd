@@ -692,7 +692,7 @@ async fn list_sessions(State(st): State<AppState>, q: Qs) -> ApiResult<Response>
     let running = running_set();
     let awaiting = db::sessions_awaiting_input(&st.pool).await?;
     // `sort` and `pinned` are v3 additions (the sidebar's view options); v2
-    // ignores them. `sort=activity` orders by `updated_at`; `pinned=true` is
+    // ignores them. `sort=activity` orders by `last_message_at`; `pinned=true` is
     // every pinned session in one page, `pinned=false` leaves them out.
     let sort = match q.opt("sort").as_deref() {
         None | Some("") | Some("created") => db::SessionSort::Created,

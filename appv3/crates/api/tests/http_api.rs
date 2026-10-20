@@ -410,11 +410,13 @@ async fn http_api_end_to_end() {
     assert_eq!((repo["group_ids"].clone(), v["groups"].clone()), (json!([]), json!([])), "{v}");
     appv3_db::mark_coding_workspace_deleted(&pool, &wt).await.unwrap();
 
-    // `sort` (v3 addition): `activity` orders by last touch, `created` (the
-    // default) by creation; anything else is rejected.
+    // `sort` (v3 addition): `activity` orders by the newest message, `created`
+    // (the default) by creation; anything else is rejected. A rename is not
+    // activity.
     let (st, v) = c.json("GET", "/api/agent/sessions?sort=bogus", None).await;
     assert_eq!((st, v), (StatusCode::UNPROCESSABLE_ENTITY, json!({"detail": "Invalid 'sort'."})));
-    let (st, v) = c.json("PATCH", &format!("/api/agent/sessions/{sid}"), Some(json!({"title": "Touched"}))).await;
+    appv3_db::save_message(&pool, &sid, appv3_db::NewMessage::user("touched")).await.unwrap();
+    let (st, v) = c.json("PATCH", &format!("/api/agent/sessions/{other_id}"), Some(json!({"title": "Renamed"}))).await;
     assert_eq!(st, StatusCode::OK, "{v}");
     let both = format!("workspaces={}&workspaces={}", enc(&sid_ws), enc(tree));
     let (_, v) = c.json("GET", &format!("/api/agent/sessions?{both}&sort=activity"), None).await;

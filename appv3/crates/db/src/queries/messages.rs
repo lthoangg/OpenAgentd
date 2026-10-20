@@ -123,6 +123,16 @@ fn bind_insert<'q, O>(
         .bind(r.pinned)
 }
 
+/// A saved message is session activity: move `last_message_at` (what
+/// `sort=activity` orders by and the sidebar's age shows) up to the
+/// message's time. Summaries do not count: compaction is not use. `MAX`
+/// keeps a back-dated row (an import) from moving it backwards; both sides
+/// are the fixed-width `dt_db` form, so text order is time order.
+async fn touch_session_activity<'e, E: sqlx::SqliteExecutor<'e>>(ex: E, sid: &str, at: &str) -> Result<()> {
+    sqlx::query("UPDATE chat_sessions SET last_message_at = MAX(COALESCE(last_message_at, ''), ?) WHERE id = ?").bind(at).bind(sid).execute(ex).await?;
+    Ok(())
+}
+
 /// v2 `save_message`: derives `kind`/`pinned`, allocates `seq`, bumps the
 /// structural revision for summaries.
 pub async fn save_message(pool: &DbPool, session_id: &str, msg: NewMessage) -> Result<SessionMessage> {
@@ -131,6 +141,8 @@ pub async fn save_message(pool: &DbPool, session_id: &str, msg: NewMessage) -> R
     let row = bind_insert(sqlx::query_as::<_, SessionMessage>(sqlx::AssertSqlSafe(&*sql)), &r).fetch_one(pool).await?;
     if r.kind == kind::SUMMARY {
         bump_history_revision(pool, &r.sid, true).await?;
+    } else {
+        touch_session_activity(pool, &r.sid, &r.created).await?;
     }
     Ok(row)
 }
@@ -144,6 +156,8 @@ pub async fn save_message_id(conn: &mut sqlx::SqliteConnection, session_id: &str
     let (id,): (String,) = bind_insert(sqlx::query_as(sqlx::AssertSqlSafe(&*sql)), &r).fetch_one(&mut *conn).await?;
     if r.kind == kind::SUMMARY {
         bump_history_revision(&mut *conn, &r.sid, true).await?;
+    } else {
+        touch_session_activity(&mut *conn, &r.sid, &r.created).await?;
     }
     Ok(id)
 }
@@ -700,6 +714,8 @@ pub async fn latest_sent_from(pool: &DbPool, session_id: &str) -> Result<Option<
 /// Direct `SessionMessage(...)` insert with model defaults (seq 0, kind chat),
 /// as v2 `send_subagent_message` does for the `ask_lead` answer.
 pub async fn insert_raw_tool_message(pool: &DbPool, session_id: &str, content: &str, tool_call_id: &str, name: &str) -> Result<()> {
+    let sid = db_id(session_id);
+    let now = now_db();
     sqlx::query(
         r#"INSERT INTO session_messages
            (id, session_id, role, content, reasoning_content, tool_calls,
@@ -707,13 +723,14 @@ pub async fn insert_raw_tool_message(pool: &DbPool, session_id: &str, content: &
            VALUES (?, ?, 'tool', ?, NULL, 'null', ?, ?, 'null', ?, 0, 'chat', 0)"#,
     )
     .bind(new_id())
-    .bind(db_id(session_id))
+    .bind(&sid)
     .bind(content)
     .bind(tool_call_id)
     .bind(name)
-    .bind(now_db())
+    .bind(&now)
     .execute(pool)
     .await?;
+    touch_session_activity(pool, &sid, &now).await?;
     Ok(())
 }
 

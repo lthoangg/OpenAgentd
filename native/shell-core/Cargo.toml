@@ -4,6 +4,7 @@ version = "0.0.0"
 description = "Tauri-free logic shared by the OpenAgentd desktop and mobile shells"
 authors = ["openagentd contributors"]
 license = "Apache-2.0"
+homepage = "https://openagentd.dev"
 repository = "https://github.com/lthoangg/openagentd"
 edition = "2021"
 rust-version = "1.77.2"

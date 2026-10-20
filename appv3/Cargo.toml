@@ -19,6 +19,7 @@ members = [
 version = "3.21.0"
 edition = "2021"
 license = "Apache-2.0"
+homepage = "https://openagentd.dev"
 repository = "https://github.com/lthoangg/openagentd"
 
 [workspace.dependencies]

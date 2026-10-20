@@ -295,8 +295,8 @@ if [ "$PLATFORM" = "linux" ]; then
 [Desktop Entry]
 Type=Application
 Name=OpenAgentd
-GenericName=AI Assistant
-Comment=On-machine AI assistant
+GenericName=Coding Agent
+Comment=The coding agent that shows its work
 Exec=${dest_bin} %U
 Icon=openagentd
 Terminal=false

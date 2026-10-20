@@ -9,11 +9,12 @@ updated: 2026-09-10
 
 OpenAgentd keeps its product documentation deliberately small. The codebase, its tests, CLI help, and in-context UI are authoritative for implementation and operation.
 
+- [Website](https://openagentd.dev) — features, setup guides and downloads.
 - [Features](./features.md) — the version-cited catalogue of shipped, user-visible capabilities.
 - [Releases](https://github.com/lthoangg/openagentd/releases) — downloadable builds and release notes.
 - [Discord](https://discord.gg/cz6GQHQUMg) — community chat and discussion.
 - [Facebook Group](https://www.facebook.com/groups/1256361676707935) — community group on Facebook.
-- [Issues](https://github.com/lthoangg/OpenAgentd/issues) — requests, bugs, roadmap discussion, and known issues.
+- [Issues](https://github.com/lthoangg/openagentd/issues) — requests, bugs, roadmap discussion, and known issues.
 - [README](../../README.md) — installation and product overview.
 
 For development, start with the nearest `AGENTS.md`, source code, tests, and `make help`.

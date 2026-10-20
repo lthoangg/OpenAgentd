@@ -9,10 +9,11 @@ updated: 2026-10-20
 
 The canonical source of truth for shipped user-visible capabilities. Every feature lists the
 release that introduced it (where known). When you ship something new, **add it here first** — README and external copy should cite this page.
+For a guided tour of these features, see [openagentd.dev/features](https://openagentd.dev/features/).
 
 > **Headline.** OpenAgentd is a coding-first desktop workspace for a local coding agent — a
 > double-clickable app that runs an agent on your machine, with a
-> real UI to watch every step. Open source (Apache 2.0). 18 providers. Your keys.
+> real UI to watch every step. Open source (Apache 2.0). 19+ providers. Your keys.
 
 **Latest release:** v3.21.0 · October 20, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.21.0)
 
@@ -180,6 +181,11 @@ run from the terminal (the native Rust binary since v3.0.0).
   fields. Server forms test and save from a footer row instead of buttons
   squeezed beside inputs. On phones Settings opens on a grouped list of
   sections; each opens full-screen with Back.
+- **Links to openagentd.dev** `[v3.22.0]` — **Settings → About OpenAgentd**
+  has a **Website** card that opens openagentd.dev, and its tagline now reads
+  "The coding agent that shows its work". The desktop **Help** menu starts
+  with **OpenAgentd Website**, and the macOS About panel links to
+  openagentd.dev instead of GitHub.
 - **Settings split into focused pages** `[v3.21.0]` — the long **Automation** page with
   collapsible groups is now four plain pages: **Workspaces** (workspace
   messages and groups), **Chat titles**, **Context** (summarization and idle

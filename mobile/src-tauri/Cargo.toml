@@ -4,6 +4,7 @@ version = "3.21.0"
 description = "OpenAgentd mobile shell"
 authors = ["openagentd contributors"]
 license = "Apache-2.0"
+homepage = "https://openagentd.dev"
 repository = "https://github.com/lthoangg/openagentd"
 edition = "2021"
 rust-version = "1.77.2"

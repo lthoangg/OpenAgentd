@@ -9,7 +9,7 @@ import '@testing-library/jest-dom'
 
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 
 import { queryKeys } from '@/queries'
 
@@ -75,18 +75,18 @@ describe('AboutSettingsPage — header', () => {
   it('renders the project name and tagline', () => {
     renderHub({ status: 'ok', version: '1.2.3' })
     expect(screen.getByRole('heading', { name: /about openagentd/i })).toBeInTheDocument()
-    expect(screen.getByText(/On-machine AI assistant/i)).toBeInTheDocument()
+    expect(screen.getByText(/The coding agent that shows its work/i)).toBeInTheDocument()
   })
 
   it('appends the health version to the tagline when present', () => {
     renderHub({ status: 'ok', version: '1.2.3' })
-    expect(screen.getByText(/On-machine AI assistant · v1\.2\.3/)).toBeInTheDocument()
+    expect(screen.getByText(/The coding agent that shows its work · v1\.2\.3/)).toBeInTheDocument()
   })
 
   it('omits the version suffix when health has not loaded yet', () => {
     renderHub() // No health seed.
-    expect(screen.getByText(/On-machine AI assistant/i)).toBeInTheDocument()
-    expect(screen.queryByText(/On-machine AI assistant ·/)).toBeNull()
+    expect(screen.getByText(/The coding agent that shows its work/i)).toBeInTheDocument()
+    expect(screen.queryByText(/The coding agent that shows its work ·/)).toBeNull()
   })
 })
 
@@ -99,5 +99,18 @@ describe('AboutSettingsPage — community links', () => {
     expect(screen.getByText(/community & support/i)).toBeInTheDocument()
     expect(screen.getByText(/discord server/i)).toBeInTheDocument()
     expect(screen.getByText(/facebook group/i)).toBeInTheDocument()
+  })
+
+  it('opens openagentd.dev from the Website card', () => {
+    const openedUrls: string[] = []
+    const originalOpen = window.open
+    window.open = ((url?: string | URL) => { openedUrls.push(String(url)); return null }) as typeof window.open
+    try {
+      renderHub({ status: 'ok', version: '1.2.3' })
+      fireEvent.click(screen.getByRole('button', { name: /^website/i }))
+      expect(openedUrls).toEqual(['https://openagentd.dev'])
+    } finally {
+      window.open = originalOpen
+    }
   })
 })

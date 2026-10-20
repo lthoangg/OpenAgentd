@@ -47,6 +47,7 @@ pub const MENU_CHECK_UPDATES: &str = "check_updates";
 pub const MENU_OPEN_CONFIG_DIR: &str = "open_config_dir";
 pub const MENU_REVEAL_DESKTOP_LOG: &str = "reveal_desktop_log";
 pub const MENU_REVEAL_BACKEND_LOG: &str = "reveal_backend_log";
+pub const MENU_HELP_WEBSITE: &str = "help_website";
 pub const MENU_HELP_GITHUB: &str = "help_github";
 pub const MENU_HELP_RELEASE_NOTES: &str = "help_release_notes";
 pub const MENU_HELP_REPORT_ISSUE: &str = "help_report_issue";
@@ -54,6 +55,7 @@ pub const MENU_QUIT: &str = "quit";
 pub const MENU_USAGE_REFRESH: &str = "usage_refresh";
 pub const MENU_USAGE_MANAGE: &str = "usage_manage";
 
+const WEBSITE_URL: &str = "https://openagentd.dev";
 const REPO_URL: &str = "https://github.com/lthoangg/openagentd";
 const RELEASE_NOTES_URL: &str = "https://github.com/lthoangg/openagentd/releases";
 const REPORT_ISSUE_URL: &str = "https://github.com/lthoangg/openagentd/issues/new";
@@ -100,8 +102,8 @@ pub fn install_desktop_menus(app: &tauri::App) -> Result<()> {
             .name(Some("OpenAgentd"))
             .version(Some(env!("CARGO_PKG_VERSION")))
             .copyright(Some("Copyright (c) 2026 OpenAgentd contributors"))
-            .website(Some(REPO_URL))
-            .website_label(Some("openagentd on GitHub"));
+            .website(Some(WEBSITE_URL))
+            .website_label(Some("openagentd.dev"));
         if let Some(icon) = app.default_window_icon() {
             builder = builder.icon(Some(icon.clone()));
         }
@@ -226,6 +228,8 @@ pub fn install_desktop_menus(app: &tauri::App) -> Result<()> {
 
     let window_show = MenuItem::with_id(app, MENU_SHOW, "Show OpenAgentd", true, None::<&str>)?;
 
+    let help_website =
+        MenuItem::with_id(app, MENU_HELP_WEBSITE, "OpenAgentd Website", true, None::<&str>)?;
     let help_github =
         MenuItem::with_id(app, MENU_HELP_GITHUB, "OpenAgentd on GitHub", true, None::<&str>)?;
     let help_release_notes =
@@ -317,6 +321,7 @@ pub fn install_desktop_menus(app: &tauri::App) -> Result<()> {
     let window_menu = window_menu.build()?;
     // Help is recognised by its title on macOS, which adds the search field.
     let help_menu = SubmenuBuilder::new(app, "Help")
+        .item(&help_website)
         .item(&help_github)
         .item(&help_release_notes)
         .item(&help_report_issue)
@@ -585,6 +590,7 @@ pub fn handle_desktop_menu(app: &AppHandle, id: &str) {
         MENU_OPEN_CONFIG_DIR => open_config_dir(app),
         MENU_REVEAL_DESKTOP_LOG => reveal_desktop_log(app),
         MENU_REVEAL_BACKEND_LOG => reveal_backend_log(app),
+        MENU_HELP_WEBSITE => open_help_url(app, WEBSITE_URL),
         MENU_HELP_GITHUB => open_help_url(app, REPO_URL),
         MENU_HELP_RELEASE_NOTES => open_help_url(app, RELEASE_NOTES_URL),
         MENU_HELP_REPORT_ISSUE => open_help_url(app, REPORT_ISSUE_URL),

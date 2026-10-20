@@ -2,7 +2,8 @@
 
 OpenAgentd is a local-first coding-agent cockpit: a native Rust backend
 (`appv3/`, v3), one React UI, and separate Tauri desktop and mobile shells.
-The canonical catalogue of shipped behavior is `documents/docs/features.md`.
+The canonical catalogue of shipped behavior is `documents/docs/features.md`;
+the public website is https://openagentd.dev.
 
 ## Instruction scopes
 

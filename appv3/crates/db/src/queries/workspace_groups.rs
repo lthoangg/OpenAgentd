@@ -235,16 +235,18 @@ mod tests {
         assert_eq!(set, [api_uuid(&a.id), api_uuid(&b.id)]);
         set_workspace_groups(&pool, "/nonexistent/api", std::slice::from_ref(&a.id)).await.unwrap();
         set_workspace_groups(&pool, "/nonexistent/web", std::slice::from_ref(&b.id)).await.unwrap();
+        // Stored paths are resolved (absolute, platform-native: `D:\…` on Windows).
+        let (api, web) = (resolve_path("/nonexistent/api"), resolve_path("/nonexistent/web"));
         let mut m = list_group_memberships(&pool).await.unwrap();
         m.sort();
-        let mut want = vec![(a.id.clone(), "/nonexistent/api".to_string()), (b.id.clone(), "/nonexistent/web".to_string())];
+        let mut want = vec![(a.id.clone(), api), (b.id.clone(), web.clone())];
         want.sort();
         assert_eq!(m, want);
         assert!(matches!(set_workspace_groups(&pool, "/nonexistent/api", &[new_id()]).await, Err(GroupError::Invalid(_))));
         assert_eq!(list_group_memberships(&pool).await.unwrap().len(), 2, "a failed set changes nothing");
         assert!(delete_workspace_group(&pool, &api_uuid(&a.id)).await.unwrap());
         assert!(!delete_workspace_group(&pool, &a.id).await.unwrap());
-        assert_eq!(list_group_memberships(&pool).await.unwrap(), [(b.id.clone(), "/nonexistent/web".to_string())]);
+        assert_eq!(list_group_memberships(&pool).await.unwrap(), [(b.id.clone(), web)]);
         set_workspace_groups(&pool, "/nonexistent/web", &[]).await.unwrap();
         assert!(list_group_memberships(&pool).await.unwrap().is_empty());
     }

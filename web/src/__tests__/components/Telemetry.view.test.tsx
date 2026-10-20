@@ -215,6 +215,7 @@ describe('TelemetryView overview', () => {
     expect(screen.getByText('Activity')).toBeTruthy()
     expect(screen.getByText('Workspaces')).toBeTruthy()
     expect(screen.getByText('Not recorded')).toBeTruthy()
+    expect(screen.getByText('Workspace unknown: older telemetry from a deleted session, or work outside a session')).toBeTruthy()
     expect(screen.getByText('Models')).toBeTruthy()
     expect(await screen.findAllByRole('button', { name: /^Open turn from/ })).toHaveLength(2)
     expect(screen.getByRole('button', { name: /failed$/ })).toBeTruthy()

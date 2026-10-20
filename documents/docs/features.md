@@ -1884,7 +1884,11 @@ Everything stays local. No third-party telemetry SaaS.
   view with an **Open session** action. Recent turns can be limited to failed ones,
   and a turn opens to its facts (workspace, model, duration, tokens, cost),
   **Copy trace ID**, **Open session**, and the span waterfall. Turns record their
-  workspace from v3.0.0; older turns show as **Not recorded**.
+  workspace from v3.0.0. Failed turns, stopped turns, and compaction-only turns
+  (`/compact`, idle compaction) count as turns, and spend and turns from older
+  telemetry are credited to their session's workspace. Only spend whose session
+  was deleted, or that ran outside a session, shows as **Not recorded**
+  `[v3.21.0]`.
 - **Model speed in telemetry** `[v3.0.0]` — every streamed model call records
   its time to first token and its output speed in tokens per second. The
   overview shows the median first token (with p95) and the median output speed

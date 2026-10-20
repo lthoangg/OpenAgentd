@@ -194,6 +194,13 @@ pub async fn get_sessions_by_ids(pool: &DbPool, ids: &[String]) -> Result<Vec<Ch
     Ok(q.fetch_all(pool).await?)
 }
 
+/// `(id, workspace)` of every session, ids in their stored (hex) form.
+/// The telemetry page uses it to attribute spans that name a session but
+/// not its workspace.
+pub async fn session_workspaces(pool: &DbPool) -> Result<Vec<(String, String)>> {
+    Ok(sqlx::query_as::<_, (String, String)>("SELECT id, workspace FROM chat_sessions").fetch_all(pool).await?)
+}
+
 /// Newest top-level session for a workspace (v2 `get_latest_top_level_session`).
 pub async fn get_latest_top_level_session(pool: &DbPool, workspace: &str) -> Result<Option<ChatSession>> {
     Ok(sqlx::query_as::<_, ChatSession>(

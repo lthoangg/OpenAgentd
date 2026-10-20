@@ -130,6 +130,18 @@ async fn sessions_by_ids_accepts_both_id_forms_and_skips_missing() {
 }
 
 #[tokio::test]
+async fn session_workspaces_lists_every_session_with_its_workspace() {
+    let (_d, pool) = fresh().await;
+    let a = create_session(&pool, NewSession { workspace: "/w/app".into(), ..Default::default() }).await.unwrap();
+    let b = create_session(&pool, NewSession { workspace: "/w/site".into(), parent_session_id: Some(a.id.clone()), ..Default::default() }).await.unwrap();
+    let mut rows = session_workspaces(&pool).await.unwrap();
+    rows.sort();
+    let mut expected = vec![(a.id.clone(), "/w/app".to_string()), (b.id.clone(), "/w/site".to_string())];
+    expected.sort();
+    assert_eq!(rows, expected);
+}
+
+#[tokio::test]
 async fn session_pages_follow_their_cursor() {
     let (_d, pool) = fresh().await;
     let mut ids = vec![];

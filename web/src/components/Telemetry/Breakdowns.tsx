@@ -188,7 +188,7 @@ export function WorkspacesCard({
         {rows.map((row) => {
           const path = row.workspace
           const detail = path === null
-            ? 'Turns from before workspace tracking'
+            ? 'Workspace unknown: older telemetry from a deleted session, or work outside a session'
             : isChatWorkspacePath(path) ? undefined : path
           const metrics: Metric[] = []
           if (row.errors > 0) metrics.push({ value: `${formatCompact(row.errors)} failed`, tone: 'error' })

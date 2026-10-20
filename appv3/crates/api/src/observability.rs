@@ -13,6 +13,13 @@
 //! filter `facets`, per-day cost, and `workspace` on trace rows. Filters
 //! apply per turn — a span belongs to the workspace and model of the
 //! `agent_run` span in its trace — so every aggregate stays consistent.
+//! A span's workspace is, in order: its turn's, its own
+//! (`openagentd.workspace` on chat / tool / summarization spans), one
+//! another span in its trace carries, then its session's — from spans in
+//! the window, else from the database (`KnownWorkspaces`). The fallbacks
+//! cover traces without an `agent_run` span (a turn still running;
+//! compaction and failed runs recorded before v3.21) and turns recorded
+//! before spans carried a workspace.
 //! Also v3: a `session` filter and the `by_session` breakdown, under the
 //! same per-turn rule (spans outside a run use their own conversation id
 //! and their own `provider:model`). The session filter is a set: the route
@@ -395,25 +402,45 @@ struct TurnKey {
     agent: Option<String>,
 }
 
-/// Per-trace turn identity, built from the `agent_run` spans in a window.
-/// Spans outside any run (title generation) fall back to their session's
-/// workspace so they are not orphaned by a workspace filter.
+/// Session id (stored hex form, see `appv3_db::codec::db_id`) → workspace,
+/// from the database. Fills in spans that name a session but no
+/// workspace (turns recorded before spans carried one).
+pub type KnownWorkspaces = HashMap<String, String>;
+
+/// Per-trace turn identity, built from the `agent_run` spans in a window,
+/// plus what any span in a trace says about its session and workspace, for
+/// traces without a run span (a turn still running, compaction runs and
+/// failed runs recorded before v3.21, title generation outside a run).
 #[derive(Default)]
 struct TurnIndex {
     by_trace: HashMap<String, TurnKey>,
+    /// The first session any span in the trace names.
+    trace_session: HashMap<String, String>,
+    /// The first workspace any span in the trace carries.
+    trace_workspace: HashMap<String, String>,
     session_workspace: HashMap<String, String>,
 }
 
 impl TurnIndex {
     fn build<S: Borrow<Map<String, Value>>>(spans: &[S]) -> Self {
         let mut index = Self::default();
-        for s in spans.iter().map(Borrow::borrow).filter(|s| is_run_span(s)) {
+        for s in spans.iter().map(Borrow::borrow) {
             let Some(tid) = trace_id_of(s) else { continue };
             let attrs = attrs_of(s);
             let workspace = workspace_attr(attrs);
             let session = conversation_attr(attrs);
-            if let (Some(ws), Some(conv)) = (&workspace, &session) {
-                index.session_workspace.insert(conv.clone(), ws.clone());
+            let named = session.as_ref().filter(|id| *id != NO_SESSION);
+            if let Some(conv) = named {
+                index.trace_session.entry(tid.clone()).or_insert_with(|| conv.clone());
+            }
+            if let Some(ws) = &workspace {
+                index.trace_workspace.entry(tid.clone()).or_insert_with(|| ws.clone());
+                if let Some(conv) = named {
+                    index.session_workspace.insert(conv.clone(), ws.clone());
+                }
+            }
+            if !is_run_span(s) {
+                continue;
             }
             let agent = attrs.get("gen_ai.agent.name").filter(|v| truthy(v)).map(py_str);
             index.by_trace.insert(tid, TurnKey { model: turn_model(attrs), workspace, session, agent });
@@ -424,21 +451,41 @@ impl TurnIndex {
     fn turn(&self, s: &Map<String, Value>) -> Option<&TurnKey> {
         trace_id_of(s).and_then(|tid| self.by_trace.get(&tid))
     }
+}
 
+/// A window's [`TurnIndex`] plus the database's session workspaces: who
+/// each span belongs to.
+struct Resolver<'a> {
+    index: &'a TurnIndex,
+    known: &'a KnownWorkspaces,
+}
+
+impl Resolver<'_> {
+    fn turn(&self, s: &Map<String, Value>) -> Option<&TurnKey> {
+        self.index.turn(s)
+    }
+
+    /// The turn's workspace, else the span's own, else one another span
+    /// in its trace carries, else its session's (from spans, then from
+    /// the database).
     fn workspace_of(&self, s: &Map<String, Value>) -> Option<String> {
-        if let Some(ws) = self.turn(s).and_then(|t| t.workspace.clone()) {
+        if let Some(ws) = self.turn(s).and_then(|t| t.workspace.clone()).or_else(|| workspace_attr(attrs_of(s))) {
             return Some(ws);
         }
-        let conv = conversation_attr(attrs_of(s))?;
-        self.session_workspace.get(&conv).cloned()
+        if let Some(ws) = trace_id_of(s).and_then(|tid| self.index.trace_workspace.get(&tid)) {
+            return Some(ws.clone());
+        }
+        let conv = self.session_of(s).filter(|id| id != NO_SESSION)?;
+        self.index.session_workspace.get(&conv).or_else(|| self.known.get(&appv3_db::codec::db_id(&conv))).cloned()
     }
 
     /// The turn's session, else the span's own (title generation runs
-    /// outside the turn's trace).
+    /// outside the turn's trace), else one another span in its trace
+    /// names (a summarization LLM call recorded before it carried one).
     fn session_of(&self, s: &Map<String, Value>) -> Option<String> {
         match self.turn(s) {
             Some(t) => t.session.clone(),
-            None => conversation_attr(attrs_of(s)),
+            None => conversation_attr(attrs_of(s)).or_else(|| trace_id_of(s).and_then(|tid| self.index.trace_session.get(&tid).cloned())),
         }
     }
 
@@ -470,22 +517,23 @@ impl TurnIndex {
     }
 }
 
-fn apply_filters<'a, S: Borrow<Map<String, Value>>>(spans: &'a [S], index: &TurnIndex, f: &Filters) -> Vec<&'a Map<String, Value>> {
+fn apply_filters<'a, S: Borrow<Map<String, Value>>>(spans: &'a [S], r: &Resolver, f: &Filters) -> Vec<&'a Map<String, Value>> {
     let spans = spans.iter().map(Borrow::borrow);
     if f.is_empty() {
         return spans.collect();
     }
-    spans.filter(|s| index.matches(s, f)).collect()
+    spans.filter(|s| r.matches(s, f)).collect()
 }
 
 /// Filter options for the whole window, independent of the active filters,
-/// most-used first.
-fn facets<S: Borrow<Map<String, Value>>>(spans: &[S]) -> Value {
+/// most-used first. Workspaces are each turn's resolved workspace, so a
+/// turn attributed through its session can be filtered to.
+fn facets<S: Borrow<Map<String, Value>>>(spans: &[S], r: &Resolver) -> Value {
     let mut workspaces: IndexMap<String, i64> = IndexMap::new();
     let mut models: IndexMap<String, i64> = IndexMap::new();
     for s in spans.iter().map(Borrow::borrow).filter(|s| is_run_span(s)) {
         let attrs = attrs_of(s);
-        if let Some(ws) = workspace_attr(attrs) {
+        if let Some(ws) = r.workspace_of(s) {
             *workspaces.entry(ws).or_default() += 1;
         }
         *models.entry(turn_model(attrs)).or_default() += 1;
@@ -705,7 +753,7 @@ struct SessionAgg {
     agent: Option<String>,
 }
 
-fn run_queries(spans: &[&Map<String, Value>], index: &TurnIndex, start: DateTime<Utc>, end: DateTime<Utc>) -> Value {
+fn run_queries(spans: &[&Map<String, Value>], index: &Resolver, start: DateTime<Utc>, end: DateTime<Utc>) -> Value {
     if spans.is_empty() {
         return empty_summary(start, end);
     }
@@ -718,7 +766,8 @@ fn run_queries(spans: &[&Map<String, Value>], index: &TurnIndex, start: DateTime
     let mut models: IndexMap<(String, String), ModelAgg> = IndexMap::new();
     let mut steps: IndexMap<(String, String, String), ModelAgg> = IndexMap::new();
     let mut tools: IndexMap<String, ToolAgg> = IndexMap::new();
-    // `None` collects spans from turns recorded before workspaces were.
+    // `None` collects spans no workspace could be resolved for (turns
+    // recorded before workspaces were, of sessions no longer on record).
     let mut workspaces: IndexMap<Option<String>, WorkspaceAgg> = IndexMap::new();
     let mut sessions: IndexMap<String, SessionAgg> = IndexMap::new();
 
@@ -923,7 +972,10 @@ fn run_queries(spans: &[&Map<String, Value>], index: &TurnIndex, start: DateTime
 
 /// `summarize(days)`, narrowed by `filters`. `facets` always covers the
 /// whole window so the filter options do not collapse to the selection.
-pub fn summarize(days: i64, filters: &Filters) -> Value {
+/// `known` fills in workspaces the spans do not record; it only adds
+/// attribution, so it stays out of the cache key (the 5 s bucket bounds
+/// any staleness).
+pub fn summarize(days: i64, filters: &Filters, known: &KnownWorkspaces) -> Value {
     let days = days.clamp(1, 90);
     let (now, bucket, dir, sigs) = cache_context(days);
     let ratio = appv3_core::otel::sample_ratio();
@@ -935,8 +987,9 @@ pub fn summarize(days: i64, filters: &Filters) -> Value {
             return Some(empty_summary(start, now));
         }
         let w = span_windows().get(&dir, &sigs, start, now);
-        let mut v = run_queries(&apply_filters(&w.spans, &w.index, filters), &w.index, start, now);
-        v["facets"] = facets(&w.spans);
+        let r = Resolver { index: &w.index, known };
+        let mut v = run_queries(&apply_filters(&w.spans, &r, filters), &r, start, now);
+        v["facets"] = facets(&w.spans, &r);
         Some(v)
     })
     .unwrap_or(Value::Null)
@@ -945,7 +998,7 @@ pub fn summarize(days: i64, filters: &Filters) -> Value {
 // ── traces ──────────────────────────────────────────────────────────────────
 
 /// `list_traces_with_count` → `(items, total)`; `errors_only` keeps failed turns.
-pub fn list_traces_with_count(days: i64, limit: i64, offset: i64, filters: &Filters, errors_only: bool) -> (Vec<Value>, i64) {
+pub fn list_traces_with_count(days: i64, limit: i64, offset: i64, filters: &Filters, errors_only: bool, known: &KnownWorkspaces) -> (Vec<Value>, i64) {
     let days = days.clamp(1, 90);
     let limit = limit.clamp(1, 200);
     let offset = offset.max(0);
@@ -958,7 +1011,8 @@ pub fn list_traces_with_count(days: i64, limit: i64, offset: i64, filters: &Filt
             return Some(json!([[], 0]));
         }
         let w = span_windows().get(&dir, &sigs, start, now);
-        let (items, total) = list_traces(&apply_filters(&w.spans, &w.index, filters), &w.index, limit, offset, errors_only);
+        let r = Resolver { index: &w.index, known };
+        let (items, total) = list_traces(&apply_filters(&w.spans, &r, filters), &r, limit, offset, errors_only);
         Some(json!([items, total]))
     })
     .unwrap_or(json!([[], 0]));
@@ -982,7 +1036,7 @@ fn opt_str(v: Option<&Value>) -> Value {
     }
 }
 
-fn list_traces(spans: &[&Map<String, Value>], index: &TurnIndex, limit: i64, offset: i64, errors_only: bool) -> (Vec<Value>, i64) {
+fn list_traces(spans: &[&Map<String, Value>], index: &Resolver, limit: i64, offset: i64, errors_only: bool) -> (Vec<Value>, i64) {
     let mut counts: IndexMap<String, TraceAgg> = IndexMap::new();
     let mut runs: Vec<&Map<String, Value>> = vec![];
     for &s in spans {
@@ -1163,9 +1217,105 @@ mod tests {
     }
 
     fn summary_for(spans: &[Map<String, Value>], f: &Filters) -> Value {
+        summary_with(spans, f, &KnownWorkspaces::new())
+    }
+
+    fn summary_with(spans: &[Map<String, Value>], f: &Filters, known: &KnownWorkspaces) -> Value {
         let index = TurnIndex::build(spans);
+        let r = Resolver { index: &index, known };
         let now = Utc::now();
-        run_queries(&apply_filters(spans, &index, f), &index, now, now)
+        run_queries(&apply_filters(spans, &r, f), &r, now, now)
+    }
+
+    fn workspace_row<'a>(v: &'a Value, ws: Option<&str>) -> Option<&'a Value> {
+        v["by_workspace"].as_array().unwrap().iter().find(|w| w["workspace"].as_str() == ws)
+    }
+
+    fn cost(v: &Value) -> f64 {
+        v["estimated_cost_usd"].as_f64().unwrap()
+    }
+
+    /// `/compact` and idle compaction wrote no `agent_run` span before
+    /// v3.21, and their LLM-call span names no session: only its parent
+    /// `summarization` span in the same trace does.
+    #[test]
+    fn compaction_spend_without_a_run_span_is_attributed_through_its_trace() {
+        let mut spans = fixture();
+        let base = 1_700_000_000e9;
+        spans.push(span("summarization", "0xs", "OK", base, json!({"gen_ai.conversation.id": "s-0xc", "gen_ai.agent.name": "lead"})));
+        spans.push(span(
+            "summarization_llm_call",
+            "0xs",
+            "OK",
+            base,
+            json!({"gen_ai.operation.name": "summarization", "gen_ai.usage.input_tokens": 1000, "gen_ai.usage.estimated_cost_usd": 0.5}),
+        ));
+        let v = summary_for(&spans, &Filters::default());
+        assert!((cost(workspace_row(&v, Some("/w/site")).unwrap()) - 0.76).abs() < 1e-9, "{}", v["by_workspace"]);
+        // Only the pre-tracking turn stays unrecorded.
+        assert!((cost(workspace_row(&v, None).unwrap()) - 0.125).abs() < 1e-9, "{}", v["by_workspace"]);
+
+        let site = summary_for(&spans, &Filters { workspace: Some("/w/site".into()), ..Default::default() });
+        assert!((site["totals"]["estimated_cost_usd"].as_f64().unwrap() - 0.76).abs() < 1e-9);
+        let session = summary_for(&spans, &Filters { sessions: Some(BTreeSet::from(["s-0xc".to_string()])), ..Default::default() });
+        assert!((session["totals"]["estimated_cost_usd"].as_f64().unwrap() - 0.76).abs() < 1e-9);
+    }
+
+    /// A running turn has no `agent_run` span yet; its chat spans carry
+    /// the workspace themselves.
+    #[test]
+    fn spans_of_a_turn_still_running_use_their_own_workspace() {
+        let mut spans = fixture();
+        let base = 1_700_000_000e9;
+        spans.push(span(
+            "chat m",
+            "0xp",
+            "OK",
+            base,
+            json!({"gen_ai.conversation.id": "s-new", WORKSPACE_ATTR: "/w/app", "gen_ai.usage.input_tokens": 10, "gen_ai.usage.estimated_cost_usd": 0.3}),
+        ));
+        let v = summary_for(&spans, &Filters::default());
+        assert!((cost(workspace_row(&v, Some("/w/app")).unwrap()) - 2.05).abs() < 1e-9, "{}", v["by_workspace"]);
+        let app = summary_for(&spans, &Filters { workspace: Some("/w/app".into()), ..Default::default() });
+        assert_eq!(app["totals"]["turns"], 2);
+        assert!((app["totals"]["estimated_cost_usd"].as_f64().unwrap() - 2.05).abs() < 1e-9);
+    }
+
+    /// Turns recorded before spans carried a workspace take their
+    /// session's workspace from the database.
+    #[test]
+    fn turns_before_workspace_tracking_use_the_session_workspace_on_record() {
+        let spans = fixture();
+        let known = KnownWorkspaces::from([("s-0xd".to_string(), "/w/old".to_string())]);
+        let v = summary_with(&spans, &Filters::default(), &known);
+        let old = workspace_row(&v, Some("/w/old")).unwrap_or_else(|| panic!("{}", v["by_workspace"]));
+        assert_eq!(old["turns"], 1);
+        assert!((cost(old) - 0.125).abs() < 1e-9);
+        assert!(workspace_row(&v, None).is_none(), "{}", v["by_workspace"]);
+
+        let index = TurnIndex::build(&spans);
+        let r = Resolver { index: &index, known: &known };
+        assert!(facets(&spans, &r)["workspaces"].as_array().unwrap().contains(&json!("/w/old")));
+        let old_only = Filters { workspace: Some("/w/old".into()), ..Default::default() };
+        let (items, total) = list_traces(&apply_filters(&spans, &r, &old_only), &r, 50, 0, false);
+        assert_eq!(total, 1);
+        assert_eq!(items[0]["trace_id"], "0xd");
+        assert_eq!(items[0]["workspace"], "/w/old");
+    }
+
+    #[test]
+    fn session_workspaces_on_record_match_either_id_form() {
+        let spans = vec![span(
+            "agent_run lead",
+            "0x1",
+            "OK",
+            1_700_000_000e9,
+            json!({"gen_ai.conversation.id": "0190a1b2-0000-7000-8000-000000000000", "gen_ai.provider.name": "openai", "gen_ai.request.model": "gpt"}),
+        )];
+        // Stored (hex) id; the span holds the hyphenated form.
+        let known = KnownWorkspaces::from([("0190a1b2000070008000000000000000".to_string(), "/w/old".to_string())]);
+        let v = summary_with(&spans, &Filters::default(), &known);
+        assert_eq!(v["by_workspace"][0]["workspace"], "/w/old");
     }
 
     #[test]
@@ -1224,7 +1374,9 @@ mod tests {
 
     #[test]
     fn facets_rank_the_whole_window() {
-        let v = facets(&fixture());
+        let spans = fixture();
+        let index = TurnIndex::build(&spans);
+        let v = facets(&spans, &Resolver { index: &index, known: &KnownWorkspaces::new() });
         assert_eq!(v["workspaces"], json!(["/w/app", "/w/site"]));
         assert_eq!(v["models"], json!(["openai:gpt", "anthropic:claude"]));
     }
@@ -1266,7 +1418,8 @@ mod tests {
     #[test]
     fn trace_list_filters_failed_turns_and_reports_workspace() {
         let spans = fixture();
-        let index = TurnIndex::build(&spans);
+        let turns = TurnIndex::build(&spans);
+        let index = Resolver { index: &turns, known: &KnownWorkspaces::new() };
         let all: Vec<&Map<String, Value>> = spans.iter().collect();
         let (items, total) = list_traces(&all, &index, 50, 0, true);
         assert_eq!(total, 1);
@@ -1285,7 +1438,8 @@ mod tests {
         assert_eq!(v["totals"]["turns"], 1);
         assert!((v["totals"]["estimated_cost_usd"].as_f64().unwrap() - 0.26).abs() < 1e-9);
 
-        let index = TurnIndex::build(&spans);
+        let turns = TurnIndex::build(&spans);
+        let index = Resolver { index: &turns, known: &KnownWorkspaces::new() };
         let f = Filters { sessions: Some(BTreeSet::from(["s-0xb".to_string()])), ..Default::default() };
         let (items, total) = list_traces(&apply_filters(&spans, &index, &f), &index, 50, 0, false);
         assert_eq!(total, 1);

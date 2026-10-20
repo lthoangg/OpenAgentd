@@ -188,6 +188,8 @@
      * focus affordance while staying inside the brand palette. */
     --focus-ring:   var(--accent-blue);
     --shadow-depth: 0 1px 2px rgba(0, 0, 0, 0.3), 0 2px 8px rgba(0, 0, 0, 0.25);
+    /* The logo's dot (the agent) is Signal Blue (components/brand/Logo.tsx). */
+    --logo-signal:  var(--accent-blue);
 }
 
 /* ─────────────────────────────────────────────────────────────
@@ -284,6 +286,8 @@
     /* Focus + depth (see dark-mode comment) */
     --focus-ring:   var(--accent-blue);
     --shadow-depth: 0 1px 2px rgba(0, 0, 0, 0.04), 0 2px 8px rgba(0, 0, 0, 0.05);
+    /* The logo's dot (the agent) is Signal Blue (components/brand/Logo.tsx). */
+    --logo-signal:  var(--accent-blue);
 }
 
 @layer base {
@@ -874,6 +878,19 @@ html[data-mobile-shell][data-vp-anim] .settings-modal-shell {
 }
 .done-pulse {
   animation: done-pulse var(--motion-base) var(--ease-out);
+}
+
+/* Seal pulse — the logo's dot breathes while the app loads (loaders only;
+   the boot loader in index.html has its own copy). Opacity only. */
+@keyframes oa-seal-pulse {
+  from { opacity: 1; }
+  to   { opacity: 0.35; }
+}
+.oa-seal-pulse {
+  animation: oa-seal-pulse var(--motion-glacial) var(--ease-in-out) infinite alternate;
+}
+@media (prefers-reduced-motion: reduce) {
+  .oa-seal-pulse { animation: none; }
 }
 
 /* ─────────────────────────────────────────────────────────────

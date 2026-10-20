@@ -13,7 +13,7 @@ import { PanelSection } from '@/components/ui/panel-section'
 import { TEXT } from '@/components/settings/tokens'
 import { Button } from '@/components/ui/button'
 import { SectionCard } from '@/components/ui/section-card'
-import { OPENAGENTD_APP_ICON } from '@/lib/brand-assets'
+import { Seal, Wordmark } from '@/components/brand/Logo'
 import { checkForUpdates, downloadUpdate, installUpdate, type UpdateStatus } from '@/lib/updater'
 import { openExternalUrl } from '@/lib/open-external'
 import { cn } from '@/lib/utils'
@@ -25,15 +25,9 @@ function IdentityCard({ version }: { version?: string }) {
   return (
     <SectionCard>
       <div className="flex items-center gap-4 px-4 py-5 sm:px-5">
-        <img
-          src={OPENAGENTD_APP_ICON}
-          width={56}
-          height={56}
-          alt=""
-          className="size-14 shrink-0 rounded-2xl"
-        />
+        <Seal size={56} className="shrink-0 text-(--color-text)" />
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-semibold text-(--color-text)">OpenAgentd</p>
+          <Wordmark height={20} title="OpenAgentd" className="block text-(--color-text)" />
           <p className={cn('mt-0.5 font-mono', TEXT.hint)}>
             {version ? `On-machine AI assistant · v${version}` : 'On-machine AI assistant'}
           </p>

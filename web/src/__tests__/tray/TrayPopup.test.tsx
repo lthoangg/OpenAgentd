@@ -69,7 +69,7 @@ mock.module('@tauri-apps/api/event', () => ({
 describe('TrayPopup component', () => {
   it('renders brand, server name badge, and usage meters', async () => {
     render(<TrayPopup />)
-    expect(screen.getByText('OpenAgentd')).toBeDefined()
+    expect(screen.getByRole('img', { name: 'OpenAgentd' })).toBeDefined()
 
     await waitFor(() => {
       expect(screen.getByText('Mac Studio')).toBeDefined()

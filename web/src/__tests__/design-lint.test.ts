@@ -71,9 +71,6 @@ const RULES: Rule[] = [
     why: 'depth is tonal; floating layers use shadow-(--shadow-depth)',
     pattern: /(?<![\w-])shadow(?:-(?:2xs|xs|sm|md|lg|xl|2xl)|-\[[^\]]*\])?(?![\w-])/g,
     allow: {
-      // App icon artwork on the boot / error screens.
-      'App.tsx': 1,
-      'routes/__root.tsx': 1,
       // Rendered content: PDF page and sized web-preview viewport.
       'components/PdfDocumentViewer.tsx': 1,
       'components/Preview/PreviewTabView.tsx': 1,

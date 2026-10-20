@@ -2,7 +2,7 @@ import { QueryClientProvider } from '@tanstack/react-query'
 import { Suspense, useEffect } from 'react'
 import { Link, Outlet, useLocation, useNavigate } from '@tanstack/react-router'
 import { queryClient } from '@/lib/query-client'
-import { OPENAGENTD_APP_ICON } from '@/lib/brand-assets'
+import { Seal } from '@/components/brand/Logo'
 import { Home } from 'lucide-react'
 import { SettingsModal } from '@/components/SettingsModal'
 import { PluginNotice } from '@/components/settings/pages/settings.plugins'
@@ -105,10 +105,7 @@ function RouteLoadingFallback() {
   return (
     <div className="mobile-safe-shell mobile-viewport flex h-dvh items-center justify-center bg-(--bg-page)" role="status" aria-label="Loading OpenAgentd" aria-live="polite">
       <div className="flex flex-col items-center gap-4 text-center">
-        <div className="relative flex items-center justify-center">
-          <div className="absolute -inset-2.5 rounded-3xl bg-(--bg-key)/50 blur-xl animate-pulse" />
-          <img src={OPENAGENTD_APP_ICON} width={88} height={88} alt="OpenAgentd" className="relative rounded-2xl shadow-sm" />
-        </div>
+        <Seal size={88} pulse title="OpenAgentd" className="text-(--color-text)" />
         <p className="text-sm font-medium text-(--color-text-muted) animate-pulse">Loading OpenAgentd…</p>
       </div>
     </div>

@@ -16,7 +16,7 @@
  */
 
 import { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo, memo } from 'react'
-import OctobotMascot from '@/assets/brand/octobot-agentd-source.png'
+import { Seal } from '@/components/brand/Logo'
 
 import { MarkdownBlock } from '@/utils/markdown'
 import { ChevronDown, ChevronUp, Clock } from 'lucide-react'
@@ -271,7 +271,7 @@ interface AgentViewProps {
   isError?: boolean
   /** Error message to display when isError is true. */
   lastError?: string | null
-  /** Optional slot rendered in place of the default mascot empty state. */
+  /** Optional slot rendered in place of the default Seal empty state. */
   emptyState?: React.ReactNode
   /** Open a mentioned workspace file in the file viewer. */
   onMentionFileOpen?: (path: string) => void
@@ -846,20 +846,11 @@ export function AgentView({
         {isEmpty && (
            emptyState ?? (
              // Same weight as every other blank state (see `EmptyState`); the
-             // mascot rides in the chip instead of as a 4xl hero.
+             // Seal rides in the chip instead of as a 4xl hero.
              <EmptyState
                fill={false}
                className="py-16 select-none"
-               icon={
-                 <img
-                   src={OctobotMascot}
-                   className="opacity-90"
-                   width={28}
-                   height={28}
-                   alt=""
-                   aria-hidden="true"
-                 />
-               }
+               icon={<Seal size={24} className="text-(--color-text)" />}
                title={'what\u2019s on your mind?'}
              />
            )

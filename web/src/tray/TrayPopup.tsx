@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { Check, ChevronDown, RefreshCw, Server } from 'lucide-react'
+import { Wordmark } from '@/components/brand/Logo'
 import {
   type MeterTone,
   type TrayUsageItem,
@@ -321,7 +322,9 @@ export function TrayPopup() {
   return (
     <div className="tray">
       <header className="tray-header">
-        <span className="brand">OpenAgentd</span>
+        <span className="brand">
+          <Wordmark height={14} title="OpenAgentd" />
+        </span>
         <span className="status" data-tone={status}>
           {STATUS_LABEL[status]}
         </span>

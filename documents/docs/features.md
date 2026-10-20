@@ -2062,6 +2062,11 @@ Client-side speech recognition. OpenAgentd does not run backend microphone trans
 
 Desktop is primary. CLI / server is the developer path.
 
+- **The Seal logo** `[v3.22.0]` — the app, its icons, and the browser tab
+  show the new OpenAgentd logo instead of the Octobot mascot: an ink disc
+  with an open A and a Signal Blue dot (the agent). The macOS menu bar shows
+  the A and the dot as a template icon, and loading screens pulse the dot
+  (still with reduced motion).
 - **macOS desktop** `[since v1.0]` — Homebrew cask
   (`brew install --cask lthoangg/tap/openagentd`) or `.dmg` with bundled
   `install.sh` (signs locally). Installs, cask upgrades and in-app updates

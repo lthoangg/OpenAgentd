@@ -21,6 +21,8 @@
   --error: #a71c24;
   --error-subtle: rgba(185, 28, 28, 0.08);
   --focus: #5aa8e2;
+  /* The logo's dot (the agent), as in the app (components/brand/Logo.tsx). */
+  --logo-signal: var(--focus);
   /* "Now" tick on the usage meter — tracks wall-clock position within the
    * quota window, distinct from the fill (usage consumed). */
   --meter-now: #1a1714;
@@ -277,9 +279,8 @@ body {
 }
 
 .brand {
-  font-size: 13px;
-  font-weight: 600;
-  letter-spacing: -0.01em;
+  display: inline-flex;
+  color: var(--text);
 }
 
 .status {

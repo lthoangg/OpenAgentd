@@ -5,7 +5,7 @@
  */
 import { useEffect } from 'react'
 import { useNavigate, useSearch } from '@tanstack/react-router'
-import { OPENAGENTD_APP_ICON } from '@/lib/brand-assets'
+import { Seal } from '@/components/brand/Logo'
 import { isTelemetryRange, openTelemetry } from '@/stores/useTelemetryStore'
 
 export function TelemetryPage() {
@@ -22,7 +22,7 @@ export function TelemetryPage() {
 
   return (
     <main className="mobile-safe-shell mobile-viewport flex h-dvh items-center justify-center bg-(--bg-page)" role="status" aria-label="Loading OpenAgentd" aria-live="polite">
-      <img src={OPENAGENTD_APP_ICON} width={88} height={88} alt="" aria-hidden="true" className="rounded-2xl" />
+      <Seal size={88} className="text-(--color-text)" />
     </main>
   )
 }

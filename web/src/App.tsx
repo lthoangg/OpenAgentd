@@ -1,6 +1,6 @@
 import { Suspense, useState } from 'react'
 import { RouterProvider } from '@tanstack/react-router'
-import { OPENAGENTD_APP_ICON } from '@/lib/brand-assets'
+import { Seal } from '@/components/brand/Logo'
 import { AppBackendDialog, type AppBackendPrefill } from '@/components/AppBackendDialog'
 import { Button } from '@/components/ui/button'
 import { useConnectLink } from '@/hooks/useConnectLink'
@@ -61,10 +61,7 @@ function AppLoadingScreen({ unavailable, failed, retrying, onRetry, onChooseServ
   return (
     <div className="mobile-safe-shell mobile-viewport flex h-dvh items-center justify-center bg-(--bg-page)" role="status" aria-label="Loading OpenAgentd" aria-live="polite">
       <div className="flex max-w-sm flex-col items-center gap-5 px-6 text-center">
-        <div className="relative flex items-center justify-center">
-          <div className="absolute -inset-2.5 rounded-3xl bg-(--bg-key)/50 blur-xl animate-pulse" />
-          <img src={OPENAGENTD_APP_ICON} width={88} height={88} alt="OpenAgentd" className="relative rounded-2xl shadow-sm" />
-        </div>
+        <Seal size={88} pulse title="OpenAgentd" className="text-(--color-text)" />
         {!unavailable ? (
           <div className="flex flex-col items-center gap-2">
             <p className="text-sm font-medium text-(--color-text-muted) animate-pulse">Connecting to OpenAgentd…</p>

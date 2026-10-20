@@ -14,8 +14,20 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime};
 
-use super::otel::set_usage_span_attributes;
+use super::otel::{set_usage_span_attributes, WORKSPACE_ATTR};
 use appv3_core::otel::{self, Span, SpanKind};
+
+/// Who a summarization span belongs to. The LLM-call span carries it too:
+/// a compaction-only run's spend must stay attributable to its session
+/// and workspace even if nothing else in the trace says so.
+fn span_identity(ctx: &RunContext) -> Vec<(&'static str, Value)> {
+    let mut attrs =
+        vec![("gen_ai.agent.name", json!(ctx.agent_name)), ("gen_ai.conversation.id", json!(ctx.session_id.clone().unwrap_or_default())), ("run_id", json!(ctx.run_id))];
+    if let Some(ws) = ctx.workspace.as_deref().filter(|w| !w.is_empty()) {
+        attrs.push((WORKSPACE_ATTR, json!(ws)));
+    }
+    attrs
+}
 
 /// A failed summariser LLM call (`type(exc).__name__`, qualified name, `str(exc)`).
 struct LlmFailure {
@@ -382,7 +394,7 @@ impl SummarizationHook {
 
     /// `_call_llm` inside the `summarization_llm_call` CLIENT span.
     async fn call_llm(&self, ctx: &RunContext, messages: Vec<ChatMessage>, tools: Option<&[Value]>, max_tokens: Option<i64>) -> Result<(String, Option<Value>), LlmFailure> {
-        let span = Span::start("summarization_llm_call", SpanKind::Client, vec![]);
+        let span = Span::start("summarization_llm_call", SpanKind::Client, span_identity(ctx));
         let t0 = std::time::Instant::now();
         let model_id = self.model_id.clone().or_else(|| self.provider.cost_model_id()).filter(|m| !m.is_empty());
         let mut provider_name = self.provider.provider_name().filter(|p| !p.is_empty()).map(String::from);
@@ -505,17 +517,10 @@ impl SummarizationHook {
 
     async fn summarise(&self, ctx: &RunContext, state: &mut AgentState, system_prompt: &str) -> bool {
         tracing::info!("summarization_started session_id={:?} agent={}", ctx.session_id, ctx.agent_name);
-        let span = Span::start(
-            "summarization",
-            SpanKind::Internal,
-            vec![
-                ("gen_ai.agent.name", json!(ctx.agent_name)),
-                ("gen_ai.conversation.id", json!(ctx.session_id.clone().unwrap_or_default())),
-                ("run_id", json!(ctx.run_id)),
-                ("summarization.prompt_tokens", json!(state.usage.last_prompt_tokens)),
-                ("summarization.threshold", json!(self.threshold())),
-            ],
-        );
+        let mut attrs = span_identity(ctx);
+        attrs.push(("summarization.prompt_tokens", json!(state.usage.last_prompt_tokens)));
+        attrs.push(("summarization.threshold", json!(self.threshold())));
+        let span = Span::start("summarization", SpanKind::Internal, attrs);
         let (done, cancelled) = otel::scope(Some(span.ctx()), self.summarise_inner(ctx, state, system_prompt, &span)).await;
         if cancelled {
             span.exit_with_exception("asyncio.exceptions.CancelledError", "");
@@ -785,6 +790,18 @@ mod tests {
 
     fn ctx() -> RunContext {
         RunContext { session_id: None, run_id: "run".into(), agent_name: "test".into(), workspace: None }
+    }
+
+    #[test]
+    fn summarization_spans_name_their_session_and_workspace() {
+        let with_ws = RunContext { session_id: Some("s-1".into()), run_id: "run".into(), agent_name: "lead".into(), workspace: Some("/w/app".into()) };
+        let attrs: HashMap<&str, Value> = span_identity(&with_ws).into_iter().collect();
+        assert_eq!(attrs["gen_ai.conversation.id"], "s-1");
+        assert_eq!(attrs["gen_ai.agent.name"], "lead");
+        assert_eq!(attrs["run_id"], "run");
+        assert_eq!(attrs[WORKSPACE_ATTR], "/w/app");
+        let attrs: HashMap<&str, Value> = span_identity(&ctx()).into_iter().collect();
+        assert!(!attrs.contains_key(WORKSPACE_ATTR));
     }
 
     async fn compact_with(hook: &SummarizationHook, messages: Vec<ChatMessage>) -> AgentState {

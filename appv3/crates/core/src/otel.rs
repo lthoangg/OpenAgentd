@@ -212,6 +212,20 @@ impl Span {
         self.0.lock().unwrap().attrs.contains_key(key)
     }
 
+    /// The attribute `key`, if set.
+    pub fn attr(&self, key: &str) -> Option<Value> {
+        self.0.lock().unwrap().attrs.get(key).cloned()
+    }
+
+    /// `span.is_recording()`: true until the span ends.
+    pub fn is_recording(&self) -> bool {
+        self.0.lock().unwrap().end.is_none()
+    }
+
+    pub fn status(&self) -> StatusCode {
+        self.0.lock().unwrap().status
+    }
+
     /// `span.update_name`.
     pub fn set_name(&self, name: impl Into<String>) {
         let mut g = self.0.lock().unwrap();
@@ -1058,6 +1072,18 @@ mod tests {
         s.set_ok();
         s.set_error();
         assert_eq!(s.0.lock().unwrap().status, StatusCode::Ok);
+    }
+
+    #[test]
+    fn recording_until_ended() {
+        let s = Span::start_with_parent("x", SpanKind::Internal, None, vec![("k", json!("v"))]);
+        assert!(s.is_recording());
+        assert_eq!(s.status(), StatusCode::Unset);
+        assert_eq!(s.attr("k"), Some(json!("v")));
+        s.set_error();
+        s.end();
+        assert!(!s.is_recording());
+        assert_eq!(s.status(), StatusCode::Error);
     }
 
     #[tokio::test]

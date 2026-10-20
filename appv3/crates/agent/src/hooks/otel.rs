@@ -21,6 +21,9 @@ pub const TTFT_ATTR: &str = "gen_ai.response.time_to_first_chunk";
 /// `chat` span attribute (v3 addition): output tokens per second while the
 /// model streamed output (see [`StreamTiming::output_tokens_per_second`]).
 pub const OUTPUT_TPS_ATTR: &str = "openagentd.response.output_tokens_per_second";
+/// `agent_run` span attribute (v3 addition): the run was stopped before it
+/// finished. A stop is not a failure, so such runs keep status OK.
+pub const RUN_CANCELLED_ATTR: &str = "openagentd.run.cancelled";
 
 /// `set_usage_span_attributes` (usage dict from `usage_to_dict`).
 pub fn set_usage_span_attributes(span: &Span, usage: &Value) {
@@ -97,10 +100,21 @@ pub enum ToolOutcome<'a> {
     LeadSuspended(&'a str),
 }
 
+/// How an agent run ended, for its `agent_run` span.
+pub enum RunEnd<'a> {
+    Ok,
+    /// Stopped by the user, or the run's future was dropped.
+    Cancelled,
+    /// `(python class name, qualified name, message)`.
+    Err(&'a str, &'a str, &'a str),
+}
+
 pub struct OtelHook {
     agent_name: String,
     provider: String,
     model: String,
+    /// The current run's span; kept after it ends so [`Self::end_run`] is
+    /// idempotent.
     agent_span: Mutex<Option<Span>>,
     token: Mutex<Option<Option<SpanCtx>>>,
     run_start: Mutex<Option<Instant>>,
@@ -117,20 +131,58 @@ impl OtelHook {
         ctx.session_id.clone().unwrap_or_else(|| "no-session".into())
     }
 
+    /// The current run's `agent_run` span, or the last one once it ended.
+    pub fn run_span(&self) -> Option<Span> {
+        self.agent_span.lock().unwrap().clone()
+    }
+
+    /// End the run's `agent_run` span, once. [`Agent::run`](crate::agent::Agent::run)
+    /// calls it for every run — a run without a span leaves its spend and
+    /// failure unattributed. Later calls (and calls before the run started)
+    /// do nothing.
+    pub fn end_run(&self, outcome: RunEnd<'_>) {
+        let Some(span) = self.agent_span.lock().unwrap().clone().filter(Span::is_recording) else { return };
+        match outcome {
+            RunEnd::Ok => {
+                span.set_ok();
+                span.end();
+            }
+            RunEnd::Cancelled => {
+                span.set_attr(RUN_CANCELLED_ATTR, true);
+                span.record_exception("asyncio.exceptions.CancelledError", "");
+                span.set_ok();
+                span.end();
+            }
+            RunEnd::Err(name, qualified, message) => {
+                span.set_attr("error.type", name);
+                span.exit_with_exception(qualified, message);
+            }
+        }
+        if let Some(prev) = self.token.lock().unwrap().take() {
+            otel::attach(prev);
+        }
+        instruments().runs.add(1, vec![("gen_ai.agent.name", json!(self.agent_name)), ("gen_ai.provider.name", json!(self.provider)), ("gen_ai.request.model", json!(self.model))]);
+    }
+
+    /// `(WORKSPACE_ATTR, workspace)` when the run has a workspace.
+    fn workspace_attr(ctx: &RunContext) -> Option<(&'static str, Value)> {
+        ctx.workspace.as_deref().filter(|w| !w.is_empty()).map(|w| (WORKSPACE_ATTR, json!(w)))
+    }
+
     pub fn start_model_span(&self, ctx: &RunContext, req: &ModelRequest) -> Span {
-        Span::start(
-            format!("chat {}", self.model),
-            SpanKind::Client,
-            vec![
-                ("gen_ai.operation.name", json!("chat")),
-                ("gen_ai.provider.name", json!(self.provider)),
-                ("gen_ai.request.model", json!(self.model)),
-                ("gen_ai.conversation.id", json!(Self::conv(ctx))),
-                ("run_id", json!(ctx.run_id)),
-                ("gen_ai.agent.name", json!(self.agent_name)),
-                ("gen_ai.request.message_count", json!(req.messages.len())),
-            ],
-        )
+        let mut attrs = vec![
+            ("gen_ai.operation.name", json!("chat")),
+            ("gen_ai.provider.name", json!(self.provider)),
+            ("gen_ai.request.model", json!(self.model)),
+            ("gen_ai.conversation.id", json!(Self::conv(ctx))),
+            ("run_id", json!(ctx.run_id)),
+            ("gen_ai.agent.name", json!(self.agent_name)),
+            ("gen_ai.request.message_count", json!(req.messages.len())),
+        ];
+        // On the span itself too: a turn still running has no `agent_run`
+        // span yet to attribute its spend through.
+        attrs.extend(Self::workspace_attr(ctx));
+        Span::start(format!("chat {}", self.model), SpanKind::Client, attrs)
     }
 
     pub fn end_model_span(&self, span: &Span, started: Instant, outcome: ModelOutcome<'_>) {
@@ -178,18 +230,16 @@ impl OtelHook {
     }
 
     pub fn start_tool_span(&self, ctx: &RunContext, tc: &ToolCall) -> Span {
-        Span::start(
-            format!("execute_tool {}", tc.function.name),
-            SpanKind::Internal,
-            vec![
-                ("gen_ai.operation.name", json!("execute_tool")),
-                ("gen_ai.tool.name", json!(tc.function.name)),
-                ("gen_ai.tool.call.id", json!(tc.id)),
-                ("gen_ai.agent.name", json!(self.agent_name)),
-                ("gen_ai.conversation.id", json!(Self::conv(ctx))),
-                ("run_id", json!(ctx.run_id)),
-            ],
-        )
+        let mut attrs = vec![
+            ("gen_ai.operation.name", json!("execute_tool")),
+            ("gen_ai.tool.name", json!(tc.function.name)),
+            ("gen_ai.tool.call.id", json!(tc.id)),
+            ("gen_ai.agent.name", json!(self.agent_name)),
+            ("gen_ai.conversation.id", json!(Self::conv(ctx))),
+            ("run_id", json!(ctx.run_id)),
+        ];
+        attrs.extend(Self::workspace_attr(ctx));
+        Span::start(format!("execute_tool {}", tc.function.name), SpanKind::Internal, attrs)
     }
 
     pub fn end_tool_span(&self, span: &Span, tool_name: &str, started: Instant, outcome: ToolOutcome<'_>) {
@@ -233,29 +283,21 @@ impl Hook for OtelHook {
             ("gen_ai.conversation.id", json!(Self::conv(ctx))),
             ("run_id", json!(ctx.run_id)),
         ];
-        if let Some(workspace) = ctx.workspace.as_deref().filter(|w| !w.is_empty()) {
-            attrs.push((WORKSPACE_ATTR, json!(workspace)));
-        }
+        attrs.extend(Self::workspace_attr(ctx));
         let span = Span::start(format!("agent_run {}", self.agent_name), SpanKind::Internal, attrs);
         *self.token.lock().unwrap() = otel::attach(Some(span.ctx()));
         *self.agent_span.lock().unwrap() = Some(span);
     }
 
     async fn after_agent(&self, ctx: &RunContext, state: &mut AgentState, _resp: &AssistantMessage) {
-        if let Some(span) = self.agent_span.lock().unwrap().take() {
+        if let Some(span) = self.run_span() {
             if state.usage.last_prompt_tokens != 0 {
                 span.set_attr("gen_ai.usage.input_tokens", state.usage.last_prompt_tokens);
             }
             if state.usage.last_completion_tokens != 0 {
                 span.set_attr("gen_ai.usage.output_tokens", state.usage.last_completion_tokens);
             }
-            span.set_ok();
-            span.end();
         }
-        if let Some(prev) = self.token.lock().unwrap().take() {
-            otel::attach(prev);
-        }
-        instruments().runs.add(1, vec![("gen_ai.agent.name", json!(self.agent_name)), ("gen_ai.provider.name", json!(self.provider)), ("gen_ai.request.model", json!(self.model))]);
         let elapsed = self.run_start.lock().unwrap().map(|t| t.elapsed().as_secs_f64()).unwrap_or(0.0);
         tracing::debug!("otel_agent_run_complete agent={} session={:?} elapsed_s={:.3}", self.agent_name, ctx.session_id, elapsed);
     }
@@ -270,7 +312,136 @@ impl Hook for OtelHook {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::agent::{Agent, RunOptions};
+    use crate::hooks::HookRef;
+    use appv3_core::otel::StatusCode;
+    use appv3_providers::mock::{MockProvider, MockTurn};
+    use appv3_providers::{ChatMessage, LlmProvider, ProviderError};
+    use std::sync::Arc;
     use std::time::Duration;
+
+    fn run_opts(hook: &Arc<OtelHook>, metadata: serde_json::Map<String, Value>) -> RunOptions<'static> {
+        RunOptions {
+            session_id: Some("s-1".into()),
+            metadata,
+            hooks: vec![hook.clone() as HookRef],
+            injected_tools: vec![],
+            interrupt: None,
+            hard_cancel: None,
+            checkpointer: None,
+            provider: None,
+            model_id: Some("mock:mock".into()),
+            denied: Arc::new(appv3_tools::DeniedPaths::new(std::path::Path::new("/tmp"), None)),
+            workspace: Some("/w/app".into()),
+        }
+    }
+
+    fn agent(turns: Vec<MockTurn>) -> Agent {
+        let provider: Arc<dyn LlmProvider> = Arc::new(MockProvider::new(turns));
+        Agent::new(provider, "lead", "You are a test agent.", vec![], Some("mock:mock".into()))
+    }
+
+    #[tokio::test]
+    async fn failed_run_ends_its_run_span_as_an_error() {
+        let hook = Arc::new(OtelHook::new("lead", Some("mock:mock")));
+        let res = agent(vec![MockTurn::Error(ProviderError::Auth("bad key".into()))]).run(vec![ChatMessage::user("hi")], run_opts(&hook, Default::default())).await;
+        assert!(res.is_err());
+        let span = hook.run_span().expect("run span started");
+        assert!(!span.is_recording(), "a failed run must still write its agent_run span");
+        assert_eq!(span.status(), StatusCode::Error);
+        assert_eq!(span.attr("error.type"), Some(json!("ProviderAuthenticationError")));
+        assert_eq!(span.attr(WORKSPACE_ATTR), Some(json!("/w/app")));
+    }
+
+    #[tokio::test]
+    async fn compaction_only_run_ends_its_run_span() {
+        let hook = Arc::new(OtelHook::new("lead", Some("mock:mock")));
+        let meta = serde_json::Map::from_iter([("stop_after_before_model".to_string(), json!(true))]);
+        let res = agent(vec![]).run(vec![ChatMessage::user("hi")], run_opts(&hook, meta)).await;
+        assert!(res.is_ok());
+        let span = hook.run_span().expect("run span started");
+        assert!(!span.is_recording(), "a run without an answer must still write its agent_run span");
+        assert_eq!(span.status(), StatusCode::Ok);
+    }
+
+    #[tokio::test]
+    async fn answered_run_ends_ok_with_usage() {
+        let hook = Arc::new(OtelHook::new("lead", Some("mock:mock")));
+        let res = agent(vec![MockProvider::text("hello")]).run(vec![ChatMessage::user("hi")], run_opts(&hook, Default::default())).await;
+        assert!(res.is_ok());
+        let span = hook.run_span().unwrap();
+        assert!(!span.is_recording());
+        assert_eq!(span.status(), StatusCode::Ok);
+        assert!(span.has_attr("gen_ai.usage.input_tokens"));
+    }
+
+    #[tokio::test]
+    async fn dropped_run_ends_its_run_span_as_cancelled() {
+        let hook = Arc::new(OtelHook::new("lead", Some("mock:mock")));
+        let ctx = RunContext { session_id: Some("s-1".into()), run_id: "r".into(), agent_name: "lead".into(), workspace: None };
+        let mut state = AgentState::new(vec![], String::new());
+        appv3_core::otel::scope(None, async {
+            hook.before_agent(&ctx, &mut state).await;
+            drop(crate::agent::RunSpanGuard::new(vec![hook.clone() as HookRef]));
+        })
+        .await;
+        let span = hook.run_span().unwrap();
+        assert!(!span.is_recording());
+        assert_eq!(span.status(), StatusCode::Ok, "a stop is not a failure");
+        assert_eq!(span.attr(RUN_CANCELLED_ATTR), Some(json!(true)));
+    }
+
+    /// Presses Stop as the first chunk streams, like the user mid-answer.
+    struct StopOnFirstChunk(crate::util::Event);
+
+    #[async_trait::async_trait]
+    impl crate::hooks::Hook for StopOnFirstChunk {
+        async fn on_model_delta(&self, _ctx: &RunContext, _state: &AgentState, _chunk: &appv3_providers::ChatCompletionChunk) {
+            self.0.set();
+        }
+    }
+
+    #[tokio::test]
+    async fn run_stopped_mid_answer_ends_its_run_span_as_cancelled() {
+        let hook = Arc::new(OtelHook::new("lead", Some("mock:mock")));
+        let stop = crate::util::Event::new();
+        let mut opts = run_opts(&hook, Default::default());
+        opts.interrupt = Some(stop.clone());
+        opts.hooks.push(Arc::new(StopOnFirstChunk(stop)));
+        let res = agent(vec![MockProvider::text("hello")]).run(vec![ChatMessage::user("hi")], opts).await;
+        assert!(res.is_ok(), "a soft stop keeps the partial answer");
+        let span = hook.run_span().unwrap();
+        assert!(!span.is_recording());
+        assert_eq!(span.status(), StatusCode::Ok, "a stop is not a failure");
+        assert_eq!(span.attr(RUN_CANCELLED_ATTR), Some(json!(true)));
+    }
+
+    #[tokio::test]
+    async fn run_stopped_before_its_first_call_ends_its_run_span_as_cancelled() {
+        let hook = Arc::new(OtelHook::new("lead", Some("mock:mock")));
+        let stop = crate::util::Event::new();
+        stop.set();
+        let mut opts = run_opts(&hook, Default::default());
+        opts.interrupt = Some(stop);
+        let res = agent(vec![]).run(vec![ChatMessage::user("hi")], opts).await;
+        assert!(res.is_ok());
+        let span = hook.run_span().unwrap();
+        assert!(!span.is_recording());
+        assert_eq!(span.attr(RUN_CANCELLED_ATTR), Some(json!(true)));
+    }
+
+    #[test]
+    fn chat_and_tool_spans_carry_the_workspace() {
+        let hook = OtelHook::new("lead", Some("mock:mock"));
+        let mut ctx = RunContext { session_id: Some("s-1".into()), run_id: "r".into(), agent_name: "lead".into(), workspace: Some("/w/app".into()) };
+        let req = ModelRequest { messages: vec![], system_prompt: String::new() };
+        let tc = ToolCall::new("c1", "read", "{}");
+        assert_eq!(hook.start_model_span(&ctx, &req).attr(WORKSPACE_ATTR), Some(json!("/w/app")));
+        assert_eq!(hook.start_tool_span(&ctx, &tc).attr(WORKSPACE_ATTR), Some(json!("/w/app")));
+        ctx.workspace = None;
+        assert!(!hook.start_model_span(&ctx, &req).has_attr(WORKSPACE_ATTR));
+        assert!(!hook.start_tool_span(&ctx, &tc).has_attr(WORKSPACE_ATTR));
+    }
 
     fn answer(output_tokens: i64) -> AssistantMessage {
         let mut a = AssistantMessage::default();

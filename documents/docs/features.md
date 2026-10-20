@@ -178,6 +178,9 @@ run from the terminal (the native Rust binary since v3.0.0).
   hours, including on a foreground return once that interval is due; choosing
   Later suppresses the automatic reminder for the full 6-hour interval in the
   current app run; relaunching performs the normal startup check `[v1.115.1]`.
+  macOS update archives ship already signed with the stable
+  identifier-only requirement, so v3.19.0 and later install them without the
+  "signature verification failed" error `[v3.20.0]`.
   Mobile leaves updates to its platform distribution channel.
   Earlier iterations: `[v1.18.0]`, `[v1.20.0]`, `[v1.21.0]`.
 - **Native app notifications** `[v1.19.0]` — finished assistant turns and

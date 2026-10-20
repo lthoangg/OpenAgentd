@@ -112,8 +112,8 @@ export function NewSessionScreen({
     staleTime: 10_000,
   })
   const branch = !isChat && status?.is_git_repo ? status.branch : null
-  const everywhere = useAllSessionsQuery('activity')
-  const { data: here } = useWorkspaceSessionsQuery(workspace, true, { sort: 'activity' })
+  const everywhere = useAllSessionsQuery()
+  const { data: here } = useWorkspaceSessionsQuery(workspace)
 
   const folders = useMemo(
     () => recentFolders(everywhere.data?.pages.flatMap((page) => page.data) ?? [], repositories, workspace, chatWorkspace?.path ?? null),

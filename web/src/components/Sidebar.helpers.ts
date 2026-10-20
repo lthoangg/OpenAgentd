@@ -43,6 +43,42 @@ export function sourceWorkspacePaths(
     .filter((path) => !removedWorktreePaths.has(path))
 }
 
+/**
+ * The Project view's repository order: those in a workspace group first,
+ * clustered by group (in ``groupIds`` order; a repository in several groups
+ * sits under its first), then the rest. Within each part the most recently
+ * active repository leads — its newest loaded session across its own path
+ * and its worktrees. Repositories with no loaded session keep tree order
+ * after the active ones.
+ */
+export function orderWorkspacePaths(
+  paths: readonly string[],
+  repositoryByPath: ReadonlyMap<string, CodingWorkspaceTreeRepository>,
+  groupIds: readonly string[],
+  sessionsByWorkspace: ReadonlyMap<string, readonly SessionResponse[]>,
+): string[] {
+  const groupRank = (path: string) => {
+    const ids = repositoryByPath.get(path)?.group_ids ?? []
+    const rank = groupIds.findIndex((id) => ids.includes(id))
+    return rank === -1 ? groupIds.length : rank
+  }
+  const activity = (path: string) => {
+    const repository = repositoryByPath.get(path)
+    const checkouts = [path, ...(repository?.worktrees ?? []).map((item) => item.path)]
+    let newest = ''
+    for (const checkout of checkouts) {
+      for (const session of sessionsByWorkspace.get(checkout) ?? []) {
+        const time = sessionActivityTime(session) ?? ''
+        if (time > newest) newest = time
+      }
+    }
+    return newest
+  }
+  const keyed = paths.map((path, index) => ({ path, index, rank: groupRank(path), time: activity(path) }))
+  keyed.sort((a, b) => a.rank - b.rank || b.time.localeCompare(a.time) || a.index - b.index)
+  return keyed.map((item) => item.path)
+}
+
 export function groupSessionsByWorkspace(
   sessions: SessionResponse[],
 ): Map<string, SessionResponse[]> {
@@ -110,11 +146,6 @@ export function sessionActivityTime(session: SessionResponse): string | null {
   return session.last_message_at ?? session.updated_at ?? session.created_at
 }
 
-/** The time a session sorts by: last use, or creation. */
-export function sessionSortTime(session: SessionResponse, sortBy: 'activity' | 'created'): string | null {
-  return sortBy === 'activity' ? sessionActivityTime(session) : session.created_at
-}
-
 /** Local midnight ``daysAgo`` calendar days before ``now`` (DST-safe). */
 function localMidnight(now: Date, daysAgo: number): number {
   return new Date(now.getFullYear(), now.getMonth(), now.getDate() - daysAgo).getTime()
@@ -122,12 +153,11 @@ function localMidnight(now: Date, daysAgo: number): number {
 
 /**
  * Today · Yesterday · Previous 7 days · Previous 30 days · Older, by the
- * sort key and local midnight. Keeps the input order inside each group and
- * drops empty groups. Sessions without a time count as Older.
+ * last activity and local midnight. Keeps the input order inside each group
+ * and drops empty groups. Sessions without a time count as Older.
  */
 export function groupSessionsByDate(
   sessions: readonly SessionResponse[],
-  sortBy: 'activity' | 'created',
   now: Date = new Date(),
 ): SessionGroup[] {
   const today = localMidnight(now, 0)
@@ -142,7 +172,7 @@ export function groupSessionsByDate(
     { id: 'older', label: 'Older', sessions: [] },
   ]
   for (const session of sessions) {
-    const raw = sessionSortTime(session, sortBy)
+    const raw = sessionActivityTime(session)
     const time = raw ? Date.parse(raw) : Number.NaN
     const index = Number.isNaN(time) ? 4
       : time >= today ? 0

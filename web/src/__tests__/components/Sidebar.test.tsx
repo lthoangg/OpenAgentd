@@ -283,8 +283,8 @@ mock.module('@/queries/useSessionsQuery', () => ({
   usePinnedSessionsQuery: () => ({
     data: { pages: [{ data: pinnedSessionsData }] },
   }),
-  useAllSessionsQuery: (sort: string) => {
-    allSessionsQueryArgs.push(sort)
+  useAllSessionsQuery: () => {
+    allSessionsQueryArgs.push('called')
     return {
       data: { pages: [{ data: allSessionsData }] },
       isLoading: false,
@@ -2418,7 +2418,7 @@ describe('Sidebar workspace trust flow', () => {
 
     beforeEach(async () => {
       const { useSidebarViewStore } = await import('@/stores/useSidebarViewStore')
-      useSidebarViewStore.setState({ groupBy: 'project', sortBy: 'activity', showDetails: true, pinnedCollapsed: false, collapsedGroups: [] })
+      useSidebarViewStore.setState({ groupBy: 'project', showDetails: true, pinnedCollapsed: false, collapsedGroups: [] })
     })
 
     it('keeps New session off the desktop header in Project mode', async () => {
@@ -2442,7 +2442,7 @@ describe('Sidebar workspace trust flow', () => {
       await renderSidebarForSessions('session-1')
 
       expect(screen.getByText('Flat row')).toBeTruthy()
-      expect(allSessionsQueryArgs.at(-1)).toBe('activity')
+      expect(allSessionsQueryArgs.length).toBeGreaterThan(0)
       // The tree's controls belong to Project mode.
       expect(screen.queryByRole('button', { name: 'Collapse all workspaces' })).toBeNull()
 

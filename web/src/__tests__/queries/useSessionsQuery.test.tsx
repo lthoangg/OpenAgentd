@@ -55,7 +55,7 @@ describe('useWorkspaceSessionsQuery', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
-  it('asks for unpinned sessions in the chosen order and hides pinned rows an older server sends', async () => {
+  it('asks for unpinned sessions in activity order and hides pinned rows an older server sends', async () => {
     setApiBaseUrl('')
     const fetchMock = mock(async (_input: unknown) => new Response(JSON.stringify({
       data: [
@@ -70,25 +70,12 @@ describe('useWorkspaceSessionsQuery', () => {
     const wrapper = ({ children }: { children: React.ReactNode }) =>
       React.createElement(QueryClientProvider, { client }, children)
 
-    const { result } = renderHook(() => useWorkspaceSessionsQuery('/repo', true, { sort: 'activity' }), { wrapper })
+    const { result } = renderHook(() => useWorkspaceSessionsQuery('/repo'), { wrapper })
     await waitFor(() => expect(result.current.data?.pages[0].data.map((s) => s.id)).toEqual(['s1']))
     const url = new URL(String(fetchMock.mock.calls[0][0]), 'http://x')
     expect(url.searchParams.get('sort')).toBe('activity')
     expect(url.searchParams.get('pinned')).toBe('false')
     expect(client.getQueryData(queryKeys.session.sessions.workspace('/repo', 'activity'))).toBeDefined()
-  })
-
-  it('leaves sort off the request for the default created order', async () => {
-    setApiBaseUrl('')
-    const fetchMock = mock(async (_input: unknown) => new Response(JSON.stringify({ data: [], next_cursor: null, has_more: false })))
-    globalThis.fetch = fetchMock as unknown as typeof fetch
-    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-    const wrapper = ({ children }: { children: React.ReactNode }) =>
-      React.createElement(QueryClientProvider, { client }, children)
-    const { result } = renderHook(() => useWorkspaceSessionsQuery('/repo'), { wrapper })
-    await waitFor(() => expect(result.current.isSuccess).toBe(true))
-    const url = new URL(String(fetchMock.mock.calls[0][0]), 'http://x')
-    expect(url.searchParams.has('sort')).toBe(false)
   })
 })
 
@@ -105,12 +92,13 @@ describe('useAllSessionsQuery', () => {
     const wrapper = ({ children }: { children: React.ReactNode }) =>
       React.createElement(QueryClientProvider, { client }, children)
 
-    const idle = renderHook(() => useAllSessionsQuery('activity', false), { wrapper })
+    const idle = renderHook(() => useAllSessionsQuery(false), { wrapper })
     expect(idle.result.current.fetchStatus).toBe('idle')
 
-    const { result } = renderHook(() => useAllSessionsQuery('activity'), { wrapper })
+    const { result } = renderHook(() => useAllSessionsQuery(), { wrapper })
     await waitFor(() => expect(result.current.data?.pages[0].data[0].id).toBe('s1'))
     const url = new URL(String(fetchMock.mock.calls[0][0]), 'http://x')
+    expect(url.searchParams.get('sort')).toBe('activity')
     expect(url.searchParams.get('workspace')).toBeNull()
     expect(url.searchParams.getAll('workspaces')).toEqual([])
     expect(url.searchParams.get('pinned')).toBe('false')

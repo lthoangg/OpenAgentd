@@ -25,7 +25,7 @@ describe('WorkspaceSessionList — subagent sessions', () => {
 
     // Pre-populate queries
     queryClient.setQueryData(
-      queryKeys.session.sessions.workspace('/test/workspace'),
+      queryKeys.session.sessions.workspace('/test/workspace', 'activity'),
       {
         pages: [{ data: [parentSession], has_more: false, next_cursor: null }],
         pageParams: [null],
@@ -96,7 +96,7 @@ describe('WorkspaceSessionList — subagent sessions', () => {
     }
 
     queryClient.setQueryData(
-      queryKeys.session.sessions.workspace('/test/workspace'),
+      queryKeys.session.sessions.workspace('/test/workspace', 'activity'),
       {
         pages: [{ data: [parentSession], has_more: false, next_cursor: null }],
         pageParams: [null],
@@ -171,7 +171,7 @@ describe('WorkspaceSessionList — subagent sessions', () => {
     }
 
     queryClient.setQueryData(
-      queryKeys.session.sessions.workspace('/test/workspace'),
+      queryKeys.session.sessions.workspace('/test/workspace', 'activity'),
       {
         pages: [{ data: [parentSession], has_more: false, next_cursor: null }],
         pageParams: [null],
@@ -240,7 +240,7 @@ describe('WorkspaceSessionList — several checkouts', () => {
   function renderCheckouts(rows: SessionResponse[], onSelect = mock(() => {})) {
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     const paths = ['/repo/project', '/wt/task-a']
-    queryClient.setQueryData(queryKeys.session.sessions.checkouts(paths), {
+    queryClient.setQueryData(queryKeys.session.sessions.checkouts(paths, 'activity'), {
       pages: [{ data: rows, has_more: false, next_cursor: null }],
       pageParams: [null],
     })

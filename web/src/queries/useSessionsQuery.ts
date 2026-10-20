@@ -1,6 +1,6 @@
 import { useInfiniteQuery, useMutation, useQueryClient, useQuery, type InfiniteData } from '@tanstack/react-query'
 import { listSessions, deleteSession, updateSessionTitle, listSubagents, setSessionPinned } from '@/api/client'
-import type { SessionPageResponse, SessionResponse, SessionSort } from '@/api/types'
+import type { SessionPageResponse, SessionResponse } from '@/api/types'
 import { queryKeys } from './keys'
 import { applySessionRename } from './session-rename'
 import { removeSubagent } from '@/stores/cache-invalidation-bridge'
@@ -21,11 +21,14 @@ function keepRows(data: SessionPages, keep: (session: SessionResponse) => boolea
 const withoutPinned = (data: SessionPages) => keepRows(data, (session) => !session.pinned_at)
 const onlyPinned = (data: SessionPages) => keepRows(data, (session) => Boolean(session.pinned_at))
 
+/** Every session list here is in recent-activity order (newest message first). */
+const SORT = 'activity' as const
+
 export function useSessionsQuery() {
   return useInfiniteQuery({
-    queryKey: queryKeys.session.sessions.workspace('__all_coding__'),
+    queryKey: queryKeys.session.sessions.workspace('__all_coding__', SORT),
     queryFn: ({ pageParam, signal }) =>
-      listSessions(pageParam, PAGE_SIZE, undefined, signal),
+      listSessions(pageParam, PAGE_SIZE, { sort: SORT }, signal),
     initialPageParam: null as string | null,
     getNextPageParam: (lastPage: SessionPageResponse) =>
       lastPage.has_more ? lastPage.next_cursor : undefined,
@@ -44,9 +47,8 @@ export function useSessionsQuery() {
 export function useWorkspaceSessionsQuery(
   workspace: string | readonly string[],
   enabled = true,
-  options: { sort?: SessionSort } = {},
 ) {
-  const sort = options.sort ?? 'created'
+  const sort = SORT
   const paths = typeof workspace === 'string' ? [workspace] : workspace
   const single = paths.length === 1 ? paths[0] : null
   return useInfiniteQuery({
@@ -74,10 +76,11 @@ export function useWorkspaceSessionsQuery(
 }
 
 /**
- * Every unpinned top-level session across workspaces, in ``sort`` order: the
+ * Every unpinned top-level session across workspaces, most recently active first: the
  * sidebar's Status / Date / None views. Only fetched while one is shown.
  */
-export function useAllSessionsQuery(sort: SessionSort, enabled = true) {
+export function useAllSessionsQuery(enabled = true) {
+  const sort = SORT
   return useInfiniteQuery({
     queryKey: queryKeys.session.sessions.everywhere(sort),
     queryFn: ({ pageParam, signal }) => listSessions(pageParam, PAGE_SIZE, { sort, pinned: false }, signal),

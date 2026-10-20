@@ -1,5 +1,5 @@
 import { useMemo, useRef } from 'react'
-import type { SessionResponse, SessionSort } from '@/api/types'
+import type { SessionResponse } from '@/api/types'
 import { useFlipReorder } from '@/hooks/useFlipReorder'
 import { useActiveSessionsQuery, useAllSessionsQuery } from '@/queries/useSessionsQuery'
 import { useSidebarViewStore, type SidebarGroupBy } from '@/stores/useSidebarViewStore'
@@ -24,7 +24,6 @@ function uniqueById(sessions: readonly SessionResponse[]): SessionResponse[] {
  */
 export function FlatSessionGroups({
   groupBy,
-  sortBy,
   currentSessionId,
   workspaceName,
   draftWorkspace = null,
@@ -34,7 +33,6 @@ export function FlatSessionGroups({
   ...handlers
 }: SessionHandlers & {
   groupBy: Exclude<SidebarGroupBy, 'project'>
-  sortBy: SessionSort
   currentSessionId?: string
   workspaceName: (path: string) => string
   /** The workspace of the open new-session draft, shown on top. */
@@ -43,7 +41,7 @@ export function FlatSessionGroups({
   showDetails?: boolean
   mobileLongPressActions?: boolean
 }) {
-  const all = useAllSessionsQuery(sortBy)
+  const all = useAllSessionsQuery()
   const active = useActiveSessionsQuery()
   const collapsedGroups = useSidebarViewStore((s) => s.collapsedGroups)
   const toggleGroup = useSidebarViewStore((s) => s.toggleGroupCollapsed)
@@ -63,9 +61,9 @@ export function FlatSessionGroups({
   )
   const groups: SessionGroup[] = useMemo(() => {
     if (groupBy === 'status') return groupSessionsByStatus(sessions, activeSessions)
-    if (groupBy === 'date') return groupSessionsByDate(sessions, sortBy)
+    if (groupBy === 'date') return groupSessionsByDate(sessions)
     return sessions.length > 0 ? [{ id: 'all', label: 'All', sessions }] : []
-  }, [groupBy, sessions, activeSessions, sortBy])
+  }, [groupBy, sessions, activeSessions])
 
   const renderRow = (session: SessionResponse) => (
     <SessionRow

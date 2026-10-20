@@ -1179,8 +1179,9 @@ agent against it.
   Since `[v3.18.0]` the header's **View options** menu groups sessions by
   **Project** (the folder tree, the default), **Status** (Needs you · Working ·
   Recent), **Date** (Today · Yesterday · Previous 7 days · Previous 30 days ·
-  Older) or **None**, sorts them by **Recent activity** (the default) or
-  **Created**, and can hide row details (age, worktree tag, workspace name).
+  Older) or **None**, and can hide row details (age, worktree tag, workspace
+  name). Since `[v3.21.1]` every list is in **recent activity** order (the
+  **Sort by → Created** choice is gone) and Date groups by last activity.
   The choice is kept per device. Outside Project mode the list is one flat list
   across workspaces, each row naming its workspace, and the header gains a
   **New session** button; on phones that button is there in every mode.
@@ -1191,6 +1192,9 @@ agent against it.
   a rename or a model switch: a session moves to the top when a turn starts or
   finishes, sliding into place rather than jumping, and the row's age keeps
   counting while the app is open.
+  Since `[v3.21.1]` Project mode orders repositories too: Chat, then those in
+  a workspace group (clustered by group, in the groups' order), then the rest,
+  each part most recently active first.
 - **Pinned sessions** `[v3.18.0]` — **Pin** (a row action left of Edit on
   desktop `[v3.19.0]`, first in a session's context menu, or in the long-press
   sheet on mobile) moves a top-level session into a **Pinned** section at

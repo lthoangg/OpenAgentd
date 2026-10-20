@@ -30,7 +30,7 @@ describe('preloadConnectedApp', () => {
     ])
     expect(prefetchInfiniteQuery).toHaveBeenCalledTimes(1)
     expect(prefetchInfiniteQuery.mock.calls.map(([options]) => (options as { queryKey: readonly unknown[] }).queryKey)).toEqual([
-      queryKeys.session.sessions.workspace('__all_coding__'),
+      queryKeys.session.sessions.workspace('__all_coding__', 'activity'),
     ])
   })
 })

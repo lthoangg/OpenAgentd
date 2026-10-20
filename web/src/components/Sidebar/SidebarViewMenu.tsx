@@ -3,7 +3,6 @@ import { Check } from 'lucide-react'
 import { CONTEXT_MENU_ITEM_CLASS, ContextMenu, ContextMenuSeparator } from '@/components/ui/context-menu'
 import {
   SIDEBAR_GROUP_BY,
-  SIDEBAR_SORT_BY,
   useSidebarViewStore,
 } from '@/stores/useSidebarViewStore'
 import type { WorkspaceGroup } from '@/api/types'
@@ -51,7 +50,7 @@ function CheckItem({
 }
 
 /**
- * The sidebar's View options: how sessions group and sort, and whether rows
+ * The sidebar's View options: how sessions group, and whether rows
  * show their age and place; in Project view, which workspace group's
  * repositories to show. Choices apply at once and the menu stays open,
  * so several can be changed in one visit; Escape or a click outside closes
@@ -68,11 +67,9 @@ export function SidebarViewMenu({
   onDismiss: () => void
 }) {
   const groupBy = useSidebarViewStore((s) => s.groupBy)
-  const sortBy = useSidebarViewStore((s) => s.sortBy)
   const showDetails = useSidebarViewStore((s) => s.showDetails)
   const groupFilter = useSidebarViewStore((s) => s.groupFilter)
   const setGroupBy = useSidebarViewStore((s) => s.setGroupBy)
-  const setSortBy = useSidebarViewStore((s) => s.setSortBy)
   const setShowDetails = useSidebarViewStore((s) => s.setShowDetails)
   const setGroupFilter = useSidebarViewStore((s) => s.setGroupFilter)
   const reset = useSidebarViewStore((s) => s.reset)
@@ -83,14 +80,6 @@ export function SidebarViewMenu({
       <MenuGroup label="Group by">
         {SIDEBAR_GROUP_BY.map((option) => (
           <CheckItem key={option.value} role="menuitemradio" checked={groupBy === option.value} onSelect={() => setGroupBy(option.value)}>
-            {option.label}
-          </CheckItem>
-        ))}
-      </MenuGroup>
-      <ContextMenuSeparator />
-      <MenuGroup label="Sort by">
-        {SIDEBAR_SORT_BY.map((option) => (
-          <CheckItem key={option.value} role="menuitemradio" checked={sortBy === option.value} onSelect={() => setSortBy(option.value)}>
             {option.label}
           </CheckItem>
         ))}

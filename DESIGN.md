@@ -812,7 +812,9 @@ primitives in `components/ui/`:
   or ad-hoc notice boxes on these surfaces.
 - **Copy.** Sentence case for titles, labels and buttons. One short
   description per page and per section; long explanations belong in the
-  docs, not on the page.
+  docs, not on the page. Command palette commands are the exception: they
+  stay Title Case ("Scheduled Tasks", "Toggle Sidebar"), like editor
+  commands.
 
 Settings adds its own shell on top:
 

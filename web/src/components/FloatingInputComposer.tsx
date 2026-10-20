@@ -332,6 +332,14 @@ export const FloatingInputComposer = memo(
       setMinimized(true)
     }, [])
 
+    // The glide stands in for the send's collapse: once it lands, the bar
+    // collapses like after any other send. Typed content (or anything else
+    // in ``forceExpanded``) still holds it open.
+    const landGlide = useCallback(() => {
+      setGliding(false)
+      minimize()
+    }, [minimize])
+
     // Keep a stable ref to isMobile so the blur timer callback always reads
     // the *current* value, not the value captured when handleBlur was created.
     // This prevents orientation-change state drift: if the viewport widens
@@ -714,7 +722,7 @@ export const FloatingInputComposer = memo(
         initial={glide ? { x: glide.x, y: glide.y, maxWidth: glide.startWidth } : false}
         animate={glide ? { x: 0, y: 0, maxWidth: glide.endWidth } : undefined}
         transition={HANDOFF_GLIDE_TRANSITION}
-        onAnimationComplete={glide ? () => setGliding(false) : undefined}
+        onAnimationComplete={glide ? landGlide : undefined}
         className={`pointer-events-none absolute inset-x-0 bottom-4 z-20 mx-auto ${
           effectiveMinimized ? 'w-fit' : 'w-full max-w-md'
         }`}

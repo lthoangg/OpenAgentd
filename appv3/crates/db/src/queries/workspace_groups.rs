@@ -29,6 +29,8 @@ pub struct WorkspaceGroup {
     pub id: String,
     pub name: String,
     pub brief: Option<String>,
+    /// `#rrggbb`, or `None` for a colour the UI derives from the id.
+    pub color: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -40,6 +42,7 @@ impl WorkspaceGroup {
             "id": api_uuid(&self.id),
             "name": self.name,
             "brief": self.brief,
+            "color": self.color,
             "created_at": api_dt(&self.created_at),
             "updated_at": api_dt(&self.updated_at),
         })
@@ -68,6 +71,16 @@ fn clean_brief(brief: Option<&str>) -> GroupResult<Option<String>> {
     Ok(Some(b.to_string()))
 }
 
+/// A `#rrggbb` hex colour, stored lowercase.
+fn clean_color(color: Option<&str>) -> GroupResult<Option<String>> {
+    let Some(c) = color.map(str::trim).filter(|c| !c.is_empty()) else { return Ok(None) };
+    let hex = c.strip_prefix('#').unwrap_or("");
+    if hex.len() != 6 || !hex.chars().all(|ch| ch.is_ascii_hexdigit()) {
+        return Err(GroupError::Invalid("Group colour must be a hex colour such as #3b82f6.".into()));
+    }
+    Ok(Some(c.to_ascii_lowercase()))
+}
+
 async fn ensure_unique_name(pool: &DbPool, name: &str, except: Option<&str>) -> GroupResult<()> {
     let taken: Option<String> =
         sqlx::query_scalar("SELECT id FROM workspace_groups WHERE name = ? COLLATE NOCASE AND id != ?").bind(name).bind(except.unwrap_or("")).fetch_optional(pool).await?;
@@ -91,16 +104,18 @@ pub async fn list_group_memberships(pool: &DbPool) -> GroupResult<Vec<(String, S
     Ok(sqlx::query_as("SELECT group_id, path FROM workspace_group_members ORDER BY created_at, path").fetch_all(pool).await?)
 }
 
-pub async fn create_workspace_group(pool: &DbPool, name: &str, brief: Option<&str>) -> GroupResult<WorkspaceGroup> {
+pub async fn create_workspace_group(pool: &DbPool, name: &str, brief: Option<&str>, color: Option<&str>) -> GroupResult<WorkspaceGroup> {
     let name = clean_name(name)?;
     let brief = clean_brief(brief)?;
+    let color = clean_color(color)?;
     ensure_unique_name(pool, &name, None).await?;
     let now = now_db();
-    let row = WorkspaceGroup { id: new_id(), name, brief, created_at: now.clone(), updated_at: now };
-    sqlx::query("INSERT INTO workspace_groups (id, name, brief, created_at, updated_at) VALUES (?, ?, ?, ?, ?)")
+    let row = WorkspaceGroup { id: new_id(), name, brief, color, created_at: now.clone(), updated_at: now };
+    sqlx::query("INSERT INTO workspace_groups (id, name, brief, color, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)")
         .bind(&row.id)
         .bind(&row.name)
         .bind(&row.brief)
+        .bind(&row.color)
         .bind(&row.created_at)
         .bind(&row.updated_at)
         .execute(pool)
@@ -108,8 +123,8 @@ pub async fn create_workspace_group(pool: &DbPool, name: &str, brief: Option<&st
     Ok(row)
 }
 
-/// Rename a group and/or set its brief (`Some(None)` clears it).
-pub async fn update_workspace_group(pool: &DbPool, id: &str, name: Option<&str>, brief: Option<Option<&str>>) -> GroupResult<WorkspaceGroup> {
+/// Rename a group and/or set its brief or colour (`Some(None)` clears one).
+pub async fn update_workspace_group(pool: &DbPool, id: &str, name: Option<&str>, brief: Option<Option<&str>>, color: Option<Option<&str>>) -> GroupResult<WorkspaceGroup> {
     let Some(mut row) = get_workspace_group(pool, id).await? else { return Err(GroupError::NotFound) };
     if let Some(n) = name {
         let n = clean_name(n)?;
@@ -119,10 +134,14 @@ pub async fn update_workspace_group(pool: &DbPool, id: &str, name: Option<&str>,
     if let Some(b) = brief {
         row.brief = clean_brief(b)?;
     }
+    if let Some(c) = color {
+        row.color = clean_color(c)?;
+    }
     row.updated_at = now_db();
-    sqlx::query("UPDATE workspace_groups SET name = ?, brief = ?, updated_at = ? WHERE id = ?")
+    sqlx::query("UPDATE workspace_groups SET name = ?, brief = ?, color = ?, updated_at = ? WHERE id = ?")
         .bind(&row.name)
         .bind(&row.brief)
+        .bind(&row.color)
         .bind(&row.updated_at)
         .bind(&row.id)
         .execute(pool)
@@ -181,18 +200,28 @@ mod tests {
     #[tokio::test]
     async fn create_rename_and_reject_duplicates() {
         let (_d, pool) = fresh().await;
-        let g = create_workspace_group(&pool, "  Acme ", Some("web = frontend")).await.unwrap();
-        assert_eq!((g.name.as_str(), g.brief.as_deref()), ("Acme", Some("web = frontend")));
-        let dup = create_workspace_group(&pool, "acme", None).await.unwrap_err();
+        let g = create_workspace_group(&pool, "  Acme ", Some("web = frontend"), Some(" #A78BFA ")).await.unwrap();
+        assert_eq!((g.name.as_str(), g.brief.as_deref(), g.color.as_deref()), ("Acme", Some("web = frontend"), Some("#a78bfa")));
+        let dup = create_workspace_group(&pool, "acme", None, None).await.unwrap_err();
         assert!(dup.to_string().contains("already exists"), "{dup}");
-        assert!(matches!(create_workspace_group(&pool, "  ", None).await, Err(GroupError::Invalid(_))));
-        assert!(matches!(create_workspace_group(&pool, &"x".repeat(41), None).await, Err(GroupError::Invalid(_))));
-        let other = create_workspace_group(&pool, "Billing", None).await.unwrap();
-        assert!(update_workspace_group(&pool, &other.id, Some("ACME"), None).await.is_err());
+        assert!(matches!(create_workspace_group(&pool, "  ", None, None).await, Err(GroupError::Invalid(_))));
+        assert!(matches!(create_workspace_group(&pool, &"x".repeat(41), None, None).await, Err(GroupError::Invalid(_))));
+        for bad in ["teal", "#fff", "a78bfa", "#a78bfg", "#a78bfa0"] {
+            assert!(matches!(create_workspace_group(&pool, "Teal", None, Some(bad)).await, Err(GroupError::Invalid(_))), "{bad}");
+        }
+        let other = create_workspace_group(&pool, "Billing", None, None).await.unwrap();
+        assert_eq!(other.color, None);
+        assert!(update_workspace_group(&pool, &other.id, Some("ACME"), None, None).await.is_err());
         // Renaming a group to a new spelling of its own name is fine.
-        let g2 = update_workspace_group(&pool, &api_uuid(&g.id), Some("ACME"), Some(None)).await.unwrap();
-        assert_eq!((g2.name.as_str(), g2.brief), ("ACME", None));
-        assert!(matches!(update_workspace_group(&pool, &new_id(), Some("x"), None).await, Err(GroupError::NotFound)));
+        let g2 = update_workspace_group(&pool, &api_uuid(&g.id), Some("ACME"), Some(None), None).await.unwrap();
+        assert_eq!((g2.name.as_str(), g2.brief, g2.color.as_deref()), ("ACME", None, Some("#a78bfa")), "an absent colour is left as is");
+        let g3 = update_workspace_group(&pool, &g.id, None, None, Some(Some("#10B981"))).await.unwrap();
+        assert_eq!(get_workspace_group(&pool, &g.id).await.unwrap().unwrap().color.as_deref(), Some("#10b981"));
+        assert_eq!(g3.name, "ACME");
+        let g4 = update_workspace_group(&pool, &g.id, None, None, Some(None)).await.unwrap();
+        assert_eq!(g4.color, None, "null clears the colour");
+        assert!(matches!(update_workspace_group(&pool, &g.id, None, None, Some(Some("red"))).await, Err(GroupError::Invalid(_))));
+        assert!(matches!(update_workspace_group(&pool, &new_id(), Some("x"), None, None).await, Err(GroupError::NotFound)));
         let names: Vec<String> = list_workspace_groups(&pool).await.unwrap().into_iter().map(|g| g.name).collect();
         assert_eq!(names, ["ACME", "Billing"]);
     }
@@ -200,8 +229,8 @@ mod tests {
     #[tokio::test]
     async fn memberships_replace_and_go_with_their_group() {
         let (_d, pool) = fresh().await;
-        let a = create_workspace_group(&pool, "a", None).await.unwrap();
-        let b = create_workspace_group(&pool, "b", None).await.unwrap();
+        let a = create_workspace_group(&pool, "a", None, None).await.unwrap();
+        let b = create_workspace_group(&pool, "b", None, None).await.unwrap();
         let set = set_workspace_groups(&pool, "/nonexistent/web", &[api_uuid(&a.id), b.id.clone(), a.id.clone()]).await.unwrap();
         assert_eq!(set, [api_uuid(&a.id), api_uuid(&b.id)]);
         set_workspace_groups(&pool, "/nonexistent/api", std::slice::from_ref(&a.id)).await.unwrap();

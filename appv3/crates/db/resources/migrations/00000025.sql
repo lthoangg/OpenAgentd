@@ -2,6 +2,7 @@ CREATE TABLE workspace_groups (
 	id CHAR(32) NOT NULL,
 	name VARCHAR(80) NOT NULL,
 	brief TEXT,
+	color VARCHAR(16),
 	created_at DATETIME NOT NULL,
 	updated_at DATETIME NOT NULL,
 	PRIMARY KEY (id)

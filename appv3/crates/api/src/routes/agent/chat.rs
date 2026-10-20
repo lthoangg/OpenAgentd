@@ -644,7 +644,7 @@ async fn workspace_tree(State(st): State<AppState>) -> ApiResult<Response> {
         .await
         .map_err(ApiError::internal)?
         .iter()
-        .map(|g| json!({"id": db::codec::api_uuid(&g.id), "name": g.name, "brief": g.brief}))
+        .map(|g| json!({"id": db::codec::api_uuid(&g.id), "name": g.name, "brief": g.brief, "color": g.color}))
         .collect();
     let mut repos: Vec<(String, Map<String, Value>)> = vec![];
     let mut pending = vec![];

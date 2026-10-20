@@ -361,13 +361,16 @@ async fn http_api_end_to_end() {
 
     // Workspace groups (v3 addition): tags on repositories, a worktree
     // tagging its repository, Chat refused, and the tree carrying them.
-    let (st, g) = c.json("POST", "/api/agent/workspace/groups", Some(json!({"name": " acme ", "brief": "web = frontend"}))).await;
+    let (st, g) = c.json("POST", "/api/agent/workspace/groups", Some(json!({"name": " acme ", "brief": "web = frontend", "color": "#F59E3B"}))).await;
     assert_eq!(st, StatusCode::OK, "{g}");
-    assert_eq!((g["name"].clone(), g["brief"].clone(), g["members"].clone()), (json!("acme"), json!("web = frontend"), json!([])));
+    assert_eq!((g["name"].clone(), g["brief"].clone(), g["color"].clone(), g["members"].clone()), (json!("acme"), json!("web = frontend"), json!("#f59e3b"), json!([])));
     let gid = g["id"].as_str().unwrap().to_string();
     let (st, v) = c.json("POST", "/api/agent/workspace/groups", Some(json!({"name": "ACME"}))).await;
     assert_eq!(st, StatusCode::UNPROCESSABLE_ENTITY, "{v}");
     assert!(v["detail"].as_str().unwrap().contains("already exists"), "{v}");
+    let (st, v) = c.json("POST", "/api/agent/workspace/groups", Some(json!({"name": "teal", "color": "teal"}))).await;
+    assert_eq!(st, StatusCode::UNPROCESSABLE_ENTITY, "{v}");
+    assert!(v["detail"].as_str().unwrap().contains("must be a hex colour"), "{v}");
     let (st, _) = c.json("POST", "/api/agent/workspace/groups", Some(json!({"brief": "x"}))).await;
     assert_eq!(st, StatusCode::UNPROCESSABLE_ENTITY);
     let wt_dir = tempfile::tempdir().unwrap();
@@ -390,10 +393,12 @@ async fn http_api_end_to_end() {
     let (_, v) = c.json("GET", "/api/agent/workspace/tree", None).await;
     let repo = v["repositories"].as_array().unwrap().iter().find(|r| r["path"] == json!(sid_ws)).unwrap().clone();
     assert_eq!(repo["group_ids"], json!([gid]), "{v}");
-    assert_eq!(v["groups"], json!([{"id": gid, "name": "acme", "brief": "web = frontend"}]), "{v}");
-    let (st, v) = c.json("PATCH", &format!("/api/agent/workspace/groups/{gid}"), Some(json!({"name": "Acme", "brief": null}))).await;
+    assert_eq!(v["groups"], json!([{"id": gid, "name": "acme", "brief": "web = frontend", "color": "#f59e3b"}]), "{v}");
+    let (st, v) = c.json("PATCH", &format!("/api/agent/workspace/groups/{gid}"), Some(json!({"name": "Acme", "brief": null, "color": null}))).await;
     assert_eq!(st, StatusCode::OK, "{v}");
-    assert_eq!((v["name"].clone(), v["brief"].clone()), (json!("Acme"), Value::Null));
+    assert_eq!((v["name"].clone(), v["brief"].clone(), v["color"].clone()), (json!("Acme"), Value::Null, Value::Null));
+    let (st, v) = c.json("PATCH", &format!("/api/agent/workspace/groups/{gid}"), Some(json!({"color": 3}))).await;
+    assert_eq!(st, StatusCode::UNPROCESSABLE_ENTITY, "{v}");
     let (st, _) = c.json("PATCH", &format!("/api/agent/workspace/groups/{}", uuid::Uuid::now_v7()), Some(json!({"name": "x"}))).await;
     assert_eq!(st, StatusCode::NOT_FOUND);
     let (st, v) = c.json("DELETE", &format!("/api/agent/workspace/groups/{gid}"), None).await;

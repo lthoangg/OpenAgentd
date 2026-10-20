@@ -90,7 +90,7 @@ pub fn can_reach(targets: &[Target], from: &str, to: &Target) -> bool {
 
 fn out_of_scope(t: &Target) -> String {
     format!(
-        "'{}' does not share a group with this workspace, so you cannot message it. Ask the user to add both workspaces to a group (right-click a workspace in the sidebar → Groups…).",
+        "'{}' does not share a group with this workspace, so you cannot message it. Ask the user to add both workspaces to a group (Settings → Automation → Workspace groups).",
         t.name
     )
 }
@@ -419,7 +419,10 @@ pub fn render_workspace_list(targets: &[Target], groups: &[db::WorkspaceGroup], 
         lines.push(format!("… and {} more; pass a path to reach them.", total - shown));
     }
     if !in_chat && src.is_none_or(|s| s.groups.is_empty()) {
-        lines.push("This workspace is in no group, so it can message only Chat and its own worktrees. Ask the user to add it to a group (right-click the workspace in the sidebar → Groups…).".into());
+        lines.push(
+            "This workspace is in no group, so it can message only Chat and its own worktrees. Ask the user to add it to a group (Settings → Automation → Workspace groups)."
+                .into(),
+        );
     }
     lines.join("\n")
 }
@@ -569,7 +572,7 @@ mod tests {
     }
 
     fn group(id: &str, name: &str, brief: Option<&str>) -> db::WorkspaceGroup {
-        db::WorkspaceGroup { id: id.into(), name: name.into(), brief: brief.map(String::from), created_at: String::new(), updated_at: String::new() }
+        db::WorkspaceGroup { id: id.into(), name: name.into(), brief: brief.map(String::from), color: None, created_at: String::new(), updated_at: String::new() }
     }
 
     #[test]
@@ -653,7 +656,7 @@ mod tests {
         let from_solo = render_workspace_list(&ts, &gs, "/nonexistent/solo");
         assert!(!from_solo.contains("Group '"), "{from_solo}");
         assert!(from_solo.contains("This repository:\n- solo — /nonexistent/solo (current)\n- solo-1 — /nonexistent/wt/solo-1 (worktree of solo)"), "{from_solo}");
-        assert!(from_solo.ends_with("Ask the user to add it to a group (right-click the workspace in the sidebar → Groups…)."), "{from_solo}");
+        assert!(from_solo.ends_with("Ask the user to add it to a group (Settings → Automation → Workspace groups)."), "{from_solo}");
 
         let from_chat = render_workspace_list(&ts, &gs, "/nonexistent/chat");
         assert!(from_chat.contains("Group 'acme'") && from_chat.contains("Group 'shared'"), "{from_chat}");

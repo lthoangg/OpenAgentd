@@ -120,7 +120,7 @@ async fn send_reply_retry_and_guards() {
     assert!(e.contains("does not share a group"), "ungrouped repositories cannot message each other: {e}");
     let listing = wm::list(&pool, &app_ws, None).await.unwrap();
     assert!(listing.contains("in no group") && !listing.contains("- infra — "), "{listing}");
-    let acme = appv3_db::create_workspace_group(&pool, "acme", Some("app = orders service, infra = queues")).await.unwrap();
+    let acme = appv3_db::create_workspace_group(&pool, "acme", Some("app = orders service, infra = queues"), None).await.unwrap();
     for ws in [&app_ws, &infra_ws] {
         appv3_db::set_workspace_groups(&pool, ws, std::slice::from_ref(&acme.id)).await.unwrap();
     }

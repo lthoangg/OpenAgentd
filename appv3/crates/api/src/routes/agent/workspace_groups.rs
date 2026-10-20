@@ -41,13 +41,13 @@ fn obj_body(raw: &[u8]) -> ApiResult<Value> {
     Ok(b)
 }
 
-/// `brief`: absent → leave as is, `null` → clear, string → set.
-fn brief_field(b: &Value) -> ApiResult<Option<Option<String>>> {
-    match b.get("brief") {
+/// `brief` / `color`: absent → leave as is, `null` → clear, string → set.
+fn nullable_str_field(b: &Value, key: &str) -> ApiResult<Option<Option<String>>> {
+    match b.get(key) {
         None => Ok(None),
         Some(Value::Null) => Ok(Some(None)),
         Some(Value::String(s)) => Ok(Some(Some(s.clone()))),
-        Some(other) => Err(ApiError::validation(vec![verr("string_type", &loc(&["body", "brief"]), "Input should be a valid string", other.clone())])),
+        Some(other) => Err(ApiError::validation(vec![verr("string_type", &loc(&["body", key]), "Input should be a valid string", other.clone())])),
     }
 }
 
@@ -77,8 +77,9 @@ async fn create_group(State(st): State<AppState>, raw: Bytes) -> ApiResult<Respo
     let Some(name) = opt_str_field(&b, "name")? else {
         return Err(ApiError::validation(vec![verr("missing", &loc(&["body", "name"]), "Field required", b.clone())]));
     };
-    let brief = brief_field(&b)?.flatten();
-    let g = db::create_workspace_group(&st.pool, &name, brief.as_deref()).await.map_err(group_err)?;
+    let brief = nullable_str_field(&b, "brief")?.flatten();
+    let color = nullable_str_field(&b, "color")?.flatten();
+    let g = db::create_workspace_group(&st.pool, &name, brief.as_deref(), color.as_deref()).await.map_err(group_err)?;
     let mut v = g.to_api();
     v["members"] = json!([]);
     Ok(json(v))
@@ -88,8 +89,9 @@ async fn update_group(State(st): State<AppState>, AxPath(raw_id): AxPath<String>
     let id = path_uuid("group_id", &raw_id)?;
     let b = obj_body(&raw)?;
     let name = opt_str_field(&b, "name")?;
-    let brief = brief_field(&b)?;
-    let g = db::update_workspace_group(&st.pool, &id, name.as_deref(), brief.as_ref().map(|b| b.as_deref())).await.map_err(group_err)?;
+    let brief = nullable_str_field(&b, "brief")?;
+    let color = nullable_str_field(&b, "color")?;
+    let g = db::update_workspace_group(&st.pool, &id, name.as_deref(), brief.as_ref().map(|b| b.as_deref()), color.as_ref().map(|c| c.as_deref())).await.map_err(group_err)?;
     Ok(json(g.to_api()))
 }
 

@@ -46,8 +46,8 @@ pub const ALEMBIC_HEAD: &str = "00000025";
 /// - 00000024: `chat_sessions.pinned_at` (sidebar pins; NULL = unpinned) and
 ///   the `(parent_session_id[, workspace], updated_at, id)` indexes that keep
 ///   the "recent activity" session list on an index.
-/// - 00000025: `workspace_groups` (named tags with an optional brief, unique
-///   by case-insensitive name) and `workspace_group_members` (group ↔
+/// - 00000025: `workspace_groups` (named tags with an optional brief and
+///   colour, unique by case-insensitive name) and `workspace_group_members` (group ↔
 ///   repository path). Groups scope `send_to_workspace`: workspaces may
 ///   message each other only when their repositories share a group.
 pub const MIGRATIONS: [(&str, &str); 25] = [
@@ -450,6 +450,7 @@ CREATE TABLE workspace_groups (
 	id CHAR(32) NOT NULL,
 	name VARCHAR(80) NOT NULL,
 	brief TEXT,
+	color VARCHAR(16),
 	created_at DATETIME NOT NULL,
 	updated_at DATETIME NOT NULL,
 	PRIMARY KEY (id)

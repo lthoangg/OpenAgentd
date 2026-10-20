@@ -1,81 +1,124 @@
 from __future__ import annotations
 
+import json
+import os
 import subprocess
 import sys
 from pathlib import Path
-from unittest.mock import patch
+
+from PIL import Image
 
 from scripts.generate_icons import (
-    BRAND_BG_COLOR,
-    MASTER_ICON,
-    _composite_rgba_bg,
-    _read_png_rgba,
-    _resize_rgba_box,
-    _write_png_rgba,
-    generate_derived_images,
+    ANDROID_FG_MASTER,
+    DESKTOP_ICONS,
+    IOS_MASTER,
+    MACOS_MASTER,
+    MASTERS,
+    MOBILE_ICON,
+    MOBILE_MANIFEST,
+    STAMP,
+    TRAY_ICON,
+    TRAY_MASTER,
+    WINDOWS_MASTER,
+    drop_alpha,
+    get_md5,
+    master_hashes,
+    needs_regeneration,
+    save_rgba,
+    write_stamp,
 )
 
 
-def test_pure_python_png_read_write_roundtrip(tmp_path: Path):
-    width, height, pixels = _read_png_rgba(MASTER_ICON)
-    assert width == 1024
-    assert height == 1024
-    assert len(pixels) == 1024 * 1024 * 4
-
-    out_path = tmp_path / "test_copy.png"
-    _write_png_rgba(str(out_path), width, height, pixels)
-    assert out_path.exists()
-
-    r_w, r_h, r_pixels = _read_png_rgba(str(out_path))
-    assert (r_w, r_h) == (width, height)
-    assert r_pixels == pixels
+def _rgba(path: str) -> Image.Image:
+    img = Image.open(path)
+    assert img.mode == "RGBA", path
+    return img
 
 
-def test_pure_python_composite_and_resize(tmp_path: Path):
-    width, height, pixels = _read_png_rgba(MASTER_ICON)
-
-    # Resize to 64x64
-    tray_pixels = _resize_rgba_box(width, height, pixels, 64, 64)
-    tray_path = tmp_path / "tray-icon.png"
-    _write_png_rgba(str(tray_path), 64, 64, tray_pixels)
-    assert tray_path.exists()
-
-    t_w, t_h, _ = _read_png_rgba(str(tray_path))
-    assert (t_w, t_h) == (64, 64)
-
-    # Composite with brand background
-    app_pixels = _composite_rgba_bg(width, height, pixels, BRAND_BG_COLOR)
-    app_path = tmp_path / "app-icon.png"
-    _write_png_rgba(str(app_path), width, height, app_pixels)
-    assert app_path.exists()
-
-    a_w, a_h, read_app_pixels = _read_png_rgba(str(app_path))
-    assert (a_w, a_h) == (1024, 1024)
-    # Every alpha byte in the composite should be 255 (opaque)
-    for idx in range(3, len(read_app_pixels), 4):
-        assert read_app_pixels[idx] == 255
+def test_tile_masters_are_1024_rgba_with_transparent_corners():
+    for path in (MACOS_MASTER, WINDOWS_MASTER, ANDROID_FG_MASTER):
+        img = _rgba(path)
+        assert img.size == (1024, 1024)
+        assert img.getchannel("A").getpixel((0, 0)) == 0
 
 
-def test_generate_derived_images_fallback(tmp_path: Path):
-    tray_target = tmp_path / "desktop" / "tray-icon.png"
-    app_target_1 = tmp_path / "desktop" / "icon.png"
-    app_target_2 = tmp_path / "mobile" / "icon.png"
+def test_ios_master_is_opaque_rgb():
+    img = Image.open(IOS_MASTER)
+    assert img.size == (1024, 1024)
+    assert img.mode == "RGB"
 
-    # Force pure Python fallback by mocking PIL import failure
-    with patch.dict(sys.modules, {"PIL": None, "PIL.Image": None}):
-        generate_derived_images(
-            MASTER_ICON,
-            str(tray_target),
-            [str(app_target_1), str(app_target_2)],
-            BRAND_BG_COLOR,
-        )
 
-    assert tray_target.exists()
-    assert app_target_1.exists()
-    assert app_target_2.exists()
+def test_tray_master_is_a_64px_template():
+    img = _rgba(TRAY_MASTER)
+    assert img.size == (64, 64)
+    hist = img.getchannel("A").histogram()
+    assert hist[0] > 0 and sum(hist[1:]) > 0
 
-    w, h, _ = _read_png_rgba(str(tray_target))
-    assert (w, h) == (64, 64)
+
+def test_committed_copies_match_their_masters():
+    assert get_md5(TRAY_ICON) == get_md5(TRAY_MASTER)
+    # tauri::generate_context! needs an RGBA bundle icon; same pixels as the
+    # opaque master.
+    mobile = Image.open(MOBILE_ICON)
+    assert mobile.mode == "RGBA"
+    assert mobile.tobytes() == Image.open(IOS_MASTER).convert("RGBA").tobytes()
+
+
+def test_stamp_matches_current_masters():
+    # Fails when a master is committed without running generate_icons.py.
+    with open(STAMP, encoding="utf-8") as f:
+        assert json.load(f) == master_hashes(MASTERS)
+
+
+def test_committed_bundle_icons_have_platform_sizes():
+    ico_sizes = set(Image.open(os.path.join(DESKTOP_ICONS, "icon.ico")).info["sizes"])
+    assert {(16, 16), (24, 24), (32, 32), (48, 48), (256, 256)} <= ico_sizes
+    icns_sizes = set(Image.open(os.path.join(DESKTOP_ICONS, "icon.icns")).info["sizes"])
+    assert (512, 512, 2) in icns_sizes
+
+
+def test_mobile_manifest_points_at_existing_masters():
+    with open(MOBILE_MANIFEST, encoding="utf-8") as f:
+        manifest = json.load(f)
+    base = Path(MOBILE_MANIFEST).parent
+    assert manifest["bg_color"].upper() == "#FAF6EC"
+    for key in ("default", "android_fg"):
+        assert (base / manifest[key]).resolve().exists(), key
+
+
+def test_needs_regeneration(tmp_path: Path):
+    master = tmp_path / "master.png"
+    master.write_bytes(b"one")
+    output = tmp_path / "out.png"
+    output.write_bytes(b"x")
+    stamp = tmp_path / "stamp.json"
+
+    assert any("stamp" in r for r in needs_regeneration([str(master)], str(stamp), [str(output)]))
+
+    write_stamp([str(master)], str(stamp))
+    assert needs_regeneration([str(master)], str(stamp), [str(output)]) == []
+
+    master.write_bytes(b"two")
+    assert any("changed" in r for r in needs_regeneration([str(master)], str(stamp), [str(output)]))
+
+    write_stamp([str(master)], str(stamp))
+    output.unlink()
+    assert any("missing" in r for r in needs_regeneration([str(master)], str(stamp), [str(output)]))
+
+
+def test_drop_alpha_writes_rgb(tmp_path: Path):
+    path = tmp_path / "icon.png"
+    Image.new("RGBA", (8, 8), (250, 246, 236, 255)).save(path)
+    drop_alpha([str(path)])
+    assert Image.open(path).mode == "RGB"
+
+
+def test_save_rgba_writes_rgba(tmp_path: Path):
+    src = tmp_path / "rgb.png"
+    dst = tmp_path / "rgba.png"
+    Image.new("RGB", (8, 8), (250, 246, 236)).save(src)
+    save_rgba(str(src), str(dst))
+    assert Image.open(dst).mode == "RGBA"
 
 
 def test_generate_icons_script_cli():

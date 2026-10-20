@@ -51,8 +51,10 @@ merged into the generated app, so don't patch `src-tauri/gen/android/`.
 - `src-tauri/gen/`, `src-tauri/target/`, and generated icon variants are
   local/generated state. Regenerate them with Make targets instead of editing
   or committing them.
-- `src-tauri/icons/icon.png` is the source icon; use `make ios-icons` or
-  `make ios-icons-force` for generated variants.
+- `src-tauri/icons/icon.png` is a generated copy of
+  `documents/assets/brand/openagentd-app-icon.png`; use `make ios-icons`,
+  `make ios-icons-force`, or `make android-icons` for generated variants
+  (`scripts/generate_icons.py`).
 
 ## Checks
 

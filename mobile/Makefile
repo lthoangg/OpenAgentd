@@ -125,14 +125,12 @@ android-init: ## Initialize Tauri Android (Gradle) project files
 	cd src-tauri && cargo tauri android init --skip-targets-install
 	$(MAKE) android-icons
 
-# Generated into target/ rather than icons/android: the shared icon script
-# runs `cargo tauri icon --ios-color transparent`, which also writes an
-# invalid `transparent` adaptive-icon background color for Android.
+# The shared icon script writes the launcher icons (adaptive foreground on a
+# #FAF6EC background) to src-tauri/icons/android/ from the brand masters.
 android-icons: ## Generate OpenAgentd launcher icons into the Android project
 	@[ -d $(ANDROID_RES) ] || { echo "Run 'make android-init' first"; exit 2; }
-	rm -rf src-tauri/target/android-icons
-	cd src-tauri && cargo tauri icon icons/icon.png --ios-color '#FAF6EC' -o target/android-icons
-	cp -R src-tauri/target/android-icons/android/. $(ANDROID_RES)/
+	python3 ../scripts/generate_icons.py
+	cp -R src-tauri/icons/android/. $(ANDROID_RES)/
 
 android-dev: ## Run on a connected Android device/emulator against Vite (`make android-dev [device]`)
 	cd src-tauri && cargo tauri android dev $(ANDROID_DEVICE) --host

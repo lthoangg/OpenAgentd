@@ -15,7 +15,7 @@ make -C desktop sidecar PROFILE=release  # quicker local build
 make -C desktop dev           # Tauri dev shell; Vite :5173 must be running
 make -C desktop dev-bundled   # regenerate/use bundled sidecar explicitly
 make -C desktop build         # release desktop bundle
-make -C desktop icons
+make -C desktop icons         # app + tray icons from documents/assets/brand/ masters
 ```
 
 For frontend HMR, run `cd web && bun dev` separately. Root `make dev` is also

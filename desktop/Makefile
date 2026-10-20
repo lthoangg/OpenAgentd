@@ -5,7 +5,8 @@
 #   make sidecar        Build the backend and stage it in ``sidecar-bundle/``.
 #                       PROFILE=dist (default, fat LTO) or release (faster
 #                       build); TARGET=<rust triple> to cross/pin a target.
-#   make icons          Regenerate .icns / .ico from icons/icon.png.
+#   make icons          Regenerate the app icons from the brand masters in
+#                       documents/assets/brand/ (scripts/generate_icons.py).
 #   make dev            Tauri shell + Vite dev server, using the bundled
 #                       sidecar connection model. Run Vite in another terminal
 #                       if you need frontend HMR.

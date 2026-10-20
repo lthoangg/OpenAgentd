@@ -110,7 +110,7 @@ build-web: ## Build web UI into web/dist/ for desktop packaging
 	# dependency versions than the ones that were tested.
 	cd web && bun install --frozen-lockfile && bun run build
 
-icons: ## Centralize and generate all app & platform icons from the master brand icon
+icons: ## Generate all app & platform icons from the brand masters (python3 scripts/generate_icons.py --force to rebuild)
 	python3 scripts/generate_icons.py
 
 clean: ## Remove build and cache artifacts

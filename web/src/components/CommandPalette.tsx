@@ -4,7 +4,11 @@
  * QuickOpen, exported below, owns the file-only ⌘P / Ctrl+P workflow. Both
  * surfaces reuse the same searchable overlay and keyboard navigation.
  * Typing ``>`` in Quick Open searches commands instead (VS Code habit), and a
- * command with a ``page`` opens a nested list in place (Switch Session…).
+ * command with a ``page`` opens a nested list in place, which may hold pages
+ * of its own (Switch Workspace/Session… → a workspace → its sessions).
+ * → opens the highlighted command's page once the caret is at the end of the
+ * query; ← on an empty query steps back one level, to the command that
+ * opened it.
  * A trailing ``:line`` or ``:start-end`` (``Button.tsx:42``) searches for the
  * path and opens the pick at those lines, as VS Code's Go to File does.
  */
@@ -36,6 +40,10 @@ export interface Command {
   keywords?: string
   /** Opens this list inside the palette; ``action`` is not run. */
   page?: CommandPage
+  /** Called when ``page`` opens, e.g. to start loading its rows. */
+  onOpenPage?: () => void
+  /** Listed only while the query is empty, e.g. New Session atop a session list. */
+  browseOnly?: boolean
   action: () => void
 }
 
@@ -154,7 +162,12 @@ export function CommandPalette({ commands, onClose, workspaceFiles, filesTruncat
 function PaletteOverlay({ commands, onClose, workspaceFiles = [], filesTruncated = false, onFileOpen, initialQuery = '' }: PaletteOverlayProps) {
   const [query, setQuery] = useState(initialQuery)
   const [debouncedQuery, setDebouncedQuery] = useState(initialQuery)
-  const [page, setPage] = useState<{ title: string; page: CommandPage } | null>(null)
+  // Ids of the commands whose pages are open, outermost first. Resolved
+  // against ``commands`` on each render, so an open page shows rows that
+  // load after it opened.
+  const [pagePath, setPagePath] = useState<string[]>([])
+  // The command whose page was just left, highlighted again in its list.
+  const [restoreId, setRestoreId] = useState<string | null>(null)
   const updateDebouncedQuery = useDebouncedCallback(
     (val: string) => setDebouncedQuery(val),
     { wait: 60, key: 'command-palette-query' },
@@ -169,6 +182,23 @@ function PaletteOverlay({ commands, onClose, workspaceFiles = [], filesTruncated
   const [activeIdx, setActiveIdx] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
+
+  const trail = useMemo(() => {
+    const out: { id: string; title: string; page: CommandPage }[] = []
+    let list = commands
+    for (const id of pagePath) {
+      const cmd = list.find((c) => c.id === id)
+      if (!cmd?.page) break
+      out.push({ id, title: cmd.label.replace(/…$/, ''), page: cmd.page })
+      list = cmd.page.commands
+    }
+    return out
+  }, [commands, pagePath])
+  // A command on the path went away (its list reloaded without it): stay on
+  // the deepest page that still exists.
+  if (trail.length < pagePath.length) setPagePath(pagePath.slice(0, trail.length))
+  const page = trail.length > 0 ? trail[trail.length - 1] : null
+
   // Focus input on open, selecting a handed-in query so typing replaces it.
   useEffect(() => {
     inputRef.current?.focus()
@@ -203,7 +233,7 @@ function PaletteOverlay({ commands, onClose, workspaceFiles = [], filesTruncated
 
     // ── Commands ──────────────────────────────────────────────────────────────
     const listCommands = page ? page.page.commands : commandMode ? commands : []
-    const filteredCmds = q ? rankCommands(listCommands, q) : listCommands
+    const filteredCmds = q ? rankCommands(listCommands.filter((cmd) => !cmd.browseOnly), q) : listCommands
 
     // ── Files (ranked + capped) ───────────────────────────────────────────────
     let filteredFiles: WorkspaceFileInfo[] = []
@@ -262,24 +292,42 @@ function PaletteOverlay({ commands, onClose, workspaceFiles = [], filesTruncated
     if (activeIdx !== 0) setActiveIdx(0)
   }
 
+  // Back from a page: land on the command that opened it, not the top row.
+  // Runs after the query reset above, so this index wins.
+  if (restoreId !== null) {
+    setRestoreId(null)
+    for (const row of byIdx.values()) {
+      if (row.type === 'cmd' && row.cmd.id === restoreId) {
+        setActiveIdx(row.idx)
+        break
+      }
+    }
+  }
+
   // Scroll active item into view
   useEffect(() => {
     const el = listRef.current?.querySelector(`[data-idx="${activeIdx}"]`) as HTMLElement | null
     el?.scrollIntoView({ block: 'nearest' })
   }, [activeIdx])
 
-  const showPage = useCallback((next: { title: string; page: CommandPage } | null) => {
-    setPage(next)
+  const showPage = useCallback((next: Command | null) => {
+    if (next === null) {
+      setRestoreId(pagePath.length > 0 ? pagePath[pagePath.length - 1] : null)
+      setPagePath(pagePath.slice(0, -1))
+    } else {
+      setPagePath([...pagePath, next.id])
+      next.onOpenPage?.()
+    }
     setQuery('')
     setDebouncedQuery('')
     setActiveIdx(0)
     inputRef.current?.focus()
-  }, [])
+  }, [pagePath])
 
   const runCmd = useCallback(
     (cmd: Command) => {
       if (cmd.page) {
-        showPage({ title: cmd.label.replace(/…$/, ''), page: cmd.page })
+        showPage(cmd)
         return
       }
       onClose()
@@ -310,6 +358,23 @@ function PaletteOverlay({ commands, onClose, workspaceFiles = [], filesTruncated
       onClose()
       return
     }
+    const plainKey = !e.shiftKey && !e.altKey && !e.metaKey && !e.ctrlKey && !isImeComposing(e.nativeEvent)
+    if (e.key === 'ArrowRight' && plainKey) {
+      // In the query, → moves the caret until it reaches the end.
+      const input = e.target instanceof HTMLInputElement ? e.target : null
+      const caretAtEnd = !input || (input.selectionStart === input.value.length && input.selectionEnd === input.value.length)
+      const row = byIdx.get(activeIdx)
+      if (caretAtEnd && row?.type === 'cmd' && row.cmd.page) {
+        e.preventDefault()
+        runCmd(row.cmd)
+        return
+      }
+    }
+    if (e.key === 'ArrowLeft' && plainKey && page && query === '') {
+      e.preventDefault()
+      showPage(null)
+      return
+    }
     if (e.key === 'ArrowDown') {
       e.preventDefault()
       setActiveIdx((i) => Math.min(i + 1, totalCount - 1))
@@ -331,6 +396,8 @@ function PaletteOverlay({ commands, onClose, workspaceFiles = [], filesTruncated
   }
 
   const searchLabel = page ? page.title : commandMode ? 'Search commands' : 'Search files'
+  const activeRow = byIdx.get(activeIdx)
+  const activeOpensPage = activeRow?.type === 'cmd' && Boolean(activeRow.cmd.page)
   const emptyLabel = !query.trim() && page
     ? 'Nothing here yet'
     : `No ${page ? 'results' : commandMode ? 'commands' : 'files'} match "${query}"`
@@ -350,11 +417,11 @@ function PaletteOverlay({ commands, onClose, workspaceFiles = [], filesTruncated
               <button
                 type="button"
                 onClick={() => showPage(null)}
-                aria-label="Back to all commands"
-                className="inline-flex shrink-0 items-center gap-0.5 rounded-xs bg-(--bg-key) py-0.5 pl-0.5 pr-1.5 text-[11px] font-medium text-(--color-text-2) transition-colors hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40"
+                aria-label={trail.length > 1 ? `Back to ${trail[trail.length - 2].title}` : 'Back to all commands'}
+                className="inline-flex min-w-0 max-w-[60%] items-center gap-0.5 rounded-xs bg-(--bg-key) py-0.5 pl-0.5 pr-1.5 text-[11px] font-medium text-(--color-text-2) transition-colors hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40"
               >
-                <ChevronLeft size={12} aria-hidden="true" />
-                {page.title}
+                <ChevronLeft size={12} className="shrink-0" aria-hidden="true" />
+                <span className="truncate">{trail.map((t) => t.title).join(' › ')}</span>
               </button>
             )}
             <input
@@ -430,6 +497,15 @@ function PaletteOverlay({ commands, onClose, workspaceFiles = [], filesTruncated
             <span className="text-xs text-(--color-text-muted)">navigate</span>
             <kbd className="rounded-xs border border-(--color-border) bg-(--bg-card) px-1 py-0.5 font-mono text-xs md:text-[11px] text-(--color-text-muted)">↵</kbd>
             <span className="text-xs text-(--color-text-muted)">run</span>
+            {activeOpensPage && (
+              <>
+                <kbd className="rounded-xs border border-(--color-border) bg-(--bg-card) px-1 py-0.5 font-mono text-xs md:text-[11px] text-(--color-text-muted)">→</kbd>
+                <span className="text-xs text-(--color-text-muted)">open</span>
+              </>
+            )}
+            {page && (
+              <kbd className="rounded-xs border border-(--color-border) bg-(--bg-card) px-1 py-0.5 font-mono text-xs md:text-[11px] text-(--color-text-muted)">←</kbd>
+            )}
             <kbd className="rounded-xs border border-(--color-border) bg-(--bg-card) px-1 py-0.5 font-mono text-xs md:text-[11px] text-(--color-text-muted)">Esc</kbd>
             <span className="text-xs text-(--color-text-muted)">{page ? 'back' : 'close'}</span>
             {hasFiles && !commandMode && (

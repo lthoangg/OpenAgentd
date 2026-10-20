@@ -29,6 +29,7 @@ describe('shortcutHelp', () => {
     expect(find('macos', 'Keyboard shortcuts')?.keys).toEqual(['⌘/'])
     expect(find('macos', 'Toggle Design picking')?.keys).toEqual(['⌥C'])
     expect(find('macos', 'Close the top dialog, menu or viewer')?.keys).toEqual(['Esc'])
+    expect(find('macos', 'Open and leave a Command Palette list')?.keys).toEqual(['→', '←'])
   })
 
   it('lists the focus and dock tab keys, marking the ones browsers keep', () => {

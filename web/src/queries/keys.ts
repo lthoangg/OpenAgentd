@@ -35,6 +35,8 @@ export const queryKeys = {
       everywhere: (sort: SessionSort) => ['session', 'sessions', 'everywhere', sort] as const,
       /** Every pinned session (one page). */
       pinned: () => ['session', 'sessions', 'pinned'] as const,
+      /** One workspace's sessions for the palette's Switch Workspace/Session…, pinned included. */
+      palette: (workspace: string) => ['session', 'sessions', 'palette', workspace] as const,
       list: (offset: number, limit: number) =>
         ['session', 'sessions', 'list', offset, limit] as const,
       detail: (id: string) => ['session', 'sessions', id] as const,

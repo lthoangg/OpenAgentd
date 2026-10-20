@@ -3,13 +3,12 @@
  *
  * ``groupBy`` picks the shape of the session list: the workspace tree
  * (``project``) or one flat list across workspaces grouped by status, by
- * date, or not at all. ``sortBy`` orders sessions within each group.
+ * date, or not at all. Sessions are always in recent-activity order.
  * ``groupFilter`` narrows the Project view to one workspace group's
  * repositories (Chat always stays).
  */
 import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
-import type { SessionSort } from '@/api/types'
 
 export const SIDEBAR_VIEW_STORAGE_KEY = 'oa.sidebarView.v1'
 
@@ -22,14 +21,8 @@ export const SIDEBAR_GROUP_BY: readonly { value: SidebarGroupBy; label: string }
   { value: 'none', label: 'None' },
 ]
 
-export const SIDEBAR_SORT_BY: readonly { value: SessionSort; label: string }[] = [
-  { value: 'activity', label: 'Recent activity' },
-  { value: 'created', label: 'Created' },
-]
-
 interface SidebarViewPrefs {
   groupBy: SidebarGroupBy
-  sortBy: SessionSort
   showDetails: boolean
   /** The Pinned section is folded. */
   pinnedCollapsed: boolean
@@ -41,7 +34,6 @@ interface SidebarViewPrefs {
 
 interface SidebarViewState extends SidebarViewPrefs {
   setGroupBy: (groupBy: SidebarGroupBy) => void
-  setSortBy: (sortBy: SessionSort) => void
   setShowDetails: (showDetails: boolean) => void
   setPinnedCollapsed: (collapsed: boolean) => void
   toggleGroupCollapsed: (group: string) => void
@@ -50,19 +42,14 @@ interface SidebarViewState extends SidebarViewPrefs {
   reset: () => void
 }
 
-export const SIDEBAR_VIEW_DEFAULTS: Pick<SidebarViewPrefs, 'groupBy' | 'sortBy' | 'showDetails' | 'groupFilter'> = {
+export const SIDEBAR_VIEW_DEFAULTS: Pick<SidebarViewPrefs, 'groupBy' | 'showDetails' | 'groupFilter'> = {
   groupBy: 'project',
-  sortBy: 'activity',
   showDetails: true,
   groupFilter: null,
 }
 
 function isGroupBy(value: unknown): value is SidebarGroupBy {
   return SIDEBAR_GROUP_BY.some((option) => option.value === value)
-}
-
-function isSortBy(value: unknown): value is SessionSort {
-  return SIDEBAR_SORT_BY.some((option) => option.value === value)
 }
 
 export const useSidebarViewStore = create<SidebarViewState>()(
@@ -72,7 +59,6 @@ export const useSidebarViewStore = create<SidebarViewState>()(
       pinnedCollapsed: false,
       collapsedGroups: [],
       setGroupBy: (groupBy) => set({ groupBy }),
-      setSortBy: (sortBy) => set({ sortBy }),
       setShowDetails: (showDetails) => set({ showDetails }),
       setPinnedCollapsed: (pinnedCollapsed) => set({ pinnedCollapsed }),
       toggleGroupCollapsed: (group) =>
@@ -87,9 +73,8 @@ export const useSidebarViewStore = create<SidebarViewState>()(
     {
       name: SIDEBAR_VIEW_STORAGE_KEY,
       storage: createJSONStorage(() => localStorage),
-      partialize: ({ groupBy, sortBy, showDetails, pinnedCollapsed, collapsedGroups, groupFilter }) => ({
+      partialize: ({ groupBy, showDetails, pinnedCollapsed, collapsedGroups, groupFilter }) => ({
         groupBy,
-        sortBy,
         showDetails,
         pinnedCollapsed,
         collapsedGroups,
@@ -102,7 +87,6 @@ export const useSidebarViewStore = create<SidebarViewState>()(
         return {
           ...current,
           groupBy: isGroupBy(p.groupBy) ? p.groupBy : SIDEBAR_VIEW_DEFAULTS.groupBy,
-          sortBy: isSortBy(p.sortBy) ? p.sortBy : SIDEBAR_VIEW_DEFAULTS.sortBy,
           showDetails: typeof p.showDetails === 'boolean' ? p.showDetails : SIDEBAR_VIEW_DEFAULTS.showDetails,
           pinnedCollapsed: typeof p.pinnedCollapsed === 'boolean' ? p.pinnedCollapsed : false,
           collapsedGroups: Array.isArray(p.collapsedGroups) ? p.collapsedGroups.filter((g): g is string => typeof g === 'string') : [],

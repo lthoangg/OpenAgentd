@@ -28,7 +28,7 @@ from scripts.codehealth.scoring import compute_fan, find_cycles, score_report
 from scripts.codehealth.ts_analyzer import analyze_ts_file, collect_ts_files
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-PY_ROOTS = ["app"]
+PY_ROOTS = ["scripts"]
 TS_SRC = "web/src"
 
 
@@ -55,7 +55,7 @@ def analyze(lang: str) -> tuple[dict[str, FileReport], dict[str, str]]:
     if lang in ("python", "all"):
         roots = [REPO_ROOT / r for r in PY_ROOTS]
         for f in collect_python_files(roots):
-            r = analyze_python_file(f, REPO_ROOT)
+            r = analyze_python_file(f, REPO_ROOT, package_prefixes=tuple(PY_ROOTS))
             reports[r.path] = r
         path_by_module.update(_build_python_module_index(reports))
 

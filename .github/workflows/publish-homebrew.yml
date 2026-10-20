@@ -96,7 +96,7 @@ jobs:
             def caveats
               <<~EOS
                 Run \`agentd --help\` to get started, or see
-                https://github.com/lthoangg/openagentd for documentation.
+                https://openagentd.dev for setup guides.
                 Upgrade with \`brew upgrade openagentd\` (\`agentd upgrade\` does this too).
               EOS
             end

@@ -1,10 +1,9 @@
-//! Provider catalog — verbatim v2 `app/agent/providers/catalog.py::_CATALOG`
-//! captured to `appv3/contract/provider_catalog.json`.
+//! Provider catalog (`data/provider_catalog.json`).
 
 use serde_json::Value;
 use std::sync::OnceLock;
 
-const CATALOG_JSON: &str = include_str!("../../../contract/provider_catalog.json");
+const CATALOG_JSON: &str = include_str!("../data/provider_catalog.json");
 
 pub fn builtin_providers() -> &'static Vec<Value> {
     static C: OnceLock<Vec<Value>> = OnceLock::new();

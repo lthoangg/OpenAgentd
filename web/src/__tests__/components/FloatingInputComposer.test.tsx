@@ -9,6 +9,8 @@ import type { InputComposerHandle } from '@/components/InputComposer'
 
 let mockIsMobile = false
 let mockReducedMotion = false
+// The hand-off glide's ``onAnimationComplete``: tests call it to land the bar.
+let completeAnimation: (() => void) | null = null
 
 mock.module('@/hooks/use-mobile', () => ({
   useIsMobile: () => mockIsMobile,
@@ -29,9 +31,10 @@ mock.module('framer-motion', () => ({
       dragMomentum: _dragMomentum,
       dragElastic: _dragElastic,
       onDragEnd: _onDragEnd,
-      onAnimationComplete: _onAnimationComplete,
+      onAnimationComplete,
       ...props
     }: Record<string, unknown>) => {
+      if (typeof onAnimationComplete === 'function') completeAnimation = onAnimationComplete as () => void
       const mergedStyle = { ...(style as Record<string, unknown> | undefined) }
       if (animate && typeof animate === 'object') {
         const maybeAnimate = animate as Record<string, unknown>
@@ -58,6 +61,7 @@ beforeEach(() => {
   useTranscriptFollowStore.setState({ unseen: null, jumpToLatest: null })
   mockIsMobile = false
   mockReducedMotion = false
+  completeAnimation = null
 })
 
 function nextFrame(): Promise<void> {
@@ -169,13 +173,31 @@ describe('FloatingInputComposer — hand-off glide from the new-session screen',
     HTMLElement.prototype.getBoundingClientRect = originalRect
   })
 
-  it('lands expanded and focused, gliding from where the centered composer was', () => {
+  it('glides expanded and focused from where the centered composer was', () => {
     render(<Harness enterFrom={from} composerAfterBounds />)
     const textarea = screen.getByRole('textbox', { name: 'Message input' })
     expect(textarea.getAttribute('disabled')).toBeNull()
     expect(screen.queryByRole('button', { name: 'Expand input bar' })).toBeNull()
     expect(document.activeElement).toBe(textarea)
     expect(textarea.closest('[data-handoff="gliding"]')).not.toBeNull()
+  })
+
+  it('collapses on landing, like any other send, keeping focus on the pill', async () => {
+    render(<Harness enterFrom={from} composerAfterBounds />)
+    expect(completeAnimation).not.toBeNull()
+    await act(async () => { completeAnimation?.() })
+    expect(document.querySelector('[data-handoff]')).toBeNull()
+    const pill = screen.getByRole('button', { name: 'Expand input bar' })
+    expect(document.activeElement).toBe(pill)
+  })
+
+  it('stays expanded on landing when the user typed during the glide', async () => {
+    const user = userEvent.setup()
+    render(<Harness enterFrom={from} composerAfterBounds />)
+    await user.keyboard('more')
+    await act(async () => { completeAnimation?.() })
+    expect(screen.queryByRole('button', { name: 'Expand input bar' })).toBeNull()
+    expect((screen.getByRole('textbox', { name: 'Message input' }) as HTMLTextAreaElement).value).toBe('more')
   })
 
   it('does not glide with reduced motion: the bar starts collapsed as usual', () => {

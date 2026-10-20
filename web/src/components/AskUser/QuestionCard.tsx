@@ -12,11 +12,13 @@
  * older clients only; it no longer lets the model turn free text off.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { flushSync } from 'react-dom'
 import { Check } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Textarea } from '@/components/ui/textarea'
+import { hasFinePointer } from '@/lib/pointer'
 import { cn } from '@/lib/utils'
 import { InlineMarkdown } from '@/utils/inline-markdown'
 import type { PendingQuestion, QuestionItem } from '@/api/types'
@@ -125,17 +127,23 @@ export function QuestionCard({
   }
 
   const chooseCustom = (index: number, item: QuestionItem) => {
-    setDraft((prev) => {
-      const active = !prev.customActive[index]
-      return {
-        ...prev,
-        customActive: { ...prev.customActive, [index]: active },
-        selected:
-          active && !item.multiple
-            ? { ...prev.selected, [index]: [] }
-            : prev.selected,
-      }
+    const activating = !draft.customActive[index]
+    // Render the box and focus it inside this tap: a touch keyboard opens only
+    // for focus within a user gesture, and only when the user asked for it.
+    flushSync(() => {
+      setDraft((prev) => {
+        const active = !prev.customActive[index]
+        return {
+          ...prev,
+          customActive: { ...prev.customActive, [index]: active },
+          selected:
+            active && !item.multiple
+              ? { ...prev.selected, [index]: [] }
+              : prev.selected,
+        }
+      })
     })
+    if (activating) textareaRef.current?.focus()
   }
 
   const answeredCount = useMemo(
@@ -233,7 +241,9 @@ export function QuestionCard({
           {isCustomActive && (
             <Textarea
               ref={textareaRef}
-              autoFocus
+              // A restored card (reconnect, reopened sheet) must not raise a
+              // touch keyboard on its own; ``chooseCustom`` focuses on tap.
+              autoFocus={hasFinePointer()}
               value={draft.customText[step] ?? ''}
               maxLength={MAX_ANSWER_CHARS}
               onChange={(event) =>

@@ -777,6 +777,31 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
   }
   const stopClick = (e: React.MouseEvent) => e.stopPropagation()
 
+  // Phone: tapping Send, Steer, Stop or the mode toggle must not move focus
+  // out of the textarea, or iOS drops the keyboard mid-conversation. Holding
+  // the press's default keeps focus where it is; ``refocusAfterTap`` catches
+  // a WebView that blurs anyway, still inside the tap so the keyboard stays.
+  const hadFocusOnPressRef = useRef(false)
+  const keepKeyboard: {
+    onPointerDown?: (e: React.PointerEvent) => void
+    onMouseDown?: (e: React.MouseEvent) => void
+  } = isMobile
+    ? {
+        onPointerDown: (e: React.PointerEvent) => {
+          hadFocusOnPressRef.current = document.activeElement === textareaRef.current
+          if (hadFocusOnPressRef.current) e.preventDefault()
+        },
+        onMouseDown: (e: React.MouseEvent) => {
+          if (hadFocusOnPressRef.current) e.preventDefault()
+        },
+      }
+    : {}
+  const refocusAfterTap = () => {
+    if (!isMobile || !hadFocusOnPressRef.current) return
+    hadFocusOnPressRef.current = false
+    if (document.activeElement !== textareaRef.current) textareaRef.current?.focus({ preventScroll: true })
+  }
+
   const attachEl = (
     <button
       type="button"
@@ -825,7 +850,8 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
   const sendOrStopEl = canStop && !hasMessage ? (
     <button
       type="button"
-      onClick={(e) => { stopClick(e); onStop?.() }}
+      {...keepKeyboard}
+      onClick={(e) => { stopClick(e); onStop?.(); refocusAfterTap() }}
       aria-label="Stop generation"
       className={cn(sendSlotClass, sendPillClass)}
     >
@@ -835,7 +861,8 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
     <div role="group" aria-label="Send" className="flex shrink-0">
       <button
         type="button"
-        onClick={(e) => { stopClick(e); submit('steer') }}
+        {...keepKeyboard}
+        onClick={(e) => { stopClick(e); submit('steer'); refocusAfterTap() }}
         aria-label="Steer the running turn"
         aria-keyshortcuts="Enter"
         className={cn(sendSlotClass, sendPillClass, 'rounded-r-none')}
@@ -847,9 +874,11 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
   ) : (
     <button
       type="button"
+      {...keepKeyboard}
       onClick={(e) => {
         stopClick(e)
         submit()
+        refocusAfterTap()
       }}
       disabled={!canSend}
       aria-label="Send message"
@@ -991,12 +1020,20 @@ export const InputComposer = forwardRef<InputComposerHandle, InputComposerProps>
       {attachEl}
       {chatEl}
       {!minimized && onInteractionModeChange && (
-        <SessionModeToggle
-          mode={interactionMode}
-          pending={interactionModePending}
-          onChange={onInteractionModeChange}
-          disabled={interactionModeDisabled}
-        />
+        // ``contents``: a wrapper for the keep-the-keyboard handlers only.
+        <div
+          className="contents"
+          onPointerDownCapture={keepKeyboard.onPointerDown}
+          onMouseDownCapture={keepKeyboard.onMouseDown}
+          onClick={isMobile ? refocusAfterTap : undefined}
+        >
+          <SessionModeToggle
+            mode={interactionMode}
+            pending={interactionModePending}
+            onChange={onInteractionModeChange}
+            disabled={interactionModeDisabled}
+          />
+        </div>
       )}
       {/* Slot snaps w-0 ↔ flex-1 in lockstep with the card's w-fit ↔ w-full.
           ``-ml-2`` absorbs the parent gap-2 when collapsed. Expanded always

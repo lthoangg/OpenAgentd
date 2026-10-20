@@ -10,7 +10,7 @@ native backend sidecar (`sidecar-bundle/bin/agentd`, built from `appv3/`).
   the shared server-config code in `../../native/shell-core/` (re-exported
   under the desktop's existing names).
 - `src/window.rs`: WebViews, platform chrome, zoom, and injected bridge state.
-- `src/commands.rs`: Tauri commands exposed to the frontend; keyring and
+- `src/commands.rs`: Tauri commands exposed to the frontend; access-key and
   download commands are thin wrappers over `openagentd-shell-core`.
 - `src/sidecar.rs`: sidecar discovery, spawn, handshake, health, and cleanup.
 - `src/watchdog.rs`: restarts a crashed bundled sidecar with a bounded
@@ -20,7 +20,7 @@ native backend sidecar (`sidecar-bundle/bin/agentd`, built from `appv3/`).
 - `src/usage.rs`: usage formatting and shared HTTP client.
 - `src/updater.rs`: update checks, download/install preconditions, and install.
 - `src/network_access.rs`: the "Network access" switch: saved on/off and
-  preferred port, the LAN access key in the OS credential store, and
+  preferred port, the LAN access key in a user-only file, and
   re-applying it to the sidecar (`/api/desktop/network-access`) after every
   sidecar start.
 - `capabilities/`, `permissions/`, Tauri configs, and entitlements: native
@@ -36,11 +36,16 @@ bridge and all relevant Tauri config variants.
   POSIX process groups and Windows Job Objects have different paths.
   A watchdog restart reuses the same desktop token so open windows stay
   authenticated.
-- On macOS updater installation replaces the process; do not add the
-  non-macOS post-install `app.restart()` path there. Preserve the double-invoke
+- `install()` (tauri-plugin-updater >= 2.14) verifies the bytes it is given,
+  so pass the downloaded archive unchanged; never re-sign or repack it on the
+  client. It swaps the bundle and returns (Windows exits into the
+  installer); restart exactly once afterwards. Preserve the double-invoke
   quitting guard.
+- Desktop secrets (access keys, the LAN key) live in user-only files, not
+  the OS keychain: macOS ties keychain items to the app's Team ID, which the
+  unsigned app lacks, so each update would prompt again.
 - Review CSP, remote origins, capabilities, entitlements, updater signing, and
-  keyring changes as security-sensitive.
+  secret storage changes as security-sensitive.
 
 ## Checks
 

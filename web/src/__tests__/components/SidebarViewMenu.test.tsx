@@ -79,8 +79,8 @@ describe('SidebarViewMenu', () => {
     const groupBy = within(menu).getByRole('group', { name: 'Group by' })
     expect(within(groupBy).getAllByRole('menuitemradio').map((item) => item.textContent)).toEqual(['Project', 'Status', 'Date', 'None'])
     expect(within(groupBy).getByRole('menuitemradio', { name: 'Project' }).getAttribute('aria-checked')).toBe('true')
-    const sortBy = within(menu).getByRole('group', { name: 'Sort by' })
-    expect(within(sortBy).getByRole('menuitemradio', { name: 'Recent activity' }).getAttribute('aria-checked')).toBe('true')
+    // Sessions are always in activity order: there is nothing to sort by.
+    expect(within(menu).queryByRole('group', { name: 'Sort by' })).toBeNull()
     expect(within(menu).getByRole('menuitemcheckbox', { name: 'Show details' }).getAttribute('aria-checked')).toBe('true')
   })
 
@@ -90,19 +90,18 @@ describe('SidebarViewMenu', () => {
     await user.click(screen.getByRole('button', { name: 'View options' }))
 
     await user.click(screen.getByRole('menuitemradio', { name: 'Status' }))
-    await user.click(screen.getByRole('menuitemradio', { name: 'Created' }))
     await user.click(screen.getByRole('menuitemcheckbox', { name: 'Show details' }))
 
-    expect(useSidebarViewStore.getState()).toMatchObject({ groupBy: 'status', sortBy: 'created', showDetails: false })
+    expect(useSidebarViewStore.getState()).toMatchObject({ groupBy: 'status', showDetails: false })
     expect(screen.getByRole('menuitemradio', { name: 'Status' }).getAttribute('aria-checked')).toBe('true')
     expect(screen.getByRole('menuitemcheckbox', { name: 'Show details' }).getAttribute('aria-checked')).toBe('false')
     // The choice persists per device.
-    expect(JSON.parse(localStorage.getItem('oa.sidebarView.v1') ?? '{}').state).toMatchObject({ groupBy: 'status', sortBy: 'created' })
+    expect(JSON.parse(localStorage.getItem('oa.sidebarView.v1') ?? '{}').state).toMatchObject({ groupBy: 'status' })
   })
 
   it('resets to the defaults and closes', async () => {
     const user = userEvent.setup()
-    useSidebarViewStore.setState({ groupBy: 'none', sortBy: 'created', showDetails: false })
+    useSidebarViewStore.setState({ groupBy: 'none', showDetails: false })
     renderHeader('none', true)
     await user.click(screen.getByRole('button', { name: 'View options' }))
     await user.click(screen.getByRole('menuitem', { name: 'Reset to defaults' }))

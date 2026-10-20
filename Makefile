@@ -95,8 +95,6 @@ verify-desktop: ## Check, test, and lint the desktop Rust crate
 verify-mobile: ## Check the mobile Rust crate
 	cd mobile/src-tauri && TAURI_CONFIG='{"bundle":{"icon":["icons/icon.png"]}}' cargo check --locked
 
-# Scoped to web/src: the end-of-life v2 backend (app/) is frozen, so its
-# Python files would only add noise to the ranking.
 health: ## Rank web frontend god files + detect circular imports (text report)
 	python3 -m scripts.codehealth --lang ts
 

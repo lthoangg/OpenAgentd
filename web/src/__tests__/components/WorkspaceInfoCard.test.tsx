@@ -23,7 +23,7 @@ function renderCard(sessions: SessionResponse[] | null, props: { chatWorkspace?:
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } })
   const workspace = props.workspace ?? WORKSPACE
   if (sessions) {
-    client.setQueryData(queryKeys.session.sessions.workspace(workspace), {
+    client.setQueryData(queryKeys.session.sessions.workspace(workspace, 'activity'), {
       pages: [{ data: sessions, next_cursor: null, has_more: false }],
       pageParams: [null],
     })

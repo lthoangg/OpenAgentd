@@ -69,7 +69,11 @@ if (import.meta.main) {
   // chunk. Reviewer-shaped plans (the Appendix, plan links) and the Mermaid
   // block with its SVG sanitizer added 10 kB / 3 kB gzip: 2.49 MB / 755 kB,
   // with a 1.83 MB index chunk. Pele itself stays out of the startup graph.
-  const limits = { eagerBytes: 2_500_000, eagerGzipBytes: 760_000, largestChunkBytes: 1_840_000 }
+  // Phone keyboard work (the visible-viewport helper, the mobile plan review
+  // footer and docked comment composer, transcript keyboard dismissal, field
+  // defaults and the native time picker) reached 2.50 MB / 760 kB with a
+  // 1.84 MB index chunk.
+  const limits = { eagerBytes: 2_515_000, eagerGzipBytes: 764_000, largestChunkBytes: 1_850_000 }
   console.log('Production JavaScript budget:', sizes)
   const failures = budgetFailures(sizes, limits)
   if (failures.length) {

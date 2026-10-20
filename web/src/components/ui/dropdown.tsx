@@ -49,6 +49,7 @@ import {
 import { createPortal } from 'react-dom'
 import { ChevronDown, Check } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { getVisibleViewport, onVisibleViewportChange } from '@/lib/visible-viewport'
 import { DURATIONS_S } from '@/lib/motion'
 import { buttonVariants } from '@/components/ui/button'
 import { useDeferredUnmount } from '@/components/ui/_use-deferred-unmount'
@@ -166,7 +167,9 @@ function Dropdown({
     const rect = t.getBoundingClientRect()
     const panelH = panelRef.current?.offsetHeight ?? 200
     const panelW = panelRef.current?.offsetWidth ?? rect.width
-    const flipsUp = rect.bottom + 4 + window.scrollY + panelH > window.innerHeight + window.scrollY
+    // Measure against the *visible* area: on iOS the soft keyboard covers the
+    // bottom of the screen without shrinking ``innerHeight``.
+    const flipsUp = rect.bottom + 4 + panelH > getVisibleViewport().bottom
     const left = align === 'end'
       ? Math.max(8, rect.right - Math.max(panelW, rect.width))
       : rect.left
@@ -182,10 +185,10 @@ function Dropdown({
     if (!panelMounted) return
     reposition()
     window.addEventListener('scroll', reposition, { passive: true, capture: true })
-    window.addEventListener('resize', reposition)
+    const stopViewport = onVisibleViewportChange(reposition)
     return () => {
       window.removeEventListener('scroll', reposition, { capture: true })
-      window.removeEventListener('resize', reposition)
+      stopViewport()
     }
   }, [panelMounted, reposition])
 

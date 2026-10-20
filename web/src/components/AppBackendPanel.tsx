@@ -399,6 +399,8 @@ export function AppBackendPanel({ active, prefill = null, showNetworkAccess = fa
           <Field label="Server URL" htmlFor="app-backend-url">
             <Input
               id="app-backend-url"
+              type="url"
+              inputMode="url"
               value={baseUrl}
               onChange={(event) => { setBaseUrl(event.target.value); setTestedBaseUrl(null) }}
               placeholder="http://<backend-host>:4082"

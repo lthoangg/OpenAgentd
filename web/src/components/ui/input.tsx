@@ -17,6 +17,10 @@ function Input({ className, ref, ...props }: InputProps) {
     <input
       ref={ref}
       data-slot="input"
+      // iOS: off by default (most inputs are ids/paths/keys). Prose fields opt
+      // in with autoCapitalize="sentences" / autoCorrect="on".
+      autoCapitalize="off"
+      autoCorrect="off"
       className={cn(
         // Layout
         'w-full min-w-0 rounded-sm border',

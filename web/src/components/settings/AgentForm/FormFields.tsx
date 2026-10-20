@@ -128,6 +128,8 @@ export function FormFields({
             <Input
               type="text"
               className="min-h-9"
+              autoCapitalize="sentences"
+              autoCorrect="on"
               value={fm.description ?? ''}
               onChange={(e) =>
                 updateFromForm({ ...fm, description: e.target.value || null }, body)

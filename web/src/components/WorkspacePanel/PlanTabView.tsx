@@ -10,9 +10,6 @@
  * The user can also edit the plan here (or in any editor): the server notices
  * the change by content and tells the agent once.
  *
- * While the lead's ``plan`` call streams, the tab shows the plan being written
- * in place (see ``useLivePlan``) and holds Edit and Clear until it lands.
- *
  * Links and file-named code spans that point into the workspace open in the
  * dock: an HTML attachment (a mockup) in the Preview tab, anything else as a
  * file tab. Images (SVG diagrams) render inline through the media route.
@@ -22,14 +19,18 @@
  * text in it, comment highlights, and jumping to a comment all work; jumping
  * to a passage in a closed Appendix opens it first.
  */
-import { useDeferredValue, useEffect, useId, useMemo, useRef, useState } from 'react'
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { flushSync } from 'react-dom'
 import { useQueryClient } from '@tanstack/react-query'
-import { Check, ChevronRight, Copy, ExternalLink, FileText, Pencil, Unlink } from 'lucide-react'
+import { Check, ChevronRight, Copy, ExternalLink, FileText, MessageSquarePlus, Pencil, Unlink } from 'lucide-react'
 import type { SessionPlan } from '@/api/types'
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Textarea } from '@/components/ui/textarea'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { useIsMobile } from '@/hooks/use-mobile'
+import { useKeyboardOpen } from '@/hooks/use-keyboard-open'
+import { dismissKeyboard } from '@/hooks/use-mobile-viewport'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { cn } from '@/lib/utils'
 import { queryKeys } from '@/queries/keys'
@@ -41,13 +42,13 @@ import { workspaceRelativePath } from '@/utils/file-refs'
 import { MarkdownBlock } from '@/utils/markdown'
 import { useQuestionResolver } from '../AskUser/useQuestionResolver'
 import { FileRefContext, type FileRefOpener } from '../FileRefLink'
-import { useLivePlan } from '../PlanReview/live-plan'
 import { CommentButton, CommentComposer, CommentList, showPassage, useCommentHighlights } from '../PlanReview/PlanComments'
 import { readAppendixOpen, splitPlanAppendix, writeAppendixOpen } from '../PlanReview/plan-appendix'
 import {
   findTextRange,
   forgetPlanReviewDraft,
   formatPlanReview,
+  passageAnchor,
   readPlanReviewDraft,
   usePlanSelection,
   writePlanReviewDraft,
@@ -79,12 +80,25 @@ const STATUS_CHIP: Record<PlanStatus, { label: string; className: string }> = {
   draft: { label: 'Draft', className: 'bg-(--bg-key) text-(--color-text-muted)' },
 }
 
-const WRITING_CHIP_CLASS = 'bg-(--bg-key) text-(--color-marker-orange) motion-safe:animate-pulse'
-
 const HTML_FILE = /\.html?$/i
 
-/** How close to the bottom still counts as following the plan being written. */
-const FOLLOW_SLACK_PX = 32
+/**
+ * How long a touch selection is remembered after iOS collapses it, so a tap
+ * on "Comment on selection" still sees it (the tap itself can clear the
+ * selection before the click lands).
+ */
+const SELECTION_HOLD_MS = 400
+
+interface ComposerState {
+  quote: string
+  /** Where the passage ends; null for a draft restored before the plan laid out. */
+  anchor: PlanSelection | null
+  text: string
+}
+
+function restoredComposer(draft: PlanReviewDraft): ComposerState | null {
+  return draft.composer ? { quote: draft.composer.quote, anchor: null, text: draft.composer.text } : null
+}
 
 function isConflict(cause: unknown): boolean {
   return typeof cause === 'object' && cause !== null && (cause as { status?: unknown }).status === 409
@@ -157,9 +171,11 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile, onOpenPr
   const queryClient = useQueryClient()
   const update = useUpdateSessionPlanMutation()
   const reducedMotion = useReducedMotion() ?? false
+  // Mobile reviews dock the Comment action and the composer in the footer,
+  // where they sit on the soft keyboard; the footer compacts while it is up.
+  const mobile = useIsMobile()
+  const keyboardOpen = useKeyboardOpen()
   const commentIdPrefix = useId()
-  const live = useLivePlan(plan, sessionId)
-  const writing = Boolean(live?.writing)
   const fileOpener = useMemo(() => planFileOpener(workspace, onOpenFile, onOpenPreview), [workspace, onOpenFile, onOpenPreview])
 
   const [editing, setEditing] = useState(false)
@@ -172,12 +188,14 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile, onOpenPr
   // Comments and overall feedback belong to one review; they survive the tab
   // unmounting (see ``readPlanReviewDraft``) and a new review starts empty.
   const [reviewDraft, setReviewDraft] = useState<PlanReviewDraft>(() => readPlanReviewDraft(reviewId))
-  const [composer, setComposer] = useState<{ quote: string; anchor: PlanSelection; text: string } | null>(null)
+  // So does a half-written comment.
+  const [composer, setComposer] = useState<ComposerState | null>(() => restoredComposer(readPlanReviewDraft(reviewId)))
   const [draftFor, setDraftFor] = useState(reviewId)
   if (reviewId !== draftFor) {
     setDraftFor(reviewId)
-    setReviewDraft(readPlanReviewDraft(reviewId))
-    setComposer(null)
+    const next = readPlanReviewDraft(reviewId)
+    setReviewDraft(next)
+    setComposer(restoredComposer(next))
   }
   const previousReview = useRef(reviewId)
   useEffect(() => {
@@ -185,34 +203,69 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile, onOpenPr
     if (previous && previous !== reviewId) forgetPlanReviewDraft(previous)
     previousReview.current = reviewId
   }, [reviewId])
+  const persist = (draft: PlanReviewDraft, open: ComposerState | null) => {
+    if (!reviewId) return
+    writePlanReviewDraft(reviewId, {
+      comments: draft.comments,
+      overall: draft.overall,
+      composer: open ? { quote: open.quote, text: open.text } : null,
+    })
+  }
   const changeDraft = (next: PlanReviewDraft) => {
     setReviewDraft(next)
-    if (reviewId) writePlanReviewDraft(reviewId, next)
+    persist(next, composer)
+  }
+  const changeComposer = (next: ComposerState | null) => {
+    setComposer(next)
+    persist(reviewDraft, next)
   }
 
   const bodyRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
+  const commentInputRef = useRef<HTMLTextAreaElement>(null)
   const { selection, clear: clearSelection } = usePlanSelection(bodyRef, Boolean(review) && !editing && !composer)
   useCommentHighlights(bodyRef, editing ? [] : [...reviewDraft.comments.map((c) => c.quote), ...(composer ? [composer.quote] : [])])
 
-  // A write grows at the bottom: keep it in view unless the user scrolled up.
-  const followRef = useRef(true)
-  const following = writing && live?.action === 'write'
+  // Touch: hold the last selection briefly after it collapses, so the footer's
+  // Comment action survives the tap that iOS may use to clear the selection.
+  const [heldSelection, setHeldSelection] = useState<PlanSelection | null>(null)
+  const pressingComment = useRef(false)
   useEffect(() => {
-    const scroller = scrollRef.current
-    const body = bodyRef.current
-    if (!following || !scroller || !body || typeof ResizeObserver === 'undefined') return
-    followRef.current = true
-    const observer = new ResizeObserver(() => {
-      if (followRef.current) scroller.scrollTop = scroller.scrollHeight
+    if (!mobile) return
+    if (selection) {
+      setHeldSelection(selection)
+      return
+    }
+    if (pressingComment.current) return
+    const timer = window.setTimeout(() => setHeldSelection(null), SELECTION_HOLD_MS)
+    return () => window.clearTimeout(timer)
+  }, [mobile, selection])
+
+  // A comment restored from a draft has no anchor yet: find its passage once
+  // the plan has laid out (desktop floats the composer under it).
+  useLayoutEffect(() => {
+    if (!composer || composer.anchor || mobile || !bodyRef.current) return
+    const anchor = passageAnchor(bodyRef.current, composer.quote)
+    if (anchor) setComposer({ ...composer, anchor })
+  }, [composer, mobile])
+
+  // Mobile: keep the passage being commented on in view above the docked
+  // composer, again once the keyboard has resized the plan.
+  const composerQuote = composer?.quote ?? null
+  useEffect(() => {
+    if (!mobile || !composerQuote) return
+    const frame = requestAnimationFrame(() => {
+      showPassage(bodyRef.current, scrollRef.current, composerQuote, true)
     })
-    observer.observe(body)
-    return () => observer.disconnect()
-  }, [following])
-  const trackFollow = (event: React.UIEvent<HTMLDivElement>) => {
-    const el = event.currentTarget
-    followRef.current = el.scrollHeight - el.scrollTop - el.clientHeight <= FOLLOW_SLACK_PX
-  }
+    return () => cancelAnimationFrame(frame)
+  }, [mobile, composerQuote, keyboardOpen])
+
+  // While typing on a phone, saved comments fold into a chip.
+  const [showComments, setShowComments] = useState(false)
+  const compactFooter = mobile && keyboardOpen
+  useEffect(() => {
+    if (!compactFooter) setShowComments(false)
+  }, [compactFooter])
 
   const [copied, setCopied] = useState(false)
   useEffect(() => {
@@ -221,11 +274,8 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile, onOpenPr
     return () => clearTimeout(timer)
   }, [copied])
 
-  const content = live?.content ?? plan?.content ?? null
-  // An edit rewrites the middle of the plan, so each chunk re-renders all
-  // that follows; deferring lets that work yield to scrolling and typing.
-  const renderedContent = useDeferredValue(content ?? '')
-  const parts = useMemo(() => splitPlanAppendix(renderedContent), [renderedContent])
+  const content = plan?.content ?? ''
+  const parts = useMemo(() => splitPlanAppendix(content), [content])
 
   const appendixId = useId()
   const appendixRef = useRef<HTMLElement>(null)
@@ -258,24 +308,21 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile, onOpenPr
     showPassage(bodyRef.current, scrollRef.current, quote, reducedMotion)
   }
 
-  if (content === null) {
+  if (!plan) {
     return (
       <EmptyState
         icon={FileText}
-        title={writing ? 'Writing the plan…' : 'No plan yet'}
-        body={writing ? 'It appears here as the agent writes it.' : 'In Plan mode the agent writes its plan here for you to review.'}
+        title="No plan yet"
+        body="In Plan mode the agent writes its plan here for you to review."
       />
     )
   }
 
-  const chip = writing
-    ? { label: live?.action === 'edit' ? 'Editing…' : 'Writing…', className: WRITING_CHIP_CLASS }
-    : plan
-      ? STATUS_CHIP[planStatus(plan, Boolean(review))]
-      : STATUS_CHIP.draft
+  const status = planStatus(plan, Boolean(review))
+  const chip = STATUS_CHIP[status]
   // A server without plan revisions (v2) has no edit route.
-  const canEdit = !live && plan?.revision !== undefined && Boolean(sessionId)
-  const unsavedEdits = editing && draft !== plan?.content
+  const canEdit = plan.revision !== undefined && Boolean(sessionId)
+  const unsavedEdits = editing && draft !== plan.content
   const { comments, overall } = reviewDraft
   const pendingComment = composer?.text.trim() ? [{ quote: composer.quote, text: composer.text }] : []
   const answerText = formatPlanReview([...comments, ...pendingComment], overall)
@@ -290,7 +337,6 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile, onOpenPr
   const footerHint = tooLong ? 'Too long to send — shorten your comments' : approveHint
 
   const startEditing = () => {
-    if (!plan) return
     setDraft(plan.content)
     setBaseRevision(plan.revision ?? 0)
     setSaveError(null)
@@ -320,22 +366,40 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile, onOpenPr
     )
   }
 
-  const startComment = () => {
-    if (!selection) return
-    setComposer({ quote: selection.text, anchor: selection, text: '' })
+  const startComment = (from: PlanSelection | null = selection) => {
+    if (!from) return
+    const next = { quote: from.text, anchor: from, text: '' }
+    if (mobile) {
+      // Render the docked composer and focus it inside this tap: iOS raises
+      // the keyboard only for focus that happens within a user gesture.
+      flushSync(() => changeComposer(next))
+      commentInputRef.current?.focus()
+    } else {
+      changeComposer(next)
+    }
     window.getSelection()?.removeAllRanges()
     clearSelection()
+    setHeldSelection(null)
+  }
+
+  const clearMobileSelection = () => {
+    window.getSelection()?.removeAllRanges()
+    clearSelection()
+    setHeldSelection(null)
   }
 
   const addComment = () => {
     if (!composer?.text.trim()) return
     const id = `${commentIdPrefix}${Date.now().toString(36)}${comments.length}`
-    changeDraft({ ...reviewDraft, comments: [...comments, { id, quote: composer.quote, text: composer.text.trim() }] })
+    const next = { ...reviewDraft, comments: [...comments, { id, quote: composer.quote, text: composer.text.trim() }] }
+    setReviewDraft(next)
     setComposer(null)
+    persist(next, null)
   }
 
   const requestChanges = () => {
     if (composer) addComment()
+    if (mobile) dismissKeyboard()
     resolver.answer([[answerText || REQUEST_CHANGES]])
   }
 
@@ -350,24 +414,22 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile, onOpenPr
         <span className={cn('inline-flex h-5 shrink-0 items-center rounded-full px-2 text-[11px] font-medium', chip.className)}>
           {chip.label}
         </span>
-        {plan?.revision !== undefined && (
+        {plan.revision !== undefined && (
           <span className="shrink-0 font-mono text-[11px] tabular-nums text-(--color-text-subtle)">rev {plan.revision}</span>
         )}
-        {plan && (
-          <span
-            className="hidden shrink-0 font-mono text-[11px] tabular-nums text-(--color-text-subtle) sm:inline"
-            title={`Updated ${formatRelativeDate(plan.updated_at)}`}
-          >
-            {formatCompactRelative(plan.updated_at)}
-          </span>
-        )}
+        <span
+          className="hidden shrink-0 font-mono text-[11px] tabular-nums text-(--color-text-subtle) sm:inline"
+          title={`Updated ${formatRelativeDate(plan.updated_at)}`}
+        >
+          {formatCompactRelative(plan.updated_at)}
+        </span>
         <span className="min-w-0 flex-1" aria-hidden="true" />
         {canEdit && !editing && (
           <ToolbarAction label="Edit plan" onClick={startEditing}>
             <Pencil size={12} aria-hidden="true" />
           </ToolbarAction>
         )}
-        {plan?.workspace_path && onOpenFile && (
+        {plan.workspace_path && onOpenFile && (
           <ToolbarAction label="Open file" tooltip={plan.workspace_path} onClick={() => onOpenFile(plan.workspace_path as string)}>
             <ExternalLink size={12} aria-hidden="true" />
           </ToolbarAction>
@@ -378,15 +440,9 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile, onOpenPr
         {onClearPlan && (
           <ToolbarAction
             label="Clear plan"
-            tooltip={
-              review
-                ? 'The plan is awaiting review.'
-                : live
-                  ? 'The agent is writing the plan.'
-                  : 'Stops using this plan in the session; the file stays.'
-            }
+            tooltip={review ? 'The plan is awaiting review.' : 'Stops using this plan in the session; the file stays.'}
             onClick={onClearPlan}
-            disabled={Boolean(review) || Boolean(live) || !plan}
+            disabled={Boolean(review)}
           >
             <Unlink size={12} aria-hidden="true" />
           </ToolbarAction>
@@ -416,10 +472,10 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile, onOpenPr
           </div>
         </div>
       ) : (
-        <div ref={scrollRef} onScroll={trackFollow} className="min-h-0 flex-1 overflow-y-auto overscroll-contain touch-pan-y">
+        <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain touch-pan-y">
           <div ref={bodyRef} className="relative mx-auto max-w-3xl px-4 py-3">
             <FileRefContext.Provider value={fileOpener}>
-              <MarkdownBlock content={parts.body} sessionId={sessionId ?? undefined} isStreaming={writing && parts.appendix === null} />
+              <MarkdownBlock content={parts.body} sessionId={sessionId ?? undefined} />
               {parts.appendix !== null && (
                 <div className="mt-5 border-t border-(--color-border-subtle) pt-2">
                   <button
@@ -444,20 +500,20 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile, onOpenPr
                     )}
                   </button>
                   <section id={appendixId} ref={appendixRef} hidden={!appendixOpen} aria-label={parts.title} className="pt-1">
-                    <MarkdownBlock content={parts.appendix} sessionId={sessionId ?? undefined} isStreaming={writing} />
+                    <MarkdownBlock content={parts.appendix} sessionId={sessionId ?? undefined} />
                   </section>
                 </div>
               )}
             </FileRefContext.Provider>
-            {selection && review && !composer && <CommentButton selection={selection} onComment={startComment} />}
-            {composer && review && (
+            {selection && review && !composer && !mobile && <CommentButton selection={selection} onComment={() => startComment()} />}
+            {composer && review && !mobile && (
               <CommentComposer
                 anchor={composer.anchor}
                 quote={composer.quote}
                 text={composer.text}
-                onChange={(text) => setComposer({ ...composer, text })}
+                onChange={(text) => changeComposer({ ...composer, text })}
                 onAdd={addComment}
-                onCancel={() => setComposer(null)}
+                onCancel={() => changeComposer(null)}
                 scrollRef={scrollRef}
               />
             )}
@@ -465,9 +521,56 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile, onOpenPr
         </div>
       )}
 
-      {review && (
+      {review && mobile && composer ? (
+        // Mobile: the comment being written docks here, on the keyboard.
+        <div className="shrink-0 border-t border-(--color-border-subtle) bg-(--bg-card) px-3 pt-2.5 pb-safe">
+          <div className="pb-2.5">
+            <CommentComposer
+              docked
+              anchor={null}
+              quote={composer.quote}
+              text={composer.text}
+              onChange={(text) => changeComposer({ ...composer, text })}
+              onAdd={addComment}
+              onCancel={() => changeComposer(null)}
+              scrollRef={scrollRef}
+              textareaRef={commentInputRef}
+            />
+          </div>
+        </div>
+      ) : review && mobile && !editing && heldSelection ? (
+        // Mobile: selected plan text offers Comment here, clear of the
+        // selection handles and the system menu iOS draws over the text.
+        <div className="flex shrink-0 items-center gap-2 border-t border-(--color-border-subtle) bg-(--bg-card) px-3 pt-2.5 pb-safe">
+          <div className="flex w-full items-center gap-2 pb-2.5">
+            <Button type="button" variant="ghost" size="sm" onClick={clearMobileSelection}>
+              Clear
+            </Button>
+            <Button
+              type="button"
+              variant="primary"
+              size="sm"
+              className="flex-1 gap-1.5"
+              // Keep the selection and the hold alive through the tap.
+              onPointerDown={(event) => {
+                event.preventDefault()
+                pressingComment.current = true
+              }}
+              onPointerCancel={() => { pressingComment.current = false }}
+              onClick={() => {
+                pressingComment.current = false
+                startComment(heldSelection)
+              }}
+              aria-label="Comment on selection"
+            >
+              <MessageSquarePlus size={12} aria-hidden="true" />
+              Comment on selection
+            </Button>
+          </div>
+        </div>
+      ) : review && (
         <div className="shrink-0 space-y-2 border-t border-(--color-border-subtle) bg-(--bg-card) px-3 pt-2.5 pb-safe">
-          {comments.length > 0 && (
+          {comments.length > 0 && (!compactFooter || showComments) && (
             <CommentList
               comments={comments}
               onShow={(comment) => showComment(comment.quote)}
@@ -480,14 +583,39 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile, onOpenPr
             value={overall}
             maxLength={PLAN_FEEDBACK_MAX_CHARS}
             onChange={(event) => changeDraft({ ...reviewDraft, overall: event.target.value })}
-            className={cn('max-h-40', comments.length ? 'min-h-10' : 'min-h-16')}
+            className={cn(
+              // While typing on a phone, cap the box to a share of the visible
+              // area so the plan above stays readable.
+              compactFooter ? 'max-h-[calc(var(--app-vh,100svh)*0.25)] min-h-10' : 'max-h-40',
+              !compactFooter && (comments.length ? 'min-h-10' : 'min-h-16'),
+            )}
           />
-          <p className="text-[11px] text-(--color-text-subtle)">Or reply in chat to redirect the agent.</p>
+          {!compactFooter && <p className="text-[11px] text-(--color-text-subtle)">Or reply in chat to redirect the agent.</p>}
           {resolver.error && (
             <p role="alert" className="text-[11px] text-(--color-error)">{resolver.error}</p>
           )}
           <div className="flex flex-wrap items-center justify-end gap-2 pb-2.5">
-            {footerHint && <span className="mr-auto text-[11px] text-(--color-text-subtle)">{footerHint}</span>}
+            {compactFooter && comments.length > 0 ? (
+              <button
+                type="button"
+                aria-expanded={showComments}
+                // Keep focus (and the keyboard) in the feedback box.
+                onPointerDown={(event) => event.preventDefault()}
+                onClick={() => setShowComments((open) => !open)}
+                className="mr-auto inline-flex items-center gap-1 rounded-full border border-(--color-border) px-2 py-0.5 text-[11px] text-(--color-text-2)"
+              >
+                {comments.length} {comments.length === 1 ? 'comment' : 'comments'}
+                <ChevronRight
+                  size={11}
+                  aria-hidden="true"
+                  className={cn('motion-safe:transition-transform', showComments ? '-rotate-90' : 'rotate-90')}
+                />
+              </button>
+            ) : (
+              footerHint && (!compactFooter || tooLong) && (
+                <span className="mr-auto text-[11px] text-(--color-text-subtle)">{footerHint}</span>
+              )
+            )}
             <Button
               type="button"
               variant="default"
@@ -504,7 +632,10 @@ export function PlanTabView({ plan, sessionId, onClearPlan, onOpenFile, onOpenPr
               variant="primary"
               size="sm"
               disabled={resolver.submitting || approveHint !== null}
-              onClick={() => resolver.answer([[APPROVE]])}
+              onClick={() => {
+                if (mobile) dismissKeyboard()
+                resolver.answer([[APPROVE]])
+              }}
             >
               Approve
             </Button>

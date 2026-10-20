@@ -2,7 +2,7 @@ import type React from 'react'
 import { useRef } from 'react'
 import { useWorkspaceSessionsQuery } from '@/queries/useSessionsQuery'
 import { useFlipReorder } from '@/hooks/useFlipReorder'
-import type { SessionResponse, SessionSort } from '@/api/types'
+import type { SessionResponse } from '@/api/types'
 import { DraftSessionRow, SessionRow, ShowMoreRow, useStableSessionHandlers, type MenuPoint } from './SessionRow'
 
 export type { MenuPoint } from './SessionRow'
@@ -17,7 +17,6 @@ export function WorkspaceSessionList({
   runningSessions,
   editingSessionId = null,
   collapsed = false,
-  sort = 'created',
   showDetails = true,
   draftActive = false,
   mobileLongPressActions = false,
@@ -44,8 +43,6 @@ export function WorkspaceSessionList({
   /** The session whose title is being edited in place, if any. */
   editingSessionId?: string | null
   collapsed?: boolean
-  /** List order; pinned sessions are left out (they sit in Pinned). */
-  sort?: SessionSort
   showDetails?: boolean
   /** A new-session draft for this workspace is open: show it on top. */
   draftActive?: boolean
@@ -61,7 +58,7 @@ export function WorkspaceSessionList({
   onSessionPinToggle?: (session: SessionResponse) => void
 }) {
   const multiCheckout = paths !== undefined && paths.length > 1
-  const sessions = useWorkspaceSessionsQuery(multiCheckout ? paths : path, !collapsed, { sort })
+  const sessions = useWorkspaceSessionsQuery(multiCheckout ? paths : path, !collapsed)
   const { hasNextPage, isFetchingNextPage, fetchNextPage } = sessions
   // An older server ignores the multi-checkout filter and sends every
   // workspace's sessions, so keep only the listed checkouts.

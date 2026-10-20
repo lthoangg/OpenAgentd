@@ -323,7 +323,7 @@ function SessionRowView({
               updated_at: null,
             }
             return (
-              <div key={sub.session_id} className={`group/sub flex h-6 items-center rounded-sm pr-1 pointer-coarse:h-11 ${isSubCurrent ? 'bg-(--bg-key)/60' : 'hover:bg-(--bg-key)/35'}`}>
+              <div key={sub.session_id} className={`group/sub flex h-6 items-center rounded-sm pr-1 pointer-coarse:h-(--spacing-list-row) ${isSubCurrent ? 'bg-(--bg-key)/60' : 'hover:bg-(--bg-key)/35'}`}>
                 <Tooltip className="min-w-0 flex-1">
                 <TooltipTrigger
                   className="w-full min-w-0"
@@ -340,7 +340,7 @@ function SessionRowView({
                       onClick={(e) => {
                         onSessionSelect(subSessionPayload, path, e)
                       }}
-                      className={`flex h-6 w-full min-w-0 items-center gap-1.5 rounded-sm px-1.5 text-left text-xs transition-colors pointer-coarse:h-11 ${
+                      className={`flex h-6 w-full min-w-0 items-center gap-1.5 rounded-sm px-1.5 text-left text-xs transition-colors pointer-coarse:h-(--spacing-list-row) ${
                         isSubCurrent
                           ? 'text-(--color-text) font-semibold'
                           : 'text-(--color-text-2) hover:text-(--color-text)'
@@ -427,7 +427,7 @@ export function ShowMoreRow({ loading, onLoadMore }: { loading: boolean; onLoadM
       type="button"
       onClick={() => { if (!loading) onLoadMore() }}
       disabled={loading}
-      className="flex h-6 w-full items-center gap-1.5 rounded-sm px-1.5 text-left text-[11px] text-(--color-text-muted) transition-colors hover:bg-(--bg-key)/35 hover:text-(--color-text) disabled:cursor-default pointer-coarse:h-11"
+      className="flex h-6 w-full items-center gap-1.5 rounded-sm px-1.5 text-left text-[11px] text-(--color-text-muted) transition-colors hover:bg-(--bg-key)/35 hover:text-(--color-text) disabled:cursor-default pointer-coarse:h-(--spacing-list-row)"
       aria-label={loading ? 'Loading more sessions' : 'Show more sessions'}
     >
       {/* The status-mark slot, so the label lines up with the titles. */}

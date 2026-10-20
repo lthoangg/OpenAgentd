@@ -7,7 +7,7 @@ body:
     attributes:
       label: Where is it?
       description: A link, a file path, or the screen in the app.
-      placeholder: https://github.com/lthoangg/OpenAgentd/blob/main/README.md#cli-server
+      placeholder: https://github.com/lthoangg/openagentd/blob/main/README.md#cli-server
     validations:
       required: true
 

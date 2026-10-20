@@ -1,8 +1,0 @@
-{
-  "description": "Hand-written query -> expected source file pairs for benchmarking search over the retained documents/. Expected paths are relative to documents/; a hit means at least one appears in the result path list.",
-  "cases": [
-    {"query": "canonical catalogue of every user-visible OpenAgentd feature", "expected_paths": ["docs/features.md"]},
-    {"query": "which OpenAgentd features shipped in a particular release", "expected_paths": ["docs/features.md"]},
-    {"query": "repository documentation policy and when to add a feature entry", "expected_paths": ["AGENTS.md"]}
-  ]
-}

@@ -20,8 +20,10 @@ It reads the database and config files of the end-of-life Python backend in
   providers, built-in tools, MCP client, memory pages, PTY terminal, and
   the QuickJS plugin host.
 - `cli`: the `agentd` binary (`server serve` is the sidecar entry point).
-- `contract/`: data shared with other surfaces. `sse_events.json` lists
-  every SSE event type per stream. Rust checks each published event against
+- `crates/*/data/`: data each crate compiles in (tool definitions, prompts,
+  the provider catalog, built-in skills and commands, MIME types).
+  `crates/agent/data/sse_events.json` lists every SSE event type per stream
+  and is shared with the web client. Rust checks each published event against
   it (`agent/src/events.rs`; debug builds panic), and
   `web/src/__tests__/api/sse-contract.test.ts` checks the web unions. A new
   event needs the JSON entry, the Rust producer, and the web type/handler.

@@ -4,7 +4,7 @@
  * Connection.
  */
 import { useState } from 'react'
-import { ExternalLink, MessageSquare, Users, type LucideIcon } from 'lucide-react'
+import { ExternalLink, Globe, MessageSquare, Users, type LucideIcon } from 'lucide-react'
 
 import { ReleaseNotesButton } from '@/components/ReleaseNotesDialog'
 import { SettingsPage } from '@/components/settings/SettingsPage'
@@ -21,6 +21,9 @@ import { useHealthQuery } from '@/queries'
 
 // ── Identity ──────────────────────────────────────────────────────────────
 
+const TAGLINE = 'The coding agent that shows its work'
+const WEBSITE_URL = 'https://openagentd.dev'
+
 function IdentityCard({ version }: { version?: string }) {
   return (
     <SectionCard>
@@ -29,7 +32,7 @@ function IdentityCard({ version }: { version?: string }) {
         <div className="min-w-0 flex-1">
           <Wordmark height={20} title="OpenAgentd" className="block text-(--color-text)" />
           <p className={cn('mt-0.5 font-mono', TEXT.hint)}>
-            {version ? `On-machine AI assistant · v${version}` : 'On-machine AI assistant'}
+            {version ? `${TAGLINE} · v${version}` : TAGLINE}
           </p>
           {version && <ReleaseNotesButton className="mt-2" version={version} />}
         </div>
@@ -201,6 +204,13 @@ export function AboutSettingsPage() {
           <p className={cn('mt-1', TEXT.hint)}>Ask questions, share what you built, and follow along.</p>
         </div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <CommunityLink
+            href={WEBSITE_URL}
+            icon={Globe}
+            tint="bg-(--color-accent)/10 text-(--color-accent)"
+            title="Website"
+            body="Features, downloads, and setup guides at openagentd.dev."
+          />
           <CommunityLink
             href="https://discord.gg/cz6GQHQUMg"
             icon={MessageSquare}

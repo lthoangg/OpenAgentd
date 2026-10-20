@@ -10,19 +10,18 @@ afterEach(() => {
 const stored = () => JSON.parse(localStorage.getItem(SIDEBAR_VIEW_STORAGE_KEY) ?? '{}').state
 
 describe('useSidebarViewStore', () => {
-  it('starts grouped by project, newest activity first, with details shown', () => {
+  it('starts grouped by project, with details shown', () => {
     const state = useSidebarViewStore.getState()
-    expect([state.groupBy, state.sortBy, state.showDetails]).toEqual(['project', 'activity', true])
+    expect([state.groupBy, state.showDetails]).toEqual(['project', true])
   })
 
   it('remembers the view options', () => {
     const state = useSidebarViewStore.getState()
     state.setGroupBy('date')
-    state.setSortBy('created')
     state.setShowDetails(false)
     state.toggleGroupCollapsed('today')
 
-    expect(stored()).toEqual({ groupBy: 'date', sortBy: 'created', showDetails: false, pinnedCollapsed: false, collapsedGroups: ['today'], groupFilter: null })
+    expect(stored()).toEqual({ groupBy: 'date', showDetails: false, pinnedCollapsed: false, collapsedGroups: ['today'], groupFilter: null })
     useSidebarViewStore.getState().toggleGroupCollapsed('today')
     expect(useSidebarViewStore.getState().collapsedGroups).toEqual([])
   })
@@ -43,19 +42,20 @@ describe('useSidebarViewStore', () => {
     useSidebarViewStore.getState().reset()
 
     const next = useSidebarViewStore.getState()
-    expect([next.groupBy, next.sortBy, next.showDetails, next.pinnedCollapsed]).toEqual(['project', 'activity', true, true])
+    expect([next.groupBy, next.showDetails, next.pinnedCollapsed]).toEqual(['project', true, true])
   })
 
-  it('reads unknown stored values as the defaults', async () => {
+  it('reads unknown stored values as the defaults and drops the old sort', async () => {
     localStorage.setItem(SIDEBAR_VIEW_STORAGE_KEY, JSON.stringify({
-      state: { groupBy: 'environment', sortBy: 'name', showDetails: 'yes', collapsedGroups: [1, 'older'], groupFilter: 7 },
+      state: { groupBy: 'environment', sortBy: 'created', showDetails: 'yes', collapsedGroups: [1, 'older'], groupFilter: 7 },
       version: 0,
     }))
 
     await useSidebarViewStore.persist.rehydrate()
 
     const state = useSidebarViewStore.getState()
-    expect([state.groupBy, state.sortBy, state.showDetails]).toEqual(['project', 'activity', true])
+    expect([state.groupBy, state.showDetails]).toEqual(['project', true])
+    expect('sortBy' in state).toBe(false)
     expect(state.collapsedGroups).toEqual(['older'])
     expect(state.groupFilter).toBeNull()
   })

@@ -51,7 +51,6 @@ function setup({
     <QueryClientProvider client={queryClient}>
       <FlatSessionGroups
         groupBy={groupBy}
-        sortBy="activity"
         workspaceName={(path) => (path === '/home/user' ? 'Chat' : path.split('/').pop() ?? path)}
         draftWorkspace={draftWorkspace}
         {...handlers}

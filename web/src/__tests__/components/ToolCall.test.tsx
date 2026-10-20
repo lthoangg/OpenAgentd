@@ -777,13 +777,15 @@ describe("ToolCall — plan display", () => {
     expect(getHeader("Plan: Editing plan…")).toBeTruthy()
   })
 
-  it("opens the Plan tab to watch the plan being written", () => {
+  it("opens a saved plan in the Plan tab, with no link while the call runs", () => {
     const opened: Event[] = []
     const onOpen = (event: Event) => opened.push(event)
     window.addEventListener(APP_EVENTS.openPlan, onOpen)
-    render(<ToolCall name="plan" args='{"action":"write","content":"# Ship' done={false} />)
+    const { rerender } = render(<ToolCall name="plan" args='{"action":"write","content":"# Ship' done={false} />)
+    expect(screen.queryByRole("button", { name: /plan$/ })).toBeNull()
 
-    fireEvent.click(screen.getByRole("button", { name: "Watch plan" }))
+    rerender(<ToolCall name="plan" args='{"action":"write","content":"# Ship"}' done result="Plan saved as revision 1 (1 lines) at plan.md." />)
+    fireEvent.click(screen.getByRole("button", { name: "View plan" }))
     expect(opened).toHaveLength(1)
     window.removeEventListener(APP_EVENTS.openPlan, onOpen)
   })

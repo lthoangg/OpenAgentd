@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, type RefObject } from 'react'
 
 import { getPlatform } from '@/hooks/use-platform'
 import { MOBILE_QUERY } from '@/hooks/use-mobile'
@@ -34,6 +34,61 @@ export function dismissKeyboard(): void {
   // Drop the transition flag once the glide is done so a subsequent keyboard
   // open stays frame-locked. (Opening also clears it eagerly in the hook.)
   window.setTimeout(() => root.removeAttribute('data-vp-anim'), 320)
+}
+
+/** Vertical travel (px) that turns a touch into a drag. */
+const DRAG_DISMISS_PX = 12
+const EDITABLE = 'input, textarea, select, [contenteditable="true"]'
+const INTERACTIVE = `${EDITABLE}, button, a[href], label, summary, [role="button"], [role="radio"], [role="checkbox"], [role="option"], [role="menuitem"], [role="tab"]`
+
+/**
+ * Dismiss the soft keyboard from a scrolling surface, the way native chat
+ * apps do: dragging it, or tapping its plain content, while the keyboard is
+ * up. Touches that start in a text field keep the keyboard (an inline answer
+ * box inside the transcript), and taps on controls are left to the control.
+ */
+export function useDismissKeyboardOnTouch(ref: RefObject<HTMLElement | null>) {
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    let startY: number | null = null
+    let moved = false
+    const keyboardUp = () => document.documentElement.hasAttribute('data-keyboard-open')
+
+    const onStart = (event: TouchEvent) => {
+      const target = event.target instanceof Element ? event.target : null
+      if (!keyboardUp() || event.touches.length !== 1 || target?.closest(EDITABLE)) {
+        startY = null
+        return
+      }
+      startY = event.touches[0]?.clientY ?? null
+      moved = false
+    }
+    const onMove = (event: TouchEvent) => {
+      if (startY === null || moved) return
+      const y = event.touches[0]?.clientY
+      if (y === undefined || Math.abs(y - startY) < DRAG_DISMISS_PX) return
+      moved = true
+      dismissKeyboard()
+    }
+    const onEnd = (event: TouchEvent) => {
+      const tapped = startY !== null && !moved
+      startY = null
+      if (!tapped || !keyboardUp()) return
+      const target = event.target instanceof Element ? event.target : null
+      if (target?.closest(INTERACTIVE)) return
+      dismissKeyboard()
+    }
+
+    el.addEventListener('touchstart', onStart, { passive: true })
+    el.addEventListener('touchmove', onMove, { passive: true })
+    el.addEventListener('touchend', onEnd, { passive: true })
+    return () => {
+      el.removeEventListener('touchstart', onStart)
+      el.removeEventListener('touchmove', onMove)
+      el.removeEventListener('touchend', onEnd)
+    }
+  }, [ref])
 }
 
 /**

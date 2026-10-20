@@ -24,9 +24,9 @@ export function preloadConnectedApp(client: QueryClient): void {
     staleTime: 30_000,
   })
   void client.prefetchInfiniteQuery({
-    queryKey: queryKeys.session.sessions.workspace('__all_coding__'),
+    queryKey: queryKeys.session.sessions.workspace('__all_coding__', 'activity'),
     queryFn: ({ pageParam }: { pageParam: string | null }) =>
-      listSessions(pageParam, SESSION_PAGE_SIZE),
+      listSessions(pageParam, SESSION_PAGE_SIZE, { sort: 'activity' }),
     initialPageParam: null as string | null,
   })
 }

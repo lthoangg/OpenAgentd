@@ -110,7 +110,9 @@ import {
   addExpandedPaths,
   buildWorktreeSourceByDirectory,
   groupSessionsByWorkspace,
+  orderWorkspacePaths,
   repositoryCheckouts,
+  sessionActivityTime,
   sourceWorkspacePaths,
   toggleExpandedPath,
 } from './Sidebar.helpers'
@@ -237,7 +239,6 @@ export function Sidebar({
   const updateSessionTitle = useUpdateSessionTitleMutation()
   const setSessionPinned = useSetSessionPinnedMutation()
   const groupBy = useSidebarViewStore((s) => s.groupBy)
-  const sortBy = useSidebarViewStore((s) => s.sortBy)
   const showDetails = useSidebarViewStore((s) => s.showDetails)
   const groupFilter = useSidebarViewStore((s) => s.groupFilter)
   const setGroupFilter = useSidebarViewStore((s) => s.setGroupFilter)
@@ -633,11 +634,18 @@ export function Sidebar({
   }
 
   const deletedWorktreeSet = removedWorktreePaths
+  // Chat, then repositories in a workspace group, then the rest; each part
+  // most recently active first.
   const sourceWorkspaces = [
     ...(chatWorkspace ? [chatWorkspace.path] : []),
-    ...sourceWorkspacePaths(workspaceTree, deletedWorktreeSet)
-      .filter((path) => !isChatPath(path))
-      .filter((path) => !activeGroupFilter || (workspaceByPath.get(path)?.group_ids ?? []).includes(activeGroupFilter.id)),
+    ...orderWorkspacePaths(
+      sourceWorkspacePaths(workspaceTree, deletedWorktreeSet)
+        .filter((path) => !isChatPath(path))
+        .filter((path) => !activeGroupFilter || (workspaceByPath.get(path)?.group_ids ?? []).includes(activeGroupFilter.id)),
+      workspaceByPath,
+      workspaceGroups.map((group) => group.id),
+      sessionsByWorkspace,
+    ),
   ]
   const activeWorktreeSource = activeWorkspace ? worktreeSourceByDirectory.get(activeWorkspace) : null
 
@@ -916,7 +924,6 @@ export function Sidebar({
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden pb-2">
         <FlatSessionGroups
           groupBy={groupBy}
-          sortBy={sortBy}
           currentSessionId={currentSessionId}
           workspaceName={workspaceDisplayName}
           draftWorkspace={draftWorkspace}
@@ -975,7 +982,7 @@ export function Sidebar({
           const sourceRunningSessions = checkouts.listPaths
             .flatMap((checkout) => sessionsByWorkspace.get(checkout) ?? [])
             .filter((s) => s.running === true)
-            .sort((a, b) => (b.created_at ?? '').localeCompare(a.created_at ?? ''))
+            .sort((a, b) => (sessionActivityTime(b) ?? '').localeCompare(sessionActivityTime(a) ?? ''))
           const sourceHasRunningSession = sourceRunningSessions.length > 0
           const checkoutLabel = selectedWorktree?.name ?? (checkouts.selected ? 'main worktree' : 'all')
 
@@ -1150,7 +1157,6 @@ export function Sidebar({
                     currentSessionId={currentSessionId}
                     runningSessions={sourceRunningSessions}
                     collapsed={!sourceIsExpanded}
-                    sort={sortBy}
                     showDetails={showDetails}
                     draftActive={draftWorkspace !== null && checkouts.listPaths.includes(draftWorkspace)}
                     mobileLongPressActions={mobileLongPressActions}

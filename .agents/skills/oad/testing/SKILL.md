@@ -31,7 +31,7 @@ Crates are named `appv3-<dir>` (`appv3-api`, `appv3-agent`, `appv3-tools`, …);
 integration files run with `--test <file_stem>`. `make verify` runs the portable
 set (v3, scripts, web, docs, version); `make verify-native` runs the three native targets.
 API or SSE changes need both backend and web checks, and event types must match
-`appv3/contract/sse_events.json`.
+`appv3/crates/agent/data/sse_events.json`.
 
 ## 3. Placement
 

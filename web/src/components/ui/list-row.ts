@@ -1,5 +1,5 @@
 /**
- * Sidebar and dock list rows (DESIGN.md → list-row): 28px (44px on touch,
+ * Sidebar and dock list rows (DESIGN.md → list-row): 28px (36px on touch,
  * via ``--spacing-list-row``) ``rounded-sm`` rows in ``text-xs``, a keycap
  * wash on hover and a deeper one on the current row.
  */

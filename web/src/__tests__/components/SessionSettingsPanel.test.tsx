@@ -111,6 +111,24 @@ describe('SessionSettingsPanel — keyboard entry', () => {
     )
   })
 
+  it('leaves the model field unfocused on touch so the keyboard stays down', async () => {
+    const original = window.matchMedia
+    window.matchMedia = ((query: string) => ({
+      matches: false,
+      media: query,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    })) as unknown as typeof window.matchMedia
+    try {
+      renderPanel()
+      await screen.findByRole('combobox', { name: 'Search session model' })
+      await act(async () => { await new Promise((r) => setTimeout(r, 80)) })
+      expect(document.activeElement?.getAttribute('aria-label')).not.toBe('Search session model')
+    } finally {
+      window.matchMedia = original
+    }
+  })
+
   it('does not cover the panel with an open option list on entry', async () => {
     renderPanel()
 

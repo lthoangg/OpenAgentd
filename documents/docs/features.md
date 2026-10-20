@@ -9,12 +9,13 @@ updated: 2026-10-20
 
 The canonical source of truth for shipped user-visible capabilities. Every feature lists the
 release that introduced it (where known). When you ship something new, **add it here first** — README and external copy should cite this page.
+For a guided tour of these features, see [openagentd.dev/features](https://openagentd.dev/features/).
 
 > **Headline.** OpenAgentd is a coding-first desktop workspace for a local coding agent — a
 > double-clickable app that runs an agent on your machine, with a
-> real UI to watch every step. Open source (Apache 2.0). 18 providers. Your keys.
+> real UI to watch every step. Open source (Apache 2.0). 19+ providers. Your keys.
 
-**Latest release:** v3.21.0 · October 20, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.21.0)
+**Latest release:** v3.22.0 · October 20, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v3.22.0)
 
 ---
 
@@ -180,6 +181,11 @@ run from the terminal (the native Rust binary since v3.0.0).
   fields. Server forms test and save from a footer row instead of buttons
   squeezed beside inputs. On phones Settings opens on a grouped list of
   sections; each opens full-screen with Back.
+- **Links to openagentd.dev** `[v3.22.0]` — **Settings → About OpenAgentd**
+  has a **Website** card that opens openagentd.dev, and its tagline now reads
+  "The coding agent that shows its work". The desktop **Help** menu starts
+  with **OpenAgentd Website**, and the macOS About panel links to
+  openagentd.dev instead of GitHub.
 - **Settings split into focused pages** `[v3.21.0]` — the long **Automation** page with
   collapsible groups is now four plain pages: **Workspaces** (workspace
   messages and groups), **Chat titles**, **Context** (summarization and idle
@@ -272,7 +278,7 @@ run from the terminal (the native Rust binary since v3.0.0).
   nothing is typed `[v3.21.0]`. → opens the highlighted list and ← on an
   empty query, Backspace, or Escape steps back one level, landing on the
   row that opened it `[v3.21.0]`.
-- **Plan and Code interaction modes** `[v2.14.0, updated v2.15.0, v3.0.0, v3.2.0, v3.8.0, v3.21.0]` — the expanded composer switches an
+- **Plan and Code interaction modes** `[v2.14.0, updated v2.15.0, v3.0.0, v3.2.0, v3.8.0, v3.22.0]` — the expanded composer switches an
   existing session between Code (default) and Plan without starting a new
   chat; `Tab` also toggles mode from the composer. Mode transitions are preserved via
   append-only hidden context notes in session history. In Plan mode, the agent explores
@@ -294,12 +300,9 @@ run from the terminal (the native Rust binary since v3.0.0).
   the plan; **Open Plan** in the command palette (⌘K) does the same whenever
   the session has a plan. Replying in chat instead supersedes the review.
   Older `<proposed_plan>` answers still render as read-only cards.
-  The Plan tab shows the plan being written in place `[v3.21.0]`: a rewrite
-  streams in (following the bottom unless you scroll up) and an edit changes
-  the plan where it applies, under a **Writing…** or **Editing…** chip, with
-  **Edit** and **Clear** held until the plan is saved. In Plan mode the tab
-  opens by itself on desktop when the agent starts writing; the transcript's
-  `plan` row has **Watch plan** (**View plan** once saved) to open it.
+  A saved `plan` call in the transcript has **View plan**, which opens the
+  Plan tab `[v3.22.0]`. The tab shows the plan once it is saved; v3.21.0
+  streamed it in as it was written, which `[v3.22.0]` removes.
   Switching mode while a turn is running no longer stops it: the switch is
   queued and applied when that turn closes, so it binds from the next turn and
   any message queued behind it. The toggle shows the queued mode in italics
@@ -587,14 +590,16 @@ run from the terminal (the native Rust binary since v3.0.0).
   are counted as they wrap, so the fold follows the chat width: opening the
   sidebar or the dock re-checks it. Expanding and folding animate, and the
   whole prompt stays selectable and searchable.
-- **Mermaid diagrams in agent responses and plans** `[v1.121.0, v1.123.0, v3.5.0, v3.21.0]` —
+- **Mermaid diagrams in agent responses and plans** `[v1.121.0, v1.123.0, v3.5.0, v3.21.0, v3.22.0]` —
   a `mermaid` code fence renders as a diagram as soon as its closing fence
   arrives, with **Diagram** and **Code** views and copy. Since v3.21.0 it is
   drawn by [Pele](https://pele.run), a small, dependency-free Mermaid renderer
   that loads on the first diagram (startup size is unchanged). Diagrams use the
   app's colors in light and dark themes, adapt their layout to narrow screens,
   and can be zoomed when they have to shrink. Diagram links and images are
-  off, and the drawn SVG is sanitized before it is shown. A diagram that
+  off, and the drawn SVG is sanitized before it is shown. Since v3.22.0 labels
+  match the reply text size, and a **Full screen** button redraws the diagram
+  for the whole window with zoom always on (Esc closes it). A diagram that
   can't be drawn shows its code with a one-line reason. (v3.5.0–v3.20.0
   showed `mermaid` fences as plain code.) For richer drawings, an agent can
   still write an HTML/SVG file and open it in the Preview tab.
@@ -645,6 +650,21 @@ run from the terminal (the native Rust binary since v3.0.0).
 - **iOS text size** `[v3.0.0]` — the iOS app follows the system text size
   (Settings or Control Center) while it runs: larger settings scale the text
   and spacing together, up to 125%. Smaller settings keep the design size.
+- **Typing on a phone** `[v3.22.0]` — every text field works with the
+  keyboard up:
+  - Plan review on a phone: selecting plan text offers **Comment on selection**
+    in the footer, the comment box docks on the keyboard, saved comments fold
+    into a chip while you type, and a half-written comment survives closing
+    the sheet. Request changes and Approve stay in reach.
+  - The chat re-pins to the newest message when the keyboard opens, Send and
+    Steer keep the keyboard up, and dragging or tapping the transcript puts
+    it away.
+  - Menus, the model list, the palette and dialogs open in the space above
+    the keyboard; sheets no longer raise it on open.
+  - Fields for ids, paths, URLs and keys skip autocorrect and
+    auto-capitalise, keyboards show Search / Next / Done, scheduler Return
+    moves to the next field, and the scheduler time uses the iOS picker.
+  - Denser touch layout: 36px list rows and tighter line height.
 - **A calmer transcript** `[v3.0.0]` — the chat reads as prompts and answers:
   - Every prompt you wrote has Edit (rewind to it and put it back in the
     composer; `/redo` brings the undone turns back), reachable from the
@@ -824,9 +844,10 @@ run from the terminal (the native Rust binary since v3.0.0).
   TLS). See [Install the Android app](../../mobile/INSTALL-ANDROID.md).
 - **LAN access key for external clients** `[v1.43.0, v1.103.0, v2.4.0]` — `agentd server start --host 0.0.0.0 --key`
   stores the CLI server's bind address, port, and bearer key in `server.yaml`, separate from the desktop builtin sidecar's ephemeral token while agents, providers, sessions, and other settings remain shared. Restart and upgrade preserve that key without exposing it in process arguments. OpenAgentd-managed launchers refuse non-loopback binds without a configured key `[v1.101.0]`.
-- **Desktop server connection manager** `[v1.43.4, v1.99.8, v1.104.0]` — the desktop **Server connection** dialog switches the current window between the builtin sidecar and saved external servers, normalizes pasted `/api` URLs, and preserves other open windows' backend choices. Typed servers now require a successful health and access-key test before they can be named, saved, and connected. Saved LAN access keys are scoped per backend origin and stored in the native OS credential store on installed desktop/mobile shells; browser development keeps the per-origin localStorage fallback. Remembered external servers reconnect on app launch with sidecar fallback, while the desktop window opens immediately as backend startup continues asynchronously `[v1.57.1]`.
+- **Desktop server connection manager** `[v1.43.4, v1.99.8, v1.104.0]` — the desktop **Server connection** dialog switches the current window between the builtin sidecar and saved external servers, normalizes pasted `/api` URLs, and preserves other open windows' backend choices. Typed servers now require a successful health and access-key test before they can be named, saved, and connected. Saved LAN access keys are scoped per backend origin and stored in the native OS credential store on mobile; browser development keeps the per-origin localStorage fallback. Remembered external servers reconnect on app launch with sidecar fallback, while the desktop window opens immediately as backend startup continues asynchronously `[v1.57.1]`.
+  The desktop keeps them in `access-keys.json`, a file only your user can read, in its app config folder, instead of the OS credential store `[v3.22.0]`: macOS ties a keychain item to the signing Team ID of the app that saved it, which the unsigned desktop app does not have, so it asked for keychain access after every update. Keys saved in the keychain by earlier versions are not carried over; enter them again in the Server connection dialog.
   - **Reload after switching backend servers** `[v1.98.1]` — after connecting a desktop window to a different saved or typed external server, the webview reloads so stale frontend state is discarded and the window comes back against the newly selected backend cleanly. Reconnecting to the already active backend does not reload.
-- **Desktop network access** `[v3.15.0]` — a **Network access** switch in desktop **Settings → Network access** (and the **Backend connection** dialog) lets phones and other computers on the LAN connect to the builtin backend without installing the CLI. When it is on, the builtin sidecar also listens on `0.0.0.0:4082`. If 4082 is taken, it uses the next free port and the dialog says so. The port goes back to 4082 once it is free again. Every client needs the access key except `/api/health/*`. The desktop generates the key, keeps it in the OS credential store, and can show, copy, regenerate, or replace it with your own (16+ characters). The listener turns on and off live, with no backend restart and without stopping running turns. Turning it off or changing the key immediately disconnects devices using the old key, including open event streams and terminals. The setting is re-applied whenever the builtin backend restarts, and network access ends when the app quits. Traffic is plain HTTP. The Windows installer adds a firewall rule for the builtin backend on Private networks only, so there is no admin prompt; on a network marked Public the port stays closed. When devices cannot connect, the dialog shows a per-platform firewall hint: the Private network profile on Windows, a `ufw`/`firewall-cmd` command on Linux, and the firewall setting on macOS. On Linux the key needs a Secret Service keychain (GNOME Keyring, KWallet, or KeePassXC); without one, the error says what to install. `[v3.16.0]` While network access is on, **Show QR** displays a code with the LAN addresses and the access key. Scanning it with a phone camera opens the OpenAgentd mobile app's **Backend connection** dialog with the first reachable address and the key filled in, and tests the connection; the phone connects only after you tap **Save & Connect**. The code hides when the key changes or network access turns off.
+- **Desktop network access** `[v3.15.0]` — a **Network access** switch in desktop **Settings → Network access** (and the **Backend connection** dialog) lets phones and other computers on the LAN connect to the builtin backend without installing the CLI. When it is on, the builtin sidecar also listens on `0.0.0.0:4082`. If 4082 is taken, it uses the next free port and the dialog says so. The port goes back to 4082 once it is free again. Every client needs the access key except `/api/health/*`. The desktop generates the key, keeps it in a file only your user can read (`network-access-key` in its app config folder; before v3.22.0 it was in the OS credential store, so devices paired earlier need the new key), and can show, copy, regenerate, or replace it with your own (16+ characters). The listener turns on and off live, with no backend restart and without stopping running turns. Turning it off or changing the key immediately disconnects devices using the old key, including open event streams and terminals. The setting is re-applied whenever the builtin backend restarts, and network access ends when the app quits. Traffic is plain HTTP. The Windows installer adds a firewall rule for the builtin backend on Private networks only, so there is no admin prompt; on a network marked Public the port stays closed. When devices cannot connect, the dialog shows a per-platform firewall hint: the Private network profile on Windows, a `ufw`/`firewall-cmd` command on Linux, and the firewall setting on macOS. `[v3.16.0]` While network access is on, **Show QR** displays a code with the LAN addresses and the access key. Scanning it with a phone camera opens the OpenAgentd mobile app's **Backend connection** dialog with the first reachable address and the key filled in, and tests the connection; the phone connects only after you tap **Save & Connect**. The code hides when the key changes or network access turns off.
 
 ---
 
@@ -1178,8 +1199,9 @@ agent against it.
   Since `[v3.18.0]` the header's **View options** menu groups sessions by
   **Project** (the folder tree, the default), **Status** (Needs you · Working ·
   Recent), **Date** (Today · Yesterday · Previous 7 days · Previous 30 days ·
-  Older) or **None**, sorts them by **Recent activity** (the default) or
-  **Created**, and can hide row details (age, worktree tag, workspace name).
+  Older) or **None**, and can hide row details (age, worktree tag, workspace
+  name). Since `[v3.22.0]` every list is in **recent activity** order (the
+  **Sort by → Created** choice is gone) and Date groups by last activity.
   The choice is kept per device. Outside Project mode the list is one flat list
   across workspaces, each row naming its workspace, and the header gains a
   **New session** button; on phones that button is there in every mode.
@@ -1190,6 +1212,9 @@ agent against it.
   a rename or a model switch: a session moves to the top when a turn starts or
   finishes, sliding into place rather than jumping, and the row's age keeps
   counting while the app is open.
+  Since `[v3.22.0]` Project mode orders repositories too: Chat, then those in
+  a workspace group (clustered by group, in the groups' order), then the rest,
+  each part most recently active first.
 - **Pinned sessions** `[v3.18.0]` — **Pin** (a row action left of Edit on
   desktop `[v3.19.0]`, first in a session's context menu, or in the long-press
   sheet on mobile) moves a top-level session into a **Pinned** section at
@@ -1198,7 +1223,7 @@ agent against it.
   the mobile app, and pinning does not change a session's place in Recent
   activity. **Unpin** puts it back in its list. The section folds and hides
   when nothing is pinned.
-- **New-session screen** `[v3.18.0, updated v3.20.0]` — **New session** (the folder's **+**,
+- **New-session screen** `[v3.18.0, updated v3.20.0, v3.22.0]` — **New session** (the folder's **+**,
   `⌘N` / `Ctrl+N`, the palette, `/new`) opens a draft at `/?workspace=<path>`
   instead of creating an empty session: nothing is saved until the first
   message, which creates the session and swaps the URL for its id, so an
@@ -1211,7 +1236,8 @@ agent against it.
   middle of the screen; on phones it sits at the bottom. *(The v3.18.0 New
   session composer setting was removed in v3.19.0.)* Sending the first message
   carries the screen into the chat: the centered composer glides to the bottom
-  while the transcript fades in (instant with reduced motion). Opening a folder registers it in the sidebar
+  while the transcript fades in (instant with reduced motion), then collapses
+  once it lands, as after any other send `[v3.22.0]`. Opening a folder registers it in the sidebar
   right away, and a session that the first message creates in a new folder
   adds that folder to the tree. The Code / Plan toggle works before the
   session exists: the first message starts the session in the picked mode, and
@@ -2069,8 +2095,8 @@ Desktop is primary. CLI / server is the developer path.
   (still with reduced motion).
 - **macOS desktop** `[since v1.0]` — Homebrew cask
   (`brew install --cask lthoangg/tap/openagentd`) or `.dmg` with bundled
-  `install.sh` (signs locally). Installs, cask upgrades and in-app updates
-  sign with your Apple Development identity if you have one, else an
+  `install.sh`. Until v3.21.0, installs and cask upgrades
+  signed with your Apple Development identity if you have one, else an
   "OpenAgentd Local Signer" identity kept in its own keychain
   (`openagentd-signing.keychain-db`), so signing never asks for a password
   `[v3.4.0]`. Earlier builds kept that identity in the login keychain, where
@@ -2079,6 +2105,13 @@ Desktop is primary. CLI / server is the developer path.
   update signs ad hoc instead of failing `[v3.6.0]`; v3.4.0–v3.5.0 in-app
   updates stopped there, so those installs update with `install.sh` or
   `brew upgrade --cask`.
+  Since v3.22.0 nothing on your machine signs the app: CI signs it once
+  (ad hoc, with a requirement that stays the same across releases, so
+  folder-access grants survive updates), the DMG and the updater archive
+  carry that same app, and `install.sh` and the cask only remove the
+  download quarantine flag. In-app updates install the archive exactly as
+  published, check its signature before stopping the backend, log a failed
+  install and keep the running version working.
 - **Linux desktop** `[since v1.0]` — AppImage (`chmod +x`) or `.deb` for
   Debian/Ubuntu.
 - **Windows desktop** `[v1.106.0]` — native x64 `.msi` installer with the

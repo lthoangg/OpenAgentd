@@ -5,7 +5,7 @@ on:
     branches: [main]
     paths:
       - "web/**"
-      - "appv3/contract/**"
+      - "appv3/crates/agent/data/sse_events.json"
       - "Makefile"
       - "desktop/src-tauri/tauri*.conf.json"
       - "desktop/src-tauri/Cargo.toml"
@@ -17,7 +17,7 @@ on:
     branches: [main]
     paths:
       - "web/**"
-      - "appv3/contract/**"
+      - "appv3/crates/agent/data/sse_events.json"
       - "Makefile"
       - "desktop/src-tauri/tauri*.conf.json"
       - "desktop/src-tauri/Cargo.toml"

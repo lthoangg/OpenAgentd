@@ -12,8 +12,9 @@ import { DOCK_ROW_ACTION_CLASS, dockTabCloseClass } from '@/components/Workspace
 const css = readFileSync(fileURLToPath(new URL('../../index.css', import.meta.url)), 'utf8')
 
 describe('coarse-pointer touch targets', () => {
-  it('grows the shared list row to 44px on touch', () => {
-    expect(css).toMatch(/@media \(pointer: coarse\)\s*\{\s*:root\s*\{\s*--spacing-list-row:\s*2\.75rem;/)
+  it('sets the shared list row to 36px on touch, and tightens line height', () => {
+    expect(css).toMatch(/@media \(pointer: coarse\)\s*\{\s*:root\s*\{\s*--spacing-list-row:\s*2\.25rem;\s*--leading-relaxed:\s*1\.5;/)
+    expect(css).toMatch(/@media \(pointer: coarse\)\s*\{[^}]*\}\s*\.oa-prose\s*\{\s*line-height:\s*1\.6;/)
   })
 
   it('grows dock row actions and the tab close control on touch', () => {

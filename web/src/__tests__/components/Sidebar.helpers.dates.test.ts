@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'bun:test'
 import type { SessionResponse } from '@/api/types'
-import { groupSessionsByDate, groupSessionsByStatus } from '@/components/Sidebar.helpers'
+import { groupSessionsByDate, groupSessionsByStatus, orderWorkspacePaths } from '@/components/Sidebar.helpers'
+import type { CodingWorkspaceTreeRepository } from '@/api/types'
 
 const session = (id: string, fields: Partial<SessionResponse> = {}): SessionResponse => ({
   id,
@@ -28,7 +29,7 @@ describe('groupSessionsByDate', () => {
       session('older', { last_message_at: local(2026, 9, 18, 23, 59) }),
       session('no-time'),
     ]
-    const groups = groupSessionsByDate(sessions, 'activity', now)
+    const groups = groupSessionsByDate(sessions, now)
     expect(groups.map((g) => [g.id, g.sessions.map((s) => s.id)])).toEqual([
       ['today', ['today-late', 'today-early']],
       ['yesterday', ['yesterday']],
@@ -39,23 +40,49 @@ describe('groupSessionsByDate', () => {
     expect(groups.map((g) => g.label)).toEqual(['Today', 'Yesterday', 'Previous 7 days', 'Previous 30 days', 'Older'])
   })
 
-  it('reads the creation time when sorting by created, and drops empty groups', () => {
+  it('dates by last activity, not creation, and drops empty groups', () => {
     const touchedToday = session('s', { created_at: local(2026, 10, 1), last_message_at: local(2026, 10, 19, 8) })
-    expect(groupSessionsByDate([touchedToday], 'created', now).map((g) => g.id)).toEqual(['month'])
-    expect(groupSessionsByDate([touchedToday], 'activity', now).map((g) => g.id)).toEqual(['today'])
-    expect(groupSessionsByDate([], 'activity', now)).toEqual([])
+    expect(groupSessionsByDate([touchedToday], now).map((g) => g.id)).toEqual(['today'])
+    expect(groupSessionsByDate([], now)).toEqual([])
   })
 
   it('dates activity by the last message, not a later rename', () => {
     const renamed = session('s', { last_message_at: local(2026, 10, 18), updated_at: local(2026, 10, 19, 9) })
-    expect(groupSessionsByDate([renamed], 'activity', now).map((g) => g.id)).toEqual(['yesterday'])
+    expect(groupSessionsByDate([renamed], now).map((g) => g.id)).toEqual(['yesterday'])
   })
 
   it('falls back to updated_at (an older server), then the creation time', () => {
     const older = session('s', { updated_at: local(2026, 10, 19, 8) })
-    expect(groupSessionsByDate([older], 'activity', now).map((g) => g.id)).toEqual(['today'])
+    expect(groupSessionsByDate([older], now).map((g) => g.id)).toEqual(['today'])
     const s = session('s', { created_at: local(2026, 10, 18) })
-    expect(groupSessionsByDate([s], 'activity', now).map((g) => g.id)).toEqual(['yesterday'])
+    expect(groupSessionsByDate([s], now).map((g) => g.id)).toEqual(['yesterday'])
+  })
+})
+
+describe('orderWorkspacePaths', () => {
+  const repo = (path: string, groupIds: string[] = [], worktrees: string[] = []) =>
+    ({ path, group_ids: groupIds, worktrees: worktrees.map((w) => ({ path: w, name: w })) }) as unknown as CodingWorkspaceTreeRepository
+  const at = (path: string, time: string) => session(`${path}@${time}`, { workspace: path, last_message_at: time })
+
+  it('puts grouped repositories first, by group then activity, then the rest by activity', () => {
+    const repos = [repo('/a'), repo('/b', ['g2']), repo('/c', ['g1']), repo('/d'), repo('/e', ['g1', 'g2'])]
+    const byPath = new Map(repos.map((r) => [r.path, r]))
+    const sessions = new Map([
+      ['/a', [at('/a', '2026-10-01T00:00:00Z')]],
+      ['/b', [at('/b', '2026-10-05T00:00:00Z')]],
+      ['/c', [at('/c', '2026-10-02T00:00:00Z')]],
+      ['/d', [at('/d', '2026-10-09T00:00:00Z')]],
+      ['/e', [at('/e', '2026-10-03T00:00:00Z')]],
+    ])
+    expect(orderWorkspacePaths(repos.map((r) => r.path), byPath, ['g1', 'g2'], sessions))
+      .toEqual(['/e', '/c', '/b', '/d', '/a'])
+  })
+
+  it('counts worktree sessions and keeps tree order for repositories with none loaded', () => {
+    const repos = [repo('/x'), repo('/y'), repo('/z', [], ['/z-wt'])]
+    const byPath = new Map(repos.map((r) => [r.path, r]))
+    const sessions = new Map([['/z-wt', [at('/z-wt', '2026-10-09T00:00:00Z')]]])
+    expect(orderWorkspacePaths(repos.map((r) => r.path), byPath, [], sessions)).toEqual(['/z', '/x', '/y'])
   })
 })
 

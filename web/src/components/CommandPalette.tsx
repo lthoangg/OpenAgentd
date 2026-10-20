@@ -409,9 +409,12 @@ function PaletteOverlay({ commands, onClose, workspaceFiles = [], filesTruncated
       label={hasFiles ? 'Quick Open' : 'Command palette'}
       variant="palette"
     >
-      <div onKeyDown={handleKeyDown}>
+      {/* A shrinkable column: the palette is capped to the visible area above
+          the iOS keyboard (``.app-overlay-palette``), so the list gives way
+          while the search field and hints stay put. */}
+      <div onKeyDown={handleKeyDown} className="flex min-h-0 flex-col">
           {/* Search input */}
-          <div className="flex items-center gap-2.5 border-b border-(--color-border) bg-(--bg-sidebar) px-3.5 py-2.5 md:py-3">
+          <div className="flex shrink-0 items-center gap-2.5 border-b border-(--color-border) bg-(--bg-sidebar) px-3.5 py-2.5 md:py-3">
             <Search size={14} className="shrink-0 text-(--color-text-muted)" />
             {page && (
               <button
@@ -432,6 +435,7 @@ function PaletteOverlay({ commands, onClose, workspaceFiles = [], filesTruncated
               autoCorrect="off"
               autoCapitalize="off"
               spellCheck={false}
+              enterKeyHint="search"
               className="min-w-0 flex-1 border-none bg-transparent text-xs text-(--color-text) placeholder-(--color-text-muted)/60 outline-none ring-0 focus:border-none focus:outline-none focus:ring-0 focus-visible:border-none focus-visible:outline-none focus-visible:ring-0 md:text-sm"
               aria-label={searchLabel}
             />
@@ -446,7 +450,7 @@ function PaletteOverlay({ commands, onClose, workspaceFiles = [], filesTruncated
           </div>
 
           {/* Command + file list */}
-          <div ref={listRef} className="max-h-80 overflow-y-auto overscroll-contain p-1.5 md:max-h-[28rem]">
+          <div ref={listRef} className="max-h-80 min-h-0 overflow-y-auto overscroll-contain p-1.5 md:max-h-[28rem]">
             {totalCount === 0 ? (
               <div className="flex flex-col items-center justify-center gap-1 px-4 py-8 text-center" role="status">
                 <p className="text-xs text-(--color-text-muted)">{emptyLabel}</p>
@@ -492,7 +496,7 @@ function PaletteOverlay({ commands, onClose, workspaceFiles = [], filesTruncated
             )}
           </div>
 
-          <div className="flex items-center gap-2 border-t border-(--color-border) bg-(--bg-sidebar) px-3 py-2">
+          <div className="flex shrink-0 items-center gap-2 border-t border-(--color-border) bg-(--bg-sidebar) px-3 py-2">
             <kbd className="rounded-xs border border-(--color-border) bg-(--bg-card) px-1 py-0.5 font-mono text-xs md:text-[11px] text-(--color-text-muted)">↑↓</kbd>
             <span className="text-xs text-(--color-text-muted)">navigate</span>
             <kbd className="rounded-xs border border-(--color-border) bg-(--bg-card) px-1 py-0.5 font-mono text-xs md:text-[11px] text-(--color-text-muted)">↵</kbd>

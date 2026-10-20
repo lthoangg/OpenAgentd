@@ -171,6 +171,8 @@ function DialogContent({ className, children, showCloseButton = true, size = 'sm
         // See DialogOverlay — same edge-swipe exclusion applies to the
         // content itself (e.g. tapping/dragging a footer button).
         data-swipe-ignore
+        // Keyboard-aware geometry on the mobile shell (index.css).
+        data-dialog-content
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}

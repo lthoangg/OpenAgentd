@@ -351,7 +351,7 @@ export interface SessionHistoryResponse {
 
 /**
  * Events on the per-session stream (`/agent/{sid}/stream`). Must match
- * `session_stream` in `appv3/contract/sse_events.json` (enforced by
+ * `session_stream` in `appv3/crates/agent/data/sse_events.json` (enforced by
  * `sse-contract.test.ts`); global-feed events live in `global-events.ts`.
  */
 export const SSE_EVENT_TYPES = [
@@ -393,7 +393,7 @@ export interface SSEEvent {
 
 /**
  * Events of a `POST /agent/sessions/{sid}/btw` response. Must match
- * `side_question_stream` in `appv3/contract/sse_events.json` (enforced by
+ * `side_question_stream` in `appv3/crates/agent/data/sse_events.json` (enforced by
  * `sse-contract.test.ts`).
  */
 export const SIDE_QUESTION_EVENT_TYPES = ['btw_start', 'btw_delta', 'btw_done', 'btw_error'] as const

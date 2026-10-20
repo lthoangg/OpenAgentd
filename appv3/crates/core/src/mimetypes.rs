@@ -1,5 +1,5 @@
 //! `mimetypes.guess_type` — Python's strict table captured verbatim from the
-//! v2 interpreter (`contract/mimetypes.json`, includes the host's
+//! v2 interpreter (`data/mimetypes.json`, includes the host's
 //! `/etc/**/mime.types` files that CPython reads at init).
 
 use serde_json::Value;
@@ -15,7 +15,7 @@ struct Db {
 fn db() -> &'static Db {
     static DB: OnceLock<Db> = OnceLock::new();
     DB.get_or_init(|| {
-        let raw: Value = serde_json::from_str(include_str!("../../../contract/mimetypes.json")).expect("mimetypes contract");
+        let raw: Value = serde_json::from_str(include_str!("../data/mimetypes.json")).expect("mimetypes contract");
         let map = |k: &str| -> HashMap<String, String> {
             raw.get(k).and_then(|v| v.as_object()).map(|o| o.iter().filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string()))).collect()).unwrap_or_default()
         };

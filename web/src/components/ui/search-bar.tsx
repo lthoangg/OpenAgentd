@@ -117,6 +117,7 @@ function SearchBar({
           autoCorrect="off"
           autoCapitalize="off"
           spellCheck={false}
+          enterKeyHint="search"
           className={cn(
             'min-w-0 flex-1 bg-transparent py-2 text-xs text-(--color-text) md:py-1.5',
             'placeholder:text-(--color-text-muted)/60',

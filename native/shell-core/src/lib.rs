@@ -10,8 +10,9 @@
 pub mod access_key;
 pub mod backend_config;
 pub mod download;
+pub mod private_file;
 
-pub use access_key::{delete_access_key, get_access_key, set_access_key};
+pub use access_key::{delete_access_key, get_access_key, set_access_key, use_file_store};
 pub use backend_config::{
     apply_backend_config_update, load_backend_config_from, normalize_base_url,
     normalize_server_name, remove_backend_server_at, save_backend_config_to, AppBackendConfig,

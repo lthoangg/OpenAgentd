@@ -29,6 +29,7 @@ import { useDeferredUnmount } from '@/components/ui/_use-deferred-unmount'
 import { useKeyLayer } from '@/lib/keyboard/hooks'
 import { DURATIONS_S } from '@/lib/motion'
 import { cn } from '@/lib/utils'
+import { getVisibleViewport, onVisibleViewportChange } from '@/lib/visible-viewport'
 
 // ─── Context ────────────────────────────────────────────────────────────────
 
@@ -149,12 +150,14 @@ function computePosition(trigger: DOMRect, content: DOMRect, side: Side, align: 
     if (left + content.width > window.innerWidth) left = trigger.left - content.width - gap
     top = trigger.top
   } else {
-    // bottom (default) or top
+    // bottom (default) or top. Flip against the *visible* area: on iOS the
+    // soft keyboard covers the bottom without shrinking ``innerHeight``.
+    const visible = getVisibleViewport()
     const fromBottom = trigger.bottom + gap
     const fromTop = trigger.top - content.height - gap
     top = side === 'top'
-      ? (fromTop < 0 ? fromBottom : fromTop)
-      : (fromBottom + content.height > window.innerHeight ? fromTop : fromBottom)
+      ? (fromTop < visible.top ? fromBottom : fromTop)
+      : (fromBottom + content.height > visible.bottom ? fromTop : fromBottom)
 
     if (align === 'start') left = trigger.left
     else if (align === 'end') left = trigger.right - content.width
@@ -193,11 +196,11 @@ function PopoverContent({
     if (!mounted) return
     reposition()
     window.addEventListener('scroll', reposition, { passive: true, capture: true })
-    window.addEventListener('resize', reposition)
+    const stopViewport = onVisibleViewportChange(reposition)
     return () => {
       setPos(null)
       window.removeEventListener('scroll', reposition, { capture: true })
-      window.removeEventListener('resize', reposition)
+      stopViewport()
     }
   }, [mounted, reposition])
 

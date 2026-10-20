@@ -1,9 +1,10 @@
 [package]
 name = "openagentd-desktop"
-version = "3.21.0"
+version = "3.22.0"
 description = "OpenAgentd — on-machine coding agent (desktop shell)"
 authors = ["openagentd contributors"]
 license = "Apache-2.0"
+homepage = "https://openagentd.dev"
 repository = "https://github.com/lthoangg/openagentd"
 edition = "2021"
 rust-version = "1.77.2"
@@ -34,7 +35,6 @@ log = "0.4"
 anyhow = "1"
 once_cell = "1"
 tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }
-keyring = { version = "3.6.3", default-features = false, features = ["apple-native", "linux-native-sync-persistent", "windows-native"] }
 url = "2"
 base64 = "0.23"
 getrandom = "0.4"
@@ -42,11 +42,6 @@ getrandom = "0.4"
 [dev-dependencies]
 # Enables `tauri::test::mock_app()` used by the native unit-test suite.
 tauri = { version = "2", features = ["test"] }
-tempfile = "3"
-
-[target.'cfg(target_os = "macos")'.dependencies]
-flate2 = "1"
-tar = "0.4"
 tempfile = "3"
 
 [target.'cfg(unix)'.dependencies]

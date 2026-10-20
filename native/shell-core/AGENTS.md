@@ -2,7 +2,8 @@
 
 `openagentd-shell-core` holds the Tauri-free logic that both the desktop and
 mobile shells need identically: backend-server config persistence, base-URL
-normalization, access keys in the OS credential store, and bounded workspace
+normalization, access keys (a user-only file on desktop, the OS credential
+store on mobile via the `keyring` feature), and bounded workspace
 downloads. Before it existed the two shells carried byte-for-byte copies that
 drifted (a trimmed-vs-untrimmed access key once authenticated on desktop and
 failed on mobile).
@@ -12,7 +13,9 @@ failed on mobile).
 - `src/backend_config.rs`: `AppBackendConfig`/`SavedAppServer`, the JSON file
   format (including legacy-shape migration and the empty-list default),
   `normalize_base_url`, and the load/save/remove-by-path functions.
-- `src/access_key.rs`: keyring entries keyed by canonical `http(s)` origin.
+- `src/access_key.rs`: access keys keyed by canonical `http(s)` origin, in
+  the file set by `use_file_store` (desktop) or the keyring (mobile).
+- `src/private_file.rs`: atomic 0600 writes for secret files.
 - `src/download.rs`: the 100 MB ceiling, base64/`data:`/remote resolution, and
   collision-safe cache filenames.
 

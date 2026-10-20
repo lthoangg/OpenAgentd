@@ -355,18 +355,17 @@ jobs:
         shell: bash
         run: cargo tauri build ${{ matrix.tauri_args }}
 
-      # Installed apps re-sign an ad hoc update bundle (cdhash requirement)
-      # before installing it; since tauri-plugin-updater 2.14.0 those
-      # re-signed bytes fail "The signature verification failed". Ship the
-      # bundle already signed with the stable identifier-only requirement so
-      # every client installs the archive unchanged.
-      - name: Stabilize macOS updater signature
+      # The one place the macOS app is signed: the updater archive and the
+      # DMG get the same app with the identifier-only requirement, which
+      # the updater, install.sh and the cask install unchanged. See the
+      # script header.
+      - name: Sign macOS release
         if: matrix.platform == 'macos'
         shell: bash
         run: |
           bundle_id=$(python3 -c "import json; print(json.load(open('desktop/src-tauri/tauri.conf.json'))['identifier'])")
-          desktop/scripts/stabilize-macos-updater.sh \
-            "desktop/src-tauri/target/${{ matrix.rust_target }}/release/bundle/macos" "$bundle_id"
+          desktop/scripts/sign-macos-release.sh \
+            "desktop/src-tauri/target/${{ matrix.rust_target }}/release/bundle" "$bundle_id"
 
       - name: Verify Windows MSI and signatures
         if: matrix.platform == 'windows'

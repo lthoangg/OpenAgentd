@@ -52,8 +52,7 @@ make run
 cd web && bun dev
 ```
 
-`make dev` runs steps 3 and 4 together. The end-of-life v2 Python backend in
-`app/` is kept as source-only reference; it has no build, run, or test tooling.
+`make dev` runs steps 3 and 4 together.
 
 Use Settings to configure providers and `agentd --help` for the current CLI surface.
 
@@ -64,14 +63,8 @@ Use Settings to configure providers and `agentd --help` for the current CLI surf
 ```
 openagentd/
 ├── appv3/                  # Rust backend (shipped): API, agent runtime, CLI
-│   ├── crates/             # core, db, api, agent, tools, providers, cli, …
-│   └── contract/           # Data shared with other surfaces (SSE events, …)
-├── app/                    # End-of-life v2 FastAPI backend (source only)
-│   ├── agent/              # Agent loop, hooks, providers, tools, teams
-│   ├── api/                # Routes (thin — logic lives in services/)
-│   ├── core/               # Config, DB, middleware, logging
-│   ├── models/             # SQLModel DB schemas
-│   └── services/           # Business logic, stream_store
+│   └── crates/             # core, db, api, agent, tools, providers, cli, …
+│       └── */data/         # Data each crate compiles in (SSE events, prompts, …)
 ├── web/                    # React 19 frontend (Vite + Bun)
 ├── desktop/, mobile/       # Tauri shells (desktop bundles the appv3 binary)
 ├── scripts/                # Release, docs, and code-health tools (+ tests/)

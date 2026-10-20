@@ -18,6 +18,7 @@ import { ModeWorkspaceFields } from './ModeWorkspaceFields'
 import { useAgentStore } from '@/stores/useAgentStore'
 import { Dropdown, DropdownItem } from '@/components/ui/dropdown'
 import { useSchedulerFooterSafeArea, useSchedulerPaneHeaderClass } from './chrome'
+import { advanceFocusOnEnter } from './formNavigation'
 import { cn } from '@/lib/utils'
 
 export function EditTaskForm({
@@ -108,7 +109,7 @@ export function EditTaskForm({
       </div>
 
       {/* Form */}
-      <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
+      <form onSubmit={handleSubmit} onKeyDown={advanceFocusOnEnter} className="flex min-h-0 flex-1 flex-col">
         <div className="flex-1 space-y-8 overflow-y-auto overscroll-contain touch-pan-y px-4 py-5 @xl:px-6 @xl:py-6">
           <PanelSection title="Task">
             {/* Routing */}
@@ -135,6 +136,7 @@ export function EditTaskForm({
                   <label htmlFor="edit-task-every-seconds" className={FIELD_LABEL}>Interval (seconds)</label>
                   <Input
                     id="edit-task-every-seconds"
+                    enterKeyHint="next"
                     className={`h-9 w-full ${FIELD_CLASS}`}
                     type="number"
                     inputMode="numeric"
@@ -176,6 +178,7 @@ export function EditTaskForm({
                       <label htmlFor="edit-task-timezone" className={FIELD_LABEL}>Timezone</label>
                       <Input
                         id="edit-task-timezone"
+                        enterKeyHint="next"
                         className={`h-9 ${FIELD_CLASS}`}
                         value={values.timezone}
                         onChange={(e) => form.setFieldValue('timezone', e.target.value)}
@@ -191,6 +194,7 @@ export function EditTaskForm({
                       <label htmlFor="edit-task-cron-expression" className={FIELD_LABEL}>Cron expression</label>
                       <Input
                         id="edit-task-cron-expression"
+                        enterKeyHint="next"
                         className={`h-9 ${FIELD_CLASS}`}
                         value={values.cron_expression ?? ''}
                         onChange={(e) => form.setFieldValue('cron_expression', e.target.value)}
@@ -205,6 +209,7 @@ export function EditTaskForm({
                       <label htmlFor="edit-task-timezone" className={FIELD_LABEL}>Timezone</label>
                       <Input
                         id="edit-task-timezone"
+                        enterKeyHint="next"
                         className={`h-9 ${FIELD_CLASS}`}
                         value={values.timezone}
                         onChange={(e) => form.setFieldValue('timezone', e.target.value)}
@@ -268,6 +273,7 @@ export function EditTaskForm({
                     <label htmlFor="edit-custom-session-id" className="sr-only">Session UUID</label>
                     <Input
                       id="edit-custom-session-id"
+                      enterKeyHint="next"
                       className={`h-9 ${FIELD_CLASS}`}
                       value={values.customSessionId}
                       onChange={(e) => form.setFieldValue('customSessionId', e.target.value)}
@@ -284,6 +290,7 @@ export function EditTaskForm({
                 <label htmlFor="edit-task-max-runs" className={FIELD_LABEL}>Max runs (optional)</label>
                 <Input
                   id="edit-task-max-runs"
+                  enterKeyHint="next"
                   type="number"
                   inputMode="numeric"
                   min="1"

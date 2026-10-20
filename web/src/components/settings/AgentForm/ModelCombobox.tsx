@@ -6,6 +6,26 @@ import fuzzysort from 'fuzzysort'
 import { Input } from '@/components/ui/input'
 import { MENU_ITEM_CLASS, MENU_PANEL_CLASS } from '@/components/ui/menu-styles'
 import { cn } from '@/lib/utils'
+import { getVisibleViewport, onVisibleViewportChange, type VisibleViewport } from '@/lib/visible-viewport'
+
+/** Tallest the list grows (Tailwind ``max-h-64``). */
+const LIST_MAX_HEIGHT = 256
+const LIST_MIN_HEIGHT = 96
+const LIST_GAP = 4
+const LIST_MARGIN = 8
+
+/**
+ * Where the list goes: below the input when it fits in the visible area,
+ * otherwise above it when there is more room there (the iOS keyboard covers
+ * the bottom). The height is capped to the room on the chosen side.
+ */
+export function listPlacement(anchor: DOMRect, visible: VisibleViewport): { above: boolean; maxHeight: number } {
+  const below = visible.bottom - anchor.bottom - LIST_GAP - LIST_MARGIN
+  const above = anchor.top - visible.top - LIST_GAP - LIST_MARGIN
+  const flip = below < LIST_MAX_HEIGHT && above > below
+  // Never collapse to nothing: a few rows beat an empty list.
+  return { above: flip, maxHeight: Math.max(LIST_MIN_HEIGHT, Math.min(LIST_MAX_HEIGHT, flip ? above : below)) }
+}
 
 export interface ModelOption {
   id: string
@@ -68,6 +88,10 @@ export function ModelCombobox({
   const [open, setOpen] = useState(false)
   const [highlight, setHighlight] = useState(0)
   const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null)
+  // The visible area at the last measure: on iOS the soft keyboard covers the
+  // bottom of the screen, so the list flips above the input when it would not
+  // fit below.
+  const [visible, setVisible] = useState<VisibleViewport | null>(null)
   const wrapperRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLUListElement>(null)
@@ -89,15 +113,18 @@ export function ModelCombobox({
     const measure = () => {
       const rect = inputRef.current?.getBoundingClientRect()
       if (rect) setAnchorRect(rect)
+      setVisible(getVisibleViewport())
     }
     measure()
     window.addEventListener('scroll', measure, true)
-    window.addEventListener('resize', measure)
+    const stopViewport = onVisibleViewportChange(measure)
     return () => {
       window.removeEventListener('scroll', measure, true)
-      window.removeEventListener('resize', measure)
+      stopViewport()
     }
   }, [open])
+
+  const placement = anchorRect && visible ? listPlacement(anchorRect, visible) : null
 
   // Close when a click/focus lands outside the input *and* the dropdown.
   // The portalled list isn't a DOM descendant of the wrapper, so we
@@ -242,9 +269,12 @@ export function ModelCombobox({
             // Positioned in viewport coords via the tracked anchor rect.
             style={{
               position: 'fixed',
-              top: anchorRect.bottom + 4,
+              ...(placement?.above
+                ? { bottom: window.innerHeight - anchorRect.top + LIST_GAP }
+                : { top: anchorRect.bottom + LIST_GAP }),
               left: anchorRect.left,
               width: anchorRect.width,
+              ...(placement && placement.maxHeight < LIST_MAX_HEIGHT ? { maxHeight: placement.maxHeight } : null),
             }}
             className={cn('z-50 max-h-64 overflow-y-auto overscroll-contain', MENU_PANEL_CLASS)}
           >

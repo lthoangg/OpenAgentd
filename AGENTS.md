@@ -2,10 +2,8 @@
 
 OpenAgentd is a local-first coding-agent cockpit: a native Rust backend
 (`appv3/`, v3), one React UI, and separate Tauri desktop and mobile shells.
-The end-of-life Python/FastAPI backend (`app/`, v2) stays in the tree as
-source-only reference for the database and config formats v3 shares; it has
-no build, test, or CI tooling. The canonical catalogue of shipped behavior is
-`documents/docs/features.md`.
+The canonical catalogue of shipped behavior is `documents/docs/features.md`;
+the public website is https://openagentd.dev.
 
 ## Instruction scopes
 
@@ -13,15 +11,12 @@ Apply this file repository-wide, then add the nearest nested `AGENTS.md` for
 the path you edit. The main local guides are:
 
 - Backend v3 (shipped): `appv3/AGENTS.md`.
-- Backend v2 (Python): `app/AGENTS.md`, plus `app/agent/AGENTS.md`,
-  `app/api/AGENTS.md`, or `app/services/AGENTS.md`.
 - Frontend: `web/AGENTS.md` and `web/src/AGENTS.md`.
 - Native shells: `desktop/AGENTS.md`, `desktop/src-tauri/AGENTS.md`,
   `mobile/AGENTS.md`, `mobile/src-tauri/AGENTS.md`, and
   `native/shell-core/AGENTS.md`.
 - Maintainer assets: `scripts/AGENTS.md`, `.agents/AGENTS.md`,
-  `documents/AGENTS.md`, `documents/docs/AGENTS.md`, and
-  `experiments/turbovec_docs/AGENTS.md`.
+  `documents/AGENTS.md`, and `documents/docs/AGENTS.md`.
 
 Ignored copies under build outputs, `node_modules/`, `.openagentd/dev/`, or
 worktrees are not part of the tracked instruction hierarchy.
@@ -30,16 +25,14 @@ worktrees are not part of the tracked instruction hierarchy.
 
 - `appv3/`: the shipped backend: Rust workspace for the API, agent runtime,
   CLI, scheduler, persistence, and the desktop sidecar binary.
-  `appv3/contract/` holds data shared with other surfaces, including the SSE
-  event contract.
-- `app/`: v2 Python API, agent runtime, CLI, scheduler, SQLModel tables,
-  migrations, and application services (end-of-life, source only).
+  Each crate's `data/` folder holds the data it compiles in; the SSE event
+  list in `appv3/crates/agent/data/sse_events.json` is shared with the web.
 - `web/`: shared React UI used by browser, desktop, and mobile clients.
 - `desktop/`: Tauri shell that supervises the bundled native `agentd`
   sidecar built from `appv3/`.
 - `mobile/`: remote-backend-only Tauri shell; it does not bundle a backend.
 - `native/shell-core/`: Tauri-free Rust crate shared by both shells (server
-  config, URL normalization, keyring, download limits).
+  config, URL normalization, access keys, download limits).
 - `scripts/`: packaging, release, docs validation, and code-health utilities;
   `scripts/tests/` holds their pytest checks plus installer and workflow
   contracts.
@@ -48,8 +41,6 @@ worktrees are not part of the tracked instruction hierarchy.
   only project folder OpenAgentd reads); `.agents/plans/` is ignored.
 - `.openagentd/`: ignored local runtime state (`dev/` and older plans and
   sessions); not source.
-- `experiments/turbovec_docs/`: isolated semantic-search experiment; it is not
-  imported by the product or shipped in release builds.
 
 ## Setup and development
 
@@ -81,10 +72,9 @@ Use the native subtree Makefiles for desktop/mobile packages
 
 ## Architecture boundaries
 
-- Keep route handlers (axum in `appv3/crates/api/`, FastAPI in `app/api/`)
-  focused on transport validation and response shaping. Durable behavior
-  belongs in the owning runtime crate (`appv3/crates/agent/`, `tools/`,
-  `providers/`, `db/`) or, for v2, `app/services/` and `app/agent/`.
+- Keep route handlers (axum in `appv3/crates/api/`) focused on transport
+  validation and response shaping. Durable behavior belongs in the owning
+  runtime crate (`appv3/crates/agent/`, `tools/`, `providers/`, `db/`).
 - v2 format parity is not a goal. v3 may change its wire and on-disk
   formats (JSON spacing, field order, Python-style renderings) when the web
   client changes in the same commit, but it must keep reading data that v2
@@ -110,7 +100,7 @@ Use the native subtree Makefiles for desktop/mobile packages
   access key) and the child-environment secret scrub in `appv3/crates/core/`
   and `appv3/crates/api/` intact; see `appv3/AGENTS.md`.
 - Treat auth, shell/file tools, MCP launch configuration, Tauri CSP/
-  capabilities, keyring storage, and updater/signing code as
+  capabilities, secret storage (desktop key files, mobile keyring), and updater/signing code as
   security-sensitive. Use argument-list subprocess APIs; do not introduce
   `shell=True` command construction.
 - Do not edit generated/build state such as `web/dist/`,
@@ -143,7 +133,7 @@ make verify-native   # shell-core + desktop + mobile; native system dependencies
 Use focused checks while iterating, then run the applicable target above.
 Always run Bun tests with `--parallel` (`bun test --cwd web --parallel` or `cd web && bun test --parallel <path>`) for per-file module isolation.
 Cross-surface API or event changes require both backend and web checks; SSE
-event types must also match `appv3/contract/sse_events.json`. Run
+event types must also match `appv3/crates/agent/data/sse_events.json`. Run
 `make help` for maintained health and build targets.
 CI additionally runs `bun run build` for `web/`, which enforces the bundle
 budget and chunk-cycle checks. Pre-commit hooks run file hygiene plus `oxlint`

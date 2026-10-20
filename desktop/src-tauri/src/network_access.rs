@@ -4,8 +4,10 @@
 //! driven through `/api/desktop/network-access`, which only answers the
 //! desktop token on the private loopback listener. This module keeps the
 //! user's choice (`network-access.json`: on/off + preferred port), keeps the
-//! access key in the OS credential store, and re-applies the choice after
-//! every sidecar start (launch, watchdog restart, "use builtin", reload).
+//! access key in a user-only file (`network-access-key`, not the macOS
+//! keychain: an ad hoc signed app loses access to its own keychain items on
+//! every update), and re-applies the choice after every sidecar start
+//! (launch, watchdog restart, "use builtin", reload).
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
@@ -16,8 +18,7 @@ use tauri::{AppHandle, Manager};
 use crate::AppState;
 
 pub const DEFAULT_PORT: u16 = 4082;
-const KEY_SERVICE: &str = "openagentd.desktop-network-access";
-const KEY_ACCOUNT: &str = "builtin";
+const KEY_FILE: &str = "network-access-key";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NetworkAccessConfig {
@@ -137,60 +138,42 @@ pub fn generate_key() -> Result<String, String> {
     Ok(base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(bytes))
 }
 
-/// Linux keeps credentials in a Secret Service provider (GNOME Keyring,
-/// KWallet, KeePassXC). Standard desktops run one; bare window-manager
-/// setups often do not, so say what to install instead of a generic error.
-pub fn credential_store_error(linux: bool) -> String {
-    if linux {
-        "No system keychain is available. Install and unlock GNOME Keyring or KWallet (any Secret Service provider), then try again.".into()
-    } else {
-        "credential store unavailable".into()
-    }
+/// The stored key; `None` when there is none yet (or only blank space).
+pub fn read_key_from(path: &Path) -> Result<Option<String>, String> {
+    let bytes = openagentd_shell_core::private_file::read(path).map_err(|e| {
+        log::warn!("network_access_key_read_failed error={e}");
+        "Couldn't read the network access key.".to_string()
+    })?;
+    Ok(bytes
+        .map(|b| String::from_utf8_lossy(&b).trim().to_string())
+        .filter(|k| !k.is_empty()))
 }
 
-fn store_unavailable() -> String {
-    credential_store_error(cfg!(target_os = "linux"))
-}
-
-fn key_entry() -> Result<keyring::Entry, String> {
-    keyring::Entry::new(KEY_SERVICE, KEY_ACCOUNT).map_err(|_| store_unavailable())
-}
-
-/// Keychain calls can block (or prompt), so they run off the async workers.
-async fn blocking<T: Send + 'static>(call: impl FnOnce() -> Result<T, String> + Send + 'static) -> Result<T, String> {
-    tauri::async_runtime::spawn_blocking(call)
-        .await
-        .map_err(|_| store_unavailable())?
-}
-
-pub async fn load_key() -> Result<Option<String>, String> {
-    blocking(|| match key_entry()?.get_password() {
-        Ok(k) => Ok(Some(k)),
-        Err(keyring::Error::NoEntry) => Ok(None),
-        Err(e) => {
-            log::warn!("network_access_key_read_failed error={e}");
-            Err(store_unavailable())
-        }
+pub fn write_key_to(path: &Path, key: &str) -> Result<(), String> {
+    openagentd_shell_core::private_file::write(path, key.as_bytes()).map_err(|e| {
+        log::warn!("network_access_key_write_failed error={e}");
+        "Couldn't save the network access key.".to_string()
     })
-    .await
 }
 
-async fn store_key(key: String) -> Result<(), String> {
-    blocking(move || {
-        key_entry()?.set_password(&key).map_err(|e| {
-            log::warn!("network_access_key_write_failed error={e}");
-            store_unavailable()
-        })
-    })
-    .await
+fn key_path(app: &AppHandle) -> Result<std::path::PathBuf, String> {
+    crate::config::app_config_file(app, KEY_FILE).map_err(|e| format!("{e:#}"))
 }
 
-async fn load_or_create_key() -> Result<String, String> {
-    if let Some(k) = load_key().await? {
+pub fn load_key(app: &AppHandle) -> Result<Option<String>, String> {
+    read_key_from(&key_path(app)?)
+}
+
+fn store_key(app: &AppHandle, key: &str) -> Result<(), String> {
+    write_key_to(&key_path(app)?, key)
+}
+
+fn load_or_create_key(app: &AppHandle) -> Result<String, String> {
+    if let Some(k) = load_key(app)? {
         return Ok(k);
     }
     let key = generate_key()?;
-    store_key(key.clone()).await?;
+    store_key(app, &key)?;
     Ok(key)
 }
 
@@ -271,7 +254,7 @@ fn combine(cfg: NetworkAccessConfig, backend: Option<BackendStatus>, error: Opti
 
 pub async fn status(app: &AppHandle) -> Result<NetworkAccessStatus, String> {
     let cfg = load_config(app);
-    let has_key = load_key().await.ok().flatten().is_some();
+    let has_key = load_key(app).ok().flatten().is_some();
     let Some((base, token)) = sidecar(app).await else {
         return Ok(combine(cfg, None, None, has_key));
     };
@@ -288,7 +271,7 @@ pub async fn set(app: &AppHandle, enabled: bool, port: u16) -> Result<NetworkAcc
         .await
         .ok_or_else(|| "Start the builtin backend first.".to_string())?;
     let body = if enabled {
-        let key = load_or_create_key().await?;
+        let key = load_or_create_key(app)?;
         serde_json::json!({"enabled": true, "port": port, "access_key": key})
     } else {
         serde_json::json!({"enabled": false, "port": port})
@@ -317,7 +300,7 @@ pub async fn set_key(app: &AppHandle, key: Option<String>) -> Result<NetworkAcce
         }
         None => generate_key()?,
     };
-    store_key(key.clone()).await?;
+    store_key(app, &key)?;
     let cfg = load_config(app);
     if cfg.enabled {
         if let Some((base, token)) = sidecar(app).await {
@@ -341,7 +324,7 @@ pub fn reapply(app: &AppHandle) {
         let Some((base, token)) = sidecar(&app).await else {
             return;
         };
-        let key = match load_or_create_key().await {
+        let key = match load_or_create_key(&app) {
             Ok(k) => k,
             Err(e) => {
                 log::warn!("network_access_reapply_failed error={e}");
@@ -419,10 +402,19 @@ mod tests {
     }
 
     #[test]
-    fn linux_keychain_errors_say_what_to_install() {
-        let linux = credential_store_error(true);
-        assert!(linux.contains("GNOME Keyring") && linux.contains("KWallet"), "{linux}");
-        assert_eq!(credential_store_error(false), "credential store unavailable");
+    fn the_key_file_is_private_and_trimmed() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(KEY_FILE);
+        assert_eq!(read_key_from(&path), Ok(None), "no key before the first save");
+        write_key_to(&path, "oKffFTEMoFrCAdyNwZYnThXkVdzMKmI9lMpsR2nfB4o").unwrap();
+        assert_eq!(read_key_from(&path), Ok(Some("oKffFTEMoFrCAdyNwZYnThXkVdzMKmI9lMpsR2nfB4o".into())));
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(std::fs::metadata(&path).unwrap().permissions().mode() & 0o777, 0o600);
+        }
+        std::fs::write(&path, b"  \n").unwrap();
+        assert_eq!(read_key_from(&path), Ok(None), "a blank file is no key");
     }
 
     #[test]

@@ -7,7 +7,7 @@ CSP, updater, and plugins.
 |---|---|---|
 | Desktop | `desktop/src-tauri/` | supervises the bundled `agentd` sidecar (built from `appv3/`), tray, windows, updater |
 | Mobile | `mobile/src-tauri/` | remote-only: connects to an existing API, no sidecar |
-| Shared | `native/shell-core/` | Tauri-free: server config, URL normalization, keyring access keys, download limits |
+| Shared | `native/shell-core/` | Tauri-free: server config, URL normalization, access keys (file on desktop, keyring on mobile), download limits |
 
 ## Run
 
@@ -58,7 +58,9 @@ desktop/src-tauri/
 | Window missing or wrong size | `window.rs` builders and all three config variants |
 | IPC command not found | `#[tauri::command]`, `invoke_handler` registration, and a `capabilities/` entry |
 | CSP blocks a resource | `app.security.csp` in every config variant |
-| Update installs but the old version reopens | macOS `install()` relaunches itself; a later `app.restart()` races it. Check `updater.rs` for a post-install restart and for a second click while installing |
+| Update installs but the old version reopens | `install()` swaps the bundle and returns; restart exactly once. Check `updater.rs` for a second restart and for a second click while installing |
+| Install fails with "signature verification failed" | something changed the archive bytes before `install()` (it verifies them since plugin 2.14); the failure is logged as `updater install failed` |
+| macOS asks for keychain access after updates | something stores a desktop secret in the keychain again; the unsigned app has no Team ID, so each update is a new keychain identity. Use `shell-core::private_file` |
 | Process left running on quit | `RunEvent::ExitRequested` / `WindowEvent::CloseRequested` handling in `main.rs` |
 | iOS signing | the Apple `developmentTeam` in `mobile/src-tauri/tauri.conf.json` |
 

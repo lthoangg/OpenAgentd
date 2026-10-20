@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { useDeleteScheduledTaskMutation, usePauseScheduledTaskMutation, useResumeScheduledTaskMutation, useTriggerScheduledTaskMutation } from '@/queries'
-import { SchedulerBackButton, useSchedulerPaneHeaderClass } from './chrome'
+import { SchedulerBackButton, useSchedulerFooterSafeArea, useSchedulerPaneHeaderClass } from './chrome'
 import { Callout } from '@/components/ui/callout'
 import { PanelSection } from '@/components/ui/panel-section'
 import { COMPACT_ROW, ICON_SIZE, ICON_SIZE_INLINE, TEXT } from '@/components/ui/panel-tokens'
@@ -40,6 +40,7 @@ export function TaskDetailView({
   const [deleteConfirmationOpen, setDeleteConfirmationOpen] = useState(false)
   const currentSessionId = useAgentStore((state) => state.sessionId)
   const headerClass = useSchedulerPaneHeaderClass()
+  const footerSafeArea = useSchedulerFooterSafeArea()
   // Phones move Run now / Pause into a bottom bar, within thumb reach.
   const isMobile = useIsMobile()
 
@@ -268,7 +269,7 @@ export function TaskDetailView({
       </div>
 
       {isMobile && (
-        <div className="flex shrink-0 gap-2 border-t border-(--color-border) bg-(--bg-sidebar) px-4 py-3">
+        <div className={cn('flex shrink-0 gap-2 border-t border-(--color-border) bg-(--bg-sidebar) px-4 py-3', footerSafeArea)}>
           <Button type="button" className="flex-1" onClick={triggerTask} disabled={triggerMutation.isPending} aria-label="Trigger now">
             {runIcon}
             Run now

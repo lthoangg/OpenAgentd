@@ -17,7 +17,8 @@ import { ScheduleTypeSegmented } from './ScheduleTypeSegmented'
 import { ModeWorkspaceFields } from './ModeWorkspaceFields'
 import { useAgentStore } from '@/stores/useAgentStore'
 import { Dropdown, DropdownItem } from '@/components/ui/dropdown'
-import { useSchedulerPaneHeaderClass } from './chrome'
+import { useSchedulerFooterSafeArea, useSchedulerPaneHeaderClass } from './chrome'
+import { cn } from '@/lib/utils'
 
 export function EditTaskForm({
   task,
@@ -30,6 +31,7 @@ export function EditTaskForm({
 }) {
   const localTz = Intl.DateTimeFormat().resolvedOptions().timeZone
   const headerClass = useSchedulerPaneHeaderClass()
+  const footerSafeArea = useSchedulerFooterSafeArea()
   const currentSessionId = useAgentStore((state) => state.sessionId)
   const currentSessionTitle = useAgentStore((state) => state.sessionTitle)
   const activeSessionWorkspace = useAgentStore((state) => state._workspace)
@@ -297,7 +299,7 @@ export function EditTaskForm({
         </div>
 
         {/* Actions */}
-        <div className="flex shrink-0 flex-wrap justify-end gap-2 border-t border-(--color-border) bg-(--bg-sidebar) px-4 py-3 @xl:px-6">
+        <div className={cn('flex shrink-0 flex-wrap justify-end gap-2 border-t border-(--color-border) bg-(--bg-sidebar) px-4 py-3 @xl:px-6', footerSafeArea)}>
           <Button
             type="button"
             variant="default"

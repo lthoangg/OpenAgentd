@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button'
 import { createContext, useContext } from 'react'
 import { ArrowLeft } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { useIsMobile } from '@/hooks/use-mobile'
 
 export type SchedulerChrome = 'overlay' | 'dock'
 
@@ -24,6 +25,17 @@ export function useSchedulerPaneHeaderClass(): string {
   return useSchedulerChrome() === 'dock'
     ? 'border-b border-(--color-border-subtle) bg-(--bg-page) px-4 py-2.5'
     : 'border-b border-(--color-border) bg-(--bg-sidebar) px-4 py-3 @xl:px-6'
+}
+
+/**
+ * Extra class for a pane's bottom bar. On phones the dock is a sheet pinned to
+ * the screen's bottom edge with no bottom inset of its own (the overlay pads
+ * the safe area itself), so the bar has to clear the home indicator.
+ */
+export function useSchedulerFooterSafeArea(): string {
+  const chrome = useSchedulerChrome()
+  const isMobile = useIsMobile()
+  return chrome === 'dock' && isMobile ? 'pb-safe' : ''
 }
 
 /** Leading back control for stacked (list → detail) hosts. */

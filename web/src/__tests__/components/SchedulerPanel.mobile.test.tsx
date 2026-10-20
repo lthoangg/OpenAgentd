@@ -7,6 +7,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import '@testing-library/jest-dom'
 import { SchedulerPanel } from '@/components/SchedulerPanel'
+import { SchedulerDockView } from '@/components/SchedulerPanel/SchedulerDockView'
 import { useUIStore } from '@/stores/useUIStore'
 import type { ScheduledTaskResponse } from '@/api/types'
 
@@ -14,15 +15,11 @@ function task(id: string, name: string): ScheduledTaskResponse {
   return { id, slug: id, name, workspace: '/repo/app', schedule_type: 'every', at_datetime: null, every_seconds: 3600, cron_expression: null, timezone: 'UTC', prompt: 'Do the thing', session_id: null, enabled: true, status: 'pending', run_count: 0, max_runs: null, last_run_at: null, last_error: null, next_fire_at: null, created_at: '2026-05-25T00:00:00Z', updated_at: '2026-05-25T00:00:00Z' }
 }
 
-function renderPanel() {
+function renderPanel(ui: React.ReactElement = <SchedulerPanel open onClose={() => {}} />) {
   const tasks = [task('t1', 'Nightly build')]
   globalThis.fetch = mock(async () => new Response(JSON.stringify({ tasks }), { status: 200, headers: { 'Content-Type': 'application/json' } })) as unknown as typeof fetch
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  return render(
-    <QueryClientProvider client={queryClient}>
-      <SchedulerPanel open onClose={() => {}} />
-    </QueryClientProvider>,
-  )
+  return render(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>)
 }
 
 const originalMatchMedia = window.matchMedia
@@ -71,5 +68,15 @@ describe('scheduler overlay on phones', () => {
     // Only the overlay header's title; the pane no longer repeats it.
     expect(screen.getAllByRole('heading', { name: 'Create task' })).toHaveLength(1)
     expect(screen.getByLabelText('Max runs (optional)')).toHaveAttribute('inputmode', 'numeric')
+    // The overlay already pads the safe area; only the dock sheet adds it.
+    expect(screen.getByRole('button', { name: /Create task/ }).parentElement).not.toHaveClass('pb-safe')
+  })
+
+  it('clears the home indicator in the dock sheet, which reaches the screen edge', async () => {
+    useUIStore.getState().focusScheduledTask('t1')
+    renderPanel(<SchedulerDockView contextWorkspace={null} />)
+
+    const runNow = await screen.findByRole('button', { name: 'Trigger now' })
+    expect(runNow.parentElement).toHaveClass('pb-safe')
   })
 })

@@ -14,7 +14,8 @@ import { ScheduleTypeSegmented } from './ScheduleTypeSegmented'
 import { ModeWorkspaceFields } from './ModeWorkspaceFields'
 import { useAgentStore } from '@/stores/useAgentStore'
 import { Dropdown, DropdownItem } from '@/components/ui/dropdown'
-import { SchedulerBackButton, useSchedulerPaneHeaderClass } from './chrome'
+import { SchedulerBackButton, useSchedulerFooterSafeArea, useSchedulerPaneHeaderClass } from './chrome'
+import { cn } from '@/lib/utils'
 
 export function CreateTaskForm({
   contextWorkspace,
@@ -32,6 +33,7 @@ export function CreateTaskForm({
   const localTz = Intl.DateTimeFormat().resolvedOptions().timeZone
   const defaults = createTaskDefaults(contextWorkspace, localTz)
   const headerClass = useSchedulerPaneHeaderClass()
+  const footerSafeArea = useSchedulerFooterSafeArea()
   const [error, setError] = useState<string | null>(null)
   const [fieldErrors, setFieldErrors] = useState<TaskFormErrors>({})
   const validationSummary = Object.values(fieldErrors)[0]
@@ -317,7 +319,7 @@ export function CreateTaskForm({
         </div>
 
         {/* Submit */}
-        <div className="flex shrink-0 flex-wrap justify-end gap-2 border-t border-(--color-border) bg-(--bg-sidebar) px-4 py-3 @xl:px-6">
+        <div className={cn('flex shrink-0 flex-wrap justify-end gap-2 border-t border-(--color-border) bg-(--bg-sidebar) px-4 py-3 @xl:px-6', footerSafeArea)}>
           <Button
             type="submit"
             variant="primary"

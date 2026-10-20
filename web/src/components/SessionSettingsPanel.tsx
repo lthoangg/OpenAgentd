@@ -14,9 +14,11 @@
 import { useEffect, useRef } from 'react'
 
 import { AppOverlay, OverlayHeader } from '@/components/ui/app-overlay'
+import { OVERLAY_BODY } from '@/components/ui/panel-tokens'
 import { Skeleton } from '@/components/ui/skeleton'
 import { usePlatform } from '@/hooks/use-platform'
 import { APP_SHORTCUTS, shortcutLabel } from '@/lib/app-shortcuts'
+import { cn } from '@/lib/utils'
 import { SessionModelSettings } from './SessionModelSettings'
 import { SessionMcpServers } from './SessionMcpServers'
 import { SessionTools } from './SessionTools'
@@ -82,11 +84,15 @@ export function SessionSettingsPanel({
         closeLabel="Close (Esc)"
       />
 
-      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain touch-pan-y">
+      <div className={cn(OVERLAY_BODY, 'space-y-8')}>
         {isLoading || !agent ? (
-          <div role="status" aria-label="Loading session settings" className="space-y-3 p-3 sm:p-5">
-            <Skeleton className="h-16" />
-            <Skeleton className="h-24" />
+          <div role="status" aria-label="Loading session settings" className="space-y-8">
+            {[16, 24].map((h) => (
+              <div key={h} className="space-y-3">
+                <Skeleton className="h-3 w-24" />
+                <Skeleton className={h === 16 ? 'h-16' : 'h-24'} />
+              </div>
+            ))}
           </div>
         ) : (
           <>
@@ -114,7 +120,7 @@ export function SessionSettingsPanel({
       </div>
 
       {/* Keyboard hints only: phones have neither Esc nor the shortcut. */}
-      <div className="hidden shrink-0 border-t border-(--color-border) bg-(--bg-card) px-3 py-2.5 sm:px-5 md:block">
+      <div className="hidden shrink-0 border-t border-(--color-border) bg-(--bg-sidebar) px-4 py-2.5 md:block md:px-6">
         <p className="text-[11px] text-(--color-text-muted)">
           Esc or click outside to close · {shortcutLabel(APP_SHORTCUTS.sessionSettings, os)} to toggle
         </p>

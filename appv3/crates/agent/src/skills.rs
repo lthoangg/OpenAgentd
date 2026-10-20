@@ -11,20 +11,19 @@ use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
 /// Bundled read-only skill files (`<skill>/<path>` → content), compiled in
-/// from `contract/builtin_skills` (v3 wording; v2's `app/agent/builtin_skills`
-/// is frozen). Agents read the reference files through the read-only root in
+/// from `data/builtin_skills`. Agents read the reference files through the read-only root in
 /// `appv3_tools::denied`.
 const BUNDLED: &[(&str, &str)] = &[
-    ("self-healing/SKILL.md", include_str!("../../../contract/builtin_skills/self-healing/SKILL.md")),
-    ("self-healing/references/agents.md", include_str!("../../../contract/builtin_skills/self-healing/references/agents.md")),
-    ("self-healing/references/mcp.md", include_str!("../../../contract/builtin_skills/self-healing/references/mcp.md")),
-    ("self-healing/references/media.md", include_str!("../../../contract/builtin_skills/self-healing/references/media.md")),
-    ("self-healing/references/plugins.md", include_str!("../../../contract/builtin_skills/self-healing/references/plugins.md")),
-    ("self-healing/references/skills.md", include_str!("../../../contract/builtin_skills/self-healing/references/skills.md")),
+    ("self-healing/SKILL.md", include_str!("../data/builtin_skills/self-healing/SKILL.md")),
+    ("self-healing/references/agents.md", include_str!("../data/builtin_skills/self-healing/references/agents.md")),
+    ("self-healing/references/mcp.md", include_str!("../data/builtin_skills/self-healing/references/mcp.md")),
+    ("self-healing/references/media.md", include_str!("../data/builtin_skills/self-healing/references/media.md")),
+    ("self-healing/references/plugins.md", include_str!("../data/builtin_skills/self-healing/references/plugins.md")),
+    ("self-healing/references/skills.md", include_str!("../data/builtin_skills/self-healing/references/skills.md")),
     ("self-healing/references/openagentd.d.ts", appv3_jsplugin::TYPES),
 ];
 
-/// Bundled files whose source is not under `contract/builtin_skills`.
+/// Bundled files whose source is not under `data/builtin_skills`.
 #[cfg(test)]
 const BUNDLED_EXTERNAL: &[&str] = &["self-healing/references/openagentd.d.ts"];
 
@@ -557,7 +556,7 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn bundled_files_match_contract_dir() {
+    fn bundled_files_match_data_dir() {
         fn walk(root: &Path, dir: &Path, out: &mut Vec<String>) {
             for e in std::fs::read_dir(dir).unwrap().flatten() {
                 let p = e.path();
@@ -568,13 +567,13 @@ pub(crate) mod tests {
                 }
             }
         }
-        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../contract/builtin_skills");
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("data/builtin_skills");
         let mut on_disk = vec![];
         walk(&root, &root, &mut on_disk);
         on_disk.sort();
         let mut listed: Vec<String> = BUNDLED.iter().map(|(p, _)| p.to_string()).filter(|p| !BUNDLED_EXTERNAL.contains(&p.as_str())).collect();
         listed.sort();
-        assert_eq!(on_disk, listed, "every file under contract/builtin_skills must be listed in BUNDLED");
+        assert_eq!(on_disk, listed, "every file under data/builtin_skills must be listed in BUNDLED");
     }
 
     #[test]

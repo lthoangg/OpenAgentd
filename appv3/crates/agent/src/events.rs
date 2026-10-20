@@ -10,7 +10,7 @@ use std::sync::{Arc, OnceLock};
 
 // ── Wire contract ───────────────────────────────────────────────────────────
 
-const CONTRACT_JSON: &str = include_str!("../../../contract/sse_events.json");
+const CONTRACT_JSON: &str = include_str!("../data/sse_events.json");
 
 /// Which SSE stream an event travels on.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -34,7 +34,7 @@ fn contract() -> &'static ContractLists {
     })
 }
 
-/// Whether `appv3/contract/sse_events.json` lists `name` for `stream`.
+/// Whether `appv3/crates/agent/data/sse_events.json` lists `name` for `stream`.
 pub fn in_contract(stream: Stream, name: &str) -> bool {
     let (session, global, side) = contract();
     let list = match stream {
@@ -51,7 +51,7 @@ pub fn in_contract(stream: Stream, name: &str) -> bool {
 pub fn check_contract(stream: Stream, name: &str) {
     if !in_contract(stream, name) {
         tracing::error!("sse_event_not_in_contract stream={:?} event={}", stream, name);
-        debug_assert!(false, "SSE event {name:?} ({stream:?} stream) is missing from appv3/contract/sse_events.json");
+        debug_assert!(false, "SSE event {name:?} ({stream:?} stream) is missing from appv3/crates/agent/data/sse_events.json");
     }
 }
 
@@ -379,7 +379,7 @@ mod tests {
 
     #[test]
     #[cfg(debug_assertions)]
-    #[should_panic(expected = "missing from appv3/contract/sse_events.json")]
+    #[should_panic(expected = "missing from appv3/crates/agent/data/sse_events.json")]
     fn unregistered_events_fail_loudly_in_debug_builds() {
         check_contract(Stream::Global, "not_a_real_event");
     }

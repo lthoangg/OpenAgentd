@@ -30,8 +30,8 @@ worktrees are not part of the tracked instruction hierarchy.
 
 - `appv3/`: the shipped backend: Rust workspace for the API, agent runtime,
   CLI, scheduler, persistence, and the desktop sidecar binary.
-  `appv3/contract/` holds data shared with other surfaces, including the SSE
-  event contract.
+  Each crate's `data/` folder holds the data it compiles in; the SSE event
+  list in `appv3/crates/agent/data/sse_events.json` is shared with the web.
 - `app/`: v2 Python API, agent runtime, CLI, scheduler, SQLModel tables,
   migrations, and application services (end-of-life, source only).
 - `web/`: shared React UI used by browser, desktop, and mobile clients.
@@ -143,7 +143,7 @@ make verify-native   # shell-core + desktop + mobile; native system dependencies
 Use focused checks while iterating, then run the applicable target above.
 Always run Bun tests with `--parallel` (`bun test --cwd web --parallel` or `cd web && bun test --parallel <path>`) for per-file module isolation.
 Cross-surface API or event changes require both backend and web checks; SSE
-event types must also match `appv3/contract/sse_events.json`. Run
+event types must also match `appv3/crates/agent/data/sse_events.json`. Run
 `make help` for maintained health and build targets.
 CI additionally runs `bun run build` for `web/`, which enforces the bundle
 budget and chunk-cycle checks. Pre-commit hooks run file hygiene plus `oxlint`

@@ -29,7 +29,7 @@ appv3/crates/
   jsplugin/   QuickJS runtime for .ts/.js plugins
   mcp/ memory/ preview/ terminal/   MCP client, memory, Preview tab proxy, PTY terminals
   cli/        the `agentd` binary; `server serve` is the sidecar entry; loguru-format logging (src/logging.rs)
-appv3/contract/sse_events.json   SSE event contract shared with web
+appv3/crates/agent/data/sse_events.json   SSE event contract shared with web
 appv3/REPORT.md                  every deliberate wire or on-disk difference from v2
 ```
 
@@ -42,7 +42,7 @@ appv3/REPORT.md                  every deliberate wire or on-disk difference fro
 | Persistence | `db/` queries and migrations; rows in the dev DB |
 | Queueing / ordering | `agent/src/stream_store.rs`, `queue.rs`, SSE emission order |
 | Agent loop | `agent/src/agent.rs`, tool dispatch, `hooks/summarization.rs` |
-| SSE stream | `agent/src/events.rs`, `api/src/sse.rs`, `appv3/contract/sse_events.json` |
+| SSE stream | `agent/src/events.rs`, `api/src/sse.rs`, `appv3/crates/agent/data/sse_events.json` |
 | Provider call | `providers/src/<provider>.rs`, env vars, retry and timeout (`agent/src/retry.rs`) |
 | Desktop auth | `core/src/auth.rs`, `api/src/middleware.rs` (`desktop_token`), sidecar handshake |
 

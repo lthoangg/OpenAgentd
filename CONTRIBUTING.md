@@ -64,8 +64,8 @@ Use Settings to configure providers and `agentd --help` for the current CLI surf
 ```
 openagentd/
 ├── appv3/                  # Rust backend (shipped): API, agent runtime, CLI
-│   ├── crates/             # core, db, api, agent, tools, providers, cli, …
-│   └── contract/           # Data shared with other surfaces (SSE events, …)
+│   └── crates/             # core, db, api, agent, tools, providers, cli, …
+│       └── */data/         # Data each crate compiles in (SSE events, prompts, …)
 ├── app/                    # End-of-life v2 FastAPI backend (source only)
 │   ├── agent/              # Agent loop, hooks, providers, tools, teams
 │   ├── api/                # Routes (thin — logic lives in services/)

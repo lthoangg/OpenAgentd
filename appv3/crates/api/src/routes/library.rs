@@ -129,7 +129,7 @@ fn discover(kind: &str, workspace: Option<&Path>) -> Result<Vec<MdItem>, ApiErro
 
 fn builtin_commands() -> &'static Value {
     static B: std::sync::OnceLock<Value> = std::sync::OnceLock::new();
-    B.get_or_init(|| serde_json::from_str(include_str!("../../../../contract/builtin_commands.json")).unwrap())
+    B.get_or_init(|| serde_json::from_str(include_str!("../../data/builtin_commands.json")).unwrap())
 }
 
 fn summaries(mut items: Vec<MdItem>) -> Vec<Value> {

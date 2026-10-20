@@ -8,12 +8,12 @@ import { IGNORED_SSE_EVENTS } from "@/stores/useAgentStore/sse-reducer"
 // The backend asserts every event it emits is listed in this file; these
 // checks keep the web client's types and handlers in step with it.
 const contract = JSON.parse(
-  readFileSync(fileURLToPath(new URL("../../../../appv3/contract/sse_events.json", import.meta.url)), "utf8"),
+  readFileSync(fileURLToPath(new URL("../../../../appv3/crates/agent/data/sse_events.json", import.meta.url)), "utf8"),
 ) as { session_stream: string[]; global_stream: string[]; side_question_stream: string[] }
 
 const source = (rel: string) => readFileSync(fileURLToPath(new URL(`../../${rel}`, import.meta.url)), "utf8")
 
-describe("SSE wire contract (appv3/contract/sse_events.json)", () => {
+describe("SSE wire contract (appv3/crates/agent/data/sse_events.json)", () => {
   it("types exactly the session-stream events the backend emits", () => {
     expect([...SSE_EVENT_TYPES].sort()).toEqual([...contract.session_stream].sort())
   })

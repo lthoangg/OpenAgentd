@@ -5,7 +5,7 @@ import type { SSECallbacks } from './sse'
 
 /**
  * Events on the app-lifetime feed (`/events/stream`). Must match
- * `global_stream` in `appv3/contract/sse_events.json` (enforced by
+ * `global_stream` in `appv3/crates/agent/data/sse_events.json` (enforced by
  * `sse-contract.test.ts`).
  */
 export const GLOBAL_EVENT_TYPES = [

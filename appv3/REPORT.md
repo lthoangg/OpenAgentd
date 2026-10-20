@@ -1,4 +1,4 @@
-# OpenAgentd v3 (Rust) — migration status and v2 vs v3 benchmark
+# OpenAgentd v3 (Rust): wire and on-disk compatibility log, and v2 vs v3 benchmark
 
 Status as of this run: every v2 surface is ported. That covers the HTTP API,
 SSE, WebSockets, the desktop sidecar contract, the full `openagentd` CLI,
@@ -207,7 +207,7 @@ explicitly.
   - Endpoints (`api/src/routes/agent/chat.rs`):
     - `POST /api/agent/sessions/{sid}/btw {question}` streams
       `btw_start`, `btw_delta`, `btw_done` and `btw_error` (new
-      `side_question_stream` in `contract/sse_events.json`; `btw_error`
+      `side_question_stream` in `crates/agent/data/sse_events.json`; `btw_error`
       carries `status: error|stopped` and the partial answer).
     - `GET …/btw?limit=` lists the thread oldest first, `GET …/btw/count`
       feeds the web chip, `POST …/btw/{id}/stop` (204, or 404 when not
@@ -326,7 +326,7 @@ explicitly.
     and releasing queued messages reads `MAX(seq)` under `BEGIN IMMEDIATE`.
     v2 reads and writes in separate statements, so concurrent saves could
     share a position.
-  - *SSE contract.* `contract/sse_events.json` lists every event type per
+  - *SSE contract.* `crates/agent/data/sse_events.json` lists every event type per
     stream. The broadcaster and stream store check each event against it
     (debug builds panic, release builds log), and the web tests check their
     unions against the same file.
@@ -650,7 +650,7 @@ explicitly.
   `agent/src/tools/plan.rs`; tested there, in `agent/tests/plan_review.rs`,
   the summarization hook and `api/tests/http_api.rs`). v2 has none of this.
   - **Tools.** The lead gets two session-injected tools, defined in
-    `contract/tool_definitions.json`: `plan` (`write`, or `edit` with 1–20
+    `crates/tools/data/tool_definitions.json`: `plan` (`write`, or `edit` with 1–20
     exact-match replacements; works in both modes) and `submit_plan`
     (works in both modes; in Code mode its description limits it to when
     the user asks for a review). Agent files cannot claim either name. The
@@ -723,7 +723,7 @@ explicitly.
     git rules) to every agent's prompt, and `MemoryContextHook` puts
     `memory_protocol_lead` or `memory_protocol_member` just before
     `<openagentd_memory>`. The texts are new keys in
-    `contract/builtin_prompts.json`; `coding_prompt` drops its memory,
+    `crates/agent/data/builtin_prompts.json`; `coding_prompt` drops its memory,
     interaction-mode and git-safety sections and one duplicated rule. The
     member rules are prompt-level only: the `patch` tool does not refuse
     memory writes from delegated agents.
@@ -760,7 +760,7 @@ explicitly.
   output and stops its streaming timer when its call is dropped.
 - **`todo_manage` clear:** `clear` without a status removes every task
   (`tools/src/todo.rs`; the `status` description in
-  `contract/tool_definitions.json` says so). v2 defaults to `finished`, so
+  `crates/tools/data/tool_definitions.json` says so). v2 defaults to `finished`, so
   agents resetting the board for a new plan left the old plan's pending and
   in-progress tasks behind.
 - **Notifications** (`agent/src/notification.rs`, `agent/src/session.rs`):
@@ -821,7 +821,7 @@ explicitly.
   new-session draft relies on it so a first message in a new folder lands in
   the tree. v2 does not register the folder here.
 - **Bundled skills:** v3 bundles one skill, `self-healing`
-  (`contract/builtin_skills/self-healing`). Its `SKILL.md` is an index of
+  (`crates/agent/data/builtin_skills/self-healing`). Its `SKILL.md` is an index of
   `references/*.md` files, plus the plugin typings (`jsplugin/openagentd.d.ts`).
   They describe v3 behavior: the `patch` tool, global MCP servers, the
   `multimodal.yaml` schema, and no skill discovery cache. v2's `skill-installer`
@@ -892,7 +892,7 @@ explicitly.
   body when `If-None-Match` matches. The body is still computed on every
   request. Test: `api/src/routes/agent/files.rs`. v2 always returns 200.
 - **`read` tool `outline` removed (v3.14.0):** the `outline` argument and
-  `crates/tools/src/outline.rs` are gone and `contract/tool_definitions.json`
+  `crates/tools/src/outline.rs` are gone and `crates/tools/data/tool_definitions.json`
   no longer lists it, so a call passing `outline` fails as an unknown
   argument. v2 still offers it.
 - **Stop force-ends a stuck turn (v3 only):** if a turn has not finished
@@ -935,8 +935,9 @@ explicitly.
 - Workspace crates: `core`, `db`, `tools`, `terminal`, `providers`, `agent`,
   `memory`, `mcp`, `api`, `cli`, `jsplugin`. The obsolete `scheduler`, `lsp`
   and `bench` crates were removed; the scheduler lives in `agent`.
-- `contract/`: v2 data v3 embeds (command/prompt catalogues, provider
-  catalogue, tool definitions, mimetypes).
+- Embedded data (command/prompt catalogues, provider catalogue, tool
+  definitions, mimetypes, SSE event names) lives in each crate's `data/`
+  folder, next to the code that compiles it in.
 - The v2-vs-v3 differential harnesses and probe examples were removed after
   verification (§1).
 

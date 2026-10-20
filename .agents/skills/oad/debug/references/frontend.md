@@ -61,7 +61,7 @@ web/src/
 | Render bug | the component and its `__tests__/` counterpart |
 | State desync | the Zustand store, the TanStack Query key, `cache-invalidation-bridge.ts` |
 | Wire shape | `api/types.ts`, the query or mutation, and what the backend actually stored |
-| Streaming / SSE | `stores/useAgentStore/sse-reducer.ts`, `appv3/contract/sse_events.json` |
+| Streaming / SSE | `stores/useAgentStore/sse-reducer.ts`, `appv3/crates/agent/data/sse_events.json` |
 | Mentions and file refs | `InputComposer.mentions.ts`, `UserBubble.tsx`, `utils/file-refs.ts`, `useOverlayState.ts` |
 | Keyboard and focus | `lib/keyboard/`, `hooks/use-dock-focus.ts`, `lib/desktop-shell.ts` |
 | Primitive bug | `components/ui/*.tsx`: portal positioning, `useDeferredUnmount` called before early returns |

@@ -1,9 +1,9 @@
-//! Verbatim v2 prompt strings (`contract/builtin_prompts.json`).
+//! Built-in prompt strings (`data/builtin_prompts.json`).
 
 use serde_json::Value;
 use std::sync::OnceLock;
 
-const JSON: &str = include_str!("../../../contract/builtin_prompts.json");
+const JSON: &str = include_str!("../data/builtin_prompts.json");
 
 pub fn contract() -> &'static Value {
     static C: OnceLock<Value> = OnceLock::new();

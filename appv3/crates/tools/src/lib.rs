@@ -1,6 +1,6 @@
-//! Built-in agent tools — port of `app/agent/tools`.
+//! Built-in agent tools.
 //!
-//! Model-facing definitions come verbatim from v2 (`contract/tool_definitions.json`).
+//! Model-facing definitions come from `data/tool_definitions.json`.
 //! Session-bound tools (ask_user, delegate, skill, schedule_task, …) live in
 //! the agent crate and implement the same [`Tool`] trait.
 
@@ -27,7 +27,7 @@ use std::sync::{Arc, OnceLock};
 
 pub use denied::DeniedPaths;
 
-const CONTRACT_JSON: &str = include_str!("../../../contract/tool_definitions.json");
+const CONTRACT_JSON: &str = include_str!("../data/tool_definitions.json");
 
 /// v2 tool definition for *name*, exactly as v2 sends it to the LLM.
 pub fn contract_definition(name: &str) -> Option<Value> {

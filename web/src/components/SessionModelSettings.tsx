@@ -157,7 +157,8 @@ export function SessionModelSettings({
 
   return (
     <PanelSection title="Model">
-      <div className="grid gap-x-4 gap-y-5 sm:grid-cols-[minmax(0,1fr)_11rem]">
+      {/* Thinking only holds a short level name; the model id gets the room. */}
+      <div className="grid gap-x-4 gap-y-5 sm:grid-cols-[minmax(0,1fr)_8rem]">
         {/* Not a <label>: the caption is decorative (the combobox and dropdown
             carry their own aria-labels) and wrapping a <button> in a <label>
             makes the label's contents the button's accessible name. */}

@@ -42,6 +42,23 @@ describe('MarkdownBlock Mermaid fences', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Code' }))
     expect(screen.getByRole('button', { name: 'Code' }).getAttribute('aria-pressed')).toBe('true')
     expect(document.querySelector('[data-slot="mermaid-block"] pre')?.textContent).toBe(source)
+    expect(screen.queryByRole('button', { name: 'Full screen' })).toBeNull()
+  })
+
+  it('opens the diagram full screen, redrawn with zoom always on, and closes on Esc', async () => {
+    render(<MarkdownBlock content={diagram} />)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Full screen' }))
+    const dialog = screen.getByRole('dialog', { name: 'Mermaid diagram full screen' })
+    await waitFor(() => expect(dialog.querySelector('.oa-diagram svg.pele')).toBeTruthy())
+    expect(mounts[1]).toMatchObject({ source, options: { links: false, images: false, zoom: { always: true } } })
+
+    fireEvent.keyDown(document, { key: 'Escape' })
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+
+    fireEvent.click(screen.getByRole('button', { name: 'Full screen' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Close full screen' }))
+    expect(screen.queryByRole('dialog')).toBeNull()
   })
 
   it('draws a fence once it closes while the reply is still streaming', async () => {
@@ -65,6 +82,7 @@ describe('MarkdownBlock Mermaid fences', () => {
     const alert = await screen.findByRole('alert')
     expect(alert.textContent).toBe('Couldn’t draw this diagram: Expected an arrow on line 2')
     expect(screen.queryByRole('button', { name: 'Diagram' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Full screen' })).toBeNull()
     expect(document.querySelector('[data-slot="mermaid-block"] pre')?.textContent).toContain('A BROKEN B')
   })
 })

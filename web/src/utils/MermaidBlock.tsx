@@ -11,12 +11,18 @@
  *
  * Source that Pele cannot draw falls back to the code with a one-line
  * reason; the message around it is never affected.
+ *
+ * A diagram squeezed into a narrow column can open full screen, where it is
+ * drawn again for the window's width (Pele re-lays it out, not just scales it)
+ * with zoom always on.
  */
 import { useEffect, useRef, useState } from 'react'
-import { AlertCircle, Check, Copy } from 'lucide-react'
+import { createPortal } from 'react-dom'
+import { AlertCircle, Check, Copy, Maximize2, X } from 'lucide-react'
 import type { MountOptions, Mounted } from 'pele/lazy'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { copyText, useChatMenu } from '@/components/ChatContextMenu'
+import { useKeyLayer } from '@/lib/keyboard/hooks'
 import { sanitizeDiagramSvg } from './diagram-svg'
 
 type Pele = typeof import('pele/lazy')
@@ -27,9 +33,12 @@ const OPTIONS: MountOptions = {
   links: false,
   images: false,
   zoom: 'auto',
-  fontSize: 13,
+  // Same size as the reply text around the diagram.
+  fontSize: 14,
   sanitize: (svg) => sanitizeDiagramSvg(svg),
 }
+
+const FULLSCREEN_OPTIONS: MountOptions = { ...OPTIONS, zoom: { always: true, maxScale: 4 } }
 
 function reason(cause: unknown): string {
   const text = cause instanceof Error ? cause.message : typeof cause === 'string' ? cause : ''
@@ -40,10 +49,82 @@ type View = 'diagram' | 'code'
 
 const TOGGLE_CLASS = 'h-5 rounded-xs px-1.5 text-[11px] font-medium text-(--color-text-muted) hover:text-(--color-text) aria-pressed:bg-(--bg-card) aria-pressed:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40'
 
+const HEADER_BUTTON_CLASS = 'flex h-7 w-7 items-center justify-center rounded-md text-(--color-text-muted) opacity-100 transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) md:h-6 md:w-6 md:rounded-xs md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100'
+
+function MermaidFullscreen({ source, onClose }: { source: string; onClose: () => void }) {
+  const hostRef = useRef<HTMLDivElement>(null)
+  // Esc and app-level switches (⌘K, session change) close it.
+  useKeyLayer(true, { kind: 'overlay', closeOnSwitch: true, onClose })
+
+  useEffect(() => {
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = prev
+    }
+  }, [])
+
+  useEffect(() => {
+    const host = hostRef.current
+    if (!host) return
+    let cancelled = false
+    let mounted: Mounted | null = null
+    loadPele()
+      .then((lib) => (cancelled ? null : lib.mountAsync(host, source, FULLSCREEN_OPTIONS)))
+      .then((result) => {
+        if (!result) return
+        if (cancelled) result.destroy()
+        else mounted = result
+      }, () => {})
+    return () => {
+      cancelled = true
+      mounted?.destroy()
+      host.replaceChildren()
+    }
+  }, [source])
+
+  return createPortal(
+    <div
+      className="mobile-safe-overlay fixed inset-0 z-50 flex flex-col bg-black/80 backdrop-blur-xs"
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Mermaid diagram full screen"
+      data-swipe-ignore
+    >
+      <div
+        className="flex w-full shrink-0 items-center justify-between gap-2 px-[max(1rem,env(safe-area-inset-right,0px))] pt-[max(1rem,env(safe-area-inset-top,0px))] pb-2 [[data-mobile-shell='ios']_&]:pt-[max(4rem,calc(env(safe-area-inset-top)+1rem))]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <span className="font-mono label-caps text-white/80">mermaid</span>
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close full screen"
+          title="Close (Esc)"
+          className="flex h-9 w-9 items-center justify-center rounded-md bg-white/10 text-white/80 transition-colors hover:bg-white/20 hover:text-white focus-visible:ring-2 focus-visible:ring-white focus-visible:outline-none"
+        >
+          <X size={16} />
+        </button>
+      </div>
+      <div className="flex min-h-0 flex-1 items-center justify-center px-2 pb-[max(0.5rem,env(safe-area-inset-bottom,0px))] sm:px-6 sm:pb-6">
+        <div
+          className="oa-diagram max-h-full w-full max-w-[1400px] overflow-auto bg-(--bg-card) p-3 sm:p-6"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div ref={hostRef} className="w-full" />
+        </div>
+      </div>
+    </div>,
+    document.body,
+  )
+}
+
 export function MermaidBlock({ source }: { source: string }) {
   const [view, setView] = useState<View>('diagram')
   const [state, setState] = useState<{ status: 'loading' | 'ready' } | { status: 'error'; reason: string }>({ status: 'loading' })
   const [copied, setCopied] = useState(false)
+  const [fullscreen, setFullscreen] = useState(false)
   const hostRef = useRef<HTMLDivElement>(null)
   const chatMenu = useChatMenu('Actions for mermaid diagram', () => [{ label: 'Copy code', run: () => copyText(source) }])
 
@@ -101,21 +182,35 @@ export function MermaidBlock({ source }: { source: string }) {
             </div>
           )}
         </div>
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <button
-                type="button"
-                onClick={() => void navigator.clipboard?.writeText(source).then(() => setCopied(true), () => {})}
-                className="flex h-7 w-7 items-center justify-center rounded-md text-(--color-text-muted) opacity-100 transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) md:h-6 md:w-6 md:rounded-xs md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100"
-                aria-label="Copy code"
-              >
-                {copied ? <Check size={13} className="text-(--color-success)" /> : <Copy size={13} />}
-              </button>
-            }
-          />
-          <TooltipContent>Copy</TooltipContent>
-        </Tooltip>
+        <div className="flex items-center gap-0.5">
+          {!showCode && state.status === 'ready' && (
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <button type="button" onClick={() => setFullscreen(true)} className={HEADER_BUTTON_CLASS} aria-label="Full screen">
+                    <Maximize2 size={13} />
+                  </button>
+                }
+              />
+              <TooltipContent>Full screen</TooltipContent>
+            </Tooltip>
+          )}
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <button
+                  type="button"
+                  onClick={() => void navigator.clipboard?.writeText(source).then(() => setCopied(true), () => {})}
+                  className={HEADER_BUTTON_CLASS}
+                  aria-label="Copy code"
+                >
+                  {copied ? <Check size={13} className="text-(--color-success)" /> : <Copy size={13} />}
+                </button>
+              }
+            />
+            <TooltipContent>Copy</TooltipContent>
+          </Tooltip>
+        </div>
       </div>
       {failed && (
         <p role="alert" className="flex items-center gap-1.5 border-b border-(--color-border-subtle) px-3 py-1.5 text-xs text-(--color-text-muted)">
@@ -136,6 +231,7 @@ export function MermaidBlock({ source }: { source: string }) {
         </pre>
       )}
       {chatMenu.menu}
+      {fullscreen && <MermaidFullscreen source={source} onClose={() => setFullscreen(false)} />}
     </div>
   )
 }

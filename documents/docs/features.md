@@ -590,14 +590,16 @@ run from the terminal (the native Rust binary since v3.0.0).
   are counted as they wrap, so the fold follows the chat width: opening the
   sidebar or the dock re-checks it. Expanding and folding animate, and the
   whole prompt stays selectable and searchable.
-- **Mermaid diagrams in agent responses and plans** `[v1.121.0, v1.123.0, v3.5.0, v3.21.0]` —
+- **Mermaid diagrams in agent responses and plans** `[v1.121.0, v1.123.0, v3.5.0, v3.21.0, v3.22.0]` —
   a `mermaid` code fence renders as a diagram as soon as its closing fence
   arrives, with **Diagram** and **Code** views and copy. Since v3.21.0 it is
   drawn by [Pele](https://pele.run), a small, dependency-free Mermaid renderer
   that loads on the first diagram (startup size is unchanged). Diagrams use the
   app's colors in light and dark themes, adapt their layout to narrow screens,
   and can be zoomed when they have to shrink. Diagram links and images are
-  off, and the drawn SVG is sanitized before it is shown. A diagram that
+  off, and the drawn SVG is sanitized before it is shown. Since v3.22.0 labels
+  match the reply text size, and a **Full screen** button redraws the diagram
+  for the whole window with zoom always on (Esc closes it). A diagram that
   can't be drawn shows its code with a one-line reason. (v3.5.0–v3.20.0
   showed `mermaid` fences as plain code.) For richer drawings, an agent can
   still write an HTML/SVG file and open it in the Preview tab.

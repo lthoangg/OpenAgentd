@@ -19,13 +19,13 @@ describe('groupSessionsByDate', () => {
 
   it('buckets by local midnight and keeps the input order inside a group', () => {
     const sessions = [
-      session('today-late', { updated_at: local(2026, 10, 19, 9, 0) }),
-      session('today-early', { updated_at: local(2026, 10, 19, 0, 0) }),
-      session('yesterday', { updated_at: local(2026, 10, 18, 23, 59) }),
-      session('week', { updated_at: local(2026, 10, 12, 0, 0) }),
-      session('month', { updated_at: local(2026, 10, 11, 23, 0) }),
-      session('month-edge', { updated_at: local(2026, 9, 19, 0, 0) }),
-      session('older', { updated_at: local(2026, 9, 18, 23, 59) }),
+      session('today-late', { last_message_at: local(2026, 10, 19, 9, 0) }),
+      session('today-early', { last_message_at: local(2026, 10, 19, 0, 0) }),
+      session('yesterday', { last_message_at: local(2026, 10, 18, 23, 59) }),
+      session('week', { last_message_at: local(2026, 10, 12, 0, 0) }),
+      session('month', { last_message_at: local(2026, 10, 11, 23, 0) }),
+      session('month-edge', { last_message_at: local(2026, 9, 19, 0, 0) }),
+      session('older', { last_message_at: local(2026, 9, 18, 23, 59) }),
       session('no-time'),
     ]
     const groups = groupSessionsByDate(sessions, 'activity', now)
@@ -40,13 +40,20 @@ describe('groupSessionsByDate', () => {
   })
 
   it('reads the creation time when sorting by created, and drops empty groups', () => {
-    const touchedToday = session('s', { created_at: local(2026, 10, 1), updated_at: local(2026, 10, 19, 8) })
+    const touchedToday = session('s', { created_at: local(2026, 10, 1), last_message_at: local(2026, 10, 19, 8) })
     expect(groupSessionsByDate([touchedToday], 'created', now).map((g) => g.id)).toEqual(['month'])
     expect(groupSessionsByDate([touchedToday], 'activity', now).map((g) => g.id)).toEqual(['today'])
     expect(groupSessionsByDate([], 'activity', now)).toEqual([])
   })
 
-  it('falls back to the creation time for activity when updated_at is missing', () => {
+  it('dates activity by the last message, not a later rename', () => {
+    const renamed = session('s', { last_message_at: local(2026, 10, 18), updated_at: local(2026, 10, 19, 9) })
+    expect(groupSessionsByDate([renamed], 'activity', now).map((g) => g.id)).toEqual(['yesterday'])
+  })
+
+  it('falls back to updated_at (an older server), then the creation time', () => {
+    const older = session('s', { updated_at: local(2026, 10, 19, 8) })
+    expect(groupSessionsByDate([older], 'activity', now).map((g) => g.id)).toEqual(['today'])
     const s = session('s', { created_at: local(2026, 10, 18) })
     expect(groupSessionsByDate([s], 'activity', now).map((g) => g.id)).toEqual(['yesterday'])
   })

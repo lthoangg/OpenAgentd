@@ -11,7 +11,7 @@
  */
 import { describe, it, expect, mock } from 'bun:test'
 import { QueryClient, type InfiniteData } from '@tanstack/react-query'
-import { appendSubagent, removeSubagent, applyCacheInvalidations, patchSessionRunning, patchSessionTitle, prependSession, prependWorkspaceSession } from '@/stores/cache-invalidation-bridge'
+import { appendSubagent, bumpSessionActivity, removeSubagent, applyCacheInvalidations, patchSessionRunning, patchSessionTitle, prependSession, prependWorkspaceSession } from '@/stores/cache-invalidation-bridge'
 import { queryKeys } from '@/queries'
 import type { CacheInvalidation } from '@/stores/useAgentStore'
 import type { SessionPageResponse, SessionResponse } from '@/api/types'
@@ -710,5 +710,66 @@ describe('removeSubagent', () => {
       queryKeys.session.subagents('lead-1'),
     )
     expect(subagentsCache?.live_members.map((m) => m.session_id)).toEqual(['sub-2'])
+  })
+})
+
+// ─── bumpSessionActivity ──────────────────────────────────────────────────
+//
+// A turn event is activity: the server moved ``last_message_at``. The cached row
+// mirrors it and moves to the top of activity-sorted lists, without a refetch.
+
+describe('bumpSessionActivity', () => {
+  const AT = '2026-10-20T08:00:00.000Z'
+  const ids = (client: QueryClient, key: readonly unknown[]) =>
+    client.getQueryData<InfiniteData<SessionPageResponse>>(key)!.pages.map((page) => page.data.map((s) => s.id))
+
+  it('moves the row to the top of an activity-sorted list, across pages', () => {
+    const client = new QueryClient()
+    const key = queryKeys.session.sessions.everywhere('activity')
+    seedInfinite(client, [[makeSession('s1', 'A'), makeSession('s2', 'B')], [makeSession('s3', 'C')]], key)
+
+    bumpSessionActivity(client, 's3', AT)
+
+    expect(ids(client, key)).toEqual([['s3', 's1', 's2'], []])
+    expect(client.getQueryData<InfiniteData<SessionPageResponse>>(key)!.pages[0].data[0].last_message_at).toBe(AT)
+  })
+
+  it('reorders workspace and checkout lists sorted by activity', () => {
+    const client = new QueryClient()
+    const workspace = queryKeys.session.sessions.workspace('/repo', 'activity')
+    const checkouts = queryKeys.session.sessions.checkouts(['/repo', '/repo-wt'], 'activity')
+    seedInfinite(client, [[makeSession('s1', 'A'), makeSession('s2', 'B')]], workspace)
+    seedInfinite(client, [[makeSession('s1', 'A'), makeSession('s2', 'B')]], checkouts)
+
+    bumpSessionActivity(client, 's2', AT)
+
+    expect(ids(client, workspace)).toEqual([['s2', 's1']])
+    expect(ids(client, checkouts)).toEqual([['s2', 's1']])
+  })
+
+  it('keeps the order of created-sorted and pinned lists but still updates the time', () => {
+    const client = new QueryClient()
+    const created = queryKeys.session.sessions.workspace('/repo')
+    const pinned = queryKeys.session.sessions.pinned()
+    seedInfinite(client, [[makeSession('s1', 'A'), makeSession('s2', 'B')]], created)
+    seedInfinite(client, [[makeSession('s1', 'A'), makeSession('s2', 'B')]], pinned)
+
+    bumpSessionActivity(client, 's2', AT)
+
+    expect(ids(client, created)).toEqual([['s1', 's2']])
+    expect(ids(client, pinned)).toEqual([['s1', 's2']])
+    expect(client.getQueryData<InfiniteData<SessionPageResponse>>(created)!.pages[0].data[1].last_message_at).toBe(AT)
+  })
+
+  it('never moves a newer server time backwards, and leaves untouched lists by reference', () => {
+    const client = new QueryClient()
+    const key = queryKeys.session.sessions.everywhere('activity')
+    const newer = { ...makeSession('s1', 'A'), last_message_at: '2026-10-21T00:00:00Z' }
+    seedInfinite(client, [[newer, makeSession('s2', 'B')]], key)
+    const before = client.getQueryData(key)
+
+    bumpSessionActivity(client, 's1', AT)
+
+    expect(client.getQueryData(key)).toBe(before)
   })
 })

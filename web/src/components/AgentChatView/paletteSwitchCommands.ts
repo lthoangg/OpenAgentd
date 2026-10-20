@@ -13,6 +13,7 @@ import type {
 import type { Command } from '../CommandPalette'
 import { formatCompactRelative } from '@/utils/format'
 import { sameWorkspacePath } from '@/utils/workspace'
+import { sessionActivityTime } from '../Sidebar.helpers'
 
 export interface SwitchCommandsInput {
   currentSessionId: string | null
@@ -41,11 +42,11 @@ function sessionStatus(session: SessionResponse, now: Date): string {
   // ``needs_input`` implies ``running``, so it is checked first.
   if (session.needs_input) return 'Needs you'
   if (session.running) return 'Running'
-  return formatCompactRelative(session.updated_at, now)
+  return formatCompactRelative(sessionActivityTime(session), now)
 }
 
 function byRecency(a: SessionResponse, b: SessionResponse): number {
-  return (b.updated_at ?? '').localeCompare(a.updated_at ?? '')
+  return (sessionActivityTime(b) ?? '').localeCompare(sessionActivityTime(a) ?? '')
 }
 
 function sessionPage(
@@ -93,7 +94,8 @@ function workspaceCommands(input: SwitchCommandsInput, handlers: SwitchCommandHa
   const lastActive = new Map<string, string>()
   for (const s of input.sessions) {
     const row = s.workspace ? rows.find((r) => sameWorkspacePath(r.path, s.workspace)) : undefined
-    if (row && (s.updated_at ?? '') > (lastActive.get(row.path) ?? '')) lastActive.set(row.path, s.updated_at ?? '')
+    const at = sessionActivityTime(s) ?? ''
+    if (row && at > (lastActive.get(row.path) ?? '')) lastActive.set(row.path, at)
   }
   const isCurrent = (path: string) => sameWorkspacePath(path, input.currentWorkspace)
   return rows

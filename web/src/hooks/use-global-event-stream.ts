@@ -6,7 +6,7 @@ import { onApiBaseUrlChange } from '@/api/base-url'
 import { backgroundSuspendsSockets } from '@/hooks/use-platform'
 import { sendDesktopNotification } from '@/lib/desktop-notifications'
 import { queryKeys } from '@/queries'
-import { appendSubagent, patchSessionRunning, patchSessionTitle } from '@/stores/cache-invalidation-bridge'
+import { appendSubagent, bumpSessionActivity, patchSessionRunning, patchSessionTitle } from '@/stores/cache-invalidation-bridge'
 import { useAgentStore } from '@/stores/useAgentStore'
 import { useLspInstallStore } from '@/stores/useLspInstallStore'
 import { useUnreadStore } from '@/stores/useUnreadStore'
@@ -65,6 +65,8 @@ const CONFIG_RESOURCE_KEYS: Record<string, readonly (readonly unknown[])[]> = {
  * refetch when the session is not in any cached page yet (a scheduled task may
  * have just created it). The active list is the exception: a session joining
  * or leaving it cannot be patched in, and it is a single small page.
+ * A turn event is also activity: the row's ``updated_at`` and its place in
+ * activity-sorted lists follow it (``bumpSessionActivity``).
  */
 function markSessionRunning(
   queryClient: QueryClient,
@@ -76,6 +78,7 @@ function markSessionRunning(
     queryClient.invalidateQueries({ queryKey: queryKeys.session.sessions.all() })
     return
   }
+  bumpSessionActivity(queryClient, sessionId)
   queryClient.invalidateQueries({ queryKey: queryKeys.session.sessions.active() })
 }
 

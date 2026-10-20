@@ -102,9 +102,17 @@ export interface SessionGroup {
   sessions: SessionResponse[]
 }
 
-/** The time a session sorts by: last touch, or creation. */
+/**
+ * When a session was last used: its newest message. ``updated_at`` stands in
+ * for a server that predates ``last_message_at``.
+ */
+export function sessionActivityTime(session: SessionResponse): string | null {
+  return session.last_message_at ?? session.updated_at ?? session.created_at
+}
+
+/** The time a session sorts by: last use, or creation. */
 export function sessionSortTime(session: SessionResponse, sortBy: 'activity' | 'created'): string | null {
-  return sortBy === 'activity' ? (session.updated_at ?? session.created_at) : session.created_at
+  return sortBy === 'activity' ? sessionActivityTime(session) : session.created_at
 }
 
 /** Local midnight ``daysAgo`` calendar days before ``now`` (DST-safe). */

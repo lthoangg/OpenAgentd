@@ -1158,6 +1158,10 @@ agent against it.
   Since `[v3.21.0]` repository rows show a coloured dot per workspace group,
   and in Project mode **View options → Workspace group** shows one group's
   repositories (Chat stays), named in a row above the list with **Show all**.
+  Since `[v3.21.0]` **Recent activity** means the last message, not creation,
+  a rename or a model switch: a session moves to the top when a turn starts or
+  finishes, sliding into place rather than jumping, and the row's age keeps
+  counting while the app is open.
 - **Pinned sessions** `[v3.18.0]` — **Pin** (a row action left of Edit on
   desktop `[v3.19.0]`, first in a session's context menu, or in the long-press
   sheet on mobile) moves a top-level session into a **Pinned** section at

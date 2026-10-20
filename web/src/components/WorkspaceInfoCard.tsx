@@ -20,6 +20,7 @@ import { useUnreadStore } from '@/stores/useUnreadStore'
 import { formatCompactRelative } from '@/utils/format'
 import { workspaceLabel } from '@/utils/workspace'
 import { applySessionSelection } from './Sidebar.sessions'
+import { sessionActivityTime } from './Sidebar.helpers'
 import { SessionStatusMark, sessionStatus } from './Sidebar/SessionStatusMark'
 import { listRowClass } from '@/components/ui/list-row'
 import type { SessionResponse } from '@/api/types'
@@ -55,7 +56,7 @@ export function WorkspaceInfoCard({ workspace, chatWorkspace = false, currentSes
   const name = workspaceLabel(workspace)
   const recent = (data?.pages.flatMap((page) => page.data) ?? [])
     .filter((session) => session.id !== currentSessionId && !session.parent_session_id)
-    .sort((a, b) => (b.updated_at ?? '').localeCompare(a.updated_at ?? ''))
+    .sort((a, b) => (sessionActivityTime(b) ?? '').localeCompare(sessionActivityTime(a) ?? ''))
 
   return (
     <div className="mx-auto w-full max-w-md px-4 py-4">
@@ -121,7 +122,7 @@ export function RecentSessionsList({
               <SessionStatusMark status={sessionStatus(session, unreadIds.includes(session.id))} />
               <span className="min-w-0 flex-1 truncate font-medium">{session.title || 'Untitled'}</span>
               <span className="shrink-0 font-mono text-[11px] text-(--color-text-subtle)">
-                {formatCompactRelative(session.updated_at ?? session.created_at, now)}
+                {formatCompactRelative(sessionActivityTime(session), now)}
               </span>
             </button>
           </li>

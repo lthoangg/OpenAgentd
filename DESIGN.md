@@ -404,7 +404,7 @@ reserved almost entirely for *meaning*. Nothing is decorative.
 - **Tertiary (#5AA8E2) — "Signal Blue."** The sole interaction color. Focus
   rings, links, and informational state. Blue is used for the focus ring instead
   of Bark because a near-ink ring reads as a hard rectangle rather than an
-  affordance.
+  affordance. The logo's dot (the agent) is Signal Blue too.
 - **Neutral (#FAF6EC) — "Paper."** The page foundation. Warmer and softer than
   white, which keeps long agent transcripts comfortable.
 
@@ -866,6 +866,7 @@ color. Four layers sit in front of the app, and each one must be paper:
 | Browser / OS chrome | `index.html` `theme-color` + `lib/theme.ts` | `#FAF6EC` / `#15110D` | ✓ correct |
 | Pre-paint CSS | `index.html` `<style>` | `#FAF6EC` / `#15110D` | ✓ correct |
 | Theme class | `public/theme-init.js` | sets `.light`/`.dark` on `<html>` | ✓ correct |
+| Boot loader | `index.html` inline Seal (generated) | ink + Signal Blue under `html.dark` | ✓ correct |
 
 The last three links are right; the first two are not. `backgroundColor` should
 be set on both window configs.
@@ -936,6 +937,40 @@ the user's text size, and the root font size scales from 16px by that size over
 iOS's default of 17px. The scale never goes below 1, because the 11px floor
 assumes the design size, and stops at 1.25. Everything in rem scales with it:
 text, spacing, and touch targets. Px sizes do not.
+
+## Brand mark
+
+The OpenAgentd logo is built by
+`scripts/brand/brand.ts` from Schibsted Grotesk 600 and drawn inline by
+`components/brand/Logo.tsx` from the generated `lib/brand/logo-data.ts`.
+Never redraw it by hand; change the generator. openagentd.dev copies it from
+this repository. Files and regeneration: `documents/assets/brand/README.md`.
+
+- **The Seal**: an ink disc with an open A (no crossbar) cut out of it, and a
+  Signal Blue dot as the crossbar. The dot is the agent. On a 64-unit grid:
+  disc radius 27, A from y 20 to 47, 11.5 wide each side, stroke 6, dot radius
+  3.75 at y 39. Used wherever the app shows its mark: the boot and loading
+  screens, the crash screen, the empty session, and Settings → About.
+- **The wordmark**: "OpenAgentd" with the font's A replaced by the same open A
+  and dot. Used in Settings → About and the tray popup.
+- **Color**: the ink is `currentColor`, set to `--color-text`; the dot is
+  `--logo-signal`, which is `--accent-blue`. Both follow the theme. No tile,
+  rounding, or shadow around the Seal in the app.
+- **Type**: the wordmark is outlines, so the app needs no extra font. Inter and
+  JetBrains Mono stay the only UI faces; Schibsted Grotesk appears only inside
+  the wordmark (and in marketing headlines outside the app).
+- **Motion**: the 3.3s Seal-to-wordmark intro is for the website and media,
+  never the app. In the app only the dot moves: on loading screens it pulses
+  (`oa-seal-pulse`, opacity only, `glacial` 800ms alternating). With reduced
+  motion it stays still. Everywhere else the Seal is static.
+- **Platform icons** (masters in `documents/assets/brand/icons/`, built by
+  `scripts/generate_icons.py`): the ink Seal on a Paper tile. macOS uses an
+  824px tile on Apple's 1024 grid with a hairline border; Windows a
+  full-bleed tile so 16–32px sizes stay legible; iOS a full-bleed opaque Paper
+  square without an alpha channel; Android an adaptive foreground whose disc
+  sits inside the 66dp safe zone on a `#FAF6EC` background. The macOS menu bar
+  icon is a monochrome template of the open A and the dot without the disc,
+  which is too heavy at 18pt.
 
 ## Do's and Don'ts
 

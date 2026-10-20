@@ -12,32 +12,33 @@
 <style>
   @font-face { font-family: "Inter Variable"; font-weight: 100 900; src: url("../../../../web/node_modules/@fontsource-variable/inter/files/inter-latin-wght-normal.woff2") format("woff2"); }
   @font-face { font-family: "JetBrains Mono Variable"; font-weight: 100 800; src: url("../../../../web/node_modules/@fontsource-variable/jetbrains-mono/files/jetbrains-mono-latin-wght-normal.woff2") format("woff2"); }
+  /* The face the wordmark is drawn from; headline only, as on openagentd.dev. */
+  @font-face { font-family: "Schibsted Grotesk"; font-weight: 400 900; src: url("../../../../scripts/brand/fonts/SchibstedGrotesk-wght.ttf") format("truetype"); }
 
   :root {
     --page: #FAF6EC; --rail: #F5EFDD; --card: #FFFBF1; --key: #F0E9D4;
     --border: #D9CFA9; --border-strong: #B8A47E;
     --ink: #1A1714; --ink-2: #4B3E32; --muted: #6E604F;
-    --accent: #F59E3B; --accent-soft: #FFF1D8; --accent-text: #873E05;
+    /* Signal Blue, the logo's dot; --accent-text is the AA text blue. */
+    --accent-text: #174A73;
     --shadow: 0 1px 0 rgba(63, 52, 41, .06), 0 28px 70px -18px rgba(63, 52, 41, .32);
-    --glow: rgba(245, 158, 59, .16);
+    --glow: rgba(90, 168, 226, .14);
     --w: 1600px; --h: 640px; --pad-x: 84px; --pad-y: 72px;
     --h1: 64px; --sub: 21px; --col: 610px;
     --win-left: 760px; --win-top: 84px; --win-w: 1040px;
-    --bot: 236px; --bot-left: 560px; --bot-bottom: -14px;
   }
   .dark {
     --page: #15110D; --rail: #110D0A; --card: #1C1813; --key: #2A2219;
     --border: #3A2F23; --border-strong: #5C4B36;
     --ink: #F5EBD8; --ink-2: #C5B59A; --muted: #9C8A72;
-    --accent: #FDB75D; --accent-soft: #3D2D14; --accent-text: #FCC780;
+    --accent-text: #9DD0F5;
     --shadow: 0 1px 0 rgba(0, 0, 0, .4), 0 30px 80px -16px rgba(0, 0, 0, .7);
-    --glow: rgba(253, 183, 93, .10);
+    --glow: rgba(124, 194, 240, .10);
   }
   .social {
     --w: 1280px; --h: 640px; --pad-x: 64px; --pad-y: 64px;
     --h1: 52px; --sub: 19px; --col: 520px;
     --win-left: 610px; --win-top: 196px; --win-w: 900px;
-    --bot: 200px; --bot-left: 440px; --bot-bottom: -10px;
   }
 
   * { box-sizing: border-box; margin: 0; }
@@ -56,15 +57,13 @@
   }
 
   .copy { position: absolute; left: var(--pad-x); top: var(--pad-y); width: var(--col); z-index: 2; }
-  .brand { display: flex; align-items: center; gap: 14px; }
-  .brand img { width: 46px; height: 46px; }
-  .brand span { font-size: 25px; font-weight: 650; letter-spacing: -0.02em; }
+  .brand { display: block; height: 34px; width: auto; }
   h1 {
     margin-top: 44px;
-    font-size: var(--h1); line-height: 1.04; font-weight: 720; letter-spacing: -0.038em;
+    font-family: "Schibsted Grotesk", "Inter Variable", system-ui, sans-serif;
+    font-size: var(--h1); line-height: 1.05; font-weight: 600; letter-spacing: -0.03em;
   }
   h1 em { font-style: normal; color: var(--accent-text); }
-  .dark h1 em { color: var(--accent); }
   p.sub { margin-top: 24px; font-size: var(--sub); line-height: 1.5; color: var(--muted); max-width: 30em; }
   .platforms {
     margin-top: 30px; display: flex; gap: 8px; flex-wrap: wrap;
@@ -82,22 +81,12 @@
   .window .bar i { width: 11px; height: 11px; border-radius: 50%; background: var(--border); }
   /* banner-shot-*.webp is a 1280 px wide capture with the app sidebar collapsed. */
   .window .shot { display: block; width: 100%; }
-
-  .bot {
-    position: absolute; z-index: 3; width: var(--bot);
-    left: var(--bot-left); bottom: var(--bot-bottom);
-    filter: drop-shadow(0 14px 18px rgba(63, 52, 41, .18));
-  }
-  .dark .bot { filter: drop-shadow(0 16px 22px rgba(0, 0, 0, .55)); }
 </style>
 </head>
 <body>
 <div class="canvas" id="canvas">
   <div class="copy">
-    <div class="brand">
-      <img src="../openagentd-app-icon.png" alt="">
-      <span>OpenAgentd</span>
-    </div>
+    <img class="brand" id="wordmark" alt="OpenAgentd">
     <h1>The coding agent that <em>shows its work.</em></h1>
     <p class="sub">A local-first desktop app for coding agents. Every step, diff and token in view, on your machine.</p>
     <div class="platforms"><span>macOS</span><span>Windows</span><span>Linux</span><span>iOS</span><span>Android</span></div>
@@ -107,8 +96,6 @@
     <div class="bar"><i></i><i></i><i></i></div>
     <img class="shot" id="shot" alt="">
   </div>
-
-  <img class="bot" src="../octobot-agentd-source.png" alt="">
 </div>
 <script>
   const q = new URLSearchParams(location.search)
@@ -116,6 +103,7 @@
   document.documentElement.classList.toggle("dark", theme === "dark")
   document.documentElement.classList.toggle("social", q.get("layout") === "social")
   document.getElementById("shot").src = `banner-shot-${theme}.webp`
+  document.getElementById("wordmark").src = `../logo/openagentd-wordmark-${theme}.svg`
 </script>
 </body>
 </html>

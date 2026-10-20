@@ -89,9 +89,9 @@ export function MermaidBlock({ source }: { source: string }) {
       data-slot="mermaid-block"
       onContextMenu={chatMenu.onContextMenu}
       onKeyDown={chatMenu.onKeyDown}
-      className="group relative my-1.5 overflow-hidden rounded-sm border border-(--color-border) bg-(--bg-card)"
+      className="group relative my-1.5 overflow-hidden bg-(--bg-card)"
     >
-      <div className="flex items-center justify-between gap-3 border-b border-(--color-border) bg-(--bg-key) py-0.5 pr-1.5 pl-3">
+      <div className="flex items-center justify-between gap-3 bg-(--bg-key) py-0.5 pr-1.5 pl-3">
         <div className="flex min-w-0 items-center gap-2">
           <span className="font-mono label-caps text-(--color-text-muted)">mermaid</span>
           {!failed && (

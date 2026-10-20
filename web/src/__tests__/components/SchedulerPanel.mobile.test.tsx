@@ -59,6 +59,18 @@ describe('scheduler overlay on phones', () => {
     expect(screen.queryByRole('button', { name: 'Close detail' })).not.toBeInTheDocument()
   })
 
+  it('keeps the edit form to one title and one way to cancel', async () => {
+    useUIStore.getState().focusScheduledTask('t1')
+    renderPanel()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit task' }))
+
+    expect(await screen.findByRole('heading', { name: 'Edit task' })).toBeInTheDocument()
+    expect(screen.getAllByText('Nightly build')).toHaveLength(1)
+    expect(screen.queryByRole('button', { name: 'Cancel edit' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeInTheDocument()
+  })
+
   it('opens the create form without a second header', async () => {
     renderPanel()
 

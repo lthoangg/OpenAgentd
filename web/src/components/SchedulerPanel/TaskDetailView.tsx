@@ -79,6 +79,7 @@ export function TaskDetailView({
         task={task}
         onSuccess={() => setEditing(false)}
         onCancel={() => setEditing(false)}
+        hostTitled={hostTitled}
       />
     )
   }

@@ -24,10 +24,17 @@ export function EditTaskForm({
   task,
   onSuccess,
   onCancel,
+  hostTitled = false,
 }: {
   task: ScheduledTaskResponse
   onSuccess: () => void
   onCancel: () => void
+  /**
+   * The host header already shows the task name (the phone overlay): keep the
+   * "Edit task" title but drop the repeated name and the X, since the footer
+   * has Cancel.
+   */
+  hostTitled?: boolean
 }) {
   const localTz = Intl.DateTimeFormat().resolvedOptions().timeZone
   const headerClass = useSchedulerPaneHeaderClass()
@@ -76,25 +83,27 @@ export function EditTaskForm({
             </div>
             <div>
               <h2 className="text-base font-semibold tracking-tight text-(--color-text)">Edit task</h2>
-              <p className="text-[11px] leading-relaxed text-(--color-text-muted)">{task.name}</p>
+              {!hostTitled && <p className="text-[11px] leading-relaxed text-(--color-text-muted)">{task.name}</p>}
             </div>
           </div>
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <Button
-                  variant="ghost"
-                  size="icon-xs"
-                  onClick={onCancel}
-                  className="h-9 w-9 rounded-sm text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text) md:h-7 md:w-7"
-                  aria-label="Cancel edit"
-                >
-                  <X size={13} />
-                </Button>
-              }
-            />
-            <TooltipContent>Cancel</TooltipContent>
-          </Tooltip>
+          {!hostTitled && (
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    onClick={onCancel}
+                    className="h-9 w-9 rounded-sm text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text) md:h-7 md:w-7"
+                    aria-label="Cancel edit"
+                  >
+                    <X size={13} />
+                  </Button>
+                }
+              />
+              <TooltipContent>Cancel</TooltipContent>
+            </Tooltip>
+          )}
         </div>
       </div>
 

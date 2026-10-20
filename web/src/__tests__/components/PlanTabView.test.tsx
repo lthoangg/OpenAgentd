@@ -447,76 +447,20 @@ describe('PlanTabView — links, images and the Appendix', () => {
   })
 })
 
-describe('PlanTabView — the plan being written', () => {
-  it('replaces the plan in place as a write streams, with no way to edit or clear it meanwhile', () => {
+describe('PlanTabView — a plan call in progress', () => {
+  it('keeps showing the saved plan until the call finishes and the plan refetches', () => {
     setPlanCall('{"action":"write","content":"# Rewrite\\n\\n1. Start ov')
     renderTab({ onClearPlan: () => {} })
 
-    expect(screen.getByText('Start ov')).toBeTruthy()
-    expect(screen.queryByText('Write the migration')).toBeNull()
-    expect(screen.getByText('Writing…')).toBeTruthy()
-    expect(screen.queryByRole('button', { name: 'Edit plan' })).toBeNull()
-    expect((screen.getByRole('button', { name: 'Clear plan' }) as HTMLButtonElement).disabled).toBe(true)
-  })
-
-  it('shows the first plan as it is written', () => {
-    setPlanCall('{"action":"write","content":"# First\\n\\n1. Look aro')
-    renderTab({ plan: null })
-
-    expect(screen.queryByText('No plan yet')).toBeNull()
-    expect(screen.getByText('Look aro')).toBeTruthy()
-  })
-
-  it('applies a streaming edit to the plan in place', () => {
-    setPlanCall('{"action":"edit","edits":[{"old":"1. Write the migration","new":"1. Write the reversible mig')
-    renderTab()
-
-    expect(screen.getByText('Write the reversible mig')).toBeTruthy()
-    expect(screen.getByText('Wire the endpoint')).toBeTruthy()
-    expect(screen.getByText('Editing…')).toBeTruthy()
-  })
-
-  it('keeps the written plan until the refetch replaces it', () => {
-    const args = JSON.stringify({ action: 'write', content: '# Rewrite\n\n1. Start over' })
-    setPlanCall(args)
-    const view = renderTab()
-
-    setPlanCall(args, { toolDone: true, toolResult: 'Plan saved as revision 3 (3 lines) at plan.md.' })
-    expect(screen.getByText('Start over')).toBeTruthy()
-    expect(screen.queryByText('Writing…')).toBeNull()
-
-    const saved = { ...PLAN, content: '# Rewrite\n\n1. Start over, saved', revision: 3, updated_at: '2026-01-01T00:01:00Z' }
-    view.rerender(
-      <QueryClientProvider client={new QueryClient()}>
-        <PlanTabView plan={saved} sessionId="s-1" />
-      </QueryClientProvider>,
-    )
-    expect(screen.getByText('Start over, saved')).toBeTruthy()
-    expect(screen.getByText('rev 3')).toBeTruthy()
-  })
-
-  it('falls back to the saved plan when the write fails', () => {
-    const args = JSON.stringify({ action: 'write', content: '# Rewrite\n\n1. Start over' })
-    setPlanCall(args)
-    renderTab()
-
-    setPlanCall(args, { toolDone: true, toolResult: 'Error: The plan exceeds 100000 characters.' })
     expect(screen.getByText('Write the migration')).toBeTruthy()
-  })
-
-  it('hands Edit back at once after a write that changed nothing, which keeps the revision', () => {
-    const args = JSON.stringify({ action: 'write', content: PLAN.content })
-    setPlanCall(args)
-    renderTab()
-    expect(screen.queryByRole('button', { name: 'Edit plan' })).toBeNull()
-
-    setPlanCall(args, { toolDone: true, toolResult: 'Plan saved as revision 2 (4 lines) at plan.md.' })
+    expect(screen.queryByText('Start ov')).toBeNull()
+    expect(screen.queryByText('Writing…')).toBeNull()
     expect(screen.getByRole('button', { name: 'Edit plan' })).toBeTruthy()
   })
 
-  it("ignores a plan call that had already finished before the tab opened", () => {
-    setPlanCall(JSON.stringify({ action: 'write', content: '# Old call' }), { toolDone: true, toolResult: 'Plan saved as revision 2.' })
-    renderTab()
-    expect(screen.getByText('Write the migration')).toBeTruthy()
+  it('stays empty while the first plan is written', () => {
+    setPlanCall('{"action":"write","content":"# First\\n\\n1. Look aro')
+    renderTab({ plan: null })
+    expect(screen.getByText('No plan yet')).toBeTruthy()
   })
 })

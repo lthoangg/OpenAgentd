@@ -24,7 +24,6 @@ import { isLocalBackend } from '@/api/preview'
 import { APP_EVENTS, dispatchAppEvent } from '@/lib/app-events'
 import { ToolResult } from '../ToolResult'
 import { AskUser } from '../AskUser'
-import { PLAN_TOOL } from '../PlanReview/live-plan'
 import { PlanReviewCard } from '../PlanReview/PlanReviewCard'
 import { PREVIEW_TOOL, isPreviewOpenSuccess, previewTargetFromArgs, requestOpenPreview } from '../Preview/preview-events'
 import { parseSendResult, requestOpenSession } from '@/utils/workspace-messages'
@@ -42,6 +41,8 @@ import type { ToolCallState } from './types'
 const ASK_USER = 'ask_user'
 /** Matches ``appv3_agent::agent::SUBMIT_PLAN``. */
 const SUBMIT_PLAN = 'submit_plan'
+/** Matches ``appv3_agent::tools::plan::PLAN_TOOL``. */
+const PLAN_TOOL = 'plan'
 const SEND_TO_WORKSPACE = 'send_to_workspace'
 
 interface ToolCallProps {
@@ -260,8 +261,8 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
     () => (name === SEND_TO_WORKSPACE && done ? parseSendResult(result) : null),
     [name, done, result],
   )
-  // The Plan tab shows the plan being written in place; the row links there.
-  const planLink = name === PLAN_TOOL && !(done && isFailedResult(result)) ? (done ? 'View plan' : 'Watch plan') : null
+  // A saved plan opens in the Plan tab.
+  const planLink = name === PLAN_TOOL && done && !isFailedResult(result) ? 'View plan' : null
   // Pending-state header comes from getToolDisplay's no-args branch
   // (e.g. ``recall`` → "Checking memory…"). Tools without a custom pending header return
   // ``header: null`` from that branch and fall back to the raw tool name

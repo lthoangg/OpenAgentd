@@ -19,6 +19,7 @@ import { ImageLightbox } from '@/components/ImageLightbox'
 import { CodeBlock } from '@/components/CodeBlock'
 import { FileRefCode, MarkdownLink } from '@/components/FileRefLink'
 import { tokenizeCode } from '@/utils/code-highlight'
+import { MermaidBlock } from '@/utils/MermaidBlock'
 import { isVideoSrc } from '@/utils/workspace'
 import { useSmoothStream } from '@/hooks/useSmoothStream'
 import { createMarkdownChunker } from '@/utils/markdown-chunks'
@@ -116,6 +117,40 @@ export function fixNestedFences(content: string): string {
   }
 
   return result.join('\n')
+}
+
+const STREAMING_MERMAID_LANGUAGE = 'mermaid-complete'
+
+/**
+ * Mark only closed Mermaid fences during a stream, so a finished diagram is
+ * drawn without waiting for the whole response while the fence still being
+ * written stays code. Follows fixNestedFences' equal-length, bare-closer
+ * convention.
+ */
+function markClosedStreamingMermaidFences(content: string): string {
+  if (!/^`{3,}mermaid\s*$/im.test(content)) return content
+  const lines = content.split('\n')
+  for (let i = 0; i < lines.length; i++) {
+    const open = lines[i].match(/^(`{3,})mermaid\s*$/i)
+    if (!open) continue
+    const fenceLength = open[1].length
+    let depth = 1
+    for (let j = i + 1; j < lines.length; j++) {
+      const fence = lines[j].match(/^(`{3,})\s*(\w*).*$/)
+      if (!fence || fence[1].length !== fenceLength) continue
+      if (fence[2] === '') {
+        depth--
+        if (depth === 0) {
+          lines[i] = `${open[1]}${STREAMING_MERMAID_LANGUAGE}`
+          i = j
+          break
+        }
+      } else {
+        depth++
+      }
+    }
+  }
+  return lines.join('\n')
 }
 
 // ── HighlightedCode ───────────────────────────────────────────────────────────
@@ -591,8 +626,11 @@ export const MarkdownBlock = memo(function MarkdownBlock({
   // Me: fixNestedFences is pure; memoize so we don't re-walk the whole
   // string on scroll-triggered parent re-renders either.
   const fixedContent = useMemo(
-    () => fixNestedFences(normalizeProposedPlanTags(displayContent)),
-    [displayContent],
+    () => {
+      const fixed = fixNestedFences(normalizeProposedPlanTags(displayContent))
+      return isStreaming ? markClosedStreamingMermaidFences(fixed) : fixed
+    },
+    [displayContent, isStreaming],
   )
   const [streamed, setStreamed] = useState(isStreaming)
   if (isStreaming && !streamed) setStreamed(true)
@@ -656,6 +694,11 @@ function MarkdownPre(props: React.HTMLAttributes<HTMLPreElement> & { 'data-lang'
   const normalizedLanguage = language?.toLowerCase()
   if (normalizedLanguage === 'math' || normalizedLanguage === 'katex') {
     return <MathBlock math={codeText} />
+  }
+  // A diagram once its fence is closed: always after the stream, and during
+  // it only for fences marked complete.
+  if (normalizedLanguage === STREAMING_MERMAID_LANGUAGE || (normalizedLanguage === 'mermaid' && !isStreaming)) {
+    return <MermaidBlock source={codeText} />
   }
   return <HighlightedCode code={codeText} language={language} isStreaming={isStreaming} />
 }

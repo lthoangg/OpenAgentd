@@ -49,8 +49,10 @@ duplicating them in this guide. Relevant tests live under
   stays in `utils/code-highlight.ts` so it is memoized outside the parse path.
 - Render model-authored code as React text/tokens. Keep the existing controlled
   KaTeX renderer path; do not pass untrusted arbitrary HTML to
-  `dangerouslySetInnerHTML`. Chat does not render diagrams (`mermaid` fences
-  are plain code); drawn diagrams belong in a Preview tab.
+  `dangerouslySetInnerHTML`. The one SVG exception is `utils/MermaidBlock.tsx`:
+  Pele draws closed `mermaid` fences with links and images off, and every SVG
+  goes through `utils/diagram-svg.ts` (`sanitizeDiagramSvg`) before insertion.
+  Keep Pele lazy (`pele/lazy`) so the startup bundle does not grow.
 - Keep table overflow on the `.oa-table-wrap` wrapper rather than applying
   block/overflow styles directly to `<table>`.
 - When adding a syntax grammar, update the shared highlighter tests and any

@@ -570,12 +570,17 @@ run from the terminal (the native Rust binary since v3.0.0).
   are counted as they wrap, so the fold follows the chat width: opening the
   sidebar or the dock re-checks it. Expanding and folding animate, and the
   whole prompt stays selectable and searchable.
-- **Mermaid diagrams in agent responses** *(deprecated)* `[v1.121.0, v1.123.0, v3.5.0]` —
-  completed `mermaid` code fences rendered as diagrams with Diagram and Code
-  views and a full-screen pan/zoom view. Since v3.5.0 the chat no longer
-  renders diagrams: a `mermaid` fence shows as an ordinary code block with copy,
-  and the Mermaid library is no longer shipped. For drawn diagrams, an agent
-  writes a self-contained HTML/SVG file and opens it in the Preview tab.
+- **Mermaid diagrams in agent responses and plans** `[v1.121.0, v1.123.0, v3.5.0, v3.21.0]` —
+  a `mermaid` code fence renders as a diagram as soon as its closing fence
+  arrives, with **Diagram** and **Code** views and copy. Since v3.21.0 it is
+  drawn by [Pele](https://pele.run), a small, dependency-free Mermaid renderer
+  that loads on the first diagram (startup size is unchanged). Diagrams use the
+  app's colors in light and dark themes, adapt their layout to narrow screens,
+  and can be zoomed when they have to shrink. Diagram links and images are
+  off, and the drawn SVG is sanitized before it is shown. A diagram that
+  can't be drawn shows its code with a one-line reason. (v3.5.0–v3.20.0
+  showed `mermaid` fences as plain code.) For richer drawings, an agent can
+  still write an HTML/SVG file and open it in the Preview tab.
 - **LaTeX math rendering** `[v1.133.0]` — inline math (`$math$` and `\(math\)`),
   display math (`$$math$$` and `\[math\]`), and fenced code blocks (`math`, `katex`)
   render formatted LaTeX mathematics via KaTeX. Distinguishes mathematical
